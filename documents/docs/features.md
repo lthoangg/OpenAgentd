@@ -3460,11 +3460,50 @@ Four orthogonal ways to add capability.
     skill files, while write tools and `shell` still cannot touch them.
     References for slash commands (where the files go, `$ARGUMENTS`, names
     to avoid) and workspace groups were added, so "make a /review command for
-    this project" writes `.agents/commands/review.md` `[v3.35.0]`.
+    this project" writes `.agents/commands/review.md` `[v3.35.0]`. The
+    plugins reference covers plugin folders and `agentd plugin`, and the agent
+    shows what a plugin adds before installing it `[v3.44.0]`.
   - **Semantic docs search skill experiment** `[v1.98.0]` *(beta)* — project workspaces can ship
     an `oad/search-doc` skill plus a turbovec-based document-search experiment for semantic lookup
     over `documents/`, giving agents a higher-level alternative to exact-string grep when docs
     queries are conceptual or paraphrased.
+- **Plugin folders** `[v3.44.0]` — a plugin can now be a folder in the plugin
+  dir that adds skills, MCP servers and tools. The layout is the open Agent
+  Plugins 1.0 format (`plugin.json`, `skills/`, `mcp.json`), so plugins written
+  for other clients that read it work here, and the standard parts of a plugin
+  written here work there. Skills are named `<plugin>/<skill>` and MCP servers
+  `<plugin>/<server>`, with `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` (a data
+  folder kept across updates) filled in. Adding, editing or removing a plugin
+  needs no restart: it reloads when its files change. New sessions get its
+  skills, its MCP servers and tools are usable at once, and running sessions
+  keep their requests unchanged. A broken plugin is marked failed without
+  affecting the others. Single-file plugins keep working as before.
+  - **Plugin tools through the `mcp` tool** `[v3.44.0]` — a folder's
+    `dev.openagentd/plugin.ts` can define tools (`defineTool`), tool hooks and
+    a model provider. Agents reach plugin tools through the `mcp` tool, with
+    the plugin's name as the server: `search` finds them with their input
+    schemas and `call` runs one, so installing tools never grows the tool
+    list. A plugin installed or edited mid-session is usable at once and runs
+    its new version; its name joins the `mcp` tool's description in sessions
+    that start afterwards, and without plugins the request is unchanged. In
+    Plan mode only tools marked `readOnly` run. An MCP server of the user's
+    with the same name as a plugin hides that plugin's tools, and Settings →
+    Plugins says so.
+  - **Plugin permissions** `[v3.44.0]` — a folder's code runs sandboxed: it
+    reads its own folder and reads and writes its data folder, and anything
+    more needs a permission in `plugin.json` (`net` hosts, `listen`, `fs`
+    folders, `subprocess` programs, `env` variables). A call outside them
+    fails with an error that names the permission to add. A folder's provider
+    reads only its own saved credentials and the variables `env` lists, never
+    another provider's keys or MCP secrets, and only while no built-in provider
+    or other plugin has its id. MCP servers from a plugin run as ordinary
+    processes and are not sandboxed.
+  - **Manage plugins in Settings** `[v3.44.0]` — Settings → Plugins lists each
+    folder with its state, an on/off switch, a Reload button, and details:
+    skills, the command or URL of each MCP server, tools (read-only ones
+    marked), permissions, errors and warnings. Plugin MCP servers appear in
+    Settings → MCP marked "from <plugin>": they can be restarted there, go on
+    and off with their plugin, and the agent's `mcp` tool cannot change them.
 - **Slash commands** `[since v1.0]` — `.md` files with optional frontmatter,
   available globally or scoped to a coding workspace (`[v1.17.0]`). One nested
   namespace level is supported and displayed in the composer as colon syntax
@@ -3491,8 +3530,11 @@ Single-user trust model. The host is trusted. The operator is the user.
   Credentials (`OPENAGENTD_CACHE_DIR`), the SQLite DB, undo/redo snapshots, and
   other sessions' artifacts stay denied. This is what makes the
   `oad/debug-prod` log/telemetry workflow usable without disabling the path denylist.
-- **Permission system: allow / deny / ask** `[since v1.0]` — wildcard rule
-  matching per tool. Auto-allow, blocking on user reply, or persistent rules.
+- **Permission system: allow / deny / ask** `[since v1.0]` *(deprecated: not
+  in v3)* — v2 matched wildcard rules per tool to auto-allow a call, block on
+  the user's reply, or save a rule. v3 runs every tool call without asking;
+  what limits the agent is the path denylist, Plan mode, and the secret-free
+  shell environment below.
 - **Shell command pre-scan** `[since v1.0]` — best-effort path-token scan
   inside shell commands.
 - **Secret-free shell environment** `[v3.11.1]` — the agent's shell tool and
@@ -3757,7 +3799,18 @@ Desktop is primary. CLI / server is the developer path.
 - **CLI doctor** `[since v0.1.0, v3.1.0]` — `agentd doctor` checks provider credentials
   (including keys saved in Settings → Providers and the lead agent's OAuth
   login), the database, the configured server port, and the agents directory,
-  and exits 1 when a check fails.
+  and exits 1 when a check fails. With the server running it also lists the
+  server's modules and their state, with the reason a module failed or is
+  blocked `[v3.44.0]`.
+- **CLI plugin management** `[v3.44.0]` — `agentd plugin add <git URL or
+  folder>` shows what a plugin adds (skills, each MCP server's exact command
+  or URL, permissions, tools) and asks before installing; without a terminal
+  it prints that summary and exits with status 2 unless `--yes` is given. Git
+  URLs must be `https://`, `ssh://`, `user@host:path` or `file://`, and
+  `--path` picks a subfolder. A running server loads the plugin at once.
+  `agentd plugin check <folder>` validates a plugin without installing it,
+  `agentd plugin list` shows each plugin and its state, and
+  `agentd plugin remove <name>` deletes it and keeps its data.
 - **CLI artifact cleanup** `[v2.18.0]` — `agentd cleanup` previews a dry run
   and, with `--apply`, deletes sessions older than `--older-than-days`
   (default 14) together with their messages, session artifacts, undo/redo

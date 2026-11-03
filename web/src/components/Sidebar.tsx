@@ -1066,9 +1066,6 @@ export function Sidebar({
       initial={false}
       resize={sidebarResize}
       getMotion={sidebarMotion}
-      // The header's sidebar cap matches this column while it sits beside
-      // the chat (open, or sliding); a drawer or the phone sheet floats.
-      publishWidthAs={!isMobile && !drawer && (!desktopCollapsed || sliding) ? '--oa-sidebar-w' : undefined}
       // Collapsed (desktop) or closed (mobile), the sidebar is off screen
       // but still in the DOM: keep Tab and screen readers out of it.
       inert={isMobile ? !mobileOpen && mobileDragOffset === null : desktopCollapsed}

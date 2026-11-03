@@ -659,21 +659,23 @@ drawer and full-screen sheet.
 └────────────── status-bar 24 · bg-page (light) / bg-sidebar (dark) ─────────┘
 ```
 
-- **Columns run to the top.** The desktop header splits where the columns
-  below it do: a sidebar cap as wide as the sidebar (the traffic lights, ☰
-  and the sidebar toggle, 80px in on macOS so it keeps a native gap from the
-  lights), the title over the chat, and a Review panel cap as wide as the
-  panel (Task list, the panel toggle; on Windows the caption buttons). The
+- **Columns run to the top.** The desktop header has a sidebar cap (the
+  traffic lights, ☰ and the sidebar toggle, 80px in on macOS so it keeps a
+  native gap from the lights), the title, and a Review panel cap as wide as
+  the panel (Task list, the panel toggle; on Windows the caption buttons).
+  Only the Review panel cap lines up with its panel: the sidebar cap is as
+  wide as its buttons, so the title sits right after the sidebar toggle
+  whatever the sidebar does (opening it does not move the title). The
   command palette has no button there: `Mod+K`, the View menu and the phone's
   More sheet open it. The caps draw no edge of their own (the column lines
   start under the header), and the header's bottom line runs the full width
   of the window, over the sidebar too, so the header reads as one bar.
-  The widths come from the panels themselves (`ResizableAside`
-  `publishWidthAs` → `--oa-sidebar-w`, `--oa-dock-w`), so a cap follows a
-  drag and a slide; a hidden panel, a drawer or an overlay publishes none,
-  and the cap shrinks to its buttons. The widths are written on the two
-  header caps only, never on `<html>`: a custom property changed on the
-  root restyles every element each frame of a slide. Phones keep one bar.
+  The dock width comes from the panel itself (`ResizableAside`
+  `publishWidthAs` → `--oa-dock-w`), so the cap follows a drag and a slide;
+  a hidden panel, a drawer or an overlay publishes none, and the cap
+  shrinks to its buttons. The width is written on the dock cap only, never
+  on `<html>`: a custom property changed on the root restyles every
+  element each frame of a slide. Phones keep one bar.
 - **Zoning is tonal in dark mode.** There the header, sidebar and status bar
   sit on the recessed `bg-sidebar`; in light mode they share the chat's
   `bg-page`, so the app reads as one sheet of paper. The dock tab bar

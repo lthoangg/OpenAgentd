@@ -131,7 +131,7 @@ interface ResizableAsideProps
   /** Lay the children out at ``pinWidth`` rather than the tweening width. */
   pinContentWidth?: boolean
   /**
-   * A CSS custom property (``--oa-sidebar-w``) to publish the live
+   * A CSS custom property (e.g. ``--oa-dock-w``) to publish the live
    * border-box width to, on that property's sinks (``usePanelWidthSink``);
    * cleared when unset or unmounted. Owners pass it only while the panel is
    * in flow beside the chat.

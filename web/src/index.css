@@ -403,18 +403,16 @@ html[data-window-caption] .below-window-caption {
    every platform gets the same safe-area contract. */
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Header caps (AgentChatHeader, desktop): the header splits where the columns
- * below it do, so the sidebar and the Review panel read as columns from the
- * top of the window. Their widths arrive as --oa-sidebar-w / --oa-dock-w,
- * set on the caps themselves (ResizableAside publishWidthAs → usePanelWidthSink;
- * unset while a panel is hidden, a drawer or an overlay), so a cap follows a
- * drag and a slide without restyling the rest of the page. The caps draw no edge of
- * their own: the column lines start under the header, whose bottom line runs
- * the full width, over the sidebar too, so it reads as one bar.
+ * Header caps (AgentChatHeader, desktop): only the dock cap lines up with its
+ * panel, so the Review panel reads as a column from the top of the window. Its
+ * width arrives as --oa-dock-w, set on the cap itself (ResizableAside
+ * publishWidthAs → usePanelWidthSink; unset while the panel is hidden, a
+ * drawer or an overlay), so the cap follows a drag and a slide without
+ * restyling the rest of the page. The sidebar cap holds no width: the title
+ * sits right after the sidebar toggle whatever the sidebar does. The caps draw
+ * no edge of their own: the column lines start under the header, whose bottom
+ * line runs the full width, over the sidebar too, so it reads as one bar.
  * ───────────────────────────────────────────────────────────────────────────── */
-.oa-header-cap-sidebar {
-  min-width: var(--oa-sidebar-w, 0px);
-}
 .oa-header-cap-dock {
   min-width: var(--oa-dock-w, 0px);
 }

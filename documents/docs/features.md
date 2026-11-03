@@ -740,6 +740,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     over the sidebar too. The split follows a drag or a slide. The
     Review panel's tab strip shares the sidebar's tone, and its open tab is
     marked the way the sidebar marks the open session.
+    *(The title over the chat is deprecated; since v3.43.0 the title sits
+    right after the sidebar toggle and stays put when the sidebar opens or
+    closes.)*
   - **Split Review Panel Right** (`⌘\`/`Ctrl+\`) and **Split Review Panel
     Down** (`⌘⇧\`/`Ctrl+Shift+\`) split the pane you are in, as often as
     there is room; each pane has its own tabs. The new pane is empty and lists
@@ -1178,6 +1181,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     only windows on an external server open, or none.
   - In reader mode the jump chip says "Jump to latest" without a count of
     new blocks: the turns are folded, so the count said nothing.
+  - The header's workspace and title stay right after the sidebar toggle
+    whether the sidebar is open or not.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

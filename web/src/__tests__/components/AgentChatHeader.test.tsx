@@ -84,17 +84,16 @@ describe('AgentChatHeader', () => {
     const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.url)), 'utf8')
     const rule = (selector: string) => css.match(new RegExp(`\\${selector} \\{([^}]*)\\}`))?.[1] ?? ''
 
-    it('puts the sidebar toggle in a cap as wide as the sidebar, with no line beside it', () => {
+    it('puts the sidebar toggle in a cap that does not follow the sidebar width, with no line beside it', () => {
       renderHeader({ isMobile: false })
       const lead = cap('sidebar')
       expect(lead.contains(screen.getByRole('button', { name: 'Toggle sidebar' }))).toBe(true)
-      expect(lead).toHaveClass('oa-header-cap-sidebar')
-      const geometry = rule('.oa-header-cap-sidebar')
-      expect(geometry).toContain('min-width: var(--oa-sidebar-w, 0px);')
+      // The title sits right after the toggle whatever the sidebar does.
+      expect(css).not.toContain('--oa-sidebar-w')
+      expect(rule('.oa-header-cap-sidebar')).toBe('')
+      expect(lead.className).not.toContain('min-w')
       // The column edges start under the header: no "|" between the caps.
-      expect(geometry).not.toContain('border-right')
-      // The header's own bottom line runs over the sidebar; the cap adds none.
-      expect(geometry).not.toContain('border-bottom')
+      expect(lead.className.split(' ').some((c) => c.startsWith('border'))).toBe(false)
     })
 
     it('puts the Task list and Review panel buttons in a cap as wide as the Review panel', () => {

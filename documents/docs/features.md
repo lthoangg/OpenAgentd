@@ -714,7 +714,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     More), and Send is a 44px target (36px since v3.41.0, like the
     controls beside it).
   - Messages queued while a turn runs sit in the tray above the text, with
-    the side question and the **Jump to latest** chip.
+    the side question and the **Jump to latest** chip *(queued messages
+    moved back to the transcript in v3.42.0; the tray keeps the other two)*.
   - On a touch tablet, in the app or a browser, the composer rides up on the
     soft keyboard as it does on phones, and Settings ends above the keyboard
     so its Save bar stays reachable. The header is 44px there, so its touch
@@ -827,7 +828,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - `F6` / `Shift+F6` move between the sidebar, the transcript, the composer,
     each Review panel group and the status bar.
   - Code blocks, tables, diagrams and an expanded tool's output can widen to
-    960px when the chat has room; prose keeps its reading width.
+    960px when the chat has room; prose keeps its reading width *(deprecated;
+    removed in v3.42.0: they stay at the column width)*.
 - **Sidebar and header: fewer steps** `[v3.40.0]`:
   - **New session** sits at the top of the sidebar at all times (it does what
     `⌘N`/`Ctrl+N` does).
@@ -856,7 +858,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     and the phone's More sheet open it), and a hidden sidebar leaves no
     hairline at the window's edge.
 - **Transcript: act where you read** `[v3.40.0]`:
-  - Under the last finished answer, **Copy · Edit prompt · Undo** show at
+  - Under the last finished answer, **Copy · Edit prompt · Undo** *(Undo
+    deprecated; removed in v3.42.0)* show at
     rest as icons, each named in its tooltip, then the files
     changed (a file icon, the count and `+added -removed`). While a turn
     runs, Edit prompt shows dimmed and says it is available when the turn
@@ -901,13 +904,17 @@ run from the terminal (the native Rust binary since v3.0.0).
     1–9 pick an option (the next number is "Type your own answer"), Enter
     sends, and Back / Next page through several questions. Double-clicking
     an answer picks it and sends (or goes to the next question).
+    *(Send always showing, **Skip this question** and Dismiss deprecated;
+    replaced in v3.42.0 by Back / Next, with Send on the last question.)*
   - An open tool row's arguments and output show in full, widened past the
-    text column, no longer cut at its edges.
+    text column, no longer cut at its edges *(widening deprecated; removed
+    in v3.42.0)*.
   - A plan review is decided on its card: **Approve** (or **Approve and keep
     going (N turns)** when a goal would start, with the real count),
     **Request changes**, which opens a comment box straight away, and **Open
     plan**. In the Plan tab every paragraph, list item and heading has a
-    **Comment** action, and the tab and the card share one draft.
+    **Comment** action *(deprecated; removed in v3.42.0: select text and
+    comment)*, and the tab and the card share one draft.
   - Each queued message has **Remove**, and the notice that follows has
     **Undo**.
   - The undo notice is one card: "Last 2 messages undone. Redo brings them
@@ -1045,7 +1052,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The tray popup lists the sessions that need you and the running ones,
     says **No server connected** when there is none, and its usage section
     is **Provider limits**. On Windows and Linux the tray menu starts with
-    the sessions that need you.
+    the sessions that need you *(both session lists deprecated; removed in
+    v3.42.0)*.
   - Opening a session from anywhere (notch, pet, tray, a notification, Open
     in new window) focuses the window that already shows it. When one
     session is open in two windows anyway, the window in the background
@@ -1061,7 +1069,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Every thinking level fits the run picker: Extra high reads **XHigh**
     (on the run chip too), and the sheet puts the Thinking label above the
     levels.
-  - The footer under a message (Copy, Edit prompt, Undo, the files pill and
+  - The footer under a message (Copy, Edit prompt, Undo *(removed in
+    v3.42.0)*, the files pill and
     the details line) and a prompt's Edit and Copy are drawn smaller and
     closer together, with the same 36px touch targets.
   - A question card's caption ("Answer at least one question to send.")
@@ -1080,6 +1089,51 @@ run from the terminal (the native Rust binary since v3.0.0).
     server is marked **In use** in the list, the built-in server shows its
     address there, and a connected server that is not saved gets a row of
     its own.
+- **Fewer buttons, fewer menus, smoother panels** `[v3.42.0]`:
+  - The tray popup lists no sessions, only provider limits and actions; the
+    count mark on the tray icon is unchanged. The Windows and Linux tray
+    menu has no **Needs you** rows, and its **Status: …** row shows only
+    while the backend is not running normally (Starting, Error, Restarting,
+    Downloading or Installing an update…).
+  - The notch pill no longer says **Running**: while sessions run it shows
+    the spinner, the count and the title (or "N sessions"), and a goal still
+    shows "Goal N/M". In the expanded list a running row shows the spinner
+    in place of a **Running** chip. **Needs you**, **Done**, **Failed** and
+    **Can't reach** are unchanged.
+  - The turn footer has no **Undo**; **Edit prompt** already undoes the turn
+    and puts the prompt back (`/undo` remains).
+  - Messages (yours and the agent's) and code blocks have no app
+    right-click or long-press menu (**Copy response**, **Copy as Markdown**,
+    **Copy code**, and **Copy** / **Edit** on your messages are gone), on
+    desktop and on phones and tablets; they keep the system menu and native
+    text selection. In the desktop app, right-clicking message text or code
+    outside a link shows the system menu (Copy, Look Up). The footer's
+    **Copy**, a code block's **Copy code** button and your message's **Copy**
+    and **Edit** buttons remain, as do the link menu (Open / Copy link) and
+    the tool row menu.
+  - The Plan tab's per-block **Comment** action is gone; select text and use
+    the **Comment** button (on a phone, the footer), and the tab and the
+    card still share one draft.
+  - Code blocks, tables, diagrams and an expanded tool row's details stay at
+    the text column's width instead of widening to 960px; long lines scroll
+    inside their box.
+  - A question card has only **Back** and **Next**, and **Send** in Next's
+    place on the last (or only) question; there is no **Dismiss**, **Skip
+    this question** or **Skip and send**. Next leaves an unanswered question
+    to be sent as skipped, and Send is always available. The caption reads
+    "N of M answered · K will be skipped" or, for one question with nothing
+    picked, "Nothing picked: Send skips this question." Enter and
+    `⌘`/`Ctrl`+Enter take Next or Send once the current question has an
+    answer; keys 1–9 and double-click are unchanged.
+  - Sliding the sidebar or the Review panel open or closed no longer
+    restyles the whole page on every frame, so the slide is smoother with a
+    long transcript.
+  - Messages queued or steered while a turn runs sit at the bottom of the
+    transcript, under the running turn, faded, as before v3.40.0; they are
+    no longer in the composer's tray, which keeps the side question, the
+    undo notice and the **Jump to latest** chip.
+  - Typing a message that grows to several lines no longer scrolls the
+    transcript up under the composer, hiding the last answer's footer.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.
@@ -1167,7 +1221,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   out, and a window in the background dims its highlights. The webview's
   Reload / Back / Inspect menu is gone: right-click in the chat offers **Open
   link** / **Copy link**, **Copy code**, **Copy response** / **Copy as
-  Markdown** and, on your messages, **Copy** / **Edit**; text fields and
+  Markdown** *(the last three deprecated; removed in v3.42.0)* and, on your
+  messages, **Copy** / **Edit** *(also removed in v3.42.0)*; text fields and
   selected text keep the native menu. Shift+F10 opens the same menus in the
   browser too.
   - Tooltips wait half a second before appearing, then show at once while you
@@ -1247,6 +1302,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     alerts, so switching servers neither shows one server's numbers under
     another's name nor repeats a notification. When Auto's server is
     offline the selector still lists Auto, so you can pick another server.
+    Since `[v3.42.0]` it lists no sessions (no **Needs you**, **Running** or
+    **Can't reach** groups, no "N need(s) you" chip in the header): it shows
+    provider limits and actions only. The count mark on the tray icon is
+    unchanged.
     Since `[v3.25.0]` it looks and moves like the app:
     - **Layout.** It shares the app's colours and type. A provider with
       several limits gets one card, with rows named by window ("5-hour",
@@ -2977,7 +3036,8 @@ MCP.
   answer. **Type your own answer** is on every question `[v3.4.0]`; the agent
   can no longer turn it off. Multi-question cards are stepped through one at a time —
   **Back** replaces **Dismiss** past the first question — and the whole set is
-  submitted together at the end. The card renders **inline in the transcript**, in place of
+  submitted together at the end *(Dismiss deprecated; removed in v3.42.0: the
+  card has only Back and Next / Send)*. The card renders **inline in the transcript**, in place of
   the tool call that raised it, with exactly two states: waiting (the questions
   and their suggested answers) and resolved (your answer, or the dismissal).
   The suspension is **durable, not in-memory**: the pending question and the

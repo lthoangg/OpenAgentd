@@ -241,21 +241,15 @@ pub fn agents_dir() -> std::path::PathBuf {
     appv3_tools::denied::resolve(&settings().agents_dir)
 }
 
-/// Tools given to a member agent.
+/// Tools given to a member agent: the ones its file lists that a member
+/// may have (`tool_registry::member_tool`).
 fn build_member_tools(allowed: &[String]) -> Vec<ToolRef> {
     let mut out: Vec<ToolRef> = vec![];
     let mut seen = HashSet::new();
     for n in allowed {
-        if matches!(n.as_str(), "ask_user" | "team" | "schedule") {
-            continue;
-        }
-        if !matches!(n.as_str(), "read" | "glob" | "grep" | "patch" | "shell" | "web_search" | "web_fetch") {
-            continue;
-        }
+        let Some(t) = crate::tool_registry::member_tool(n) else { continue };
         if seen.insert(n.clone()) {
-            if let Some(t) = appv3_tools::builtin_tool(n) {
-                out.push(t);
-            }
+            out.push(t);
         }
     }
     out

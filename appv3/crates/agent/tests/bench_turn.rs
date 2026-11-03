@@ -149,7 +149,7 @@ async fn one_turn(pool: &appv3_db::DbPool, ws: &std::path::Path, sid: &str, iter
     let provider: Arc<dyn LlmProvider> = Arc::new(ScriptedProvider { turns: Mutex::new(script.into()), kw: Kwargs::new() });
     let p2 = provider.clone();
     let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
-    let agent = Agent::new(provider, "code", "You are a test agent.", vec![appv3_tools::builtin_tool("read").unwrap()], Some("mock:mock".into()));
+    let agent = Agent::new(provider, "code", "You are a test agent.", vec![std::sync::Arc::new(appv3_tools::read::ReadTool) as appv3_tools::ToolRef], Some("mock:mock".into()));
     let session = AgentSession::new(agent, None, Some(ws.display().to_string()), pool.clone(), factory, None);
 
     let alloc0 = ALLOCATED.load(Ordering::Relaxed);

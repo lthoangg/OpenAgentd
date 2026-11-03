@@ -4,13 +4,6 @@ use anyhow::{anyhow, Result};
 use appv3_db::{self as db, DbPool, NewMessage};
 use serde_json::{json, Map, Value};
 
-/// Some tools check each call themselves: `mcp` allows search, its server
-/// list and calls to read-only tools, `patch` writes only plan attachments
-/// under `.agents/plans/<folder>/`, `preview` only looks (no click, fill or
-/// press), and `workspace` only lists.
-pub const PLAN_MODE_ALLOWED_TOOLS: [&str; 14] =
-    ["ask_user", "glob", "grep", "mcp", "patch", "plan", "preview", "read", "shell", "skill", "team", "web_fetch", "web_search", "workspace"];
-
 /// `extra.interaction_mode_prompt_version` of the notes written now. Notes
 /// without it are version 1 (the `<proposed_plan>` instructions); version 2
 /// wrote implementation-shaped plans; version 3 wrote reviewer-shaped plans
@@ -31,7 +24,7 @@ pub fn normalize(value: &str) -> &'static str {
 }
 
 pub fn tool_allowed_in_mode(mode: &str, tool: &str) -> bool {
-    mode != "plan" || PLAN_MODE_ALLOWED_TOOLS.contains(&tool)
+    mode != "plan" || crate::tool_registry::allowed_in_plan_mode(tool)
 }
 
 /// The mode note for `mode`. A member (delegated agent) follows its lead's
@@ -216,7 +209,7 @@ mod tests {
     fn the_plan_note_names_every_tool_plan_mode_allows() {
         let note = transition_instruction("plan", false);
         assert!(note.contains("Other tools return an error in Plan mode."), "{note}");
-        for tool in PLAN_MODE_ALLOWED_TOOLS {
+        for tool in crate::tool_registry::plan_mode_tools() {
             assert!(note.contains(&format!("`{tool}`")), "the Plan note does not name `{tool}`");
         }
     }

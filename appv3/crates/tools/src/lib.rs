@@ -207,23 +207,6 @@ impl ToolSet {
     }
 }
 
-/// Built-in, session-independent tools by v2 name.
-pub fn builtin_tool(name: &str) -> Option<ToolRef> {
-    Some(match name {
-        "read" => Arc::new(read::ReadTool),
-        "grep" => Arc::new(grep::GrepTool),
-        "glob" => Arc::new(glob::GlobTool),
-        "patch" => Arc::new(patch::PatchTool),
-        "shell" => Arc::new(shell::ShellTool),
-        "web_search" => Arc::new(web::WebSearchTool),
-        "web_fetch" => Arc::new(web::WebFetchTool),
-        "todo" => Arc::new(todo::TodoTool),
-        "generate_image" => Arc::new(multimodal::GenerateImageTool),
-        "generate_video" => Arc::new(multimodal::GenerateVideoTool),
-        _ => return None,
-    })
-}
-
 pub const TOOL_TIMEOUT_SECONDS: u64 = 300;
 
 /// Result of executing one tool call.
@@ -532,7 +515,12 @@ mod tests {
         let c = ctx(d.path());
         let call = |tool: &'static str, args: Value| {
             let c = c.clone();
-            async move { builtin_tool(tool).unwrap().run(&c, args).await.unwrap_err().to_string() }
+            let tool: ToolRef = match tool {
+                "read" => Arc::new(read::ReadTool),
+                "grep" => Arc::new(grep::GrepTool),
+                _ => Arc::new(glob::GlobTool),
+            };
+            async move { tool.run(&c, args).await.unwrap_err().to_string() }
         };
         let hint = "is an absolute path. Did you mean `oad-hint-DESIGN.md` (workspace-relative)?";
         assert!(call("read", serde_json::json!({"path": "/oad-hint-DESIGN.md"})).await.contains(hint));

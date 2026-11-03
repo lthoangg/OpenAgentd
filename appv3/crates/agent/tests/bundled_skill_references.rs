@@ -55,7 +55,7 @@ async fn self_healing_references_are_readable_but_not_writable() {
     let path = line.split('`').find(|s| s.ends_with("references/mcp.md")).expect("rendered path");
     assert!(std::path::Path::new(path).is_absolute(), "{{SKILL_DIR}} renders to an absolute path: {path}");
 
-    let read = appv3_tools::builtin_tool("read").unwrap();
+    let read = std::sync::Arc::new(appv3_tools::read::ReadTool) as appv3_tools::ToolRef;
     let body = text(read.run(&ctx, json!({"path": path})).await.unwrap());
     assert!(body.contains("# MCP servers"), "{body}");
     assert!(ctx.denied.validate_path(path).is_err(), "write tools keep the cache denial");

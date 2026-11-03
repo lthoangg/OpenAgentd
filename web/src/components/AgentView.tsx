@@ -54,7 +54,6 @@ import { TranscriptSkeleton } from './AgentView/TranscriptSkeleton'
 import { PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './AgentView/prompt-nav'
 import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
-import { copyText, useChatMenu } from './ChatContextMenu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 import { useDismissKeyboardOnTouch } from '@/hooks/use-mobile-viewport'
@@ -593,18 +592,15 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   }
 })
 
-/** An assistant message, with Copy response / Copy as Markdown on its menu. */
+/**
+ * An assistant message. No menu of its own: a right-click or a long press
+ * selects text and opens the system's menu (Copy, Look Up); the footer's
+ * Copy takes the whole answer.
+ */
 function AssistantText({ content, sessionId, isStreaming }: { content: string; sessionId?: string; isStreaming: boolean }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const chatMenu = useChatMenu('Actions for response', () => [
-    // As rendered: no Markdown syntax.
-    { label: 'Copy response', run: () => copyText((ref.current?.innerText || ref.current?.textContent || content).trim()) },
-    { label: 'Copy as Markdown', run: () => copyText(content) },
-  ])
   return (
-    <div ref={ref} onContextMenu={chatMenu.onContextMenu} onKeyDown={chatMenu.onKeyDown}>
+    <div>
       <MarkdownBlock content={content} sessionId={sessionId} isStreaming={isStreaming} />
-      {chatMenu.menu}
     </div>
   )
 }

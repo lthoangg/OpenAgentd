@@ -1,4 +1,3 @@
-import { copyText, useChatMenu } from './ChatContextMenu'
 import { CopyButton } from './ToolCall/CopyButton'
 
 interface CodeBlockProps {
@@ -9,23 +8,16 @@ interface CodeBlockProps {
 }
 
 export function CodeBlock({ children, language, rawText, noHeader = false }: CodeBlockProps) {
-  const chatMenu = useChatMenu(language ? `Actions for ${language} code` : 'Actions for code', () => [
-    { label: 'Copy code', run: () => copyText(rawText) },
-  ])
-
   if (noHeader) {
     return (
-      <pre onContextMenu={chatMenu.onContextMenu} onKeyDown={chatMenu.onKeyDown} className="overflow-auto px-3 py-2.5 font-mono text-code leading-relaxed text-(--color-text)">
+      <pre className="overflow-auto px-3 py-2.5 font-mono text-code leading-relaxed text-(--color-text)">
         <code>{children}</code>
-        {chatMenu.menu}
       </pre>
     )
   }
 
   return (
     <div
-      onContextMenu={chatMenu.onContextMenu}
-      onKeyDown={chatMenu.onKeyDown}
       data-slot="code-block"
       className="relative my-1.5 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)"
     >
@@ -40,7 +32,6 @@ export function CodeBlock({ children, language, rawText, noHeader = false }: Cod
       <pre className="overflow-auto px-3 py-2.5 font-mono text-code leading-relaxed text-(--color-text)">
         <code>{children}</code>
       </pre>
-      {chatMenu.menu}
     </div>
   )
 }

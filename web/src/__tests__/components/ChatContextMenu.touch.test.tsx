@@ -302,11 +302,12 @@ describe('long press on touch', () => {
 })
 
 describe('a code block', () => {
-  it('opens Copy code as a sheet on a long press, and keeps its Copy button for taps', async () => {
+  it('leaves a long press to the system (text selection), and keeps its Copy button for taps', async () => {
     setCoarse(true)
     render(<CodeBlock language="ts" rawText="const a = 1">const a = 1</CodeBlock>)
     fireEvent.pointerDown(screen.getByText('const a = 1'), touch())
     await hold()
-    expect(screen.getByRole('dialog', { name: 'Actions for ts code' })).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Copy code' })).toBeTruthy()
   })
 })

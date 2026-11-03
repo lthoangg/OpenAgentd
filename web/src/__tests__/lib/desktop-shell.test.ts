@@ -66,6 +66,24 @@ describe('desktop shell', () => {
     expect(allowNativeContextMenu(event, false)).toBe(false)
   })
 
+  // Right-click on a word selects it and offers Copy / Look Up, as in any
+  // native app; a link inside the answer still has no "Open Link" in the app.
+  it('keeps the native menu over answer text and code, not over a link in it', () => {
+    document.body.innerHTML = '<div class="oa-prose"><p id="answer">Some words <a id="inner" href="https://example.com">link</a></p><pre><code id="code">x</code></pre></div>'
+    setPlatform('MacIntel', true)
+    uninstall = installDesktopShell()
+    expect(rightClick(document.getElementById('answer')!).defaultPrevented).toBe(false)
+    expect(rightClick(document.getElementById('code')!).defaultPrevented).toBe(false)
+    expect(rightClick(document.getElementById('inner')!).defaultPrevented).toBe(true)
+  })
+
+  it('keeps the native menu over the text of your own message', () => {
+    document.body.innerHTML = '<div class="selectable-text"><p id="mine">Fix the build</p></div>'
+    setPlatform('MacIntel', true)
+    uninstall = installDesktopShell()
+    expect(rightClick(document.getElementById('mine')!).defaultPrevented).toBe(false)
+  })
+
   it('marks the window inactive while another app has focus', async () => {
     setPlatform('Linux x86_64', true)
     uninstall = installDesktopShell()

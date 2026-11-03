@@ -8,7 +8,8 @@
  *   links and images cannot be dragged out.
  * - The webview's own right-click menu (Reload, Back, Inspect, and "Open
  *   Link", which would load the link inside the app) is suppressed. Text
- *   fields and selected text keep the native menu (Copy, Paste, Look Up);
+ *   fields, selected text, and message text and code (outside a link) keep
+ *   the native menu (Copy, Paste, Look Up);
  *   surfaces with an app menu call ``preventDefault`` in their own
  *   ``onContextMenu``, which runs first. Dev builds keep the native menu
  *   for Inspect Element.
@@ -46,9 +47,15 @@ export function hasTextSelection(): boolean {
   return Boolean(selection && !selection.isCollapsed && selection.toString().trim())
 }
 
+/** Message text and code, outside a link: a right-click selects a word, as in any native app. */
+function isReadableText(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  return target.closest('.oa-prose, .selectable-text, pre, code') !== null && target.closest('a[href]') === null
+}
+
 /** Whether a right-click should show the webview's native menu. */
 export function allowNativeContextMenu(event: MouseEvent, dev = import.meta.env.DEV): boolean {
-  return dev || isEditable(event.target) || hasTextSelection()
+  return dev || isEditable(event.target) || hasTextSelection() || isReadableText(event.target)
 }
 
 function onContextMenu(event: MouseEvent): void {

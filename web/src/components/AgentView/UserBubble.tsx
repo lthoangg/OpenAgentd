@@ -12,7 +12,6 @@ import { DesignFeedbackCard } from '../DesignFeedbackViews'
 import { splitDesignFeedback } from '@/lib/design-feedback'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
-import { copyText, useChatMenu } from '../ChatContextMenu'
 import { formatTime, formatFullDateTime } from '@/utils/format'
 import { ModelName } from '@/components/ui/model-name'
 import type { MessageAttachment } from '@/api/types'
@@ -341,10 +340,6 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   const textRef = useRef<HTMLParagraphElement>(null)
   // Height before an expand/collapse, so the layout effect can animate from it.
   const toggleFromHeight = useRef<number | null>(null)
-  const chatMenu = useChatMenu(fromAgent ? `Actions for ${fromAgent} report` : 'Actions for message', () => [
-    { label: 'Copy', run: () => copyText(content) },
-    ...(onEdit && !fromAgent && !editLocked ? [{ label: 'Edit', run: onEdit }] : []),
-  ])
 
   const handleCopy = async () => {
     try {
@@ -415,10 +410,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
         className="group mb-3 flex justify-start"
         onMouseEnter={() => setShowTime(true)}
         onMouseLeave={() => setShowTime(false)}
-        onContextMenu={chatMenu.onContextMenu}
-        onKeyDown={chatMenu.onKeyDown}
       >
-        {chatMenu.menu}
         <div className="flex max-w-full flex-col items-start gap-1.5 md:max-w-[85%]">
           {/* Opened, a long report's header pins while the report scrolls under it. */}
           <div
@@ -494,10 +486,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
       className="group mb-3 flex justify-end"
       onMouseEnter={() => setShowTime(true)}
       onMouseLeave={() => setShowTime(false)}
-      onContextMenu={chatMenu.onContextMenu}
-      onKeyDown={chatMenu.onKeyDown}
     >
-      {chatMenu.menu}
       <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]">
          {sentFrom && <SentFromChip source={sentFrom} onOpenSession={onOpenSession} />}
          {/* Attachments */}

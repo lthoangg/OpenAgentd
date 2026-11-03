@@ -107,14 +107,20 @@ async function renderPanel(onFileSelect = mock(() => {}), ready: RegExp | string
   await waitFor(() => expect(screen.getByRole('button', { name: ready })).toBeTruthy())
 }
 
+/** "Open diff in tab" from the row's ⋯ menu: a click on the row shows the diff in place. */
+async function openDiffTabFor(user: ReturnType<typeof userEvent.setup>, path: string) {
+  await user.click(screen.getByRole('button', { name: `More actions for ${path}` }))
+  await user.click(screen.getByRole('menuitem', { name: 'Open diff in tab' }))
+}
+
 const tabStrip = () => screen.getByRole('button', { name: 'Git' }).closest('.scrollbar-none') as HTMLElement
 
 describe('Review dock diff tabs', () => {
-  it('opens a changed file diff as a full-height tab from the row action', async () => {
+  it('opens a changed file diff as a full-height tab from the row menu', async () => {
     const user = userEvent.setup()
     await renderPanel()
 
-    await user.click(screen.getByRole('button', { name: 'Open diff tab for src/app.ts' }))
+    await openDiffTabFor(user, 'src/app.ts')
 
     const diffTab = await screen.findByRole('button', { name: 'app.ts diff' })
     expect(diffTab.getAttribute('aria-current')).toBe('true')
@@ -132,9 +138,9 @@ describe('Review dock diff tabs', () => {
     const user = userEvent.setup()
     await renderPanel()
 
-    await user.click(screen.getByRole('button', { name: 'Open diff tab for src/app.ts' }))
+    await openDiffTabFor(user, 'src/app.ts')
     await user.click(screen.getByRole('button', { name: 'Git' }))
-    await user.click(screen.getByRole('button', { name: 'Open diff tab for src/app.ts' }))
+    await openDiffTabFor(user, 'src/app.ts')
 
     expect(within(tabStrip()).getAllByRole('button', { name: 'app.ts diff' })).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'app.ts diff' }).getAttribute('aria-current')).toBe('true')
@@ -164,7 +170,7 @@ describe('Review dock diff tabs', () => {
     const onFileSelect = mock(() => {})
     await renderPanel(onFileSelect)
 
-    await user.click(screen.getByRole('button', { name: 'Open diff tab for src/app.ts' }))
+    await openDiffTabFor(user, 'src/app.ts')
     await screen.findByRole('button', { name: 'app.ts diff' })
     const [toolbarOpen] = screen.getAllByRole('button', { name: 'Open src/app.ts' })
     await user.click(toolbarOpen)
@@ -184,7 +190,7 @@ describe('Review dock diff tabs', () => {
     await user.dblClick(screen.getByRole('button', { name: 'app.ts' }))
     await user.click(screen.getByRole('button', { name: 'Git' }))
     // [Git, app.ts] → the diff opens right after Git: [Git, app.ts diff, app.ts].
-    await user.click(screen.getByRole('button', { name: 'Open diff tab for src/app.ts' }))
+    await openDiffTabFor(user, 'src/app.ts')
     await user.click(screen.getByRole('button', { name: 'Close app.ts diff' }))
 
     expect(screen.queryByRole('button', { name: 'app.ts diff' })).toBeNull()
@@ -196,7 +202,7 @@ describe('Review dock diff tabs', () => {
     const user = userEvent.setup()
     await renderPanel()
 
-    await user.click(screen.getByRole('button', { name: 'Open diff tab for src/app.ts' }))
+    await openDiffTabFor(user, 'src/app.ts')
     fireEvent(screen.getByRole('button', { name: 'app.ts diff' }), new MouseEvent('auxclick', { bubbles: true, button: 1 }))
 
     await waitFor(() => expect(screen.queryByRole('button', { name: 'app.ts diff' })).toBeNull())
@@ -204,7 +210,7 @@ describe('Review dock diff tabs', () => {
 
   it('offers row actions on Shift+F10', async () => {
     await renderPanel()
-    const row = screen.getByRole('button', { name: 'Open diff tab for src/app.ts' })
+    const row = screen.getByRole('button', { name: 'Expand diff for src/app.ts' })
 
     await act(async () => {
       row.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true }))
@@ -213,15 +219,18 @@ describe('Review dock diff tabs', () => {
     expect(within(menu).getByRole('menuitem', { name: /Open diff in tab/ })).toBeTruthy()
   })
 
-  it('opens the diff as a preview tab from a click on the row; the chevron only peeks', async () => {
+  it('shows the diff in place from a click on the row, and opens it as a preview tab from the menu', async () => {
     const user = userEvent.setup()
     await renderPanel()
 
     await user.click(screen.getByRole('button', { name: 'Expand diff for src/app.ts' }))
     expect(screen.getByText('const after = 3')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'app.ts diff' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Collapse diff for src/app.ts' }))
+    expect(screen.getByRole('button', { name: 'Expand diff for src/app.ts' }).getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByRole('button', { name: 'app.ts diff' })).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: 'Open diff tab for src/app.ts' }))
+    await openDiffTabFor(user, 'src/app.ts')
     const diffTab = await screen.findByRole('button', { name: 'app.ts diff' })
     expect(diffTab.closest('[data-dock-tab-preview]')).toBeTruthy()
   })
@@ -367,7 +376,7 @@ describe('Review dock tabs keep their scroll position', () => {
   it('a diff tab opens where it was left after visiting another tab', async () => {
     const user = userEvent.setup()
     await renderPanel()
-    await user.click(screen.getByRole('button', { name: 'Open diff tab for src/app.ts' }))
+    await openDiffTabFor(user, 'src/app.ts')
     const diffScroller = () => screen.getByText('const before = 2').closest('.overflow-y-auto') as HTMLElement
     await scrollTo(diffScroller(), 240)
 

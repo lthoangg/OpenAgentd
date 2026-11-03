@@ -87,7 +87,7 @@ describe('Changes tab counters', () => {
       )
     })
     const row = await waitFor(() => {
-      const button = screen.getByRole('button', { name: 'Open diff tab for doc.md' })
+      const button = screen.getByRole('button', { name: 'Expand diff for doc.md' })
       expect(button).toBeTruthy()
       return button
     })

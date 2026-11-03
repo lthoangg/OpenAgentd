@@ -756,7 +756,6 @@ export function WorkspacePanel({
             selectedFilePath={selectedFilePath}
             expandedDiffs={expandedDiffs}
             toggleDiffExpanded={toggleDiffExpanded}
-            openDiffTab={openDiffPreview}
             mobile={mobile}
             setMobileFileActions={setMobileFileActions}
             setDesktopFileActions={setDesktopFileActions}

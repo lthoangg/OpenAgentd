@@ -919,8 +919,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     list shows its checkboxes in place of bullets, in the theme's colour.
 - **Review panel views** `[v3.40.0]`:
   - **Changes**: clicking a row opens its diff as a preview tab, and the
-    chevron peeks at it in place. Every row has **⋯** with the same items as
-    right-click and the long-press sheet.
+    chevron peeks at it in place *(deprecated; since v3.43.0 a click on the
+    row shows the diff in place, and **Open diff in tab** is in its menu)*.
+    Every row has **⋯** with the same items as right-click and the
+    long-press sheet.
     Each row leads with the file name, its folder after it in muted text,
     so files in one deep folder no longer look alike; an empty list says
     **No changes** once. The status letter takes its lines' color: **A**
@@ -1167,6 +1169,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Enter on a model from another provider that has several accounts keeps
     the run picker open on that provider's account list; Enter on an
     account picks it and closes.
+  - In the Git panel's **Changes**, a click on a file shows or hides its
+    diff right under the row; **Open diff in tab** stays in the row's ⋯,
+    right-click and long-press menus.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

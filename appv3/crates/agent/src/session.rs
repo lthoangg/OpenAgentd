@@ -587,7 +587,10 @@ impl AgentSession {
 
     /// Run `/compact` in the background when the session has stayed idle
     /// since the turn that armed the timer and its context reached the
-    /// configured share of the compaction trigger.
+    /// configured share of the compaction trigger. Subagents still working
+    /// for the lead (or workspace replies it is owed) do not hold it back: a
+    /// report delivered meanwhile is queued under `user_message_lock` and the
+    /// compaction turn's end runs the lead on it.
     async fn try_idle_compaction(&self, generation: u64) {
         if *self.turn_generation.borrow() != generation {
             return;
@@ -612,9 +615,6 @@ impl AgentSession {
         };
         if !cfg.idle_compaction {
             return skip("disabled");
-        }
-        if crate::subagents::has_pending_work(&sid) {
-            return skip("awaiting_work");
         }
         if self.has_open_question().await {
             return skip("question_open");

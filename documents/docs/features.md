@@ -2841,6 +2841,9 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   After a server or app restart, a session whose turn ended less than 5
   minutes earlier resumes its countdown while the cache is still warm
   `[v3.24.0]`.
+  Since `[v3.43.0]` a lead whose subagents are still running (or which still
+  waits on another workspace's reply) compacts too once it has been idle that
+  long; a report that arrives meanwhile runs right after the compaction.
   The summary under the "Session compacted" divider starts collapsed; click
   the divider to read it, including while it is still being written
   `[v3.13.0]`.

@@ -1,4 +1,4 @@
-//! `app/api/routes/agent/chat.py` — chat, commands, SSE stream, agent
+//! Chat, commands, SSE stream, agent
 //! listing, workspace pickers, session CRUD and history.
 
 use super::helpers::*;
@@ -492,7 +492,7 @@ fn tool_desc(def: &Value) -> (String, String) {
     (f.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(), f.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string())
 }
 
-/// `_serialize_agent`.
+/// Serialise an agent for the `/api/agent` listing.
 pub fn serialize_agent(agent: &appv3_agent::Agent, workspace: Option<&str>, custom: Option<i64>) -> Value {
     let ws_path = workspace.filter(|w| !w.is_empty()).map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
     let ctx = appv3_tools::ToolContext {

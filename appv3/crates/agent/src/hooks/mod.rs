@@ -1,4 +1,4 @@
-//! Agent lifecycle hooks — port of `app/agent/hooks/base.py` + `state.py`.
+//! Agent lifecycle hooks.
 //!
 //! v2's `wrap_model_call` chains are only used to rewrite the system prompt
 //! (date, workspace instructions), so they map to [`Hook::wrap_system_prompt`]

@@ -1,5 +1,4 @@
-//! `session_messages` — ports `chat_service.py`, `chat_service_revert.py`
-//! and `chat_service_queue.py`. Ordering is always `(seq, id)`.
+//! `session_messages` queries. Ordering is always `(seq, id)`.
 
 use crate::codec::{db_id, json_col, json_db, new_id, now_db, parse_dt, py_isoformat};
 use crate::models::{kind, ChatSession, SessionMessage, ToolPairRow, SEQ_STEP};
@@ -8,14 +7,14 @@ use crate::queries::sessions::{bump_history_revision, get_session};
 use anyhow::Result;
 use serde_json::{Map, Value};
 
-/// v2 history page size (`_HISTORY_PAGE_SIZE`).
+/// History page size.
 pub const HISTORY_PAGE_SIZE: i64 = 100;
 
 /// Most rows the lead's first history page holds when it reaches back to the
 /// latest prompt (see [`first_history_page`]).
 pub const FIRST_PAGE_MAX: i64 = 500;
 
-/// A message to persist (v2 `save_message` arguments).
+/// A message to persist.
 #[derive(Debug, Default, Clone)]
 pub struct NewMessage {
     pub role: String,
@@ -137,7 +136,7 @@ async fn touch_session_activity<'e, E: sqlx::SqliteExecutor<'e>>(ex: E, sid: &st
     Ok(())
 }
 
-/// v2 `save_message`: derives `kind`/`pinned`, allocates `seq`, bumps the
+/// Saves a message: derives `kind`/`pinned`, allocates `seq`, bumps the
 /// structural revision for summaries.
 pub async fn save_message(pool: &DbPool, session_id: &str, msg: NewMessage) -> Result<SessionMessage> {
     let r = insert_row(session_id, msg);
@@ -175,7 +174,7 @@ pub async fn update_message_content(pool: &DbPool, id: &str, content: Option<&st
 
 // ── Revert boundary / active summary ─────────────────────────────────────────
 
-/// The staged undo boundary row, if any (v2 `revert_boundary`).
+/// The staged undo boundary row, if any.
 pub async fn revert_boundary(pool: &DbPool, session: &ChatSession) -> Result<Option<SessionMessage>> {
     let Some(mid) = session.revert_message_id() else { return Ok(None) };
     let row = get_message(pool, &mid.to_string()).await?;
@@ -210,7 +209,7 @@ pub async fn get_active_summary(pool: &DbPool, session_id: &str, boundary: Optio
     Ok(row)
 }
 
-/// Derived LLM window (v2 `_llm_window_rows`): pinned rows + active summary +
+/// Derived LLM window: pinned rows + active summary +
 /// chat/note rows at/after it, before the undo boundary, `(seq, id)` order.
 pub async fn llm_window_rows(pool: &DbPool, session_id: &str, exclude_queued: bool) -> Result<Vec<SessionMessage>> {
     let w = LlmWindow::load(pool, session_id, exclude_queued).await?;
@@ -443,7 +442,7 @@ pub async fn get_history_cursor(pool: &DbPool, session_id: &str) -> Result<Optio
 const REAL_USER: &str = "role = 'user' AND (json_extract(extra, '$.from_agent') IS NULL \
                          OR json_extract(extra, '$.from_agent') = 'user')";
 
-/// Next undo target (v2 `undo_session_messages` target selection).
+/// Next undo target.
 pub async fn find_undo_target(pool: &DbPool, session: &ChatSession) -> Result<Option<SessionMessage>> {
     let boundary = revert_boundary(pool, session).await?;
     let active = get_active_summary(pool, &session.id, boundary.as_ref()).await?;
@@ -488,7 +487,7 @@ pub fn revert_state(target: &SessionMessage, anchor: Option<&str>) -> Value {
 }
 
 /// Materialise an undo: rows at/after the boundary become `reverted`
-/// (queued rows survive). Clears the boundary. v2 `cleanup_reverted_tail`.
+/// (queued rows survive). Clears the boundary.
 pub async fn cleanup_reverted_tail(pool: &DbPool, session_id: &str) -> Result<u64> {
     let sid = db_id(session_id);
     let Some(session) = get_session(pool, &sid).await? else { return Ok(0) };
@@ -512,7 +511,7 @@ pub async fn cleanup_reverted_tail(pool: &DbPool, session_id: &str) -> Result<u6
     Ok(cleaned)
 }
 
-/// v2 `exclude_messages_before_summary`: anchor a fresh summary so it covers
+/// Anchor a fresh summary so it covers
 /// all but the last `keep_last_n` window rows. Returns rows covered.
 pub async fn exclude_messages_before_summary(pool: &DbPool, session_id: &str, summary_id: &str, keep_last_n: i64) -> Result<i64> {
     let sid = db_id(session_id);
@@ -567,7 +566,7 @@ pub async fn exclude_messages_before_summary(pool: &DbPool, session_id: &str, su
 
 // ── Queue ────────────────────────────────────────────────────────────────────
 
-/// v2 `save_queued_user_message`.
+/// Save a user message in the queue.
 pub async fn save_queued_user_message(pool: &DbPool, session_id: &str, content: &str, extra: Option<Map<String, Value>>) -> Result<SessionMessage> {
     let mut e = extra.unwrap_or_default();
     e.insert("queue_status".into(), Value::String("queued".into()));
@@ -603,7 +602,7 @@ pub fn is_attached_row(row: &SessionMessage) -> bool {
     row.extra_json().is_some_and(|e| e.get("attachment_for_message_id").is_some_and(|v| !v.is_null()))
 }
 
-/// Promote all queued rows to `chat` at the tail (v2 `_promote_queued`).
+/// Promote all queued rows to `chat` at the tail.
 /// `snapshot` is stored on each promoted row's `extra`.
 ///
 /// The rows attached to each one (its @-mention context, saved separately at
@@ -685,7 +684,7 @@ pub async fn release_queued_user_messages_with(pool: &DbPool, session_id: &str, 
     Ok(out)
 }
 
-/// v2 `cancel_queued_user_message`. Returns false when not a queued row of
+/// Cancel a queued user message. Returns false when not a queued row of
 /// this session. Attachment files listed in `extra.attachments[].path` are
 /// deleted best-effort, as are mention rows tied to it.
 pub async fn cancel_queued_user_message(pool: &DbPool, session_id: &str, message_id: &str) -> Result<bool> {
@@ -814,7 +813,7 @@ pub async fn latest_sent_from(pool: &DbPool, session_id: &str) -> Result<Option<
 }
 
 /// Direct `SessionMessage(...)` insert with model defaults (seq 0, kind chat),
-/// as v2 `send_subagent_message` does for the `ask_lead` answer.
+/// as sending a subagent message does for the `ask_lead` answer.
 pub async fn insert_raw_tool_message(pool: &DbPool, session_id: &str, content: &str, tool_call_id: &str, name: &str) -> Result<()> {
     let sid = db_id(session_id);
     let now = now_db();
@@ -836,7 +835,7 @@ pub async fn insert_raw_tool_message(pool: &DbPool, session_id: &str, content: &
     Ok(())
 }
 
-/// First `role='tool'` row for *tool_call_id* in a session (`_load_bound_mcp_app`).
+/// First `role='tool'` row for *tool_call_id* in a session (bound MCP app lookup).
 pub async fn find_tool_message(pool: &DbPool, session_id: &str, tool_call_id: &str) -> Result<Option<SessionMessage>> {
     Ok(sqlx::query_as::<_, SessionMessage>("SELECT * FROM session_messages WHERE session_id = ? AND role = 'tool' AND tool_call_id = ? LIMIT 1")
         .bind(db_id(session_id))

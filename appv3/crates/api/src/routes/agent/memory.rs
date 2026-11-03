@@ -1,4 +1,4 @@
-//! `app/api/routes/agent/memory.py` (mounted at `/memory`).
+//! Memory routes (mounted at `/memory`).
 
 use crate::error::{ApiError, ApiResult};
 use crate::util::*;

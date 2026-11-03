@@ -124,7 +124,7 @@ fn should_skip(text: &str) -> bool {
     re.is_match(t) || t.split_whitespace().count() < MIN_TITLE_WORDS
 }
 
-/// `_clean_title`.
+/// Cleaned-up generated title.
 pub fn clean_title(raw: &str) -> String {
     let line = raw.trim().lines().find(|l| !l.trim().is_empty()).unwrap_or("");
     let line = line.trim().trim_start_matches(['#', '*', '-', '>', '•']).trim();
@@ -266,7 +266,7 @@ async fn generate_inner(span: &Span, source: TitleSource, session_id: String, us
         }
     };
     set_duration();
-    // `_attach_usage`
+    // Attach usage.
     span.set_attr("gen_ai.operation.name", "title_generation");
     let pname = provider.provider_name().filter(|p| !p.is_empty());
     if let Some(p) = pname {

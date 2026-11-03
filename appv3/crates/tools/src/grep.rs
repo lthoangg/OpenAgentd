@@ -1,4 +1,4 @@
-//! `grep` — port of `filesystem/grep.py` (+ `_ignore.py`).
+//! The `grep` tool.
 
 use crate::args::Args;
 use crate::denied::fnmatch_translate;

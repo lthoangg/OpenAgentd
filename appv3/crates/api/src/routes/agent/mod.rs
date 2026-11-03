@@ -1,4 +1,4 @@
-//! `/api/agent` router group (`app/api/routes/agent/__init__.py`).
+//! `/api/agent` router group.
 
 pub mod chat;
 pub mod files;

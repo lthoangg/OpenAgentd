@@ -1,4 +1,4 @@
-//! Port of `app/agent/usage.py`.
+//! Token-usage accounting and cost computation.
 
 use crate::registry::get_model_cost_at;
 use crate::types::Usage;

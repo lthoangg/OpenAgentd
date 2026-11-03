@@ -1,4 +1,4 @@
-//! Port of `app/services/lsp/client.py` — a stdio JSON-RPC LSP client.
+//! A stdio JSON-RPC LSP client.
 
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;

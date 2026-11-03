@@ -1,4 +1,4 @@
-//! Process-local global SSE fan-out — port of `app/services/event_broadcaster.py`.
+//! Process-local global SSE fan-out.
 //! Retains no state: clients only see events published while connected.
 
 use crate::events::{compact, WireEvent};

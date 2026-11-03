@@ -1,5 +1,4 @@
-//! Out-of-tree Git-based workspace snapshots for session undo/redo — a
-//! line-for-line port of `app/services/snapshot_service.py`.
+//! Out-of-tree Git-based workspace snapshots for session undo/redo.
 //!
 //! The on-disk layout (`{STATE_DIR}/snapshot/<sid>`, refs under
 //! `refs/openagentd/snapshots/<tree>`, alternates seeding) and every git
@@ -763,7 +762,7 @@ pub fn forget_lock(session_id: &str) {
     LOCKS.lock().unwrap().remove(session_id);
 }
 
-/// v2 `_promote_queued`: snapshot the session workspace (only when queued rows
+/// Snapshot the session workspace (only when queued rows
 /// exist) and promote every queued row, stamping the snapshot on each.
 pub async fn release_queued(pool: &appv3_db::DbPool, session_id: &str) -> anyhow::Result<Vec<appv3_db::SessionMessage>> {
     release_queued_with(pool, session_id, true).await
@@ -787,7 +786,7 @@ async fn release_queued_with(pool: &appv3_db::DbPool, session_id: &str, include_
     appv3_db::release_queued_user_messages_with(pool, session_id, snap.as_deref(), include_held).await
 }
 
-// ── Retention sweep (port of `snapshot_maintenance.py`) ─────────────────────
+// ── Retention sweep ─────────────────────────────────────────────────────────
 
 fn int_env(name: &str, default: i64, min: i64) -> i64 {
     match appv3_core::settings::env_var(name) {

@@ -103,7 +103,7 @@ fn push_session_filters(sql: &mut String, binds: &mut Vec<String>, workspaces: &
     }
 }
 
-/// Cursor page of top-level sessions, newest first (v2 `list_sessions_page`).
+/// Cursor page of top-level sessions, newest first.
 ///
 /// `before` is the `"<iso sort key>|<uuid>"` cursor this returns; the key is
 /// `created_at` or `last_message_at` per `filter.sort`.
@@ -206,7 +206,7 @@ pub async fn session_workspaces(pool: &DbPool) -> Result<Vec<(String, String)>> 
     Ok(sqlx::query_as::<_, (String, String)>("SELECT id, workspace FROM chat_sessions").fetch_all(pool).await?)
 }
 
-/// Newest top-level session for a workspace (v2 `get_latest_top_level_session`).
+/// Newest top-level session for a workspace.
 pub async fn get_latest_top_level_session(pool: &DbPool, workspace: &str) -> Result<Option<ChatSession>> {
     Ok(sqlx::query_as::<_, ChatSession>(
         "SELECT * FROM chat_sessions WHERE parent_session_id IS NULL AND workspace = ? \
@@ -312,8 +312,8 @@ pub async fn pinned_credential_counts(pool: &DbPool) -> Result<std::collections:
     Ok(rows.into_iter().collect())
 }
 
-/// v2 `bump_history_revision`. SQLAlchemy's `onupdate=_utcnow` also fires for
-/// this Core UPDATE, so `updated_at` moves too.
+/// Bump the history revision. As in v2 (SQLAlchemy's `onupdate=_utcnow` fires
+/// for this Core UPDATE), `updated_at` moves too.
 pub async fn bump_history_revision<'e, E: sqlx::SqliteExecutor<'e>>(ex: E, id: &str, structural: bool) -> Result<()> {
     let sql = if structural {
         "UPDATE chat_sessions SET history_revision = history_revision + 1, \

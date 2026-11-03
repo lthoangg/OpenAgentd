@@ -1,5 +1,4 @@
-//! The agent loop — port of `app/agent/agent_loop/core.py` (+ tool dispatch
-//! and the tool-executor plan-mode gate).
+//! The agent loop, including tool dispatch and the tool-executor plan-mode gate.
 
 use crate::checkpointer::Checkpointer;
 use crate::errors::AgentError;
@@ -244,7 +243,7 @@ fn tool_msg(tc: &ToolCall, content: &str) -> ChatMessage {
     ChatMessage::Tool { content: Some(content.to_string()), tool_call_id: tc.id.clone(), name: Some(tc.function.name.clone()), parts: None, meta: MessageMeta::default() }
 }
 
-/// `_merge_question_calls`.
+/// Merge duplicate question calls into the primary call.
 fn merge_question_calls(primary: &mut ToolCall, dups: &[ToolCall]) {
     let parse = |s: &str| serde_json::from_str::<Value>(if s.is_empty() { "{}" } else { s });
     let Ok(mut merged) = parse(&primary.function.arguments) else {

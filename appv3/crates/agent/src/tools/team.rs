@@ -1,5 +1,4 @@
-//! `team` (lead) and `ask_lead` / `send_to_lead` (member) — ports of
-//! `tools/builtin/team.py` and `member.py`.
+//! `team` (lead) and `ask_lead` / `send_to_lead` (member).
 
 use super::invalid_args;
 use crate::loader::{self, ProviderFactory};
@@ -27,7 +26,7 @@ fn req_str(errs: &mut Vec<String>, o: &Map<String, Value>, keys: &[&str]) -> Str
     }
 }
 
-/// `_build_delegate_description`.
+/// Description text of the `team` delegate tool.
 pub fn delegate_description() -> String {
     let mut profiles = loader::load_member_profiles(&subagents::agents_dir());
     profiles.sort_by(|a, b| a.0.cmp(&b.0));

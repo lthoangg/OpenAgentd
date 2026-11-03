@@ -1,4 +1,4 @@
-//! Port of `app/core/{otel,jsonl_writer,otel_retention}.py` — file-based
+//! File-based
 //! OpenTelemetry-shaped spans and metrics, no external service.
 //!
 //! Layout (unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set):

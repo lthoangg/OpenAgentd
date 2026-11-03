@@ -1,5 +1,4 @@
-//! Subagent coordination — port of `app/services/subagent_service.py`
-//! (the paths reachable from `team`, session callbacks and the API).
+//! Subagent coordination (the paths reachable from `team`, session callbacks and the API).
 
 use crate::agent::Agent;
 use crate::broadcaster;
@@ -242,7 +241,7 @@ pub fn agents_dir() -> std::path::PathBuf {
     appv3_tools::denied::resolve(&settings().agents_dir)
 }
 
-/// `_build_member_tools`.
+/// Tools given to a member agent.
 fn build_member_tools(allowed: &[String]) -> Vec<ToolRef> {
     let mut out: Vec<ToolRef> = vec![];
     let mut seen = HashSet::new();

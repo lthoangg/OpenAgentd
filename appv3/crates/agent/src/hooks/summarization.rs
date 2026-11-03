@@ -1,4 +1,4 @@
-//! `SummarizationHook` — port of `app/agent/hooks/summarization.py`.
+//! `SummarizationHook` — context-window summarization.
 
 use super::{AgentState, Hook, ModelRequest, RunContext};
 use crate::events::{self, UsageFrame};
@@ -307,7 +307,7 @@ fn extra_truthy(m: &ChatMessage, key: &str) -> bool {
     m.meta().extra.as_ref().and_then(|e| e.get(key)).map(crate::util::truthy).unwrap_or(false)
 }
 
-/// `_find_assistant_cutoff` over `msgs` (indices into eligible).
+/// Assistant-turn cutoff over `msgs` (indices into eligible).
 fn find_assistant_cutoff(msgs: &[&ChatMessage], keep_last: usize) -> usize {
     if keep_last == 0 {
         return msgs.len();
@@ -324,7 +324,7 @@ fn find_assistant_cutoff(msgs: &[&ChatMessage], keep_last: usize) -> usize {
     0
 }
 
-/// `_expand_tool_pair_ids` over state indices.
+/// Expand tool call/result pair ids over state indices.
 fn expand_tool_pairs(messages: &[ChatMessage], pool: &[usize], seed: HashSet<usize>) -> HashSet<usize> {
     if seed.is_empty() {
         return seed;
@@ -377,7 +377,7 @@ fn expand_tool_pairs(messages: &[ChatMessage], pool: &[usize], seed: HashSet<usi
     }
 }
 
-/// `_skill_tool_pair_ids`.
+/// Tool call/result pair ids of `skill` calls.
 fn skill_tool_pairs(messages: &[ChatMessage], pool: &[usize]) -> HashSet<usize> {
     let mut call_ids = HashSet::new();
     let mut ids = HashSet::new();
@@ -481,7 +481,7 @@ impl SummarizationHook {
         }
     }
 
-    /// `_call_llm` inside the `summarization_llm_call` CLIENT span.
+    /// The LLM call inside the `summarization_llm_call` CLIENT span.
     async fn call_llm(&self, ctx: &RunContext, messages: Vec<ChatMessage>, tools: Option<&[Value]>, max_tokens: Option<i64>) -> Result<(String, Option<Value>), LlmFailure> {
         let span = Span::start("summarization_llm_call", SpanKind::Client, span_identity(ctx));
         let t0 = std::time::Instant::now();

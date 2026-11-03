@@ -1,4 +1,4 @@
-//! LLM providers — port of `app/agent/providers` (v2 internal chunk protocol).
+//! LLM providers and their internal streaming chunk protocol.
 
 pub mod anthropic;
 pub mod bedrock;

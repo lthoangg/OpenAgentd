@@ -194,7 +194,7 @@ pub struct JsProviderPlugin {
 
 impl JsProviderPlugin {
     /// The plugin file's `provider` export, validated like v2's
-    /// `_load_provider_plugin` (errors are logged, the file is skipped).
+    /// Load the provider plugin (errors are logged, the file is skipped).
     pub fn from_plugin(js: &Arc<JsPlugin>) -> Option<Self> {
         let d = &js.describe;
         let fail = |e: String| {

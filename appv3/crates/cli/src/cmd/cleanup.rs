@@ -40,7 +40,7 @@ fn old_enough(p: &Path, cutoff: Option<DateTime<Utc>>) -> bool {
     }
 }
 
-/// `_dir_size`: regular files under `path` (symlinks followed by `stat`).
+/// Total size of regular files under `path` (symlinks followed by `stat`).
 fn dir_size(path: &Path) -> u64 {
     if path.is_file() {
         return std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);

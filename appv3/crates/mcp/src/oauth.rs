@@ -1,4 +1,4 @@
-//! MCP OAuth — port of `app/agent/mcp/oauth.py` plus the subset of the
+//! MCP OAuth, plus the subset of the
 //! `mcp` SDK (2.2) `OAuthClientProvider` auth flow it drives: PRM / AS
 //! metadata discovery, dynamic client registration, PKCE authorization-code
 //! grant over a loopback callback, token exchange and refresh.
@@ -191,7 +191,7 @@ fn check_resource_allowed(requested: &str, configured: &str) -> bool {
     slash(&r.path).starts_with(&slash(&c.path))
 }
 
-/// `_root_slash_variant` (v2 `_CompatibleOAuthClientProvider`).
+/// Whether `left` and `right` are root-slash variants of each other.
 fn root_slash_variant(left: &str, right: &str) -> bool {
     let (l, r) = (urlsplit(left), urlsplit(right));
     left != right
@@ -214,7 +214,7 @@ fn issuers_match(a: &str, b: &str) -> bool {
     longer == format!("{shorter}/") && shorter == base_url(shorter)
 }
 
-/// `_origin_issuer`.
+/// Origin-only issuer URL for a server URL.
 fn origin_issuer(server_url: &str) -> String {
     let b = base_url(server_url);
     norm_http(&b).unwrap_or(b)

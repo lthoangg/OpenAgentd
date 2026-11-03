@@ -1,5 +1,4 @@
-//! `/api/auth`, `/api/diagnostics`, `/api/observability` — ports of
-//! `app/api/routes/{auth,diagnostics,observability}.py` (span analytics
+//! `/api/auth`, `/api/diagnostics`, `/api/observability` (span analytics
 //! live in `crate::observability`).
 
 use crate::error::{ApiError, ApiResult};

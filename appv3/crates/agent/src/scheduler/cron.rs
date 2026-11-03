@@ -1,4 +1,4 @@
-//! Next-fire calculator — port of `app/scheduler/cron.py` (croniter semantics:
+//! Next-fire calculator (croniter-compatible semantics:
 //! 5 fields, optional 6th seconds field, `@daily` aliases, `L` day-of-month,
 //! `dow#n`, day-of-month/day-of-week OR when both are restricted).
 

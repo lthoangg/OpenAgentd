@@ -1,4 +1,4 @@
-//! Language-server support — port of `app/services/lsp/` plus the (currently
+//! Language-server support plus the (currently
 //! unregistered, as in v2) `lsp` navigation tool.
 
 pub mod client;

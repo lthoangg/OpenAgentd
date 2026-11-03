@@ -1,4 +1,4 @@
-//! Builtin OAuth login flows (`app/cli/commands/auth.py::_PROVIDERS`).
+//! Builtin OAuth login flows (`agentd auth`).
 
 use crate::plugin::OAuthSink;
 use appv3_core::credentials::{self as store, Credential};

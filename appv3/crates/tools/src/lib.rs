@@ -72,7 +72,7 @@ pub fn schema_problems(def: &Value) -> Vec<String> {
     out
 }
 
-/// Callback for streaming partial tool output (v2 `_tool_output`).
+/// Callback for streaming partial tool output.
 pub type OutputSink = Arc<dyn Fn(String) + Send + Sync>;
 
 /// Runtime context injected into every tool call.
@@ -101,7 +101,7 @@ impl ToolContext {
     }
 }
 
-/// Tool return value (v2 `str | ToolResult`).
+/// Tool return value.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ToolOutput {
     Text(String),
@@ -226,7 +226,7 @@ pub fn builtin_tool(name: &str) -> Option<ToolRef> {
 
 pub const TOOL_TIMEOUT_SECONDS: u64 = 300;
 
-/// Result of executing one tool call (v2 `tool_executor.execute`).
+/// Result of executing one tool call.
 #[derive(Debug, Clone)]
 pub struct ExecOutcome {
     pub text: String,

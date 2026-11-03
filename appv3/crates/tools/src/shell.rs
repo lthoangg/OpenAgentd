@@ -1,4 +1,4 @@
-//! `shell` — port of `builtin/shell.py` + `shell_runtime.py`.
+//! The `shell` tool and its runtime.
 
 use crate::args::Args;
 use crate::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
@@ -47,7 +47,7 @@ fn which(name: &str) -> Option<String> {
     appv3_core::which::which(name).map(|p| p.display().to_string())
 }
 
-/// v2 `shell_runtime.acceptable()`.
+/// Path of the shell commands run with (cached).
 pub fn acceptable() -> String {
     static S: OnceLock<String> = OnceLock::new();
     S.get_or_init(|| {
@@ -128,7 +128,7 @@ fn decode_ignore(b: &[u8]) -> String {
     s.trim_start_matches('\u{FFFD}').trim_end_matches('\u{FFFD}').to_string()
 }
 
-/// v2 `_tail_text`.
+/// Tail of `text` limited to `max_lines` / `max_bytes`.
 pub fn tail_text(text: &str, max_lines: usize, max_bytes: usize) -> (String, bool) {
     let lines: Vec<&str> = text.split('\n').collect();
     if lines.len() <= max_lines && text.len() <= max_bytes {

@@ -1,4 +1,4 @@
-//! Undo / redo boundary moves (port of `chat_service_revert.py`), including
+//! Undo / redo boundary moves, including
 //! git workspace snapshot restores via [`crate::snapshot`].
 
 use appv3_db::{self as db, ChatSession, DbPool, SessionMessage};

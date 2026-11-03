@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-/// Sparse allocation step for `session_messages.seq` (v2 `SEQ_STEP`).
+/// Sparse allocation step for `session_messages.seq`.
 pub const SEQ_STEP: i64 = 1024;
 
-/// `session_messages.kind` values (v2 `MessageKind`).
+/// `session_messages.kind` values.
 pub mod kind {
     pub const CHAT: &str = "chat";
     pub const NOTE: &str = "note";

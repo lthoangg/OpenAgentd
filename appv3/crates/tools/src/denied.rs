@@ -1,4 +1,4 @@
-//! Path denylist — port of `app/agent/denied_paths.py` (+ `denied_paths_config`).
+//! Path denylist, plus its config.
 
 use crate::ToolError;
 use regex::Regex;
@@ -263,7 +263,7 @@ impl DeniedPaths {
         self.shell_denied_roots.iter().find(|d| resolved.starts_with(d)).map(|d| d.display().to_string())
     }
 
-    /// v2 `validate_path` — raises PermissionError text on denial.
+    /// Validate a path; denial carries v2's PermissionError text.
     pub fn validate_path(&self, path: &str) -> Result<PathBuf, ToolError> {
         self.validate_with(path, Self::is_denied)
     }
@@ -338,7 +338,7 @@ impl DeniedPaths {
         format!(" `{raw}` is an absolute path. Did you mean `{rel}` (workspace-relative)?")
     }
 
-    /// v2 `check_command`: shell-tokenise and look for denied path tokens.
+    /// Shell-tokenise and look for denied path tokens.
     pub fn check_command(&self, command_line: &str) -> Option<String> {
         let tokens = split_command(command_line)?;
         for raw in tokens {

@@ -1,4 +1,4 @@
-//! Port of `app/core/middlewares.py` + `app/core/desktop_auth.py`.
+//! HTTP middleware stack and desktop-token auth.
 //!
 //! Layer order mirrors v2's `add_middleware` sequence (last added =
 //! outermost): CORS → SecurityHeaders → DesktopToken → SkipGzipForLoopback →

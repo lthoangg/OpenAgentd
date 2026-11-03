@@ -1,6 +1,5 @@
-//! Row ⇄ runtime message conversion and LLM-window loading — port of
-//! `chat_service_messages.py`, `get_messages_for_llm`, `save_message` (typed
-//! form) and `heal_orphaned_tool_calls`.
+//! Row ⇄ runtime message conversion and LLM-window loading, including typed
+//! message saves and `heal_orphaned_tool_calls`.
 
 use anyhow::Result;
 use appv3_db::{self as db, DbPool, NewMessage, SessionMessage};
@@ -23,7 +22,7 @@ fn parse_parts(v: Option<Value>) -> Option<Vec<ContentBlock>> {
     Some(arr.into_iter().filter_map(|p| serde_json::from_value(p).ok()).collect())
 }
 
-/// `_chat_message_from_row`. Takes the row so its text moves into the
+/// Chat message from a DB row. Takes the row so its text moves into the
 /// message instead of being copied.
 pub fn message_from_row(row: SessionMessage) -> Option<ChatMessage> {
     let mut meta = meta_from_row(&row);
@@ -182,7 +181,7 @@ pub fn sanitize_tool_message_pairs(messages: Vec<ChatMessage>) -> Vec<ChatMessag
         .collect()
 }
 
-/// `_attachment_hint_parts`.
+/// Attachment hint blocks for a user message.
 fn attachment_hint_parts(message: &str, attachments: &[Value]) -> Vec<ContentBlock> {
     let mut parts = Vec::new();
     for att in attachments {
@@ -332,7 +331,7 @@ pub fn content_block_dump(b: &ContentBlock) -> Value {
     }
 }
 
-/// Build the `NewMessage` v2's `save_message(db, sid, message, ...)` writes.
+/// Build the `NewMessage` that saving `message` writes.
 pub fn to_new_message(msg: &ChatMessage) -> NewMessage {
     let meta = msg.meta();
     let mut extra: Map<String, Value> = meta.extra.clone().unwrap_or_default();

@@ -46,7 +46,7 @@ async fn list_plugins() -> Response {
     )
 }
 
-/// v2 `_discover_plugin_files`: `*.py` across `dirs`, skipping `_*`, deduplicated.
+/// v2 `*.py` plugin files across `dirs`, skipping `_*`, deduplicated.
 fn v2_plugin_files(dirs: &[PathBuf]) -> Vec<PathBuf> {
     let mut seen = HashSet::new();
     let mut out = vec![];

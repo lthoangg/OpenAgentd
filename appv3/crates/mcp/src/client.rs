@@ -225,7 +225,7 @@ fn rpc_err(m: impl Into<String>) -> McpError {
     McpError::Rpc(m.into())
 }
 
-/// `_within_origin` (+ the userinfo rule of `next_request_within_origin`).
+/// Whether `next` stays within `sent`'s origin (plus the SDK's userinfo rule).
 fn within_origin(sent: &url::Url, next: &url::Url) -> bool {
     if (!next.username().is_empty() || next.password().is_some()) && (next.username(), next.password()) != (sent.username(), sent.password()) {
         return false;
@@ -246,7 +246,7 @@ fn origin_policy(any_status: bool) -> reqwest::redirect::Policy {
     })
 }
 
-/// `_unfollowed_redirect`.
+/// `Location` of a redirect response that is not followed.
 fn unfollowed_redirect(resp: &reqwest::Response) -> Option<String> {
     if !matches!(resp.status().as_u16(), 301 | 302 | 303 | 307 | 308) {
         return None;
@@ -392,7 +392,7 @@ impl Http {
         }
     }
 
-    /// `_prepare_headers` — applied to every transport request.
+    /// Request builder with the standard headers — applied to every transport request.
     fn request(&self, method: reqwest::Method) -> reqwest::RequestBuilder {
         let client = if method == reqwest::Method::GET { &self.client_get } else { &self.client };
         let mut r = client.request(method, &self.url).header("accept", "application/json, text/event-stream").header("content-type", "application/json");
@@ -413,7 +413,7 @@ impl Http {
         rb
     }
 
-    /// `_handle_post_request`. `want_id` is `None` for notifications and replies.
+    /// POST one message. `want_id` is `None` for notifications and replies.
     async fn post(self: &Arc<Self>, msg: &Value, want_id: Option<i64>) -> Result<Option<Value>, McpError> {
         let rb = self.request(reqwest::Method::POST).body(serde_json::to_vec(msg).unwrap_or_default());
         let resp = self.send(rb, false, None).await?;

@@ -1,4 +1,4 @@
-//! Router assembly (`app/api/app.py::create_app` include_router calls).
+//! Router assembly.
 
 pub mod agent;
 pub mod agents;

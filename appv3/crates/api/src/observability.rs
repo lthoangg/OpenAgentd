@@ -1,4 +1,4 @@
-//! Port of `app/services/observability_service.py` — aggregate the OTEL span
+//! Aggregates the OTEL span
 //! JSONL files (`{STATE_DIR}/otel/spans/YYYY-MM-DD-HH.jsonl`) into the
 //! observability page payloads.
 //!
@@ -144,7 +144,7 @@ fn py_str(v: &Value) -> String {
     }
 }
 
-/// `_safe_int`.
+/// Lenient `i64` coercion of an optional JSON value (0 when unusable).
 fn safe_int(v: Option<&Value>) -> i64 {
     match v {
         None | Some(Value::Null) => 0,
@@ -155,7 +155,7 @@ fn safe_int(v: Option<&Value>) -> i64 {
     }
 }
 
-/// `_safe_float`.
+/// Lenient `f64` coercion of an optional JSON value (0.0 when unusable).
 fn safe_float(v: Option<&Value>) -> f64 {
     match v {
         None | Some(Value::Null) => 0.0,

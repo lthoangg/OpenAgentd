@@ -1,5 +1,4 @@
-//! Stream event payloads — port of `app/agent/schemas/events.py` and
-//! `app/services/stream_envelope.py`.
+//! Stream event payloads and the stream envelope.
 //!
 //! Payloads are JSON maps in v2 Pydantic field order (serde_json
 //! `preserve_order`); every typed event carries `type` first and `metadata`
@@ -79,7 +78,7 @@ impl WireEvent {
     }
 }
 
-/// Typed wrapper around one event + parsed payload (v2 `StreamEnvelope`).
+/// Typed wrapper around one event + parsed payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Envelope {
     pub event: String,

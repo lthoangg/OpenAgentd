@@ -1,4 +1,4 @@
-//! `ask_user` — hand the turn to the user (port of `tools/builtin/question.py`).
+//! `ask_user` — hand the turn to the user.
 
 use super::{invalid_args, lax_bool, publish_input_needed};
 use crate::events;

@@ -1,4 +1,4 @@
-//! Port of `app/services/lsp/manager.py`.
+//! LSP server manager.
 
 use super::client::{path_as_uri, py_list_repr, Event, LspClient};
 use super::managed::{find_packaged_python_command, find_project_tsserver, managed_lsp_tools};
@@ -252,7 +252,7 @@ fn dependency_haystack(data: &toml::Table) -> Vec<String> {
     out
 }
 
-/// `_split_dep_spec` — `(name, exact-version-or-None)`.
+/// Split a dependency spec → `(name, exact-version-or-None)`.
 pub fn split_dep_spec(dep: &str) -> (String, Option<String>) {
     static EXTRAS: OnceLock<Regex> = OnceLock::new();
     static NAME: OnceLock<Regex> = OnceLock::new();

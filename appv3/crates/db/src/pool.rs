@@ -8,7 +8,7 @@ pub type DbPool = SqlitePool;
 
 /// Open (creating if needed) the OpenAgentd SQLite database.
 ///
-/// Connection pragmas mirror `app/core/db.py::_set_sqlite_pragmas` so v2 and
+/// Connection pragmas match v2's so v2 and
 /// v3 behave identically when both touch the same file (WAL, NORMAL sync,
 /// FK enforcement, 5 s busy handler, bounded WAL, in-memory temp store,
 /// 256 MiB mmap).

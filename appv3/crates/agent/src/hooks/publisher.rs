@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-/// FIFO tool_call_id resolution (`app/agent/tool_id_resolver.py`).
+/// FIFO tool_call_id resolution.
 #[derive(Default)]
 pub struct ToolIdResolver {
     queues: HashMap<String, Vec<String>>,

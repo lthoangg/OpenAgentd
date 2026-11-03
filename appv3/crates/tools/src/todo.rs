@@ -1,4 +1,4 @@
-//! `todo` — port of `builtin/todo.py` (file store `.todos.json`).
+//! The `todo` tool (file store `.todos.json`).
 
 use crate::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
 use async_trait::async_trait;
@@ -233,7 +233,7 @@ pub fn apply(path: &Path, actions: &[Value]) -> Result<String, ToolError> {
     Ok(outcomes.join("; "))
 }
 
-/// v2 `_coerce_actions` / `_normalize_args`.
+/// Coerce the tool args into a list of actions.
 pub fn normalize_actions(args: &Value) -> Result<Vec<Value>, ToolError> {
     let mut v = match args.get("actions") {
         Some(a) => a.clone(),

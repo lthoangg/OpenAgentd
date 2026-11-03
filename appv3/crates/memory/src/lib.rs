@@ -1,5 +1,4 @@
-//! Persistent Markdown memory — port of `app/services/memory/*`
-//! (store, context compilation, search, lint).
+//! Persistent Markdown memory (store, context compilation, search, lint).
 
 use appv3_core::pyyaml::Py;
 use regex::Regex;
@@ -239,7 +238,7 @@ fn markdown_files(root: &Path) -> Vec<(PathBuf, std::fs::Metadata)> {
     files.into_iter().map(|(_, p, m)| (p, m)).collect()
 }
 
-/// `_iter_markdown_files`.
+/// Markdown files under `root`.
 pub fn iter_markdown_files(root: &Path) -> Vec<PathBuf> {
     markdown_files(root).into_iter().map(|(p, _)| p).collect()
 }

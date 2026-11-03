@@ -1,4 +1,4 @@
-//! `app/api/routes/agent/files.py` — uploads/media serving, workspace file
+//! Uploads/media serving, workspace file
 //! listings, and the git panels.
 
 use super::worktrees::run_git_timeout;
@@ -83,7 +83,7 @@ fn safe_resolve(root: &Path, rel: &str) -> ApiResult<PathBuf> {
     Ok(resolved)
 }
 
-/// `_guess_mime` (TypeScript overrides the stdlib's `video/mp2t`).
+/// MIME type guess (TypeScript overrides the stdlib's `video/mp2t`).
 pub fn guess_mime(p: &Path) -> String {
     let suffix = p.extension().map(|e| format!(".{}", e.to_string_lossy().to_lowercase())).unwrap_or_default();
     if [".ts", ".mts", ".cts", ".tsx"].contains(&suffix.as_str()) {
@@ -429,7 +429,7 @@ async fn list_workspace_files(q: Qs) -> ApiResult<Response> {
 
 // ── git ─────────────────────────────────────────────────────────────────────
 
-/// `_run_git`: stdout on success, `None` on any failure. Read-only calls only.
+/// Run git: stdout on success, `None` on any failure. Read-only calls only.
 async fn git(cwd: &str, args: &[&str]) -> Option<String> {
     let args: Vec<&str> = READ_ONLY_GIT.iter().chain(args).copied().collect();
     let o = run_git_timeout(Path::new(cwd), &args, Duration::from_secs(5)).await.ok()?;

@@ -1,5 +1,4 @@
-//! Scheduled task engine — port of `app/scheduler/{scheduler,schemas,utils}.py`
-//! plus the `schedule` tool (`tools/builtin/schedule.py`).
+//! Scheduled task engine plus the `schedule` tool.
 
 pub mod cron;
 

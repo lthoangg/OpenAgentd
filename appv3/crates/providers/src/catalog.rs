@@ -14,7 +14,7 @@ pub fn find(provider_id: &str) -> Option<&'static Value> {
     all_providers().iter().find(|e| e["id"] == provider_id)
 }
 
-/// v2 `all_providers()`: builtins + provider plugins (display order).
+/// Builtins + provider plugins (display order).
 pub fn all_providers() -> &'static Vec<Value> {
     static C: OnceLock<Vec<Value>> = OnceLock::new();
     C.get_or_init(|| {
@@ -35,7 +35,7 @@ pub fn provider_key_var(provider_id: &str) -> Option<&'static str> {
     builtin_providers().iter().find(|e| e["id"] == provider_id).and_then(|e| e.get("env_var")).and_then(|v| v.as_str()).filter(|s| !s.is_empty())
 }
 
-/// v2 `SUPPORTED_PROVIDERS` (sorted, for identical error text).
+/// Supported provider ids (sorted, for identical error text).
 pub const SUPPORTED_PROVIDERS: &[&str] = &[
     "anthropic",
     "bedrock",

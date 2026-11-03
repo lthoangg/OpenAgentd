@@ -1,4 +1,4 @@
-//! Port of `app/services/lsp/managed.py` — managed Bun/TypeScript LSP and
+//! Managed Bun/TypeScript LSP and
 //! on-demand PyPI ruff/ty wheels under `{CACHE_DIR}/lsp`.
 
 use super::is_executable;

@@ -1,4 +1,4 @@
-//! Anthropic Messages API — port of `providers/anthropic/anthropic.py`.
+//! Anthropic Messages API.
 
 use crate::openai::shared_client;
 use crate::registry::get_model_limits;
@@ -103,7 +103,7 @@ fn blocks_from_raw(a: &AssistantMessage, valid: &HashSet<String>) -> Vec<Value> 
     blocks
 }
 
-/// v2 `_split_messages` → (system blocks, messages).
+/// Split messages into (system blocks, messages).
 pub fn split_messages(messages: &[ChatMessage]) -> (Option<Vec<Value>>, Vec<Value>) {
     let valid: HashSet<String> = messages
         .iter()
@@ -358,14 +358,14 @@ pub struct AnthropicProvider {
     pub base_url: String,
     pub base_kwargs: Kwargs,
     headers: std::sync::RwLock<Vec<(String, String)>>,
-    /// Always use `/v1/messages?beta=true` (v2 `beta=True`).
+    /// Always use `/v1/messages?beta=true` (as in v2).
     pub beta: bool,
-    /// Request timeout; `None` = no timeout (v2 `timeout=None`).
+    /// Request timeout; `None` = no timeout (as in v2).
     pub timeout: Option<Duration>,
     client: reqwest::Client,
 }
 
-/// v2 `_headers(api_key, extra, use_api_key_header=...)`.
+/// Request headers from the API key and `extra`, optionally using the API-key header.
 pub fn build_headers(api_key: &str, extra: &[(String, String)], use_api_key_header: bool) -> Vec<(String, String)> {
     let mut h: Vec<(String, String)> = vec![("anthropic-version".into(), ANTHROPIC_API_VERSION.into()), ("content-type".into(), "application/json".into())];
     for (k, v) in extra {

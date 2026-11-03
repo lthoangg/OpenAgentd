@@ -1,4 +1,4 @@
-//! `app/api/routes/scheduler.py`.
+//! Scheduler routes.
 
 use crate::error::{loc, verr, ApiError, ApiResult};
 use crate::util::*;

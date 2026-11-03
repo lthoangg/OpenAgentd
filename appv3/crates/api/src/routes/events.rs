@@ -1,4 +1,4 @@
-//! `app/api/routes/events.py` — live global event stream (no replay).
+//! Live global event stream (no replay).
 //!
 //! With `?client_id=` the stream also carries the session streams the client
 //! subscribes to (see `crate::mux`).

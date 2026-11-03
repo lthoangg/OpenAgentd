@@ -1,5 +1,4 @@
-//! One LLM call with retry + assembly — port of `agent_loop/streaming.py`
-//! and the `stream_with_retry` loop of `agent_loop/retry.py`.
+//! One LLM call with retry + assembly, including the `stream_with_retry` loop.
 
 use crate::errors::AgentError;
 use crate::events::ProviderStatus;
@@ -439,7 +438,7 @@ impl<'a> RetryStream<'a> {
     }
 }
 
-/// `_merge_consecutive_user_messages`.
+/// Merge consecutive user messages.
 pub fn merge_consecutive_user_messages(messages: Vec<ChatMessage>) -> Vec<ChatMessage> {
     let mut merged: Vec<ChatMessage> = Vec::with_capacity(messages.len());
     for m in messages {

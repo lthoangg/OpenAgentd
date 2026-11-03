@@ -29,9 +29,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { MessageSquarePlus } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { getPlatform } from '@/hooks/use-platform'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { mediumHapticFeedback } from '@/lib/haptics'
+import { lazySurface } from '@/lib/lazy-surface'
 import {
   onTerminalFontChange,
   onTerminalFontSizeChange,
@@ -40,10 +43,16 @@ import {
 } from '@/lib/terminal-font'
 import { getTerminalRuntime, terminalClosedMessage, useTerminalStore } from '@/stores/useTerminalStore'
 import { TerminalActionSheet } from './TerminalActionSheet'
+import { addToChatShortcutLabel } from './terminal-keys'
 import { TerminalKeyBar } from './TerminalKeyBar'
+import { addTerminalSelectionToChat, copyTerminalSelection, pasteIntoTerminal } from './terminal-actions'
 import { useLongPressSurface } from './use-long-press-surface'
+import { useTerminalAutoFocus } from './use-terminal-autofocus'
 
 export type { TerminalSessionStatus as TerminalStatus } from '@/stores/useTerminalStore'
+
+// Opened on demand (⌘F), so it stays out of the startup bundle.
+const TerminalFindBar = lazySurface(() => import('./TerminalFindBar'), 'TerminalFindBar')
 
 interface TerminalViewProps {
   /** Store session id — obtained from `useTerminalStore.getState().open(...)`. */
@@ -60,6 +69,11 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const isMobile = useIsMobile()
   const { resolved } = useThemePreference()
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
+  const [findOpen, setFindOpen] = useState(false)
+  const [findSeed, setFindSeed] = useState('')
+  const [findSignal, setFindSignal] = useState(0)
+  const [hasSelection, setHasSelection] = useState(false)
+  const workspace = meta?.contextKey ?? null
 
   const setCtrl = useCallback((armed: boolean) => {
     ctrlArmedRef.current = armed
@@ -150,7 +164,6 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
       }
     }
     refit()
-    term.focus()
 
     const resizeObserver = new ResizeObserver(refit)
     resizeObserver.observe(el)
@@ -180,6 +193,43 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     // above. This flag is what brings the effect back once it does.
   }, [handleReady, isMobile, sessionId, status])
 
+  // Focus follows the user opening the terminal, not its status flipping
+  // (busy, connected, reconnecting) while they type in the composer.
+  useTerminalAutoFocus(getTerminalRuntime(sessionId)?.handle?.term, containerRef)
+
+  const openFind = useCallback(() => {
+    const term = getTerminalRuntime(sessionId)?.handle?.term
+    const selected = term?.hasSelection() ? term.getSelection() : ''
+    // A one-line selection seeds the query, as in an editor.
+    setFindSeed(selected !== '' && selected.length <= 200 && !selected.includes('\n') ? selected : '')
+    setFindOpen(true)
+    setFindSignal((n) => n + 1)
+  }, [sessionId])
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false)
+    getTerminalRuntime(sessionId)?.handle?.term.focus()
+  }, [sessionId])
+
+  // Terminal-side events: the find chord, selection changes (for the Add to
+  // chat button), and ⌘/Ctrl+click on a file path.
+  useEffect(() => {
+    const handle = getTerminalRuntime(sessionId)?.handle
+    if (!handle) return
+    const offFind = handle.onFindRequest?.(openFind)
+    const selection = handle.term.onSelectionChange(() => setHasSelection(handle.term.hasSelection()))
+    // Loaded on the first click: file links are never on the startup path.
+    handle.setFileOpener?.((ref, cwd) => {
+      void import('./terminal-file-open').then((module) => module.openTerminalFileLink(ref, cwd, workspace))
+    })
+    setHasSelection(handle.term.hasSelection())
+    return () => {
+      offFind?.()
+      selection.dispose()
+      handle.setFileOpener?.(null)
+    }
+  }, [handleReady, openFind, sessionId, status, workspace])
+
   const sendKey = useCallback(
     (data: string) => {
       useTerminalStore.getState().sendInput(sessionId, data)
@@ -206,28 +256,32 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     setActionSheetOpen(false)
   }, [sessionId])
 
-  const hasSelection = getTerminalRuntime(sessionId)?.handle?.term.hasSelection() ?? false
-
   const copySelection = useCallback(async () => {
     const term = getTerminalRuntime(sessionId)?.handle?.term
-    if (!term?.hasSelection()) return
-    try {
-      await navigator.clipboard.writeText(term.getSelection())
-    } catch {
-      // Clipboard permission denied — nothing to do.
-    }
+    if (term) await copyTerminalSelection(term)
     setActionSheetOpen(false)
   }, [sessionId])
 
   const pasteClipboard = useCallback(async () => {
-    try {
-      const text = await navigator.clipboard.readText()
-      if (text) sendKey(text)
-    } catch {
-      // Clipboard permission denied — nothing to do.
-    }
+    const term = getTerminalRuntime(sessionId)?.handle?.term
+    // term.paste, not raw input: it honours bracketed-paste mode.
+    if (term && (await pasteIntoTerminal(term))) term.focus()
     setActionSheetOpen(false)
-  }, [sendKey])
+  }, [sessionId])
+
+  const addToChat = useCallback(() => {
+    const term = getTerminalRuntime(sessionId)?.handle?.term
+    if (term && addTerminalSelectionToChat(term)) term.clearSelection()
+    setActionSheetOpen(false)
+  }, [sessionId])
+
+  const findFromSheet = useCallback(() => {
+    setActionSheetOpen(false)
+    // After the sheet has closed, so it does not take the focus back.
+    window.setTimeout(openFind, 0)
+  }, [openFind])
+
+  const search = getTerminalRuntime(sessionId)?.handle?.search
 
   return (
     <div className="flex h-full flex-col" data-swipe-ignore>
@@ -238,6 +292,33 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
           className="h-full w-full"
           {...surfaceLongPress}
         />
+        {((findOpen && search) || (!isMobile && !findOpen && hasSelection)) && (
+          <div className="absolute right-4 top-2 z-20 flex flex-col items-end gap-1">
+            {findOpen && search && (
+              <TerminalFindBar
+                search={search}
+                theme={resolved}
+                onClose={closeFind}
+                initialQuery={findSeed}
+                focusSignal={findSignal}
+              />
+            )}
+            {!isMobile && !findOpen && hasSelection && (
+              <Button
+                type="button"
+                size="sm"
+                className="gap-1.5 bg-(--bg-card) shadow-(--shadow-depth)"
+                title={`Add selection to chat (${addToChatShortcutLabel(getPlatform().os)})`}
+                // Keep the terminal's selection and focus while pressing.
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={addToChat}
+              >
+                <MessageSquarePlus size={14} aria-hidden="true" />
+                Add to chat
+              </Button>
+            )}
+          </div>
+        )}
         {status === 'connecting' && (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-(--color-text-muted)">
             Connecting…
@@ -274,6 +355,8 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
         onSelectAll={selectAll}
         onCopy={() => void copySelection()}
         onPaste={() => void pasteClipboard()}
+        onFind={findFromSheet}
+        onAddToChat={addToChat}
       />
     </div>
   )

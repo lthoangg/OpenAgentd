@@ -11,6 +11,7 @@ import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
+import { requestOpenWorkspaceFile } from '@/lib/open-file-request'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const WORKSPACE = '/repo/project'
@@ -111,6 +112,33 @@ describe('useOverlayState — opening file references', () => {
       title: 'File not found',
       description: 'No file in this workspace matches src/missing.ts.',
     })
+  })
+})
+
+describe('useOverlayState — file open requests from the terminal', () => {
+  it('opens the requested workspace file in the dock, at its line', async () => {
+    const { result } = renderOverlay()
+
+    await act(async () => {
+      requestOpenWorkspaceFile({ path: 'src/a.ts', line: 42, column: 7 })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(result.current.fileViewer?.path).toBe('src/a.ts')
+    expect(result.current.workspacePanel).toBe('files')
+    expect(useFileRevealStore.getState().request).toMatchObject({ path: 'src/a.ts', line: 42 })
+  })
+
+  it('stops listening once unmounted', async () => {
+    const { result, unmount } = renderOverlay()
+    unmount()
+
+    await act(async () => {
+      requestOpenWorkspaceFile({ path: 'src/a.ts', line: 1 })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(result.current.fileViewer).toBeNull()
   })
 })
 

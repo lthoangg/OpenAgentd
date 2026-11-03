@@ -15,6 +15,7 @@ import type { UseSessionBootstrapArgs } from '@/components/AgentChatView/useSess
 import type { InputComposerHandle } from '@/components/InputComposer'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { _resetKeyboardForTests } from '@/lib/keyboard/dispatcher'
+import { requestComposerInsert } from '@/lib/composer-insert'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 
@@ -296,6 +297,55 @@ describe('useSessionBootstrap undo draft-restore', () => {
 })
 
 describe('useSessionBootstrap remount on screen switch', () => {
+  function composerHandle(overrides: Partial<InputComposerHandle>) {
+    const inputRef = createRef<InputComposerHandle>()
+    inputRef.current = {
+      focus: () => {},
+      setValue: () => {},
+      appendValue: () => {},
+      insertText: () => {},
+      setFiles: () => {},
+      addFiles: () => {},
+      restoreLastSubmission: () => {},
+      addDesignFeedback: () => {},
+      ...overrides,
+    }
+    return inputRef
+  }
+
+  it('appends terminal text to the draft as its own paragraph and focuses the composer', () => {
+    const appendValue = mock((..._args: unknown[]) => {})
+    const setValue = mock((..._args: unknown[]) => {})
+    const focus = mock(() => {})
+    render(
+      <Harness
+        loadSession={mock(async () => {})}
+        connectStream={mock(() => new AbortController())}
+        inputRef={composerHandle({ appendValue, setValue, focus })}
+      />,
+    )
+    const setValueCallsBefore = setValue.mock.calls.length
+    act(() => requestComposerInsert('Terminal output:\n```text\nboom\n```'))
+    expect(appendValue).toHaveBeenCalledWith('Terminal output:\n```text\nboom\n```', { paragraph: true })
+    // Never replaces what the user was typing.
+    expect(setValue.mock.calls.length).toBe(setValueCallsBefore)
+    expect(focus).toHaveBeenCalled()
+  })
+
+  it('stops listening for composer inserts once unmounted', () => {
+    const appendValue = mock((..._args: unknown[]) => {})
+    const view = render(
+      <Harness
+        loadSession={mock(async () => {})}
+        connectStream={mock(() => new AbortController())}
+        inputRef={composerHandle({ appendValue })}
+      />,
+    )
+    view.unmount()
+    requestComposerInsert('late')
+    expect(appendValue).not.toHaveBeenCalled()
+  })
+
   it('adds a file line comment to the composer as a real mention', async () => {
     const inputRef = createRef<InputComposerHandle>()
     const appendValue = mock((..._args: unknown[]) => {})

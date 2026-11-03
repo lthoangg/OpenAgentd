@@ -32,8 +32,10 @@
  *    a 404 means the shell is gone (`closedReason: 'lost'`), a 4409 means a
  *    window took it over (`closedReason: 'elsewhere'`, Reconnect reattaches).
  *  - After a reload `restoreSessions` lists the workspace's shells and
- *    attaches the free ones from `since=0`; renamed titles persist in
- *    localStorage by backend session id.
+ *    attaches the free ones from `since=0`. Every session's title persists in
+ *    localStorage by backend session id, and each workspace's tab order and
+ *    last-active shell persist beside it, so a reload brings the tabs back as
+ *    they were (names, order, the one in front) — see `oad:terminal-layout`.
  *  - A server that never sends `busy` (Windows) is never idle-closed: a
  *    dev server there would otherwise die after 15 minutes.
  *  - The first connect waits for the view's first fit so the shell starts at
@@ -63,6 +65,10 @@ export const TERMINAL_FIRST_FIT_WAIT_MS = 150
 export const TERMINAL_GAP_NOTICE = '\x1b[2m[earlier output skipped]\x1b[0m\r\n'
 /** localStorage: `{ [backendSessionId]: { title, workspace } }` for renamed tabs. */
 export const TERMINAL_TITLES_KEY = 'oad:terminal-titles'
+/** localStorage: `{ [workspace]: { order: backendId[], active?: backendId } }`. */
+export const TERMINAL_LAYOUT_KEY = 'oad:terminal-layout'
+/** How long "Open terminal" waits for a restore that is still listing shells. */
+export const TERMINAL_RESTORE_WAIT_MS = 2000
 
 export type TerminalSessionStatus = 'connecting' | 'connected' | 'exited' | 'error'
 /**
@@ -136,8 +142,6 @@ export interface TerminalRuntime {
   reattachTimer: ReturnType<typeof setTimeout> | null
   /** Releases a connect waiting for the first fit. */
   releaseFit: (() => void) | null
-  /** Title the user chose; persisted once the session has a backend id. */
-  customTitle?: string
 }
 
 const runtimes = new Map<string, TerminalRuntime>()
@@ -150,6 +154,12 @@ let currentFontSize: number = readStoredTerminalFontSize()
 let lastFittedSize: { rows: number; cols: number } | null = null
 /** Workspaces whose surviving shells were already listed this page load. */
 const restoredContexts = new Set<string>()
+/** Restores in flight, so a request that needs the shells can wait for them. */
+const pendingRestores = new Map<string, Promise<void>>()
+/** Workspaces whose restore finished: only then may the tab order be saved. */
+const settledContexts = new Set<string>()
+/** The shell (backend id) that was in front before the reload, if it came back. */
+const restoredActive = new Map<string, string>()
 
 export function getTerminalRuntime(id: string): TerminalRuntime | undefined {
   return runtimes.get(id)
@@ -200,6 +210,55 @@ function pruneTitles(workspace: string, alive: ReadonlySet<string>): void {
   if (changed) writeTitles(titles)
 }
 
+// ── Persisted tab order and active shell ────────────────────────────────────
+
+interface StoredLayout {
+  order: string[]
+  active?: string
+}
+
+function readLayouts(): Record<string, StoredLayout> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(TERMINAL_LAYOUT_KEY) ?? '{}')
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const layouts: Record<string, StoredLayout> = {}
+    for (const [workspace, raw] of Object.entries(parsed as Record<string, Partial<StoredLayout> | null>)) {
+      if (!raw || typeof raw !== 'object') continue
+      const order = Array.isArray(raw.order) ? raw.order.filter((id): id is string => typeof id === 'string') : []
+      layouts[workspace] = { order, ...(typeof raw.active === 'string' ? { active: raw.active } : {}) }
+    }
+    return layouts
+  } catch {
+    return {}
+  }
+}
+
+/** Merge changes into a workspace's saved layout (written only when it differs). */
+function patchLayout(workspace: string, changes: Partial<StoredLayout>, createIfMissing = true): void {
+  const layouts = readLayouts()
+  const current = layouts[workspace]
+  if (!current && !createIfMissing) return
+  const next: StoredLayout = {
+    order: changes.order ?? current?.order ?? [],
+    active: 'active' in changes ? changes.active : current?.active,
+  }
+  if (next.active === undefined) delete next.active
+  if (JSON.stringify(next) === JSON.stringify(current)) return
+  try {
+    localStorage.setItem(TERMINAL_LAYOUT_KEY, JSON.stringify({ ...layouts, [workspace]: next }))
+  } catch {
+    // storage full or unavailable: the layout is a nicety
+  }
+}
+
+/** The shell the user is looking at now is the one to bring to the front after a reload. */
+function rememberActive(id: string): void {
+  const meta = useTerminalStore.getState().sessions[id]
+  if (runtimes.get(id)?.attached && meta?.protocol === 2 && meta.backendId) {
+    patchLayout(meta.contextKey, { active: meta.backendId })
+  }
+}
+
 interface TerminalStore {
   sessions: Record<string, TerminalSessionMeta>
   /** Create a session and start connecting. Returns the new session id. */
@@ -216,6 +275,19 @@ interface TerminalStore {
    * attach the ones nobody holds (replaying their output). Never throws.
    */
   restoreSessions: (contextKey: string) => Promise<void>
+  /**
+   * A promise for the restore in flight for this workspace, bounded by
+   * `timeoutMs`; null when none is running (nothing to wait for).
+   */
+  waitForRestore: (contextKey: string, timeoutMs?: number) => Promise<void> | null
+  /** The shell that was in front before the reload, once restored (a backend id). */
+  restoredActiveBackendId: (contextKey: string) => string | undefined
+  /**
+   * The dock's tab order for this workspace (store session ids), to persist.
+   * Ignored until the workspace's restore has settled, so a fresh page can
+   * never overwrite the order it is about to restore.
+   */
+  noteTerminalOrder: (contextKey: string, sessionIds: readonly string[]) => void
   sendInput: (id: string, data: string) => void
   sendResize: (id: string, rows: number, cols: number) => void
   /** Visible ↔ hidden — attached sessions are exempt from idle reaping. */
@@ -477,7 +549,11 @@ async function connect(id: string, resume?: Resume): Promise<void> {
         protocol: v2 ? 2 : 1,
         backendId,
       })
-      if (backendId && rt.customTitle) persistTitle(backendId, rt.target.workspace, rt.customTitle)
+      if (backendId) {
+        // Every title, not only renames: a reload must not renumber the tabs.
+        persistTitle(backendId, rt.target.workspace, useTerminalStore.getState().sessions[id]?.title ?? '')
+        rememberActive(id)
+      }
     })
     .catch((err: Error) => {
       if (!live()) return
@@ -529,7 +605,6 @@ function createSession(
 ): string {
   const id = `term-${++nextOrder}-${Date.now().toString(36)}`
   const rt = newRuntime(target)
-  if (init.title) rt.customTitle = init.title
   runtimes.set(id, rt)
   useTerminalStore.setState((state) => ({
     sessions: {
@@ -548,6 +623,58 @@ function createSession(
   ensureReaper(useTerminalStore.getState())
   void connect(id, init.resume)
   return id
+}
+
+/**
+ * List the workspace's surviving shells and bring back the free ones: in the
+ * saved tab order (the rest after, oldest first), with their saved titles.
+ */
+async function runRestore(contextKey: string): Promise<void> {
+  restoredContexts.add(contextKey)
+  let list: Awaited<ReturnType<typeof listTerminalSessions>>
+  try {
+    list = await listTerminalSessions(contextKey)
+  } catch {
+    restoredContexts.delete(contextKey) // try again the next time they are needed
+    return
+  }
+  const store = useTerminalStore.getState()
+  const known = new Set(
+    Object.values(store.sessions)
+      .map((m) => m.backendId)
+      .filter((b): b is string => !!b),
+  )
+  const alive = new Set([...list.map((s) => s.session_id), ...known])
+  pruneTitles(contextKey, alive)
+
+  const saved = readLayouts()[contextKey]
+  const order = (saved?.order ?? []).filter((b) => alive.has(b))
+  const active = saved?.active && alive.has(saved.active) ? saved.active : undefined
+  if (saved) patchLayout(contextKey, { order, active }, false)
+
+  // A shell another window holds is theirs; one we already show is ours.
+  const free = list.filter((info) => !info.attached && !known.has(info.session_id))
+  const rank = (sessionId: string) => {
+    const at = order.indexOf(sessionId)
+    return at < 0 ? Number.POSITIVE_INFINITY : at
+  }
+  // Stable sort: shells without a saved place keep the server's oldest-first order.
+  free.sort((a, b) => {
+    const [ra, rb] = [rank(a.session_id), rank(b.session_id)]
+    return ra === rb ? 0 : ra < rb ? -1 : 1
+  })
+  if (active && free.some((info) => info.session_id === active)) restoredActive.set(contextKey, active)
+  else restoredActive.delete(contextKey)
+
+  const titles = readTitles()
+  for (const info of free) {
+    createSession({ workspace: info.workspace || contextKey }, contextKey, {
+      title: titles[info.session_id]?.title,
+      busy: info.busy,
+      resume: { sessionId: info.session_id, since: 0, origin: 'restore' },
+    })
+  }
+  settledContexts.add(contextKey)
 }
 
 export const useTerminalStore = create<TerminalStore>()((set, get) => ({
@@ -583,34 +710,57 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     const meta = get().sessions[id]
     // Kill first, then drop the socket: with v2 the socket close alone only detaches.
     if (holdsLiveShell(meta)) killBackendSession(meta.backendId)
-    if (meta?.backendId) forgetTitle(meta.backendId)
+    if (meta?.backendId) {
+      forgetTitle(meta.backendId)
+      const saved = readLayouts()[meta.contextKey]
+      if (saved) {
+        patchLayout(meta.contextKey, {
+          order: saved.order.filter((b) => b !== meta.backendId),
+          active: saved.active === meta.backendId ? undefined : saved.active,
+        })
+      }
+    }
     if (rt) teardownRuntime(rt)
     dropSession(id)
   },
 
-  restoreSessions: async (contextKey) => {
-    if (restoredContexts.has(contextKey)) return
-    restoredContexts.add(contextKey)
-    let list: Awaited<ReturnType<typeof listTerminalSessions>>
-    try {
-      list = await listTerminalSessions(contextKey)
-    } catch {
-      restoredContexts.delete(contextKey) // try again the next time they are needed
-      return
+  restoreSessions: (contextKey) => {
+    const running = pendingRestores.get(contextKey)
+    if (running) return running
+    if (restoredContexts.has(contextKey)) return Promise.resolve()
+    const restoring = runRestore(contextKey).finally(() => pendingRestores.delete(contextKey))
+    pendingRestores.set(contextKey, restoring)
+    return restoring
+  },
+
+  waitForRestore: (contextKey, timeoutMs = TERMINAL_RESTORE_WAIT_MS) => {
+    const running = pendingRestores.get(contextKey)
+    if (!running) return null
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, timeoutMs)
+      const done = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+      running.then(done, done)
+    })
+  },
+
+  restoredActiveBackendId: (contextKey) => restoredActive.get(contextKey),
+
+  noteTerminalOrder: (contextKey, sessionIds) => {
+    if (!settledContexts.has(contextKey)) return
+    const sessions = get().sessions
+    const order: string[] = []
+    const add = (meta: TerminalSessionMeta | undefined) => {
+      if (meta?.contextKey === contextKey && meta.backendId && !order.includes(meta.backendId)) {
+        order.push(meta.backendId)
+      }
     }
-    const mine = Object.values(get().sessions)
-    const known = new Set(mine.map((m) => m.backendId).filter((b): b is string => !!b))
-    pruneTitles(contextKey, new Set([...list.map((s) => s.session_id), ...known]))
-    const titles = readTitles()
-    for (const info of list) {
-      // A shell another window holds is theirs; one we already show is ours.
-      if (info.attached || known.has(info.session_id)) continue
-      createSession({ workspace: info.workspace || contextKey }, contextKey, {
-        title: titles[info.session_id]?.title,
-        busy: info.busy,
-        resume: { sessionId: info.session_id, since: 0, origin: 'restore' },
-      })
-    }
+    for (const id of sessionIds) add(sessions[id])
+    // Shells the dock has no tab for yet keep their place, after the others.
+    for (const meta of get().sessionsForContext(contextKey)) add(meta)
+    patchLayout(contextKey, { order })
   },
 
   sendInput: (id, data) => {
@@ -640,6 +790,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       lastFittedSize = { rows: rt.handle.term.rows, cols: rt.handle.term.cols }
       rt.releaseFit?.()
     }
+    if (attached) rememberActive(id)
     // Restart the idle clock on detach so a just-hidden terminal gets the
     // full window before the reaper considers it.
     if (!attached) rt.lastActivityAt = Date.now()
@@ -662,7 +813,6 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     if (!meta) return
     set((state) => ({ sessions: { ...state.sessions, [id]: { ...state.sessions[id], title: trimmed } } }))
     const rt = runtimes.get(id)
-    if (rt) rt.customTitle = trimmed
     if (meta.backendId) persistTitle(meta.backendId, rt?.target.workspace ?? meta.contextKey, trimmed)
   },
 
@@ -724,6 +874,9 @@ export function _resetTerminalStoreForTests(): void {
   for (const rt of runtimes.values()) teardownRuntime(rt)
   runtimes.clear()
   restoredContexts.clear()
+  pendingRestores.clear()
+  settledContexts.clear()
+  restoredActive.clear()
   lastFittedSize = null
   nextOrder = 0
   if (reaperTimer !== null) {

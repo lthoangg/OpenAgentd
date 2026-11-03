@@ -138,17 +138,21 @@ mock.module('@/api/terminal', () => ({
 
 let sessionList: Array<{ session_id: string; workspace: string; created_at: number; attached: boolean; busy: boolean }> = []
 let listFailures = 0
+/** When set, the list request waits for it (a restore "in flight"). */
+let listGate: Promise<void> | null = null
 const listCalls: string[] = []
 const deleteCalls: string[] = []
 
 mock.module('@/api/terminal-sessions', () => ({
   listTerminalSessions: fn(async (workspace: string) => {
     listCalls.push(workspace)
+    if (listGate) await listGate
     if (listFailures > 0) {
       listFailures--
       throw new Error('list failed')
     }
-    return sessionList.filter((s) => s.workspace === workspace)
+    // Like the real client: this workspace's shells, oldest first.
+    return sessionList.filter((s) => s.workspace === workspace).sort((a, b) => a.created_at - b.created_at)
   }),
   deleteTerminalSession: fn(async (id: string) => {
     events.push('delete')
@@ -165,6 +169,7 @@ const {
   TERMINAL_FIRST_FIT_WAIT_MS,
   TERMINAL_REATTACH_DELAYS_MS,
   TERMINAL_TITLES_KEY,
+  TERMINAL_LAYOUT_KEY,
   _resetTerminalStoreForTests,
 } = await import('@/stores/useTerminalStore')
 
@@ -208,9 +213,11 @@ beforeEach(() => {
   sessionCounter = 0
   sessionList = []
   listFailures = 0
+  listGate = null
   fitSize.rows = 24
   fitSize.cols = 80
   localStorage.removeItem(TERMINAL_TITLES_KEY)
+  localStorage.removeItem(TERMINAL_LAYOUT_KEY)
 })
 
 // ── Old protocol (and protocol-independent behaviour) ───────────────────────
@@ -929,6 +936,209 @@ describe('terminal protocol v2', () => {
         ...metas.map((m) => `terminal:${m.id}`),
       ])
       expect(next.panes[pane].active).toBe('file:/x')
+    })
+  })
+
+  describe('tab order, names and the active tab across a reload', () => {
+    const layout = () =>
+      JSON.parse(localStorage.getItem(TERMINAL_LAYOUT_KEY) ?? '{}') as Record<string, { order: string[]; active?: string }>
+    const titles = () =>
+      JSON.parse(localStorage.getItem(TERMINAL_TITLES_KEY) ?? '{}') as Record<string, { title: string }>
+    const info = (session_id: string, created_at: number, extra: Partial<(typeof sessionList)[number]> = {}) => ({
+      session_id,
+      workspace: WS,
+      created_at,
+      attached: false,
+      busy: false,
+      ...extra,
+    })
+    const save = (order: string[], active?: string, workspace = WS) =>
+      localStorage.setItem(TERMINAL_LAYOUT_KEY, JSON.stringify({ [workspace]: { order, active } }))
+    const restoredOrder = () => useTerminalStore.getState().sessionsForContext(WS).map((m) => m.backendId)
+
+    it('persists every session title, default names included', async () => {
+      await openConnected()
+      await openConnected()
+      expect(titles()['sess-1']?.title).toBe('Terminal 1')
+      expect(titles()['sess-2']?.title).toBe('Terminal 2')
+    })
+
+    it('restores the saved tab order and every saved title', async () => {
+      localStorage.setItem(
+        TERMINAL_TITLES_KEY,
+        JSON.stringify({
+          a: { title: 'Terminal 1', workspace: WS },
+          b: { title: 'Terminal 2', workspace: WS },
+          c: { title: 'Terminal 3', workspace: WS },
+        }),
+      )
+      save(['c', 'a', 'b'])
+      sessionList = [info('a', 1), info('b', 2), info('c', 3)]
+      await useTerminalStore.getState().restoreSessions(WS)
+      const metas = useTerminalStore.getState().sessionsForContext(WS)
+      expect(metas.map((m) => [m.backendId, m.title])).toEqual([
+        ['c', 'Terminal 3'],
+        ['a', 'Terminal 1'],
+        ['b', 'Terminal 2'],
+      ])
+    })
+
+    it('puts sessions with no saved entry after the saved ones, oldest first', async () => {
+      save(['c', 'a'])
+      sessionList = [info('a', 5), info('x', 9), info('c', 7), info('y', 8)]
+      await useTerminalStore.getState().restoreSessions(WS)
+      expect(restoredOrder()).toEqual(['c', 'a', 'y', 'x'])
+    })
+
+    it('new shells after a restore continue the numbering of the restored titles', async () => {
+      localStorage.setItem(TERMINAL_TITLES_KEY, JSON.stringify({ a: { title: 'Terminal 3', workspace: WS } }))
+      sessionList = [info('a', 1)]
+      await useTerminalStore.getState().restoreSessions(WS)
+      const id = open()
+      expect(meta(id)?.title).toBe('Terminal 4')
+    })
+
+    it('old titles-only storage still restores (no saved order: oldest first)', async () => {
+      localStorage.setItem(TERMINAL_TITLES_KEY, JSON.stringify({ b: { title: 'Logs', workspace: WS } }))
+      sessionList = [info('a', 1), info('b', 2)]
+      await useTerminalStore.getState().restoreSessions(WS)
+      const metas = useTerminalStore.getState().sessionsForContext(WS)
+      expect(metas.map((m) => [m.backendId, m.title])).toEqual([
+        ['a', 'Terminal 1'],
+        ['b', 'Logs'],
+      ])
+    })
+
+    it('names the previously active shell, only if it came back', async () => {
+      save(['a', 'b'], 'b')
+      sessionList = [info('a', 1), info('b', 2)]
+      await useTerminalStore.getState().restoreSessions(WS)
+      expect(useTerminalStore.getState().restoredActiveBackendId(WS)).toBe('b')
+      expect(useTerminalStore.getState().restoredActiveBackendId('/other')).toBeUndefined()
+
+      _resetTerminalStoreForTests()
+      sessionList = [info('a', 1), info('b', 2, { attached: true })]
+      await useTerminalStore.getState().restoreSessions(WS)
+      expect(useTerminalStore.getState().restoredActiveBackendId(WS)).toBeUndefined()
+    })
+
+    it('remembers the shell the user last looked at as the active one', async () => {
+      const first = await openConnected()
+      const second = await openConnected()
+      useTerminalStore.getState().setAttached(first, true)
+      expect(layout()[WS].active).toBe('sess-1')
+      useTerminalStore.getState().setAttached(first, false)
+      useTerminalStore.getState().setAttached(second, true)
+      expect(layout()[WS].active).toBe('sess-2')
+      useTerminalStore.getState().setAttached(second, false) // looking at a file now: still remembered
+      expect(layout()[WS].active).toBe('sess-2')
+    })
+
+    it('remembers the active shell once its id arrives if it was shown before it connected', async () => {
+      const id = open()
+      await tick()
+      useTerminalStore.getState().setAttached(id, true)
+      await tick()
+      expect(layout()[WS].active).toBe('sess-1')
+    })
+
+    it('records the tab order once the restore has settled, appending shells the tab list lacks', async () => {
+      sessionList = [info('a', 1), info('b', 2), info('c', 3)]
+      const store = useTerminalStore.getState()
+      const ids = store.sessionsForContext(WS).map((m) => m.id)
+      store.noteTerminalOrder(WS, ids) // before any restore: ignored, must not wipe a saved order
+      save(['c', 'a', 'b'])
+      store.noteTerminalOrder(WS, [])
+      expect(layout()[WS].order).toEqual(['c', 'a', 'b'])
+
+      await store.restoreSessions(WS)
+      const byBackend = Object.fromEntries(store.sessionsForContext(WS).map((m) => [m.backendId, m.id]))
+      useTerminalStore.getState().noteTerminalOrder(WS, [byBackend.b, byBackend.a])
+      expect(layout()[WS].order).toEqual(['b', 'a', 'c'])
+    })
+
+    it('a failed restore never overwrites the saved layout', async () => {
+      save(['c', 'a'], 'a')
+      listFailures = 1
+      await useTerminalStore.getState().restoreSessions(WS)
+      useTerminalStore.getState().noteTerminalOrder(WS, [])
+      expect(layout()[WS].order).toEqual(['c', 'a'])
+    })
+
+    it('closing a tab removes the shell from the saved order and active', async () => {
+      const first = await openConnected()
+      await openConnected()
+      useTerminalStore.getState().setAttached(first, true)
+      useTerminalStore.getState().noteTerminalOrder(WS, []) // ignored: no restore settled yet
+      await useTerminalStore.getState().restoreSessions(WS) // settles (empty list: only ours)
+      useTerminalStore.getState().noteTerminalOrder(WS, [])
+      expect(layout()[WS].order).toEqual(['sess-1', 'sess-2'])
+      useTerminalStore.getState().close(first)
+      expect(layout()[WS].order).toEqual(['sess-2'])
+      expect(layout()[WS].active).toBeUndefined()
+    })
+
+    it('prunes saved order and active of shells the server no longer has', async () => {
+      save(['gone', 'a', 'other-gone'], 'gone')
+      sessionList = [info('a', 1)]
+      await useTerminalStore.getState().restoreSessions(WS)
+      expect(layout()[WS].order).toEqual(['a'])
+      expect(layout()[WS].active).toBeUndefined()
+      expect(useTerminalStore.getState().restoredActiveBackendId(WS)).toBeUndefined()
+    })
+
+    it('keeps other workspaces layouts', async () => {
+      localStorage.setItem(
+        TERMINAL_LAYOUT_KEY,
+        JSON.stringify({ '/other': { order: ['z'], active: 'z' }, [WS]: { order: ['gone'] } }),
+      )
+      await useTerminalStore.getState().restoreSessions(WS)
+      expect(layout()['/other']).toEqual({ order: ['z'], active: 'z' })
+    })
+
+    it('survives corrupt layout storage', async () => {
+      localStorage.setItem(TERMINAL_LAYOUT_KEY, '[nope')
+      sessionList = [info('a', 1), info('b', 2)]
+      await useTerminalStore.getState().restoreSessions(WS)
+      expect(restoredOrder()).toEqual(['a', 'b'])
+    })
+
+    describe('waiting for a restore in flight', () => {
+      it('has nothing to wait for when no restore runs', () => {
+        expect(useTerminalStore.getState().waitForRestore(WS)).toBeNull()
+      })
+
+      it('resolves once the list is processed, with the sessions already in the store', async () => {
+        let release!: () => void
+        listGate = new Promise<void>((r) => (release = r))
+        sessionList = [info('a', 1)]
+        const restoring = useTerminalStore.getState().restoreSessions(WS)
+        const wait = useTerminalStore.getState().waitForRestore(WS)
+        expect(wait).not.toBeNull()
+        let done = false
+        void wait!.then(() => (done = true))
+        await tick()
+        expect(done).toBe(false)
+        release()
+        await restoring
+        await wait
+        expect(useTerminalStore.getState().sessionsForContext(WS)).toHaveLength(1)
+        expect(useTerminalStore.getState().waitForRestore(WS)).toBeNull()
+      })
+
+      it('gives up after the bound when the server does not answer', async () => {
+        listGate = new Promise<void>(() => {})
+        void useTerminalStore.getState().restoreSessions(WS)
+        const wait = useTerminalStore.getState().waitForRestore(WS, 2000)!
+        let done = false
+        void wait.then(() => (done = true))
+        timers.tick(1999)
+        await tick()
+        expect(done).toBe(false)
+        timers.tick(1)
+        await tick()
+        expect(done).toBe(true)
+      })
     })
   })
 

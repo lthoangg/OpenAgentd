@@ -286,6 +286,23 @@ describe('terminals', () => {
     expect(strips(state)).toEqual([['terminal:1']])
     expect(state.panes.p1.active).toBe('terminal:1')
   })
+
+  it('shows the preferred shell, not the first, when adopting into an empty pane', () => {
+    const state = syncTerminalTabs(EMPTY_DOCK_PANES, [{ id: '1', title: 'a' }, { id: '2', title: 'b' }, { id: '3', title: 'c' }], '2')
+    expect(strips(state)).toEqual([['terminal:1', 'terminal:2', 'terminal:3']])
+    expect(state.panes.p1.active).toBe('terminal:2')
+  })
+
+  it('never lets the preferred shell take over a pane that already shows a tab', () => {
+    const state = syncTerminalTabs(withTabs(file('a.ts')), [{ id: '1', title: 'a' }, { id: '2', title: 'b' }], '2')
+    expect(state.panes.p1.active).toBe('file:a.ts')
+    expect(strips(state)).toEqual([['file:a.ts', 'terminal:1', 'terminal:2']])
+  })
+
+  it('ignores a preferred shell that is not being adopted', () => {
+    const state = syncTerminalTabs(EMPTY_DOCK_PANES, [{ id: '1', title: 'a' }], '9')
+    expect(state.panes.p1.active).toBe('terminal:1')
+  })
 })
 
 describe('layout', () => {

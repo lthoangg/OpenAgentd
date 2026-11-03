@@ -188,6 +188,14 @@ export function useDockTabs({
   useEffect(() => {
     saveDockPanes(stateKey, state)
   }, [stateKey, state])
+  // The workspace this hook shows right now; ``null`` once unmounted.
+  const mountedWorkspaceRef = useRef<string | null>(workspace)
+  useEffect(() => {
+    mountedWorkspaceRef.current = workspace
+    return () => {
+      mountedWorkspaceRef.current = null
+    }
+  }, [workspace])
   // Phones have one strip: panes remembered from a desktop window join.
   const paneCount = paneOrder(state.layout).length
   useEffect(() => {
@@ -208,8 +216,20 @@ export function useDockTabs({
   }, [open, workspace])
   // Shells belong to the workspace: adopt them into whatever tabs are shown.
   useEffect(() => {
-    setState((current) => syncTerminalTabs(current, terminalMetas))
-  }, [terminalMetas, stateKey])
+    // The shell that was in front before a reload comes back in front — but
+    // only into a pane the restore is what fills (see ``syncTerminalTabs``).
+    const frontBackendId = useTerminalStore.getState().restoredActiveBackendId(workspace)
+    const frontId = frontBackendId ? terminalMetas.find((m) => m.backendId === frontBackendId)?.id : undefined
+    setState((current) => syncTerminalTabs(current, terminalMetas, frontId))
+  }, [terminalMetas, stateKey, workspace])
+  // Remember the strips' terminal order, so the next reload restores it.
+  const terminalTabOrder = useMemo(
+    () => paneOrder(state.layout).flatMap((pane) => paneTabs(state, pane)).flatMap((tab) => (tab.type === 'terminal' ? [tab.termId] : [])),
+    [state],
+  )
+  useEffect(() => {
+    useTerminalStore.getState().noteTerminalOrder(workspace, terminalTabOrder)
+  }, [workspace, terminalTabOrder, terminalMetas])
 
   // A chat workspace is not a repository: no Git tab in its strips.
   const hidden = useCallback((tab: DockTab) => chatWorkspace && tab.type === 'review', [chatWorkspace])
@@ -276,13 +296,33 @@ export function useDockTabs({
     openTab(tab, pane ? { pane } : undefined)
   }, [workspace, openTab])
 
-  /** Open Terminal: show the last shell (where it is), or start one. */
-  const focusOrOpenTerminal = useCallback(() => {
+  /**
+   * Show the last shell (where it is), or start one. After a reload the shell
+   * that was in front comes first, as the restored ``frontBackendId``.
+   */
+  const showOrOpenTerminal = useCallback((preferRestored: boolean) => {
     const metas = useTerminalStore.getState().sessionsForContext(workspace)
-    const last = metas[metas.length - 1]
-    if (last) setState((current) => activateTab(syncTerminalTabs(current, metas), terminalTabId(last.id)))
+    const front = preferRestored ? useTerminalStore.getState().restoredActiveBackendId(workspace) : undefined
+    const target = metas.find((m) => front !== undefined && m.backendId === front) ?? metas[metas.length - 1]
+    if (target) setState((current) => activateTab(syncTerminalTabs(current, metas, target.id), terminalTabId(target.id)))
     else openTerminal()
   }, [workspace, openTerminal])
+
+  /**
+   * Open Terminal. Right after a reload the shells are still being listed, so
+   * a request that arrives then waits for them (bounded) rather than
+   * spawning a shell next to the ones about to come back.
+   */
+  const focusOrOpenTerminal = useCallback(() => {
+    const waiting = useTerminalStore.getState().waitForRestore(workspace)
+    if (!waiting) {
+      showOrOpenTerminal(false)
+      return
+    }
+    void waiting.then(() => {
+      if (mountedWorkspaceRef.current === workspace) showOrOpenTerminal(true)
+    })
+  }, [workspace, showOrOpenTerminal])
 
   // ── Splitting ─────────────────────────────────────────────────────────────
   /** Split ``pane`` on ``side`` (with ``tabId`` moved in), if there is room. */

@@ -12,10 +12,15 @@
 //! [`render::exact`] and [`render::inline`], which show control and
 //! direction-changing characters as escapes instead of acting on them.
 
+mod add;
 mod check;
 mod list;
+mod prompt;
+mod reload;
+mod remove;
 mod render;
 mod server;
+mod source;
 mod summary;
 
 use crate::cli::PluginCmd;
@@ -26,6 +31,8 @@ use std::process::ExitCode;
 
 pub fn plugin(cmd: &PluginCmd) -> Result<ExitCode> {
     match cmd {
+        PluginCmd::Add(a) => add::add(a),
+        PluginCmd::Remove(a) => remove::remove(a),
         PluginCmd::List => list::list(),
         PluginCmd::Check(a) => check::check(a),
     }

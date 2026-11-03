@@ -57,7 +57,10 @@ A plugin is a folder with a plugin.json that adds skills, MCP servers, and
 
 Examples:
   agentd plugin check ./my-plugin                     Validate a folder without installing it
-  agentd plugin list                                  List the installed plugins";
+  agentd plugin add https://github.com/acme/tools     Show what a plugin adds, then ask to install it
+  agentd plugin add ./my-plugin --yes                 Install a local folder without asking
+  agentd plugin list                                  List the installed plugins
+  agentd plugin remove changelog-tools                Remove a plugin and keep its data";
 
 #[derive(Debug, Subcommand)]
 pub enum ServerCmd {
@@ -287,6 +290,22 @@ pub enum LspCmd {
 
 #[derive(Debug, Subcommand)]
 pub enum PluginCmd {
+    /// Install a plugin from a folder or a git URL
+    ///
+    /// Shows what the plugin adds (skills, MCP servers and their exact
+    /// commands, permissions, tools) and asks before installing. The plugin's
+    /// code runs once, with no permissions, only to list its tools.
+    ///
+    /// The source is a local folder, or a git URL: https://..., ssh://...,
+    /// user@host:path, or file://... Any other kind of URL is refused.
+    ///
+    /// Without --yes a terminal is asked. When stdin is not a terminal (an
+    /// agent, a script), only the summary is printed and the exit status is
+    /// 2: nothing is installed.
+    #[command(verbatim_doc_comment)]
+    Add(PluginAddArgs),
+    /// Remove an installed plugin and keep its data folder
+    Remove(PluginRemoveArgs),
     /// Show the installed plugins and their state
     ///
     /// Asks the local server when it is running, else reads the plugin folders.
@@ -298,6 +317,27 @@ pub enum PluginCmd {
     /// the code does not load.
     #[command(verbatim_doc_comment)]
     Check(PluginCheckArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct PluginAddArgs {
+    /// Folder or git URL (https://, ssh://, user@host:path, file://)
+    pub source: String,
+    /// Folder inside the source that holds the plugin, when it is not the root
+    #[arg(long, value_name = "SUBFOLDER")]
+    pub path: Option<PathBuf>,
+    /// Install without asking
+    #[arg(short, long)]
+    pub yes: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct PluginRemoveArgs {
+    /// Name from the plugin's manifest, or its folder name
+    pub name: String,
+    /// Remove without asking
+    #[arg(short, long)]
+    pub yes: bool,
 }
 
 #[derive(Debug, Args)]
@@ -482,6 +522,24 @@ mod tests {
         assert!(matches!(plugin_cmd(&["plugin", "list"]), PluginCmd::List));
         assert_eq!(kind(&["plugin", "check"]), ErrorKind::MissingRequiredArgument);
         assert_eq!(kind(&["plugin"]), ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand);
+    }
+
+    #[test]
+    fn plugin_add_and_remove_parse() {
+        let PluginCmd::Add(a) = plugin_cmd(&["plugin", "add", "https://example.com/x.git", "--path", "plugins/tools", "--yes"]) else { panic!("not add") };
+        assert_eq!((a.source.as_str(), a.path.as_deref(), a.yes), ("https://example.com/x.git", Some(std::path::Path::new("plugins/tools")), true));
+        let PluginCmd::Add(a) = plugin_cmd(&["plugin", "add", "./local", "-y"]) else { panic!("not add") };
+        assert_eq!((a.source.as_str(), a.path, a.yes), ("./local", None, true));
+        let PluginCmd::Add(a) = plugin_cmd(&["plugin", "add", "./local"]) else { panic!("not add") };
+        assert!(!a.yes);
+        let PluginCmd::Remove(r) = plugin_cmd(&["plugin", "remove", "changelog-tools", "--yes"]) else { panic!("not remove") };
+        assert_eq!((r.name.as_str(), r.yes), ("changelog-tools", true));
+        // A source that starts with '-' is only reachable after `--`; the command still refuses it.
+        let PluginCmd::Add(a) = plugin_cmd(&["plugin", "add", "--", "--upload-pack=x"]) else { panic!("not add") };
+        assert_eq!(a.source, "--upload-pack=x");
+        assert_eq!(kind(&["plugin", "add", "--upload-pack=x"]), ErrorKind::UnknownArgument);
+        assert_eq!(kind(&["plugin", "add"]), ErrorKind::MissingRequiredArgument);
+        assert_eq!(kind(&["plugin", "remove"]), ErrorKind::MissingRequiredArgument);
     }
 
     #[test]

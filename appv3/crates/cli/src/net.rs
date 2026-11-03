@@ -134,6 +134,13 @@ pub fn http_get_with_headers(host: &str, port: u16, path: &str, headers: &[(&str
     http_request("GET", host, port, path, headers, timeout)
 }
 
+/// `POST path` with an empty body and `headers`, otherwise like
+/// [`http_get_with_headers`]. `timeout` bounds each read, so it is also how
+/// long a slow handler (a plugin reload) may take to answer.
+pub fn http_post_with_headers(host: &str, port: u16, path: &str, headers: &[(&str, &str)], timeout: Duration) -> Option<(u16, Vec<u8>)> {
+    http_request("POST", host, port, path, headers, timeout)
+}
+
 fn http_request(method: &str, host: &str, port: u16, path: &str, headers: &[(&str, &str)], timeout: Duration) -> Option<(u16, Vec<u8>)> {
     use std::io::{Read, Write};
     if path.contains(['\r', '\n', ' ']) || headers.iter().any(|(name, value)| name.contains(['\r', '\n']) || value.contains(['\r', '\n'])) {
@@ -235,6 +242,16 @@ mod tests {
         // A connection would be waiting in the backlog by now.
         listener.set_nonblocking(true).unwrap();
         assert_eq!(listener.accept().unwrap_err().kind(), std::io::ErrorKind::WouldBlock, "nothing may connect");
+    }
+
+    #[test]
+    fn http_post_sends_an_empty_body_and_the_headers() {
+        let (port, seen) = serve_once("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
+        let got = http_post_with_headers("127.0.0.1", port, "/api/plugins/reload", &[("Authorization", "Bearer k-1")], WAIT);
+        assert_eq!(got, Some((200, b"ok".to_vec())));
+        let head = seen.join().unwrap();
+        assert!(head.starts_with("POST /api/plugins/reload HTTP/1.1\r\n"), "{head}");
+        assert!(head.contains("\r\nAuthorization: Bearer k-1\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"), "{head}");
     }
 
     #[test]

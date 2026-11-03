@@ -413,3 +413,552 @@ fn list_falls_back_to_the_disk_when_the_server_says_no() {
     let out = stdout(&sb.run(&["plugin", "list"]));
     assert!(out.contains("did not accept the access key") && !out.contains("wrong-key"), "{out}");
 }
+
+// ── add and remove ──────────────────────────────────────────────────────────
+
+#[cfg(unix)]
+use std::io::{BufRead, BufReader};
+#[cfg(unix)]
+use std::time::{Duration, Instant};
+
+/// Names in `dir`, sorted; empty when it does not exist.
+fn names(dir: &Path) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(dir).map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
+    v.sort();
+    v
+}
+
+impl Sandbox {
+    fn data(&self, plugin: &str) -> PathBuf {
+        self.path("data/plugin-data").join(plugin)
+    }
+}
+
+// ── git ─────────────────────────────────────────────────────────────────────
+
+fn have_git() -> bool {
+    Command::new("git").arg("--version").output().is_ok_and(|o| o.status.success())
+}
+
+/// A git repository at `dir` holding everything in it as one commit.
+fn commit_all(dir: &Path) {
+    let git = |args: &[&str]| {
+        let o = Command::new("git")
+            .args(["-c", "user.name=test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main"])
+            .args(args)
+            .current_dir(dir)
+            .env("HOME", dir)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
+            .output()
+            .expect("run git");
+        assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
+    };
+    git(&["init", "-q", "."]);
+    git(&["add", "-A"]);
+    git(&["commit", "-q", "-m", "plugin"]);
+}
+
+#[test]
+fn add_shows_the_installed_paths_in_the_environment_a_server_is_started_with() {
+    let sb = Sandbox::new();
+    let dir = sneaky_plugin(&sb);
+    // After an install the paths are the installed ones.
+    let o = sb.run(&["plugin", "add", dir.to_str().unwrap(), "--yes"]);
+    let out = stdout(&o);
+    assert_eq!(code(&o), 0, "{out}\n{}", stderr(&o));
+    let installed = sb.plugins().join("sneaky");
+    assert!(out.contains(&format!("NODE_OPTIONS=--require {}", installed.join("hook.js").display())), "{out}");
+    assert!(!out.contains(".agentd-add-"), "{out}");
+}
+
+#[test]
+fn add_installs_a_folder_and_list_remove_follow() {
+    let sb = Sandbox::new();
+    let src = fixture("changelog-tools");
+    let o = sb.run(&["plugin", "add", src.to_str().unwrap(), "--yes"]);
+    let out = stdout(&o);
+    assert_eq!(code(&o), 0, "{out}\n{}", stderr(&o));
+    let installed = sb.plugins().join("changelog-tools");
+    assert!(installed.join("plugin.json").is_file() && installed.join("skills/release-notes/SKILL.md").is_file() && installed.join("dev.openagentd/plugin.ts").is_file());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_ne!(std::fs::metadata(installed.join("bin/echo-mcp")).unwrap().permissions().mode() & 0o111, 0, "the MCP server stays executable");
+    }
+    assert_eq!(names(&sb.plugins()), ["changelog-tools"], "no staging folder is left");
+    assert!(out.contains("✓  Installed changelog-tools in "), "{out}");
+    assert!(out.contains("The server is not running; it loads the plugin when it next starts."), "{out}");
+    assert!(out.trim_end().ends_with("New sessions get its skills, MCP servers and tools."), "{out}");
+    // The command shown is the one that will run: in the installed folder, not the staging one.
+    let shown = out.lines().find(|l| l.trim_start().starts_with("echo  ")).unwrap();
+    assert!(shown.trim_end().ends_with(&format!("{}/bin/echo-mcp", installed.display())) && !out.contains(".agentd-add-"), "{out}");
+    assert!(!sb.data("changelog-tools").exists(), "installing does not create the data folder");
+
+    // list: no server, so the disk is read.
+    let o = sb.run(&["plugin", "list"]);
+    let list = stdout(&o);
+    assert_eq!(code(&o), 0, "{list}\n{}", stderr(&o));
+    assert!(list.contains("The server is not running; showing what is on disk"), "{list}");
+    let row = list.lines().find(|l| l.contains("changelog-tools")).unwrap_or_else(|| panic!("no row in:\n{list}"));
+    assert_eq!(row.split_whitespace().collect::<Vec<_>>(), ["changelog-tools", "1.2.0", "enabled", "valid", "1", "skill,", "1", "MCP", "server,", "has", "code"], "{row}");
+    assert!(list.contains(&format!("Folders  {}", sb.plugins().display())), "{list}");
+
+    // A second add is refused, and changes nothing.
+    let o = sb.run(&["plugin", "add", src.to_str().unwrap(), "--yes"]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("changelog-tools is already installed at ") && stderr(&o).contains("remove it first"), "{}", stderr(&o));
+    assert_eq!(names(&sb.plugins()), ["changelog-tools"]);
+
+    // remove: the folder goes, the data stays.
+    write(&sb.data("changelog-tools").join("state.json"), "{}");
+    let o = sb.run(&["plugin", "remove", "changelog-tools", "--yes"]);
+    let out = stdout(&o);
+    assert_eq!(code(&o), 0, "{out}\n{}", stderr(&o));
+    assert!(!installed.exists(), "the plugin folder is deleted");
+    assert!(sb.data("changelog-tools").join("state.json").is_file(), "its data folder is kept");
+    assert!(out.contains(&format!("Data folder kept: {}", sb.data("changelog-tools").display())), "{out}");
+    assert!(out.contains("✓  Removed changelog-tools"), "{out}");
+    let list = stdout(&sb.run(&["plugin", "list"]));
+    assert!(list.contains("No plugin is installed. Add one with: agentd plugin add"), "{list}");
+}
+
+#[test]
+fn add_without_yes_shows_the_summary_and_installs_nothing() {
+    let sb = Sandbox::new();
+    let o = sb.run(&["plugin", "add", fixture("changelog-tools").to_str().unwrap()]);
+    let out = stdout(&o);
+    assert_eq!(code(&o), 2, "{out}\n{}", stderr(&o));
+    for want in ["changelog-tools", "release-notes", "not sandboxed", "net: api.github.com", "Re-run with --yes to install."] {
+        assert!(out.contains(want), "{want:?} missing from:\n{out}");
+    }
+    assert!(!out.contains("Installed"), "{out}");
+    assert!(names(&sb.plugins()).is_empty(), "nothing is installed and no staging is left: {:?}", names(&sb.plugins()));
+
+    // The same rule for remove.
+    sb.run(&["plugin", "add", fixture("review-kit").to_str().unwrap(), "--yes"]);
+    let o = sb.run(&["plugin", "remove", "review-kit"]);
+    assert_eq!(code(&o), 2, "{}", stdout(&o));
+    assert!(stdout(&o).contains("Re-run with --yes to remove."), "{}", stdout(&o));
+    assert_eq!(names(&sb.plugins()), ["review-kit"]);
+}
+
+#[test]
+fn add_shows_the_tools_of_the_code_before_asking() {
+    let sb = Sandbox::new();
+    let dir = plugin_with_tool(&sb, "changelog-tools");
+    let o = sb.run(&["plugin", "add", dir.to_str().unwrap()]);
+    let out = stdout(&o);
+    assert_eq!(code(&o), 2, "{out}");
+    assert!(out.contains("draft_release_notes  read-only  Draft release notes from a list of changes."), "{out}");
+    // A code that does not load is shown, and the install can still go on.
+    let throws = sb.copy_of("changelog-tools", "throws");
+    write(&throws.join("dev.openagentd/plugin.ts"), "throw new Error(\"boom at load\");");
+    let o = sb.run(&["plugin", "add", throws.to_str().unwrap(), "--yes"]);
+    assert_eq!(code(&o), 0, "{}\n{}", stdout(&o), stderr(&o));
+    assert!(stdout(&o).contains("✗ the code failed to load: ") && stdout(&o).contains("✓  Installed changelog-tools"), "{}", stdout(&o));
+}
+
+#[test]
+fn add_refuses_what_is_not_a_plugin_and_cleans_up() {
+    let sb = Sandbox::new();
+    let broken = sb.path("src/broken");
+    write(&broken.join("plugin.json"), "{ not json");
+    let o = sb.run(&["plugin", "add", broken.to_str().unwrap(), "--yes"]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("the plugin was rejected: plugin.json: is not valid JSON"), "{}", stderr(&o));
+
+    let empty = sb.path("src/empty");
+    std::fs::create_dir_all(&empty).unwrap();
+    let o = sb.run(&["plugin", "add", empty.to_str().unwrap(), "--yes"]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("has no plugin.json"), "{}", stderr(&o));
+    assert!(names(&sb.plugins()).is_empty(), "{:?}", names(&sb.plugins()));
+}
+
+#[test]
+fn add_leaves_git_and_node_modules_behind() {
+    let sb = Sandbox::new();
+    let dir = sb.copy_of("changelog-tools", "changelog-tools");
+    write(&dir.join(".git/config"), "[core]");
+    write(&dir.join("node_modules/pkg/index.js"), "x");
+    write(&dir.join("dev.openagentd/node_modules/y.js"), "y");
+    let o = sb.run(&["plugin", "add", dir.to_str().unwrap(), "--yes"]);
+    assert_eq!(code(&o), 0, "{}\n{}", stdout(&o), stderr(&o));
+    let installed = sb.plugins().join("changelog-tools");
+    assert!(installed.join("plugin.json").is_file());
+    assert!(!installed.join(".git").exists() && !installed.join("node_modules").exists() && !installed.join("dev.openagentd/node_modules").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn add_refuses_a_link_that_leaves_the_folder() {
+    let sb = Sandbox::new();
+    let dir = sb.copy_of("changelog-tools", "changelog-tools");
+    let secret = sb.path("secret.txt");
+    write(&secret, "s");
+    std::os::unix::fs::symlink(&secret, dir.join("notes.txt")).unwrap();
+    let o = sb.run(&["plugin", "add", dir.to_str().unwrap(), "--yes"]);
+    assert_eq!(code(&o), 1, "{}", stdout(&o));
+    assert!(stderr(&o).contains("notes.txt is a link to ") && stderr(&o).contains("outside the plugin folder"), "{}", stderr(&o));
+    assert!(names(&sb.plugins()).is_empty(), "nothing installed, nothing left: {:?}", names(&sb.plugins()));
+
+    // A link that stays inside is copied as a link.
+    std::fs::remove_file(dir.join("notes.txt")).unwrap();
+    std::os::unix::fs::symlink("skills/release-notes", dir.join("notes")).unwrap();
+    let o = sb.run(&["plugin", "add", dir.to_str().unwrap(), "--yes"]);
+    assert_eq!(code(&o), 0, "{}\n{}", stdout(&o), stderr(&o));
+    assert_eq!(std::fs::read_link(sb.plugins().join("changelog-tools/notes")).unwrap(), Path::new("skills/release-notes"));
+}
+
+#[test]
+fn add_refuses_sources_that_could_run_something() {
+    let sb = Sandbox::new();
+    let marker = sb.path("PWNED");
+    let ext = format!("ext::sh -c touch% {}", marker.display());
+    for (source, why) in [
+        (ext.as_str(), "ext:: remote helpers are not accepted"),
+        ("http://example.com/x.git", "plain http:// URLs are not accepted"),
+        ("git://example.com/x.git", "git:// URLs are not accepted"),
+        ("ssh://-oProxyCommand=touch/x", "host must not start with '-'"),
+        ("some-name-that-is-no-folder", "is not a folder or a git URL"),
+    ] {
+        let o = sb.run(&["plugin", "add", source, "--yes"]);
+        assert_eq!(code(&o), 1, "{source}: {}", stdout(&o));
+        assert!(stderr(&o).contains(why), "{source}: {}", stderr(&o));
+    }
+    // Anything that starts with '-' is refused too, even after `--`.
+    let o = sb.run(&["plugin", "add", "--yes", "--", &format!("--upload-pack=touch {}", marker.display())]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("must not start with '-'"), "{}", stderr(&o));
+    assert!(!marker.exists(), "nothing was run");
+    assert!(!sb.plugins().exists(), "a refused source does not even create the plugins folder");
+}
+
+#[test]
+fn add_from_a_git_url_and_a_subfolder() {
+    if !have_git() {
+        eprintln!("note: git is not installed; skipping add_from_a_git_url_and_a_subfolder");
+        return;
+    }
+    let sb = Sandbox::new();
+    // A repository holding changelog-tools at its root and review-kit in a subfolder.
+    let repo = sb.path("repo");
+    copy_dir(&fixture("changelog-tools"), &repo);
+    copy_dir(&fixture("review-kit"), &repo.join("plugins/review-kit"));
+    commit_all(&repo);
+    let url = format!("file://{}", repo.display());
+
+    let o = sb.run(&["plugin", "add", &url, "--path", "plugins/review-kit", "--yes"]);
+    let out = stdout(&o);
+    assert_eq!(code(&o), 0, "{out}\n{}", stderr(&o));
+    assert!(out.contains("Fetching file://") && out.contains("✓  Installed review-kit in "), "{out}");
+    assert_eq!(names(&sb.plugins()), ["review-kit"], "only the subfolder is installed, and no staging is left");
+    assert!(sb.plugins().join("review-kit/plugin.json").is_file());
+    assert!(!sb.plugins().join("review-kit/.git").exists());
+
+    // The whole repository, history left out.
+    let o = sb.run(&["plugin", "add", &url, "--yes"]);
+    assert_eq!(code(&o), 0, "{}\n{}", stdout(&o), stderr(&o));
+    let installed = sb.plugins().join("changelog-tools");
+    assert!(installed.join("plugin.json").is_file() && installed.join("plugins/review-kit/plugin.json").is_file());
+    assert!(!installed.join(".git").exists(), "the clone's history is not installed");
+    assert_eq!(names(&sb.plugins()), ["changelog-tools", "review-kit"]);
+
+    // A repository that does not exist.
+    let o = sb.run(&["plugin", "add", &format!("file://{}", sb.path("nope").display()), "--yes"]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("git could not fetch file://"), "{}", stderr(&o));
+    assert_eq!(names(&sb.plugins()), ["changelog-tools", "review-kit"], "a failed fetch leaves no staging folder");
+}
+
+#[test]
+fn a_subfolder_must_stay_inside_the_source() {
+    let sb = Sandbox::new();
+    let src = sb.path("src/bundle");
+    copy_dir(&fixture("changelog-tools"), &src);
+    copy_dir(&fixture("review-kit"), &src.join("plugins/review-kit"));
+    let sibling = sb.path("src/sibling");
+    copy_dir(&fixture("review-kit"), &sibling);
+
+    let o = sb.run(&["plugin", "add", src.to_str().unwrap(), "--path", "plugins/review-kit", "--yes"]);
+    assert_eq!(code(&o), 0, "{}\n{}", stdout(&o), stderr(&o));
+    assert_eq!(names(&sb.plugins()), ["review-kit"]);
+    std::fs::remove_dir_all(sb.plugins().join("review-kit")).unwrap();
+
+    for escape in ["../sibling", "..", "plugins/../../sibling", sibling.to_str().unwrap()] {
+        let o = sb.run(&["plugin", "add", src.to_str().unwrap(), "--path", escape, "--yes"]);
+        assert_eq!(code(&o), 1, "{escape}: {}", stdout(&o));
+        assert!(stderr(&o).contains("leaves the source folder"), "{escape}: {}", stderr(&o));
+    }
+    let o = sb.run(&["plugin", "add", src.to_str().unwrap(), "--path", "plugins/nope", "--yes"]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("does not exist in the source"), "{}", stderr(&o));
+    assert!(names(&sb.plugins()).is_empty(), "nothing installed, nothing left: {:?}", names(&sb.plugins()));
+
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&sibling, src.join("plugins/jump")).unwrap();
+        let o = sb.run(&["plugin", "add", src.to_str().unwrap(), "--path", "plugins/jump", "--yes"]);
+        assert_eq!(code(&o), 1, "{}", stdout(&o));
+        assert!(stderr(&o).contains("leaves the source folder"), "a link cannot lead --path out: {}", stderr(&o));
+    }
+}
+
+#[test]
+fn remove_names_what_is_installed_when_the_name_is_unknown() {
+    let sb = Sandbox::new();
+    let o = sb.run(&["plugin", "remove", "nope", "--yes"]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("no plugin named nope; none is installed"), "{}", stderr(&o));
+
+    sb.run(&["plugin", "add", fixture("review-kit").to_str().unwrap(), "--yes"]);
+    sb.run(&["plugin", "add", fixture("changelog-tools").to_str().unwrap(), "--yes"]);
+    let o = sb.run(&["plugin", "remove", "nope", "--yes"]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("no plugin named nope; installed: changelog-tools, review-kit"), "{}", stderr(&o));
+    assert_eq!(names(&sb.plugins()), ["changelog-tools", "review-kit"]);
+}
+
+#[test]
+fn remove_does_not_delete_a_single_file_plugin() {
+    let sb = Sandbox::new();
+    let legacy = sb.plugins().join("legacy.ts");
+    write(&legacy, "export default {}\n");
+    let o = sb.run(&["plugin", "remove", "legacy", "--yes"]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("legacy is a single-file plugin") && stderr(&o).contains("delete the file and restart the server"), "{}", stderr(&o));
+    assert!(legacy.is_file(), "the file is left alone");
+}
+
+#[cfg(unix)]
+#[test]
+fn remove_only_unlinks_a_plugin_that_is_a_link() {
+    let sb = Sandbox::new();
+    let real = sb.copy_of("changelog-tools", "real-changelog");
+    std::fs::create_dir_all(sb.plugins()).unwrap();
+    std::os::unix::fs::symlink(&real, sb.plugins().join("linked")).unwrap();
+    let list = stdout(&sb.run(&["plugin", "list"]));
+    assert!(list.contains("changelog-tools"), "{list}");
+    let o = sb.run(&["plugin", "remove", "changelog-tools"]);
+    assert!(stdout(&o).contains("It is a link: only the link is removed"), "{}", stdout(&o));
+    let o = sb.run(&["plugin", "remove", "changelog-tools", "--yes"]);
+    assert_eq!(code(&o), 0, "{}\n{}", stdout(&o), stderr(&o));
+    assert!(std::fs::symlink_metadata(sb.plugins().join("linked")).is_err(), "the link is gone");
+    assert!(real.join("plugin.json").is_file() && real.join("skills/release-notes/SKILL.md").is_file(), "what it pointed to is untouched");
+}
+
+#[test]
+fn disabled_plugins_are_listed_and_remove_drops_the_mark() {
+    let sb = Sandbox::new();
+    sb.run(&["plugin", "add", fixture("review-kit").to_str().unwrap(), "--yes"]);
+    write(&sb.path("config/plugins.json"), r#"{"disabled": ["review-kit", "other"]}"#);
+    let list = stdout(&sb.run(&["plugin", "list"]));
+    let row = list.lines().find(|l| l.contains("review-kit")).unwrap();
+    assert!(row.split_whitespace().any(|w| w == "disabled"), "{row}");
+
+    let o = sb.run(&["plugin", "remove", "review-kit", "--yes"]);
+    assert_eq!(code(&o), 0, "{}\n{}", stdout(&o), stderr(&o));
+    let state: Value = serde_json::from_str(&std::fs::read_to_string(sb.path("config/plugins.json")).unwrap()).unwrap();
+    assert_eq!(state["disabled"], json!(["other"]), "only the removed plugin's mark goes");
+
+    // A name left disabled by hand-deleting a plugin is enabled again when it is installed.
+    write(&sb.path("config/plugins.json"), r#"{"disabled": ["review-kit"]}"#);
+    let o = sb.run(&["plugin", "add", fixture("review-kit").to_str().unwrap(), "--yes"]);
+    assert_eq!(code(&o), 0, "{}\n{}", stdout(&o), stderr(&o));
+    assert!(stdout(&o).contains("it is enabled now"), "{}", stdout(&o));
+    let state: Value = serde_json::from_str(&std::fs::read_to_string(sb.path("config/plugins.json")).unwrap()).unwrap();
+    assert_eq!(state["disabled"], json!([]));
+}
+
+// ── with a server ───────────────────────────────────────────────────────────
+
+#[test]
+fn add_and_remove_ask_a_running_server_to_reload() {
+    let sb = Sandbox::new();
+    let running = json!({"bundles": [bundle_json("review-kit", "running", &[])]});
+    let stub = Stub::start(vec![("POST", "/api/plugins/reload", 200, running.to_string())]);
+    sb.point_at(stub.port, Some("k"));
+
+    let o = sb.run(&["plugin", "add", fixture("review-kit").to_str().unwrap(), "--yes"]);
+    let out = stdout(&o);
+    assert_eq!(code(&o), 0, "{out}\n{}", stderr(&o));
+    assert_eq!(stub.requests(), ["POST /api/plugins/reload"]);
+    assert!(stub.heads()[0].contains("\r\nAuthorization: Bearer k\r\n") && stub.heads()[0].contains("\r\nContent-Length: 0\r\n"), "{}", stub.heads()[0]);
+    assert!(out.contains("✓  Server: running"), "{out}");
+    assert!(!out.contains("is not running"), "{out}");
+    assert!(out.trim_end().ends_with("New sessions get its skills, MCP servers and tools."), "{out}");
+
+    // The server no longer lists it after a removal.
+    let gone = Stub::start(vec![("POST", "/api/plugins/reload", 200, json!({"bundles": []}).to_string())]);
+    sb.point_at(gone.port, None);
+    let o = sb.run(&["plugin", "remove", "review-kit", "--yes"]);
+    assert_eq!(code(&o), 0, "{}\n{}", stdout(&o), stderr(&o));
+    assert_eq!(gone.requests(), ["POST /api/plugins/reload"]);
+    assert!(stdout(&o).contains("Server: reloaded; review-kit is gone"), "{}", stdout(&o));
+}
+
+#[test]
+fn a_plugin_the_server_could_not_start_is_reported_with_its_errors() {
+    let sb = Sandbox::new();
+    let failed = json!({"bundles": [bundle_json("review-kit", "failed", &["start docs: connection refused", "second problem"])]});
+    let stub = Stub::start(vec![("POST", "/api/plugins/reload", 200, failed.to_string())]);
+    sb.point_at(stub.port, None);
+    let o = sb.run(&["plugin", "add", fixture("review-kit").to_str().unwrap(), "--yes"]);
+    let out = stdout(&o);
+    assert_eq!(code(&o), 0, "the files are installed; the problem is reported: {out}\n{}", stderr(&o));
+    assert!(sb.plugins().join("review-kit/plugin.json").is_file());
+    assert!(out.contains("✗  Server: failed") && out.contains("✗ start docs: connection refused") && out.contains("✗ second problem"), "{out}");
+    assert!(!out.contains("New sessions get its skills"), "it would not be true: {out}");
+}
+
+#[test]
+fn an_older_server_loads_the_plugin_at_its_next_start() {
+    let sb = Sandbox::new();
+    let stub = Stub::start(vec![]);
+    sb.point_at(stub.port, None);
+    let o = sb.run(&["plugin", "add", fixture("review-kit").to_str().unwrap(), "--yes"]);
+    let out = stdout(&o);
+    assert_eq!(code(&o), 0, "{out}\n{}", stderr(&o));
+    assert_eq!(stub.requests(), ["POST /api/plugins/reload"]);
+    assert!(out.contains("This server cannot reload plugins; it loads the plugin when it next starts."), "{out}");
+    assert!(out.trim_end().ends_with("New sessions get its skills, MCP servers and tools."), "{out}");
+
+    // A server that needs a key the CLI does not have.
+    let sb = Sandbox::new();
+    let locked = Stub::start(vec![("POST", "/api/plugins/reload", 401, "{}".to_string())]);
+    sb.point_at(locked.port, None);
+    let o = sb.run(&["plugin", "add", fixture("review-kit").to_str().unwrap(), "--yes"]);
+    assert_eq!(code(&o), 0, "{}", stdout(&o));
+    assert!(stdout(&o).contains("set OPENAGENTD_ACCESS_KEY to reload it; it loads the plugin when it next starts."), "{}", stdout(&o));
+}
+
+// ── a real server ───────────────────────────────────────────────────────────
+
+/// A real `agentd server serve` in the sandbox, found through `server.yaml`.
+/// Stopped (SIGTERM, then SIGKILL) when dropped.
+#[cfg(unix)]
+struct Server {
+    child: std::process::Child,
+    port: u16,
+    log: PathBuf,
+    /// Kept open, so the server never writes to a closed pipe.
+    _stdout: Option<BufReader<std::process::ChildStdout>>,
+}
+
+#[cfg(unix)]
+impl Server {
+    fn start(sb: &Sandbox, key: Option<&str>) -> Server {
+        let log = sb.path("server.stderr");
+        let mut cmd = sb.command(&["server", "serve", "--host", "127.0.0.1", "--port", "0", "--handshake"]);
+        cmd.env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false")
+            .env("OPENAGENTD_SNAPSHOT_MAINTENANCE_ENABLED", "false")
+            .stdout(Stdio::piped())
+            .stderr(std::fs::File::create(&log).unwrap());
+        if let Some(key) = key {
+            cmd.env("OPENAGENTD_ACCESS_KEY", key);
+        }
+        let mut server = Server { child: cmd.spawn().expect("spawn agentd server"), port: 0, log, _stdout: None };
+        // A server stuck before its handshake must fail the test, not hang it.
+        let stdout = server.child.stdout.take().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut reader = BufReader::new(stdout);
+            let mut line = String::new();
+            let _ = reader.read_line(&mut line);
+            let _ = tx.send((line, reader));
+        });
+        let Ok((line, reader)) = rx.recv_timeout(Duration::from_secs(90)) else { panic!("no handshake within 90 s\n{}", server.stderr()) };
+        server._stdout = Some(reader);
+        let handshake = line.strip_prefix("OPENAGENTD_HANDSHAKE ").unwrap_or_else(|| panic!("no handshake: {line:?}\n{}", server.stderr()));
+        server.port = serde_json::from_str::<Value>(handshake).unwrap()["port"].as_u64().unwrap() as u16;
+        sb.point_at(server.port, key);
+        server
+    }
+
+    fn stderr(&self) -> String {
+        std::fs::read_to_string(&self.log).unwrap_or_default()
+    }
+}
+
+#[cfg(unix)]
+impl Drop for Server {
+    fn drop(&mut self) {
+        use nix::sys::signal::{kill, Signal};
+        let _ = kill(nix::unistd::Pid::from_raw(self.child.id() as i32), Signal::SIGTERM);
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while matches!(self.child.try_wait(), Ok(None)) {
+            if Instant::now() > deadline {
+                let _ = self.child.kill();
+                let _ = self.child.wait();
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+/// A plugin that is only code (`dev.openagentd/plugin.ts`) and a manifest.
+#[cfg(unix)]
+fn code_plugin(sb: &Sandbox, name: &str, code: &str) -> PathBuf {
+    let dir = sb.path("src").join(name);
+    write(&dir.join("plugin.json"), &json!({"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", "name": name}).to_string());
+    write(&dir.join("dev.openagentd/plugin.ts"), code);
+    dir
+}
+
+/// The words of the list row that starts with `name`.
+#[cfg(unix)]
+fn row(list: &str, name: &str) -> Vec<String> {
+    let line = list.lines().find(|l| l.trim_start().starts_with(name)).unwrap_or_else(|| panic!("no {name} row in:\n{list}"));
+    line.split_whitespace().map(str::to_string).collect()
+}
+
+#[cfg(unix)]
+#[test]
+fn a_real_server_follows_add_list_and_remove() {
+    let sb = Sandbox::new();
+    let server = Server::start(&sb, Some("real-key-0123456789"));
+    let say = |args: &[&str]| {
+        let o = sb.run(args);
+        assert_eq!(code(&o), 0, "agentd {args:?}\n{}\n{}\nserver log:\n{}", stdout(&o), stderr(&o), server.stderr());
+        stdout(&o)
+    };
+
+    let list = say(&["plugin", "list"]);
+    assert!(list.contains(&format!("from the server at 127.0.0.1:{}", server.port)) && list.contains("No plugin is installed"), "{list}");
+
+    // A plugin with a tool: the server loads it, and counts its skill, MCP server and tool.
+    let with_tool = plugin_with_tool(&sb, "changelog-tools");
+    let out = say(&["plugin", "add", with_tool.to_str().unwrap(), "--yes"]);
+    assert!(out.contains("Reloading the server's plugins...") && out.contains("✓  Server: running"), "{out}");
+    assert!(out.trim_end().ends_with("New sessions get its skills, MCP servers and tools."), "{out}");
+    // A plugin whose code does not load: the server runs the rest and says what failed.
+    let boom = code_plugin(&sb, "boom", "throw new Error(\"boom at load\");");
+    let out = say(&["plugin", "add", boom.to_str().unwrap(), "--yes"]);
+    assert!(out.contains("⚠  Server: running, with errors") && out.contains("✗ dev.openagentd/plugin.ts: boom at load"), "{out}");
+
+    let list = say(&["plugin", "list"]);
+    assert_eq!(row(&list, "changelog-tools"), ["changelog-tools", "1.2.0", "enabled", "running", "1", "skill,", "1", "MCP", "server,", "1", "tool"], "{list}");
+    assert_eq!(row(&list, "boom"), ["boom", "-", "enabled", "running", "0", "skills,", "0", "MCP", "servers,", "0", "tools"], "{list}");
+    assert!(list.contains("✗ dev.openagentd/plugin.ts: boom at load"), "{list}");
+
+    // Removing a plugin keeps its data folder (the server made it when the plugin started) and drops it from the server.
+    let out = say(&["plugin", "remove", "changelog-tools", "--yes"]);
+    assert!(out.contains("Server: reloaded; changelog-tools is gone") && out.contains("Data folder kept: "), "{out}");
+    assert!(sb.data("changelog-tools").is_dir(), "the data folder stays");
+    let list = say(&["plugin", "list"]);
+    assert!(!list.contains("changelog-tools") && list.contains("boom"), "{list}");
+
+    // Without the access key the server refuses the CLI; the plugin is still installed and loads at the next reload.
+    sb.point_at(server.port, None);
+    let list = say(&["plugin", "list"]);
+    assert!(list.contains("The server needs an access key — set OPENAGENTD_ACCESS_KEY") && list.contains("showing what is on disk") && list.contains("boom"), "{list}");
+    let out = say(&["plugin", "add", fixture("review-kit").to_str().unwrap(), "--yes"]);
+    assert!(out.contains("set OPENAGENTD_ACCESS_KEY to reload it") && sb.plugins().join("review-kit").is_dir(), "{out}");
+    sb.point_at(server.port, Some("real-key-0123456789"));
+    let out = say(&["plugin", "remove", "review-kit", "--yes"]);
+    assert!(out.contains("Server: reloaded; review-kit is gone"), "{out}");
+}

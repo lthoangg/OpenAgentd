@@ -241,8 +241,6 @@ export function Pet() {
   const [frameView, setFrameView] = useState<PetFrameView | null>(null)
   /** The lane is moving: the pet is hidden until the webview has redrawn at the new size. */
   const [shifting, setShifting] = useState(false)
-  /** The page stays put on screen and the window is a viewport over it (PetFrameView.fixed). */
-  const [fixed, setFixed] = useState(false)
   const width = frameView?.area.width ?? windowSize.width
   const height = frameView?.area.height ?? windowSize.height
   const frame: Box = frameView?.frame ?? { x: 0, y: 0, width, height }
@@ -296,9 +294,6 @@ export function Pet() {
   const startFallRef = useRef<() => void>(() => {})
   /** The window's box in the area, as last told by the shell: the offset the page draws at. */
   const frameRef = useRef<Box>({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight })
-  const fixedRef = useRef(false)
-  /** Where the page's (0, 0) is in the area: the window's corner, or the area's own with a fixed page. */
-  const drawOrigin = useCallback((): { x: number; y: number } => (fixedRef.current ? { x: 0, y: 0 } : frameRef.current), [])
   /** The frame last asked for (a bigger one is kept a while before it shrinks). */
   const wantRef = useRef<Box | null>(null)
   /** The pet's whole path in a move under way, or null: the window must hold all of it. */
@@ -344,8 +339,6 @@ export function Pet() {
     const sameArea = lastAreaRef.current?.width === next.area.width && lastAreaRef.current.height === next.area.height
     lastAreaRef.current = next.area
     frameRef.current = next.frame
-    fixedRef.current = Boolean(next.fixed)
-    setFixed(fixedRef.current)
     hiddenForRef.current = ''
     managedRef.current = true
     // Another display: the frame asked for was in the old one's pixels.
@@ -375,7 +368,7 @@ export function Pet() {
   }, [])
 
   const applyView = useCallback((next: PetView) => {
-    if (next.area && next.frame) adoptFrame({ area: next.area, frame: next.frame, fixed: next.fixed })
+    if (next.area && next.frame) adoptFrame({ area: next.area, frame: next.frame })
     setView(next)
     dispatch({ type: 'status', status: next.status })
     if (next.status.running > 0 || next.status.needsInput > 0) setLastActivity(Date.now())
@@ -616,7 +609,7 @@ export function Pet() {
   /** Tell the shell where the pet can be clicked (area pixels), and the lane it needs. */
   const reportFit = useCallback(
     (capture: boolean) => {
-      const origin = drawOrigin()
+      const origin = frameRef.current
       // The pet first (the shell reads the pointer near the first), then what hangs on it.
       const rects = [petRef.current, bubbleRef.current, badgeRef.current]
         .filter((el): el is HTMLDivElement | HTMLButtonElement => el !== null)
@@ -633,9 +626,8 @@ export function Pet() {
         if (!frameCovers(next, need)) next = growFrame(next, need)
         else if (shrinkable(next, need)) scheduleShrink()
         wantRef.current = want = next
-        // Its top-left corner moves: hide the pet until the webview has redrawn
-        // there. A fixed page does not move with the window: nothing to hide.
-        if (!fixedRef.current && !shiftingRef.current && originMoves(frameRef.current, next) && hiddenForRef.current !== JSON.stringify(next)) {
+        // Its top-left corner moves: hide the pet until the webview has redrawn there.
+        if (!shiftingRef.current && originMoves(frameRef.current, next) && hiddenForRef.current !== JSON.stringify(next)) {
           hiddenForRef.current = JSON.stringify(next)
           shiftingRef.current = true
           setShifting(true)
@@ -653,7 +645,7 @@ export function Pet() {
       lastFitRef.current = key
       void invoke(FIT_COMMAND, { rects, capture, frame: want }).catch(() => {})
     },
-    [currentNeed, drawOrigin, scheduleShrink],
+    [currentNeed, scheduleShrink],
   )
 
   // Still for a while: the lane shrinks to what the pet needs now.
@@ -743,9 +735,8 @@ export function Pet() {
   /** Where the pet is drawn now, mid-move, in area pixels; null when it cannot be measured. */
   const visualSpot = useCallback((): { x: number; y: number } | null => {
     const rect = petRef.current?.getBoundingClientRect()
-    const origin = drawOrigin()
-    return rect && rect.width > 0 ? { x: rect.left + origin.x, y: rect.top + origin.y } : null
-  }, [drawOrigin])
+    return rect && rect.width > 0 ? { x: rect.left + frameRef.current.x, y: rect.top + frameRef.current.y } : null
+  }, [])
 
   /** Stop whatever is under way where it stands, without a fall. */
   const dropLift = useCallback(() => {
@@ -1180,8 +1171,8 @@ export function Pet() {
     const spot = liftRef.current || jumpingRef.current ? visualSpot() : null
     dragRef.current = {
       // In area pixels: the window's frame may change under a drag.
-      startX: event.clientX + drawOrigin().x,
-      startY: event.clientY + drawOrigin().y,
+      startX: event.clientX + frameRef.current.x,
+      startY: event.clientY + frameRef.current.y,
       petX: spot?.x ?? xRef.current,
       petY: spot?.y ?? yRef.current,
       moved: false,
@@ -1190,8 +1181,8 @@ export function Pet() {
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current
     if (!drag) return
-    const dx = event.clientX + drawOrigin().x - drag.startX
-    const dy = event.clientY + drawOrigin().y - drag.startY
+    const dx = event.clientX + frameRef.current.x - drag.startX
+    const dy = event.clientY + frameRef.current.y - drag.startY
     if (!drag.moved && Math.hypot(dx, dy) < DRAG_SLOP) return
     if (!drag.moved) {
       drag.moved = true
@@ -1244,10 +1235,7 @@ export function Pet() {
     // It stands where it was clicked until the menu closes (the command
     // returns then), and sits a while after.
     setMenuOpen(true)
-    // The menu opens at a point in the window, which a fixed page is not drawn from.
-    const origin = drawOrigin()
-    const at = { x: event.clientX + origin.x - frameRef.current.x, y: event.clientY + origin.y - frameRef.current.y }
-    void invoke(MENU_COMMAND, { ...at, unread, questions })
+    void invoke(MENU_COMMAND, { x: event.clientX, y: event.clientY, unread, questions })
       .catch(() => {})
       .finally(() => {
         setMenuOpen(false)
@@ -1287,8 +1275,7 @@ export function Pet() {
     // The browser's own menu (Reload, Inspect) never shows over the pet.
     <div
       className={`pet-strip${shifting ? ' pet-strip--shifting' : ''}`}
-      // A fixed page already lies on the work area; else it is drawn offset by the window's corner.
-      style={{ left: fixed ? 0 : -frame.x, top: fixed ? 0 : -frame.y, width, height }}
+      style={{ left: -frame.x, top: -frame.y, width, height }}
       onContextMenu={(event) => event.preventDefault()}
     >
       {/* What the pet is doing, for screen readers: apart from the buttons. */}

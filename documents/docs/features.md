@@ -1176,10 +1176,6 @@ run from the terminal (the native Rust binary since v3.0.0).
     diff right under the row; **Open diff in tab** stays in the row's ⋯,
     right-click and long-press menus.
 - **Pet, notch, header and transcript fixes** `[v3.43.0]`:
-  - On macOS the desktop pet no longer blinks when its window's lane grows
-    or shrinks (after a fall, or before and after a jump onto a window):
-    the page stays put on screen and the window moves over it. Windows
-    keeps a short hide while the lane's top edge moves.
   - The pet no longer floats on balloons: it changes height by jumping,
     climbing a ladder or falling. The setting is now **Ladders**.
   - A jump onto a window, or back down, starts with a look at where it is

@@ -81,8 +81,6 @@ export interface PetView {
   /** The work area and the window's box in it, once the shell has placed the window. */
   area?: PetArea | null
   frame?: Box | null
-  /** See PetFrameView.fixed. */
-  fixed?: boolean
 }
 
 export type BubbleTone = 'input' | 'done' | 'failed' | 'remind'
@@ -750,12 +748,6 @@ export interface PetArea {
 export interface PetFrameView {
   area: PetArea
   frame: Box
-  /**
-   * The page is fixed on screen over the whole work area and the window is
-   * only a viewport over it (macOS): the page draws in area pixels with no
-   * offset, and never hides the pet while the window's corner moves.
-   */
-  fixed?: boolean
 }
 
 /**

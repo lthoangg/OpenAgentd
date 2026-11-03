@@ -1078,56 +1078,6 @@ describe('Pet changing height', () => {
   // work area ("area" pixels) through it, asks the shell for the lane it
   // needs, and hides the pet while the lane's top edge moves.
   describe('in a lane window', () => {
-    // macOS: the page lies on the whole work area, fixed on screen, and the
-    // window is a viewport over it. Nothing is offset and nothing hides.
-    describe('over a fixed page', () => {
-      const area = { width: 1024, height: 768 }
-      const lane = { x: 0, y: 664, width: 1024, height: 104 }
-      const full = { x: 0, y: 0, width: 1024, height: 768 }
-      type Fit = { rects: Array<{ x: number; y: number; width: number; height: number }>; capture: boolean; frame?: typeof lane }
-      const lastFit = () => fits().at(-1) as unknown as Fit
-      const strip = () => document.querySelector('.pet-strip') as HTMLElement
-      const shifting = () => strip().classList.contains('pet-strip--shifting')
-      const fixedLane = () => ({ settings: settings(), area, frame: lane, fixed: true })
-
-      it('draws at the area origin and reports hit areas as the page sees them', async () => {
-        await scene(fixedLane(), () => {
-          expect(strip().style.left).toBe('0px')
-          expect(strip().style.top).toBe('0px')
-          expect(petAt().y).toBe(720)
-          // The page's own pixels are area pixels.
-          petEl().getBoundingClientRect = () => ({ left: 300, top: 720, width: 64, height: 48, right: 364, bottom: 768, x: 300, y: 720, toJSON: () => ({}) })
-          emit('pet-frame', { area, frame: lane, fixed: true })
-          emit('pet-state', { ...view, settings: settings(), area, frame: lane, fixed: true })
-          expect(lastFit().rects[0]).toEqual({ x: 296, y: 716, width: 72, height: 56 })
-        })
-      })
-
-      it('never hides the pet while the window grows to the whole area and back', async () => {
-        await scene(fixedLane(), (timers) => {
-          fireEvent.pointerDown(petEl(), { button: 0, clientX: 310, clientY: 730 })
-          fireEvent.pointerMove(petEl(), { clientX: 310, clientY: 700 })
-          expect(lastFit().frame).toEqual(full)
-          expect(shifting()).toBe(false)
-          // The pointer is 30 up in the area: the pet followed, whatever the window's frame.
-          expect(petAt().y).toBe(720 - 30)
-          emit('pet-frame', { area, frame: full, fixed: true })
-          act(() => timers.tick(FRAME_SETTLE_MS))
-          fireEvent.pointerMove(petEl(), { clientX: 310, clientY: 600 })
-          expect(petAt().y).toBe(720 - 130)
-          expect(shifting()).toBe(false)
-          expect(strip().style.top).toBe('0px')
-        })
-      })
-
-      it('opens its menu at the click in window pixels', async () => {
-        await scene(fixedLane(), () => {
-          fireEvent.contextMenu(petEl(), { clientX: 310, clientY: 730 })
-          expect(calls.find(([cmd]) => cmd === 'pet_menu')?.[1]).toMatchObject({ x: 310, y: 730 - lane.y })
-        })
-      })
-    })
-
     const area = { width: 1024, height: 768 }
     const lane = { x: 0, y: 664, width: 1024, height: 104 }
     const full = { x: 0, y: 0, width: 1024, height: 768 }

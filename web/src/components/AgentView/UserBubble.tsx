@@ -563,7 +563,9 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
              depend on the metadata, and a pending prompt has neither yet. */}
             {/* The latest prompt shows the row at rest. Earlier ones reveal it on
                 hover and keyboard focus; touch has no hover, so it always shows there. */}
-            <div className={cn('flex items-center gap-1 transition-opacity duration-(--motion-fast) focus-within:opacity-100 pointer-coarse:opacity-100', actionsAtRest || showTime ? 'opacity-100' : 'opacity-0')}>
+            {/* A phone draws Edit and Copy 28px and close together, as the
+                answer's footer does; ``touch-hit`` keeps each a 36px target. */}
+            <div className={cn('flex items-center gap-1 transition-opacity duration-(--motion-fast) focus-within:opacity-100 pointer-coarse:opacity-100 max-md:pointer-coarse:gap-0', actionsAtRest || showTime ? 'opacity-100' : 'opacity-0')}>
               {modelId && (
                 <span
                   data-prompt-model
@@ -583,7 +585,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                         type="button"
                         aria-disabled="true"
                         onClick={(event) => event.preventDefault()}
-                        className="flex size-6 cursor-not-allowed items-center justify-center rounded-xs text-(--color-text-muted) opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9"
+                        className="relative touch-hit flex size-6 cursor-not-allowed items-center justify-center rounded-xs text-(--color-text-muted) opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9 max-md:pointer-coarse:size-7"
                         aria-label="Edit message, available when this turn ends"
                       >
                         <Pencil size={13} aria-hidden="true" />
@@ -599,7 +601,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                     render={
                       <button
                         onClick={onEdit}
-                        className="flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-9"
+                        className="relative touch-hit flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-9 max-md:pointer-coarse:size-7"
                         aria-label="Edit message"
                       >
                         <Pencil size={13} aria-hidden="true" />
@@ -615,7 +617,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                   render={
                     <button
                       onClick={handleCopy}
-                      className="flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-9"
+                      className="relative touch-hit flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-9 max-md:pointer-coarse:size-7"
                       aria-label="Copy message"
                     >
                       {copied ? (

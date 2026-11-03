@@ -110,6 +110,34 @@ describe("AssistantTurn — which blocks count as streaming", () => {
 })
 
 describe("AssistantTurnFooter", () => {
+  // An iPhone mini fits the row on one line: 28px controls drawn close
+  // together, each still a 36px touch target (``touch-hit``). Tablets keep 36px.
+  it("draws its actions 28px on a phone, close together, with a 36px hit area", () => {
+    const blocks: ContentBlock[] = [{
+      id: "b1",
+      type: "text",
+      content: "Assistant answer",
+      timestamp: new Date("2026-05-23T12:34:56Z"),
+      responseDurationMs: 1234,
+    }]
+    const changed = [{ path: "a.ts", additions: 3, deletions: 1 }] as never
+
+    render(<AssistantTurnFooter turnBlocks={blocks} size="roomy" changedFiles={changed} onEditPrompt={() => {}} onUndo={() => {}} />)
+
+    const phoneSmall = (el: Element, size: string) => {
+      const classes = el.className.split(/\s+/)
+      expect(classes).toContain(`max-md:pointer-coarse:${size}`)
+      expect(classes).toContain("touch-hit")
+      expect(classes).toContain("relative")
+    }
+    for (const name of ["Copy response", "Edit prompt", "Undo"]) phoneSmall(screen.getByRole("button", { name }), "size-7")
+    phoneSmall(screen.getByRole("button", { name: /files? changed/ }), "h-7")
+    phoneSmall(screen.getByRole("button", { name: /^Turn details/ }), "min-h-7")
+    const group = screen.getByRole("group", { name: "Turn actions" })
+    expect(group.className.split(/\s+/)).toContain("max-md:pointer-coarse:gap-x-0")
+    expect(group.parentElement?.className.split(/\s+/)).toContain("max-md:pointer-coarse:gap-1")
+  })
+
   it("shows response duration after copy, continue, and timestamp controls", () => {
     const blocks: ContentBlock[] = [{
       id: "b1",

@@ -44,6 +44,16 @@ describe("AgentView — workspace messages", () => {
     expect(screen.getByRole("button", { name: "Edit message" })).toBeTruthy()
   })
 
+  it("draws the prompt's Edit and Copy 28px on a phone, like the answer's footer, keeping a 36px hit area", () => {
+    render(<AgentView blocks={[request]} currentBlocks={[]} isWorking={false} />)
+    for (const name of ["Edit message", "Copy message"]) {
+      const classes = screen.getByRole("button", { name }).className.split(/\s+/)
+      expect(classes).toContain("max-md:pointer-coarse:size-7")
+      expect(classes).toContain("touch-hit")
+      expect(classes).toContain("relative")
+    }
+  })
+
   it("renders the chip as plain text without a navigation handler", () => {
     const { container } = render(<AgentView blocks={[request]} currentBlocks={[]} isWorking={false} />)
     expect(screen.queryByRole("button", { name: /Open the sending session/ })).toBeNull()

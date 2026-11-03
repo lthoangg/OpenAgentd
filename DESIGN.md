@@ -1060,7 +1060,9 @@ Copy is a sibling, always visible, and says "Copied" for a moment.
 the actions show at rest as muted 24px icon buttons (13px lucide icons, the
 same size as the prompt's Edit and Copy): Copy · Edit prompt · Undo,
 then the files pill (`FileDiff`, count, `+a -d`). Their words are the
-names and tooltips. Older answers keep Copy and the meta line. An
+names and tooltips. On a phone the footer and the prompt's actions are drawn
+28px and close together, so the row fits an iPhone mini; `touch-hit` keeps
+each a 36px target. Older answers keep Copy and the meta line. An
 action that cannot run now stays visible, dimmed (`aria-disabled`, so it
 keeps focus), and its tooltip says when it can. The meta line names the
 model and the account the turn ran on. The files pill opens the

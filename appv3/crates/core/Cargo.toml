@@ -15,7 +15,6 @@ tracing.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 directories.workspace = true
-sha2.workspace = true
 regex.workspace = true
 base64 = "0.23"
 unicode-normalization = "0.1"

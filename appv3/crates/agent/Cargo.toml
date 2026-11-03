@@ -30,7 +30,6 @@ regex.workspace = true
 sha2.workspace = true
 rand = "0.10"
 httpdate = "1"
-unicode-normalization = "0.1"
 
 [dev-dependencies]
 tempfile = "3"

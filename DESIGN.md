@@ -451,7 +451,8 @@ control or menu marks its choice. Paper stays light: a sand fill (`#E3D6BA`)
 with ink, a pale rose for a destructive row, and a light tooltip card with a
 hairline edge; no Bark blocks. Dark is **not** the near-white accent (a cream
 block on a dark window glows brighter than the words around it) but a raised
-warm tone (`#4A3B2D`). Increase contrast lifts both fills to 3:1 against the
+warm tone (`#3E3227`), about as soft on its keycap track (1.26:1) as the
+paper sand on its own (1.19:1). Increase contrast lifts both fills to 3:1 against the
 track (Bark in light). `token-pairs.test.ts` holds the range and keeps light
 fills light and dark fills well below the text tone, and the lint
 (`accent-selection-fill`) stops a selection reaching for the accent.
@@ -502,7 +503,7 @@ Front-matter tokens carry the canonical light values; substitute these when
 | `bg-card` | `#FFFBF1` | `#1C1813` |
 | `bg-key` | `#F0E9D4` | `#2A2219` |
 | `bg-send` | `#2D241B` | `#F5EBD8` |
-| `fill-selected` / `on-selected` | `#E3D6BA` / `#1A1714` | `#4A3B2D` / `#F5EBD8` |
+| `fill-selected` / `on-selected` | `#E3D6BA` / `#1A1714` | `#3E3227` / `#F5EBD8` |
 | `fill-highlight` / `on-highlight` (menu row under pointer or keyboard) | `#EFE7D3` / `#1A1714` | `#372D22` / `#F5EBD8` |
 | `fill-key-hover` (keycap control, hovered) | `#E9E0C8` | `#332A20` |
 | `fill-danger` / `on-danger` (highlighted destructive row) | `#F7DCD6` / `#991B1B` | `#6B2724` / `#F5EBD8` |

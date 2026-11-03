@@ -153,6 +153,15 @@ impl Sidecar {
         // roots so local desktop testing does not share production state.
         let app_env = std::env::var("OPENAGENTD_ENV")
             .unwrap_or_else(|_| "production".to_string());
+        // The dev identity (`OpenAgentd (dev).app`, opened from Finder with no
+        // environment of its own) gets the same development state as
+        // `make dev-bundled`, never the production database and agents.
+        let dev_env = dev_identity_env(&app.config().identifier, |key| std::env::var_os(key).is_some());
+        let app_env = dev_env
+            .iter()
+            .find(|(key, _)| *key == "OPENAGENTD_ENV")
+            .map(|(_, value)| value.clone())
+            .unwrap_or(app_env);
 
         // Open backend.log up-front and hand it to the child as stderr.
         // ``Stdio::from(File)`` causes the kernel to write child stderr
@@ -180,6 +189,9 @@ impl Sidecar {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::from(stderr_for_child));
+        for (key, value) in dev_env.iter().filter(|(key, _)| *key != "OPENAGENTD_ENV") {
+            cmd.env(key, value);
+        }
 
         // Windows-only: tell the child to also persist the handshake to
         // a file.  The backend's ``server serve`` checks this env var and
@@ -490,6 +502,31 @@ fn resolve_backend_bin(sidecar_root: &Path) -> Result<PathBuf> {
     ))
 }
 
+/// The development state `make dev` and `make dev-bundled` share:
+/// `<repo>/.openagentd/dev`, fixed when the shell is built from this checkout.
+const DEV_DATA_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../.openagentd/dev");
+
+/// The environment the dev identity's sidecar runs with: development mode
+/// and the repo's dev state, for each variable the caller has not set
+/// (`is_set`). Empty for the production identity, which shares the XDG
+/// state of a terminal `agentd` install.
+fn dev_identity_env(identifier: &str, is_set: impl Fn(&str) -> bool) -> Vec<(&'static str, String)> {
+    if !identifier.ends_with(".dev") {
+        return Vec::new();
+    }
+    [
+        ("OPENAGENTD_ENV", "development".to_string()),
+        ("OPENAGENTD_DATA_DIR", format!("{DEV_DATA_ROOT}/data")),
+        ("OPENAGENTD_CONFIG_DIR", format!("{DEV_DATA_ROOT}/config")),
+        ("OPENAGENTD_STATE_DIR", format!("{DEV_DATA_ROOT}/state")),
+        ("OPENAGENTD_CACHE_DIR", format!("{DEV_DATA_ROOT}/cache")),
+        ("OPENAGENTD_WORKSPACE_DIR", format!("{DEV_DATA_ROOT}/workspace")),
+    ]
+    .into_iter()
+    .filter(|(key, _)| !is_set(key))
+    .collect()
+}
+
 /// Drop a Windows ``\\?\`` extended-length prefix from *path*, if present.
 ///
 /// Tauri's resource resolver canonicalises paths through Windows APIs that
@@ -690,9 +727,25 @@ fn resume_primary_thread(child: &Child) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        redact_handshake_token, rotate_backend_log, strip_unc_prefix, MAX_BACKEND_LOG_BYTES,
+        dev_identity_env, redact_handshake_token, rotate_backend_log, strip_unc_prefix, DEV_DATA_ROOT,
+        MAX_BACKEND_LOG_BYTES,
     };
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn the_dev_app_runs_its_sidecar_on_the_repos_dev_state() {
+        let env = dev_identity_env("com.openagentd.desktop.dev", |_| false);
+        let get = |key: &str| env.iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone());
+        assert_eq!(get("OPENAGENTD_ENV").as_deref(), Some("development"));
+        assert_eq!(get("OPENAGENTD_DATA_DIR"), Some(format!("{DEV_DATA_ROOT}/data")));
+        assert_eq!(get("OPENAGENTD_WORKSPACE_DIR"), Some(format!("{DEV_DATA_ROOT}/workspace")));
+        assert_eq!(env.len(), 6);
+        // What the caller set (make dev-bundled, or a hand-picked dir) wins.
+        let set = dev_identity_env("com.openagentd.desktop.dev", |key| key == "OPENAGENTD_DATA_DIR");
+        assert!(set.iter().all(|(k, _)| *k != "OPENAGENTD_DATA_DIR"));
+        // The production app keeps production state.
+        assert!(dev_identity_env("com.openagentd.desktop", |_| false).is_empty());
+    }
 
     // ``strip_unc_prefix`` is pure string manipulation, so these run on
     // every platform — the v1.22.6 regression (verbatim ``\\?\`` path

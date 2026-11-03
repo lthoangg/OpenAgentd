@@ -24,7 +24,7 @@ one holds the file formats, recipes, and when changes take effect.
 | Skills | `{SKILL_DIR}/references/skills.md` | install from a URL, write a new skill, discovery order, overrides |
 | Slash commands | `{SKILL_DIR}/references/commands.md` | where command files live, format, `$ARGUMENTS`, names to avoid |
 | Workspace groups | `{SKILL_DIR}/references/workspace-groups.md` | which repos may message each other; join or leave a group |
-| Plugins | `{SKILL_DIR}/references/plugins.md` | provider and tool plugins, where they live, reload, review |
+| Plugins | `{SKILL_DIR}/references/plugins.md` | plugin folders (skills, MCP servers, tools), `agentd plugin add/check`, single-file provider and hook plugins |
 | Plugin API types | `{SKILL_DIR}/references/openagentd.d.ts` | full `openagentd` module typings — read when writing a plugin |
 | Image / video | `{SKILL_DIR}/references/media.md` | `multimodal.yaml` for `generate_image` / `generate_video` |
 

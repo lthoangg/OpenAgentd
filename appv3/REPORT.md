@@ -8,8 +8,8 @@ through an embedded QuickJS host for TypeScript/JavaScript plugin files
 logging, Alembic migrations and PyYAML-exact YAML. v3 contains no plugin code
 and reads no Python files. v3 is now the shipped backend: the CLI release
 binaries and the desktop sidecar are built from `appv3/`, and `make run` /
-`make dev` start it. v2 (`app/`) is end-of-life and remains the reference
-for wire and on-disk formats.
+`make dev` start it. The Python v2 backend is end-of-life (its source is no
+longer in this tree) and remains the reference for wire and on-disk formats.
 v3 shares v2's DB and config files. What still behaves differently is
 listed in §3. macOS/Linux/Windows support, the in-process `gix` snapshot
 engine, the new grep and live workspace refresh are in §6.

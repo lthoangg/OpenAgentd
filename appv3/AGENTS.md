@@ -2,9 +2,9 @@
 
 `appv3/` is the native `agentd` backend. It ships as the CLI release
 binary and as the desktop sidecar (`desktop/sidecar-bundle/bin/agentd`).
-It reads the database and config files of the end-of-life Python backend in
-`app/`. Its HTTP/SSE/WebSocket API started as v2's and now differs where
-`REPORT.md` says.
+It reads the database and config files of the end-of-life Python v2 backend,
+whose source is no longer in this tree. Its HTTP/SSE/WebSocket API started as
+v2's and now differs where `REPORT.md` says.
 
 ## Crate map
 

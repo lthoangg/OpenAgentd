@@ -979,7 +979,7 @@ hovered; `danger` is the soft error fill.
 - Line height tightens on coarse pointers: `leading-relaxed` is 1.5 (1.625 on desktop) and chat/plan prose (`.oa-prose`) is 1.6 (1.75 on desktop), so phone screens read denser. Text sizes do not change.
 - On phones the header is 40px with 36px controls (`max-md:pointer-coarse:size-9`). On wider touch screens, controls inside the 36px header stay within that height (`pointer-coarse:size-9`), because overlays are positioned from `--spacing-app-header`.
 - Tabs (`ui/tabs`) are 36px per trigger on touch: the list grows to 42px around them.
-- The phone drawer footer has Settings, Usage and theme as icons, and the server as its dot plus name (`built-in`, a saved server's name, or its host), filling the free width and truncating. The phone header has four controls: sidebar, title, Review panel and More. Model, thinking, account and context live in the run deck under the composer on every screen, never in the header or status bar. The review panel's phone tab strip shows its actions as icons only (+, refresh).
+- The phone drawer footer has Settings, Usage and theme as icons, and the server as its dot plus name (`built-in`, a saved server's name, or its host), filling the free width and truncating. The phone header has four controls: sidebar, title, Review panel and More (plus ↰ Open the lead agent in a subagent's session). Model, thinking, account and context live in the run deck under the composer on every screen, never in the header or status bar. The review panel's phone tab strip shows its actions as icons only (+, refresh).
 - Grow the control itself wherever the layout allows. Two exceptions extend an invisible hit area with a `::before` instead, because growing the element would reflow text or a dense strip: links and file references inside prose (`.oa-prose a`, `[data-file-ref]`, 36px tall) and small icon buttons in code-block and tool-detail headers and in the 32px view toolbar (`.touch-hit` on a positioned element, 36×36 around it; `DOCK_ACTION_BUTTON_CLASS` is 28px on touch, 36px in the tab bar). Keep such targets apart so neighbours do not steal each other's taps.
 - Rows with a long-press action sheet set `-webkit-touch-callout: none` (`LongPressButton` does this while enabled).
 
@@ -1143,9 +1143,11 @@ title; the command palette pill in the middle ("Command palette" and its
 shortcut from `md:`, the icon alone below); Task list and Review panel on
 the right. The session title renames in place: double-click it, or press F2
 or Enter on it; a single click does nothing, so a stray click keeps the
-title. A subagent's title is read-only, like its sidebar row. Phones keep
-four controls: the menu (drawer), the title over its workspace, Review panel
-and More. Every header control is 36px on touch, tablets included.
+title. A subagent's title is read-only, like its sidebar row, and its header
+leads with ↰ **Open the lead agent** (before the title on desktop, after the
+menu on phones). Phones keep four controls (five in a subagent's session):
+the menu (drawer), the title over its workspace, Review panel and More.
+Every header control is 36px on touch, tablets included.
 
 **Notices** (toasts, the update card, the LSP prompt) stack at the top right
 under the header, newest first, so the run deck and Send stay clear. Phones

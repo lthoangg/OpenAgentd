@@ -1134,6 +1134,27 @@ run from the terminal (the native Rust binary since v3.0.0).
     undo notice and the **Jump to latest** chip.
   - Typing a message that grows to several lines no longer scrolls the
     transcript up under the composer, hiding the last answer's footer.
+- **Back to the lead agent in one click** `[v3.42.0]`:
+  - A subagent's session has an **Open the lead agent** button (↰) in its
+    header, before the title, on desktop and phones, next to the existing
+    **Return to main agent** banner.
+  - The lead's messages in a subagent's transcript (its task and follow-ups)
+    carry a **From lead** chip that opens the lead's session, and read
+    without the `[Lead]:` / `[Task from Lead]:` prefix. They have no
+    **Edit**, and the turn under them offers no **Edit prompt** or retry,
+    since those would rewind or resend inside the subagent.
+  - A message from another workspace's agent that is still queued shows a
+    clickable **From <workspace>** chip that opens the sending session, as
+    the delivered prompt's chip does.
+- **The agent can use a preview without the Preview tab open** `[v3.42.0]`:
+  while the app is open on desktop, a page the agent opened stays loaded out
+  of sight when no Preview tab shows it (the tab was closed, or **Previews**
+  waits for a click), so snapshot, click, fill and the console keep working. It is
+  dropped after 15 minutes without agent use, and opening the Preview tab
+  takes over from it. Focus the page takes (a fill) goes back to where you
+  were typing. A page action right after `open` waits up to 8 seconds for the
+  page to load instead of failing at once. Phones still need the workspace's
+  Preview sheet.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.
@@ -3021,7 +3042,8 @@ MCP.
   fails `[v3.5.0]`. Session settings list `preview` among the agent's tools
   in coding workspaces `[v3.5.0]`.
   Only loopback URLs are accepted, never the OpenAgentd API port. Everything
-  works only while the page is open in the Preview tab; there is no headless
+  works only while the page is open in the Preview tab *(since v3.42.0, or
+  loaded out of sight while the desktop app is open)*; there is no headless
   browser and no screenshots.
 - **Hints on wrong tool names and paths** `[v3.28.0]` — calling a tool by a
   name from another harness (such as `bash`) answers "Did you mean …?" and

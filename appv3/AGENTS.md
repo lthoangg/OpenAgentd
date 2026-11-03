@@ -12,13 +12,16 @@ v2's and now differs where `REPORT.md` says.
   (`security.rs`), errors, platform plumbing (`which`, `home`, `proctree`).
 - `db`: SQLite pool, queries (reading v2-era rows too), and the replayed
   Alembic chain.
+- `kernel`: module lifecycle (start in dependency order, stop in reverse,
+  per-module state) and typed contributions tagged with their module.
 - `api`: axum routes, middleware (auth, Origin/Host guard, CORS, panic → 500),
-  startup/shutdown.
+  startup/shutdown through the kernel (`modules.rs`, `plugins.rs`).
 - `agent`: turn loop, hooks, sessions, SSE broadcaster and stream store,
   snapshots, scheduler.
-- `providers`, `tools`, `mcp`, `memory`, `terminal`, `jsplugin`: the model
-  providers, built-in tools, MCP client, memory pages, PTY terminal, and
-  the QuickJS plugin host.
+- `providers`, `tools`, `mcp`, `memory`, `terminal`, `jsplugin`, `plugins`:
+  the model providers, built-in tools, MCP client, memory pages, PTY
+  terminal, the QuickJS plugin host, and the plugin folder reader
+  (manifest, skills, MCP servers, permissions).
 - `cli`: the `agentd` binary (`server serve` is the sidecar entry point).
 - `crates/*/data/`: data each crate compiles in (tool definitions, prompts,
   the provider catalog, built-in skills and commands, MIME types).
@@ -27,6 +30,30 @@ v2's and now differs where `REPORT.md` says.
   it (`agent/src/events.rs`; debug builds panic), and
   `web/src/__tests__/api/sse-contract.test.ts` checks the web unions. A new
   event needs the JSON entry, the Rust producer, and the web type/handler.
+
+## Modules
+
+Every service the server starts is a kernel module; `GET /api/modules` and
+`agentd doctor` show their state.
+
+- Built-in modules are the `BUILTIN` table in `api/src/modules.rs`. Start order
+  is dependency order, then table order; stop order is the reverse, and
+  `builtin_modules_stop_in_the_servers_shutdown_order` pins it. Place a new
+  entry where its stop belongs, and update that test only for a deliberate
+  change.
+- `deps` lists hard requirements only: a module whose dependency failed is
+  blocked. Mark a module `critical` only when the server must not run
+  without it; any other failure leaves the rest running.
+- A module hands out what it provides in `register` (`Registrar::add`, no
+  I/O there), and consumers read it with `Kernel::contributions::<C>()`.
+  Contributions are removed when their module stops, so restarting one
+  replaces them (examples: `agent::plugins::ExtraTool`,
+  `agent::skills::PluginSkills`, `mcp::plugin::PluginServers`).
+- Each plugin folder is a `plugin:<name>` module added by
+  `api::plugins::reload()`. Start and stop hooks must not call kernel
+  operations (`add`, `restart`, `remove`).
+- Test a module by booting a `Kernel::new()` with only the modules it needs
+  (`kernel/src/tests.rs`).
 
 ## Safety constraints
 

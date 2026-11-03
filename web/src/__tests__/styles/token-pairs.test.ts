@@ -66,6 +66,12 @@ describe.each(THEMES)('token pairs ($name)', ({ name, t }) => {
     expect(contrast(t['--color-text-on-danger'], t['--color-fill-danger'])).toBeGreaterThanOrEqual(4.5)
   })
 
+  it('marks a chosen segment on the keycap track (Code / Plan) as softly on dark as on paper', () => {
+    // On dark a 1.46:1 step read as a block beside the soft hovers; paper is 1.19:1.
+    const ratio = contrast(t['--color-fill-selected'], t['--bg-key'])
+    expect({ shows: ratio >= 1.15, soft: ratio <= 1.3 }).toEqual({ shows: true, soft: true })
+  })
+
   it('lights the menu row under the pointer or keyboard with a wash, quieter than a chosen segment', () => {
     const fill = t['--color-fill-highlight']
     expect(contrast(t['--color-text-on-highlight'], fill)).toBeGreaterThanOrEqual(4.5)

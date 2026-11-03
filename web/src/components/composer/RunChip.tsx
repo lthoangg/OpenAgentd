@@ -16,7 +16,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { lazySurface } from '@/lib/lazy-surface'
-import { splitModelId, thinkingLevelLabel } from '@/lib/run-settings'
+import { splitModelId, thinkingLevelLabel, thinkingLevelShortLabel } from '@/lib/run-settings'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/useUIStore'
 import type { RunSettings } from './useRunSettings'
@@ -39,7 +39,8 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
   const { provider, model } = settings.model ? splitModelId(settings.model) : { provider: '', model: 'No model' }
   const level = settings.thinkingLevel ? thinkingLevelLabel(settings.thinkingLevel) : null
   const account = settings.pinnedAccount?.label ?? null
-  const meta = [level, account].filter(Boolean).join(' · ')
+  // The chip is narrow on a phone: it shows the short level name; its label says it whole.
+  const meta = [settings.thinkingLevel ? thinkingLevelShortLabel(settings.thinkingLevel) : null, account].filter(Boolean).join(' · ')
   const shortcut = shortcutLabel(APP_SHORTCUTS.sessionSettings, os)
   const label = [
     `Model ${settings.model ?? 'not set'}`,

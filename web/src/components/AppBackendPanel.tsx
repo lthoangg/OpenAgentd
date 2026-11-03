@@ -6,8 +6,11 @@
  * Settings (the loading screen, the footer health dot, a scanned connect
  * link). All connection logic lives here; the hosts only provide chrome.
  *
- * Top to bottom: the current server, the saved servers (the built-in server
- * first), and, in the desktop shell, network access for other devices.
+ * Top to bottom: the servers (the built-in server first, then the saved
+ * ones) and, in the desktop shell, network access for other devices. There
+ * is no separate "current server" card: the connected server's row carries
+ * the **In use** badge, and a connected server that is not saved gets a row
+ * of its own.
  *
  * A row's **Use** switches the app to it and **In use** marks the one the
  * app talks to now. **Edit** opens that server's form right under its row,
@@ -21,7 +24,6 @@ import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { Input } from '@/components/ui/input'
-import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { NetworkAccessCard } from '@/components/NetworkAccessCard'
@@ -62,6 +64,13 @@ const DEFAULT_SERVERS: SavedAppServer[] = [{ base_url: 'http://127.0.0.1:4082', 
 
 /** How often the background connection states refresh while the panel is open. */
 const WATCH_POLL_MS = 3000
+
+/** The server the app is connected to when it is not in the saved list (normalized), else null. */
+function unlistedConnectedUrl(status: AppBackendStatus | null, servers: SavedAppServer[]): string | null {
+  if (!status || !(status.mode === 'external' || status.external)) return null
+  const url = normalizeServerBaseUrl(status.base_url)
+  return servers.some((server) => normalizeServerBaseUrl(server.base_url) === url) ? null : url
+}
 
 /** The line under a saved server: its background connection, or that it is not watched. */
 function watchNote(state: ServerWatchState | undefined, enabled: boolean): { text: string; tone: 'ok' | 'warn' | 'error' | 'muted' } | null {
@@ -155,9 +164,11 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       if (prefill) fillForm({ kind: 'add' }, prefill.baseUrl, hostnameOf(prefill.baseUrl), prefill.accessKey)
       else setForm(null)
       const servers = next?.servers ?? DEFAULT_SERVERS
-      setServerHealth(Object.fromEntries(servers.map((server) => [normalizeServerBaseUrl(server.base_url), 'checking'])))
-      for (const server of servers) {
-        const normalized = normalizeServerBaseUrl(server.base_url)
+      // The connected server is checked too, saved or not.
+      const unlisted = unlistedConnectedUrl(next, servers)
+      const toCheck = [...servers.map((server) => normalizeServerBaseUrl(server.base_url)), ...(unlisted ? [unlisted] : [])]
+      setServerHealth(Object.fromEntries(toCheck.map((url) => [url, 'checking'])))
+      for (const normalized of toCheck) {
         void pingServer(normalized).then((online) => {
           if (cancelled) return
           setServerHealth((prev) => ({ ...prev, [normalized]: online ? 'online' : 'offline' }))
@@ -376,14 +387,9 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   // Browser builds have no shell status and a relative `/api` base: show the page origin.
   const currentUrl = status?.base_url || apiBaseUrl().replace(/\/api$/, '') || window.location.origin
   const onExternal = status?.mode === 'external' || Boolean(status?.external)
-  const activeServer = onExternal
-    ? servers.find((s) => normalizeServerBaseUrl(s.base_url) === normalizeServerBaseUrl(currentUrl))
-    : undefined
-  const currentTitle = !status
-    ? 'Current: this server'
-    : onExternal
-      ? `Current: ${activeServer?.name || hostnameOf(currentUrl) || 'a saved server'}`
-      : 'Current: Built-in server'
+  // A connected server that is not in the saved list still gets a row. Without
+  // shell status (a browser) the one server is the page's own.
+  const unlistedUrl = status ? unlistedConnectedUrl(status, servers) : normalizeServerBaseUrl(currentUrl)
   const tested = testedBaseUrl !== null && testedBaseUrl === normalizeServerBaseUrl(baseUrl)
   const editTarget = form?.kind === 'edit' ? form : null
   // A rename saves at once; a new address or key waits for Test.
@@ -414,18 +420,6 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
 
   return (
     <div className="space-y-8">
-      {/* Current connection */}
-      <SectionCard>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4 sm:px-5">
-          <span className="size-2.5 shrink-0 rounded-full bg-(--accent-green-text)" aria-hidden="true" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-(--color-text)">{currentTitle}</p>
-            <p className={cn('mt-0.5 truncate font-mono', TEXT.hint)}>{currentUrl}</p>
-          </div>
-          {status ? <Chip>{onExternal ? 'Saved server' : 'Built-in server'}</Chip> : null}
-        </div>
-      </SectionCard>
-
       {scanned ? (
         <Callout tone="info" role="status">
           Scanned from another device. Check the server, then save and use it.
@@ -443,7 +437,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             health={status?.sidecar_running ? 'online' : undefined}
             title="Built-in server"
             subtitle={`Runs inside this app · ${status?.sidecar_running ? 'Running' : 'Stopped'}`}
-            inUse={!status?.external}
+            address={status && !status.external ? currentUrl : undefined}
+            inUse={status !== null && !status.external}
           >
             {status?.sidecar_running ? (
               <>
@@ -464,9 +459,20 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             )}
           </ServerRow>
         ) : null}
+        {unlistedUrl ? (
+          <ServerRow
+            health={status ? serverHealth[unlistedUrl] : 'online'}
+            title={status ? unlistedUrl : 'This server'}
+            mono={Boolean(status)}
+            subtitle={status ? 'Not in your saved servers' : unlistedUrl}
+            inUse
+          >
+            {null}
+          </ServerRow>
+        ) : null}
         {servers.map((server) => {
           const normalizedServerUrl = normalizeServerBaseUrl(server.base_url)
-          const active = status?.mode === 'external' && normalizeServerBaseUrl(status.base_url) === normalizedServerUrl
+          const active = onExternal && normalizeServerBaseUrl(currentUrl) === normalizedServerUrl
           const label = server.name || server.base_url
           const enabled = server.enabled === true
           const note = watchable ? watchNote(watchStates[normalizedServerUrl], enabled) : null
@@ -706,6 +712,7 @@ function ServerRow({
   mono = false,
   note = null,
   inUse,
+  address,
   children,
 }: {
   health: Health | undefined
@@ -717,6 +724,8 @@ function ServerRow({
   note?: { text: string; tone: 'ok' | 'warn' | 'error' | 'muted' } | null
   /** The app talks to this server now. */
   inUse: boolean
+  /** Where the server answers, when the title does not already say (a mono line under the subtitle). */
+  address?: string
   children: React.ReactNode
 }) {
   return (
@@ -726,10 +735,13 @@ function ServerRow({
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
             <span className={cn('truncate', TEXT.label, mono && 'font-mono')}>{title}</span>
-            {inUse ? <Chip>In use</Chip> : null}
+            {inUse ? <Chip tone="success" dot>In use</Chip> : null}
           </span>
           {subtitle ? (
             <span className={cn('mt-0.5 block truncate', TEXT.hint, subtitle.includes('://') && 'font-mono')}>{subtitle}</span>
+          ) : null}
+          {address ? (
+            <span className={cn('mt-0.5 block truncate font-mono', TEXT.hint)}>{address}</span>
           ) : null}
           {note ? (
             <span

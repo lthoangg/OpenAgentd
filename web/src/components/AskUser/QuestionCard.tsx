@@ -343,9 +343,13 @@ export function QuestionCard({
       )}
 
       <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-3 pb-3">
-        <span id={captionId} className="min-w-0 flex-1 text-xs text-(--color-text-muted)">
-          {caption}
-        </span>
+        {/* 12rem at least: on a phone the buttons wrap under the caption
+            rather than squeezing it to one word a line. */}
+        {caption && (
+          <span id={captionId} className="flex-1 basis-48 text-xs text-(--color-text-muted)">
+            {caption}
+          </span>
+        )}
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <Button type="button" variant="ghost" size="sm" onClick={onDismiss} disabled={submitting}>
             Dismiss

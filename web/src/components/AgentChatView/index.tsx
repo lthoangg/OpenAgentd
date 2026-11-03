@@ -859,7 +859,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           workspacePanel={workspacePanel}
 
         onWorkspaceFiles={handleWorkspaceFiles}
-        onToggleRunPicker={handleToggleRunPicker}
         showMobileActions={showMobileActions}
         setShowMobileActions={handleSetShowMobileActions}
         mobileActionsDragOffset={actionsDragOffset}

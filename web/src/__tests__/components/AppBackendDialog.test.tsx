@@ -163,8 +163,9 @@ describe('AppBackendDialog', () => {
     expect(screen.getByText('http://127.0.0.1:4082')).toBeTruthy()
     expect(screen.getByText('http://127.0.0.1:4999')).toBeTruthy()
 
-    await waitFor(() => expect(screen.getByLabelText('Online')).toBeTruthy())
-    await waitFor(() => expect(screen.getByLabelText('Offline')).toBeTruthy())
+    const rowOf = (text: string) => screen.getByText(text).closest('[data-server-row]') as HTMLElement
+    await waitFor(() => expect(within(rowOf('Local CLI')).getByLabelText('Online')).toBeTruthy())
+    await waitFor(() => expect(within(rowOf('http://127.0.0.1:4999')).getByLabelText('Offline')).toBeTruthy())
   })
 
   it('hides the bundled server row when the shell does not support bundled backends', async () => {
@@ -578,6 +579,48 @@ describe('the server list: select, use, in use, one close', () => {
     // Nothing says "Active" any more, and the other servers can be switched to.
     expect(screen.queryByText('Active')).toBeNull()
     expect(screen.getByRole('button', { name: 'Use http://127.0.0.1:4999' })).toBeTruthy()
+    expect(screen.getAllByText('In use')).toHaveLength(1)
+  })
+
+  it('has no separate current-server card: the connected row is the only place that says so', async () => {
+    statusPayload = { ...statusPayload, base_url: 'http://127.0.0.1:4082' }
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    const active = (await screen.findByText('Local CLI')).closest('[data-server-row]') as HTMLElement
+    expect(screen.queryByText(/^Current:/)).toBeNull()
+    expect(screen.queryByText('Saved server')).toBeNull()
+    // The built-in server is not connected, so its title appears once, with no chip of its own.
+    expect(screen.getAllByText('Built-in server')).toHaveLength(1)
+    // Every server URL appears once: the connected row holds its own, nothing repeats it above the list.
+    expect(screen.getAllByText('http://127.0.0.1:4082')).toHaveLength(1)
+    const badge = within(active).getByText('In use').closest('[data-slot="chip"]')
+    expect(badge?.getAttribute('data-tone')).toBe('success')
+    expect(screen.getAllByText('In use')).toHaveLength(1)
+  })
+
+  it('shows the built-in server address on its row when the app is connected to it', async () => {
+    statusPayload = { ...statusPayload, base_url: 'http://127.0.0.1:49545', mode: 'bundled', sidecar_running: true, external: false }
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    const row = (await screen.findByText('Built-in server', { selector: 'span' })).closest('[data-server-row]') as HTMLElement
+    expect(within(row).getByText('http://127.0.0.1:49545')).toBeTruthy()
+    expect(within(row).getByText('In use').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('success')
+    expect(screen.queryByText(/^Current:/)).toBeNull()
+    expect(screen.queryByText('Saved server')).toBeNull()
+    expect(screen.getAllByText('In use')).toHaveLength(1)
+  })
+
+  it('lists a connected server that is not saved, as its own In use row', async () => {
+    statusPayload = { ...statusPayload, base_url: 'http://10.0.0.9:4082' }
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    const row = (await screen.findByText('http://10.0.0.9:4082')).closest('[data-server-row]') as HTMLElement
+    expect(within(row).getByText('In use')).toBeTruthy()
+    expect(within(row).getByText('Not in your saved servers')).toBeTruthy()
+    expect(within(row).queryByRole('button', { name: /^Use / })).toBeNull()
+    // Its health is checked like any other row's (the test server answers only on 4082).
+    await waitFor(() => expect(within(row).getByLabelText('Offline')).toBeTruthy())
+    expect(screen.queryByText(/^Current:/)).toBeNull()
     expect(screen.getAllByText('In use')).toHaveLength(1)
   })
 

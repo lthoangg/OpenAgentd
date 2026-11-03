@@ -3,7 +3,7 @@ import { ArrowUp, Loader2, Paperclip, Square } from 'lucide-react'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { DesignFeedbackStrip } from './DesignFeedbackViews'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputComposer.mentions'
-import { MentionOverlay } from './InputComposer.overlay'
+import { COMPOSER_TEXT_CLASS, MentionOverlay } from './InputComposer.overlay'
 import { findActiveSnippet } from './InputComposer.helpers'
 import { InputComposerSuggestions } from './InputComposer.suggestions'
 import { useInputComposerSuggestionEngine } from './InputComposer.suggestionEngine'
@@ -811,7 +811,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // the same slot and shape while a turn runs — neutral ink, not an error red.
   // Idle with nothing to send it is a keycap, borderless like every control.
   const sendSlotClass =
-    'flex size-8 shrink-0 items-center justify-center rounded-full transition duration-(--motion-instant) active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:size-7 pointer-coarse:size-9 max-md:pointer-coarse:size-11'
+    'flex size-8 shrink-0 items-center justify-center rounded-full transition duration-(--motion-instant) active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:size-7 pointer-coarse:size-9'
   const sendPillClass = 'bg-(--bg-send) text-(--color-text-on-accent) hover:opacity-90'
 
   // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.
@@ -836,7 +836,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         onClick={(e) => { stopClick(e); softHapticFeedback(); submit('steer'); refocusAfterTap() }}
         aria-label="Steer the running turn"
         aria-keyshortcuts="Enter"
-        className={cn(sendSlotClass, sendPillClass, 'rounded-r-none max-md:pointer-coarse:size-9')}
+        className={cn(sendSlotClass, sendPillClass, 'rounded-r-none')}
       >
         <ArrowUp size={14} aria-hidden="true" />
       </button>
@@ -933,9 +933,9 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         // it wrap a few characters earlier than the overlay mirror (which
         // has no scrollbar), and the spellcheck squiggle drifts off its word.
         className={cn(
-          'block w-full resize-none scrollbar-none overscroll-contain bg-transparent p-0 align-middle text-sm leading-relaxed break-words caret-(--color-text) placeholder-(--color-text-muted) selection:bg-(--color-accent)/30 selection:text-(--color-text) outline-none focus:outline-none focus-visible:outline-none disabled:opacity-50',
-          // 16px on a phone: iOS zooms the page into any smaller field.
-          'max-md:pointer-coarse:text-base',
+          'block w-full resize-none scrollbar-none overscroll-contain bg-transparent p-0 align-middle break-words caret-(--color-text) placeholder-(--color-text-muted) selection:bg-(--color-accent)/30 selection:text-(--color-text) outline-none focus:outline-none focus-visible:outline-none disabled:opacity-50',
+          // Shared with the mirror, so the caret stays on the painted text.
+          COMPOSER_TEXT_CLASS,
           isComposing ? 'text-(--color-text)' : 'text-transparent',
         )}
         // Cap matches the ``resize()`` ceiling in InputComposer.autosize.ts so the

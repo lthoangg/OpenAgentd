@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 
 import { Thinking } from '@/components/Thinking'
 import { splitSections } from '@/utils/thinking'
@@ -137,89 +137,24 @@ describe('Thinking', () => {
 })
 
 describe('Thinking — a long trace', () => {
-  const TRACE = '**Planning**\n\nRead the config first.\n\n**Checking**\n\nThen run the tests.'
-  const proto = HTMLElement.prototype
-  const realScrollHeight = Object.getOwnPropertyDescriptor(proto, 'scrollHeight')
-  const realClientHeight = Object.getOwnPropertyDescriptor(proto, 'clientHeight')
+  const LONG = Array.from({ length: 40 }, (_, i) => `**Step ${i}**\n\nBody of step ${i}.`).join('\n\n')
 
-  /** Lay the trace out taller than its box: the cap is cutting it. */
-  function layOut(scrollHeight: number, clientHeight: number) {
-    Object.defineProperty(proto, 'scrollHeight', {
-      configurable: true,
-      get(this: HTMLElement) { return this.hasAttribute('data-thinking-trace') ? scrollHeight : 0 },
-    })
-    Object.defineProperty(proto, 'clientHeight', {
-      configurable: true,
-      get(this: HTMLElement) { return this.hasAttribute('data-thinking-trace') ? clientHeight : 0 },
-    })
-  }
-  afterEach(() => {
-    for (const [key, real] of [['scrollHeight', realScrollHeight], ['clientHeight', realClientHeight]] as const) {
-      if (real) Object.defineProperty(proto, key, real)
-      else delete (proto as unknown as Record<string, unknown>)[key]
+  it('renders in full, with no height cap, scroll box or "Show full reasoning" / "Show less" button', () => {
+    render(<Thinking content={LONG} />)
+
+    for (let i = 0; i < 40; i++) {
+      expect(screen.getByText(`Step ${i}`)).toBeTruthy()
+      expect(screen.getByText(`Body of step ${i}.`)).toBeTruthy()
     }
-  })
-
-  it('caps the reasoning height and keeps its scrolling to itself', () => {
-    render(<Thinking content={TRACE} />)
-
-    const trace = screen.getByText('Read the config first.').closest('[data-thinking-trace]')
-    expect(trace?.className).toContain('max-h-[min(24rem,50vh)]')
-    expect(trace?.className).toContain('overflow-y-auto')
-    expect(trace?.className).toContain('overscroll-contain')
-  })
-
-  it('offers no "Show full reasoning" while the trace fits its cap', () => {
-    layOut(200, 200)
-    render(<Thinking content={TRACE} />)
-
     expect(screen.queryByRole('button', { name: 'Show full reasoning' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Show less' })).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
     expect(screen.queryByRole('region', { name: 'Reasoning' })).toBeNull()
-  })
 
-  it('offers "Show full reasoning" once the cap cuts the trace, and lifts the cap with it', () => {
-    layOut(900, 384)
-    render(<Thinking content={TRACE} />)
-
-    const trace = screen.getByText('Read the config first.').closest('[data-thinking-trace]') as HTMLElement
-    // A box that scrolls can take keyboard focus.
-    expect(screen.getByRole('region', { name: 'Reasoning' })).toBe(trace)
-    expect(trace.tabIndex).toBe(0)
-
-    const more = screen.getByRole('button', { name: 'Show full reasoning' })
-    expect(more.getAttribute('aria-expanded')).toBe('false')
-    fireEvent.click(more)
-
+    const trace = screen.getByText('Body of step 0.').closest('[data-thinking-trace]') as HTMLElement
     expect(trace.className).not.toContain('max-h-')
     expect(trace.className).not.toContain('overflow-y-auto')
-    const less = screen.getByRole('button', { name: 'Show less' })
-    expect(less.getAttribute('aria-expanded')).toBe('true')
-
-    // Uncapped, nothing overflows any more; the way back stays.
-    layOut(900, 900)
-    fireEvent.click(less)
-    expect(trace.className).toContain('max-h-[min(24rem,50vh)]')
-    expect(screen.getByRole('button', { name: 'Show full reasoning' })).toBeTruthy()
-  })
-
-  it('follows the newest line of a streaming trace unless the reader scrolled up in it', async () => {
-    layOut(900, 384)
-    const { rerender } = render(<Thinking content="First line." isStreaming />)
-    const trace = document.querySelector('[data-thinking-trace]') as HTMLElement
-    expect(trace.scrollTop).toBe(900)
-
-    // The reader scrolls up in the box: new text leaves it where it is.
-    trace.scrollTop = 100
-    fireEvent.scroll(trace)
-    rerender(<Thinking content="First line. And a second." isStreaming />)
-    await screen.findByText('First line. And a second.')
-    expect(trace.scrollTop).toBe(100)
-
-    // Back at the end of the box: it follows again.
-    trace.scrollTop = 520
-    fireEvent.scroll(trace)
-    rerender(<Thinking content="First line. And a second. And a third." isStreaming />)
-    await screen.findByText('First line. And a second. And a third.')
-    expect(trace.scrollTop).toBe(900)
+    expect(trace.className).not.toContain('overscroll-contain')
+    expect(trace.hasAttribute('tabindex')).toBe(false)
   })
 })

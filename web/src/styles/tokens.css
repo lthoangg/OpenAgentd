@@ -85,7 +85,7 @@
      * text colour on it, like a native dark segmented control. Not the
      * near-white accent (a cream block glows brighter than the words around
      * it), and not a bright brown either. */
-    --color-fill-selected:   #4A3B2D;
+    --color-fill-selected:   #3E3227;
     --color-text-on-selected: #F5EBD8;
     /* The menu row under the pointer or keyboard: a wash a step softer than
      * a chosen segment, since it only follows the pointer. */

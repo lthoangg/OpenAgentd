@@ -49,12 +49,14 @@ const NO_FILES: readonly ChangedFileInfo[] = []
 /**
  * An icon action on the footer (DESIGN.md → Transcript rows): muted, shown
  * at rest, a keycap wash on hover, its words in the name and the tooltip.
- * 24px square, 36px on touch, like the prompt's own Edit and Copy.
+ * 24px square, 36px on touch, like the prompt's own Edit and Copy. A phone
+ * draws it 28px so the row fits an iPhone mini; ``touch-hit`` keeps the
+ * touch target 36px around it.
  */
-const ACTION_CLASS = 'inline-flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-[color,background-color,scale] duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9'
+const ACTION_CLASS = 'relative touch-hit inline-flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-[color,background-color,scale] duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9 max-md:pointer-coarse:size-7'
 
 /** The files toggle carries numbers, so it is a short pill, not a square. */
-const FILES_CLASS = 'inline-flex h-6 shrink-0 items-center gap-1.5 rounded-xs px-1.5 text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9 pointer-coarse:px-2.5'
+const FILES_CLASS = 'relative touch-hit inline-flex h-6 shrink-0 items-center gap-1.5 rounded-xs px-1.5 text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9 pointer-coarse:px-2.5 max-md:pointer-coarse:h-7 max-md:pointer-coarse:gap-1 max-md:pointer-coarse:px-1.5 max-md:pointer-coarse:text-meta'
 
 /** A footer icon action with its hint on hover and keyboard focus. */
 function FooterAction({ icon: Icon, label, hint, onClick, iconClassName }: { icon: LucideIcon; label: string; hint: string; onClick: () => void; iconClassName?: string }) {
@@ -157,7 +159,8 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   const hasActions = Boolean(textContent || onEditPrompt || onUndo || changedFiles.length > 0)
   if (!hasActions && !timestamp && responseDurationMs === undefined && !model) return null
 
-  const wrapperClass = size === 'roomy' ? 'mt-1 flex min-w-0 flex-wrap items-center gap-1.5' : 'mt-0.5 flex min-w-0 flex-wrap items-center gap-1'
+  // Phones keep the row tight: an iPhone mini has ~340px for it.
+  const wrapperClass = size === 'roomy' ? 'mt-1 flex min-w-0 flex-wrap items-center gap-1.5 max-md:pointer-coarse:gap-1' : 'mt-0.5 flex min-w-0 flex-wrap items-center gap-1 max-md:pointer-coarse:gap-1'
   const hasUsage = outputTokens > 0 || costUsd > 0
   const additions = changedFiles.reduce((sum, file) => sum + file.additions, 0)
   const deletions = changedFiles.reduce((sum, file) => sum + file.deletions, 0)
@@ -195,7 +198,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
     {/* Open, the row pins to the top of the transcript while a long file list scrolls under it, so it can close from anywhere. */}
     <div className={cn(wrapperClass, filesFold.open && cn(PINNED_HEADER, 'bg-(--bg-page)'))}>
       {hasActions && (
-        <div role="group" aria-label="Turn actions" className="flex min-w-0 flex-wrap items-center gap-x-0.5">
+        <div role="group" aria-label="Turn actions" className="flex min-w-0 flex-wrap items-center gap-x-0.5 max-md:pointer-coarse:gap-x-0">
           {textContent && (
             <FooterAction
               icon={copied ? Check : Copy}
@@ -257,7 +260,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
           <PopoverTrigger
             aria-label={`Turn details: ${summary}`}
             aria-haspopup="dialog"
-            className="inline-flex min-w-0 max-w-full items-center gap-1.5 whitespace-nowrap rounded-sm px-1 font-mono text-meta tabular-nums text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
+            className="relative touch-hit inline-flex min-w-0 max-w-full items-center gap-1.5 whitespace-nowrap rounded-sm px-1 font-mono text-meta tabular-nums text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9 max-md:pointer-coarse:min-h-7 max-md:pointer-coarse:gap-1"
           >
             {parts.flatMap((part, i) => (i === 0 ? [part] : [<span key={`sep-${i}`} aria-hidden className="shrink-0 opacity-60">·</span>, part]))}
           </PopoverTrigger>

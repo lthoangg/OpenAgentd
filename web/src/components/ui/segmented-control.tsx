@@ -116,15 +116,18 @@ export interface SegmentedControlProps<T extends string> {
 const PREVIOUS_KEYS = new Set(['ArrowLeft', 'ArrowUp'])
 const NEXT_KEYS = new Set(['ArrowRight', 'ArrowDown'])
 
-interface IndicatorBox { x: number; w: number }
+interface IndicatorBox { x: number; y: number; w: number; h: number }
 
 /**
  * The sliding fill for a segmented track: put ``trackRef`` on the track,
  * ``indicator`` first inside it, and ``slideItemClass`` on every segment.
  * ``chosen`` selects the chosen segment (radio or pressed toggle). The box
- * follows value changes and resizes (a Text size change, a fill-width
- * track) and is null until the segments have widths, so the first frame
- * never slides in from 0 and the chosen segment keeps its own fill until then.
+ * is the chosen segment's own rectangle (left, top, width, height), so in a
+ * track that wraps onto several rows the fill covers that segment's row only,
+ * not the whole track. It follows value changes and resizes (a Text size
+ * change, a fill-width track, a reflow) and is null until the segments have
+ * widths, so the first frame never slides in from 0 and the chosen segment
+ * keeps its own fill until then.
  */
 export function useSegmentIndicator(value: string, chosen = '[role="radio"][aria-checked="true"]'): {
   trackRef: RefObject<HTMLDivElement | null>
@@ -138,8 +141,12 @@ export function useSegmentIndicator(value: string, chosen = '[role="radio"][aria
     if (!track) return
     const measure = () => {
       const segment = track.querySelector<HTMLElement>(chosen)
-      const next = segment && segment.offsetWidth > 0 ? { x: segment.offsetLeft, w: segment.offsetWidth } : null
-      setBox((current) => (current?.x === next?.x && current?.w === next?.w ? current : next))
+      const next = segment && segment.offsetWidth > 0
+        ? { x: segment.offsetLeft, y: segment.offsetTop, w: segment.offsetWidth, h: segment.offsetHeight }
+        : null
+      setBox((current) => (
+        current?.x === next?.x && current?.y === next?.y && current?.w === next?.w && current?.h === next?.h ? current : next
+      ))
     }
     measure()
     if (typeof ResizeObserver === 'undefined') return
@@ -148,13 +155,14 @@ export function useSegmentIndicator(value: string, chosen = '[role="radio"][aria
     return () => observer.disconnect()
   }, [value, chosen])
   const indicator = box ? (
-    // A 1px box scaled to the segment's width: it moves by transform alone,
-    // and has no corners for the scale to distort (the track clips the ends).
+    // A 1px box scaled to the segment's width and height: it moves by
+    // transform alone, and has no corners for the scale to distort (the
+    // track clips the ends).
     <span
       aria-hidden="true"
       data-segment-indicator=""
-      className="pointer-events-none absolute inset-y-0 left-0 w-px origin-left bg-(--color-fill-selected) transition-[translate,scale] duration-(--motion-base) ease-(--ease-out)"
-      style={{ translate: `${box.x}px 0px`, scale: `${box.w} 1` }}
+      className="pointer-events-none absolute top-0 left-0 h-px w-px origin-top-left bg-(--color-fill-selected) transition-[translate,scale] duration-(--motion-base) ease-(--ease-out)"
+      style={{ translate: `${box.x}px ${box.y}px`, scale: `${box.w} ${box.h}` }}
     />
   ) : null
   // Above the fill, the words cross to the inverted tone at its pace rather

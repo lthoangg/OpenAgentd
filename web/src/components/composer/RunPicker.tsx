@@ -34,6 +34,7 @@ import {
   splitModelId,
   stepThinkingLevel,
   thinkingLevelLabel,
+  thinkingLevelShortLabel,
 } from '@/lib/run-settings'
 import { cn } from '@/lib/utils'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -292,13 +293,18 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
 
       {settings.thinkingLevels.length > 0 && (
         <div ref={thinkingRef} className="mt-1 border-t border-(--color-border-subtle) px-2 pt-2.5">
-          <div className="flex items-center gap-3">
+          {/* The phone sheet stacks the label: six levels need its whole width on an iPhone mini. */}
+          <div className={touch ? 'flex flex-col items-stretch gap-1.5' : 'flex items-center gap-3'}>
             <span className="shrink-0 text-xs text-(--color-text-muted)">Thinking</span>
             <SegmentedControl
               label="Thinking level"
               value={settings.thinkingLevel ?? ''}
               onChange={pickLevel}
-              options={settings.thinkingLevels.map((level) => ({ value: level, label: thinkingLevelLabel(level) }))}
+              options={settings.thinkingLevels.map((level) => {
+                const short = thinkingLevelShortLabel(level)
+                const full = thinkingLevelLabel(level)
+                return { value: level, label: short, ariaLabel: short === full ? undefined : full, tooltip: short === full ? undefined : full }
+              })}
               size={touch ? 'default' : 'sm'}
               fill
               className="min-w-0 flex-1"

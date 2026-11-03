@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-11-02
+updated: 2026-11-03
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.40.0 · November 2, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.40.0)
+**Latest release:** v3.41.0 · November 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.41.0)
 
 ---
 
@@ -711,7 +711,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     in an answer's details.
   - The composer marks focus with a darker border rather than a blue glow.
   - On phones the header keeps four controls (sidebar, title, Review panel,
-    More), and Send is a 44px target.
+    More), and Send is a 44px target (36px since v3.41.0, like the
+    controls beside it).
   - Messages queued while a turn runs sit in the tray above the text, with
     the side question and the **Jump to latest** chip.
   - On a touch tablet, in the app or a browser, the composer rides up on the
@@ -841,10 +842,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   - While the workspace list first loads it shows placeholder rows, and if it
     fails, **Retry**; "No workspaces yet" only means there are none.
   - A session's menu (⋯, right-click, long-press) has **Open in new window**
-    (desktop app), **Rename**, **Pin**, **Copy link**, **Share…** (where the
-    system has a share sheet) and **Delete session…**. A copied link opens
-    the session again: an `openagentd://` link from the apps, the page
-    address from a browser. Touch keeps the pin mark on pinned rows.
+    (desktop app), **Rename**, **Pin**, **Copy link** and **Share…**
+    *(both deprecated; removed in v3.41.0)*, and **Delete session…**. Touch
+    keeps the pin mark on pinned rows.
   - Double-click the session title in the header (or press F2 or Enter on
     it) to rename it there.
   - The status bar's items are all reachable with Tab, the fast mode pill too.
@@ -873,7 +873,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     "a model provider" as if none were set up.
   - Each answer's footer names the account it ran on.
   - A long thinking trace scrolls inside a capped box; **Show full
-    reasoning** lifts the cap.
+    reasoning** lifts the cap *(deprecated; removed in v3.41.0: a trace
+    always shows in full)*.
     Runs of blank lines in a trace (Gemini sends three between paragraphs)
     show as one paragraph break.
   - Scrolling up shows a **Loading earlier messages…** row while older
@@ -1007,7 +1008,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     title.
   - **Share…** on a session opens the system share sheet: the macOS share
     menu, the Windows Share window, the iOS and Android share sheets, or
-    Web Share in a browser that has it. Linux copies the link.
+    Web Share in a browser that has it. Linux copies the link
+    *(deprecated; removed in v3.41.0)*.
   - Zoom is remembered, and a new window opens at the zoom and in the theme
     of the window it came from; Text size is shared by every window. On
     macOS it opens one step down and right of that window, as Mac windows
@@ -1048,6 +1050,36 @@ run from the terminal (the native Rust binary since v3.0.0).
     in new window) focuses the window that already shows it. When one
     session is open in two windows anyway, the window in the background
     shows the draft as it is typed in the other.
+- **Phones: everything fits, nothing twice** `[v3.41.0]`:
+  - Typing in the composer keeps the caret at the end of the text; it used
+    to drift further from it with every letter.
+  - Send is 36px like the controls beside it, so the row keeps its height
+    when Send splits into Steer and the queue menu mid-turn.
+  - Bottom sheets close with a pull down anywhere on them, not only from
+    the handle (the run picker's accounts included), once their content is
+    scrolled to the top; until then the pull scrolls back up.
+  - Every thinking level fits the run picker: Extra high reads **XHigh**
+    (on the run chip too), and the sheet puts the Thinking label above the
+    levels.
+  - The footer under a message (Copy, Edit prompt, Undo, the files pill and
+    the details line) and a prompt's Edit and Copy are drawn smaller and
+    closer together, with the same 36px touch targets.
+  - A question card's caption ("Answer at least one question to send.")
+    stays on one line, with its buttons under it.
+  - A segmented control that wraps onto two lines (the Providers status
+    filter) fills only the chosen segment.
+  - The More sheet no longer lists Model and thinking; the run chip under
+    the composer opens it.
+- **Quieter and simpler** `[v3.41.0]`:
+  - In dark mode a chosen segment or tab (Code / Plan, the thinking level)
+    fills more softly.
+  - Thinking traces always show in full; **Show full reasoning** is gone.
+  - A session's menu is Open in new window, Rename, Pin and Delete
+    session…; **Copy link** and **Share…** are gone.
+  - Settings → Server has no separate current-server card: the connected
+    server is marked **In use** in the list, the built-in server shows its
+    address there, and a connected server that is not saved gets a row of
+    its own.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

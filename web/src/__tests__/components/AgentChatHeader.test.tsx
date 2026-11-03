@@ -36,7 +36,6 @@ function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>>
     tasksViewActive: false,
     workspacePanel: null,
     onWorkspaceFiles: () => undefined,
-    onToggleRunPicker: () => undefined,
     showMobileActions: false,
     setShowMobileActions: () => undefined,
     mobileActionsDragOffset: null,
@@ -139,15 +138,11 @@ describe('AgentChatHeader', () => {
     expect(container.querySelector('header')).toHaveClass('grid-cols-[auto_minmax(0,1fr)_auto]')
   })
 
-  it('opens the run picker from the mobile More sheet, then closes the sheet', async () => {
-    const user = userEvent.setup()
-    const onToggleRunPicker = mock(() => undefined)
-    const onCloseMobileActionsMenu = mock(() => undefined)
-    renderHeader({ isMobile: true, showMobileActions: true, onToggleRunPicker, onCloseMobileActionsMenu })
-
-    await user.click(screen.getByRole('button', { name: 'Model and thinking' }))
-    expect(onToggleRunPicker).toHaveBeenCalledTimes(1)
-    expect(onCloseMobileActionsMenu).toHaveBeenCalledTimes(1)
+  // The run chip under the composer opens the picker; the More sheet no longer repeats it.
+  it('leaves Model and thinking out of the mobile More sheet', () => {
+    renderHeader({ isMobile: true, showMobileActions: true })
+    expect(screen.getByRole('dialog', { name: 'More actions' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Model and thinking' })).toBeNull()
   })
 
   it('keeps the desktop header on the page tone in light mode', () => {
@@ -500,7 +495,6 @@ describe('AgentChatHeader', () => {
         tasksViewActive={false}
         workspacePanel="changed"
         onWorkspaceFiles={() => undefined}
-        onToggleRunPicker={() => undefined}
         showMobileActions={false}
         setShowMobileActions={() => undefined}
         onToggleScheduler={() => undefined}

@@ -451,7 +451,8 @@ control or menu marks its choice. Paper stays light: a sand fill (`#E3D6BA`)
 with ink, a pale rose for a destructive row, and a light tooltip card with a
 hairline edge; no Bark blocks. Dark is **not** the near-white accent (a cream
 block on a dark window glows brighter than the words around it) but a raised
-warm tone (`#4A3B2D`). Increase contrast lifts both fills to 3:1 against the
+warm tone (`#3E3227`), about as soft on its keycap track (1.26:1) as the
+paper sand on its own (1.19:1). Increase contrast lifts both fills to 3:1 against the
 track (Bark in light). `token-pairs.test.ts` holds the range and keeps light
 fills light and dark fills well below the text tone, and the lint
 (`accent-selection-fill`) stops a selection reaching for the accent.
@@ -502,7 +503,7 @@ Front-matter tokens carry the canonical light values; substitute these when
 | `bg-card` | `#FFFBF1` | `#1C1813` |
 | `bg-key` | `#F0E9D4` | `#2A2219` |
 | `bg-send` | `#2D241B` | `#F5EBD8` |
-| `fill-selected` / `on-selected` | `#E3D6BA` / `#1A1714` | `#4A3B2D` / `#F5EBD8` |
+| `fill-selected` / `on-selected` | `#E3D6BA` / `#1A1714` | `#3E3227` / `#F5EBD8` |
 | `fill-highlight` / `on-highlight` (menu row under pointer or keyboard) | `#EFE7D3` / `#1A1714` | `#372D22` / `#F5EBD8` |
 | `fill-key-hover` (keycap control, hovered) | `#E9E0C8` | `#332A20` |
 | `fill-danger` / `on-danger` (highlighted destructive row) | `#F7DCD6` / `#991B1B` | `#6B2724` / `#F5EBD8` |
@@ -938,7 +939,7 @@ draws another frame. The lint (`design-lint.test.ts`) and
 `ui/borderless.test.tsx` hold this.
 
 **Native first.** Whatever the host OS already draws (context menus in the
-desktop app, the title bar, share, simple pickers, the Dock or taskbar badge,
+desktop app, the title bar, simple pickers, the Dock or taskbar badge,
 gestures) is the OS's own; the one exception is the Windows caption buttons,
 drawn to the system's own metrics so the header can be the title bar there as
 it is on macOS (Desktop chrome). The app draws only what needs its own content: the
@@ -996,7 +997,8 @@ over it. Closing leaves the header where the pressed control was, so the view
 never jumps. A tool call's details have no bottom Collapse bar: the pinned row
 and the section captions close them. Reasoning (`Thinking`) is not a fold and
 has no label: it streams in place and stays open, inline in small upright mono
-with semibold section headers (no quote bar). Clip with `overflow-clip`, not `overflow-hidden`,
+with semibold section headers (no quote bar). It always shows in full: no height
+cap, no inner scroll box, no "Show full reasoning" toggle. Clip with `overflow-clip`, not `overflow-hidden`,
 on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 
 **Floating Menus & Context Menus** (`ui/menu-styles.ts` — dropdowns, context menus and hand-built listboxes all import it):
@@ -1058,7 +1060,9 @@ Copy is a sibling, always visible, and says "Copied" for a moment.
 the actions show at rest as muted 24px icon buttons (13px lucide icons, the
 same size as the prompt's Edit and Copy): Copy · Edit prompt · Undo,
 then the files pill (`FileDiff`, count, `+a -d`). Their words are the
-names and tooltips. Older answers keep Copy and the meta line. An
+names and tooltips. On a phone the footer and the prompt's actions are drawn
+28px and close together, so the row fits an iPhone mini; `touch-hit` keeps
+each a 36px target. Older answers keep Copy and the meta line. An
 action that cannot run now stays visible, dimmed (`aria-disabled`, so it
 keeps focus), and its tooltip says when it can. The meta line names the
 model and the account the turn ran on. The files pill opens the
@@ -1126,10 +1130,8 @@ screen just unfolds. From the keyboard ←/→ on the name fold, so the chevron
 is not a Tab stop. The active workspace's name is medium weight in ink.
 
 **Session menu.** ⋯, right-click and the phone's long-press sheet show one
-list in one order: Open in new window (desktop app), Rename, Pin, then Copy
-link and Share… (where the system has a share sheet), then Delete session….
-A link is the `openagentd://session/<id>` deep link in the apps and the
-page address in a browser.
+list in one order: Open in new window (desktop app), Rename, Pin, then
+Delete session….
 
 **Header.** Desktop: the sidebar button on the left, then workspace · session
 title; the command palette pill in the middle ("Command palette" and its
@@ -1198,7 +1200,9 @@ the text sits the run deck, which says how the next message runs:
   name carries the shortcut.
 - **The run picker** (⌘., `/model`, `/think`, the palette's "Model and
   Thinking…") is one surface for all three: a model search with Recent first,
-  thinking as a segmented control (←/→ step it from the empty search), the
+  thinking as a segmented control (←/→ step it from the empty search; Extra
+  high reads XHigh there and on the chip, and the phone sheet puts the
+  Thinking label above it so every level fits), the
   provider's accounts with state and quota left ("Auto" first), then Reset to
   default and Make default. A popover on desktop and tablet, a bottom sheet
   on phones. Every pick saves on the session at once; a refused save puts the
@@ -1209,13 +1213,16 @@ the text sits the run deck, which says how the next message runs:
   edge (`ui/popover`), so a change of height never leaves it hanging.
 - **The context ring** opens the numbers and "Summarize now".
 - **Send** is a keycap fill until there is something to send, then Bark. It is
-  the phone's one 44px target.
+  36px on touch like the controls beside it, so splitting into Steer and the
+  delivery chevron mid-turn changes no height.
 - **The tray** above the text holds what waits on the composer: the queued
   messages (each with Remove), the side question, the Undo notice and the
   "↓ N new" chip. The transcript never shows them a second time.
 
 Bottom sheets (`ui/bottom-sheet.tsx`) are the phone form of any picker or
 menu: a grab handle, drag or Esc to dismiss, safe-area padding, 44px rows.
+As on iOS, a pull down anywhere on the content drags the sheet once nothing
+under the finger is scrolled down; until then the pull scrolls back up.
 
 **New-session hero** (the draft screen): a `text-lg` semibold question with
 the folder in mono, a 24px `rounded-full` folder chip opening a filterable
@@ -1459,8 +1466,6 @@ Menus):
   is the default button (Enter); a destructive one never is, Cancel is.
 - **Attention badge**: the Needs you count on the Dock (macOS), the launcher
   (Linux) and as a taskbar overlay (Windows); `(n)` in a browser tab's title.
-- **Share**: the macOS share menu and the Windows Share window
-  (`share_url`); Linux copies the link.
 - **Zoom** is saved, and a new window opens at the zoom of the window it
   came from.
 - **macOS**: two-finger swipes go back and forward through the window's
@@ -1545,8 +1550,7 @@ Android scales text in the shell instead: `ShellPlugin` sets the WebView's
 The phone apps keep the app's own controls: a choice of a few values (theme,
 text size) is the same segmented control as on desktop, and a long press
 opens the item's menu as the app's bottom sheet on iOS and Android alike.
-Share… opens the system share sheet (`share_text`), which is the window's
-business, not a menu. A swipe
+A swipe
 from the left edge brings back the session list (the app's one level up, as
 iOS's back swipe does), a sheet closes with a downward drag, and haptics
 mark a send, an arriving question, a mode change and a sheet dismissed by
@@ -1562,7 +1566,6 @@ drag.
 | App menu | menu bar | ☰ / Alt | ☰ / Alt | — | — |
 | Dialog buttons | Cancel · Action | Action · Cancel | Cancel · Action | Cancel · Action | text buttons |
 | Badge | Dock | taskbar overlay | launcher | — | — |
-| Share | share menu | Share window | copy link | share sheet | share sheet |
 | System text size | — | — | — | Dynamic Type | font scale |
 | Back | ⌘[ · two-finger swipe | Alt+← | Alt+← | edge swipe (session list) | Back gesture |
 

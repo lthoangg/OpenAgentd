@@ -5,6 +5,26 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 
 afterEach(cleanup)
 
+type Box = { x: number; y: number; w: number; h: number }
+
+/** happy-dom has no layout: give each segment (found by its text) a box. Returns the restore function. */
+function stubLayout(boxes: Record<string, Box>): () => void {
+  const props = { offsetLeft: 'x', offsetTop: 'y', offsetWidth: 'w', offsetHeight: 'h' } as const
+  const saved = Object.entries(props).map(([name]) => [name, Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)] as const)
+  for (const [name, key] of Object.entries(props)) {
+    Object.defineProperty(HTMLElement.prototype, name, {
+      configurable: true,
+      get(this: HTMLElement) { return boxes[this.textContent ?? '']?.[key] ?? 0 },
+    })
+  }
+  return () => {
+    for (const [name, descriptor] of saved) {
+      if (descriptor) Object.defineProperty(HTMLElement.prototype, name, descriptor)
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name]
+    }
+  }
+}
+
 const OPTIONS = [
   { value: 'a', label: 'Alpha' },
   { value: 'b', label: 'Beta', disabled: true },
@@ -75,25 +95,48 @@ describe('SegmentedControl', () => {
   // the new one instead of jumping. Before layout (no widths yet) the chosen
   // segment keeps its own fill.
   test('slides one fill under the chosen segment once the segments have widths', () => {
-    const widths = new Map([['Alpha', [0, 50]], ['Beta', [50, 40]], ['Gamma', [90, 60]]])
-    const left = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetLeft')
-    const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')
-    Object.defineProperty(HTMLElement.prototype, 'offsetLeft', { configurable: true, get(this: HTMLElement) { return widths.get(this.textContent ?? '')?.[0] ?? 0 } })
-    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get(this: HTMLElement) { return widths.get(this.textContent ?? '')?.[1] ?? 0 } })
+    const restore = stubLayout({
+      Alpha: { x: 0, y: 0, w: 50, h: 32 },
+      Beta: { x: 50, y: 0, w: 40, h: 32 },
+      Gamma: { x: 90, y: 0, w: 60, h: 32 },
+    })
     try {
       const view = render(<SegmentedControl label="Letters" value="a" onChange={() => {}} options={OPTIONS} />)
       const fill = document.querySelector<HTMLElement>('[data-segment-indicator]')!
       expect(fill.style.translate).toBe('0px 0px')
-      expect(fill.style.scale).toBe('50 1')
+      expect(fill.style.scale).toBe('50 32')
       expect(screen.getByRole('radio', { name: 'Alpha' }).className).toContain('bg-transparent')
 
       view.rerender(<SegmentedControl label="Letters" value="c" onChange={() => {}} options={OPTIONS} />)
       expect(fill.style.translate).toBe('90px 0px')
-      expect(fill.style.scale).toBe('60 1')
+      expect(fill.style.scale).toBe('60 32')
       expect(fill.className).toContain('transition-[translate,scale]')
     } finally {
-      if (left) Object.defineProperty(HTMLElement.prototype, 'offsetLeft', left)
-      if (width) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', width)
+      restore()
+    }
+  })
+
+  // A wrapped track (the phone Providers filter) has several rows: the fill
+  // is the chosen segment's own box, not a full-height bar across every row.
+  test('puts the fill on the chosen segment\'s own row when the track wraps', () => {
+    const restore = stubLayout({
+      Alpha: { x: 0, y: 0, w: 50, h: 36 },
+      Beta: { x: 50, y: 0, w: 40, h: 36 },
+      Gamma: { x: 0, y: 36, w: 60, h: 44 },
+    })
+    try {
+      const view = render(<SegmentedControl label="Letters" value="c" onChange={() => {}} options={OPTIONS} />)
+      const fill = document.querySelector<HTMLElement>('[data-segment-indicator]')!
+      expect(fill.style.translate).toBe('0px 36px')
+      expect(fill.style.scale).toBe('60 44')
+      expect(fill.className).not.toContain('inset-y-0')
+      expect(fill.className).toContain('origin-top-left')
+
+      view.rerender(<SegmentedControl label="Letters" value="a" onChange={() => {}} options={OPTIONS} />)
+      expect(fill.style.translate).toBe('0px 0px')
+      expect(fill.style.scale).toBe('50 36')
+    } finally {
+      restore()
     }
   })
 

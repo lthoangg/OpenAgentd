@@ -97,6 +97,21 @@ describe("InputComposer — pure logic helpers", () => {
 // Submit behaviour
 // ─────────────────────────────────────────────────────────────────────────────
 describe("InputComposer — submit", () => {
+  it("paints the visible text at the textarea's own size, so the caret stays on it as the text grows", async () => {
+    const user = userEvent.setup()
+    const { container } = render(<InputComposer onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input")
+    await user.type(textarea, "a long line of text")
+    // The textarea's glyphs are transparent; the mirror behind it paints
+    // them. A size the mirror lacks (16px on a phone, against iOS zoom)
+    // spreads the caret further from the painted text with every letter.
+    const mirror = container.querySelector<HTMLElement>("div[aria-hidden='true'].whitespace-pre-wrap")
+    expect(mirror).toBeTruthy()
+    const typography = (el: Element) =>
+      el.className.split(/\s+/).filter((c) => /(^|:)(text-(xs|sm|base|lg)|leading-[\w-]+)$/.test(c)).sort()
+    expect(typography(mirror!)).toEqual(typography(textarea))
+  })
+
   it("calls onSubmit with trimmed text on Enter", async () => {
     const user = userEvent.setup()
     let submitted = ""

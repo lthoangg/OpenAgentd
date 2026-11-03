@@ -48,9 +48,13 @@ function renderPair() {
 describe('tooltip timing', () => {
   it('opens a hover after the delay, not before', async () => {
     const { one } = renderPair()
+    const hoveredAt = performance.now()
     fireEvent.mouseEnter(one.parentElement!)
     await wait(OPEN_DELAY_MS - 150)
-    expect(screen.queryByText('First hint')).toBeNull()
+    // A loaded CI runner can stall past the delay inside that wait (it did
+    // for 4.7s on main), and then the tooltip has rightly opened: the
+    // "not yet" check only means something while the delay has not run out.
+    if (performance.now() - hoveredAt < OPEN_DELAY_MS) expect(screen.queryByText('First hint')).toBeNull()
     await wait(200)
     expect(screen.getByText('First hint')).toBeTruthy()
   })

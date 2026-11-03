@@ -184,6 +184,24 @@ describe('RunPicker', () => {
     expect(Array.from(group.querySelectorAll('[role="radio"]')).map((r) => r.textContent)).toEqual(['Low', 'Medium', 'High'])
   })
 
+  // "Extra high" was twice as wide as its neighbours and pushed the last
+  // levels off a phone's row; the segment says XHigh, the name stays whole.
+  it('labels Extra high as XHigh on its segment, keeping the full name for screen readers', () => {
+    wrap(<RunPicker settings={settings({ thinkingLevels: ['low', 'medium', 'high', 'xhigh', 'max'] })} focus="model" onDone={() => {}} />)
+    const xhigh = screen.getByRole('radio', { name: 'Extra high' })
+    expect(xhigh.textContent).toBe('XHigh')
+  })
+
+  // Six levels (Off … XHigh) need the sheet's whole width on an iPhone mini.
+  it('puts the Thinking label above its levels in the phone sheet, beside them on desktop', () => {
+    const { unmount } = wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} touch />)
+    const row = () => screen.getByRole('radiogroup', { name: 'Thinking level' }).parentElement!
+    expect(row().className.split(/\s+/)).toContain('flex-col')
+    unmount()
+    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
+    expect(row().className.split(/\s+/)).not.toContain('flex-col')
+  })
+
   it('says the model decides when no thinking level is set, so an empty control is not a mystery', () => {
     const { unmount } = wrap(<RunPicker settings={settings({ thinkingLevel: null, agentThinkingLevel: null })} focus="model" onDone={() => {}} />)
     expect(screen.getByText(/model's own default/)).toBeTruthy()

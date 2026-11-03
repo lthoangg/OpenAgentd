@@ -92,8 +92,8 @@ pub fn merge_masked(new: ServerConfig, existing: Option<&ServerConfig>) -> Serve
             };
             ServerConfig::Http { url, headers: keep_masked(headers, old_h), oauth, enabled, timeout }
         }
-        (ServerConfig::Stdio { command, args, env, enabled, timeout }, Some(ServerConfig::Stdio { env: old_env, .. })) => {
-            ServerConfig::Stdio { command, args, env: keep_masked(env, old_env), enabled, timeout }
+        (ServerConfig::Stdio { command, args, env, enabled, timeout, cwd }, Some(ServerConfig::Stdio { env: old_env, .. })) => {
+            ServerConfig::Stdio { command, args, env: keep_masked(env, old_env), enabled, timeout, cwd }
         }
         (new, _) => new,
     }
@@ -116,7 +116,7 @@ fn mask_value(v: &str) -> String {
     }
 }
 
-fn mask_map(m: &IndexMap<String, String>) -> Value {
+pub(crate) fn mask_map(m: &IndexMap<String, String>) -> Value {
     Value::Object(m.iter().map(|(k, v)| (k.clone(), json!(mask_value(v)))).collect())
 }
 
@@ -135,6 +135,9 @@ pub fn agent_view(cfg: &ServerConfig) -> Value {
     };
     if let Some(t) = cfg.timeout() {
         v["timeout"] = json!(t);
+    }
+    if let Some(dir) = cfg.cwd() {
+        v["cwd"] = json!(dir.display().to_string());
     }
     v
 }
@@ -166,7 +169,8 @@ fn fingerprint(cfg: Option<&ServerConfig>) -> String {
 
 fn state_line(st: &ServerStatus) -> String {
     let state = if !st.enabled { "disabled".to_string() } else { st.state.clone() };
-    let mut line = format!("- {} ({}, {state})", st.name, st.transport);
+    let origin = st.plugin.as_deref().map(|p| format!(", from plugin {p}")).unwrap_or_default();
+    let mut line = format!("- {} ({}, {state}{origin})", st.name, st.transport);
     if let Some(e) = st.error.as_deref().filter(|e| !e.is_empty()) {
         line.push_str(&format!(" — error: {e}"));
     }
@@ -182,28 +186,44 @@ fn state_line(st: &ServerStatus) -> String {
 }
 
 /// `mcp(action='servers')`: every configured server, its state and its
-/// config with secrets masked.
+/// config with secrets masked, then the servers plugins provide (the user
+/// manages those in Settings → Plugins).
 pub fn servers_text(m: &McpManager) -> String {
-    let cfg = match cfgmod::load_config() {
-        Ok(c) => c,
-        Err(e) => return format!("mcp.json is invalid, so no server runs from it: {e}"),
+    servers_text_for(m, cfgmod::load_config())
+}
+
+/// [`servers_text`] for a loaded `mcp.json`.
+fn servers_text_for(m: &McpManager, cfg: Result<cfgmod::McpConfig, String>) -> String {
+    let plugin_servers = m.plugin_servers();
+    let mut lines = match cfg {
+        Err(e) => vec![format!("mcp.json is invalid, so no server runs from it: {e}")],
+        Ok(cfg) if cfg.servers.is_empty() && plugin_servers.is_empty() => return "No MCP servers are configured. Add one with action='save'.".into(),
+        Ok(cfg) if cfg.servers.is_empty() => vec!["No MCP servers are configured in mcp.json. Add one with action='save'.".to_string()],
+        Ok(cfg) => {
+            let mut lines = vec!["MCP servers (secrets show as ********; send them back unchanged to keep them):".to_string()];
+            for (name, sc) in &cfg.servers {
+                let st = m.get_status(name).unwrap_or_else(|| ServerStatus {
+                    name: name.clone(),
+                    transport: sc.transport().into(),
+                    enabled: sc.enabled(),
+                    state: "stopped".into(),
+                    error: None,
+                    tool_names: vec![],
+                    started_at: None,
+                    plugin: None,
+                });
+                lines.push(state_line(&st));
+                lines.push(format!("  config: {}", agent_view(sc)));
+            }
+            lines
+        }
     };
-    if cfg.servers.is_empty() {
-        return "No MCP servers are configured. Add one with action='save'.".into();
-    }
-    let mut lines = vec!["MCP servers (secrets show as ********; send them back unchanged to keep them):".to_string()];
-    for (name, sc) in &cfg.servers {
-        let st = m.get_status(name).unwrap_or_else(|| ServerStatus {
-            name: name.clone(),
-            transport: sc.transport().into(),
-            enabled: sc.enabled(),
-            state: "stopped".into(),
-            error: None,
-            tool_names: vec![],
-            started_at: None,
-        });
-        lines.push(state_line(&st));
-        lines.push(format!("  config: {}", agent_view(sc)));
+    if !plugin_servers.is_empty() {
+        lines.push("Servers from plugins (read-only: save and remove do not apply to them; the user manages them in Settings → Plugins):".to_string());
+        for (st, sc) in &plugin_servers {
+            lines.push(state_line(st));
+            lines.push(format!("  config: {}", agent_view(sc)));
+        }
     }
     lines.join("\n")
 }
@@ -297,6 +317,9 @@ pub fn status_sentence(st: &ServerStatus) -> String {
 /// is still the one the card described.
 pub async fn apply(m: &McpManager, change: &Value) -> Result<String, String> {
     let name = change["name"].as_str().unwrap_or_default().to_string();
+    if let Some(plugin) = m.plugin_of(&name) {
+        return Err(crate::plugin::managed_by_plugin_message(&name, &plugin));
+    }
     let mut cfg = cfgmod::load_config().map_err(|e| format!("mcp.json is invalid: {e}"))?;
     if change["before"].as_str() != Some(fingerprint(cfg.servers.get(&name)).as_str()) {
         return Err(format!("MCP server '{name}' changed since this was proposed. Check it with action='servers' and propose again."));
@@ -359,5 +382,54 @@ mod tests {
         assert!(parse_entry("ok", &json!({"command": "x", "nope": 1})).unwrap_err().contains("Extra inputs are not permitted"));
         assert!(parse_entry("ok", &json!("npx")).unwrap_err().starts_with("config must be a JSON object"));
         assert_eq!(parse_entry("ok", &json!({"url": "https://x"})).unwrap().transport(), "http");
+    }
+
+    fn plugin_server(name: &str, plugin: &str, command: &str) -> crate::plugin::Wanted {
+        let config = ServerConfig::Stdio { command: command.into(), args: vec![], env: IndexMap::new(), enabled: false, timeout: None, cwd: Some("/plugins/p".into()) };
+        crate::plugin::Wanted { name: name.into(), plugin: plugin.into(), config }
+    }
+
+    /// The user's part of `servers` reads exactly as it did before plugins
+    /// had servers; theirs come after, labelled, and read-only.
+    #[tokio::test]
+    async fn the_server_list_shows_the_plugins_servers_after_the_users_and_says_whose_they_are() {
+        let m = McpManager::default();
+        let mine = cfgmod::parse_config(&json!({"servers": {"mine": {"command": "x", "enabled": false, "env": {"TOKEN": "t"}}}})).unwrap();
+        m.spawn_runner("mine", &mine.servers["mine"]);
+
+        assert_eq!(servers_text_for(&m, Ok(cfgmod::McpConfig::default())), "No MCP servers are configured. Add one with action='save'.");
+        assert_eq!(servers_text_for(&m, Err("bad".into())), "mcp.json is invalid, so no server runs from it: bad");
+        let plain = servers_text_for(&m, Ok(mine.clone()));
+        assert_eq!(
+            plain,
+            "MCP servers (secrets show as ********; send them back unchanged to keep them):\n- mine (stdio, disabled)\n  config: {\"transport\":\"stdio\",\"command\":\"x\",\"args\":[],\"env\":{\"TOKEN\":\"********\"},\"enabled\":false}"
+        );
+
+        m.apply_plugin_servers(vec![plugin_server("changelog-tools/github", "changelog-tools", "npx")]).await;
+        let text = servers_text_for(&m, Ok(mine));
+        let (head, plugins) = text.split_at(plain.len());
+        assert_eq!(head, plain, "the user's servers read as before");
+        assert!(plugins.starts_with("\nServers from plugins (read-only"), "{plugins}");
+        assert!(plugins.contains("\n- changelog-tools/github (stdio, disabled, from plugin changelog-tools)\n  config: {"), "{plugins}");
+        assert!(plugins.contains(r#""cwd":"/plugins/p""#), "{plugins}");
+
+        // Nothing of the user's own: say so, and still list the plugins'.
+        let only = servers_text_for(&m, Ok(cfgmod::McpConfig::default()));
+        assert!(only.starts_with("No MCP servers are configured in mcp.json. Add one with action='save'.\nServers from plugins"), "{only}");
+        let broken = servers_text_for(&m, Err("bad".into()));
+        assert!(broken.starts_with("mcp.json is invalid, so no server runs from it: bad\nServers from plugins"), "{broken}");
+    }
+
+    /// A confirmed change never reaches a plugin's server, whatever a card
+    /// says: it is not the user's `mcp.json` entry to change.
+    #[tokio::test]
+    async fn a_confirmed_change_does_not_apply_to_a_plugins_server() {
+        let m = McpManager::default();
+        m.apply_plugin_servers(vec![plugin_server("changelog-tools/github", "changelog-tools", "npx")]).await;
+        for ty in [SAVE_CHANGE, REMOVE_CHANGE] {
+            let e = apply(&m, &json!({"type": ty, "name": "changelog-tools/github", "config": {"command": "x"}, "before": "absent"})).await.unwrap_err();
+            assert_eq!(e, "changelog-tools/github comes from plugin changelog-tools; manage it in Settings → Plugins");
+        }
+        assert!(m.get_status("changelog-tools/github").is_some());
     }
 }

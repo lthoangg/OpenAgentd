@@ -263,6 +263,11 @@ impl Tool for McpHubTool {
             "servers" => Ok(ToolOutput::Text(crate::admin::servers_text(&self.manager))),
             "save" | "remove" => {
                 let Some(server) = server else { return Err(ToolError::Argument(format!("action='{action}' needs server (the server's name)."))) };
+                if let Some(plugin) = self.manager.plugin_of(&server) {
+                    return Err(ToolError::Execution(format!(
+                        "MCP server '{server}' comes from plugin {plugin}, so it cannot be saved or removed from chat: the user manages it in Settings → Plugins."
+                    )));
+                }
                 let proposal = if action == "save" {
                     match args.get("config") {
                         Some(c) if !c.is_null() => crate::admin::propose_save(&server, &parse_config_arg(c)?),
@@ -336,6 +341,7 @@ mod tests {
             error: None,
             tool_names: tools.iter().map(|t| format!("{name}_{t}")).collect(),
             started_at: None,
+            plugin: None,
         }
     }
 
@@ -363,11 +369,12 @@ mod tests {
         assert!(!t(json!({"name": "a"})));
     }
 
-    /// A manager with one ready server whose tools have no live client.
+    /// A manager with one ready server whose tools have no live client. A
+    /// name with a `/` is a plugin's server (`<plugin>/<server>`).
     fn manager_with(server: &str, defs: Vec<Value>) -> Arc<McpManager> {
         let m = Arc::new(McpManager::default());
-        let cfg = config::parse_config(&json!({"servers": {server: {"command": "x"}}})).unwrap();
-        let runner = Runner::new(server, &cfg.servers[server], "ready");
+        let cfg = config::parse_config(&json!({"servers": {"s": {"command": "x"}}})).unwrap();
+        let runner = Runner::new(server, &cfg.servers["s"], "ready", server.split_once('/').map(|(plugin, _)| plugin));
         let weak = Arc::downgrade(&(runner.clone() as Arc<dyn SessionProvider>));
         let tools: Vec<Arc<McpTool>> = defs.into_iter().map(|d| Arc::new(McpTool::new(server, d, weak.clone()))).collect();
         runner.status.lock().unwrap().tool_names = tools.iter().map(|t| t.name.clone()).collect();
@@ -436,5 +443,45 @@ mod tests {
         assert!(run(&hub, false, json!({"action": "call", "server": "docs"})).await.unwrap_err().contains("needs server and tool"));
         assert!(run(&hub, false, json!({"action": "call", "server": "docs", "tool": "lookup", "arguments": [1]})).await.unwrap_err().contains("must be a JSON object"));
         assert!(run(&hub, false, json!({"action": "nope"})).await.unwrap_err().contains("Unknown action 'nope'"));
+    }
+
+    /// A plugin's server is `<plugin>/<server>`, and the `/` (and a `.` in
+    /// either part) must not trip the tool's lookups: the name search
+    /// returned is the one `call` takes.
+    #[tokio::test]
+    async fn a_plugin_servers_full_name_works_for_search_call_and_the_listing() {
+        let lookup = json!({"name": "lookup", "description": "Look up a commit", "annotations": {"readOnlyHint": true}, "inputSchema": {"type": "object", "properties": {"q": {"type": "string"}}, "required": ["q"]}});
+        let hub = McpHubTool::new(manager_with("changelog-tools/git.hub", vec![lookup]));
+        assert!(hub.definition()["function"]["description"]
+            .as_str()
+            .unwrap()
+            .ends_with("\n\nServers: changelog-tools/git.hub. Search with a server and an empty query to list its tools."));
+
+        let found = run(&hub, false, json!({"action": "search", "server": "changelog-tools/git.hub"})).await.unwrap();
+        let entry: Value = serde_json::from_str(found.lines().nth(1).unwrap()).unwrap();
+        assert_eq!((entry["server"].as_str(), entry["tool"].as_str()), (Some("changelog-tools/git.hub"), Some("lookup")));
+        assert!(
+            run(&hub, false, json!({"action": "search", "query": "changelog commit"})).await.unwrap().contains(r#""tool":"lookup""#),
+            "the words of the plugin's name find its tools"
+        );
+
+        // The name as search returned it, and both older `<server>_<tool>` / `<server>.<tool>` forms.
+        for tool in ["lookup", "changelog-tools/git.hub_lookup", "changelog-tools/git.hub.lookup"] {
+            let e = run(&hub, false, json!({"action": "call", "server": "changelog-tools/git.hub", "tool": tool, "arguments": {"q": "x"}})).await.unwrap_err();
+            assert!(e.contains("MCP server 'changelog-tools/git.hub' is not connected."), "{tool}: {e}");
+        }
+        let e = run(&hub, false, json!({"action": "call", "server": "changelog-tools", "tool": "lookup"})).await.unwrap_err();
+        assert!(e.contains("'changelog-tools' is not configured. Servers: changelog-tools/git.hub."), "{e}");
+    }
+
+    /// A plugin's server belongs to the plugin: the model cannot save over
+    /// it or remove it, and no card opens.
+    #[tokio::test]
+    async fn the_agent_cannot_save_or_remove_a_plugins_server() {
+        let hub = McpHubTool::new(manager_with("changelog-tools/github", vec![]));
+        for args in [json!({"action": "remove", "server": "changelog-tools/github"}), json!({"action": "save", "server": "changelog-tools/github", "config": {"command": "x"}})] {
+            let e = run(&hub, false, args).await.unwrap_err();
+            assert!(e.contains("comes from plugin changelog-tools") && e.contains("Settings → Plugins"), "{e}");
+        }
     }
 }

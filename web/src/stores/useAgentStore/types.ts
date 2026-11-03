@@ -28,6 +28,8 @@ export interface PendingMessage {
   files?: File[]
   /** Workspace whose agent sent it (``extra.sent_from``), when not the user. */
   sentFromWorkspace?: string
+  /** The sending session and its workspace path (``extra.sent_from``), so the queue can open it. */
+  sentFromSession?: { sessionId: string; workspace: string }
   /** Waits for the running turn to end instead of being read before the next step (``extra.hold_until_turn_end``). */
   heldUntilTurnEnd?: boolean
 }

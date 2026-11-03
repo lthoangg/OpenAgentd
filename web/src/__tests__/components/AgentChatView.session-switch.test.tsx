@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { forwardRef, useImperativeHandle } from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 
@@ -7,9 +7,10 @@ let agentsLoading = false
 let workspaceTree: unknown = undefined
 const setValueMock = mock(() => {})
 const setFilesMock = mock(() => {})
+const navigateMock = mock((_options: unknown) => Promise.resolve())
 
 mock.module('@tanstack/react-router', () => ({
-  useNavigate: () => mock(() => Promise.resolve()),
+  useNavigate: () => navigateMock,
 }))
 
 mock.module('@tanstack/react-query', () => ({
@@ -80,7 +81,12 @@ mock.module('@/components/PendingMessageQueue', () => ({ PendingMessageQueue: ()
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }))
-mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHeader: () => null }))
+// Stands in for the header: its lead button shows exactly when the view passes a handler.
+mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
+  AgentChatHeader: ({ onOpenLead }: { onOpenLead?: () => void }) => (
+    onOpenLead ? <button type="button" aria-label="Open the lead agent" onClick={onOpenLead} /> : null
+  ),
+}))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/useAgentCommands', () => ({ useAgentCommands: () => [] }))
 mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
@@ -153,6 +159,7 @@ afterEach(cleanup)
 beforeEach(() => {
   agentsLoading = false
   workspaceTree = undefined
+  navigateMock.mockClear()
   useAgentStore.setState({ sessionId: null, parentSessionId: null, _workspace: null })
 })
 
@@ -237,5 +244,23 @@ describe('AgentChatView — switching sessions', () => {
     expect(screen.queryByTestId('pending-queue')).toBeNull()
     // No tray, so the chip stays in the transcript.
     expect(screen.getByTestId('transcript').hasAttribute('data-composer-tray')).toBe(false)
+  })
+
+  it("gives a subagent's header a way back to the lead, the same one the banner takes", () => {
+    useAgentStore.setState({ sessionId: 'session-sub', parentSessionId: 'session-main', _workspace: '/repo/b' })
+    render(<AgentChatView sessionId="session-sub" workspace="/repo/b" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open the lead agent' }))
+    expect(navigateMock).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'session-main' } })
+    navigateMock.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Return to main agent' }))
+    expect(navigateMock).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'session-main' } })
+  })
+
+  it('offers no lead button in a main session', () => {
+    useAgentStore.setState({ sessionId: 'session-b', _workspace: '/repo/b' })
+    render(<AgentChatView sessionId="session-b" workspace="/repo/b" />)
+
+    expect(screen.queryByRole('button', { name: 'Open the lead agent' })).toBeNull()
   })
 })

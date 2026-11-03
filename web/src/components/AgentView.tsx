@@ -48,6 +48,7 @@ import { RestartDivider } from './AgentView/RestartDivider'
 import { goalTurnInfo } from '@/lib/goal'
 import { restartNoteInfo } from '@/lib/restart-note'
 import { replyFrom, sentFrom } from '@/utils/workspace-messages'
+import { fromLead, isLeadMessage } from '@/utils/lead-messages'
 import { CopyDetailsButton, ErrorCard } from './AgentView/ErrorCard'
 import { providerErrorDetails, switchedAccount, waitAccount } from './AgentView/provider-status'
 import { TranscriptSkeleton } from './AgentView/TranscriptSkeleton'
@@ -441,10 +442,12 @@ function providerErrorTitle(title: unknown): string {
   return title
 }
 
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, editLocked, actionsAtRest, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, activeQuotaWaitBlockId }: {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, leadSessionId, onEdit, editLocked, actionsAtRest, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, activeQuotaWaitBlockId }: {
   block: ContentBlock
   isStreaming: boolean
   sessionId?: string
+  /** The open session's parent, when it is a subagent: names the lead for its untagged messages. */
+  leadSessionId?: string
   /** Rewind to a prompt the user wrote; ignored for agent reports. */
   onEdit?: (blockId: string) => void
   /** A turn is running: Edit shows, disabled, until it ends. */
@@ -469,7 +472,10 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       if (goalTurn) return <GoalTurnDivider info={goalTurn} />
       const restart = restartNoteInfo(block)
       if (restart) return <RestartDivider info={restart} />
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} editLocked={editLocked} actionsAtRest={actionsAtRest} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
+      // The lead's message to this subagent: its prefix is the chip's job, and
+      // Edit would rewind the subagent, which the lead directs.
+      const lead = fromAgent ? null : fromLead(block.extra, block.content, leadSessionId)
+      return <UserBubble content={lead ? lead.content : block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent && !lead ? () => onEdit(block.id) : undefined} editLocked={editLocked} actionsAtRest={actionsAtRest} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} fromLeadSessionId={lead?.sessionId} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} durationMs={block.thinkingDurationMs} />
@@ -639,6 +645,9 @@ export function AgentView({
   const blocks = hold?.snapshot.blocks ?? storeBlocks
   const currentBlocks = hold?.snapshot.currentBlocks ?? storeCurrentBlocks
   const sessionId = hold?.snapshot.sessionId ?? storeSessionId
+  // The held transcript is another session's: the store's parent is not its.
+  const storeParentSessionId = useAgentStore((s) => s.parentSessionId) ?? undefined
+  const leadSessionId = hold ? undefined : storeParentSessionId
   // A run longer than the first page loads without the prompt it answers;
   // that prompt is pinned above the loaded rows until its own page lands.
   const shownPinnedPrompt = hold ? hold.snapshot.pinnedPrompt : storePinnedPrompt
@@ -678,7 +687,8 @@ export function AgentView({
     : undefined
   // A report folded into the answer (reader mode) follows the prompt too.
   const answerHoldsReport = lastTurnItem?.kind === 'assistant' && lastTurnItem.blocks.some((b) => b.type === 'user')
-  const canRetry = Boolean(onRetry) && !isTurnOpen && latestPrompt !== undefined && isTypedPromptBlock(latestPrompt.block) && !answerHoldsReport
+  // The lead's message is not the user's to resend.
+  const canRetry = Boolean(onRetry) && !isTurnOpen && latestPrompt !== undefined && isTypedPromptBlock(latestPrompt.block) && !isLeadMessage(latestPrompt.block, leadSessionId) && !answerHoldsReport
   // A failed turn offers its way forward on the failure itself: the card for
   // a failure the transcript does not show, else the error the turn ended on.
   const trailingBlocks = lastTurnItem?.kind === 'assistant' ? lastTurnItem.blocks : []
@@ -770,6 +780,7 @@ export function AgentView({
         block={block}
         isStreaming={isStreaming}
         sessionId={sessionId}
+        leadSessionId={leadSessionId}
         onRetry={block.id === endingErrorId ? errorRetry : undefined}
         onSwitchModel={block.id === endingErrorId ? errorSwitchModel : undefined}
         latestMCPAppBlockIds={mcpAppResourceUri(block) ? latestMCPAppBlockIds : undefined}
@@ -778,7 +789,7 @@ export function AgentView({
         activeQuotaWaitBlockId={activeQuotaWaitBlockId}
       />
     </div>
-  ), [activeQuotaWaitBlockId, endingErrorId, errorRetry, errorSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, sessionId])
+  ), [activeQuotaWaitBlockId, endingErrorId, errorRetry, errorSwitchModel, latestMCPAppBlockIds, leadSessionId, onMentionFileOpen, onOpenSession, sessionId])
 
   const lastBlock = liveTail.length > 0 ? liveTail[liveTail.length - 1] : blocks[blocks.length - 1]
   // A change key for auto-follow, not the content itself: the streamed fields
@@ -1144,6 +1155,7 @@ export function AgentView({
                       block={pinnedPrompt}
                       isStreaming={false}
                       sessionId={sessionId}
+                      leadSessionId={leadSessionId}
                       onMentionFileOpen={onMentionFileOpen}
                       onOpenSession={onOpenSession}
                     />
@@ -1172,6 +1184,7 @@ export function AgentView({
                          block={item.block}
                          isStreaming={false}
                          sessionId={sessionId}
+                         leadSessionId={leadSessionId}
                          onEdit={handleEdit}
                          editLocked={editLocked}
                          actionsAtRest={item.block.id === latestTypedPromptId}
@@ -1205,7 +1218,7 @@ export function AgentView({
                   const turnStartedAt = prompt?.kind === 'user' ? prompt.block.timestamp?.getTime() : isTrailingTurn ? pinnedStartedAt : undefined
                   // The prompt this answer came from, for the footer's Edit prompt.
                   const promptItem = turnItems[globalTurnIndex - 1]
-                  const promptId = promptItem?.kind === 'user' && isTypedPromptBlock(promptItem.block) ? promptItem.block.id : undefined
+                  const promptId = promptItem?.kind === 'user' && isTypedPromptBlock(promptItem.block) && !isLeadMessage(promptItem.block, leadSessionId) ? promptItem.block.id : undefined
                  return (
                    <AssistantTurn
                      key={`turn-${item.blocks[0]?.id ?? item.startIndex}`}

@@ -361,6 +361,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     if (targetWorkspace) saveLastWorkspace(targetWorkspace)
     navigate({ to: '/$sessionId', params: { sessionId: targetSessionId } })
   }, [navigate])
+  // From a subagent's session back to the lead's: the header button and the
+  // "Return to main agent" banner share it.
+  const handleOpenLead = useCallback(() => {
+    if (parentSessionId) navigate({ to: '/$sessionId', params: { sessionId: parentSessionId } })
+  }, [navigate, parentSessionId])
   // The ``workspace`` tool card asks for the same switch by event,
   // which keeps ToolCall free of the router.
   useEffect(() => {
@@ -847,6 +852,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           chatWorkspace={chatWorkspace}
           sessionTitle={sessionTitle}
           canRenameSession={!parentSessionId}
+          onOpenLead={parentSessionId ? handleOpenLead : undefined}
           onSidebarToggle={handleSidebarToggle}
           headerTokens={headerTokens}
           sessionId={sessionIdState}
@@ -1047,11 +1053,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               <Button
                 size="xs"
                 variant="default"
-                onClick={() => {
-                  if (parentSessionId) {
-                    navigate({ to: '/$sessionId', params: { sessionId: parentSessionId } })
-                  }
-                }}
+                onClick={handleOpenLead}
                 className="shrink-0"
               >
                 Return to main agent

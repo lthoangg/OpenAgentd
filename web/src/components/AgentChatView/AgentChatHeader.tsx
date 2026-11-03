@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState, type Dispatch, type HTM
 import { AnimatedTitle } from '@/components/ui/animated-title'
 import { isFreshAutoTitle } from '@/lib/auto-title'
 import { cn } from '@/lib/utils'
-import { ListTodo, Menu, PanelLeft, PanelRight } from 'lucide-react'
+import { CornerUpLeft, ListTodo, Menu, PanelLeft, PanelRight } from 'lucide-react'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
 import { usePanelWidthSink } from '@/components/ResizableAside'
@@ -36,6 +36,11 @@ interface AgentChatHeaderProps {
    * rename from the drawer and never show the field.
    */
   canRenameSession?: boolean
+  /**
+   * Opens the lead agent's session. Set only for a subagent's session: the
+   * header then carries a way back, whatever the composer area shows.
+   */
+  onOpenLead?: () => void
   onSidebarToggle: () => void
   /** Context use for the phone's More sheet; the run deck's ring shows it everywhere else. */
   headerTokens?: AgentTopbarTokens
@@ -114,6 +119,31 @@ function AppMenuButton({ hidden }: { hidden: boolean }) {
   )
 }
 
+/** ↰ in a subagent's header: one click back to the lead agent's session. */
+function OpenLeadButton({ onOpen, className }: { onOpen: () => void; className?: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={onOpen}
+            aria-label="Open the lead agent"
+            data-open-lead=""
+            className={cn(
+              'flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 md:w-7 pointer-coarse:size-9',
+              className,
+            )}
+          >
+            <CornerUpLeft size={14} strokeWidth={1.8} aria-hidden="true" />
+          </button>
+        }
+      />
+      <TooltipContent>Open the lead agent</TooltipContent>
+    </Tooltip>
+  )
+}
+
 export const AgentChatHeader = memo(function AgentChatHeader({
   dragHandlers,
   isMacOverlay,
@@ -122,6 +152,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   chatWorkspace = null,
   sessionTitle,
   canRenameSession = true,
+  onOpenLead,
   onSidebarToggle,
   headerTokens,
   sessionId,
@@ -233,6 +264,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
           {/* Workspace · session. Double-click the session (or F2 on it) to
               rename it here too; phones rename from the drawer. */}
           <div className="flex min-w-0 flex-1 items-center pr-2 pl-3">
+            {onOpenLead && <OpenLeadButton onOpen={onOpenLead} className="mr-1.5" />}
             {workspace ? (
               <div className="flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl">
                 <Tooltip className="shrink-0">
@@ -305,6 +337,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
     >
         <div className={`mr-1 flex h-full min-w-0 items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
           {leadButtons}
+          {onOpenLead && <OpenLeadButton onOpen={onOpenLead} />}
         </div>
 
         {/* Center: the session first, its workspace under it. */}

@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ChevronDown, ChevronUp, Paperclip, Pencil, X } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, ChevronUp, Paperclip, Pencil, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
@@ -9,6 +9,7 @@ import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
 import { designFeedbackPlainText } from '@/lib/design-feedback'
 import { confirmedIdSet } from '@/utils/blocks'
+import { requestOpenSession } from '@/utils/workspace-messages'
 
 const QUEUED_COLLAPSE_LINES = 10
 const QUEUED_COLLAPSE_CHARS = 700
@@ -81,10 +82,37 @@ function QueuedMessageContent({ content: raw, attachments }: { content: string; 
   )
 }
 
-function QueuedBubble({ content, attachments, label, onEdit, onRemove }: {
+/** Another workspace's agent that sent a queued message, and its session. */
+interface QueuedSender {
+  workspaceName: string
+  sessionId: string
+  workspace: string
+}
+
+/** "From <workspace> ↗" opens the sender, as the chip on a delivered prompt does. */
+function QueuedSenderChip({ sender }: { sender: QueuedSender }) {
+  return (
+    <button
+      type="button"
+      onClick={() => requestOpenSession({ sessionId: sender.sessionId, workspace: sender.workspace })}
+      className="inline-flex min-h-6 max-w-full items-center gap-1 rounded-xs px-1.5 text-meta text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
+      title={`Sent by the agent in ${sender.workspace || sender.workspaceName}`}
+      aria-label={`Open the sending session in ${sender.workspaceName}`}
+      data-sent-from
+    >
+      <span className="shrink-0">From</span>
+      <span className="min-w-0 truncate font-mono font-semibold text-(--color-text)">{sender.workspaceName}</span>
+      <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
+    </button>
+  )
+}
+
+function QueuedBubble({ content, attachments, label, sender, onEdit, onRemove }: {
   content: string
   attachments?: MessageAttachment[]
+  /** Delivery state ("Read before the next step"); the sender, when known, is a chip before it. */
   label: string
+  sender?: QueuedSender
   onEdit: () => void | Promise<void>
   /** Throws the message away; the queue offers Undo, which is why it asks nothing first. */
   onRemove: () => void | Promise<void>
@@ -139,7 +167,14 @@ function QueuedBubble({ content, attachments, label, onEdit, onRemove }: {
             </Tooltip>
           </div>
         </div>
-        <span className="pr-8 text-meta text-(--color-text-subtle)">{label}</span>
+        {sender ? (
+          <span className="flex max-w-full flex-wrap items-center justify-end pr-6 text-meta text-(--color-text-subtle)">
+            <QueuedSenderChip sender={sender} />
+            <span>· {label}</span>
+          </span>
+        ) : (
+          <span className="pr-8 text-meta text-(--color-text-subtle)">{label}</span>
+        )}
       </div>
     </div>
   )
@@ -209,7 +244,8 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
           attachments={msg.attachments}
           // The backend hands it to the agent before its next model call, or
           // ahead of the next message once the turn has failed.
-          label={`${msg.sentFromWorkspace ? `From ${msg.sentFromWorkspace} · ` : ''}${turnFailed ? 'Sends with your next message' : msg.heldUntilTurnEnd ? 'Sends when this turn ends' : 'Read before the next step'}`}
+          label={`${msg.sentFromWorkspace && !msg.sentFromSession ? `From ${msg.sentFromWorkspace} · ` : ''}${turnFailed ? 'Sends with your next message' : msg.heldUntilTurnEnd ? 'Sends when this turn ends' : 'Read before the next step'}`}
+          sender={msg.sentFromWorkspace && msg.sentFromSession ? { workspaceName: msg.sentFromWorkspace, ...msg.sentFromSession } : undefined}
           onEdit={async () => {
             const outcome = await removePendingMessage(msg.id)
             if (outcome === 'cancelled') restoreDraft(msg.content, msg.files)

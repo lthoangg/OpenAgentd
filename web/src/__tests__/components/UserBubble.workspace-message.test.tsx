@@ -4,10 +4,12 @@ import { render, screen, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AgentView } from "@/components/AgentView"
 import { useAgentStore } from "@/stores/useAgentStore"
+import { useDisplayPrefsStore } from "@/stores/useDisplayPrefsStore"
 import type { ContentBlock } from "@/api/types"
 
 beforeEach(() => {
-  useAgentStore.setState({ sessionId: "test-session-123" })
+  useAgentStore.setState({ sessionId: "test-session-123", parentSessionId: null })
+  useDisplayPrefsStore.setState({ transcriptStyle: "detailed" })
 })
 
 afterEach(cleanup)
@@ -74,5 +76,96 @@ describe("AgentView — workspace messages", () => {
     render(<AgentView blocks={[reply("error")]} currentBlocks={[]} isWorking={false} />)
     expect(screen.getByText("Workspace update · failed")).toBeTruthy()
     expect(screen.getByText("infra")).toBeTruthy()
+  })
+
+  it("shows both directions in the reader transcript too: the request's chip and the folded reply's sender", async () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: "reader" })
+    const onOpenSession = mock(() => {})
+    const answer: ContentBlock = { id: "a1", type: "text", content: "Working on it.", timestamp: new Date() }
+    render(<AgentView blocks={[request, answer, reply("completed")]} currentBlocks={[]} isWorking={false} onOpenSession={onOpenSession} />)
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Open the sending session in app" }))
+    expect(onOpenSession).toHaveBeenLastCalledWith("app-session", "/r/app")
+    // Reader mode folds a reply with the turn's other work: opening the fold shows it.
+    await user.click(screen.getByRole("button", { name: /report/ }))
+    await user.click(screen.getByRole("button", { name: "Open the replying session in infra" }))
+    expect(onOpenSession).toHaveBeenLastCalledWith("infra-session", "/r/infra")
+  })
+})
+
+describe("AgentView — the lead's messages in a subagent", () => {
+  const answer: ContentBlock = { id: "ans", type: "text", content: "On it.", timestamp: new Date() }
+  const tagged: ContentBlock = {
+    id: "lead-1",
+    type: "user",
+    content: "[Task from Lead]: Find the flaky test.",
+    extra: { from_lead: { session_id: "lead-session" } },
+    timestamp: new Date(),
+  }
+  const untagged: ContentBlock = {
+    id: "lead-2",
+    type: "user",
+    content: "[Lead]: Also check CI.",
+    timestamp: new Date(),
+  }
+
+  it("chips a tagged row, opens the lead, drops the prefix and offers no Edit", async () => {
+    const onOpenSession = mock(() => {})
+    render(<AgentView blocks={[tagged, answer]} currentBlocks={[]} isWorking={false} onOpenSession={onOpenSession} />)
+
+    expect(screen.getByText("Find the flaky test.")).toBeTruthy()
+    expect(screen.queryByText(/Task from Lead/)).toBeNull()
+    const chip = screen.getByRole("button", { name: "Open the lead agent" })
+    expect(chip).toHaveTextContent("From")
+    expect(chip).toHaveTextContent("lead")
+    expect(chip.className).toContain("pointer-coarse:min-h-9")
+    await userEvent.setup().click(chip)
+    expect(onOpenSession).toHaveBeenCalledWith("lead-session", "")
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    // The lead's prompt is not the user's to rewind from the answer's footer either.
+    expect(screen.queryByRole("button", { name: /Edit prompt/ })).toBeNull()
+    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull()
+    // It is still copyable.
+    expect(screen.getByRole("button", { name: "Copy message" })).toBeTruthy()
+  })
+
+  it("keeps Edit prompt on the answer to a user's own prompt (control for the lead case)", () => {
+    const own: ContentBlock = { id: "own", type: "user", content: "Do it.", timestamp: new Date() }
+    render(<AgentView blocks={[own, answer]} currentBlocks={[]} isWorking={false} onOpenSession={() => {}} />)
+    expect(screen.getByRole("button", { name: /Edit prompt/ })).toBeTruthy()
+  })
+
+  it("recognises an older untagged `[Lead]: ` row while the session has a parent", async () => {
+    useAgentStore.setState({ parentSessionId: "parent-session" })
+    const onOpenSession = mock(() => {})
+    render(<AgentView blocks={[untagged]} currentBlocks={[]} isWorking={false} onOpenSession={onOpenSession} />)
+
+    expect(screen.getByText("Also check CI.")).toBeTruthy()
+    expect(screen.queryByText(/\[Lead\]/)).toBeNull()
+    await userEvent.setup().click(screen.getByRole("button", { name: "Open the lead agent" }))
+    expect(onOpenSession).toHaveBeenCalledWith("parent-session", "")
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+  })
+
+  it("leaves a `[Lead]: ` prefix alone in a session with no parent", () => {
+    render(<AgentView blocks={[untagged]} currentBlocks={[]} isWorking={false} onOpenSession={() => {}} />)
+
+    expect(screen.getByText("[Lead]: Also check CI.")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Open the lead agent" })).toBeNull()
+  })
+
+  it("renders the chip as plain text without a navigation handler", () => {
+    const { container } = render(<AgentView blocks={[tagged]} currentBlocks={[]} isWorking={false} />)
+
+    expect(screen.queryByRole("button", { name: "Open the lead agent" })).toBeNull()
+    const chip = container.querySelector("span[data-from-lead]")
+    expect(chip).toHaveTextContent("From")
+    expect(chip).toHaveTextContent("lead")
+  })
+
+  it("keeps the lead's row right-aligned like a prompt", () => {
+    const { container } = render(<AgentView blocks={[tagged]} currentBlocks={[]} isWorking={false} />)
+    expect(container.querySelector("[data-user-bubble]")?.className).toContain("justify-end")
   })
 })

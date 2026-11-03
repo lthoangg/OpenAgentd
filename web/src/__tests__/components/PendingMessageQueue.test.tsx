@@ -6,6 +6,7 @@ import { PendingMessageQueue } from '@/components/PendingMessageQueue'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
 import { useToastStore } from '@/stores/useToastStore'
+import { OPEN_SESSION_EVENT } from '@/utils/workspace-messages'
 
 mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
 const { Composer } = await import('@/components/composer/Composer')
@@ -495,6 +496,39 @@ describe('PendingMessageQueue', () => {
     render(<PendingMessageQueue />)
 
     expect(screen.getByText('From api · Sends when this turn ends')).toBeTruthy()
+  })
+
+  it('opens the sender of a queued message from its chip, held or not', async () => {
+    const opened: unknown[] = []
+    const onOpen = (event: Event) => opened.push((event as CustomEvent).detail)
+    window.addEventListener(OPEN_SESSION_EVENT, onOpen)
+    try {
+      useAgentStore.setState({
+        sessionId: 'session-1',
+        _pendingMessages: [
+          { id: 'p-held', sessionId: 'session-1', content: 'Then deploy', sentFromWorkspace: 'api', sentFromSession: { sessionId: 'api-session', workspace: '/r/api' }, heldUntilTurnEnd: true },
+        ],
+      })
+
+      render(<PendingMessageQueue />)
+
+      const chip = screen.getByRole('button', { name: 'Open the sending session in api' })
+      expect(chip.textContent).toContain('From')
+      expect(chip.textContent).toContain('api')
+      expect(chip.className).toContain('pointer-coarse:min-h-9')
+      // The delivery state stays beside it.
+      expect(screen.getByText('· Sends when this turn ends')).toBeTruthy()
+      await userEvent.setup().click(chip)
+      expect(opened).toEqual([{ sessionId: 'api-session', workspace: '/r/api' }])
+    } finally {
+      window.removeEventListener(OPEN_SESSION_EVENT, onOpen)
+    }
+  })
+
+  it('shows no chip for a message the user queued', () => {
+    useAgentStore.setState({ sessionId: 'session-1', _pendingMessages: [{ id: 'p-1', sessionId: 'session-1', content: 'Mine' }] })
+    render(<PendingMessageQueue />)
+    expect(screen.queryByRole('button', { name: /Open the sending session/ })).toBeNull()
   })
 
   it('shows held messages even when nothing is queued server-side', () => {

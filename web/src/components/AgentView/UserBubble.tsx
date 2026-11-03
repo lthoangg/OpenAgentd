@@ -108,6 +108,36 @@ export type OpenSessionHandler = (sessionId: string, workspace: string) => void
 const SOURCE_CHIP_CLASS =
   'inline-flex min-h-6 max-w-full items-center gap-1 rounded-xs px-1.5 text-meta text-(--color-text-muted) pointer-coarse:min-h-9'
 
+/**
+ * The chip above a prompt another session wrote: plain text, or, with
+ * ``onOpen``, a button that opens the sender's session.
+ */
+function SourceChip({ label, title, ariaLabel, onOpen, dataAttr }: {
+  label: React.ReactNode
+  title: string
+  ariaLabel: string
+  onOpen?: () => void
+  dataAttr: 'data-sent-from' | 'data-from-lead'
+}) {
+  const marker = { [dataAttr]: true }
+  if (!onOpen) {
+    return <span className={SOURCE_CHIP_CLASS} title={title} {...marker}>{label}</span>
+  }
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={cn(SOURCE_CHIP_CLASS, 'transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)')}
+      title={title}
+      aria-label={ariaLabel}
+      {...marker}
+    >
+      {label}
+      <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
+    </button>
+  )
+}
+
 /** "From <workspace> · <session>" above a prompt another workspace's agent sent. */
 function SentFromChip({ source, onOpenSession }: { source: SentFrom; onOpenSession?: OpenSessionHandler }) {
   const label = (
@@ -118,22 +148,33 @@ function SentFromChip({ source, onOpenSession }: { source: SentFrom; onOpenSessi
       {source.sessionTitle && <span className="min-w-0 truncate">· {source.sessionTitle}</span>}
     </>
   )
-  const title = `Sent by the agent in ${source.workspace || source.workspaceName}${source.reply ? '; its final answer goes back there' : ''}`
-  if (!onOpenSession) {
-    return <span className={SOURCE_CHIP_CLASS} title={title} data-sent-from>{label}</span>
-  }
   return (
-    <button
-      type="button"
-      onClick={() => onOpenSession(source.sessionId, source.workspace)}
-      className={cn(SOURCE_CHIP_CLASS, 'transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)')}
-      title={title}
-      aria-label={`Open the sending session in ${source.workspaceName}`}
-      data-sent-from
-    >
-      {label}
-      <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
-    </button>
+    <SourceChip
+      label={label}
+      title={`Sent by the agent in ${source.workspace || source.workspaceName}${source.reply ? '; its final answer goes back there' : ''}`}
+      ariaLabel={`Open the sending session in ${source.workspaceName}`}
+      onOpen={onOpenSession ? () => onOpenSession(source.sessionId, source.workspace) : undefined}
+      dataAttr="data-sent-from"
+    />
+  )
+}
+
+/** "From lead" above a message the lead agent sent this subagent. */
+function FromLeadChip({ sessionId, onOpenSession }: { sessionId: string; onOpenSession?: OpenSessionHandler }) {
+  return (
+    <SourceChip
+      label={
+        <>
+          <span className="shrink-0">From</span>
+          <span className="shrink-0 font-mono font-semibold text-(--color-text)">lead</span>
+        </>
+      }
+      title="Sent by the lead agent"
+      ariaLabel="Open the lead agent"
+      // The lead runs in this subagent's own workspace, so there is none to switch to.
+      onOpen={onOpenSession ? () => onOpenSession(sessionId, '') : undefined}
+      dataAttr="data-from-lead"
+    />
   )
 }
 
@@ -306,7 +347,7 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, editLocked = false, actionsAtRest = false, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, replyFrom, onOpenSession }: {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, editLocked = false, actionsAtRest = false, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, fromLeadSessionId, replyFrom, onOpenSession }: {
   content: string
   timestamp?: Date
   attachments?: MessageAttachment[]
@@ -327,6 +368,8 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   fromAgent?: string | null
   /** Another workspace's agent sent this prompt. */
   sentFrom?: SentFrom | null
+  /** The lead agent sent this prompt to a subagent: the lead's session. ``content`` arrives without its ``[Lead]:`` prefix. */
+  fromLeadSessionId?: string | null
   /** This report answers a message sent to another workspace. */
   replyFrom?: ReplyFrom | null
   onOpenSession?: OpenSessionHandler
@@ -489,6 +532,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
     >
       <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]">
          {sentFrom && <SentFromChip source={sentFrom} onOpenSession={onOpenSession} />}
+         {fromLeadSessionId && <FromLeadChip sessionId={fromLeadSessionId} onOpenSession={onOpenSession} />}
          {/* Attachments */}
          {visibleAttachments.length > 0 && (
            <AttachmentStrip attachments={visibleAttachments} />

@@ -10,6 +10,7 @@ import {
   splitModelId,
   stepThinkingLevel,
   thinkingLevelLabel,
+  thinkingLevelShortLabel,
 } from '@/lib/run-settings'
 
 describe('splitModelId', () => {
@@ -24,6 +25,12 @@ describe('thinkingLevelLabel', () => {
     expect(thinkingLevelLabel('none')).toBe('Off')
     expect(thinkingLevelLabel('high')).toBe('High')
     expect(thinkingLevelLabel('very-deep')).toBe('Very Deep')
+  })
+
+  it('has a short form for a level whose name is long', () => {
+    expect(thinkingLevelShortLabel('xhigh')).toBe('XHigh')
+    expect(thinkingLevelShortLabel('high')).toBe('High')
+    expect(thinkingLevelShortLabel('very-deep')).toBe('Very Deep')
   })
 })
 

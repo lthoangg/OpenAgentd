@@ -1200,7 +1200,9 @@ the text sits the run deck, which says how the next message runs:
   name carries the shortcut.
 - **The run picker** (⌘., `/model`, `/think`, the palette's "Model and
   Thinking…") is one surface for all three: a model search with Recent first,
-  thinking as a segmented control (←/→ step it from the empty search), the
+  thinking as a segmented control (←/→ step it from the empty search; Extra
+  high reads XHigh there and on the chip, and the phone sheet puts the
+  Thinking label above it so every level fits), the
   provider's accounts with state and quota left ("Auto" first), then Reset to
   default and Make default. A popover on desktop and tablet, a bottom sheet
   on phones. Every pick saves on the session at once; a refused save puts the

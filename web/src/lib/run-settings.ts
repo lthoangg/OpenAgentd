@@ -27,6 +27,16 @@ export function thinkingLevelLabel(level: string): string {
   return LEVEL_LABELS[level] ?? level.split(/[-_]/).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')
 }
 
+/** Where a word or two must fit (a thinking segment, the run chip): "Extra high" is twice its neighbours' width. */
+const SHORT_LEVEL_LABELS: Record<string, string> = {
+  xhigh: 'XHigh',
+}
+
+/** A thinking level's name for a narrow slot; screen readers still hear {@link thinkingLevelLabel}. */
+export function thinkingLevelShortLabel(level: string): string {
+  return SHORT_LEVEL_LABELS[level] ?? thinkingLevelLabel(level)
+}
+
 // ── What runs ───────────────────────────────────────────────────────────────
 
 export interface RunChoice {

@@ -176,6 +176,9 @@ pub struct PetSettings {
     pub show_when_frontmost: bool,
     /// Jump onto other apps' windows (when playful or chaotic).
     pub climb: bool,
+    /// Ladders and balloons: it now and then climbs a ladder or floats up on
+    /// a balloon to change height. Settings saved before default to on.
+    pub toys: bool,
     pub position: Option<PetPosition>,
 }
 
@@ -191,6 +194,7 @@ impl Default for PetSettings {
             bubble_kinds: BubbleKinds::default(),
             show_when_frontmost: false,
             climb: true,
+            toys: true,
             position: None,
         }
     }
@@ -210,6 +214,7 @@ pub struct PetSettingsPatch {
     pub bubble_kinds: Option<BubbleKinds>,
     pub show_when_frontmost: Option<bool>,
     pub climb: Option<bool>,
+    pub toys: Option<bool>,
 }
 
 impl PetSettings {
@@ -224,6 +229,7 @@ impl PetSettings {
             bubble_kinds: patch.bubble_kinds.unwrap_or(self.bubble_kinds),
             show_when_frontmost: patch.show_when_frontmost.unwrap_or(self.show_when_frontmost),
             climb: patch.climb.unwrap_or(self.climb),
+            toys: patch.toys.unwrap_or(self.toys),
             position: self.position,
         }
     }
@@ -1888,6 +1894,27 @@ mod tests {
         assert!(!climbs(&PetSettings { climb: false, ..climber(PetMovement::Chaotic) }));
         let old: PetSettings = serde_json::from_str(r#"{"enabled": true}"#).unwrap();
         assert!(old.climb, "settings saved before it could climb");
+    }
+
+    #[test]
+    fn ladders_and_balloons_are_on_for_old_settings_and_follow_the_patch() {
+        assert!(PetSettings::default().toys);
+        // A file written before the setting existed has no `toys` key.
+        let old: PetSettings = serde_json::from_str(r#"{"enabled": true, "climb": false, "movement": "playful"}"#).unwrap();
+        assert!(old.toys, "settings saved before ladders and balloons");
+        assert!(!old.climb, "the other options are kept");
+        // It round-trips.
+        let saved: PetSettings = serde_json::from_str(&serde_json::to_string(&PetSettings { toys: false, ..on() }).unwrap()).unwrap();
+        assert!(!saved.toys);
+        // A patch from Settings turns it off and on, and leaves it alone when absent.
+        let patch: PetSettingsPatch = serde_json::from_str(r#"{"toys": false}"#).unwrap();
+        let off = old.clone().with(patch);
+        assert!(!off.toys);
+        assert_eq!(off.movement, PetMovement::Playful);
+        let other: PetSettingsPatch = serde_json::from_str(r#"{"colour": "blue"}"#).unwrap();
+        assert!(!off.clone().with(other).toys, "absent: unchanged");
+        let back: PetSettingsPatch = serde_json::from_str(r#"{"toys": true}"#).unwrap();
+        assert!(off.with(back).toys);
     }
 
     #[test]

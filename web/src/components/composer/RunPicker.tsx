@@ -99,6 +99,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
   const searchRef = useRef<HTMLInputElement>(null)
   const thinkingRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   // The picker opens upward from the chip: while a search narrows the list
   // it keeps the height it had, so the search field stays where the typing is.
   const [searchHeight, setSearchHeight] = useState<number | null>(null)
@@ -151,7 +152,19 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
       // An account belongs to one provider; another provider starts on Auto.
       ...(sameProvider ? {} : { credentialId: null }),
     })
-    if (close) onDone()
+    if (!close) return
+    if (sameProvider) {
+      onDone()
+      return
+    }
+    // Another provider: once the picker shows its accounts (the next frame),
+    // Enter lands on them so one can be picked at once; without a choice of
+    // accounts it closes as usual.
+    requestAnimationFrame(() => {
+      const account = rootRef.current?.querySelector<HTMLElement>('[data-account-list] [aria-checked="true"]')
+      if (account) account.focus()
+      else onDone()
+    })
   }
 
   const pickLevel = (level: string) => {
@@ -218,7 +231,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
   const rowClass = cn(MENU_ITEM_CLASS, touch && 'min-h-11 text-sm')
 
   return (
-    <div className="flex min-h-0 flex-col" data-run-picker="">
+    <div ref={rootRef} className="flex min-h-0 flex-col" data-run-picker="">
       {/* Borderless, over a hairline, like the palette and the other pickers. */}
       <div className="flex items-center gap-1.5 border-b border-(--color-border-subtle) px-2 pb-1.5">
         <Search size={13} aria-hidden="true" className="shrink-0 text-(--color-text-muted)" />
@@ -326,6 +339,10 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
           usage={settings.providerInfo.supports_credential_usage === true}
           pinned={settings.credentialId}
           onPick={pickAccount}
+          onPickAndClose={(id) => {
+            pickAccount(id)
+            onDone()
+          }}
           onReconnect={() => {
             onDone()
             useSettingsStore.getState().openSettings('providers')
@@ -360,6 +377,7 @@ function AccountList({
   usage,
   pinned,
   onPick,
+  onPickAndClose,
   onReconnect,
   rowClass,
 }: {
@@ -369,15 +387,22 @@ function AccountList({
   usage: boolean
   pinned: string | null
   onPick: (id: string | null) => void
+  /** Enter on an account: pick it and close, as Enter on a model does. */
+  onPickAndClose: (id: string | null) => void
   /** Sign a signed-out account back in (Settings → Providers). */
   onReconnect: () => void
   rowClass: string
 }) {
   const signedOut = accounts.filter((account) => account.status === 'needs_reconnect')
+  const onKeyDown = (id: string | null) => (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    onPickAndClose(id)
+  }
   return (
-    <div role="radiogroup" aria-label={`${providerLabel} account`} className="mt-1 border-t border-(--color-border-subtle) px-1 pt-1.5">
+    <div role="radiogroup" aria-label={`${providerLabel} account`} data-account-list="" className="mt-1 border-t border-(--color-border-subtle) px-1 pt-1.5">
       <div className="px-2 pb-0.5 text-meta font-medium text-(--color-text-muted) select-none">Account</div>
-      <button type="button" role="radio" aria-checked={pinned === null} onClick={() => onPick(null)} className={rowClass}>
+      <button type="button" role="radio" aria-checked={pinned === null} onClick={() => onPick(null)} onKeyDown={onKeyDown(null)} className={rowClass}>
         <span className="flex-1 text-(--color-text)">Auto</span>
         <span className="text-meta text-(--color-text-muted)">next one with room</span>
         <Check size={13} aria-hidden="true" className={pinned === null ? 'opacity-100' : 'opacity-0'} />
@@ -389,6 +414,7 @@ function AccountList({
           role="radio"
           aria-checked={pinned === account.id}
           onClick={() => onPick(account.id)}
+          onKeyDown={onKeyDown(account.id)}
           className={rowClass}
         >
           <span className="min-w-0 flex-1 truncate text-(--color-text)">{account.label}</span>

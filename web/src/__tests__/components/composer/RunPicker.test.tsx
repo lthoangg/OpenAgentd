@@ -203,6 +203,9 @@ describe('RunPicker', () => {
     fireEvent.change(search, { target: { value: 'gpt' } })
     fireEvent.keyDown(search, { key: 'Enter' })
     expect(lastPatch().model).toBe('openai:gpt-5')
+    // Another provider: the picker looks for its accounts on the next frame,
+    // and with none to choose from it closes.
+    await frame()
     expect(onDone).toHaveBeenCalledTimes(1)
   })
 

@@ -102,8 +102,9 @@ function StateMark({ mode, failed, goal }: { mode: IslandMode; failed: boolean; 
   return <span className="island-spinner" aria-hidden="true" />
 }
 
-/** The word that says a row's state: colour alone never does. */
+/** The word that says a row's state: colour alone never does. A running row shows the spinner, no word. */
 function StateChip({ session }: { session: IslandSession }) {
+  if (session.state === 'running') return <span className="island-spinner" aria-hidden="true" />
   return <span className="island-chip" data-state={session.state}>{STATE_WORD[session.state]}</span>
 }
 
@@ -438,7 +439,7 @@ export function Island() {
     else openSession(primary)
   }
   const barAction = mode === 'expanded' ? (pinned ? 'Close the list' : 'Open in OpenAgentd') : 'Show the list'
-  const label = `${lead}: ${detail}. ${barAction}`
+  const label = `${lead ? `${lead}: ` : ''}${detail}. ${barAction}`
 
   return (
     <div className="island-canvas" onContextMenu={(event) => event.preventDefault()}>
@@ -456,7 +457,7 @@ export function Island() {
               {barMode !== 'hidden' && (
                 <span key={barMode} className="island-swap island-lead-inner">
                   <StateMark mode={barMode} failed={failed} goal={barGoal} />
-                  <span className="island-text">{lead}</span>
+                  {lead && <span className="island-text">{lead}</span>}
                   {count > 1 && <span className="island-count" aria-hidden="true">{count}</span>}
                 </span>
               )}

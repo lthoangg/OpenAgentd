@@ -615,117 +615,13 @@ describe('PlanTabView — links, images and the Appendix', () => {
     expect(JSON.stringify(answerCalls()[0].body)).toContain('Add a reversal test')
   })
 })
-describe('PlanTabView — a Comment action on every block', () => {
-  const NESTED_PLAN: SessionPlan = { ...PLAN, content: '# Ship it\n\nFirst paragraph.\n\n- One\n- Two\n  - Nested' }
-  const blockButtons = () => screen.queryAllByRole('button', { name: /^Comment on: / }).map((button) => button.getAttribute('aria-label'))
-
-  it('gives every heading, paragraph and list item its own Comment action while a review is open', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
-    renderTab({ plan: NESTED_PLAN })
-
-    // A list item with a nested list is about its own text, and the nested item has its own action.
-    expect(blockButtons()).toEqual([
-      'Comment on: Ship it',
-      'Comment on: First paragraph.',
-      'Comment on: One',
-      'Comment on: Two',
-      'Comment on: Nested',
-    ])
-  })
-
-  it('offers none outside a review, and none while the plan is being edited', () => {
-    renderTab()
-    expect(blockButtons()).toEqual([])
-    cleanup()
-
-    useAgentStore.setState({ pendingQuestion: REVIEW })
-    renderTab()
-    expect(blockButtons()).not.toEqual([])
-    fireEvent.click(screen.getByRole('button', { name: 'Edit plan' }))
-    expect(blockButtons()).toEqual([])
-  })
-
-  it('comments on a block in one click: the box opens on it, quoting it', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
-    renderTab()
-    fireEvent.click(screen.getByRole('button', { name: 'Comment on: Write the migration' }))
-
-    const composer = screen.getByRole('group', { name: 'New comment' })
-    expect(composer.textContent).toContain('Write the migration')
-    // Writing one comment at a time: the other actions step aside.
-    expect(blockButtons()).toEqual([])
-    fireEvent.change(screen.getByLabelText('Comment'), { target: { value: 'Make it reversible.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
-
-    expect(screen.getByRole('list', { name: 'Comments on the plan' }).textContent).toContain('Make it reversible.')
-    expect(screen.getByRole('button', { name: 'Request changes (1)' })).toBeTruthy()
-    // The action is back for the next block.
-    expect(blockButtons()).toContain('Comment on: Wire the endpoint')
-  })
-
-  it('sends a block comment with Request changes, quoting the block as the plan reads', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
-    renderTab()
-    fireEvent.click(screen.getByRole('button', { name: 'Comment on: Wire the endpoint' }))
-    fireEvent.change(screen.getByLabelText('Comment'), { target: { value: 'Add a test.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Request changes (1)' }))
-
-    await waitFor(() => expect(answerCalls()).toHaveLength(1))
-    expect(answerCalls()[0]?.body).toEqual({ answers: [['**Comment 1**\n> Wire the endpoint\n\nAdd a test.']] })
-  })
-
-  it('keeps the plan text free of the action, so a selection or a quote never carries it', () => {
+describe('PlanTabView — no Comment action per block', () => {
+  it('puts no Comment button on each heading, paragraph or list item; selecting text is how to comment', () => {
     useAgentStore.setState({ pendingQuestion: REVIEW })
     const { container } = renderTab()
 
-    expect(planItem(container, 'Write the migration')).toBeTruthy()
-    expect(container.querySelector('[data-plan-slot]')?.textContent).toBe('')
-  })
-
-  it('is never hidden: a dimmed icon at rest, the full pill over or inside the block, the pill on touch', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
-    const { container } = renderTab()
-
-    const action = screen.getByRole('button', { name: 'Comment on: Write the migration' })
-    // CSS widens it from the block (a group), so it needs no pointer tracking.
-    expect(planItem(container, 'Write the migration').className).toContain('group/block')
-    for (const variant of ['group-hover/block:opacity-100', 'group-focus-within/block:opacity-100']) {
-      expect(action.className).toContain(variant)
-    }
-    // Visible at rest (dimmed), never transparent or hidden.
-    expect(action.className).not.toMatch(/(?<![\w:-])(?:hidden|invisible)(?![\w-])/)
-    expect(action.className).not.toMatch(/opacity-0(?![\d])/)
-    expect(action.className).toContain('pointer-fine:opacity-60')
-    expect(action.className).toContain('pointer-coarse:static')
-    expect(action.className).toContain('pointer-coarse:h-9')
-    expect(action.className).toMatch(/(?<![\w:-])h-6(?![\w-])/)
-  })
-
-  it('takes the actions and the marks away when the review ends', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
-    const { container } = renderTab()
-    expect(container.querySelectorAll('[data-plan-slot]').length).toBeGreaterThan(0)
-
-    act(() => {
-      useAgentStore.setState({ pendingQuestion: null })
-    })
-
-    expect(container.querySelectorAll('[data-plan-slot]')).toHaveLength(0)
-    expect(planItem(container, 'Write the migration').className).not.toContain('group/block')
-  })
-
-  it('adds an action to a block that appears later', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
-    const { container } = renderTab()
-
-    act(() => {
-      const added = document.createElement('p')
-      added.textContent = 'Added later.'
-      container.querySelector('.oa-prose')!.append(added)
-    })
-
-    await waitFor(() => expect(blockButtons()).toContain('Comment on: Added later.'))
+    expect(screen.queryAllByRole('button', { name: /^Comment on: / })).toEqual([])
+    expect(container.querySelector('[data-plan-slot]')).toBeNull()
   })
 })
 

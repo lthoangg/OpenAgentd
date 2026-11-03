@@ -1396,7 +1396,7 @@ pub fn toggle(app: &AppHandle) {
 mod native {
     use objc2::runtime::{Bool, NSObjectProtocol};
     use objc2::{msg_send, sel, MainThreadMarker};
-    use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior, NSWindowOcclusionState};
+    use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior, NSWindowOcclusionState, NSWindowSharingType};
 
     fn with_ns_window<T>(window: &tauri::WebviewWindow, f: impl FnOnce(&NSWindow) -> T) -> Option<T> {
         MainThreadMarker::new()?;
@@ -1409,7 +1409,7 @@ mod native {
     }
 
     /// On every Space but full-screen ones, out of Cmd-` cycling and
-    /// Mission Control.
+    /// Mission Control, and out of screen sharing.
     pub fn configure(window: &tauri::WebviewWindow) {
         with_ns_window(window, |ns| {
             let behavior = NSWindowCollectionBehavior::CanJoinAllSpaces
@@ -1419,6 +1419,14 @@ mod native {
                 ns.setCollectionBehavior(behavior);
             }
             ns.setHasShadow(false);
+            // The window is a transparent sheet over the whole work area, so
+            // a meeting app's window picker took it for the window under the
+            // pointer and nothing behind it could be picked. Not shareable,
+            // it stays out of pickers and captures that honour the flag
+            // (ScreenCaptureKit on macOS 15+ may still capture it).
+            if ns.sharingType() != NSWindowSharingType::None {
+                ns.setSharingType(NSWindowSharingType::None);
+            }
             prevent_activation(ns);
         });
     }
@@ -1519,7 +1527,29 @@ mod native {
 
 #[cfg(target_os = "windows")]
 mod native {
-    pub fn configure(_window: &tauri::WebviewWindow) {}
+    /// Out of screen sharing: the window is a transparent sheet over the
+    /// whole work area, so a meeting app's window picker listed or picked it
+    /// instead of the window behind it. A tool window is left out of window
+    /// lists (Alt-Tab, Chrome's and Zoom's pickers), and the display
+    /// affinity keeps it out of captures (Windows 10 2004 and later).
+    pub fn configure(window: &tauri::WebviewWindow) {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongPtrW, SetWindowDisplayAffinity, SetWindowLongPtrW, GWL_EXSTYLE, WDA_EXCLUDEFROMCAPTURE, WS_EX_TOOLWINDOW,
+        };
+        let Ok(hwnd) = window.hwnd() else { return };
+        // SAFETY: `hwnd` is this app window's live handle; both calls only
+        // change its own styles.
+        unsafe {
+            let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            let tool = WS_EX_TOOLWINDOW.0 as isize;
+            if ex & tool == 0 {
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | tool);
+            }
+            if let Err(e) = SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE) {
+                log::warn!("pet: cannot keep the window out of screen captures: {e}");
+            }
+        }
+    }
 
     pub fn show(window: &tauri::WebviewWindow) {
         let _ = window.show();

@@ -5,6 +5,7 @@ pub mod config_watch;
 pub mod error;
 pub mod fileresp;
 pub mod middleware;
+pub mod modules;
 pub mod mux;
 pub mod network_access;
 pub mod observability;

@@ -8,6 +8,7 @@ pub mod health;
 pub mod library;
 pub mod mcp;
 pub mod misc;
+pub mod modules;
 pub mod plugins;
 pub mod preview;
 pub mod scheduler;
@@ -32,6 +33,7 @@ pub fn router() -> Router<AppState> {
         .nest("/api/settings", settings::router())
         .nest("/api/mcp", mcp::router())
         .nest("/api/plugins", plugins::router())
+        .nest("/api/modules", modules::router())
         .nest("/api/auth", misc::auth_router())
         .nest("/api/diagnostics", misc::diagnostics_router())
         .nest("/api/observability", misc::observability_router())

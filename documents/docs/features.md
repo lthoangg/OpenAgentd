@@ -711,7 +711,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     in an answer's details.
   - The composer marks focus with a darker border rather than a blue glow.
   - On phones the header keeps four controls (sidebar, title, Review panel,
-    More), and Send is a 44px target.
+    More), and Send is 36px like the controls beside it and the split
+    Steer / Queue pill it turns into mid-turn.
   - Messages queued while a turn runs sit in the tray above the text, with
     the side question and the **Jump to latest** chip.
   - On a touch tablet, in the app or a browser, the composer rides up on the

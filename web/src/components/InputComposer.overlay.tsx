@@ -21,6 +21,14 @@ import { memo, useEffect, useMemo, useRef } from 'react'
 import { buildMentionLookup, findCommittedMentions, type FileRef } from './InputComposer.mentions'
 import { MAX_TEXTAREA_HEIGHT } from './InputComposer.autosize'
 
+/**
+ * The message text's size and line height, worn by the textarea and the
+ * mirror alike. 16px on a phone, where iOS zooms the page into any smaller
+ * field. If the two ever differ, the caret (the textarea's) drifts further
+ * from the painted text (the mirror's) with every letter typed.
+ */
+export const COMPOSER_TEXT_CLASS = 'text-sm leading-relaxed max-md:pointer-coarse:text-base'
+
 interface MentionOverlayProps {
   /** Current textarea value. */
   value: string
@@ -138,7 +146,7 @@ function MentionOverlayComponent({
       // ``text-(--color-text)`` paints the non-mention text in the
       // normal foreground; the per-span color override above paints
       // mention tokens in blue (files) or orange (folders).
-      className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words text-sm leading-relaxed text-(--color-text)"
+      className={`pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words ${COMPOSER_TEXT_CLASS} text-(--color-text)`}
       // Mirrors the textarea's height cap (MAX_TEXTAREA_HEIGHT).
       style={{ maxHeight: `${MAX_TEXTAREA_HEIGHT}px` }}
     >

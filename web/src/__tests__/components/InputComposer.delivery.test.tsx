@@ -92,8 +92,8 @@ describe('InputComposer — split Send', () => {
     for (const el of [steer, screen.getByRole('button', { name: 'Attach file' })]) {
       expect(el.className).toContain('pointer-coarse:size-9')
     }
-    // The split halves stay 36px on a phone, where a lone Send grows to 44px.
-    expect(steer.className).toContain('max-md:pointer-coarse:size-9')
+    // A lone Send is the same 36px, so splitting it changes no height.
+    expect(steer.className).not.toContain('size-11')
   })
 
   it('lists each way to send with its shortcut', async () => {

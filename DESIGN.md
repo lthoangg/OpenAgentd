@@ -1209,7 +1209,8 @@ the text sits the run deck, which says how the next message runs:
   edge (`ui/popover`), so a change of height never leaves it hanging.
 - **The context ring** opens the numbers and "Summarize now".
 - **Send** is a keycap fill until there is something to send, then Bark. It is
-  the phone's one 44px target.
+  36px on touch like the controls beside it, so splitting into Steer and the
+  delivery chevron mid-turn changes no height.
 - **The tray** above the text holds what waits on the composer: the queued
   messages (each with Remove), the side question, the Undo notice and the
   "↓ N new" chip. The transcript never shows them a second time.

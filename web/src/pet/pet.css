@@ -78,9 +78,16 @@ button:focus-visible {
   outline-offset: 1px;
 }
 
+/* The world: the work area, drawn through a window that is only a lane of it.
+ * The page sets its size and offsets it by the window's origin. While the
+ * window's top-left corner moves, the pet is hidden until the webview has
+ * redrawn at the new size, so no frame shows it displaced. */
 .pet-strip {
-  position: fixed;
-  inset: 0;
+  position: absolute;
+}
+
+.pet-strip--shifting {
+  visibility: hidden;
 }
 
 /* ── The pet ──────────────────────────────────────────────────────────── */

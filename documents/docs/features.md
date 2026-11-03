@@ -1452,6 +1452,16 @@ run from the terminal (the native Rust binary since v3.0.0).
     question waits (one under way is cut short), nor ladders and balloons
     while an agent runs. Settings → General → Desktop pet → **Ladders and
     balloons** (on by default) turns the first two off; falls stay.
+  - **Desktop pet: no sheet over the desktop (screen sharing)** `[v3.42.0]` —
+    the pet's window is no longer a transparent sheet over the whole work
+    area, which a meeting app's window picker (Zoom, Meet, the macOS share
+    picker) took for the window under the pointer, so nothing behind it could
+    be picked. It is now a full-width lane just tall enough for the pet and
+    what it is doing (its marks, a bubble, a ladder, a balloon, a fall), and
+    the whole area only while you drag it; it shrinks back a moment after the
+    pet is still. Everywhere else the desktop has no window of ours. The
+    window is also marked as not shareable (macOS) and as a tool window kept
+    out of captures (Windows), which pickers that honour them respect.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit

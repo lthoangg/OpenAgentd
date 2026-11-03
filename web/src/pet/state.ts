@@ -78,6 +78,9 @@ export interface PetView {
   settings: PetSettings
   status: PetStatus
   shown: boolean
+  /** The work area and the window's box in it, once the shell has placed the window. */
+  area?: PetArea | null
+  frame?: Box | null
 }
 
 export type BubbleTone = 'input' | 'done' | 'failed' | 'remind'
@@ -754,4 +757,105 @@ export function nextTarget(x: number, stripWidth: number, petWidth: number, rand
   if (Math.abs(target - x) < minStep) target = x + (target >= x ? minStep : -minStep)
   if (target < 0 || target > max) target = x - (target - x)
   return clampX(target, stripWidth, petWidth)
+}
+
+// ── The window's frame ─────────────────────────────────────────────────────
+
+/** The work area, in CSS px: the world the pet lives in ("area" pixels). */
+export interface PetArea {
+  width: number
+  height: number
+}
+
+/** What the shell tells the page about its window: the area, and the window's box in it. */
+export interface PetFrameView {
+  area: PetArea
+  frame: Box
+}
+
+/**
+ * The window is a lane of the work area: the full width and only as tall as
+ * the pet's scene needs (the shell moves it; see pet.rs). Room kept above
+ * the pet for its marks and its poke reply, and below its feet (the same
+ * numbers as FRAME_ABOVE and FRAME_BELOW in pet.rs).
+ */
+export const FRAME_ABOVE = 56
+export const FRAME_BELOW = 12
+/** A bigger frame than needed is kept until this long after the need shrank. */
+export const FRAME_SHRINK_AFTER_MS = 1500
+/** Shrinking for less than this many px is not worth moving the window. */
+export const FRAME_SHRINK_MIN = 24
+/** After the shell says the window moved, the pet stays hidden this long so no half-moved frame shows. */
+export const FRAME_SETTLE_MS = 90
+/** A move that starts only once the window has the room waits at most this long for the shell. */
+export const FRAME_WAIT_MS = 400
+
+/** A box seen from the window (its own pixels) in area pixels, given the window's origin in the area. */
+export function toArea(box: Box, origin: { x: number; y: number }): Box {
+  return { x: box.x + origin.x, y: box.y + origin.y, width: box.width, height: box.height }
+}
+
+/** The whole area: what the window is while the pet is dragged. */
+export function fullFrame(area: PetArea): Box {
+  return { x: 0, y: 0, width: area.width, height: area.height }
+}
+
+/** A full-width lane from `top` to `bottom` (area px), inside the area, in whole pixels. */
+export function laneFrame(top: number, bottom: number, area: PetArea): Box {
+  const lo = Math.min(Math.max(Math.floor(top), 0), Math.max(0, area.height - 1))
+  const hi = Math.min(Math.max(Math.ceil(bottom), lo + 1), area.height)
+  return { x: 0, y: lo, width: area.width, height: Math.max(1, hi - lo) }
+}
+
+export interface SceneInput {
+  area: PetArea
+  /** The pet's box where it is going (its target, in area px). */
+  pet: Box
+  /** The pet's whole path in a move under way (a climb, a float, a fall, a jump), or null. */
+  reach: Box | null
+  /** What else is drawn: a bubble, the badge, the balloon, the ladder (area px). */
+  rects: Box[]
+  /** Being dragged: the pet may be dropped anywhere. */
+  dragging: boolean
+}
+
+/** The frame the window needs now: a lane round the scene, or all of the area while dragged. */
+export function neededFrame({ area, pet, reach, rects, dragging }: SceneInput): Box {
+  if (dragging) return fullFrame(area)
+  // The pet anywhere on its path needs the same room round it as where it stands.
+  const stands = [pet, ...(reach ? [reach] : [])]
+  const top = Math.min(...stands.map((b) => b.y - FRAME_ABOVE), ...rects.map((b) => b.y))
+  const bottom = Math.max(...stands.map((b) => b.y + b.height + FRAME_BELOW), ...rects.map((b) => b.y + b.height))
+  return laneFrame(top, bottom, area)
+}
+
+/** Whether `frame` holds all of `need` (within a pixel). */
+export function frameCovers(frame: Box, need: Box, tolerance = 1): boolean {
+  return (
+    need.x >= frame.x - tolerance &&
+    need.y >= frame.y - tolerance &&
+    need.x + need.width <= frame.x + frame.width + tolerance &&
+    need.y + need.height <= frame.y + frame.height + tolerance
+  )
+}
+
+/** The smallest frame holding both. */
+export function growFrame(a: Box, b: Box): Box {
+  const x = Math.min(a.x, b.x)
+  const y = Math.min(a.y, b.y)
+  return { x, y, width: Math.max(a.x + a.width, b.x + b.width) - x, height: Math.max(a.y + a.height, b.y + b.height) - y }
+}
+
+/** Whether a frame holding `need` is big enough, by a good margin, to be worth shrinking to it. */
+export function shrinkable(frame: Box, need: Box): boolean {
+  return frameCovers(frame, need) && frame.width * frame.height - need.width * need.height >= FRAME_SHRINK_MIN * Math.min(frame.width, need.width)
+}
+
+/**
+ * Whether going from `from` to `to` moves the window's top-left corner. A
+ * webview keeps showing its old picture, anchored there, until it has
+ * redrawn at the new size: the pet is hidden across such a move.
+ */
+export function originMoves(from: Box, to: Box): boolean {
+  return Math.abs(from.x - to.x) > 0.5 || Math.abs(from.y - to.y) > 0.5
 }

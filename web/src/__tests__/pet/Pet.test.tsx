@@ -5,6 +5,10 @@ import {
   BALLOON_POP_MS,
   DEFAULT_PET_SETTINGS,
   DUST_MS,
+  FRAME_SETTLE_MS,
+  FRAME_SHRINK_AFTER_MS,
+  FRAME_WAIT_MS,
+  JUMP_MS,
   LADDER_FOLD_MS,
   LADDER_GROW_MS,
   LAND_MS,
@@ -1024,6 +1028,276 @@ describe('Pet changing height', () => {
       emit('pet-state', { ...view, settings: settings({ movement: 'calm', position: saved }) })
       expect(petEl()).toHaveClass('pet--fall')
       expect(petAt()).toEqual({ x, y: ground.y })
+    })
+  })
+
+  // The window is a lane of the work area, not all of it: the page draws the
+  // work area ("area" pixels) through it, asks the shell for the lane it
+  // needs, and hides the pet while the lane's top edge moves.
+  describe('in a lane window', () => {
+    const area = { width: 1024, height: 768 }
+    const lane = { x: 0, y: 664, width: 1024, height: 104 }
+    const full = { x: 0, y: 0, width: 1024, height: 768 }
+    type Fit = { rects: Array<{ x: number; y: number; width: number; height: number }>; capture: boolean; frame?: { x: number; y: number; width: number; height: number } }
+    const lastFit = () => fits().at(-1) as unknown as Fit
+    const strip = () => document.querySelector('.pet-strip') as HTMLElement
+    const shifting = () => strip().classList.contains('pet-strip--shifting')
+    const inLane = (patch: Partial<PetSettings> = {}) => ({ settings: settings(patch), area, frame: lane })
+    /** The shell's answer to a request for `frame`. */
+    const moved = (frame: typeof lane) => emit('pet-frame', { area, frame })
+
+    it('draws the work area offset by the window, so the pet stays where it is in area pixels', async () => {
+      await scene(inLane(), () => {
+        expect(strip().style.left).toBe('0px')
+        expect(strip().style.top).toBe(`${-lane.y}px`)
+        expect(strip().style.width).toBe('1024px')
+        expect(strip().style.height).toBe('768px')
+        expect(petAt().y).toBe(720)
+        expect(shifting()).toBe(false)
+      })
+    })
+
+    it('asks for a lane round the pet, and reports its hit areas in area pixels', async () => {
+      await scene(inLane(), () => {
+        // The window's own pixels: the pet is 56 below the lane's top.
+        petEl().getBoundingClientRect = () => ({ left: 300, top: 56, width: 64, height: 48, right: 364, bottom: 104, x: 300, y: 56, toJSON: () => ({}) })
+        moved(lane)
+        emit('pet-state', { ...view, settings: settings() })
+        const fit = lastFit()
+        expect(fit.frame).toEqual(lane)
+        expect(fit.rects[0]).toEqual({ x: 296, y: 664 + 56 - 4, width: 72, height: 56 })
+        expect(fit.capture).toBe(false)
+        // Far smaller than the work area.
+        expect(fit.frame!.height).toBeLessThan(area.height / 5)
+      })
+    })
+
+    it('keeps hit areas in area pixels when the lane has moved', async () => {
+      await scene(inLane(), () => {
+        petEl().getBoundingClientRect = () => ({ left: 300, top: 300, width: 64, height: 48, right: 364, bottom: 348, x: 300, y: 300, toJSON: () => ({}) })
+        moved({ ...lane, y: 400, height: 368 })
+        emit('pet-state', { ...view, settings: settings(), frame: { ...lane, y: 400, height: 368 } })
+        expect(lastFit().rects[0].y).toBe(400 + 300 - 4)
+      })
+    })
+
+    it('says nothing about a frame to a shell that does not place one', async () => {
+      await scene({ settings: settings() }, () => {
+        emit('pet-state', { ...view, settings: settings() })
+        expect(lastFit().frame).toBeUndefined()
+        expect(strip().style.top).toBe('0px')
+      })
+    })
+
+    it('is the whole area while dragged, hiding the pet until the window has moved and settled', async () => {
+      await scene(inLane(), (timers) => {
+        // Pressed at the pet (window pixels), then moved a little up.
+        fireEvent.pointerDown(petEl(), { button: 0, clientX: 310, clientY: 56 + 10 })
+        fireEvent.pointerMove(petEl(), { clientX: 310, clientY: 56 - 50 })
+        expect(lastFit().frame).toEqual(full)
+        expect(lastFit().capture).toBe(true)
+        expect(shifting()).toBe(true)
+
+        // An answer about some other frame does not show the pet again.
+        moved(lane)
+        act(() => timers.tick(FRAME_SETTLE_MS + 10))
+        expect(shifting()).toBe(true)
+
+        moved(full)
+        act(() => timers.tick(FRAME_SETTLE_MS - 1))
+        expect(shifting()).toBe(true)
+        act(() => timers.tick(1))
+        expect(shifting()).toBe(false)
+        expect(strip().style.top).toBe('0px')
+      })
+    })
+
+    it('shows the pet again after a wait even if the shell never answers', async () => {
+      await scene(inLane(), (timers) => {
+        fireEvent.pointerDown(petEl(), { button: 0, clientX: 310, clientY: 66 })
+        fireEvent.pointerMove(petEl(), { clientX: 310, clientY: 6 })
+        expect(shifting()).toBe(true)
+        act(() => timers.tick(FRAME_WAIT_MS))
+        expect(shifting()).toBe(false)
+      })
+    })
+
+    it('drags in area pixels, so the lane growing under the pointer does not move the pet', async () => {
+      await scene(inLane(), (timers) => {
+        fireEvent.pointerDown(petEl(), { button: 0, clientX: 310, clientY: 56 + 10 })
+        fireEvent.pointerMove(petEl(), { clientX: 310, clientY: 56 - 20 })
+        // The pointer is 30 up in the area: the pet followed.
+        expect(petAt().y).toBe(720 - 30)
+        // The window grew to the whole area (its origin is now the area's): the
+        // same spot of the screen, read in the new window pixels.
+        moved(full)
+        act(() => timers.tick(FRAME_SETTLE_MS))
+        fireEvent.pointerMove(petEl(), { clientX: 310, clientY: 664 + 56 - 20 - 100 })
+        expect(petAt().y).toBe(720 - 130)
+        fireEvent.pointerUp(petEl(), { clientX: 310, clientY: 664 + 56 - 20 - 100 })
+        // Dropped: where its feet are, in area pixels.
+        expect(calls.find(([cmd]) => cmd === 'pet_drag_end')?.[1]).toEqual({ x: petAt().x, y: 720 - 130 + 48 })
+      })
+    })
+
+    it('keeps the big window a while after a drop, then shrinks it to a lane round the pet', async () => {
+      await scene(inLane(), (timers) => {
+        fireEvent.pointerDown(petEl(), { button: 0, clientX: 310, clientY: 66 })
+        fireEvent.pointerMove(petEl(), { clientX: 310, clientY: 6 })
+        moved(full)
+        act(() => timers.tick(FRAME_SETTLE_MS))
+        // Dropped higher up (stay put keeps it there).
+        fireEvent.pointerMove(petEl(), { clientX: 310, clientY: 400 })
+        fireEvent.pointerUp(petEl(), { clientX: 310, clientY: 400 })
+        expect(lastFit().frame).toEqual(full)
+        act(() => timers.tick(FRAME_SHRINK_AFTER_MS - 1))
+        expect(lastFit().frame).toEqual(full)
+        act(() => timers.tick(1))
+        const top = petAt().y
+        expect(lastFit().frame).toEqual({ x: 0, y: top - 56, width: 1024, height: 56 + 48 + 12 })
+        // The window's corner moves: the pet is hidden until the shell answers.
+        expect(shifting()).toBe(true)
+      })
+    })
+
+    it('keeps a bigger window for a while after the need has gone, then shrinks it', async () => {
+      await scene(inLane(), (timers) => {
+        emit('pet-notification', bubble())
+        const grown = lastFit().frame!
+        expect(grown.y).toBeLessThan(lane.y)
+        fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+        moved(grown)
+        act(() => timers.tick(FRAME_SETTLE_MS))
+        // The bubble is gone, but a bigger window is kept a while.
+        expect(lastFit().frame).toEqual(grown)
+        act(() => timers.tick(FRAME_SHRINK_AFTER_MS - FRAME_SETTLE_MS - 1))
+        expect(lastFit().frame).toEqual(grown)
+        act(() => timers.tick(FRAME_SETTLE_MS + 1))
+        expect(lastFit().frame).toEqual(lane)
+      })
+    })
+
+    it('gives a bubble room above the pet, and below it near the top of the screen', async () => {
+      await scene(inLane(), () => {
+        emit('pet-notification', bubble())
+        const above = lastFit().frame!
+        expect(above.y).toBeLessThanOrEqual(720 - 16 - 24 - 200)
+        expect(above.y + above.height).toBe(768)
+      })
+      cleanup()
+      calls = []
+      handlers.clear()
+      await scene({ settings: settings({ position: { display: '', x: 0.5, y: 0 } }), area, frame: { x: 0, y: 0, width: 1024, height: 120 } }, () => {
+        emit('pet-notification', bubble())
+        expect(bubbleEl()).toHaveClass('pet-bubble--below')
+        const below = lastFit().frame!
+        expect(below.y).toBe(0)
+        expect(below.y + below.height).toBeGreaterThanOrEqual(48 + 16 + 24 + 200)
+      })
+    })
+
+    it('opens its menu at the click in window pixels', async () => {
+      await scene({ settings: settings(), area, frame: { x: 0, y: 664, width: 1024, height: 104 } }, () => {
+        fireEvent.contextMenu(petEl(), { clientX: 30, clientY: 40 })
+        expect(calls).toContainEqual(['pet_menu', { x: 30, y: 40, unread: [], questions: [] }])
+      })
+    })
+
+    it('waits for a lane that holds the whole ladder before it grows one', async () => {
+      const ledgeWindow = { id: 1, x: 100, y: 400, width: 500, height: 300 }
+      await scene(inLane({ movement: 'playful', toys: true }), (timers) => {
+        emit('pet-windows', [ledgeWindow])
+        emit('pet-state', { ...view, settings: settings({ movement: 'playful', toys: true }) })
+        act(() => timers.tick(1000))
+        // It asked for the room (the climb to y 352) and has not grown a ladder yet.
+        const ask = lastFit().frame!
+        expect(ask.y).toBeLessThanOrEqual(400 - 48 - 56)
+        expect(ask.y + ask.height).toBe(768)
+        expect(document.querySelector('.pet-ladder')).toBeNull()
+        expect(shifting()).toBe(true)
+
+        // The window has moved: it waits for the page to have settled there.
+        moved(ask)
+        expect(document.querySelector('.pet-ladder')).toBeNull()
+        act(() => timers.tick(FRAME_SETTLE_MS))
+        expect(document.querySelector('.pet-ladder')).not.toBeNull()
+        expect(shifting()).toBe(false)
+        // From here on it sits long between moves.
+        Math.random = () => 0.99
+
+        // The lane keeps the whole climb until it is over, and shrinks after.
+        act(() => timers.tick(LADDER_GROW_MS))
+        expect(petAt().y).toBe(400 - 48)
+        act(() => timers.tick(FRAME_SHRINK_AFTER_MS * 2))
+        expect(lastFit().frame).toEqual(ask)
+        // Over: the ladder folds, the pet sits, and a quiet spell later the lane shrinks to it.
+        act(() => timers.tick(climbMs(400 - 48 - 720)))
+        act(() => timers.tick(LADDER_FOLD_MS))
+        act(() => timers.tick(FRAME_SHRINK_AFTER_MS))
+        expect(lastFit().frame).toEqual({ x: 0, y: 352 - 56, width: 1024, height: 56 + 48 + 12 })
+      })
+    })
+
+    it('starts after a short wait if the shell does not make the room', async () => {
+      const ledgeWindow = { id: 1, x: 100, y: 400, width: 500, height: 300 }
+      await scene(inLane({ movement: 'playful', toys: true }), (timers) => {
+        emit('pet-windows', [ledgeWindow])
+        emit('pet-state', { ...view, settings: settings({ movement: 'playful', toys: true }) })
+        act(() => timers.tick(1000))
+        expect(document.querySelector('.pet-ladder')).toBeNull()
+        act(() => timers.tick(FRAME_WAIT_MS))
+        expect(document.querySelector('.pet-ladder')).not.toBeNull()
+      })
+    })
+
+    it('falls at once when the lane reaches the ground, and waits for room when it does not', async () => {
+      const ledgeWindow = { id: 1, x: 100, y: 400, width: 500, height: 300 }
+      await scene(inLane({ movement: 'playful', toys: false }), (timers, ground) => {
+        emit('pet-windows', [ledgeWindow])
+        emit('pet-state', { ...view, settings: settings({ movement: 'playful', toys: false }) })
+        // It hops up (once the window has room for the whole jump).
+        act(() => timers.tick(1000))
+        const ask = lastFit().frame!
+        Math.random = () => 0.99
+        moved(ask)
+        act(() => timers.tick(FRAME_SETTLE_MS))
+        expect(petAt().y).toBe(400 - 48)
+        // The window still reaches the ground: it falls straight away.
+        emit('pet-windows', [])
+        expect(petEl()).toHaveClass('pet--fall')
+        expect(petAt().y).toBe(ground.y)
+      })
+    })
+
+    it('asks for more room, and falls when it has it, if the lane had shrunk to the pet up on its window', async () => {
+      const ledgeWindow = { id: 1, x: 100, y: 400, width: 500, height: 300 }
+      await scene(inLane({ movement: 'playful', toys: false }), (timers, ground) => {
+        emit('pet-windows', [ledgeWindow])
+        emit('pet-state', { ...view, settings: settings({ movement: 'playful', toys: false }) })
+        act(() => timers.tick(1000))
+        Math.random = () => 0.99
+        moved(lastFit().frame!)
+        act(() => timers.tick(FRAME_SETTLE_MS))
+        expect(petAt().y).toBe(400 - 48)
+        act(() => timers.tick(JUMP_MS))
+        // Held still up there (its menu is open), the lane shrinks round it.
+        fireEvent.contextMenu(petEl(), { clientX: 10, clientY: 10 })
+        act(() => timers.tick(FRAME_SHRINK_AFTER_MS))
+        const round = lastFit().frame!
+        expect(round).toEqual({ x: 0, y: 352 - 56, width: 1024, height: 56 + 48 + 12 })
+        moved(round)
+        act(() => timers.tick(FRAME_SETTLE_MS))
+
+        // Its window goes: the lane must reach down first.
+        emit('pet-windows', [])
+        const down = lastFit().frame!
+        expect(down.y + down.height).toBe(768)
+        expect(petEl()).not.toHaveClass('pet--fall')
+        moved(down)
+        act(() => timers.tick(FRAME_SETTLE_MS))
+        expect(petEl()).toHaveClass('pet--fall')
+        expect(petAt().y).toBe(ground.y)
+      })
     })
   })
 })

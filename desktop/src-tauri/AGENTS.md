@@ -69,8 +69,13 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   reviews and change confirmations say "Open to answer". A 409/404 on the
   answer means it is no longer open: treated as answered elsewhere.
 - `src/pet.rs`: the desktop pet (`web/pet.html`, macOS and Windows): a
-  transparent always-on-top strip along the bottom of a display's work
-  area. The page reports its clickable areas (`pet_fit`) and Rust polls the
+  transparent always-on-top window that is only a full-width lane of a
+  display's work area, as tall as the pet's scene needs (the whole area
+  while it is dragged), so a meeting app's window picker finds no sheet over
+  the desktop. The page works in work-area pixels and asks for its lane
+  with its clickable areas (`pet_fit`); Rust clamps it (`window_frame`),
+  moves the window and answers `pet-frame`. Hit areas, pointer, ledges and
+  the saved position stay in work-area pixels. Rust polls the
   pointer to switch click-through, like the island. It gets the island
   feed's status and `desktop_notification` events, and
   `show_desktop_notification` asks `pet::take_banner` first: the pet takes

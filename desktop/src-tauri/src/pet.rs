@@ -3,13 +3,23 @@
 //! taskbar, by default), walks left and right at that height, and shows
 //! agent notifications in a speech bubble instead of the system banner.
 //!
-//! The window (`web/pet.html`) is transparent and covers the display's work
-//! area. The pet and its bubbles move inside it with CSS, so the window
-//! itself never moves while it walks or is dragged. Clicks pass through the
-//! window except over the hit areas
-//! the page reports (`pet_fit`): Rust polls the pointer and switches the
-//! window's click-through, like the notch island does. The window never
-//! takes keyboard focus.
+//! The window (`web/pet.html`) is transparent and covers only a lane of the
+//! display's work area: the full width, and just the height of what the pet
+//! needs now (the pet and its marks, a bubble, a ladder, a balloon, a fall;
+//! the whole area while it is dragged). Everywhere else the desktop has no
+//! window of ours, so a meeting app's window picker can pick what is behind
+//! the pet. The page works in the work area's CSS pixels ("area" pixels) and
+//! asks for the frame it needs in `pet_fit`; this module clamps it to the
+//! work area and moves the window ([`window_frame`]), then tells the page
+//! the frame it got (`pet-frame`), so the page can draw at the right offset.
+//! The lane never moves sideways, and the page hides the pet for a moment
+//! while the lane's top edge moves, so no frame shows it displaced.
+//!
+//! Hit areas, the pointer, other windows' ledges and the saved position are
+//! all in area pixels, whatever the window's frame is. Clicks pass through
+//! the window except over the hit areas the page reports (`pet_fit`): Rust
+//! polls the pointer and switches the window's click-through, like the notch
+//! island does. The window never takes keyboard focus.
 //!
 //! Its data comes from the island's server feed (`island.rs`), which runs
 //! while the island or the pet is on: the active-session snapshot drives
@@ -52,6 +62,8 @@ pub const PET_POINTER_EVENT: &str = "pet-pointer";
 pub const PET_QUESTION_ANSWERED_EVENT: &str = "pet-question-answered";
 /// Other apps' windows the pet can climb, front first, in the page's CSS pixels.
 pub const PET_WINDOWS_EVENT: &str = "pet-windows";
+/// The window's frame changed: the work area and the window in it (CSS px).
+pub const PET_FRAME_EVENT: &str = "pet-frame";
 /// The pet settings changed; sent to every window.
 pub const PET_SETTINGS_EVENT: &str = "pet-settings-changed";
 /// The tray menu item that turns the pet on or off.
@@ -332,6 +344,129 @@ pub fn pet_frame(work: Area) -> Area {
     Area { scale, ..work }
 }
 
+// ── The window's frame ──────────────────────────────────────────────────────
+
+/// The pet's height at medium size in CSS px (`PET_HEIGHT` in `state.ts`).
+const PET_HEIGHT: f64 = 48.0;
+/// Room the window keeps above the pet (its marks, its poke reply) and
+/// below its feet, in CSS px (`FRAME_ABOVE`, `FRAME_BELOW` in `state.ts`).
+const FRAME_ABOVE: f64 = 56.0;
+const FRAME_BELOW: f64 = 12.0;
+/// The smallest window, in physical px.
+const MIN_FRAME: u32 = 16;
+
+/// The pet's size against medium (`SIZE_SCALE` in `state.ts`).
+pub fn size_scale(size: PetSize) -> f64 {
+    match size {
+        PetSize::Small => 0.75,
+        PetSize::Medium => 1.0,
+        PetSize::Large => 1.4,
+    }
+}
+
+/// How big the page's world is: the work area, in CSS pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct PageSize {
+    pub width: f64,
+    pub height: f64,
+}
+
+/// The window's frame inside the work area, in the page's CSS pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct PageFrame {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// The work area in CSS pixels.
+pub fn page_size(work: &Area) -> PageSize {
+    let scale = pet_frame(*work).scale;
+    PageSize { width: f64::from(work.width) / scale, height: f64::from(work.height) / scale }
+}
+
+/// One axis of a frame: `start` and `len` (CSS px) rounded to physical
+/// pixels inside `0..total`, at least [`MIN_FRAME`] long.
+fn frame_axis(start: f64, len: f64, total: u32, scale: f64) -> (u32, u32) {
+    let total = f64::from(total);
+    let a = (start * scale).round().clamp(0.0, total);
+    let b = ((start + len) * scale).round().clamp(0.0, total);
+    let (a, mut b) = (a.min(b), a.max(b));
+    let min = f64::from(MIN_FRAME).min(total);
+    let mut a = a;
+    if b - a < min {
+        b = (a + min).min(total);
+        a = (b - min).max(0.0);
+    }
+    (a as u32, (b - a) as u32)
+}
+
+/// The window's frame, in physical screen pixels, for the frame the page
+/// asks for (CSS px in the work area): clamped to the work area and rounded
+/// to whole pixels. While dragging, or without a usable request, it is the
+/// whole work area, so the pet can be dropped anywhere.
+pub fn window_frame(request: Option<&HitRect>, work: &Area, dragging: bool) -> Area {
+    let work = pet_frame(*work);
+    let Some(r) = request.filter(|r| r.is_valid() && !dragging) else {
+        return work;
+    };
+    let (x, width) = frame_axis(r.x, r.width, work.width, work.scale);
+    let (y, height) = frame_axis(r.y, r.height, work.height, work.scale);
+    Area { x: work.x + x as i32, y: work.y + y as i32, width, height, scale: work.scale }
+}
+
+/// The window's frame in the page's CSS pixels, from its place on screen.
+pub fn page_frame(window: &Area, work: &Area) -> PageFrame {
+    let scale = pet_frame(*work).scale;
+    PageFrame {
+        x: f64::from(window.x - work.x) / scale,
+        y: f64::from(window.y - work.y) / scale,
+        width: f64::from(window.width) / scale,
+        height: f64::from(window.height) / scale,
+    }
+}
+
+/// The lane the window starts with, before the page has said what it needs:
+/// the full width, around the pet's saved feet height (default: the bottom).
+pub fn initial_request(position: Option<&PetPosition>, size: PetSize, work: &Area) -> HitRect {
+    let area = page_size(work);
+    let fraction = position.map(|p| p.y).filter(|y| y.is_finite()).unwrap_or_else(bottom_edge).clamp(0.0, 1.0);
+    let feet = fraction * area.height;
+    let top = (feet - PET_HEIGHT * size_scale(size) - FRAME_ABOVE).max(0.0).round();
+    let bottom = (feet + FRAME_BELOW).min(area.height).round();
+    HitRect { x: 0.0, y: top, width: area.width, height: (bottom - top).max(0.0) }
+}
+
+/// Move and resize the pet window to `frame` (physical px). Main thread only.
+/// Size first: it keeps the window's top-left, and the page hides the pet
+/// while the frame changes, so no half-way frame is seen.
+fn set_window_frame(window: &WebviewWindow, frame: Area) {
+    let _ = window.set_size(tauri::PhysicalSize::new(frame.width, frame.height));
+    let _ = window.set_position(tauri::PhysicalPosition::new(frame.x, frame.y));
+}
+
+/// What the page is told about its window: the world (the work area) and
+/// where the window is in it.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct FrameView {
+    pub area: PageSize,
+    pub frame: PageFrame,
+}
+
+fn frame_view() -> Option<FrameView> {
+    let s = shared().lock().unwrap();
+    let (work, window) = (s.strip?, s.window?);
+    Some(FrameView { area: page_size(&work), frame: page_frame(&window, &work) })
+}
+
+/// The window moved or was resized: tell the page where it is now.
+fn emit_frame(app: &AppHandle) {
+    if let Some(view) = frame_view() {
+        let _ = app.emit_to(PET_WINDOW, PET_FRAME_EVENT, view);
+    }
+}
+
 /// A Dock or taskbar that hides itself leaves the work area reaching the
 /// bottom of the display, and pops up over whatever walks there. Keep its
 /// room (`bar_height`, logical px) clear when nothing is reserved at the
@@ -521,6 +656,8 @@ struct Shared {
     /// The window is ordered on screen.
     shown: bool,
     strip: Option<Area>,
+    /// The window's frame on screen (physical px): a lane of `strip`.
+    window: Option<Area>,
     hits: Vec<HitRect>,
     /// A drag is under way: keep taking clicks wherever the pointer is.
     capture: bool,
@@ -545,6 +682,7 @@ fn shared() -> &'static Mutex<Shared> {
             occluded: false,
             shown: false,
             strip: None,
+            window: None,
             hits: Vec::new(),
             capture: false,
             taking_clicks: false,
@@ -672,6 +810,7 @@ fn apply(app: &AppHandle) {
         let was_shown = {
             let mut s = shared().lock().unwrap();
             s.strip = None;
+            s.window = None;
             s.taking_clicks = false;
             std::mem::replace(&mut s.shown, false)
         };
@@ -699,13 +838,17 @@ fn apply(app: &AppHandle) {
     };
     let bar = *hidden_bar().lock().unwrap();
     let frame = pet_frame(leave_room_for_hidden_bar(display.work, display.bottom, bar));
+    let lane = window_frame(Some(&initial_request(settings.position.as_ref(), settings.size, &frame)), &frame, false);
     let (moved, was_shown) = {
         let mut s = shared().lock().unwrap();
-        (s.strip.replace(frame) != Some(frame), s.shown)
+        let moved = s.strip.replace(frame) != Some(frame);
+        if moved {
+            s.window = Some(lane);
+        }
+        (moved, s.shown)
     };
     if moved {
-        let _ = window.set_size(tauri::PhysicalSize::new(frame.width, frame.height));
-        let _ = window.set_position(tauri::PhysicalPosition::new(frame.x, frame.y));
+        set_window_frame(&window, lane);
     }
     if !was_shown {
         native::show(&window);
@@ -716,7 +859,7 @@ fn apply(app: &AppHandle) {
             s.occluded = false;
             s.taking_clicks = false;
         }
-        log::info!("pet: shown on {:?} {}x{}", display.name, frame.width, frame.height);
+        log::info!("pet: shown on {:?} {}x{} (window {}x{})", display.name, frame.width, frame.height, lane.width, lane.height);
         wake().notify_one();
     }
     if moved || !was_shown {
@@ -848,11 +991,16 @@ pub struct PetView {
     settings: PetSettings,
     status: PetStatus,
     shown: bool,
+    /// The world the page draws in (the work area) and the window's frame in
+    /// it, in CSS px; absent until the window is placed.
+    area: Option<PageSize>,
+    frame: Option<PageFrame>,
 }
 
 fn view() -> PetView {
     let s = shared().lock().unwrap();
-    PetView { settings: s.settings.clone(), status: s.status, shown: s.shown }
+    let frames = s.strip.zip(s.window).map(|(work, window)| (page_size(&work), page_frame(&window, &work)));
+    PetView { settings: s.settings.clone(), status: s.status, shown: s.shown, area: frames.map(|f| f.0), frame: frames.map(|f| f.1) }
 }
 
 fn emit_state(app: &AppHandle) {
@@ -1001,17 +1149,31 @@ pub fn pet_state(window: WebviewWindow) -> Result<PetView, String> {
     Ok(view())
 }
 
-/// The page's clickable areas (the pet and its bubbles) in CSS pixels, and
-/// whether a drag is under way.
+/// The page's clickable areas (the pet and its bubbles) in area pixels,
+/// whether a drag is under way, and the frame (area pixels) the window
+/// should have now: the lane the pet needs, or the whole area while it is
+/// dragged. A new frame is applied at once and sent back as `pet-frame`.
 #[tauri::command]
-pub fn pet_fit(window: WebviewWindow, rects: Vec<HitRect>, capture: bool) {
+pub fn pet_fit(app: AppHandle, window: WebviewWindow, rects: Vec<HitRect>, capture: bool, frame: Option<HitRect>) {
     if window.label() != PET_WINDOW {
         return;
     }
-    let mut s = shared().lock().unwrap();
-    s.hits = rects.into_iter().filter(HitRect::is_valid).take(16).collect();
-    s.capture = capture;
-    drop(s);
+    let next = {
+        let mut s = shared().lock().unwrap();
+        s.hits = rects.into_iter().filter(HitRect::is_valid).take(16).collect();
+        s.capture = capture;
+        let next = s.strip.filter(|_| frame.is_some()).map(|work| window_frame(frame.as_ref(), &work, capture));
+        next.filter(|next| s.window.is_some_and(|now| now != *next)).inspect(|next| s.window = Some(*next))
+    };
+    if let Some(next) = next {
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Some(window) = handle.get_webview_window(PET_WINDOW) {
+                set_window_frame(&window, next);
+            }
+            emit_frame(&handle);
+        });
+    }
     wake().notify_one();
 }
 
@@ -1827,6 +1989,120 @@ mod tests {
     fn the_pointer_is_read_in_the_strips_css_pixels() {
         let strip = Area { x: 100, y: 500, width: 2000, height: 520, scale: 2.0 };
         assert_eq!(local_point(&strip, 300.0, 700.0), (100.0, 100.0));
+    }
+
+    fn work() -> Area {
+        // A 2x display whose work area starts below a menu bar: 1440 x 800 CSS px.
+        Area { x: 0, y: 50, width: 2880, height: 1600, scale: 2.0 }
+    }
+
+    #[test]
+    fn the_window_is_a_full_width_lane_of_the_height_asked_for() {
+        let ask = HitRect { x: 0.0, y: 700.0, width: 1440.0, height: 100.0 };
+        let frame = window_frame(Some(&ask), &work(), false);
+        // Physical pixels on screen: the work area's top (50) plus 700 CSS px at 2x.
+        assert_eq!(frame, Area { x: 0, y: 50 + 1400, width: 2880, height: 200, scale: 2.0 });
+        assert!(u64::from(frame.width) * u64::from(frame.height) < u64::from(work().width) * u64::from(work().height) / 4);
+    }
+
+    #[test]
+    fn the_window_never_leaves_the_work_area() {
+        let w = work();
+        // Reaching past every edge is cut to the edges.
+        let past = HitRect { x: -50.0, y: -30.0, width: 5000.0, height: 5000.0 };
+        assert_eq!(window_frame(Some(&past), &w, false), w);
+        let below = HitRect { x: 100.0, y: 760.0, width: 300.0, height: 200.0 };
+        let frame = window_frame(Some(&below), &w, false);
+        assert_eq!((frame.y + frame.height as i32), w.y + w.height as i32, "ends at the bottom edge");
+        assert_eq!(frame.x, 200);
+        // Nowhere near it: a window of at least the least size, inside.
+        let off = HitRect { x: 9000.0, y: 9000.0, width: 10.0, height: 10.0 };
+        let frame = window_frame(Some(&off), &w, false);
+        assert!(frame.width >= MIN_FRAME && frame.height >= MIN_FRAME);
+        assert!(frame.x + frame.width as i32 <= w.width as i32);
+        assert!(frame.y + frame.height as i32 <= w.y + w.height as i32);
+    }
+
+    #[test]
+    fn a_drag_gives_the_window_the_whole_work_area_and_a_drop_takes_it_back() {
+        let ask = HitRect { x: 0.0, y: 700.0, width: 1440.0, height: 100.0 };
+        assert_eq!(window_frame(Some(&ask), &work(), true), work());
+        assert_ne!(window_frame(Some(&ask), &work(), false), work());
+    }
+
+    #[test]
+    fn the_window_is_the_whole_work_area_without_a_usable_request() {
+        assert_eq!(window_frame(None, &work(), false), work());
+        let bad = HitRect { x: f64::NAN, y: 0.0, width: 10.0, height: 10.0 };
+        assert_eq!(window_frame(Some(&bad), &work(), false), work());
+        let odd_scale = Area { scale: f64::NAN, ..work() };
+        assert_eq!(window_frame(None, &odd_scale, false).scale, 1.0);
+    }
+
+    #[test]
+    fn the_frame_is_rounded_to_whole_physical_pixels() {
+        let w = Area { x: 0, y: 0, width: 1500, height: 1000, scale: 1.25 };
+        let ask = HitRect { x: 0.0, y: 100.3, width: 1200.0, height: 50.2 };
+        let f = window_frame(Some(&ask), &w, false);
+        assert_eq!((f.y, f.height), (125, 63));
+        assert_eq!((f.x, f.width), (0, 1500));
+    }
+
+    #[test]
+    fn the_page_is_told_its_frame_in_css_pixels_inside_the_work_area() {
+        let w = work();
+        let ask = HitRect { x: 0.0, y: 700.0, width: 1440.0, height: 100.0 };
+        let frame = window_frame(Some(&ask), &w, false);
+        assert_eq!(page_frame(&frame, &w), PageFrame { x: 0.0, y: 700.0, width: 1440.0, height: 100.0 });
+        assert_eq!(page_size(&w), PageSize { width: 1440.0, height: 800.0 });
+        assert_eq!(page_frame(&w, &w), PageFrame { x: 0.0, y: 0.0, width: 1440.0, height: 800.0 });
+    }
+
+    // Hit areas, the pointer and the ledges stay in the work area's pixels
+    // whatever the window's frame is: a point read in the window's own pixels
+    // and moved by the window's offset is the same point.
+    #[test]
+    fn the_pointer_means_the_same_point_in_the_window_and_in_the_work_area() {
+        let w = work();
+        let ask = HitRect { x: 0.0, y: 700.0, width: 1440.0, height: 100.0 };
+        let window = window_frame(Some(&ask), &w, false);
+        let frame = page_frame(&window, &w);
+        for (x, y) in [(300.0, 1500.0), (2000.0, 1600.0), (5.0, 1450.0)] {
+            let (ax, ay) = local_point(&w, x, y);
+            let (wx, wy) = local_point(&window, x, y);
+            assert_eq!((wx + frame.x, wy + frame.y), (ax, ay), "at {x},{y}");
+        }
+    }
+
+    #[test]
+    fn other_windows_are_placed_in_the_work_area_not_in_the_window() {
+        let w = work();
+        let screen = ScreenWindow { id: 5, x: 400.0, y: 650.0, width: 800.0, height: 400.0 };
+        let in_area = page_windows(&[screen], &w);
+        assert_eq!(in_area, [PageWindow { id: 5, x: 200.0, y: 300.0, width: 400.0, height: 200.0 }]);
+        // A window above the lane is still a ledge: the lane does not hide it.
+        assert_eq!(in_area[0].y, 300.0);
+    }
+
+    #[test]
+    fn the_window_starts_as_a_lane_around_where_the_pet_was_dropped() {
+        let w = work();
+        // Default: standing on the bottom edge, medium size.
+        let ask = initial_request(None, PetSize::Medium, &w);
+        assert_eq!(ask, HitRect { x: 0.0, y: 800.0 - 12.0 - 48.0 - 56.0 + 12.0, width: 1440.0, height: 48.0 + 56.0 });
+        let frame = window_frame(Some(&ask), &w, false);
+        assert_eq!(frame.y + frame.height as i32, w.y + w.height as i32, "reaches the bottom");
+        // Dropped higher up, large: the lane follows, and is taller.
+        let high = PetPosition { display: String::new(), x: 0.5, y: 0.5 };
+        let ask = initial_request(Some(&high), PetSize::Large, &w);
+        assert_eq!(ask.y, (400.0_f64 - 48.0 * 1.4 - 56.0).round());
+        assert_eq!(ask.y + ask.height, 412.0);
+        // Near the top it stops at the top.
+        let top = PetPosition { display: String::new(), x: 0.5, y: 0.0 };
+        let ask = initial_request(Some(&top), PetSize::Medium, &w);
+        assert_eq!(ask.y, 0.0);
+        assert!(ask.height >= 12.0);
+        assert_eq!(size_scale(PetSize::Small), 0.75);
     }
 
     #[test]

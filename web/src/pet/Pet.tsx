@@ -8,11 +8,16 @@ import { BALLOON_COLUMNS, BALLOON_ROWS, balloonRows, poseFrames, spriteRects, SP
 import {
   BALLOON_AWAY_MS,
   BALLOON_POP_MS,
+  BUBBLE_ROOM,
+  BUBBLE_WIDTH,
   BUBBLE_FADE_MS,
   CHARACTER_TRAITS,
   DUST_MS,
   EMPTY_BUBBLES,
   FOLD_MS,
+  FRAME_SETTLE_MS,
+  FRAME_SHRINK_AFTER_MS,
+  FRAME_WAIT_MS,
   JUMP_MS,
   LADDER_FOLD_MS,
   LADDER_GROW_MS,
@@ -27,6 +32,7 @@ import {
   ZOOM_SPEED,
   badgeCount,
   badgeLabel,
+  balloonRoom,
   bubbleBelow,
   bubbleLeft,
   bubbleReducer,
@@ -41,25 +47,34 @@ import {
   fallTarget,
   floatMs,
   followLedge,
+  frameCovers,
+  growFrame,
   ladderBox,
+  liftsAllowed,
+  neededFrame,
+  originMoves,
   readOnDismiss,
   ledges,
   nextTarget,
   petPose,
   reactionFor,
   sitPause,
+  shrinkable,
   startX,
   startY,
+  toArea,
   visibleBubble,
   withinPounce,
   zoomDelay,
   zoomsWhenDone,
   type BalloonPlan,
+  type Box,
   type BubbleTone,
   type Ledge,
   type PetBubble,
   type PetCharacter,
   type PetColour,
+  type PetFrameView,
   type PetMovement,
   type PetPose,
   type PetReaction,
@@ -87,6 +102,8 @@ const QUESTION_ANSWERED_EVENT = 'pet-question-answered'
 const POINTER_EVENT = 'pet-pointer'
 /** Other apps' windows it can climb, front first (CSS px); empty when it may not. */
 const WINDOWS_EVENT = 'pet-windows'
+/** The window's frame changed: the work area and the window's box in it. */
+const FRAME_EVENT = 'pet-frame'
 /** A press that moves less than this is a click, not a drag. */
 const DRAG_SLOP = 4
 const REACTION_MS: Record<PetReaction, number> = { hop: 1700, droop: 2500, look: 2000 }
@@ -218,8 +235,16 @@ export function Pet() {
   const [sitting, setSitting] = useState(true)
   const [lastActivity, setLastActivity] = useState(() => Date.now())
   const [now, setNow] = useState(() => Date.now())
-  const [width, setWidth] = useState(() => window.innerWidth)
-  const [height, setHeight] = useState(() => window.innerHeight)
+  // The pet lives in the work area (the shell says how big it is), drawn
+  // through a window that is only a lane of it. Without that (older shell, or
+  // before the window is placed) the window is the whole world.
+  const [windowSize, setWindowSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }))
+  const [frameView, setFrameView] = useState<PetFrameView | null>(null)
+  /** The lane is moving: the pet is hidden until the webview has redrawn at the new size. */
+  const [shifting, setShifting] = useState(false)
+  const width = frameView?.area.width ?? windowSize.width
+  const height = frameView?.area.height ?? windowSize.height
+  const frame: Box = frameView?.frame ?? { x: 0, y: 0, width, height }
   const [x, setX] = useState<number | null>(null)
   const [y, setY] = useState(0)
   const [facingLeft, setFacingLeft] = useState(false)
@@ -260,6 +285,23 @@ export function Pet() {
   const reportedRef = useRef<{ x: number; y: number; frame: string } | null>(null)
   const startFallRef = useRef<() => void>(() => {})
   const balloonRef = useRef<HTMLButtonElement>(null)
+  /** The window's box in the area, as last told by the shell: the offset the page draws at. */
+  const frameRef = useRef<Box>({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight })
+  /** The frame last asked for (a bigger one is kept a while before it shrinks). */
+  const wantRef = useRef<Box | null>(null)
+  /** The pet's whole path in a move under way, or null: the window must hold all of it. */
+  const reachRef = useRef<Box | null>(null)
+  const managedRef = useRef(false)
+  const shiftingRef = useRef(false)
+  const shiftTimerRef = useRef(0)
+  const shrinkTimerRef = useRef(0)
+  const waitTimerRef = useRef(0)
+  /** A move waiting for the window to have the room it needs. */
+  const pendingRef = useRef<(() => void) | null>(null)
+  const flushPendingRef = useRef<() => void>(() => {})
+  const lastAreaRef = useRef<{ width: number; height: number } | null>(null)
+  /** The frame the pet was last hidden for: a shell that never answers does not hide it again and again. */
+  const hiddenForRef = useRef('')
   const yRef = useRef(0)
   const targetRef = useRef<number | null>(null)
   const dragRef = useRef<{ startX: number; startY: number; petX: number; petY: number; moved: boolean } | null>(null)
@@ -285,12 +327,46 @@ export function Pet() {
   const active = Boolean(settings?.enabled && view?.shown)
 
   // ── Shell data ──────────────────────────────────────────────────────────
+  /** The shell placed or moved the window: draw at its offset, and show the pet again once it has settled. */
+  const adoptFrame = useCallback((next: PetFrameView) => {
+    const sameArea = lastAreaRef.current?.width === next.area.width && lastAreaRef.current.height === next.area.height
+    lastAreaRef.current = next.area
+    frameRef.current = next.frame
+    hiddenForRef.current = ''
+    managedRef.current = true
+    // Another display: the frame asked for was in the old one's pixels.
+    if (!sameArea) wantRef.current = null
+    setFrameView((current) => {
+      const same =
+        current &&
+        current.area.width === next.area.width &&
+        current.area.height === next.area.height &&
+        ['x', 'y', 'width', 'height'].every((k) => current.frame[k as keyof Box] === next.frame[k as keyof Box])
+      return same ? current : next
+    })
+    const want = wantRef.current
+    if (!shiftingRef.current) {
+      // The room a move waits for came without the corner moving.
+      if (pendingRef.current && (!want || frameCovers(next.frame, want))) flushPendingRef.current()
+      return
+    }
+    // The shell's answer to an older request (or none of ours): keep waiting.
+    if (want && originMoves(next.frame, want)) return
+    window.clearTimeout(shiftTimerRef.current)
+    shiftTimerRef.current = window.setTimeout(() => {
+      shiftingRef.current = false
+      setShifting(false)
+      flushPendingRef.current()
+    }, FRAME_SETTLE_MS)
+  }, [])
+
   const applyView = useCallback((next: PetView) => {
+    if (next.area && next.frame) adoptFrame({ area: next.area, frame: next.frame })
     setView(next)
     dispatch({ type: 'status', status: next.status })
     if (next.status.running > 0 || next.status.needsInput > 0) setLastActivity(Date.now())
     if (!next.settings.enabled) dispatch({ type: 'clear' })
-  }, [])
+  }, [adoptFrame])
 
   useEffect(() => {
     void invoke<PetView>(STATE_COMMAND).then(applyView).catch(() => {})
@@ -331,11 +407,19 @@ export function Pet() {
   )
   useShellEvent<PointerAt>(POINTER_EVENT, setPointer)
   useShellEvent<OtherWindow[]>(WINDOWS_EVENT, setWindows)
+  useShellEvent<PetFrameView>(
+    FRAME_EVENT,
+    useCallback(
+      (next: PetFrameView) => {
+        if (next?.area && next.frame) adoptFrame(next)
+      },
+      [adoptFrame],
+    ),
+  )
 
   useEffect(() => {
     const onResize = () => {
-      setWidth(window.innerWidth)
-      setHeight(window.innerHeight)
+      setWindowSize({ width: window.innerWidth, height: window.innerHeight })
     }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
@@ -467,6 +551,152 @@ export function Pet() {
     return () => window.clearTimeout(timer)
   }, [zoom])
 
+  // ── The window's frame ──────────────────────────────────────────────────
+  // The window is a lane of the work area, as tall as the scene needs: the
+  // page asks for it with the hit areas (`pet_fit`), the shell moves the
+  // window and says where it is (`pet-frame`). Everything the page keeps is
+  // in area pixels; only the drawing is offset by the window's origin. A
+  // bigger lane than needed is kept until the pet has been still for a
+  // while, and a move that needs more room waits for it.
+  const geomRef = useRef({ petWidth, petHeight, width, height })
+  geomRef.current = { petWidth, petHeight, width, height }
+  const walkingRef = useRef(false)
+  walkingRef.current = walking
+  const jumpingRef = useRef(false)
+  jumpingRef.current = jumping
+  const draggingRef = useRef(false)
+  draggingRef.current = dragging
+  const balloonShownRef = useRef(false)
+  balloonShownRef.current = balloon !== null
+  const tryShrinkRef = useRef<() => void>(() => {})
+
+  /** What the window needs now, in area pixels. */
+  const currentNeed = useCallback((capture: boolean): Box => {
+    const { petWidth: pw, petHeight: ph, width: w, height: h } = geomRef.current
+    const top = yRef.current
+    const rects: Box[] = []
+    const bubble = bubbleRef.current
+    if (bubble) {
+      // Over the pet, or under it near the top; room for its tail and shadow.
+      const bubbleHeight = bubble.offsetHeight || BUBBLE_ROOM
+      const below = bubbleBelow(top)
+      rects.push({
+        x: bubbleLeft(xRef.current, w) - 24,
+        y: (below ? top + ph + 16 : top - 16 - bubbleHeight) - 24,
+        width: BUBBLE_WIDTH + 48,
+        height: bubbleHeight + 48,
+      })
+    }
+    if (balloonShownRef.current) rects.push({ x: xRef.current, y: top - balloonRoom(pw), width: pw, height: balloonRoom(pw) })
+    const current = liftRef.current
+    if (current?.kind === 'ladder') rects.push({ x: current.box.left, y: current.box.top, width: current.box.width, height: current.box.height })
+    return neededFrame({ area: { width: w, height: h }, pet: { x: xRef.current, y: top, width: pw, height: ph }, reach: reachRef.current, rects, dragging: capture })
+  }, [])
+
+  const scheduleShrink = useCallback(() => {
+    if (shrinkTimerRef.current) return
+    shrinkTimerRef.current = window.setTimeout(() => {
+      shrinkTimerRef.current = 0
+      tryShrinkRef.current()
+    }, FRAME_SHRINK_AFTER_MS)
+  }, [])
+
+  /** Tell the shell where the pet can be clicked (area pixels), and the lane it needs. */
+  const reportFit = useCallback(
+    (capture: boolean) => {
+      const origin = frameRef.current
+      // The pet first (the shell reads the pointer near the first), then what hangs on it.
+      const rects = [petRef.current, bubbleRef.current, badgeRef.current, balloonRef.current]
+        .filter((el): el is HTMLDivElement | HTMLButtonElement => el !== null)
+        .map((el) => {
+          const r = el.getBoundingClientRect()
+          const box = toArea({ x: r.left, y: r.top, width: r.width, height: r.height }, origin)
+          // A little margin so the edge of the pet is easy to grab.
+          return { x: box.x - 4, y: box.y - 4, width: box.width + 8, height: box.height + 8 }
+        })
+      let want: Box | undefined
+      if (managedRef.current) {
+        const need = currentNeed(capture)
+        let next = wantRef.current ?? frameRef.current
+        if (!frameCovers(next, need)) next = growFrame(next, need)
+        else if (shrinkable(next, need)) scheduleShrink()
+        wantRef.current = want = next
+        // Its top-left corner moves: hide the pet until the webview has redrawn there.
+        if (!shiftingRef.current && originMoves(frameRef.current, next) && hiddenForRef.current !== JSON.stringify(next)) {
+          hiddenForRef.current = JSON.stringify(next)
+          shiftingRef.current = true
+          setShifting(true)
+          window.clearTimeout(shiftTimerRef.current)
+          shiftTimerRef.current = window.setTimeout(() => {
+            shiftingRef.current = false
+            setShifting(false)
+            flushPendingRef.current()
+          }, FRAME_WAIT_MS)
+        }
+      }
+      const round = (b: Box) => [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)]
+      const key = JSON.stringify([rects.map(round), capture, want ? round(want) : null])
+      if (key === lastFitRef.current) return
+      lastFitRef.current = key
+      void invoke(FIT_COMMAND, { rects, capture, frame: want }).catch(() => {})
+    },
+    [currentNeed, scheduleShrink],
+  )
+
+  // Still for a while: the lane shrinks to what the pet needs now.
+  tryShrinkRef.current = () => {
+    const quiet = !walkingRef.current && !jumpingRef.current && !draggingRef.current && liftRef.current === null
+    if (!quiet) {
+      scheduleShrink()
+      return
+    }
+    const want = wantRef.current
+    const need = currentNeed(false)
+    if (want && shrinkable(want, need)) {
+      wantRef.current = need
+      reportFit(false)
+    }
+  }
+
+  flushPendingRef.current = () => {
+    window.clearTimeout(waitTimerRef.current)
+    const go = pendingRef.current
+    pendingRef.current = null
+    go?.()
+  }
+
+  /**
+   * Start a move once the window holds all of its path (`reach`): ask for
+   * the room, and go at once if it is there, else when the shell has made it
+   * (or after a short wait). Without a shell frame it goes at once.
+   */
+  const needFrame = useCallback(
+    (reach: Box, go: () => void) => {
+      reachRef.current = reach
+      if (!managedRef.current) {
+        go()
+        return
+      }
+      reportFit(draggingRef.current)
+      if (!shiftingRef.current && frameCovers(frameRef.current, wantRef.current ?? frameRef.current)) {
+        go()
+        return
+      }
+      pendingRef.current = go
+      window.clearTimeout(waitTimerRef.current)
+      waitTimerRef.current = window.setTimeout(() => flushPendingRef.current(), FRAME_WAIT_MS)
+    },
+    [reportFit],
+  )
+  useEffect(
+    () => () => {
+      window.clearTimeout(shiftTimerRef.current)
+      window.clearTimeout(shrinkTimerRef.current)
+      window.clearTimeout(waitTimerRef.current)
+    },
+    [],
+  )
+
   // ── Climbing on windows ─────────────────────────────────────────────────
   const allLedges = useMemo(() => ledges(windows, { width, height }, { width: petWidth, height: petHeight }), [windows, width, height, petWidth, petHeight])
   const ledgesRef = useRef(allLedges)
@@ -485,6 +715,7 @@ export function Pet() {
     jumpTimerRef.current = window.setTimeout(() => {
       setJumping(false)
       setSitting(false)
+      reachRef.current = null
     }, JUMP_MS)
   }, [])
   useEffect(() => () => window.clearTimeout(jumpTimerRef.current), [])
@@ -492,8 +723,6 @@ export function Pet() {
   // ── Ladders, balloons and falls ─────────────────────────────────────────
   // Each is a short chain of timers (a phase per step) that changes the
   // pet's target and lets one CSS transition do the moving, like a jump.
-  const geomRef = useRef({ petWidth, petHeight, width, height })
-  geomRef.current = { petWidth, petHeight, width, height }
   const climbRef = useRef(false)
   climbRef.current = Boolean(settings?.climb)
   const toysRef = useRef(true)
@@ -503,6 +732,7 @@ export function Pet() {
 
   const setLift = useCallback((next: Lift | null) => {
     liftRef.current = next
+    if (next === null) reachRef.current = null
     setLiftState(next)
   }, [])
 
@@ -514,10 +744,10 @@ export function Pet() {
     setY(nextY)
   }, [])
 
-  /** Where the pet is drawn now, mid-move; null when it cannot be measured. */
+  /** Where the pet is drawn now, mid-move, in area pixels; null when it cannot be measured. */
   const visualSpot = useCallback((): { x: number; y: number } | null => {
     const rect = petRef.current?.getBoundingClientRect()
-    return rect && rect.width > 0 ? { x: rect.left, y: rect.top } : null
+    return rect && rect.width > 0 ? { x: rect.left + frameRef.current.x, y: rect.top + frameRef.current.y } : null
   }, [])
 
   /** Stop whatever is under way where it stands, without a fall. */
@@ -542,7 +772,8 @@ export function Pet() {
   /**
    * Fall to the nearest surface below (a window edge it is over, or the
    * ground): gravity, a squash on landing and a puff of dust. With motion
-   * reduced or told to stay put it is just there.
+   * reduced or told to stay put it is just there. It falls once the window
+   * reaches down to where it lands.
    */
   const startFall = useCallback(() => {
     window.clearTimeout(liftTimerRef.current)
@@ -554,31 +785,34 @@ export function Pet() {
       yRef.current = spot.y
     }
     const target = fallTarget({ x: xRef.current, y: yRef.current }, climbRef.current ? ledgesRef.current : [], groundRef.current, { width: pw, height: ph })
-    perchRef.current = target.ledge ? { id: target.ledge.id, ledgeX: target.ledge.x } : null
     const distance = target.y - yRef.current
     const done = () => {
       fallOnPlaceRef.current = false
       setLift(null)
       setSitting(true)
     }
-    if (reducedMotionRef.current || movementRef.current === 'still' || distance < 1) {
+    const fall = () => {
+      perchRef.current = target.ledge ? { id: target.ledge.id, ledgeX: target.ledge.x } : null
+      if (reducedMotionRef.current || movementRef.current === 'still' || distance < 1) {
+        place(target.x, target.y)
+        done()
+        return
+      }
+      const capped = fallCapped(distance)
+      const ms = fallMs(distance)
+      setSitting(false)
+      setLift({ kind: 'fall', phase: 'fall', ms, ease: capped ? 'var(--pet-fall-capped-ease)' : 'var(--pet-fall-ease)' })
       place(target.x, target.y)
-      done()
-      return
+      liftTimerRef.current = window.setTimeout(() => {
+        setLift({ kind: 'fall', phase: 'land', ms: 0, ease: LINEAR })
+        window.clearTimeout(dustTimerRef.current)
+        setDust({ x: target.x + pw / 2, y: target.y + ph, at: Date.now() })
+        dustTimerRef.current = window.setTimeout(() => setDust(null), DUST_MS)
+        liftTimerRef.current = window.setTimeout(done, LAND_MS)
+      }, ms)
     }
-    const capped = fallCapped(distance)
-    const ms = fallMs(distance)
-    setSitting(false)
-    setLift({ kind: 'fall', phase: 'fall', ms, ease: capped ? 'var(--pet-fall-capped-ease)' : 'var(--pet-fall-ease)' })
-    place(target.x, target.y)
-    liftTimerRef.current = window.setTimeout(() => {
-      setLift({ kind: 'fall', phase: 'land', ms: 0, ease: LINEAR })
-      window.clearTimeout(dustTimerRef.current)
-      setDust({ x: target.x + pw / 2, y: target.y + ph, at: Date.now() })
-      dustTimerRef.current = window.setTimeout(() => setDust(null), DUST_MS)
-      liftTimerRef.current = window.setTimeout(done, LAND_MS)
-    }, ms)
-  }, [place, setLift, visualSpot])
+    needFrame({ x: target.x, y: Math.min(yRef.current, target.y), width: pw, height: Math.abs(distance) + ph }, fall)
+  }, [needFrame, place, setLift, visualSpot])
   startFallRef.current = startFall
 
   /** The balloon pops (clicked, or its hover is over): the pet falls. */
@@ -596,18 +830,28 @@ export function Pet() {
     startFall()
   }, [startFall])
 
-  /** Rise on a balloon: up and a little aside, then hover and pop, or step onto a window edge. */
+  /** It may still start something: no bubble, menu or question came while it waited for room. */
+  const mayStart = useCallback(
+    () => liftsAllowed({ movement: movementRef.current, reducedMotion: reducedMotionRef.current, held: heldRef.current || needsInputRef.current > 0 }),
+    [],
+  )
+  /** What it waited for no longer applies: walk on. */
+  const abandon = useCallback(() => {
+    reachRef.current = null
+    setSitting(false)
+  }, [])
+
+  /**
+   * Rise on a balloon: up and a little aside, then hover and pop, or step
+   * onto a window edge. The window must hold the whole float, and the fall
+   * back to the ground, before it leaves.
+   */
   const startBalloon = useCallback(
     (plan: BalloonPlan) => {
       const { petWidth: pw, petHeight: ph } = geomRef.current
       const ms = floatMs(yRef.current - plan.toY)
-      if (plan.toX !== xRef.current) setFacingLeft(plan.toX < xRef.current)
-      perchRef.current = null
-      setSitting(false)
-      setBalloon('float')
-      setLift({ kind: 'balloon', phase: 'rise', ms, ease: EASE_IN_OUT })
-      place(plan.toX, plan.toY)
-      liftTimerRef.current = window.setTimeout(() => {
+      const reach: Box = { x: plan.toX, y: plan.toY, width: pw, height: Math.max(0, Math.max(groundRef.current, yRef.current) + ph - plan.toY) }
+      const arrive = () => {
         if (!plan.ledge) {
           setLift({ kind: 'balloon', phase: 'hover', ms: 0, ease: LINEAR })
           liftTimerRef.current = window.setTimeout(popBalloon, plan.hoverMs)
@@ -628,15 +872,27 @@ export function Pet() {
           setLift(null)
           setSitting(true)
         }, BALLOON_AWAY_MS)
-      }, ms)
+      }
+      const rise = () => {
+        if (plan.toX !== xRef.current) setFacingLeft(plan.toX < xRef.current)
+        perchRef.current = null
+        setSitting(false)
+        setBalloon('float')
+        setLift({ kind: 'balloon', phase: 'rise', ms, ease: EASE_IN_OUT })
+        reachRef.current = reach
+        place(plan.toX, plan.toY)
+        liftTimerRef.current = window.setTimeout(arrive, ms)
+      }
+      needFrame(reach, () => (mayStart() ? rise() : abandon()))
     },
-    [place, popBalloon, setLift],
+    [abandon, mayStart, needFrame, place, popBalloon, setLift],
   )
 
   /**
    * Climb a ladder to a window edge (`ledge`), or down from the one it
    * stands on to the ground (null): the ladder grows, it climbs with the
-   * walking steps, the ladder folds away.
+   * walking steps, the ladder folds away. The window must hold the whole
+   * ladder before it grows.
    */
   const startLadder = useCallback(
     (ledge: Ledge | null) => {
@@ -646,36 +902,42 @@ export function Pet() {
       const ladderX = ledge ? Math.min(Math.max(xRef.current, ledge.x), ledge.x + ledge.width - pw) : xRef.current
       const box = ladderBox(ladderX, fromY, toY, { width: pw, height: ph })
       const up = ledge !== null
-      perchBeforeRef.current = perchRef.current
-      perchRef.current = null
-      targetRef.current = null
-      setSitting(false)
-      setLift({ kind: 'ladder', phase: 'grow', up, box, ms: LADDER_GROW_MS, ease: EASE_OUT })
-      if (ladderX !== xRef.current) place(ladderX, fromY)
-      liftTimerRef.current = window.setTimeout(() => {
-        const ms = climbMs(toY - fromY)
-        setLift({ kind: 'ladder', phase: 'climb', up, box, ms, ease: LINEAR })
-        place(ladderX, toY)
+      const reach: Box = { x: ladderX, y: Math.min(fromY, toY), width: pw, height: Math.abs(toY - fromY) + ph }
+      const grow = () => {
+        perchBeforeRef.current = perchRef.current
+        perchRef.current = null
+        targetRef.current = null
+        setSitting(false)
+        setLift({ kind: 'ladder', phase: 'grow', up, box, ms: LADDER_GROW_MS, ease: EASE_OUT })
+        reachRef.current = reach
+        if (ladderX !== xRef.current) place(ladderX, fromY)
         liftTimerRef.current = window.setTimeout(() => {
-          if (ledge) {
-            // Up: the window may have moved or gone meanwhile.
-            const next = followLedge({ id: ledge.id, ledgeX: ledge.x }, xRef.current, ledgesRef.current, { width: pw, height: ph })
-            if (!next) {
-              startFall()
-              return
-            }
-            perchRef.current = next.perch
-            if (next.x !== xRef.current || next.y !== yRef.current) place(next.x, next.y)
-          }
-          setLift({ kind: 'ladder', phase: 'fold', up, box, ms: 0, ease: LINEAR })
+          const ms = climbMs(toY - fromY)
+          setLift({ kind: 'ladder', phase: 'climb', up, box, ms, ease: LINEAR })
+          reachRef.current = reach
+          place(ladderX, toY)
           liftTimerRef.current = window.setTimeout(() => {
-            setLift(null)
-            setSitting(true)
-          }, LADDER_FOLD_MS)
-        }, ms)
-      }, LADDER_GROW_MS)
+            if (ledge) {
+              // Up: the window may have moved or gone meanwhile.
+              const next = followLedge({ id: ledge.id, ledgeX: ledge.x }, xRef.current, ledgesRef.current, { width: pw, height: ph })
+              if (!next) {
+                startFall()
+                return
+              }
+              perchRef.current = next.perch
+              if (next.x !== xRef.current || next.y !== yRef.current) place(next.x, next.y)
+            }
+            setLift({ kind: 'ladder', phase: 'fold', up, box, ms: 0, ease: LINEAR })
+            liftTimerRef.current = window.setTimeout(() => {
+              setLift(null)
+              setSitting(true)
+            }, LADDER_FOLD_MS)
+          }, ms)
+        }, LADDER_GROW_MS)
+      }
+      needFrame(reach, () => (mayStart() ? grow() : abandon()))
     },
-    [place, setLift, startFall],
+    [abandon, mayStart, needFrame, place, setLift, startFall],
   )
 
   /** Cut a move short (a bubble came, the menu opened, motion was turned down or it was told to stay put). */
@@ -729,6 +991,7 @@ export function Pet() {
   /**
    * After a sit: maybe jump onto the nearest window or back down, climb a
    * ladder, or float up on a balloon (chooseLift weighs it); else walk on.
+   * A move that needs more of the screen waits for the window to reach it.
    */
   const afterSit = useCallback(() => {
     if (liftRef.current) return
@@ -751,13 +1014,22 @@ export function Pet() {
       },
       Math.random,
     )
+    const hop = (toX: number, toY: number, perch: Perch | null) => {
+      const reach: Box = { x: toX, y: Math.min(yRef.current, toY), width: pw, height: Math.abs(toY - yRef.current) + ph }
+      needFrame(reach, () => {
+        if (!mayStart()) {
+          abandon()
+          return
+        }
+        perchRef.current = perch
+        jumpTo(toX, toY)
+      })
+    }
     if (choice.type === 'jump' && choice.ledge) {
       const { ledge } = choice
-      perchRef.current = { id: ledge.id, ledgeX: ledge.x }
-      jumpTo(Math.min(Math.max(xRef.current, ledge.x), ledge.x + ledge.width - pw), ledge.y - ph)
+      hop(Math.min(Math.max(xRef.current, ledge.x), ledge.x + ledge.width - pw), ledge.y - ph, { id: ledge.id, ledgeX: ledge.x })
     } else if (choice.type === 'jump') {
-      perchRef.current = null
-      jumpTo(xRef.current, groundRef.current)
+      hop(xRef.current, groundRef.current, null)
     } else if (choice.type === 'ladder') {
       startLadder(choice.ledge)
     } else if (choice.type === 'balloon') {
@@ -765,13 +1037,13 @@ export function Pet() {
     } else {
       setSitting(false)
     }
-  }, [jumpTo, startLadder, startBalloon])
+  }, [abandon, jumpTo, mayStart, needFrame, startLadder, startBalloon])
 
   /** Where it may walk: the edge it stands on, or the whole width. */
   const walkRange = useCallback((): [number, number] => {
     const perch = perchRef.current
     const ledge = perch && ledgesRef.current.find((l) => l.id === perch.id)
-    return ledge ? [ledge.x, ledge.x + ledge.width] : [0, window.innerWidth]
+    return ledge ? [ledge.x, ledge.x + ledge.width] : [0, geomRef.current.width]
   }, [])
 
   // ── The pointer ─────────────────────────────────────────────────────────
@@ -786,21 +1058,6 @@ export function Pet() {
   }, [pointer, walking, dragging, movement, reducedMotion, petWidth, petHeight])
 
   // ── Hit areas ───────────────────────────────────────────────────────────
-  const reportFit = useCallback((capture: boolean) => {
-    // The pet first (the shell reads the pointer near the first), then what hangs on it.
-    const rects = [petRef.current, bubbleRef.current, badgeRef.current, balloonRef.current]
-      .filter((el): el is HTMLDivElement | HTMLButtonElement => el !== null)
-      .map((el) => {
-        const r = el.getBoundingClientRect()
-        // A little margin so the edge of the pet is easy to grab.
-        return { x: r.left - 4, y: r.top - 4, width: r.width + 8, height: r.height + 8 }
-      })
-    const key = JSON.stringify([rects.map((r) => [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]), capture])
-    if (key === lastFitRef.current) return
-    lastFitRef.current = key
-    void invoke(FIT_COMMAND, { rects, capture }).catch(() => {})
-  }, [])
-
   useLayoutEffect(() => {
     if (active && x !== null) reportFit(dragging)
   })
@@ -911,8 +1168,9 @@ export function Pet() {
     // Grabbed mid-move, it is held where it is drawn.
     const spot = liftRef.current ? visualSpot() : null
     dragRef.current = {
-      startX: event.clientX,
-      startY: event.clientY,
+      // In area pixels: the window's frame may change under a drag.
+      startX: event.clientX + frameRef.current.x,
+      startY: event.clientY + frameRef.current.y,
       petX: spot?.x ?? xRef.current,
       petY: spot?.y ?? yRef.current,
       moved: false,
@@ -921,8 +1179,8 @@ export function Pet() {
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current
     if (!drag) return
-    const dx = event.clientX - drag.startX
-    const dy = event.clientY - drag.startY
+    const dx = event.clientX + frameRef.current.x - drag.startX
+    const dy = event.clientY + frameRef.current.y - drag.startY
     if (!drag.moved && Math.hypot(dx, dy) < DRAG_SLOP) return
     if (!drag.moved) {
       drag.moved = true
@@ -1034,7 +1292,11 @@ export function Pet() {
 
   return (
     // The browser's own menu (Reload, Inspect) never shows over the pet.
-    <div className="pet-strip" onContextMenu={(event) => event.preventDefault()}>
+    <div
+      className={`pet-strip${shifting ? ' pet-strip--shifting' : ''}`}
+      style={{ left: -frame.x, top: -frame.y, width, height }}
+      onContextMenu={(event) => event.preventDefault()}
+    >
       {/* What the pet is doing, for screen readers: apart from the buttons. */}
       <div className="pet-sr" role="status" aria-live="polite">{status.needsInput > 0 ? petLabel : ''}</div>
       {visible?.type === 'bubble' && (

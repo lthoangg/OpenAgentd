@@ -5,10 +5,14 @@
 //! `tool.before` may mutate the call's JSON args (re-serialised before
 //! dispatch), `tool.after` may rewrite the result string. Order matches v2:
 //! files sorted by name, the first file is the outermost wrapper.
+//!
+//! A plugin bundle's code (plugin API v2) adds the same hooks from its
+//! default export's `hooks`, after the single-file plugins' ([`ToolHooks`]),
+//! and tools the `mcp` tool finds and calls ([`bundle_tools`]).
 
-use appv3_jsplugin::{JsPlugin, Mode, Target};
-use appv3_providers::ToolCall;
-use appv3_tools::{ToolContext, ToolResult};
+use appv3_jsplugin::{JsPlugin, Mode, Target, ToolCtx};
+use appv3_providers::{ContentBlock, ToolCall};
+use appv3_tools::{ToolContext, ToolError, ToolOutput, ToolResult};
 use async_trait::async_trait;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
@@ -56,11 +60,13 @@ pub type ToolPluginRef = Arc<dyn ToolPlugin>;
 const DEFAULT_ROLE: &str = "agent";
 
 /// A JS/TS file's tool hooks: the object returned by its `plugin()` factory
-/// (v2's functional contract: `{"tool.before", "tool.after", "applies_to"}`).
+/// (v2's functional contract: `{"tool.before", "tool.after", "applies_to"}`),
+/// or a plugin bundle's `hooks`.
 pub struct JsToolPlugin {
     js: Arc<JsPlugin>,
     id: String,
-    hooks: u64,
+    /// The hooks object: kept from the factory call, or the bundle's export.
+    hooks: Target,
     before: bool,
     after: bool,
     applies_to: bool,
@@ -113,7 +119,30 @@ impl JsToolPlugin {
         Ok(Some(Self {
             js: js.clone(),
             id: js.stem.clone(),
-            hooks: handle,
+            hooks: Target::Handle(handle),
+            before: has(EVENT_BEFORE),
+            after: has(EVENT_AFTER),
+            applies_to: has("applies_to"),
+            applies_cache: Mutex::default(),
+        }))
+    }
+
+    /// A plugin bundle's hooks (its default export's `hooks` object), or
+    /// `None` when it has no `tool.before` or `tool.after`.
+    pub fn from_bundle(js: &Arc<JsPlugin>, plugin: &str) -> Result<Option<Self>, String> {
+        let default = js.describe.get("default");
+        if let Some(t) = default.and_then(|d| d.get("hooksInvalid")).and_then(Value::as_str) {
+            return Err(format!("hooks must be an object, got {t}"));
+        }
+        let Some(names) = default.and_then(|d| d.get("hooks")).and_then(Value::as_array) else { return Ok(None) };
+        let has = |m: &str| names.iter().any(|n| n == m);
+        if !has(EVENT_BEFORE) && !has(EVENT_AFTER) {
+            return Ok(None);
+        }
+        Ok(Some(Self {
+            js: js.clone(),
+            id: plugin.to_string(),
+            hooks: Target::export("default.hooks"),
             before: has(EVENT_BEFORE),
             after: has(EVENT_AFTER),
             applies_to: has("applies_to"),
@@ -153,7 +182,7 @@ impl ToolPlugin for JsToolPlugin {
         if let Some(v) = self.applies_cache.lock().unwrap().get(agent_name) {
             return *v;
         }
-        let ok = match self.js.call_blocking(&Target::Handle(self.hooks), "applies_to", &[json!(agent_name), json!(DEFAULT_ROLE)], Mode::Value) {
+        let ok = match self.js.call_blocking(&self.hooks, "applies_to", &[json!(agent_name), json!(DEFAULT_ROLE)], Mode::Value) {
             Ok(r) => appv3_providers::plugin::truthy(&r.value),
             Err(e) => {
                 tracing::warn!("plugin_applies_to_failed plugin={} error={}", self.id, e);
@@ -165,7 +194,7 @@ impl ToolPlugin for JsToolPlugin {
     }
     async fn before(&self, ctx: &PluginCtx<'_>, args: &mut Value) -> Result<(), String> {
         let output = json!({"args": args.clone()});
-        let r = hook_call(EVENT_BEFORE, self.js.call(&Target::Handle(self.hooks), EVENT_BEFORE, &[Value::Object(Self::input(ctx)), output], Mode::Args)).await?;
+        let r = hook_call(EVENT_BEFORE, self.js.call(&self.hooks, EVENT_BEFORE, &[Value::Object(Self::input(ctx)), output], Mode::Args)).await?;
         if let Some(new) = r.args.as_ref().and_then(|a| a.get(1)).and_then(|o| o.get("args")) {
             *args = new.clone();
         }
@@ -174,7 +203,7 @@ impl ToolPlugin for JsToolPlugin {
     async fn after(&self, ctx: &PluginCtx<'_>, args: &Value, output: &mut String) -> Result<(), String> {
         let mut input = Self::input(ctx);
         input.insert("args".into(), args.clone());
-        let r = hook_call(EVENT_AFTER, self.js.call(&Target::Handle(self.hooks), EVENT_AFTER, &[Value::Object(input), json!({"output": output.clone()})], Mode::Args)).await?;
+        let r = hook_call(EVENT_AFTER, self.js.call(&self.hooks, EVENT_AFTER, &[Value::Object(input), json!({"output": output.clone()})], Mode::Args)).await?;
         match r.args.as_ref().and_then(|a| a.get(1)).and_then(|o| o.get("output")) {
             Some(Value::String(s)) => *output = s.clone(),
             Some(other) => *output = crate::pystr::py_str(other),
@@ -208,6 +237,14 @@ pub fn tool_plugins() -> &'static Vec<ToolPluginRef> {
     P.get_or_init(load)
 }
 
+/// Tool hooks a running plugin bundle adds: a kernel contribution of its module.
+pub struct ToolHooks(pub ToolPluginRef);
+
+/// The hooks of the running plugin bundles, in the order they were added.
+pub fn bundle_tool_hooks() -> Vec<ToolPluginRef> {
+    appv3_kernel::global().contributions::<ToolHooks>().iter().map(|h| h.0.clone()).collect()
+}
+
 /// What runs an [`ExtraTool`].
 #[async_trait]
 pub trait ExtraRun: Send + Sync {
@@ -236,6 +273,51 @@ pub fn extra_tools() -> Vec<Arc<ExtraTool>> {
     let mut tools = appv3_kernel::global().contributions::<ExtraTool>();
     tools.sort_by(|a, b| (&a.plugin, &a.name).cmp(&(&b.plugin, &b.name)));
     tools
+}
+
+/// One tool of a plugin bundle's code, run in the bundle's QuickJS runtime.
+struct JsTool {
+    js: Arc<JsPlugin>,
+    name: String,
+}
+
+#[async_trait]
+impl ExtraRun for JsTool {
+    async fn run(&self, ctx: &ToolContext, args: Value) -> ToolResult {
+        let tctx = ToolCtx { session_id: ctx.session_id.clone(), agent_name: ctx.agent_name.clone(), workspace: ctx.workspace.clone(), call_id: ctx.tool_call_id.clone() };
+        match self.js.run_tool(&self.name, args, tctx).await {
+            Ok(Value::String(text)) => Ok(ToolOutput::Text(text)),
+            Ok(Value::Array(blocks)) => Ok(ToolOutput::Parts { parts: blocks.iter().filter_map(content_block).collect(), mcp_app: None }),
+            Ok(other) => Ok(ToolOutput::Text(other.to_string())),
+            Err(e) => Err(ToolError::Execution(e.message)),
+        }
+    }
+}
+
+/// A block a tool returned: `{"type": "text", "text"}` or
+/// `{"type": "image", "data", "mimeType"}` (`run_tool` checked the shape).
+fn content_block(v: &Value) -> Option<ContentBlock> {
+    let field = |k: &str| v.get(k).and_then(Value::as_str);
+    match field("type")? {
+        "text" => Some(ContentBlock::Text { text: field("text")?.to_string() }),
+        "image" => Some(ContentBlock::ImageData { data: field("data")?.into(), media_type: field("mimeType")?.to_string() }),
+        _ => None,
+    }
+}
+
+/// The tools of a bundle's code, as the `mcp` tool offers them.
+pub fn bundle_tools(plugin: &str, js: &Arc<JsPlugin>) -> Vec<ExtraTool> {
+    js.tools()
+        .iter()
+        .map(|t| ExtraTool {
+            plugin: plugin.to_string(),
+            name: t.name.clone(),
+            description: t.description.clone(),
+            input_schema: t.input_schema.clone(),
+            read_only: t.read_only,
+            runner: Arc::new(JsTool { js: js.clone(), name: t.name.clone() }),
+        })
+        .collect()
 }
 
 /// The result of the innermost handler.

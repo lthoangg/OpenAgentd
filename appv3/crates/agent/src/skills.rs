@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 /// Bundled read-only skill files (`<skill>/<path>` → content), compiled in
 /// from `data/builtin_skills`. Agents read the reference files through the read-only root in
@@ -135,6 +135,65 @@ pub fn iter_skill_paths(directory: &Path) -> Vec<(PathBuf, String)> {
         }
     }
     out
+}
+
+/// Skills a plugin provides: a kernel contribution of the plugin's module.
+/// Each is named `<plugin>/<folder>`, whatever its frontmatter says, so it
+/// never shadows or is shadowed by a user skill.
+#[derive(Debug, Clone)]
+pub struct PluginSkills {
+    pub plugin: String,
+    /// Filled in for `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` in skill text.
+    pub root: PathBuf,
+    pub data_dir: PathBuf,
+    /// (folder name, folder holding SKILL.md)
+    pub skills: Vec<(String, PathBuf)>,
+}
+
+/// The skills of the running plugins.
+pub fn plugin_skills() -> Vec<Arc<PluginSkills>> {
+    appv3_kernel::global().contributions::<PluginSkills>()
+}
+
+/// One SKILL.md to consider.
+struct Candidate {
+    path: PathBuf,
+    /// What `SkillInfo::file` is relative to.
+    root: PathBuf,
+    /// The name when the frontmatter has none (a plugin skill's only name).
+    stem: String,
+    plugin: Option<Arc<PluginSkills>>,
+}
+
+/// SKILL.md files in precedence order: the skill roots, then the plugins.
+fn candidates(roots: &[PathBuf], plugins: &[Arc<PluginSkills>]) -> Vec<Candidate> {
+    let mut out = vec![];
+    for dir in roots.iter().filter(|r| r.is_dir()) {
+        out.extend(iter_skill_paths(dir).into_iter().map(|(path, stem)| Candidate { path, root: dir.clone(), stem, plugin: None }));
+    }
+    for p in plugins {
+        for (folder, dir) in &p.skills {
+            out.push(Candidate { path: dir.join("SKILL.md"), root: p.root.clone(), stem: format!("{}/{folder}", p.plugin), plugin: Some(p.clone()) });
+        }
+    }
+    out
+}
+
+impl Candidate {
+    /// The skill's name given its frontmatter.
+    fn name(&self, meta: &Map<String, Value>) -> String {
+        match self.plugin {
+            Some(_) => self.stem.clone(),
+            None => meta_str(meta, "name").unwrap_or_else(|| self.stem.clone()),
+        }
+    }
+
+    fn render(&self, text: &str, workspace: Option<&Path>) -> String {
+        let out = render_tokens(text, self.path.parent(), workspace);
+        let Some(p) = &self.plugin else { return out };
+        let (root, data) = (p.root.display().to_string(), p.data_dir.display().to_string());
+        out.replace("${PLUGIN_ROOT}", &root).replace("${PLUGIN_DATA}", &data)
+    }
 }
 
 /// Lenient frontmatter parse.
@@ -330,50 +389,45 @@ fn meta_str(meta: &Map<String, Value>, key: &str) -> Option<String> {
     })
 }
 
-fn discover_in(roots: &[PathBuf], workspace: Option<&Path>) -> Vec<SkillInfo> {
+fn discover_in(roots: &[PathBuf], plugins: &[Arc<PluginSkills>], workspace: Option<&Path>) -> Vec<SkillInfo> {
     let mut skills: Vec<SkillInfo> = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    for dir in roots.iter().filter(|r| r.is_dir()) {
-        for (path, stem) in iter_skill_paths(dir) {
-            let (name, description) = match std::fs::read_to_string(&path) {
-                Ok(text) => match try_parse_frontmatter_at(&text, &path) {
-                    Ok((meta, _)) => {
-                        let name = meta_str(&meta, "name").unwrap_or_else(|| stem.clone());
-                        let desc = render_tokens(&meta_str(&meta, "description").unwrap_or_default(), path.parent(), workspace);
-                        (name, desc)
-                    }
-                    Err(e) => {
-                        tracing::warn!("skill_discovery_skipped path={} error={}", path.display(), e);
-                        (stem.clone(), String::new())
-                    }
-                },
+    for c in candidates(roots, plugins) {
+        let path = &c.path;
+        let (name, description) = match std::fs::read_to_string(path) {
+            Ok(text) => match try_parse_frontmatter_at(&text, path) {
+                Ok((meta, _)) => (c.name(&meta), c.render(&meta_str(&meta, "description").unwrap_or_default(), workspace)),
                 Err(e) => {
                     tracing::warn!("skill_discovery_skipped path={} error={}", path.display(), e);
-                    (stem.clone(), String::new())
+                    (c.stem.clone(), String::new())
                 }
-            };
-            if !seen.insert(name.clone()) {
-                continue;
+            },
+            Err(e) => {
+                tracing::warn!("skill_discovery_skipped path={} error={}", path.display(), e);
+                (c.stem.clone(), String::new())
             }
-            skills.push(SkillInfo {
-                name,
-                description,
-                file: path.strip_prefix(dir).unwrap_or(&path).display().to_string(),
-                dir: path.parent().map(Path::to_path_buf).unwrap_or_default(),
-            });
+        };
+        if !seen.insert(name.clone()) {
+            continue;
         }
+        skills.push(SkillInfo {
+            name,
+            description,
+            file: path.strip_prefix(&c.root).unwrap_or(path).display().to_string(),
+            dir: path.parent().map(Path::to_path_buf).unwrap_or_default(),
+        });
     }
     skills
 }
 
 /// `discover_skills()` (insertion order = precedence walk order).
 pub fn discover_skills(workspace: Option<&Path>) -> Vec<SkillInfo> {
-    discover_in(&skill_roots(workspace), workspace)
+    discover_in(&skill_roots(workspace), &plugin_skills(), workspace)
 }
 
 /// `discover_skills(skills_dir)` for one explicit root.
 pub fn discover_skills_in(dir: &Path) -> Vec<SkillInfo> {
-    discover_in(&[dir.to_path_buf()], None)
+    discover_in(&[dir.to_path_buf()], &[], None)
 }
 
 /// `Path.as_uri()`.
@@ -461,6 +515,33 @@ fn loaded_from_messages(messages: &[ChatMessage]) -> BTreeMap<String, String> {
     loaded
 }
 
+/// A skill found by name.
+struct Found {
+    name: String,
+    stem: String,
+    /// The skill's body, prefixed with its directory.
+    text: String,
+}
+
+/// The skill called `skill_name` (by frontmatter name or folder name; a
+/// plugin skill only by `<plugin>/<folder>`). A SKILL.md that fails to
+/// read or parse on the way fails the load.
+async fn find_skill(roots: &[PathBuf], plugins: &[Arc<PluginSkills>], skill_name: &str, workspace: Option<&Path>) -> Result<Option<Found>, appv3_tools::ToolError> {
+    for c in candidates(roots, plugins) {
+        let path = &c.path;
+        let text = tokio::fs::read_to_string(path).await.map_err(appv3_tools::ToolError::exec)?;
+        let (meta, body) = try_parse_frontmatter_at(&text, path).map_err(appv3_tools::ToolError::exec)?;
+        let name = c.name(&meta);
+        if name == skill_name || c.stem == skill_name {
+            tracing::info!("skill_loaded name={} file={}", name, path.strip_prefix(&c.root).unwrap_or(path).display());
+            let rendered = c.render(&body, workspace);
+            let dir_value = render_tokens("{SKILL_DIR}", path.parent(), workspace);
+            return Ok(Some(Found { name, stem: c.stem, text: format!("Skill directory: {dir_value}\n\n{rendered}") }));
+        }
+    }
+    Ok(None)
+}
+
 pub struct SkillTool;
 
 fn ctx_workspace(ctx: &ToolContext) -> PathBuf {
@@ -507,32 +588,22 @@ impl Tool for SkillTool {
             meta.get("loaded_skills").and_then(|l| l.get(&skill_name)).and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from)
         };
         let roots: Vec<PathBuf> = skill_roots(Some(&workspace)).into_iter().filter(|r| r.is_dir()).collect();
-        if roots.is_empty() {
+        let plugins = plugin_skills();
+        if roots.is_empty() && plugins.is_empty() {
             if let Some(hit) = earlier() {
                 tracing::info!("skill_reused name={}", skill_name);
                 return Ok(ToolOutput::text(hit));
             }
             return Ok(ToolOutput::text("Skills directory not found."));
         }
-        for dir in &roots {
-            for (path, stem) in iter_skill_paths(dir) {
-                let text = tokio::fs::read_to_string(&path).await.map_err(appv3_tools::ToolError::exec)?;
-                let (meta, body) = try_parse_frontmatter_at(&text, &path).map_err(appv3_tools::ToolError::exec)?;
-                let name = meta_str(&meta, "name").unwrap_or_else(|| stem.clone());
-                if name == skill_name || stem == skill_name {
-                    tracing::info!("skill_loaded name={} file={}", name, path.strip_prefix(dir).unwrap_or(&path).display());
-                    let rendered = render_tokens(&body, path.parent(), Some(&workspace));
-                    let dir_value = render_tokens("{SKILL_DIR}", path.parent(), Some(&workspace));
-                    let rendered = format!("Skill directory: {dir_value}\n\n{rendered}");
-                    let mut meta = ctx.metadata.lock().unwrap();
-                    if let Some(Value::Object(l)) = meta.get_mut("loaded_skills") {
-                        l.insert(skill_name.clone(), json!(rendered));
-                        l.insert(name.clone(), json!(rendered));
-                        l.insert(stem.clone(), json!(rendered));
-                    }
-                    return Ok(ToolOutput::text(rendered));
-                }
+        if let Some(Found { name, stem, text }) = find_skill(&roots, &plugins, &skill_name, Some(&workspace)).await? {
+            let mut meta = ctx.metadata.lock().unwrap();
+            if let Some(Value::Object(l)) = meta.get_mut("loaded_skills") {
+                l.insert(skill_name.clone(), json!(text));
+                l.insert(name, json!(text));
+                l.insert(stem, json!(text));
             }
+            return Ok(ToolOutput::text(text));
         }
         if let Some(hit) = earlier() {
             tracing::info!("skill_reused name={}", skill_name);
@@ -609,6 +680,37 @@ pub(crate) mod tests {
         assert_eq!(loaded_from_messages(&msgs).get("foo").map(String::as_str), Some("BODY"));
     }
 
+    /// A plugin root holding `skills/release-notes/SKILL.md`.
+    fn plugin_with_skill(root: &Path) -> Arc<PluginSkills> {
+        let dir = root.join("skills/release-notes");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("SKILL.md"), "---\nname: release-notes\ndescription: Write release notes\n---\nRun ${PLUGIN_ROOT}/bin/notes; cache in ${PLUGIN_DATA}.\n").unwrap();
+        Arc::new(PluginSkills { plugin: "changelog-tools".into(), root: root.to_path_buf(), data_dir: root.join("data"), skills: vec![("release-notes".into(), dir)] })
+    }
+
+    #[test]
+    fn plugin_skills_are_listed_under_the_plugin_name() {
+        let d = tempfile::tempdir().unwrap();
+        let user = d.path().join("user");
+        std::fs::create_dir_all(user.join("release-notes")).unwrap();
+        std::fs::write(user.join("release-notes/SKILL.md"), "---\nname: release-notes\ndescription: Mine\n---\nbody\n").unwrap();
+        let plugin = plugin_with_skill(&d.path().join("plugin"));
+        let skills = discover_in(&[user], &[plugin], None);
+        let names: Vec<(&str, &str)> = skills.iter().map(|s| (s.name.as_str(), s.description.as_str())).collect();
+        assert_eq!(names, [("release-notes", "Mine"), ("changelog-tools/release-notes", "Write release notes")], "no clash with a user skill of the same folder name");
+        assert_eq!(skills[1].file, "skills/release-notes/SKILL.md");
+    }
+
+    #[tokio::test]
+    async fn a_plugin_skill_loads_by_its_full_name_with_plugin_paths_filled_in() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().join("plugin");
+        let plugin = plugin_with_skill(&root);
+        let hit = find_skill(&[], std::slice::from_ref(&plugin), "changelog-tools/release-notes", None).await.unwrap().unwrap();
+        assert!(hit.text.contains(&format!("Run {}/bin/notes; cache in {}.", root.display(), root.join("data").display())), "{}", hit.text);
+        assert!(find_skill(&[], &[plugin], "release-notes", None).await.unwrap().is_none(), "the bare folder name is not the plugin skill's name");
+    }
+
     #[test]
     fn project_skills_only_from_agents_dir() {
         let d = tempfile::tempdir().unwrap();
@@ -618,7 +720,7 @@ pub(crate) mod tests {
             std::fs::create_dir_all(&p).unwrap();
             std::fs::write(p.join("SKILL.md"), format!("---\nname: {name}\ndescription: d\n---\nbody\n")).unwrap();
         }
-        let names: Vec<String> = discover_in(&project_roots(ws), Some(ws)).into_iter().map(|s| s.name).collect();
+        let names: Vec<String> = discover_in(&project_roots(ws), &[], Some(ws)).into_iter().map(|s| s.name).collect();
         assert_eq!(names, vec!["c".to_string()]);
         assert!(skill_roots(None).iter().all(|r| !r.to_string_lossy().contains("opencode")));
     }

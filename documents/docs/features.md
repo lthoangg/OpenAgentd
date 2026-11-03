@@ -1176,6 +1176,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The notch, the tray's "Needs you" list and Settings → Connection follow
     the builtin server whenever it runs, so its sessions stay listed with
     only windows on an external server open, or none.
+  - In reader mode the jump chip says "Jump to latest" without a count of
+    new blocks: the turns are folded, so the count said nothing.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

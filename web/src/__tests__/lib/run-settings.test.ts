@@ -4,7 +4,7 @@ import {
   accountChoices,
   effectiveRun,
   loadRecentModels,
-  quotaLeftPercent,
+  quotaSummary,
   rememberRecentModel,
   setFrontmatterScalars,
   splitModelId,
@@ -113,17 +113,97 @@ describe('accountChoices', () => {
   })
 })
 
-describe('quotaLeftPercent', () => {
-  it('reports the tightest window', () => {
-    const usage: ProviderUsageResponse = {
-      provider: 'codex',
-      limits: [{ primary: { used_percent: 30 }, secondary: { used_percent: 82 } }],
-    }
-    expect(quotaLeftPercent(usage)).toBe(18)
+describe('quotaSummary', () => {
+  const usage = (...limits: ProviderUsageResponse['limits']): ProviderUsageResponse => ({ provider: 'codex', limits })
+  const credits = (c: { has_credits: boolean; unlimited?: boolean; balance?: string | null }) => ({ credits: { unlimited: false, ...c } })
+  const spend = (s: Partial<NonNullable<ProviderUsageResponse['limits'][number]['spend']>>) => ({ spend: { reached: false, ...s } })
+
+  it('reports the tightest window as percent left', () => {
+    const summary = quotaSummary(usage({ primary: { used_percent: 30 }, secondary: { used_percent: 82 } }))
+    expect(summary).toMatchObject({ kind: 'percent', left: 18 })
   })
 
-  it('is unknown without windows', () => {
-    expect(quotaLeftPercent({ provider: 'x', limits: [] })).toBeNull()
-    expect(quotaLeftPercent(undefined)).toBeNull()
+  it('takes the tightest window across every limit', () => {
+    const summary = quotaSummary(usage({ primary: { used_percent: 30 } }, { primary: { used_percent: 95.4 } }))
+    expect(summary).toMatchObject({ kind: 'percent', left: 5 })
+  })
+
+  it('is unknown when nothing is reported', () => {
+    expect(quotaSummary({ provider: 'x', limits: [] })).toBeNull()
+    expect(quotaSummary(undefined)).toBeNull()
+    expect(quotaSummary(usage({ limit_id: 'a', plan_type: 'enterprise' }))).toBeNull()
+  })
+
+  it('shows what is left of a spend cap, in the currency when it is known', () => {
+    const summary = quotaSummary(usage(spend({ currency: 'USD', limit: 50, used: 38, remaining: 12, used_percent: 76 })))
+    expect(summary).toEqual({ kind: 'spend', text: '$12.00 of $50.00 left', tone: 'muted' })
+  })
+
+  it('works the remainder out from used and limit, and leaves an unknown unit as bare numbers', () => {
+    const summary = quotaSummary(usage(spend({ limit: 700, used: 250.5 })))
+    expect(summary).toMatchObject({ kind: 'spend', text: '449.5 of 700 left' })
+  })
+
+  it('falls back to percent left when a spend cap only reports used_percent', () => {
+    expect(quotaSummary(usage(spend({ used_percent: 60 })))).toMatchObject({ kind: 'spend', text: '40% left', tone: 'muted' })
+  })
+
+  it('warns as a spend cap runs low', () => {
+    expect(quotaSummary(usage(spend({ limit: 100, used: 95, remaining: 5, used_percent: 95 })))).toMatchObject({ kind: 'spend', tone: 'warning' })
+  })
+
+  it('says Limit reached for a reached cap, even with room in a window and credits', () => {
+    const summary = quotaSummary(usage({ primary: { used_percent: 10 }, ...credits({ has_credits: true, balance: '$84.50' }), ...spend({ reached: true, limit: 700, used: 800, remaining: 0 }) }))
+    expect(summary).toMatchObject({ kind: 'spend', text: 'Limit reached', tone: 'error' })
+  })
+
+  it('says Limit reached for a reached cap that reports no figures', () => {
+    expect(quotaSummary(usage(spend({ reached: true })))).toMatchObject({ kind: 'spend', text: 'Limit reached', tone: 'error' })
+  })
+
+  it('shows a credit balance as left, and any other balance string as given', () => {
+    expect(quotaSummary(usage(credits({ has_credits: true, balance: '$84.50' })))).toEqual({ kind: 'credits', text: '$84.50 left', tone: 'muted' })
+    expect(quotaSummary(usage(credits({ has_credits: true, balance: '237/300' })))).toMatchObject({ kind: 'credits', text: '237/300' })
+    expect(quotaSummary(usage(credits({ has_credits: true, unlimited: true, balance: '237/\u221e' })))).toMatchObject({ kind: 'credits', text: '237/\u221e' })
+  })
+
+  it('says Unlimited for unlimited credits with no balance', () => {
+    expect(quotaSummary(usage(credits({ has_credits: true, unlimited: true })))).toEqual({ kind: 'credits', text: 'Unlimited', tone: 'muted' })
+  })
+
+  it('says No credits left, as an error, when there is nothing else to go on', () => {
+    expect(quotaSummary(usage(credits({ has_credits: false })))).toEqual({ kind: 'credits', text: 'No credits left', tone: 'error' })
+  })
+
+  it('says Credits available when credits exist but no balance is given', () => {
+    expect(quotaSummary(usage(credits({ has_credits: true })))).toMatchObject({ kind: 'credits', text: 'Credits available' })
+  })
+
+  it('lets a percent window lead and puts the balance in the detail', () => {
+    const summary = quotaSummary(usage({ primary: { used_percent: 20 }, ...credits({ has_credits: true, balance: '$84.50' }) }))
+    expect(summary).toEqual({ kind: 'percent', left: 80, tone: 'muted', detail: 'Balance $84.50' })
+  })
+
+  it('does not let empty credits hide a window that has room (plans without credits report none)', () => {
+    const summary = quotaSummary(usage({ primary: { used_percent: 20 }, ...credits({ has_credits: false, balance: '0' }) }))
+    expect(summary).toEqual({ kind: 'percent', left: 80, tone: 'muted' })
+  })
+
+  it('shows a spend cap that binds before the windows, with the balance in the detail', () => {
+    const summary = quotaSummary(usage({
+      primary: { used_percent: 30 },
+      ...credits({ has_credits: true, balance: '$84.50' }),
+      ...spend({ currency: 'USD', limit: 50, used: 45, remaining: 5, used_percent: 90 }),
+    }))
+    expect(summary).toEqual({ kind: 'spend', text: '$5.00 of $50.00 left', tone: 'warning', detail: 'Balance $84.50' })
+  })
+
+  it('lets a window that binds first lead, with the spend cap in the detail', () => {
+    const summary = quotaSummary(usage({ primary: { used_percent: 90 }, ...spend({ currency: 'USD', limit: 50, used: 10, remaining: 40, used_percent: 20 }) }))
+    expect(summary).toEqual({ kind: 'percent', left: 10, tone: 'muted', detail: 'Spend cap $40.00 of $50.00 left' })
+  })
+
+  it('ignores a currency code that is not one', () => {
+    expect(quotaSummary(usage(spend({ currency: 'credits', limit: 10, remaining: 4 })))).toMatchObject({ text: '4 of 10 left' })
   })
 })

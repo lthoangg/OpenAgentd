@@ -28,7 +28,7 @@ import { useUpdateAgentMutation } from '@/queries/useAgentSettingsQueries'
 import { selectionHapticFeedback } from '@/lib/haptics'
 import {
   loadRecentModels,
-  quotaLeftPercent,
+  quotaSummary,
   rememberRecentModel,
   setFrontmatterScalars,
   splitModelId,
@@ -406,11 +406,29 @@ function AccountList({
   )
 }
 
-/** Words first: the state, then what is left of its quota when known. */
+const QUOTA_TONE_CLASS = {
+  muted: 'text-(--color-text-muted)',
+  warning: 'text-(--accent-orange-text)',
+  error: 'text-(--color-error)',
+} as const
+
+/** Words first: the state, then what is left of its quota (percent, spend cap or credits) when known. */
 function AccountState({ account, providerId, usage }: { account: StoredCredential; providerId: string; usage: boolean }) {
   const query = useProviderUsageQuery(providerId, usage && account.status === 'ready', account.id)
   if (account.status === 'cooling_down') return <Chip tone="warning">Cooling down</Chip>
   if (account.status === 'needs_reconnect') return <Chip tone="error">Reconnect</Chip>
-  const left = quotaLeftPercent(query.data)
-  return left === null ? null : <span className="font-mono text-meta tabular-nums text-(--color-text-muted)">{left}% left</span>
+  const quota = quotaSummary(query.data)
+  if (quota === null) return null
+  const text = quota.kind === 'percent' ? `${quota.left}% left` : quota.text
+  // `title` becomes the app's tooltip (TitleTooltipLayer): the balance or cap the row has no room for,
+  // and the whole phrase when it is long enough to be cut off.
+  const title = [text.length > 14 ? text : null, quota.detail].filter(Boolean).join(' · ') || undefined
+  return (
+    <span
+      title={title}
+      className={cn('max-w-[11rem] min-w-0 truncate font-mono text-meta tabular-nums', QUOTA_TONE_CLASS[quota.tone])}
+    >
+      {text}
+    </span>
+  )
 }

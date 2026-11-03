@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { formatUsageAmount, moneyFormatter } from '@/lib/usage-format'
 import { useResetProviderUsageMutation } from '@/queries/useProvidersQuery'
 import { useNowMs } from './useNowMs'
 import { useToastStore } from '@/stores/useToastStore'
@@ -201,23 +202,6 @@ function UsageRow({
   )
 }
 
-const amountFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
-const moneyFormatters = new Map<string, Intl.NumberFormat | null>()
-
-/** A formatter only for a real ISO 4217 code; anything else is an unknown unit and stays a bare number. */
-function moneyFormatter(currency?: string | null): Intl.NumberFormat | null {
-  if (!currency || !/^[A-Za-z]{3}$/.test(currency)) return null
-  const code = currency.toUpperCase()
-  if (!moneyFormatters.has(code)) {
-    try {
-      moneyFormatters.set(code, new Intl.NumberFormat('en-US', { style: 'currency', currency: code }))
-    } catch {
-      moneyFormatters.set(code, null)
-    }
-  }
-  return moneyFormatters.get(code) ?? null
-}
-
 function SpendRow({
   label,
   spend,
@@ -237,7 +221,7 @@ function SpendRow({
   const reset = formatResetIn(spend.resets_at, now)
   const color = spend.reached ? 'bg-(--color-error)' : barColor(percent)
   const money = moneyFormatter(spend.currency)
-  const fmt = (n: number) => (money ? money.format(n) : amountFormatter.format(n))
+  const fmt = (n: number) => formatUsageAmount(n, spend.currency)
 
   // A known currency: the used amount leads, the cap and what is left are secondary.
   if (money && typeof spend.used === 'number' && typeof spend.limit === 'number') {

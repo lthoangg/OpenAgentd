@@ -1162,6 +1162,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - An account whose credits are spent but whose usage windows still have
     room reads "N% left · no credits" in the run picker, not "Limit reached":
     the plan's windows still run it.
+  - Closing the run picker puts focus back where it was: the message box
+    after `⌘.`/`Ctrl+.` (so Tab switches Code/Plan again), not the chip.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

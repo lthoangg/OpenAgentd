@@ -56,7 +56,6 @@ async function renderList(changes: WorkspaceChangesResponse, expanded: string[] 
           selectedFilePath={null}
           expandedDiffs={new Set(expanded)}
           toggleDiffExpanded={() => {}}
-          openDiffTab={() => {}}
           setMobileFileActions={() => {}}
           setDesktopFileActions={() => {}}
           {...overrides}
@@ -82,12 +81,12 @@ describe('Changes list', () => {
     // one part that tells files apart.
     await renderList(changesOf(['web/src/components/InputComposer.tsx', 'README.md']))
 
-    const row = screen.getByRole('button', { name: 'Open diff tab for web/src/components/InputComposer.tsx' })
+    const row = screen.getByRole('button', { name: 'Expand diff for web/src/components/InputComposer.tsx' })
     const name = within(row).getByText('InputComposer.tsx')
     const folder = within(row).getByText('web/src/components')
     expect(name.compareDocumentPosition(folder) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(folder.className).toContain('text-(--color-text-muted)')
-    expect(within(screen.getByRole('button', { name: 'Open diff tab for README.md' })).getByText('README.md')).toBeTruthy()
+    expect(within(screen.getByRole('button', { name: 'Expand diff for README.md' })).getByText('README.md')).toBeTruthy()
   })
 
   it('says how many files a capped list leaves out', async () => {
@@ -138,32 +137,28 @@ describe('Changes list', () => {
 })
 
 describe('Changes list rows', () => {
-  it('opens the diff tab from a click on the row, without peeking', async () => {
+  // A click on a file used to open a separate diff tab; the diff now opens
+  // right under the row, and "Open diff in tab" lives in the row's menu.
+  it('shows the diff in place from a click on the row, and says whether it is open', async () => {
     const user = userEvent.setup()
-    const openDiffTab = mock((_file: unknown) => {})
     const toggleDiffExpanded = mock((_path: unknown) => {})
-    await renderList(changesOf(['a.ts', 'b.ts']), [], { openDiffTab, toggleDiffExpanded })
+    await renderList(changesOf(['a.ts', 'b.ts']), ['a.ts'], { toggleDiffExpanded })
 
-    await user.click(screen.getByRole('button', { name: 'Open diff tab for b.ts' }))
+    const open = screen.getByRole('button', { name: 'Collapse diff for a.ts' })
+    expect(open.getAttribute('aria-expanded')).toBe('true')
+    const closed = screen.getByRole('button', { name: 'Expand diff for b.ts' })
+    expect(closed.getAttribute('aria-expanded')).toBe('false')
+    await user.click(closed)
 
-    expect(openDiffTab).toHaveBeenCalledTimes(1)
-    expect(openDiffTab.mock.calls[0][0]).toMatchObject({ path: 'b.ts', status: 'M' })
-    expect(toggleDiffExpanded).not.toHaveBeenCalled()
-    expect(bodyRequests()).toHaveLength(0)
+    expect(toggleDiffExpanded).toHaveBeenCalledWith('b.ts')
+    expect(screen.queryByRole('button', { name: /Open diff tab/ })).toBeNull()
   })
 
-  it('peeks only from the chevron, which says whether the diff is open', async () => {
-    const user = userEvent.setup()
-    const openDiffTab = mock((_file: unknown) => {})
-    const toggleDiffExpanded = mock((_path: unknown) => {})
-    await renderList(changesOf(['a.ts']), ['a.ts'], { openDiffTab, toggleDiffExpanded })
+  it('has one control for the diff: the row itself, no separate chevron button', async () => {
+    await renderList(changesOf(['a.ts']))
 
-    const chevron = screen.getByRole('button', { name: 'Collapse diff for a.ts' })
-    expect(chevron.getAttribute('aria-expanded')).toBe('true')
-    await user.click(chevron)
-
-    expect(toggleDiffExpanded).toHaveBeenCalledWith('a.ts')
-    expect(openDiffTab).not.toHaveBeenCalled()
+    const row = within(rows()[0]).getAllByRole('button')
+    expect(row.map((b) => b.getAttribute('aria-label'))).toEqual(['Expand diff for a.ts', 'More actions for a.ts'])
   })
 
   it('has no hover- or focus-only controls: ⋯ is always there, and the old reveals are gone', async () => {
@@ -177,7 +172,7 @@ describe('Changes list rows', () => {
     expect(screen.queryByTitle('Open diff in tab')).toBeNull()
     expect(screen.queryByTitle('Open file')).toBeNull()
     // The counts stay put: nothing swaps them out on hover.
-    const row = screen.getByRole('button', { name: 'Open diff tab for a.ts' })
+    const row = screen.getByRole('button', { name: 'Expand diff for a.ts' })
     expect(row.innerHTML).not.toContain('group-hover')
   })
 
@@ -241,7 +236,6 @@ describe('Changes load errors', () => {
           selectedFilePath={null}
           expandedDiffs={new Set()}
           toggleDiffExpanded={() => {}}
-          openDiffTab={() => {}}
           setMobileFileActions={() => {}}
           setDesktopFileActions={() => {}}
         />
@@ -264,7 +258,6 @@ describe('Changes load errors', () => {
           selectedFilePath={null}
           expandedDiffs={new Set()}
           toggleDiffExpanded={() => {}}
-          openDiffTab={() => {}}
           setMobileFileActions={() => {}}
           setDesktopFileActions={() => {}}
         />

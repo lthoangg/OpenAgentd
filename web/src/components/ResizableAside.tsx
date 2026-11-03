@@ -131,12 +131,20 @@ interface ResizableAsideProps
   /** Lay the children out at ``pinWidth`` rather than the tweening width. */
   pinContentWidth?: boolean
   /**
-   * A CSS custom property (``--oa-sidebar-w``) to publish the live
+   * A CSS custom property (e.g. ``--oa-dock-w``) to publish the live
    * border-box width to, on that property's sinks (``usePanelWidthSink``);
    * cleared when unset or unmounted. Owners pass it only while the panel is
    * in flow beside the chat.
    */
   publishWidthAs?: string
+  /**
+   * Whether the aside takes room in its row. A drawer floating over the row
+   * (``false``) publishes no target width and announces no slide: its
+   * neighbours keep the room they have, so ``settledWidthBesidePanels`` must
+   * not count it (it would shrink the center by the drawer's width on open
+   * and grow it on close).
+   */
+  inFlow?: boolean
   children: ReactNode
 }
 
@@ -195,7 +203,7 @@ function usePublishedWidth(ref: RefObject<HTMLElement | null>, name: string | un
   }, [ref, name])
 }
 
-export function ResizableAside({ resize, getMotion, pinContentWidth = false, publishWidthAs, children, style, ...asideProps }: ResizableAsideProps) {
+export function ResizableAside({ resize, getMotion, pinContentWidth = false, publishWidthAs, inFlow = true, children, style, ...asideProps }: ResizableAsideProps) {
   const state = usePanelResize(resize)
   const asideRef = useRef<HTMLElement>(null)
   usePublishedWidth(asideRef, publishWidthAs)
@@ -209,8 +217,8 @@ export function ResizableAside({ resize, getMotion, pinContentWidth = false, pub
   useLayoutEffect(() => {
     if (numericTarget === announcedTarget.current) return
     announcedTarget.current = numericTarget
-    if (slide) asideRef.current?.parentElement?.dispatchEvent(new Event(PANEL_SLIDE_EVENT))
-  }, [numericTarget, slide])
+    if (slide && inFlow) asideRef.current?.parentElement?.dispatchEvent(new Event(PANEL_SLIDE_EVENT))
+  }, [numericTarget, slide, inFlow])
   // Always the same wrapper, so a change of target (mobile has none) never
   // remounts the panel body.
   const pinnedWidth = pinWidth ?? '100%'
@@ -219,7 +227,7 @@ export function ResizableAside({ resize, getMotion, pinContentWidth = false, pub
       <motion.aside
         {...asideProps}
         ref={asideRef}
-        data-panel-target-width={numericTarget}
+        data-panel-target-width={inFlow ? numericTarget : undefined}
         style={cut ? { ...style, width: targetWidth as number | string, transition: slide ? PANEL_SLIDE : undefined } : style}
         animate={cut ? animateRest : animate}
         transition={transition}

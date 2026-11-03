@@ -65,6 +65,8 @@ import {
   dockMaxWidth,
   ratioFromWidth,
   resolveDockLayout,
+  sideDockWidth,
+  type DockLayout,
 } from '@/lib/workbench-layout'
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
@@ -422,7 +424,17 @@ export function WorkspacePanel({
   const besideSliding = usePanelSlideBeside(centerRef) && !mobile
   const center = centerWidth ?? measuredCenter
   const touch = useTouchFirst()
-  const layout = resolveDockLayout({ centerWidth: center, ratio: dockRatio, maximized: dockMaximized, touch })
+  const liveLayout = resolveDockLayout({ centerWidth: center, ratio: dockRatio, maximized: dockMaximized, touch })
+  // A dock that was beside the chat closes beside it. Closing frees room the
+  // sidebar may take at once (its clamp leaves an open dock 340px), which can
+  // drop the center under the side-by-side minimum mid-slide: switching to
+  // the overlay then would pull the dock out of the row, snap the chat to
+  // full width and slide the dock over it.
+  const [openMode, setOpenMode] = useState(liveLayout.mode)
+  if (open && openMode !== liveLayout.mode) setOpenMode(liveLayout.mode)
+  const layout: DockLayout = !open && openMode === 'side' && liveLayout.mode === 'overlay' && !dockMaximized
+    ? { mode: 'side', width: sideDockWidth(center, dockRatio, { touch }) }
+    : liveLayout
   const overlay = !mobile && layout.mode === 'overlay'
   const dockResize = {
     width: layout.width,
@@ -756,7 +768,6 @@ export function WorkspacePanel({
             selectedFilePath={selectedFilePath}
             expandedDiffs={expandedDiffs}
             toggleDiffExpanded={toggleDiffExpanded}
-            openDiffTab={openDiffPreview}
             mobile={mobile}
             setMobileFileActions={setMobileFileActions}
             setDesktopFileActions={setDesktopFileActions}

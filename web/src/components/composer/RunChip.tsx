@@ -7,6 +7,7 @@
  * stacks into two lines (model, then level and account). Desktop and tablet
  * open the picker as a popover over the chip, phones as a bottom sheet.
  */
+import { useLayoutEffect, useRef } from 'react'
 import { ChevronDown } from 'lucide-react'
 
 import { BottomSheet } from '@/components/ui/bottom-sheet'
@@ -25,11 +26,37 @@ import type { RunSettings } from './useRunSettings'
 // loads while the app is idle after it starts, or on first open.
 const RunPicker = lazySurface(() => import('./RunPicker'), 'RunPicker')
 
+/** The message box of the composer the chip sits in. */
+function composerInput(): HTMLElement | null {
+  let el = document.querySelector('[data-run-chip]')?.parentElement ?? null
+  while (el) {
+    const input = el.querySelector<HTMLElement>('textarea[aria-label="Message input"]')
+    if (input) return input
+    el = el.parentElement
+  }
+  return null
+}
+
 export function RunChip({ settings, disabled = false }: { settings: RunSettings; disabled?: boolean }) {
   const isMobile = useIsMobile()
   const { os } = usePlatform()
   const open = useUIStore((s) => s.runPickerOpen)
   const focus = useUIStore((s) => s.runPickerFocus)
+  // Focus goes back where it was when the picker opened: the message box
+  // after ⌘. (so Tab switches Code/Plan again), the chip when the keyboard
+  // reached it first. Opened by a click (focus on the page), the message box.
+  const returnTo = useRef<HTMLElement | null>(null)
+  useLayoutEffect(() => {
+    if (!open) return
+    const active = document.activeElement
+    returnTo.current = active instanceof HTMLElement && active !== document.body ? active : null
+  }, [open])
+  const returnFocus = () => {
+    const target = returnTo.current
+    returnTo.current = null
+    if (target?.isConnected && !target.closest('[data-run-picker]')) return target
+    return composerInput()
+  }
   const setOpen = (next: boolean) => {
     const ui = useUIStore.getState()
     if (next) ui.openRunPicker('model')
@@ -109,6 +136,7 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
         aria-label="Model and thinking"
         // Wide enough for a long `provider:model` beside "default" and its check.
         className="w-[min(28rem,calc(100vw-1rem))] gap-0 p-1.5"
+        returnFocus={returnFocus}
       >
         <RunPicker settings={settings} focus={focus} onDone={() => setOpen(false)} />
       </PopoverContent>

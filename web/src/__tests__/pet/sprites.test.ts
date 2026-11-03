@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test'
-import { BALLOON_COLUMNS, BALLOON_ROWS, BODY_COLOURS, CHARACTERS, balloonRows, poseFrames, spriteRects, SPRITE_COLUMNS, SPRITE_ROWS } from '@/pet/sprites'
+import { BODY_COLOURS, CHARACTERS, poseFrames, spriteRects, SPRITE_COLUMNS, SPRITE_ROWS } from '@/pet/sprites'
 import type { PetCharacter, PetPose } from '@/pet/state'
 
-const POSES: PetPose[] = ['walk', 'sit', 'sleep', 'work', 'alert', 'hop', 'droop', 'look', 'climb', 'float', 'fall']
+const POSES: PetPose[] = ['walk', 'sit', 'sleep', 'work', 'alert', 'hop', 'droop', 'look', 'fall']
 const ALL = Object.keys(CHARACTERS) as PetCharacter[]
 
 describe('pet sprites', () => {
@@ -45,23 +45,9 @@ describe('pet sprites', () => {
     }
   })
 
-  it('climbs on the walking frames and floats or falls on the standing one', () => {
+  it('falls on the standing frame', () => {
     for (const character of ALL) {
-      expect(poseFrames(character, 'climb')).toEqual(poseFrames(character, 'walk'))
-      expect(poseFrames(character, 'float')).toEqual(poseFrames(character, 'sit'))
       expect(poseFrames(character, 'fall')).toEqual(poseFrames(character, 'sit'))
     }
-  })
-
-  it('draws the balloon whole and popped on one grid, in red whatever the pet colour', () => {
-    for (const popped of [false, true]) {
-      const rows = balloonRows(popped)
-      expect(rows).toHaveLength(BALLOON_ROWS)
-      for (const row of rows) expect(row).toHaveLength(BALLOON_COLUMNS)
-    }
-    expect(balloonRows(false).join('')).not.toBe(balloonRows(true).join(''))
-    const fills = (colour: 'orange' | 'blue') => spriteRects(balloonRows(false), colour).map((r) => r.fill)
-    expect(fills('orange')).toEqual(fills('blue'))
-    expect(new Set(fills('blue')).size).toBeGreaterThan(2)
   })
 })

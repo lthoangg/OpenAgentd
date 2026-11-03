@@ -5,9 +5,10 @@
 //! whether any session is running or waiting on the user, and the sessions
 //! that finished since you last looked at them (unread).
 //!
-//! It covers every server an app window is on (`servers::followed_servers`):
-//! windows can each be on a different server, and a session waiting on you
-//! matters whichever window it is in. A saved server no window is on is
+//! It covers the builtin while it runs and every server an app window is on
+//! (`servers::followed_servers`): windows can each be on a different server,
+//! and a session waiting on you matters whichever window it is in. A saved
+//! server no window is on is
 //! followed only when the user enabled it (Settings → Connection), so its
 //! sessions show with no window open, and a click opens a window on it.
 //! With more than one server, each row names its server.
@@ -54,9 +55,10 @@
 //! app windows (`session-read`) so their sidebars clear its unread mark.
 //!
 //! A session waiting on the user carries the question the server holds for
-//! it. One plain single-choice question is answered from the row, the pet's
-//! bubble or the notification (`crate::answers`, [`answer_question`]); after
-//! an answer the row clears at once and the next refetch confirms it.
+//! it. The row only shows it: a click opens the session, where it is
+//! answered. An OS notification can still answer one plain single-choice
+//! question in place (`crate::answers`, [`answer_question`]); after an answer
+//! the row clears at once and the next refetch confirms it.
 //!
 //! A session working toward a goal shows how far it has got (the list's
 //! `goal_turns_used` / `goal_max_turns`), and when its last turn ends the row
@@ -225,9 +227,6 @@ pub struct IslandSession {
     pub goal: Option<IslandGoal>,
     /// The open question's id, while the session waits on the user.
     pub question_id: Option<String>,
-    /// Buttons that answer the question in place (see
-    /// `answers::OpenQuestion::quick_choices`); empty when it needs the app.
-    pub choices: Vec<String>,
     /// The account the session is pinned to; `None` on Auto.
     pub account: Option<String>,
 }
@@ -442,7 +441,6 @@ pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, Asked>
                 state,
                 question: asked.and_then(|a| a.text.clone()),
                 question_id: asked.and_then(|a| a.id.clone()),
-                choices: asked.map(|a| a.choices.clone()).unwrap_or_default(),
                 server: None,
                 server_id: None,
                 goal,
@@ -477,7 +475,7 @@ pub fn newly_finished(
                 _ => SessionState::Done,
             };
             let goal = goals.get(&key).cloned();
-            Some(IslandSession { state, question: None, question_id: None, choices: Vec::new(), goal, ..session.clone() })
+            Some(IslandSession { state, question: None, question_id: None, goal, ..session.clone() })
         })
         .collect()
 }
@@ -599,19 +597,10 @@ impl Feeds {
                 session.state = SessionState::Running;
                 session.question = None;
                 session.question_id = None;
-                session.choices.clear();
                 changed = true;
             }
         }
         changed
-    }
-
-    /// The server a session of the active lists lives on.
-    pub fn server_of(&self, session_key: &str) -> Option<ServerId> {
-        self.servers
-            .iter()
-            .find(|(_, feed)| feed.sessions.iter().any(|s| id_key(&s.id) == session_key))
-            .map(|(id, _)| id.clone())
     }
 
     /// Record where `server`'s connection stands. True when that changed
@@ -727,13 +716,11 @@ pub fn merged_lists(
 }
 
 /// What a waiting session asks, as far as the shell knows: the text comes
-/// from the notification until the server's own copy arrives (with the id and
-/// the buttons that can answer it in place).
+/// from the notification until the server's own copy arrives (with the id).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Asked {
     pub text: Option<String>,
     pub id: Option<String>,
-    pub choices: Vec<String>,
 }
 
 /// Waiting sessions whose question is fetched on one refresh, at most.
@@ -817,7 +804,7 @@ impl FeedMemo {
     }
 
     /// Take the server's copy of what `session_id` waits on (`None`: nothing
-    /// is open any more, so any buttons and id from before are stale).
+    /// is open any more, so the id from before is stale).
     fn learn(&mut self, session_id: &str, question: Option<&crate::answers::OpenQuestion>) {
         let asked = self.questions.entry(id_key(session_id)).or_default();
         match question {
@@ -826,11 +813,9 @@ impl FeedMemo {
                     asked.text = Some(text.to_string());
                 }
                 asked.id = Some(question.id.clone());
-                asked.choices = question.quick_choices();
             }
             None => {
                 asked.id = None;
-                asked.choices.clear();
             }
         }
     }
@@ -1886,29 +1871,7 @@ pub(crate) fn mark_answered(app: &AppHandle, session_id: &str) {
     crate::pet::question_answered(app, &key);
 }
 
-/// Answer the question of a session the island shows, with one of the
-/// buttons on its row. The shell picks the server from the session itself.
-#[tauri::command]
-pub async fn island_answer(
-    app: AppHandle,
-    window: WebviewWindow,
-    session_id: String,
-    question_id: String,
-    answers: Vec<Vec<String>>,
-) -> Result<crate::answers::AnswerOutcome, String> {
-    if window.label() != ISLAND_WINDOW {
-        return Err("Only the island answers from its rows.".into());
-    }
-    let server = shared().lock().unwrap().feeds.server_of(&id_key(&session_id));
-    let Some(server) = server else {
-        // Not in any active list any more: nothing is waiting here.
-        mark_answered(&app, &session_id);
-        return Ok(crate::answers::AnswerOutcome::Gone);
-    };
-    answer_question(&app, &server, &session_id, &question_id, &answers).await.map_err(|error| format!("{error:#}"))
-}
-
-/// "Retry" on a server the island says it can't reach: try now, not at the
+/// A click on a server the island says it can't reach: try now, not at the
 /// next backoff.
 #[tauri::command]
 pub fn island_retry(window: WebviewWindow) {
@@ -2228,7 +2191,6 @@ mod tests {
             state,
             question: None,
             question_id: None,
-            choices: Vec::new(),
             server: None,
             server_id: None,
             goal: None,
@@ -2519,17 +2481,16 @@ mod tests {
 
     #[test]
     fn a_blank_title_reads_untitled_and_the_question_follows_the_session() {
-        let asked = Asked { text: Some("Keep the old format?".into()), id: Some("q-1".into()), choices: vec!["Keep".into(), "Drop".into()] };
+        let asked = Asked { text: Some("Keep the old format?".into()), id: Some("q-1".into()) };
         let questions = HashMap::from([(id_key("AB-CD"), asked)]);
         let sessions = active_sessions(vec![row("ab-cd", Some("  "), false, true)], &questions, None);
         assert_eq!(sessions[0].title, "Untitled session");
         assert_eq!(sessions[0].question.as_deref(), Some("Keep the old format?"));
         assert_eq!(sessions[0].question_id.as_deref(), Some("q-1"));
-        assert_eq!(sessions[0].choices, ["Keep", "Drop"]);
 
         // A session that no longer waits shows no question, whatever the memo holds.
         let running = active_sessions(vec![row("ab-cd", Some("T"), true, false)], &questions, None);
-        assert_eq!((running[0].question.as_deref(), running[0].question_id.as_deref(), running[0].choices.len()), (None, None, 0));
+        assert_eq!((running[0].question.as_deref(), running[0].question_id.as_deref()), (None, None));
     }
 
     #[test]
@@ -2692,22 +2653,20 @@ mod tests {
         crate::answers::parse_question(&body).unwrap()
     }
 
-    // The notification only has text; the server's copy adds the id the
-    // answer is posted to, and the buttons a surface may show.
+    // The notification only has text; the server's copy adds the id.
     #[test]
-    fn the_servers_copy_of_a_question_adds_its_id_and_buttons_to_the_notification_text() {
+    fn the_servers_copy_of_a_question_adds_its_id_to_the_notification_text() {
         let mut memo = FeedMemo::default();
         let ask = serde_json::json!({"kind": "input_needed", "session_id": "a", "body": "Which branch?"});
         memo.note(&event("desktop_notification", ask));
         memo.learn("a", Some(&open_question("q-1", "Which branch? (main or dev)", &["main", "dev"])));
         let asked = memo.questions.get("a").unwrap();
         assert_eq!((asked.id.as_deref(), asked.text.as_deref()), (Some("q-1"), Some("Which branch? (main or dev)")));
-        assert_eq!(asked.choices, ["main", "dev"]);
 
-        // Nothing open any more (answered meanwhile): no stale id or buttons.
+        // Nothing open any more (answered meanwhile): no stale id.
         memo.learn("a", None);
         let asked = memo.questions.get("a").unwrap();
-        assert_eq!((asked.id.as_deref(), asked.choices.len()), (None, 0));
+        assert_eq!(asked.id.as_deref(), None);
         assert_eq!(asked.text.as_deref(), Some("Which branch? (main or dev)"));
     }
 
@@ -2717,15 +2676,11 @@ mod tests {
         let mut asked = session("q", SessionState::NeedsInput);
         asked.question = Some("Which branch?".into());
         asked.question_id = Some("q-1".into());
-        asked.choices = vec!["main".into()];
         feeds.update(&remote(), vec![session("r", SessionState::Running), asked], &HashMap::new(), &HashMap::new(), None, true);
-        assert_eq!(feeds.server_of("q"), Some(remote()));
-        assert_eq!(feeds.server_of("nope"), None);
-
         assert!(feeds.resolve_question("q"));
         let (sessions, _) = feeds.lists();
         let row = sessions.iter().find(|s| s.id == "q").unwrap();
-        assert_eq!((row.state, row.question.as_deref(), row.question_id.as_deref(), row.choices.len()), (SessionState::Running, None, None, 0));
+        assert_eq!((row.state, row.question.as_deref(), row.question_id.as_deref()), (SessionState::Running, None, None));
         assert!(!feeds.resolve_question("q"), "already clear");
         assert!(!feeds.resolve_question("a"), "a running session has no question to clear");
     }

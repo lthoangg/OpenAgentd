@@ -136,6 +136,12 @@ interface PopoverContentProps extends ComponentPropsWithRef<'div'> {
   align?: Align
   sideOffset?: number
   alignOffset?: number
+  /**
+   * Where focus goes on close instead of the trigger (e.g. back to the text
+   * box the popover was opened from by a shortcut). `null` falls back to the
+   * trigger.
+   */
+  returnFocus?: () => HTMLElement | null
 }
 
 /** ``above``: ``top`` is where the bottom edge goes (the content is lifted
@@ -184,9 +190,12 @@ function PopoverContent({
   side = 'bottom',
   align = 'center',
   sideOffset = 4,
+  returnFocus,
   ...props
 }: PopoverContentProps) {
   const { open, setOpen, triggerRef, contentId } = usePopover()
+  const returnFocusRef = useRef(returnFocus)
+  returnFocusRef.current = returnFocus
   const contentRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<Pos | null>(null)
 
@@ -242,8 +251,9 @@ function PopoverContent({
   // (a dropdown, a dialog) keeps it open (``KeyLayerScope`` below).
   const layer = useKeyLayer(open, { kind: 'transient', onClose: () => setOpen(false) })
 
-  // Closing hands focus back to the trigger when it was inside the popover
-  // (or dropped on <body> as the content unmounted), like a native menu.
+  // Closing hands focus back to the trigger (or ``returnFocus``) when it was
+  // inside the popover (or dropped on <body> as the content unmounted), like
+  // a native menu.
   useEffect(() => {
     if (!open) return
     const content = contentRef
@@ -251,9 +261,10 @@ function PopoverContent({
     return () => {
       const active = document.activeElement
       const inside = active instanceof Node && content.current?.contains(active)
-      if ((inside || active === document.body || active === null) && trigger?.isConnected) {
-        trigger.focus({ preventScroll: true })
-      }
+      if (!(inside || active === document.body || active === null)) return
+      const target = returnFocusRef.current?.()
+      if (target?.isConnected) target.focus({ preventScroll: true })
+      else if (trigger?.isConnected) trigger.focus({ preventScroll: true })
     }
   }, [open, triggerRef])
 

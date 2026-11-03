@@ -1,31 +1,29 @@
 /**
- * The pet changes height with a ladder, a balloon or a fall: what it picks,
- * when it may, where it goes and lands, and how long each takes.
+ * The pet changes height with a jump or a fall: what it picks, when it may,
+ * where it goes and lands, and how long each takes.
  */
 import { describe, expect, it } from 'bun:test'
 import {
-  BALLOON_CHANCE,
-  BALLOON_DRIFT,
-  BALLOON_HOVER_MS,
-  BALLOON_MAX_RISE,
   CLIMB_CHANCE,
   FALL_MAX_SPEED,
   GRAVITY,
   JUMP_DOWN_CHANCE,
-  LADDER_CHANCE,
-  LADDER_OVER,
-  TOP_ROOM,
-  balloonMinY,
-  balloonPlan,
-  balloonRoom,
+  JUMP_CLEAR,
+  JUMP_CROUCH_MS,
+  JUMP_HOP,
+  JUMP_LOOK_MS,
+  JUMP_MAX_MS,
+  JUMP_MIN_MS,
+  JUMP_STEPS,
   chooseLift,
-  climbMs,
   dropFalls,
   fallCapped,
   fallMs,
   fallTarget,
-  floatMs,
-  ladderBox,
+  jumpApexY,
+  jumpMs,
+  jumpPath,
+  jumpReach,
   liftsAllowed,
   petPose,
   type LiftContext,
@@ -43,16 +41,15 @@ describe('petPose while changing height', () => {
   }
 
   it('takes the pose of the move, over a poke and over being held', () => {
-    expect(petPose({ ...base, lift: 'climb' })).toBe('climb')
-    expect(petPose({ ...base, lift: 'float', reaction: 'hop', held: true })).toBe('float')
     expect(petPose({ ...base, lift: 'fall' })).toBe('fall')
+    expect(petPose({ ...base, lift: 'fall', reaction: 'hop', held: true })).toBe('fall')
     expect(petPose({ ...base, lift: 'sit', sitting: false })).toBe('sit')
   })
 
   it('still raises the alert for a waiting question, and never moves when told not to', () => {
-    expect(petPose({ ...base, lift: 'climb', status: { running: 0, needsInput: 1 } })).toBe('alert')
-    expect(petPose({ ...base, lift: 'climb', movement: 'still' })).toBe('sit')
-    expect(petPose({ ...base, lift: 'float', reducedMotion: true })).toBe('sit')
+    expect(petPose({ ...base, lift: 'fall', status: { running: 0, needsInput: 1 } })).toBe('alert')
+    expect(petPose({ ...base, lift: 'fall', movement: 'still' })).toBe('sit')
+    expect(petPose({ ...base, lift: 'fall', reducedMotion: true })).toBe('sit')
   })
 })
 
@@ -65,14 +62,11 @@ describe('changing height', () => {
   const ctx = (patch: Partial<LiftContext> = {}): LiftContext => ({
     movement: 'playful',
     climb: true,
-    toys: true,
     reducedMotion: false,
-    busy: false,
     held: false,
     perched: false,
     x: 300,
     y: ground,
-    groundY: ground,
     ledges: [],
     pet,
     area,
@@ -85,55 +79,48 @@ describe('changing height', () => {
   }
 
   describe('chooseLift', () => {
-    it('jumps to a window edge no taller than twice the pet, and takes a ladder to a taller one', () => {
+    it('jumps to a window edge of any height, tall ones included', () => {
       expect(chooseLift(ctx({ ledges: [ledgeRising(90)] }), roll(0))).toEqual({ type: 'jump', ledge: ledgeRising(90) })
       expect(chooseLift(ctx({ ledges: [ledgeRising(96)] }), roll(0))).toEqual({ type: 'jump', ledge: ledgeRising(96) })
-      expect(chooseLift(ctx({ ledges: [ledgeRising(97)] }), roll(0))).toEqual({ type: 'ladder', ledge: ledgeRising(97) })
-      expect(chooseLift(ctx({ ledges: [ledgeRising(400)] }), roll(0))).toEqual({ type: 'ladder', ledge: ledgeRising(400) })
+      expect(chooseLift(ctx({ ledges: [ledgeRising(97)] }), roll(0))).toEqual({ type: 'jump', ledge: ledgeRising(97) })
+      expect(chooseLift(ctx({ ledges: [ledgeRising(400)] }), roll(0))).toEqual({ type: 'jump', ledge: ledgeRising(400) })
     })
 
     it('takes the window edge nearest to it, and ignores one below it', () => {
       const far = ledgeRising(300, 2, 900, 400)
       const near = ledgeRising(250, 1, 200, 400)
-      expect(chooseLift(ctx({ ledges: [far, near] }), roll(0))).toEqual({ type: 'ladder', ledge: near })
+      expect(chooseLift(ctx({ ledges: [far, near] }), roll(0))).toEqual({ type: 'jump', ledge: near })
       expect(chooseLift(ctx({ ledges: [ledgeRising(-100)] }), roll(0.99))).toEqual({ type: 'stay' })
     })
 
-    it('jumps even to a tall edge with ladders and balloons off, or while an agent runs', () => {
-      const tall = ledgeRising(400)
-      expect(chooseLift(ctx({ ledges: [tall], toys: false }), roll(0))).toEqual({ type: 'jump', ledge: tall })
-      expect(chooseLift(ctx({ ledges: [tall], busy: true }), roll(0))).toEqual({ type: 'jump', ledge: tall })
-    })
-
-    it('climbs down by ladder from a tall window and by a jump from a low one', () => {
+    it('jumps down from a window of any height', () => {
       const down = (rise: number, patch: Partial<LiftContext> = {}) =>
         chooseLift(ctx({ perched: true, y: ground - rise, ledges: [ledgeRising(rise)], ...patch }), roll(0))
-      expect(down(400)).toEqual({ type: 'ladder', ledge: null })
+      expect(down(400)).toEqual({ type: 'jump', ledge: null })
       expect(down(96)).toEqual({ type: 'jump', ledge: null })
-      expect(down(400, { toys: false })).toEqual({ type: 'jump', ledge: null })
     })
 
-    it('uses its own chance for each way of moving, so a roll between them does nothing', () => {
+    it('uses the same chance up and down at any height: CLIMB_CHANCE up, JUMP_DOWN_CHANCE down', () => {
+      for (const rise of [60, 400]) {
+        const ledges = [ledgeRising(rise)]
+        expect(chooseLift(ctx({ ledges }), roll(CLIMB_CHANCE - 0.001)).type).toBe('jump')
+        expect(chooseLift(ctx({ ledges }), roll(CLIMB_CHANCE + 0.001)).type).toBe('stay')
+        const standing = ctx({ perched: true, y: ground - rise, ledges })
+        expect(chooseLift(standing, roll(JUMP_DOWN_CHANCE - 0.001)).type).toBe('jump')
+        expect(chooseLift(standing, roll(JUMP_DOWN_CHANCE + 0.001)).type).toBe('stay')
+      }
+    })
+
+    it('only ever stays or jumps, whatever the roll', () => {
       const tall = [ledgeRising(400)]
-      expect(chooseLift(ctx({ ledges: tall }), roll(LADDER_CHANCE.playful - 0.001)).type).toBe('ladder')
-      // Past the ladder band, inside the balloon band.
-      expect(chooseLift(ctx({ ledges: tall }), roll(LADDER_CHANCE.playful + 0.001, 0.5, 0.5, 0.5, 0.5)).type).toBe('balloon')
-      // Past both.
-      expect(chooseLift(ctx({ ledges: tall }), roll(LADDER_CHANCE.playful + BALLOON_CHANCE.playful + 0.001)).type).toBe('stay')
       const low = [ledgeRising(60)]
-      expect(chooseLift(ctx({ ledges: low }), roll(CLIMB_CHANCE - 0.001)).type).toBe('jump')
-      expect(chooseLift(ctx({ ledges: low }), roll(CLIMB_CHANCE + 0.001, 0.5, 0.5, 0.5, 0.5)).type).toBe('balloon')
-      const standing = (rise: number) => ctx({ perched: true, y: ground - rise, ledges: [ledgeRising(rise)] })
-      expect(chooseLift(standing(60), roll(JUMP_DOWN_CHANCE - 0.001)).type).toBe('jump')
-      expect(chooseLift(standing(400), roll(LADDER_CHANCE.playful + 0.001)).type).not.toBe('ladder')
-    })
-
-    it('floats up on a balloon from open ground, even with no window about', () => {
-      const choice = chooseLift(ctx({ ledges: [] }), roll(0, 0.5, 0.5, 0.5))
-      expect(choice.type).toBe('balloon')
-      if (choice.type === 'balloon') {
-        expect(choice.plan.ledge).toBeNull()
-        expect(choice.plan.toY).toBeLessThan(ground)
+      for (const movement of ['still', 'calm', 'playful', 'chaotic'] as const) {
+        for (const ledges of [[], tall, low]) {
+          for (let i = 0; i < 200; i += 1) {
+            const choice = chooseLift(ctx({ movement, ledges, perched: i % 2 === 0 }), Math.random)
+            expect(['stay', 'jump']).toContain(choice.type)
+          }
+        }
       }
     })
 
@@ -146,108 +133,27 @@ describe('changing height', () => {
       expect(liftsAllowed({ movement: 'calm', reducedMotion: false, held: false })).toBe(true)
     })
 
-    it('never climbs a ladder or floats while an agent runs, nor with the setting off', () => {
+    it('does not climb windows with climbing off or when calm', () => {
       const tall = [ledgeRising(400)]
-      for (const patch of [{ busy: true }, { toys: false }]) {
-        for (const value of [0, LADDER_CHANCE.playful + 0.001, 0.2]) {
-          const choice = chooseLift(ctx({ ledges: tall, ...patch }), roll(value, 0.5, 0.5, 0.5, 0.5))
-          expect(['ladder', 'balloon']).not.toContain(choice.type)
-        }
-      }
-    })
-
-    it('does not climb windows with climbing off or when calm, but a calm pet may still float', () => {
-      const tall = [ledgeRising(400)]
-      expect(chooseLift(ctx({ ledges: tall, climb: false }), roll(0)).type).not.toBe('ladder')
       expect(chooseLift(ctx({ ledges: tall, climb: false }), roll(0)).type).not.toBe('jump')
-      expect(chooseLift(ctx({ ledges: tall, movement: 'calm' }), roll(0.01, 0.5, 0.5, 0.5, 0.5)).type).toBe('balloon')
-      expect(chooseLift(ctx({ ledges: tall, movement: 'calm' }), roll(BALLOON_CHANCE.calm + 0.001)).type).toBe('stay')
-      // Climbing off: a float that comes back down to the ground is still fine.
-      const choice = chooseLift(ctx({ ledges: tall, climb: false }), roll(0, 0, 0.5, 0.5, 0.5))
-      expect(choice.type).toBe('balloon')
-      if (choice.type === 'balloon') expect(choice.plan.ledge).toBeNull()
+      expect(chooseLift(ctx({ ledges: tall, movement: 'calm' }), roll(0)).type).toBe('stay')
     })
 
-    it('does it more often the more playful it is, and rarely when calm', () => {
-      expect(BALLOON_CHANCE.still).toBe(0)
-      expect(LADDER_CHANCE.still).toBe(0)
-      expect(BALLOON_CHANCE.calm).toBeGreaterThan(0)
-      expect(BALLOON_CHANCE.calm).toBeLessThan(BALLOON_CHANCE.playful)
-      expect(BALLOON_CHANCE.playful).toBeLessThan(BALLOON_CHANCE.chaotic)
-      expect(LADDER_CHANCE.calm).toBe(0)
-      expect(LADDER_CHANCE.playful).toBeLessThan(LADDER_CHANCE.chaotic)
-      // Occasional: well under half the sits, even chaotic.
-      expect(BALLOON_CHANCE.chaotic + LADDER_CHANCE.chaotic).toBeLessThan(0.5)
-
+    it('jumps to a tall edge about CLIMB_CHANCE of the time when playful or chaotic, never when calm', () => {
       // Counted over an even sweep of rolls.
       const share = (movement: LiftContext['movement'], ledges: LiftContext['ledges']) => {
         let hits = 0
         const n = 1000
         for (let i = 0; i < n; i += 1) {
-          const type = chooseLift(ctx({ movement, ledges }), roll(i / n, 0.5, 0.5, 0.5, 0.5)).type
-          if (type === 'ladder' || type === 'balloon') hits += 1
+          const type = chooseLift(ctx({ movement, ledges }), roll(i / n)).type
+          if (type === 'jump') hits += 1
         }
         return hits / n
       }
       const tall = [ledgeRising(400)]
-      expect(share('calm', tall)).toBeCloseTo(BALLOON_CHANCE.calm, 1)
-      expect(share('playful', tall)).toBeCloseTo(LADDER_CHANCE.playful + BALLOON_CHANCE.playful, 1)
-      expect(share('chaotic', tall)).toBeCloseTo(LADDER_CHANCE.chaotic + BALLOON_CHANCE.chaotic, 1)
-      expect(share('calm', tall)).toBeLessThan(share('playful', tall))
-      expect(share('playful', tall)).toBeLessThan(share('chaotic', tall))
-    })
-  })
-
-  describe('balloonPlan', () => {
-    const plan = (patch: Partial<LiftContext> = {}, ...values: number[]) => balloonPlan(ctx(patch), roll(...values))
-
-    it('rises at least one and a half pet heights, and drifts a little sideways', () => {
-      const low = plan({}, 0.5, 1)
-      expect(low?.toY).toBeCloseTo(ground - pet.height * 1.5)
-      expect(low?.toX).toBeCloseTo(300)
-      expect(plan({}, 0, 0)?.toX).toBeCloseTo(300 - BALLOON_DRIFT)
-      expect(plan({}, 1, 0)?.toX).toBeCloseTo(300 + BALLOON_DRIFT)
-    })
-
-    it('floats no higher than the longest rise, nor into the room a balloon needs at the top', () => {
-      expect(plan({}, 0.5, 0)?.toY).toBeCloseTo(ground - BALLOON_MAX_RISE)
-      // On a short screen the top room is the limit.
-      const short = plan({ y: 200, groundY: 200, area: { width: 1440, height: 300 } }, 0.5, 0)
-      expect(short?.toY).toBeGreaterThanOrEqual(balloonMinY(300, pet))
-      expect(balloonMinY(900, pet)).toBe(balloonRoom(pet.width))
-      expect(balloonRoom(64)).toBeGreaterThan(TOP_ROOM)
-    })
-
-    it('stays inside the screen sideways', () => {
-      expect(plan({ x: 10 }, 0, 0.5)?.toX).toBe(0)
-      expect(plan({ x: 1440 - 64 - 5 }, 1, 0.5)?.toX).toBe(1440 - 64)
-    })
-
-    it('has no plan where there is no room to rise', () => {
-      expect(plan({ y: 60, groundY: 60 }, 0.5, 0.5)).toBeNull()
-      expect(plan({ y: balloonMinY(900, pet) + 20, groundY: ground }, 0.5, 0.5)).toBeNull()
-    })
-
-    it('hovers between three and six seconds', () => {
-      expect(plan({}, 0.5, 0.5, 0)?.hoverMs).toBe(BALLOON_HOVER_MS[0])
-      expect(plan({}, 0.5, 0.5, 1)?.hoverMs).toBeCloseTo(BALLOON_HOVER_MS[1])
-    })
-
-    it('sometimes steers to a window edge it can reach, and steps onto it', () => {
-      const edge = ledgeRising(200, 4, 250, 300)
-      const steered = plan({ ledges: [edge] }, 0.5, 0)
-      expect(steered?.ledge).toEqual(edge)
-      expect(steered?.toY).toBe(edge.y - pet.height)
-      expect(steered?.toX).toBeGreaterThanOrEqual(edge.x)
-      expect(steered?.toX).toBeLessThanOrEqual(edge.x + edge.width - pet.width)
-      // Not this time: it hovers at a free height instead.
-      expect(plan({ ledges: [edge] }, 0.5, 0.99, 0.5)?.ledge).toBeNull()
-    })
-
-    it('does not steer to an edge too far to drift to, one under it, or with climbing off', () => {
-      expect(plan({ ledges: [ledgeRising(200, 4, 900, 300)] }, 0.5, 0)?.ledge).toBeNull()
-      expect(plan({ ledges: [ledgeRising(20, 4, 250, 300)] }, 0.5, 0)?.ledge).toBeNull()
-      expect(plan({ ledges: [ledgeRising(200, 4, 250, 300)], climb: false }, 0.5, 0)?.ledge).toBeNull()
+      expect(share('calm', tall)).toBe(0)
+      expect(share('playful', tall)).toBeCloseTo(CLIMB_CHANCE, 1)
+      expect(share('chaotic', tall)).toBeCloseTo(CLIMB_CHANCE, 1)
     })
   })
 
@@ -313,21 +219,72 @@ describe('changing height', () => {
     expect(dropFalls({ ...on, reducedMotion: true })).toBe(false)
   })
 
-  it('draws the ladder from the lower stance up to rails just over the upper edge', () => {
-    const box = ladderBox(300, ground, ground - 400, pet)
-    expect(box.width).toBe(22)
-    expect(box.left).toBe(300 + (64 - 22) / 2)
-    expect(box.top).toBe(ground - 400 + pet.height - LADDER_OVER)
-    expect(box.top + box.height).toBe(ground + pet.height)
-    // The same ladder whichever way it is climbed.
-    expect(ladderBox(300, ground - 400, ground, pet)).toEqual(box)
-  })
+  describe('a jump like a cat\'s', () => {
+    const from = { x: 100, y: ground }
+    const up = { x: 300, y: ground - 90 }
 
-  it('takes longer to climb further, and never less than a moment', () => {
-    expect(climbMs(10)).toBe(600)
-    expect(climbMs(-360)).toBe(4000)
-    expect(floatMs(10)).toBe(1200)
-    expect(floatMs(10_000)).toBe(6000)
-    expect(floatMs(240)).toBe(3000)
+    it('looks, then crouches, for a moment each', () => {
+      expect(JUMP_LOOK_MS).toBeGreaterThan(JUMP_CROUCH_MS)
+      expect(JUMP_CROUCH_MS).toBeGreaterThan(0)
+    })
+
+    it('takes longer the farther it goes, within a clamp', () => {
+      expect(jumpMs(0)).toBe(JUMP_MIN_MS)
+      expect(jumpMs(10_000)).toBe(JUMP_MAX_MS)
+      expect(jumpMs(300)).toBeGreaterThan(jumpMs(100))
+      expect(jumpMs(300)).toBeLessThanOrEqual(JUMP_MAX_MS)
+      expect(jumpMs(-300)).toBe(jumpMs(300))
+    })
+
+    it('arcs up 0.6 pet heights above the higher stance when jumping up', () => {
+      expect(jumpApexY(from, up, pet)).toBeCloseTo(up.y - pet.height * JUMP_CLEAR)
+      const path = jumpPath(from, up, pet)
+      expect(path).toHaveLength(JUMP_STEPS + 1)
+      expect(path[0]).toEqual(from)
+      expect(path[path.length - 1]).toEqual(up)
+      const top = Math.min(...path.map((p) => p.y))
+      // The samples are at fixed steps, so they come near the peak, never above it.
+      expect(top).toBeGreaterThanOrEqual(jumpApexY(from, up, pet) - 0.001)
+      expect(top).toBeLessThan(up.y - pet.height * 0.5)
+    })
+
+    it('moves evenly sideways, and the height rises then falls', () => {
+      const path = jumpPath(from, up, pet, 10)
+      path.forEach((p, i) => expect(p.x).toBeCloseTo(from.x + (up.x - from.x) * (i / 10)))
+      const peak = path.reduce((best, p, i) => (p.y < path[best].y ? i : best), 0)
+      expect(peak).toBeGreaterThan(0)
+      expect(peak).toBeLessThan(10)
+      for (let i = 1; i <= peak; i += 1) expect(path[i].y).toBeLessThanOrEqual(path[i - 1].y)
+      for (let i = peak + 1; i <= 10; i += 1) expect(path[i].y).toBeGreaterThanOrEqual(path[i - 1].y)
+    })
+
+    it('hops 0.35 pet heights up before coming down, when jumping down', () => {
+      const high = { x: 300, y: ground - 90 }
+      const low = { x: 300, y: ground }
+      expect(jumpApexY(high, low, pet)).toBeCloseTo(high.y - pet.height * JUMP_HOP)
+      const path = jumpPath(high, low, pet)
+      expect(path[0]).toEqual(high)
+      expect(path[path.length - 1]).toEqual(low)
+      expect(Math.min(...path.map((p) => p.y))).toBeLessThan(high.y)
+      expect(Math.min(...path.map((p) => p.y))).toBeGreaterThanOrEqual(high.y - pet.height * JUMP_HOP - 0.001)
+    })
+
+    it('keeps the arc inside the top of the screen', () => {
+      const near = { x: 0, y: 10 }
+      expect(jumpApexY({ y: 200 }, near, pet)).toBe(0)
+      expect(Math.min(...jumpPath({ x: 0, y: 200 }, near, pet).map((p) => p.y))).toBeGreaterThanOrEqual(0)
+    })
+
+    it('needs a window that holds the whole arc, apex included, and both ends', () => {
+      const reach = jumpReach(from, up, pet)
+      expect(reach.y).toBeCloseTo(jumpApexY(from, up, pet))
+      expect(reach.y).toBeLessThan(up.y)
+      expect(reach.y + reach.height).toBe(from.y + pet.height)
+      expect(reach.x).toBe(100)
+      expect(reach.x + reach.width).toBe(300 + pet.width)
+      const down = jumpReach({ x: 300, y: ground - 90 }, { x: 300, y: ground }, pet)
+      expect(down.y).toBeLessThan(ground - 90)
+      expect(down.y + down.height).toBe(ground + pet.height)
+    })
   })
 })

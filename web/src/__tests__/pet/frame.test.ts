@@ -78,9 +78,7 @@ describe('neededFrame', () => {
     expect(lane.y + lane.height).toBe(below.y + below.height)
   })
 
-  it('covers a ladder, a balloon and the whole path of a move', () => {
-    const ladder = { x: 321, y: 394, width: 22, height: 406 }
-    expect(need({ rects: [ladder] }).y).toBe(394)
+  it('covers the whole path of a move', () => {
     const path = { x: 300, y: 300, width: 64, height: 500 }
     const lane = need({ reach: path })
     expect(lane.y).toBe(300 - FRAME_ABOVE)

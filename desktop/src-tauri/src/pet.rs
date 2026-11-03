@@ -5,8 +5,8 @@
 //!
 //! The window (`web/pet.html`) is transparent and covers only a lane of the
 //! display's work area: the full width, and just the height of what the pet
-//! needs now (the pet and its marks, a bubble, a ladder, a balloon, a fall;
-//! the whole area while it is dragged). Everywhere else the desktop has no
+//! needs now (the pet and its marks, a bubble, a jump, a fall; the whole
+//! area while it is dragged). Everywhere else the desktop has no
 //! window of ours, so a meeting app's window picker can pick what is behind
 //! the pet. The page works in the work area's CSS pixels ("area" pixels) and
 //! asks for the frame it needs in `pet_fit`; this module clamps it to the
@@ -35,8 +35,8 @@
 //!
 //! A question stays with the pet until it is answered: "Later" only folds
 //! its bubble behind the badge, and the right-click menu lists it first.
-//! When the server holds one plain single-choice question, the bubble gets
-//! its options as buttons ([`pet_answer`], through `island::answer_question`).
+//! The bubble only tells: a click on it opens the session ([`pet_open`]),
+//! where the question is answered.
 
 #![cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
 
@@ -188,9 +188,6 @@ pub struct PetSettings {
     pub show_when_frontmost: bool,
     /// Jump onto other apps' windows (when playful or chaotic).
     pub climb: bool,
-    /// Ladders and balloons: it now and then climbs a ladder or floats up on
-    /// a balloon to change height. Settings saved before default to on.
-    pub toys: bool,
     pub position: Option<PetPosition>,
 }
 
@@ -206,7 +203,6 @@ impl Default for PetSettings {
             bubble_kinds: BubbleKinds::default(),
             show_when_frontmost: false,
             climb: true,
-            toys: true,
             position: None,
         }
     }
@@ -226,7 +222,6 @@ pub struct PetSettingsPatch {
     pub bubble_kinds: Option<BubbleKinds>,
     pub show_when_frontmost: Option<bool>,
     pub climb: Option<bool>,
-    pub toys: Option<bool>,
 }
 
 impl PetSettings {
@@ -241,7 +236,6 @@ impl PetSettings {
             bubble_kinds: patch.bubble_kinds.unwrap_or(self.bubble_kinds),
             show_when_frontmost: patch.show_when_frontmost.unwrap_or(self.show_when_frontmost),
             climb: patch.climb.unwrap_or(self.climb),
-            toys: patch.toys.unwrap_or(self.toys),
             position: self.position,
         }
     }
@@ -1031,8 +1025,6 @@ pub struct PetBubble {
     pub body: String,
     /// A question's id, once the server has said it (see [`with_question`]).
     pub question_id: Option<String>,
-    /// Buttons that answer the question in place; empty when it needs the app.
-    pub choices: Vec<String>,
 }
 
 /// The bubble for a `desktop_notification` event, if it is one.
@@ -1043,7 +1035,7 @@ pub fn bubble_from_event(data: &str) -> Option<PetBubble> {
     let title = display_title(&kind, v["title"].as_str()?);
     let body = v["body"].as_str().unwrap_or_default().to_string();
     let session_id = v["session_id"].as_str().map(str::to_string);
-    Some(PetBubble { tone: bubble_tone(&kind, &title), id, kind, session_id, title, body, question_id: None, choices: Vec::new() })
+    Some(PetBubble { tone: bubble_tone(&kind, &title), id, kind, session_id, title, body, question_id: None })
 }
 
 /// The feed saw a notification on `server`: show it in the bubble when the
@@ -1111,11 +1103,10 @@ async fn with_question(app: &AppHandle, server: &ServerId, bubble: PetBubble) ->
     }
 }
 
-/// `bubble` carrying what `question` says: its id, and the buttons that can
-/// answer it. The notification's own body stays unless it was empty.
+/// `bubble` carrying what `question` says: its id. The notification's own
+/// body stays unless it was empty.
 pub fn with_open_question(mut bubble: PetBubble, question: &crate::answers::OpenQuestion) -> PetBubble {
     bubble.question_id = Some(question.id.clone());
-    bubble.choices = question.quick_choices();
     if bubble.body.trim().is_empty() {
         bubble.body = question.text().unwrap_or_default().to_string();
     }
@@ -1134,7 +1125,6 @@ pub fn bubble_from_request(kind: &str, notification_id: Option<&str>, session_id
         title: display_title(kind, title),
         body: body.to_string(),
         question_id: None,
-        choices: Vec::new(),
     }
 }
 
@@ -1199,28 +1189,6 @@ fn open_notification(app: &AppHandle, notification_id: &str) {
             Err(e) => log::warn!("pet: could not open session: {e:#}"),
         }
     });
-}
-
-/// Answer the question a bubble asks with one of its buttons. The route
-/// (the server and session the bubble was made for) decides where it goes.
-#[tauri::command]
-pub async fn pet_answer(
-    app: AppHandle,
-    window: WebviewWindow,
-    notification_id: String,
-    question_id: String,
-    answers: Vec<Vec<String>>,
-) -> Result<crate::answers::AnswerOutcome, String> {
-    if window.label() != PET_WINDOW {
-        return Err("Only the pet answers from its bubbles.".into());
-    }
-    let route = shared().lock().unwrap().routes.iter().find(|r| r.notification_id == notification_id && r.kind == "input_needed").cloned();
-    let Some(route) = route else {
-        return Err("This question is no longer open here.".into());
-    };
-    crate::island::answer_question(&app, &route.server, &route.session_id, &question_id, &answers)
-        .await
-        .map_err(|e| format!("{e:#}"))
 }
 
 /// A session's question was answered (an [`id_key`]), here or elsewhere: the
@@ -1916,7 +1884,6 @@ mod tests {
                 title: "Failed · web".into(),
                 body: "Fix login".into(),
                 question_id: None,
-                choices: Vec::new(),
             })
         );
         assert_eq!(bubble_from_event(r#"{"kind":"assistant_done","title":"x"}"#), None, "no id");
@@ -1962,7 +1929,6 @@ mod tests {
             state,
             question: None,
             question_id: None,
-            choices: Vec::new(),
             server: None,
             server_id: None,
             goal: None,
@@ -2173,24 +2139,21 @@ mod tests {
     }
 
     #[test]
-    fn ladders_and_balloons_are_on_for_old_settings_and_follow_the_patch() {
-        assert!(PetSettings::default().toys);
-        // A file written before the setting existed has no `toys` key.
-        let old: PetSettings = serde_json::from_str(r#"{"enabled": true, "climb": false, "movement": "playful"}"#).unwrap();
-        assert!(old.toys, "settings saved before ladders and balloons");
+    fn settings_saved_with_the_old_ladders_switch_still_load() {
+        // A file written while ladders existed has a `toys` key: it is ignored, the rest is kept.
+        let old: PetSettings = serde_json::from_str(r#"{"enabled":true,"toys":false,"climb":false}"#).unwrap();
+        assert!(old.enabled);
         assert!(!old.climb, "the other options are kept");
-        // It round-trips.
-        let saved: PetSettings = serde_json::from_str(&serde_json::to_string(&PetSettings { toys: false, ..on() }).unwrap()).unwrap();
-        assert!(!saved.toys);
-        // A patch from Settings turns it off and on, and leaves it alone when absent.
-        let patch: PetSettingsPatch = serde_json::from_str(r#"{"toys": false}"#).unwrap();
-        let off = old.clone().with(patch);
-        assert!(!off.toys);
-        assert_eq!(off.movement, PetMovement::Playful);
-        let other: PetSettingsPatch = serde_json::from_str(r#"{"colour": "blue"}"#).unwrap();
-        assert!(!off.clone().with(other).toys, "absent: unchanged");
-        let back: PetSettingsPatch = serde_json::from_str(r#"{"toys": true}"#).unwrap();
-        assert!(off.with(back).toys);
+        let old: PetSettings = serde_json::from_str(r#"{"enabled":true,"toys":true,"movement":"playful"}"#).unwrap();
+        assert!(old.climb, "absent: the default");
+        assert_eq!(old.movement, PetMovement::Playful);
+        // It is not written back.
+        assert!(!serde_json::to_string(&old).unwrap().contains("toys"));
+        // A patch from the old Settings page that still sends it is accepted and leaves the rest alone.
+        let patch: PetSettingsPatch = serde_json::from_str(r#"{"toys": false, "colour": "blue"}"#).unwrap();
+        let patched = old.with(patch);
+        assert_eq!(patched.colour, PetColour::Blue);
+        assert_eq!(patched.movement, PetMovement::Playful);
     }
 
     #[test]
@@ -2283,7 +2246,7 @@ mod tests {
         assert!(pet.get("remote").is_none());
         assert_eq!(
             strings(&pet["permissions"]),
-            ["core:event:default", "allow-pet-state", "allow-pet-fit", "allow-pet-open", "allow-pet-answer", "allow-pet-dismiss", "allow-pet-drag-end", "allow-pet-menu"],
+            ["core:event:default", "allow-pet-state", "allow-pet-fit", "allow-pet-open", "allow-pet-dismiss", "allow-pet-drag-end", "allow-pet-menu"],
         );
     }
 
@@ -2307,12 +2270,12 @@ mod tests {
     }
 
     #[test]
-    fn a_question_bubble_carries_the_options_the_server_holds() {
+    fn a_question_bubble_carries_the_id_the_server_holds() {
         let body = serde_json::json!({ "question": { "id": "q-1", "questions": [{ "question": "Use which account?", "options": [{ "label": "Work" }, { "label": "Auto" }] }] } });
         let question = crate::answers::parse_question(&body).unwrap();
         let bubble = bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs you · api", "Use which account?");
         let asked = with_open_question(bubble, &question);
-        assert_eq!((asked.question_id.as_deref(), asked.choices.as_slice()), (Some("q-1"), ["Work".to_string(), "Auto".to_string()].as_slice()));
+        assert_eq!(asked.question_id.as_deref(), Some("q-1"));
         assert_eq!(asked.body, "Use which account?");
 
         // An empty notification body takes the question's own text.
@@ -2321,7 +2284,7 @@ mod tests {
 
         let json = serde_json::to_value(&asked).unwrap();
         assert_eq!(json["questionId"], "q-1");
-        assert_eq!(json["choices"], serde_json::json!(["Work", "Auto"]));
+        assert!(json.get("choices").is_none(), "the pet answers nothing in place");
     }
 
     #[test]

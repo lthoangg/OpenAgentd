@@ -659,21 +659,23 @@ drawer and full-screen sheet.
 └────────────── status-bar 24 · bg-page (light) / bg-sidebar (dark) ─────────┘
 ```
 
-- **Columns run to the top.** The desktop header splits where the columns
-  below it do: a sidebar cap as wide as the sidebar (the traffic lights, ☰
-  and the sidebar toggle, 80px in on macOS so it keeps a native gap from the
-  lights), the title over the chat, and a Review panel cap as wide as the
-  panel (Task list, the panel toggle; on Windows the caption buttons). The
+- **Columns run to the top.** The desktop header has a sidebar cap (the
+  traffic lights, ☰ and the sidebar toggle, 80px in on macOS so it keeps a
+  native gap from the lights), the title, and a Review panel cap as wide as
+  the panel (Task list, the panel toggle; on Windows the caption buttons).
+  Only the Review panel cap lines up with its panel: the sidebar cap is as
+  wide as its buttons, so the title sits right after the sidebar toggle
+  whatever the sidebar does (opening it does not move the title). The
   command palette has no button there: `Mod+K`, the View menu and the phone's
   More sheet open it. The caps draw no edge of their own (the column lines
   start under the header), and the header's bottom line runs the full width
   of the window, over the sidebar too, so the header reads as one bar.
-  The widths come from the panels themselves (`ResizableAside`
-  `publishWidthAs` → `--oa-sidebar-w`, `--oa-dock-w`), so a cap follows a
-  drag and a slide; a hidden panel, a drawer or an overlay publishes none,
-  and the cap shrinks to its buttons. The widths are written on the two
-  header caps only, never on `<html>`: a custom property changed on the
-  root restyles every element each frame of a slide. Phones keep one bar.
+  The dock width comes from the panel itself (`ResizableAside`
+  `publishWidthAs` → `--oa-dock-w`), so the cap follows a drag and a slide;
+  a hidden panel, a drawer or an overlay publishes none, and the cap
+  shrinks to its buttons. The width is written on the dock cap only, never
+  on `<html>`: a custom property changed on the root restyles every
+  element each frame of a slide. Phones keep one bar.
 - **Zoning is tonal in dark mode.** There the header, sidebar and status bar
   sit on the recessed `bg-sidebar`; in light mode they share the chat's
   `bg-page`, so the app reads as one sheet of paper. The dock tab bar
@@ -697,7 +699,9 @@ drawer and full-screen sheet.
   its minimum (the panel splits down to 740px of center). When the Review
   panel is open and the sidebar no longer fits beside the chat and the panel,
   the sidebar becomes a drawer over the content (scrim; a click outside or
-  Escape closes it) and the column choice is left alone. A touch tablet
+  Escape closes it) and the column choice is left alone. The drawer takes no
+  room: the chat and the panel keep their widths under it, and its scrim
+  covers the panel too, even maximized. A touch tablet
   follows iPadOS instead: the sidebar is a drawer below 1180px and the panel
   covers the transcript below 860px of center (an 820px tablet in portrait).
   Covering, the panel stops above the composer (`--composer-h`), so a message
@@ -734,7 +738,8 @@ drawer and full-screen sheet.
   `role="separator"` elements (arrows ±16px, Shift ±64px, Home/End, Enter or
   double-click to reset) whose 1px line lights up in `focus-ring`.
 - **One toolbar, one scroller per view.** A view gets at most one 32px toolbar
-  under the tab bar and one scrolling region. Lists are flat `divide-y` rows at
+  under the tab bar and one scrolling region (the sidebar is the exception:
+  its session list scrolls and Scheduled scrolls on its own). Lists are flat `divide-y` rows at
   `list-row` height; row actions swap in for trailing metadata on hover/focus
   instead of nesting controls inside the row button.
 - **The Review panel holds views, not just files.** Besides Git, file, diff,
@@ -1115,10 +1120,11 @@ already clear. State is carried by words and chips.
 The sidebar has its own section header (below).
 
 **Sidebar sections.** **New session** (⌘N) sits atop the sidebar, outside the
-scroller, so starting is always one click. Below it one scroller holds
-Pinned, Needs you, the session list and Scheduled; no section scrolls on its
-own, and the session list's header sticks to the top so its actions stay in
-reach. Every section uses one header (`Sidebar/SidebarHeading.tsx`): the
+scroller, so starting is always one click. Below it the session list scrolls
+(Pinned, Needs you and the sessions), and its header sticks to the top so its
+actions stay in reach. Scheduled sits pinned at the bottom, outside that
+scroller, with no rule above it, and scrolls on its own past 224px
+(`max-h-56`). Every section uses one header (`Sidebar/SidebarHeading.tsx`): the
 name in sentence case, `text-xs` medium muted, a count, and a chevron that is
 always visible when the section folds. Needs you counts in a warning chip
 with words ("2 waiting"), so colour is never the only signal. Sections are

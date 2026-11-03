@@ -122,6 +122,13 @@ export function dockMaxWidth(centerWidth: number, input: InputKind = {}): number
   return Math.max(DOCK_MIN_WIDTH, centerWidth - chatMinWidth(input))
 }
 
+/** The dock's width beside the chat: ``ratio`` of the center, clamped to the minimums. */
+export function sideDockWidth(centerWidth: number, ratio: number, input: InputKind = {}): number {
+  const center = Math.max(0, Math.round(centerWidth))
+  const safeRatio = Number.isFinite(ratio) && ratio > 0 ? ratio : DOCK_DEFAULT_RATIO
+  return Math.round(clamp(safeRatio * center, DOCK_MIN_WIDTH, dockMaxWidth(center, input)))
+}
+
 /**
  * Whether the dock covers the chat instead of sitting beside it. The shell
  * reads this alone (to make the chat inert) so it can skip re-rendering on
@@ -150,11 +157,7 @@ export function resolveDockLayout({
   if (dockOverlaysChat(center, maximized, { touch })) {
     return { mode: 'overlay', width: center }
   }
-  const safeRatio = Number.isFinite(ratio) && ratio > 0 ? ratio : DOCK_DEFAULT_RATIO
-  return {
-    mode: 'side',
-    width: Math.round(clamp(safeRatio * center, DOCK_MIN_WIDTH, dockMaxWidth(center, { touch }))),
-  }
+  return { mode: 'side', width: sideDockWidth(center, ratio, { touch }) }
 }
 
 export function ratioFromWidth(width: number, centerWidth: number): number {

@@ -115,6 +115,57 @@ describe('RunChip', () => {
     fireEvent.keyDown(search, { key: 'Escape' })
     expect(useUIStore.getState().runPickerOpen).toBe(false)
   })
+
+  // ⌘. then close left focus on the chip, with its ring: Tab then moved
+  // through the page instead of switching Code/Plan in the message box.
+  it('hands focus back to the message box it was opened from with ⌘.', async () => {
+    wrap(
+      <div>
+        <textarea aria-label="Message input" />
+        <RunChip settings={runSettings()} />
+      </div>,
+    )
+    const input = screen.getByRole('textbox', { name: 'Message input' })
+    input.focus()
+    act(() => useUIStore.getState().toggleRunPicker())
+    const search = await screen.findByRole('searchbox', { name: 'Search models' })
+    await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
+    expect(document.activeElement).toBe(search)
+
+    act(() => useUIStore.getState().toggleRunPicker())
+    expect(document.activeElement).toBe(input)
+    expect(document.activeElement).not.toBe(document.querySelector('[data-run-chip]'))
+  })
+
+  it('hands focus back to the chip when the keyboard reached the chip first', async () => {
+    wrap(
+      <div>
+        <textarea aria-label="Message input" />
+        <RunChip settings={runSettings()} />
+      </div>,
+    )
+    const chip = document.querySelector('[data-run-chip]') as HTMLElement
+    chip.focus()
+    fireEvent.click(chip)
+    const search = await screen.findByRole('searchbox', { name: 'Search models' })
+    fireEvent.keyDown(search, { key: 'Escape' })
+    expect(document.activeElement).toBe(chip)
+  })
+
+  it('falls back to the message box when the picker was opened from nowhere in particular', async () => {
+    wrap(
+      <div>
+        <textarea aria-label="Message input" />
+        <RunChip settings={runSettings()} />
+      </div>,
+    )
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    fireEvent.click(document.querySelector('[data-run-chip]') as HTMLElement)
+    const search = await screen.findByRole('searchbox', { name: 'Search models' })
+    search.focus()
+    fireEvent.keyDown(search, { key: 'Escape' })
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Message input' }))
+  })
 })
 
 describe('PlusMenu', () => {

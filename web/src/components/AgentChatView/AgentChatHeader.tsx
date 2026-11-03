@@ -176,8 +176,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   // Windows: this header is the title bar, and the page's caption buttons
   // (WindowCaptionButtons, fixed at the top right) take its last 3 × 46px.
   const captionInset = hasWindowCaption(platform)
-  // The caps take the live widths of the sidebar and the Review panel (index.css → Header caps).
-  const sidebarCapRef = usePanelWidthSink('--oa-sidebar-w')
+  // The dock cap takes the live width of the Review panel (index.css → Header caps).
   const dockCapRef = usePanelWidthSink('--oa-dock-w')
   // The sidebar's mutation, so a rename here shows in both at once.
   const { mutate: mutateSessionTitle } = useUpdateSessionTitleMutation()
@@ -236,9 +235,9 @@ export const AgentChatHeader = memo(function AgentChatHeader({
 
   if (!isMobile) {
     return (
-      // Desktop: the header splits where the columns below it do (caps as
-      // wide as the sidebar and the Review panel; geometry in index.css →
-      // Header caps), so both read as columns from the top of the window.
+      // Desktop: the title sits right after the sidebar toggle whatever the
+      // sidebar does; the Review panel's cap is as wide as its panel
+      // (geometry in index.css → Header caps).
       <header
         {...dragHandlers}
         // Zoning (dark only): the header joins the sidebar and status bar on
@@ -250,11 +249,11 @@ export const AgentChatHeader = memo(function AgentChatHeader({
         )}
       >
         <div
-          ref={sidebarCapRef}
           data-header-cap="sidebar"
           // The traffic lights sit over the sidebar, as in a native app; the
-          // toggle keeps a native gap from them (they end near 66px).
-          className={cn('oa-header-cap-sidebar flex shrink-0 items-center gap-1 pr-1', isMacOverlay ? 'pl-[80px]' : 'pl-3')}
+          // toggle keeps a native gap from them (they end near 66px). The cap
+          // is only as wide as its buttons: it does not follow the sidebar.
+          className={cn('flex shrink-0 items-center gap-1 pr-1', isMacOverlay ? 'pl-[80px]' : 'pl-3')}
         >
           {leadButtons}
         </div>

@@ -1,5 +1,6 @@
-//! Answering an agent's question from outside the app: the notch island,
-//! the desktop pet and OS notifications.
+//! Answering an agent's question from outside the app: OS notifications.
+//! The notch island and the desktop pet only tell; a click on them opens
+//! the session.
 //!
 //! The shell asks the server what is open (`GET /api/agent/{id}/question`)
 //! and posts the user's pick (`POST …/question/{qid}/answer`), the same two
@@ -9,7 +10,7 @@
 //! Only the simplest shape is answered in place: one plain `ask_user`
 //! question, one choice, a few short options. Anything that needs typing,
 //! several answers, or a closer look (a plan review, a change to apply) is
-//! left to the app: its button says "Open to answer".
+//! left to the app.
 
 use std::time::Duration;
 
@@ -19,7 +20,7 @@ use tauri::AppHandle;
 
 use crate::servers::ServerId;
 
-/// Option buttons a surface shows at most; with more, the user opens the app.
+/// Option buttons an OS notification shows at most; with more, the user opens the app.
 pub const MAX_QUICK_CHOICES: usize = 4;
 /// A longer label does not fit a button.
 const MAX_CHOICE_CHARS: usize = 40;

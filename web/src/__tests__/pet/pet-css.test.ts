@@ -38,6 +38,31 @@ describe('pet.css', () => {
   it('has a reduced-motion fallback', () => {
     expect(CSS).toContain('@media (prefers-reduced-motion: reduce)')
   })
+
+  it('has no balloon left, and no glide for a jump (the page moves it along an arc)', () => {
+    expect(CSS).not.toMatch(/balloon|pet-float/i)
+    expect(CSS).not.toMatch(/\.pet--jump\s*[{,]/)
+    expect(CSS).not.toContain('--pet-jump:')
+  })
+
+  it('shapes the body for each phase of a jump, and mirrors it when it faces left', () => {
+    const look = block('.pet--jump-look .pet-body')
+    expect(look).toContain('rotate(-14deg)')
+    expect(look).toContain('scaleY(1.08)')
+    expect(block('.pet--left.pet--jump-look .pet-body')).toContain('scaleX(-1) rotate(-14deg)')
+    expect(block('.pet--jump-look.pet--jump-down .pet-body')).toMatch(/rotate\(\d+deg\)/)
+    expect(block('.pet--jump-crouch .pet-body')).toContain('scaleX(1.15) scaleY(0.78)')
+    expect(block('.pet--left.pet--jump-crouch .pet-body')).toContain('scaleX(-1.15) scaleY(0.78)')
+    expect(block('.pet--jump-leap .pet-body')).toContain('scaleX(0.92) scaleY(1.1)')
+    expect(block('.pet--left.pet--jump-leap .pet-body')).toContain('scaleX(-0.92) scaleY(1.1)')
+  })
+
+  it('times the look and the crouch from values in the pet-only block', () => {
+    expect(CSS).toMatch(/--pet-jump-look:\s*350ms/)
+    expect(CSS).toMatch(/--pet-jump-crouch:\s*120ms/)
+    expect(block('.pet--jump-look .pet-body')).toContain('var(--pet-jump-look)')
+    expect(block('.pet--jump-crouch .pet-body')).toContain('var(--pet-jump-crouch)')
+  })
 })
 
 /** The declarations of every rule written for exactly `selector`. */
@@ -56,7 +81,6 @@ describe('pet.css sizes', () => {
   it('gives every button at least 24px, and the main ones 28px', () => {
     expect(px('.pet-bubble-close', 'width')).toBeGreaterThanOrEqual(28)
     expect(px('.pet-bubble-close', 'height')).toBeGreaterThanOrEqual(28)
-    expect(px('.pet-button', 'height')).toBeGreaterThanOrEqual(28)
     expect(px('.pet-badge', 'min-width')).toBeGreaterThanOrEqual(24)
     expect(px('.pet-badge', 'height')).toBeGreaterThanOrEqual(24)
     expect(px('.pet-list-dismiss', 'width')).toBeGreaterThanOrEqual(24)

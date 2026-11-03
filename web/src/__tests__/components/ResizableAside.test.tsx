@@ -295,6 +295,32 @@ describe('settledWidthBesidePanels', () => {
     cleanup()
     expect(settledWidthBesidePanels(row(1, 0))).toBe(999)
   })
+
+  // A drawer floats over the row: opening it (40 on its way to 264) or
+  // closing it leaves the center the room it has. Counted, it shrank the
+  // center by its width on open, so the Review panel covered the chat, and
+  // grew it on close, leaving the chat under its minimum.
+  it('does not count a drawer that floats over the row', () => {
+    render(
+      <div>
+        <ResizableAside
+          aria-label="Drawer"
+          inFlow={false}
+          resize={{ width: 264, min: 200, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize sidebar' }}
+          getMotion={() => ({ animate: { width: 264 }, transition: { duration: 0 }, instantWidth: true })}
+        >
+          <p>drawer</p>
+        </ResizableAside>
+        <div data-testid="center" />
+      </div>,
+    )
+    const drawer = screen.getByRole('complementary', { name: 'Drawer' })
+    drawer.getBoundingClientRect = () => ({ width: 40 }) as DOMRect
+    expect(drawer.hasAttribute('data-panel-target-width')).toBe(false)
+    const center = screen.getByTestId('center')
+    center.getBoundingClientRect = () => ({ width: 900 }) as DOMRect
+    expect(settledWidthBesidePanels(center)).toBe(900)
+  })
 })
 
 describe('a panel beside a sliding one', () => {
@@ -316,13 +342,14 @@ describe('a panel beside a sliding one', () => {
     return <div ref={attach}>{`${width} ${sliding ? 'sliding' : 'still'}`}</div>
   }
   // The sidebar is 264px on screen; ``target`` is where its width is headed.
-  const row = (target: number, tweenWidth: boolean) => (
+  const row = (target: number, tweenWidth: boolean, inFlow = true) => (
     <div ref={(node) => {
       const sidebar = node?.querySelector('aside')
       if (sidebar) sidebar.getBoundingClientRect = () => ({ width: 264 }) as DOMRect
     }}>
       <ResizableAside
         aria-label="Sidebar"
+        inFlow={inFlow}
         resize={{ width: 264, min: 200, max: 500, edge: 'right', onCommit: () => {}, label: 'Resize sidebar' }}
         getMotion={() => ({ animate: { width: target }, transition: { duration: 0.01 }, instantWidth: true, tweenWidth })}
       >
@@ -355,6 +382,15 @@ describe('a panel beside a sliding one', () => {
     const view = render(row(264, false))
 
     view.rerender(row(300, false))
+
+    expect(screen.getByText('736 still')).toBeTruthy()
+  })
+
+  it('neither re-measures nor slides along when a drawer over the row slides', () => {
+    const view = render(row(264, false, false))
+    expect(screen.getByText('736 still')).toBeTruthy()
+
+    view.rerender(row(0, true, false))
 
     expect(screen.getByText('736 still')).toBeTruthy()
   })

@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.42.0 · November 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.42.0)
+**Latest release:** v3.43.0 · November 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.43.0)
 
 ---
 
@@ -740,6 +740,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     over the sidebar too. The split follows a drag or a slide. The
     Review panel's tab strip shares the sidebar's tone, and its open tab is
     marked the way the sidebar marks the open session.
+    *(The title over the chat is deprecated; since v3.43.0 the title sits
+    right after the sidebar toggle and stays put when the sidebar opens or
+    closes.)*
   - **Split Review Panel Right** (`⌘\`/`Ctrl+\`) and **Split Review Panel
     Down** (`⌘⇧\`/`Ctrl+Shift+\`) split the pane you are in, as often as
     there is room; each pane has its own tabs. The new pane is empty and lists
@@ -904,7 +907,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     **Request changes**, which opens a comment box straight away, and **Open
     plan**. In the Plan tab every paragraph, list item and heading has a
     **Comment** action *(deprecated; removed in v3.42.0: select text and
-    comment)*, and the tab and the card share one draft.
+    comment)*, and the tab and the card share one draft. *(Deciding on the
+    card deprecated; removed in v3.43.0: the card only shows the outcome and
+    **Open plan**; Approve and Request changes are in the Plan tab.)*
   - Each queued message has **Remove**, and the notice that follows has
     **Undo**.
   - The undo notice is one card: "Last 2 messages undone. Redo brings them
@@ -917,8 +922,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     list shows its checkboxes in place of bullets, in the theme's colour.
 - **Review panel views** `[v3.40.0]`:
   - **Changes**: clicking a row opens its diff as a preview tab, and the
-    chevron peeks at it in place. Every row has **⋯** with the same items as
-    right-click and the long-press sheet.
+    chevron peeks at it in place *(deprecated; since v3.43.0 a click on the
+    row shows the diff in place, and **Open diff in tab** is in its menu)*.
+    Every row has **⋯** with the same items as right-click and the
+    long-press sheet.
     Each row leads with the file name, its folder after it in muted text,
     so files in one deep folder no longer look alike; an empty list says
     **No changes** once. The status letter takes its lines' color: **A**
@@ -1028,10 +1035,14 @@ run from the terminal (the native Rust binary since v3.0.0).
     **Failed** and **Can't reach**. "Builtin" is now "Built-in server".
   - A question with a few choices can be answered from the notch list, the
     pet's bubble or the notification's buttons; anything else offers **Open
-    to answer**. Answering anywhere clears it everywhere.
+    to answer**. Answering anywhere clears it everywhere. *(Answering from the
+    notch and the pet deprecated; removed in v3.43.0: they only show the
+    notification, and a click on it opens the session. System notifications
+    keep their buttons.)*
   - The notch status opens on click; pointing at it opens it only with
     **Expand on hover** on. Its × means Later. When a server stops
-    answering, a **Can't reach** row offers Retry.
+    answering, a **Can't reach** row offers Retry *(since v3.43.0 a click on
+    the row retries)*.
   - The pet keeps a question until it is answered: × folds it behind the
     badge, and its menu lists questions first.
   - A question card in the transcript no longer sticks on "Waiting for an
@@ -1129,6 +1140,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     spend cap ("$12.00 of $50.00 left", or "Limit reached"), a credit
     balance ("$84.50 left"), **Unlimited** or **No credits left**. When a
     percent window leads, the balance or cap is in the row's tooltip.
+    Since v3.43.0 a reached spend cap says "Limit reached" only once the
+    percent windows are spent too.
 - **Back to the lead agent in one click** `[v3.42.0]`:
   - A subagent's session has an **Open the lead agent** button (↰) in its
     header, before the title, on desktop and phones, next to the existing
@@ -1150,6 +1163,45 @@ run from the terminal (the native Rust binary since v3.0.0).
   were typing. A page action right after `open` waits up to 8 seconds for the
   page to load instead of failing at once. Phones still need the workspace's
   Preview sheet.
+- **Run picker and Git changes fixes** `[v3.43.0]`:
+  - An account whose credits are spent but whose usage windows still have
+    room reads "N% left · no credits" in the run picker, not "Limit reached":
+    the plan's windows still run it.
+  - Closing the run picker puts focus back where it was: the message box
+    after `⌘.`/`Ctrl+.` (so Tab switches Code/Plan again), not the chip.
+  - Enter on a model from another provider that has several accounts keeps
+    the run picker open on that provider's account list; Enter on an
+    account picks it and closes.
+  - In the Git panel's **Changes**, a click on a file shows or hides its
+    diff right under the row; **Open diff in tab** stays in the row's ⋯,
+    right-click and long-press menus.
+- **Pet, notch, header and transcript fixes** `[v3.43.0]`:
+  - In the sidebar grouped by workspace, the session you just used moves to
+    the top of its group as soon as its turn starts, the open session too
+    (it used to be added last when it was past the first page).
+  - The pet no longer floats on balloons or climbs ladders: it changes
+    height only by jumping (to any window edge it can reach, tall ones
+    included) or falling. The **Ladders** setting is gone; **Climb on
+    windows** still turns the jumps onto windows off.
+  - A jump onto a window, or back down, starts with a look at where it is
+    going and a crouch, then the pet leaps in an arc and lands with a squash
+    and a puff of dust, instead of gliding straight up.
+  - The notch, the tray's "Needs you" list and Settings → Connection follow
+    the builtin server whenever it runs, so its sessions stay listed with
+    only windows on an external server open, or none.
+  - In reader mode the jump chip says "Jump to latest" without a count of
+    new blocks: the turns are folded, so the count said nothing.
+  - The header's workspace and title stay right after the sidebar toggle
+    whether the sidebar is open or not.
+  - In a narrow window with the Review panel open, the sidebar opens as a
+    drawer over the chat and the panel without moving them, and its scrim
+    dims the panel too (a click there closes the drawer, even with the panel
+    maximized). The panel used to cover the chat while the drawer was open
+    and, once it closed, to leave the chat under its 400px minimum. Closing
+    the panel near that width slides it shut beside the chat instead of
+    over it.
+  - A question with several answers allowed shows checkboxes without the
+    1–9 digit beside each; the digit keys still pick options.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.
@@ -1373,6 +1425,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     Disabled), a server that is off is retried every 30 s at most (60 s
     after a rejected key) instead of every 15 s, and rows carry a server
     name only when two or more servers are connected.
+    Since `[v3.43.0]` the builtin is followed whenever it runs, whatever
+    windows are open: before, a window on an external server (and none on
+    the builtin) dropped the builtin's sessions.
     Also since `[v3.33.0]` the resting pill no longer covers menu bar items:
     on a notch it grows only a narrow wing left of the notch (the state
     mark, and a count for several sessions), leaving the status icons right
@@ -1439,7 +1494,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     gentle bob, sometimes to a window edge it steps onto; otherwise it hovers
     3-6 s, then the balloon pops and it falls. Clicking the balloon pops it
     early (the balloon is part of the pet's clickable area; clicks elsewhere
-    still pass through). A **fall** has gravity (eases in, capped speed), a
+    still pass through). *(Ladders and balloons are deprecated; removed in
+    v3.43.0, along with their setting: the pet jumps instead.)* A **fall**
+    has gravity (eases in, capped speed), a
     squash on landing and a tiny dust puff; it is also how the pet comes down
     when its window closes, and when you drop it in mid-air: with climbing on
     it falls to the window edge or the ground below, and the saved spot is
@@ -2553,6 +2610,8 @@ agent against it.
   run time (`18:05`, `Wed 09:00`, or `20/03`). Clicking a task opens the
   scheduler on that task, and clicking the **Scheduled** header opens the full
   list. The section is hidden when nothing is scheduled.
+  Since `[v3.43.0]` it stays pinned at the bottom of the sidebar while the
+  session list scrolls above it, and scrolls on its own past 224 px.
 - **Anchored & regex-optimized filesystem search** `[v2.0.0]` — `glob` pattern matching
   anchors walks at the literal prefix (up to 50x faster), `grep` pre-filters files using
   literal scanning and streams matches asynchronously off the main loop, and non-ignored
@@ -2792,6 +2851,9 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   After a server or app restart, a session whose turn ended less than 5
   minutes earlier resumes its countdown while the cache is still warm
   `[v3.24.0]`.
+  Since `[v3.43.0]` a lead whose subagents are still running (or which still
+  waits on another workspace's reply) compacts too once it has been idle that
+  long; a report that arrives meanwhile runs right after the compaction.
   The summary under the "Session compacted" divider starts collapsed; click
   the divider to read it, including while it is still being written
   `[v3.13.0]`.

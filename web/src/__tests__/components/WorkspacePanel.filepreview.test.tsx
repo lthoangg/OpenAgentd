@@ -226,8 +226,8 @@ describe('Coding workspace two-layer file preview', () => {
     await renderWorkspacePanel()
     await waitFor(() => expect(screen.getByRole('button', { name: 'Expand diff for README.md' })).toBeTruthy())
 
-    // The row names the file and its status; its chevron is the peek.
-    expect(screen.getByRole('button', { name: 'Open diff tab for README.md' }).textContent).toContain('M')
+    // The row names the file and its status; a click on it is the peek.
+    expect(screen.getByRole('button', { name: 'Expand diff for README.md' }).textContent).toContain('M')
     await user.click(screen.getByRole('button', { name: 'Expand diff for README.md' }))
 
     expect(screen.getByText('old')).toBeTruthy()
@@ -248,13 +248,13 @@ describe('Coding workspace two-layer file preview', () => {
     const user = userEvent.setup()
     const onFileSelect = mock(() => {})
     await renderWorkspacePanel(onFileSelect)
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Open diff tab for deleted.txt' })).toBeTruthy())
-    const deletedRow = screen.getByRole('button', { name: 'Open diff tab for deleted.txt' })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Expand diff for deleted.txt' })).toBeTruthy())
+    const deletedRow = screen.getByRole('button', { name: 'Expand diff for deleted.txt' })
     expect(deletedRow.textContent).toContain('D')
     await user.click(deletedRow)
 
-    // A deleted file opens its diff (the removed lines), never the file itself.
-    expect(await screen.findByRole('button', { name: 'deleted.txt diff' })).toBeTruthy()
+    // A deleted file shows its diff (the removed lines), never the file itself.
+    expect(await screen.findByText('old')).toBeTruthy()
     expect(onFileSelect).not.toHaveBeenCalled()
 
     await renderViewer({ path: 'deleted.txt', name: 'deleted.txt', size: 0, mtime: 0, mime: 'text/plain', deleted: true })

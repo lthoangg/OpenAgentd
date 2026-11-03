@@ -876,11 +876,19 @@ export function AgentView({
       publishUnseen(null)
       return
     }
+    // Reader mode folds everything, so a count of blocks says nothing: show the
+    // bare chip. Dropping the anchor makes a switch back to detailed count
+    // afresh from that moment.
+    if (readerTranscript) {
+      followAnchorRef.current = null
+      publishUnseen(0)
+      return
+    }
     followAnchorRef.current ??= (liveTail[liveTail.length - 1] ?? blocks[blocks.length - 1])?.id ?? ''
     const counted = countBlocksAfter(blocks, followAnchorRef.current, liveTail)
     // A reconcile can swap the anchor's id; keep the last count then.
     publishUnseen(counted ?? unseenRef.current ?? 0)
-  }, [blocks, liveTail, publishUnseen, showScrollBtn])
+  }, [blocks, liveTail, publishUnseen, readerTranscript, showScrollBtn])
   useEffect(() => {
     if (!jumpToLatestInComposer) return
     useTranscriptFollowStore.setState({ jumpToLatest: () => scrollToBottom('smooth') })

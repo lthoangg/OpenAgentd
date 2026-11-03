@@ -5,7 +5,9 @@
 //! the auto-compaction trigger, it runs the same forced compaction as
 //! `/compact`. The delay sits just under the 5-minute prompt-cache TTL some
 //! providers use, so the summariser reuses the warm cached prefix and the
-//! next message starts from a short context. The timer lives in
+//! next message starts from a short context. Subagents still working for the
+//! lead do not postpone it; their reports queue behind the compaction and
+//! run a lead turn after it. An open question does skip it. The timer lives in
 //! [`crate::session::AgentSession`]; this module holds the decisions and
 //! [`resume_after_restart`], which restores countdowns a restart dropped.
 

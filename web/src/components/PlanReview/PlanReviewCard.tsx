@@ -3,9 +3,8 @@
  * with ``submit: true`` (or the former ``submit_plan`` tool).
  *
  * It marks where the agent submitted the plan, says how the review ended, and
- * opens the plan. While its review is open it also decides it: Approve and
- * Request changes sit right here (``PlanDecisionBar``), sending what the Plan
- * tab sends, so the review never needs a trip to the dock or the phone sheet.
+ * opens the plan. It never decides the review: Approve and Request changes
+ * live only in the Plan panel, which this card opens.
  *
  * The outcome comes from the store while this client saw the review close,
  * and otherwise from the persisted tool result, which is all a cold load has.
@@ -21,7 +20,6 @@ import { cn } from '@/lib/utils'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { AgentStoreState, ResolvedQuestion } from '@/stores/useAgentStore'
 import type { PendingQuestion } from '@/api/types'
-import { PlanDecisionBar } from './PlanDecisionBar'
 import { parsePlanReview } from './plan-comments'
 
 /** Mirrors the pending-question placeholder the server writes as the result. */
@@ -219,7 +217,7 @@ export function PlanReviewCard({
         Plan review
         {revision !== null && <span className="font-mono tracking-normal normal-case tabular-nums">rev {revision}</span>}
       </div>
-      <div className={cn('flex items-start gap-3 px-3', open ? 'pb-2' : 'pb-2.5')}>
+      <div className="flex items-start gap-3 px-3 pb-2.5">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span
             className={cn(
@@ -236,13 +234,12 @@ export function PlanReviewCard({
           {state.kind === 'changes' && state.feedback && <ReviewFeedback feedback={state.feedback} />}
           {summary && <span className="text-xs leading-relaxed break-words text-(--color-text-muted)">{summary}</span>}
         </div>
-        {canOpen && !open && (
+        {canOpen && (
           <Button type="button" variant="ghost" size="xs" className="shrink-0" onClick={() => dispatchAppEvent(APP_EVENTS.openPlan)}>
             Open plan
           </Button>
         )}
       </div>
-      {open && openReview && <PlanDecisionBar review={openReview} />}
     </div>
   )
 }

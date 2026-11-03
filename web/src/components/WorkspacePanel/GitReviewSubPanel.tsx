@@ -35,7 +35,6 @@ export interface GitReviewSubPanelProps {
   selectedFilePath: string | null
   expandedDiffs: Set<string>
   toggleDiffExpanded: (path: string) => void
-  openDiffTab: (file: ChangedFileInfo) => void
   mobile?: boolean
   setMobileFileActions: React.Dispatch<React.SetStateAction<ChangedFileInfo | null>>
   setDesktopFileActions: React.Dispatch<React.SetStateAction<{ file: ChangedFileInfo; x: number; y: number } | null>>
@@ -67,7 +66,7 @@ function ChangedFileDiff({ workspace, path }: { workspace: string; path: string 
   return (
     <>
       {diff.data?.truncated && <p className={NOTICE_CLASS}>This diff is too large to show in full.</p>}
-      {/* Capped peek; the row's own click opens the diff in a tab at full height. */}
+      {/* Capped peek; "Open diff in tab" (the row's menu) shows it at full height. */}
       <div className="max-h-[70vh] min-h-0 overflow-x-hidden overflow-y-auto touch-pan-y">
         <DiffPreview diff={body} autoScroll={false} />
       </div>
@@ -82,7 +81,6 @@ interface ChangedFileRowProps {
   expanded: boolean
   mobile: boolean
   toggleDiffExpanded: (path: string) => void
-  openDiffTab: (file: ChangedFileInfo) => void
   setMobileFileActions: GitReviewSubPanelProps['setMobileFileActions']
   setDesktopFileActions: GitReviewSubPanelProps['setDesktopFileActions']
 }
@@ -98,7 +96,6 @@ const ChangedFileRow = memo(function ChangedFileRow({
   expanded,
   mobile,
   toggleDiffExpanded,
-  openDiffTab,
   setMobileFileActions,
   setDesktopFileActions,
 }: ChangedFileRowProps) {
@@ -106,29 +103,16 @@ const ChangedFileRow = memo(function ChangedFileRow({
   const { name, folder } = splitRepoPath(file.path)
   return (
     <li>
-      {/* Row: chevron peeks at the diff in place, the name opens it in a tab,
-          ⋯ (always there, any platform) holds the rest — the right-click menu. */}
+      {/* Row: a click shows or hides the diff in place; ⋯ (always there, any
+          platform) holds the rest — the right-click menu, with Open diff in tab. */}
       <div className="flex h-(--spacing-list-row) items-center gap-0.5 pr-1 pl-1 transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/60">
-        <button
-          type="button"
-          onClick={() => toggleDiffExpanded(file.path)}
-          className={ROW_ACTION}
-          aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${file.path}`}
-          aria-expanded={expanded}
-        >
-          <ChevronRight
-            size={12}
-            className={cn('transition-transform duration-(--motion-instant)', expanded && 'rotate-90')}
-            aria-hidden="true"
-          />
-        </button>
         <Tooltip className="h-full min-w-0 flex-1">
           <TooltipTrigger
             className="h-full min-w-0 flex-1"
             render={
               <LongPressButton
                 type="button"
-                onClick={() => openDiffTab(file)}
+                onClick={() => toggleDiffExpanded(file.path)}
                 enabled={mobile}
                 onLongPress={() => setMobileFileActions(file)}
                 onContextMenu={(e) => {
@@ -146,8 +130,15 @@ const ChangedFileRow = memo(function ChangedFileRow({
                   'flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 pl-1 text-left text-xs outline-none hover:text-(--color-text) focus-key:bg-(--bg-key)/60',
                   selected ? 'text-(--color-accent)' : 'text-(--color-text-2)',
                 )}
-                aria-label={`Open diff tab for ${file.path}`}
+                aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${file.path}`}
+                aria-expanded={expanded}
               >
+                <span className="grid size-5 shrink-0 place-items-center text-(--color-text-muted)" aria-hidden="true">
+                  <ChevronRight
+                    size={12}
+                    className={cn('transition-transform duration-(--motion-instant)', expanded && 'rotate-90')}
+                  />
+                </span>
                 <FileTypeIcon name={file.path} size={13} />
                 {/* The name first, its folder after it in muted text (as
                     source control lists do): a path cut at the end hid the
@@ -204,7 +195,6 @@ function GitReviewSubPanelView({
   selectedFilePath,
   expandedDiffs,
   toggleDiffExpanded,
-  openDiffTab,
   mobile = false,
   setMobileFileActions,
   setDesktopFileActions,
@@ -237,7 +227,6 @@ function GitReviewSubPanelView({
             expanded={expandedDiffs.has(changedFile.path)}
             mobile={mobile}
             toggleDiffExpanded={toggleDiffExpanded}
-            openDiffTab={openDiffTab}
             setMobileFileActions={setMobileFileActions}
             setDesktopFileActions={setDesktopFileActions}
           />

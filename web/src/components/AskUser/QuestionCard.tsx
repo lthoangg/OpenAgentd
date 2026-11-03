@@ -373,7 +373,9 @@ export function QuestionCard({
  * Bark edge to edge, the others take the keycap fill, and nothing has a border.
  * The recommendation is part of the label text (not a colour or a bare icon) so
  * it reaches the accessible name; the digit keycap is decoration for the
- * 1–9 shortcut (``aria-keyshortcuts`` names it for assistive tech).
+ * 1–9 shortcut on single-choice rows (``aria-keyshortcuts`` names it for
+ * assistive tech). Multi-choice rows show the checkbox instead of a keycap;
+ * the digit keys still pick them.
  */
 function OptionRow({
   multiple,
@@ -415,7 +417,7 @@ function OptionRow({
         aria-keyshortcuts={shortcut === null ? undefined : String(shortcut)}
         className="sr-only"
       />
-      {shortcut !== null && (
+      {shortcut !== null && !multiple && (
         <kbd
           aria-hidden="true"
           className={cn(

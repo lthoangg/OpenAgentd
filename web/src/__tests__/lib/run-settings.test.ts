@@ -152,8 +152,15 @@ describe('quotaSummary', () => {
     expect(quotaSummary(usage(spend({ limit: 100, used: 95, remaining: 5, used_percent: 95 })))).toMatchObject({ kind: 'spend', tone: 'warning' })
   })
 
-  it('says Limit reached for a reached cap, even with room in a window and credits', () => {
-    const summary = quotaSummary(usage({ primary: { used_percent: 10 }, ...credits({ has_credits: true, balance: '$84.50' }), ...spend({ reached: true, limit: 700, used: 800, remaining: 0 }) }))
+  // Credits ran out but the plan's windows still run the account: it was
+  // shown as "Limit reached" though it still had room.
+  it('lets a window with room lead over a reached cap, noting the credits are spent', () => {
+    const summary = quotaSummary(usage({ primary: { used_percent: 20 }, ...credits({ has_credits: false }), ...spend({ reached: true, limit: 700, used: 800, remaining: 0 }) }))
+    expect(summary).toEqual({ kind: 'percent', left: 80, tone: 'warning', note: 'no credits', detail: 'Spend cap reached' })
+  })
+
+  it('says Limit reached for a reached cap once the windows are spent too', () => {
+    const summary = quotaSummary(usage({ primary: { used_percent: 100 }, ...credits({ has_credits: true, balance: '$84.50' }), ...spend({ reached: true }) }))
     expect(summary).toMatchObject({ kind: 'spend', text: 'Limit reached', tone: 'error' })
   })
 

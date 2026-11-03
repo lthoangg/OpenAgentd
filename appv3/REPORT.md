@@ -1146,8 +1146,11 @@ explicitly.
   prompt reached `idle_compaction_percent`% of the effective compaction
   trigger, it runs the same forced compaction as `/compact`. Any new turn
   cancels the timer. Subagent and scheduler sessions are skipped, as are
-  sessions with working subagents, outstanding workspace replies, an open
-  question, or a summary newer than their last model call. The compaction
+  sessions with an open question or a summary newer than their last model
+  call. A lead whose turn ended while subagents are still working, or
+  while another workspace still owes it a reply, is compacted like any
+  other; a report delivered during the compaction turn is queued and runs
+  a lead turn right after it. The compaction
   turn sends no desktop notification and does not re-arm the timer.
   The timer lives in memory. On startup the server resumes it for every
   lead session whose last turn completed (a reply that calls no tools and

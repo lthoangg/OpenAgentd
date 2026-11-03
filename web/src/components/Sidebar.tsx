@@ -3,9 +3,10 @@
  * screen:
  *
  *   • "New session" at the top, always visible (⌘N does the same).
- *   • One scroller below it: Pinned, Needs you, the "Workspaces" section
- *     (its header sticks to the top, so Search and View options stay
- *     reachable however long the list is), then Scheduled.
+ *   • The session list scrolls below it: Pinned, Needs you, then the
+ *     "Workspaces" section (its header sticks to the top, so Search and View
+ *     options stay reachable however long the list is). Scheduled sits
+ *     pinned at the bottom and scrolls on its own past 224 px.
  *   • Repositories and their sessions as 28 px rows, one level deep.
  *     A repository's name opens its latest session; the chevron folds it.
  *     Worktrees are not rows: a repository lists the sessions of every
@@ -1052,12 +1053,13 @@ export function Sidebar({
         )}
       </AnimatePresence>
       {/* A desktop drawer dims what it covers, as drawer scrims do (DESIGN.md),
-          and closes on a click anywhere outside it. */}
+          and closes on a click anywhere outside it. z-25: over the Review
+          panel, even one covering the chat (z-20), and under the drawer (z-30). */}
       {drawerOpen && (
         <div
           aria-hidden="true"
           data-sidebar-drawer-backdrop=""
-          className="absolute inset-0 z-20 bg-(--color-overlay)"
+          className="absolute inset-0 z-25 bg-(--color-overlay)"
           onPointerDown={() => onCollapse?.()}
         />
       )}
@@ -1066,9 +1068,9 @@ export function Sidebar({
       initial={false}
       resize={sidebarResize}
       getMotion={sidebarMotion}
-      // The header's sidebar cap matches this column while it sits beside
-      // the chat (open, or sliding); a drawer or the phone sheet floats.
-      publishWidthAs={!isMobile && !drawer && (!desktopCollapsed || sliding) ? '--oa-sidebar-w' : undefined}
+      // A desktop drawer floats over the chat and the Review panel: it takes
+      // no room, so the panel must not size itself around it.
+      inFlow={isMobile || !drawer}
       // Collapsed (desktop) or closed (mobile), the sidebar is off screen
       // but still in the DOM: keep Tab and screen readers out of it.
       inert={isMobile ? !mobileOpen && mobileDragOffset === null : desktopCollapsed}
@@ -1161,8 +1163,9 @@ export function Sidebar({
           onClose={closeSessionSearch}
         />
       ) : (
-      // The sidebar's one scroller: Pinned, Needs you, the sessions (under a
-      // header that sticks) and Scheduled scroll together.
+      <>
+      {/* The sessions scroller: Pinned, Needs you and the sessions (under a
+          header that sticks) scroll together. Scheduled is pinned below it. */}
       <div data-sidebar-scroller="" className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
       <PinnedSection
         currentSessionId={currentSessionId}
@@ -1497,9 +1500,13 @@ export function Sidebar({
         )}
       </div>
       )}
-
-      <ScheduledSection onMobileClose={onMobileClose} />
       </div>
+
+      {/* Pinned at the bottom, own scroll past 224px; hidden during search. */}
+      <div data-sidebar-scheduled-scroller="" className="max-h-56 shrink-0 overflow-y-auto overflow-x-hidden">
+        <ScheduledSection onMobileClose={onMobileClose} />
+      </div>
+      </>
       )}
       </div>
 

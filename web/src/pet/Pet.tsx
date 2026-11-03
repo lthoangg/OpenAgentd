@@ -3,11 +3,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { AlarmClock, Check, CircleAlert, MessageCircleQuestion, X } from 'lucide-react'
 
-import { sessionKey } from '@/lib/session-key'
-import { BALLOON_COLUMNS, BALLOON_ROWS, balloonRows, poseFrames, spriteRects, SPRITE_COLUMNS, SPRITE_ROWS } from './sprites'
+import { poseFrames, spriteRects, SPRITE_COLUMNS, SPRITE_ROWS } from './sprites'
 import {
-  BALLOON_AWAY_MS,
-  BALLOON_POP_MS,
   BUBBLE_ROOM,
   BUBBLE_WIDTH,
   BUBBLE_FADE_MS,
@@ -18,9 +15,9 @@ import {
   FRAME_SETTLE_MS,
   FRAME_SHRINK_AFTER_MS,
   FRAME_WAIT_MS,
-  JUMP_MS,
-  LADDER_FOLD_MS,
-  LADDER_GROW_MS,
+  JUMP_CROUCH_MS,
+  JUMP_LOOK_MS,
+  JUMP_STEPS,
   LAND_MS,
   PANT_MS,
   PET_HEIGHT,
@@ -32,24 +29,23 @@ import {
   ZOOM_SPEED,
   badgeCount,
   badgeLabel,
-  balloonRoom,
   bubbleBelow,
   bubbleLeft,
   bubbleReducer,
   chooseLift,
   clampX,
   clampY,
-  climbMs,
   dashTarget,
   dropFalls,
   fallCapped,
   fallMs,
   fallTarget,
-  floatMs,
   followLedge,
   frameCovers,
   growFrame,
-  ladderBox,
+  jumpMs,
+  jumpPath,
+  jumpReach,
   liftsAllowed,
   neededFrame,
   originMoves,
@@ -67,10 +63,8 @@ import {
   withinPounce,
   zoomDelay,
   zoomsWhenDone,
-  type BalloonPlan,
   type Box,
   type BubbleTone,
-  type Ledge,
   type PetBubble,
   type PetCharacter,
   type PetColour,
@@ -87,7 +81,6 @@ import {
 const STATE_COMMAND = 'pet_state'
 const FIT_COMMAND = 'pet_fit'
 const OPEN_COMMAND = 'pet_open'
-const ANSWER_COMMAND = 'pet_answer'
 const DISMISS_COMMAND = 'pet_dismiss'
 const DRAG_END_COMMAND = 'pet_drag_end'
 const MENU_COMMAND = 'pet_menu'
@@ -114,9 +107,6 @@ const POKE_SAY_MS = 2500
 
 type MenuAction = { action: 'dismiss'; id: string } | { action: 'clear' }
 
-/** An answer being sent, or one the shell could not take, by bubble id. */
-type Answering = 'sending' | 'failed'
-
 /** Dismissed finished turns and reminders: their sessions are read everywhere. */
 function reportDismissed(items: PetBubble[]): void {
   const notificationIds = readOnDismiss(items)
@@ -127,37 +117,22 @@ type PointerAt = { x: number; y: number } | null
 type Fold = 'folding' | 'unfolding'
 
 /**
- * A ladder, a balloon or a fall under way. `ms` and `ease` are how the pet's
- * move to its new place goes (CSS does the moving: one transition on the
- * pet, no per-frame work in the page).
+ * A fall under way. `ms` and `ease` are how the pet's move to its new
+ * place goes (CSS does the moving: one transition on the pet, no per-frame
+ * work in the page).
  */
-type Lift = { ms: number; ease: string } & (
-  | { kind: 'ladder'; phase: 'grow' | 'climb' | 'fold'; up: boolean; box: { left: number; top: number; width: number; height: number } }
-  | { kind: 'balloon'; phase: 'rise' | 'hover' | 'release' }
-  | { kind: 'fall'; phase: 'fall' | 'land' }
-)
+type Lift = { ms: number; ease: string; phase: 'fall' | 'land' }
 
-/** The pose of a move: it sits while a ladder grows or folds, and after a landing. */
-function liftPose(lift: Lift | null): 'sit' | 'climb' | 'float' | 'fall' | null {
+/** The pose of a fall: it sits after the landing. */
+function liftPose(lift: Lift | null): 'sit' | 'fall' | null {
   if (!lift) return null
-  if (lift.kind === 'ladder') return lift.phase === 'climb' ? 'climb' : 'sit'
-  if (lift.kind === 'balloon') return lift.phase === 'release' ? 'sit' : 'float'
   return lift.phase === 'fall' ? 'fall' : 'sit'
 }
 
-const LINEAR = 'var(--ease-linear)'
-const EASE_IN_OUT = 'var(--ease-in-out)'
-const EASE_OUT = 'var(--ease-out)'
+/** The steps of a jump: look toward the target, crouch, leap along an arc, land. */
+type JumpPhase = 'look' | 'crouch' | 'leap' | 'land'
 
-function BalloonArt({ popped }: { popped: boolean }) {
-  return (
-    <svg viewBox={`0 0 ${BALLOON_COLUMNS} ${BALLOON_ROWS}`} shapeRendering="crispEdges" aria-hidden="true">
-      {spriteRects(balloonRows(popped), 'orange').map((r) => (
-        <rect key={`${r.x}-${r.y}`} x={r.x} y={r.y} width={1} height={1} fill={r.fill} />
-      ))}
-    </svg>
-  )
-}
+const LINEAR = 'var(--ease-linear)'
 
 /** Listen to a shell event; the cleanup also works if it runs before `listen` resolves. */
 function useShellEvent<T>(event: string, onPayload: (payload: T) => void) {
@@ -225,6 +200,20 @@ function ToneMark({ tone }: { tone: BubbleTone }) {
   return <Check size={size} aria-hidden="true" />
 }
 
+/** What a bubble says: its state, title and body. */
+function BubbleWords({ bubble }: { bubble: PetBubble }) {
+  return (
+    <>
+      <span className="pet-chip">
+        <ToneMark tone={bubble.tone} />
+        {TONE_LABEL[bubble.tone]}
+      </span>
+      <span className="pet-bubble-title">{bubble.title}</span>
+      {bubble.body && <span className="pet-bubble-body">{bubble.body}</span>}
+    </>
+  )
+}
+
 export function Pet() {
   const [view, setView] = useState<PetView | null>(null)
   const [bubbles, dispatch] = useReducer(bubbleReducer, EMPTY_BUBBLES)
@@ -253,14 +242,15 @@ export function Pet() {
   const [zoom, setZoom] = useState<ZoomPhase | null>(null)
   const [pointer, setPointer] = useState<PointerAt>(null)
   const [windows, setWindows] = useState<OtherWindow[]>([])
-  const [jumping, setJumping] = useState(false)
+  /** Where a jump is: looking, crouching, in the air or landing; null when it is not jumping. */
+  const [jumpPhase, setJumpPhase] = useState<JumpPhase | null>(null)
+  /** Whether the jump goes down (it leans forward, not up). */
+  const [jumpDown, setJumpDown] = useState(false)
+  const jumping = jumpPhase !== null
   const [lift, setLiftState] = useState<Lift | null>(null)
-  /** The balloon over its head: whole, popping, or let go. */
-  const [balloon, setBalloon] = useState<'float' | 'pop' | 'away' | null>(null)
   const [dust, setDust] = useState<{ x: number; y: number; at: number } | null>(null)
   const [say, setSay] = useState<{ text: string; at: number } | null>(null)
   const [fold, setFold] = useState<Fold | null>(null)
-  const [answering, setAnswering] = useState<ReadonlyMap<string, Answering>>(() => new Map())
   const reducedMotion = useReducedMotion()
 
   const petRef = useRef<HTMLDivElement>(null)
@@ -271,20 +261,25 @@ export function Pet() {
   const groundRef = useRef(0)
   /** The window it stands on, if any. */
   const perchRef = useRef<Perch | null>(null)
+  /** The timer of the next phase of the jump under way. */
   const jumpTimerRef = useRef(0)
+  /** The leap's animation while it runs (the Web Animations API moves the pet along the arc). */
+  const jumpAnimRef = useRef<Animation | null>(null)
   const liftRef = useRef<Lift | null>(null)
-  /** The timer of the next step of the ladder, balloon or fall under way. */
+  /** Stop a jump's timers and its leap; the caller says where the pet is (or clears the phase). */
+  const stopJump = useCallback(() => {
+    window.clearTimeout(jumpTimerRef.current)
+    jumpAnimRef.current?.cancel()
+    jumpAnimRef.current = null
+  }, [])
+  /** The timer of the next step of the fall under way. */
   const liftTimerRef = useRef(0)
-  const popTimerRef = useRef(0)
   const dustTimerRef = useRef(0)
-  /** The window it stood on when a ladder started down: put back if the ladder is called off. */
-  const perchBeforeRef = useRef<Perch | null>(null)
   /** A drop is waiting for the pet to be placed before it falls (dropped over another display). */
   const fallOnPlaceRef = useRef(false)
   /** Where the page last told the shell the pet was dropped, to tell the shell's echo from a move. */
   const reportedRef = useRef<{ x: number; y: number; frame: string } | null>(null)
   const startFallRef = useRef<() => void>(() => {})
-  const balloonRef = useRef<HTMLButtonElement>(null)
   /** The window's box in the area, as last told by the shell: the offset the page draws at. */
   const frameRef = useRef<Box>({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight })
   /** The frame last asked for (a bigger one is kept a while before it shrinks). */
@@ -471,7 +466,8 @@ export function Pet() {
     window.clearTimeout(liftTimerRef.current)
     liftRef.current = null
     setLiftState(null)
-    setBalloon(null)
+    stopJump()
+    setJumpPhase(null)
     xRef.current = start
     yRef.current = startY(saved, height, petHeight)
     groundRef.current = yRef.current
@@ -484,7 +480,7 @@ export function Pet() {
       groundRef.current = Math.max(0, height - petHeight)
       liftTimerRef.current = window.setTimeout(() => startFallRef.current(), 60)
     }
-  }, [ready, savedFraction, savedHeight, savedDisplay, width, height, petWidth, petHeight])
+  }, [ready, savedFraction, savedHeight, savedDisplay, width, height, petWidth, petHeight, stopJump])
 
   const held = dragging || menuOpen || jumping || lift !== null || visible !== null
   const pose = petPose({
@@ -566,8 +562,6 @@ export function Pet() {
   jumpingRef.current = jumping
   const draggingRef = useRef(false)
   draggingRef.current = dragging
-  const balloonShownRef = useRef(false)
-  balloonShownRef.current = balloon !== null
   const tryShrinkRef = useRef<() => void>(() => {})
 
   /** What the window needs now, in area pixels. */
@@ -587,9 +581,6 @@ export function Pet() {
         height: bubbleHeight + 48,
       })
     }
-    if (balloonShownRef.current) rects.push({ x: xRef.current, y: top - balloonRoom(pw), width: pw, height: balloonRoom(pw) })
-    const current = liftRef.current
-    if (current?.kind === 'ladder') rects.push({ x: current.box.left, y: current.box.top, width: current.box.width, height: current.box.height })
     return neededFrame({ area: { width: w, height: h }, pet: { x: xRef.current, y: top, width: pw, height: ph }, reach: reachRef.current, rects, dragging: capture })
   }, [])
 
@@ -606,7 +597,7 @@ export function Pet() {
     (capture: boolean) => {
       const origin = frameRef.current
       // The pet first (the shell reads the pointer near the first), then what hangs on it.
-      const rects = [petRef.current, bubbleRef.current, badgeRef.current, balloonRef.current]
+      const rects = [petRef.current, bubbleRef.current, badgeRef.current]
         .filter((el): el is HTMLDivElement | HTMLButtonElement => el !== null)
         .map((el) => {
           const r = el.getBoundingClientRect()
@@ -703,30 +694,11 @@ export function Pet() {
   ledgesRef.current = allLedges
   const movement = settings?.movement ?? 'calm'
 
-  /** Jump (CSS animates the move) to `x`, with its feet `y` above the edge. */
-  const jumpTo = useCallback((nextX: number, nextY: number) => {
-    targetRef.current = null
-    xRef.current = nextX
-    yRef.current = nextY
-    setX(nextX)
-    setY(nextY)
-    setJumping(true)
-    window.clearTimeout(jumpTimerRef.current)
-    jumpTimerRef.current = window.setTimeout(() => {
-      setJumping(false)
-      setSitting(false)
-      reachRef.current = null
-    }, JUMP_MS)
-  }, [])
-  useEffect(() => () => window.clearTimeout(jumpTimerRef.current), [])
-
-  // ── Ladders, balloons and falls ─────────────────────────────────────────
-  // Each is a short chain of timers (a phase per step) that changes the
-  // pet's target and lets one CSS transition do the moving, like a jump.
+  // ── Jumps and falls ─────────────────────────────────────────────────────
+  // A fall is a short chain of timers (a phase per step) that changes the
+  // pet's target and lets one CSS transition do the moving.
   const climbRef = useRef(false)
   climbRef.current = Boolean(settings?.climb)
-  const toysRef = useRef(true)
-  toysRef.current = settings?.toys ?? true
   const needsInputRef = useRef(0)
   needsInputRef.current = status.needsInput
 
@@ -753,17 +725,17 @@ export function Pet() {
   /** Stop whatever is under way where it stands, without a fall. */
   const dropLift = useCallback(() => {
     window.clearTimeout(liftTimerRef.current)
-    window.clearTimeout(popTimerRef.current)
     window.clearTimeout(dustTimerRef.current)
     fallOnPlaceRef.current = false
+    // A jump under way ends where it is drawn (the drag or the fall takes over from there).
+    stopJump()
+    setJumpPhase(null)
     setLift(null)
-    setBalloon(null)
     setDust(null)
-  }, [setLift])
+  }, [setLift, stopJump])
   useEffect(
     () => () => {
       window.clearTimeout(liftTimerRef.current)
-      window.clearTimeout(popTimerRef.current)
       window.clearTimeout(dustTimerRef.current)
     },
     [],
@@ -777,6 +749,9 @@ export function Pet() {
    */
   const startFall = useCallback(() => {
     window.clearTimeout(liftTimerRef.current)
+    // A jump still landing gives way to the fall.
+    stopJump()
+    setJumpPhase(null)
     const { petWidth: pw, petHeight: ph } = geomRef.current
     // Mid-move it falls from where it is drawn now.
     const spot = liftRef.current ? visualSpot() : null
@@ -801,10 +776,10 @@ export function Pet() {
       const capped = fallCapped(distance)
       const ms = fallMs(distance)
       setSitting(false)
-      setLift({ kind: 'fall', phase: 'fall', ms, ease: capped ? 'var(--pet-fall-capped-ease)' : 'var(--pet-fall-ease)' })
+      setLift({ phase: 'fall', ms, ease: capped ? 'var(--pet-fall-capped-ease)' : 'var(--pet-fall-ease)' })
       place(target.x, target.y)
       liftTimerRef.current = window.setTimeout(() => {
-        setLift({ kind: 'fall', phase: 'land', ms: 0, ease: LINEAR })
+        setLift({ phase: 'land', ms: 0, ease: LINEAR })
         window.clearTimeout(dustTimerRef.current)
         setDust({ x: target.x + pw / 2, y: target.y + ph, at: Date.now() })
         dustTimerRef.current = window.setTimeout(() => setDust(null), DUST_MS)
@@ -812,23 +787,87 @@ export function Pet() {
       }, ms)
     }
     needFrame({ x: target.x, y: Math.min(yRef.current, target.y), width: pw, height: Math.abs(distance) + ph }, fall)
-  }, [needFrame, place, setLift, visualSpot])
+  }, [needFrame, place, setLift, stopJump, visualSpot])
   startFallRef.current = startFall
 
-  /** The balloon pops (clicked, or its hover is over): the pet falls. */
-  const popBalloon = useCallback(() => {
-    const current = liftRef.current
-    if (current?.kind !== 'balloon' || current.phase === 'release') return
-    window.clearTimeout(liftTimerRef.current)
-    window.clearTimeout(popTimerRef.current)
-    if (reducedMotionRef.current) {
-      setBalloon(null)
-    } else {
-      setBalloon('pop')
-      popTimerRef.current = window.setTimeout(() => setBalloon(null), BALLOON_POP_MS)
-    }
-    startFall()
-  }, [startFall])
+  /**
+   * Jump to `nextX`, with its top `nextY` (the edge of the window `perch`, or
+   * the ground), like a cat: it looks toward where it is going, crouches,
+   * leaps along an arc (the Web Animations API moves it, one animation, no
+   * per-frame work in the page) and lands with the fall's squash and a puff
+   * of dust. Up it clears the window by most of a pet's height; down it
+   * hops up a little first. It stays "jumping" (held) through all of it.
+   */
+  const jumpTo = useCallback(
+    (nextX: number, nextY: number, perch: Perch | null) => {
+      const { petWidth: pw, petHeight: ph } = geomRef.current
+      targetRef.current = null
+      stopJump()
+      const down = nextY > yRef.current
+      if (Math.abs(nextX - xRef.current) > 1) setFacingLeft(nextX < xRef.current)
+      setJumpDown(down)
+      setJumpPhase('look')
+      const next = (ms: number, then: () => void) => {
+        window.clearTimeout(jumpTimerRef.current)
+        jumpTimerRef.current = window.setTimeout(then, ms)
+      }
+      const finish = () => {
+        setJumpPhase(null)
+        setSitting(false)
+        reachRef.current = null
+      }
+      const land = () => {
+        const el = petRef.current
+        // Leave the pet at its place, not under an animation, so later moves work.
+        if (el) el.style.transform = `translate(${nextX}px, ${nextY}px)`
+        jumpAnimRef.current?.cancel()
+        jumpAnimRef.current = null
+        if (perch) {
+          // Up: the window may have moved or gone while it was in the air.
+          const onto = followLedge(perch, nextX, ledgesRef.current, { width: pw, height: ph })
+          if (!onto) {
+            setJumpPhase(null)
+            startFallRef.current()
+            return
+          }
+          perchRef.current = onto.perch
+          if (onto.x !== nextX || onto.y !== nextY) {
+            place(onto.x, onto.y)
+            if (el) el.style.transform = `translate(${onto.x}px, ${onto.y}px)`
+          }
+        }
+        setJumpPhase('land')
+        window.clearTimeout(dustTimerRef.current)
+        setDust({ x: xRef.current + pw / 2, y: yRef.current + ph, at: Date.now() })
+        dustTimerRef.current = window.setTimeout(() => setDust(null), DUST_MS)
+        next(LAND_MS, finish)
+      }
+      const leap = () => {
+        const from = { x: xRef.current, y: yRef.current }
+        const to = { x: nextX, y: nextY }
+        const ms = jumpMs(Math.hypot(to.x - from.x, to.y - from.y))
+        perchRef.current = null
+        // The page now stands at the end; the leap draws the way there.
+        place(nextX, nextY)
+        setJumpPhase('leap')
+        const el = petRef.current
+        if (el && typeof el.animate === 'function') {
+          const frames = jumpPath(from, to, { height: ph }, JUMP_STEPS).map((p) => ({ transform: `translate(${p.x}px, ${p.y}px)` }))
+          const anim = el.animate(frames, { duration: ms, easing: 'linear', fill: 'forwards' })
+          // Cancelling it later rejects its `finished` promise: nobody waits on that.
+          anim.finished?.catch(() => {})
+          jumpAnimRef.current = anim
+        }
+        next(ms, land)
+      }
+      next(JUMP_LOOK_MS, () => {
+        setJumpPhase('crouch')
+        next(JUMP_CROUCH_MS, leap)
+      })
+    },
+    [place, stopJump],
+  )
+  useEffect(() => stopJump, [stopJump])
 
   /** It may still start something: no bubble, menu or question came while it waited for room. */
   const mayStart = useCallback(
@@ -841,138 +880,22 @@ export function Pet() {
     setSitting(false)
   }, [])
 
-  /**
-   * Rise on a balloon: up and a little aside, then hover and pop, or step
-   * onto a window edge. The window must hold the whole float, and the fall
-   * back to the ground, before it leaves.
-   */
-  const startBalloon = useCallback(
-    (plan: BalloonPlan) => {
-      const { petWidth: pw, petHeight: ph } = geomRef.current
-      const ms = floatMs(yRef.current - plan.toY)
-      const reach: Box = { x: plan.toX, y: plan.toY, width: pw, height: Math.max(0, Math.max(groundRef.current, yRef.current) + ph - plan.toY) }
-      const arrive = () => {
-        if (!plan.ledge) {
-          setLift({ kind: 'balloon', phase: 'hover', ms: 0, ease: LINEAR })
-          liftTimerRef.current = window.setTimeout(popBalloon, plan.hoverMs)
-          return
-        }
-        // Over its edge: step onto it (where it is now) and let the balloon go.
-        const next = followLedge({ id: plan.ledge.id, ledgeX: plan.ledge.x }, xRef.current, ledgesRef.current, { width: pw, height: ph })
-        if (!next) {
-          popBalloon()
-          return
-        }
-        perchRef.current = next.perch
-        if (next.x !== xRef.current || next.y !== yRef.current) place(next.x, next.y)
-        setBalloon('away')
-        setLift({ kind: 'balloon', phase: 'release', ms: 0, ease: LINEAR })
-        liftTimerRef.current = window.setTimeout(() => {
-          setBalloon(null)
-          setLift(null)
-          setSitting(true)
-        }, BALLOON_AWAY_MS)
-      }
-      const rise = () => {
-        if (plan.toX !== xRef.current) setFacingLeft(plan.toX < xRef.current)
-        perchRef.current = null
-        setSitting(false)
-        setBalloon('float')
-        setLift({ kind: 'balloon', phase: 'rise', ms, ease: EASE_IN_OUT })
-        reachRef.current = reach
-        place(plan.toX, plan.toY)
-        liftTimerRef.current = window.setTimeout(arrive, ms)
-      }
-      needFrame(reach, () => (mayStart() ? rise() : abandon()))
-    },
-    [abandon, mayStart, needFrame, place, popBalloon, setLift],
-  )
-
-  /**
-   * Climb a ladder to a window edge (`ledge`), or down from the one it
-   * stands on to the ground (null): the ladder grows, it climbs with the
-   * walking steps, the ladder folds away. The window must hold the whole
-   * ladder before it grows.
-   */
-  const startLadder = useCallback(
-    (ledge: Ledge | null) => {
-      const { petWidth: pw, petHeight: ph } = geomRef.current
-      const fromY = yRef.current
-      const toY = ledge ? ledge.y - ph : groundRef.current
-      const ladderX = ledge ? Math.min(Math.max(xRef.current, ledge.x), ledge.x + ledge.width - pw) : xRef.current
-      const box = ladderBox(ladderX, fromY, toY, { width: pw, height: ph })
-      const up = ledge !== null
-      const reach: Box = { x: ladderX, y: Math.min(fromY, toY), width: pw, height: Math.abs(toY - fromY) + ph }
-      const grow = () => {
-        perchBeforeRef.current = perchRef.current
-        perchRef.current = null
-        targetRef.current = null
-        setSitting(false)
-        setLift({ kind: 'ladder', phase: 'grow', up, box, ms: LADDER_GROW_MS, ease: EASE_OUT })
-        reachRef.current = reach
-        if (ladderX !== xRef.current) place(ladderX, fromY)
-        liftTimerRef.current = window.setTimeout(() => {
-          const ms = climbMs(toY - fromY)
-          setLift({ kind: 'ladder', phase: 'climb', up, box, ms, ease: LINEAR })
-          reachRef.current = reach
-          place(ladderX, toY)
-          liftTimerRef.current = window.setTimeout(() => {
-            if (ledge) {
-              // Up: the window may have moved or gone meanwhile.
-              const next = followLedge({ id: ledge.id, ledgeX: ledge.x }, xRef.current, ledgesRef.current, { width: pw, height: ph })
-              if (!next) {
-                startFall()
-                return
-              }
-              perchRef.current = next.perch
-              if (next.x !== xRef.current || next.y !== yRef.current) place(next.x, next.y)
-            }
-            setLift({ kind: 'ladder', phase: 'fold', up, box, ms: 0, ease: LINEAR })
-            liftTimerRef.current = window.setTimeout(() => {
-              setLift(null)
-              setSitting(true)
-            }, LADDER_FOLD_MS)
-          }, ms)
-        }, LADDER_GROW_MS)
-      }
-      needFrame(reach, () => (mayStart() ? grow() : abandon()))
-    },
-    [abandon, mayStart, needFrame, place, setLift, startFall],
-  )
-
-  /** Cut a move short (a bubble came, the menu opened, motion was turned down or it was told to stay put). */
+  /** Cut a fall short (motion was turned down or it was told to stay put): it is just there. */
   const abortLift = useCallback(() => {
-    const current = liftRef.current
-    if (!current) return
-    if (current.kind === 'balloon' && current.phase !== 'release') {
-      popBalloon()
-      return
-    }
-    if (current.kind === 'fall' || (current.kind === 'ladder' && current.phase === 'climb')) {
-      startFall()
-      return
-    }
-    // A ladder still growing or folding, a balloon let go: it is where it should be.
-    window.clearTimeout(liftTimerRef.current)
-    if (current.kind === 'ladder' && current.phase === 'grow') perchRef.current = perchBeforeRef.current
-    setBalloon(null)
-    setLift(null)
-    setSitting(true)
-  }, [popBalloon, startFall, setLift])
+    if (liftRef.current) startFall()
+  }, [startFall])
 
   const liftOff = movement === 'still' || reducedMotion
-  const liftBlocked = menuOpen || visible !== null || status.needsInput > 0
   useEffect(() => {
-    if (!lift) return
     // A fall is never cut short by a bubble: it is over in a moment.
-    if (lift.kind === 'fall' && !liftOff) return
-    if (liftOff || liftBlocked) abortLift()
-  }, [lift, liftOff, liftBlocked, abortLift])
+    if (lift && liftOff) abortLift()
+  }, [lift, liftOff, abortLift])
 
   // Its window moved, shrank or went away: ride along, or fall to the ground.
   useEffect(() => {
     const perch = perchRef.current
-    if (!perch) return
+    // A jump settles on its window itself when it lands; this runs again then.
+    if (!perch || (jumpPhase !== null && jumpPhase !== 'land')) return
     const next = followLedge(perch, xRef.current, allLedges, { width: petWidth, height: petHeight })
     if (!next) {
       startFall()
@@ -986,11 +909,11 @@ export function Pet() {
     if (petRef.current) petRef.current.style.transform = `translate(${next.x}px, ${next.y}px)`
     setX(next.x)
     setY(next.y)
-  }, [allLedges, petWidth, petHeight, startFall])
+  }, [allLedges, petWidth, petHeight, startFall, jumpPhase])
 
   /**
-   * After a sit: maybe jump onto the nearest window or back down, climb a
-   * ladder, or float up on a balloon (chooseLift weighs it); else walk on.
+   * After a sit: maybe jump onto the nearest window or back down
+   * (chooseLift weighs it); else walk on.
    * A move that needs more of the screen waits for the window to reach it.
    */
   const afterSit = useCallback(() => {
@@ -1000,14 +923,11 @@ export function Pet() {
       {
         movement: movementRef.current,
         climb: climbRef.current,
-        toys: toysRef.current,
         reducedMotion: reducedMotionRef.current,
-        busy: busyRef.current,
         held: heldRef.current || needsInputRef.current > 0,
         perched: perchRef.current !== null,
         x: xRef.current,
         y: yRef.current,
-        groundY: groundRef.current,
         ledges: ledgesRef.current,
         pet: { width: pw, height: ph },
         area: { width: w, height: h },
@@ -1015,14 +935,14 @@ export function Pet() {
       Math.random,
     )
     const hop = (toX: number, toY: number, perch: Perch | null) => {
-      const reach: Box = { x: toX, y: Math.min(yRef.current, toY), width: pw, height: Math.abs(toY - yRef.current) + ph }
+      // The window must hold the whole arc, its highest point too.
+      const reach = jumpReach({ x: xRef.current, y: yRef.current }, { x: toX, y: toY }, { width: pw, height: ph })
       needFrame(reach, () => {
         if (!mayStart()) {
           abandon()
           return
         }
-        perchRef.current = perch
-        jumpTo(toX, toY)
+        jumpTo(toX, toY, perch)
       })
     }
     if (choice.type === 'jump' && choice.ledge) {
@@ -1030,14 +950,10 @@ export function Pet() {
       hop(Math.min(Math.max(xRef.current, ledge.x), ledge.x + ledge.width - pw), ledge.y - ph, { id: ledge.id, ledgeX: ledge.x })
     } else if (choice.type === 'jump') {
       hop(xRef.current, groundRef.current, null)
-    } else if (choice.type === 'ladder') {
-      startLadder(choice.ledge)
-    } else if (choice.type === 'balloon') {
-      startBalloon(choice.plan)
     } else {
       setSitting(false)
     }
-  }, [abandon, jumpTo, mayStart, needFrame, startLadder, startBalloon])
+  }, [abandon, jumpTo, mayStart, needFrame])
 
   /** Where it may walk: the edge it stands on, or the whole width. */
   const walkRange = useCallback((): [number, number] => {
@@ -1062,9 +978,9 @@ export function Pet() {
     if (active && x !== null) reportFit(dragging)
   })
 
-  // While it climbs, floats or falls the hit areas follow it (the page does
-  // not re-render as the transition moves it).
-  const lifting = lift !== null
+  // While it jumps or falls the hit areas follow it (the page does
+  // not re-render as the transition or the leap moves it).
+  const lifting = lift !== null || jumping
   useEffect(() => {
     if (!lifting) return
     const timer = window.setInterval(() => reportFit(false), FIT_EVERY_MS)
@@ -1166,7 +1082,7 @@ export function Pet() {
     if (event.button !== 0) return
     event.currentTarget.setPointerCapture(event.pointerId)
     // Grabbed mid-move, it is held where it is drawn.
-    const spot = liftRef.current ? visualSpot() : null
+    const spot = liftRef.current || jumpingRef.current ? visualSpot() : null
     dragRef.current = {
       // In area pixels: the window's frame may change under a drag.
       startX: event.clientX + frameRef.current.x,
@@ -1252,27 +1168,6 @@ export function Pet() {
     dispatch({ type: 'dismiss', id: bubble.id })
   }
 
-  const answer = (bubble: PetBubble, choice: string) => {
-    const questionId = bubble.questionId
-    if (!questionId || !bubble.sessionId) return
-    const key = sessionKey(bubble.sessionId)
-    setAnswering((current) => new Map(current).set(bubble.id, 'sending'))
-    void invoke(ANSWER_COMMAND, { notificationId: bubble.id, questionId, answers: [[choice]] })
-      .then(() => {
-        // Taken, or already answered elsewhere: either way it is not waiting.
-        dispatch({ type: 'answered', key })
-        setAnswering((current) => {
-          const next = new Map(current)
-          next.delete(bubble.id)
-          return next
-        })
-      })
-      .catch((error: unknown) => {
-        console.error('pet: answer failed', error)
-        setAnswering((current) => new Map(current).set(bubble.id, 'failed'))
-      })
-  }
-
   if (!active || !settings || x === null) return null
 
   const left = walking ? xRef.current : x
@@ -1310,13 +1205,18 @@ export function Pet() {
         >
           {/* The words are a live region of their own; the buttons are outside it. */}
           <div className="pet-bubble-text" role="status">
-            <span className="pet-chip">
-              <ToneMark tone={visible.bubble.tone} />
-              {TONE_LABEL[visible.bubble.tone]}
-            </span>
-            <div className="pet-bubble-title">{visible.bubble.title}</div>
-            {visible.bubble.body && <div className="pet-bubble-body">{visible.bubble.body}</div>}
+            <BubbleWords bubble={visible.bubble} />
           </div>
+          {/* A bubble only tells: a click anywhere on it opens the session, where
+            * the details (and any answer) are. Later sits above it. */}
+          {visible.bubble.sessionId && (
+            <button
+              type="button"
+              className="pet-bubble-open"
+              aria-label={`Open ${visible.bubble.title}`}
+              onClick={() => open(visible.bubble)}
+            />
+          )}
           <button
             type="button"
             className="pet-bubble-close"
@@ -1325,29 +1225,6 @@ export function Pet() {
           >
             <X size={14} aria-hidden="true" />
           </button>
-          {visible.bubble.sessionId && (
-            <div className="pet-bubble-actions">
-              {visible.bubble.tone === 'input' && (visible.bubble.questionId ? visible.bubble.choices ?? [] : []).map((choice, index) => (
-                <button
-                  key={choice}
-                  type="button"
-                  className={index === 0 ? 'pet-button' : 'pet-button pet-button--quiet'}
-                  disabled={answering.get(visible.bubble.id) === 'sending'}
-                  onClick={() => answer(visible.bubble, choice)}
-                >
-                  {choice}
-                </button>
-              ))}
-              <button
-                type="button"
-                className={visible.bubble.tone === 'input' && (visible.bubble.choices ?? []).length > 0 ? 'pet-button pet-button--quiet' : 'pet-button'}
-                onClick={() => open(visible.bubble)}
-              >
-                {visible.bubble.tone === 'input' ? 'Open to answer' : 'Open'}
-              </button>
-              {answering.get(visible.bubble.id) === 'failed' && <span className="pet-bubble-note" role="alert">Couldn't send. Open to answer.</span>}
-            </div>
-          )}
         </div>
       )}
       {visible?.type === 'list' && (
@@ -1398,16 +1275,9 @@ export function Pet() {
           )}
         </div>
       )}
-      {lift?.kind === 'ladder' && (
-        <div
-          className={`pet-ladder pet-ladder--${lift.up ? 'up' : 'down'}${lift.phase === 'fold' ? ' pet-ladder--fold' : ''}`}
-          style={lift.box}
-          aria-hidden="true"
-        />
-      )}
       <div
         ref={petRef}
-        className={`pet pet--${pose} pet--${character}${facingLeft && !traits.sideways ? ' pet--left' : ''}${dragging ? ' pet--dragging' : ''}${jumping ? ' pet--jump' : ''}${lift ? ' pet--moving' : ''}${lift?.kind === 'fall' && lift.phase === 'land' ? ' pet--land' : ''}${busy ? ' pet--busy' : ''}${laptopFold ? ` pet--${laptopFold}` : ''}`}
+        className={`pet pet--${pose} pet--${character}${facingLeft && !traits.sideways ? ' pet--left' : ''}${dragging ? ' pet--dragging' : ''}${jumpPhase && jumpPhase !== 'land' ? ` pet--jump-${jumpPhase}` : ''}${jumpPhase === 'look' && jumpDown ? ' pet--jump-down' : ''}${lift ? ' pet--moving' : ''}${lift?.phase === 'land' || jumpPhase === 'land' ? ' pet--land' : ''}${busy ? ' pet--busy' : ''}${laptopFold ? ` pet--${laptopFold}` : ''}`}
         style={{
           width: petWidth,
           height: petHeight,
@@ -1442,23 +1312,6 @@ export function Pet() {
         {pose === 'look' && <span className="pet-mark pet-mark--look">♪</span>}
         {pose === 'pant' && <span className="pet-mark pet-mark--pant">~</span>}
         {pose === 'sleep' && <span className="pet-zzz">z z</span>}
-        {balloon === 'float' && (
-          <button
-            ref={balloonRef}
-            type="button"
-            className="pet-balloon"
-            aria-label="Pop the balloon"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={popBalloon}
-          >
-            <BalloonArt popped={false} />
-          </button>
-        )}
-        {(balloon === 'pop' || balloon === 'away') && (
-          <span className={`pet-balloon pet-balloon--${balloon}`} aria-hidden="true">
-            <BalloonArt popped={balloon === 'pop'} />
-          </span>
-        )}
         <div className="pet-body" role="img" aria-label={petLabel}>
           <Sprite character={character} pose={pose} colour={settings.colour} />
         </div>

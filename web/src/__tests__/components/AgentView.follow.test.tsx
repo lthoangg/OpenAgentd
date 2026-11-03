@@ -12,6 +12,7 @@ mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 import { AgentView } from '@/components/AgentView'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import type { ContentBlock } from '@/api/types'
 
@@ -22,6 +23,7 @@ beforeEach(() => useTranscriptFollowStore.setState({ unseen: null, jumpToLatest:
 afterEach(() => {
   cleanup()
   act(() => useAgentStore.setState({ sessionId: null }))
+  act(() => useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' }))
 })
 
 async function waitFrame() {
@@ -78,6 +80,38 @@ describe('AgentView — jump chip in the composer', () => {
 
     update([prompt('old'), text('older'), prompt('p'), text('a')])
     expect(useTranscriptFollowStore.getState().unseen).toBe(0)
+  })
+
+  it('does not count blocks in reader mode, only offers the bare jump', async () => {
+    act(() => useDisplayPrefsStore.setState({ transcriptStyle: 'reader' }))
+    const { scroller, update } = renderView([prompt('p'), text('a')])
+    await scrollUp(scroller, 200)
+    expect(useTranscriptFollowStore.getState().unseen).toBe(0)
+
+    update([prompt('p'), text('a')], [text('b'), text('c')])
+    expect(useTranscriptFollowStore.getState().unseen).toBe(0)
+  })
+
+  it('labels the inline chip plain "Jump to latest" in reader mode', async () => {
+    act(() => useDisplayPrefsStore.setState({ transcriptStyle: 'reader' }))
+    const view = render(<AgentView blocks={[prompt('p'), text('a')]} currentBlocks={[]} isWorking />)
+    await scrollUp(view.container.querySelector('.oa-chat-scroll') as HTMLDivElement, 200)
+    view.rerender(<AgentView blocks={[prompt('p'), text('a')]} currentBlocks={[text('b'), text('c')]} isWorking />)
+
+    const chip = view.container.querySelector('button[aria-label^="Jump to latest"]') as HTMLButtonElement
+    expect(chip.getAttribute('aria-label')).toBe('Jump to latest')
+  })
+
+  it('counts afresh when switching from reader back to detailed while scrolled away', async () => {
+    act(() => useDisplayPrefsStore.setState({ transcriptStyle: 'reader' }))
+    const { scroller, update } = renderView([prompt('p'), text('a')])
+    await scrollUp(scroller, 200)
+    update([prompt('p'), text('a')], [text('b'), text('c')])
+
+    await act(async () => { useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' }) })
+    expect(useTranscriptFollowStore.getState().unseen).toBe(0)
+    update([prompt('p'), text('a')], [text('b'), text('c'), text('d')])
+    expect(useTranscriptFollowStore.getState().unseen).toBe(1)
   })
 
   it('jumps back to the end and follows again', async () => {

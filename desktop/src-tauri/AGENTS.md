@@ -34,8 +34,8 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   one external URL). The notch, the tray's "Auto" usage, new windows and
   notification routing all ask it. A saved server is never chosen as a
   window's server here; it only becomes one when the user clicks Connect.
-  The notch additionally follows saved servers marked `enabled`
-  (`followed_servers`), with or without a window.
+  The notch additionally follows the builtin while it runs and saved
+  servers marked `enabled` (`followed_servers`), with or without a window.
 - `src/commands.rs`: Tauri commands exposed to the frontend; access-key and
   download commands are thin wrappers over `openagentd-shell-core`.
 - `src/sidecar.rs`: sidecar discovery, spawn, handshake, health, and cleanup.
@@ -64,9 +64,9 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   every surface.
 - `src/answers.rs`: reads the open question of a session
   (`GET /api/agent/{id}/question`) and posts an answer, with the server's
-  credential. Only one plain single-choice question with a few short options
-  is answered in place (`quick_choices`); typing, several questions, plan
-  reviews and change confirmations say "Open to answer". A 409/404 on the
+  credential. Only OS notifications answer in place, and only one plain
+  single-choice question with a few short options (`quick_choices`); the
+  island and the pet never answer: a click opens the session. A 409/404 on the
   answer means it is no longer open: treated as answered elsewhere.
 - `src/pet.rs`: the desktop pet (`web/pet.html`, macOS and Windows): a
   transparent always-on-top window that is only a full-width lane of a

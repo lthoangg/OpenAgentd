@@ -154,9 +154,9 @@ export function PetSettingsSection() {
         <Switch id="pet-climb" checked={settings.climb} disabled={off} onCheckedChange={(climb) => change({ climb })} />
       </PanelRow>
       <PanelRow
-        label="Ladders and balloons"
+        label="Ladders"
         htmlFor="pet-toys"
-        description="Now and then it climbs a small ladder or floats up on a balloon, then falls back down with a thud. Never while stay-put or with reduced motion."
+        description="Now and then it climbs a small ladder up to a window or back down. Never while stay-put or with reduced motion."
       >
         <Switch id="pet-toys" checked={settings.toys} disabled={off} onCheckedChange={(toys) => change({ toys })} />
       </PanelRow>

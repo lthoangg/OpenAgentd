@@ -10,18 +10,17 @@
   /* One leg cycle while walking, and the bounces. */
   --pet-step: 360ms;
   --pet-hop: 550ms;
-  --pet-jump: 420ms;
+  /* A jump: look toward the target, crouch, stretch in the air (JUMP_LOOK_MS, JUMP_CROUCH_MS in state.ts). */
+  --pet-jump-look: 350ms;
+  --pet-jump-crouch: 120ms;
+  --pet-jump-stretch: 120ms;
   /* Folding the laptop before a walk, or opening it after (FOLD_MS in state.ts). */
   --pet-fold: 2000ms;
   --pet-bob: 1s;
   --pet-snooze: 2s;
-  /* Ladders, balloons and falls (LADDER_*, BALLOON_*, LAND_MS and DUST_MS in state.ts). */
+  /* Ladders and falls (LADDER_*, LAND_MS and DUST_MS in state.ts). */
   --pet-ladder-grow: 500ms;
   --pet-ladder-fold: 400ms;
-  --pet-balloon-pop: 260ms;
-  --pet-balloon-away: 700ms;
-  --pet-balloon-sway: 2.2s;
-  --pet-float-bob: 1.6s;
   --pet-land: 300ms;
   --pet-dust: 550ms;
   /* How long the pet's move takes and how it eases; the page sets both while it moves. */
@@ -159,20 +158,45 @@ button:focus-visible {
   50% { transform: scaleX(-1) rotate(5deg); }
 }
 
-/* A jump onto a window or back down: the move glides, the body hops. */
-.pet--jump {
-  transition: transform var(--pet-jump) var(--ease-out);
+/* A jump onto a window or back down, in phases the page sets: it looks toward
+ * where it is going, crouches, then leaps (the page moves the pet along its
+ * arc) and lands with the fall's squash. Up it looks up; down it leans forward. */
+.pet--jump-look .pet-body {
+  transform: rotate(-14deg) scaleY(1.08);
+  transition: transform var(--pet-jump-look) var(--ease-out);
 }
 
-.pet--jump .pet-body {
-  animation: pet-hop var(--pet-jump) var(--ease-out);
+.pet--left.pet--jump-look .pet-body {
+  transform: scaleX(-1) rotate(-14deg) scaleY(1.08);
 }
 
-.pet--left.pet--jump .pet-body {
-  animation-name: pet-hop-left;
+.pet--jump-look.pet--jump-down .pet-body {
+  transform: rotate(8deg);
 }
 
-/* A ladder climb, a balloon's rise or a fall: the page sets how long and how it eases. */
+.pet--left.pet--jump-look.pet--jump-down .pet-body {
+  transform: scaleX(-1) rotate(8deg);
+}
+
+.pet--jump-crouch .pet-body {
+  transform: scaleX(1.15) scaleY(0.78);
+  transition: transform var(--pet-jump-crouch) var(--ease-out);
+}
+
+.pet--left.pet--jump-crouch .pet-body {
+  transform: scaleX(-1.15) scaleY(0.78);
+}
+
+.pet--jump-leap .pet-body {
+  transform: scaleX(0.92) scaleY(1.1);
+  transition: transform var(--pet-jump-stretch) var(--ease-out);
+}
+
+.pet--left.pet--jump-leap .pet-body {
+  transform: scaleX(-0.92) scaleY(1.1);
+}
+
+/* A ladder climb or a fall: the page sets how long and how it eases. */
 .pet--moving {
   transition: transform var(--pet-move-ms) var(--pet-move-ease);
 }
@@ -202,25 +226,6 @@ button:focus-visible {
 @keyframes pet-climb-left {
   0%, 100% { transform: scaleX(-1) translateX(-3%) rotate(-3deg); }
   50% { transform: scaleX(-1) translateX(3%) rotate(3deg); }
-}
-
-/* Hanging from a balloon: it bobs gently. */
-.pet--float .pet-body {
-  animation: pet-float var(--pet-float-bob) var(--ease-in-out) infinite;
-}
-
-.pet--left.pet--float .pet-body {
-  animation-name: pet-float-left;
-}
-
-@keyframes pet-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-7%); }
-}
-
-@keyframes pet-float-left {
-  0%, 100% { transform: scaleX(-1) translateY(0); }
-  50% { transform: scaleX(-1) translateY(-7%); }
 }
 
 /* Falling: stretched. Landing: squashed flat, then a stretch and back. */
@@ -254,7 +259,7 @@ button:focus-visible {
   100% { transform: scaleX(-1); }
 }
 
-/* ── Ladder, balloon and dust ─────────────────────────────────────────── */
+/* ── Ladder and dust ─────────────────────────────────────────── */
 /* The ladder grows from the surface it starts on (up), or hangs down from the edge. */
 .pet-ladder {
   position: absolute;
@@ -304,65 +309,6 @@ button:focus-visible {
 @keyframes pet-ladder-fold-down {
   from { clip-path: inset(0); opacity: 1; }
   to { clip-path: inset(0 0 100% 0); opacity: 0; }
-}
-
-/* The balloon is above the pet's head, on a string; the button is the whole thing. */
-.pet-balloon {
-  position: absolute;
-  left: 30%;
-  bottom: 85%;
-  display: block;
-  width: 40%;
-  aspect-ratio: 9 / 17;
-  cursor: pointer;
-  transform-origin: 50% 100%;
-  animation: pet-balloon-sway var(--pet-balloon-sway) var(--ease-in-out) infinite;
-}
-
-.pet-balloon svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-  animation: pet-balloon-in var(--motion-base) var(--ease-spring-snappy);
-}
-
-.pet-balloon:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
-
-/* Popped, or let go: no longer a button. */
-.pet-balloon--pop,
-.pet-balloon--away {
-  cursor: default;
-  pointer-events: none;
-}
-
-.pet-balloon--pop {
-  animation: pet-balloon-pop var(--pet-balloon-pop) var(--ease-out) forwards;
-}
-
-.pet-balloon--away {
-  animation: pet-balloon-away var(--pet-balloon-away) var(--ease-in-out) forwards;
-}
-
-@keyframes pet-balloon-sway {
-  0%, 100% { transform: rotate(-5deg); }
-  50% { transform: rotate(5deg); }
-}
-
-@keyframes pet-balloon-in {
-  from { opacity: 0; transform: scale(0.3); }
-}
-
-@keyframes pet-balloon-pop {
-  from { transform: scale(0.9); opacity: 1; }
-  to { transform: scale(1.3); opacity: 0; }
-}
-
-@keyframes pet-balloon-away {
-  from { transform: translateY(0); opacity: 1; }
-  to { transform: translateY(-70px); opacity: 0; }
 }
 
 /* A tiny dust puff where it lands: two puffs out to the sides and a small one up. */
@@ -1020,8 +966,6 @@ button:focus-visible {
   .pet-bubble,
   .pet-say,
   .pet-ladder,
-  .pet-balloon,
-  .pet-balloon svg,
   .pet-dust i {
     animation: none !important;
     transition: none !important;

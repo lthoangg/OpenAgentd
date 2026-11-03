@@ -50,9 +50,9 @@ describe('searchSettings', () => {
     expect(hit).toMatchObject({ kind: 'setting', section: 'desktop', sectionLabel: 'Desktop' })
   })
 
-  it('finds the pet\'s ladders and balloons by what they do', () => {
-    for (const query of ['balloon', 'ladder']) {
-      const hit = searchSettings(query, SETTINGS_SECTIONS).find((h) => h.label === 'Ladders and balloons')
+  it('finds the pet\'s ladders by what they do', () => {
+    for (const query of ['ladder', 'fall']) {
+      const hit = searchSettings(query, SETTINGS_SECTIONS).find((h) => h.label === 'Ladders')
       expect(hit).toMatchObject({ kind: 'setting', section: 'desktop' })
     }
   })

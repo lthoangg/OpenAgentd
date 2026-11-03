@@ -75,7 +75,7 @@ describe('PetSettingsSection', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Chaotic' }))
     fireEvent.click(await toggle('Show pet while OpenAgentd is in front'))
     fireEvent.click(await toggle('Climb on windows'))
-    fireEvent.click(await toggle('Ladders and balloons'))
+    fireEvent.click(await toggle('Ladders'))
     fireEvent.click(await toggle('Finished replies'))
     await waitFor(() =>
       expect(patches).toEqual([
@@ -91,15 +91,15 @@ describe('PetSettingsSection', () => {
     )
   })
 
-  it('offers ladders and balloons next to climbing, on by default, and waits behind the main switch', async () => {
+  it('offers ladders next to climbing, on by default, and waits behind the main switch', async () => {
     render(<PetSettingsSection />)
-    expect(await toggle('Ladders and balloons')).toBeDisabled()
-    expect(await toggle('Ladders and balloons')).toHaveAttribute('aria-checked', 'true')
+    expect(await toggle('Ladders')).toBeDisabled()
+    expect(await toggle('Ladders')).toHaveAttribute('aria-checked', 'true')
     act(() => onExternalChange?.({ ...DEFAULT_PET_SETTINGS, enabled: true }))
-    await waitFor(async () => expect(await toggle('Ladders and balloons')).not.toBeDisabled())
+    await waitFor(async () => expect(await toggle('Ladders')).not.toBeDisabled())
     const labels = screen.getAllByRole('switch').map((el) => el.getAttribute('aria-label') ?? el.id)
     expect(labels.indexOf('pet-toys')).toBe(labels.indexOf('pet-climb') + 1)
-    fireEvent.click(await toggle('Ladders and balloons'))
+    fireEvent.click(await toggle('Ladders'))
     await waitFor(() => expect(patches).toEqual([{ toys: false }]))
   })
 

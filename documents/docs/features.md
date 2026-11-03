@@ -1176,6 +1176,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     diff right under the row; **Open diff in tab** stays in the row's ⋯,
     right-click and long-press menus.
 - **Pet, notch, header and transcript fixes** `[v3.43.0]`:
+  - The pet no longer floats on balloons: it changes height by jumping,
+    climbing a ladder or falling. The setting is now **Ladders**.
+  - A jump onto a window, or back down, starts with a look at where it is
+    going and a crouch, then the pet leaps in an arc and lands with a squash
+    and a puff of dust, instead of gliding straight up.
   - The notch, the tray's "Needs you" list and Settings → Connection follow
     the builtin server whenever it runs, so its sessions stay listed with
     only windows on an external server open, or none.
@@ -1477,7 +1482,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     gentle bob, sometimes to a window edge it steps onto; otherwise it hovers
     3-6 s, then the balloon pops and it falls. Clicking the balloon pops it
     early (the balloon is part of the pet's clickable area; clicks elsewhere
-    still pass through). A **fall** has gravity (eases in, capped speed), a
+    still pass through). *(Balloons are deprecated; removed in v3.43.0, and
+    the setting is now **Ladders**.)* A **fall** has gravity (eases in, capped speed), a
     squash on landing and a tiny dust puff; it is also how the pet comes down
     when its window closes, and when you drop it in mid-air: with climbing on
     it falls to the window edge or the ground below, and the saved spot is

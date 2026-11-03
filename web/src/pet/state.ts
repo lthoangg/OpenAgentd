@@ -46,7 +46,7 @@ export interface PetSettings {
   showWhenFrontmost: boolean
   /** Jump onto other apps' windows (when playful or chaotic). */
   climb: boolean
-  /** Ladders and balloons: it now and then changes height with one (not while stay-put). */
+  /** Ladders: it now and then climbs one up to a window or back down (not while stay-put). Stored as `toys`. */
   toys: boolean
   /**
    * Where it was dropped: a display, 0..1 across it, and 0..1 down it for
@@ -218,8 +218,18 @@ export interface Perch {
 
 /** Room kept between the pet and anything above it. */
 const HEADROOM = 8
-/** How long a jump up or down takes. */
-export const JUMP_MS = 420
+/** A jump starts with the pet looking toward where it is going, then crouching to spring. */
+export const JUMP_LOOK_MS = 350
+export const JUMP_CROUCH_MS = 120
+/** The leap itself: it takes longer the farther it goes, never a flash and never a float. */
+export const JUMP_MIN_MS = 450
+export const JUMP_MAX_MS = 750
+/** Points sampled along the leap's arc (the browser draws straight lines between them). */
+export const JUMP_STEPS = 12
+/** In pet heights: how far above the higher of the two stances a jump up clears... */
+export const JUMP_CLEAR = 0.6
+/** ...and how high the small hop is that a jump down starts with. */
+export const JUMP_HOP = 0.35
 /** After a sit, the chance it jumps onto a window (when it may climb). */
 export const CLIMB_CHANCE = 0.35
 /** After a sit on a window, the chance it jumps back down. */
@@ -272,7 +282,7 @@ export function dashTarget(x: number, width: number, petWidth: number, random: n
   return x + petWidth / 2 < width / 2 ? room - reach : reach
 }
 
-// ── Ladders, balloons and falls ────────────────────────────────────────────
+// ── Ladders and falls ────────────────────────────────────────────
 
 /** A rise taller than this many pet heights takes a ladder (when it may), not a jump. */
 export const LADDER_RISE = 2
@@ -282,10 +292,6 @@ export const LADDER_RISE = 2
  * not climb windows at all.
  */
 export const LADDER_CHANCE: Record<PetMovement, number> = { still: 0, calm: 0, playful: 0.12, chaotic: 0.25 }
-/** After a sit, the chance it floats up on a balloon, which comes after the climbing chances. */
-export const BALLOON_CHANCE: Record<PetMovement, number> = { still: 0, calm: 0.04, playful: 0.1, chaotic: 0.2 }
-/** When a window edge is in reach of the float, the chance it steers to it. */
-export const BALLOON_LEDGE_CHANCE = 0.5
 /** Climbing a ladder, in CSS px per second. */
 export const CLIMB_SPEED = 90
 /** The ladder grows, and later folds away. */
@@ -293,18 +299,6 @@ export const LADDER_GROW_MS = 500
 export const LADDER_FOLD_MS = 400
 /** How far a ladder's rails reach above the edge it leans on. */
 export const LADDER_OVER = 6
-/** Floating up, in CSS px per second. */
-export const BALLOON_SPEED = 80
-/** The most it rises at once, and the least (in pet heights). */
-export const BALLOON_MAX_RISE = 360
-export const BALLOON_MIN_RISE = 1.5
-/** The most it drifts sideways while rising, in CSS px. */
-export const BALLOON_DRIFT = 80
-/** How long it hovers up there before the balloon pops: [min, max] in ms. */
-export const BALLOON_HOVER_MS: [number, number] = [3000, 6000]
-/** The pop frame shows this long; a balloon let go floats off for BALLOON_AWAY_MS. */
-export const BALLOON_POP_MS = 260
-export const BALLOON_AWAY_MS = 700
 /** Falling: gravity and the fastest it gets, in CSS px per second (squared). */
 export const GRAVITY = 3000
 export const FALL_MAX_SPEED = 1100
@@ -317,16 +311,15 @@ export type LiftChoice =
   | { type: 'stay' }
   | { type: 'jump'; ledge: Ledge | null }
   | { type: 'ladder'; ledge: Ledge | null }
-  | { type: 'balloon'; plan: BalloonPlan }
 
 export interface LiftContext {
   movement: PetMovement
   /** May use other windows (the setting). Without it only the ground is a place to stand. */
   climb: boolean
-  /** Ladders and balloons (the setting). */
+  /** Ladders (the `toys` setting, named before the balloons went). */
   toys: boolean
   reducedMotion: boolean
-  /** An agent is running: it works and walks with its laptop, never climbs a ladder or floats. */
+  /** An agent is running: it works and walks with its laptop, never climbs a ladder. */
   busy: boolean
   /** Dragged, its menu open, a bubble up, a question waiting, or already mid-move. */
   held: boolean
@@ -352,72 +345,23 @@ export function dropFalls(ctx: { movement: PetMovement; climb: boolean; reducedM
   return ctx.climb && ctx.movement !== 'still' && !ctx.reducedMotion
 }
 
-/** Room above the pet a balloon and its string take. */
-export function balloonRoom(petWidth: number): number {
-  return Math.ceil(petWidth * 0.8) + 4
-}
-
-/** The highest top the pet floats to: the balloon stays inside the screen. */
-export function balloonMinY(areaHeight: number, pet: { width: number; height: number }): number {
-  return clampY(balloonRoom(pet.width), areaHeight, pet.height)
-}
-
-export interface BalloonPlan {
-  toX: number
-  toY: number
-  /** The window edge it steers to and steps onto, or null: it hovers, then the balloon pops. */
-  ledge: Ledge | null
-  hoverMs: number
-}
-
 /**
- * Where a balloon takes the pet: up by 1.5 pet heights or more (at most
- * BALLOON_MAX_RISE, never past the top room), drifting sideways a little,
- * sometimes to a window edge in reach. Null when there is no room to rise.
- * Calls `random` for the drift, then (with an edge in reach) the steering
- * choice, then the height (unless steering), then the hover time.
- */
-export function balloonPlan(ctx: Pick<LiftContext, 'x' | 'y' | 'ledges' | 'pet' | 'area' | 'climb'>, random: () => number): BalloonPlan | null {
-  const { pet, area } = ctx
-  const lowest = ctx.y - pet.height * BALLOON_MIN_RISE
-  const highest = Math.max(balloonMinY(area.height, pet), ctx.y - BALLOON_MAX_RISE)
-  if (lowest < highest) return null
-  const drift = (random() * 2 - 1) * BALLOON_DRIFT
-  let toX = clampX(ctx.x + drift, area.width, pet.width)
-  let toY: number | null = null
-  let ledge: Ledge | null = null
-  const standOn = (l: Ledge) => Math.min(Math.max(toX, l.x), l.x + l.width - pet.width)
-  const near = ctx.climb
-    ? ctx.ledges.filter((l) => l.y - pet.height >= highest && l.y - pet.height <= lowest && Math.abs(standOn(l) - ctx.x) <= BALLOON_DRIFT * 1.5)
-    : []
-  if (near.length > 0 && random() < BALLOON_LEDGE_CHANCE) {
-    ledge = near.reduce((best, l) => (Math.abs(standOn(l) - toX) < Math.abs(standOn(best) - toX) ? l : best))
-    toX = standOn(ledge)
-    toY = ledge.y - pet.height
-  }
-  if (toY === null) toY = highest + random() * (lowest - highest)
-  const [min, max] = BALLOON_HOVER_MS
-  return { toX, toY, ledge, hoverMs: min + random() * (max - min) }
-}
-
-/**
- * How it changes height after a sit: nothing, a jump (short), a ladder
+ * How it changes height after a sit: nothing, a jump (short) or a ladder
  * (taller than LADDER_RISE pet heights, with the setting on and no agent
- * running) or a balloon. One roll picks, in bands: climbing first (the
- * nearest window above, or the way down from the one it stands on), then
- * the balloon. Calm and stay-put pets never climb windows. Reduced motion,
- * stay-put and a held pet never start any of them.
+ * running). One roll picks: the nearest window above, or the way down from
+ * the one it stands on. Calm and stay-put pets never climb windows. Reduced
+ * motion, stay-put and a held pet never start any of them.
  */
 export function chooseLift(ctx: LiftContext, random: () => number): LiftChoice {
   if (!liftsAllowed(ctx)) return { type: 'stay' }
   const roll = random()
   const playful = ctx.movement === 'playful' || ctx.movement === 'chaotic'
   const mayClimb = ctx.climb && playful
-  const props = ctx.toys && !ctx.busy
+  const mayLadder = ctx.toys && !ctx.busy
   const tall = (rise: number) => rise > LADDER_RISE * ctx.pet.height
   let base = 0
   if (mayClimb && ctx.perched) {
-    const ladder = props && tall(ctx.groundY - ctx.y)
+    const ladder = mayLadder && tall(ctx.groundY - ctx.y)
     base = ladder ? LADDER_CHANCE[ctx.movement] : JUMP_DOWN_CHANCE
     if (roll < base) return { type: ladder ? 'ladder' : 'jump', ledge: null }
   } else if (mayClimb) {
@@ -425,14 +369,10 @@ export function chooseLift(ctx: LiftContext, random: () => number): LiftChoice {
     if (above.length > 0) {
       const gap = (l: { x: number; width: number }) => Math.abs(l.x + l.width / 2 - ctx.x)
       const ledge = above.reduce((best, l) => (gap(l) < gap(best) ? l : best))
-      const ladder = props && tall(ctx.y - (ledge.y - ctx.pet.height))
+      const ladder = mayLadder && tall(ctx.y - (ledge.y - ctx.pet.height))
       base = ladder ? LADDER_CHANCE[ctx.movement] : CLIMB_CHANCE
       if (roll < base) return { type: ladder ? 'ladder' : 'jump', ledge }
     }
-  }
-  if (props && roll >= base && roll < base + BALLOON_CHANCE[ctx.movement]) {
-    const plan = balloonPlan(ctx, random)
-    if (plan) return { type: 'balloon', plan }
   }
   return { type: 'stay' }
 }
@@ -450,9 +390,48 @@ export function climbMs(rise: number): number {
   return Math.max(600, Math.round((Math.abs(rise) / CLIMB_SPEED) * 1000))
 }
 
-/** How long a float over `rise` px takes: unhurried, never dragging on. */
-export function floatMs(rise: number): number {
-  return Math.min(6000, Math.max(1200, Math.round((Math.abs(rise) / BALLOON_SPEED) * 1000)))
+/** How long a leap over `distance` px takes: a little longer the farther it goes. */
+export function jumpMs(distance: number): number {
+  return Math.min(JUMP_MAX_MS, Math.max(JUMP_MIN_MS, Math.round(JUMP_MIN_MS + Math.abs(distance) * 0.4)))
+}
+
+/**
+ * The top the pet reaches at the highest point of a jump. Up onto a window
+ * it clears the higher of the two stances by JUMP_CLEAR pet heights; down it
+ * first hops JUMP_HOP pet heights above where it stands. Never above the
+ * top of the screen.
+ */
+export function jumpApexY(from: { y: number }, to: { y: number }, pet: { height: number }): number {
+  const lower = Math.min(from.y, to.y)
+  const apex = to.y > from.y ? from.y - pet.height * JUMP_HOP : lower - pet.height * JUMP_CLEAR
+  return Math.min(Math.max(apex, 0), lower)
+}
+
+/**
+ * Where the pet's top-left is along a leap, `steps + 1` points from `from`
+ * to `to`: x moves evenly, y follows a parabola that peaks at jumpApexY
+ * (y grows downward, so the peak is the smallest y).
+ */
+export function jumpPath(from: { x: number; y: number }, to: { x: number; y: number }, pet: { height: number }, steps: number = JUMP_STEPS): Array<{ x: number; y: number }> {
+  const apex = jumpApexY(from, to, pet)
+  // y(t) = apex + a (t - peak)², through both ends: sqrt(a) is the sum of the two drops' roots.
+  const rootUp = Math.sqrt(Math.max(0, from.y - apex))
+  const rootDown = Math.sqrt(Math.max(0, to.y - apex))
+  const root = rootUp + rootDown
+  const a = root * root
+  const peak = root > 0 ? rootUp / root : 0.5
+  const count = Math.max(1, Math.round(steps))
+  return Array.from({ length: count + 1 }, (_, i) => {
+    const t = i / count
+    return { x: from.x + (to.x - from.x) * t, y: i === 0 ? from.y : i === count ? to.y : apex + a * (t - peak) * (t - peak) }
+  })
+}
+
+/** The box a jump from `from` to `to` covers, its whole arc included: what the window must hold. */
+export function jumpReach(from: { x: number; y: number }, to: { x: number; y: number }, pet: { width: number; height: number }): Box {
+  const top = jumpApexY(from, to, pet)
+  const left = Math.min(from.x, to.x)
+  return { x: left, y: top, width: Math.abs(to.x - from.x) + pet.width, height: Math.max(from.y, to.y) + pet.height - top }
 }
 
 /** The distance in which a fall reaches its top speed. */
@@ -493,7 +472,7 @@ export function fallTarget(
 
 // ── Pose ───────────────────────────────────────────────────────────────────
 
-export type PetPose = 'walk' | 'sit' | 'sleep' | 'work' | 'alert' | 'hop' | 'droop' | 'look' | 'zoom' | 'pant' | 'climb' | 'float' | 'fall'
+export type PetPose = 'walk' | 'sit' | 'sleep' | 'work' | 'alert' | 'hop' | 'droop' | 'look' | 'zoom' | 'pant' | 'climb' | 'fall'
 
 /** A short reaction to a notification, shown over the pose. */
 export type PetReaction = 'hop' | 'droop' | 'look'
@@ -513,8 +492,8 @@ export interface PoseInput {
   /** Being dragged, its menu open, or a bubble up: it stands still. */
   held?: boolean
   zoom?: ZoomPhase | null
-  /** Mid ladder, balloon or fall: the pose of that move (it sits while a ladder grows or folds). */
-  lift?: 'sit' | 'climb' | 'float' | 'fall' | null
+  /** Mid ladder or fall: the pose of that move (it sits while a ladder grows or folds). */
+  lift?: 'sit' | 'climb' | 'fall' | null
   idleMs: number
   reducedMotion: boolean
   movement: PetMovement
@@ -809,9 +788,9 @@ export interface SceneInput {
   area: PetArea
   /** The pet's box where it is going (its target, in area px). */
   pet: Box
-  /** The pet's whole path in a move under way (a climb, a float, a fall, a jump), or null. */
+  /** The pet's whole path in a move under way (a climb, a fall, a jump), or null. */
   reach: Box | null
-  /** What else is drawn: a bubble, the badge, the balloon, the ladder (area px). */
+  /** What else is drawn: a bubble, the badge, the ladder (area px). */
   rects: Box[]
   /** Being dragged: the pet may be dropped anywhere. */
   dragging: boolean

@@ -1,10 +1,12 @@
-//! Commands from the agent to the page open in a Preview tab.
+//! Commands from the agent to the page loaded for a preview.
 //!
-//! There is no headless browser: the inspector running in the user's
-//! Preview tab long-polls its own preview origin ([`crate::AGENT_PATH`])
-//! for the next command and posts the result back. A command therefore
-//! runs only while the page is open, and fails fast when no inspector has
-//! polled recently.
+//! There is no headless browser: the inspector running in the page (the
+//! Preview tab, or the app's background copy of it) long-polls its own
+//! preview origin ([`crate::AGENT_PATH`]) for the next command and posts the
+//! result back. A command therefore runs only while the page is loaded, and
+//! [`AgentChannel::run`] fails fast when no inspector has polled recently;
+//! callers that expect a page to appear soon use
+//! [`AgentChannel::wait_connected`] first.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -41,7 +43,8 @@ pub struct AgentReply {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AgentError {
-    /// No page has polled recently.
+    /// No page has polled recently (nothing has loaded this preview yet, or
+    /// the page was closed).
     NotConnected,
     /// The command waited in the queue without a page taking it.
     NotPickedUp,
@@ -54,9 +57,7 @@ pub enum AgentError {
 impl fmt::Display for AgentError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AgentError::NotConnected => {
-                f.write_str("The page is not open in the user's Preview tab. Call preview with action 'open' and ask the user to keep the Preview tab open.")
-            }
+            AgentError::NotConnected => f.write_str("No page is connected for this preview yet. Call preview with action 'open' again to load it, then retry."),
             AgentError::NotPickedUp => f.write_str("The page did not pick up the command. It may be closed or still loading; try again or call preview with action 'open'."),
             AgentError::NoAnswer => f.write_str("The page did not answer, probably because it navigated or reloaded. Call preview with action 'snapshot' to see the current page."),
             AgentError::Page(m) => f.write_str(m),
@@ -80,6 +81,8 @@ struct State {
 pub struct AgentChannel {
     state: Mutex<State>,
     notify: Notify,
+    /// Signalled (to all waiters) whenever a page starts a poll.
+    polled: Notify,
 }
 
 struct PollGuard<'a>(&'a AgentChannel);
@@ -112,6 +115,24 @@ impl AgentChannel {
         s.last_poll
     }
 
+    /// Wait until a page is connected (see [`Self::connected`]); `true` as
+    /// soon as one is, `false` if none connects within `within`.
+    pub async fn wait_connected(&self, within: Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + within;
+        loop {
+            let polled = self.polled.notified();
+            tokio::pin!(polled);
+            polled.as_mut().enable();
+            if self.connected() {
+                return true;
+            }
+            tokio::select! {
+                _ = &mut polled => {}
+                _ = tokio::time::sleep_until(deadline) => return self.connected(),
+            }
+        }
+    }
+
     fn take(&self) -> Option<AgentCommand> {
         let mut s = self.lock();
         while let Some(cmd) = s.queue.pop_front() {
@@ -132,6 +153,7 @@ impl AgentChannel {
             s.pollers += 1;
             s.last_poll = Some(Instant::now());
         }
+        self.polled.notify_waiters();
         let _guard = PollGuard(self);
         let deadline = tokio::time::Instant::now() + wait;
         loop {
@@ -205,6 +227,25 @@ mod tests {
         let ch = AgentChannel::default();
         assert!(!ch.connected());
         assert_eq!(ch.run(json!({"action": "snapshot"}), Duration::from_secs(5)).await, Err(AgentError::NotConnected));
+    }
+
+    #[tokio::test]
+    async fn wait_connected_returns_when_a_page_polls_or_after_the_wait() {
+        let ch = Arc::new(AgentChannel::default());
+        assert!(!ch.wait_connected(Duration::from_millis(30)).await);
+        let late = {
+            let ch = ch.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                ch.next(Duration::from_millis(20), never_stop()).await
+            })
+        };
+        let start = std::time::Instant::now();
+        assert!(ch.wait_connected(Duration::from_secs(5)).await);
+        assert!(start.elapsed() < Duration::from_secs(2));
+        assert!(late.await.unwrap().is_none());
+        // Already connected: returns at once.
+        assert!(ch.wait_connected(Duration::ZERO).await);
     }
 
     #[tokio::test]

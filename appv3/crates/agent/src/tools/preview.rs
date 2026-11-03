@@ -2,9 +2,10 @@
 //! drive it (snapshot, click, fill, …).
 //!
 //! The tool starts (or reuses) the workspace's preview listener; the web UI
-//! sees the call's `tool_end` and opens the tab. Console output is captured
-//! by the in-page inspector, and page commands are run by it, so both work
-//! only while the user has the page open.
+//! sees the call's `tool_end` and loads the page (in the Preview tab, or in
+//! a hidden background frame while the app is open). Console output is
+//! captured by the in-page inspector, and page commands are run by it, so
+//! both work only while the page is loaded.
 
 use super::invalid_args;
 use appv3_preview::agent::AgentError;
@@ -23,6 +24,11 @@ const MAX_OUTPUT_CHARS: usize = 8000;
 /// Snapshots and element details are larger than console output.
 const MAX_PAGE_OUTPUT_CHARS: usize = 16000;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long a page action waits for the page to connect when the preview
+/// exists but no page has polled yet. The UI loads the page only after the
+/// `open` call ends, so an action issued right after `open` (or in the same
+/// batch) otherwise races the page's first poll.
+const CONNECT_WAIT: Duration = Duration::from_secs(8);
 const MAX_WAIT_MS: u64 = 10_000;
 const PAGE_ACTIONS: [&str; 8] = ["snapshot", "click", "fill", "press", "scroll", "navigate", "wait", "inspect"];
 /// Page actions that can change what the page holds or submit it; Plan mode
@@ -254,7 +260,7 @@ async fn open(ws: &str, target: Target) -> ToolResult {
     let info = global().ensure(ws, backend, None).await.map_err(ToolError::exec)?;
     let errors = global().get(&info.id).map(|e| e.console_error_count()).unwrap_or(0);
     Ok(ToolOutput::text(format!(
-        "Opening {shown} in the user's Preview tab (served at {}{path}). Console errors captured so far: {errors}. The console is recorded only while the page is open in the Preview tab; call preview with action 'logs' after it loads.",
+        "Opening {shown} in the user's Preview tab (served at {}{path}). Console errors captured so far: {errors}. The console is recorded only while the page is loaded; call preview with action 'logs' after it loads.",
         info.origin
     )))
 }
@@ -339,7 +345,7 @@ impl Tool for PreviewTool {
             "type": "function",
             "function": {
                 "name": PREVIEW_TOOL,
-                "description": "Show a local web page in the user's built-in Preview tab, read its browser console, and use the page. action='open' opens a running local dev server (url, loopback only, e.g. http://localhost:5173/pricing) or an HTML file in the workspace (path); start the dev server with shell first. action='logs' returns recent console errors, warnings, and logs, newest first. Page actions run in the user's open Preview tab: 'snapshot' returns a text outline of the page with refs (e1, e2, …) on links, buttons, and fields; 'click', 'fill' (value), 'press' (key), 'scroll', and 'inspect' (selector, source file, styles, HTML) take a ref from the latest snapshot or a CSS selector; 'navigate' takes to (a path, or back, forward, reload); 'wait' waits for text or a selector (gone=true waits for it to disappear). action='chain' runs up to 20 page actions (steps) in order in one call, e.g. fill, fill, click, then snapshot to see the result; it stops at the first step that fails. Take a new snapshot after the page changes; refs from older snapshots go stale. Everything works only while the user has the page open in the Preview tab; there is no headless browser and no screenshots. Ask before submitting forms that change real data.",
+                "description": "Show a local web page in the user's built-in Preview tab, read its browser console, and use the page. action='open' opens a running local dev server (url, loopback only, e.g. http://localhost:5173/pricing) or an HTML file in the workspace (path); start the dev server with shell first. action='logs' returns recent console errors, warnings, and logs, newest first. Page actions run in the page: 'snapshot' returns a text outline of the page with refs (e1, e2, …) on links, buttons, and fields; 'click', 'fill' (value), 'press' (key), 'scroll', and 'inspect' (selector, source file, styles, HTML) take a ref from the latest snapshot or a CSS selector; 'navigate' takes to (a path, or back, forward, reload); 'wait' waits for text or a selector (gone=true waits for it to disappear). action='chain' runs up to 20 page actions (steps) in order in one call, e.g. fill, fill, click, then snapshot to see the result; it stops at the first step that fails. Re-snapshot after the page changes; old refs go stale. OpenAgentd keeps the page loaded in the background while it is open; on a phone it needs the workspace's Preview sheet. No headless browser or screenshots. Ask before submitting forms that change real data.",
                 "parameters": {
                     "type": "object",
                     "properties": properties,
@@ -350,18 +356,23 @@ impl Tool for PreviewTool {
     }
 
     async fn run(&self, ctx: &ToolContext, args: Value) -> ToolResult {
-        let parsed = parse_args(&args).map_err(|e| invalid_args(PREVIEW_TOOL, &e))?;
-        let plan_mode = ctx.metadata.lock().unwrap().get("interaction_mode").and_then(Value::as_str) == Some("plan");
-        if let Some(refusal) = plan_mode.then(|| plan_mode_refusal(&parsed)).flatten() {
-            return Err(ToolError::Execution(refusal));
-        }
-        let ws = workspace(ctx)?;
-        match parsed {
-            Args::Open(t) => open(&ws, t).await,
-            Args::Logs { target, errors_only, limit, clear } => logs(&ws, target, errors_only, limit, clear),
-            Args::Page { target, command, timeout } => page(&ws, target, command, timeout).await,
-            Args::Chain { target, steps } => chain(&ws, target, steps).await,
-        }
+        run_with(ctx, args, CONNECT_WAIT).await
+    }
+}
+
+/// [`Tool::run`] with the page-connect wait as a parameter (tests shorten it).
+async fn run_with(ctx: &ToolContext, args: Value, connect_wait: Duration) -> ToolResult {
+    let parsed = parse_args(&args).map_err(|e| invalid_args(PREVIEW_TOOL, &e))?;
+    let plan_mode = ctx.metadata.lock().unwrap().get("interaction_mode").and_then(Value::as_str) == Some("plan");
+    if let Some(refusal) = plan_mode.then(|| plan_mode_refusal(&parsed)).flatten() {
+        return Err(ToolError::Execution(refusal));
+    }
+    let ws = workspace(ctx)?;
+    match parsed {
+        Args::Open(t) => open(&ws, t).await,
+        Args::Logs { target, errors_only, limit, clear } => logs(&ws, target, errors_only, limit, clear),
+        Args::Page { target, command, timeout } => page(&ws, target, command, timeout, connect_wait).await,
+        Args::Chain { target, steps } => chain(&ws, target, steps, connect_wait).await,
     }
 }
 
@@ -385,8 +396,9 @@ fn page_action_props() -> Map<String, Value> {
 }
 
 /// The preview a page action goes to: the one matching `target`, else the
-/// one whose page polled most recently.
-fn pick_page(ws: &str, target: Option<&Target>) -> Result<Arc<Entry>, ToolError> {
+/// one whose page polled most recently. When previews exist but none has a
+/// page yet, waits up to `connect_wait` for one to connect.
+async fn pick_page(ws: &str, target: Option<&Target>, connect_wait: Duration) -> Result<Arc<Entry>, ToolError> {
     let mut entries = global().list(Some(ws));
     if let Some(t) = target {
         let mut kept = vec![];
@@ -400,7 +412,12 @@ fn pick_page(ws: &str, target: Option<&Target>) -> Result<Arc<Entry>, ToolError>
     if entries.is_empty() {
         return Err(ToolError::exec("No preview is open for this workspace. Call preview with action 'open' first."));
     }
-    entries.into_iter().filter(|e| e.agent.connected()).max_by_key(|e| e.agent.last_seen()).ok_or_else(|| ToolError::exec(AgentError::NotConnected.to_string()))
+    let best = |entries: &[Arc<Entry>]| entries.iter().filter(|e| e.agent.connected()).max_by_key(|e| e.agent.last_seen()).cloned();
+    if let Some(e) = best(&entries) {
+        return Ok(e);
+    }
+    futures::future::select_all(entries.iter().map(|e| Box::pin(e.agent.wait_connected(connect_wait)))).await;
+    best(&entries).ok_or_else(|| ToolError::exec(AgentError::NotConnected.to_string()))
 }
 
 fn cap(mut text: String, max: usize) -> String {
@@ -465,8 +482,8 @@ fn step_text(action: &str, result: &Value) -> String {
     }
 }
 
-async fn page(ws: &str, target: Option<Target>, command: Value, timeout: Duration) -> ToolResult {
-    let entry = pick_page(ws, target.as_ref())?;
+async fn page(ws: &str, target: Option<Target>, command: Value, timeout: Duration, connect_wait: Duration) -> ToolResult {
+    let entry = pick_page(ws, target.as_ref(), connect_wait).await?;
     let action = action_of(&command).to_string();
     let result = entry.agent.run(command, timeout).await.map_err(|e| ToolError::exec(e.to_string()))?;
     let text = step_text(&action, &result);
@@ -475,8 +492,8 @@ async fn page(ws: &str, target: Option<Target>, command: Value, timeout: Duratio
 }
 
 /// Run `steps` in order on one preview, stopping at the first that fails.
-async fn chain(ws: &str, target: Option<Target>, steps: Vec<(Value, Duration)>) -> ToolResult {
-    let entry = pick_page(ws, target.as_ref())?;
+async fn chain(ws: &str, target: Option<Target>, steps: Vec<(Value, Duration)>, connect_wait: Duration) -> ToolResult {
+    let entry = pick_page(ws, target.as_ref(), connect_wait).await?;
     let total = steps.len();
     let mut lines = vec![];
     if steps.iter().any(|(c, _)| returns_page_content(action_of(c))) {
@@ -614,8 +631,9 @@ mod tests {
         let err = t.run(&c, json!({"action": "snapshot"})).await.unwrap_err().to_string();
         assert!(err.contains("No preview is open"), "{err}");
         text(t.run(&c, json!({"action": "open", "path": "page.html"})).await);
-        let err = t.run(&c, json!({"action": "snapshot"})).await.unwrap_err().to_string();
-        assert!(err.contains("not open in the user's Preview tab"), "{err}");
+        let err = run_with(&c, json!({"action": "snapshot"}), Duration::from_millis(50)).await.unwrap_err().to_string();
+        assert_eq!(err, AgentError::NotConnected.to_string());
+        assert!(err.starts_with("No page is connected for this preview yet.") && !err.contains("keep the Preview tab"), "{err}");
 
         let ws = crate::manager::validate_workspace(&dir.path().to_string_lossy(), true).unwrap();
         let entry = global().list(Some(&ws)).pop().unwrap();
@@ -653,6 +671,50 @@ mod tests {
         }
         page.await.unwrap();
         global().close(&entry.id);
+    }
+
+    #[tokio::test]
+    async fn waits_for_a_page_that_connects_just_after_the_action() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("late.html"), "<html></html>").unwrap();
+        let c = ctx(dir.path());
+        let t = PreviewTool;
+        text(t.run(&c, json!({"action": "open", "path": "late.html"})).await);
+        let ws = crate::manager::validate_workspace(&dir.path().to_string_lossy(), true).unwrap();
+        let entry = global().list(Some(&ws)).pop().unwrap();
+        assert!(!entry.agent.connected());
+        // The page's first poll arrives after the action was issued.
+        let page = {
+            let entry = entry.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                let (_stop, rx) = tokio::sync::watch::channel(false);
+                let cmd = entry.agent.next(Duration::from_secs(5), rx).await.unwrap();
+                assert_eq!(cmd.command["action"], "snapshot");
+                entry.agent.resolve(serde_json::from_value(json!({"id": cmd.id, "ok": true, "result": {"text": "Page: /late.html"}})).unwrap());
+            })
+        };
+        let out = text(run_with(&c, json!({"action": "snapshot"}), Duration::from_secs(5)).await);
+        assert!(out.contains("Page: /late.html"), "{out}");
+        page.await.unwrap();
+        global().close(&entry.id);
+    }
+
+    #[tokio::test]
+    async fn fails_with_guidance_when_no_page_connects_in_time() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("none.html"), "<html></html>").unwrap();
+        let c = ctx(dir.path());
+        let t = PreviewTool;
+        text(t.run(&c, json!({"action": "open", "path": "none.html"})).await);
+        let start = std::time::Instant::now();
+        let err = run_with(&c, json!({"action": "click", "ref": "e1"}), Duration::from_millis(100)).await.unwrap_err().to_string();
+        assert_eq!(err, "No page is connected for this preview yet. Call preview with action 'open' again to load it, then retry.");
+        assert!(start.elapsed() >= Duration::from_millis(90));
+        let err = run_with(&c, json!({"action": "chain", "steps": [{"action": "snapshot"}]}), Duration::from_millis(10)).await.unwrap_err().to_string();
+        assert!(err.starts_with("No page is connected"), "{err}");
+        let ws = crate::manager::validate_workspace(&dir.path().to_string_lossy(), true).unwrap();
+        global().close(&global().list(Some(&ws)).pop().unwrap().id);
     }
 
     #[tokio::test]

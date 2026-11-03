@@ -254,8 +254,7 @@ describe("AgentView — message windowing", () => {
 })
 
 describe("AgentView — AssistantFooter", () => {
-  // No composer in this view (a subagent's session), so the queue stays here.
-  it("renders queued messages below the streaming assistant turn when there is no composer", () => {
+  it("renders queued messages below the streaming assistant turn, faded", () => {
     useAgentStore.setState({
       sessionId: "session-a",
       _pendingMessages: [
@@ -273,9 +272,10 @@ describe("AgentView — AssistantFooter", () => {
     const queued = screen.getByText("queued after response")
     expect(response.compareDocumentPosition(queued) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByRole("button", { name: "Edit queued message" })).toBeTruthy()
+    expect((queued.parentElement as HTMLElement).className).toContain("opacity-75")
   })
 
-  it("leaves the queue to the composer's tray when a composer is up", () => {
+  it("keeps the queue at the bottom of the transcript when a composer is up", () => {
     useAgentStore.setState({
       sessionId: "session-a",
       _pendingMessages: [
@@ -290,9 +290,30 @@ describe("AgentView — AssistantFooter", () => {
       jumpToLatestInComposer: true,
     })
 
-    expect(screen.getByText("streaming response")).toBeTruthy()
-    expect(screen.queryByText("queued after response")).toBeNull()
-    expect(screen.queryByRole("button", { name: "Edit queued message" })).toBeNull()
+    const response = screen.getByText("streaming response")
+    const queued = screen.getByText("queued after response")
+    expect(response.compareDocumentPosition(queued) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Edit queued message" })).toBeTruthy()
+  })
+
+  it("puts the queue after the last turn and before the scroll anchor", () => {
+    useAgentStore.setState({
+      sessionId: "session-a",
+      _pendingMessages: [
+        { id: "q1", sessionId: "session-a", content: "queued after response" },
+      ],
+    })
+
+    const { container } = renderStream({
+      blocks: [makeUserBlock("u1", "start")],
+      currentBlocks: [makeTextBlock("a1", "streaming response")],
+      isWorking: true,
+    })
+
+    const anchor = container.querySelector("[data-chat-scroll-anchor]") as HTMLElement
+    const queued = screen.getByText("queued after response")
+    expect(queued.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText("start").compareDocumentPosition(queued) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it("collapses long queued messages", async () => {

@@ -73,7 +73,6 @@ import { PlusMenu, type ComposerActions } from '../composer/PlusMenu'
 import { ContextMeter } from '../composer/ContextMeter'
 import { useRunSettings } from '../composer/useRunSettings'
 import { BtwPanel } from '../BtwPanel'
-import { PendingMessageQueue } from '../PendingMessageQueue'
 import { AppFooter } from '../AppFooter'
 import { WorkspacePanel } from '../WorkspacePanel'
 import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
@@ -116,7 +115,7 @@ interface ActiveAgentViewProps {
   fileRefOpener?: FileRefOpener
   onRetry?: () => void
   onSwitchModel?: () => void
-  /** The docked composer is up: its tray carries the jump-to-latest chip and the message queue. */
+  /** The docked composer is up: its tray carries the jump-to-latest chip. */
   jumpToLatestInComposer?: boolean
 }
 
@@ -716,9 +715,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     />
   ), [workspace, isSessionLoading, canAskSideQuestion, snippetCommands.length])
 
-  // The docked composer's tray carries the jump-to-latest chip and the queue
-  // of messages waiting for the agent. With no composer (a subagent's
-  // session, which only the main agent directs) both stay in the transcript.
+  // The docked composer's tray carries the jump-to-latest chip. With no
+  // composer (a subagent's session, which only the main agent directs) the
+  // chip stays in the transcript. The message queue is always in the transcript.
   const composerHoldsTray = !parentSessionId && Boolean(workspace)
 
   // One composer element: inside the new-session screen while that is
@@ -807,7 +806,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
         />
       )}
-      queue={composerHoldsTray ? <PendingMessageQueue /> : null}
     />
   ) : null
 

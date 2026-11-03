@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "changelog-tools",
+  "version": "1.2.0",
+  "description": "Drafts release notes from a changelog.",
+  "extensions": {
+    "dev.openagentd": {
+      "permissions": {
+        "net": ["api.github.com"],
+        "env": ["GITHUB_TOKEN"]
+      }
+    }
+  }
+}

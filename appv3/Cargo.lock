@@ -362,6 +362,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "appv3-plugins"
+version = "3.43.0"
+dependencies = [
+ "dunce",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
 name = "appv3-preview"
 version = "3.43.0"
 dependencies = [

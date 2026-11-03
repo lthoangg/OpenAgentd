@@ -8,6 +8,7 @@ members = [
     "crates/terminal",
     "crates/providers",
     "crates/jsplugin",
+    "crates/plugins",
     "crates/agent",
     "crates/memory",
     "crates/mcp",
@@ -66,6 +67,7 @@ appv3-kernel = { path = "crates/kernel" }
 appv3-tools = { path = "crates/tools" }
 appv3-providers = { path = "crates/providers" }
 appv3-jsplugin = { path = "crates/jsplugin" }
+appv3-plugins = { path = "crates/plugins" }
 appv3-agent = { path = "crates/agent" }
 appv3-terminal = { path = "crates/terminal" }
 appv3-memory = { path = "crates/memory" }

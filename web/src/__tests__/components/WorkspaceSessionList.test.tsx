@@ -429,6 +429,39 @@ describe('WorkspaceSessionList — the open session', () => {
     expect(screen.getByText('Recent one')).toBeTruthy()
   })
 
+  it('puts an open session beyond the loaded page first when it has the newest activity', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const at = (title: string, last: string): SessionResponse => ({ ...session(title, title), last_message_at: last })
+    queryClient.setQueryData(queryKeys.session.sessions.workspace('/test/workspace', 'activity'), {
+      pages: [{
+        data: [at('Newer', '2026-01-02T00:00:00Z'), at('Older', '2026-01-01T00:00:00Z')],
+        has_more: true,
+        next_cursor: 'c1',
+      }],
+      pageParams: [null],
+    })
+    queryClient.setQueryData(queryKeys.session.sessions.detail('Used'), { ...at('Used', '2026-01-03T00:00:00Z'), messages: [] })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceSessionList
+          path="/test/workspace"
+          currentSessionId="Used"
+          onSessionSelect={() => {}}
+          onSessionDelete={() => {}}
+          onSessionEdit={() => {}}
+          onSessionLongPress={() => {}}
+          onSessionContextActions={() => {}}
+        />
+      </QueryClientProvider>,
+    )
+
+    await screen.findByText('Used')
+    const [used, newer, older] = ['Used', 'Newer', 'Older'].map((title) => screen.getByText(title))
+    expect(used.compareDocumentPosition(newer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(newer.compareDocumentPosition(older) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('offers Retry when the sessions fail to load', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     globalThis.fetch = mock(async () => new Response('boom', { status: 500 })) as unknown as typeof fetch

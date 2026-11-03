@@ -9,11 +9,18 @@ import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { DURATIONS_S } from '@/lib/motion'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import type { SessionResponse } from '@/api/types'
+import { sessionActivityTime } from '../Sidebar.helpers'
 import { DraftSessionRow, SessionRow, SessionRowsSkeleton, ShowMoreRow, useStableSessionHandlers, type MenuPoint } from './SessionRow'
 
 export type { MenuPoint } from './SessionRow'
 
 const noop = () => {}
+
+/** Activity time in ms; a row with no parseable time sorts last. */
+function activityMs(session: SessionResponse): number {
+  const ms = Date.parse(sessionActivityTime(session) ?? '')
+  return Number.isNaN(ms) ? Number.NEGATIVE_INFINITY : ms
+}
 
 export function WorkspaceSessionList({
   path,
@@ -96,7 +103,14 @@ export function WorkspaceSessionList({
     && (multiCheckout ? paths.includes(currentWorkspace) : currentWorkspace === path)
     ? current.data
     : null
-  const rows = extraCurrent ? [...workspaceSessions, extraCurrent] : workspaceSessions
+  // Newest activity first. The open session may have been fetched past the
+  // loaded page, and cached pages arrive in the order they were patched, so
+  // order by time here; the sort is stable, so equal times keep server order.
+  const unsortedRows = extraCurrent ? [...workspaceSessions, extraCurrent] : workspaceSessions
+  const rows = unsortedRows
+    .map((session) => ({ session, at: activityMs(session) }))
+    .sort((a, b) => (a.at === b.at ? 0 : a.at > b.at ? -1 : 1))
+    .map(({ session }) => session)
 
   const handlers = useStableSessionHandlers({ onSessionSelect, onSessionDelete, onSessionEdit, onSessionRename, onSessionRenameCancel, onSessionLongPress, onSessionContextActions, onSessionPinToggle })
   const listRef = useRef<HTMLDivElement>(null)

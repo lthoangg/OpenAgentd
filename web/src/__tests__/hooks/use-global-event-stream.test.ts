@@ -683,6 +683,35 @@ describe('handleGlobalEvent', () => {
     expect(data.pages[0].data[0].running).toBe(true)
   })
 
+  it('moves a session below the top of its workspace list to index 0 when a turn starts', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+    const row = (id: string) => ({ id, title: id, agent_name: 'code', created_at: null, updated_at: null, workspace: '/repo-b' })
+    const repo = queryKeys.session.sessions.workspace('/repo-b', 'activity')
+    client.setQueryData(repo, { pages: [{ data: [row('r1'), row('r2'), row('r3')], next_cursor: null, has_more: false }], pageParams: [null] })
+
+    await handleGlobalEvent(client, 'session_turn_started', { session_id: 'r3', workspace: '/repo-b' }, 1, () => 1)
+
+    const data = client.getQueryData(repo) as { pages: { data: { id: string; running?: boolean }[] }[] }
+    expect(data.pages[0].data.map((s) => s.id)).toEqual(['r3', 'r1', 'r2'])
+    expect(data.pages[0].data[0].running).toBe(true)
+  })
+
+  it('lifts a session cached only as the open chat detail to the top of its workspace list', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+    const row = (id: string) => ({ id, title: id, agent_name: 'code', created_at: null, updated_at: null, workspace: '/repo-b' })
+    const repo = queryKeys.session.sessions.workspace('/repo-b', 'activity')
+    client.setQueryData(repo, { pages: [{ data: [row('r1'), row('r2')], next_cursor: 'c', has_more: true }], pageParams: [null] })
+    client.setQueryData(queryKeys.session.sessions.detail('d'), { ...row('d'), messages: [] })
+
+    await handleGlobalEvent(client, 'session_turn_started', { session_id: 'd', workspace: '/repo-b' }, 1, () => 1)
+
+    const data = client.getQueryData(repo) as { pages: { data: { id: string }[] }[] }
+    expect(data.pages[0].data.map((s) => s.id)).toEqual(['d', 'r1', 'r2'])
+    expect(client.getQueryState(repo)?.isInvalidated).toBe(false)
+  })
+
   // A message queued on a busy or waiting session starts no turn, but the
   // server now sorts that session first.
   it('moves a session a message was queued on to the top, at the server time', async () => {

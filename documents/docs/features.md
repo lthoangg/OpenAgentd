@@ -1176,6 +1176,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     diff right under the row; **Open diff in tab** stays in the row's ⋯,
     right-click and long-press menus.
 - **Pet, notch, header and transcript fixes** `[v3.43.0]`:
+  - In the sidebar grouped by workspace, the session you just used moves to
+    the top of its group as soon as its turn starts, the open session too
+    (it used to be added last when it was past the first page).
   - The pet no longer floats on balloons: it changes height by jumping,
     climbing a ladder or falling. The setting is now **Ladders**.
   - A jump onto a window, or back down, starts with a look at where it is

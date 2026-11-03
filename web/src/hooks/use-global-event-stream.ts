@@ -81,11 +81,14 @@ function markSessionRunning(
   running: boolean,
   needsInput: boolean = false,
 ): void {
-  if (!patchSessionRunning(queryClient, sessionId, running, needsInput)) {
+  const patched = patchSessionRunning(queryClient, sessionId, running, needsInput)
+  // Bump even when no list holds the row: it may be cached only as the open
+  // chat's detail, which bumping reads to lift the row into the lists.
+  const bumped = bumpSessionActivity(queryClient, sessionId)
+  if (!patched && !bumped) {
     queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
     return
   }
-  bumpSessionActivity(queryClient, sessionId)
   queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.active() })
 }
 

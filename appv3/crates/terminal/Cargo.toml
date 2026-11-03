@@ -14,3 +14,6 @@ portable-pty.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["signal", "process"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

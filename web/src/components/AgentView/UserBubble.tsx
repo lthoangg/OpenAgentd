@@ -600,14 +600,19 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                 answer's footer does; ``touch-hit`` keeps each a 36px target. */}
             <div className={cn('flex items-center gap-1 transition-opacity duration-(--motion-fast) focus-within:opacity-100 pointer-coarse:opacity-100 max-md:pointer-coarse:gap-0', actionsAtRest || showTime ? 'opacity-100' : 'opacity-0')}>
               {modelId && (
-                <span
-                  data-prompt-model
-                  className="mr-1 flex min-w-0 font-mono text-meta text-(--color-text-subtle)"
-                  title={thinkingLevel ? `Thinking level: ${thinkingLevel}` : undefined}
-                >
-                  <ModelName id={modelId} />
-                  {thinkingLevel && <span className="shrink-0 whitespace-pre">{` · ${thinkingLevel}`}</span>}
-                </span>
+                // One tooltip for the whole line: a native title here over
+                // the model name's own tooltip drew two on top of each other.
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <span data-prompt-model className="mr-1 flex min-w-0 font-mono text-meta text-(--color-text-subtle)">
+                        <ModelName id={modelId} tooltip={false} />
+                        {thinkingLevel && <span className="shrink-0 whitespace-pre">{` · ${thinkingLevel}`}</span>}
+                      </span>
+                    }
+                  />
+                  <TooltipContent>{thinkingLevel ? `${modelId} · thinking ${thinkingLevel}` : modelId}</TooltipContent>
+                </Tooltip>
               )}
               {onEdit && editLocked && (
                 <Tooltip>

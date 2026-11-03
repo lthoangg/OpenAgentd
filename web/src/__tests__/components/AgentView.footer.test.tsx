@@ -911,4 +911,22 @@ describe("AgentView — footer model label", () => {
     const labels = [...container.querySelectorAll("[data-prompt-model]")].map((el) => el.textContent)
     expect(labels).toEqual(["openai:gpt-5 · high", "anthropic:claude-opus-4", "openai:gpt-5 · low"])
   })
+
+  // The line had a native title (thinking level) around the model name's own
+  // tooltip, so hovering it drew two tooltips over each other.
+  it("shows one tooltip for a prompt's model and thinking level, with no native title", async () => {
+    const user = userEvent.setup()
+    const { container } = renderStream({
+      blocks: [{ ...makeUserBlock("u1", "one"), extra: { model: "openai:gpt-5", thinking_level: "high" } }],
+      currentBlocks: [],
+      isWorking: false,
+    })
+    const line = container.querySelector("[data-prompt-model]") as HTMLElement
+    expect(line.hasAttribute("title")).toBe(false)
+    expect(line.querySelector("[title]")).toBeNull()
+    await user.hover(line.querySelector("[data-model-name]") as HTMLElement)
+    const tips = await screen.findAllByRole("tooltip")
+    expect(tips).toHaveLength(1)
+    expect(tips[0]?.textContent).toBe("openai:gpt-5 · thinking high")
+  })
 })

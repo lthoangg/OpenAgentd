@@ -97,8 +97,6 @@ export function poseFrames(character: PetCharacter, pose: PetPose): string[][] {
   switch (pose) {
     case 'walk':
     case 'zoom':
-    // Up a ladder it takes the same steps, one frame after the other.
-    case 'climb':
       return [...art.walk]
     case 'sleep':
       return [sleepy(art.still)]

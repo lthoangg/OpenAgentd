@@ -1179,8 +1179,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - In the sidebar grouped by workspace, the session you just used moves to
     the top of its group as soon as its turn starts, the open session too
     (it used to be added last when it was past the first page).
-  - The pet no longer floats on balloons: it changes height by jumping,
-    climbing a ladder or falling. The setting is now **Ladders**.
+  - The pet no longer floats on balloons or climbs ladders: it changes
+    height only by jumping (to any window edge it can reach, tall ones
+    included) or falling. The **Ladders** setting is gone; **Climb on
+    windows** still turns the jumps onto windows off.
   - A jump onto a window, or back down, starts with a look at where it is
     going and a crouch, then the pet leaps in an arc and lands with a squash
     and a puff of dust, instead of gliding straight up.
@@ -1485,8 +1487,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     gentle bob, sometimes to a window edge it steps onto; otherwise it hovers
     3-6 s, then the balloon pops and it falls. Clicking the balloon pops it
     early (the balloon is part of the pet's clickable area; clicks elsewhere
-    still pass through). *(Balloons are deprecated; removed in v3.43.0, and
-    the setting is now **Ladders**.)* A **fall** has gravity (eases in, capped speed), a
+    still pass through). *(Ladders and balloons are deprecated; removed in
+    v3.43.0, along with their setting: the pet jumps instead.)* A **fall**
+    has gravity (eases in, capped speed), a
     squash on landing and a tiny dust puff; it is also how the pet comes down
     when its window closes, and when you drop it in mid-air: with climbing on
     it falls to the window edge or the ground below, and the saved spot is

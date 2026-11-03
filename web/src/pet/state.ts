@@ -46,8 +46,6 @@ export interface PetSettings {
   showWhenFrontmost: boolean
   /** Jump onto other apps' windows (when playful or chaotic). */
   climb: boolean
-  /** Ladders: it now and then climbs one up to a window or back down (not while stay-put). Stored as `toys`. */
-  toys: boolean
   /**
    * Where it was dropped: a display, 0..1 across it, and 0..1 down it for
    * the height its feet stand at (missing in older settings: the bottom).
@@ -65,7 +63,6 @@ export const DEFAULT_PET_SETTINGS: PetSettings = {
   bubbleKinds: { inputNeeded: true, assistantDone: true, reminderFired: true },
   showWhenFrontmost: false,
   climb: true,
-  toys: true,
   position: null,
 }
 
@@ -282,23 +279,8 @@ export function dashTarget(x: number, width: number, petWidth: number, random: n
   return x + petWidth / 2 < width / 2 ? room - reach : reach
 }
 
-// ── Ladders and falls ────────────────────────────────────────────
+// ── Falls ────────────────────────────────────────────────────────
 
-/** A rise taller than this many pet heights takes a ladder (when it may), not a jump. */
-export const LADDER_RISE = 2
-/**
- * After a sit, the chance it climbs a ladder (up to a window, or down from
- * one) rather than the jump's CLIMB_CHANCE / JUMP_DOWN_CHANCE. Calm pets do
- * not climb windows at all.
- */
-export const LADDER_CHANCE: Record<PetMovement, number> = { still: 0, calm: 0, playful: 0.12, chaotic: 0.25 }
-/** Climbing a ladder, in CSS px per second. */
-export const CLIMB_SPEED = 90
-/** The ladder grows, and later folds away. */
-export const LADDER_GROW_MS = 500
-export const LADDER_FOLD_MS = 400
-/** How far a ladder's rails reach above the edge it leans on. */
-export const LADDER_OVER = 6
 /** Falling: gravity and the fastest it gets, in CSS px per second (squared). */
 export const GRAVITY = 3000
 export const FALL_MAX_SPEED = 1100
@@ -306,21 +288,16 @@ export const FALL_MAX_SPEED = 1100
 export const LAND_MS = 300
 export const DUST_MS = 550
 
-/** What it can do to change height. A jump is the short hop; `null` is the ground. */
+/** What it can do to change height: stay, or jump (to a window's edge, or `null` for the ground). */
 export type LiftChoice =
   | { type: 'stay' }
   | { type: 'jump'; ledge: Ledge | null }
-  | { type: 'ladder'; ledge: Ledge | null }
 
 export interface LiftContext {
   movement: PetMovement
   /** May use other windows (the setting). Without it only the ground is a place to stand. */
   climb: boolean
-  /** Ladders (the `toys` setting, named before the balloons went). */
-  toys: boolean
   reducedMotion: boolean
-  /** An agent is running: it works and walks with its laptop, never climbs a ladder. */
-  busy: boolean
   /** Dragged, its menu open, a bubble up, a question waiting, or already mid-move. */
   held: boolean
   /** Standing on a window's edge. */
@@ -328,8 +305,6 @@ export interface LiftContext {
   /** The pet's left edge and top. */
   x: number
   y: number
-  /** The top it has when it stands on the ground. */
-  groundY: number
   ledges: Ledge[]
   pet: { width: number; height: number }
   area: { width: number; height: number }
@@ -346,48 +321,28 @@ export function dropFalls(ctx: { movement: PetMovement; climb: boolean; reducedM
 }
 
 /**
- * How it changes height after a sit: nothing, a jump (short) or a ladder
- * (taller than LADDER_RISE pet heights, with the setting on and no agent
- * running). One roll picks: the nearest window above, or the way down from
- * the one it stands on. Calm and stay-put pets never climb windows. Reduced
- * motion, stay-put and a held pet never start any of them.
+ * How it changes height after a sit: nothing, or a jump, whatever the
+ * height. One roll picks: the nearest window above (CLIMB_CHANCE), or the
+ * way down from the one it stands on (JUMP_DOWN_CHANCE). Calm and stay-put
+ * pets never climb windows. Reduced motion, stay-put and a held pet never
+ * jump.
  */
 export function chooseLift(ctx: LiftContext, random: () => number): LiftChoice {
   if (!liftsAllowed(ctx)) return { type: 'stay' }
   const roll = random()
   const playful = ctx.movement === 'playful' || ctx.movement === 'chaotic'
   const mayClimb = ctx.climb && playful
-  const mayLadder = ctx.toys && !ctx.busy
-  const tall = (rise: number) => rise > LADDER_RISE * ctx.pet.height
-  let base = 0
   if (mayClimb && ctx.perched) {
-    const ladder = mayLadder && tall(ctx.groundY - ctx.y)
-    base = ladder ? LADDER_CHANCE[ctx.movement] : JUMP_DOWN_CHANCE
-    if (roll < base) return { type: ladder ? 'ladder' : 'jump', ledge: null }
+    if (roll < JUMP_DOWN_CHANCE) return { type: 'jump', ledge: null }
   } else if (mayClimb) {
     const above = ctx.ledges.filter((l) => l.y - ctx.pet.height < ctx.y - 4)
     if (above.length > 0) {
       const gap = (l: { x: number; width: number }) => Math.abs(l.x + l.width / 2 - ctx.x)
       const ledge = above.reduce((best, l) => (gap(l) < gap(best) ? l : best))
-      const ladder = mayLadder && tall(ctx.y - (ledge.y - ctx.pet.height))
-      base = ladder ? LADDER_CHANCE[ctx.movement] : CLIMB_CHANCE
-      if (roll < base) return { type: ladder ? 'ladder' : 'jump', ledge }
+      if (roll < CLIMB_CHANCE) return { type: 'jump', ledge }
     }
   }
   return { type: 'stay' }
-}
-
-/** The ladder's size and place: its feet at the lower stance, its rails over the upper edge. */
-export function ladderBox(x: number, fromY: number, toY: number, pet: { width: number; height: number }): { left: number; top: number; width: number; height: number } {
-  const width = Math.round(pet.width * 0.34)
-  const top = Math.min(fromY, toY) + pet.height - LADDER_OVER
-  const bottom = Math.max(fromY, toY) + pet.height
-  return { left: x + (pet.width - width) / 2, top, width, height: bottom - top }
-}
-
-/** How long a climb over `rise` px takes (never a flash). */
-export function climbMs(rise: number): number {
-  return Math.max(600, Math.round((Math.abs(rise) / CLIMB_SPEED) * 1000))
 }
 
 /** How long a leap over `distance` px takes: a little longer the farther it goes. */
@@ -472,7 +427,7 @@ export function fallTarget(
 
 // ── Pose ───────────────────────────────────────────────────────────────────
 
-export type PetPose = 'walk' | 'sit' | 'sleep' | 'work' | 'alert' | 'hop' | 'droop' | 'look' | 'zoom' | 'pant' | 'climb' | 'fall'
+export type PetPose = 'walk' | 'sit' | 'sleep' | 'work' | 'alert' | 'hop' | 'droop' | 'look' | 'zoom' | 'pant' | 'fall'
 
 /** A short reaction to a notification, shown over the pose. */
 export type PetReaction = 'hop' | 'droop' | 'look'
@@ -492,8 +447,8 @@ export interface PoseInput {
   /** Being dragged, its menu open, or a bubble up: it stands still. */
   held?: boolean
   zoom?: ZoomPhase | null
-  /** Mid ladder or fall: the pose of that move (it sits while a ladder grows or folds). */
-  lift?: 'sit' | 'climb' | 'fall' | null
+  /** Mid fall: the pose of that move (it sits after landing). */
+  lift?: 'sit' | 'fall' | null
   idleMs: number
   reducedMotion: boolean
   movement: PetMovement
@@ -790,7 +745,7 @@ export interface SceneInput {
   pet: Box
   /** The pet's whole path in a move under way (a climb, a fall, a jump), or null. */
   reach: Box | null
-  /** What else is drawn: a bubble, the badge, the ladder (area px). */
+  /** What else is drawn: a bubble, the badge (area px). */
   rects: Box[]
   /** Being dragged: the pet may be dropped anywhere. */
   dragging: boolean

@@ -18,8 +18,6 @@ import {
   JUMP_CROUCH_MS,
   JUMP_LOOK_MS,
   JUMP_STEPS,
-  LADDER_FOLD_MS,
-  LADDER_GROW_MS,
   LAND_MS,
   PANT_MS,
   PET_HEIGHT,
@@ -37,7 +35,6 @@ import {
   chooseLift,
   clampX,
   clampY,
-  climbMs,
   dashTarget,
   dropFalls,
   fallCapped,
@@ -49,7 +46,6 @@ import {
   jumpMs,
   jumpPath,
   jumpReach,
-  ladderBox,
   liftsAllowed,
   neededFrame,
   originMoves,
@@ -69,7 +65,6 @@ import {
   zoomsWhenDone,
   type Box,
   type BubbleTone,
-  type Ledge,
   type PetBubble,
   type PetCharacter,
   type PetColour,
@@ -122,19 +117,15 @@ type PointerAt = { x: number; y: number } | null
 type Fold = 'folding' | 'unfolding'
 
 /**
- * A ladder or a fall under way. `ms` and `ease` are how the pet's
- * move to its new place goes (CSS does the moving: one transition on the
- * pet, no per-frame work in the page).
+ * A fall under way. `ms` and `ease` are how the pet's move to its new
+ * place goes (CSS does the moving: one transition on the pet, no per-frame
+ * work in the page).
  */
-type Lift = { ms: number; ease: string } & (
-  | { kind: 'ladder'; phase: 'grow' | 'climb' | 'fold'; up: boolean; box: { left: number; top: number; width: number; height: number } }
-  | { kind: 'fall'; phase: 'fall' | 'land' }
-)
+type Lift = { ms: number; ease: string; phase: 'fall' | 'land' }
 
-/** The pose of a move: it sits while a ladder grows or folds, and after a landing. */
-function liftPose(lift: Lift | null): 'sit' | 'climb' | 'fall' | null {
+/** The pose of a fall: it sits after the landing. */
+function liftPose(lift: Lift | null): 'sit' | 'fall' | null {
   if (!lift) return null
-  if (lift.kind === 'ladder') return lift.phase === 'climb' ? 'climb' : 'sit'
   return lift.phase === 'fall' ? 'fall' : 'sit'
 }
 
@@ -142,7 +133,6 @@ function liftPose(lift: Lift | null): 'sit' | 'climb' | 'fall' | null {
 type JumpPhase = 'look' | 'crouch' | 'leap' | 'land'
 
 const LINEAR = 'var(--ease-linear)'
-const EASE_OUT = 'var(--ease-out)'
 
 /** Listen to a shell event; the cleanup also works if it runs before `listen` resolves. */
 function useShellEvent<T>(event: string, onPayload: (payload: T) => void) {
@@ -282,11 +272,9 @@ export function Pet() {
     jumpAnimRef.current?.cancel()
     jumpAnimRef.current = null
   }, [])
-  /** The timer of the next step of the ladder or fall under way. */
+  /** The timer of the next step of the fall under way. */
   const liftTimerRef = useRef(0)
   const dustTimerRef = useRef(0)
-  /** The window it stood on when a ladder started down: put back if the ladder is called off. */
-  const perchBeforeRef = useRef<Perch | null>(null)
   /** A drop is waiting for the pet to be placed before it falls (dropped over another display). */
   const fallOnPlaceRef = useRef(false)
   /** Where the page last told the shell the pet was dropped, to tell the shell's echo from a move. */
@@ -593,8 +581,6 @@ export function Pet() {
         height: bubbleHeight + 48,
       })
     }
-    const current = liftRef.current
-    if (current?.kind === 'ladder') rects.push({ x: current.box.left, y: current.box.top, width: current.box.width, height: current.box.height })
     return neededFrame({ area: { width: w, height: h }, pet: { x: xRef.current, y: top, width: pw, height: ph }, reach: reachRef.current, rects, dragging: capture })
   }, [])
 
@@ -708,13 +694,11 @@ export function Pet() {
   ledgesRef.current = allLedges
   const movement = settings?.movement ?? 'calm'
 
-  // ── Ladders and falls ───────────────────────────────────────────────────
-  // Each is a short chain of timers (a phase per step) that changes the
+  // ── Jumps and falls ─────────────────────────────────────────────────────
+  // A fall is a short chain of timers (a phase per step) that changes the
   // pet's target and lets one CSS transition do the moving.
   const climbRef = useRef(false)
   climbRef.current = Boolean(settings?.climb)
-  const toysRef = useRef(true)
-  toysRef.current = settings?.toys ?? true
   const needsInputRef = useRef(0)
   needsInputRef.current = status.needsInput
 
@@ -792,10 +776,10 @@ export function Pet() {
       const capped = fallCapped(distance)
       const ms = fallMs(distance)
       setSitting(false)
-      setLift({ kind: 'fall', phase: 'fall', ms, ease: capped ? 'var(--pet-fall-capped-ease)' : 'var(--pet-fall-ease)' })
+      setLift({ phase: 'fall', ms, ease: capped ? 'var(--pet-fall-capped-ease)' : 'var(--pet-fall-ease)' })
       place(target.x, target.y)
       liftTimerRef.current = window.setTimeout(() => {
-        setLift({ kind: 'fall', phase: 'land', ms: 0, ease: LINEAR })
+        setLift({ phase: 'land', ms: 0, ease: LINEAR })
         window.clearTimeout(dustTimerRef.current)
         setDust({ x: target.x + pw / 2, y: target.y + ph, at: Date.now() })
         dustTimerRef.current = window.setTimeout(() => setDust(null), DUST_MS)
@@ -896,81 +880,16 @@ export function Pet() {
     setSitting(false)
   }, [])
 
-  /**
-   * Climb a ladder to a window edge (`ledge`), or down from the one it
-   * stands on to the ground (null): the ladder grows, it climbs with the
-   * walking steps, the ladder folds away. The window must hold the whole
-   * ladder before it grows.
-   */
-  const startLadder = useCallback(
-    (ledge: Ledge | null) => {
-      const { petWidth: pw, petHeight: ph } = geomRef.current
-      const fromY = yRef.current
-      const toY = ledge ? ledge.y - ph : groundRef.current
-      const ladderX = ledge ? Math.min(Math.max(xRef.current, ledge.x), ledge.x + ledge.width - pw) : xRef.current
-      const box = ladderBox(ladderX, fromY, toY, { width: pw, height: ph })
-      const up = ledge !== null
-      const reach: Box = { x: ladderX, y: Math.min(fromY, toY), width: pw, height: Math.abs(toY - fromY) + ph }
-      const grow = () => {
-        perchBeforeRef.current = perchRef.current
-        perchRef.current = null
-        targetRef.current = null
-        setSitting(false)
-        setLift({ kind: 'ladder', phase: 'grow', up, box, ms: LADDER_GROW_MS, ease: EASE_OUT })
-        reachRef.current = reach
-        if (ladderX !== xRef.current) place(ladderX, fromY)
-        liftTimerRef.current = window.setTimeout(() => {
-          const ms = climbMs(toY - fromY)
-          setLift({ kind: 'ladder', phase: 'climb', up, box, ms, ease: LINEAR })
-          reachRef.current = reach
-          place(ladderX, toY)
-          liftTimerRef.current = window.setTimeout(() => {
-            if (ledge) {
-              // Up: the window may have moved or gone meanwhile.
-              const next = followLedge({ id: ledge.id, ledgeX: ledge.x }, xRef.current, ledgesRef.current, { width: pw, height: ph })
-              if (!next) {
-                startFall()
-                return
-              }
-              perchRef.current = next.perch
-              if (next.x !== xRef.current || next.y !== yRef.current) place(next.x, next.y)
-            }
-            setLift({ kind: 'ladder', phase: 'fold', up, box, ms: 0, ease: LINEAR })
-            liftTimerRef.current = window.setTimeout(() => {
-              setLift(null)
-              setSitting(true)
-            }, LADDER_FOLD_MS)
-          }, ms)
-        }, LADDER_GROW_MS)
-      }
-      needFrame(reach, () => (mayStart() ? grow() : abandon()))
-    },
-    [abandon, mayStart, needFrame, place, setLift, startFall],
-  )
-
-  /** Cut a move short (a bubble came, the menu opened, motion was turned down or it was told to stay put). */
+  /** Cut a fall short (motion was turned down or it was told to stay put): it is just there. */
   const abortLift = useCallback(() => {
-    const current = liftRef.current
-    if (!current) return
-    if (current.kind === 'fall' || (current.kind === 'ladder' && current.phase === 'climb')) {
-      startFall()
-      return
-    }
-    // A ladder still growing or folding: it is where it should be.
-    window.clearTimeout(liftTimerRef.current)
-    if (current.kind === 'ladder' && current.phase === 'grow') perchRef.current = perchBeforeRef.current
-    setLift(null)
-    setSitting(true)
-  }, [startFall, setLift])
+    if (liftRef.current) startFall()
+  }, [startFall])
 
   const liftOff = movement === 'still' || reducedMotion
-  const liftBlocked = menuOpen || visible !== null || status.needsInput > 0
   useEffect(() => {
-    if (!lift) return
     // A fall is never cut short by a bubble: it is over in a moment.
-    if (lift.kind === 'fall' && !liftOff) return
-    if (liftOff || liftBlocked) abortLift()
-  }, [lift, liftOff, liftBlocked, abortLift])
+    if (lift && liftOff) abortLift()
+  }, [lift, liftOff, abortLift])
 
   // Its window moved, shrank or went away: ride along, or fall to the ground.
   useEffect(() => {
@@ -993,8 +912,8 @@ export function Pet() {
   }, [allLedges, petWidth, petHeight, startFall, jumpPhase])
 
   /**
-   * After a sit: maybe jump onto the nearest window or back down, climb a
-   * ladder (chooseLift weighs it); else walk on.
+   * After a sit: maybe jump onto the nearest window or back down
+   * (chooseLift weighs it); else walk on.
    * A move that needs more of the screen waits for the window to reach it.
    */
   const afterSit = useCallback(() => {
@@ -1004,14 +923,11 @@ export function Pet() {
       {
         movement: movementRef.current,
         climb: climbRef.current,
-        toys: toysRef.current,
         reducedMotion: reducedMotionRef.current,
-        busy: busyRef.current,
         held: heldRef.current || needsInputRef.current > 0,
         perched: perchRef.current !== null,
         x: xRef.current,
         y: yRef.current,
-        groundY: groundRef.current,
         ledges: ledgesRef.current,
         pet: { width: pw, height: ph },
         area: { width: w, height: h },
@@ -1034,12 +950,10 @@ export function Pet() {
       hop(Math.min(Math.max(xRef.current, ledge.x), ledge.x + ledge.width - pw), ledge.y - ph, { id: ledge.id, ledgeX: ledge.x })
     } else if (choice.type === 'jump') {
       hop(xRef.current, groundRef.current, null)
-    } else if (choice.type === 'ladder') {
-      startLadder(choice.ledge)
     } else {
       setSitting(false)
     }
-  }, [abandon, jumpTo, mayStart, needFrame, startLadder])
+  }, [abandon, jumpTo, mayStart, needFrame])
 
   /** Where it may walk: the edge it stands on, or the whole width. */
   const walkRange = useCallback((): [number, number] => {
@@ -1064,7 +978,7 @@ export function Pet() {
     if (active && x !== null) reportFit(dragging)
   })
 
-  // While it climbs, jumps or falls the hit areas follow it (the page does
+  // While it jumps or falls the hit areas follow it (the page does
   // not re-render as the transition or the leap moves it).
   const lifting = lift !== null || jumping
   useEffect(() => {
@@ -1361,16 +1275,9 @@ export function Pet() {
           )}
         </div>
       )}
-      {lift?.kind === 'ladder' && (
-        <div
-          className={`pet-ladder pet-ladder--${lift.up ? 'up' : 'down'}${lift.phase === 'fold' ? ' pet-ladder--fold' : ''}`}
-          style={lift.box}
-          aria-hidden="true"
-        />
-      )}
       <div
         ref={petRef}
-        className={`pet pet--${pose} pet--${character}${facingLeft && !traits.sideways ? ' pet--left' : ''}${dragging ? ' pet--dragging' : ''}${jumpPhase && jumpPhase !== 'land' ? ` pet--jump-${jumpPhase}` : ''}${jumpPhase === 'look' && jumpDown ? ' pet--jump-down' : ''}${lift ? ' pet--moving' : ''}${(lift?.kind === 'fall' && lift.phase === 'land') || jumpPhase === 'land' ? ' pet--land' : ''}${busy ? ' pet--busy' : ''}${laptopFold ? ` pet--${laptopFold}` : ''}`}
+        className={`pet pet--${pose} pet--${character}${facingLeft && !traits.sideways ? ' pet--left' : ''}${dragging ? ' pet--dragging' : ''}${jumpPhase && jumpPhase !== 'land' ? ` pet--jump-${jumpPhase}` : ''}${jumpPhase === 'look' && jumpDown ? ' pet--jump-down' : ''}${lift ? ' pet--moving' : ''}${lift?.phase === 'land' || jumpPhase === 'land' ? ' pet--land' : ''}${busy ? ' pet--busy' : ''}${laptopFold ? ` pet--${laptopFold}` : ''}`}
         style={{
           width: petWidth,
           height: petHeight,

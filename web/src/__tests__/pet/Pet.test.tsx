@@ -9,10 +9,7 @@ import {
   FRAME_WAIT_MS,
   JUMP_CROUCH_MS,
   JUMP_LOOK_MS,
-  LADDER_FOLD_MS,
-  LADDER_GROW_MS,
   LAND_MS,
-  climbMs,
   fallMs,
   jumpMs,
   type PetBubble,
@@ -46,9 +43,8 @@ mock.module('@tauri-apps/api/event', () => ({
 
 const { Pet } = await import('@/pet/Pet')
 
-// Stay put, so no walking animation runs in the tests, and no ladders (a
-// test of those turns them on).
-const settings = (patch: Partial<PetSettings> = {}): PetSettings => ({ ...DEFAULT_PET_SETTINGS, enabled: true, movement: 'still', toys: false, ...patch })
+// Stay put, so no walking animation runs in the tests (a test of moves turns it on).
+const settings = (patch: Partial<PetSettings> = {}): PetSettings => ({ ...DEFAULT_PET_SETTINGS, enabled: true, movement: 'still', ...patch })
 
 function emit(event: string, payload: unknown) {
   act(() => handlers.get(event)?.({ payload }))
@@ -614,11 +610,12 @@ describe('Pet', () => {
   })
 })
 
-// Jumps, ladders and falls: the pet changes height on its own.
+// Jumps and falls: the pet changes height on its own.
 describe('Pet changing height', () => {
   const ledgeWindow = { id: 1, x: 100, y: 400, width: 500, height: 300 }
-  const playful = (patch: Partial<PetSettings> = {}) => settings({ movement: 'playful', toys: true, ...patch })
-  const ladder = () => document.querySelector('.pet-ladder')
+  const playful = (patch: Partial<PetSettings> = {}) => settings({ movement: 'playful', ...patch })
+  /** It is somewhere in a jump (looking, crouching, leaping): a jump class on it. */
+  const jumping = () => /pet--jump-(look|crouch|leap)/.test(petEl().className)
   const dust = () => document.querySelector('.pet-dust')
   /** Through the rest of a jump that has started from `from`: crouch, leap, land. */
   const jumpThrough = (timers: ReturnType<typeof useFakeTimers>, from: { x: number; y: number }) => {
@@ -684,79 +681,38 @@ describe('Pet changing height', () => {
     }
   }
 
-  it('grows a ladder to a tall window, climbs it, and folds it away', async () => {
-    await scene({ settings: playful() }, (timers, ground) => {
-      emit('pet-windows', [ledgeWindow])
-      // A sit later the ladder grows from the ground; the pet waits.
-      emit('pet-state', { ...view, settings: playful() })
-      act(() => timers.tick(1000))
-      expect(ladder()).toHaveClass('pet-ladder--up')
-      expect(petEl()).toHaveClass('pet--sit')
-      expect(petAt().y).toBe(ground.y)
-      const rails = ladder() as HTMLElement
-      expect(Number.parseFloat(rails.style.top) + Number.parseFloat(rails.style.height)).toBe(ground.y + 48)
-
-      // Then it climbs, stepping, with the move timed by the height.
-      act(() => timers.tick(LADDER_GROW_MS))
-      expect(petEl()).toHaveClass('pet--climb')
-      expect(petAt().y).toBe(400 - 48)
-      expect(petEl().style.getPropertyValue('--pet-move-ms')).toBe(`${climbMs(400 - 48 - ground.y)}ms`)
-      expect(ladder()).not.toHaveClass('pet-ladder--fold')
-
-      // At the top the ladder folds away, and the pet stands on the window.
-      act(() => timers.tick(climbMs(400 - 48 - ground.y)))
-      expect(ladder()).toHaveClass('pet-ladder--fold')
-      expect(petEl()).not.toHaveClass('pet--climb')
-      act(() => timers.tick(LADDER_FOLD_MS))
-      expect(ladder()).toBeNull()
-      expect(petEl()).not.toHaveClass('pet--moving')
-      expect(petAt().y).toBe(400 - 48)
-    })
-  })
-
-  it('climbs a ladder down again from a tall window', async () => {
-    await scene({ settings: playful() }, (timers, ground) => {
+  it('jumps up to a tall window and back down, with no ladder', async () => {
+    await scene({ settings: playful() }, async (timers, ground) => {
+      // The window's edge is far above the ground: more than twice the pet's height.
+      expect(ground.y - (400 - 48)).toBeGreaterThan(2 * 48)
       emit('pet-windows', [ledgeWindow])
       emit('pet-state', { ...view, settings: playful() })
-      // One step at a time: each lets the page render before the next timer.
       act(() => timers.tick(1000))
-      act(() => timers.tick(LADDER_GROW_MS))
-      act(() => timers.tick(climbMs(400 - 48 - ground.y)))
-      act(() => timers.tick(LADDER_FOLD_MS))
-      expect(ladder()).toBeNull()
-      expect(petAt().y).toBe(400 - 48)
-
-      act(() => timers.tick(1000))
-      expect(ladder()).toHaveClass('pet-ladder--down')
-      act(() => timers.tick(LADDER_GROW_MS))
-      expect(petEl()).toHaveClass('pet--climb')
-      expect(petAt().y).toBe(ground.y)
-      act(() => timers.tick(climbMs(ground.y - (400 - 48))))
-      act(() => timers.tick(LADDER_FOLD_MS))
-      expect(ladder()).toBeNull()
-      expect(petEl()).not.toHaveClass('pet--climb')
-    })
-  })
-
-  it('takes a short jump, not a ladder, to a low window or with ladders off', async () => {
-    await scene({ settings: playful({ toys: false }) }, (timers, ground) => {
-      emit('pet-windows', [ledgeWindow])
-      emit('pet-state', { ...view, settings: playful({ toys: false }) })
-      act(() => timers.tick(1000))
-      expect(ladder()).toBeNull()
       expect(petEl()).toHaveClass('pet--jump-look')
+      expect(petAt()).toEqual(ground)
       jumpThrough(timers, ground)
       expect(petAt().y).toBe(400 - 48)
       expect(petEl()).not.toHaveClass('pet--jump-leap')
+
+      // A jump back down: the same look, crouch and leap.
+      // The walk that follows never ends here (no animation frames): a menu opened
+      // and closed sits it down again, as the end of a walk does.
+      fireEvent.contextMenu(petEl(), { clientX: 10, clientY: 10 })
+      await act(async () => closeMenu())
+      act(() => timers.tick(1000))
+      expect(jumping()).toBe(true)
+      expect(petEl()).toHaveClass('pet--jump-down')
+      jumpThrough(timers, { x: petAt().x, y: 400 - 48 })
+      expect(petAt().y).toBe(ground.y)
     })
   })
 
   it('jumps in phases: looks up, crouches, leaps along an arc, lands in dust, then walks on', async () => {
     const stub = recordLeaps()
     try {
-      await scene({ settings: playful({ toys: false }) }, (timers, ground) => {
+      await scene({ settings: playful() }, (timers, ground) => {
         emit('pet-windows', [ledgeWindow])
-        emit('pet-state', { ...view, settings: playful({ toys: false }) })
+        emit('pet-state', { ...view, settings: playful() })
         act(() => timers.tick(1000))
         // Look: held and sitting, with the look class; nothing moves yet.
         expect(petEl()).toHaveClass('pet--jump-look')
@@ -812,9 +768,9 @@ describe('Pet changing height', () => {
   it('jumps back down with a small hop up first, leaning forward rather than looking up', async () => {
     const stub = recordLeaps()
     try {
-      await scene({ settings: playful({ toys: false }) }, async (timers, ground) => {
+      await scene({ settings: playful() }, async (timers, ground) => {
         emit('pet-windows', [ledgeWindow])
-        emit('pet-state', { ...view, settings: playful({ toys: false }) })
+        emit('pet-state', { ...view, settings: playful() })
         act(() => timers.tick(1000))
         jumpThrough(timers, ground)
         const up = petAt()
@@ -852,9 +808,9 @@ describe('Pet changing height', () => {
   it('stops a jump where it is when it is grabbed: no later phase, no landing, the leap cancelled', async () => {
     const stub = recordLeaps()
     try {
-      await scene({ settings: playful({ toys: false }) }, (timers, ground) => {
+      await scene({ settings: playful() }, (timers, ground) => {
         emit('pet-windows', [ledgeWindow])
-        emit('pet-state', { ...view, settings: playful({ toys: false }) })
+        emit('pet-state', { ...view, settings: playful() })
         act(() => timers.tick(1000))
         act(() => timers.tick(JUMP_LOOK_MS + JUMP_CROUCH_MS))
         expect(petEl()).toHaveClass('pet--jump-leap')
@@ -877,9 +833,9 @@ describe('Pet changing height', () => {
   it('cancels its leap and its timers when it goes away mid-jump', async () => {
     const stub = recordLeaps()
     try {
-      await scene({ settings: playful({ toys: false }) }, (timers) => {
+      await scene({ settings: playful() }, (timers) => {
         emit('pet-windows', [ledgeWindow])
-        emit('pet-state', { ...view, settings: playful({ toys: false }) })
+        emit('pet-state', { ...view, settings: playful() })
         act(() => timers.tick(1000))
         act(() => timers.tick(JUMP_LOOK_MS + JUMP_CROUCH_MS))
         expect(stub.leaps).toHaveLength(1)
@@ -897,9 +853,9 @@ describe('Pet changing height', () => {
     const before = proto.animate
     proto.animate = undefined
     try {
-      await scene({ settings: playful({ toys: false }) }, (timers, ground) => {
+      await scene({ settings: playful() }, (timers, ground) => {
         emit('pet-windows', [ledgeWindow])
-        emit('pet-state', { ...view, settings: playful({ toys: false }) })
+        emit('pet-state', { ...view, settings: playful() })
         act(() => timers.tick(1000))
         jumpThrough(timers, ground)
         expect(petAt().y).toBe(400 - 48)
@@ -911,9 +867,9 @@ describe('Pet changing height', () => {
   })
 
   it('falls and lands when its window goes away, in a puff of dust', async () => {
-    await scene({ settings: playful({ toys: false }) }, (timers, ground) => {
+    await scene({ settings: playful() }, (timers, ground) => {
       emit('pet-windows', [ledgeWindow])
-      emit('pet-state', { ...view, settings: playful({ toys: false }) })
+      emit('pet-state', { ...view, settings: playful() })
       act(() => timers.tick(1000))
       jumpThrough(timers, ground)
       expect(petAt().y).toBe(400 - 48)
@@ -934,12 +890,11 @@ describe('Pet changing height', () => {
       emit('pet-windows', [ledgeWindow])
       emit('pet-state', { ...view, settings: playful({ movement: 'still' }) })
       act(() => timers.tick(240_000))
-      expect(ladder()).toBeNull()
       expect(petAt()).toEqual(ground)
     })
   })
 
-  it('gives a reduced-motion user no jump, ladder or fall', async () => {
+  it('gives a reduced-motion user no jump or fall', async () => {
     const matchMedia = window.matchMedia
     window.matchMedia = ((query: string) => ({ matches: true, media: query, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia
     try {
@@ -947,8 +902,8 @@ describe('Pet changing height', () => {
         emit('pet-windows', [ledgeWindow])
         emit('pet-state', { ...view, settings: playful() })
         act(() => timers.tick(240_000))
-        expect(ladder()).toBeNull()
         expect(petEl()).not.toHaveClass('pet--moving')
+        expect(petEl().className).not.toMatch(/pet--jump/)
         expect(petAt()).toEqual(ground)
         // Dropped in mid-air, it stays where it was dropped: nothing falls.
         const bottom = window.innerHeight
@@ -965,43 +920,21 @@ describe('Pet changing height', () => {
     }
   })
 
-  it('puts its ladder away for a bubble, and never starts one while a bubble is up', async () => {
+  it('never starts a jump while a bubble is up or a question waits', async () => {
     await scene({ settings: playful() }, (timers, ground) => {
       emit('pet-windows', [ledgeWindow])
       emit('pet-state', { ...view, settings: playful() })
       emit('pet-notification', bubble())
       act(() => timers.tick(5000))
-      expect(ladder()).toBeNull()
+      expect(jumping()).toBe(false)
       expect(petAt()).toEqual(ground)
 
       // A question waiting counts too, with its bubble put off for later.
       fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
       emit('pet-state', { ...view, settings: playful(), status: { running: 0, needsInput: 1 } })
       act(() => timers.tick(5000))
-      expect(ladder()).toBeNull()
-    })
-  })
-
-  it('cuts a ladder short when a bubble arrives', async () => {
-    await scene({ settings: playful() }, (timers, ground) => {
-      emit('pet-windows', [ledgeWindow])
-      emit('pet-state', { ...view, settings: playful() })
-      act(() => timers.tick(1000))
-      expect(ladder()).not.toBeNull()
-      emit('pet-notification', bubble())
-      expect(ladder()).toBeNull()
+      expect(jumping()).toBe(false)
       expect(petAt()).toEqual(ground)
-      expect(bubbleEl()).toBeInTheDocument()
-    })
-  })
-
-  it('never climbs a ladder while an agent runs', async () => {
-    const busy = { running: 1, needsInput: 0 }
-    await scene({ settings: playful(), status: busy }, (timers) => {
-      emit('pet-windows', [ledgeWindow])
-      emit('pet-state', { ...view, settings: playful(), status: busy })
-      act(() => timers.tick(120_000))
-      expect(ladder()).toBeNull()
     })
   })
 
@@ -1246,36 +1179,36 @@ describe('Pet changing height', () => {
       })
     })
 
-    it('waits for a lane that holds the whole ladder before it grows one', async () => {
+    it('waits for a lane that holds the whole jump before it starts one', async () => {
       const ledgeWindow = { id: 1, x: 100, y: 400, width: 500, height: 300 }
-      await scene(inLane({ movement: 'playful', toys: true }), (timers) => {
+      await scene(inLane({ movement: 'playful' }), (timers, ground) => {
         emit('pet-windows', [ledgeWindow])
-        emit('pet-state', { ...view, settings: settings({ movement: 'playful', toys: true }) })
+        emit('pet-state', { ...view, settings: settings({ movement: 'playful' }) })
         act(() => timers.tick(1000))
-        // It asked for the room (the climb to y 352) and has not grown a ladder yet.
+        // It asked for the room (the arc up to y 352 and over) and has not started to jump yet.
         const ask = lastFit().frame!
         expect(ask.y).toBeLessThanOrEqual(400 - 48 - 56)
         expect(ask.y + ask.height).toBe(768)
-        expect(document.querySelector('.pet-ladder')).toBeNull()
+        expect(petEl().className).not.toMatch(/pet--jump/)
         expect(shifting()).toBe(true)
 
         // The window has moved: it waits for the page to have settled there.
         moved(ask)
-        expect(document.querySelector('.pet-ladder')).toBeNull()
+        expect(petEl().className).not.toMatch(/pet--jump/)
         act(() => timers.tick(FRAME_SETTLE_MS))
-        expect(document.querySelector('.pet-ladder')).not.toBeNull()
+        expect(petEl()).toHaveClass('pet--jump-look')
         expect(shifting()).toBe(false)
         // From here on it sits long between moves.
         Math.random = () => 0.99
 
-        // The lane keeps the whole climb until it is over, and shrinks after.
-        act(() => timers.tick(LADDER_GROW_MS))
+        // The lane keeps the whole jump until it is over, and shrinks after.
+        act(() => timers.tick(JUMP_LOOK_MS + JUMP_CROUCH_MS))
         expect(petAt().y).toBe(400 - 48)
-        act(() => timers.tick(FRAME_SHRINK_AFTER_MS * 2))
+        act(() => timers.tick(leapMs(ground, petAt()) - 1))
         expect(lastFit().frame).toEqual(ask)
-        // Over: the ladder folds, the pet sits, and a quiet spell later the lane shrinks to it.
-        act(() => timers.tick(climbMs(400 - 48 - 720)))
-        act(() => timers.tick(LADDER_FOLD_MS))
+        // Over: held still up there (its menu is open), and a quiet spell later the lane shrinks to it.
+        act(() => timers.tick(1 + LAND_MS))
+        fireEvent.contextMenu(petEl(), { clientX: 10, clientY: 10 })
         act(() => timers.tick(FRAME_SHRINK_AFTER_MS))
         expect(lastFit().frame).toEqual({ x: 0, y: 352 - 56, width: 1024, height: 56 + 48 + 12 })
       })
@@ -1283,21 +1216,21 @@ describe('Pet changing height', () => {
 
     it('starts after a short wait if the shell does not make the room', async () => {
       const ledgeWindow = { id: 1, x: 100, y: 400, width: 500, height: 300 }
-      await scene(inLane({ movement: 'playful', toys: true }), (timers) => {
+      await scene(inLane({ movement: 'playful' }), (timers) => {
         emit('pet-windows', [ledgeWindow])
-        emit('pet-state', { ...view, settings: settings({ movement: 'playful', toys: true }) })
+        emit('pet-state', { ...view, settings: settings({ movement: 'playful' }) })
         act(() => timers.tick(1000))
-        expect(document.querySelector('.pet-ladder')).toBeNull()
+        expect(petEl().className).not.toMatch(/pet--jump/)
         act(() => timers.tick(FRAME_WAIT_MS))
-        expect(document.querySelector('.pet-ladder')).not.toBeNull()
+        expect(petEl()).toHaveClass('pet--jump-look')
       })
     })
 
     it('falls at once when the lane reaches the ground, and waits for room when it does not', async () => {
       const ledgeWindow = { id: 1, x: 100, y: 400, width: 500, height: 300 }
-      await scene(inLane({ movement: 'playful', toys: false }), (timers, ground) => {
+      await scene(inLane({ movement: 'playful' }), (timers, ground) => {
         emit('pet-windows', [ledgeWindow])
-        emit('pet-state', { ...view, settings: settings({ movement: 'playful', toys: false }) })
+        emit('pet-state', { ...view, settings: settings({ movement: 'playful' }) })
         // It hops up (once the window has room for the whole jump).
         act(() => timers.tick(1000))
         const ask = lastFit().frame!
@@ -1319,9 +1252,9 @@ describe('Pet changing height', () => {
 
     it('asks for more room, and falls when it has it, if the lane had shrunk to the pet up on its window', async () => {
       const ledgeWindow = { id: 1, x: 100, y: 400, width: 500, height: 300 }
-      await scene(inLane({ movement: 'playful', toys: false }), (timers, ground) => {
+      await scene(inLane({ movement: 'playful' }), (timers, ground) => {
         emit('pet-windows', [ledgeWindow])
-        emit('pet-state', { ...view, settings: settings({ movement: 'playful', toys: false }) })
+        emit('pet-state', { ...view, settings: settings({ movement: 'playful' }) })
         act(() => timers.tick(1000))
         Math.random = () => 0.99
         moved(lastFit().frame!)

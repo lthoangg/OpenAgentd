@@ -39,8 +39,7 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   { section: 'desktop', label: 'Character', keywords: ['pet', 'cat', 'duck', 'crab'] },
   { section: 'desktop', label: 'Movement', keywords: ['pet', 'calm', 'playful', 'chaotic', 'still'] },
   { section: 'desktop', label: 'Show notifications in its bubble', keywords: ['pet', 'bubble', 'questions', 'reminders'] },
-  { section: 'desktop', label: 'Climb on windows', keywords: ['pet', 'jump'] },
-  { section: 'desktop', label: 'Ladders', keywords: ['pet', 'ladder', 'climb', 'fall'] },
+  { section: 'desktop', label: 'Climb on windows', keywords: ['pet', 'jump', 'fall'] },
   // Server
   { section: 'connection', label: 'Built-in server', keywords: ['builtin', 'local', 'sidecar', 'backend', 'runs inside this app'], anchor: 'Servers' },
   { section: 'connection', label: 'Saved server', keywords: ['remote', 'backend', 'switch', 'use', 'connect'], anchor: 'Servers' },

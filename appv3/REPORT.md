@@ -1222,6 +1222,18 @@ explicitly.
   key never changed an agent's model. Tests:
   `api/tests/default_model_on_save.rs`, `providers/src/suggest.rs`.
 
+- **Lead messages to a member carry `extra.from_lead` (v3 only):** the
+  rows the lead sends a subagent (the spawn task `[Task from Lead]: …`, and a
+  follow-up `[Lead]: …` whether the member was idle or mid-turn, so queued)
+  are saved with `extra.from_lead = {"session_id": "<lead id>"}`, the
+  hyphenated form the API gives as `parent_session_id`
+  (`subagents::from_lead_extra`). The web client uses it to link the row back
+  to `/<id>`. It is UI metadata: `/history` returns `extra` unchanged, the
+  key survives queue promotion and the merge in `handle_user_message`, and the
+  model never reads it. Unlike `from_agent` it does not make the row a report
+  (no `[handle]:` header, still a user prompt). Rows saved before this have no
+  `from_lead`. Test: `agent/tests/subagent_from_lead.rs`.
+
 ## 4. Layout
 
 - Workspace crates: `core`, `db`, `tools`, `terminal`, `providers`, `agent`,

@@ -57,13 +57,13 @@ describe('shortcutHelp', () => {
   })
 
   it('lists the layout keys: splits, terminals, find, areas', () => {
-    expect(find('macos', 'Split the focused pane right')?.keys).toEqual(['⌘\\'])
-    expect(find('macos', 'Split the focused pane down')?.keys).toEqual(['⌘⇧\\'])
-    expect(find('windows', 'Split the focused pane down')?.keys).toEqual(['Ctrl+Shift+\\'])
+    expect(find('macos', 'Split Review panel right')?.keys).toEqual(['⌘\\'])
+    expect(find('macos', 'Split Review panel down')?.keys).toEqual(['⌘⇧\\'])
+    expect(find('windows', 'Split Review panel down')?.keys).toEqual(['Ctrl+Shift+\\'])
     // No terminal key: the palette and the panel's "+" menu open terminals.
     expect(find('macos', 'Show the terminal, or start one')).toBeUndefined()
     expect(find('macos', 'Focus mode')).toBeUndefined()
-    expect(find('macos', 'Find in this session (from the chat)')?.keys).toEqual(['⌘F'])
+    expect(find('macos', 'Find in session (from the chat)')?.keys).toEqual(['⌘F'])
     expect(find('macos', 'Next and previous area')?.keys).toEqual(['F6', '⇧F6'])
     // The composer no longer minimizes.
     expect(find('macos', 'Minimize the input')).toBeUndefined()

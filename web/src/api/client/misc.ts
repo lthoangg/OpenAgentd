@@ -61,12 +61,12 @@ export interface PluginBundleSkill {
 export interface PluginBundleMcpServer {
   /** `<bundle>/<server>`: the name Settings → MCP lists it under. */
   name: string
-  transport: 'stdio' | 'http'
+  transport: 'stdio' | 'http' | 'sse'
   /** stdio: the program to run. Null for http. */
   command: string | null
   /** stdio: its arguments. Empty for http. */
   args: string[]
-  /** http: the address. Null for stdio. */
+  /** http or sse: the address. Null for stdio. */
   url: string | null
 }
 

@@ -1239,33 +1239,41 @@ async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<Stri
         cursor = Some((head.trim().parse::<i64>().map_err(|_| invalid())?, before_id));
     }
     let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("Lead session not found.")) };
-    // The newest page reaches back to the latest prompt (see `first_history_page`).
-    let (lead_rows, has_more, boundary, latest_prompt) = if first_page {
-        let page = db::first_history_page(pool, &root).await?;
-        (page.rows, page.has_more, page.boundary, page.latest_prompt)
-    } else {
-        let (rows, has_more, boundary) = db::history_page(pool, &sid, cursor.clone()).await?;
-        (rows, has_more, boundary, None)
-    };
-    ensure_agent_ready(&root).await?;
-    // Members ride on the newest page only. The client shows member rows from
-    // that page alone, and a member's `seq` is its own — paging it with the
-    // lead's cursor re-sent (and duplicated) its newest rows on every older page.
-    let (subs, member_rows, totals, statuses) = if first_page {
+    if !first_page {
+        let ((rows, has_more, boundary), ()) =
+            futures::future::try_join(async { Ok::<_, ApiError>(db::history_page(pool, &sid, cursor.clone()).await?) }, ensure_agent_ready(&root)).await?;
+        let next_cursor = boundary.map(|b| format!("{}|{}", b.seq, db::codec::api_uuid(&b.id)));
+        let lead = lead_part(&root, &rows, None);
+        return Ok(json_status(StatusCode::OK, &HistoryBody { lead, members: vec![], has_more, next_cursor, truncated: false, pending_question: None, latest_prompt: None }));
+    }
+    // The newest page reaches back to the latest prompt (see
+    // `first_history_page`). Its reads are independent, so they run at once:
+    // the lead's page, the agent's start, the members with their usage, and
+    // the open question.
+    //
+    // Members ride on the newest page only, and only their short tail: the
+    // lead's view never renders their rows, and a member's `seq` is its own —
+    // paging it with the lead's cursor re-sent (and duplicated) its newest
+    // rows on every older page.
+    let members = async {
         let subs = db::list_child_sessions(pool, std::slice::from_ref(&sid)).await?;
-        let member_rows = futures::future::try_join_all(subs.iter().map(|sub| db::history_page(pool, &sub.id, None))).await?;
-        let totals = usage_totals(pool, &root, &subs).await?;
-        (subs, member_rows, Some(totals), store().get_agent_statuses(&sid))
-    } else {
-        (vec![], vec![], None, vec![])
+        let (member_rows, totals) = futures::future::try_join(
+            futures::future::try_join_all(subs.iter().map(|sub| db::member_first_page(pool, &sub.id))),
+            db::session_usage_totals_many(pool, &std::iter::once(root.id.as_str()).chain(subs.iter().map(|s| s.id.as_str())).collect::<Vec<_>>()),
+        )
+        .await?;
+        Ok::<_, ApiError>((subs, member_rows, totals))
     };
+    let (page, (), (subs, member_rows, totals), pending) =
+        futures::future::try_join4(async { Ok::<_, ApiError>(db::first_history_page(pool, &root).await?) }, ensure_agent_ready(&root), members, async {
+            Ok::<_, ApiError>(db::get_pending_question(pool, &sid).await?.map(|q| db::api::pending_question_response(&q)))
+        })
+        .await?;
+    let statuses = store().get_agent_statuses(&sid);
+    let db::FirstHistoryPage { rows: lead_rows, has_more, boundary, latest_prompt } = page;
     let next_cursor = boundary.map(|b| format!("{}|{}", b.seq, db::codec::api_uuid(&b.id)));
-    let pending = if first_page { db::get_pending_question(pool, &sid).await?.map(|q| db::api::pending_question_response(&q)) } else { None };
-    let members = match &totals {
-        Some(t) => subs.iter().zip(&member_rows).map(|(sub, (rows, _, _))| member_part(&statuses, sub, rows, t)).collect(),
-        None => vec![],
-    };
-    let lead = lead_part(&root, &lead_rows, totals.as_ref());
+    let members = subs.iter().zip(&member_rows).map(|(sub, rows)| member_part(&statuses, sub, rows, &totals)).collect();
+    let lead = lead_part(&root, &lead_rows, Some(&totals));
     let latest_prompt = latest_prompt.as_ref().map(MessageView);
     Ok(json_status(StatusCode::OK, &HistoryBody { lead, members, has_more, next_cursor, truncated: false, pending_question: pending, latest_prompt }))
 }

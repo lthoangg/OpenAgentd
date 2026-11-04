@@ -5,6 +5,7 @@ import { AgentView } from "@/components/AgentView"
 import { useAgentStore } from "@/stores/useAgentStore"
 import { useDisplayPrefsStore } from "@/stores/useDisplayPrefsStore"
 import type { ContentBlock } from "@/api/types"
+import { TitleTooltipLayer } from '@/components/ui/title-tooltip'
 
 afterEach(() => {
   cleanup()
@@ -438,6 +439,8 @@ describe("AgentView — AssistantFooter", () => {
         currentBlocks: [],
         isWorking: false,
       })
+      // The hint is a title, drawn by the app's title layer.
+      render(<TitleTooltipLayer />)
       const copyBtn = screen.getByRole("button", { name: /copy response/i })
       await user.hover(copyBtn)
       expect((await screen.findByRole("tooltip")).textContent).toBe("Copy response")
@@ -914,15 +917,17 @@ describe("AgentView — footer model label", () => {
 
   // The line had a native title (thinking level) around the model name's own
   // tooltip, so hovering it drew two tooltips over each other.
-  it("shows one tooltip for a prompt's model and thinking level, with no native title", async () => {
+  it("shows one tooltip for a prompt's model and thinking level", async () => {
     const user = userEvent.setup()
     const { container } = renderStream({
       blocks: [{ ...makeUserBlock("u1", "one"), extra: { model: "openai:gpt-5", thinking_level: "high" } }],
       currentBlocks: [],
       isWorking: false,
     })
+    render(<TitleTooltipLayer />)
     const line = container.querySelector("[data-prompt-model]") as HTMLElement
-    expect(line.hasAttribute("title")).toBe(false)
+    // One title for the whole line; the model name inside draws none of its own.
+    expect(line.getAttribute("title")).toBe("openai:gpt-5 · thinking high")
     expect(line.querySelector("[title]")).toBeNull()
     await user.hover(line.querySelector("[data-model-name]") as HTMLElement)
     const tips = await screen.findAllByRole("tooltip")

@@ -18,9 +18,11 @@
   /* Concave corners where the pill meets the top of the screen
    * (EAR_WIDTH in status.ts). */
   --island-ear: 8px;
-  /* The compact pill's one wing, left of the notch: the mark and a word
-   * (WING_WIDTH in status.ts). */
-  --island-wing: 112px;
+  /* Each of the compact pill's two wings: the symbol left of the notch,
+   * the number right of it (WING_WIDTH in status.ts). */
+  --island-wing: 36px;
+  /* One inset for everything in the open pill, on both sides. */
+  --island-inset: 14px;
 }
 /* ── End island-only values ───────────────────────────────────────────── */
 
@@ -71,14 +73,6 @@ button:focus-visible {
 .island {
   display: flex;
   align-items: flex-start;
-  /* The compact pill ends at the notch's right edge (islandShift), so only
-   * its left wing shows; expanded, it is centred. */
-  transform: translateX(var(--pill-shift, 0px));
-  transition: transform var(--motion-slow) var(--ease-spring-soft);
-}
-
-.island[data-open="false"] {
-  transition: transform var(--motion-base) var(--ease-in-out);
 }
 
 .island-body {
@@ -130,12 +124,6 @@ button:focus-visible {
   background: radial-gradient(circle at 100% 100%, transparent var(--island-ear), var(--island-bg) calc(var(--island-ear) + 0.5px));
 }
 
-/* Compact on a notch, the right corner would sit beside the notch, over the
- * first status icon. */
-.island[data-notch="true"]:not([data-mode="expanded"]) .island-ear--right {
-  opacity: 0;
-}
-
 /* ── Bar: two labels either side of the notch ────────────────────────── */
 .island-bar {
   display: grid;
@@ -144,7 +132,7 @@ button:focus-visible {
   gap: 6px;
   width: 100%;
   height: var(--notch-height);
-  padding: 0 10px;
+  padding: 0 var(--island-inset);
   transition: opacity var(--motion-fast) var(--ease-out);
 }
 
@@ -186,19 +174,20 @@ button:focus-visible {
   text-overflow: ellipsis;
 }
 
-/* ── Compact: the mark, a word, and a count for several, in one wing ──── */
+/* ── Compact: the symbol in the left wing, the number in the right ───── */
 .island:not([data-mode="expanded"]) .island-bar {
-  grid-template-columns: var(--island-wing) var(--notch-width);
+  grid-template-columns: var(--island-wing) var(--notch-width) var(--island-wing);
   gap: 0;
-  padding: 0 6px;
+  padding: 0;
 }
 
 .island[data-notch="false"]:not([data-mode="expanded"]) .island-bar {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: var(--island-wing) var(--island-wing);
 }
 
 .island[data-notch="false"]:not([data-mode="expanded"]) .island-notch,
-.island:not([data-mode="expanded"]) .island-detail {
+.island:not([data-mode="expanded"]) .island-detail,
+.island[data-mode="expanded"] .island-trail {
   display: none;
 }
 
@@ -206,12 +195,20 @@ button:focus-visible {
   justify-content: center;
 }
 
-.island-count {
-  font-variant-numeric: tabular-nums;
+/* The words stay for screen readers (the lead is a live region). */
+.island:not([data-mode="expanded"]) .island-lead .island-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 
-.island[data-mode="expanded"] .island-count {
-  display: none;
+.island-trail {
+  justify-self: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* A changed label (Working → Needs input → Done) blurs in. */
@@ -228,11 +225,13 @@ button:focus-visible {
 }
 
 .island[data-mode="needs_input"] .island-lead,
+.island[data-mode="needs_input"] .island-trail,
 .island[data-mode="expanded"] .island-lead:has(.island-dot) {
   color: var(--accent-orange);
 }
 
-.island[data-mode="offline"] .island-lead {
+.island[data-mode="offline"] .island-lead,
+.island[data-mode="offline"] .island-trail {
   color: var(--color-text-muted);
 }
 
@@ -322,8 +321,10 @@ button:focus-visible {
   align-items: center;
   column-gap: 8px;
   width: 100%;
-  /* The right padding keeps the 28px "Later" button clear of the meta text. */
-  padding: 7px 40px 7px 8px;
+  /* With the list's 6px, the content starts --island-inset from the pill's
+   * edge; the right padding keeps the 28px "Later" button (8px in, so it ends
+   * at the same inset) clear of the meta text. */
+  padding: 7px 44px 7px 8px;
   border-radius: 12px;
   transition: background-color var(--motion-fast) var(--ease-out);
 }
@@ -402,7 +403,7 @@ button:focus-visible {
 .island-later {
   position: absolute;
   top: 4px;
-  right: 4px;
+  right: 8px;
   display: grid;
   place-items: center;
   width: 28px;
@@ -435,8 +436,6 @@ button:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .island,
-  .island[data-open="false"],
   .island-body,
   .island[data-open="false"] .island-body,
   .island-bar,

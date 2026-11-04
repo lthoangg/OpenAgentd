@@ -152,6 +152,14 @@ fn http<'a>(bundle: &'a Bundle, name: &str) -> (&'a str, &'a BTreeMap<String, St
     }
 }
 
+/// The URL and headers of the SSE server called `name`; panics if it is not SSE.
+fn sse<'a>(bundle: &'a Bundle, name: &str) -> (&'a str, &'a BTreeMap<String, String>) {
+    match transport(bundle, name) {
+        Transport::Sse { url, headers } => (url, headers),
+        other => panic!("server '{name}' is not an SSE server: {other:?}"),
+    }
+}
+
 /// Skill names, in bundle order.
 fn skill_names(bundle: &Bundle) -> Vec<&str> {
     bundle.skills.iter().map(|skill| skill.name.as_str()).collect()

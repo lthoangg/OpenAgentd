@@ -64,6 +64,10 @@ Full instructions the agent reads when it calls skill("skill-name").
 
 ## From a URL
 
+A repository with a `plugin.json` at its root (or in the folder the link points
+to) is a plugin, not a skill: install it with `agentd plugin add` as
+`plugins.md` describes, instead of copying its skills.
+
 1. Fetch with `web_fetch` (`format: raw`). Convert GitHub
    `github.com/<owner>/<repo>/blob/<ref>/<path>` URLs to
    `raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>` first.

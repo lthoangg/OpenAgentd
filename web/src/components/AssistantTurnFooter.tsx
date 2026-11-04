@@ -9,7 +9,6 @@
  */
 import { memo, useCallback, useId, useMemo, useState, type ReactNode } from 'react'
 import { Check, Copy, FileDiff, Pencil, type LucideIcon } from 'lucide-react'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Collapsible } from '@/components/ui/collapsible'
 import { Term } from '@/components/ui/term'
@@ -56,19 +55,16 @@ const ACTION_CLASS = 'relative touch-hit inline-flex size-6 shrink-0 items-cente
 /** The files toggle carries numbers, so it is a short pill, not a square. */
 const FILES_CLASS = 'relative touch-hit inline-flex h-6 shrink-0 items-center gap-1.5 rounded-xs px-1.5 text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9 pointer-coarse:px-2.5 max-md:pointer-coarse:h-7 max-md:pointer-coarse:gap-1 max-md:pointer-coarse:px-1.5 max-md:pointer-coarse:text-meta'
 
-/** A footer icon action with its hint on hover and keyboard focus. */
+/**
+ * A footer icon action with its hint on hover and keyboard focus. The hint is
+ * a ``title`` (drawn by the app's title layer): every finished turn has these,
+ * and a long transcript mounted a full tooltip component for each.
+ */
 function FooterAction({ icon: Icon, label, hint, onClick, iconClassName }: { icon: LucideIcon; label: string; hint: string; onClick: () => void; iconClassName?: string }) {
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={(
-          <button type="button" onClick={onClick} aria-label={label} className={ACTION_CLASS}>
-            <Icon size={13} aria-hidden="true" className={iconClassName} />
-          </button>
-        )}
-      />
-      <TooltipContent>{hint}</TooltipContent>
-    </Tooltip>
+    <button type="button" onClick={onClick} aria-label={label} title={hint} className={ACTION_CLASS}>
+      <Icon size={13} aria-hidden="true" className={iconClassName} />
+    </button>
   )
 }
 
@@ -200,30 +196,24 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
             <FooterAction
               icon={copied ? Check : Copy}
               iconClassName={copied ? 'text-(--accent-green-text)' : undefined}
-              // The name stays put while the tick shows; the tooltip says it.
+              // The name and hint stay put; the tick says it was copied.
               label="Copy response"
-              hint={copied ? 'Copied' : 'Copy response'}
+              hint="Copy response"
               onClick={handleCopy}
             />
           )}
           {onEditPrompt && (editLocked ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  // ``aria-disabled``, not ``disabled``: it stays focusable, so the reason shows on keyboard focus too.
-                  <button
-                    type="button"
-                    aria-disabled="true"
-                    aria-label="Edit prompt, available when this turn ends"
-                    onClick={(event) => event.preventDefault()}
-                    className={cn(ACTION_CLASS, 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-(--color-text-muted)')}
-                  >
-                    <Pencil size={13} aria-hidden="true" />
-                  </button>
-                }
-              />
-              <TooltipContent>Available when this turn ends</TooltipContent>
-            </Tooltip>
+            // ``aria-disabled``, not ``disabled``: it stays focusable, so the reason shows on keyboard focus too.
+            <button
+              type="button"
+              aria-disabled="true"
+              aria-label="Edit prompt, available when this turn ends"
+              title="Available when this turn ends"
+              onClick={(event) => event.preventDefault()}
+              className={cn(ACTION_CLASS, 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-(--color-text-muted)')}
+            >
+              <Pencil size={13} aria-hidden="true" />
+            </button>
           ) : (
             <FooterAction icon={Pencil} label="Edit prompt" hint="Edit prompt: undo this turn and put the prompt back in the composer" onClick={onEditPrompt} />
           ))}

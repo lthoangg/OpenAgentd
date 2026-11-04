@@ -64,6 +64,8 @@ const lastFit = () => fits().at(-1)
 const opened = () => calls.filter(([cmd]) => cmd === 'island_open_session').map(([, args]) => args?.sessionId)
 const dismissed = () => calls.filter(([cmd]) => cmd === 'island_dismiss').map(([, args]) => args?.sessionId)
 const pill = () => document.querySelector('.island') as HTMLElement
+/** The number in the compact pill's right wing. */
+const trail = () => document.querySelector('.island-trail')?.textContent
 const list = () => screen.getByRole('list', { name: 'Sessions' })
 /** The title of each row of the open list, in order. */
 const rowTitles = () => within(list()).getAllByRole('listitem').map((li) => li.querySelector('.island-row-title')?.textContent)
@@ -91,22 +93,24 @@ describe('Island', () => {
     expect(lastFit()).toMatchObject({ visible: false })
   })
 
-  it('shows a running session without a word, then grows out of the notch to the left only', async () => {
+  it('shows a running session without a word, then grows out of the notch evenly on both sides', async () => {
     await mount()
     push(status(2, [running('a', 'Refactor auth')]))
     expect(screen.queryByText('Running')).toBeNull()
     expect(screen.getByText('Refactor auth')).toBeInTheDocument()
     // The canvas comes up with the pill still notch-sized…
     expect(lastFit()).toMatchObject({ visible: true, width: 188 + 16, shift: 0 })
-    // …then the pill grows one wing left of the notch, wide enough for the
-    // word; its right edge stays on the notch's, clear of the status icons.
+    // …then the pill grows a wing either side of the notch and stays centred
+    // on it: the symbol on the left, the number on the right.
     await waitFor(() => expect(pill().dataset.open).toBe('true'))
-    expect(lastFit()).toMatchObject({ visible: true, width: 188 + WING_WIDTH + EAR_WIDTH, shift: -WING_WIDTH / 2 - EAR_WIDTH / 2 })
-    expect(pill().style.getPropertyValue('--pill-shift')).toBe(`${-WING_WIDTH / 2}px`)
+    expect(lastFit()).toMatchObject({ visible: true, width: 188 + 2 * WING_WIDTH + 2 * EAR_WIDTH, shift: 0 })
+    expect(pill().style.getPropertyValue('--pill-shift')).toBe('')
+    expect(pill().querySelector('.island-lead .island-spinner')).not.toBeNull()
+    expect(trail()).toBe('1')
   })
 
-  // The state was a colour and a mark; the word is what makes it readable.
-  it('says each state in a word, in one vocabulary', async () => {
+  // The pill shows a symbol; the word is still there for screen readers.
+  it('says each state in a word for screen readers, in one vocabulary', async () => {
     await mount()
     push(status(2, [waiting('w', 'Plan review', 'Ship it?')]))
     expect(screen.getByText('Needs you')).toBeInTheDocument()
@@ -117,22 +121,29 @@ describe('Island', () => {
     expect(screen.queryByText(/Needs input|Working|Finished/)).toBeNull()
   })
 
-  it('counts several sessions beside the mark, and centres when expanded', async () => {
+  it('counts the sessions in the right wing, and drops the number when expanded', async () => {
     await mount({ expandOnHover: true })
     push(status(2, [running('a', 'Refactor auth'), running('b', 'Docs')]))
     await waitFor(() => expect(pill().dataset.open).toBe('true'))
-    expect(document.querySelector('.island-count')?.textContent).toBe('2')
+    expect(trail()).toBe('2')
 
     point(true)
     expect(lastFit()).toMatchObject({ width: 400 + 16, shift: 0 })
-    expect(pill().style.getPropertyValue('--pill-shift')).toBe('0px')
+    expect(pill().dataset.mode).toBe('expanded')
   })
 
-  it('shows no count for a single session', async () => {
+  // An empty right wing left the pill lopsided.
+  it('shows the number for a single session too', async () => {
     await mount()
     push(status(2, [running('a', 'Refactor auth')]))
     await waitFor(() => expect(pill().dataset.open).toBe('true'))
-    expect(document.querySelector('.island-count')).toBeNull()
+    expect(trail()).toBe('1')
+  })
+
+  it('caps the number at 99+', async () => {
+    await mount()
+    push(status(2, Array.from({ length: 120 }, (_, i) => running(`s${i}`, `Task ${i}`))))
+    expect(trail()).toBe('99+')
   })
 
   it('opens on a click, not on hover, by default: the panel never lands on the menu bar by chance', async () => {

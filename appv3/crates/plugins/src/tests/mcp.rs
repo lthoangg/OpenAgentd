@@ -3,7 +3,7 @@
 
 use serde_json::{json, Value};
 
-use super::{http, server_names, skill_names, stdio, transport, warned, Fixture};
+use super::{http, server_names, skill_names, sse, stdio, transport, warned, Fixture};
 use crate::{mcp, Bundle, Transport, MCP_SCHEMA};
 
 /// A bundle with a `tool` script and the given `mcpServers`.
@@ -41,7 +41,7 @@ fn stdio_server_with_a_dot_slash_command_gets_its_absolute_path() {
 }
 
 #[test]
-fn the_example_mcp_json_of_the_spec_loads_two_servers_and_skips_the_sse_one() {
+fn the_example_mcp_json_of_the_spec_loads_all_three_servers_including_the_sse_one() {
     let fixture = Fixture::agent_plugins("demo");
     fixture.script("bin/validator");
     fixture.mcp(json!({
@@ -57,8 +57,9 @@ fn the_example_mcp_json_of_the_spec_loads_two_servers_and_skips_the_sse_one() {
     }));
     let bundle = fixture.bundle();
 
-    assert_eq!(server_names(&bundle), ["local-validator", "deployment-api"]);
-    assert_eq!(bundle.warnings, ["mcp.json: server 'legacy-events' uses the sse transport, which is not supported; skipped"]);
+    assert_eq!(server_names(&bundle), ["local-validator", "deployment-api", "legacy-events"]);
+    assert_eq!(sse(&bundle, "legacy-events").0, "https://legacy.example.com/sse");
+    assert!(bundle.warnings.is_empty(), "{:?}", bundle.warnings);
 }
 
 #[test]
@@ -445,11 +446,49 @@ fn http_is_an_unknown_type_name() {
 }
 
 #[test]
-fn sse_server_is_skipped_with_a_warning() {
-    let (_fixture, bundle) = load_servers(json!({ "legacy-events": { "type": "sse", "url": "https://legacy.example.com/sse" } }));
+fn sse_server_keeps_its_url_and_headers() {
+    let (_fixture, bundle) = load_servers(json!({
+        "legacy-events": { "type": "sse", "url": "https://legacy.example.com/sse", "headers": { "X-Tenant": "public-tenant" } }
+    }));
+    let (url, headers) = sse(&bundle, "legacy-events");
 
-    assert!(bundle.mcp_servers.is_empty());
-    assert_eq!(bundle.warnings, ["mcp.json: server 'legacy-events' uses the sse transport, which is not supported; skipped"]);
+    assert_eq!(url, "https://legacy.example.com/sse");
+    assert_eq!(headers["X-Tenant"], "public-tenant");
+    assert!(bundle.warnings.is_empty(), "{:?}", bundle.warnings);
+}
+
+#[test]
+fn sse_server_is_checked_like_a_streamable_http_one() {
+    let (_fixture, bundle) = load_one(json!({ "type": "sse", "url": "http://example.com/sse" }));
+    assert_eq!(bundle.warnings, ["mcp.json: server 's' has an invalid 'url' (plain http is only allowed for localhost and loopback addresses; use https); skipped"]);
+
+    let (_fixture, bundle) = load_one(json!({ "type": "sse", "url": "http://localhost:8080/sse" }));
+    assert_eq!(sse(&bundle, "s").0, "http://localhost:8080/sse");
+
+    let (_fixture, bundle) = load_one(json!({ "type": "sse", "url": "https://user:[REDACTED]@example.com/sse" }));
+    assert!(only_warning(&bundle).contains("it contains user information"));
+
+    let (_fixture, bundle) = load_one(json!({ "type": "sse", "url": "https://example.com/sse#x" }));
+    assert!(only_warning(&bundle).contains("it contains a fragment"));
+
+    let (_fixture, bundle) = load_one(json!({ "type": "sse", "url": "https://example.com/sse", "command": "npx" }));
+    assert_eq!(bundle.warnings, ["mcp.json: server 's' has field 'command', which does not belong to a sse server; skipped"]);
+
+    let (_fixture, bundle) = load_one(json!({ "type": "sse" }));
+    assert_eq!(bundle.warnings, ["mcp.json: server 's' is missing 'url'; skipped"]);
+}
+
+#[test]
+fn sse_url_and_headers_are_never_expanded() {
+    let (_fixture, bundle) = load_one(json!({
+        "type": "sse",
+        "url": "https://example.com/${PLUGIN_ROOT}/sse",
+        "headers": { "X-Data": "${PLUGIN_DATA}" }
+    }));
+    let (url, headers) = sse(&bundle, "s");
+
+    assert_eq!(url, "https://example.com/${PLUGIN_ROOT}/sse");
+    assert_eq!(headers["X-Data"], "${PLUGIN_DATA}");
 }
 
 #[test]

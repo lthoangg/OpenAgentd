@@ -145,9 +145,23 @@ fn server_config(t: &Transport) -> ServerConfig {
             timeout: None,
             cwd: Some(cwd.clone()),
         },
-        Transport::Http { url, headers } => {
-            ServerConfig::Http { url: url.clone(), headers: headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect(), oauth: None, enabled: true, timeout: None }
-        }
+        // A plugin's declared `streamable-http` gets no legacy fallback (Agent Plugins defines none).
+        Transport::Http { url, headers } => ServerConfig::Http {
+            url: url.clone(),
+            headers: headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            oauth: None,
+            enabled: true,
+            timeout: None,
+            kind: appv3_mcp::config::HttpKind::Streamable,
+        },
+        Transport::Sse { url, headers } => ServerConfig::Http {
+            url: url.clone(),
+            headers: headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            oauth: None,
+            enabled: true,
+            timeout: None,
+            kind: appv3_mcp::config::HttpKind::Sse,
+        },
     }
 }
 
@@ -330,6 +344,7 @@ pub fn bundle_json(f: &Found, modules: &[appv3_kernel::ModuleStatus]) -> Value {
         .map(|s| match &s.transport {
             Transport::Stdio { command, args, .. } => json!({"name": qualified(&s.name), "transport": "stdio", "command": command, "args": args, "url": null}),
             Transport::Http { url, .. } => json!({"name": qualified(&s.name), "transport": "http", "command": null, "args": [], "url": url}),
+            Transport::Sse { url, .. } => json!({"name": qualified(&s.name), "transport": "sse", "command": null, "args": [], "url": url}),
         })
         .collect();
     let tools: Vec<Value> = f.code.tools.iter().map(|t| json!({"name": qualified(&t.name), "description": t.description, "read_only": t.read_only})).collect();

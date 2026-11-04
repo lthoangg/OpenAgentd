@@ -154,7 +154,6 @@ export interface UseOverlayStateResult {
   handleSplitDockDown: () => void
   openWorkspaceDialogKey: number
   showTodos: boolean
-  showMobileActions: boolean
 
   closeOtherMobileOverlays: (keep: MobileOverlay) => void
   handleWorkspaceFiles: () => void
@@ -176,8 +175,6 @@ export interface UseOverlayStateResult {
   handleOpenPreview: (target: PreviewTarget, options?: { focusOnly?: boolean }) => void
   /** Open a sent message's attachment as a dock tab (workspace only). */
   handleOpenAttachment: (item: FileLightboxItem) => void
-  closeMobileActionsMenu: () => void
-  handleSetShowMobileActions: Dispatch<SetStateAction<boolean>>
   handleToggleRunPicker: () => void
   handleToggleScheduler: () => void
   handleTogglePalette: () => void
@@ -207,7 +204,6 @@ export interface UseOverlayStateResult {
 
   edgeSwipeHandlers: EdgeSwipeHandlers
   sidebarDragOffset: number | null
-  actionsDragOffset: number | null
   workspacePanelDragOffset: number | null
 }
 
@@ -274,7 +270,6 @@ export function useOverlayState({
   }, [setSidebarCollapsed, sidebarDrawer])
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
-  const [showMobileActions, setShowMobileActions] = useState(false)
 
   useEffect(() => {
     setFileViewer(null)
@@ -323,9 +318,8 @@ export function useOverlayState({
 
   const closeOtherMobileOverlays = useCallback((keep: MobileOverlay) => {
     const toClose = new Set(overlaysToClose(keep))
-    if (isMobile && (toClose.has('sidebar') || toClose.has('actions') || toClose.has('workspace-panel'))) {
+    if (isMobile && (toClose.has('sidebar') || toClose.has('workspace-panel'))) {
       setMobileSidebarOpen(false)
-      setShowMobileActions(false)
       setWorkspacePanel(null)
       setFileViewer(null)
     }
@@ -490,22 +484,9 @@ export function useOverlayState({
   // file here, since the terminal sits inside the dock it would open into.
   useEffect(() => onOpenWorkspaceFileRequest((ref) => { void handleFileRefOpen(ref) }), [handleFileRefOpen])
 
-  const closeMobileActionsMenu = useCallback(() => setShowMobileActions(false), [])
-
-  const handleSetShowMobileActions = useCallback<typeof setShowMobileActions>((value) => {
-    setShowMobileActions((prev) => {
-      const next = typeof value === 'function' ? value(prev) : value
-      if (next && !prev) {
-        closeOtherMobileOverlays('actions')
-        setMobileSidebarOpen(false)
-      }
-      return next
-    })
-  }, [closeOtherMobileOverlays])
-
   // Cross-platform overlay toggles: when opening one overlay, close the rest.
   // closeOtherMobileOverlays now coordinates todos/files/capabilities on both
-  // desktop and mobile; sidebar/actions guards stay mobile-only.
+  // desktop and mobile; the drawer guards stay mobile-only.
   const handleToggleRunPicker = useCallback(() => {
     if (!useUIStore.getState().runPickerOpen) closeOtherMobileOverlays('capabilities')
     toggleRunPicker()
@@ -673,28 +654,20 @@ export function useOverlayState({
   // ── Mobile edge-swipe drawers ──────────────────────────────────────────────
   //
   // One controller owns every mobile drawer so only ONE can be open at a
-  // time. The previous implementation tracked each drawer's open state in
-  // isolation, which let a left-edge swipe open the sidebar while the
-  // right-side actions/workspace panel was already open (and vice-versa).
-  //
-  // Right-edge target depends on context: with a workspace attached it opens
-  // the workspace panel (changed files / tree); otherwise the chat-actions
-  // menu. Left-edge always opens the session sidebar.
+  // time. Left-edge opens the session sidebar; right-edge opens the Review
+  // panel, so only with a workspace attached.
   const workspacePanelOpenForSwipe = Boolean(workspace)
 
   // Single source of truth for "what is open right now". Closing routes to
   // whichever drawer the id names, so swipe-to-close hits the right one.
   const activeDrawer: string | null = mobileSidebarOpen
     ? 'sidebar'
-    : showMobileActions
-      ? 'actions'
-      : workspacePanel !== null
-        ? 'workspace-panel'
-        : null
+    : workspacePanel !== null
+      ? 'workspace-panel'
+      : null
 
   const closeAllDrawers = useCallback(() => {
     setMobileSidebarOpen(false)
-    setShowMobileActions(false)
     setWorkspacePanel(null)
     setFileViewer(null)
   }, [])
@@ -702,29 +675,23 @@ export function useOverlayState({
   const openLeftDrawer = useCallback(() => {
     // Opening the sidebar must vacate every other overlay first.
     closeOtherMobileOverlays('sidebar')
-    setShowMobileActions(false)
     setWorkspacePanel(null)
     setFileViewer(null)
     setMobileSidebarOpen(true)
   }, [closeOtherMobileOverlays])
 
   const openRightDrawer = useCallback(() => {
-    // Opening a right drawer must vacate the sidebar + other overlays first.
+    // Opening the Review panel must vacate the sidebar + other overlays first.
+    if (!workspacePanelOpenForSwipe) return
     setMobileSidebarOpen(false)
-    if (workspacePanelOpenForSwipe) {
-      closeOtherMobileOverlays('workspace-panel')
-      setShowMobileActions(false)
-      setWorkspacePanel((value) => value ?? 'changed')
-    } else {
-      closeOtherMobileOverlays('actions')
-      setShowMobileActions(true)
-    }
+    closeOtherMobileOverlays('workspace-panel')
+    setWorkspacePanel((value) => value ?? 'changed')
   }, [closeOtherMobileOverlays, workspacePanelOpenForSwipe])
 
   const { handlers: edgeSwipeHandlers, drag: edgeSwipeDrag } = useEdgeSwipe({
     activeDrawer,
     left: { id: 'sidebar', open: openLeftDrawer },
-    right: { id: workspacePanelOpenForSwipe ? 'workspace-panel' : 'actions', open: openRightDrawer },
+    right: workspacePanelOpenForSwipe ? { id: 'workspace-panel', open: openRightDrawer } : undefined,
     close: closeAllDrawers,
   })
 
@@ -735,7 +702,6 @@ export function useOverlayState({
   // Live drag offset (px) per drawer, fed to each drawer so it tracks the
   // finger. Each drawer reads only its own id; null when not being dragged.
   const sidebarDragOffset = edgeSwipeDrag?.drawerId === 'sidebar' ? edgeSwipeDrag.offset : null
-  const actionsDragOffset = edgeSwipeDrag?.drawerId === 'actions' ? edgeSwipeDrag.offset : null
   const workspacePanelDragOffset = edgeSwipeDrag?.drawerId === 'workspace-panel' ? edgeSwipeDrag.offset : null
 
   return {
@@ -776,7 +742,6 @@ export function useOverlayState({
     handleSplitDockDown,
     openWorkspaceDialogKey,
     showTodos,
-    showMobileActions,
 
     closeOtherMobileOverlays,
     handleWorkspaceFiles,
@@ -789,8 +754,6 @@ export function useOverlayState({
     handleDiffOpen,
     handleOpenPreview,
     handleOpenAttachment,
-    closeMobileActionsMenu,
-    handleSetShowMobileActions,
     handleToggleRunPicker,
     handleToggleScheduler,
     handleTogglePalette,
@@ -809,7 +772,6 @@ export function useOverlayState({
 
     edgeSwipeHandlers,
     sidebarDragOffset,
-    actionsDragOffset,
     workspacePanelDragOffset,
   }
 }

@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.44.0 · November 4, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.44.0)
+**Latest release:** v3.45.0 · November 4, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.45.0)
 
 ---
 
@@ -850,8 +850,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     folder or checkout), **Remove**, **Undo** / **Redo**, the **Built-in
     server**.
   - The header has no command palette button (`⌘K`/`Ctrl+K`, the View menu
-    and the phone's More sheet open it), and a hidden sidebar leaves no
-    hairline at the window's edge.
+    and the phone's More sheet open it; *the More sheet deprecated; removed
+    in v3.45.0: on a phone the drawer footer's icon opens it*), and a hidden
+    sidebar leaves no hairline at the window's edge.
 - **Transcript: act where you read** `[v3.40.0]`:
   - Under the last finished answer, **Copy · Edit prompt · Undo** *(Undo
     deprecated; removed in v3.42.0)* show at
@@ -1081,7 +1082,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A segmented control that wraps onto two lines (the Providers status
     filter) fills only the chosen segment.
   - The More sheet no longer lists Model and thinking; the run chip under
-    the composer opens it.
+    the composer opens it *(the More sheet deprecated; removed in v3.45.0)*.
 - **Quieter and simpler** `[v3.41.0]`:
   - In dark mode a chosen segment or tab (Code / Plan, the thinking level)
     fills more softly.
@@ -1204,6 +1205,19 @@ run from the terminal (the native Rust binary since v3.0.0).
     over it.
   - A question with several answers allowed shows checkboxes without the
     1–9 digit beside each; the digit keys still pick options.
+- **Faster sessions, one panel on phones** `[v3.45.0]`:
+  - A running session, or one with a long history, opens in about half the
+    time, and over a slow link (a phone on the LAN) several times faster:
+    the history and the live answer load together, and the first page of a
+    lead's history carries only the latest few rows of each subagent.
+  - The phone header has no More (⋯) sheet: it shows the sidebar, the title,
+    the Task list and the Review panel. Terminal, find file and scheduled
+    tasks open from the Review panel, the command palette from the drawer
+    footer, and a swipe from the right edge opens the Review panel.
+  - A shell call's tooltip shows only its description (the command is
+    already on the row), and other tooltips (copy buttons, a prompt's and an
+    answer's actions, session rows) are the system's plain tooltips, so a
+    long transcript renders lighter.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.
@@ -1436,6 +1450,14 @@ run from the terminal (the native Rust binary since v3.0.0).
     of the notch alone; without a notch it is a small pill with the same
     mark and count. Hover still opens the full list, with titles and
     questions.
+    Since `[v3.45.0]` the resting pill is balanced again: a small wing
+    either side of the notch, the state's symbol on the left (dot, spinner,
+    check, alert) and the number of sessions on the right, one included
+    ("99+" past 99), with no words (screen readers still hear them). Without
+    a notch it is the same two wings side by side. The pill stays centred,
+    so it opens evenly on both sides, the open list keeps one inset on both
+    edges, and on a notch an odd number of points wide (a 14" MacBook Pro)
+    the pill no longer shows a 1 px sliver past the notch.
     Right-click the pill or a session row for a native menu with Open and
     Open in new window; finished sessions also offer Dismiss `[v3.28.0]`.
     A new window opens on that session's server without navigating an
@@ -3375,6 +3397,18 @@ Four orthogonal ways to add capability.
     returns every problem, with the schema, before the server or plugin sees
     the call. The check is lenient: keywords it does not know pass, and a null
     for an optional argument counts as left out.
+  - **Sign in without OAuth setup** `[v3.45.0]` — an HTTP MCP server that asks
+    for sign-in offers **Sign in** without an `oauth` block in its entry:
+    OpenAgentd finds the server's authorization and registers itself, as the
+    MCP spec describes. Plugin MCP servers sign in the same way. A server that
+    does not ask connects as before, one with its own `Authorization` header
+    keeps using it, and a background start never registers a client.
+  - **Legacy HTTP+SSE servers** `[v3.45.0]` — `mcp.json` takes `type` as well
+    as `transport`, with `stdio`, `http` (or `streamable-http`) and `sse`.
+    `sse` reaches servers that still speak the 2024-11-05 HTTP+SSE transport,
+    and an `http` server that refuses Streamable HTTP falls back to it on its
+    own. Plugins can declare `sse` servers, and the Settings → MCP form offers
+    **SSE (legacy)**.
   - **Set up MCP servers from chat** `[v3.35.0]` — ask the agent to connect a
     server ("add the GitHub MCP") and it proposes the `mcp.json` entry
     (`mcp` with `action: "save"`, or `"remove"`). A **Confirm change** card
@@ -3832,6 +3866,9 @@ Desktop is primary. CLI / server is the developer path.
   `agentd plugin check <folder>` validates a plugin without installing it,
   `agentd plugin list` shows each plugin and its state, and
   `agentd plugin remove <name>` deletes it and keeps its data.
+  `agentd plugin disable <name>` turns a plugin off without removing it and
+  `agentd plugin enable <name>` turns it back on; a running server applies
+  either at once, as it does a hand edit of `plugins.json` `[v3.45.0]`.
 - **CLI artifact cleanup** `[v2.18.0]` — `agentd cleanup` previews a dry run
   and, with `--apply`, deletes sessions older than `--older-than-days`
   (default 14) together with their messages, session artifacts, undo/redo

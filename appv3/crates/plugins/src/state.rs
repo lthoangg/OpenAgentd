@@ -12,7 +12,8 @@ use std::sync::Mutex;
 
 use serde_json::{Map, Value};
 
-const FILE: &str = "plugins.json";
+/// The file in the config dir that lists the disabled plugins.
+pub const STATE_FILE: &str = "plugins.json";
 
 /// Serialises writers in this process, so two `set_enabled` calls cannot
 /// lose each other's change. The rename makes each write atomic on disk.
@@ -21,7 +22,7 @@ static WRITE_LOCK: Mutex<()> = Mutex::new(());
 /// The names of the disabled plugins, from `{config_dir}/plugins.json`. A
 /// missing or invalid file disables nothing.
 pub fn disabled(config_dir: &Path) -> BTreeSet<String> {
-    let path = config_dir.join(FILE);
+    let path = config_dir.join(STATE_FILE);
     let bytes = match fs::read(&path) {
         Ok(bytes) => bytes,
         Err(e) => {
@@ -50,7 +51,7 @@ pub fn set_enabled(config_dir: &Path, name: &str, enabled: bool) -> io::Result<(
     }
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     fs::create_dir_all(config_dir)?;
-    let path = config_dir.join(FILE);
+    let path = config_dir.join(STATE_FILE);
 
     let mut document = match fs::read(&path).ok().and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok()) {
         Some(Value::Object(map)) => map,

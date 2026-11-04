@@ -315,7 +315,7 @@ function PluginServerConfig({ server, plugin }: { server: ServerStatus; plugin: 
           <code className={CODE_LINE}>{commandLine(config.command, config.args)}</code>
         </PanelRow>
       )}
-      {config?.transport === 'http' && (
+      {config && config.transport !== 'stdio' && (
         <PanelRow label="URL" stack>
           <code className={CODE_LINE}>{config.url}</code>
         </PanelRow>

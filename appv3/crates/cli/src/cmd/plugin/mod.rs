@@ -22,6 +22,7 @@ mod render;
 mod server;
 mod source;
 mod summary;
+mod toggle;
 
 use crate::cli::PluginCmd;
 use anyhow::Result;
@@ -33,6 +34,8 @@ pub fn plugin(cmd: &PluginCmd) -> Result<ExitCode> {
     match cmd {
         PluginCmd::Add(a) => add::add(a),
         PluginCmd::Remove(a) => remove::remove(a),
+        PluginCmd::Enable(a) => toggle::toggle(a, true),
+        PluginCmd::Disable(a) => toggle::toggle(a, false),
         PluginCmd::List => list::list(),
         PluginCmd::Check(a) => check::check(a),
     }
@@ -66,6 +69,15 @@ struct Installed {
 }
 
 impl Installed {
+    /// The manifest name, or the folder name when the manifest is rejected.
+    fn name(&self) -> String {
+        self.bundle.as_ref().map(|b| b.name.clone()).unwrap_or_else(|_| self.folder_name())
+    }
+
+    fn matches(&self, name: &str) -> bool {
+        self.folder_name() == name || self.bundle.as_ref().is_ok_and(|b| b.name == name)
+    }
+
     fn folder_name(&self) -> String {
         self.folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
     }

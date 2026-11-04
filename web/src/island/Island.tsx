@@ -19,11 +19,11 @@ import {
   compactCount,
   compactLabels,
   compactMode,
+  countLabel,
   goalLabel,
   islandHitBox,
   islandHeight,
   islandMode,
-  islandShift,
   islandWidth,
   listOrder,
   primarySessionId,
@@ -329,16 +329,15 @@ export function Island() {
   const sizeMode: IslandMode = open ? mode : 'hidden'
   const width = geometry ? islandWidth(sizeMode, geometry) : 0
   const height = geometry ? islandHeight(sizeMode, geometry, listHeight) : 0
-  const shift = geometry ? islandShift(sizeMode, geometry) : 0
   const visible = wantVisible || closing
 
   // Tell the shell where the pill is (its click and hover area) and whether
-  // the canvas should be up.
+  // the canvas should be up. The pill is always centred on the notch.
   useLayoutEffect(() => {
     if (!geometry) return
-    const hit = islandHitBox(sizeMode, geometry, width)
+    const hit = islandHitBox(width)
     void invoke(FIT_COMMAND, { width: hit.width, height, visible, shift: hit.shift }).catch(() => {})
-  }, [geometry, sizeMode, width, height, visible])
+  }, [geometry, width, height, visible])
 
   const hit = hitAt(pointer)
 
@@ -357,7 +356,6 @@ export function Island() {
   const style = {
     '--pill-width': `${width}px`,
     '--pill-height': `${height}px`,
-    '--pill-shift': `${shift}px`,
     '--notch-width': `${geometry.hasNotch ? geometry.width : 0}px`,
     '--notch-height': `${geometry.height}px`,
   } as CSSProperties
@@ -390,12 +388,15 @@ export function Island() {
                 <span key={barMode} className="island-swap island-lead-inner">
                   <StateMark mode={barMode} failed={failed} goal={barGoal} />
                   {lead && <span className="island-text">{lead}</span>}
-                  {count > 1 && <span className="island-count" aria-hidden="true">{count}</span>}
                 </span>
               )}
             </span>
             <span className="island-notch" aria-hidden="true" />
             <span key={`${barMode}:${detail}`} className="island-swap island-detail island-text">{detail}</span>
+            {/* The right wing: how many sessions the symbol stands for, one included. */}
+            <span key={`${barMode}:${count}`} className="island-swap island-trail" aria-hidden="true">
+              {barMode !== 'hidden' && count > 0 ? countLabel(count) : null}
+            </span>
           </button>
           {mode === 'expanded' && (
             <ul ref={listRef} className="island-list" aria-label="Sessions">

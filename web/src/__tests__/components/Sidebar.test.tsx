@@ -211,6 +211,7 @@ mock.module('lucide-react', () => ({
   ChevronRight: Icon,
   ChevronsDownUp: Icon,
   Clock: Icon,
+  Command: Icon,
   Copy: Icon,
   Download: Icon,
   ExternalLink: Icon,
@@ -2879,6 +2880,26 @@ describe('Sidebar workspace trust flow', () => {
         expect(button.textContent).toBe('')
       }
       expect(screen.getByRole('button', { name: /Change server$/ }).textContent).toBe('backend-name')
+    })
+
+    it('opens the command palette from the mobile drawer footer, closing the drawer first', async () => {
+      isMobile = true
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+      const calls: string[] = []
+
+      await renderSidebarWithProps({
+        currentSessionId: 'session-1',
+        workspace: '/repo/project',
+        mobileOpen: true,
+        onMobileClose: () => calls.push('close'),
+        onOpenPalette: () => calls.push('palette'),
+      })
+
+      const button = screen.getByRole('button', { name: 'Command palette' })
+      expect(button.textContent).toBe('')
+      fireEvent.click(button)
+      expect(calls).toEqual(['close', 'palette'])
     })
 
     it('opens the titled action sheet from a session row More button in a phone browser', async () => {

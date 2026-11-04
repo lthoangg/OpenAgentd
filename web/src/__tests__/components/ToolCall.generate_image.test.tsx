@@ -35,13 +35,13 @@ afterEach(cleanup)
 
 function getHeader(fullText: string): HTMLElement {
   // Linear scan by attribute — Happy DOM rejects some CSS.escape outputs
-  const candidates = document.querySelectorAll("[title]")
+  const candidates = document.querySelectorAll("[data-tool-label]")
   for (const node of Array.from(candidates)) {
-    if (node instanceof HTMLElement && node.getAttribute("title") === fullText) {
+    if (node instanceof HTMLElement && node.getAttribute("data-tool-label") === fullText) {
       return node
     }
   }
-  throw new Error(`Header with title="${fullText}" not found`)
+  throw new Error(`Header with data-tool-label="${fullText}" not found`)
 }
 
 function expectPlainArg(header: HTMLElement, arg: string) {

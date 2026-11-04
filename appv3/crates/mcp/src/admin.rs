@@ -55,7 +55,7 @@ fn save_env_values(values: &[(String, String)]) -> std::io::Result<()> {
 /// Move literal OAuth client credentials out of `mcp.json` into
 /// `credentials.yaml` (`_store_oauth_secrets`).
 pub fn store_oauth_secrets(name: &str, cfg: ServerConfig) -> std::io::Result<ServerConfig> {
-    let ServerConfig::Http { url, headers, oauth: Some(o), enabled, timeout } = cfg else { return Ok(cfg) };
+    let ServerConfig::Http { url, headers, oauth: Some(o), enabled, timeout, kind } = cfg else { return Ok(cfg) };
     let re = whole_ref_re();
     let mut env = vec![];
     let mut client_id = o.client_id.clone();
@@ -71,7 +71,7 @@ pub fn store_oauth_secrets(name: &str, cfg: ServerConfig) -> std::io::Result<Ser
         client_secret = Some(format!("${{{key}}}"));
     }
     save_env_values(&env)?;
-    Ok(ServerConfig::Http { url, headers, oauth: Some(OAuthConfig { client_id, client_secret }), enabled, timeout })
+    Ok(ServerConfig::Http { url, headers, oauth: Some(OAuthConfig { client_id, client_secret }), enabled, timeout, kind })
 }
 
 fn keep_masked(new: IndexMap<String, String>, old: &IndexMap<String, String>) -> IndexMap<String, String> {
@@ -82,7 +82,7 @@ fn keep_masked(new: IndexMap<String, String>, old: &IndexMap<String, String>) ->
 /// (`_merge_masked_http_headers` + `_merge_masked_oauth`, and `env`).
 pub fn merge_masked(new: ServerConfig, existing: Option<&ServerConfig>) -> ServerConfig {
     match (new, existing) {
-        (ServerConfig::Http { url, headers, oauth, enabled, timeout }, Some(ServerConfig::Http { headers: old_h, oauth: old_o, .. })) => {
+        (ServerConfig::Http { url, headers, oauth, enabled, timeout, kind }, Some(ServerConfig::Http { headers: old_h, oauth: old_o, .. })) => {
             let oauth = match (oauth, old_o) {
                 (Some(n), Some(o)) => Some(OAuthConfig {
                     client_id: if n.client_id.as_deref() == Some(MASK) { o.client_id.clone() } else { n.client_id },
@@ -90,7 +90,7 @@ pub fn merge_masked(new: ServerConfig, existing: Option<&ServerConfig>) -> Serve
                 }),
                 (n, _) => n,
             };
-            ServerConfig::Http { url, headers: keep_masked(headers, old_h), oauth, enabled, timeout }
+            ServerConfig::Http { url, headers: keep_masked(headers, old_h), oauth, enabled, timeout, kind }
         }
         (ServerConfig::Stdio { command, args, env, enabled, timeout, cwd }, Some(ServerConfig::Stdio { env: old_env, .. })) => {
             ServerConfig::Stdio { command, args, env: keep_masked(env, old_env), enabled, timeout, cwd }
@@ -304,7 +304,7 @@ pub fn status_sentence(st: &ServerStatus) -> String {
                 if shown.is_empty() { String::new() } else { format!(": {}", shown.join(", ")) }
             )
         }
-        "auth_required" => format!("MCP server '{n}' is saved but needs sign-in: ask the user to open Settings → MCP and click Connect on '{n}'. Its tools appear once they have."),
+        "auth_required" => format!("MCP server '{n}' is saved but needs sign-in: ask the user to open Settings → MCP and click Sign in on '{n}'. Its tools appear once they have."),
         "error" => format!(
             "MCP server '{n}' is saved but failed to start: {}. Fix it with action='save', or remove it.",
             st.error.as_deref().filter(|e| !e.is_empty()).unwrap_or("unknown error")

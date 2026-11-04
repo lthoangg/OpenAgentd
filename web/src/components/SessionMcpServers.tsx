@@ -32,22 +32,25 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 
 /**
  * The one action a row offers besides its switch: sign in when the server asks
- * for it, reconnect when it failed. Only for HTTP servers with an oauth block,
- * and only while the server is on (an off server has nothing to connect).
+ * for it, reconnect when it failed. Sign in is for any URL server (the server
+ * finds out on its own how to sign in, so no oauth block is needed, and plugin
+ * servers count). Reconnect stays for URL servers with an oauth block. Only
+ * while the server is on (an off server has nothing to connect).
  * Re-authorizing a server that works lives in Settings › MCP servers.
  */
-function supportsOAuthConnect(server: ServerStatus): boolean {
-  return (
-    server.transport === 'http' &&
-    server.config?.transport === 'http' &&
-    !!server.config.oauth
-  )
+function isUrlServer(server: ServerStatus): boolean {
+  return server.transport === 'http' || server.transport === 'sse'
+}
+
+function hasOAuthBlock(server: ServerStatus): boolean {
+  const config = server.config
+  return !!config && config.transport !== 'stdio' && !!config.oauth
 }
 
 function rowAction(server: ServerStatus): string | null {
-  if (!server.enabled || !supportsOAuthConnect(server)) return null
+  if (!server.enabled || !isUrlServer(server)) return null
   if (server.state === 'auth_required') return 'Sign in'
-  if (server.state === 'error') return 'Reconnect'
+  if (server.state === 'error' && hasOAuthBlock(server)) return 'Reconnect'
   return null
 }
 

@@ -24,9 +24,15 @@ one holds the file formats, recipes, and when changes take effect.
 | Skills | `{SKILL_DIR}/references/skills.md` | install from a URL, write a new skill, discovery order, overrides |
 | Slash commands | `{SKILL_DIR}/references/commands.md` | where command files live, format, `$ARGUMENTS`, names to avoid |
 | Workspace groups | `{SKILL_DIR}/references/workspace-groups.md` | which repos may message each other; join or leave a group |
-| Plugins | `{SKILL_DIR}/references/plugins.md` | plugin folders (skills, MCP servers, tools), `agentd plugin add/check`, single-file provider and hook plugins |
+| Plugins | `{SKILL_DIR}/references/plugins.md` | plugin folders (skills, MCP servers, tools), `agentd plugin add/check/disable`, single-file provider and hook plugins |
 | Plugin API types | `{SKILL_DIR}/references/openagentd.d.ts` | full `openagentd` module typings — read when writing a plugin |
 | Image / video | `{SKILL_DIR}/references/media.md` | `multimodal.yaml` for `generate_image` / `generate_video` |
+
+A link or folder with a `plugin.json` at its root is a **plugin**, even when
+its name says skill or MCP server: install it with Plugins, so its skills and
+MCP servers stay together and turn on and off together. Copy one skill out of
+it, or add one of its servers with `mcp`, only when the user asks for just
+that part.
 
 ## Paths
 

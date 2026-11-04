@@ -17,7 +17,7 @@ export interface KeyValuePair {
 
 export interface McpServerDraft {
   name: string
-  transport: 'stdio' | 'http'
+  transport: 'stdio' | 'http' | 'sse'
   enabled: boolean
   /** Tool-call timeout in seconds as typed; empty = server default. */
   timeoutText: string
@@ -25,7 +25,7 @@ export interface McpServerDraft {
   command: string
   argsText: string
   envPairs: KeyValuePair[]
-  // http
+  // http and sse
   url: string
   headerPairs: KeyValuePair[]
   oauthEnabled: boolean
@@ -73,7 +73,7 @@ export function draftFromServerBody(name: string, body: ServerBody): McpServerDr
   }
   return {
     name,
-    transport: 'http',
+    transport: body.transport,
     enabled: body.enabled,
     timeoutText: body.timeout != null ? String(body.timeout) : '',
     command: '',
@@ -121,7 +121,7 @@ export function draftToServerBody(
   return {
     ok: true,
     body: {
-      transport: 'http',
+      transport: draft.transport,
       url: draft.url.trim(),
       headers: pairsToRecord(draft.headerPairs),
       oauth: draft.oauthEnabled

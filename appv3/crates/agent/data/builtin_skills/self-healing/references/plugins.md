@@ -12,7 +12,7 @@ directories).
 <CONFIG_DIR>/plugins/changelog-tools/
   plugin.json                  # manifest: $schema and name are required
   skills/release-notes/SKILL.md
-  mcp.json                     # MCP servers: stdio or streamable-http
+  mcp.json                     # MCP servers: stdio, streamable-http or sse
   dev.openagentd/plugin.ts     # optional code: tools, hooks, a provider
 ```
 
@@ -30,7 +30,8 @@ directories).
   marked `readOnly` run. An MCP server in the user's `mcp.json` with the
   plugin's name hides its tools; pick plugin names that do not clash.
 - Plugin MCP servers are managed by their plugin: the `mcp` tool cannot change
-  or remove them, and they go on and off with the plugin.
+  or remove them, and they go on and off with the plugin. One that asks for
+  sign-in shows **Sign in** in Settings → MCP, like the user's own servers.
 
 ### Manifest and permissions
 
@@ -86,6 +87,10 @@ Give every input property a `description`. Before writing code, read
 `openagentd.d.ts` in this references directory: it types the whole API and the
 permission rules.
 
+The code runs in QuickJS (ES2023), not Node.js: no npm packages and no `Intl`.
+`toLocaleString` ignores its locale and options, so format numbers and dates by
+hand.
+
 ### Installing, checking, removing
 
 Use the `agentd plugin` command from `shell`:
@@ -95,19 +100,26 @@ Use the `agentd plugin` command from `shell`:
 2. `agentd plugin add <git-url or folder>` (git URLs: `https://`, `ssh://`,
    `user@host:path`, `file://`; `--path <subfolder>` when the plugin is not at
    the root). From `shell` it only prints the summary and exits with status 2.
-   **Show that summary to the user** — skills, the exact command or URL of each
-   MCP server, the permissions, the tools — and ask before installing, even
-   when they asked for the install: MCP servers run unsandboxed. Then run it
-   again with `--yes`.
+   **Show that summary to the user**: skills, the exact command or URL of each
+   MCP server, the permissions, the tools. When it lists MCP servers,
+   permissions or tools, ask before installing, even when they asked for the
+   install: MCP servers run unsandboxed. A plugin with only skills can go
+   ahead when they asked for it. Then run it again with `--yes`.
 3. `agentd plugin list` shows each plugin and its state;
    `agentd plugin remove <name>` deletes the folder and keeps its data.
+4. `agentd plugin disable <name>` turns a plugin off and keeps it installed;
+   `agentd plugin enable <name>` turns it back on. Both record the choice in
+   `<CONFIG_DIR>/plugins.json`, the file the Settings switch uses.
 
 In the desktop app `agentd` lives inside the app, and `shell` adds its folder
 to the end of `PATH`. The user's own terminal does not have it: for them, give
-the full path that `command -v agentd` prints. From `shell` the CLI may not
-reach the app's server (it listens on a port of its own), so `add` and
-`remove` report that no server answered; the server still sees the folder
-change and reloads by itself.
+the full path that `command -v agentd` prints. From `shell` the CLI cannot ask
+the app's server: it listens on another port, or refuses the CLI because the
+shell gets no access key. So the commands report that no server answered or
+that the access key was not accepted, and `list` shows what is on disk, not
+what the server loaded. That is expected: the server sees the change itself
+and reloads within a second. To check the result, call the plugin's tools in
+a later step, not in the same batch as the command that made the change.
 
 To write a plugin, create the folder with `patch`, run `agentd plugin check`
 on it, and fix what it reports. Settings → Plugins turns a plugin on or off,

@@ -220,8 +220,8 @@ fn disk_view(ctx: &Ctx, reason: Line) -> Vec<Line> {
         .iter()
         .map(|f| SingleFile {
             file: f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-            status: "not loaded".to_string(),
-            detail: "loaded when the server starts".to_string(),
+            status: "on disk".to_string(),
+            detail: "a running server loads it at start".to_string(),
             errors: vec![],
         })
         .collect();

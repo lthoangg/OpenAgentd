@@ -14,6 +14,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useUIStore } from '@/stores/useUIStore'
 import { queryKeys } from '@/queries/keys'
 import type { SessionGoal, SessionPlan } from '@/api/types'
 
@@ -179,6 +180,47 @@ describe('Review dock "+" menu', () => {
   it('drops Git in a chat workspace and Plan without a plan', async () => {
     await renderPanel({ mobile: true, plan: null, chatWorkspace: true })
     expect(rowNames(await openMenu())).toEqual(['Goal', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
+  })
+
+  // The phone has no More sheet: terminal, find file and scheduled tasks open
+  // from the Review panel. Once it shows (the header button, or a swipe from
+  // the right edge), the empty launcher opens each in one tap and the "+"
+  // menu, beside open tabs, in two.
+  describe('on a phone, without the More sheet', () => {
+    beforeEach(() => useUIStore.setState({ quickOpenOpen: false }))
+
+    it('opens find file and terminal from the empty launcher in one tap', async () => {
+      await renderPanel({ mobile: true, plan: null })
+      const user = userEvent.setup()
+      const launcher = () => screen.getByRole('group', { name: 'Open in Review panel' })
+
+      await user.click(within(launcher()).getByRole('button', { name: /^Find file…/ }))
+      expect(useUIStore.getState().quickOpenOpen).toBe(true)
+
+      await user.click(within(launcher()).getByRole('button', { name: 'Terminal' }))
+      expect(screen.getByRole('button', { name: /^Close Terminal 1/ })).toBeTruthy()
+    })
+
+    it('opens scheduled tasks from the empty launcher in one tap', async () => {
+      await renderPanel({ mobile: true, plan: null })
+      await userEvent.setup().click(within(screen.getByRole('group', { name: 'Open in Review panel' })).getByRole('button', { name: 'Scheduled tasks' }))
+      expect(screen.getByRole('button', { name: 'Scheduled tasks' }).getAttribute('aria-current')).toBe('true')
+    })
+
+    it('opens each from "+" beside open tabs in two taps', async () => {
+      await renderPanel({ mobile: true })
+      await screen.findByRole('button', { name: 'Session plan' })
+      const user = userEvent.setup()
+
+      await user.click(within(await openMenu()).getByRole('menuitem', { name: 'Terminal' }))
+      expect(screen.getByRole('button', { name: /^Close Terminal 1/ })).toBeTruthy()
+
+      await user.click(within(await openMenu()).getByRole('menuitem', { name: 'Scheduled tasks' }))
+      expect(screen.getByRole('button', { name: 'Scheduled tasks' }).getAttribute('aria-current')).toBe('true')
+
+      await user.click(within(await openMenu()).getByRole('menuitem', { name: 'Find file…' }))
+      expect(useUIStore.getState().quickOpenOpen).toBe(true)
+    })
   })
 
   it('opens the Goal tab, titled with how far the goal has got', async () => {

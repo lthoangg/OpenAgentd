@@ -32,7 +32,7 @@ function Harness({
   loadAgentStatus = mock(async () => {}),
 }: {
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
-  connectStream: () => AbortController
+  connectStream: (options?: { holdUntil?: Promise<unknown> }) => AbortController
   /** ``null`` is a new-session draft (no session yet). */
   sessionId?: string | null
   workspace?: string
@@ -120,6 +120,27 @@ describe('useSessionBootstrap type-to-focus', () => {
     )
     type(screen.getByRole('button', { name: 'Cancel' }), 'h')
     expect(insertText).not.toHaveBeenCalled()
+  })
+})
+
+describe('useSessionBootstrap opening a session', () => {
+  it('attaches the live feed beside the history read, holding its frames for it', async () => {
+    let finish!: () => void
+    const load = new Promise<void>((resolve) => { finish = resolve })
+    const loadSession = mock(() => load)
+    const holds: Array<Promise<unknown> | undefined> = []
+    const connectStream = (options?: { holdUntil?: Promise<unknown> }) => {
+      holds.push(options?.holdUntil)
+      return new AbortController()
+    }
+    useAgentStore.setState({ isConnected: false, isAgentWorking: false })
+    render(<Harness loadSession={loadSession} connectStream={connectStream} />)
+
+    // Both start before the history lands; the feed waits on that very load.
+    await waitFor(() => expect(holds).toHaveLength(1))
+    expect(loadSession).toHaveBeenCalledTimes(1)
+    expect(holds[0]).toBe(load)
+    await act(async () => { finish() })
   })
 })
 

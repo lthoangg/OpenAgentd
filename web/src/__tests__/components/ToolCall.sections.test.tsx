@@ -76,7 +76,7 @@ describe('tool Copy controls', () => {
       expect(button.className).toContain('text-(--color-text-muted)')
       expect(button.className).not.toContain('opacity-0')
       expect(button.className).not.toContain('group-hover')
-      expect(button.getAttribute('title')).toBeNull()
+      expect(button.getAttribute('title')).toBe(name)
     }
   })
 

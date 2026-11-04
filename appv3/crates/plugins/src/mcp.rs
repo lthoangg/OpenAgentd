@@ -170,8 +170,8 @@ fn parse_entry(ctx: &Ctx, value: &Value) -> Result<Transport, String> {
     };
     match kind {
         "stdio" => stdio(ctx, object),
-        "streamable-http" => http(object, kind),
-        "sse" => Err(format!("uses the {kind} transport, which is not supported")),
+        "streamable-http" => remote(object, kind).map(|(url, headers)| Transport::Http { url, headers }),
+        "sse" => remote(object, kind).map(|(url, headers)| Transport::Sse { url, headers }),
         _ => Err(format!("has unknown type '{}'", shorten(kind, 40))),
     }
 }
@@ -236,7 +236,8 @@ fn stdio(ctx: &Ctx, object: &Map<String, Value>) -> Result<Transport, String> {
     Ok(Transport::Stdio { command, args, env, cwd })
 }
 
-fn http(object: &Map<String, Value>, kind: &str) -> Result<Transport, String> {
+/// The URL and headers of a `streamable-http` or `sse` entry: both take the same fields.
+fn remote(object: &Map<String, Value>, kind: &str) -> Result<(String, BTreeMap<String, String>), String> {
     check_fields(object, HTTP_FIELDS, STDIO_FIELDS, kind)?;
     // The URL and the header values are used as written: no placeholder is expanded in them.
     let url = match object.get("url") {
@@ -250,7 +251,7 @@ fn http(object: &Map<String, Value>, kind: &str) -> Result<Transport, String> {
         Some(Value::Object(map)) => remote::check_headers(map, &|text| text.to_string()).map_err(|why| format!("has {why}"))?,
         Some(_) => return Err("has 'headers' that is not an object of strings".to_string()),
     };
-    Ok(Transport::Http { url, headers })
+    Ok((url, headers))
 }
 
 /// `PLUGIN_ROOT` and `PLUGIN_DATA` belong to the client. (Environment names

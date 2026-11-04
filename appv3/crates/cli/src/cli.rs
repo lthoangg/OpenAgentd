@@ -306,6 +306,14 @@ pub enum PluginCmd {
     Add(PluginAddArgs),
     /// Remove an installed plugin and keep its data folder
     Remove(PluginRemoveArgs),
+    /// Turn an installed plugin on
+    Enable(PluginToggleArgs),
+    /// Turn an installed plugin off (it stays installed)
+    ///
+    /// A disabled plugin's skills, MCP servers and tools are unavailable until
+    /// it is enabled again.
+    #[command(verbatim_doc_comment)]
+    Disable(PluginToggleArgs),
     /// Show the installed plugins and their state
     ///
     /// Asks the local server when it is running, else reads the plugin folders.
@@ -338,6 +346,12 @@ pub struct PluginRemoveArgs {
     /// Remove without asking
     #[arg(short, long)]
     pub yes: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct PluginToggleArgs {
+    /// Name from the plugin's manifest, or its folder name
+    pub name: String,
 }
 
 #[derive(Debug, Args)]

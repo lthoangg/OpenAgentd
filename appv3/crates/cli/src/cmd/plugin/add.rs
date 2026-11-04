@@ -1,7 +1,7 @@
 //! `agentd plugin add`: install a plugin from a folder or a git URL.
 
 use super::prompt::{ask, Consent};
-use super::reload::reload_server;
+use super::reload::{reload_server, Change};
 use super::render::{emit, exact, ind, inline, sp, verdict, Tone};
 use super::source::{check_links, parse_source, pth, stage_source};
 use super::summary::{code_lines, load_code, summary};
@@ -80,7 +80,7 @@ pub(super) fn add(args: &PluginAddArgs) -> Result<ExitCode> {
         emit(&[vec![ind(2), sp(Tone::Dim, "It was listed as disabled in plugins.json from an earlier install; it is enabled now.")]]);
     }
 
-    let (lines, loads) = reload_server(&bundle.name, false);
+    let (lines, loads) = reload_server(&bundle.name, Change::Added);
     emit(&lines);
     if loads {
         emit(&[vec![ind(2), sp(Tone::Dim, "New sessions get its skills, MCP servers and tools.")]]);

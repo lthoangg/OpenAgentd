@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, render, screen } from '@testing-library/react'
-import { forwardRef, useImperativeHandle } from 'react'
+import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import type { ContentBlock } from '@/api/types'
@@ -57,17 +57,14 @@ mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }
 mock.module('@/components/AppFooter', () => ({ AppFooter: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
-  AgentChatHeader: ({
-    agentNames,
-    headerTokens,
-  }: {
-    agentNames?: string[]
-    headerTokens?: { sessionCostUsd?: number }
-  }) => (
-    <>
-      <div data-testid="header-agents">{(agentNames ?? []).join(',')}</div>
-      {headerTokens && <div data-testid="session-cost">{headerTokens.sessionCostUsd}</div>}
-    </>
+  AgentChatHeader: ({ agentNames }: { agentNames?: string[] }) => (
+    <div data-testid="header-agents">{(agentNames ?? []).join(',')}</div>
+  ),
+}))
+// The context meter rides in the composer's run deck, on every layout.
+mock.module('@/components/composer/ContextMeter', () => ({
+  ContextMeter: ({ sessionCostUsd }: { sessionCostUsd?: number }) => (
+    <div data-testid="session-cost">{sessionCostUsd}</div>
   ),
 }))
 /** The composer's ``onHistoryRecall``, as the mounted chat view passed it. */
@@ -76,11 +73,16 @@ let recall: ((prompt: string | null) => void) | undefined
 mock.module('@/components/composer/Composer', () => ({
   Composer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
-    { historyPrompts?: string[]; onHistoryRecall?: (prompt: string | null) => void }
-  >(function ComposerMock({ historyPrompts, onHistoryRecall }, ref) {
+    { historyPrompts?: string[]; onHistoryRecall?: (prompt: string | null) => void; deckEnd?: ReactNode }
+  >(function ComposerMock({ historyPrompts, onHistoryRecall, deckEnd }, ref) {
     useImperativeHandle(ref, () => ({ setValue: () => {}, setFiles: () => {} }))
     recall = onHistoryRecall
-    return <div data-testid="history-prompts">{(historyPrompts ?? []).join(',')}</div>
+    return (
+      <>
+        <div data-testid="history-prompts">{(historyPrompts ?? []).join(',')}</div>
+        {deckEnd}
+      </>
+    )
   }),
 }))
 mock.module('@/components/AgentChatView/useOverlayState', () => ({
@@ -101,14 +103,11 @@ mock.module('@/components/AgentChatView/useOverlayState', () => ({
     setSidebarCollapsed: () => {},
     openWorkspaceDialogKey: 0,
     showTodos: false,
-    showMobileActions: false,
     handleWorkspaceFiles: () => {},
     handleSidebarToggle: () => {},
     handleOpenWorkspaceDialog: () => {},
     handleFileSelect: () => {},
     handleMentionFileOpen: () => {},
-    closeMobileActionsMenu: () => {},
-    handleSetShowMobileActions: () => {},
     handleToggleRunPicker: () => {},
     handleToggleScheduler: () => {},
     handleTogglePalette: () => {},
@@ -118,7 +117,6 @@ mock.module('@/components/AgentChatView/useOverlayState', () => ({
     openLeftDrawer: () => {},
     edgeSwipeHandlers: {},
     sidebarDragOffset: null,
-    actionsDragOffset: null,
     workspacePanelDragOffset: null,
   }),
 }))

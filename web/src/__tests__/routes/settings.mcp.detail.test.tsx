@@ -213,6 +213,31 @@ describe('McpServerDetailPage — a server from a plugin', () => {
     expect(screen.getByText('URL')).toBeTruthy()
   })
 
+  it('shows an sse server\'s URL and its transport', async () => {
+    serveServer({
+      ...PLUGIN_SERVER,
+      transport: 'sse',
+      config: { transport: 'sse', url: 'https://mcp.example.com/sse', headers: {}, enabled: true },
+    })
+    renderPage('changelog-tools/github')
+
+    expect((await screen.findByText('https://mcp.example.com/sse')).tagName).toBe('CODE')
+    expect(screen.getByText('URL')).toBeTruthy()
+    expect(screen.getByText('sse')).toBeTruthy()
+  })
+
+  it('offers Sign in for a plugin server that needs it', async () => {
+    serveServer({
+      ...PLUGIN_SERVER,
+      transport: 'http',
+      state: 'auth_required',
+      config: { transport: 'http', url: 'https://mcp.example.com/v1', headers: {}, oauth: null, enabled: true },
+    })
+    renderPage('changelog-tools/github')
+
+    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
+  })
+
   it('copes with a server whose config the server did not send', async () => {
     serveServer({ ...PLUGIN_SERVER, config: null })
     renderPage('changelog-tools/github')

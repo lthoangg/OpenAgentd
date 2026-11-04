@@ -39,6 +39,11 @@ function trunc(s: string, maxLen = 60): string {
   return s.length > maxLen ? s.slice(0, maxLen) + '…' : s
 }
 
+/** ``full`` as a tooltip, only when the header shows it cut. */
+function cutTooltip(full: string | null, maxLen = 60): string | null {
+  return full && full.length > maxLen ? full : null
+}
+
 /**
  * The `mcp` call's `arguments`, pretty-printed. Gemini sends them as a
  * JSON-encoded string; an empty object hides the args section.
@@ -281,7 +286,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
     if (action === 'chain') {
       const { short, full } = previewChainLabel(parsed)
-      return { header: <Arg>{short}</Arg>, headerTitle: full, formattedArgs: null }
+      return { header: <Arg>{short}</Arg>, headerTitle: full, tooltip: short === full ? null : full, formattedArgs: null }
     }
     const page = action ? previewPageActionLabel(action, parsed) : null
     if (page) return { header: <Arg>{page}</Arg>, headerTitle: page, formattedArgs: null }
@@ -290,8 +295,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return { header: label ? <Arg>{label}</Arg> : null, headerTitle: label, formattedArgs: null }
   }
 
-  // ── shell: the command itself is the target (the agent's description
-  //    rides in the tooltip), the full command in the bash block ────────
+  // ── shell: the command itself is the target, the full command in the
+  //    bash block; the tooltip carries only the agent's description ───
   if (name === 'shell') {
     const description = str(parsed, 'description')
     const command = str(parsed, 'command')
@@ -299,6 +304,9 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return {
       header: oneLine ? <Arg>{trunc(oneLine, 80)}</Arg> : description ? <Arg>{description}</Arg> : null,
       headerTitle: oneLine && description ? `${oneLine}\n${description}` : oneLine ?? description,
+      // The header already shows the command (the description, when there
+      // is none), so a tooltip repeating it adds nothing.
+      tooltip: oneLine ? description : null,
       formattedArgs: command,
       language: 'bash',
     }
@@ -311,6 +319,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return {
       header: truncated ? <Arg>"{truncated}"</Arg> : null,
       headerTitle: truncated ? `"${truncated}"` : null,
+      tooltip: cutTooltip(query),
       formattedArgs: null,
     }
   }
@@ -394,8 +403,9 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const label = url ? shortUrl(url) : null
     return {
       header: label ? <Arg>{trunc(label)}</Arg> : null,
-      // Tooltip keeps the untruncated location so long paths stay readable.
       headerTitle: label,
+      // A long location is cut in the row; the tooltip keeps it whole.
+      tooltip: cutTooltip(label),
       formattedArgs: null,
     }
   }
@@ -595,6 +605,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return {
       header: truncatedPattern ? <Arg>{`${truncatedPattern}${scope}${modeSuffix}`}</Arg> : null,
       headerTitle: truncatedPattern ? `${truncatedPattern}${scope}${modeSuffix}` : null,
+      tooltip: cutTooltip(pattern),
       formattedArgs: null,
     }
   }
@@ -612,6 +623,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return {
       header: truncatedPattern ? <Arg>{`"${truncatedPattern}"${scope}${filter}`}</Arg> : null,
       headerTitle: truncatedPattern ? `"${truncatedPattern}"${scope}${filter}` : null,
+      tooltip: cutTooltip(pattern),
       formattedArgs: null,
     }
   }

@@ -24,6 +24,7 @@ fn referenced_variables(t: &Transport) -> Vec<String> {
     let values: Vec<&String> = match t {
         Transport::Stdio { env, .. } => env.values().collect(),
         Transport::Http { headers, .. } => headers.values().collect(),
+        Transport::Sse { headers, .. } => headers.values().collect(),
     };
     let mut out: Vec<String> = vec![];
     for value in values {
@@ -93,19 +94,21 @@ pub(super) fn summary(b: &Bundle, installed_at: Option<&Path>) -> Vec<Line> {
     if b.mcp_servers.iter().any(|s| matches!(s.transport, Transport::Stdio { .. })) {
         out.push(item(Tone::Warn, "MCP servers run as local processes with your user's permissions and are not sandboxed, so check the commands."));
     }
-    if b.mcp_servers.iter().any(|s| matches!(s.transport, Transport::Http { .. })) {
+    if b.mcp_servers.iter().any(|s| matches!(s.transport, Transport::Http { .. } | Transport::Sse { .. })) {
         out.push(item(Tone::Warn, "HTTP servers are remote: they see every call the agent makes to them."));
     }
     for server in &b.mcp_servers {
         let what = match &server.transport {
             Transport::Stdio { command, args, .. } => std::iter::once(command).chain(args).map(|w| word(w)).collect::<Vec<_>>().join(" "),
             Transport::Http { url, .. } => exact(&mapped(url)),
+            Transport::Sse { url, .. } => format!("{} (sse)", exact(&mapped(url))),
         };
         out.push(vec![ind(4), sp(Tone::Bold, exact(&server.name)), ind(2), sp(Tone::Plain, what)]);
         // What the plugin sets for the server, as written: `PATH` or `NODE_OPTIONS` change what the command runs.
         let (label, own): (&str, Vec<String>) = match &server.transport {
             Transport::Stdio { env, .. } => ("env", env.iter().filter(|(k, _)| !OWN_VARIABLES.contains(&k.as_str())).map(|(k, v)| format!("{k}={}", mapped(v))).collect()),
             Transport::Http { headers, .. } => ("headers", headers.iter().map(|(k, v)| format!("{k}: {}", mapped(v))).collect()),
+            Transport::Sse { headers, .. } => ("headers", headers.iter().map(|(k, v)| format!("{k}: {}", mapped(v))).collect()),
         };
         if !own.is_empty() {
             let shown = own.iter().map(|p| clip(&exact(p), 120)).collect::<Vec<_>>().join(", ");
@@ -251,6 +254,21 @@ mod tests {
             "    ⚠ plugin.json: unknown field 'mystery' ignored".to_string(),
         ];
         assert_eq!(lines, expected);
+    }
+
+    #[test]
+    fn an_sse_server_is_shown_like_an_http_one_and_labelled() {
+        let d = tempfile::tempdir().unwrap();
+        put(d.path(), "plugin.json", &json!({"$schema": PLUGIN_SCHEMA, "name": "live"}).to_string());
+        let mcp =
+            json!({"$schema": appv3_plugins::MCP_SCHEMA, "mcpServers": {"events": {"type": "sse", "url": "https://mcp.example.com/sse", "headers": {"X-Key": "${EVENTS_KEY}"}}}});
+        put(d.path(), "mcp.json", &mcp.to_string());
+        let data = tempfile::tempdir().unwrap();
+        let lines = text(&summary(&load(d.path(), data.path()).unwrap(), None));
+        assert!(lines.contains(&"    HTTP servers are remote: they see every call the agent makes to them.".to_string()), "{lines:#?}");
+        assert!(lines.contains(&"    events  https://mcp.example.com/sse (sse)".to_string()), "{lines:#?}");
+        assert!(lines.contains(&"      headers  X-Key: ${EVENTS_KEY}".to_string()), "{lines:#?}");
+        assert!(lines.iter().any(|l| l.contains("receives your EVENTS_KEY")), "{lines:#?}");
     }
 
     #[test]

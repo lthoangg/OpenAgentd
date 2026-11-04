@@ -504,6 +504,69 @@ async fn first_history_page_pins_a_goals_objective_not_its_turns() {
     assert_eq!(page.latest_prompt.map(|p| p.id), Some(objective.id));
 }
 
+/// A run of large tool results stops at the byte budget, not at its prompt:
+/// the prompt is pinned and the rest pages in.
+#[tokio::test]
+async fn first_history_page_stops_at_its_byte_budget() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let prompt = save_message(&pool, &s.id, NewMessage::user("read everything")).await.unwrap();
+    let big = "x".repeat(100 * 1024);
+    for i in 0..60 {
+        save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "read", big.clone())).await.unwrap();
+    }
+
+    let page = first_history_page(&pool, &s).await.unwrap();
+    let bytes: usize = page.rows.iter().map(|r| r.content.as_ref().map_or(0, String::len)).sum();
+    assert!(bytes <= FIRST_PAGE_MAX_BYTES, "{bytes} bytes");
+    assert_eq!(page.rows.len(), FIRST_PAGE_MAX_BYTES / big.len());
+    assert!(page.has_more);
+    assert_eq!(page.boundary.as_ref().map(|b| &b.id), Some(&page.rows[0].id), "the oldest kept row is the cursor");
+    assert_eq!(page.latest_prompt.map(|p| p.id), Some(prompt.id));
+}
+
+/// The budget never empties a page of a few very large rows.
+#[tokio::test]
+async fn first_history_page_keeps_its_newest_rows_past_the_budget() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let huge = "x".repeat(FIRST_PAGE_MAX_BYTES);
+    for i in 0..(FIRST_PAGE_MIN_ROWS + 5) {
+        save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "read", huge.clone())).await.unwrap();
+    }
+    assert_eq!(first_history_page(&pool, &s).await.unwrap().rows.len(), FIRST_PAGE_MIN_ROWS);
+}
+
+/// The budget counts what the page sends: a tool result's image parts are
+/// stripped from history, so megabytes of them do not cut the page short.
+#[tokio::test]
+async fn first_history_page_budget_skips_what_display_strips() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let parts = serde_json::json!({"parts": [{"type": "image", "data": "x".repeat(512 * 1024)}]});
+    for i in 0..(HISTORY_PAGE_SIZE as usize) {
+        save_message(&pool, &s.id, NewMessage { extra: parts.as_object().cloned(), ..NewMessage::tool(format!("call_{i}"), "preview", "Screenshot taken.") }).await.unwrap();
+    }
+    assert_eq!(first_history_page(&pool, &s).await.unwrap().rows.len(), HISTORY_PAGE_SIZE as usize);
+}
+
+/// A member rides on the lead's page with its short tail only.
+#[tokio::test]
+async fn member_first_page_is_a_short_tail_within_its_budget() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    save_steps(&pool, &s.id, 50).await;
+    let rows = member_first_page(&pool, &s.id).await.unwrap();
+    assert_eq!(rows.len(), MEMBER_FIRST_PAGE_SIZE as usize);
+    assert_eq!(rows.last().and_then(|r| r.content.clone()).as_deref(), Some("step 49"), "the newest rows, in order");
+
+    let big = "x".repeat(MEMBER_PAGE_MAX_BYTES / 2 - 1024);
+    for i in 0..4 {
+        save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "read", big.clone())).await.unwrap();
+    }
+    assert_eq!(member_first_page(&pool, &s.id).await.unwrap().len(), 2);
+}
+
 #[tokio::test]
 async fn pending_question_round_trip() {
     let (_d, pool) = fresh().await;

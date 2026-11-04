@@ -14,7 +14,8 @@
  *     tagged with the worktree's name, and a checkout chip on the row
  *     narrows it to one checkout and holds the worktree actions. Sessions
  *     page in with an explicit "Show more" row.
- *   • Mobile drawer footer: Settings, Usage, server and theme icons. On desktop those live in the status bar.
+ *   • Mobile drawer footer: Settings, Usage, command palette, server and theme
+ *     icons. On desktop those live in the status bar (the palette is ⌘K).
  *
  * ``activeWorkspace`` is
  * the workspace driving
@@ -48,6 +49,7 @@ import {
   AppWindow,
   Check,
   ChevronRight,
+  Command,
   Copy,
   Folder,
   FolderPlus,
@@ -218,6 +220,8 @@ interface SidebarProps {
   mobileDragOffset?: number | null
   /** Mobile only: called when the drawer should close (backdrop tap, navigation). */
   onMobileClose?: () => void
+  /** Mobile drawer footer: opens the command palette; the icon hides without it. */
+  onOpenPalette?: () => void
 }
 
 async function pickWorkspaceDirectory(): Promise<string | null> {
@@ -273,6 +277,7 @@ export function Sidebar({
   mobileOpen = false,
   mobileDragOffset = null,
   onMobileClose,
+  onOpenPalette,
 }: SidebarProps) {
   const isMobile = useIsMobile()
   const { isTauri, os } = usePlatform()
@@ -1530,6 +1535,16 @@ export function Sidebar({
         >
           <Activity size={16} aria-hidden="true" />
         </button>
+        {onOpenPalette && (
+          <button
+            type="button"
+            onClick={() => { onMobileClose?.(); onOpenPalette() }}
+            aria-label="Command palette"
+            className="flex size-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+          >
+            <Command size={16} aria-hidden="true" />
+          </button>
+        )}
         <HealthDot labeled className="h-9 min-w-0 flex-1 justify-start px-2 text-xs" />
         <ThemeToggle collapsed className="h-9 w-9" />
       </div>

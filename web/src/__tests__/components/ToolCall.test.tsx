@@ -24,17 +24,17 @@ beforeEach(() => {
 // attribute (`name: headerTitle`, or just `name` when there is no target)
 // and assert the argument is rendered without italics.
 
-/** Find the row via its title tooltip (`${name}: ${headerTitle}`). */
+/** Find the row via its whole label (`${name}: ${headerTitle}`). */
 function getHeader(fullText: string): HTMLElement {
   // Linear scan by attribute — Happy DOM rejects some CSS.escape outputs
   // (e.g. escaped spaces/quotes), so avoid attribute selectors entirely.
-  const candidates = document.querySelectorAll("[title]")
+  const candidates = document.querySelectorAll("[data-tool-label]")
   for (const node of Array.from(candidates)) {
-    if (node instanceof HTMLElement && node.getAttribute("title") === fullText) {
+    if (node instanceof HTMLElement && node.getAttribute("data-tool-label") === fullText) {
       return node
     }
   }
-  throw new Error(`Header with title="${fullText}" not found`)
+  throw new Error(`Header with data-tool-label="${fullText}" not found`)
 }
 
 /** Assert the argument portion is present without italic markup. */
@@ -138,14 +138,26 @@ describe("ToolCall — shell display", () => {
     expect(screen.getByText("npm test")).toBeTruthy()
     // The description is tooltip-only, not visible row text
     expect(screen.queryByText("Run unit tests")).toBeNull()
+    // The tooltip carries the description alone, not the command it repeats
+    expect(header.getAttribute("title")).toBe("Run unit tests")
   })
 
   it("truncates a long multi-line command to one line of 80 chars", () => {
     const command = `echo ${"x".repeat(100)}\necho second`
     render(<ToolCall name="shell" args={JSON.stringify({ command })} done={false} />)
     const oneLine = command.replace(/\s*\n\s*/g, " ")
-    expect(getHeader(`shell: ${oneLine}`)).toBeTruthy()
+    // No tooltip of the long command: the details show it whole.
+    expect(getHeader(`shell: ${oneLine}`).hasAttribute("title")).toBe(false)
     expect(screen.getByText(`${oneLine.slice(0, 80)}…`)).toBeTruthy()
+  })
+
+  it("gives a row a tooltip only for what it does not already show", () => {
+    const { unmount } = render(<ToolCall name="read" args={JSON.stringify({ path: "src/app.ts" })} done={false} />)
+    expect(getHeader("read: src/app.ts").hasAttribute("title")).toBe(false)
+    unmount()
+
+    render(<ToolCall name="shell" args={JSON.stringify({ command: "ls" })} done={false} />)
+    expect(getHeader("shell: ls").hasAttribute("title")).toBe(false)
   })
 
 
@@ -468,6 +480,7 @@ describe("ToolCall — web_fetch display", () => {
     render(<ToolCall name="web_fetch" args={JSON.stringify({ url })} done={false} />)
     // Tooltip carries the untruncated location (80 chars, www stripped)…
     const header = getHeader("web_fetch: nytimes.com/2024/03/15/technology/artificial-intelligence-regulation-europe.html")
+    expect(header.getAttribute("title")).toBe("nytimes.com/2024/03/15/technology/artificial-intelligence-regulation-europe.html")
     // …while the visible text is capped at 60 chars + ellipsis.
     expectPlainArg(header, "nytimes.com/2024/03/15/technology/artificial-intelligence-re…")
     expect(screen.getByText("nytimes.com/2024/03/15/technology/artificial-intelligence-re…")).toBeTruthy()
@@ -488,6 +501,8 @@ describe("ToolCall — web_fetch display", () => {
     render(<ToolCall name="web_fetch" args={JSON.stringify({ url })} done={false} />)
     const header = getHeader("web_fetch: example.com/docs/guides/getting-started/installation")
     expectPlainArg(header, "example.com/docs/guides/getting-started/installation")
+    // Nothing cut, so nothing to add in a tooltip.
+    expect(header.hasAttribute("title")).toBe(false)
     // The target span is the whole URL, uncut (the row's own "running…" is a separate span)
     const target = screen.getByText("example.com/docs/guides/getting-started/installation")
     expect(target.textContent).not.toContain("…")
@@ -1021,8 +1036,8 @@ describe("ToolCall — concise tool labels", () => {
 
     render(<ToolCall name="patch" args={args} done={false} />)
 
-    const title = Array.from(document.querySelectorAll("[title]"))
-      .map((node) => node.getAttribute("title"))
+    const title = Array.from(document.querySelectorAll("[data-tool-label]"))
+      .map((node) => node.getAttribute("data-tool-label"))
       .find((t) => t?.startsWith("patch: "))
     expect(title).toBeTruthy()
     expect(title!.endsWith("…")).toBe(true)

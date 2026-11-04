@@ -10,8 +10,13 @@ import type { ReactNode } from 'react'
 export interface ToolDisplay {
   /** Header replacing the tool name; arg values are italicised via `<Arg>`. `null` falls back to the tool name. */
   header: ReactNode | null
-  /** Plain-text version for ``title`` tooltip and aria-label. */
+  /** Plain-text version of the header, uncut (the row's ``data-tool-label``). */
   headerTitle: string | null
+  /**
+   * The row's tooltip: only what the row does not already show (the shell
+   * command's description, a target the header had to cut). Absent: none.
+   */
+  tooltip?: string | null
   /** Simplified args body; ``null`` hides the args section entirely. */
   formattedArgs: string | null
   /** When set, render args as a code block with this language label. */

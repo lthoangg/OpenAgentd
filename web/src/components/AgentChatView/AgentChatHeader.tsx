@@ -1,18 +1,16 @@
-import { memo, useCallback, useEffect, useRef, useState, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type HTMLAttributes } from 'react'
 import { AnimatedTitle } from '@/components/ui/animated-title'
 import { isFreshAutoTitle } from '@/lib/auto-title'
 import { cn } from '@/lib/utils'
 import { CornerUpLeft, ListTodo, Menu, PanelLeft, PanelRight } from 'lucide-react'
 
-import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
+import { AgentTopbar } from '@/components/AgentTopbar'
 import { usePanelWidthSink } from '@/components/ResizableAside'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { hasWindowCaption, usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { createAltTapDetector, hasAppMenuButton, showAppMenu } from '@/lib/native-menu'
-import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { MobileHeaderAction } from './MobileHeaderAction'
-import { MobileChatActions } from './MobileChatActions'
 import { HeaderSessionTitle } from './HeaderSessionTitle'
 import { summarizeTodos } from '@/components/TaskChecklist'
 import type { GoalHeaderState } from '@/lib/work'
@@ -34,8 +32,6 @@ interface AgentChatHeaderProps {
    */
   onOpenLead?: () => void
   onSidebarToggle: () => void
-  /** Context use for the phone's More sheet; the run deck's ring shows it everywhere else. */
-  headerTokens?: AgentTopbarTokens
   sessionId: string | null
   todos: TodoItem[]
   /** ⌘T target: the dock's Tasks tab on desktop, the popover otherwise. */
@@ -46,16 +42,6 @@ interface AgentChatHeaderProps {
   goalState?: GoalHeaderState | null
   workspacePanel: null | 'changed' | 'files'
   onWorkspaceFiles: () => void
-  showMobileActions: boolean
-  setShowMobileActions: Dispatch<SetStateAction<boolean>>
-  mobileActionsDragOffset?: number | null
-  onToggleScheduler: () => void
-  onOpenTerminal?: () => void
-  onCloseMobileActionsMenu: () => void
-  /** The phone More sheet's palette row; hidden when omitted (desktop opens it from the keyboard and menus). */
-  onOpenPalette?: () => void
-  /** Mobile drawer's file search; disabled when omitted (no workspace). */
-  onQuickOpen?: () => void
 }
 
 /**
@@ -145,7 +131,6 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   sessionTitle,
   onOpenLead,
   onSidebarToggle,
-  headerTokens,
   sessionId,
   todos,
   onToggleTasks,
@@ -153,14 +138,6 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   goalState = null,
   workspacePanel,
   onWorkspaceFiles,
-  showMobileActions,
-  setShowMobileActions,
-  mobileActionsDragOffset = null,
-  onToggleScheduler,
-  onOpenTerminal,
-  onCloseMobileActionsMenu,
-  onOpenPalette,
-  onQuickOpen,
 }: AgentChatHeaderProps) {
   const platform = usePlatform()
   const { os } = platform
@@ -169,9 +146,6 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   const captionInset = hasWindowCaption(platform)
   // The dock cap takes the live width of the Review panel (index.css → Header caps).
   const dockCapRef = usePanelWidthSink('--oa-dock-w')
-  // Published by the mounted transcript; a new chat has no prompts to step.
-  const publishedJumpToPrompt = useTranscriptFollowStore((s) => s.jumpToPrompt)
-  const jumpToPrompt = sessionId ? publishedJumpToPrompt : null
   const activeTodoCount = todos.filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length
   const todoSummary = summarizeTodos(todos)
   // The chat workspace reads as "Chat" rather than the home directory's
@@ -335,33 +309,25 @@ export const AgentChatHeader = memo(function AgentChatHeader({
             </div>
         </div>
 
-        {/* Right cluster: frequent actions stay visible, secondary panels
-            live in More. */}
+        {/* Right cluster, as on desktop: the task list, then the Review panel,
+            whose "+" menu holds terminal, find file and scheduled tasks. */}
         <div className="flex min-w-0 items-center justify-self-end gap-0.5 md:pr-1">
+            <MobileHeaderAction
+              Icon={ListTodo}
+              label={activeTodoCount > 0 ? `Task list, ${activeTodoCount} open` : 'Task list'}
+              tooltip={goalState ? `${goalState.text} · Task list` : 'Task list'}
+              onClick={sessionId ? onToggleTasks : undefined}
+              active={tasksViewActive}
+              disabled={!sessionId}
+              badge={activeTodoCount}
+              goalTone={goalState?.tone}
+            />
             <MobileHeaderAction
               Icon={PanelRight}
               label="Review panel"
               onClick={workspace ? onWorkspaceFiles : undefined}
               active={workspacePanel !== null}
               disabled={!workspace}
-            />
-            <MobileChatActions
-              open={showMobileActions}
-              onOpenChange={setShowMobileActions}
-              dragOffset={mobileActionsDragOffset}
-              title={workspace ? (sessionTitle ?? (sessionId ? 'Untitled session' : 'New session')) : 'Choose a workspace'}
-              subtitle={workspace ? workspaceName : null}
-              onTasks={sessionId ? () => { onCloseMobileActionsMenu(); if (!tasksViewActive) onToggleTasks() } : undefined}
-              openTasks={activeTodoCount}
-              goalTone={goalState?.tone}
-              goalText={goalState?.text ?? null}
-              tokens={headerTokens}
-              onScheduler={() => { onToggleScheduler(); onCloseMobileActionsMenu() }}
-              onOpenTerminal={onOpenTerminal ? () => { onOpenTerminal(); onCloseMobileActionsMenu() } : undefined}
-              onPreviousPrompt={jumpToPrompt ? () => { jumpToPrompt(-1); onCloseMobileActionsMenu() } : undefined}
-              onNextPrompt={jumpToPrompt ? () => { jumpToPrompt(1); onCloseMobileActionsMenu() } : undefined}
-              onQuickOpen={onQuickOpen ? () => { onQuickOpen(); onCloseMobileActionsMenu() } : undefined}
-              onCommandPalette={onOpenPalette ? () => { onOpenPalette(); onCloseMobileActionsMenu() } : undefined}
             />
         </div>
     </header>

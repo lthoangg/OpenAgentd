@@ -34,7 +34,7 @@ use std::path::PathBuf;
 
 pub use find::discover;
 pub use loader::{data_dir_name, load};
-pub use state::{disabled, set_enabled};
+pub use state::{disabled, set_enabled, STATE_FILE};
 
 /// The extension namespace: the manifest `extensions` key and the folder.
 pub const NAMESPACE: &str = "dev.openagentd";
@@ -136,4 +136,7 @@ pub enum Transport {
     /// without user information or a fragment, and plain `http` only for
     /// loopback.
     Http { url: String, headers: BTreeMap<String, String> },
+    /// A remote `"sse"` server (the legacy HTTP+SSE transport); the same
+    /// fields and checks as [`Transport::Http`].
+    Sse { url: String, headers: BTreeMap<String, String> },
 }

@@ -1,6 +1,5 @@
 import { Check, Copy } from 'lucide-react'
 
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 import { cn } from '@/lib/utils'
 
@@ -25,28 +24,24 @@ export function CopyButton({ label, text, className }: CopyButtonProps) {
   const { copied, copy } = useCopyFeedback()
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              aria-label={label}
-              onClick={(event) => {
-                event.stopPropagation()
-                void copy(typeof text === 'function' ? text() : text)
-              }}
-              className={cn(COPY_BUTTON_CLASS, className)}
-            >
-              {copied ? (
-                <Check size={12} className="text-(--accent-green-text)" aria-hidden />
-              ) : (
-                <Copy size={12} aria-hidden />
-              )}
-            </button>
-          }
-        />
-        <TooltipContent>{copied ? 'Copied' : label}</TooltipContent>
-      </Tooltip>
+      {/* A ``title`` hint (the app's title layer draws it): every code block
+          and tool section has one of these, too many for a tooltip each. */}
+      <button
+        type="button"
+        aria-label={label}
+        title={label}
+        onClick={(event) => {
+          event.stopPropagation()
+          void copy(typeof text === 'function' ? text() : text)
+        }}
+        className={cn(COPY_BUTTON_CLASS, className)}
+      >
+        {copied ? (
+          <Check size={12} className="text-(--accent-green-text)" aria-hidden />
+        ) : (
+          <Copy size={12} aria-hidden />
+        )}
+      </button>
       {/* The button keeps its name; the result is announced from here. */}
       <span aria-live="polite" className="sr-only">
         {copied ? 'Copied' : ''}

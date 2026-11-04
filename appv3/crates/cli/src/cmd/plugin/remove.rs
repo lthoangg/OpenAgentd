@@ -2,7 +2,7 @@
 //! folder.
 
 use super::prompt::{ask, Consent};
-use super::reload::reload_server;
+use super::reload::{reload_server, Change};
 use super::render::{blank, emit, exact, ind, inline, pad, sp, verdict, Line, Tone};
 use super::source::pth;
 use super::{installed, Ctx, Installed};
@@ -11,17 +11,6 @@ use anyhow::{bail, Context, Result};
 use appv3_plugins::{data_dir_name, disabled, set_enabled};
 use std::path::Path;
 use std::process::ExitCode;
-
-impl Installed {
-    /// The manifest name, or the folder name when the manifest is rejected.
-    fn name(&self) -> String {
-        self.bundle.as_ref().map(|b| b.name.clone()).unwrap_or_else(|_| self.folder_name())
-    }
-
-    fn matches(&self, name: &str) -> bool {
-        self.folder_name() == name || self.bundle.as_ref().is_ok_and(|b| b.name == name)
-    }
-}
 
 /// Removes the folder, or only the link when it is a link.
 fn delete_entry(path: &Path) -> std::io::Result<()> {
@@ -91,7 +80,7 @@ pub(super) fn remove(args: &PluginRemoveArgs) -> Result<ExitCode> {
     if data.exists() {
         emit(&[vec![ind(2), sp(Tone::Dim, format!("Data folder kept: {}", pth(&data)))]]);
     }
-    emit(&reload_server(&name, true).0);
+    emit(&reload_server(&name, Change::Removed).0);
     println!();
     Ok(ExitCode::SUCCESS)
 }

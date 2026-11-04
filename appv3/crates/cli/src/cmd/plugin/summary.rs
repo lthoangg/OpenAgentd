@@ -213,7 +213,7 @@ pub(super) fn code_lines(code: &Result<CodeReport, String>) -> Vec<Line> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::plugin::testing::{demo_plugin, put, text};
+    use crate::cmd::plugin::testing::{demo_plugin, put, text, SHARED};
     use appv3_plugins::{load, PLUGIN_SCHEMA};
 
     #[test]
@@ -244,7 +244,7 @@ mod tests {
             "  Permissions".to_string(),
             "    net: api.example.com, *.example.org".to_string(),
             "    listen: a local port (loopback only)".to_string(),
-            "    fs: /tmp/oad-shared (read and write)".to_string(),
+            format!("    fs: {SHARED} (read and write)"),
             "    subprocess: git".to_string(),
             "    env: HOME, TOKEN".to_string(),
             "  Warnings".to_string(),

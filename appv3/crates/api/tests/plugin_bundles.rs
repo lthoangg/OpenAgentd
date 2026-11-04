@@ -194,7 +194,7 @@ async fn standard_plugin_folders_load_skills_and_mcp_servers_and_a_broken_one_is
     assert_eq!(tools["skills"][0]["name"], "changelog-tools/release-notes");
     let echo = &tools["mcp_servers"][0];
     assert_eq!((echo["name"].as_str(), echo["transport"].as_str()), (Some("changelog-tools/echo"), Some("stdio")), "{echo}");
-    assert!(echo["command"].as_str().unwrap().ends_with("/changelog-tools/bin/echo-mcp"), "a ./ command runs from the plugin folder: {echo}");
+    assert!(Path::new(echo["command"].as_str().unwrap()).ends_with(Path::new("changelog-tools").join("bin").join("echo-mcp")), "a ./ command runs from the plugin folder: {echo}");
     assert_eq!(tools["permissions"], json!({"net": ["api.github.com"], "listen": false, "fs": [], "subprocess": [], "env": ["GITHUB_TOKEN"]}));
     let review = e.bundle(&list, "review-kit");
     assert_eq!(review["permissions"], Value::Null, "{review}");

@@ -133,9 +133,10 @@ pub(super) fn inline(s: &str, max: usize) -> String {
 }
 
 /// `s` as one shell word, quoted only when it needs it, so a command line
-/// shows its arguments exactly.
+/// shows its arguments exactly. On Windows a backslash separates folders
+/// rather than escaping, so a plain path shows as it is.
 pub(super) fn shell_word(s: &str) -> String {
-    if !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c)) {
+    if !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c) || (cfg!(windows) && c == '\\')) {
         s.to_string()
     } else {
         format!("'{}'", s.replace('\'', r"'\''"))
@@ -185,6 +186,7 @@ mod tests {
             ("", "''"),
             ("$HOME", "'$HOME'"),
             ("a;b", "'a;b'"),
+            (r"C:\tools\x", if cfg!(windows) { r"C:\tools\x" } else { r"'C:\tools\x'" }),
         ] {
             assert_eq!(shell_word(arg), shown, "{arg:?}");
         }

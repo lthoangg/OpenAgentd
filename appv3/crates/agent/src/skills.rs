@@ -682,7 +682,7 @@ pub(crate) mod tests {
 
     /// A plugin root holding `skills/release-notes/SKILL.md`.
     fn plugin_with_skill(root: &Path) -> Arc<PluginSkills> {
-        let dir = root.join("skills/release-notes");
+        let dir = root.join("skills").join("release-notes");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("SKILL.md"), "---\nname: release-notes\ndescription: Write release notes\n---\nRun ${PLUGIN_ROOT}/bin/notes; cache in ${PLUGIN_DATA}.\n").unwrap();
         Arc::new(PluginSkills { plugin: "changelog-tools".into(), root: root.to_path_buf(), data_dir: root.join("data"), skills: vec![("release-notes".into(), dir)] })
@@ -698,7 +698,7 @@ pub(crate) mod tests {
         let skills = discover_in(&[user], &[plugin], None);
         let names: Vec<(&str, &str)> = skills.iter().map(|s| (s.name.as_str(), s.description.as_str())).collect();
         assert_eq!(names, [("release-notes", "Mine"), ("changelog-tools/release-notes", "Write release notes")], "no clash with a user skill of the same folder name");
-        assert_eq!(skills[1].file, "skills/release-notes/SKILL.md");
+        assert_eq!(skills[1].file, Path::new("skills").join("release-notes").join("SKILL.md").display().to_string());
     }
 
     #[tokio::test]

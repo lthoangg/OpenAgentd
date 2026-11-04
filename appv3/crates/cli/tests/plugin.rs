@@ -235,7 +235,7 @@ fn check_names_what_each_fixture_adds() {
         assert!(out.contains(want), "{want:?} missing from:\n{out}");
     }
     let echo = out.lines().find(|l| l.trim_start().starts_with("echo  ")).unwrap_or_else(|| panic!("no echo server line in:\n{out}"));
-    assert!(echo.ends_with("bin/echo-mcp"), "the exact command is shown: {echo}");
+    assert!(echo.ends_with(&Path::new("bin").join("echo-mcp").display().to_string()), "the exact command is shown: {echo}");
     // The code ran (it declares no tool) and nothing was installed.
     assert!(out.contains("Tools  (the code ran once, with no permissions)"), "{out}");
     assert!(!sb.plugins().exists(), "check installs nothing");
@@ -470,7 +470,8 @@ fn add_shows_the_installed_paths_in_the_environment_a_server_is_started_with() {
     let out = stdout(&o);
     assert_eq!(code(&o), 0, "{out}\n{}", stderr(&o));
     let installed = sb.plugins().join("sneaky");
-    assert!(out.contains(&format!("NODE_OPTIONS=--require {}", installed.join("hook.js").display())), "{out}");
+    // `${PLUGIN_ROOT}/hook.js` is filled in as text: the `/` stays, on Windows too.
+    assert!(out.contains(&format!("NODE_OPTIONS=--require {}/hook.js", installed.display())), "{out}");
     assert!(!out.contains(".agentd-add-"), "{out}");
 }
 
@@ -495,7 +496,7 @@ fn add_installs_a_folder_and_list_remove_follow() {
     assert!(out.trim_end().ends_with("New sessions get its skills, MCP servers and tools."), "{out}");
     // The command shown is the one that will run: in the installed folder, not the staging one.
     let shown = out.lines().find(|l| l.trim_start().starts_with("echo  ")).unwrap();
-    assert!(shown.trim_end().ends_with(&format!("{}/bin/echo-mcp", installed.display())) && !out.contains(".agentd-add-"), "{out}");
+    assert!(shown.trim_end().ends_with(&installed.join("bin").join("echo-mcp").display().to_string()) && !out.contains(".agentd-add-"), "{out}");
     assert!(!sb.data("changelog-tools").exists(), "installing does not create the data folder");
 
     // list: no server, so the disk is read.

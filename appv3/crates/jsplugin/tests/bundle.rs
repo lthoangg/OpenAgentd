@@ -798,11 +798,13 @@ async fn paths_cannot_climb_out_of_an_allowed_folder() {
     let f = Files::new();
     let climb = f.b.data().join("..").join("outside").join("secret.txt");
     denied(&f.op("read", &climb).await.unwrap_err(), "fs", "may not read ");
-    // `..` after a name that does not exist cannot be resolved, so it is refused.
+    // `..` after a name that does not exist cannot be resolved, so it is refused. Windows
+    // drops `nope\..` before it looks, so there the path resolves, lands outside, and is
+    // refused as outside.
     let hidden = f.b.data().join("nope").join("..").join("..").join("outside").join("secret.txt");
     let e = f.op("read", &hidden).await.unwrap_err();
     denied(&e, "fs", "may not read ");
-    assert!(e.message.contains("cannot be resolved"), "{}", e.message);
+    assert!(cfg!(windows) || e.message.contains("cannot be resolved"), "{}", e.message);
     // Climbing out of the bundle folder to write next to the entry file.
     denied(&f.op("write", &f.b.root().join("..").join("data").join("..").join("bundle").join("x.txt")).await.unwrap_err(), "fs", "may not write ");
 }

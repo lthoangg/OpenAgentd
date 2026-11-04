@@ -146,6 +146,8 @@ fn normalize(v: Value) -> Value {
     roots.sort_by_key(|r| std::cmp::Reverse(r.len()));
     let uuid = regex::Regex::new(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}").unwrap();
     let today = regex::Regex::new(r"Current date \(UTC\): \d{4}-\d{2}-\d{2}").unwrap();
+    // A path under the root, which Windows writes with backslashes.
+    let under_root = regex::Regex::new(r"<ROOT>[^\s`'\x22)]*").unwrap();
     fn walk(v: Value, f: &dyn Fn(&str) -> String) -> Value {
         match v {
             Value::String(s) => Value::String(f(&s)),
@@ -156,6 +158,7 @@ fn normalize(v: Value) -> Value {
     }
     walk(v, &|s: &str| {
         let s = roots.iter().fold(s.to_string(), |s, r| s.replace(r.as_str(), "<ROOT>"));
+        let s = under_root.replace_all(&s, |m: &regex::Captures| m[0].replace('\\', "/")).into_owned();
         let s = uuid.replace_all(&s, "<UUID>").into_owned();
         let s = today.replace_all(&s, "Current date (UTC): <DATE>").into_owned();
         match s.split_once(" Environment: ") {

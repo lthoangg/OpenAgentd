@@ -83,6 +83,9 @@ mod testing {
     use serde_json::json;
     use std::path::Path;
 
+    /// The folder `demo_plugin` asks to read and write: absolute on this platform.
+    pub(super) const SHARED: &str = if cfg!(windows) { r"C:\oad-shared" } else { "/tmp/oad-shared" };
+
     pub(super) fn put(root: &Path, rel: &str, text: &str) {
         let path = root.join(rel);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -98,7 +101,7 @@ mod testing {
             "description": "Demo\u{1b}[31m plugin\nwith two lines",
             "mystery": true,
             "extensions": {"dev.openagentd": {"permissions": {
-                "net": ["api.example.com", "*.example.org"], "listen": true, "fs": ["/tmp/oad-shared"], "subprocess": ["git"], "env": ["HOME", "TOKEN"]
+                "net": ["api.example.com", "*.example.org"], "listen": true, "fs": [SHARED], "subprocess": ["git"], "env": ["HOME", "TOKEN"]
             }}}
         });
         put(root, "plugin.json", &manifest.to_string());

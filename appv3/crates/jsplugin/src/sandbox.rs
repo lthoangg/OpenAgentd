@@ -658,9 +658,16 @@ mod tests {
         assert_eq!(resolve(&base.join("a")), Some(base.join("a")));
         assert_eq!(resolve(&base.join("a/b/c.txt")), Some(base.join("a").join("b").join("c.txt")));
         assert_eq!(resolve(&base.join("a/../a/x")), Some(base.join("a").join("x")));
-        // `..` after a name that does not exist cannot be resolved without the file system.
-        assert_eq!(resolve(&base.join("a/nope/../x")), None);
-        assert_eq!(resolve(&base.join("a/nope/..")), None);
+        if cfg!(windows) {
+            // Windows drops `name\..` from the text before it looks at the disk, and opens the
+            // path the same way, so the result is what a file call would reach.
+            assert_eq!(resolve(&base.join("a/nope/../x")), Some(base.join("a").join("x")));
+            assert_eq!(resolve(&base.join("a/nope/..")), Some(base.join("a")));
+        } else {
+            // `..` after a name that does not exist cannot be resolved without the file system.
+            assert_eq!(resolve(&base.join("a/nope/../x")), None);
+            assert_eq!(resolve(&base.join("a/nope/..")), None);
+        }
         // Removing keeps the last name.
         assert_eq!(resolve_entry(&base.join("a/b")), Some(base.join("a").join("b")));
         assert_eq!(resolve_entry(&base.join("a/..")), None);

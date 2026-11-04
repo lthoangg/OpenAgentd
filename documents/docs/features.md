@@ -1026,7 +1026,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     opened in the window, and scroll bars follow System Settings.
   - Optional global shortcuts, off by default: **Global Shortcuts** in the
     OpenAgentd menu turns on `⌥⌘O`/`Ctrl+Alt+O` (Show OpenAgentd) and
-    `⌥⌘J`/`Ctrl+Alt+J` (Next session that needs you).
+    `⌥⌘J`/`Ctrl+Alt+J` (Next session that needs you). Since `[v3.46.0]` the
+    command palette has Next Session That Needs You too.
   - On Android the system font size now enlarges text, up to 125%, as
     Dynamic Type does on iOS.
   - In the phone apps, long-press menus (sessions, tabs, tool rows,
@@ -1343,7 +1344,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   platform-aware shortcuts `[v1.93.1]`.
   - **Platform-standard menus** `[v3.0.0]` — File has New Session (`⌘N`), New
     Window (`⌘⇧N`), Open Workspace… (`⌘O`), and Close Window (`⌘W`, which
-    closes an open dock tab first). View
+    closes an open dock tab first; since `[v3.46.0]` `⌘O` / `Ctrl+O` and
+    Open Workspace… in the command palette work in the browser too). View
     adds Toggle Sidebar (`⌘B`). A new Help menu
     links GitHub, release notes, and issue reporting, and holds the config
     folder and log shortcuts. The macOS app menu gains Services and
@@ -2293,7 +2295,11 @@ executes tools, manages its task list, and inspects workspace repositories.
   the window resets. Stale quota-wait banners are cleared when turns resume,
   when later transcript activity supersedes the wait state, or when a reopened
   session is no longer actively waiting. The user can manually stop or
-  interrupt at any time. An account spend cap (such as Anthropic's monthly
+  interrupt at any time. Since `[v3.46.0]` the card gives way to the reply
+  dots the moment the quota resets, a reload keeps a pinned account's card
+  and its choices, and a run of failed retries ends in one line ("Stopped
+  retrying … after 5 attempts") above a single error card instead of a
+  blank "Model error" card. An account spend cap (such as Anthropic's monthly
   spend limit) is not waited out: the turn fails at once and says to raise
   the limit or switch model `[v3.30.0]`.
   With several keys or accounts for the provider, a limit first switches to

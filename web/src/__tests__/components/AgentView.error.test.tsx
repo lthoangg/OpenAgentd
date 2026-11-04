@@ -322,6 +322,29 @@ describe("AgentView — provider retry notice", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy()
   })
 
+  it("says the retries stopped in one line, with one error card after it", () => {
+    // What the server sends: a bare `exhausted` mark, then the turn's error.
+    const exhausted: ContentBlock = {
+      id: "x1",
+      type: "provider_status",
+      content: "",
+      extra: { type: "provider_status", status: "exhausted", model: "openai:gpt", max_attempts: 5, error_type: "HTTPStatusError", status_code: 503, message: null },
+    }
+    const error: ContentBlock = {
+      id: "e1",
+      type: "provider_status",
+      content: "Provider returned 503",
+      extra: { status: "error", title: "Provider Unavailable", message: "Provider returned 503", category: "provider" },
+    }
+    render(<AgentView blocks={[prompt, retrying({ max_attempts: 5 }), exhausted, error]} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
+
+    expect(document.querySelector("[data-provider-exhausted]")?.textContent).toBe("Stopped retrying openai:gpt after 5 attempts503 HTTPStatusError")
+    // One error card: no blank "Model error" card for the exhausted mark.
+    expect(screen.queryByText("Model error")).toBeNull()
+    expect(screen.getAllByRole("button", { name: "Copy details" })).toHaveLength(1)
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1)
+  })
+
   it("says which credential the turn moved to when one hits its limit", () => {
     const block: ContentBlock = {
       id: "s1",

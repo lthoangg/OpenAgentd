@@ -119,8 +119,19 @@ function openModelPicker(): void {
   useUIStore.getState().openRunPicker('model')
 }
 
+/**
+ * The server's "retries ran out" mark: the model and the budget, but no
+ * message. The error the turn ends with follows it and is the card; this is
+ * the one line under the retries saying they stopped.
+ */
+function isBareExhausted(block: ContentBlock): boolean {
+  return block.type === 'provider_status' && block.extra?.status === 'exhausted' &&
+    !block.content && !(typeof block.extra?.message === 'string' && block.extra.message)
+}
+
 function isProviderErrorBlock(block: ContentBlock): boolean {
   if (block.type !== 'provider_status') return false
+  if (isBareExhausted(block)) return false
   const status = block.extra?.status
   return status === 'error' || status === 'exhausted' || block.extra?.category === 'provider'
 }
@@ -166,7 +177,7 @@ function readStoredQuotaWait(sessionId: string | undefined): QuotaWait | null {
   try {
     const raw = window.localStorage.getItem(quotaWaitStorageKey(sessionId))
     if (!raw) return null
-    const stored = JSON.parse(raw) as { model?: unknown; resetsAt?: unknown }
+    const stored = JSON.parse(raw) as { model?: unknown; resetsAt?: unknown; pinned?: unknown; account?: unknown; message?: unknown }
     if (typeof stored.resetsAt !== 'number' || !Number.isFinite(stored.resetsAt)) return null
     if (stored.resetsAt <= Date.now() / 1000) {
       window.localStorage.removeItem(quotaWaitStorageKey(sessionId))
@@ -175,6 +186,10 @@ function readStoredQuotaWait(sessionId: string | undefined): QuotaWait | null {
     return {
       model: typeof stored.model === 'string' ? stored.model : undefined,
       resetsAt: stored.resetsAt,
+      // A pinned wait keeps its own card (and its ways around) after a reload.
+      pinned: stored.pinned === true,
+      account: typeof stored.account === 'string' ? stored.account : undefined,
+      message: typeof stored.message === 'string' ? stored.message : undefined,
     }
   } catch {
     return null
@@ -187,7 +202,7 @@ function saveQuotaWait(sessionId: string | undefined, wait: QuotaWait): void {
   try {
     window.localStorage.setItem(
       quotaWaitStorageKey(sessionId),
-      JSON.stringify({ model: wait.model, resetsAt: wait.resetsAt }),
+      JSON.stringify({ model: wait.model, resetsAt: wait.resetsAt, pinned: wait.pinned, account: wait.account, message: wait.message }),
     )
   } catch {
     // Storage can be unavailable in private browsing or when disabled.
@@ -270,6 +285,17 @@ function formatQuotaCountdown(resetsAt: number, now = Date.now()): string | null
   return `${minutes}m`
 }
 
+/** The "about to respond" dots: a reply is on its way and nothing shows yet. */
+function PendingDots() {
+  return (
+    <div className="flex items-center gap-1.5 py-1" role="status" aria-label="Agent is preparing a response">
+      <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
+      <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />
+      <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '300ms' }} />
+    </div>
+  )
+}
+
 /**
  * The turn is waiting for a provider quota to reset (DESIGN.md → Notices):
  * one card whether the session runs on Auto or is pinned to the account that
@@ -285,9 +311,18 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
     return () => window.clearInterval(interval)
   }, [])
 
+  // Wake at the reset itself, not up to a minute after it.
   useEffect(() => {
-    if (persist) saveQuotaWait(sessionId, { model: wait.model, resetsAt: wait.resetsAt })
-  }, [persist, sessionId, wait.model, wait.resetsAt])
+    if (wait.resetsAt === undefined) return undefined
+    const ms = wait.resetsAt * 1000 - Date.now()
+    if (ms <= 0 || ms > 2_147_000_000) return undefined
+    const timer = window.setTimeout(() => setNow(Date.now()), ms + 50)
+    return () => window.clearTimeout(timer)
+  }, [wait.resetsAt])
+
+  useEffect(() => {
+    if (persist) saveQuotaWait(sessionId, { model: wait.model, resetsAt: wait.resetsAt, pinned: wait.pinned, account: wait.account, message: wait.message })
+  }, [persist, sessionId, wait.model, wait.resetsAt, wait.pinned, wait.account, wait.message])
 
   useEffect(() => {
     if (wait.resetsAt !== undefined && now >= wait.resetsAt * 1000) {
@@ -296,6 +331,12 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
   }, [now, sessionId, wait.resetsAt])
 
   const countdown = wait.resetsAt === undefined ? undefined : formatQuotaCountdown(wait.resetsAt, now)
+  // The quota has reset and the call is out again: the wait is over, so the
+  // card (and its Stop / Use Auto) gives way to the same dots as any reply
+  // on its way. Without a known reset time the card stays until output comes.
+  // A card restored after a reload has no rows under it, where the
+  // transcript already shows those dots.
+  if (countdown === null) return persist ? <PendingDots /> : null
   const modelName = wait.model ? <ModelName id={wait.model} className="align-bottom text-(--color-text-2)" /> : null
   const accountName = wait.account ? <span className="font-semibold text-(--color-text-2)">{wait.account}</span> : null
 
@@ -309,12 +350,12 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
             {wait.pinned ? 'Waiting for the pinned account' : 'Waiting for quota reset'}
             {countdown !== undefined && (
               <span className="font-normal text-(--color-text-muted)" aria-live="polite">
-                {countdown === null ? ' · resuming now' : <>{' · resumes in '}<span className="font-mono tabular-nums">{countdown}</span></>}
+                {' · resumes in '}<span className="font-mono tabular-nums">{countdown}</span>
               </span>
             )}
           </>
         }
-        action={<WaitActions pinned={Boolean(wait.pinned) && persist} details={wait.message} />}
+        action={<WaitActions pinned={Boolean(wait.pinned)} details={wait.message} />}
       >
         <span className="text-(--color-text-muted)">
           {wait.pinned
@@ -377,33 +418,46 @@ function WaitActions({ pinned, details }: { pinned: boolean; details?: string })
 /**
  * A provider call failed and is being retried: one line, the model ID in
  * mono, the attempt and the wait with units, the raw error as a chip.
+ * ``exhausted``: the retries ran out; the same line says so, and the error
+ * card after it carries the way forward.
  */
-function RetryNotice({ model, attempt, maxAttempts, delay, errorType, statusCode }: {
+function RetryNotice({ model, attempt, maxAttempts, delay, errorType, statusCode, exhausted = false }: {
   model?: string
   attempt?: unknown
   maxAttempts?: unknown
   delay?: unknown
   errorType?: unknown
   statusCode?: unknown
+  exhausted?: boolean
 }) {
   // Dropped connections retry without a budget until the network is back.
   const progress = typeof maxAttempts === 'number'
     ? `${String(attempt ?? '?')}/${maxAttempts}`
     : String(attempt ?? '?')
   const error = [statusCode, errorType].filter((v) => v !== undefined && v !== null && v !== '').map(String).join(' ')
+  const modelName = model ? <ModelName id={model} className="align-bottom text-(--color-text-2)" /> : 'the model'
   return (
     <div
       role="status"
-      data-provider-retry
+      data-provider-retry={exhausted ? undefined : ''}
+      data-provider-exhausted={exhausted ? '' : undefined}
       className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-1.5 text-xs text-(--color-text-muted)"
     >
-      <span>
-        {'Retrying '}
-        {model ? <ModelName id={model} className="align-bottom text-(--color-text-2)" /> : 'the model'}
-        {' · attempt '}
-        <span className="font-mono tabular-nums">{progress}</span>
-        {typeof delay === 'number' && <>{' · in '}<span className="font-mono tabular-nums">{formatMetaDuration(delay * 1000)}</span></>}
-      </span>
+      {exhausted ? (
+        <span>
+          {'Stopped retrying '}
+          {modelName}
+          {typeof maxAttempts === 'number' && <>{' after '}<span className="font-mono tabular-nums">{maxAttempts}</span>{maxAttempts === 1 ? ' attempt' : ' attempts'}</>}
+        </span>
+      ) : (
+        <span>
+          {'Retrying '}
+          {modelName}
+          {' · attempt '}
+          <span className="font-mono tabular-nums">{progress}</span>
+          {typeof delay === 'number' && <>{' · in '}<span className="font-mono tabular-nums">{formatMetaDuration(delay * 1000)}</span></>}
+        </span>
+      )}
       {error && <Chip tone="warning" mono>{error}</Chip>}
     </div>
   )
@@ -513,6 +567,19 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
     case 'provider_status': {
       const status = block.extra?.status
       const customMsg = block.extra?.message as string | undefined
+
+      if (isBareExhausted(block)) {
+        const model = typeof block.extra?.model === 'string' ? block.extra.model : undefined
+        return (
+          <RetryNotice
+            exhausted
+            model={model}
+            maxAttempts={block.extra?.max_attempts}
+            errorType={block.extra?.error_type}
+            statusCode={block.extra?.status_code}
+          />
+        )
+      }
 
       if (isProviderErrorBlock(block)) {
         const title = providerErrorTitle(block.extra?.title)
@@ -1292,11 +1359,7 @@ export function AgentView({
             {((!isTurnOpen && !isError && currentBlocks.some(isTypedPromptBlock)) ||
               isAwaitingRestart ||
               (isWorking && !answerHoldsReport && currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))) && (
-              <div className="flex items-center gap-1.5 py-1" role="status" aria-label="Agent is preparing a response">
-                <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
-                <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />
-                <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '300ms' }} />
-              </div>
+              <PendingDots />
             )}
 
             {/* Queued and steer messages wait here, faded, under the turn

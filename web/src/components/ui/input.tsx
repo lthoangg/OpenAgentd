@@ -2,8 +2,8 @@
  * Input — OpenAgentd's own primitive.
  *
  * Design language lifted from the inputs in AppBackendDialog:
- *   --bg-input surface · 1px border-subtle hairline · text-xs · natural height ·
- *   focus shifts border to --focus-ring with a soft /30 ring · no hover border jump
+ *   --bg-input surface · 1px border hairline · text-xs · natural height ·
+ *   focus steps the edge to the subtle text tone (3:1+) · no hover border jump
  *
  * No base-ui. Plain <input> only.
  */
@@ -25,7 +25,7 @@ function Input({ className, ref, ...props }: InputProps) {
         // Layout
         'w-full min-w-0 rounded-sm border',
         // Surface
-        'border-(--color-border-subtle) bg-(--bg-input)',
+        'border-(--color-border) bg-(--bg-input)',
         // Typography
         'px-2.5 py-1.5 text-xs text-(--color-text)',
         // Placeholder
@@ -34,7 +34,7 @@ function Input({ className, ref, ...props }: InputProps) {
         'outline-none transition-colors focus:outline-none focus-visible:outline-none',
         // A clicked field shows focus the composer's way: a stronger edge,
         // no blue glow (the blue ring marks keyboard focus).
-        'focus:border-(--color-border-strong)',
+        'focus:border-(--color-text-subtle)',
         // States
         'disabled:cursor-not-allowed disabled:opacity-50',
         'aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',

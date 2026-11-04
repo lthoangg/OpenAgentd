@@ -118,7 +118,7 @@ const RULES: Rule[] = [
   },
   {
     name: 'blue-field-focus',
-    why: 'a clicked text field shows focus the composer\'s way, a border-strong edge; a blue glow on every click is not native (the ring is for keyboard focus)',
+    why: 'a clicked text field shows focus with a stronger edge (the subtle text tone); a blue glow on every click is not native (the ring is for keyboard focus)',
     pattern: /(?:focus|focus-within|focus-visible):border-\(--focus-ring\)|(?:focus|focus-within):ring-(?:[1-9]|\(--focus-ring\))|(?<![\w:-])ring-\(--focus-ring\)\/\d+/g,
     allow: {},
   },
@@ -166,6 +166,29 @@ const RULES: Rule[] = [
     why: 'fields sit on surfaces and cards, where subtle falls under 4.5:1 in dark mode; placeholders use text-muted',
     pattern: /placeholder(?:-|:text-)\(--color-text-subtle\)/g,
     allow: {},
+  },
+  {
+    name: 'dimmed-text',
+    why: 'a text tone at partial alpha drops under AA (muted at 60% is 2.5:1); step down the text ramp (text-2 → muted → subtle) instead',
+    pattern: /(?<![\w-])(?:[\w-]+:)*(?:text|placeholder)-\(--color-text(?:-[\w-]+)?\)\/\d+/g,
+    allow: {},
+  },
+  {
+    name: 'opacity-on-text',
+    why: 'fading words with opacity drops them under AA; use a lower text tone. Disabled controls, decorative icons and drag ghosts are the exceptions',
+    pattern: /^(?=.*(?<![\w:-])text-\(--color-text(?:-[\w-]+)?\)).*(?<![\w:/-])opacity-(?:[1-9]\d?)(?![\w-])/g,
+    allow: {
+      // Disabled controls (WCAG exempts them).
+      'components/ui/calendar.tsx': 1,
+      'components/AgentView/UserBubble.tsx': 1,
+      // Decorative empty-state icons.
+      'components/settings/pages/settings.memory.tsx': 1,
+      'components/TodosPopover.tsx': 1,
+      // A queued message, held back at 75% (ink stays above 7:1).
+      'components/PendingMessageQueue.tsx': 1,
+      // The tab carried under the pointer while dragging.
+      'components/WorkspacePanel/dock-tab-styles.ts': 1,
+    },
   },
   {
     name: 'solid-hue-text',

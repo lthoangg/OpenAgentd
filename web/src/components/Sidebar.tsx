@@ -1784,7 +1784,7 @@ export function Sidebar({
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border-subtle) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-border-strong) md:min-h-8"
+                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-text-subtle) md:min-h-8"
                     maxLength={80}
                     autoFocus
                   />
@@ -1799,7 +1799,7 @@ export function Sidebar({
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border-subtle) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-border-strong) md:min-h-8"
+                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-text-subtle) md:min-h-8"
                     maxLength={255}
                   />
                   <p className="text-xs md:text-meta font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
@@ -2124,7 +2124,7 @@ export function Sidebar({
                 autoCorrect="off"
                 autoCapitalize="off"
                 spellCheck={false}
-                className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border-subtle) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none transition-colors focus:outline-none focus:border-(--color-border-strong) md:min-h-8"
+                className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none transition-colors focus:outline-none focus:border-(--color-text-subtle) md:min-h-8"
                 aria-label="Worktree title"
                 maxLength={255}
               />

@@ -21,7 +21,7 @@ import type { FileRef } from '@/utils/file-refs'
 import { addTerminalSelectionToChat, copyTerminalSelection, pasteIntoTerminal } from './terminal-actions'
 import { routeTerminalKey, terminalShortcut } from './terminal-keys'
 import { createFileLinkProvider, parseOsc7Cwd } from './terminal-links'
-import { TERMINAL_THEMES, type TerminalResolvedTheme } from './terminal-themes'
+import { TERMINAL_MIN_CONTRAST_RATIO, TERMINAL_THEMES, type TerminalResolvedTheme } from './terminal-themes'
 
 export interface XtermHandle {
   term: Terminal
@@ -59,6 +59,7 @@ export function createXterm(options: {
     fontFamily: options.fontFamily,
     fontSize: options.fontSize,
     theme: TERMINAL_THEMES[options.theme],
+    minimumContrastRatio: TERMINAL_MIN_CONTRAST_RATIO,
     allowProposedApi: true,
     scrollback: 5000,
   })

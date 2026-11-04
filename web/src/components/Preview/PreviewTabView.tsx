@@ -619,7 +619,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
             autoCorrect="off"
             inputMode="url"
             enterKeyHint="go"
-            className="h-8 w-full min-w-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-2 font-mono text-xs text-(--color-text) outline-none transition-colors focus:border-(--color-border-strong) pointer-coarse:h-9"
+            className="h-8 w-full min-w-0 rounded-xs border border-(--color-border) bg-(--bg-input) px-2 font-mono text-xs text-(--color-text) outline-none transition-colors focus:border-(--color-text-subtle) pointer-coarse:h-9"
           />
           {loading && !pageDown && (
             // Safari's way: a thin sweep along the field's bottom edge.

@@ -35,7 +35,6 @@ import { cn } from '@/lib/utils'
 import type { TerminalSessionMeta } from '@/stores/useTerminalStore'
 import {
   DOCK_ACTION_BUTTON_CLASS,
-  DOCK_STRIP_PART_CLASS,
   DOCK_TAB_LIFTED_CLASS,
   DOCK_TAB_STRIP_CLASS,
   dockTabButtonClass,
@@ -352,7 +351,7 @@ export function DockTabBar({
     <div ref={stripRef} data-dock-strip="" className={DOCK_TAB_STRIP_CLASS}>
       <div
         ref={scrollerRef}
-        className={cn('scrollbar-none flex min-w-0 flex-1 gap-0.5 overflow-x-auto overflow-y-hidden py-1 pl-1', DOCK_STRIP_PART_CLASS)}
+        className="scrollbar-none flex min-w-0 flex-1 gap-0.5 overflow-x-auto overflow-y-hidden py-1 pl-1"
         onKeyDown={handleStripKeyDown}
         {...drag.handlers}
       >
@@ -454,7 +453,7 @@ export function DockTabBar({
           }}
         />
       </div>
-      <div className={cn('flex shrink-0 items-center gap-0.5 px-1', DOCK_STRIP_PART_CLASS)}>
+      <div className="flex shrink-0 items-center gap-0.5 px-1">
         {overflowing && tabs.length > 1 && (
           <Tooltip>
             <TooltipTrigger

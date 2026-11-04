@@ -585,7 +585,7 @@ export const MarkdownTable = memo(function MarkdownTable(
 
   return (
     <div className="oa-table-container group relative">
-      <div className="absolute top-1 right-1 z-10 opacity-60 transition-opacity duration-(--motion-fast) group-hover:opacity-100 focus-within:opacity-100">
+      <div className="absolute top-1 right-1 z-10">
         <Tooltip>
           <TooltipTrigger
             render={

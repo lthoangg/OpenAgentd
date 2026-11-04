@@ -99,4 +99,13 @@ describe('pet.css sizes', () => {
   it('backs the white "z z" with a chip so it reads on a light wallpaper', () => {
     expect(block('.pet-zzz')).toContain('background: var(--pet-snooze-chip)')
   })
+
+  // The marks sit on solid bright hues in both themes. Dark mode's text tone
+  // is cream, which was 1.5:1 on the orange and 1.6:1 on the blue.
+  it('sets the alert, look and pant marks in dark ink on their bright fills in both themes', () => {
+    for (const mark of ['.pet-mark--alert', '.pet-mark--look', '.pet-mark--pant']) {
+      expect({ mark, light: block(mark) }).toMatchObject({ light: expect.stringContaining('color: var(--color-text)') })
+      expect({ mark, dark: block(`:root.dark ${mark}`) }).toMatchObject({ dark: expect.stringContaining('color: var(--bg-page)') })
+    }
+  })
 })

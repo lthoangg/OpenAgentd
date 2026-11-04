@@ -91,10 +91,10 @@ function SearchBar({
           // Shape
           'flex min-h-10 items-center gap-1.5 rounded-sm border md:min-h-8',
           // Surface
-          'border-(--color-border-subtle) bg-(--bg-input)',
+          'border-(--color-border) bg-(--bg-input)',
           // Focus strengthens the edge, as on the Input primitive
           'transition-colors',
-          'focus-within:border-(--color-border-strong)',
+          'focus-within:border-(--color-text-subtle)',
         )}
       >
         {/* Search icon — non-interactive, purely decorative */}
@@ -120,7 +120,7 @@ function SearchBar({
           enterKeyHint="search"
           className={cn(
             'min-w-0 flex-1 bg-transparent py-2 text-xs text-(--color-text) md:py-1.5',
-            'placeholder:text-(--color-text-muted)/60',
+            'placeholder:text-(--color-text-muted)',
             'border-none outline-none ring-0 focus:border-none focus:outline-none focus:ring-0 focus-visible:border-none focus-visible:outline-none focus-visible:ring-0',
             // Remove browser-default search cancel button — we render our own
             '[&::-webkit-search-cancel-button]:appearance-none',

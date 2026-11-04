@@ -233,7 +233,7 @@ function SheetHandle({ onPointerDown }: { onPointerDown: (event: React.PointerEv
       onPointerDown={onPointerDown}
       style={{ touchAction: 'none' }}
     >
-      <span className="h-1 w-9 rounded-full bg-(--color-border-strong)" />
+      <span className="h-1 w-9 rounded-full bg-(--color-text-subtle)" />
     </div>
   )
 }

@@ -70,10 +70,10 @@ describe('borderless controls', () => {
     const { getByRole, rerender } = render(<Switch checked={false} aria-label="Off switch" />)
     const off = getByRole('switch').className
     expect(borderWidths(off)).toEqual([])
-    // Paper keeps it light, as a native light switch; dark (and Increase
-    // contrast, which raises the border tones) keep the stronger tone.
-    expect(off).toContain('bg-(--color-border)')
-    expect(off).toContain('dark:bg-(--color-border-strong)')
+    // The strong border tone in both themes: the lighter hairline tone left a
+    // switch that is off at 1.5:1 on a paper card, its thumb lost in the track.
+    expect(off).toContain('bg-(--color-border-strong)')
+    expect(off).not.toMatch(/(?:^|\s)bg-\(--color-border\)(?:\s|$)/)
     rerender(<Switch checked aria-label="On switch" />)
     expect(getByRole('switch').className).toContain('bg-(--switch-on)')
   })
@@ -86,7 +86,7 @@ describe('borderless controls', () => {
     expect(css).toMatch(/@media \(hover: hover\)\s*\{\s*\.oa-menu-item:hover/)
   })
 
-  it('keeps one subtle hairline on text fields', () => {
+  it('keeps one hairline on text fields, stepping to the subtle text tone on focus', () => {
     const { getByRole } = render(
       <>
         <Input aria-label="Name" />
@@ -98,7 +98,10 @@ describe('borderless controls', () => {
       // ``file:border-0`` clears the file-picker button's border; it draws none.
       const drawn = borderWidths(classes).filter((c) => !c.endsWith('border-0'))
       expect({ name, borders: drawn }).toEqual({ name, borders: ['border'] })
-      expect(classes).toContain('border-(--color-border-subtle)')
+      // The border tone (border-subtle all but vanished on a dark card, 1.15:1);
+      // focus takes a 3:1 edge (border-strong was 2.25:1).
+      expect(classes).toContain('border-(--color-border)')
+      expect(classes).toContain('focus:border-(--color-text-subtle)')
     }
   })
 })

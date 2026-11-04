@@ -62,8 +62,9 @@ describe('prefers-contrast: more', () => {
       for (const name of ['--color-text-muted', '--color-text-subtle']) {
         expect(contrast(high[name], page)).toBeGreaterThanOrEqual(7)
       }
-      // WCAG 1.4.11: component boundaries at 3:1 against the page and sidebar.
-      for (const name of ['--color-border', '--color-border-strong']) {
+      // WCAG 1.4.11: component boundaries at 3:1 against the page and sidebar,
+      // the field hairline (border-subtle) included.
+      for (const name of ['--color-border-subtle', '--color-border', '--color-border-strong']) {
         expect(contrast(high[name], page)).toBeGreaterThanOrEqual(3)
         expect(contrast(high[name], base['--bg-sidebar'])).toBeGreaterThanOrEqual(3)
       }
@@ -74,7 +75,7 @@ describe('prefers-contrast: more', () => {
   it('leaves the regular tokens as they were', () => {
     expect(props(baseTokens, /:root,\s*:root\.light\s*\{/)['--color-text-muted']).toBe('#6E604F')
     expect(props(baseTokens, /:root,\s*:root\.light\s*\{/)['--color-border']).toBe('#D9CFA9')
-    expect(props(baseTokens, /:root\.dark\s*\{/)['--color-text-muted']).toBe('#9C8A72')
+    expect(props(baseTokens, /:root\.dark\s*\{/)['--color-text-muted']).toBe('#AF9F85')
     expect(props(baseTokens, /:root\.dark\s*\{/)['--color-border']).toBe('#3A2F23')
   })
 

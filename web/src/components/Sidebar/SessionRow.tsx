@@ -256,7 +256,7 @@ function SessionRowView({
             minimum, so it shrinks (faster than the title) instead of
             holding its full width. */}
         {checkoutName && !isEditing && (
-          <span className={`ml-1 inline-flex min-w-12 max-w-24 shrink-2 items-center gap-0.5 font-mono text-meta text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
+          <span className={`ml-1 inline-flex min-w-12 max-w-24 shrink-2 items-center gap-0.5 font-mono text-meta text-(--color-text-muted) ${ageVisibility}`} aria-hidden="true">
             <GitBranch size={11} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
             <span data-checkout-tag className="truncate">{checkoutName}</span>
           </span>
@@ -264,21 +264,21 @@ function SessionRowView({
         {contextLabel && !isEditing && (
           <span
             data-context-label
-            className={`ml-1 min-w-8 max-w-24 shrink-2 truncate font-mono text-meta text-(--color-text-subtle) ${ageVisibility}`}
+            className={`ml-1 min-w-8 max-w-24 shrink-2 truncate font-mono text-meta text-(--color-text-muted) ${ageVisibility}`}
             aria-hidden="true"
           >
             {contextLabel}
           </span>
         )}
         {pinned && !isEditing && (
-          <span data-pin-mark="" className={`ml-1 flex shrink-0 items-center text-(--color-text-subtle) ${pinMarkVisibility}`} aria-hidden="true">
+          <span data-pin-mark="" className={`ml-1 flex shrink-0 items-center text-(--color-text-muted) ${pinMarkVisibility}`} aria-hidden="true">
             <Pin size={11} />
           </span>
         )}
         {session.goal_status && !isEditing && (
           <span
             data-goal-status={session.goal_status}
-            className={`ml-1 flex shrink-0 items-center ${session.goal_status === 'active' ? 'text-(--color-text-2)' : 'text-(--color-text-subtle)'} ${metaVisibility}`}
+            className={`ml-1 flex shrink-0 items-center ${session.goal_status === 'active' ? 'text-(--color-text-2)' : 'text-(--color-text-muted)'} ${metaVisibility}`}
             title={session.goal_status === 'active' ? 'Working toward a goal' : 'Goal paused'}
             aria-hidden="true"
           >
@@ -288,7 +288,7 @@ function SessionRowView({
         {!isEditing && (stateWord
           ? <SessionStateWord status={status} className={pinMarkVisibility} />
           : sessionAge && (
-            <span className={`shrink-0 pl-1 pr-1 text-meta tabular-nums text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
+            <span className={`shrink-0 pl-1 pr-1 text-meta tabular-nums text-(--color-text-muted) ${ageVisibility}`} aria-hidden="true">
               {sessionAge}
             </span>
           ))}
@@ -503,7 +503,7 @@ export function DraftSessionRow({ label = null }: { label?: string | null }) {
         <SquarePen size={11} />
       </span>
       <span className="min-w-0 flex-1 truncate font-semibold italic">New session</span>
-      {label && <span className="max-w-[40%] shrink-0 truncate font-mono text-meta text-(--color-text-subtle)">{label}</span>}
+      {label && <span className="max-w-[40%] shrink-0 truncate font-mono text-meta text-(--color-text-muted)">{label}</span>}
     </div>
   )
 }

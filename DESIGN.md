@@ -25,7 +25,7 @@ colors:
   surface-2: "#F5EBD8"
 
   # ── Selection fills ────────────────────────────────────────────────────────
-  fill-selected: "#E3D6BA"    # Chosen segment, tab or option (a quiet sand)
+  fill-selected: "#D2C19B"    # Chosen segment, tab or option (a sand, 1.46:1 on the track)
   on-selected: "#1A1714"
   fill-highlight: "#EFE7D3"   # Menu row under the pointer or keyboard (a lighter wash)
   on-highlight: "#1A1714"
@@ -84,21 +84,21 @@ colors:
   syn-keyword: "#7C3AED"
   syn-function: "#026F9E"
   syn-variable: "#B91C1C"
-  syn-string: "#15803D"
-  syn-number: "#A16207"
-  syn-type: "#B45309"
+  syn-string: "#15702F"
+  syn-number: "#8A5A00"
+  syn-type: "#A04A07"
   syn-operator: "#4B3E32"
 
   # ── Chart markers ──────────────────────────────────────────────────────────
   marker-blue: "#0284C7"
   marker-mint: "#16A34A"
-  marker-orange: "#FA8030"
+  marker-orange: "#D06519"
   marker-pink: "#DB2777"
   marker-yellow: "#B77900"
   marker-violet: "#7C3AED"
 
   # ── Utility ────────────────────────────────────────────────────────────────
-  focus-ring: "#5AA8E2"
+  focus-ring: "#2569A0"         # Signal Blue, a step deeper: 3:1 on every paper surface
   focus-outline: "#174A73"     # Solid keyboard-focus contrast on paper
   overlay: "rgba(26, 23, 20, 0.40)"
 
@@ -288,8 +288,8 @@ components:
     backgroundColor: "{colors.fill-selected}"
     textColor: "{colors.on-selected}"
     rounded: "{rounded.none}"
-  switch-off:                 # border on paper, border-strong on dark
-    backgroundColor: "{colors.border}"
+  switch-off:                 # border-strong in both themes
+    backgroundColor: "{colors.border-strong}"
     rounded: "{rounded.full}"
   switch-on:
     backgroundColor: "{colors.switch-on}"
@@ -445,15 +445,17 @@ inverted surface, reserved for the composer's send action.
 
 A chosen segment, tab or question option fills with `fill-selected` and sets
 its text in `on-selected`; a tooltip is a
-`bg-tooltip` chip. The fills are **quiet**: a tone a step off the track and the
-menu (1.15–1.8:1), with the normal text colour on it, as a native segmented
-control or menu marks its choice. Paper stays light: a sand fill (`#E3D6BA`)
-with ink, a pale rose for a destructive row, and a light tooltip card with a
-hairline edge; no Bark blocks. Dark is **not** the near-white accent (a cream
-block on a dark window glows brighter than the words around it) but a raised
-warm tone (`#3E3227`), about as soft on its keycap track (1.26:1) as the
-paper sand on its own (1.19:1). Increase contrast lifts both fills to 3:1 against the
-track (Bark in light). `token-pairs.test.ts` holds the range and keeps light
+`bg-tooltip` chip. The fills read **at a glance** but stay calm: a tone
+1.4–1.8:1 off the track and the menu, with the normal text colour on it, as a
+native segmented control marks its choice (a 1.2:1 step left Light / Dark /
+System looking unchosen). Paper stays light: a sand fill (`#D2C19B`, 1.46:1
+on the keycap track) with ink, a pale rose for a destructive row, and a light
+tooltip card with a hairline edge; no Bark blocks. Dark is **not** the
+near-white accent (a cream block on a dark window glows brighter than the
+words around it) but a raised warm tone (`#4A3C2E`, 1.47:1 on its track).
+Text on a chosen fill is always `on-selected`: muted text falls under AA
+there. Increase contrast lifts both fills to 3:1 against the track (Bark in
+light). `token-pairs.test.ts` holds the range and keeps light
 fills light and dark fills well below the text tone, and the lint
 (`accent-selection-fill`) stops a selection reaching for the accent.
 
@@ -503,7 +505,7 @@ Front-matter tokens carry the canonical light values; substitute these when
 | `bg-card` | `#FFFBF1` | `#1C1813` |
 | `bg-key` | `#F0E9D4` | `#2A2219` |
 | `bg-send` | `#2D241B` | `#F5EBD8` |
-| `fill-selected` / `on-selected` | `#E3D6BA` / `#1A1714` | `#3E3227` / `#F5EBD8` |
+| `fill-selected` / `on-selected` | `#D2C19B` / `#1A1714` | `#4A3C2E` / `#F5EBD8` |
 | `fill-highlight` / `on-highlight` (menu row under pointer or keyboard) | `#EFE7D3` / `#1A1714` | `#372D22` / `#F5EBD8` |
 | `fill-key-hover` (keycap control, hovered) | `#E9E0C8` | `#332A20` |
 | `fill-danger` / `on-danger` (highlighted destructive row) | `#F7DCD6` / `#991B1B` | `#6B2724` / `#F5EBD8` |
@@ -511,13 +513,14 @@ Front-matter tokens carry the canonical light values; substitute these when
 | `switch-on` | `#3F3429` (accent; white thumb) | `#F5EBD8` (accent; near-black thumb) |
 | `surface` / `surface-2` | `#FFFDF7` / `#F5EBD8` | `#221C16` / `#2A2219` |
 | `color-bg-elevated` | `#FFFDF7` | `#221C16` |
-| `border-subtle` / `border` / `border-strong` | `#E7DCBF` / `#D9CFA9` / `#B8A47E` | `#2C231A` / `#3A2F23` / `#5C4B36` |
+| `border-subtle` / `border` / `border-strong` | `#E7DCBF` / `#D9CFA9` / `#B8A47E` | `#2C231A` / `#3A2F23` / `#6A5640` |
 | `on-surface` | `#1A1714` | `#F5EBD8` |
-| `on-surface-2` | `#4B3E32` | `#C5B59A` |
-| `on-surface-muted` | `#6E604F` | `#9C8A72` |
-| `on-surface-subtle` | `#7A6A54` | `#8E7D66` |
+| `on-surface-2` | `#4B3E32` | `#D3C5AD` |
+| `on-surface-muted` | `#6E604F` | `#AF9F85` |
+| `on-surface-subtle` | `#7A6A54` | `#A4937B` |
 | `primary` (accent) | `#3F3429` | `#F5EBD8` |
 | `accent-blue` (solid / soft / text) | `#5AA8E2` / `#DCEEFB` / `#174A73` | `#7CC2F0` / `#1E3A52` / `#9DD0F5` |
+| `focus-ring` | `#2569A0` | `#7CC2F0` |
 | `accent-green` (solid / soft / text) | `#3DA66A` / `#E2F2E5` / `#15573D` | `#5DC487` / `#1F3A2A` / `#92E0B0` |
 | `accent-orange` (solid / soft / text) | `#F59E3B` / `#FFF1D8` / `#873E05` | `#FDB75D` / `#3D2D14` / `#FCC780` |
 | `diff-add` (bg / text) | `rgba(22, 163, 74, 0.16)` / `#166534` | `rgba(16, 185, 129, 0.10)` / `#86EFAC` |
@@ -530,10 +533,13 @@ Agent and syntax hues brighten and desaturate in dark mode (e.g. `accent-blue`
 
 ### Contrast with the palette we have
 
-Every text-on-surface pair reaches WCAG AA with the existing tokens; no colour
-was added to get there, apart from the dark selection tones above, which step
-the same warm ramp (`styles/token-pairs.test.ts` measures each pair in both
-themes, and the lint enforces the rules below):
+Every text-on-surface pair reaches WCAG AA, and every state a control shows
+(chosen, on, checked, focused) reaches 3:1 (WCAG 1.4.11, 2.4.13). WCAG 2
+overstates contrast near black, so dark text is also set by eye with APCA:
+the ramp reads Lc 95 / 72 / 51 / 45 (text / text-2 / muted / subtle) on the
+dark page, in line with GitHub, Material and macOS secondary text (Lc 45–50);
+the old Lc 40 / 34 looked dim at 12px. `styles/token-pairs.test.ts` measures
+each pair in both themes, and the lint enforces the rules below:
 
 - **Subtle text sits on the page or the sidebar only.** On a wash (`bg-key`,
   soft chips, selected rows) or a card, use `on-surface-muted` (lint:
@@ -542,10 +548,22 @@ themes, and the lint enforces the rules below):
   is for dots and fills; `accent-green-text` for words). In light mode, status
   dots use the `-text` tone too, so a 6px dot still reads at 3:1 (lint:
   `solid-hue-text`, `solid-hue-dot`).
+- **Never fade words with opacity.** A text tone at partial alpha or under
+  `opacity-*` drops under AA (muted at 60% is 2.5:1): step down the text
+  ramp instead. Disabled controls, decorative icons and a dragged ghost are
+  the exceptions (lint: `dimmed-text`, `opacity-on-text`). Data graphics
+  (Telemetry bars, chart markers) stay solid, 3:1 on the card.
 - **Checkbox and radio** strokes are 1.5px `on-surface-subtle`.
-- **Switch off** is a solid `border-strong` track without a border (2.25:1
-  against the page, matching macOS and iOS); with the OS's Increase contrast
+- **Switch off** is a solid `border-strong` track without a border in both
+  themes (2.25:1 on paper, 2.5:1 on a dark card; the lighter `border` tone
+  left it at 1.5:1, its thumb lost in it); with the OS's Increase contrast
   setting it darkens to 5.6:1, and a switch always carries a text label.
+- **Keyboard focus** is 3:1 on every surface, a chosen segment included: the
+  light ring is Signal Blue a step deeper (`#2569A0`; `#5AA8E2` was 2.4:1 on
+  paper). The logo keeps `#5AA8E2`.
+- **Terminal** output is whatever programs print (ANSI black is the dark
+  background), so xterm's `minimumContrastRatio` (4.5) lifts any colour under
+  AA against its cell, as VS Code does.
 - **Increase contrast** (`prefers-contrast: more`, `styles/tokens.css`)
   darkens every border and secondary text one step.
 
@@ -780,9 +798,8 @@ drawer and full-screen sheet.
   menu) and the strip's "+" menu or launcher start one, and a focused
   terminal keeps Control+backquote for its shell. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`, `Mod+Shift+[`/`]`) act on the focused
   pane; with several panes, the open tab of a pane without focus steps back
-  (a lighter wash, `text-2`) and everything on that pane's strip fades to
-  50%, as an inactive window's title bar does, so the focused pane reads at
-  a glance. A click into a preview page focuses its pane too (the window's
+  (a lighter wash, `text-2`), so the focused pane reads at a glance; the
+  labels never fade (a strip at 50% left them at 2.1–2.3:1). A click into a preview page focuses its pane too (the window's
   blur says so; the page's events stay in its frame). Phones have one strip:
   panes join there.
 
@@ -825,8 +842,8 @@ Keyboard focus uses a solid 2px outline (`#174A73` in light mode, `#9DD0F5`
 in dark mode), with a 2px offset. Translucent `focus-ring` effects remain
 decorative supplements, not the only focus indicator. In the desktop app the
 ring follows keyboard navigation only (Tab, F6; `lib/desktop-shell.ts`):
-Escape, shortcuts and typing never draw it. Text fields mark focus the
-composer's way, their edge stepping to `border-strong`, never a blue glow
+Escape, shortcuts and typing never draw it. Text fields mark focus with
+their edge stepping to `on-surface-subtle` (3:1 or more), never a blue glow
 (lint: `blue-field-focus`). Focus is never removed without an equally visible
 replacement.
 
@@ -934,7 +951,7 @@ them is: **warm paper surface · fills, not borders · muted text · keycap hove
 a primary action is filled with Bark (`--color-accent`), a secondary one with
 the keycap wash (`bg-key`), a ghost one is text only. In a small group (Code /
 Plan, a question's options) the chosen item is
-filled edge to edge with `fill-selected` (a quiet sand in light, a raised warm
+filled edge to edge with `fill-selected` (a sand in light, a raised warm
 tone in dark; see Colors → Selection fills) and its text turns `on-selected`; the
 highlighted menu item takes the softer `fill-highlight`; the track
 has no border and no inset. In a long list (sidebar rows, the dock's tab strip)
@@ -989,9 +1006,10 @@ hovered; `danger` is the soft error fill.
 - Rows with a long-press action sheet set `-webkit-touch-callout: none` (`LongPressButton` does this while enabled).
 
 **Inputs** use `bg-input` (matching the page, not the card) with a 1px
-`border-subtle` hairline, the same weight as a container's (Increase contrast
-darkens it with every other border).
-Focus shifts the border to `focus-ring` and adds a 30% ring. Borders never change
+`border` hairline (`border-subtle` all but vanished on a dark card, 1.15:1;
+Increase contrast darkens it to 3:1 with every other border).
+Focus steps the border to `on-surface-subtle` (4.7:1; `border-strong` was
+2.25:1). Borders never change
 width on hover — that causes a 1px layout jump.
 
 **Transcript folds** (`hooks/useStickyFold.ts`): anything in the transcript that
@@ -1018,7 +1036,7 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 
 **Segmented Controls & Connected Tabs**:
 - **Track**: `rounded-sm`, `bg-(--bg-key)`, no border and no padding, `overflow-hidden`: the segments are the track.
-- **Active Segment**: filled with `fill-selected` edge to edge (a quiet sand in light, a raised warm tone in dark), `text-(--color-text-on-selected)`, `font-medium`. Nothing else marks it: no border, no inner card, no shadow.
+- **Active Segment**: filled with `fill-selected` edge to edge (a sand in light, a raised warm tone in dark), `text-(--color-text-on-selected)`, `font-medium`. Nothing else marks it: no border, no inner card, no shadow.
 - **Inactive Segment**: square inside the track, `text-(--color-text-muted)`, hover `text-(--color-text-2)` and a keycap step. Keyboard focus is an inset ring so it never spills past the track.
 - **Sizes**: `TabsList size="sm"` is the 24px variant for dense panel toolbars (12px label, no shadow); on touch it is 28px so it still fits the 32px toolbar (the `default` list grows to 42px on touch).
 - **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 36px on touch), `sm` (24px, 28px on touch so it fits the 32px toolbar, like `TabsList size="sm"`) and `composer` (32px, 28px from `md`, 36px on a touch phone, so it matches the attach and send buttons beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
@@ -1031,7 +1049,7 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Overflow**: when the strip cannot show every tab, a `N ⌄` button lists them all (`menuitemradio`, the open one checked).
 - **Menu** (right-click, Shift+F10), in groups: Close, Close Others, Close to the Left, Close to the Right, Close All | Keep Open, Split Right, Split Left, Split Up, Split Down, Move to Next Pane, Move Left, Move Right | Copy Path, Reveal in Git. The close items act on the tab's own pane; Close All closes the pane with them.
 - **Stepping**: `Ctrl+Tab` / `Ctrl+Shift+Tab` everywhere, plus the platform's pair: `⌘⇧]` / `⌘⇧[` on macOS, `Ctrl+PageDown` / `Ctrl+PageUp` elsewhere.
-- **Active Tab**: the sidebar's current-row wash (`listRowSurface(true)`, `bg-key` at 60%), `font-medium`, `text-(--color-text)`. No coloured edge, no border. In a pane without focus (with several on screen) it steps back to a 35% wash and `text-2`, and that strip's tabs and buttons fade to 50% (`DOCK_STRIP_PART_CLASS`); the strip's tone stays.
+- **Active Tab**: the sidebar's current-row wash (`listRowSurface(true)`, `bg-key` at 60%), `font-medium`, `text-(--color-text)`. No coloured edge, no border. In a pane without focus (with several on screen) it steps back to a 35% wash and `text-2`; nothing on the strip fades.
 - **Inactive Tab**: no fill, `text-(--color-text-muted)`, the sidebar row's hover wash.
 - **Close**: a sibling `<button>` (never nested in the tab button), always visible: full strength on the open tab, dimmed on the others; middle-click also closes.
 - **Semantics**: tabs are buttons with `aria-current`, not an ARIA `tablist` — terminal tabs carry their own context menu and sheet.

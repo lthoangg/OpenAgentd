@@ -362,7 +362,9 @@ function Dropdown({
           'justify-between',
           !dense && 'pointer-coarse:min-h-9',
           open && 'border-(--color-border-strong)',
-          'aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
+          // The trigger draws no border, so an invalid one takes a solid 1px
+          // error ring (a 20% ring alone was 1.4:1 on the card).
+          'aria-invalid:ring-1 aria-invalid:ring-(--color-error)',
           className,
         )}
         onKeyDown={handleTriggerKeyDown}

@@ -8,22 +8,15 @@
  * the main text colour, no coloured edge. The strip draws the one hairline
  * between it and the content. With several panes, the open tab of a pane
  * that does not have focus steps back (a lighter wash, the secondary text
- * colour) and everything on that pane's strip fades to half, as an inactive
- * window's title bar does on macOS, so the focused pane (the one ⌘W, ⌘1–9
- * and new files act on) reads at a glance.
+ * colour), so the focused pane (the one ⌘W, ⌘1–9 and new files act on)
+ * reads at a glance. Nothing fades by opacity: a strip at 50% left its
+ * labels at 2.1–2.3:1.
  */
 import { listRowSurface } from '@/components/ui/list-row'
 
 /** The strip: one tab-bar row on the chrome tone. */
 export const DOCK_TAB_STRIP_CLASS =
   'flex h-(--spacing-tab-bar) min-w-0 shrink-0 border-b border-(--color-border-subtle) bg-(--bg-page) dark:bg-(--bg-sidebar)'
-
-/**
- * The strip's two parts (tabs, buttons): faded in a pane without focus. The
- * strip's tone stays, so the faded parts sit on the same chrome.
- */
-export const DOCK_STRIP_PART_CLASS =
-  'transition-opacity duration-(--motion-fast) [[data-pane-unfocused]_&]:opacity-50'
 
 /** Tab wrapper. Holds the activate button and, when closable, a close button. */
 export function dockTabClass(active: boolean): string {
@@ -62,14 +55,14 @@ export const DOCK_DROP_ZONE_CLASS = 'pointer-events-none fixed z-9998 rounded-sm
 export const DOCK_DROP_CARET_CLASS = 'pointer-events-none fixed z-9998 w-0.5 rounded-full bg-(--color-text-2)'
 
 /**
- * Inline close control, always shown: full strength on the open tab, 60% on
- * the others until hover or focus (never hidden, so a touch screen and a
+ * Inline close control, always shown: muted on the open tab, a step lower
+ * (subtle) on the others, ink on hover (never hidden, so a touch screen and a
  * keyboard find it). 24px, 36px on touch.
  */
 export function dockTabCloseClass(active: boolean): string {
   return [
-    'mr-1 flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-opacity hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:opacity-100 pointer-coarse:mr-0 pointer-coarse:size-9',
-    active ? 'opacity-100' : 'opacity-60 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100',
+    'mr-1 flex size-6 shrink-0 items-center justify-center rounded-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:mr-0 pointer-coarse:size-9',
+    active ? 'text-(--color-text-muted)' : 'text-(--color-text-subtle) group-hover/tab:text-(--color-text-muted)',
   ].join(' ')
 }
 

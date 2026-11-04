@@ -50,7 +50,7 @@ export function KeepGoingControl({
             onChange={(event) => decision.setTurnsText(event.target.value)}
             onFocus={() => onTurnsFocusChange?.(true)}
             onBlur={() => onTurnsFocusChange?.(false)}
-            className="h-6 w-14 rounded-sm border border-(--color-border-subtle) bg-(--bg-page) px-1.5 text-right font-mono text-meta text-(--color-text) outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) aria-invalid:border-(--color-error) pointer-coarse:h-9"
+            className="h-6 w-14 rounded-sm border border-(--color-border) bg-(--bg-page) px-1.5 text-right font-mono text-meta text-(--color-text) outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) aria-invalid:border-(--color-error) pointer-coarse:h-9"
           />
           turns
         </label>

@@ -141,7 +141,7 @@ function BreakdownRow({
         </span>
         {filterable && (
           <span aria-hidden="true" className="hidden text-(--color-text-subtle) sm:block">
-            {onSelect ? <ChevronRight size={12} className="opacity-60 transition-opacity group-hover:opacity-100" /> : null}
+            {onSelect ? <ChevronRight size={12} /> : null}
           </span>
         )}
       </span>

@@ -71,9 +71,10 @@ fn set_overlay(window: &tauri::WebviewWindow, count: u32) {
 #[cfg(any(windows, test))]
 const OVERLAY_SIZE: u32 = 32;
 
-/// The theme's accent orange, RGBA.
+/// The theme's accent orange, RGBA: a step deep enough that the white digits
+/// read at AA (5.1:1; the old #C2571A sat on the line at 4.49:1).
 #[cfg(any(windows, test))]
-const ACCENT: [u8; 4] = [0xc2, 0x57, 0x1a, 0xff];
+const ACCENT: [u8; 4] = [0xb5, 0x50, 0x1a, 0xff];
 
 /// What the overlay spells: one digit, or "9+" from ten sessions up, which
 /// is all a 16 px icon can hold.
@@ -165,6 +166,23 @@ mod tests {
         assert_eq!(overlay_label(9), "9");
         assert_eq!(overlay_label(10), "9+");
         assert_eq!(overlay_label(400), "9+");
+    }
+
+    #[test]
+    fn the_white_digits_read_at_aa_on_the_accent_disc() {
+        fn luminance([r, g, b, _]: [u8; 4]) -> f64 {
+            let channel = |c: u8| {
+                let c = f64::from(c) / 255.0;
+                if c <= 0.039_28 {
+                    c / 12.92
+                } else {
+                    ((c + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+        }
+        let ratio = (luminance([0xff; 4]) + 0.05) / (luminance(ACCENT) + 0.05);
+        assert!(ratio >= 4.5, "white on the accent is {ratio:.2}:1");
     }
 
     #[test]

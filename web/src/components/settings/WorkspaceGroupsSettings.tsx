@@ -95,7 +95,7 @@ function ColorField({ value, onChange, onValidChange }: {
       <div
         className={cn(
           'flex h-9 items-center gap-2 rounded-sm border bg-(--bg-input) pr-2.5 pl-2 transition-colors sm:w-36',
-          invalid ? 'border-(--color-error) ring-2 ring-(--color-error)/20' : 'border-(--color-border-subtle) focus-within:border-(--color-border-strong)',
+          invalid ? 'border-(--color-error) ring-2 ring-(--color-error)/20' : 'border-(--color-border) focus-within:border-(--color-text-subtle)',
         )}
       >
         <input

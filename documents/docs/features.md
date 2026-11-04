@@ -1226,6 +1226,20 @@ run from the terminal (the native Rust binary since v3.0.0).
     description shows its command as before.
   - On a phone the Review panel button sits as far from the right edge as
     the sidebar button does from the left.
+- **Readable contrast everywhere** `[v3.46.0]`:
+  - Dark mode's secondary text (timestamps, hints, metadata) is a step
+    brighter, as readable as in comparable dark apps.
+  - The chosen option of a segmented control or tab (Theme: Light / Dark /
+    System, Code / Plan, a question's options) reads at a glance; a switch
+    that is off and the edge of a text field are clearly visible; keyboard
+    focus in light mode is a deeper blue that shows on every surface.
+  - Placeholders, the tabs of a pane without focus, close and copy buttons
+    and Telemetry bars are no longer faded below a readable level.
+  - Terminal output in any colour stays readable (ANSI black on the dark
+    background, white on the light one), and light-mode code colours are a
+    touch deeper.
+  - The macOS tray's warning and status colours, the desktop pet's marks in
+    dark mode and the Windows taskbar badge digits read clearly.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

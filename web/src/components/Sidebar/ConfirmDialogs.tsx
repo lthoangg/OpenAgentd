@@ -1,7 +1,7 @@
 /**
  * SidebarConfirmDialogs — the three destructive-action confirmation
- * dialogs for the sidebar (delete session · remove workspace ·
- * remove worktree). Extracted from Sidebar.tsx as a purely
+ * dialogs for the sidebar (delete session · remove worktree).
+ * Extracted from Sidebar.tsx as a purely
  * presentational component driven by props, so the main component stays
  * focused on state/orchestration (house pattern — see Sidebar.*.ts).
  *
@@ -24,9 +24,6 @@ interface SidebarConfirmDialogsProps {
   deleteTarget: SessionResponse | null
   setDeleteTarget: (value: SessionResponse | null) => void
   onConfirmSessionDelete: () => void
-  removeWorkspaceTarget: string | null
-  setRemoveWorkspaceTarget: (value: string | null) => void
-  onConfirmRemoveWorkspace: () => void
   removeWorktreeTarget: WorktreeInfo | null
   setRemoveWorktreeTarget: (value: WorktreeInfo | null) => void
   onConfirmRemoveWorktree: () => void
@@ -36,9 +33,6 @@ export function SidebarConfirmDialogs({
   deleteTarget,
   setDeleteTarget,
   onConfirmSessionDelete,
-  removeWorkspaceTarget,
-  setRemoveWorkspaceTarget,
-  onConfirmRemoveWorkspace,
   removeWorktreeTarget,
   setRemoveWorktreeTarget,
   onConfirmRemoveWorktree,
@@ -59,25 +53,6 @@ export function SidebarConfirmDialogs({
           <DialogFooter>
             <Button type="button" variant="default" onClick={() => setDeleteTarget(null)}>Cancel</Button>
             <Button type="button" variant="danger" onClick={onConfirmSessionDelete}>Delete session</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={removeWorkspaceTarget !== null}
-        onOpenChange={(open) => { if (!open) setRemoveWorkspaceTarget(null) }}
-      >
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Hide this workspace from the sidebar?</DialogTitle>
-            <DialogDescription>
-              &ldquo;{removeWorkspaceTarget ? workspaceLabel(removeWorkspaceTarget) : ''}&rdquo; will be hidden from
-              the sidebar. Its sessions are kept: open the folder again to bring them back.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="default" onClick={() => setRemoveWorkspaceTarget(null)}>Cancel</Button>
-            <Button type="button" variant="primary" onClick={onConfirmRemoveWorkspace}>Hide from sidebar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

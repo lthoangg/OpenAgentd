@@ -60,7 +60,7 @@ export function MissingFolderBanner({ workspace, onOpenFolder }: MissingFolderBa
         action={(
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={onOpenFolder}>Open workspace…</Button>
-            <Button size="sm" variant="ghost" onClick={() => { void hideWorkspace() }}>Hide workspace</Button>
+            <Button size="sm" variant="ghost" onClick={() => { void hideWorkspace() }}>Hide from sidebar</Button>
           </div>
         )}
       >

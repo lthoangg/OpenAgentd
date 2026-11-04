@@ -680,7 +680,7 @@ drawer and full-screen sheet.
 - **Columns run to the top.** The desktop header has a sidebar cap (the
   traffic lights, ☰ and the sidebar toggle, 80px in on macOS so it keeps a
   native gap from the lights), the title, and a Review panel cap as wide as
-  the panel (Task list, the panel toggle; on Windows the caption buttons).
+  the panel (Tasks, the panel toggle; on Windows the caption buttons).
   Only the Review panel cap lines up with its panel: the sidebar cap is as
   wide as its buttons, so the title sits right after the sidebar toggle
   whatever the sidebar does (opening it does not move the title). The
@@ -774,7 +774,7 @@ drawer and full-screen sheet.
   Closing a pane's last tab closes the pane; its room goes to the pane before
   it (else after). Closing the open tab shows the tab used before it in that
   pane, else its right neighbour. A
-  pane's strip offers Split Right and Split Down, and so does a double-click
+  pane's strip offers Split right and Split down, and so does a double-click
   or right-click on the strip's free end (the "+" menu at the pointer); the tab menu
   splits to all
   four sides and adds Move to Next Pane.
@@ -1047,7 +1047,7 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Preview tab**: a file, diff or attachment opened from a list, a link or Quick Open opens as the focused pane's one preview tab, title in *italics*, and the next one replaces it. Double-click, Keep Open, a comment on it, or moving it keeps it. Its tooltip and `aria-description` say so; its name stays the file's.
 - **Drag**: a tab slides along its strip; carried out, a floating copy follows the pointer and a `focus-ring` caret or tint shows where it lands (another strip, a pane's middle, or the half an edge split takes). See Layout → Tabs drag between panes.
 - **Overflow**: when the strip cannot show every tab, a `N ⌄` button lists them all (`menuitemradio`, the open one checked).
-- **Menu** (right-click, Shift+F10), in groups: Close, Close Others, Close to the Left, Close to the Right, Close All | Keep Open, Split Right, Split Left, Split Up, Split Down, Move to Next Pane, Move Left, Move Right | Copy Path, Reveal in Git. The close items act on the tab's own pane; Close All closes the pane with them.
+- **Menu** (right-click, Shift+F10), in groups: Close, Close others, Close to the left, Close to the right, Close all | Keep open, Split right, Split left, Split up, Split down, Move to next pane, Move left, Move right | Copy path, Reveal in Git. The close items act on the tab's own pane; Close all closes the pane with them.
 - **Stepping**: `Ctrl+Tab` / `Ctrl+Shift+Tab` everywhere, plus the platform's pair: `⌘⇧]` / `⌘⇧[` on macOS, `Ctrl+PageDown` / `Ctrl+PageUp` elsewhere.
 - **Active Tab**: the sidebar's current-row wash (`listRowSurface(true)`, `bg-key` at 60%), `font-medium`, `text-(--color-text)`. No coloured edge, no border. In a pane without focus (with several on screen) it steps back to a 35% wash and `text-2`; nothing on the strip fades.
 - **Inactive Tab**: no fill, `text-(--color-text-muted)`, the sidebar row's hover wash.
@@ -1149,7 +1149,7 @@ with words ("2 waiting"), so colour is never the only signal. Sections are
 separated by their headers, not by rules. Scheduled is always there, with a
 **+** for a new task and an empty row when nothing is due. The list's header
 holds the icon actions (`md:` 24px, 36px on touch): Search and **View
-options** (which holds Collapse all and Open folder…). The workspace tree
+options** (which holds Collapse all and Open workspace…). The workspace tree
 shows placeholder rows while it first loads and an error with **Retry** when
 it fails; "No workspaces yet" means the tree loaded empty.
 
@@ -1164,7 +1164,7 @@ Delete session….
 
 **Header.** Desktop: the sidebar button on the left, then workspace · session
 title; the command palette pill in the middle ("Command palette" and its
-shortcut from `md:`, the icon alone below); Task list and Review panel on
+shortcut from `md:`, the icon alone below); Tasks and Review panel on
 the right. The session title renames in place: double-click it, or press F2
 or Enter on it; a single click does nothing, so a stray click keeps the
 title. A subagent's title is read-only, like its sidebar row, and its header

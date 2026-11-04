@@ -253,9 +253,9 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                 onClick: onToggleTasks,
                 disabled: !sessionId,
                 title: sessionId
-                  ? `${goalState ? `${goalState.text} · ` : ''}Task list (${shortcutLabel(APP_SHORTCUTS.tasks, os)})`
+                  ? `${goalState ? `${goalState.text} · ` : ''}Tasks (${shortcutLabel(APP_SHORTCUTS.tasks, os)})`
                   : 'No active session',
-                ariaLabel: 'Task list',
+                ariaLabel: 'Tasks',
                 badge: todoSummary.progressLabel,
                 indicator: todoSummary.hasInProgress,
                 goalTone: goalState?.tone,
@@ -315,8 +315,8 @@ export const AgentChatHeader = memo(function AgentChatHeader({
         <div data-header-cluster="end" className="flex min-w-0 items-center justify-self-end gap-0.5 pr-2 md:pr-1">
             <MobileHeaderAction
               Icon={ListTodo}
-              label={activeTodoCount > 0 ? `Task list, ${activeTodoCount} open` : 'Task list'}
-              tooltip={goalState ? `${goalState.text} · Task list` : 'Task list'}
+              label={activeTodoCount > 0 ? `Tasks, ${activeTodoCount} open` : 'Tasks'}
+              tooltip={goalState ? `${goalState.text} · Tasks` : 'Tasks'}
               onClick={sessionId ? onToggleTasks : undefined}
               active={tasksViewActive}
               disabled={!sessionId}

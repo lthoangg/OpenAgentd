@@ -262,7 +262,7 @@ describe('UpdateCard — install flow', () => {
     await userEvent.click(screen.getByRole('button', { name: /install and restart/i }))
 
     await waitFor(() =>
-      expect(screen.getByText('Installing update...')).toBeInTheDocument(),
+      expect(screen.getByText('Installing update…')).toBeInTheDocument(),
     )
     expect(screen.getByText(/will restart when installation completes/i)).toBeInTheDocument()
   })

@@ -47,7 +47,7 @@ describe('ActivePlanSection', () => {
     const onClear = mock(() => {})
     render(<ActivePlanSection plan={PLAN} onClear={onClear} />)
     const clear = screen.getByRole('button', { name: 'Clear plan…' })
-    expect(clear.textContent).toBe('Clear…')
+    expect(clear.textContent).toBe('Clear plan…')
     fireEvent.click(clear)
 
     expect(await screen.findByText('Clear this plan?')).toBeTruthy()

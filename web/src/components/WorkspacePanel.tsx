@@ -662,8 +662,8 @@ export function WorkspacePanel({
   // The "+" menu ends with the pane's splits (desktop): a new empty pane beside it.
   const menuItemsFor = (pane: PaneId): DockOpenItem[] => mobile ? openItemsFor(pane) : [
     ...openItemsFor(pane),
-    { id: 'split-right', label: 'Split Right', icon: <Columns2 size={14} aria-hidden="true" />, shortcut: shortcutLabel(APP_SHORTCUTS.splitDock, os), group: 'pane', run: () => splitPane(pane, 'right') },
-    { id: 'split-down', label: 'Split Down', icon: <Rows2 size={14} aria-hidden="true" />, shortcut: shortcutLabel(APP_SHORTCUTS.splitDockDown, os), group: 'pane', run: () => splitPane(pane, 'down') },
+    { id: 'split-right', label: 'Split right', icon: <Columns2 size={14} aria-hidden="true" />, shortcut: shortcutLabel(APP_SHORTCUTS.splitDock, os), group: 'pane', run: () => splitPane(pane, 'right') },
+    { id: 'split-down', label: 'Split down', icon: <Rows2 size={14} aria-hidden="true" />, shortcut: shortcutLabel(APP_SHORTCUTS.splitDockDown, os), group: 'pane', run: () => splitPane(pane, 'down') },
   ]
 
   const handleRefresh = useCallback(() => {

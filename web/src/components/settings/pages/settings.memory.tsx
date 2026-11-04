@@ -385,7 +385,7 @@ export function MemorySettingsPage() {
                   <textarea
                     value={draftContent}
                     onChange={(e) => setDraftContent(e.target.value)}
-                    placeholder="Markdown content..."
+                    placeholder="Markdown content…"
                     spellCheck={false}
                     className="h-full w-full min-h-0 flex-1 resize-none border-0 bg-transparent px-4 py-3.5 font-mono text-xs leading-relaxed text-(--color-text) placeholder:text-(--color-text-muted) outline-none focus:outline-none focus-visible:outline-none"
                   />

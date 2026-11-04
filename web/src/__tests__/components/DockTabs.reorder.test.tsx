@@ -167,10 +167,10 @@ describe('moving tabs from the keyboard and the menu', () => {
 
   it('Move Left and Move Right in the tab menu', async () => {
     await renderDock()
-    await menuItem('Terminal 1', 'Move Right')
+    await menuItem('Terminal 1', 'Move right')
     expect(order()).toEqual(['Terminal 2', 'Terminal 1'])
 
-    await menuItem('Terminal 1', 'Move Left')
+    await menuItem('Terminal 1', 'Move left')
     expect(order()).toEqual(['Terminal 1', 'Terminal 2'])
   })
 
@@ -178,15 +178,15 @@ describe('moving tabs from the keyboard and the menu', () => {
     await renderDock()
     // One pane: nowhere to move to.
     fireEvent.contextMenu(tab('Terminal 2'))
-    expect(screen.queryByRole('menuitem', { name: 'Move to Next Pane' })).toBeNull()
-    await act(async () => { screen.getByRole('menuitem', { name: 'Split Down' }).click() })
+    expect(screen.queryByRole('menuitem', { name: 'Move to next pane' })).toBeNull()
+    await act(async () => { screen.getByRole('menuitem', { name: 'Split down' }).click() })
     expect(strips()).toEqual([['Terminal 1'], ['Terminal 2']])
     expect(tab('Terminal 2').getAttribute('aria-current')).toBe('true')
 
     // Terminal 2 is alone in its pane: it cannot split off from it.
     fireEvent.contextMenu(tab('Terminal 2'))
-    expect((screen.getByRole('menuitem', { name: 'Split Right' }) as HTMLButtonElement).disabled).toBe(true)
-    await act(async () => { screen.getByRole('menuitem', { name: 'Move to Next Pane' }).click() })
+    expect((screen.getByRole('menuitem', { name: 'Split right' }) as HTMLButtonElement).disabled).toBe(true)
+    await act(async () => { screen.getByRole('menuitem', { name: 'Move to next pane' }).click() })
     // Its pane closed with its last tab.
     expect(strips()).toEqual([['Terminal 1', 'Terminal 2']])
   })
@@ -314,7 +314,7 @@ describe('dragging tabs between panes', () => {
   /** Terminals 1 and 2 in ``p1``, Terminal 3 split down into ``p2``. */
   async function twoPanes() {
     await renderDock(3)
-    await menuItem('Terminal 3', 'Split Down')
+    await menuItem('Terminal 3', 'Split down')
     expect(strips()).toEqual([['Terminal 1', 'Terminal 2'], ['Terminal 3']])
     layOutPanes()
   }

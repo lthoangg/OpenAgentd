@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setApiBaseUrl } from '@/api/base-url'
 import { queryKeys } from '@/queries'
-import { loadLastWorkspace, loadWorkspaces, saveLastWorkspace } from '@/utils/workspace'
+import { loadLastWorkspace, loadWorkspaceEntries, saveLastWorkspace } from '@/utils/workspace'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -1351,9 +1351,8 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.getByLabelText('Collapse workspace project')).toBeTruthy()
     await user.click(screen.getByLabelText('Actions for project'))
     expect(screen.getByRole('menu', { name: 'Actions for project' })).toBeTruthy()
-    await user.click(screen.getByRole('menuitem', { name: /hide from sidebar/i }))
-    expect(screen.getByText('Hide this workspace from the sidebar?')).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: /^hide from sidebar$/i }))
+    await user.click(screen.getByRole('menuitem', { name: 'Hide from sidebar' }))
+    expect(screen.queryByText('Hide this workspace from the sidebar?')).toBeNull()
 
     expect(screen.queryByLabelText('Collapse workspace project')).toBeNull()
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/agent/workspace/visibility', expect.objectContaining({
@@ -1378,8 +1377,7 @@ describe('Sidebar workspace trust flow', () => {
     async function removeFromSidebar(name: string) {
       const user = userEvent.setup()
       await user.click(screen.getByLabelText(`Actions for ${name}`))
-      await user.click(screen.getByRole('menuitem', { name: /hide from sidebar/i }))
-      await user.click(screen.getByRole('button', { name: /^hide from sidebar$/i }))
+      await user.click(screen.getByRole('menuitem', { name: 'Hide from sidebar' }))
     }
 
     it('drops the repository row once the backend has hidden it', async () => {
@@ -1409,7 +1407,7 @@ describe('Sidebar workspace trust flow', () => {
 
       expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
       expect(lastWorkspaceAtNavigation).toBeNull()
-      expect(loadWorkspaces()).not.toContain('/repo/project')
+      expect(loadWorkspaceEntries().map((entry) => entry.path)).not.toContain('/repo/project')
       await waitFor(() => expect(screen.queryByLabelText('Actions for project')).toBeNull())
     })
 

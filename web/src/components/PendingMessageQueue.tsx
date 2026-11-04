@@ -45,7 +45,7 @@ function QueuedMessageContent({ content: raw, attachments }: { content: string; 
   const visibleContent = needsCollapse && !expanded
     ? lines.length > QUEUED_COLLAPSE_LINES
       ? lines.slice(0, QUEUED_COLLAPSE_LINES).join('\n')
-      : `${content.slice(0, QUEUED_COLLAPSE_CHARS).trimEnd()}...`
+      : `${content.slice(0, QUEUED_COLLAPSE_CHARS).trimEnd()}…`
     : content
 
   return (

@@ -94,7 +94,7 @@ async function renderDock({ open = true, exited = false, terminals = 3, git = tr
   if (terminals > 0) await waitFor(() => expect(screen.getByRole('button', { name: `Terminal ${terminals}` })).toBeTruthy())
   if (git && terminals > 0 && open) {
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Git' }))
-    await act(async () => { screen.getByRole('menuitem', { name: /^Split Up/ }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: /^Split up/ }).click() })
   }
 }
 
@@ -215,7 +215,7 @@ describe('dock tab menu', () => {
   it('Close Others keeps only the chosen tab of its pane, and makes it active', async () => {
     await renderDock({ exited: true })
     fireEvent.contextMenu(tab('Terminal 2'))
-    await act(async () => { screen.getByRole('menuitem', { name: 'Close Others' }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: 'Close others' }).click() })
     expect(screen.queryByRole('button', { name: 'Terminal 1' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Terminal 3' })).toBeNull()
     // Git is in another pane: it stays.
@@ -233,19 +233,19 @@ describe('dock tab menu', () => {
     expect(screen.getByRole('menu', { name: 'Actions for Terminal 3' })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: 'Close' })).toBeTruthy()
     // Terminal 3 is the last tab of its pane: nothing to its right.
-    expect((screen.getByRole('menuitem', { name: 'Close to the Right' }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole('menuitem', { name: 'Move Right' }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole('menuitem', { name: 'Move Left' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('menuitem', { name: 'Close to the right' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('menuitem', { name: 'Move right' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('menuitem', { name: 'Move left' }) as HTMLButtonElement).disabled).toBe(false)
     // Git is in another pane on screen.
-    expect(screen.getByRole('menuitem', { name: 'Move to Next Pane' })).toBeTruthy()
-    expect((screen.getByRole('menuitem', { name: 'Split Right' }) as HTMLButtonElement).disabled).toBe(false)
+    expect(screen.getByRole('menuitem', { name: 'Move to next pane' })).toBeTruthy()
+    expect((screen.getByRole('menuitem', { name: 'Split right' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('Close to the Right asks before stopping running shells', async () => {
     await renderDock()
     await pick('Terminal 3')
     fireEvent.contextMenu(tab('Terminal 1'))
-    await act(async () => { screen.getByRole('menuitem', { name: 'Close to the Right' }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: 'Close to the right' }).click() })
     expect(await screen.findByRole('dialog', { name: 'Close 2 terminals?' })).toBeTruthy()
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(3)
 
@@ -261,16 +261,16 @@ describe('dock tab menu', () => {
     await renderDock({ exited: true })
     await pick('Terminal 3')
     fireEvent.contextMenu(tab('Terminal 1'))
-    expect((screen.getByRole('menuitem', { name: 'Close to the Left' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('menuitem', { name: 'Close to the left' }) as HTMLButtonElement).disabled).toBe(true)
     await act(async () => { screen.getByRole('menuitem', { name: 'Close' }).click() })
 
     fireEvent.contextMenu(tab('Terminal 3'))
-    await act(async () => { screen.getByRole('menuitem', { name: 'Close to the Left' }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: 'Close to the left' }).click() })
     expect(screen.queryByRole('button', { name: 'Terminal 2' })).toBeNull()
     expect(isActive('Terminal 3')).toBe(true)
 
     fireEvent.contextMenu(tab('Terminal 3'))
-    await act(async () => { screen.getByRole('menuitem', { name: 'Close All' }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: 'Close all' }).click() })
     // The pane goes with its tabs; Git, in another pane, stays.
     expect(screen.queryByRole('button', { name: 'Terminal 3' })).toBeNull()
     expect(screen.queryAllByRole('group', { name: /^Pane \d/ })).toHaveLength(0)
@@ -282,9 +282,9 @@ describe('dock tab menu', () => {
     await renderDock({ exited: true })
     fireEvent.contextMenu(tab('Terminal 2'))
     const names = screen.getAllByRole('menuitem').map((item) => item.textContent ?? '').filter((name) => name.startsWith('Split'))
-    expect(names.map((name) => name.replace(/Ctrl.*$/, ''))).toEqual(['Split Right', 'Split Left', 'Split Up', 'Split Down'])
+    expect(names.map((name) => name.replace(/Ctrl.*$/, ''))).toEqual(['Split right', 'Split left', 'Split up', 'Split down'])
 
-    await act(async () => { screen.getByRole('menuitem', { name: /^Split Left/ }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: /^Split left/ }).click() })
     expect(screen.getAllByRole('group', { name: /^Pane \d/ })).toHaveLength(3)
     // Panes are named in layout order: the new one sits left of the
     // terminals', under Git.

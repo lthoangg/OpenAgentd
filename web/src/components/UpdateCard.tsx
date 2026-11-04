@@ -426,11 +426,11 @@ function minimizedLabel(status: UpdateStatus): string {
 }
 
 function titleForStatus(status: UpdateStatus): string {
-  if (status.status === 'checking') return 'Checking for updates...'
+  if (status.status === 'checking') return 'Checking for updates…'
   if (status.status === 'available') return `OpenAgentd ${status.version} is available`
   if (status.status === 'downloading') return `Downloading OpenAgentd ${status.version}`
   if (status.status === 'downloaded') return `OpenAgentd ${status.version} is ready to install`
-  if (status.status === 'installing') return 'Installing update...'
+  if (status.status === 'installing') return 'Installing update…'
   if (status.status === 'up_to_date') return 'OpenAgentd is up to date'
   if (status.status === 'error') return 'Update failed'
   return ''

@@ -84,10 +84,6 @@ function parseEntries(raw: unknown): WorkspaceEntry[] {
     .filter((item): item is WorkspaceEntry => item !== null)
 }
 
-export function loadWorkspaces(): string[] {
-  return loadWorkspaceEntries().map((entry) => entry.path)
-}
-
 export function loadWorkspaceEntries(): WorkspaceEntry[] {
   try {
     const raw = localStorage.getItem(WORKSPACES_KEY)

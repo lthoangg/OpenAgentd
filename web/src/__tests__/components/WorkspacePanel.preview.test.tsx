@@ -127,7 +127,7 @@ describe('Review dock preview tabs', () => {
     await screen.findByRole('button', { name: 'Preview a.html' })
 
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Preview localhost:5173' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Split Right' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Split right' }))
 
     const moved = screen.getByRole('button', { name: 'Preview localhost:5173' })
     expect(moved.closest('[data-dock-pane]')?.getAttribute('aria-label')).toBe('Pane 2')
@@ -147,7 +147,7 @@ describe('Review dock preview tabs', () => {
     await rerender({ target: { kind: 'file', path: 'a.html' }, key: 2 })
     await screen.findByRole('button', { name: 'Preview a.html' })
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Preview a.html' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Split Right' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Split right' }))
     const paneOf = (name: string) => screen.getByRole('button', { name }).closest('[data-dock-pane]')!
     // The new pane has focus; the first page's pane steps back.
     expect(paneOf('Preview localhost:5173').hasAttribute('data-pane-unfocused')).toBe(true)

@@ -153,7 +153,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
         <HeaderAction label="Copy answer" tooltip="Copy answer as Markdown" disabled={!current?.answer} onClick={() => current && copyText(current.answer)}>
           <Copy />
         </HeaderAction>
-        <HeaderAction label="Clear side questions" tooltip="Delete all side questions of this session" disabled={count === 0} onClick={() => setConfirmClear(true)}>
+        <HeaderAction label="Clear side questions" tooltip={count === 0 ? 'No side questions yet' : 'Delete all side questions of this session'} disabled={count === 0} onClick={() => setConfirmClear(true)}>
           <Trash2 />
         </HeaderAction>
         <HeaderAction label="Close side questions" tooltip="Close (Esc)" onClick={() => store.dismiss(sessionId)}>

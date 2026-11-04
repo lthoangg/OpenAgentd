@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from 'bun:test'
 import {
   loadWorkspaceEntries,
-  loadWorkspaces,
   loadLastWorkspace,
   saveWorkspace,
   saveLastWorkspace,
@@ -23,7 +22,7 @@ describe('coding workspace persistence', () => {
     const selectedAgain = saveWorkspace('/repo/alpha')
 
     expect(selectedAgain.createdAt).toBe(first.createdAt)
-    expect(loadWorkspaces()).toEqual(['/repo/alpha', '/repo/beta'])
+    expect(loadWorkspaceEntries().map((entry) => entry.path)).toEqual(['/repo/alpha', '/repo/beta'])
     expect(loadWorkspaceEntries().map((entry) => entry.createdAt)).toEqual([
       first.createdAt,
       second.createdAt,
@@ -33,7 +32,7 @@ describe('coding workspace persistence', () => {
   it('migrates legacy string entries without reordering them', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(['/repo/old-a', '/repo/old-b']))
 
-    expect(loadWorkspaces()).toEqual(['/repo/old-a', '/repo/old-b'])
+    expect(loadWorkspaceEntries().map((entry) => entry.path)).toEqual(['/repo/old-a', '/repo/old-b'])
 
     saveWorkspace('/repo/old-b')
 
@@ -47,7 +46,7 @@ describe('coding workspace persistence', () => {
     const beta = saveLastWorkspace('/repo/beta')
 
     expect(loadLastWorkspace()).toEqual(beta)
-    expect(loadWorkspaces()).toEqual(['/repo/alpha', '/repo/beta'])
+    expect(loadWorkspaceEntries().map((entry) => entry.path)).toEqual(['/repo/alpha', '/repo/beta'])
   })
 
   it('returns null when the last workspace id no longer points to a saved workspace', () => {

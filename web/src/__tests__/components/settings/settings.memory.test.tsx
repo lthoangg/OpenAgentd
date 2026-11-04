@@ -89,7 +89,7 @@ describe('MemorySettingsPage', () => {
 
   it('loads file content into textarea and saves with If-Match', async () => {
     render(<MemorySettingsPage />)
-    const textarea = screen.getByPlaceholderText('Markdown content...') as HTMLTextAreaElement
+    const textarea = screen.getByPlaceholderText('Markdown content…') as HTMLTextAreaElement
     expect(textarea.value).toContain('Initial text')
 
     fireEvent.change(textarea, { target: { value: '# Preferences\nNew modified content\n' } })
@@ -111,7 +111,7 @@ describe('MemorySettingsPage', () => {
     })
 
     render(<MemorySettingsPage />)
-    const textarea = screen.getByPlaceholderText('Markdown content...') as HTMLTextAreaElement
+    const textarea = screen.getByPlaceholderText('Markdown content…') as HTMLTextAreaElement
     fireEvent.change(textarea, { target: { value: 'Conflicting edit' } })
 
     const saveBtn = screen.getByText('Save')
@@ -129,7 +129,7 @@ describe('MemorySettingsPage', () => {
     mockFileError = new Error('read failed')
     render(<MemorySettingsPage />)
 
-    expect(screen.queryByPlaceholderText('Markdown content...')).toBeNull()
+    expect(screen.queryByPlaceholderText('Markdown content…')).toBeNull()
     expect(screen.getByText("Couldn't load preferences.md")).toBeDefined()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeDefined()
     const saveBtn = screen.getByRole('button', { name: /Save/ }) as HTMLButtonElement
@@ -152,7 +152,7 @@ describe('MemorySettingsPage', () => {
   it('saves with Cmd+S keyboard shortcut when dirty', async () => {
     // Pages live inside the Settings modal; their ⌘S is scoped to it.
     render(<div data-settings-modal=""><MemorySettingsPage /></div>)
-    const textarea = screen.getByPlaceholderText('Markdown content...') as HTMLTextAreaElement
+    const textarea = screen.getByPlaceholderText('Markdown content…') as HTMLTextAreaElement
     fireEvent.change(textarea, { target: { value: '# Preferences\nKeyboard save content\n' } })
 
     const mac = getPlatform().os === 'macos'

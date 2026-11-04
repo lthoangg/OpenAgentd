@@ -111,6 +111,17 @@ describe('BtwPanel', () => {
     expect(onReopen).toHaveBeenCalledTimes(1)
   })
 
+  it('says why Clear is off while there is nothing to clear', async () => {
+    items = []
+    renderPanel(false)
+    open()
+    await screen.findByText(/Type/)
+    const clear = screen.getByRole('button', { name: 'Clear side questions' })
+    expect(clear.hasAttribute('disabled')).toBe(true)
+    fireEvent.mouseEnter(clear.parentElement!)
+    expect((await screen.findByRole('tooltip')).textContent).toBe('No side questions yet')
+  })
+
   it('opens on the newest exchange and steps back through earlier ones', async () => {
     renderPanel(false)
     open()

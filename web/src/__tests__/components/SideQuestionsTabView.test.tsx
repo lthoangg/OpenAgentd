@@ -99,6 +99,22 @@ describe('SideQuestionsTabView', () => {
     expect(await screen.findByText('No side questions yet')).toBeTruthy()
   })
 
+  it('says why Clear is off while there is nothing to clear', async () => {
+    items = []
+    renderTab()
+    const clear = await screen.findByRole('button', { name: 'Clear side questions' })
+    expect((clear as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.mouseEnter(clear.parentElement!)
+    expect((await screen.findByRole('tooltip')).textContent).toBe('No side questions yet')
+  })
+
+  it('keeps the plain Clear tooltip once there are side questions', async () => {
+    renderTab()
+    await screen.findByText('question a')
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Clear side questions' }).parentElement!)
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Delete all side questions of this session')
+  })
+
   it('shows Thinking for the live answer, and its Stop stops it', async () => {
     items = []
     useBtwStore.setState({

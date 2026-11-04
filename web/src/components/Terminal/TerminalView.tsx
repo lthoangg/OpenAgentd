@@ -16,11 +16,7 @@
  * `useThemePreference`; the store swaps every session's palette so hidden
  * terminals wake up already matching.
  *
- * Font: follows the user's custom terminal font (`lib/terminal-font.ts`)
- * live — a change there dispatches
- * `oa-terminal-font-change`, which this view forwards to
- * `useTerminalStore.syncFont` so every session (including ones not
- * currently attached) picks up the new stack immediately.
+ * Font: a fixed Nerd Font stack and size (`lib/terminal-font.ts`).
  *
  * `data-swipe-ignore` opts the surface out of mobile edge-swipe so
  * xterm owns its own touches (scrollback, selection).
@@ -35,12 +31,7 @@ import { getPlatform } from '@/hooks/use-platform'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { lazySurface } from '@/lib/lazy-surface'
-import {
-  onTerminalFontChange,
-  onTerminalFontSizeChange,
-  readStoredTerminalFont,
-  readStoredTerminalFontSize,
-} from '@/lib/terminal-font'
+import { clearRetiredTerminalFontPrefs } from '@/lib/terminal-font'
 import { getTerminalRuntime, terminalClosedMessage, useTerminalStore } from '@/stores/useTerminalStore'
 import { TerminalActionSheet } from './TerminalActionSheet'
 import { addToChatShortcutLabel } from './terminal-keys'
@@ -85,20 +76,9 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     useTerminalStore.getState().syncTheme(resolved)
   }, [resolved])
 
-  // Keep every live terminal's font and size in sync with stored preferences.
+  // The retired Terminal settings page's font and size: nothing reads them.
   useEffect(() => {
-    useTerminalStore.getState().syncFont(readStoredTerminalFont())
-    useTerminalStore.getState().syncFontSize(readStoredTerminalFontSize())
-    const unbindFont = onTerminalFontChange(() => {
-      useTerminalStore.getState().syncFont(readStoredTerminalFont())
-    })
-    const unbindSize = onTerminalFontSizeChange(() => {
-      useTerminalStore.getState().syncFontSize(readStoredTerminalFontSize())
-    })
-    return () => {
-      unbindFont()
-      unbindSize()
-    }
+    clearRetiredTerminalFontPrefs()
   }, [])
 
   // Sticky-Ctrl transform: single character → control code.

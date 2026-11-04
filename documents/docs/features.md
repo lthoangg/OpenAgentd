@@ -2806,8 +2806,11 @@ agent against it.
   Includes PTY output backpressure, GPU-accelerated WebGL rendering `[v1.118.0]`,
   debounced SIGWINCH resizing, and mobile key bar ergonomics (touch-and-hold arrow repeat,
   soft-keyboard focus preservation, quick symbol row).
-  Terminal font defaults to a best-guess Nerd Font stack
-  (MesloLGS NF and similar) for correct Powerlevel10k/Starship glyph rendering.
+  Terminal font is a best-guess Nerd Font stack (MesloLGS NF and similar)
+  for correct Powerlevel10k/Starship glyph rendering, at 13 px. A custom
+  terminal font and size *(deprecated; removed in v3.46.0, with the Terminal
+  settings page that set them)* no longer apply, and their stored values are
+  cleared.
   App shortcuts work from a focused terminal: on macOS every `⌘` shortcut,
   including `⌘K` for the palette, and on
   Windows/Linux `Ctrl+K` and `Ctrl+P` skip the shell to open the palette and

@@ -118,7 +118,10 @@ async fn get_upload(State(st): State<AppState>, AxPath((sid, filename)): AxPath<
     let resolved = safe_resolve(&ws.join("uploads"), &filename)?;
     let mime = guess_mime(&resolved);
     let name = name_of(&resolved);
-    Ok(file_response(&resolved, &headers, FileOpts { media_type: &mime, filename: Some(&name), disposition: "attachment", extra_headers: &[] }).await)
+    // Each upload gets a name of its own (`dedupe_upload_filename`), so the
+    // bytes behind a URL do not change: the browser keeps them.
+    let cache = &[("cache-control", "private, max-age=31536000, immutable")];
+    Ok(file_response(&resolved, &headers, FileOpts { media_type: &mime, filename: Some(&name), disposition: "attachment", extra_headers: cache }).await)
 }
 
 async fn get_media(State(st): State<AppState>, AxPath((sid, file_path)): AxPath<(String, String)>, q: Qs, headers: HeaderMap) -> ApiResult<Response> {
@@ -129,7 +132,9 @@ async fn get_media(State(st): State<AppState>, AxPath((sid, file_path)): AxPath<
     let resolved = safe_resolve(&session_workspace(&st, &sid).await?, &file_path)?;
     let mime = guess_mime(&resolved);
     let name = name_of(&resolved);
-    Ok(file_response(&resolved, &headers, FileOpts { media_type: &mime, filename: Some(&name), disposition: if download { "attachment" } else { "inline" }, extra_headers: &[] })
+    // A workspace file can change under the same path: revalidate (a 304 when it did not).
+    let cache = &[("cache-control", "private, no-cache")];
+    Ok(file_response(&resolved, &headers, FileOpts { media_type: &mime, filename: Some(&name), disposition: if download { "attachment" } else { "inline" }, extra_headers: cache })
         .await)
 }
 

@@ -1,6 +1,8 @@
 //! Starlette `FileResponse` (1.x): stat headers (content-length,
 //! last-modified, md5 etag), `accept-ranges`, `content-disposition`, and
-//! single/multi `Range` handling.
+//! single/multi `Range` handling. Unlike Starlette it answers a matching
+//! `If-None-Match` / `If-Modified-Since` with 304, so a reopened session
+//! does not download its images again.
 
 use axum::body::Body;
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
@@ -40,6 +42,19 @@ pub struct FileOpts<'a> {
 
 fn plain(status: StatusCode, body: &str) -> Response {
     (status, [(header::CONTENT_TYPE, "text/plain; charset=utf-8")], body.to_string()).into_response()
+}
+
+/// Whether the client's copy is current (RFC 9110 §13.2.2): `If-None-Match`
+/// decides when sent (weak comparison, `*` matches), else `If-Modified-Since`.
+fn not_modified(req: &HeaderMap, etag: &str, mtime_secs: u64) -> bool {
+    if let Some(tags) = req.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()) {
+        return tags.split(',').map(str::trim).any(|t| t == "*" || t.trim_start_matches("W/") == etag);
+    }
+    req.get(header::IF_MODIFIED_SINCE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| httpdate::parse_http_date(v).ok())
+        .and_then(|since| since.duration_since(std::time::UNIX_EPOCH).ok())
+        .is_some_and(|since| mtime_secs <= since.as_secs())
 }
 
 enum RangeErr {
@@ -126,6 +141,16 @@ pub async fn file_response(path: &Path, req_headers: &HeaderMap, o: FileOpts<'_>
     h.insert(header::CONTENT_LENGTH, HeaderValue::from(size));
     h.insert(header::LAST_MODIFIED, HeaderValue::from_str(&last_modified).unwrap());
     h.insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+
+    if not_modified(req_headers, &etag, mtime.as_secs()) {
+        let mut r = StatusCode::NOT_MODIFIED.into_response();
+        for k in [header::ETAG, header::LAST_MODIFIED, header::CACHE_CONTROL] {
+            if let Some(v) = h.get(&k) {
+                r.headers_mut().insert(k, v.clone());
+            }
+        }
+        return r;
+    }
 
     let range = req_headers.get(header::RANGE).and_then(|v| v.to_str().ok()).map(String::from);
     let if_range = req_headers.get(header::IF_RANGE).and_then(|v| v.to_str().ok()).map(String::from);
@@ -270,5 +295,41 @@ mod tests {
         let r = get(&path, "bytes=500-").await;
         assert_eq!(r.status(), StatusCode::RANGE_NOT_SATISFIABLE);
         assert_eq!(r.headers()[header::CONTENT_RANGE], "bytes */100");
+    }
+
+    /// A client that holds the file already gets 304 and no body; the
+    /// entity tag decides when it is sent, the date otherwise.
+    #[tokio::test]
+    async fn a_matching_validator_answers_not_modified() {
+        let (_d, path, _) = fixture(100);
+        let first = file_response(&path, &HeaderMap::new(), OPTS).await;
+        let etag = first.headers()[header::ETAG].to_str().unwrap().to_string();
+        let date = first.headers()[header::LAST_MODIFIED].to_str().unwrap().to_string();
+        let ask = |pairs: Vec<(header::HeaderName, String)>| {
+            let path = path.clone();
+            async move {
+                let mut h = HeaderMap::new();
+                for (k, v) in pairs {
+                    h.insert(k, HeaderValue::from_str(&v).unwrap());
+                }
+                file_response(&path, &h, OPTS).await
+            }
+        };
+        for pairs in [
+            vec![(header::IF_NONE_MATCH, etag.clone())],
+            vec![(header::IF_NONE_MATCH, format!("\"other\", W/{etag}"))],
+            vec![(header::IF_NONE_MATCH, "*".to_string())],
+            vec![(header::IF_MODIFIED_SINCE, date.clone())],
+            vec![(header::IF_NONE_MATCH, etag.clone()), (header::RANGE, "bytes=0-1".to_string())],
+        ] {
+            let r = ask(pairs.clone()).await;
+            assert_eq!(r.status(), StatusCode::NOT_MODIFIED, "{pairs:?}");
+            assert_eq!(r.headers()[header::ETAG], etag.as_str());
+            assert!(bytes(r).await.is_empty());
+        }
+        let r = ask(vec![(header::IF_NONE_MATCH, "\"other\"".into()), (header::IF_MODIFIED_SINCE, date.clone())]).await;
+        assert_eq!(r.status(), StatusCode::OK, "the entity tag wins over the date");
+        let r = ask(vec![(header::IF_MODIFIED_SINCE, "Thu, 01 Jan 1970 00:00:00 GMT".into())]).await;
+        assert_eq!(r.status(), StatusCode::OK);
     }
 }

@@ -494,6 +494,7 @@ async fn http_api_end_to_end() {
     history_etag_flow(&c, &pool, &ws).await;
     tool_result_on_demand_flow(&c, &pool, &ws).await;
     tool_arguments_on_demand_flow(&c, &pool, &ws).await;
+    files_revalidate_flow(&c, &pool, &ws).await;
     plan_review_flow(&c, &pool, &ws).await;
     linked_sessions_flow(&c, &pool).await;
     confirm_change_flow(&c, &pool, &ws).await;
@@ -1211,6 +1212,40 @@ async fn tool_arguments_on_demand_flow(c: &Client, pool: &appv3_db::DbPool, ws: 
     let (st, _) = c.json("GET", &format!("/api/agent/{lid}/tool-calls/call_nope/arguments"), None).await;
     assert_eq!(st, StatusCode::NOT_FOUND);
 
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{lid}"), None).await;
+    assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
+}
+
+/// A reopened session shows its images again: an upload (a new name per
+/// upload) is cached outright, a workspace file is revalidated, and an
+/// unchanged file answers 304 with no body.
+async fn files_revalidate_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
+    let lead = appv3_db::create_session(pool, appv3_db::NewSession { workspace: ws.display().to_string(), ..Default::default() }).await.unwrap();
+    let lid = appv3_db::codec::api_uuid(&lead.id);
+    std::fs::create_dir_all(ws.join("uploads")).unwrap();
+    std::fs::write(ws.join("uploads/shot.png"), b"png bytes").unwrap();
+    std::fs::write(ws.join("chart.png"), b"chart bytes").unwrap();
+    let get = |uri: String, etag: Option<String>| async move {
+        let mut b = Request::get(uri);
+        if let Some(tag) = etag {
+            b = b.header("if-none-match", tag);
+        }
+        c.send(b.body(Body::empty()).unwrap()).await
+    };
+    for (uri, cache) in [(format!("/api/agent/{lid}/uploads/shot.png"), "private, max-age=31536000, immutable"), (format!("/api/agent/{lid}/media/chart.png"), "private, no-cache")]
+    {
+        let (st, h, body) = get(uri.clone(), None).await;
+        assert_eq!(st, StatusCode::OK, "{uri}");
+        assert!(!body.is_empty());
+        assert_eq!(h["cache-control"], cache, "{uri}");
+        let etag = h["etag"].to_str().unwrap().to_string();
+        let (st, h, body) = get(uri.clone(), Some(etag.clone())).await;
+        assert_eq!(st, StatusCode::NOT_MODIFIED, "{uri}");
+        assert!(body.is_empty());
+        assert_eq!((h["etag"].to_str().unwrap(), h["cache-control"].to_str().unwrap()), (etag.as_str(), cache), "{uri}");
+        let (st, _, _) = get(uri.clone(), Some("\"other\"".into())).await;
+        assert_eq!(st, StatusCode::OK, "a changed file comes back whole: {uri}");
+    }
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{lid}"), None).await;
     assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
 }

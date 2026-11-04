@@ -895,22 +895,33 @@ pub async fn find_tool_message(pool: &DbPool, session_id: &str, tool_call_id: &s
         .await?)
 }
 
+/// Seeks `ix_session_messages_tool_call_id`, then keeps the rows in the tree.
+const TOOL_MESSAGE_IN_TREE_SQL: &str = "WITH RECURSIVE tree(id) AS (SELECT ? UNION ALL SELECT c.id FROM chat_sessions c JOIN tree t ON c.parent_session_id = t.id) \
+     SELECT * FROM session_messages WHERE tool_call_id = ? AND role = 'tool' AND session_id IN (SELECT id FROM tree) LIMIT 1";
+
+/// The newest assistant row naming a call at or before its result: walks
+/// `(seq, id)` back from the result, which sits right after its call.
+const CALL_BEFORE_RESULT_SQL: &str = "SELECT tool_calls FROM session_messages WHERE session_id = ? AND (seq, id) <= (?, ?) \
+     AND role = 'assistant' AND tool_calls IS NOT NULL AND instr(tool_calls, ?) > 0 ORDER BY seq DESC, id DESC LIMIT 1";
+
 /// The `role='tool'` row for *tool_call_id* in a session or any session
 /// under it (its members, theirs): a team view shows members' calls too.
 pub async fn find_tool_message_in_tree(pool: &DbPool, session_id: &str, tool_call_id: &str) -> Result<Option<SessionMessage>> {
-    Ok(sqlx::query_as::<_, SessionMessage>(
-        "WITH RECURSIVE tree(id) AS (SELECT ? UNION ALL SELECT c.id FROM chat_sessions c JOIN tree t ON c.parent_session_id = t.id) \
-         SELECT * FROM session_messages WHERE session_id IN (SELECT id FROM tree) AND role = 'tool' AND tool_call_id = ? LIMIT 1",
-    )
-    .bind(db_id(session_id))
-    .bind(tool_call_id)
-    .fetch_optional(pool)
-    .await?)
+    Ok(sqlx::query_as::<_, SessionMessage>(TOOL_MESSAGE_IN_TREE_SQL).bind(db_id(session_id)).bind(tool_call_id).fetch_optional(pool).await?)
 }
 
 /// The name and stored arguments (a JSON string) of the call *tool_call_id*
 /// made in a session or any session under it.
 pub async fn find_tool_call_in_tree(pool: &DbPool, session_id: &str, tool_call_id: &str) -> Result<Option<(String, String)>> {
+    // Next to its result when there is one; a call still running has none,
+    // so then every assistant row of the tree that names the id is read.
+    if let Some(result) = find_tool_message_in_tree(pool, session_id, tool_call_id).await? {
+        let row: Option<String> =
+            sqlx::query_scalar(CALL_BEFORE_RESULT_SQL).bind(&result.session_id).bind(result.seq).bind(&result.id).bind(tool_call_id).fetch_optional(pool).await?;
+        if let Some(found) = row.as_deref().and_then(|text| call_in(text, tool_call_id)) {
+            return Ok(Some(found));
+        }
+    }
     // `instr` narrows to rows naming the id; the JSON decides.
     let rows: Vec<String> = sqlx::query_scalar(
         "WITH RECURSIVE tree(id) AS (SELECT ? UNION ALL SELECT c.id FROM chat_sessions c JOIN tree t ON c.parent_session_id = t.id) \
@@ -921,19 +932,16 @@ pub async fn find_tool_call_in_tree(pool: &DbPool, session_id: &str, tool_call_i
     .bind(tool_call_id)
     .fetch_all(pool)
     .await?;
-    for text in rows {
-        let Ok(Value::Array(calls)) = serde_json::from_str::<Value>(&text) else { continue };
-        for call in calls {
-            if call.get("id").and_then(Value::as_str) != Some(tool_call_id) {
-                continue;
-            }
-            let function = call.get("function");
-            let name = function.and_then(|f| f.get("name")).and_then(Value::as_str).unwrap_or_default().to_string();
-            let args = function.and_then(|f| f.get("arguments")).and_then(Value::as_str).unwrap_or_default().to_string();
-            return Ok(Some((name, args)));
-        }
-    }
-    Ok(None)
+    Ok(rows.iter().find_map(|text| call_in(text, tool_call_id)))
+}
+
+/// The name and arguments of call *tool_call_id* in a stored `tool_calls` array.
+fn call_in(tool_calls: &str, tool_call_id: &str) -> Option<(String, String)> {
+    let Ok(Value::Array(calls)) = serde_json::from_str::<Value>(tool_calls) else { return None };
+    let call = calls.iter().find(|c| c.get("id").and_then(Value::as_str) == Some(tool_call_id))?;
+    let function = call.get("function");
+    let field = |k: &str| function.and_then(|f| f.get(k)).and_then(Value::as_str).unwrap_or_default().to_string();
+    Some((field("name"), field("arguments")))
 }
 
 #[cfg(test)]
@@ -981,6 +989,43 @@ mod tests {
         let sql = format!("SELECT * FROM session_messages WHERE session_id = ? AND {USER_VISIBLE} ORDER BY seq DESC, id DESC LIMIT ?");
         let p = plan(&pool, &sql, 2).await;
         assert!(p.contains("ix_session_messages_session_seq_id") && !p.contains("TEMP B-TREE"), "{p}");
+    }
+
+    /// Opening a tool call fetched its output and arguments by walking every
+    /// row of the session tree on every click.
+    #[tokio::test]
+    async fn tool_call_lookups_seek_instead_of_scanning_the_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::create_pool(dir.path().join("t.db")).await.unwrap();
+        let p = plan(&pool, TOOL_MESSAGE_IN_TREE_SQL, 2).await;
+        assert!(p.contains("ix_session_messages_tool_call_id"), "{p}");
+        let p = plan(&pool, CALL_BEFORE_RESULT_SQL, 4).await;
+        assert!(p.contains("ix_session_messages_session_seq_id") && !p.contains("TEMP B-TREE"), "{p}");
+    }
+
+    /// A call's arguments are found next to its result, in a member session
+    /// too, and before the result exists (a call still running).
+    #[tokio::test]
+    async fn finds_a_call_by_its_result_and_without_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::create_pool(dir.path().join("t.db")).await.unwrap();
+        let lead = uuid::Uuid::now_v7();
+        let member = uuid::Uuid::now_v7();
+        crate::create_session(&pool, crate::NewSession { id: Some(lead), workspace: "/w".into(), ..Default::default() }).await.unwrap();
+        crate::create_session(&pool, crate::NewSession { id: Some(member), workspace: "/w".into(), parent_session_id: Some(lead.to_string()), ..Default::default() })
+            .await
+            .unwrap();
+        let call = |id: &str, name: &str, args: &str| serde_json::json!({"id": id, "type": "function", "function": {"name": name, "arguments": args}});
+        let assistant = |calls: Vec<Value>| NewMessage { tool_calls: Some(Value::Array(calls)), ..NewMessage::assistant(None) };
+        let (lead, member) = (lead.to_string(), member.to_string());
+        save_message(&pool, &member, assistant(vec![call("c1", "shell", "{\"command\":\"ls\"}"), call("c2", "read", "{\"path\":\"a\"}")])).await.unwrap();
+        save_message(&pool, &member, NewMessage::tool("c1", "shell", "[Succeeded]")).await.unwrap();
+        save_message(&pool, &member, NewMessage::tool("c2", "read", "[1-1/1]\na")).await.unwrap();
+        save_message(&pool, &member, assistant(vec![call("c3", "patch", "{\"patch_text\":\"x\"}")])).await.unwrap();
+        assert_eq!(find_tool_message_in_tree(&pool, &lead, "c2").await.unwrap().unwrap().content.as_deref(), Some("[1-1/1]\na"));
+        assert_eq!(find_tool_call_in_tree(&pool, &lead, "c2").await.unwrap(), Some(("read".into(), "{\"path\":\"a\"}".into())));
+        assert_eq!(find_tool_call_in_tree(&pool, &lead, "c3").await.unwrap(), Some(("patch".into(), "{\"patch_text\":\"x\"}".into())), "no result yet");
+        assert_eq!(find_tool_call_in_tree(&pool, &member, "nope").await.unwrap(), None);
     }
 
     #[tokio::test]

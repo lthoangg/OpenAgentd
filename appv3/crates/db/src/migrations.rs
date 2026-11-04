@@ -29,7 +29,7 @@ use sqlx::{Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
 
 /// Alembic head revision this build is schema-compatible with.
-pub const ALEMBIC_HEAD: &str = "00000031";
+pub const ALEMBIC_HEAD: &str = "00000032";
 
 /// `(revision, statements)` in upgrade order.
 ///
@@ -79,7 +79,10 @@ pub const ALEMBIC_HEAD: &str = "00000031";
 ///   under the one that started them. Backfilled from each top-level
 ///   session's first user message: when it carries `extra.sent_from`, a
 ///   send started the session.
-pub const MIGRATIONS: [(&str, &str); 31] = [
+/// - 00000032: the partial `ix_session_messages_tool_call_id`, so opening a
+///   tool call finds its result (and, next to it, its arguments) with a seek
+///   instead of reading every row of the session tree.
+pub const MIGRATIONS: [(&str, &str); 32] = [
     ("00000001", include_str!("../resources/migrations/00000001.sql")),
     ("00000002", include_str!("../resources/migrations/00000002.sql")),
     ("00000003", include_str!("../resources/migrations/00000003.sql")),
@@ -111,6 +114,7 @@ pub const MIGRATIONS: [(&str, &str); 31] = [
     ("00000029", include_str!("../resources/migrations/00000029.sql")),
     ("00000030", include_str!("../resources/migrations/00000030.sql")),
     ("00000031", include_str!("../resources/migrations/00000031.sql")),
+    ("00000032", include_str!("../resources/migrations/00000032.sql")),
 ];
 
 /// Split a captured revision file into statements.
@@ -469,6 +473,7 @@ CREATE UNIQUE INDEX ix_scheduled_task_slug ON scheduled_task (slug);
 CREATE UNIQUE INDEX ix_scheduled_task_name ON scheduled_task (name);
 CREATE INDEX ix_session_messages_usage ON session_messages (session_id, kind, json_extract(extra, '$.usage.cost.estimated_usd'), json_extract(extra, '$.usage.output'));
 CREATE INDEX ix_session_messages_queued ON session_messages (session_id, seq, id) WHERE kind = 'queued';
+CREATE INDEX ix_session_messages_tool_call_id ON session_messages (tool_call_id) WHERE tool_call_id IS NOT NULL;
 CREATE TABLE side_questions (
 	session_id CHAR(32) NOT NULL,
 	id CHAR(32) NOT NULL,

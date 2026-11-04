@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { clearEtagCache, fetchJsonWithEtag } from '@/api/client/_shared'
+import { sessionHistory } from '@/api/client/agent'
 
 const originalFetch = globalThis.fetch
 
@@ -37,5 +38,47 @@ describe('fetchJsonWithEtag', () => {
   it('throws the server detail on errors', async () => {
     globalThis.fetch = mock(async () => new Response(JSON.stringify({ detail: 'nope' }), { status: 422 })) as unknown as typeof fetch
     await expect(fetchJsonWithEtag('/z', 'z')).rejects.toThrow('nope')
+  })
+})
+
+describe('sessionHistory', () => {
+  /** A server whose pages never change: tag = URL. Records each request's `If-None-Match`. */
+  function unchangedServer(seen: { url: string; inm: string | null; cache?: RequestCache }[]) {
+    globalThis.fetch = mock(async (url: unknown, init: unknown) => {
+      const req = init as RequestInit | undefined
+      const inm = new Headers(req?.headers).get('If-None-Match')
+      seen.push({ url: String(url), inm, cache: req?.cache })
+      const tag = `"${String(url)}"`
+      if (inm === tag) return new Response(null, { status: 304, headers: { ETag: tag } })
+      return new Response(JSON.stringify({ lead: { messages: [] }, members: [] }), { headers: { ETag: tag } })
+    }) as unknown as typeof fetch
+  }
+
+  it('reopening an unchanged session revalidates and returns the same page', async () => {
+    const seen: { url: string; inm: string | null; cache?: RequestCache }[] = []
+    unchangedServer(seen)
+    const first = await sessionHistory('s1')
+    const again = await sessionHistory('s1')
+    expect(again).toBe(first)
+    expect(seen.map((s) => s.inm)).toEqual([null, `"${seen[0].url}"`])
+    expect(seen.every((s) => s.cache === 'no-store')).toBe(true)
+  })
+
+  it('keeps only the last four sessions', async () => {
+    const seen: { url: string; inm: string | null; cache?: RequestCache }[] = []
+    unchangedServer(seen)
+    for (const sid of ['a', 'b', 'c', 'd', 'e']) await sessionHistory(sid)
+    seen.length = 0
+    await sessionHistory('a')
+    await sessionHistory('e')
+    expect(seen.map((s) => s.inm !== null)).toEqual([false, true])
+  })
+
+  it('does not revalidate older pages', async () => {
+    const seen: { url: string; inm: string | null; cache?: RequestCache }[] = []
+    unchangedServer(seen)
+    await sessionHistory('s1', '5|x')
+    await sessionHistory('s1', '5|x')
+    expect(seen.map((s) => s.inm)).toEqual([null, null])
   })
 })

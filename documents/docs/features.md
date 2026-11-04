@@ -330,6 +330,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   or reloading mid-turn no longer repeats the reply or a steer message, and
   a step saved during the reconnect shows up right away instead of at the
   end of the turn.
+- **Lighter over a remote connection** `[v3.46.0]` — a running reply reaches
+  the phone app (or any browser on another machine) in about a third as many
+  stream updates and roughly 60% fewer bytes; the first words still appear
+  at once and text stays in order. Reopening a session that has not changed
+  downloads nothing (the server answers "not modified"), and on the phone
+  app the file list and git status revalidate the same way.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.

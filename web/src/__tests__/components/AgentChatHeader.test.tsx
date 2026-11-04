@@ -269,6 +269,13 @@ describe('AgentChatHeader', () => {
     }
   })
 
+  it('keeps the phone Review panel button off the right edge, as the sidebar button is off the left', () => {
+    renderHeader({ isMobile: true })
+    const cluster = (name: string) => screen.getByRole('button', { name }).closest('header > div') as HTMLElement
+    expect(cluster('Review panel').className.split(' ')).toContain('pr-2')
+    expect(cluster('Toggle sidebar').className.split(' ')).toContain('pl-2')
+  })
+
   it('labels the chat workspace "Chat" instead of its home-directory basename', () => {
     renderHeader({
       isMobile: false,

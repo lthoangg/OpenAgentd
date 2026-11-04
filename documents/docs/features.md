@@ -1217,7 +1217,15 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A shell call's tooltip shows only its description (the command is
     already on the row), and other tooltips (copy buttons, a prompt's and an
     answer's actions, session rows) are the system's plain tooltips, so a
-    long transcript renders lighter.
+    long transcript renders lighter. *(Since v3.46.0 the row shows the
+    description and the tooltip the command.)*
+- **Shell rows say what they do; phone header padding** `[v3.46.0]`:
+  - A shell row shows the agent's description of the command (`shell  Run
+    the unit tests`), and hovering it shows the whole command; the expanded
+    row still shows the command and its output. A call without a
+    description shows its command as before.
+  - On a phone the Review panel button sits as far from the right edge as
+    the sidebar button does from the left.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

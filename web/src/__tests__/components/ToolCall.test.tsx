@@ -129,17 +129,23 @@ describe("ToolCall — shell display", () => {
     expect(header.className).not.toContain("sticky")
   })
 
-  it("shows the command as the target and keeps the description in the tooltip", () => {
+  it("shows the description as the target and keeps the command in the tooltip", () => {
     const args = JSON.stringify({ command: "npm test", description: "Run unit tests" })
     render(<ToolCall name="shell" args={args} done={false} />)
-    const header = getHeader("shell: npm test\nRun unit tests")
-    expectPlainArg(header, "npm test")
+    const header = getHeader("shell: Run unit tests\nnpm test")
+    expectPlainArg(header, "Run unit tests")
     expect(screen.getByText("shell").className).toContain("font-mono")
-    expect(screen.getByText("npm test")).toBeTruthy()
-    // The description is tooltip-only, not visible row text
-    expect(screen.queryByText("Run unit tests")).toBeNull()
-    // The tooltip carries the description alone, not the command it repeats
-    expect(header.getAttribute("title")).toBe("Run unit tests")
+    // The command is tooltip-only on the collapsed row, not visible row text
+    expect(screen.queryByText("npm test")).toBeNull()
+    expect(header.getAttribute("title")).toBe("npm test")
+  })
+
+  it("puts a described row's whole command, line breaks kept, in its tooltip", () => {
+    const command = `echo ${"x".repeat(100)}\necho second`
+    render(<ToolCall name="shell" args={JSON.stringify({ command, description: "Echo twice" })} done={false} />)
+    const header = getHeader(`shell: Echo twice\n${command.replace(/\s*\n\s*/g, " ")}`)
+    expect(header.getAttribute("title")).toBe(command)
+    expect(screen.getByText("Echo twice")).toBeTruthy()
   })
 
   it("truncates a long multi-line command to one line of 80 chars", () => {

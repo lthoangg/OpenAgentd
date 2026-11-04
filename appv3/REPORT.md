@@ -1210,7 +1210,10 @@ explicitly.
   piece of a stream (an agent's text, one tool's output) at once, then joins
   the pieces that follow within 50 ms (or up to 8 KB) into one frame, keyed
   by event, agent and `tool_call_id`, so tools running side by side are
-  joined each on its own. Held text goes out before any other event, before
+  joined each on its own. An agent's reply, thinking and summary share one
+  order: a piece of one sends the held piece of another first (the client
+  appends them to one transcript in arrival order). Held text goes out
+  before any other event, before
   an attach (whose replay already has it) and at the end of the turn. The
   replay blob still takes every piece. The SSE writer sends events that are
   ready together as one write and pings only after 15 s of silence.

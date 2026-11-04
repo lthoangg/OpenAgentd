@@ -47,6 +47,13 @@ impl DeltaKey {
     fn of(env: &Envelope) -> Self {
         Self { event: env.event.clone(), agent: env.agent().to_string(), tool_call_id: env.str_field("tool_call_id").map(String::from) }
     }
+
+    /// An agent's text streams (reply, thinking, summary) land in one
+    /// transcript in arrival order, so one must not overtake another. A
+    /// tool's output goes to its own card and keeps its own pace.
+    fn shares_order_with(&self, other: &DeltaKey) -> bool {
+        self.agent == other.agent && self.event != "tool_output_delta" && other.event != "tool_output_delta"
+    }
 }
 
 /// Deltas held back from the live subscribers: the first piece's envelope
@@ -227,6 +234,16 @@ impl TurnState {
         self.delta_stats.received += 1;
         let now = tokio::time::Instant::now();
         let key = DeltaKey::of(env);
+        let mut i = 0;
+        while i < self.pending.len() {
+            if self.pending[i].key != key && self.pending[i].key.shares_order_with(&key) {
+                let p = self.pending.remove(i);
+                let held = p.key.clone();
+                self.send_delta(session_id, held, p.into_wire(), now);
+            } else {
+                i += 1;
+            }
+        }
         if let Some(i) = self.pending.iter().position(|p| p.key == key) {
             if self.pending[i].continues(env) {
                 self.pending[i].append(env);
@@ -919,6 +936,32 @@ mod tests {
         s.push_event("o", &events::message("a", "c", None), false);
         s.push_event("o", &events::done(None), false);
         assert_eq!(queued(&sub), frames(&[("message", "a"), ("message", "b"), ("tool_call", ""), ("message", "c"), ("done", "")]));
+    }
+
+    /// The client appends an agent's thinking and reply to one transcript in
+    /// arrival order: held thinking sent after the reply's first words split
+    /// both blocks (and the next attach's replay no longer matched them).
+    #[tokio::test(start_paused = true)]
+    async fn an_agents_held_thinking_goes_out_before_its_reply() {
+        let s = leak();
+        s.init_turn("r", false);
+        let sub = s.attach("r").unwrap();
+        s.push_event("r", &events::thinking("a", "r1 ", None), false);
+        s.push_event("r", &events::thinking("a", "r2", None), false);
+        s.push_event("r", &events::message("b", "member", None), false);
+        s.push_event("r", &events::message("a", "t1", None), false);
+        assert_eq!(queued(&sub), frames(&[("thinking", "r1 "), ("message", "member"), ("thinking", "r2"), ("message", "t1")]));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_tools_held_output_keeps_its_pace_beside_the_agents_text() {
+        let s = leak();
+        s.init_turn("u", false);
+        let sub = s.attach("u").unwrap();
+        s.push_event("u", &events::tool_output_delta("a", Some("t1"), "shell", "o1 ", 1), false);
+        s.push_event("u", &events::tool_output_delta("a", Some("t1"), "shell", "o2", 2), false);
+        s.push_event("u", &events::message("a", "t1", None), false);
+        assert_eq!(queued(&sub), frames(&[("tool_output_delta", "o1 "), ("message", "t1")]));
     }
 
     #[tokio::test(start_paused = true)]

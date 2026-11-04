@@ -922,6 +922,8 @@ pub struct ScreenInfo {
     /// Widths of the menu bar areas left and right of the notch.
     pub aux_left_width: f64,
     pub aux_right_width: f64,
+    /// Device pixels per point (`backingScaleFactor`): 2 on every notched panel.
+    pub scale: f64,
 }
 
 impl ScreenInfo {
@@ -953,7 +955,10 @@ pub fn fit_size(width: f64, height: f64) -> (f64, f64) {
 }
 
 /// A box centred on the notch (or the screen), flush with the top: the
-/// canvas, or the pill inside it.
+/// canvas, or the pill inside it. Its left edge lands on a whole device
+/// pixel, not a whole point: a notch an odd number of points wide (185 on a
+/// 14" MacBook Pro) has its centre on a half point, and rounding to whole
+/// points left the pill 0.5 pt past one side of the notch, a black sliver.
 pub fn island_frame(screen: &ScreenInfo, width: f64, height: f64) -> Rect {
     let (width, height) = fit_size(width, height);
     let center = if screen.has_notch() {
@@ -962,8 +967,9 @@ pub fn island_frame(screen: &ScreenInfo, width: f64, height: f64) -> Rect {
     } else {
         screen.frame.x + screen.frame.width / 2.0
     };
+    let scale = if screen.scale.is_finite() && screen.scale >= 1.0 { screen.scale } else { 1.0 };
     Rect {
-        x: (center - width / 2.0).round(),
+        x: ((center - width / 2.0) * scale).round() / scale,
         y: screen.frame.y + screen.frame.height - height,
         width,
         height,
@@ -971,8 +977,8 @@ pub fn island_frame(screen: &ScreenInfo, width: f64, height: f64) -> Rect {
 }
 
 /// The pill's frame: [`island_frame`] moved sideways by `shift` (negative is
-/// left), held inside the canvas. The compact pill shifts left so it ends at
-/// the notch's right edge and leaves the status icons beside it uncovered.
+/// left), held inside the canvas. Today's island keeps its pill centred
+/// (shift 0); the shift stays for a webview that still sends one.
 pub fn pill_frame(screen: &ScreenInfo, width: f64, height: f64, shift: f64) -> Rect {
     let mut pill = island_frame(screen, width, height);
     let room = ((CANVAS_WIDTH - pill.width) / 2.0).max(0.0);
@@ -2098,7 +2104,8 @@ mod native {
         } else {
             (0.0, 0.0, 0.0)
         };
-        ScreenInfo { frame, visible_top: visible.y + visible.height, safe_top, aux_left_width, aux_right_width }
+        let scale = screen.backingScaleFactor();
+        ScreenInfo { frame, visible_top: visible.y + visible.height, safe_top, aux_left_width, aux_right_width, scale }
     }
 
     /// Every display, primary first. Empty off the main thread.
@@ -2788,13 +2795,16 @@ mod tests {
     }
 
     fn notched() -> ScreenInfo {
-        // A 14" MacBook Pro at its default scaling.
+        // A 14" MacBook Pro at its default scaling, as NSScreen reports it:
+        // the notch is 185 x 32 pt, a little off centre (663 pt of menu bar
+        // left of it, 664 right), under a 37 pt menu bar.
         ScreenInfo {
             frame: Rect { x: 0.0, y: 0.0, width: 1512.0, height: 982.0 },
-            visible_top: 944.0,
-            safe_top: 38.0,
-            aux_left_width: 662.0,
-            aux_right_width: 662.0,
+            visible_top: 945.0,
+            safe_top: 32.0,
+            aux_left_width: 663.0,
+            aux_right_width: 664.0,
+            scale: 2.0,
         }
     }
 
@@ -2805,6 +2815,7 @@ mod tests {
             safe_top: 0.0,
             aux_left_width: 0.0,
             aux_right_width: 0.0,
+            scale: 1.0,
         }
     }
 
@@ -2817,7 +2828,7 @@ mod tests {
 
     #[test]
     fn notch_geometry_comes_from_the_menu_bar_areas_beside_it() {
-        assert_eq!(notch_geometry(&notched()), NotchGeometry { has_notch: true, width: 188.0, height: 38.0 });
+        assert_eq!(notch_geometry(&notched()), NotchGeometry { has_notch: true, width: 185.0, height: 32.0 });
         let plain = notch_geometry(&external());
         assert_eq!(plain, NotchGeometry { has_notch: false, width: FALLBACK_PILL_WIDTH, height: 25.0 });
 
@@ -2828,26 +2839,41 @@ mod tests {
 
     #[test]
     fn the_island_is_centred_on_the_notch_and_flush_with_the_top() {
-        let frame = island_frame(&notched(), 340.0, 38.0);
-        assert_eq!(frame, Rect { x: 586.0, y: 944.0, width: 340.0, height: 38.0 });
+        // Notch 663..848, centre 755.5.
+        let frame = island_frame(&notched(), 340.0, 32.0);
+        assert_eq!(frame, Rect { x: 585.5, y: 950.0, width: 340.0, height: 32.0 });
         let frame = island_frame(&external(), 220.0, 25.0);
         assert_eq!(frame, Rect { x: 1512.0 + 1170.0, y: 1215.0, width: 220.0, height: 25.0 });
     }
 
+    // Rounded to whole points, the canvas sat 0.5 pt right of the notch's
+    // centre, and the pill showed a 1 px black sliver past the notch's edge.
     #[test]
-    fn a_shifted_pill_ends_at_the_notch_and_stays_inside_the_canvas() {
-        // Notch 662..850. The compact pill (notch + 44pt wing + 8pt corner)
-        // ends exactly at the notch's right edge, clear of the status icons.
-        let pill = pill_frame(&notched(), 188.0 + 44.0 + 8.0, 38.0, -26.0);
-        assert_eq!(pill, Rect { x: 610.0, y: 944.0, width: 240.0, height: 38.0 });
-        assert_eq!(pill.x + pill.width, 662.0 + 188.0);
-        // No shift is the centred frame.
-        assert_eq!(pill_frame(&notched(), 340.0, 38.0, 0.0), island_frame(&notched(), 340.0, 38.0));
+    fn an_odd_notch_gets_equal_wings_on_a_whole_device_pixel() {
+        let wing = 36.0;
+        let pill = island_frame(&notched(), 185.0 + 2.0 * wing, 32.0);
+        assert_eq!(pill.x, 663.0 - wing, "left wing");
+        assert_eq!(pill.x + pill.width, 848.0 + wing, "right wing");
+        // The canvas the pill is centred in shares the notch's centre too.
+        let canvas = island_frame(&notched(), CANVAS_WIDTH, CANVAS_HEIGHT);
+        assert_eq!(canvas.x + canvas.width / 2.0, 755.5);
+        assert_eq!(canvas.x * notched().scale, (canvas.x * notched().scale).round(), "whole device pixel");
+        // At 1x a half point is not a pixel: whole points, as before.
+        let one_x = ScreenInfo { scale: 1.0, ..notched() };
+        assert_eq!(island_frame(&one_x, 340.0, 32.0).x, 586.0);
+    }
+
+    #[test]
+    fn a_shifted_pill_moves_by_the_shift_and_stays_inside_the_canvas() {
+        let pill = pill_frame(&notched(), 240.0, 32.0, -26.0);
+        assert_eq!(pill.x, island_frame(&notched(), 240.0, 32.0).x - 26.0);
+        // No shift (what the island sends today) is the centred frame.
+        assert_eq!(pill_frame(&notched(), 340.0, 32.0, 0.0), island_frame(&notched(), 340.0, 32.0));
         // A shift past the canvas edge, or garbage, is held to the canvas.
         let canvas = island_frame(&notched(), CANVAS_WIDTH, CANVAS_HEIGHT);
-        let far = pill_frame(&notched(), 400.0, 38.0, -500.0);
+        let far = pill_frame(&notched(), 400.0, 32.0, -500.0);
         assert_eq!(far.x, canvas.x);
-        assert_eq!(pill_frame(&notched(), 340.0, 38.0, f64::NAN), island_frame(&notched(), 340.0, 38.0));
+        assert_eq!(pill_frame(&notched(), 340.0, 32.0, f64::NAN), island_frame(&notched(), 340.0, 32.0));
     }
 
     #[test]

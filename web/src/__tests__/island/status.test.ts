@@ -10,11 +10,11 @@ import {
   compactCount,
   compactMode,
   compactLabels,
+  countLabel,
   goalLabel,
   islandHitBox,
   islandHeight,
   islandMode,
-  islandShift,
   islandWidth,
   listOrder,
   primarySessionId,
@@ -148,39 +148,28 @@ describe('islandWidth and islandHeight', () => {
   const notch = { hasNotch: true, width: 188, height: 38 }
   const plain = { hasNotch: false, width: 200, height: 24 }
 
-  it('shrinks into the notch when hidden and grows one wing, left of it, wide enough for a word', () => {
+  it('shrinks into the notch when hidden and grows two equal wings, one either side of it', () => {
     expect(islandWidth('hidden', notch)).toBe(188)
-    expect(islandWidth('running', notch)).toBe(188 + WING_WIDTH)
-    expect(islandWidth('done', notch)).toBe(188 + WING_WIDTH)
-    expect(islandWidth('offline', notch)).toBe(188 + WING_WIDTH)
-    // "Needs you" and a count fit; more would crowd the frontmost app's menus.
-    expect(WING_WIDTH).toBeGreaterThanOrEqual(96)
-    expect(WING_WIDTH).toBeLessThanOrEqual(128)
+    expect(islandWidth('running', notch)).toBe(188 + 2 * WING_WIDTH)
+    expect(islandWidth('done', notch)).toBe(188 + 2 * WING_WIDTH)
+    expect(islandWidth('offline', notch)).toBe(188 + 2 * WING_WIDTH)
+    // A symbol, or a number up to "99+", fits; a word does not have to.
+    expect(WING_WIDTH).toBeGreaterThanOrEqual(32)
+    expect(WING_WIDTH).toBeLessThanOrEqual(44)
   })
 
-  it('keeps the right of the notch clear while compact, and centres when expanded', () => {
-    // The pill's right edge sits on the notch's: nothing covers the status icons.
-    expect(islandShift('running', notch)).toBe(-WING_WIDTH / 2)
-    expect(islandShift('needs_input', notch)).toBe(-WING_WIDTH / 2)
-    expect(islandShift('expanded', notch)).toBe(0)
-    expect(islandShift('hidden', notch)).toBe(0)
-    expect(islandShift('running', plain)).toBe(0)
-  })
-
-  it('reports a hit area that leaves out the hidden right corner while compact', () => {
+  // The compact pill used to hang left of the notch only, so it looked lopsided
+  // and slid sideways as it opened.
+  it('reports a hit area centred on the notch, with both corners, in every mode', () => {
     const width = islandWidth('running', notch)
-    const box = islandHitBox('running', notch, width)
-    const notchCentre = 0
-    // Right edge of the hit area: exactly the notch's right edge.
-    expect(notchCentre + box.shift + box.width / 2).toBe(188 / 2)
-    expect(box.width).toBe(188 + WING_WIDTH + EAR_WIDTH)
-    expect(islandHitBox('expanded', notch, 400)).toEqual({ width: 400 + 2 * EAR_WIDTH, shift: 0 })
+    expect(islandHitBox(width)).toEqual({ width: 188 + 2 * WING_WIDTH + 2 * EAR_WIDTH, shift: 0 })
+    expect(islandHitBox(400)).toEqual({ width: 400 + 2 * EAR_WIDTH, shift: 0 })
   })
 
-  it('uses small fixed pills without a notch, and widens when expanded', () => {
+  it('puts the same two wings side by side without a notch, and widens when expanded', () => {
     expect(islandWidth('hidden', plain)).toBe(PLAIN_HIDDEN_WIDTH)
     expect(islandWidth('running', plain)).toBe(PLAIN_WIDTH)
-    expect(PLAIN_WIDTH).toBeGreaterThanOrEqual(96)
+    expect(PLAIN_WIDTH).toBe(2 * WING_WIDTH)
     expect(islandWidth('expanded', plain)).toBe(EXPANDED_WIDTH)
     expect(islandWidth('expanded', notch)).toBe(EXPANDED_WIDTH)
   })
@@ -198,6 +187,12 @@ describe('compactCount', () => {
     expect(compactCount([running('a'), running('b')], [])).toBe(2)
     expect(compactCount([running('a'), waiting('b')], [done('x'), done('y')])).toBe(1)
     expect(compactCount([running('a')], [done('x'), done('y')])).toBe(2)
+  })
+
+  it('keeps the number inside its wing', () => {
+    expect(countLabel(1)).toBe('1')
+    expect(countLabel(99)).toBe('99')
+    expect(countLabel(100)).toBe('99+')
   })
 })
 

@@ -1436,6 +1436,14 @@ run from the terminal (the native Rust binary since v3.0.0).
     of the notch alone; without a notch it is a small pill with the same
     mark and count. Hover still opens the full list, with titles and
     questions.
+    Since `[v3.45.0]` the resting pill is balanced again: a small wing
+    either side of the notch, the state's symbol on the left (dot, spinner,
+    check, alert) and the number of sessions on the right, one included
+    ("99+" past 99), with no words (screen readers still hear them). Without
+    a notch it is the same two wings side by side. The pill stays centred,
+    so it opens evenly on both sides, the open list keeps one inset on both
+    edges, and on a notch an odd number of points wide (a 14" MacBook Pro)
+    the pill no longer shows a 1 px sliver past the notch.
     Right-click the pill or a session row for a native menu with Open and
     Open in new window; finished sessions also offer Dismiss `[v3.28.0]`.
     A new window opens on that session's server without navigating an

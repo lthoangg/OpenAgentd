@@ -96,7 +96,6 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
       </div>
 
       <SaveBar
-        shortcut
         saveLabel="Create skill"
         draft={{
           dirty,

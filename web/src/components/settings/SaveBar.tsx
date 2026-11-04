@@ -33,11 +33,6 @@ export interface SaveBarProps {
   saveLabel?: string
   /** What Discard… goes back to, in its confirmation. */
   discardDescription?: string
-  /**
-   * Bind ⌘S / Ctrl+S inside Settings. `SettingsPage` binds it itself (it also
-   * asks before a destructive save), so only the editors turn this on.
-   */
-  shortcut?: boolean
 }
 
 /** Save-bar enter/exit. Module scope so framer sees a stable target
@@ -60,7 +55,6 @@ export function SaveBar({
   saveBlockedReason,
   saveLabel = 'Save',
   discardDescription = 'The edits on this page go back to the last saved values.',
-  shortcut = false,
 }: SaveBarProps) {
   const prefersReducedMotion = useReducedMotion()
   const [confirmDiscard, setConfirmDiscard] = useState(false)
@@ -68,8 +62,8 @@ export function SaveBar({
   const slide = prefersReducedMotion ? SAVE_BAR_MOTION_REDUCED : SAVE_BAR_MOTION
   const keys = shortcutLabel(APP_SHORTCUTS.save, getPlatform().os)
 
-  // ⌘S / Ctrl+S saves without hunting for the button.
-  useShortcut(shortcut ? chordOf(APP_SHORTCUTS.save) : null, () => {
+  // ⌘S / Ctrl+S saves without hunting for the button, inside Settings only.
+  useShortcut(chordOf(APP_SHORTCUTS.save), () => {
     if (!draft.dirty || !draft.canSave) return false
     onSave()
   }, { within: settingsRoot })

@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { Check, CircleAlert, Pause, WifiOff, X } from 'lucide-react'
 import { DURATIONS_S } from '@/lib/motion'
+import { ISLAND_SETTINGS_EVENT } from '@/lib/island-setting'
 import {
   DEFAULT_ISLAND_SETTINGS,
   STATE_WORD,
@@ -40,7 +41,6 @@ const RETRY_COMMAND = 'island_retry'
 const MENU_COMMAND = 'island_context_menu'
 const STATUS_EVENT = 'island-status'
 const GEOMETRY_EVENT = 'island-geometry'
-const SETTINGS_EVENT = 'island-settings-changed'
 /** The shell polls the pointer: WebKit gives no hover to a window that can't take focus. */
 const POINTER_EVENT = 'island-pointer'
 /** Stable empty lists, so effects keyed on them don't rerun every render. */
@@ -233,7 +233,7 @@ export function Island() {
 
   useShellEvent<IslandStatus>(STATUS_EVENT, receive)
   useShellEvent<NotchGeometry>(GEOMETRY_EVENT, setGeometry)
-  useShellEvent<IslandSettings>(SETTINGS_EVENT, setSettings)
+  useShellEvent<IslandSettings>(ISLAND_SETTINGS_EVENT, setSettings)
   useShellEvent<IslandPointer>(POINTER_EVENT, setPointer)
 
   useEffect(() => {

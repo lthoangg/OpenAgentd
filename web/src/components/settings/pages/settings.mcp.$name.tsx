@@ -223,7 +223,6 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
 
       {!plugin && (
         <SaveBar
-          shortcut
           draft={{
             dirty,
             canSave: dirty && !invalid && !updateMut.isPending,

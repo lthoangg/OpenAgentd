@@ -176,7 +176,6 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
       </div>
 
       <SaveBar
-        shortcut
         draft={{
           dirty,
           canSave: dirty && !invalid && !updateMut.isPending,

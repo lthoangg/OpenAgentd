@@ -1,6 +1,5 @@
 /**
- * terminal-font — user-configurable terminal font, with live availability
- * checking against fonts actually installed on the user's machine.
+ * terminal-font — user-configurable terminal font.
  *
  * Why this can't be fully automatic: browsers/webviews deliberately don't
  * expose the OS's installed font list (it's a fingerprinting vector), so
@@ -9,10 +8,9 @@
  *   1. Ship a best-guess fallback stack of the most common Nerd Font names
  *      (MesloLGS NF — p10k's own recommendation — plus a few others) so
  *      many users get working glyphs with zero configuration.
- *   2. Respect an exact custom name when one is stored, verify it actually
- *      resolves in this browser/webview via the Font Loading API
- *      (`document.fonts.check`), and put it first in the stack — covering
- *      every Nerd Font variant, not just the ones we guessed.
+ *   2. Respect an exact custom name when one is stored and put it first in
+ *      the stack — covering every Nerd Font variant, not just the ones we
+ *      guessed.
  *
  * The custom font (if set) is layered ON TOP of the guess stack, not a
  * replacement for it — an unresolved/typo'd custom name still degrades to
@@ -160,27 +158,4 @@ export function setStoredTerminalFontSize(size: number): void {
 export function onTerminalFontSizeChange(handler: () => void): () => void {
   window.addEventListener(FONT_SIZE_CHANGE_EVENT, handler)
   return () => window.removeEventListener(FONT_SIZE_CHANGE_EVENT, handler)
-}
-
-/**
- * Check whether *fontName* actually resolves to an installed font in this
- * browser/webview, using the Font Loading API. Returns:
- *   - `true`/`false` — a definitive answer.
- *   - `null` — the API is unavailable (older WebView) and availability is
- *     simply unknown; callers should not block on this.
- *
- * `fontsApi` is injectable for testing; defaults to `document.fonts`.
- */
-export function isFontAvailable(
-  fontName: string,
-  fontsApi: FontFaceSet | undefined = typeof document !== 'undefined' ? document.fonts : undefined,
-): boolean | null {
-  if (!fontsApi || typeof fontsApi.check !== 'function') return null
-  try {
-    // A representative size/style probe — the actual terminal font size
-    // doesn't affect whether the family name resolves.
-    return fontsApi.check(`16px "${fontName}"`)
-  } catch {
-    return null
-  }
 }

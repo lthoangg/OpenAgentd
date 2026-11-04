@@ -151,7 +151,6 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
       </div>
 
       <SaveBar
-        shortcut
         draft={{
           dirty,
           canSave: dirty && !invalid && !readOnly && !updateMut.isPending,

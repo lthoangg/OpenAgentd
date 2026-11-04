@@ -93,9 +93,10 @@ export function clampPercent(percent: number): number {
   return Math.max(0, Math.min(100, percent))
 }
 
-export function formatResetIn(resetsAt?: number | null): string | null {
+/** "Resets in 2h 05m" for a window's reset; also the Settings usage panel's. */
+export function formatResetIn(resetsAt?: number | null, now = Date.now()): string | null {
   if (typeof resetsAt !== 'number') return null
-  const remaining = resetsAt - Date.now() / 1000
+  const remaining = resetsAt - now / 1000
   if (remaining <= 0) return 'Resetting now'
   const minutes = Math.round(remaining / 60)
   if (minutes < 1) return 'Resets in <1m'

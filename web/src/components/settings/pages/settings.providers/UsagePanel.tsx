@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 import { formatUsageAmount, moneyFormatter } from '@/lib/usage-format'
 import { useResetProviderUsageMutation } from '@/queries/useProvidersQuery'
 import { useNowMs } from './useNowMs'
+import { formatResetIn } from '@/tray/usage'
 import { useToastStore } from '@/stores/useToastStore'
 
 /**
@@ -37,21 +38,6 @@ function ago(ms: number, now: number): string {
 function formatUpdatedAgo(updatedAt: number | undefined, stale: boolean, now: number): string | null {
   if (!updatedAt) return null
   return `${stale ? 'Last updated' : 'Updated'} ${ago(updatedAt, now)}`
-}
-
-function formatResetIn(resetsAt: number | null | undefined, now: number): string | null {
-  if (typeof resetsAt !== 'number') return null
-  const remainingS = resetsAt - now / 1000
-  if (remainingS <= 0) return 'Resetting now'
-  const minutes = Math.round(remainingS / 60)
-  if (minutes < 1) return 'Resets in <1m'
-  if (minutes < 60) return `Resets in ${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  const remMinutes = minutes % 60
-  if (hours < 24) return remMinutes === 0 ? `Resets in ${hours}h` : `Resets in ${hours}h ${remMinutes}m`
-  const days = Math.floor(hours / 24)
-  const remHours = hours % 24
-  return remHours === 0 ? `Resets in ${days}d` : `Resets in ${days}d ${remHours}h`
 }
 
 function formatPeriodEndIn(periodEndAt: number | null | undefined, now: number): string | null {

@@ -869,9 +869,6 @@ const _EXTENSIONS = [streamingMarkdownExtension(), ..._SETTLED_EXTENSIONS]
 // Workspace files only: HTML nodes become the safe components above.
 const _HTML_EXTENSIONS = [..._SETTLED_EXTENSIONS, safeHtmlMarkdownExtension()]
 
-/** Extensions for the live tail and for settled chunks. */
-// eslint-disable-next-line react-refresh/only-export-components
-export const MARKDOWN_EXTENSIONS = { live: _EXTENSIONS, settled: _SETTLED_EXTENSIONS }
 
 /** Parses like `MarkdownBlock` renders; `live` for a stream's last chunk. */
 // eslint-disable-next-line react-refresh/only-export-components

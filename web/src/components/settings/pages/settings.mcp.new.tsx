@@ -89,7 +89,6 @@ export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
       </div>
 
       <SaveBar
-        shortcut
         saveLabel="Create server"
         draft={{
           dirty,

@@ -60,26 +60,27 @@ describe('SaveBar', () => {
     await waitFor(() => expect(reset).toHaveBeenCalledTimes(1))
   })
 
-  it('binds ⌘S / Ctrl+S inside Settings only when asked, and only while Save is possible', () => {
+  it('binds ⌘S / Ctrl+S inside Settings, only while Save is possible', () => {
     const mac = getPlatform().os === 'macos'
     const press = (target: Element) => fireEvent.keyDown(target, { key: 's', metaKey: mac, ctrlKey: !mac })
 
     const onSave = mock(() => {})
-    const bound = render(<div data-settings-modal=""><SaveBar shortcut draft={draft()} onSave={onSave} /></div>)
+    const bound = render(<div data-settings-modal=""><SaveBar draft={draft()} onSave={onSave} /></div>)
     press(screen.getByRole('button', { name: 'Save' }))
     expect(onSave).toHaveBeenCalledTimes(1)
     bound.unmount()
 
     const blocked = mock(() => {})
-    const disabled = render(<div data-settings-modal=""><SaveBar shortcut draft={draft({ canSave: false })} onSave={blocked} /></div>)
+    const disabled = render(<div data-settings-modal=""><SaveBar draft={draft({ canSave: false })} onSave={blocked} /></div>)
     press(screen.getByRole('button', { name: 'Save' }))
     expect(blocked).not.toHaveBeenCalled()
     disabled.unmount()
 
-    const unbound = mock(() => {})
-    render(<div data-settings-modal=""><SaveBar draft={draft()} onSave={unbound} /></div>)
+    // Outside Settings the key stays the browser's.
+    const outside = mock(() => {})
+    render(<SaveBar draft={draft()} onSave={outside} />)
     press(screen.getByRole('button', { name: 'Save' }))
-    expect(unbound).not.toHaveBeenCalled()
+    expect(outside).not.toHaveBeenCalled()
   })
 })
 

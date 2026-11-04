@@ -41,6 +41,7 @@ import { DEVICE_PRESETS, type DevicePreset, deviceLabel, devicePreset, fitScale,
 import { type ComposerAnchor, PreviewCommentComposer, PreviewCommentList } from './PreviewComments'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { useShortcut } from '@/lib/keyboard/hooks'
+import { formatChord } from '@/lib/keyboard/chord'
 import { frameKeymap, useFrameKeys } from '@/lib/keyboard/frames'
 import { NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD } from '@/lib/app-shortcuts'
 import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
@@ -170,7 +171,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   const available = reach !== 'unavailable'
   const { os } = usePlatform()
   const phone = useIsMobile()
-  const designShortcut = os === 'macos' || os === 'ios' ? '⌥C' : 'Alt+C'
+  const designShortcut = formatChord(DESIGN_CHORD, os)
   const [info, setInfo] = useState<PreviewInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   // What was typed in the address bar cannot be shown: nothing to retry, editing clears it.

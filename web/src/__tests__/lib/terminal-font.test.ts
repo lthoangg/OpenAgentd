@@ -1,20 +1,17 @@
 /**
- * terminal-font — user-configurable terminal font with live availability
- * checking.
+ * terminal-font — user-configurable terminal font.
  *
  * Browsers/webviews deliberately do not expose the system's installed font
  * list (fingerprinting risk), so we can't auto-detect "the user has Meslo
  * installed" the way a native app could. The dynamic part is: the user
  * types the exact font name they have installed (MesloLGS NF, Hack Nerd
- * Font, JetBrainsMono Nerd Font, ...), we verify it actually resolves via
- * `document.fonts.check()`, and every live terminal's `fontFamily` updates
+ * Font, JetBrainsMono Nerd Font, ...) and every live terminal's `fontFamily` updates
  * immediately — no restart, no guessing from a fixed list.
  */
 import { afterEach, describe, expect, it } from 'bun:test'
 import {
   TERMINAL_FONT_STORAGE_KEY,
   buildTerminalFontFamily,
-  isFontAvailable,
   readStoredTerminalFont,
   setStoredTerminalFont,
 } from '@/lib/terminal-font'
@@ -120,21 +117,5 @@ describe('readStoredTerminalFont / setStoredTerminalFont', () => {
     expect(readStoredTerminalFont()).toBe('Hack Nerd Font')
     setStoredTerminalFont('   ')
     expect(readStoredTerminalFont()).toBeNull()
-  })
-})
-
-describe('isFontAvailable', () => {
-  it('returns true when document.fonts.check resolves the name', () => {
-    const fakeFonts = { check: (spec: string) => spec.includes('Meslo') } as unknown as FontFaceSet
-    expect(isFontAvailable('MesloLGS NF', fakeFonts)).toBe(true)
-  })
-
-  it('returns false when document.fonts.check does not resolve the name', () => {
-    const fakeFonts = { check: () => false } as unknown as FontFaceSet
-    expect(isFontAvailable('Nonexistent Font', fakeFonts)).toBe(false)
-  })
-
-  it('returns null (unknown) when the Font Loading API is unavailable', () => {
-    expect(isFontAvailable('MesloLGS NF', undefined)).toBeNull()
   })
 })

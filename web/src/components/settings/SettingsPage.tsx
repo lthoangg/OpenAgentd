@@ -81,7 +81,7 @@ export function SettingsPage({
   const saveBar = draft && (
     <>
       {/* The bar owns ⌘S / Ctrl+S, as on every other settings form. */}
-      <SaveBar draft={draft} onSave={requestSave} saveBlockedReason={saveBlockedReason} shortcut />
+      <SaveBar draft={draft} onSave={requestSave} saveBlockedReason={saveBlockedReason} />
       {confirmSave && (
         <ConfirmDialog
           open={confirmingSave}

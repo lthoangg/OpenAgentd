@@ -842,7 +842,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     *(both deprecated; removed in v3.41.0)*, and **Delete session…**. Touch
     keeps the pin mark on pinned rows.
   - Double-click the session title in the header (or press F2 or Enter on
-    it) to rename it there.
+    it) to rename it there *(deprecated; removed in v3.44.0: rename from the
+    sidebar)*.
   - The status bar's items are all reachable with Tab, the fast mode pill too.
   - One name for each thing: **Review panel**, **New session**, **Side
     questions**, **Open workspace…**, **Workspace** and **Worktree** (never
@@ -2573,6 +2574,9 @@ agent against it.
   field. Enter or clicking away saves, Escape cancels, and the header and
   sidebar show the new title at once. Since `[v3.25.0]` the session title in
   the desktop chat header is read-only; rename from the sidebar.
+  Renaming from the header came back in v3.40.0 and is gone again since
+  `[v3.44.0]`: in the desktop app a press on the title drags the window and a
+  double-click maximizes it, as on the rest of the header.
 - **Session search** `[v3.0.0]` — the search button in the Workspaces header
   swaps the tree for a search field that matches session titles across every
   workspace, however old. Enter opens the first match and Escape returns to

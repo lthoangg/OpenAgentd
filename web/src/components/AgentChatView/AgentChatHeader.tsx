@@ -10,9 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { hasWindowCaption, usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { createAltTapDetector, hasAppMenuButton, showAppMenu } from '@/lib/native-menu'
-import { useUpdateSessionTitleMutation } from '@/queries/useSessionsQuery'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
-import { useToastStore } from '@/stores/useToastStore'
 import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
 import { HeaderSessionTitle } from './HeaderSessionTitle'
@@ -30,12 +28,6 @@ interface AgentChatHeaderProps {
   /** Chat entry from the workspace tree — labels the chat root as "Chat". */
   chatWorkspace?: CodingWorkspaceTreeChat | null
   sessionTitle: string | null
-  /**
-   * Whether the desktop title renames on double-click / F2. False for a
-   * subagent's session, which the sidebar does not rename either; phones
-   * rename from the drawer and never show the field.
-   */
-  canRenameSession?: boolean
   /**
    * Opens the lead agent's session. Set only for a subagent's session: the
    * header then carries a way back, whatever the composer area shows.
@@ -151,7 +143,6 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   workspace,
   chatWorkspace = null,
   sessionTitle,
-  canRenameSession = true,
   onOpenLead,
   onSidebarToggle,
   headerTokens,
@@ -178,15 +169,6 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   const captionInset = hasWindowCaption(platform)
   // The dock cap takes the live width of the Review panel (index.css → Header caps).
   const dockCapRef = usePanelWidthSink('--oa-dock-w')
-  // The sidebar's mutation, so a rename here shows in both at once.
-  const { mutate: mutateSessionTitle } = useUpdateSessionTitleMutation()
-  const pushToast = useToastStore((s) => s.push)
-  const renameSession = useCallback(
-    (id: string, title: string) => {
-      mutateSessionTitle({ id, title }, { onError: () => pushToast({ tone: 'error', title: 'Could not rename session' }) })
-    },
-    [mutateSessionTitle, pushToast],
-  )
   // Published by the mounted transcript; a new chat has no prompts to step.
   const publishedJumpToPrompt = useTranscriptFollowStore((s) => s.jumpToPrompt)
   const jumpToPrompt = sessionId ? publishedJumpToPrompt : null
@@ -260,8 +242,8 @@ export const AgentChatHeader = memo(function AgentChatHeader({
         {/* The title over the chat, then the Review panel's cap. The command
             palette has no button: ⌘K and the View menu open it. */}
         <div data-header-main="" className="flex min-w-0 flex-1 items-stretch">
-          {/* Workspace · session. Double-click the session (or F2 on it) to
-              rename it here too; phones rename from the drawer. */}
+          {/* Workspace · session, read-only: sessions are renamed from the
+              sidebar, and a double-click here maximizes the window. */}
           <div className="flex min-w-0 flex-1 items-center pr-2 pl-3">
             {onOpenLead && <OpenLeadButton onOpen={onOpenLead} className="mr-1.5" />}
             {workspace ? (
@@ -274,11 +256,9 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                   <>
                     <TitleSeparator sessionId={sessionId} title={sessionTitle} />
                     <HeaderSessionTitle
-                      // A new session starts closed: no field carries over.
                       key={sessionId ?? 'new'}
                       sessionId={sessionId}
                       title={sessionTitle}
-                      onRename={canRenameSession && sessionId ? (title) => renameSession(sessionId, title) : undefined}
                     />
                   </>
                 )}

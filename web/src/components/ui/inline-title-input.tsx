@@ -1,20 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 
 /**
- * ``row`` sits inside a list row or tab (a strong edge marks it as a field);
- * ``field`` is a standalone text field on the page: the usual border and
- * input fill, its edge strengthening while it is open. Neither glows blue:
- * the blue ring marks keyboard focus.
- */
-const VARIANT_CLASS = {
-  row: 'rounded-xs border border-(--color-border-strong) bg-(--bg-page) px-1 text-(--color-text) outline-none',
-  field: 'rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-1.5 text-(--color-text) outline-none transition-colors focus:border-(--color-border-strong)',
-} as const
-
-/**
  * A title that turns into a text field in place. Enter or leaving the field
  * saves; Escape, an empty title, or an unchanged one cancels. Settles once,
  * so the blur that follows Enter or Escape does not save a second time.
+ *
+ * It sits inside a list row or tab: a strong edge marks it as a field. It
+ * does not glow blue: the blue ring marks keyboard focus.
  */
 export function InlineTitleInput({
   initial,
@@ -23,7 +15,6 @@ export function InlineTitleInput({
   onCancel,
   className = '',
   maxLength = 255,
-  variant = 'row',
 }: {
   initial: string
   label: string
@@ -31,7 +22,6 @@ export function InlineTitleInput({
   onCancel: () => void
   className?: string
   maxLength?: number
-  variant?: keyof typeof VARIANT_CLASS
 }) {
   const [value, setValue] = useState(initial)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -74,7 +64,7 @@ export function InlineTitleInput({
       onClick={(event) => event.stopPropagation()}
       aria-label={label}
       maxLength={maxLength}
-      className={`min-w-0 ${VARIANT_CLASS[variant]} ${className}`}
+      className={`min-w-0 rounded-xs border border-(--color-border-strong) bg-(--bg-page) px-1 text-(--color-text) outline-none ${className}`}
     />
   )
 }

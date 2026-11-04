@@ -11,6 +11,52 @@
 // A file that exports `provider` is only a provider plugin.
 //
 // Plugins run in QuickJS (ES2023). There is no Node.js / npm; use the APIs below.
+//
+// Plugin bundles (plugin API v2)
+// ------------------------------
+// A bundle is a folder with a `plugin.json` manifest; its code is a module whose default export is a `Plugin`:
+//
+//   import { defineTool } from "openagentd";
+//   export default {
+//     tools: [defineTool({ name: "greet", description: "Say hello.", input: { type: "object", properties: {} }, run: () => "hello" })],
+//     hooks: { "tool.before"(input, output) { /* … */ } },   // optional: what `plugin()` returns in a single file
+//     provider: { /* … */ },                                  // optional: what `export const provider` is in a single file
+//   } satisfies Plugin;
+//
+// A bundle's code is sandboxed. Without permissions it can read its own folder (`bundle.root`), read and write its
+// data folder (`bundle.dataDir`), import modules from its own folder, and use the pure helpers (`log`, `sleep`,
+// `crypto`, `base64`, `utf8`, `url`, `regex`, `pyJsonDumps`, …). Everything else needs a permission, granted in
+// plugin.json under `extensions["dev.openagentd"].permissions`:
+//
+//   permission  grants                                    value
+//   net         fetch()                                   true (any host), or hosts: ["api.example.com", "*.example.com"]
+//   listen      listen()                                  true (loopback addresses only: 127.0.0.1, ::1, localhost)
+//   fs          fs.* beyond the two folders above         absolute folders, readable and writable
+//   subprocess  subprocess.run(), subprocess.which()      program names: ["git"]
+//   env         env.get(), env.all()                      variable names: ["HOME"]
+//
+// * net: hosts match case-insensitively; "*.example.com" matches subdomains but not example.com itself. Nothing
+//   connects to a host that is not listed, and a redirect to one fails the request.
+// * fs: every path is resolved first (symbolic links followed), so a link cannot lead out of an allowed folder.
+//   Names the server never serves from a folder (.git, .env*, .ssh, credentials.yaml, …) stay protected inside them.
+//   Outside the allowed folders, reads and `fs.exists` throw instead of returning null/false.
+// * subprocess: the program's file name must be listed. Give a bare name ("git", looked up on PATH) or an absolute
+//   path; a path into a folder the plugin can write to is refused, since the plugin could have put the program
+//   there. Children get the server's environment minus the server's own variables and secrets, and are not
+//   limited by `fs` or `env`: grant programs with care.
+// * env: `env.all()` returns only the listed variables that are set.
+// * credentials (`credentialStore`, `tokenPath`, OAuth storage) work only for the provider that the default export
+//   declares (`provider.id`), only after the module has loaded (not while its top level runs), and only while
+//   OpenAgentd has accepted that provider: an id that no built-in provider and no other plugin has, with the
+//   plugin running. For any other id, an id that is not a plain name (1 to 64 letters, digits, "-", "_" or ".",
+//   not starting or ending with "."), or a provider OpenAgentd did not accept, they throw a `PermissionError`.
+//   `credentialStore(id).get(name)` returns the value saved for that provider, or the environment variable `name`
+//   only when it is listed in `permissions.env`. Other providers' values and the named secrets (MCP client
+//   secrets) are not available to bundles.
+// * native(): refused, except for the pure conversion helpers (`httpStatusMessage` and the message/tool converters).
+//
+// A call the permissions do not allow throws a `PermissionError` that names the plugin and what to add. A
+// single-file plugin (not a bundle) is not limited by any of this.
 
 declare module "openagentd" {
   // ── plugin shapes ───────────────────────────────────────────────────────
@@ -37,6 +83,34 @@ declare module "openagentd" {
     applies_to?: (agentName: string, role: string) => boolean;
   }
 
+  // ── plugin bundles (API v2) ─────────────────────────────────────────────
+
+  /** What a tool's `run` receives besides its arguments. */
+  export interface ToolContext {
+    sessionId: string | null;
+    agentName: string;
+    workspace: string | null;
+    callId: string;
+  }
+  /** What a tool may return besides text: an image the model can look at (`data` is base64). */
+  export type ToolContentBlock = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
+  /**
+   * A tool the agents can call. `name` matches `^[a-z][a-z0-9_]{0,63}$` and is unique within the plugin;
+   * `description` and `input` are what the model sees. A tool that breaks these rules fails the plugin's load.
+   */
+  export interface ToolDef<A = any> {
+    name: string;
+    description: string;
+    /** JSON Schema of type "object"; give every property a description. */
+    input: Record<string, any>;
+    /** True when the tool only reads, so it can run in Plan mode. */
+    readOnly?: boolean;
+    /** Throw to report a failure: the error message becomes the tool result. */
+    run(args: A, ctx: ToolContext): string | ToolContentBlock[] | Promise<string | ToolContentBlock[]>;
+  }
+  /** The default export of a plugin bundle's module. */
+  export interface Plugin { tools?: ToolDef[]; hooks?: ToolHooks; provider?: ProviderPlugin }
+
   export interface CredentialField {
     name: string;
     label: string;
@@ -50,7 +124,11 @@ declare module "openagentd" {
     readonly providerId: string;
     /** The selected account/key, or null for a legacy/provider-wide store. */
     readonly credentialId: string | null;
-    /** Saved credential / environment value, or `dflt` when unset. */
+    /**
+     * Saved credential / environment value, or `dflt` when unset. In a plugin bundle: the value saved for this
+     * provider, or the environment variable only when `permissions.env` lists it (never another provider's
+     * value or a named secret).
+     */
     get(name: string, dflt?: string): string;
     /** OAuth operations require an account-scoped store. Missing tokens return null. */
     readOAuth(): Record<string, Json> | null;
@@ -273,7 +351,12 @@ declare module "openagentd" {
   /** Identity helper that type-checks a provider plugin. */
   export function definePlugin(p: ProviderPlugin): ProviderPlugin;
   export function defineProvider(p: ProviderPlugin): ProviderPlugin;
-  /** The credential store of any provider (v2 `ProviderCredentialStore(id)`). */
+  /** Identity helper that type-checks a tool; it throws, naming the tool, when the definition breaks the rules. */
+  export function defineTool<A = any>(t: ToolDef<A>): ToolDef<A>;
+  /**
+   * The credential store of any provider (v2 `ProviderCredentialStore(id)`). A plugin bundle gets the store of its
+   * own provider only, and only while OpenAgentd has accepted that provider; any other id throws a `PermissionError`.
+   */
   export function credentialStore(providerId: string, overrides?: Record<string, string>): CredentialStore;
 
   // ── errors (mapped to OpenAgentd provider errors) ───────────────────────
@@ -293,6 +376,16 @@ declare module "openagentd" {
     body?: string;
     headers?: [string, string][];
     constructor(status: number, message: string, opts?: { body?: string; headers?: [string, string][] });
+  }
+  /**
+   * A plugin bundle asked for something its permissions do not allow. The message names the plugin and the
+   * permission to add, e.g. `plugin changelog-tools may not fetch example.com (add it to permissions.net)`.
+   */
+  export class PermissionError extends Error {
+    /** The permission that would allow it. */
+    permission: "net" | "listen" | "fs" | "subprocess" | "env" | "credentials" | "native";
+    /** What was refused: a host, a path, a program name, a variable name. */
+    target: string;
   }
 
   // ── runtime APIs ────────────────────────────────────────────────────────
@@ -355,7 +448,9 @@ declare module "openagentd" {
     /** `urlparse(text).query`. */
     queryOf(text: string): string;
   };
+  /** Bundles: `get` needs the variable in `permissions.env`, and `all` returns only those. */
   export const env: { get(name: string): string | null; all(): Record<string, string> };
+  /** Bundles: paths must be inside the bundle folder (read only), the data folder, or a `permissions.fs` folder. */
   export const fs: {
     readText(path: string): string | null;
     writeText(path: string, text: string): void;
@@ -363,6 +458,7 @@ declare module "openagentd" {
     remove(path: string): boolean;
     mkdir(path: string): void;
   };
+  /** Bundles: the program's name must be in `permissions.subprocess`. */
   export const subprocess: {
     /** stdin is closed unless `input` is given. */
     run(cmd: string, args?: string[], opts?: { timeoutMs?: number; input?: string; cwd?: string }): Promise<{ code: number | null; stdout: string; stderr: string; timedOut: boolean }>;
@@ -427,6 +523,8 @@ declare module "openagentd" {
   export function native(name: string, arg?: any): any;
   export const platform: "macos" | "linux" | "windows" | string;
   export const version: string;
+  /** Where a plugin bundle runs; `null` in a single-file plugin. `dataDir` is the folder it may write. */
+  export const bundle: { name: string; root: string; dataDir: string } | null;
 
   const api: {
     log: typeof log; sleep: typeof sleep; fetch: typeof fetch; crypto: typeof crypto; base64: typeof base64; utf8: typeof utf8; url: typeof url;

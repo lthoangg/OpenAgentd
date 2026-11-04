@@ -130,12 +130,13 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "appv3-agent"
-version = "3.43.0"
+version = "3.44.0"
 dependencies = [
  "anyhow",
  "appv3-core",
  "appv3-db",
  "appv3-jsplugin",
+ "appv3-kernel",
  "appv3-memory",
  "appv3-preview",
  "appv3-providers",
@@ -163,20 +164,23 @@ dependencies = [
 
 [[package]]
 name = "appv3-api"
-version = "3.43.0"
+version = "3.44.0"
 dependencies = [
  "anyhow",
  "appv3-agent",
  "appv3-core",
  "appv3-db",
  "appv3-jsplugin",
+ "appv3-kernel",
  "appv3-mcp",
  "appv3-memory",
+ "appv3-plugins",
  "appv3-preview",
  "appv3-providers",
  "appv3-terminal",
  "appv3-tools",
  "async-stream",
+ "async-trait",
  "axum",
  "base64 0.23.1",
  "bytes",
@@ -208,13 +212,15 @@ dependencies = [
 
 [[package]]
 name = "appv3-cli"
-version = "3.43.0"
+version = "3.44.0"
 dependencies = [
  "anyhow",
  "appv3-agent",
  "appv3-api",
  "appv3-core",
  "appv3-db",
+ "appv3-jsplugin",
+ "appv3-plugins",
  "appv3-preview",
  "appv3-providers",
  "appv3-tools",
@@ -242,7 +248,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-core"
-version = "3.43.0"
+version = "3.44.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -265,7 +271,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-db"
-version = "3.43.0"
+version = "3.44.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -284,9 +290,10 @@ dependencies = [
 
 [[package]]
 name = "appv3-jsplugin"
-version = "3.43.0"
+version = "3.44.0"
 dependencies = [
  "appv3-core",
+ "appv3-plugins",
  "base64 0.23.1",
  "chrono",
  "dunce",
@@ -303,6 +310,7 @@ dependencies = [
  "regex",
  "reqwest",
  "rquickjs",
+ "serde",
  "serde_json",
  "sha2 0.11.1",
  "tempfile",
@@ -312,12 +320,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "appv3-mcp"
-version = "3.43.0"
+name = "appv3-kernel"
+version = "3.44.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "appv3-mcp"
+version = "3.44.0"
+dependencies = [
+ "anyhow",
  "appv3-agent",
  "appv3-core",
  "appv3-db",
+ "appv3-kernel",
  "appv3-providers",
  "appv3-tools",
  "async-trait",
@@ -338,7 +358,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-memory"
-version = "3.43.0"
+version = "3.44.0"
 dependencies = [
  "appv3-core",
  "dunce",
@@ -351,8 +371,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "appv3-plugins"
+version = "3.44.0"
+dependencies = [
+ "dunce",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
 name = "appv3-preview"
-version = "3.43.0"
+version = "3.44.0"
 dependencies = [
  "appv3-core",
  "appv3-tools",
@@ -374,11 +405,12 @@ dependencies = [
 
 [[package]]
 name = "appv3-providers"
-version = "3.43.0"
+version = "3.44.0"
 dependencies = [
  "anyhow",
  "appv3-core",
  "appv3-jsplugin",
+ "appv3-kernel",
  "async-stream",
  "async-trait",
  "base64 0.23.1",
@@ -404,7 +436,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-terminal"
-version = "3.43.0"
+version = "3.44.0"
 dependencies = [
  "appv3-core",
  "appv3-tools",
@@ -417,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-tools"
-version = "3.43.0"
+version = "3.44.0"
 dependencies = [
  "anydoc",
  "appv3-core",

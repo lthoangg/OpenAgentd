@@ -5,6 +5,7 @@ use appv3_core::otel::{self, Span, SpanKind};
 use futures::StreamExt;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -105,13 +106,33 @@ fn default_environment() -> HashMap<String, String> {
     INHERITED_ENV.iter().filter_map(|k| std::env::var(k).ok().filter(|v| !v.starts_with("()")).map(|v| (k.to_string(), v))).collect()
 }
 
+/// The server's child process: a clean environment plus `env`, piped stdin and
+/// stdout, and `cwd` as its working directory when given.
+fn stdio_command(command: &str, args: &[String], env: &[(String, String)], cwd: Option<&Path>) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new(command);
+    cmd.args(args).env_clear().envs(default_environment()).envs(env.iter().cloned());
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+    cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::inherit());
+    cmd.kill_on_drop(true);
+    appv3_core::proctree::configure(&mut cmd);
+    cmd
+}
+
 impl Stdio {
-    fn spawn(command: &str, args: &[String], env: &[(String, String)]) -> Result<Self, McpError> {
-        let mut cmd = tokio::process::Command::new(command);
-        cmd.args(args).env_clear().envs(default_environment()).envs(env.iter().cloned());
-        cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::inherit());
-        cmd.kill_on_drop(true);
-        appv3_core::proctree::configure(&mut cmd);
+    fn spawn(command: &str, args: &[String], env: &[(String, String)], cwd: Option<&Path>) -> Result<Self, McpError> {
+        // A bad working directory fails the spawn with the same errno as a
+        // missing command; name the directory, as Python's does.
+        if let Some(dir) = cwd.filter(|d| !d.is_dir()) {
+            let shown = crate::config::py_repr_str(&dir.display().to_string());
+            return Err(if dir.exists() {
+                McpError::Transport("NotADirectoryError", format!("[Errno 20] Not a directory: {shown}"))
+            } else {
+                McpError::Transport("FileNotFoundError", format!("[Errno 2] No such file or directory: {shown}"))
+            });
+        }
+        let mut cmd = stdio_command(command, args, env, cwd);
         let mut child = cmd.spawn().map_err(|e| match e.kind() {
             // v2 (anyio.open_process) surfaces the errno text without the filename.
             std::io::ErrorKind::NotFound => McpError::Transport("FileNotFoundError", "[Errno 2] No such file or directory".into()),
@@ -650,7 +671,13 @@ impl Drop for CancelGuard<'_> {
 
 impl McpClient {
     pub fn stdio(command: &str, args: &[String], env: &[(String, String)]) -> Result<Self, McpError> {
-        Ok(McpClient::with_transport(Transport::Stdio(Box::new(Stdio::spawn(command, args, env)?))))
+        McpClient::stdio_in(command, args, env, None)
+    }
+
+    /// [`McpClient::stdio`] with the child's working directory (`None`: this
+    /// process's).
+    pub fn stdio_in(command: &str, args: &[String], env: &[(String, String)], cwd: Option<&Path>) -> Result<Self, McpError> {
+        Ok(McpClient::with_transport(Transport::Stdio(Box::new(Stdio::spawn(command, args, env, cwd)?))))
     }
 
     pub fn http(url: &str, headers: &[(String, String)], auth: Option<crate::oauth::OAuthProvider>) -> Result<Self, McpError> {
@@ -863,5 +890,31 @@ mod tests {
     fn sse_joins_data_lines_and_names_events() {
         let got = events(&[b": ping\r\nevent: msg\r\nid: 7\r\ndata: a\r\nda", b"ta: b\r\n\r\n\ndata: c\n\n"]);
         assert_eq!(got, vec![("msg".to_string(), "a\nb".to_string()), ("message".to_string(), "c".to_string())]);
+    }
+
+    #[test]
+    fn the_child_starts_in_the_given_directory_and_keeps_ours_without_one() {
+        let d = tempfile::tempdir().unwrap();
+        let cmd = stdio_command("srv", &["--x".to_string()], &[("K".to_string(), "v".to_string())], Some(d.path()));
+        let std_cmd = cmd.as_std();
+        assert_eq!(std_cmd.get_current_dir(), Some(d.path()));
+        assert_eq!(std_cmd.get_program(), "srv");
+        assert_eq!(std_cmd.get_args().collect::<Vec<_>>(), ["--x"]);
+        assert_eq!(std_cmd.get_envs().find(|(k, _)| *k == "K").and_then(|(_, v)| v), Some(std::ffi::OsStr::new("v")));
+        assert_eq!(stdio_command("srv", &[], &[], None).as_std().get_current_dir(), None);
+    }
+
+    #[test]
+    fn a_bad_working_directory_is_named_in_the_error() {
+        let d = tempfile::tempdir().unwrap();
+        let gone = d.path().join("gone");
+        let e = McpClient::stdio_in("srv", &[], &[], Some(&gone)).err().expect("the spawn is refused");
+        assert_eq!(e.type_name(), "FileNotFoundError");
+        assert!(e.to_string().starts_with("[Errno 2] No such file or directory: '") && e.to_string().contains("gone"), "{e}");
+        let file = d.path().join("file");
+        std::fs::write(&file, "").unwrap();
+        let e = McpClient::stdio_in("srv", &[], &[], Some(&file)).err().expect("a file is not a directory");
+        assert_eq!(e.type_name(), "NotADirectoryError");
+        assert!(e.to_string().starts_with("[Errno 20] Not a directory: '") && e.to_string().contains("file"), "{e}");
     }
 }

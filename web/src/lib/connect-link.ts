@@ -2,7 +2,7 @@
  * `openagentd://connect` links: the desktop Network access card shows one as
  * a QR code, and the mobile app opens its Backend connection dialog with the
  * address and access key filled in. The link never connects by itself; the
- * user confirms with Save & Connect.
+ * user confirms with Save and use.
  */
 
 export interface ConnectLink {

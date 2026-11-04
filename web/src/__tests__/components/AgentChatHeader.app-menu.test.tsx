@@ -19,9 +19,6 @@ mock.module('@/hooks/use-platform', () => ({
 let menuClosed: (() => void) | null = null
 const invoke = mock((..._args: unknown[]) => new Promise<void>((resolve) => { menuClosed = resolve }))
 mock.module('@tauri-apps/api/core', () => ({ invoke }))
-mock.module('@/queries/useSessionsQuery', () => ({
-  useUpdateSessionTitleMutation: () => ({ mutate: () => {} }),
-}))
 
 import { AgentChatHeader } from '@/components/AgentChatView/AgentChatHeader'
 

@@ -22,11 +22,8 @@ pub struct ModelFacts {
 
 /// The catalog's `suggested_models` patterns for `provider_id`.
 pub fn suggested_patterns(provider_id: &str) -> Vec<String> {
-    crate::catalog::find(provider_id)
-        .and_then(|e| e.get("suggested_models"))
-        .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|p| p.as_str().map(String::from)).collect())
-        .unwrap_or_default()
+    let Some(entry) = crate::catalog::find(provider_id) else { return vec![] };
+    entry.get("suggested_models").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|p| p.as_str().map(String::from)).collect()).unwrap_or_default()
 }
 
 /// Registry facts for `provider_id:model`.

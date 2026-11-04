@@ -27,7 +27,7 @@ This file adds source-level guidance to `web/AGENTS.md`.
   for centering because motion owns that property, and do not add backdrop blur
   to streaming/repainting surfaces on iOS WebKit.
 - Management surfaces (Settings, Scheduled tasks, Session settings, Keyboard
-  shortcuts, Backend connection) compose `ui/panel-section`, `ui/panel-row`,
+  shortcuts, the Server dialog) compose `ui/panel-section`, `ui/panel-row`,
   `ui/field`, `ui/callout` and `ui/panel-tokens` (DESIGN.md → Panels and
   management surfaces). Do not hand-roll caps strips, nested cards or ad-hoc
   notice boxes there; dense data surfaces such as Telemetry keep

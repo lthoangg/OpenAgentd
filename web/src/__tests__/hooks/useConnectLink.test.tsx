@@ -93,7 +93,7 @@ describe('useConnectLink', () => {
 
   it('does not replay a handled link after the page reloads', async () => {
     // The deep-link plugin keeps reporting the last opened URL from
-    // getCurrent() for the life of the app, including after Save & Connect
+    // getCurrent() for the life of the app, including after Save and use
     // reloads the page.
     online.add('http://192.168.1.20:4082')
     getCurrent.mockImplementation(() => Promise.resolve([buildConnectLink({ urls: ['http://192.168.1.20:4082'], key: KEY })]))

@@ -62,6 +62,11 @@ describe('SettingsMobileIndex', () => {
     expect(screen.queryByRole('button', { name: /^Network access/ })).toBeNull()
   })
 
+  it('describes Plugins by what they bring: skills, MCP servers and tools', () => {
+    renderIndex(['api.plugins'])
+    expect(screen.getByRole('button', { name: /^Plugins/ })).toHaveTextContent('Skills, MCP servers and tools from plugins')
+  })
+
   it('opens the section that was tapped', async () => {
     const selected: TopLevelSection[] = []
     renderIndex([], (section) => { selected.push(section) })

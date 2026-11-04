@@ -155,6 +155,19 @@ which is negligible next to network time.
 The document and HTML converters (anydoc, trafilatura) leave start-up and
 idle memory unchanged: 20 ms handshake, 18.8 MB idle RSS.
 
+**Module kernel and plugin folders** (v3.44.0). Measured on a different,
+busier machine than the table above, so compare the two columns with each
+other only. Release builds of v3.43.0 and of this change ran alternately,
+each start in fresh sandbox dirs with no plugin folders; median of 21 runs:
+
+| | v3.43.0 | kernel and plugin folders |
+|---|---|---|
+| Cold start, spawn → `/api/health/ready` 200 (fresh DB) | 65.3 ms | 66.5 ms |
+| Idle RSS 3 s after ready | 25.6 MB | 26.2 MB |
+
+Without plugin folders the extra start-up work is the module bookkeeping
+and one scan of the plugin dirs.
+
 **Caveats:**
 
 1. Post-load RSS is dominated by SQLite's 256 MiB `mmap_size`, which both
@@ -544,7 +557,9 @@ explicitly.
   - *Message positions.* `save_message` allocates `seq` inside the INSERT,
     and releasing queued messages reads `MAX(seq)` under `BEGIN IMMEDIATE`.
     v2 reads and writes in separate statements, so concurrent saves could
-    share a position.
+    share a position. The lead's `ask_lead` answer is saved the same way;
+    v2 inserted it at `seq` 0, so it loaded first and was dropped as an
+    orphan, and the member's request ended on its own assistant message.
   - *SSE contract.* `crates/agent/data/sse_events.json` lists every event type per
     stream. The broadcaster and stream store check each event against it
     (debug builds panic, release builds log), and the web tests check their
@@ -1270,11 +1285,55 @@ explicitly.
   the web client's handling of them are unchanged. Test:
   `agent/tests/stop_dismisses_question.rs`. v2 still has the route.
 
+### Modules and plugin folders (v3 only)
+
+The server starts and stops through a module kernel (`crates/kernel`). The
+built-in services are modules (`api/src/modules.rs`), started in dependency
+order and stopped in reverse, in the same order as before
+(`builtin_modules_stop_in_the_servers_shutdown_order`). An optional module
+that fails is marked failed and only the modules that depend on it are
+blocked; a critical one still stops the server.
+
+- **`GET /api/modules`** (new): `{"modules": [{id, deps, critical, state,
+  error, start_ms}]}`, with `state` one of `pending`, `running`, `failed`,
+  `blocked` and `stopped`. `agentd doctor` prints it.
+- **Plugin folders** (§5) each run as a module `plugin:<name>`. Its
+  contributions (skills, MCP servers, tools, tool hooks, a provider) leave
+  with it when it stops, so a reload replaces them.
+- **`GET /api/plugins`** adds `bundles`, one item per folder: `name`,
+  `version`, `description`, `path`, `enabled`, `state` (a module state, or
+  `disabled`), `errors`, `warnings`, `skills`, `mcp_servers` (`name`,
+  `transport`, `command`, `args`, `url`), `tools` (`name`, `description`,
+  `read_only`), `permissions` and `has_code`. `POST /api/plugins/reload`
+  rescans the folders and answers like the GET.
+  `PUT /api/plugins/bundles/{name}` with `{"enabled": bool}` records the
+  choice in `<config>/plugins.json` (a `disabled` list), reloads, and answers
+  with that bundle (404 for an unknown name). The config watcher also reloads
+  when a file under a plugin dir changes.
+- **MCP:** `GET /api/mcp/servers` lists plugin servers with `plugin` set to
+  the folder's name (the user's servers have no such key), and their
+  `config` is the plugin's. `PUT` and `DELETE` on a plugin server return 409;
+  restart and OAuth work as for any server. The `mcp` tool's `save` and
+  `remove` refuse them too.
+- **Tools:** the built-in tool definitions, the agents they go to and
+  whether they run in Plan mode live in one table
+  (`agent/src/tool_registry.rs`); the Plan mode tool list is derived from it.
+  Plugin tools are not in the request's tool list: the `mcp` tool searches
+  and calls them with the plugin's name as the server, reading the live
+  tools, so `call` runs a tool's current version. The plugins with tools join
+  the server names in its description, which is frozen with the session
+  (`mcp_tool_description`). Without plugin tools the description, and so
+  the first request, is byte-identical to before
+  (`agent/tests/request_snapshot.rs`, `mcp/tests/plugin_tools.rs`). In Plan
+  mode only `read_only` tools run. A server of the user's named like a plugin
+  hides that plugin's tools; the plugin's Settings entry warns.
+
 ## 4. Layout
 
-- Workspace crates: `core`, `db`, `tools`, `terminal`, `providers`, `agent`,
-  `memory`, `mcp`, `api`, `cli`, `jsplugin`. The obsolete `scheduler`, `lsp`
-  and `bench` crates were removed; the scheduler lives in `agent`.
+- Workspace crates: `core`, `db`, `kernel`, `tools`, `terminal`, `providers`,
+  `agent`, `memory`, `mcp`, `api`, `cli`, `jsplugin`, `plugins`. The obsolete
+  `scheduler`, `lsp` and `bench` crates were removed; the scheduler lives in
+  `agent`.
 - Embedded data (command/prompt catalogues, provider catalogue, tool
   definitions, mimetypes, SSE event names) lives in each crate's `data/`
   folder, next to the code that compiles it in.
@@ -1308,8 +1367,9 @@ v3 contains no plugin code. It loads plugins at runtime from the same
   module provides:
   - `fetch` (Rust reqwest), `listen` (loopback OAuth callbacks),
     `subprocess`, `crypto`, `base64`, `utf8`, `url`, `env`, `fs` and
-    `tokenPath`. Plugins are trusted code, as in v2: `fs` and `subprocess`
-    are not sandboxed. Isolation is between plugins, not from the host.
+    `tokenPath`. Single-file plugins are trusted code, as in v2: `fs` and
+    `subprocess` are not sandboxed, and isolation is between plugins, not
+    from the host. The code of a plugin folder is sandboxed (below).
   - `credentialStore`, the error classes (`AuthError`, `HttpError`, …),
     which map onto the Rust `ProviderError`, and Python-compatible helpers
     (`pyJsonDumps`, `pyRepr`, `url.parseQuery`, ISO parsing). These keep
@@ -1358,6 +1418,64 @@ v3 contains no plugin code. It loads plugins at runtime from the same
   originals in both plugin dirs. v2 globs `*.py` only, so both versions
   run side by side from the same dir. The
   harnesses in §1 compared v2's `.py` against v3's `.ts` on the same inputs.
+
+### Plugin folders (plugin API v2)
+
+A folder in a plugin dir is a plugin when it has a manifest
+(`crates/plugins`). Folders starting with `.` or `_` are skipped, which is
+where `agentd plugin add` stages a download.
+
+- **Layout.** Agent Plugins 1.0: `plugin.json` (`$schema` and `name`
+  required, unknown fields reported and ignored), `skills/<name>/SKILL.md`
+  (direct children only), and `mcp.json` (`stdio` with a single-token
+  `command`, and `streamable-http`; a server using the optional `sse`
+  transport is reported as unsupported). Everything specific to OpenAgentd
+  lives under the `dev.openagentd` namespace: the manifest's
+  `extensions["dev.openagentd"]` (permissions) and the `dev.openagentd/`
+  folder (`plugin.ts`, else `plugin.js`).
+- **Paths.** Every path a manifest names must stay inside the folder after
+  resolving links. `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` are replaced in MCP
+  `args`, `env` and `cwd`, and both are set in each MCP server's environment.
+  The data folder is `<data>/plugin-data/<name>`, kept across updates and
+  removals.
+- **Isolation.** One folder that fails to load is reported (`state:
+  failed`, `errors`) without affecting the others; failing code drops only
+  that folder's tools, hooks and provider. A reload restarts only the folders
+  whose files or enabled state changed.
+- **Code** (`dev.openagentd/plugin.ts`): its default export may hold
+  `tools` (`defineTool`), `hooks` (`tool.before`/`tool.after`, run after the
+  single-file plugins' hooks) and `provider`. It runs in its own QuickJS
+  runtime with a sandbox (`crates/jsplugin/src/sandbox.rs`): it may read its
+  folder, read and write its data folder, and use the pure helpers; `fetch`,
+  `listen`, other `fs` paths, `subprocess` and `env` need the matching
+  permission (`net`, `listen`, `fs`, `subprocess`, `env`), and a refused call
+  throws a `PermissionError` naming the permission to add. Single-file
+  plugins keep their v1 contract and are not sandboxed.
+- **Credentials.** A folder's code uses the credentials, OAuth documents and
+  token folder of one provider id only: the one its default export
+  declares, when the id is a plain name and the server has accepted that
+  provider from this plugin's module (no built-in, single file or earlier
+  plugin has the id, compared ignoring ASCII case). The host's gate
+  (`jsplugin::set_credentials_gate`) is asked at every use, so a plugin
+  that stops loses access; a program that sets no gate (the CLI's code
+  check) gives none. `credentialStore(id).get(name)` then returns that
+  provider's saved value, or the exported variable only when
+  `permissions.env` lists it; it never searches other providers or reads
+  named secrets. A provider whose key is only exported can therefore look
+  configured in Settings while its code reads nothing until `env` lists the
+  variable. A plugin whose provider is skipped because another has the id
+  is logged, not shown on the plugin.
+- **Tools** are reached through the `mcp` tool with the plugin's name as the
+  server (§3); `/api/plugins` names them `<plugin>/<tool>`. A call that is
+  running when its plugin reloads finishes on the old code; later calls use
+  the new one.
+- **CLI.** `agentd plugin check <folder>` validates a folder and runs its
+  code once without permissions to list the tools. `agentd plugin add <git
+  URL or folder>` stages a copy or a shallow clone (`https://`, `ssh://`,
+  `user@host:path`, `file://`; links leading outside the folder refused),
+  prints the same summary, asks (exit 2 without a terminal and without
+  `--yes`), moves it into the plugin dir and asks a running server to
+  reload. `list` and `remove` (keeps the data folder) complete it.
 
 ## 6. Platforms and native engines
 

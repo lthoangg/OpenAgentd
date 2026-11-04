@@ -79,7 +79,8 @@ function ServerRow({
     )
   }
 
-  const toggleable = !!server.config && !busy
+  // A plugin's server is the plugin's to switch: its bundle owns the config.
+  const toggleable = !!server.config && !busy && !server.plugin
   const action = rowAction(server)
 
   return (
@@ -102,7 +103,7 @@ function ServerRow({
         disabled={!toggleable}
         onCheckedChange={() => onToggle(server)}
         aria-label={name}
-        title="On or off for every session"
+        title={server.plugin ? `From the plugin ${server.plugin}. Turn it on or off in Plugins.` : 'On or off for every session'}
       />
       {server.error && server.state !== 'auth_required' && (
         <p className="w-full text-meta leading-relaxed text-(--color-error)">{server.error}</p>

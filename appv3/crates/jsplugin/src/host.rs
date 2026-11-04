@@ -2,12 +2,27 @@
 //! two entry points: `__n.sync(name, argJson)` and `__n.async(name, argJson)`,
 //! both returning a JSON envelope `{"ok": value}` / `{"err": {name, message, props}}`
 //! that the prelude unwraps (throwing on `err`).
+//!
+//! A plugin bundle carries a [`Policy`](crate::sandbox::Policy): each native
+//! that reaches outside the plugin (network, files, processes, environment,
+//! credentials, registered host natives) asks it first and fails with a
+//! `PermissionError` when the access is not granted. A single-file plugin
+//! has no policy, and every native behaves as it always has.
+//!
+//! A registered native (`native(name, arg)`) that a bundle calls also gets to
+//! know it: the host sets `arg["$sandbox"] = {"env": [...]}`, the variables
+//! the bundle's `permissions.env` lists, overwriting anything the code put
+//! there. Natives that read the environment or other secrets for a bundle
+//! (the credential lookups) narrow themselves by it; a call without the key
+//! (a single-file plugin, or Rust) is served as it always was.
 
+use crate::sandbox::{self, Access, Denied, Policy};
 use rquickjs::prelude::Async;
 use rquickjs::{Ctx, Function, Object};
 use serde_json::{json, Map, Value};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -74,6 +89,12 @@ impl NativeError {
     }
 }
 
+impl From<Denied> for NativeError {
+    fn from(d: Denied) -> Self {
+        Self { name: "PermissionError", message: d.message, props: json!({"permission": d.permission, "target": d.target}) }
+    }
+}
+
 type NResult = Result<Value, NativeError>;
 
 fn envelope(r: NResult) -> String {
@@ -86,6 +107,8 @@ fn envelope(r: NResult) -> String {
 /// Per-runtime state (lives on the plugin's thread).
 pub struct HostState {
     pub plugin: String,
+    /// What a plugin bundle's code may do; `None` = unrestricted (v1 plugins).
+    policy: Option<Policy>,
     /// Built on first `fetch`: loading the native root store costs ~100 ms, and
     /// most plugins (tool hooks) never make a request.
     client: OnceCell<reqwest::Client>,
@@ -96,9 +119,10 @@ pub struct HostState {
 }
 
 impl HostState {
-    pub fn new(plugin: &str) -> Rc<Self> {
+    pub(crate) fn new(plugin: &str, policy: Option<Policy>) -> Rc<Self> {
         Rc::new(Self {
             plugin: plugin.to_string(),
+            policy,
             client: OnceCell::new(),
             next_id: Cell::new(1),
             servers: RefCell::default(),
@@ -112,7 +136,27 @@ impl HostState {
         id
     }
     fn client(&self) -> &reqwest::Client {
-        self.client.get_or_init(|| reqwest::Client::builder().pool_idle_timeout(Duration::from_secs(90)).build().expect("reqwest client"))
+        self.client.get_or_init(|| {
+            let mut b = reqwest::Client::builder().pool_idle_timeout(Duration::from_secs(90));
+            if let Some(p) = &self.policy {
+                b = b.redirect(p.redirect_policy());
+            }
+            b.build().expect("reqwest client")
+        })
+    }
+    /// The module has been evaluated: its default export declares provider `id`.
+    pub(crate) fn declare_provider(&self, id: &str) {
+        if let Some(p) = &self.policy {
+            p.declare_provider(id);
+        }
+    }
+    /// The path a file-system native works on: `raw` itself, or for a
+    /// bundle the checked path with symbolic links resolved.
+    fn fs_path(&self, raw: &str, access: Access) -> Result<PathBuf, NativeError> {
+        match &self.policy {
+            Some(p) => Ok(p.fs_path(raw, access)?),
+            None => Ok(PathBuf::from(raw)),
+        }
     }
 }
 
@@ -227,22 +271,40 @@ fn sync_call(st: &HostState, name: &str, arg: Value) -> NResult {
         }
         "utf8Encode" => Ok(json!(hex::encode(s(&arg, "text").as_bytes()))),
         "utf8Decode" => Ok(json!(String::from_utf8_lossy(&bytes_arg(&arg)?).into_owned())),
-        "envGet" => Ok(appv3_core::env::os_environ(s(&arg, "name")).map(Value::String).unwrap_or(Value::Null)),
+        "envGet" => {
+            let name = s(&arg, "name");
+            if let Some(p) = &st.policy {
+                p.check_env(name)?;
+            }
+            Ok(appv3_core::env::os_environ(name).map(Value::String).unwrap_or(Value::Null))
+        }
         "envAll" => {
             let mut m = Map::new();
             let mut names: Vec<String> = std::env::vars_os().filter_map(|(k, _)| k.into_string().ok()).collect();
             names.sort();
             for k in names {
+                if st.policy.as_ref().is_some_and(|p| !p.env_allowed(&k)) {
+                    continue;
+                }
                 if let Some(v) = appv3_core::env::os_environ(&k) {
                     m.insert(k, json!(v));
                 }
             }
             Ok(Value::Object(m))
         }
-        "which" => Ok(which(s(&arg, "name")).map(|p| json!(p.to_string_lossy())).unwrap_or(Value::Null)),
+        "which" => {
+            let name = s(&arg, "name");
+            if let Some(p) = &st.policy {
+                p.check_which(name)?;
+            }
+            Ok(which(name).map(|p| json!(p.to_string_lossy())).unwrap_or(Value::Null))
+        }
         "tokenPath" => {
-            let component = |v: &str| !v.is_empty() && v != "." && v != ".." && v.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'.'));
+            let component = sandbox::plain_component;
             let provider = s(&arg, "provider");
+            if let Some(p) = &st.policy {
+                p.check_provider(provider)?;
+            }
             if !component(provider) {
                 return Err(NativeError::error("Invalid provider token directory"));
             }
@@ -257,15 +319,25 @@ fn sync_call(st: &HostState, name: &str, arg: Value) -> NResult {
             std::fs::create_dir_all(&dir).map_err(|e| NativeError::error(e.to_string()))?;
             Ok(json!(dir.join(file.replace('/', "_")).to_string_lossy()))
         }
-        "readText" => Ok(std::fs::read_to_string(s(&arg, "path")).map(Value::String).unwrap_or(Value::Null)),
-        "writeText" => std::fs::write(s(&arg, "path"), s(&arg, "text")).map(|_| Value::Null).map_err(|e| NativeError::error(e.to_string())),
-        "exists" => Ok(json!(std::path::Path::new(s(&arg, "path")).exists())),
-        "remove" => match std::fs::remove_file(s(&arg, "path")) {
+        "readText" => {
+            let path = st.fs_path(s(&arg, "path"), Access::Read)?;
+            Ok(std::fs::read_to_string(path).map(Value::String).unwrap_or(Value::Null))
+        }
+        "writeText" => {
+            let path = st.fs_path(s(&arg, "path"), Access::Write)?;
+            std::fs::write(path, s(&arg, "text")).map(|_| Value::Null).map_err(|e| NativeError::error(e.to_string()))
+        }
+        "exists" => Ok(json!(st.fs_path(s(&arg, "path"), Access::Read)?.exists())),
+        "remove" => match std::fs::remove_file(st.fs_path(s(&arg, "path"), Access::Remove)?) {
             Ok(()) => Ok(json!(true)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(json!(false)),
             Err(e) => Err(NativeError::error(e.to_string())),
         },
-        "mkdir" => std::fs::create_dir_all(s(&arg, "path")).map(|_| Value::Null).map_err(|e| NativeError::error(e.to_string())),
+        "mkdir" => {
+            let path = st.fs_path(s(&arg, "path"), Access::Create)?;
+            std::fs::create_dir_all(path).map(|_| Value::Null).map_err(|e| NativeError::error(e.to_string()))
+        }
+        "bundle" => Ok(st.policy.as_ref().map(Policy::bundle_info).unwrap_or(Value::Null)),
         "pyJsonDumps" => Ok(json!(appv3_core::pyjson::dumps(arg.get("value").unwrap_or(&Value::Null)))),
         "reCompile" => st.regexes.borrow_mut().compile(s(&arg, "pattern"), s(&arg, "flags")).map_err(|e| NativeError::new("SyntaxError", e)),
         "parseIso" => Ok(parse_iso_ts(arg.get("text").and_then(|x| x.as_str())).map(|t| json!(t)).unwrap_or(Value::Null)),
@@ -291,9 +363,14 @@ fn sync_call(st: &HostState, name: &str, arg: Value) -> NResult {
         }
         "native" => {
             let n = s(&arg, "name").to_string();
+            let mut a = arg.get("arg").cloned().unwrap_or(Value::Null);
+            if let Some(p) = &st.policy {
+                p.check_native(&n, &a)?;
+                p.tag_native_arg(&mut a);
+            }
             let f = natives().lock().unwrap().get(&n).cloned();
             match f {
-                Some(f) => f(arg.get("arg").cloned().unwrap_or(Value::Null)).map_err(NativeError::error),
+                Some(f) => f(a).map_err(NativeError::error),
                 None => Err(NativeError::type_error(format!("native function '{n}' is not available"))),
             }
         }
@@ -309,9 +386,12 @@ async fn async_call(st: Rc<HostState>, name: &str, arg: Value) -> NResult {
             Ok(Value::Null)
         }
         "fetch" => fetch(&st, &arg).await,
-        "run" => run(&arg).await,
+        "run" => run(&st, &arg).await,
         "listen" => {
             let host = s(&arg, "host").to_string();
+            if let Some(p) = &st.policy {
+                p.check_listen(&host)?;
+            }
             let port = arg.get("port").and_then(|x| x.as_u64()).unwrap_or(0) as u16;
             let l = tokio::net::TcpListener::bind((host.as_str(), port)).await.map_err(|e| NativeError::error(e.to_string()))?;
             let port = l.local_addr().map(|a| a.port()).unwrap_or(port);
@@ -346,7 +426,19 @@ async fn async_call(st: Rc<HostState>, name: &str, arg: Value) -> NResult {
 
 async fn fetch(st: &HostState, arg: &Value) -> NResult {
     let method = reqwest::Method::from_bytes(s(arg, "method").as_bytes()).map_err(|e| NativeError::type_error(e.to_string()))?;
-    let mut req = st.client().request(method, s(arg, "url"));
+    let raw_url = s(arg, "url");
+    let mut req = match &st.policy {
+        // The URL that was checked is the URL that is requested. One that
+        // does not parse goes to reqwest as before, which fails it the same way.
+        Some(p) => match reqwest::Url::parse(raw_url) {
+            Ok(url) => {
+                p.check_fetch(&url)?;
+                st.client().request(method, url)
+            }
+            Err(_) => st.client().request(method, raw_url),
+        },
+        None => st.client().request(method, raw_url),
+    };
     for h in arg.get("headers").and_then(|x| x.as_array()).into_iter().flatten() {
         if let (Some(k), Some(v)) = (h.get(0).and_then(|x| x.as_str()), h.get(1).and_then(|x| x.as_str())) {
             req = req.header(k, v);
@@ -359,6 +451,9 @@ async fn fetch(st: &HostState, arg: &Value) -> NResult {
         req = req.timeout(Duration::from_secs_f64(ms.max(0.0) / 1000.0));
     }
     let net = |e: reqwest::Error| {
+        if let Some(denied) = sandbox::blocked_redirect(&e) {
+            return NativeError::from(denied);
+        }
         let mut msg = e.to_string();
         let mut src = std::error::Error::source(&e);
         while let Some(s) = src {
@@ -381,9 +476,20 @@ async fn fetch(st: &HostState, arg: &Value) -> NResult {
     }))
 }
 
-async fn run(arg: &Value) -> NResult {
-    let mut cmd = tokio::process::Command::new(s(arg, "cmd"));
+async fn run(st: &HostState, arg: &Value) -> NResult {
+    let program = s(arg, "cmd");
+    if let Some(p) = &st.policy {
+        p.check_run(program)?;
+    }
+    let mut cmd = tokio::process::Command::new(program);
     appv3_core::proctree::hide_window(&mut cmd);
+    if st.policy.is_some() {
+        // A bundle's children get what the shell tool's children get: no
+        // server secrets in their environment.
+        for k in appv3_core::env::child_env_blocklist() {
+            cmd.env_remove(k);
+        }
+    }
     for a in arg.get("args").and_then(|x| x.as_array()).into_iter().flatten() {
         cmd.arg(a.as_str().unwrap_or(""));
     }

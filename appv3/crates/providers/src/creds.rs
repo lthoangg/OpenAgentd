@@ -68,6 +68,31 @@ impl CredentialStore {
         }
     }
 
+    /// `get` for a plugin bundle's code: the same order (overrides, the exported environment, then the
+    /// credential), narrowed so that a bundle reads no more than it was given.
+    ///
+    /// * The environment variable counts only when `env_listed` (the bundle's `permissions.env` has `name`).
+    /// * The credential is exactly this provider's: the pinned values, or what `credentials.yaml` stores for
+    ///   the provider id. No search over every provider, and no named secrets.
+    /// * An empty provider id reads nothing at all.
+    pub fn get_sandboxed(&self, name: &str, env_listed: bool) -> String {
+        if self.provider_id.is_empty() {
+            return String::new();
+        }
+        if let Some(v) = self.overrides.get(name) {
+            return v.clone();
+        }
+        if env_listed {
+            if let Some(v) = credentials::env_override(name) {
+                return v;
+            }
+        }
+        match &self.pinned {
+            Some(values) => values.get(name).cloned().unwrap_or_default(),
+            None => credentials::stored_exact(&self.provider_id, name).unwrap_or_default(),
+        }
+    }
+
     /// `{CACHE_DIR}/provider-plugins/<id>` (created).
     pub fn token_dir(&self) -> PathBuf {
         let root = settings().cache_dir.join("provider-plugins").join(&self.provider_id);

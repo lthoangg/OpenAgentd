@@ -386,28 +386,16 @@ impl AgentSession {
     /// scheduled turn instead refuses the tools that wait on a person when
     /// they are called.
     pub(crate) fn injected_tools(&self, sid: &str, name: &str, workspace: &str, agent_mode: &str) -> Vec<ToolRef> {
-        let is_lead = self.parent_session_id.is_none();
-        let mut injected: Vec<ToolRef> = vec![];
-        if is_lead {
-            injected.push(Arc::new(crate::tools::ask_user::AskUserTool { session_id: sid.to_string(), pool: self.pool.clone(), agent_name: name.to_string() }));
-            injected.push(Arc::new(crate::tools::team::DelegateTool {
-                lead_session_id: sid.to_string(),
-                pool: self.pool.clone(),
-                provider_factory: self.provider_factory.clone(),
-            }));
-            // Sessions without a user workspace keep the plan in the data dir.
-            injected.push(Arc::new(crate::tools::plan::PlanTool { session_id: sid.to_string(), coding: agent_mode == "coding" && !workspace.is_empty(), pool: self.pool.clone() }));
-            injected.push(Arc::new(crate::tools::goal::UpdateGoalTool { session: self.me.clone() }));
-            if agent_mode == "coding" && !workspace.is_empty() {
-                injected.push(Arc::new(crate::tools::preview::PreviewTool));
-            }
-        } else if let Some(lead) = &self.parent_session_id {
-            injected.push(Arc::new(crate::tools::team::AskLeadTool { lead_session_id: lead.clone(), member_handle: name.to_string() }));
-        }
-        if is_lead && appv3_core::runtime_settings::workspace_messages_enabled() {
-            injected.push(Arc::new(crate::tools::workspace::WorkspaceTool::new(sid.to_string(), self.pool.clone())));
-        }
-        injected
+        crate::tool_registry::session_tools(&crate::tool_registry::SessionCtx {
+            sid,
+            agent_name: name,
+            workspace,
+            agent_mode,
+            lead: self.parent_session_id.as_deref(),
+            pool: &self.pool,
+            provider_factory: &self.provider_factory,
+            session: &self.me,
+        })
     }
 
     pub(crate) fn request_frame(&self) -> &crate::side_question::FrameSlot {

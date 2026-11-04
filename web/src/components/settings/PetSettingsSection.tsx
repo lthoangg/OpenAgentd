@@ -1,5 +1,5 @@
 /**
- * Settings → General → Desktop pet (macOS and Windows app): a pixel pet
+ * Settings → Desktop → Desktop pet (macOS and Windows app): a pixel pet
  * (a cat, a duck or a crab) that walks along the bottom of the screen and
  * shows agent notifications in its bubble. Off by default; the shell
  * stores the settings.

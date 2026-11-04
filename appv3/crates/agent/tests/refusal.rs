@@ -63,7 +63,8 @@ async fn refusal_ends_turn_with_error_and_drops_the_response() {
     let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::new(vec![refused_turn()]));
     let p2 = provider.clone();
     let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
-    let agent = Agent::new(provider.clone(), "code", "You are a test agent.", vec![appv3_tools::builtin_tool("read").unwrap()], Some("mock:mock".into()));
+    let agent =
+        Agent::new(provider.clone(), "code", "You are a test agent.", vec![std::sync::Arc::new(appv3_tools::read::ReadTool) as appv3_tools::ToolRef], Some("mock:mock".into()));
     let session = AgentSession::new(agent, None, Some(ws.display().to_string()), pool.clone(), factory, None);
 
     let sid = uuid::Uuid::now_v7().to_string();

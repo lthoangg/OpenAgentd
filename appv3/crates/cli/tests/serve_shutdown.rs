@@ -273,6 +273,82 @@ fn wait_until(what: &str, limit: Duration, mut done: impl FnMut() -> bool) {
     }
 }
 
+/// An OpenAI-compatible chat endpoint whose model asks for one `shell` call
+/// running `command`, then answers "done". Returns its port and the body of
+/// every chat request (the second carries the command's output).
+fn shell_calling_provider(command: &'static str) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let bodies = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let seen = bodies.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let (mut request_line, mut line, mut len) = (String::new(), String::new(), 0usize);
+            let _ = reader.read_line(&mut request_line);
+            while reader.read_line(&mut line).unwrap_or(0) > 0 && line != "\r\n" {
+                if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    len = v.trim().parse().unwrap_or(0);
+                }
+                line.clear();
+            }
+            let mut body = vec![0; len];
+            let _ = reader.read_exact(&mut body);
+            if !request_line.contains("/chat/completions") {
+                let _ = stream.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                continue;
+            }
+            let first = {
+                let mut all = seen.lock().unwrap();
+                all.push(String::from_utf8_lossy(&body).into_owned());
+                all.len() == 1
+            };
+            let chunk = |delta: &str, finish: &str| {
+                format!(r#"data: {{"id":"c","object":"chat.completion.chunk","created":0,"model":"mock-1","choices":[{{"index":0,"delta":{delta},"finish_reason":{finish}}}]}}"#)
+                    + "\n\n"
+            };
+            let sse = if first {
+                let call = serde_json::json!({"role": "assistant", "tool_calls": [{"index": 0, "id": "call_1", "type": "function", "function": {"name": "shell", "arguments": serde_json::json!({"command": command}).to_string()}}]});
+                chunk(&call.to_string(), "null") + &chunk("{}", r#""tool_calls""#)
+            } else {
+                chunk(r#"{"role":"assistant","content":"done"}"#, "null") + &chunk("{}", r#""stop""#)
+            } + "data: [DONE]\n\n";
+            let head = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", sse.len());
+            let _ = stream.write_all((head + &sse).as_bytes());
+        }
+    });
+    (port, bodies)
+}
+
+/// The desktop app keeps `agentd` inside its bundle and puts nothing on
+/// PATH. Commands the agent runs still get the running binary's folder, at
+/// the end of PATH, so `agentd plugin check` and `add` work there; with
+/// zsh this goes through the rc snapshot, whose login shell rebuilds PATH.
+#[test]
+fn the_agents_shell_gets_the_running_agentd_when_path_has_none() {
+    let dir = std::fs::canonicalize(env!("CARGO_BIN_EXE_agentd")).unwrap().parent().unwrap().display().to_string();
+    for shell in ["/bin/sh", "/bin/zsh"].into_iter().filter(|s| std::path::Path::new(s).exists()) {
+        let root = tempfile::tempdir().unwrap();
+        let (fake, chats) = shell_calling_provider(r#"printf '%s\n' "$PATH""#);
+        let base = format!("http://127.0.0.1:{fake}/v1");
+        let env = [("OLLAMA_BASE_URL", base.as_str()), ("PATH", "/usr/bin:/bin:/usr/sbin:/sbin"), ("SHELL", shell)];
+        let (mut child, _stdout, port) = spawn_server_with(root.path(), None, &env);
+        assert_eq!(http(port, "POST", "/api/settings/default-model", None, Some(r#"{"provider_model":"ollama:mock-1"}"#)).0, 200);
+        let titles = r#"{"enabled":false,"model":"ollama:mock-1","wait_timeout_seconds":0}"#;
+        assert_eq!(http(port, "PUT", "/api/settings/title-generation", None, Some(titles)).0, 200);
+        let ws = root.path().join("proj");
+        std::fs::create_dir_all(&ws).unwrap();
+        let (st, body) = send_chat(port, "print PATH", &ws.display().to_string());
+        assert_eq!(st, 202, "{body}");
+        wait_until("the shell output to reach the model", Duration::from_secs(30), || chats.lock().unwrap().len() >= 2);
+        let second = chats.lock().unwrap()[1].clone();
+        // The output is JSON-escaped in the request: PATH, then a newline.
+        assert!(second.contains(&format!(":{dir}\\n")), "{shell}: PATH does not end with {dir}:\n{second}");
+        terminate(&mut child);
+    }
+}
+
 /// `agentd server restart` and the desktop's Stop then Connect both stop
 /// the server with SIGTERM and start it again on the same data.
 #[test]

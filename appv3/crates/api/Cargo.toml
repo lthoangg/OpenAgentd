@@ -7,9 +7,11 @@ license.workspace = true
 [dependencies]
 appv3-core.workspace = true
 appv3-db.workspace = true
+appv3-kernel.workspace = true
 appv3-tools.workspace = true
 appv3-providers.workspace = true
 appv3-jsplugin.workspace = true
+appv3-plugins.workspace = true
 appv3-agent.workspace = true
 appv3-memory.workspace = true
 appv3-mcp.workspace = true
@@ -19,6 +21,7 @@ base64 = "0.23"
 indexmap = { version = "2", features = ["serde"] }
 sqlx.workspace = true
 anyhow.workspace = true
+async-trait.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

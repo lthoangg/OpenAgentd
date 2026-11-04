@@ -6,14 +6,23 @@
 //! `plugin()` factory returning tool hooks — and consumed by the provider
 //! registry (`appv3-providers`) and the agent tool loop (`appv3-agent`).
 //! v3 never reads the v2 `*.py` plugins.
+//!
+//! A plugin bundle's code (plugin API v2) is loaded with
+//! [`JsPlugin::load_with`] and a [`Sandbox`] instead: its default export,
+//! `export default { tools, hooks, provider }`, adds tools ([`JsPlugin::tools`],
+//! [`JsPlugin::run_tool`]) next to the hooks and provider v1 files have, and
+//! the host natives check every access against the bundle's permissions.
+//! See [`JsPlugin`] for how consumers reach each part.
 
 mod host;
 mod re;
 mod runtime;
+mod sandbox;
 pub mod transpile;
 
 pub use host::{parse_iso_ts, parse_qs, register_native, url_query, which, Callback, CallbackFn, NativeFn};
-pub use runtime::{CallResult, JsError, JsPlugin, Mode, Target, BLOCKING_CALL_TIMEOUT, BUSY_LIMIT, LOAD_TIMEOUT};
+pub use runtime::{CallResult, JsError, JsPlugin, Mode, Target, ToolCtx, ToolSpec, BLOCKING_CALL_TIMEOUT, BUSY_LIMIT, LOAD_TIMEOUT};
+pub use sandbox::{is_plain_provider_id, set_credentials_gate, CredentialsGate, LoadOptions, Sandbox};
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};

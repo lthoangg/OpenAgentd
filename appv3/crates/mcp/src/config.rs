@@ -13,8 +13,24 @@ pub struct OAuthConfig {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ServerConfig {
-    Stdio { command: String, args: Vec<String>, env: IndexMap<String, String>, enabled: bool, timeout: Option<u64> },
-    Http { url: String, headers: IndexMap<String, String>, oauth: Option<OAuthConfig>, enabled: bool, timeout: Option<u64> },
+    /// `cwd` is the child's working directory (`None`: this process's). Only
+    /// plugin servers set it: `mcp.json` has no such key, so it is neither
+    /// read from nor written to that file.
+    Stdio {
+        command: String,
+        args: Vec<String>,
+        env: IndexMap<String, String>,
+        enabled: bool,
+        timeout: Option<u64>,
+        cwd: Option<PathBuf>,
+    },
+    Http {
+        url: String,
+        headers: IndexMap<String, String>,
+        oauth: Option<OAuthConfig>,
+        enabled: bool,
+        timeout: Option<u64>,
+    },
 }
 
 impl ServerConfig {
@@ -33,6 +49,13 @@ impl ServerConfig {
     pub fn timeout(&self) -> Option<u64> {
         match self {
             ServerConfig::Stdio { timeout, .. } | ServerConfig::Http { timeout, .. } => *timeout,
+        }
+    }
+    /// Working directory of a stdio server's child; `None` keeps this process's.
+    pub fn cwd(&self) -> Option<&Path> {
+        match self {
+            ServerConfig::Stdio { cwd, .. } => cwd.as_deref(),
+            ServerConfig::Http { .. } => None,
         }
     }
     /// `model_dump(mode="json")` in field order; `timeout` only when set.
@@ -266,7 +289,7 @@ fn parse_server(v: &Value, loc: &str, e: &mut Errs) -> Option<ServerConfig> {
             let enabled = b_field(m, "enabled", &l, e);
             let timeout = timeout_field(m, &l, e);
             extra(m, &["transport", "command", "args", "env", "enabled", "timeout"], &l, e);
-            ServerConfig::Stdio { command, args, env, enabled, timeout }
+            ServerConfig::Stdio { command, args, env, enabled, timeout, cwd: None }
         }
         "http" => {
             let l = format!("{loc}.HttpServerConfig");
@@ -443,5 +466,27 @@ mod tests {
     fn env_refs() {
         std::env::set_var("OAD_MCP_TEST_X", "v");
         assert_eq!(resolve_secret_refs("a ${OAD_MCP_TEST_X} $OAD_MCP_TEST_X $NOPE_OAD_Z"), "a v v $NOPE_OAD_Z");
+    }
+
+    /// `cwd` belongs to plugin servers: `mcp.json` neither takes it nor
+    /// shows it, so the file reads and writes exactly as before.
+    #[test]
+    fn mcp_json_has_no_working_directory() {
+        let err = parse_config(&json!({"servers": {"a": {"command": "x", "cwd": "/tmp"}}})).unwrap_err();
+        assert_eq!(err, "1 validation error for MCPConfig\nservers.a.StdioServerConfig.cwd\n  Extra inputs are not permitted");
+
+        let plain = parse_config(&json!({"servers": {"a": {"command": "npx", "args": ["-y"], "env": {"K": "v"}, "timeout": 5}}})).unwrap();
+        assert_eq!(plain.servers["a"].cwd(), None);
+        let dumped = plain.servers["a"].dump();
+        assert_eq!(dumped.to_string(), r#"{"transport":"stdio","command":"npx","args":["-y"],"env":{"K":"v"},"enabled":true,"timeout":5}"#);
+
+        let mut plugin = plain.servers["a"].clone();
+        if let ServerConfig::Stdio { cwd, .. } = &mut plugin {
+            *cwd = Some("/plugins/p".into());
+        }
+        assert_eq!(plugin.cwd(), Some(Path::new("/plugins/p")));
+        assert_ne!(plugin, plain.servers["a"], "the directory is part of what a plugin sync compares");
+        assert_eq!(plugin.dump(), dumped, "never written to mcp.json, so the file always parses");
+        assert_eq!(parse_config(&json!({"servers": {"a": plugin.dump()}})).unwrap().servers["a"], plain.servers["a"]);
     }
 }

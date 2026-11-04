@@ -101,18 +101,19 @@ agentd server status
 `--public` listens on every network interface, and `--key` prompts you to choose
 the access key every client must send; the server refuses to listen on the
 network without one. `--qr` prints a QR code: scan it with the phone's camera to
-open the app's **Backend connection** dialog with the address and key filled in,
-then test and save the connection. `agentd server status --qr` shows it again.
+open the app's **Server** dialog with the address and key filled in, then tap
+**Test** and **Save and use**. `agentd server status --qr` shows it again.
 If OpenAgentd is not installed yet, see
 [CLI server](../README.md#cli-server).
 
 In the app:
 
-1. Open **Backend connection**.
+1. Open **Settings → Server** (or **Choose server** on the start screen) and
+   tap **Add a server**.
 2. Enter the server's LAN address, for example `http://192.168.1.20:8000`, and
    the access key.
 3. When iOS asks to find devices on your local network, tap **Allow**.
-4. Test the connection, then save it. The key is stored in the iOS Keychain.
+4. Tap **Test**, then **Save and use**. The key is stored in the iOS Keychain.
 
 The server has no built-in TLS. To reach it from outside a trusted network, put
 an HTTPS reverse proxy (or a private network such as a VPN) in front of it, and

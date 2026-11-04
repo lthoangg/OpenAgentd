@@ -241,21 +241,15 @@ pub fn agents_dir() -> std::path::PathBuf {
     appv3_tools::denied::resolve(&settings().agents_dir)
 }
 
-/// Tools given to a member agent.
+/// Tools given to a member agent: the ones its file lists that a member
+/// may have (`tool_registry::member_tool`).
 fn build_member_tools(allowed: &[String]) -> Vec<ToolRef> {
     let mut out: Vec<ToolRef> = vec![];
     let mut seen = HashSet::new();
     for n in allowed {
-        if matches!(n.as_str(), "ask_user" | "team" | "schedule") {
-            continue;
-        }
-        if !matches!(n.as_str(), "read" | "glob" | "grep" | "patch" | "shell" | "web_search" | "web_fetch") {
-            continue;
-        }
+        let Some(t) = crate::tool_registry::member_tool(n) else { continue };
         if seen.insert(n.clone()) {
-            if let Some(t) = appv3_tools::builtin_tool(n) {
-                out.push(t);
-            }
+            out.push(t);
         }
     }
     out
@@ -509,7 +503,10 @@ pub async fn send_subagent_message(lead: &str, member_id: &str, message: &str, p
     if waiting {
         let tcid = tool_call_id.or_else(|| inst_session.lead_suspended().and_then(|l| l.get("tool_call_id").and_then(|v| v.as_str()).map(String::from)));
         if let Some(t) = tcid.filter(|t| !t.is_empty()) {
-            db::insert_raw_tool_message(pool, &child_sid, &format!("Lead answered: {message}"), &t, "ask_lead").await.map_err(|e| SubagentError::General(e.to_string()))?;
+            // A fresh `seq` puts the answer right after the waiting call.
+            db::save_message(pool, &child_sid, db::NewMessage::tool(t, "ask_lead", format!("Lead answered: {message}")))
+                .await
+                .map_err(|e| SubagentError::General(e.to_string()))?;
         }
         inst_session.resume_after_question_answer().await;
         return Ok(json!({"status": "sent", "member_id": handle, "message": format!("Message delivered to '{handle}' in background.")}));

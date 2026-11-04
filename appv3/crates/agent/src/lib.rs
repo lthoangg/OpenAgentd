@@ -34,6 +34,7 @@ mod snapshot_gix;
 pub mod stream_store;
 pub mod streaming;
 pub mod subagents;
+pub mod tool_registry;
 pub mod tools;
 pub mod util;
 pub mod workspace_groups;

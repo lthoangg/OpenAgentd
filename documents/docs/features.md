@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-11-03
+updated: 2026-11-04
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.43.0 · November 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.43.0)
+**Latest release:** v3.44.0 · November 4, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.44.0)
 
 ---
 
@@ -162,9 +162,9 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Switch Server from the command palette** `[v3.32.0]` — run **Switch Server…** in the
   command palette (⌘K) to list the builtin sidecar and saved servers (current one
   marked, online/offline shown) and connect with Enter. It reuses the Settings →
-  Connection checks (reachable, access key accepted); a failure shows a toast and
+  Server checks (reachable, access key accepted); a failure shows a toast and
   keeps the current server. No keyboard shortcut; desktop app only.
-  Since `[v3.34.0]`, picking a server here or in Settings → Connection covers
+  Since `[v3.34.0]`, picking a server here or in Settings → Server covers
   the window with **Switching to *name*…** right away (it fades in after a
   beat, so an instant switch never flashes it), and the startup screen keeps
   the same words through the reload until the new server is up. A failed
@@ -211,7 +211,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   group. **General** has theme and transcript style. **Connection** shows the
   backend servers and the add / edit server form
   directly on the page, using the same panel as the **Backend connection**
-  dialog. **About OpenAgentd** has the version, updates and community links.
+  dialog (both are called **Server** since `[v3.40.0]`). **About OpenAgentd**
+  has the version, updates and community links.
   Every page shares one layout: a page header with actions, titled sections
   above their cards, label-left / control-right rows, and more space between
   fields. Server forms test and save from a footer row instead of buttons
@@ -841,7 +842,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     *(both deprecated; removed in v3.41.0)*, and **Delete session…**. Touch
     keeps the pin mark on pinned rows.
   - Double-click the session title in the header (or press F2 or Enter on
-    it) to rename it there.
+    it) to rename it there *(deprecated; removed in v3.44.0: rename from the
+    sidebar)*.
   - The status bar's items are all reachable with Tab, the fast mode pill too.
   - One name for each thing: **Review panel**, **New session**, **Side
     questions**, **Open workspace…**, **Workspace** and **Worktree** (never
@@ -1186,7 +1188,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A jump onto a window, or back down, starts with a look at where it is
     going and a crouch, then the pet leaps in an arc and lands with a squash
     and a puff of dust, instead of gliding straight up.
-  - The notch, the tray's "Needs you" list and Settings → Connection follow
+  - The notch, the tray's "Needs you" list and Settings → Server follow
     the builtin server whenever it runs, so its sessions stay listed with
     only windows on an external server open, or none.
   - In reader mode the jump chip says "Jump to latest" without a count of
@@ -1404,7 +1406,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     pill then opens the session it names. The pill grows out of the notch,
     springs open and shrinks back in, and clicks beside it still reach the
     menu bar. It never takes focus and steps aside for full-screen apps.
-    Settings → General → Desktop turns it off, and can also keep it up
+    Settings → Desktop turns it off, and can also keep it up
     while OpenAgentd is in front (off by default), stop keeping finished
     sessions, or turn on **Expand on hover**.
     Since `[v3.29.0]` it follows every server that has a window open,
@@ -1507,7 +1509,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     chaotic. None starts when movement is stay put, with reduced motion,
     while the pet is dragged or its menu is open, while a bubble is up or a
     question waits (one under way is cut short), nor ladders and balloons
-    while an agent runs. Settings → General → Desktop pet → **Ladders and
+    while an agent runs. Settings → Desktop → Desktop pet → **Ladders and
     balloons** (on by default) turns the first two off; falls stay.
   - **Desktop pet: no sheet over the desktop (screen sharing)** `[v3.42.0]` —
     the pet's window is no longer a transparent sheet over the whole work
@@ -2017,9 +2019,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
 - **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on mobile; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`. Since `[v3.29.0]` the desktop app never connects to a saved server on its own: launch always starts the builtin backend, and saved servers are listed with Online/Offline and Connect, joining only the window where you click Connect (the next launch is back on builtin). The mobile app, which has no builtin backend, still reconnects to its last server.
   - **Add and edit in place** `[v3.40.0]` — Settings → Server opens no form by itself: **Add a server**, at the end of the list, opens the form for a new one (Test, then **Save and use**). Each saved server has **Edit**, which opens its form right under its row; **Save** updates it there without switching to it (a new address or access key needs a passing Test first, a rename does not). Escape or **Cancel** closes the form and puts focus back on the button that opened it. A scanned connect link still opens the add form filled in.
-  The desktop keeps them in `access-keys.json`, a file only your user can read, in its app config folder, instead of the OS credential store `[v3.22.0]`: macOS ties a keychain item to the signing Team ID of the app that saved it, which the unsigned desktop app does not have, so it asked for keychain access after every update. Keys saved in the keychain by earlier versions are not carried over; enter them again in the Server connection dialog.
+  The desktop keeps them in `access-keys.json`, a file only your user can read, in its app config folder, instead of the OS credential store `[v3.22.0]`: macOS ties a keychain item to the signing Team ID of the app that saved it, which the unsigned desktop app does not have, so it asked for keychain access after every update. Keys saved in the keychain by earlier versions are not carried over; enter them again in the Server dialog.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
-- **Desktop network access** `[v3.15.0]` — a **Network access** switch in desktop **Settings → Network access** (and the **Backend connection** dialog) lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in a file only your user can read (`network-access-key` in its app config folder; before v3.22.0 it was in the OS credential store, so devices paired earlier need the new key), and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. `[v3.16.0]` While network access is on, **Show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Backend connection** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save & Connect**. The code hides when the key changes or network access turns off.
+- **Desktop network access** `[v3.15.0]` — a **Network access** switch in desktop **Settings → Server → Access from other devices** (and the **Server** dialog) lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in a file only your user can read (`network-access-key` in its app config folder; before v3.22.0 it was in the OS credential store, so devices paired earlier need the new key), and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. `[v3.16.0]` While network access is on, **Show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Server** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save and use**. The code hides when the key changes or network access turns off.
 
 ---
 
@@ -2572,6 +2574,9 @@ agent against it.
   field. Enter or clicking away saves, Escape cancels, and the header and
   sidebar show the new title at once. Since `[v3.25.0]` the session title in
   the desktop chat header is read-only; rename from the sidebar.
+  Renaming from the header came back in v3.40.0 and is gone again since
+  `[v3.44.0]`: in the desktop app a press on the title drags the window and a
+  double-click maximizes it, as on the rest of the header.
 - **Session search** `[v3.0.0]` — the search button in the Workspaces header
   swaps the tree for a search field that matches session titles across every
   workspace, however old. Enter opens the first match and Escape returns to
@@ -3364,6 +3369,12 @@ Four orthogonal ways to add capability.
     that finishes starting or reconnects is usable at once. In Plan mode the
     agent can search, and call tools the server marks read-only
     (`readOnlyHint`); the server sets that hint, so it is trusted as given.
+  - **Arguments checked before a call** `[v3.44.0]` — `call` checks the
+    arguments against the tool's input schema (types, required and unknown
+    fields, allowed values, lengths and bounds, nested objects and lists) and
+    returns every problem, with the schema, before the server or plugin sees
+    the call. The check is lenient: keywords it does not know pass, and a null
+    for an optional argument counts as left out.
   - **Set up MCP servers from chat** `[v3.35.0]` — ask the agent to connect a
     server ("add the GitHub MCP") and it proposes the `mcp.json` entry
     (`mcp` with `action: "save"`, or `"remove"`). A **Confirm change** card
@@ -3460,11 +3471,60 @@ Four orthogonal ways to add capability.
     skill files, while write tools and `shell` still cannot touch them.
     References for slash commands (where the files go, `$ARGUMENTS`, names
     to avoid) and workspace groups were added, so "make a /review command for
-    this project" writes `.agents/commands/review.md` `[v3.35.0]`.
+    this project" writes `.agents/commands/review.md` `[v3.35.0]`. The
+    plugins reference covers plugin folders and `agentd plugin`, and the agent
+    shows what a plugin adds before installing it `[v3.44.0]`.
   - **Semantic docs search skill experiment** `[v1.98.0]` *(beta)* — project workspaces can ship
     an `oad/search-doc` skill plus a turbovec-based document-search experiment for semantic lookup
     over `documents/`, giving agents a higher-level alternative to exact-string grep when docs
     queries are conceptual or paraphrased.
+- **Plugin folders** `[v3.44.0]` — a plugin can now be a folder in the plugin
+  dir that adds skills, MCP servers and tools. The layout is the open Agent
+  Plugins 1.0 format (`plugin.json`, `skills/`, `mcp.json`), so plugins written
+  for other clients that read it work here, and the standard parts of a plugin
+  written here work there. Skills are named `<plugin>/<skill>` and MCP servers
+  `<plugin>/<server>`, with `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` (a data
+  folder kept across updates) filled in. Adding, editing or removing a plugin
+  needs no restart: it reloads when its files change. New sessions get its
+  skills, its MCP servers and tools are usable at once, and running sessions
+  keep their requests unchanged. A broken plugin is marked failed without
+  affecting the others. Single-file plugins keep working as before.
+  - **Plugin tools through the `mcp` tool** `[v3.44.0]` — a folder's
+    `dev.openagentd/plugin.ts` can define tools (`defineTool`), tool hooks and
+    a model provider. Agents reach plugin tools through the `mcp` tool, with
+    the plugin's name as the server: `search` finds them with their input
+    schemas and `call` runs one, so installing tools never grows the tool
+    list. A plugin installed or edited mid-session is usable at once and runs
+    its new version; its name joins the `mcp` tool's description in sessions
+    that start afterwards, and without plugins the request is unchanged. In
+    Plan mode only tools marked `readOnly` run. An MCP server of the user's
+    with the same name as a plugin hides that plugin's tools, and Settings →
+    Plugins says so.
+  - **Plugin permissions** `[v3.44.0]` — a folder's code runs sandboxed: it
+    reads its own folder and reads and writes its data folder, and anything
+    more needs a permission in `plugin.json` (`net` hosts, `listen`, `fs`
+    folders, `subprocess` programs, `env` variables). A call outside them
+    fails with an error that names the permission to add. A folder's provider
+    reads only its own saved credentials and the variables `env` lists, never
+    another provider's keys or MCP secrets, and only while no built-in provider
+    or other plugin has its id. MCP servers from a plugin run as ordinary
+    processes and are not sandboxed.
+  - **Manage plugins in Settings** `[v3.44.0]` — Settings → Plugins lists each
+    folder under **Plugin folders** with its state, an on/off switch, a
+    Reload button, and details: skills, the command or URL of each MCP
+    server, tools (read-only ones marked), permissions, errors and warnings.
+    Plugin MCP servers appear in
+    Settings → MCP marked "from <plugin>": they can be restarted there, go on
+    and off with their plugin, and the agent's `mcp` tool cannot change them.
+    With no plugin folder yet, it suggests asking an agent to install one.
+  - **`agentd` for the agent in the desktop app** `[v3.44.0]` — the desktop
+    app keeps `agentd` inside the app and puts nothing on `PATH`, so the
+    agent's `shell` now adds that folder at the end of `PATH` when it finds no
+    `agentd`, and the agent can run `agentd plugin check`, `add`, `list` and
+    `remove`. An `agentd` you installed still comes first. When `add` or
+    `remove` reaches no server (the desktop app's listens on a port of its
+    own), they say no server answered and that a running server picks the
+    change up on its own, instead of saying none is running.
 - **Slash commands** `[since v1.0]` — `.md` files with optional frontmatter,
   available globally or scoped to a coding workspace (`[v1.17.0]`). One nested
   namespace level is supported and displayed in the composer as colon syntax
@@ -3491,8 +3551,11 @@ Single-user trust model. The host is trusted. The operator is the user.
   Credentials (`OPENAGENTD_CACHE_DIR`), the SQLite DB, undo/redo snapshots, and
   other sessions' artifacts stay denied. This is what makes the
   `oad/debug-prod` log/telemetry workflow usable without disabling the path denylist.
-- **Permission system: allow / deny / ask** `[since v1.0]` — wildcard rule
-  matching per tool. Auto-allow, blocking on user reply, or persistent rules.
+- **Permission system: allow / deny / ask** `[since v1.0]` *(deprecated: not
+  in v3)* — v2 matched wildcard rules per tool to auto-allow a call, block on
+  the user's reply, or save a rule. v3 runs every tool call without asking;
+  what limits the agent is the path denylist, Plan mode, and the secret-free
+  shell environment below.
 - **Shell command pre-scan** `[since v1.0]` — best-effort path-token scan
   inside shell commands.
 - **Secret-free shell environment** `[v3.11.1]` — the agent's shell tool and
@@ -3757,7 +3820,18 @@ Desktop is primary. CLI / server is the developer path.
 - **CLI doctor** `[since v0.1.0, v3.1.0]` — `agentd doctor` checks provider credentials
   (including keys saved in Settings → Providers and the lead agent's OAuth
   login), the database, the configured server port, and the agents directory,
-  and exits 1 when a check fails.
+  and exits 1 when a check fails. With the server running it also lists the
+  server's modules and their state, with the reason a module failed or is
+  blocked `[v3.44.0]`.
+- **CLI plugin management** `[v3.44.0]` — `agentd plugin add <git URL or
+  folder>` shows what a plugin adds (skills, each MCP server's exact command
+  or URL, permissions, tools) and asks before installing; without a terminal
+  it prints that summary and exits with status 2 unless `--yes` is given. Git
+  URLs must be `https://`, `ssh://`, `user@host:path` or `file://`, and
+  `--path` picks a subfolder. A running server loads the plugin at once.
+  `agentd plugin check <folder>` validates a plugin without installing it,
+  `agentd plugin list` shows each plugin and its state, and
+  `agentd plugin remove <name>` deletes it and keeps its data.
 - **CLI artifact cleanup** `[v2.18.0]` — `agentd cleanup` previews a dry run
   and, with `--apply`, deletes sessions older than `--older-than-days`
   (default 14) together with their messages, session artifacts, undo/redo

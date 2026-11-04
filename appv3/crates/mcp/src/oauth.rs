@@ -58,8 +58,18 @@ pub fn interactive_oauth_allowed(name: &str) -> bool {
     interactive().lock().unwrap().contains(name)
 }
 
+/// The cache file's name for server `name`. A name from `mcp.json` (letters,
+/// digits, `_`, `-`) is the file's stem as v2 stored it. A byte outside
+/// `[A-Za-z0-9._~-]` is written as `%XX`: a plugin's server is
+/// `<plugin>/<server>`, and encoded (`<plugin>%2F<server>`) that stays one
+/// file in `mcp-oauth/` that no name from `mcp.json` can reach (it has
+/// neither a `/` nor a `%`), whatever the plugin calls itself.
+fn cache_file_name(name: &str) -> String {
+    format!("{}.json", quote_all(name))
+}
+
 fn cache_path(name: &str) -> PathBuf {
-    appv3_core::settings().cache_dir.join("mcp-oauth").join(format!("{name}.json"))
+    appv3_core::settings().cache_dir.join("mcp-oauth").join(cache_file_name(name))
 }
 
 /// Python truthiness of a JSON value.
@@ -1280,6 +1290,19 @@ fn constant_eq(a: &[u8], b: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cache_files_keep_the_names_v2_stored_and_flatten_a_plugins_servers() {
+        assert_eq!(cache_file_name("docs"), "docs.json");
+        assert_eq!(cache_file_name("my_server-2"), "my_server-2.json");
+        assert_eq!(cache_file_name("changelog-tools/github"), "changelog-tools%2Fgithub.json");
+        assert_eq!(cache_file_name("lint/git.hub"), "lint%2Fgit.hub.json");
+        for hostile in ["../escape", "a/../../b", "a\\b", "/abs"] {
+            let file = cache_file_name(hostile);
+            assert!(!file.contains('/') && !file.contains('\\'), "{file}");
+        }
+        assert_ne!(cache_file_name("a/b"), cache_file_name("a_b"));
+    }
 
     #[test]
     fn url_helpers() {

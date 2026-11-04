@@ -1,6 +1,6 @@
 //! Server lifespan and workspace initialisation.
 
-use appv3_agent::{loader, manager, scheduler};
+use appv3_agent::loader;
 use appv3_core::settings;
 use appv3_db::DbPool;
 use serde_json::json;
@@ -51,67 +51,18 @@ pub fn ensure_workspace_initialized() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Lifespan startup. Returns an error when the agents dir is invalid (v2
-/// re-raises and the server never starts).
+/// Lifespan startup: starts the built-in modules (`crate::modules`) on the
+/// global kernel, then one module per plugin folder (`crate::plugins`).
+/// Returns the error of a critical module that cannot start, e.g. an
+/// invalid agents dir (v2 re-raises and the server never starts).
 pub async fn startup(pool: &DbPool) -> anyhow::Result<()> {
     tracing::info!("server_starting version={} app_env={}", appv3_core::VERSION, settings().app_env);
-    ensure_workspace_initialized()?;
-    manager::init(pool.clone(), loader::default_provider_factory());
-    let sched = scheduler::init(pool.clone());
-    appv3_agent::stream_store::store().spawn_sweeper();
-    appv3_agent::snapshot::start_maintenance(pool.clone());
-    // v2: refresh_model_registry(force=True) in the background; the
-    // registry route awaits it.
-    if let Ok(guard) = crate::registry_refresh_gate().try_write_owned() {
-        tokio::spawn(async move {
-            appv3_providers::registry::refresh_model_registry(true).await;
-            drop(guard);
-        });
+    let k = appv3_kernel::global();
+    for m in crate::modules::builtin(pool) {
+        k.add(m)?;
     }
-    appv3_tools::lsp::set_event_publisher(appv3_agent::broadcaster::publish);
-    appv3_tools::lsp::lsp_manager().start();
-    appv3_mcp::set_event_publisher(appv3_agent::broadcaster::publish);
-    appv3_tools::shell::prewarm_snapshot();
-    crate::config_watch::start();
-    appv3_core::otel::setup("openagentd", None);
-    appv3_core::otel::start_retention();
-    let mcp = appv3_mcp::mcp_manager();
-    match appv3_mcp::config::load_config() {
-        Err(e) => tracing::error!("mcp_config_invalid err={}", e),
-        Ok(c) if c.servers.is_empty() => tracing::info!("mcp_no_servers_configured"),
-        Ok(_) => mcp.start().await,
-    }
-    match manager::validate_agents_dir(None) {
-        Ok(false) => tracing::warn!("agents_dir_empty_or_missing path={}", settings().agents_dir.display()),
-        Ok(true) => {}
-        Err(e) => {
-            tracing::error!("agents_dir_invalid path={} error={}", settings().agents_dir.display(), e);
-            anyhow::bail!(e);
-        }
-    }
-    if sched.has_enabled_tasks().await {
-        sched.start().await?;
-    } else {
-        tracing::info!("scheduler_no_enabled_tasks");
-    }
-    // Idle-compaction countdowns live in memory; resume the ones the
-    // restart dropped while the provider's prompt cache is still warm.
-    let p = pool.clone();
-    tokio::spawn(async move {
-        appv3_agent::idle_compaction::resume_after_restart(&p).await;
-    });
-    // File worktrees and subfolders registered as repositories before git's
-    // own link decided where a folder belongs.
-    let p = pool.clone();
-    tokio::spawn(async move {
-        appv3_agent::worktrees::reclassify_workspaces(&p).await;
-    });
-    // Continue the turns the last server process left running, with their
-    // goals; a member it cut off reports that to its lead.
-    let p = pool.clone();
-    tokio::spawn(async move {
-        appv3_agent::restart_resume::resume_after_restart(&p).await;
-    });
+    k.start_all().await?;
+    crate::plugins::reload().await;
     Ok(())
 }
 
@@ -123,24 +74,8 @@ pub fn close_event_streams() {
     appv3_agent::stream_store::store().close_all();
 }
 
-/// Lifespan shutdown.
+/// Lifespan shutdown: stops the modules in reverse start order.
 pub async fn shutdown() {
-    // Turns stopped from here on are continued by the next start.
-    appv3_agent::restart_resume::begin_shutdown();
-    // A startup registry refresh still on the network must not outlast the
-    // desktop's shutdown grace period.
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), crate::registry_refresh_gate().read()).await;
-    appv3_terminal::close_all().await;
-    appv3_preview::shutdown();
-    scheduler::scheduler().stop();
-    appv3_agent::snapshot::stop_maintenance();
-    manager::stop().await;
-    // A lead's Stop only signals its members; their last saves must land
-    // before the database closes.
-    appv3_agent::subagents::stop_all_members(std::time::Duration::from_secs(5)).await;
-    appv3_mcp::mcp_manager().stop().await;
-    appv3_tools::lsp::lsp_manager().stop().await;
-    appv3_core::otel::stop_retention();
-    appv3_core::otel::shutdown();
+    appv3_kernel::global().stop_all().await;
     tracing::info!("server_shutdown");
 }

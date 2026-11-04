@@ -1,0 +1,3 @@
+#!/bin/sh
+# A stand-in MCP server for tests: it starts and exits cleanly.
+exit 0

@@ -2,7 +2,7 @@
  * NetworkAccessCard — desktop-only switch that lets phones and other
  * computers on the LAN connect to the builtin backend with an access key,
  * without installing the CLI. Mounted by AppBackendPanel in the desktop shell
- * (Settings → Connection and the Backend connection dialog).
+ * (Settings → Server and the Server dialog).
  */
 import { useEffect, useState } from 'react'
 

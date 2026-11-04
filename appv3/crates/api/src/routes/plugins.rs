@@ -3,47 +3,82 @@
 //! v3-only (v2 has no equivalent; the web UI treats 404 as "not available").
 //! A plugin that fails to load, or that a consumer rejects, otherwise leaves
 //! only a log line. The response also lists v2 `*.py` plugins with no
-//! `*.ts`/`*.js` port, which v3 silently ignores. Plugins load once per
-//! process, so the list reflects the running server; file changes apply
-//! after a restart (as in v2).
+//! `*.ts`/`*.js` port, which v3 silently ignores. Single-file plugins load
+//! once per process, so file changes apply after a restart (as in v2).
+//!
+//! `bundles` lists the plugin folders (`crate::plugins`), which reload
+//! without a restart: `POST /api/plugins/reload` rescans them, and
+//! `PUT /api/plugins/bundles/{name}` turns one on or off.
 
-use crate::util::{blocking, json};
+use crate::error::{ApiError, ApiResult};
+use crate::schema::Body;
+use crate::util::{blocking, body_value, json};
 use crate::AppState;
+use axum::body::Bytes;
+use axum::extract::Path as AxPath;
 use axum::response::Response;
-use axum::routing::get;
+use axum::routing::{get, post, put};
 use axum::Router;
 use serde_json::{json as j, Value};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/", get(list_plugins))
+    Router::new().route("/", get(list_plugins)).route("/reload", post(reload_plugins)).route("/bundles/{name}", put(set_bundle_enabled))
 }
 
 async fn list_plugins() -> Response {
-    json(
-        blocking(|| {
-            let dirs = appv3_core::settings().plugins_dirs.clone();
-            // Force both consumers so their contract errors are recorded.
-            let providers: Vec<(PathBuf, String)> =
-                appv3_providers::plugin::provider_plugins().iter().filter_map(|p| Some((p.source()?.to_path_buf(), p.info().id.clone()))).collect();
-            let hooks: Vec<(PathBuf, Vec<&'static str>)> = appv3_agent::plugins::tool_plugins()
-                .iter()
-                .filter_map(|p| {
-                    let mut h = vec![];
-                    if p.has_before() {
-                        h.push("tool.before");
-                    }
-                    if p.has_after() {
-                        h.push("tool.after");
-                    }
-                    Some((p.source()?.to_path_buf(), h))
-                })
-                .collect();
-            status(&dirs, &appv3_jsplugin::plugin_files(&dirs), &providers, &hooks, &appv3_jsplugin::problems())
-        })
-        .await,
-    )
+    json(plugins_body().await)
+}
+
+async fn reload_plugins() -> Response {
+    crate::plugins::reload().await;
+    json(plugins_body().await)
+}
+
+/// `{"enabled": bool}`: records the choice in `plugins.json`, reloads, and
+/// answers with the bundle as it is now.
+async fn set_bundle_enabled(AxPath(name): AxPath<String>, raw: Bytes) -> ApiResult<Response> {
+    let v = body_value(&raw)?;
+    let mut b = Body::new(&v)?;
+    let enabled = b.bool("enabled", None);
+    b.finish(&["enabled"])?;
+    if !crate::plugins::found().iter().any(|f| f.name == name) {
+        return Err(ApiError::not_found(format!("Plugin '{name}' not found.")));
+    }
+    let config_dir = appv3_core::settings().config_dir.clone();
+    let n = name.clone();
+    blocking(move || appv3_plugins::set_enabled(&config_dir, &n, enabled)).await.map_err(ApiError::internal)?;
+    crate::plugins::reload().await;
+    let modules = appv3_kernel::global().status();
+    let found = crate::plugins::found();
+    let f = found.iter().find(|f| f.name == name).ok_or_else(|| ApiError::not_found(format!("Plugin '{name}' not found.")))?;
+    Ok(json(crate::plugins::bundle_json(f, &modules)))
+}
+
+async fn plugins_body() -> Value {
+    let mut body = blocking(|| {
+        let dirs = appv3_core::settings().plugins_dirs.clone();
+        // Force both consumers so their contract errors are recorded.
+        let providers: Vec<(PathBuf, String)> = appv3_providers::plugin::provider_plugins().iter().filter_map(|p| Some((p.source()?.to_path_buf(), p.info().id.clone()))).collect();
+        let hooks: Vec<(PathBuf, Vec<&'static str>)> = appv3_agent::plugins::tool_plugins()
+            .iter()
+            .filter_map(|p| {
+                let mut h = vec![];
+                if p.has_before() {
+                    h.push("tool.before");
+                }
+                if p.has_after() {
+                    h.push("tool.after");
+                }
+                Some((p.source()?.to_path_buf(), h))
+            })
+            .collect();
+        status(&dirs, &appv3_jsplugin::plugin_files(&dirs), &providers, &hooks, &appv3_jsplugin::problems())
+    })
+    .await;
+    body["bundles"] = Value::Array(crate::plugins::bundles_json());
+    body
 }
 
 /// v2 `*.py` plugin files across `dirs`, skipping `_*`, deduplicated.

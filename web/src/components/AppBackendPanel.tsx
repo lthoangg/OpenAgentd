@@ -94,11 +94,11 @@ type Health = 'checking' | 'online' | 'offline'
 interface AppBackendPanelProps {
   /** Loads status and probes servers when it turns true (dialog open, page shown). */
   active: boolean
-  /** Fill the form and test it; the user still confirms with Save & Connect. */
+  /** Fill the form and test it; the user still confirms with Save and use. */
   prefill?: AppBackendPrefill | null
   /**
-   * Include desktop network access. The dialog does; Settings has a separate
-   * Network access page.
+   * Include desktop network access. The dialog does; Settings → Server shows
+   * its own "Access from other devices" card.
    */
   showNetworkAccess?: boolean
 }

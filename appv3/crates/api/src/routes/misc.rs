@@ -83,7 +83,7 @@ async fn oauth_disconnect(AxPath(id): AxPath<String>, axum::extract::RawQuery(q)
     }
     // A plugin judges for itself whether it is still connected.
     let still_connected = match (&plugin, builtin, crate::providers::find(&id)) {
-        (Some(_), false, Some(entry)) => crate::providers::provider_is_configured(entry),
+        (Some(_), false, Some(entry)) => crate::providers::provider_is_configured(&entry),
         _ => appv3_core::credentials::snapshot().enabled(&id).iter().any(|c| c.has_secret()),
     };
     if !still_connected {

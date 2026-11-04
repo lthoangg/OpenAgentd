@@ -35,7 +35,8 @@ async fn tool_turn_persists_and_streams_like_v2() {
         Arc::new(MockProvider::new(vec![MockProvider::tool_call("call_1", "read", r#"{"path":"hello.txt"}"#), MockProvider::text("The file says hello world.")]));
     let p2 = provider.clone();
     let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
-    let agent = Agent::new(provider.clone(), "code", "You are a test agent.", vec![appv3_tools::builtin_tool("read").unwrap()], Some("mock:mock".into()));
+    let agent =
+        Agent::new(provider.clone(), "code", "You are a test agent.", vec![std::sync::Arc::new(appv3_tools::read::ReadTool) as appv3_tools::ToolRef], Some("mock:mock".into()));
     let session = AgentSession::new(agent, None, Some(ws.display().to_string()), pool.clone(), factory, None);
     let mut global = broadcaster::broadcaster().attach();
 

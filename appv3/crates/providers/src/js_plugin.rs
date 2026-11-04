@@ -78,6 +78,32 @@ fn credentials_from_arg(a: &Value) -> CredentialStore {
     store
 }
 
+/// Whether `a` and `b` name the same environment variable (Windows ignores case).
+fn same_env_name(a: &str, b: &str) -> bool {
+    if cfg!(windows) {
+        a.eq_ignore_ascii_case(b)
+    } else {
+        a == b
+    }
+}
+
+/// The `creds.get` native: `get(name)` on the store the arguments describe.
+///
+/// A call from a plugin bundle carries `$sandbox` (the host writes it: see `appv3_jsplugin::Sandbox`) with the
+/// environment variables the bundle may read, and is answered more narrowly: the exported environment only for
+/// a listed name, and the stored credential of exactly the provider asked about (no search over every
+/// provider, no named secrets). Without a plain provider id it reads nothing at all. A call without `$sandbox`
+/// (a single-file plugin, which has full access anyway) is answered as [`CredentialStore::get`] does.
+fn creds_get(a: &Value) -> String {
+    let name = a.get("name").and_then(|n| n.as_str()).unwrap_or("");
+    let Some(sandbox) = a.get("$sandbox") else { return credentials_from_arg(a).get(name) };
+    if !appv3_jsplugin::is_plain_provider_id(a.get("provider").and_then(|p| p.as_str()).unwrap_or("")) {
+        return String::new();
+    }
+    let listed = sandbox.get("env").and_then(|e| e.as_array()).is_some_and(|names| names.iter().filter_map(|n| n.as_str()).any(|n| same_env_name(n, name)));
+    credentials_from_arg(a).get_sandboxed(name, listed)
+}
+
 fn oauth_document(a: Value) -> Result<Value, String> {
     use appv3_core::credentials as store;
     let provider = a.get("provider").and_then(|p| p.as_str()).ok_or("OAuth storage requires a provider")?;
@@ -120,13 +146,7 @@ pub fn register_natives() {
     use appv3_jsplugin::register_native;
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
-        register_native(
-            "creds.get",
-            Arc::new(|a: Value| {
-                let store = credentials_from_arg(&a);
-                Ok(json!(store.get(a.get("name").and_then(|n| n.as_str()).unwrap_or(""))))
-            }),
-        );
+        register_native("creds.get", Arc::new(|a: Value| Ok(json!(creds_get(&a)))));
         register_native("creds.oauth", Arc::new(oauth_document));
         register_native(
             "gemini.convertMessages",
@@ -186,15 +206,46 @@ fn info_from_json(p: &Value) -> PluginInfo {
     }
 }
 
+/// Where the `provider` object lives in the module: `export const provider`
+/// of a single-file plugin, the default export's `provider` of a bundle.
+const FILE_PROVIDER: &str = "provider";
+const BUNDLE_PROVIDER: &str = "default.provider";
+
+/// The function members of the provider object, as `describe` lists them.
+fn method_set(describe: &Value) -> HashSet<String> {
+    describe.get("providerMethods").and_then(|m| m.as_array()).into_iter().flatten().filter_map(|m| m.as_str().map(String::from)).collect()
+}
+
+/// The checks a provider object must pass. `file` names the plugin file in
+/// the id message of a single-file plugin; a bundle's problems are shown by
+/// the bundle, which knows its own file.
+fn check_provider(info: &PluginInfo, methods: &HashSet<String>, file: Option<&std::path::Path>) -> Result<(), String> {
+    if info.id.is_empty() || info.id.contains(':') {
+        return Err(match file {
+            Some(f) => format!("invalid provider plugin id in {}: {}", f.display(), py_repr_str(&info.id)),
+            None => format!("invalid provider id {}: it must not be empty or contain ':'", py_repr_str(&info.id)),
+        });
+    }
+    if !methods.contains("build") {
+        return Err(format!("provider plugin {} must define build", py_repr_str(&info.id)));
+    }
+    if info.kind == "oauth" && !methods.contains("login") {
+        return Err(format!("oauth provider plugin {} must define login", py_repr_str(&info.id)));
+    }
+    Ok(())
+}
+
 pub struct JsProviderPlugin {
     js: Arc<JsPlugin>,
     info: PluginInfo,
     methods: HashSet<String>,
+    /// The module's `provider` object: `provider`, or `default.provider` for a bundle.
+    target: Target,
 }
 
 impl JsProviderPlugin {
-    /// The plugin file's `provider` export, validated like v2's
-    /// Load the provider plugin (errors are logged, the file is skipped).
+    /// The plugin file's `provider` export, validated like v2's. A problem is
+    /// logged and recorded for the plugin status API, and the file is skipped.
     pub fn from_plugin(js: &Arc<JsPlugin>) -> Option<Self> {
         let d = &js.describe;
         let fail = |e: String| {
@@ -207,26 +258,43 @@ impl JsProviderPlugin {
         }
         let p = d.get("provider")?;
         let info = info_from_json(p);
-        let methods: HashSet<String> = d.get("providerMethods").and_then(|m| m.as_array()).into_iter().flatten().filter_map(|m| m.as_str().map(String::from)).collect();
-        if info.id.is_empty() || info.id.contains(':') {
-            return fail(format!("invalid provider plugin id in {}: {}", js.path.display(), py_repr_str(&info.id)));
+        let methods = method_set(d);
+        if let Err(e) = check_provider(&info, &methods, Some(&js.path)) {
+            return fail(e);
         }
-        if !methods.contains("build") {
-            return fail(format!("provider plugin {} must define build", py_repr_str(&info.id)));
-        }
-        if info.kind == "oauth" && !methods.contains("login") {
-            return fail(format!("oauth provider plugin {} must define login", py_repr_str(&info.id)));
-        }
-        Some(Self { js: js.clone(), info, methods })
+        Some(Self { js: js.clone(), info, methods, target: Target::export(FILE_PROVIDER) })
     }
 
-    fn target() -> Target {
-        Target::export("provider")
+    /// The `provider` of a plugin bundle's code (its default export), checked
+    /// like a single file's. `Ok(None)` when the code exports none. An `Err`
+    /// is the reason it cannot be used: nothing is logged or recorded, the
+    /// bundle shows it. A provider whose id is not a plain name
+    /// ([`appv3_jsplugin::is_plain_provider_id`]) is refused too, since its
+    /// code could use no credentials, and so is one whose id is a built-in
+    /// provider's (ignoring case), which would take that provider over.
+    pub fn from_bundle(js: &Arc<JsPlugin>) -> Result<Option<Self>, String> {
+        let Some(d) = js.describe.get("default") else { return Ok(None) };
+        if let Some(t) = d.get("providerInvalid").and_then(|t| t.as_str()) {
+            return Err(format!("provider must be an object, got {t}"));
+        }
+        let Some(p) = d.get("provider") else { return Ok(None) };
+        let info = info_from_json(p);
+        let methods = method_set(d);
+        check_provider(&info, &methods, None)?;
+        if !appv3_jsplugin::is_plain_provider_id(&info.id) {
+            return Err(format!("invalid provider id {}: use 1 to 64 letters, digits, '-', '_' or '.', not starting or ending with '.'", py_repr_str(&info.id)));
+        }
+        if crate::catalog::is_builtin_id(&info.id) {
+            return Err(format!("provider id {} belongs to a built-in provider; use another id", py_repr_str(&info.id)));
+        }
+        // The bundle's code reads credentials through these.
+        register_natives();
+        Ok(Some(Self { js: js.clone(), info, methods, target: Target::export(BUNDLE_PROVIDER) }))
     }
 
     #[allow(clippy::result_large_err)] // JsError carries name, message, stack and props
     async fn call(&self, method: &str, args: &[Value]) -> Result<Value, JsError> {
-        self.js.call(&Self::target(), method, args, Mode::Value).await.map(|r| r.value)
+        self.js.call(&self.target, method, args, Mode::Value).await.map(|r| r.value)
     }
 
     async fn oauth_step(&self, method: &str, first: Option<Value>, sink: OAuthSink, store: Option<CredentialStore>) -> Result<(), String> {
@@ -256,7 +324,7 @@ impl ProviderPlugin for JsProviderPlugin {
 
     fn build(&self, ctx: BuildContext) -> ProviderResult<Arc<dyn LlmProvider>> {
         let arg = json!({"providerId": ctx.provider_id, "credentialId": ctx.credentials.credential_id, "model": ctx.model, "modelKwargs": ctx.model_kwargs, "credentials": credentials_arg(&ctx.credentials)});
-        let r = self.js.call_blocking(&Self::target(), "build", &[arg], Mode::Keep).map_err(provider_error)?;
+        let r = self.js.call_blocking(&self.target, "build", &[arg], Mode::Keep).map_err(provider_error)?;
         Ok(Arc::new(JsProvider::new(self.js.clone(), &self.info.id, r, ctx)?))
     }
 
@@ -288,7 +356,7 @@ impl ProviderPlugin for JsProviderPlugin {
         if !self.methods.contains("isConfigured") {
             return None;
         }
-        match self.js.call_blocking(&Self::target(), "isConfigured", &[credentials_arg(store)], Mode::Value) {
+        match self.js.call_blocking(&self.target, "isConfigured", &[credentials_arg(store)], Mode::Value) {
             Ok(r) => Some(match r.value {
                 Value::Bool(b) => b,
                 Value::Null => false,

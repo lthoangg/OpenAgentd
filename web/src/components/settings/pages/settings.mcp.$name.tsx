@@ -3,6 +3,7 @@ import { RotateCw, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatFullDateTime } from '@/utils/format'
 
+import type { ServerStatus } from '@/api/client'
 import {
   useConnectMcpOAuthMutation,
   useDeleteMcpServerMutation,
@@ -10,6 +11,7 @@ import {
   useRestartMcpServerMutation,
   useUpdateMcpServerMutation,
 } from '@/queries'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { SaveBar } from '@/components/settings/SaveBar'
@@ -39,6 +41,7 @@ import {
 } from '@/components/ui/dialog'
 import { EDITOR_BODY } from '@/components/settings/tokens'
 import { SettingsSkeleton } from '@/components/settings/SettingsPage'
+import { commandLine } from '@/utils/command-line'
 import { errorMessage } from '@/utils/errors'
 
 interface McpServerDetailPageProps {
@@ -126,6 +129,9 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
   }
 
   const server = serverQ.data
+  // A server a plugin bundle brings belongs to the bundle: it has no form, no
+  // Save and no Delete here, only a way to restart it.
+  const plugin = server?.plugin ?? null
   // Back goes through the same unsaved-changes check as closing Settings.
   const guardedBack = () => {
     if (dirty) setConfirmLeave(true)
@@ -137,7 +143,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
       <EditorSubHeader
         kind="mcp"
         name={name}
-        path=".openagentd/config/mcp.json"
+        path={plugin ? undefined : '.openagentd/config/mcp.json'}
         dirty={dirty}
         invalid={invalid}
         saving={updateMut.isPending}
@@ -183,11 +189,15 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
                 >
                   {server.enabled
                     ? 'Sign in with the server (OAuth) so agents can use its tools.'
-                    : 'Turn the server on and save before you sign in.'}
+                    : plugin
+                      ? 'Turn the plugin on in Plugins before you sign in.'
+                      : 'Turn the server on and save before you sign in.'}
                 </Callout>
               )}
 
-              {draft ? (
+              {plugin ? (
+                <PluginServerConfig server={server} plugin={plugin} />
+              ) : draft ? (
                 <McpServerForm value={draft} onChange={setDraft} isNew={false} disabled={updateMut.isPending} errors={fieldErrors} />
               ) : (
                 <PanelSection title="Configuration">
@@ -202,7 +212,8 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
                 pending={restartMut.isPending}
                 enabled={server.enabled}
                 dirty={dirty}
-                onDelete={() => setDeleteOpen(true)}
+                plugin={plugin}
+                onDelete={plugin ? undefined : () => setDeleteOpen(true)}
                 deletePending={deleteMut.isPending}
               />
             </>
@@ -210,22 +221,24 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
         </div>
       </div>
 
-      <SaveBar
-        shortcut
-        draft={{
-          dirty,
-          canSave: dirty && !invalid && !updateMut.isPending,
-          isSaving: updateMut.isPending,
-          save: handleSave,
-          reset: () => {
-            if (seedDraft) setDraft(seedDraft)
-            setSaveError(null)
-          },
-        }}
-        onSave={() => { void handleSave() }}
-        saveBlockedReason={invalid ? (firstError ?? 'Fix the errors above to save.') : null}
-        discardDescription={`Your edits to ${name} go back to the last saved version.`}
-      />
+      {!plugin && (
+        <SaveBar
+          shortcut
+          draft={{
+            dirty,
+            canSave: dirty && !invalid && !updateMut.isPending,
+            isSaving: updateMut.isPending,
+            save: handleSave,
+            reset: () => {
+              if (seedDraft) setDraft(seedDraft)
+              setSaveError(null)
+            },
+          }}
+          onSave={() => { void handleSave() }}
+          saveBlockedReason={invalid ? (firstError ?? 'Fix the errors above to save.') : null}
+          discardDescription={`Your edits to ${name} go back to the last saved version.`}
+        />
+      )}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
@@ -263,6 +276,11 @@ function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpSe
       <PanelRow label="Transport">
         <Chip mono title={server.transport === 'stdio' ? TERMS.stdio : TERMS.http}>{server.transport}</Chip>
       </PanelRow>
+      {server.plugin && (
+        <PanelRow label="Source">
+          <Chip>{`from ${server.plugin}`}</Chip>
+        </PanelRow>
+      )}
       <PanelRow label="Started">
         <span className="text-xs text-(--color-text)">{server.started_at ? formatFullDateTime(new Date(server.started_at)) : 'Not running'}</span>
       </PanelRow>
@@ -279,16 +297,49 @@ function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpSe
   )
 }
 
+// ── Plugin servers ───────────────────────────────────────────────────────────
+
+const CODE_LINE = 'rounded-xs bg-(--bg-key) px-1.5 py-0.5 font-mono text-meta text-(--color-text) [overflow-wrap:anywhere]'
+
+/**
+ * What a plugin's server runs, or connects to, as text. The bundle owns it, so
+ * it is not a form: the server goes on and off with the bundle, in Plugins.
+ */
+function PluginServerConfig({ server, plugin }: { server: ServerStatus; plugin: string }) {
+  const setSection = useSettingsStore((s) => s.setSection)
+  const config = server.config
+  return (
+    <PanelSection title="Configuration" description={`Defined by the plugin ${plugin}. It can't be edited here.`} flush>
+      {config?.transport === 'stdio' && (
+        <PanelRow label="Command" stack>
+          <code className={CODE_LINE}>{commandLine(config.command, config.args)}</code>
+        </PanelRow>
+      )}
+      {config?.transport === 'http' && (
+        <PanelRow label="URL" stack>
+          <code className={CODE_LINE}>{config.url}</code>
+        </PanelRow>
+      )}
+      <PanelRow label="Turn on or off" description="The server goes on and off with its plugin.">
+        <Button variant="default" size="sm" onClick={() => setSection('plugins')}>Open Plugins</Button>
+      </PanelRow>
+    </PanelSection>
+  )
+}
+
 // ── Manage ───────────────────────────────────────────────────────────────────
 
 function RestartCard({
-  onRestart, pending, enabled, dirty, onDelete, deletePending,
+  onRestart, pending, enabled, dirty, plugin, onDelete, deletePending,
 }: {
   onRestart: () => void
   pending: boolean
   enabled: boolean
   dirty: boolean
-  onDelete: () => void
+  /** The bundle that owns the server, if any. */
+  plugin: string | null
+  /** Omitted for a plugin's server: it is not removed here. */
+  onDelete?: () => void
   deletePending: boolean
 }) {
   return (
@@ -297,7 +348,7 @@ function RestartCard({
         label="Restart server"
         description={
           !enabled
-            ? 'Turn the server on and save first.'
+            ? plugin ? 'Turn the plugin on in Plugins first.' : 'Turn the server on and save first.'
             : dirty
               ? 'Restart uses the saved settings. Save first to apply your edits.'
               : 'Reconnect to pick up changes or recover from an error.'
@@ -312,12 +363,14 @@ function RestartCard({
           {pending ? 'Restarting…' : 'Restart'}
         </Button>
       </PanelRow>
-      <PanelRow label="Delete server" description="Removes it from mcp.json. This can't be undone.">
-        <Button variant="danger-subtle" size="sm" onClick={onDelete} disabled={deletePending}>
-          <Trash2 size={12} aria-hidden="true" />
-          {deletePending ? 'Deleting…' : 'Delete server…'}
-        </Button>
-      </PanelRow>
+      {onDelete && (
+        <PanelRow label="Delete server" description="Removes it from mcp.json. This can't be undone.">
+          <Button variant="danger-subtle" size="sm" onClick={onDelete} disabled={deletePending}>
+            <Trash2 size={12} aria-hidden="true" />
+            {deletePending ? 'Deleting…' : 'Delete server…'}
+          </Button>
+        </PanelRow>
+      )}
     </PanelSection>
   )
 }

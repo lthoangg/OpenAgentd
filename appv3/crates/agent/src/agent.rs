@@ -377,13 +377,19 @@ impl Agent {
                 }
             }
         };
-        let plugins = crate::plugins::tool_plugins();
+        // Single-file plugins' hooks wrap first, then the plugin bundles'.
+        let bundled = crate::plugins::bundle_tool_hooks();
+        let plugins: std::borrow::Cow<[crate::plugins::ToolPluginRef]> = if bundled.is_empty() {
+            std::borrow::Cow::Borrowed(crate::plugins::tool_plugins())
+        } else {
+            std::borrow::Cow::Owned(crate::plugins::tool_plugins().iter().cloned().chain(bundled).collect())
+        };
         let (mut text, (parts, mcp_app)) = if plugins.is_empty() {
             exec(tc.clone()).await?
         } else {
             let pctx =
                 crate::plugins::PluginCtx { tool: &tc.function.name, session_id: ctx.session_id.as_deref(), run_id: &ctx.run_id, agent_name: &ctx.agent_name, call_id: &tc.id };
-            crate::plugins::wrap_tool_call(plugins, pctx, tc, exec).await?
+            crate::plugins::wrap_tool_call(&plugins, pctx, tc, exec).await?
         };
         scope.mcp_app = mcp_app.clone();
         for h in hooks.iter().rev() {

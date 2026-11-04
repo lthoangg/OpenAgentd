@@ -209,13 +209,13 @@ async fn saving_a_message_bumps_session_activity() {
     let (first, _, _) = list_sessions_page(&pool, None, 2, &filter).await.unwrap();
     assert_eq!(first[0].id, old.id, "a rename must not reorder recent activity");
 
-    // The batch path (one connection) and the raw tool insert count too.
+    // The batch path (one connection) and a tool result count too.
     let mut conn = pool.acquire().await.unwrap();
     save_message_id(&mut conn, &new.id, NewMessage::assistant(Some("reply".into()))).await.unwrap();
     drop(conn);
     let (first, _, _) = list_sessions_page(&pool, None, 2, &filter).await.unwrap();
     assert_eq!(first[0].id, new.id);
-    insert_raw_tool_message(&pool, &old.id, "answer", "call-1", "ask_lead").await.unwrap();
+    save_message(&pool, &old.id, NewMessage::tool("call-1", "ask_lead", "answer")).await.unwrap();
     let (first, _, _) = list_sessions_page(&pool, None, 2, &filter).await.unwrap();
     assert_eq!(first[0].id, old.id);
 

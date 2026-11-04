@@ -11,6 +11,7 @@
 //! are bounded by [`BLOCKING_CALL_TIMEOUT`] instead, async ones by dropping.
 
 use crate::host::{self, HostState};
+use crate::sandbox::{ImportJail, LoadOptions, Policy};
 use crate::transpile;
 use rquickjs::loader::{ImportAttributes, Loader, Resolver};
 use rquickjs::{AsyncContext, AsyncRuntime, Ctx, Function, Module, Object, Promise};
@@ -129,18 +130,97 @@ type Reply = Box<dyn FnOnce(Result<CallResult, JsError>) + Send>;
 
 enum Msg {
     Call { target: String, method: String, args: String, mode: Mode, reply: Reply },
+    Tool { name: String, args: String, ctx: String, reply: Reply },
     Drop(u64),
 }
 
+/// A tool of a plugin bundle (`export default { tools: [...] }`), as the host sees it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ToolSpec {
+    /// Matches `^[a-z][a-z0-9_]{0,63}$`; unique within the plugin.
+    pub name: String,
+    pub description: String,
+    /// The tool's `input` JSON Schema (`"type": "object"`).
+    pub input_schema: Value,
+    /// The tool only reads, so it can run in Plan mode.
+    pub read_only: bool,
+}
+
+/// The `ctx` argument of a tool's `run(args, ctx)` (`ToolContext` in the
+/// type declarations).
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCtx {
+    pub session_id: Option<String>,
+    pub agent_name: String,
+    pub workspace: Option<String>,
+    pub call_id: String,
+}
+
 /// A loaded plugin file.
+///
+/// # Plugin API v1 and v2
+///
+/// What a file provides is decided by its exports. A v1 plugin exports
+/// `provider` and/or a `plugin()` factory; [`JsPlugin::describe`] reports
+/// `exports`, `provider`, `providerMethods`, `providerInvalid` and
+/// `pluginFactory`, and consumers call `Target::export("provider")` (a
+/// provider) or the object `plugin()` returns (tool hooks, kept with
+/// `Mode::Keep`).
+///
+/// A v2 plugin (a bundle's code) has an object as its default export:
+/// `export default { tools, hooks, provider }`. `describe["default"]` then
+/// holds
+///
+/// ```text
+/// tools:            [{name, description, input, readOnly}], validated at load
+/// warnings:         ["tool x: input property 'y' has no description", …]
+/// hooks:            names of the function members of `default.hooks`
+///                   (`"tool.before"`, `"tool.after"`, `"applies_to"`)
+/// provider:         the JSON fields of `default.provider`   ┐ exactly like v1's
+/// providerMethods:  its function members                    │ top-level
+/// providerInvalid:  typeof `default.provider`, when invalid ┘ describe fields
+/// ```
+///
+/// `tools` and `warnings` are always there. `hooks` and the provider keys are
+/// present only when the default export has `hooks` / `provider`; hooks that
+/// are not an object of functions fail the load, a provider is validated by
+/// the consumer like v1's. A v1 file has no `default` key (a function default
+/// export is the v1 factory).
+///
+/// How a consumer reaches each part, mirroring v1's conventions:
+///
+/// * **Tools**: [`JsPlugin::tools`] and [`JsPlugin::run_tool`].
+/// * **Hooks**: there is no factory to call and no handle to keep; the hooks
+///   object is `Target::export("default.hooks")`. Call method `"tool.before"`
+///   or `"tool.after"` with `Mode::Args` and `[input, output]` (v1's
+///   arguments, read the mutated `args[1]` back), and `"applies_to"` with
+///   `Mode::Value` and `[agent_name, role]`. A hook exists when its name is
+///   in `describe["default"]["hooks"]`.
+/// * **Provider**: the provider object is `Target::export("default.provider")`,
+///   where v1 uses `Target::export("provider")`. Call `"build"` with
+///   `Mode::Keep` (it returns the instance, kept under a handle), and
+///   `"login"`, `"oauthCallback"`, `"isConfigured"`, `"discoverModels"` and
+///   `"getUsage"` with `Mode::Value`, with the same arguments as v1. Validate
+///   it from `describe["default"]` the way v1 does from `describe`.
+///
+/// With a [`Sandbox`](crate::Sandbox) the natives the code uses refuse what
+/// its permissions do not grant (a `PermissionError`), and credentials are
+/// available only for the provider declared in `default.provider.id`, and
+/// only while the host's gate accepts it for the plugin
+/// ([`set_credentials_gate`](crate::set_credentials_gate)).
+/// Without one the plugin has full access, as every v1 plugin always had.
 pub struct JsPlugin {
     pub path: PathBuf,
     /// File name (`my_plugin.ts`).
     pub file_name: String,
     /// File stem (`my_plugin`).
     pub stem: String,
-    /// `__oad_describe()`: export names, `provider` fields, plugin factory.
+    /// `__oad_describe()`: export names, `provider` fields, plugin factory,
+    /// and for a v2 module the `default` entry described above.
     pub describe: Value,
+    tools: Vec<ToolSpec>,
+    warnings: Vec<String>,
     tx: mpsc::UnboundedSender<Msg>,
 }
 
@@ -151,22 +231,81 @@ impl std::fmt::Debug for JsPlugin {
 }
 
 impl JsPlugin {
-    /// Spawn the plugin's runtime thread and evaluate the module.
+    /// Spawn the plugin's runtime thread and evaluate the module, with full
+    /// access (a v1 single-file plugin). Same as [`JsPlugin::load_with`]
+    /// with `LoadOptions { sandbox: None }`.
     pub fn load(path: &Path) -> Result<Arc<JsPlugin>, String> {
+        Self::load_with(path, LoadOptions::default())
+    }
+
+    /// Spawn the plugin's runtime thread and evaluate the module. With a
+    /// sandbox the data folder is created first, and the code runs under the
+    /// sandbox's permissions. A tool definition that breaks the rules fails
+    /// the load with an error naming the tool.
+    pub fn load_with(path: &Path, opts: LoadOptions) -> Result<Arc<JsPlugin>, String> {
         let path = path.to_path_buf();
         let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
         let stem = path.file_stem().and_then(|n| n.to_str()).unwrap_or("").to_string();
+        // A bundle's entry file is usually `index.ts`: log under the plugin's name instead.
+        let label = opts.sandbox.as_ref().map(|s| s.plugin.clone()).unwrap_or_else(|| stem.clone());
+        let policy = opts.sandbox.map(|sb| Policy::new(sb, &path)).transpose()?;
         let (tx, rx) = mpsc::unbounded_channel();
         let (init_tx, init_rx) = std::sync::mpsc::channel::<Result<Value, String>>();
         let p = path.clone();
-        let label = stem.clone();
-        std::thread::Builder::new().name(format!("plugin-{stem}")).stack_size(THREAD_STACK).spawn(move || thread_main(p, label, rx, init_tx)).map_err(|e| e.to_string())?;
+        std::thread::Builder::new()
+            .name(format!("plugin-{label}"))
+            .stack_size(THREAD_STACK)
+            .spawn(move || thread_main(p, label, policy, rx, init_tx))
+            .map_err(|e| e.to_string())?;
         let describe = match init_rx.recv_timeout(LOAD_TIMEOUT) {
             Ok(r) => r?,
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => return Err(format!("plugin took longer than {} s to load", LOAD_TIMEOUT.as_secs())),
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return Err("plugin runtime thread exited during load".to_string()),
         };
-        Ok(Arc::new(JsPlugin { path, file_name, stem, describe, tx }))
+        let tools = parse_tools(&describe);
+        let warnings = describe.pointer("/default/warnings").and_then(Value::as_array).map(|a| a.iter().filter_map(|w| w.as_str().map(String::from)).collect()).unwrap_or_default();
+        Ok(Arc::new(JsPlugin { path, file_name, stem, describe, tools, warnings, tx }))
+    }
+
+    /// The tools of `export default { tools: [...] }`, in declaration order
+    /// (empty for a module without them).
+    pub fn tools(&self) -> &[ToolSpec] {
+        &self.tools
+    }
+
+    /// Problems found at load that do not stop the plugin, such as
+    /// `tool draft_release_notes: input property 'since' has no description`.
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
+    }
+
+    /// Run tool `name`: `run(args, ctx)`, awaiting a promise. Returns the JSON
+    /// of what it returned: a string, or an array of content blocks
+    /// (`{"type": "text", "text"}` / `{"type": "image", "data", "mimeType"}`);
+    /// anything else fails. A tool that throws (or rejects) yields its
+    /// `JsError`, and so does an unknown `name`. `args` is passed as is, with
+    /// `null` standing for `{}`; no marker in it is turned into a callback
+    /// or handle, since a model wrote it.
+    ///
+    /// Nothing here bounds the wait: busy JavaScript is interrupted after
+    /// [`BUSY_LIMIT`], but a tool awaiting a `fetch` that never answers is
+    /// not, so callers wrap this in their own timeout. Dropping the future
+    /// does not cancel the tool.
+    #[allow(clippy::result_large_err)] // see `call`
+    pub async fn run_tool(&self, name: &str, args: Value, ctx: ToolCtx) -> Result<Value, JsError> {
+        if !self.tools.iter().any(|t| t.name == name) {
+            return Err(JsError::new(format!("{} has no tool named '{name}'", self.file_name)));
+        }
+        let args = if args.is_null() { Value::Object(Map::new()) } else { args };
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let reply: Reply = Box::new(move |r| {
+            let _ = tx.send(r);
+        });
+        let msg = Msg::Tool { name: name.to_string(), args: args.to_string(), ctx: serde_json::to_string(&ctx).unwrap_or_else(|_| "{}".into()), reply };
+        if let Err(mpsc::error::SendError(Msg::Tool { reply, .. })) = self.tx.send(msg) {
+            reply(Err(JsError::new("plugin runtime has stopped")));
+        }
+        rx.await.unwrap_or_else(|_| Err(JsError::new("plugin runtime has stopped"))).map(|r| r.value)
     }
 
     fn send(&self, target: &Target, method: &str, args: &[Value], mode: Mode, reply: Reply) {
@@ -222,7 +361,22 @@ impl JsPlugin {
     }
 }
 
-fn thread_main(path: PathBuf, label: String, rx: mpsc::UnboundedReceiver<Msg>, init_tx: std::sync::mpsc::Sender<Result<Value, String>>) {
+/// The tools `describe["default"]["tools"]` lists (already validated by the prelude).
+fn parse_tools(describe: &Value) -> Vec<ToolSpec> {
+    let Some(list) = describe.pointer("/default/tools").and_then(Value::as_array) else { return vec![] };
+    list.iter()
+        .filter_map(|t| {
+            Some(ToolSpec {
+                name: t.get("name")?.as_str()?.to_string(),
+                description: t.get("description").and_then(Value::as_str).unwrap_or("").to_string(),
+                input_schema: t.get("input").cloned().unwrap_or(Value::Null),
+                read_only: t.get("readOnly").and_then(Value::as_bool).unwrap_or(false),
+            })
+        })
+        .collect()
+}
+
+fn thread_main(path: PathBuf, label: String, policy: Option<Policy>, rx: mpsc::UnboundedReceiver<Msg>, init_tx: std::sync::mpsc::Sender<Result<Value, String>>) {
     let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
         Ok(rt) => rt,
         Err(e) => {
@@ -242,7 +396,7 @@ fn thread_main(path: PathBuf, label: String, rx: mpsc::UnboundedReceiver<Msg>, i
                 beat.set(Instant::now());
             }
         });
-        let (qrt, ctx, describe) = match init(&path, &label, last_tick).await {
+        let (qrt, ctx, describe) = match init(&path, &label, policy, last_tick).await {
             Ok(v) => v,
             Err(e) => {
                 let _ = init_tx.send(Err(e));
@@ -258,6 +412,9 @@ fn thread_main(path: PathBuf, label: String, rx: mpsc::UnboundedReceiver<Msg>, i
             match msg {
                 Msg::Call { target, method, args, mode, reply } => {
                     tokio::task::spawn_local(async move { reply(invoke(&ctx, target, method, args, mode).await) });
+                }
+                Msg::Tool { name, args, ctx: call_ctx, reply } => {
+                    tokio::task::spawn_local(async move { reply(invoke_tool(&ctx, name, args, call_ctx).await) });
                 }
                 Msg::Drop(id) => {
                     tokio::task::spawn_local(async move {
@@ -311,7 +468,30 @@ async fn invoke(ctx: &AsyncContext, target: String, method: String, args: String
             r.map_err(|e| js_error(&ctx, e))
         })
         .await;
-    let v: Value = serde_json::from_str(&out?).map_err(|e| JsError::new(format!("plugin returned a value that is not JSON-serialisable: {e}")))?;
+    call_result(&out?)
+}
+
+/// `__oad_run_tool(name, args, ctx)`: the tool's result, validated by the prelude.
+#[allow(clippy::result_large_err)] // see `JsPlugin::call`
+async fn invoke_tool(ctx: &AsyncContext, name: String, args: String, call_ctx: String) -> Result<CallResult, JsError> {
+    let out: Result<String, JsError> = ctx
+        .async_with(async |ctx| {
+            let r: rquickjs::Result<String> = async {
+                let f: Function = ctx.globals().get("__oad_run_tool")?;
+                let p: Promise = f.call((name, args, call_ctx))?;
+                p.into_future::<String>().await
+            }
+            .await;
+            r.map_err(|e| js_error(&ctx, e))
+        })
+        .await;
+    call_result(&out?)
+}
+
+/// The bridge's JSON reply as a [`CallResult`].
+#[allow(clippy::result_large_err)] // see `JsPlugin::call`
+fn call_result(json: &str) -> Result<CallResult, JsError> {
+    let v: Value = serde_json::from_str(json).map_err(|e| JsError::new(format!("plugin returned a value that is not JSON-serialisable: {e}")))?;
     Ok(CallResult {
         handle: v.get("handle").and_then(|x| x.as_u64()),
         methods: v.get("methods").and_then(|m| m.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default(),
@@ -320,7 +500,7 @@ async fn invoke(ctx: &AsyncContext, target: String, method: String, args: String
     })
 }
 
-async fn init(path: &Path, label: &str, last_tick: Rc<Cell<Instant>>) -> Result<(AsyncRuntime, AsyncContext, Value), String> {
+async fn init(path: &Path, label: &str, policy: Option<Policy>, last_tick: Rc<Cell<Instant>>) -> Result<(AsyncRuntime, AsyncContext, Value), String> {
     let rt = AsyncRuntime::new().map_err(|e| e.to_string())?;
     rt.set_memory_limit(MEMORY_LIMIT).await;
     rt.set_max_stack_size(JS_STACK).await;
@@ -335,7 +515,7 @@ async fn init(path: &Path, label: &str, last_tick: Rc<Cell<Instant>>) -> Result<
         true
     })))
     .await;
-    rt.set_loader(PluginResolver, PluginLoader).await;
+    rt.set_loader(PluginResolver { jail: policy.as_ref().map(Policy::import_jail) }, PluginLoader).await;
     let who = label.to_string();
     rt.set_host_promise_rejection_tracker(Some(Box::new(move |ctx, _promise, reason, is_handled| {
         if !is_handled {
@@ -345,12 +525,13 @@ async fn init(path: &Path, label: &str, last_tick: Rc<Cell<Instant>>) -> Result<
     })))
     .await;
     let ctx = AsyncContext::full(&rt).await.map_err(|e| e.to_string())?;
-    let state = HostState::new(label);
+    let state = HostState::new(label, policy);
+    let st = state.clone();
     let spec = path.to_string_lossy().into_owned();
     let describe: Result<String, String> = ctx
         .async_with(async |ctx| {
             let r: rquickjs::Result<String> = async {
-                host::install(&ctx, state)?;
+                host::install(&ctx, st)?;
                 ctx.eval::<(), _>(PRELUDE)?;
                 let ns: Object = Module::import(&ctx, spec)?.into_future::<Object>().await?;
                 ctx.globals().set("__oad_ns", ns)?;
@@ -366,7 +547,12 @@ async fn init(path: &Path, label: &str, last_tick: Rc<Cell<Instant>>) -> Result<
             })
         })
         .await;
-    let describe = serde_json::from_str(&describe?).map_err(|e| e.to_string())?;
+    let describe: Value = serde_json::from_str(&describe?).map_err(|e| e.to_string())?;
+    // Credentials can open up for the provider the default export declares, and no other (the
+    // host's gate still decides, at every use).
+    if let Some(id) = describe.pointer("/default/provider/id").and_then(Value::as_str) {
+        state.declare_provider(id);
+    }
     Ok((rt, ctx, describe))
 }
 
@@ -384,7 +570,10 @@ fn normalize(p: &Path) -> PathBuf {
     out
 }
 
-struct PluginResolver;
+struct PluginResolver {
+    /// A bundle's imports stay inside its folder.
+    jail: Option<ImportJail>,
+}
 
 impl Resolver for PluginResolver {
     fn resolve<'js>(&mut self, _ctx: &Ctx<'js>, base: &str, name: &str, _attrs: Option<ImportAttributes<'js>>) -> rquickjs::Result<String> {
@@ -401,7 +590,10 @@ impl Resolver for PluginResolver {
         let s = p.to_string_lossy();
         let candidates = [p.clone(), PathBuf::from(format!("{s}.ts")), PathBuf::from(format!("{s}.js")), p.join("index.ts"), p.join("index.js")];
         if let Some(c) = candidates.iter().find(|c| c.is_file()) {
-            return Ok(c.to_string_lossy().into_owned());
+            return match &self.jail {
+                None => Ok(c.to_string_lossy().into_owned()),
+                Some(jail) => jail.check(c, name).map(|real| real.to_string_lossy().into_owned()).map_err(|d| rquickjs::Error::new_resolving_message(base, name, d.message)),
+            };
         }
         Err(rquickjs::Error::new_resolving_message(base, name, "file not found"))
     }

@@ -7,7 +7,9 @@ license.workspace = true
 [dependencies]
 dunce.workspace = true
 appv3-core.workspace = true
+appv3-plugins.workspace = true
 tokio.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 reqwest.workspace = true

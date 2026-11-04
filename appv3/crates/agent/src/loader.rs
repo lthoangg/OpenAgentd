@@ -439,29 +439,16 @@ pub fn detect_drift(stamp: &ConfigStamp) -> Vec<PathBuf> {
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
-const CONTEXT_INJECTED_TOOLS: &[&str] = &["skill", "todo", "schedule", "lsp", "ask_user", "plan", "workspace", "mcp"];
-/// Former names of injected tools. Agent files written before the renames
-/// still list them; they are skipped like the injected tools, never pruned
-/// from the user's file.
-const FORMER_TOOL_NAMES: &[&str] = &["todo_manage", "schedule_task", "send_to_workspace", "delegate", "submit_plan"];
+/// Former names of injected tools, and `lsp`, which no agent gets any more.
+/// Agent files written before the renames still list them; they are skipped
+/// like the injected tools, never pruned from the user's file.
+const FORMER_TOOL_NAMES: &[&str] = &["todo_manage", "schedule_task", "send_to_workspace", "delegate", "submit_plan", "lsp"];
 
-/// Default tool registry (built-ins by name). MCP tools are reached
-/// through the `mcp` tool, which `build_agent` adds.
+/// Default tool registry: the tools an agent file can name
+/// (`tool_registry::TOOLS`). MCP tools are reached through the `mcp` tool,
+/// which `build_agent` adds.
 pub fn default_tool_registry() -> HashMap<String, ToolRef> {
-    let mut reg: HashMap<String, ToolRef> = HashMap::new();
-    for n in ["web_search", "web_fetch", "read", "grep", "glob", "patch", "shell", "todo"] {
-        if let Some(t) = appv3_tools::builtin_tool(n) {
-            reg.insert(n.into(), t);
-        }
-    }
-    reg.insert("skill".into(), Arc::new(crate::skills::SkillTool));
-    reg.insert("schedule".into(), Arc::new(crate::scheduler::ScheduleTaskTool));
-    for n in ["generate_image", "generate_video"] {
-        if let Some(t) = appv3_tools::builtin_tool(n) {
-            reg.insert(n.into(), t);
-        }
-    }
-    reg
+    crate::tool_registry::agent_tools().map(|(n, t)| (n.to_string(), t)).collect()
 }
 
 /// Drop tool names the registry does not
@@ -516,7 +503,7 @@ pub fn build_agent(mut cfg: AgentConfig, registry: &HashMap<String, ToolRef>, fa
         }
     }
     let pick = |n: &str| -> ToolRef { registry.get(n).cloned().unwrap_or_else(|| default_tool_registry()[n].clone()) };
-    let mut tools: Vec<ToolRef> = vec![pick("skill"), pick("todo"), pick("schedule")];
+    let mut tools: Vec<ToolRef> = crate::tool_registry::base_tools().map(pick).collect();
     let mut seen: std::collections::HashSet<String> = tools.iter().map(|t| t.name().to_string()).collect();
     let mut dedup = vec![];
     for t in &cfg.tools {
@@ -527,7 +514,7 @@ pub fn build_agent(mut cfg: AgentConfig, registry: &HashMap<String, ToolRef>, fa
     cfg.tools = dedup;
     let mut unknown_tools: Vec<String> = vec![];
     for name in &cfg.tools {
-        if CONTEXT_INJECTED_TOOLS.contains(&name.as_str()) || FORMER_TOOL_NAMES.contains(&name.as_str()) {
+        if crate::tool_registry::given_without_listing(name) || FORMER_TOOL_NAMES.contains(&name.as_str()) {
             continue;
         }
         let Some(t) = registry.get(name) else {

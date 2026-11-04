@@ -363,11 +363,11 @@ fn settings_err(e: impl std::fmt::Display) -> ApiError {
 /// Warm the provider model cache.
 async fn warm_provider_model_cache() -> ApiResult<()> {
     let rt = rs::load_runtime_settings().map_err(settings_err)?;
-    let mut candidates: Vec<&'static Value> = vec![];
+    let mut candidates: Vec<Value> = vec![];
     for entry in prov::all_providers() {
-        let id = s(entry, "id");
+        let id = s(&entry, "id");
         let pui = prov::ui(&rt, id);
-        if !prov::provider_is_configured(entry) {
+        if !prov::provider_is_configured(&entry) {
             if !pui.cached_models.is_empty() {
                 let _ = rs::forget_provider_models(id);
             }
@@ -388,12 +388,12 @@ async fn warm_provider_model_cache() -> ApiResult<()> {
         }
     }))
     .await;
-    let configured: Vec<&Value> = candidates.into_iter().zip(reach).filter(|(_, ok)| *ok).map(|(e, _)| e).collect();
+    let configured: Vec<Value> = candidates.into_iter().zip(reach).filter(|(_, ok)| *ok).map(|(e, _)| e).collect();
     let found = futures::future::join_all(configured.iter().map(|e| async move { prov::discover_provider_models(e, &prov::saved_overrides(e)).await })).await;
     for (entry, models) in configured.into_iter().zip(found) {
         let cleaned = prov::filter_agent_model_ids(models);
         if !cleaned.is_empty() {
-            let _ = rs::set_provider_cached_models(s(entry, "id"), &cleaned);
+            let _ = rs::set_provider_cached_models(s(&entry, "id"), &cleaned);
         }
     }
     Ok(())
@@ -470,7 +470,7 @@ async fn get_registry() -> ApiResult<Response> {
         if pui.is_disconnected {
             continue;
         }
-        let configured = prov::provider_is_configured(entry);
+        let configured = prov::provider_is_configured(&entry);
         if !configured {
             if !pui.cached_models.is_empty() {
                 let _ = rs::forget_provider_models(provider);

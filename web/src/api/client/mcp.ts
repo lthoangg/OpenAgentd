@@ -40,6 +40,12 @@ export type ServerStatus = {
   started_at: string | null
   /** Saved config from mcp.json. Null when the server was removed mid-flight. */
   config: ServerBody | null
+  /**
+   * The plugin bundle this server comes from (its name then reads
+   * `<bundle>/<server>`). Absent or null for servers saved in mcp.json. A plugin
+   * server is read-only here: the bundle owns its config.
+   */
+  plugin?: string | null
 }
 
 export type CreateServerRequest = { name: string; server: ServerBody }

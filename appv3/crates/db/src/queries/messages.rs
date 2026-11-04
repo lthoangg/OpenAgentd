@@ -812,29 +812,6 @@ pub async fn latest_sent_from(pool: &DbPool, session_id: &str) -> Result<Option<
     Ok(row.and_then(|r| r.0).and_then(|s| serde_json::from_str(&s).ok()))
 }
 
-/// Direct `SessionMessage(...)` insert with model defaults (seq 0, kind chat),
-/// as sending a subagent message does for the `ask_lead` answer.
-pub async fn insert_raw_tool_message(pool: &DbPool, session_id: &str, content: &str, tool_call_id: &str, name: &str) -> Result<()> {
-    let sid = db_id(session_id);
-    let now = now_db();
-    sqlx::query(
-        r#"INSERT INTO session_messages
-           (id, session_id, role, content, reasoning_content, tool_calls,
-            tool_call_id, name, extra, created_at, seq, kind, pinned)
-           VALUES (?, ?, 'tool', ?, NULL, 'null', ?, ?, 'null', ?, 0, 'chat', 0)"#,
-    )
-    .bind(new_id())
-    .bind(&sid)
-    .bind(content)
-    .bind(tool_call_id)
-    .bind(name)
-    .bind(&now)
-    .execute(pool)
-    .await?;
-    touch_session_activity(pool, &sid, &now).await?;
-    Ok(())
-}
-
 /// First `role='tool'` row for *tool_call_id* in a session (bound MCP app lookup).
 pub async fn find_tool_message(pool: &DbPool, session_id: &str, tool_call_id: &str) -> Result<Option<SessionMessage>> {
     Ok(sqlx::query_as::<_, SessionMessage>("SELECT * FROM session_messages WHERE session_id = ? AND role = 'tool' AND tool_call_id = ? LIMIT 1")

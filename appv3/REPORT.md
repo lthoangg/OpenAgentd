@@ -557,7 +557,9 @@ explicitly.
   - *Message positions.* `save_message` allocates `seq` inside the INSERT,
     and releasing queued messages reads `MAX(seq)` under `BEGIN IMMEDIATE`.
     v2 reads and writes in separate statements, so concurrent saves could
-    share a position.
+    share a position. The lead's `ask_lead` answer is saved the same way;
+    v2 inserted it at `seq` 0, so it loaded first and was dropped as an
+    orphan, and the member's request ended on its own assistant message.
   - *SSE contract.* `crates/agent/data/sse_events.json` lists every event type per
     stream. The broadcaster and stream store check each event against it
     (debug builds panic, release builds log), and the web tests check their

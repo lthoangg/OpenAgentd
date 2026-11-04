@@ -17,7 +17,7 @@ pub use plugin::{plugin_config_body, PluginServers};
 
 use appv3_tools::ToolRef;
 use client::{McpClient, McpError};
-use config::ServerConfig;
+use config::{OAuthConfig, ServerConfig};
 use indexmap::IndexMap;
 use serde_json::{json, Value};
 use std::path::Path;
@@ -144,11 +144,11 @@ fn utc_isoformat() -> String {
 }
 
 fn oauth_required_config_message(name: &str) -> String {
-    format!("MCP server '{name}' requires OAuth. Enable OAuth, add the OAuth app client ID and secret in Settings, then Connect OAuth.")
+    format!("MCP server '{name}' requires OAuth. Enable OAuth, add the OAuth app client ID and secret in Settings, then Sign in.")
 }
 
 fn oauth_credentials_required_message(name: &str) -> String {
-    format!("MCP server '{name}' requires OAuth app credentials. Add the OAuth app client ID/secret in Settings, then Connect OAuth.")
+    format!("MCP server '{name}' requires OAuth app credentials. Add the OAuth app client ID/secret in Settings, then Sign in.")
 }
 
 /// Whether the error is an OAuth client-registration failure.
@@ -265,7 +265,7 @@ async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> 
             }
             Ok(McpClient::stdio_in(resolved.as_deref().unwrap_or(command), args, &launch_env, cwd.as_deref())?.with_timeout(cfg.timeout()))
         }
-        ServerConfig::Http { url, headers, oauth, .. } => {
+        ServerConfig::Http { url, headers, oauth, kind, .. } => {
             let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(String::from)).unwrap_or_default();
             if oauth.is_none() && host == "mcp.slack.com" {
                 return Err(RunError::AuthRequired(oauth_required_config_message(name)));
@@ -277,8 +277,12 @@ async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> 
                 return Err(RunError::AuthRequired(oauth_credentials_required_message(name)));
             }
             let hdrs: Vec<(String, String)> = config::resolve_env_dict(headers).into_iter().collect();
-            let auth = oauth::build_oauth_provider(name, url, oauth.as_ref())?;
-            Ok(McpClient::http(url, &hdrs, auth)?.with_timeout(cfg.timeout()))
+            // MCP authorization is discovered on a 401, so a server with no
+            // `oauth` block still signs in (dynamic client registration).
+            let discovered = OAuthConfig { client_id: None, client_secret: None };
+            let oauth = oauth.as_ref().or(cfg.signs_in_with_oauth().then_some(&discovered));
+            let auth = oauth::build_oauth_provider(name, url, oauth)?;
+            Ok(McpClient::http(url, &hdrs, auth, *kind)?.with_timeout(cfg.timeout()))
         }
     }
 }
@@ -345,11 +349,12 @@ async fn run_server(name: String, cfg: ServerConfig, runner: Arc<Runner>) {
                 runner.finish("auth_required", Some(e.to_string()));
                 return;
             }
-            let is_http_no_oauth = matches!(&cfg, ServerConfig::Http { oauth: None, .. });
-            if is_http_no_oauth && is_http_auth_failure(&e.to_string()) {
-                let m = oauth_required_config_message(&name);
-                tracing::warn!("mcp_server_auth_required name={} transport={} err={}", name, cfg.transport(), m);
-                runner.finish("auth_required", Some(m));
+            // Only a server with its own Authorization header gets here on a 401: the others sign in.
+            // Signing in would not help it, so it is an error, not `auth_required`.
+            if matches!(&cfg, ServerConfig::Http { .. }) && !cfg.signs_in_with_oauth() && is_http_auth_failure(&e.to_string()) {
+                let m = format!("MCP server '{name}' did not accept its Authorization header ({e}). Update the header in Settings -> MCP.");
+                tracing::warn!("mcp_server_failed name={} transport={} err={}", name, cfg.transport(), m);
+                runner.finish("error", Some(m));
                 return;
             }
             if is_oauth_registration_failure(&e) || unresolved_client_id(&cfg) {

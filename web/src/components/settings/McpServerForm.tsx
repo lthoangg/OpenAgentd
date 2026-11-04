@@ -116,7 +116,13 @@ export function McpServerForm({
       {/* Transport + connection fields — merged into one section ── */}
       <PanelSection
         title="Transport"
-        description={value.transport === 'stdio' ? 'Runs a local process and talks to it over stdin and stdout.' : 'Connects to a URL (Streamable HTTP).'}
+        description={
+          value.transport === 'stdio'
+            ? 'Runs a local process and talks to it over stdin and stdout.'
+            : value.transport === 'sse'
+              ? 'Connects to a URL (HTTP + SSE, the legacy transport).'
+              : 'Connects to a URL (Streamable HTTP).'
+        }
       >
         <div className="flex flex-col gap-5">
           {/* Transport picker always at the top */}
@@ -175,8 +181,8 @@ export function McpServerForm({
             </>
           )}
 
-          {/* ── HTTP fields ── */}
-          {value.transport === 'http' && (
+          {/* ── HTTP and SSE fields (the same for both) ── */}
+          {value.transport !== 'stdio' && (
             <>
               <Field
                 label="URL"
@@ -303,8 +309,8 @@ function TransportToggle({
   onChange,
   disabled,
 }: {
-  value: 'stdio' | 'http'
-  onChange: (next: 'stdio' | 'http') => void
+  value: McpServerDraft['transport']
+  onChange: (next: McpServerDraft['transport']) => void
   disabled?: boolean
 }) {
   return (
@@ -315,6 +321,7 @@ function TransportToggle({
       options={[
         { value: 'stdio', label: 'stdio', tooltip: 'Runs a local process' },
         { value: 'http', label: 'HTTP', tooltip: 'Connects to a URL' },
+        { value: 'sse', label: 'SSE (legacy)', tooltip: 'HTTP + SSE, the older transport' },
       ]}
       disabled={disabled}
       fill

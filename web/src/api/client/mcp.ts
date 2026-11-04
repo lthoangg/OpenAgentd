@@ -16,7 +16,8 @@ export type StdioServerBody = {
 }
 
 export type HttpServerBody = {
-  transport: 'http'
+  /** `http` is Streamable HTTP (with a legacy fallback); `sse` is the legacy HTTP+SSE transport. */
+  transport: 'http' | 'sse'
   url: string
   headers: Record<string, string>
   oauth?: {
@@ -32,7 +33,7 @@ export type ServerBody = StdioServerBody | HttpServerBody
 
 export type ServerStatus = {
   name: string
-  transport: 'stdio' | 'http'
+  transport: 'stdio' | 'http' | 'sse'
   enabled: boolean
   state: 'stopped' | 'starting' | 'ready' | 'auth_required' | 'error'
   error: string | null

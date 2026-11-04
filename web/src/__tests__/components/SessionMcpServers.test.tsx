@@ -204,6 +204,72 @@ describe('SessionMcpServers', () => {
     expect(within(row('github')).queryByRole('button')).toBeNull()
   })
 
+  it('offers Sign in to an http server that has no oauth block, since the server finds out how on a 401', async () => {
+    mockServerList([
+      makeServer({
+        name: 'plain',
+        transport: 'http',
+        state: 'auth_required',
+        config: { transport: 'http', url: 'https://mcp.example.com/mcp', headers: {}, enabled: true },
+      }),
+    ])
+
+    renderSection({ agentServers: ['plain'] })
+
+    const plain = await waitFor(() => row('plain'))
+    expect(within(plain).getByRole('button', { name: 'Sign in' })).toBeTruthy()
+  })
+
+  it('offers Sign in to an sse server that needs it', async () => {
+    mockServerList([
+      makeServer({
+        name: 'legacy',
+        transport: 'sse',
+        state: 'auth_required',
+        config: { transport: 'sse', url: 'https://mcp.example.com/sse', headers: {}, enabled: true },
+      }),
+    ])
+
+    renderSection({ agentServers: ['legacy'] })
+
+    const legacy = await waitFor(() => row('legacy'))
+    expect(within(legacy).getByRole('button', { name: 'Sign in' })).toBeTruthy()
+  })
+
+  it('offers Sign in to a plugin server that needs it, whatever its config says', async () => {
+    mockServerList([
+      makeServer({
+        name: 'changelog-tools/remote',
+        plugin: 'changelog-tools',
+        transport: 'http',
+        state: 'auth_required',
+        config: { transport: 'http', url: 'https://mcp.example.com/mcp', headers: {}, oauth: null, enabled: true },
+      }),
+    ])
+
+    renderSection({ agentServers: ['changelog-tools/remote'] })
+
+    const remote = await waitFor(() => screen.getByRole('listitem', { name: 'changelog-tools/remote' }))
+    expect(within(remote).getByRole('button', { name: 'Sign in' })).toBeTruthy()
+  })
+
+  it('does not offer Reconnect to a failed http server without an oauth block', async () => {
+    mockServerList([
+      makeServer({
+        name: 'plain',
+        transport: 'http',
+        state: 'error',
+        error: 'connection refused',
+        config: { transport: 'http', url: 'https://mcp.example.com/mcp', headers: {}, enabled: true },
+      }),
+    ])
+
+    renderSection({ agentServers: ['plain'] })
+
+    const plain = await waitFor(() => row('plain'))
+    expect(within(plain).queryByRole('button')).toBeNull()
+  })
+
   it('offers no connect action while the server is off', async () => {
     mockServerList([
       makeServer({

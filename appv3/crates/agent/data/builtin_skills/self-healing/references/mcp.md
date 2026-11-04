@@ -36,12 +36,15 @@ In a scheduled or goal turn nobody is there to confirm, so it is refused.
 
 ```json
 {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/path"], "env": {}}
-{"url": "https://example.com/mcp", "headers": {}, "oauth": {}}
+{"url": "https://example.com/mcp", "headers": {}}
 ```
 
+- `transport` (or `type`) is `stdio`, `http` (Streamable HTTP; `streamable-http`
+  is the same) or `sse` (the legacy HTTP+SSE transport).
 - **stdio**: `command` (required), `args`, `env`, `enabled` (default `true`), `timeout`.
-- **http**: `url` (required), `headers`, `oauth`, `enabled`, `timeout`. An entry
-  with only `url` is http.
+- **http** and **sse**: `url` (required), `headers`, `oauth`, `enabled`,
+  `timeout`. An entry with only `url` is http. An `http` server that refuses
+  Streamable HTTP falls back to HTTP+SSE on its own.
 - Unknown keys are rejected.
 - To change an entry, start from its config in `servers` and send the
   `********` values back unchanged: they keep what is stored.
@@ -54,7 +57,11 @@ Never ask the user to paste a token into the chat, and never put one in
 - A token in `env` or `headers` → Settings → MCP → the server → edit. A
   `${NAME}` reference (for example `"Authorization": "Bearer ${GITHUB_TOKEN}"`)
   reads a variable or a named secret instead.
-- OAuth (`"oauth": {}` on an http server) → the state is `auth_required`; the
-  user clicks **Connect** in Settings → MCP. Its tools appear once they have.
+- OAuth needs nothing in `config`: an http or sse server that asks for sign-in
+  goes to `auth_required`, and the user clicks **Sign in** in Settings → MCP
+  (OpenAgentd registers itself with the server). Its tools appear once they
+  have. Add `"oauth": {"client_id": …, "client_secret": …}` only when the
+  server's provider requires an app the user registered. A server with an
+  `Authorization` header uses that header instead.
 
 If a server fails to start, `servers` shows the error; fix the entry with `save`.

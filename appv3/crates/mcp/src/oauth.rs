@@ -23,7 +23,7 @@ const AUTH_REDIRECT_LIMIT: usize = 5;
 const CALLBACK_PATH: &str = "/callback";
 
 pub fn needs_oauth_message(name: &str) -> String {
-    format!("MCP server '{name}' needs OAuth. Use Settings -> MCP -> Connect OAuth.")
+    format!("MCP server '{name}' needs OAuth. Use Settings -> MCP -> Sign in.")
 }
 
 fn required(m: String) -> McpError {
@@ -1040,6 +1040,11 @@ impl OAuthProvider {
     }
 
     async fn full_flow(&self, ctx: &mut Ctx, status: u16, www: Option<&str>, step_up: bool) -> Result<(), McpError> {
+        // Every HTTP server may answer 401, so a background start must not
+        // discover or register a client: that waits for the user's Connect.
+        if !interactive_oauth_allowed(&self.name) {
+            return Err(required(needs_oauth_message(&self.name)));
+        }
         let granted_scope = ctx.tokens.as_ref().and_then(|t| t.scope.clone());
         if status == 401 || ctx.oauth_metadata.is_none() {
             // Step 1: protected resource metadata (SEP-985).

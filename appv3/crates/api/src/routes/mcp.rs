@@ -5,7 +5,7 @@ use crate::schema::Body;
 use crate::util::*;
 use crate::AppState;
 use appv3_mcp::admin::{merge_masked, store_oauth_secrets};
-use appv3_mcp::config::{self as cfgmod, OAuthConfig, ServerConfig};
+use appv3_mcp::config::{self as cfgmod, HttpKind, OAuthConfig, ServerConfig};
 use appv3_mcp::{masked_config_body, mcp_manager, oauth, plugin_config_body, AppToolError, ServerStatus};
 use axum::extract::{Path as AxPath, State};
 use axum::response::Response;
@@ -86,15 +86,15 @@ fn parse_server_body(v: Option<&Value>, errs: &mut Vec<Value>) -> Option<ServerC
             errs.push(verr_ctx("union_tag_not_found", &loc, "Unable to extract tag using discriminator 'transport'", v.clone(), json!({"discriminator": "'transport'"})));
             return None;
         }
-        Some(Value::String(t)) if t == "stdio" || t == "http" => t.clone(),
+        Some(Value::String(t)) if t == "stdio" || t == "http" || t == "sse" => t.clone(),
         Some(t) => {
             let shown = t.as_str().map(String::from).unwrap_or_else(|| t.to_string());
             errs.push(verr_ctx(
                 "union_tag_invalid",
                 &loc,
-                &format!("Input tag '{shown}' found using 'transport' does not match any of the expected tags: 'stdio', 'http'"),
+                &format!("Input tag '{shown}' found using 'transport' does not match any of the expected tags: 'stdio', 'http', 'sse'"),
                 v.clone(),
-                json!({"discriminator": "'transport'", "tag": shown, "expected_tags": "'stdio', 'http'"}),
+                json!({"discriminator": "'transport'", "tag": shown, "expected_tags": "'stdio', 'http', 'sse'"}),
             ));
             return None;
         }
@@ -140,7 +140,8 @@ fn parse_server_body(v: Option<&Value>, errs: &mut Vec<Value>) -> Option<ServerC
         };
         let ok = e.is_empty();
         errs.extend(e);
-        ok.then_some(ServerConfig::Http { url, headers, oauth, enabled, timeout })
+        let kind = if tag == "sse" { HttpKind::Sse } else { HttpKind::Auto };
+        ok.then_some(ServerConfig::Http { url, headers, oauth, enabled, timeout, kind })
     };
     cfg
 }
@@ -262,8 +263,8 @@ async fn connect_oauth(AxPath(name): AxPath<String>) -> ApiResult<Response> {
             (sc, Some(cfg))
         }
     };
-    if !matches!(sc, ServerConfig::Http { oauth: Some(_), .. }) {
-        return Err(ApiError::bad_request(format!("MCP server '{name}' is not configured for OAuth.")));
+    if !sc.signs_in_with_oauth() {
+        return Err(ApiError::bad_request(format!("MCP server '{name}' does not sign in with OAuth: it is a stdio server, or its Authorization header sets its credentials.")));
     }
     oauth::allow_interactive_oauth(&name);
     oauth::clear_cached_oauth(&name);
@@ -427,9 +428,15 @@ mod tests {
         assert_eq!(st, StatusCode::OK, "{v}");
         assert_eq!((v["name"].as_str(), v["plugin"].as_str()), (Some("routes-mcp/github"), Some("routes-mcp")), "{v}");
 
-        // Signing in resolves the name too (this server has no OAuth block).
+        // Signing in resolves the name too (a stdio server does not sign in).
         let (st, v) = send(&app, "POST", &format!("{uri}/oauth/connect"), None).await;
-        assert_eq!((st, v), (StatusCode::BAD_REQUEST, json!({"detail": "MCP server 'routes-mcp/github' is not configured for OAuth."})));
+        assert_eq!(
+            (st, v),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({"detail": "MCP server 'routes-mcp/github' does not sign in with OAuth: it is a stdio server, or its Authorization header sets its credentials."})
+            )
+        );
 
         // The list carries it with its label.
         let list = list_json(&cfgmod::McpConfig::default());

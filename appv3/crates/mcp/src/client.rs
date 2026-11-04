@@ -1,6 +1,7 @@
 //! Minimal MCP client (JSON-RPC 2.0) over stdio and Streamable HTTP — the
 //! subset of the Python `mcp` SDK `ClientSession` that v2 uses.
 
+use crate::config::HttpKind;
 use appv3_core::otel::{self, Span, SpanKind};
 use futures::StreamExt;
 use serde_json::{json, Value};
@@ -225,16 +226,23 @@ const MAX_REDIRECTS: usize = 20;
 
 struct Http {
     url: String,
+    /// What a legacy HTTP+SSE fallback is built from.
+    headers: Vec<(String, String)>,
     /// POST / DELETE: follows only method-preserving (307/308) in-origin redirects.
     client: reqwest::Client,
     /// GET streams: follows any in-origin redirect.
     client_get: reqwest::Client,
     session_id: Mutex<Option<String>>,
     protocol: Mutex<Option<String>>,
-    auth: Option<crate::oauth::OAuthProvider>,
+    auth: Option<Arc<crate::oauth::OAuthProvider>>,
     get_stream: Mutex<Option<tokio::task::JoinHandle<()>>>,
     /// In-flight replies to server requests (part of v2's transport task group).
     replies: Mutex<Vec<tokio::task::JoinHandle<()>>>,
+    /// May fall back to the legacy HTTP+SSE transport ([`HttpKind::Auto`]).
+    fallback: bool,
+    /// The status `initialize` was refused with, when that status is one the
+    /// MCP spec falls back to HTTP+SSE on (400, 404, 405).
+    init_refused: Mutex<Option<u16>>,
 }
 
 /// reqwest failure → httpx-style exception name.
@@ -368,33 +376,50 @@ enum SseOutcome {
     Ended { last_event_id: Option<String>, retry_ms: Option<u64> },
 }
 
-impl Http {
-    fn new(url: &str, headers: &[(String, String)], auth: Option<crate::oauth::OAuthProvider>) -> Result<Self, McpError> {
-        let mut hm = reqwest::header::HeaderMap::new();
-        for (k, v) in headers {
-            let (Ok(name), Ok(val)) = (reqwest::header::HeaderName::from_bytes(k.as_bytes()), reqwest::header::HeaderValue::from_str(v)) else {
-                return Err(McpError::Transport("LocalProtocolError", format!("Illegal header value {}", crate::config::py_repr_str(k))));
-            };
-            hm.insert(name, val);
-        }
-        let build = |any_status: bool| {
-            reqwest::Client::builder()
-                .default_headers(hm.clone())
-                .connect_timeout(std::time::Duration::from_secs(30))
-                .read_timeout(std::time::Duration::from_secs(300))
-                .redirect(origin_policy(any_status))
-                .build()
-                .map_err(|e| McpError::Transport("ConnectError", e.to_string()))
+/// The configured headers, sent on every request.
+fn header_map(headers: &[(String, String)]) -> Result<reqwest::header::HeaderMap, McpError> {
+    let mut hm = reqwest::header::HeaderMap::new();
+    for (k, v) in headers {
+        let (Ok(name), Ok(val)) = (reqwest::header::HeaderName::from_bytes(k.as_bytes()), reqwest::header::HeaderValue::from_str(v)) else {
+            return Err(McpError::Transport("LocalProtocolError", format!("Illegal header value {}", crate::config::py_repr_str(k))));
         };
+        hm.insert(name, val);
+    }
+    Ok(hm)
+}
+
+/// A client with `hm` that follows in-origin redirects: any of them with
+/// `any_status` (GET), else only the method-preserving ones.
+fn http_client(hm: &reqwest::header::HeaderMap, any_status: bool) -> Result<reqwest::Client, McpError> {
+    reqwest::Client::builder()
+        .default_headers(hm.clone())
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .read_timeout(std::time::Duration::from_secs(300))
+        .redirect(origin_policy(any_status))
+        .build()
+        .map_err(|e| McpError::Transport("ConnectError", e.to_string()))
+}
+
+/// The error for a non-2xx reply that carries no JSON-RPC error.
+fn status_err(status: u16) -> McpError {
+    rpc_err(format!("Server returned an error response (HTTP {status})"))
+}
+
+impl Http {
+    fn new(url: &str, headers: &[(String, String)], auth: Option<Arc<crate::oauth::OAuthProvider>>, fallback: bool) -> Result<Self, McpError> {
+        let hm = header_map(headers)?;
         Ok(Http {
             url: url.to_string(),
-            client: build(false)?,
-            client_get: build(true)?,
+            headers: headers.to_vec(),
+            client: http_client(&hm, false)?,
+            client_get: http_client(&hm, true)?,
             session_id: Mutex::new(None),
             protocol: Mutex::new(None),
             auth,
             get_stream: Mutex::new(None),
             replies: Mutex::new(vec![]),
+            fallback,
+            init_refused: Mutex::new(None),
         })
     }
 
@@ -451,6 +476,9 @@ impl Http {
             if !is_request {
                 return Ok(None);
             }
+            if matches!(status, 400 | 404 | 405) && msg.get("method").and_then(|m| m.as_str()) == Some("initialize") {
+                *self.init_refused.lock().unwrap() = Some(status);
+            }
             if content_type(&resp).starts_with("application/json") {
                 if let Ok(body) = resp.bytes().await {
                     if let Some(m) = serde_json::from_slice::<Value>(&body).ok().as_ref().and_then(jsonrpc_error_message) {
@@ -459,11 +487,11 @@ impl Http {
                 }
                 tracing::debug!("Non-2xx body was not a JSON-RPC error; using fallback");
             }
-            return Err(rpc_err(match status {
-                404 if self.session_id.lock().unwrap().is_none() => "Not Found",
-                404 => "Session terminated",
-                _ => "Server returned an error response",
-            }));
+            return Err(match status {
+                404 if self.session_id.lock().unwrap().is_none() => rpc_err("Not Found"),
+                404 => rpc_err("Session terminated"),
+                _ => status_err(status),
+            });
         }
         if msg.get("method").and_then(|m| m.as_str()) == Some("initialize") {
             if let Some(sid) = resp.headers().get("mcp-session-id").and_then(|v| v.to_str().ok()).filter(|s| !s.is_empty()) {
@@ -629,15 +657,221 @@ impl Http {
     }
 }
 
+// ── HTTP+SSE (MCP 2024-11-05) ───────────────────────────────────────────────
+//
+// The legacy transport: a GET opens an SSE stream whose `endpoint` event
+// names the URL to POST messages to, and the replies come back on the
+// stream. Used for `sse` servers, and for `http` ones that refuse
+// Streamable HTTP.
+
+/// How long the stream may take to name its endpoint.
+const SSE_ENDPOINT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+struct Sse {
+    url: url::Url,
+    client_get: reqwest::Client,
+    client_post: reqwest::Client,
+    auth: Option<Arc<crate::oauth::OAuthProvider>>,
+    /// Where to POST, once the stream has said; the lock serializes opening it.
+    endpoint: tokio::sync::Mutex<Option<url::Url>>,
+    pending: Pending,
+    reader: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    replies: Mutex<Vec<tokio::task::JoinHandle<()>>>,
+}
+
+/// Sends `rb`, through the OAuth flow when the server signs in.
+async fn send_authed(auth: Option<&crate::oauth::OAuthProvider>, client: &reqwest::Client, rb: reqwest::RequestBuilder) -> Result<reqwest::Response, McpError> {
+    let req = rb.build().map_err(transport_err)?;
+    match auth {
+        Some(a) => a.send(client, req, None).await,
+        None => client.execute(req).await.map_err(transport_err),
+    }
+}
+
+/// Fails every request still waiting and refuses new ones.
+fn close_pending(pending: &Pending) {
+    let mut g = pending.lock().unwrap();
+    g.closed = true;
+    for (_, tx) in g.map.drain() {
+        let _ = tx.send(Err(rpc_err("Connection closed")));
+    }
+}
+
+impl Sse {
+    fn new(url: &str, headers: &[(String, String)], auth: Option<Arc<crate::oauth::OAuthProvider>>) -> Result<Self, McpError> {
+        let parsed = url::Url::parse(url).map_err(|e| McpError::Transport("UnsupportedProtocol", format!("{e}: {url}")))?;
+        let hm = header_map(headers)?;
+        Ok(Sse {
+            url: parsed,
+            client_get: http_client(&hm, true)?,
+            client_post: http_client(&hm, false)?,
+            auth,
+            endpoint: tokio::sync::Mutex::new(None),
+            pending: Arc::default(),
+            reader: Mutex::new(None),
+            replies: Mutex::new(vec![]),
+        })
+    }
+
+    /// The URL to POST to: opens the stream and waits for its `endpoint`
+    /// event the first time.
+    async fn endpoint(self: &Arc<Self>) -> Result<url::Url, McpError> {
+        let mut slot = self.endpoint.lock().await;
+        if let Some(u) = slot.as_ref() {
+            return Ok(u.clone());
+        }
+        if self.pending.lock().unwrap().closed {
+            return Err(rpc_err("Connection closed"));
+        }
+        let rb = self.client_get.get(self.url.clone()).header("accept", "text/event-stream").header("cache-control", "no-store");
+        let resp = send_authed(self.auth.as_deref(), &self.client_get, rb).await?;
+        if let Some(note) = unfollowed_redirect(&resp) {
+            return Err(rpc_err(note));
+        }
+        if !resp.status().is_success() {
+            return Err(status_err(resp.status().as_u16()));
+        }
+        let ctype = content_type(&resp);
+        if !ctype.starts_with("text/event-stream") {
+            return Err(rpc_err(format!("Unexpected content type: {ctype}")));
+        }
+        let mut stream = resp.bytes_stream();
+        let mut parser = SseParser::default();
+        let named = tokio::time::timeout(SSE_ENDPOINT_TIMEOUT, async {
+            while let Some(Ok(chunk)) = stream.next().await {
+                let mut events = parser.feed(&chunk).into_iter();
+                while let Some(ev) = events.next() {
+                    if ev.event == "endpoint" {
+                        return Some((ev.data, events.collect::<Vec<_>>()));
+                    }
+                    tracing::debug!("mcp_sse_event_before_endpoint event={}", ev.event);
+                }
+            }
+            None
+        })
+        .await;
+        let (data, rest) = match named {
+            Ok(Some(found)) => found,
+            Ok(None) => return Err(rpc_err("SSE stream ended before it named its endpoint")),
+            Err(_) => return Err(rpc_err(format!("SSE stream named no endpoint within {} s", SSE_ENDPOINT_TIMEOUT.as_secs()))),
+        };
+        let endpoint = self.url.join(data.trim()).map_err(|e| rpc_err(format!("Invalid SSE endpoint {}: {e}", crate::config::py_repr_str(data.trim()))))?;
+        // Messages, and the token with them, go only to the server's own origin.
+        if !within_origin(&self.url, &endpoint) {
+            return Err(rpc_err(format!("SSE endpoint {endpoint} is not on the server's origin; not used")));
+        }
+        let me = Arc::downgrade(self);
+        let pending = self.pending.clone();
+        let task = tokio::spawn(async move {
+            for ev in rest {
+                Sse::dispatch(&me, &pending, ev);
+            }
+            while let Some(Ok(chunk)) = stream.next().await {
+                for ev in parser.feed(&chunk) {
+                    Sse::dispatch(&me, &pending, ev);
+                }
+            }
+            close_pending(&pending);
+        });
+        if let Some(old) = self.reader.lock().unwrap().replace(task) {
+            old.abort();
+        }
+        *slot = Some(endpoint.clone());
+        Ok(endpoint)
+    }
+
+    /// One event from the stream: a reply settles its request; a server
+    /// request gets `ping` answered and the rest refused.
+    fn dispatch(me: &std::sync::Weak<Sse>, pending: &Pending, ev: SseEvent) {
+        if ev.event != "message" {
+            tracing::warn!("Unknown SSE event: {}", ev.event);
+            return;
+        }
+        if ev.data.is_empty() {
+            return;
+        }
+        let Ok(msg) = serde_json::from_str::<Value>(&ev.data) else {
+            tracing::error!("Error parsing SSE message");
+            return;
+        };
+        match (msg.get("id").cloned(), msg.get("method").and_then(|m| m.as_str())) {
+            (Some(id), None) => {
+                let tx = id.as_i64().and_then(|id| pending.lock().unwrap().map.remove(&id));
+                if let Some(tx) = tx {
+                    let _ = tx.send(rpc_result(msg));
+                }
+            }
+            (Some(id), Some(method)) => {
+                let Some(me) = me.upgrade() else { return };
+                let reply = if method == "ping" {
+                    json!({"jsonrpc": "2.0", "id": id, "result": {}})
+                } else {
+                    json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32601, "message": "Method not found"}})
+                };
+                let sender = me.clone();
+                let h = tokio::spawn(async move {
+                    let _ = sender.post(&reply).await;
+                });
+                let mut g = me.replies.lock().unwrap();
+                g.retain(|t| !t.is_finished());
+                g.push(h);
+            }
+            _ => {}
+        }
+    }
+
+    async fn post(self: &Arc<Self>, msg: &Value) -> Result<(), McpError> {
+        let endpoint = self.endpoint().await?;
+        let rb = self.client_post.post(endpoint).header("content-type", "application/json").body(serde_json::to_vec(msg).unwrap_or_default());
+        let resp = send_authed(self.auth.as_deref(), &self.client_post, rb).await?;
+        if let Some(note) = unfollowed_redirect(&resp) {
+            return Err(rpc_err(note));
+        }
+        if !resp.status().is_success() {
+            return Err(status_err(resp.status().as_u16()));
+        }
+        Ok(())
+    }
+
+    async fn request(self: &Arc<Self>, id: i64, msg: &Value) -> Result<Value, McpError> {
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut g = self.pending.lock().unwrap();
+            if g.closed {
+                return Err(rpc_err("Connection closed"));
+            }
+            g.map.insert(id, tx);
+        }
+        if let Err(e) = self.post(msg).await {
+            self.pending.lock().unwrap().map.remove(&id);
+            return Err(e);
+        }
+        rx.await.unwrap_or_else(|_| Err(rpc_err("Connection closed")))
+    }
+
+    fn close(&self) {
+        if let Some(h) = self.reader.lock().unwrap().take() {
+            h.abort();
+        }
+        for h in std::mem::take(&mut *self.replies.lock().unwrap()) {
+            h.abort();
+        }
+        close_pending(&self.pending);
+    }
+}
+
 // ── session ─────────────────────────────────────────────────────────────────
 
+#[derive(Clone)]
 enum Transport {
-    Stdio(Box<Stdio>),
+    Stdio(Arc<Stdio>),
     Http(Arc<Http>),
+    Sse(Arc<Sse>),
 }
 
 pub struct McpClient {
-    transport: Transport,
+    /// Swapped once, from `Http` to `Sse`, when a server refuses Streamable HTTP.
+    transport: Mutex<Transport>,
     next_id: AtomicI64,
     tool_timeout: std::time::Duration,
 }
@@ -677,15 +911,27 @@ impl McpClient {
     /// [`McpClient::stdio`] with the child's working directory (`None`: this
     /// process's).
     pub fn stdio_in(command: &str, args: &[String], env: &[(String, String)], cwd: Option<&Path>) -> Result<Self, McpError> {
-        Ok(McpClient::with_transport(Transport::Stdio(Box::new(Stdio::spawn(command, args, env, cwd)?))))
+        Ok(McpClient::with_transport(Transport::Stdio(Arc::new(Stdio::spawn(command, args, env, cwd)?))))
     }
 
-    pub fn http(url: &str, headers: &[(String, String)], auth: Option<crate::oauth::OAuthProvider>) -> Result<Self, McpError> {
-        Ok(McpClient::with_transport(Transport::Http(Arc::new(Http::new(url, headers, auth)?))))
+    /// An HTTP server's client: Streamable HTTP, or the legacy HTTP+SSE
+    /// transport for [`HttpKind::Sse`]. [`HttpKind::Auto`] falls back to the
+    /// legacy one when `initialize` is refused (see [`McpClient::initialize`]).
+    pub fn http(url: &str, headers: &[(String, String)], auth: Option<crate::oauth::OAuthProvider>, kind: HttpKind) -> Result<Self, McpError> {
+        let auth = auth.map(Arc::new);
+        let transport = match kind {
+            HttpKind::Sse => Transport::Sse(Arc::new(Sse::new(url, headers, auth)?)),
+            HttpKind::Auto | HttpKind::Streamable => Transport::Http(Arc::new(Http::new(url, headers, auth, kind == HttpKind::Auto)?)),
+        };
+        Ok(McpClient::with_transport(transport))
     }
 
     fn with_transport(transport: Transport) -> Self {
-        McpClient { transport, next_id: AtomicI64::new(1), tool_timeout: std::time::Duration::from_secs(DEFAULT_TOOL_TIMEOUT_S) }
+        McpClient { transport: Mutex::new(transport), next_id: AtomicI64::new(1), tool_timeout: std::time::Duration::from_secs(DEFAULT_TOOL_TIMEOUT_S) }
+    }
+
+    fn transport(&self) -> Transport {
+        self.transport.lock().unwrap().clone()
     }
 
     /// Use the server's configured `timeout` (seconds, clamped to
@@ -700,8 +946,9 @@ impl McpClient {
     /// Requests still waiting for a stdio reply (tests only).
     #[cfg(test)]
     pub(crate) fn pending_len(&self) -> usize {
-        match &self.transport {
+        match self.transport() {
             Transport::Stdio(s) => s.pending.lock().unwrap().map.len(),
+            Transport::Sse(s) => s.pending.lock().unwrap().map.len(),
             Transport::Http(_) => 0,
         }
     }
@@ -719,7 +966,7 @@ impl McpClient {
         let msg = json!({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": id, "reason": reason}});
         let send = method != "initialize";
         let Ok(rt) = tokio::runtime::Handle::try_current() else { return };
-        match &self.transport {
+        match self.transport() {
             Transport::Stdio(s) => {
                 let closed = {
                     let mut g = s.pending.lock().unwrap();
@@ -734,9 +981,16 @@ impl McpClient {
             }
             Transport::Http(h) => {
                 if send {
-                    let h = h.clone();
                     rt.spawn(async move {
                         let _ = h.post(&msg, None).await;
+                    });
+                }
+            }
+            Transport::Sse(s) => {
+                s.pending.lock().unwrap().map.remove(&id);
+                if send {
+                    rt.spawn(async move {
+                        let _ = s.post(&msg).await;
                     });
                 }
             }
@@ -783,7 +1037,7 @@ impl McpClient {
 
     async fn request_inner(&self, id: i64, method: &str, params: Value) -> Result<Value, McpError> {
         let msg = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
-        match &self.transport {
+        match self.transport() {
             Transport::Stdio(s) => {
                 let (tx, rx) = oneshot::channel();
                 {
@@ -800,13 +1054,15 @@ impl McpClient {
                 rx.await.unwrap_or_else(|_| Err(McpError::Rpc("Connection closed".into())))
             }
             Transport::Http(h) => h.post(&msg, Some(id)).await.map(|v| v.unwrap_or(json!({}))),
+            Transport::Sse(s) => s.request(id, &msg).await,
         }
     }
 
     pub async fn notify(&self, method: &str) -> Result<(), McpError> {
         let msg = json!({"jsonrpc": "2.0", "method": method});
-        match &self.transport {
+        match self.transport() {
             Transport::Stdio(s) => s.write(&msg).await,
+            Transport::Sse(s) => s.post(&msg).await,
             Transport::Http(h) => {
                 let res = h.post(&msg, None).await.map(|_| ());
                 if method == "notifications/initialized" && res.is_ok() {
@@ -825,16 +1081,40 @@ impl McpClient {
     }
 
     pub async fn initialize(&self) -> Result<Value, McpError> {
-        let res = self.request("initialize", Some(json!({"protocolVersion": PROTOCOL_VERSION, "capabilities": {}, "clientInfo": {"name": "mcp", "version": "0.1.0"}}))).await?;
+        let params = json!({"protocolVersion": PROTOCOL_VERSION, "capabilities": {}, "clientInfo": {"name": "mcp", "version": "0.1.0"}});
+        let res = match self.request("initialize", Some(params.clone())).await {
+            Ok(res) => res,
+            Err(e) => self.initialize_legacy(params, e).await?,
+        };
         let negotiated = res.get("protocolVersion").and_then(|v| v.as_str()).unwrap_or("");
         if !HANDSHAKE_PROTOCOL_VERSIONS.contains(&negotiated) {
             return Err(McpError::Session("RuntimeError", format!("Unsupported protocol version from the server: {negotiated}")));
         }
-        if let Transport::Http(h) = &self.transport {
+        if let Transport::Http(h) = self.transport() {
             *h.protocol.lock().unwrap() = Some(negotiated.to_string());
         }
         self.notify("notifications/initialized").await?;
         Ok(res)
+    }
+
+    /// MCP backwards compatibility: a server that refuses a Streamable HTTP
+    /// `initialize` with 400, 404 or 405 may speak HTTP+SSE instead. Tries
+    /// that, unless the server's kind forbids it; `refused` is the error kept
+    /// when there is no fallback.
+    async fn initialize_legacy(&self, params: Value, refused: McpError) -> Result<Value, McpError> {
+        let Transport::Http(h) = self.transport() else { return Err(refused) };
+        let Some(status) = (*h.init_refused.lock().unwrap()).filter(|_| h.fallback) else { return Err(refused) };
+        tracing::info!("mcp_http_legacy_fallback url={} status={}", h.url, status);
+        let sse = Arc::new(Sse::new(&h.url, &h.headers, h.auth.clone())?);
+        *self.transport.lock().unwrap() = Transport::Sse(sse.clone());
+        match self.request("initialize", Some(params)).await {
+            Ok(res) => Ok(res),
+            Err(e) => {
+                sse.close();
+                *self.transport.lock().unwrap() = Transport::Http(h);
+                Err(rpc_err(format!("{refused}; HTTP+SSE did not work either: {e}")))
+            }
+        }
     }
 
     /// First page of `tools/list` (v2 never follows `nextCursor`).
@@ -856,18 +1136,20 @@ impl McpClient {
     }
 
     pub async fn close(&self) {
-        match &self.transport {
+        match self.transport() {
             Transport::Stdio(s) => s.close().await,
             Transport::Http(h) => h.close(true).await,
+            Transport::Sse(s) => s.close(),
         }
     }
 
     /// Tear down after a transport failure. v2's task group is cancelled by
     /// the failing POST, so the session DELETE never goes out.
     pub async fn abort(&self) {
-        match &self.transport {
+        match self.transport() {
             Transport::Stdio(s) => s.close().await,
             Transport::Http(h) => h.close(false).await,
+            Transport::Sse(s) => s.close(),
         }
     }
 }

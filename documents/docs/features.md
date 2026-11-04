@@ -3383,6 +3383,18 @@ Four orthogonal ways to add capability.
     returns every problem, with the schema, before the server or plugin sees
     the call. The check is lenient: keywords it does not know pass, and a null
     for an optional argument counts as left out.
+  - **Sign in without OAuth setup** `[v3.45.0]` — an HTTP MCP server that asks
+    for sign-in offers **Sign in** without an `oauth` block in its entry:
+    OpenAgentd finds the server's authorization and registers itself, as the
+    MCP spec describes. Plugin MCP servers sign in the same way. A server that
+    does not ask connects as before, one with its own `Authorization` header
+    keeps using it, and a background start never registers a client.
+  - **Legacy HTTP+SSE servers** `[v3.45.0]` — `mcp.json` takes `type` as well
+    as `transport`, with `stdio`, `http` (or `streamable-http`) and `sse`.
+    `sse` reaches servers that still speak the 2024-11-05 HTTP+SSE transport,
+    and an `http` server that refuses Streamable HTTP falls back to it on its
+    own. Plugins can declare `sse` servers, and the Settings → MCP form offers
+    **SSE (legacy)**.
   - **Set up MCP servers from chat** `[v3.35.0]` — ask the agent to connect a
     server ("add the GitHub MCP") and it proposes the `mcp.json` entry
     (`mcp` with `action: "save"`, or `"remove"`). A **Confirm change** card

@@ -11,6 +11,21 @@ pub struct OAuthConfig {
     pub client_secret: Option<String>,
 }
 
+/// Which MCP HTTP transport a server speaks.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum HttpKind {
+    /// Streamable HTTP; when `initialize` is refused with 400, 404 or 405,
+    /// the legacy HTTP+SSE transport (the MCP spec's backwards
+    /// compatibility rule). `mcp.json`'s `http` and `streamable-http`.
+    #[default]
+    Auto,
+    /// Streamable HTTP only: a plugin's declared `streamable-http` (Agent
+    /// Plugins defines no fallback).
+    Streamable,
+    /// The legacy HTTP+SSE transport (MCP 2024-11-05): `sse`.
+    Sse,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ServerConfig {
     /// `cwd` is the child's working directory (`None`: this process's). Only
@@ -30,6 +45,7 @@ pub enum ServerConfig {
         oauth: Option<OAuthConfig>,
         enabled: bool,
         timeout: Option<u64>,
+        kind: HttpKind,
     },
 }
 
@@ -37,6 +53,7 @@ impl ServerConfig {
     pub fn transport(&self) -> &'static str {
         match self {
             ServerConfig::Stdio { .. } => "stdio",
+            ServerConfig::Http { kind: HttpKind::Sse, .. } => "sse",
             ServerConfig::Http { .. } => "http",
         }
     }
@@ -58,6 +75,17 @@ impl ServerConfig {
             ServerConfig::Http { .. } => None,
         }
     }
+    /// Whether the server signs in with OAuth when it asks to (a 401, per
+    /// MCP authorization): every HTTP server, without an `oauth` block too,
+    /// except one the user gave an `Authorization` header, which handles its
+    /// own credentials.
+    pub fn signs_in_with_oauth(&self) -> bool {
+        match self {
+            ServerConfig::Http { oauth: Some(_), .. } => true,
+            ServerConfig::Http { headers, .. } => !headers.keys().any(|k| k.eq_ignore_ascii_case("authorization")),
+            ServerConfig::Stdio { .. } => false,
+        }
+    }
     /// `model_dump(mode="json")` in field order; `timeout` only when set.
     pub fn dump(&self) -> Value {
         let mut v = self.dump_fields();
@@ -70,7 +98,7 @@ impl ServerConfig {
         match self {
             ServerConfig::Stdio { command, args, env, enabled, .. } => json!({"transport": "stdio", "command": command, "args": args, "env": env, "enabled": enabled}),
             ServerConfig::Http { url, headers, oauth, enabled, .. } => json!({
-                "transport": "http", "url": url, "headers": headers,
+                "transport": self.transport(), "url": url, "headers": headers,
                 "oauth": oauth.as_ref().map(|o| json!({"client_id": o.client_id, "client_secret": o.client_secret})),
                 "enabled": enabled,
             }),
@@ -263,12 +291,22 @@ fn timeout_field(m: &Map<String, Value>, loc: &str, e: &mut Errs) -> Option<u64>
 
 /// Validate one server entry (discriminated by `transport`, default stdio
 /// when absent — pydantic's smart-union picks whichever variant validates).
+/// `type` is read as `transport`, as other MCP clients' files spell it, and
+/// `streamable-http` as `http`.
 fn parse_server(v: &Value, loc: &str, e: &mut Errs) -> Option<ServerConfig> {
     let Value::Object(m) = v else {
         e.push(loc.to_string(), "Input should be a valid dictionary or object to extract fields from");
         return None;
     };
-    let transport = match m.get("transport") {
+    let key = match (m.get("transport"), m.get("type")) {
+        (Some(t), Some(ty)) if t != ty => {
+            e.push(format!("{loc}.type"), "Input should match 'transport' (give one of them)");
+            return None;
+        }
+        (None, Some(_)) => "type",
+        _ => "transport",
+    };
+    let transport = match m.get(key) {
         Some(Value::String(t)) => t.as_str(),
         None => {
             if m.contains_key("url") && !m.contains_key("command") {
@@ -288,10 +326,11 @@ fn parse_server(v: &Value, loc: &str, e: &mut Errs) -> Option<ServerConfig> {
             let env = dict_field(m, "env", &l, e);
             let enabled = b_field(m, "enabled", &l, e);
             let timeout = timeout_field(m, &l, e);
-            extra(m, &["transport", "command", "args", "env", "enabled", "timeout"], &l, e);
+            extra(m, &["transport", "type", "command", "args", "env", "enabled", "timeout"], &l, e);
             ServerConfig::Stdio { command, args, env, enabled, timeout, cwd: None }
         }
-        "http" => {
+        "http" | "streamable-http" | "sse" => {
+            let kind = if transport == "sse" { HttpKind::Sse } else { HttpKind::Auto };
             let l = format!("{loc}.HttpServerConfig");
             let url = s_field(m, "url", &l, true, true, e);
             let headers = dict_field(m, "headers", &l, e);
@@ -310,12 +349,12 @@ fn parse_server(v: &Value, loc: &str, e: &mut Errs) -> Option<ServerConfig> {
             };
             let enabled = b_field(m, "enabled", &l, e);
             let timeout = timeout_field(m, &l, e);
-            extra(m, &["transport", "url", "headers", "oauth", "enabled", "timeout"], &l, e);
-            ServerConfig::Http { url, headers, oauth, enabled, timeout }
+            extra(m, &["transport", "type", "url", "headers", "oauth", "enabled", "timeout"], &l, e);
+            ServerConfig::Http { url, headers, oauth, enabled, timeout, kind }
         }
         _ => {
             e.push(format!("{loc}.StdioServerConfig.transport"), "Input should be 'stdio'");
-            e.push(format!("{loc}.HttpServerConfig.transport"), "Input should be 'http'");
+            e.push(format!("{loc}.HttpServerConfig.transport"), "Input should be 'http', 'streamable-http' or 'sse'");
             return None;
         }
     };
@@ -488,5 +527,39 @@ mod tests {
         assert_ne!(plugin, plain.servers["a"], "the directory is part of what a plugin sync compares");
         assert_eq!(plugin.dump(), dumped, "never written to mcp.json, so the file always parses");
         assert_eq!(parse_config(&json!({"servers": {"a": plugin.dump()}})).unwrap().servers["a"], plain.servers["a"]);
+    }
+
+    /// The transport spellings other MCP clients' files use, and the legacy HTTP+SSE one.
+    #[test]
+    fn type_is_read_as_transport_and_sse_is_the_legacy_transport() {
+        let kind = |v: Value| match parse_config(&json!({"servers": {"a": v}})).unwrap().servers["a"].clone() {
+            ServerConfig::Http { kind, .. } => Some(kind),
+            ServerConfig::Stdio { .. } => None,
+        };
+        assert_eq!(kind(json!({"url": "https://x"})), Some(HttpKind::Auto));
+        assert_eq!(kind(json!({"type": "http", "url": "https://x"})), Some(HttpKind::Auto));
+        assert_eq!(kind(json!({"type": "streamable-http", "url": "https://x"})), Some(HttpKind::Auto));
+        assert_eq!(kind(json!({"transport": "sse", "url": "https://x"})), Some(HttpKind::Sse));
+        assert_eq!(kind(json!({"type": "stdio", "command": "npx"})), None);
+
+        let sse = parse_config(&json!({"servers": {"a": {"type": "sse", "url": "https://x"}}})).unwrap();
+        assert_eq!(sse.servers["a"].transport(), "sse");
+        assert_eq!(sse.servers["a"].dump()["transport"], "sse", "written back as transport");
+        assert_eq!(parse_config(&json!({"servers": {"a": sse.servers["a"].dump()}})).unwrap(), sse);
+
+        let clash = parse_config(&json!({"servers": {"a": {"type": "sse", "transport": "http", "url": "https://x"}}})).unwrap_err();
+        assert!(clash.contains("servers.a.type"), "{clash}");
+        let unknown = parse_config(&json!({"servers": {"a": {"type": "ws", "url": "wss://x"}}})).unwrap_err();
+        assert!(unknown.contains("Input should be 'http', 'streamable-http' or 'sse'"), "{unknown}");
+    }
+
+    #[test]
+    fn http_servers_sign_in_unless_their_header_sets_the_credentials() {
+        let server = |v: Value| parse_config(&json!({"servers": {"a": v}})).unwrap().servers["a"].clone();
+        assert!(server(json!({"url": "https://x"})).signs_in_with_oauth());
+        assert!(server(json!({"url": "https://x", "headers": {"X-Team": "t"}})).signs_in_with_oauth());
+        assert!(!server(json!({"url": "https://x", "headers": {"authorization": "Bearer ${TOKEN}"}})).signs_in_with_oauth());
+        assert!(server(json!({"url": "https://x", "headers": {"Authorization": "x"}, "oauth": {}})).signs_in_with_oauth(), "an oauth block wins");
+        assert!(!server(json!({"command": "npx"})).signs_in_with_oauth());
     }
 }

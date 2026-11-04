@@ -132,6 +132,30 @@ describe('McpServerForm — Transport tabs', () => {
     expect(screen.getByPlaceholderText('https://mcp.example.com/v1')).toBeTruthy()
   })
 
+  it('offers the legacy SSE transport next to HTTP', () => {
+    renderForm(emptyDraft(), mock(() => {}))
+    expect(screen.getByRole('radio', { name: /sse/i })).toBeTruthy()
+  })
+
+  it('shows the same URL, header and sign-in fields for sse as for http', () => {
+    const draft = { ...emptyDraft(), transport: 'sse' as const }
+    renderForm(draft, mock(() => {}))
+    expect(screen.getByText(/HTTP \+ SSE, the legacy transport/i)).toBeTruthy()
+    expect(screen.getByPlaceholderText('https://mcp.example.com/v1')).toBeTruthy()
+    expect(screen.getByText('Headers')).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: /sign-in method/i })).toBeTruthy()
+    expect(screen.queryByPlaceholderText('npx')).toBeNull()
+  })
+
+  it('picks sse when the SSE tab is clicked', async () => {
+    const user = userEvent.setup()
+    const onChange = mock(((_next: McpServerDraft) => {}) as (...args: unknown[]) => unknown)
+    renderForm({ ...emptyDraft(), transport: 'http' as const }, onChange)
+    await user.click(screen.getByRole('radio', { name: /sse/i }))
+    expect(onChange).toHaveBeenCalled()
+    expect((onChange.mock.calls[0] as unknown as [McpServerDraft])[0].transport).toBe('sse')
+  })
+
   it('switches to http tab when http tab is clicked', async () => {
     const user = userEvent.setup()
     const draft = { ...emptyDraft(), transport: 'stdio' as const }

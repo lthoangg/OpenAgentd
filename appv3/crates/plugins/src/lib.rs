@@ -136,4 +136,7 @@ pub enum Transport {
     /// without user information or a fragment, and plain `http` only for
     /// loopback.
     Http { url: String, headers: BTreeMap<String, String> },
+    /// A remote `"sse"` server (the legacy HTTP+SSE transport); the same
+    /// fields and checks as [`Transport::Http`].
+    Sse { url: String, headers: BTreeMap<String, String> },
 }

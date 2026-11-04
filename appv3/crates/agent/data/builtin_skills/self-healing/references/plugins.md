@@ -12,7 +12,7 @@ directories).
 <CONFIG_DIR>/plugins/changelog-tools/
   plugin.json                  # manifest: $schema and name are required
   skills/release-notes/SKILL.md
-  mcp.json                     # MCP servers: stdio or streamable-http
+  mcp.json                     # MCP servers: stdio, streamable-http or sse
   dev.openagentd/plugin.ts     # optional code: tools, hooks, a provider
 ```
 
@@ -30,7 +30,8 @@ directories).
   marked `readOnly` run. An MCP server in the user's `mcp.json` with the
   plugin's name hides its tools; pick plugin names that do not clash.
 - Plugin MCP servers are managed by their plugin: the `mcp` tool cannot change
-  or remove them, and they go on and off with the plugin.
+  or remove them, and they go on and off with the plugin. One that asks for
+  sign-in shows **Sign in** in Settings → MCP, like the user's own servers.
 
 ### Manifest and permissions
 

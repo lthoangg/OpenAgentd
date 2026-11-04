@@ -71,6 +71,23 @@ describe('draftFromServerBody', () => {
     expect(draft.envPairs).toEqual([])
   })
 
+  it('hydrates an sse server and keeps its transport', () => {
+    const body: ServerBody = {
+      transport: 'sse',
+      url: 'https://mcp.example.com/sse',
+      headers: { 'X-Key': 'v' },
+      oauth: { client_id: 'id', client_secret: 'secret' },
+      enabled: true,
+      timeout: 60,
+    }
+    const draft = draftFromServerBody('legacy', body)
+    expect(draft.transport).toBe('sse')
+    expect(draft.url).toBe('https://mcp.example.com/sse')
+    expect(draft.headerPairs).toEqual([{ key: 'X-Key', value: 'v' }])
+    expect(draft.oauthEnabled).toBe(true)
+    expect(draft.timeoutText).toBe('60')
+  })
+
   it('handles empty env and headers', () => {
     const stdioBody: ServerBody = {
       transport: 'stdio',
@@ -151,6 +168,25 @@ describe('draftToServerBody', () => {
       }
       expect(result.body.enabled).toBe(false)
     }
+  })
+
+  it('round-trips an sse server through a draft and back', () => {
+    const body: ServerBody = {
+      transport: 'sse',
+      url: 'https://mcp.example.com/sse',
+      headers: { 'X-Key': 'v' },
+      oauth: { client_id: 'id', client_secret: 'secret' },
+      enabled: false,
+      timeout: 90,
+    }
+    const result = draftToServerBody(draftFromServerBody('legacy', body))
+    expect(result).toEqual({ ok: true, body })
+  })
+
+  it('treats sse and http drafts of the same URL as different', () => {
+    const base = { ...emptyDraft(), name: 'x', url: 'https://mcp.example.com/sse' }
+    expect(draftEquals({ ...base, transport: 'sse' }, { ...base, transport: 'http' })).toBe(false)
+    expect(draftEquals({ ...base, transport: 'sse' }, { ...base, transport: 'sse' })).toBe(true)
   })
 
   it('rejects stdio draft with empty command', () => {

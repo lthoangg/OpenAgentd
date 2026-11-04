@@ -282,6 +282,46 @@ describe("AgentView — provider retry notice", () => {
     expect(screen.getByRole("status").textContent).toBe("Retrying openai:gpt · attempt 3/5 · in 4.2 s503 HTTPStatusError")
   })
 
+  const notice = () => document.querySelector("[data-provider-retry]")
+  const prompt: ContentBlock = { id: "u1", type: "user", content: "prompt" }
+
+  it("goes away once the retried call answers", () => {
+    const { rerender } = render(<AgentView blocks={[prompt]} currentBlocks={[retrying({ max_attempts: 5 })]} isWorking />)
+    expect(notice()).toBeTruthy()
+
+    rerender(
+      <AgentView
+        blocks={[prompt]}
+        currentBlocks={[retrying({ max_attempts: 5 }), { id: "t1", type: "text", content: "Here is the answer" }]}
+        isWorking
+      />,
+    )
+    expect(notice()).toBeNull()
+    expect(screen.getByText("Here is the answer")).toBeTruthy()
+  })
+
+  it("stays while blank chunks follow it, before the answer starts", () => {
+    render(<AgentView blocks={[prompt]} currentBlocks={[retrying({}), { id: "t1", type: "text", content: "  " }]} isWorking />)
+    expect(notice()).toBeTruthy()
+  })
+
+  it("goes away once the turn ends, even when it was the last thing said", () => {
+    render(<AgentView blocks={[prompt, retrying({ max_attempts: 5 })]} currentBlocks={[]} isWorking={false} />)
+    expect(notice()).toBeNull()
+  })
+
+  it("leaves only the error card when the retries run out", () => {
+    const error: ContentBlock = {
+      id: "e1",
+      type: "provider_status",
+      content: "Service unavailable",
+      extra: { status: "exhausted", message: "Service unavailable", category: "provider" },
+    }
+    render(<AgentView blocks={[prompt, retrying({ max_attempts: 5 }), error]} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
+    expect(notice()).toBeNull()
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy()
+  })
+
   it("says which credential the turn moved to when one hits its limit", () => {
     const block: ContentBlock = {
       id: "s1",

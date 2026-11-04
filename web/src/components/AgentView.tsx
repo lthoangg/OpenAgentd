@@ -238,6 +238,22 @@ function latestActiveQuotaWait(
   return null
 }
 
+/**
+ * The retry notice still waiting on its call: the last thing the turn said.
+ * Anything after it (the answer starting, an error card) means the retry is
+ * over, so the notice goes.
+ */
+function latestActiveRetryBlockId(finalizedBlocks: ContentBlock[], liveBlocks: ContentBlock[]): string | undefined {
+  for (const part of [liveBlocks, finalizedBlocks]) {
+    for (let index = part.length - 1; index >= 0; index -= 1) {
+      const block = part[index]
+      if (isBlankContentBlock(block)) continue
+      return block.type === 'provider_status' && block.extra?.status === 'retrying' ? block.id : undefined
+    }
+  }
+  return undefined
+}
+
 /** Time left until a quota resets, for "resumes in …": ``2h 05m``. */
 function formatQuotaCountdown(resetsAt: number, now = Date.now()): string | null {
   const remainingSeconds = resetsAt - now / 1000
@@ -442,7 +458,7 @@ function providerErrorTitle(title: unknown): string {
   return title
 }
 
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, leadSessionId, onEdit, editLocked, actionsAtRest, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, activeQuotaWaitBlockId }: {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, leadSessionId, onEdit, editLocked, actionsAtRest, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, activeQuotaWaitBlockId, activeRetryBlockId }: {
   block: ContentBlock
   isStreaming: boolean
   sessionId?: string
@@ -464,6 +480,8 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   onMentionFileOpen?: (path: string) => void
   onOpenSession?: OpenSessionHandler
   activeQuotaWaitBlockId?: string
+  /** The one retry notice still waiting; the others have resolved and hide. */
+  activeRetryBlockId?: string
 }) {
   switch (block.type) {
     case 'user': {
@@ -519,6 +537,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
 
       const model = typeof block.extra?.model === 'string' ? block.extra.model : undefined
       if (status === 'retrying') {
+        if (block.id !== activeRetryBlockId) return null
         return (
           <RetryNotice
             model={model}
@@ -756,6 +775,10 @@ export function AgentView({
     [blocks, liveTail],
   )
   const activeQuotaWaitBlockId = isTurnOpen ? activeQuotaWait?.blockId : undefined
+  const activeRetryBlockId = useMemo(
+    () => (isTurnOpen ? latestActiveRetryBlockId(blocks, liveTail) : undefined),
+    [blocks, isTurnOpen, liveTail],
+  )
   const liveQuotaWait = isTurnOpen ? activeQuotaWait?.wait ?? null : null
   const storedQuotaWait = useMemo(() => readStoredQuotaWait(sessionId), [sessionId])
   const canRestoreStoredQuotaWait = isTurnOpen && !liveQuotaWait && totalLen === 0
@@ -787,9 +810,10 @@ export function AgentView({
         onMentionFileOpen={onMentionFileOpen}
         onOpenSession={onOpenSession}
         activeQuotaWaitBlockId={activeQuotaWaitBlockId}
+        activeRetryBlockId={activeRetryBlockId}
       />
     </div>
-  ), [activeQuotaWaitBlockId, endingErrorId, errorRetry, errorSwitchModel, latestMCPAppBlockIds, leadSessionId, onMentionFileOpen, onOpenSession, sessionId])
+  ), [activeQuotaWaitBlockId, activeRetryBlockId, endingErrorId, errorRetry, errorSwitchModel, latestMCPAppBlockIds, leadSessionId, onMentionFileOpen, onOpenSession, sessionId])
 
   const lastBlock = liveTail.length > 0 ? liveTail[liveTail.length - 1] : blocks[blocks.length - 1]
   // A change key for auto-follow, not the content itself: the streamed fields

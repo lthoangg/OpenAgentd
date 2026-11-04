@@ -2260,8 +2260,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   Since `[v3.0.0]` a dropped connection, DNS failure, or timeout during a turn
   retries every 3–5 seconds for as long as the network is down (Stop ends it),
   so the turn picks up within seconds of the connection returning; the
-  transcript keeps one retry notice that counts the attempts. Summarization,
-  which cannot be stopped mid-call, gives up after 10 attempts.
+  transcript keeps one retry notice that counts the attempts, and since
+  `[v3.46.0]` it goes away once the call answers or the turn ends.
+  Summarization, which cannot be stopped mid-call, gives up after 10 attempts.
 - **Automatic max-tokens truncation recovery** `[v1.87.0]` — when a provider
   hits the output token limit (`finish_reason="max_tokens"` or `"length"`), the
   loop automatically injects a recovery message (requesting a continuation for

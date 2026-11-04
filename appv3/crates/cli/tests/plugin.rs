@@ -68,7 +68,8 @@ impl Sandbox {
     }
 
     fn plugins(&self) -> PathBuf {
-        self.path("config/plugins")
+        // Joined part by part, so it reads as the CLI prints it on Windows too.
+        self.root.path().join("config").join("plugins")
     }
 
     /// `server.yaml`: where the CLI looks for the server, and the access key it sends.
@@ -430,7 +431,7 @@ fn names(dir: &Path) -> Vec<String> {
 
 impl Sandbox {
     fn data(&self, plugin: &str) -> PathBuf {
-        self.path("data/plugin-data").join(plugin)
+        self.root.path().join("data").join("plugin-data").join(plugin)
     }
 }
 

@@ -180,9 +180,12 @@ async fn requests_match_the_snapshot() {
         std::fs::write(&path, &got).unwrap();
         return;
     }
-    let want = std::fs::read_to_string(&path).expect("snapshot exists; create it with UPDATE_REQUEST_SNAPSHOT=1");
+    // A Windows checkout may turn the file's line endings into CRLF.
+    let want = std::fs::read_to_string(&path).expect("snapshot exists; create it with UPDATE_REQUEST_SNAPSHOT=1").replace("\r\n", "\n");
     if got != want {
         let first_diff = got.lines().zip(want.lines()).enumerate().find(|(_, (g, w))| g != w).map(|(i, (g, w))| format!("line {}:\n  got:  {g}\n  want: {w}", i + 1));
-        panic!("the model request changed; {}", first_diff.unwrap_or_else(|| "lengths differ".into()));
+        let lengths =
+            || format!("lengths differ: {} lines, want {}; got's extra lines start with {:?}", got.lines().count(), want.lines().count(), got.lines().nth(want.lines().count()));
+        panic!("the model request changed; {}", first_diff.unwrap_or_else(lengths));
     }
 }

@@ -134,9 +134,11 @@ pub(super) fn inline(s: &str, max: usize) -> String {
 
 /// `s` as one shell word, quoted only when it needs it, so a command line
 /// shows its arguments exactly. On Windows a backslash separates folders
-/// rather than escaping, so a plain path shows as it is.
+/// rather than escaping, so a plain path shows as it is. A `~` expands only
+/// at the start of a word, so one inside (`RUNNER~1`) needs no quotes.
 pub(super) fn shell_word(s: &str) -> String {
-    if !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c) || (cfg!(windows) && c == '\\')) {
+    let plain = |(i, c): (usize, char)| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c) || (cfg!(windows) && c == '\\') || (c == '~' && i > 0);
+    if !s.is_empty() && s.char_indices().all(plain) {
         s.to_string()
     } else {
         format!("'{}'", s.replace('\'', r"'\''"))
@@ -187,6 +189,8 @@ mod tests {
             ("$HOME", "'$HOME'"),
             ("a;b", "'a;b'"),
             (r"C:\tools\x", if cfg!(windows) { r"C:\tools\x" } else { r"'C:\tools\x'" }),
+            ("RUNNER~1", "RUNNER~1"),
+            ("~/bin", "'~/bin'"),
         ] {
             assert_eq!(shell_word(arg), shown, "{arg:?}");
         }

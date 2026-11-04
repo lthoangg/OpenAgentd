@@ -3258,6 +3258,12 @@ MCP.
 - **View an image the agent read** `[v3.24.0]` — a `read` of an image in the
   workspace gets a **View image** button on its transcript row, which opens the
   image in the side panel. It is hidden once the image is gone from the workspace.
+- **SVG files read as text** `[v3.46.0]` — `read` returns an `.svg` file's XML
+  instead of sending it as an image, which every provider rejected (the session
+  then failed on every later turn). Other images models cannot view (BMP, ICO,
+  TIFF) come back as a note with a command to convert them to PNG, and a request
+  replaces any such image already in the history with a one-line note, so
+  sessions that broke this way work again.
 - **Real-time LSP diagnostics injection** `[v1.89.0, v1.105.0, v2.0.0]` — in **coding mode**, after the
   `patch` tool modifies one or more files, OpenAgentd runs the
   matching language server(s) over the changed files and injects the resulting

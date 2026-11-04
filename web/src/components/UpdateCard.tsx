@@ -366,8 +366,8 @@ export function UpdateCard() {
                   <div className="h-full w-full rounded-full bg-(--color-accent) transition-transform duration-(--motion-base) ease-(--ease-out)" style={{ translate: `${(progress ?? 10) - 100}% 0` }} />
                 </div>
                 <div className="mt-1 text-xs text-(--color-text-muted)">
-                  {formatBytes(status.downloaded_bytes)}
-                  {status.total_bytes ? ` / ${formatBytes(status.total_bytes)}` : ''}
+                  {formatMegabytes(status.downloaded_bytes)}
+                  {status.total_bytes ? ` / ${formatMegabytes(status.total_bytes)}` : ''}
                 </div>
               </div>
             ) : null}
@@ -445,7 +445,8 @@ function descriptionForStatus(status: UpdateStatus): string {
   return ''
 }
 
-function formatBytes(bytes?: number | null): string {
+/** Whole megabytes, so a download's progress does not flicker by tenths. */
+function formatMegabytes(bytes?: number | null): string {
   if (!bytes) return '0 MB'
   return `${Math.max(1, Math.round(bytes / (1024 * 1024)))} MB`
 }

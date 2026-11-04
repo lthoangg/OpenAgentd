@@ -9,6 +9,7 @@
  * shows as a chip in its meta column instead of `[Succeeded]` in the output.
  */
 import { canonicalToolName } from '@/utils/tool-names'
+import { formatBytes } from '@/utils/format'
 
 export interface ToolRowSummary {
   text: string
@@ -67,12 +68,6 @@ function testCounts(output: string): string | null {
 
 function nonEmptyLines(text: string): string[] {
   return text.split('\n').map((line) => line.trim()).filter(Boolean)
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 const TODO_LINE = /^\[[^\]]+\] \[([^\]]+)\] \([^)]+\)/

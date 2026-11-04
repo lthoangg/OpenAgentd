@@ -1,15 +1,11 @@
+import { formatBytes } from '@/utils/format'
+
 const DISPLAY_MAX_CHARS = 12_000
 const DISPLAY_HEAD_CHARS = 6_000
 const DISPLAY_TAIL_CHARS = 4_000
 
 export function byteLength(text: string): number {
   return new TextEncoder().encode(text).length
-}
-
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 export function lineCount(text: string): number {

@@ -93,6 +93,7 @@ function OpenSession({ sessionId, onFrame }: { sessionId: string; onFrame: (kind
     connectStream: store.connectStream,
     loadAgentStatus,
     loadSession: store.loadSession,
+    catchUpLiveTurn: store.catchUpLiveTurn,
     beginResolvedSession: store.beginResolvedSession,
     consumeResolvedSessionReady: store.consumeResolvedSessionReady,
   })

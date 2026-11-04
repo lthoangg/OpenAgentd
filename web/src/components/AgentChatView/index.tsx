@@ -201,6 +201,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         connectStream: s.connectStream,
         loadAgentStatus: s.loadAgentStatus,
         loadSession: s.loadSession,
+        catchUpLiveTurn: s.catchUpLiveTurn,
         beginResolvedSession: s.beginResolvedSession,
         consumeResolvedSessionReady: s.consumeResolvedSessionReady,
         setupRequired: s.setupRequired,
@@ -237,6 +238,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     connectStream,
     loadAgentStatus,
     loadSession,
+    catchUpLiveTurn,
     beginResolvedSession,
     consumeResolvedSessionReady,
     setupRequired,
@@ -482,6 +484,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     connectStream,
     loadAgentStatus,
     loadSession,
+    catchUpLiveTurn,
     beginResolvedSession,
     consumeResolvedSessionReady,
   })

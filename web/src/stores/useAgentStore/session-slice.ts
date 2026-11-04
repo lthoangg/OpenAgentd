@@ -403,6 +403,47 @@ function hasUnsyncedCompaction(stream: AgentStream): boolean {
   return false
 }
 
+/** Every row a since-delta carries: the lead's, then each member's. */
+function deltaRows(delta: SessionHistoryResponse): MessageResponse[] {
+  return [...delta.lead.messages, ...delta.members.flatMap((member: { messages: MessageResponse[] }) => member.messages)]
+}
+
+/**
+ * True when ``rows`` hold something the client shows nowhere: a user row, a
+ * tool call, or a tool result whose card is missing. Matched by tool-call id
+ * and user-row id: a confirmed step can carry its live block's id
+ * (``keepLiveIds``), so a block id says nothing here.
+ */
+function holdsUnseenRows(state: AgentStore, rows: MessageResponse[]): boolean {
+  const shownToolCalls = new Set<string>()
+  const shownIds = new Set<string>()
+  for (const stream of Object.values(state.agentStreams)) {
+    for (const block of [...readBlocks(stream.blocks), ...readBlocks(stream.currentBlocks)]) {
+      shownIds.add(block.id)
+      if (block.toolCallId) shownToolCalls.add(block.toolCallId)
+    }
+  }
+  return rows.some((row) => {
+    if (row.role === 'user') return row.kind !== 'queued' && row.extra?.queue_status !== 'queued' && !shownIds.has(row.id)
+    if (row.role === 'tool') return Boolean(row.tool_call_id) && !shownToolCalls.has(row.tool_call_id as string)
+    return (row.tool_calls ?? []).some((call: { id?: string }) => Boolean(call.id) && !shownToolCalls.has(call.id as string))
+  })
+}
+
+/** The tool results ``rows`` carry, keyed by tool-call id. */
+function toolResultsOf(rows: MessageResponse[]): Record<string, OrphanToolResult> {
+  const results: Record<string, OrphanToolResult> = {}
+  for (const row of rows) {
+    if (row.role !== 'tool' || !row.tool_call_id) continue
+    const extra = row.extra as { duration_ms?: number; mcp_app?: Record<string, unknown> } | null
+    const result: OrphanToolResult = { content: row.content || '' }
+    if (typeof extra?.duration_ms === 'number') result.serverDurationMs = extra.duration_ms
+    if (extra?.mcp_app) result.mcpApp = extra.mcp_app
+    results[row.tool_call_id] = result
+  }
+  return results
+}
+
 export function resetSessionState(
   state: AgentStore,
   options: {
@@ -519,6 +560,7 @@ export type SessionSlice = Pick<
   | 'loadSession'
   | 'reconcileTurnTail'
   | 'fillAttachGap'
+  | 'catchUpLiveTurn'
   | 'loadOlderMessages'
   | 'loadOlderUntilPrompt'
   | '_alignLiveWithHistory'
@@ -1188,25 +1230,51 @@ export const createSessionSlice: StateCreator<
     }
     const now = get()
     if (now._sessionGeneration !== gen || now.sessionId !== sessionId) return
-    // Matched by tool-call id and user-row id: a confirmed step can carry its
-    // live block's id (``keepLiveIds``), so a block id says nothing here.
-    const shownToolCalls = new Set<string>()
-    const shownIds = new Set<string>()
-    for (const stream of Object.values(now.agentStreams)) {
-      for (const block of [...readBlocks(stream.blocks), ...readBlocks(stream.currentBlocks)]) {
-        shownIds.add(block.id)
-        if (block.toolCallId) shownToolCalls.add(block.toolCallId)
-      }
-    }
-    const rows = [...delta.lead.messages, ...delta.members.flatMap((member: { messages: MessageResponse[] }) => member.messages)]
-    const missing = delta.truncated || rows.some((row) => {
-      if (row.role === 'user') return row.kind !== 'queued' && row.extra?.queue_status !== 'queued' && !shownIds.has(row.id)
-      if (row.role === 'tool') return Boolean(row.tool_call_id) && !shownToolCalls.has(row.tool_call_id as string)
-      return (row.tool_calls ?? []).some((call: { id?: string }) => Boolean(call.id) && !shownToolCalls.has(call.id as string))
-    })
-    if (!missing) return
+    if (!delta.truncated && !holdsUnseenRows(now, deltaRows(delta))) return
     // The mid-turn reload keeps the live tail and adds the rows it lacks.
     await get().loadSession(sessionId, now._workspace)
+  },
+
+  catchUpLiveTurn: async (sessionId: string, workspace: string | null) => {
+    const state = get()
+    if (state.sessionId !== sessionId || state._workspace !== workspace) return 'stale'
+    const since = state._syncedThrough
+    // Nothing to diff against, a turn that may have started while away, or a
+    // compaction (its summary cannot be spliced): the full page decides.
+    if (since === null || !state.isAgentWorking || Object.values(state.agentStreams).some(hasUnsyncedCompaction)) {
+      return 'reload'
+    }
+    const gen = state._sessionGeneration
+    let delta: SessionHistoryResponse
+    try {
+      delta = await sessionHistorySince(sessionId, since)
+    } catch {
+      return 'reload'
+    }
+    const now = get()
+    if (now._sessionGeneration !== gen || now.sessionId !== sessionId || now._workspace !== workspace) return 'stale'
+    // The turn ended or stopped while away (its final rows replace the live
+    // tail), or too much happened to stitch.
+    if (delta.truncated || delta.lead.running !== true) return 'reload'
+    const rows = deltaRows(delta)
+    if (holdsUnseenRows(now, rows)) return 'reload'
+    // The attach replays only the step in progress, so a shown tool that
+    // finished in a step saved while away would stay "running" until the
+    // turn ends. Its result is in the delta: finish the card from it.
+    const results = toolResultsOf(rows)
+    if (Object.keys(results).length > 0) {
+      set((draft) => {
+        for (const stream of Object.values(draft.agentStreams)) {
+          const live = readBlocks(stream.currentBlocks)
+          const finishedLive = applyOrphanToolResults(live, results)
+          if (finishedLive !== live) stream.currentBlocks = finishedLive as ContentBlock[]
+          const confirmed = readBlocks(stream.blocks)
+          const finishedConfirmed = applyOrphanToolResults(confirmed, results)
+          if (finishedConfirmed !== confirmed) stream.blocks = finishedConfirmed as ContentBlock[]
+        }
+      })
+    }
+    return 'attach'
   },
 
   reconcileTurnTail: async (sessionId: string, workspace?: string | null) => {

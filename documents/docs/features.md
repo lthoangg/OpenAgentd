@@ -335,7 +335,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   stream updates and roughly 60% fewer bytes; the first words still appear
   at once and text stays in order. Reopening a session that has not changed
   downloads nothing (the server answers "not modified"), and on the phone
-  app the file list and git status revalidate the same way.
+  app the file list and git status revalidate the same way. Coming back to
+  the phone app while the agent works fetches only what was saved while it
+  was in the background, and tool cards that finished meanwhile show as
+  done at once.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.

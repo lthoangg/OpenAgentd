@@ -489,6 +489,86 @@ pub async fn skip_gzip_for_loopback(mut req: Request, next: Next) -> Response {
     next.run(req).await
 }
 
+/// Whether an `Accept-Encoding` value takes gzip (and does not refuse it with `q=0`).
+fn accepts_gzip(value: &str) -> bool {
+    value.split(',').any(|item| {
+        let mut parts = item.split(';').map(str::trim);
+        parts.next().is_some_and(|name| name.eq_ignore_ascii_case("gzip"))
+            && !parts.any(|p| p.strip_prefix("q=").and_then(|q| q.trim().parse::<f32>().ok()).is_some_and(|q| q <= 0.0))
+    })
+}
+
+/// Gzips event streams for remote clients, which `gzip_layer` leaves alone
+/// because a compressor holds bytes back until it has enough to work with.
+/// Here every frame is followed by a sync flush, so the client reads it the
+/// moment it is sent, and one deflate context lives as long as the stream:
+/// the event names and JSON keys that repeat in every frame cost a few
+/// bytes after the first. Loopback requests arrive without
+/// `Accept-Encoding` (`skip_gzip_for_loopback`) and stay identity.
+pub async fn gzip_event_stream(req: Request, next: Next) -> Response {
+    let wants_gzip = req.headers().get(header::ACCEPT_ENCODING).and_then(|v| v.to_str().ok()).is_some_and(accepts_gzip);
+    let resp = next.run(req).await;
+    let is_event_stream =
+        resp.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|ct| ct.trim_start().to_ascii_lowercase().starts_with("text/event-stream"));
+    if !wants_gzip || !is_event_stream || resp.headers().contains_key(header::CONTENT_ENCODING) {
+        return resp;
+    }
+    let (mut parts, body) = resp.into_parts();
+    parts.headers.insert(header::CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+    parts.headers.append(header::VARY, HeaderValue::from_static("accept-encoding"));
+    parts.headers.remove(header::CONTENT_LENGTH);
+    Response::from_parts(parts, gzip_frames(body))
+}
+
+/// Bytes in and out of one gzipped event stream, logged when it ends
+/// (`sse_gzip_closed`) however it ends.
+struct GzipTally {
+    raw: u64,
+    sent: u64,
+}
+
+impl Drop for GzipTally {
+    fn drop(&mut self) {
+        tracing::info!("sse_gzip_closed raw_bytes={} sent_bytes={}", self.raw, self.sent);
+    }
+}
+
+fn gzip_frames(body: Body) -> Body {
+    use futures::StreamExt;
+    use std::io::Write;
+    let mut frames = body.into_data_stream();
+    Body::from_stream(async_stream::stream! {
+        let mut tally = GzipTally { raw: 0, sent: 0 };
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        while let Some(frame) = frames.next().await {
+            let frame = match frame {
+                Ok(f) => f,
+                Err(e) => {
+                    yield Err(std::io::Error::other(e));
+                    return;
+                }
+            };
+            tally.raw += frame.len() as u64;
+            // `flush` is a deflate sync flush: everything written so far
+            // becomes decodable without ending the stream.
+            if let Err(e) = gz.write_all(&frame).and_then(|_| gz.flush()) {
+                yield Err(e);
+                return;
+            }
+            let out = std::mem::take(gz.get_mut());
+            tally.sent += out.len() as u64;
+            yield Ok(bytes::Bytes::from(out));
+        }
+        match gz.finish() {
+            Ok(rest) => {
+                tally.sent += rest.len() as u64;
+                yield Ok(bytes::Bytes::from(rest));
+            }
+            Err(e) => yield Err(e),
+        }
+    })
+}
+
 // ── Panics ──────────────────────────────────────────────────────────────────
 
 fn panic_response(payload: Box<dyn std::any::Any + Send + 'static>) -> Response {
@@ -578,6 +658,84 @@ mod tests {
         // relays to remote users, who still need the smaller body.
         for h in [("x-forwarded-for", "203.0.113.7"), ("forwarded", "for=203.0.113.7"), ("via", "1.1 proxy")] {
             assert_eq!(encoding_from(Some("127.0.0.1:50000"), &[h]).await.as_deref(), Some("gzip"), "{}", h.0);
+        }
+    }
+
+    /// An event stream from `peer` whose frames the test sends one at a time,
+    /// through the same layer order as `create_app`.
+    async fn event_stream_from(peer: &str, accept: Option<&'static str>) -> (tokio::sync::mpsc::UnboundedSender<&'static str>, Response) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<&'static str>();
+        let rx = Arc::new(std::sync::Mutex::new(Some(rx)));
+        let app = axum::Router::new()
+            .route(
+                "/s",
+                axum::routing::get(move || {
+                    let rx = rx.lock().unwrap().take().unwrap();
+                    async move {
+                        use futures::StreamExt;
+                        let frames = tokio_stream::wrappers::UnboundedReceiverStream::new(rx).map(|f| Ok::<_, std::io::Error>(bytes::Bytes::from_static(f.as_bytes())));
+                        ([(header::CONTENT_TYPE, "text/event-stream; charset=utf-8")], Body::from_stream(frames))
+                    }
+                }),
+            )
+            .layer(gzip_layer())
+            .layer(axum::middleware::from_fn(gzip_event_stream))
+            .layer(axum::middleware::from_fn(skip_gzip_for_loopback));
+        let mut req = Request::get("/s");
+        if let Some(a) = accept {
+            req = req.header(header::ACCEPT_ENCODING, a);
+        }
+        let mut req = req.body(Body::empty()).unwrap();
+        req.extensions_mut().insert(ConnectInfo(ConnInfo { local: None, remote: Some(peer.parse().unwrap()) }));
+        (tx, app.oneshot(req).await.unwrap())
+    }
+
+    async fn next_bytes(body: &mut Body) -> Option<bytes::Bytes> {
+        use http_body_util::BodyExt;
+        loop {
+            match body.frame().await {
+                None => return None,
+                Some(f) => {
+                    if let Ok(d) = f.unwrap().into_data() {
+                        return Some(d);
+                    }
+                }
+            }
+        }
+    }
+
+    /// A remote client's event stream is gzipped, and every frame can be read
+    /// as soon as it is sent: a frame held in the compressor until more text
+    /// arrived would stall the reply on the phone.
+    #[tokio::test]
+    async fn remote_event_streams_are_gzipped_and_readable_frame_by_frame() {
+        use std::io::Write;
+        let (tx, resp) = event_stream_from("192.168.1.20:50000", Some("gzip, deflate, br")).await;
+        assert_eq!(resp.headers().get(header::CONTENT_ENCODING).unwrap(), "gzip");
+        assert!(resp.headers().get(header::CONTENT_LENGTH).is_none());
+        let mut body = resp.into_body();
+        let mut inflate = flate2::write::GzDecoder::new(Vec::new());
+        for frame in ["event: message\ndata: {\"text\":\"Hello\"}\n\n", "event: message\ndata: {\"text\":\" world\"}\n\n", ": ping\r\n\r\n"] {
+            tx.send(frame).unwrap();
+            inflate.write_all(&next_bytes(&mut body).await.unwrap()).unwrap();
+            inflate.flush().unwrap();
+            assert_eq!(String::from_utf8(std::mem::take(inflate.get_mut())).unwrap(), frame);
+        }
+        drop(tx);
+        while let Some(rest) = next_bytes(&mut body).await {
+            inflate.write_all(&rest).unwrap();
+        }
+        assert!(inflate.finish().unwrap().is_empty(), "the stream ends with a complete gzip trailer");
+    }
+
+    #[tokio::test]
+    async fn event_streams_stay_identity_on_loopback_or_without_gzip() {
+        for (peer, accept) in [("127.0.0.1:50000", Some("gzip")), ("192.168.1.20:50000", None), ("192.168.1.20:50000", Some("gzip;q=0, br"))] {
+            let (tx, resp) = event_stream_from(peer, accept).await;
+            assert!(resp.headers().get(header::CONTENT_ENCODING).is_none(), "{peer} {accept:?}");
+            let mut body = resp.into_body();
+            tx.send("data: x\n\n").unwrap();
+            assert_eq!(next_bytes(&mut body).await.unwrap(), "data: x\n\n");
         }
     }
 

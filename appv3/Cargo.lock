@@ -186,6 +186,7 @@ dependencies = [
  "bytes",
  "chrono",
  "dunce",
+ "flate2",
  "form_urlencoded",
  "futures",
  "http-body-util",

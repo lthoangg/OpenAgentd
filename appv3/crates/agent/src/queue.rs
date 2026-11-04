@@ -24,6 +24,11 @@ impl<T> SubQueue<T> {
         self.len() == 0
     }
 
+    #[cfg(test)]
+    pub(crate) fn items_for_test(&self) -> std::sync::MutexGuard<'_, VecDeque<Option<T>>> {
+        self.items.lock().unwrap()
+    }
+
     /// `put_nowait`; `false` when full.
     pub fn push(&self, item: T) -> bool {
         let mut q = self.items.lock().unwrap();

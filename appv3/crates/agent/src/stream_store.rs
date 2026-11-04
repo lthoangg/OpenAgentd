@@ -2,6 +2,13 @@
 //!
 //! Per-session turn blob for reconnect replay plus live subscriber fan-out.
 //! Single-process only, like v2.
+//!
+//! Live text deltas are joined before fan-out: a provider streams a few
+//! characters per chunk, and each frame costs ~170 bytes of framing plus a
+//! network write (a billed message through a relay). The first delta of a
+//! stream (an agent's message, one tool's output) goes out at once; the
+//! ones that follow within [`DELTA_FLUSH_WINDOW`] are held and sent as one
+//! frame. The replay blob still takes every chunk, so replay is unchanged.
 
 use crate::events::{self, Envelope, WireEvent};
 use crate::queue::SubQueue;
@@ -15,7 +22,73 @@ pub const FINISHED_TURN_TTL: Duration = Duration::from_secs(60);
 pub const MAX_TURN_LIFETIME: Duration = Duration::from_secs(4 * 3600);
 pub const SUBSCRIBER_QUEUE_SIZE: usize = 2048;
 
+/// How long a live delta may wait to be joined with the ones after it.
+pub const DELTA_FLUSH_WINDOW: Duration = Duration::from_millis(50);
+/// Held text past this size goes out without waiting for the window.
+pub const DELTA_FLUSH_BYTES: usize = 8 * 1024;
+
 type Sub = Arc<SubQueue<Arc<WireEvent>>>;
+
+/// Events whose `text` is a piece of a longer stream: consecutive pieces
+/// with the same key and the same other fields can be joined.
+fn is_delta(event: &str) -> bool {
+    matches!(event, "message" | "thinking" | "tool_output_delta" | "summarization_content")
+}
+
+/// One stream of deltas: an agent's message or thinking, one tool's output.
+#[derive(Clone, PartialEq, Eq)]
+struct DeltaKey {
+    event: String,
+    agent: String,
+    tool_call_id: Option<String>,
+}
+
+impl DeltaKey {
+    fn of(env: &Envelope) -> Self {
+        Self { event: env.event.clone(), agent: env.agent().to_string(), tool_call_id: env.str_field("tool_call_id").map(String::from) }
+    }
+}
+
+/// Deltas held back from the live subscribers: the first piece's envelope
+/// with the later pieces' text appended (and the last `sequence`).
+struct PendingDelta {
+    key: DeltaKey,
+    env: Envelope,
+    text: String,
+    opened: tokio::time::Instant,
+}
+
+impl PendingDelta {
+    fn open(key: DeltaKey, env: &Envelope, now: tokio::time::Instant) -> Self {
+        Self { key, env: env.clone(), text: env.str_field("text").unwrap_or("").to_string(), opened: now }
+    }
+
+    /// Whether `env` continues this one: every field but `text` and
+    /// `sequence` is the same (agent, tool, model metadata).
+    fn continues(&self, env: &Envelope) -> bool {
+        let (a, b) = (&self.env.data, &env.data);
+        a.len() == b.len() && a.iter().all(|(k, v)| matches!(k.as_str(), "text" | "sequence") || b.get(k) == Some(v))
+    }
+
+    fn append(&mut self, env: &Envelope) {
+        self.text.push_str(env.str_field("text").unwrap_or(""));
+        if let Some(seq) = env.field("sequence") {
+            self.env.data.insert("sequence".into(), seq.clone());
+        }
+    }
+
+    fn into_wire(mut self) -> Arc<WireEvent> {
+        self.env.data.insert("text".into(), Value::String(self.text));
+        self.env.to_wire()
+    }
+}
+
+/// Live deltas in a turn, before and after joining (`stream_deltas` log).
+#[derive(Default)]
+struct DeltaStats {
+    received: u64,
+    sent: u64,
+}
 
 #[derive(Default)]
 struct TurnState {
@@ -36,6 +109,12 @@ struct TurnState {
     /// that went quiet) otherwise saw the agent waiting with no card to answer.
     open_question: Option<(String, Arc<WireEvent>)>,
     subscribers: Vec<Sub>,
+    /// Deltas waiting to be joined, in the order their streams were opened.
+    pending: Vec<PendingDelta>,
+    /// When each delta stream last sent a frame live: a stream quiet for a
+    /// window sends its next piece at once.
+    last_sent: Vec<(DeltaKey, tokio::time::Instant)>,
+    delta_stats: DeltaStats,
     created_at: Option<Instant>,
     deadline: Option<Instant>,
 }
@@ -78,6 +157,8 @@ impl TurnState {
         self.agent_not_configured = None;
         self.queued_turns.clear();
         self.open_question = None;
+        self.last_sent.clear();
+        self.delta_stats = DeltaStats::default();
     }
     fn clear_replay_payload(&mut self) {
         self.content.clear();
@@ -88,6 +169,86 @@ impl TurnState {
         self.error = None;
         self.agent_not_configured = None;
         self.queued_turns.clear();
+    }
+
+    /// Send `wire` to every live subscriber, dropping any whose queue is full.
+    fn broadcast(&mut self, session_id: &str, wire: Arc<WireEvent>) {
+        let event = &wire.event;
+        self.subscribers.retain(|q| {
+            if q.push(wire.clone()) {
+                true
+            } else {
+                tracing::warn!("sse_subscriber_queue_full session_id={} event_type={} dropping_client qsize={}", session_id, event, q.len());
+                q.terminate();
+                false
+            }
+        });
+    }
+
+    fn send_delta(&mut self, session_id: &str, key: DeltaKey, wire: Arc<WireEvent>, now: tokio::time::Instant) {
+        self.delta_stats.sent += 1;
+        match self.last_sent.iter_mut().find(|(k, _)| *k == key) {
+            Some(slot) => slot.1 = now,
+            None => self.last_sent.push((key, now)),
+        }
+        self.broadcast(session_id, wire);
+    }
+
+    /// Send every held delta, oldest stream first. Runs before anything else
+    /// goes out, so held text always precedes the event that follows it.
+    fn flush_pending(&mut self, session_id: &str) {
+        if self.pending.is_empty() {
+            return;
+        }
+        let now = tokio::time::Instant::now();
+        for p in std::mem::take(&mut self.pending) {
+            let key = p.key.clone();
+            self.send_delta(session_id, key, p.into_wire(), now);
+        }
+    }
+
+    /// Send the held deltas whose window has passed.
+    fn flush_due(&mut self, session_id: &str, now: tokio::time::Instant) {
+        let mut i = 0;
+        while i < self.pending.len() {
+            if self.pending[i].opened + DELTA_FLUSH_WINDOW <= now {
+                let p = self.pending.remove(i);
+                let key = p.key.clone();
+                self.send_delta(session_id, key, p.into_wire(), now);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    /// A live delta: send it, join it to the held piece of its stream, or
+    /// hold it. `true` when a new piece is held and needs a flush timer.
+    fn push_delta(&mut self, session_id: &str, env: &Envelope, can_wait: bool) -> bool {
+        self.delta_stats.received += 1;
+        let now = tokio::time::Instant::now();
+        let key = DeltaKey::of(env);
+        if let Some(i) = self.pending.iter().position(|p| p.key == key) {
+            if self.pending[i].continues(env) {
+                self.pending[i].append(env);
+                if self.pending[i].text.len() >= DELTA_FLUSH_BYTES {
+                    let p = self.pending.remove(i);
+                    self.send_delta(session_id, key, p.into_wire(), now);
+                }
+                return false;
+            }
+            // Same stream, other metadata (a model switch): close the held
+            // piece and start a new one.
+            let p = self.pending.remove(i);
+            self.send_delta(session_id, key.clone(), p.into_wire(), now);
+        }
+        let recent = self.last_sent.iter().any(|(k, at)| *k == key && now.duration_since(*at) < DELTA_FLUSH_WINDOW);
+        let small = env.str_field("text").map_or(0, str::len) < DELTA_FLUSH_BYTES;
+        if recent && can_wait && small {
+            self.pending.push(PendingDelta::open(key, env, now));
+            return true;
+        }
+        self.send_delta(session_id, key, env.to_wire(), now);
+        false
     }
 }
 
@@ -166,6 +327,7 @@ impl StreamStore {
         let now = Instant::now();
         let mut turns = self.turns.lock().unwrap();
         if let Some(old) = turns.get_mut(session_id) {
+            old.flush_pending(session_id);
             if keep_subscribers {
                 old.reset_for_next_turn();
                 old.created_at = Some(now);
@@ -192,7 +354,7 @@ impl StreamStore {
     }
 
     /// `push_event`.
-    pub fn push_event(&self, session_id: &str, env: &Envelope, create_if_missing: bool) {
+    pub fn push_event(&'static self, session_id: &str, env: &Envelope, create_if_missing: bool) {
         crate::events::check_contract(crate::events::Stream::Session, &env.event);
         let now = Instant::now();
         let mut turns = self.turns.lock().unwrap();
@@ -299,18 +461,33 @@ impl StreamStore {
         state.deadline = Some((now + STREAM_TTL).min(created + MAX_TURN_LIFETIME));
 
         if state.subscribers.is_empty() {
+            state.pending.clear();
             return;
         }
-        let wire = env.to_wire();
-        state.subscribers.retain(|q| {
-            if q.push(wire.clone()) {
-                true
-            } else {
-                tracing::warn!("sse_subscriber_queue_full session_id={} event_type={} dropping_client qsize={}", session_id, env.event, q.len());
-                q.terminate();
-                false
+        if is_delta(&env.event) {
+            // Holding needs a timer to flush; without a runtime (sync
+            // tests), every delta goes out as it comes.
+            let runtime = tokio::runtime::Handle::try_current().ok();
+            if state.push_delta(session_id, env, runtime.is_some()) {
+                if let Some(rt) = runtime {
+                    let sid = session_id.to_string();
+                    rt.spawn(async move {
+                        tokio::time::sleep(DELTA_FLUSH_WINDOW).await;
+                        self.flush_due(&sid);
+                    });
+                }
             }
-        });
+            return;
+        }
+        state.flush_pending(session_id);
+        state.broadcast(session_id, env.to_wire());
+    }
+
+    /// Timer side of delta joining: send what has waited a full window.
+    fn flush_due(&self, session_id: &str) {
+        if let Some(state) = self.turns.lock().unwrap().get_mut(session_id) {
+            state.flush_due(session_id, tokio::time::Instant::now());
+        }
     }
 
     /// A session parked on the open question `row`: make sure it has a turn
@@ -344,6 +521,7 @@ impl StreamStore {
         let Some(state) = turns.get_mut(session_id) else {
             return;
         };
+        state.flush_pending(session_id);
         remove(&mut state.content, agent);
         remove(&mut state.thinking, agent);
         if let Some(i) = state.summarization.iter().position(|(k, _)| k == agent) {
@@ -361,6 +539,11 @@ impl StreamStore {
         let Some(state) = turns.get_mut(session_id) else {
             return;
         };
+        state.flush_pending(session_id);
+        let s = &state.delta_stats;
+        if s.received > 0 {
+            tracing::info!("stream_deltas session_id={} received={} sent={}", session_id, s.received, s.sent);
+        }
         state.is_streaming = false;
         state.deadline = Some(Instant::now() + FINISHED_TURN_TTL);
         for q in &state.subscribers {
@@ -370,7 +553,8 @@ impl StreamStore {
 
     /// `clear`.
     pub fn clear(&self, session_id: &str) {
-        if let Some(state) = self.turns.lock().unwrap().remove(session_id) {
+        if let Some(mut state) = self.turns.lock().unwrap().remove(session_id) {
+            state.flush_pending(session_id);
             for q in &state.subscribers {
                 q.terminate();
             }
@@ -379,7 +563,8 @@ impl StreamStore {
 
     pub fn close_all(&self) {
         let mut turns = self.turns.lock().unwrap();
-        for state in turns.values() {
+        for (sid, state) in turns.iter_mut() {
+            state.flush_pending(sid);
             for q in &state.subscribers {
                 q.terminate();
             }
@@ -410,6 +595,7 @@ impl StreamStore {
             if st.deadline.map(|d| d > now).unwrap_or(true) {
                 continue;
             }
+            st.flush_pending(sid);
             if st.is_streaming && !st.subscribers.is_empty() {
                 st.clear_replay_payload();
                 st.created_at = Some(now);
@@ -442,6 +628,9 @@ impl StreamStore {
         if !state.is_streaming {
             return None;
         }
+        // Held text goes to the subscribers already here; the new one gets
+        // it in the replay below, so it must not get it again.
+        state.flush_pending(session_id);
         let q: Sub = Arc::new(SubQueue::new(SUBSCRIBER_QUEUE_SIZE));
         state.subscribers.push(q.clone());
         let mut replay: Vec<Envelope> = Vec::new();
@@ -646,8 +835,9 @@ mod tests {
         let s = leak();
         s.init_turn("y", false);
         let mut sub = s.attach("y").unwrap();
+        // Events that are never joined, one frame each.
         for i in 0..(SUBSCRIBER_QUEUE_SIZE + 1) {
-            s.push_event("y", &events::message("a", &i.to_string(), None), false);
+            s.push_event("y", &events::tool_call("a", Some(&i.to_string()), "read", None), false);
         }
         assert_eq!(s.debug_state("y").unwrap()["subscribers"], json!(0));
         let mut n = 0;
@@ -655,6 +845,148 @@ mod tests {
             n += 1;
         }
         assert_eq!(n, SUBSCRIBER_QUEUE_SIZE - 1);
+    }
+
+    /// `(event, text)` of every frame already queued for `sub`.
+    fn queued(sub: &Subscription) -> Vec<(String, String)> {
+        let mut out = vec![];
+        while let Some(Some(e)) = sub.queue.items_for_test().pop_front() {
+            let data: Value = serde_json::from_str(&e.data).unwrap();
+            out.push((e.event.clone(), data["text"].as_str().unwrap_or("").to_string()));
+        }
+        out
+    }
+
+    fn frames(v: &[(&str, &str)]) -> Vec<(String, String)> {
+        v.iter().map(|(e, t)| (e.to_string(), t.to_string())).collect()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_first_delta_goes_out_at_once_and_the_rest_are_joined() {
+        let s = leak();
+        s.init_turn("j", false);
+        let sub = s.attach("j").unwrap();
+        for t in ["Hel", "lo, ", "wor", "ld"] {
+            s.push_event("j", &events::message("a", t, None), false);
+        }
+        assert_eq!(queued(&sub), frames(&[("message", "Hel")]), "only the first piece is out before the window");
+        tokio::time::sleep(DELTA_FLUSH_WINDOW).await;
+        tokio::task::yield_now().await;
+        assert_eq!(queued(&sub), frames(&[("message", "lo, world")]));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tools_running_side_by_side_are_joined_each_on_its_own() {
+        let s = leak();
+        s.init_turn("p", false);
+        let sub = s.attach("p").unwrap();
+        for n in 1..=3 {
+            for id in ["t1", "t2"] {
+                s.push_event("p", &events::tool_output_delta("a", Some(id), "shell", &format!("{id}.{n} "), n), false);
+            }
+        }
+        tokio::time::sleep(DELTA_FLUSH_WINDOW).await;
+        tokio::task::yield_now().await;
+        assert_eq!(
+            queued(&sub),
+            frames(&[("tool_output_delta", "t1.1 "), ("tool_output_delta", "t2.1 "), ("tool_output_delta", "t1.2 t1.3 "), ("tool_output_delta", "t2.2 t2.3 ")])
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_joined_frame_keeps_its_stream_fields_and_the_last_sequence() {
+        let s = leak();
+        s.init_turn("q", false);
+        let sub = s.attach("q").unwrap();
+        for n in 1..=3 {
+            s.push_event("q", &events::tool_output_delta("a", Some("t1"), "shell", &n.to_string(), n), false);
+        }
+        s.push_event("q", &events::tool_end("a", Some("t1"), "shell", Some("123"), None), false);
+        let mut q = sub.queue.items_for_test();
+        q.pop_front();
+        let joined: Value = serde_json::from_str(&q.pop_front().unwrap().unwrap().data).unwrap();
+        assert_eq!(joined, serde_json::from_str::<Value>(&events::tool_output_delta("a", Some("t1"), "shell", "23", 3).to_wire().data).unwrap());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn held_text_goes_out_before_the_next_event() {
+        let s = leak();
+        s.init_turn("o", false);
+        let sub = s.attach("o").unwrap();
+        s.push_event("o", &events::message("a", "a", None), false);
+        s.push_event("o", &events::message("a", "b", None), false);
+        s.push_event("o", &events::tool_call("a", Some("t1"), "read", None), false);
+        s.push_event("o", &events::message("a", "c", None), false);
+        s.push_event("o", &events::done(None), false);
+        assert_eq!(queued(&sub), frames(&[("message", "a"), ("message", "b"), ("tool_call", ""), ("message", "c"), ("done", "")]));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn ending_the_turn_sends_held_text_before_the_end() {
+        let s = leak();
+        s.init_turn("e", false);
+        let mut sub = s.attach("e").unwrap();
+        s.push_event("e", &events::message("a", "a", None), false);
+        s.push_event("e", &events::message("a", "b", None), false);
+        s.mark_done("e");
+        assert_eq!(sub.next().await.unwrap().event, "message");
+        let last: Value = serde_json::from_str(&sub.next().await.unwrap().data).unwrap();
+        assert_eq!(last["text"], "b");
+        assert!(sub.next().await.is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_attach_mid_window_neither_repeats_nor_loses_text() {
+        let s = leak();
+        s.init_turn("m", false);
+        let old = s.attach("m").unwrap();
+        s.push_event("m", &events::message("a", "he", None), false);
+        s.push_event("m", &events::message("a", "llo", None), false);
+        let new = s.attach("m").unwrap();
+        assert_eq!(queued(&old), frames(&[("message", "he"), ("message", "llo")]), "the old subscriber gets the held text");
+        let replay: Vec<String> = new.replay.iter().map(|e| serde_json::from_str::<Value>(&e.data).unwrap()["text"].as_str().unwrap().to_string()).collect();
+        assert_eq!(replay, ["hello"]);
+        tokio::time::sleep(DELTA_FLUSH_WINDOW * 2).await;
+        tokio::task::yield_now().await;
+        assert_eq!(queued(&new), vec![], "the new one has it from the replay only");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_large_held_piece_goes_out_without_waiting() {
+        let s = leak();
+        s.init_turn("b", false);
+        let sub = s.attach("b").unwrap();
+        s.push_event("b", &events::message("a", "a", None), false);
+        let big = "x".repeat(DELTA_FLUSH_BYTES);
+        s.push_event("b", &events::message("a", &big, None), false);
+        assert_eq!(queued(&sub), frames(&[("message", "a"), ("message", &big)]));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn other_metadata_starts_a_new_frame() {
+        let s = leak();
+        s.init_turn("d", false);
+        let sub = s.attach("d").unwrap();
+        let m1 = || Some(json!({"model": "a:one"}));
+        s.push_event("d", &events::message("a", "a", m1()), false);
+        s.push_event("d", &events::message("a", "b", m1()), false);
+        s.push_event("d", &events::message("a", "c", Some(json!({"model": "a:two"}))), false);
+        assert_eq!(queued(&sub), frames(&[("message", "a"), ("message", "b")]));
+        tokio::time::sleep(DELTA_FLUSH_WINDOW).await;
+        tokio::task::yield_now().await;
+        let q = sub.queue.items_for_test();
+        let data: Value = serde_json::from_str(&q[0].as_ref().unwrap().data).unwrap();
+        assert_eq!((data["text"].as_str(), data["metadata"]["model"].as_str()), (Some("c"), Some("a:two")));
+    }
+
+    #[test]
+    fn without_a_runtime_every_delta_goes_out_as_it_comes() {
+        let s = leak();
+        s.init_turn("n", false);
+        let sub = s.attach("n").unwrap();
+        s.push_event("n", &events::message("a", "a", None), false);
+        s.push_event("n", &events::message("a", "b", None), false);
+        assert_eq!(queued(&sub), frames(&[("message", "a"), ("message", "b")]));
     }
 
     #[tokio::test]

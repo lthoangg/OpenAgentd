@@ -1197,10 +1197,28 @@ explicitly.
   `mcp/src/lib.rs`. v2 waits without a deadline.
 - **ETag on workspace listings (v3 only):** `GET /api/agent/{sid}/files`,
   `/api/agent/workspace/files/list`, `/api/agent/workspace/status`,
-  `/api/agent/workspace/git-diff/view` and `/git-diff/files` send an `ETag` (64-bit hash of the
-  JSON body) with `Cache-Control: no-cache`, and answer `304` with an empty
-  body when `If-None-Match` matches. The body is still computed on every
-  request. Test: `api/src/routes/agent/files.rs`. v2 always returns 200.
+  `/api/agent/workspace/git-diff/view`, `/git-diff/files` and every
+  `/api/agent/{sid}/history` page send an `ETag` (64-bit hash of the JSON
+  body) with `Cache-Control: private, no-cache`, and answer `304` with an
+  empty body when `If-None-Match` matches. The body is still computed on
+  every request. CORS exposes `ETag` so the phone app (`tauri://localhost`,
+  cross-origin) can read it; the web client revalidates the newest history
+  page of its last four sessions. Tests: `api/src/routes/agent/files.rs`,
+  `api/tests/http_api.rs` (`history_etag_flow`). v2 always returns 200.
+- **Joined live deltas (v3 only):** the stream store sends the first
+  `message`, `thinking`, `tool_output_delta` or `summarization_content`
+  piece of a stream (an agent's text, one tool's output) at once, then joins
+  the pieces that follow within 50 ms (or up to 8 KB) into one frame, keyed
+  by event, agent and `tool_call_id`, so tools running side by side are
+  joined each on its own. Held text goes out before any other event, before
+  an attach (whose replay already has it) and at the end of the turn. The
+  replay blob still takes every piece. The SSE writer sends events that are
+  ready together as one write and pings only after 15 s of silence.
+  `sse_stream_close` logs events, writes, pings, bytes, path and whether
+  the peer is remote; `stream_deltas` logs pieces received and frames sent
+  per turn; `history_page_served` (info) and `history_page_breakdown` log
+  what each history page weighed. Tests: `agent/src/stream_store.rs`,
+  `api/src/sse.rs`, `api/src/middleware.rs`. v2 sends one frame per chunk.
 - **Changed-files list (v3 only):** `GET /api/agent/workspace/git-diff/files`
   lists every changed path with status and +/− counts from
   `git diff --name-status/--numstat` and `ls-files --others` (capped at 5,000

@@ -4,6 +4,7 @@
 use super::helpers::*;
 use super::worktrees;
 use crate::error::{loc, verr, verr_ctx, ApiError, ApiResult};
+use crate::middleware::Peer;
 use crate::sse::sse_response;
 use crate::util::*;
 use crate::AppState;
@@ -1195,7 +1196,9 @@ async fn usage_totals(pool: &DbPool, root: &db::ChatSession, subs: &[db::ChatSes
     Ok(db::session_usage_totals_many(pool, &ids).await?)
 }
 
-async fn agent_history(st: State<AppState>, raw: AxPath<String>, q: Qs) -> ApiResult<Response> {
+/// Every page carries an `ETag`: a client reopening a session that has not
+/// changed gets `304` and no body (a newest page can run to megabytes).
+async fn agent_history(st: State<AppState>, raw: AxPath<String>, q: Qs, headers: axum::http::HeaderMap, peer: Option<axum::Extension<Peer>>) -> ApiResult<Response> {
     let started = std::time::Instant::now();
     let page = if q.opt("since").is_some() {
         "since"
@@ -1205,10 +1208,62 @@ async fn agent_history(st: State<AppState>, raw: AxPath<String>, q: Qs) -> ApiRe
         "newest"
     };
     let session = raw.0.clone();
-    let res = agent_history_page(st, raw, q).await;
-    let bytes = res.as_ref().ok().and_then(|r| axum::body::HttpBody::size_hint(r.body()).exact()).unwrap_or(0);
-    tracing::debug!("history_page_served session_id={} page={} ok={} bytes={} elapsed_ms={}", session, page, res.is_ok(), bytes, started.elapsed().as_millis());
+    let res = etagged(&headers, agent_history_page(st, raw, q).await).await;
+    let (status, bytes) = match &res {
+        Ok(r) => (r.status().as_u16(), axum::body::HttpBody::size_hint(r.body()).exact().unwrap_or(0)),
+        Err(_) => (0, 0),
+    };
+    let remote = peer.is_some_and(|p| p.0.remote());
+    tracing::info!("history_page_served session_id={} page={} status={} bytes={} remote={} elapsed_ms={}", session, page, status, bytes, remote, started.elapsed().as_millis());
     res
+}
+
+/// Bytes of a page's rows by what they hold, to see what makes a history
+/// page heavy (logged as `history_page_breakdown`).
+#[derive(Default, Debug, PartialEq)]
+struct RowBytes {
+    content: usize,
+    reasoning: usize,
+    tool_args: usize,
+    tool_results: usize,
+    extra: usize,
+}
+
+impl RowBytes {
+    fn add(&mut self, rows: &[db::SessionMessage]) {
+        let len = |s: &Option<String>| s.as_ref().map_or(0, String::len);
+        for r in rows {
+            if r.role == "tool" {
+                self.tool_results += len(&r.content);
+            } else {
+                self.content += len(&r.content);
+            }
+            self.reasoning += len(&r.reasoning_content);
+            self.tool_args += len(&r.tool_calls);
+            self.extra += len(&r.extra);
+        }
+    }
+}
+
+fn log_page_breakdown(sid: &str, lead: &[db::SessionMessage], members: &[Vec<db::SessionMessage>]) {
+    let mut l = RowBytes::default();
+    l.add(lead);
+    let mut m = RowBytes::default();
+    for rows in members {
+        m.add(rows);
+    }
+    tracing::info!(
+        "history_page_breakdown session_id={} rows={} content={} reasoning={} tool_args={} tool_results={} extra={} member_rows={} member_bytes={}",
+        sid,
+        lead.len(),
+        l.content,
+        l.reasoning,
+        l.tool_args,
+        l.tool_results,
+        l.extra,
+        members.iter().map(Vec::len).sum::<usize>(),
+        m.content + m.reasoning + m.tool_args + m.tool_results + m.extra,
+    );
 }
 
 async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<String>, q: Qs) -> ApiResult<Response> {
@@ -1287,6 +1342,7 @@ async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<Stri
         .await?;
     let statuses = store().get_agent_statuses(&sid);
     let db::FirstHistoryPage { rows: lead_rows, has_more, boundary, latest_prompt } = page;
+    log_page_breakdown(&sid, &lead_rows, &member_rows);
     let next_cursor = boundary.map(|b| format!("{}|{}", b.seq, db::codec::api_uuid(&b.id)));
     let members = subs.iter().zip(&member_rows).map(|(sub, rows)| member_part(&statuses, sub, rows, &totals)).collect();
     let lead = lead_part(&root, &lead_rows, Some(&totals));
@@ -1304,6 +1360,31 @@ mod tests {
         let mut agent = appv3_agent::Agent::new(Arc::new(MockProvider::new(vec![])), "code", "Hi", vec![], Some("mock:mock".into()));
         agent.thinking_level = thinking_level.map(String::from);
         agent
+    }
+
+    fn row(role: &str, content: &str, reasoning: Option<&str>, tool_calls: Option<&str>) -> db::SessionMessage {
+        db::SessionMessage {
+            id: "0123456789abcdef0123456789abcdef".into(),
+            session_id: "fedcba9876543210fedcba9876543210".into(),
+            role: role.into(),
+            content: Some(content.into()),
+            reasoning_content: reasoning.map(String::from),
+            tool_calls: tool_calls.map(String::from),
+            tool_call_id: None,
+            name: None,
+            extra: Some("{}".into()),
+            created_at: String::new(),
+            seq: 0,
+            kind: "message".into(),
+            pinned: false,
+        }
+    }
+
+    #[test]
+    fn page_bytes_are_split_by_what_the_rows_hold() {
+        let mut b = RowBytes::default();
+        b.add(&[row("assistant", "hello", Some("hmm"), Some("[{\"a\":1}]")), row("tool", "output!", None, None), row("user", "hi", None, None)]);
+        assert_eq!(b, RowBytes { content: 7, reasoning: 3, tool_args: 9, tool_results: 7, extra: 6 });
     }
 
     #[test]

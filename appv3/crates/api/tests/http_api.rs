@@ -7,7 +7,7 @@
 use appv3_api::{create_app, AppState, ConnInfo, Policy};
 use axum::body::Body;
 use axum::extract::ConnectInfo;
-use axum::http::{Request, StatusCode};
+use axum::http::{header, HeaderValue, Request, StatusCode};
 use axum::routing::post;
 use axum::Router;
 use http_body_util::BodyExt;
@@ -491,6 +491,7 @@ async fn http_api_end_to_end() {
     history_paging_flow(&c, &pool, &ws).await;
     history_missing_folder_flow(&c, &pool, root.path()).await;
     history_first_page_flow(&c, &pool, &ws).await;
+    history_etag_flow(&c, &pool, &ws).await;
     plan_review_flow(&c, &pool, &ws).await;
     linked_sessions_flow(&c, &pool).await;
     confirm_change_flow(&c, &pool, &ws).await;
@@ -1106,6 +1107,43 @@ async fn history_paging_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path
         let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{}", appv3_db::codec::api_uuid(id)), None).await;
         assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
     }
+}
+
+/// Reopening a session that has not changed costs a `304` and no body; a
+/// new row changes the tag. The phone app is cross-origin, so CORS must let
+/// it read `ETag`.
+async fn history_etag_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
+    let lead = appv3_db::create_session(pool, appv3_db::NewSession { workspace: ws.display().to_string(), ..Default::default() }).await.unwrap();
+    appv3_db::save_message(pool, &lead.id, appv3_db::NewMessage::assistant(Some("first".into()))).await.unwrap();
+    let lid = appv3_db::codec::api_uuid(&lead.id);
+    let get = |tag: Option<HeaderValue>| {
+        let mut b = Request::get(format!("/api/agent/{lid}/history")).header(header::ORIGIN, "tauri://localhost");
+        if let Some(t) = tag {
+            b = b.header(header::IF_NONE_MATCH, t);
+        }
+        c.send(b.body(Body::empty()).unwrap())
+    };
+
+    let (st, h, body) = get(None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(!body.is_empty());
+    let tag = h.get(header::ETAG).expect("history carries an ETag").clone();
+    assert_eq!(h[header::CACHE_CONTROL], "private, no-cache");
+    let exposed = h[header::ACCESS_CONTROL_EXPOSE_HEADERS].to_str().unwrap();
+    assert!(exposed.split(',').any(|v| v.trim().eq_ignore_ascii_case("etag")), "{exposed}");
+
+    let (st, h, body) = get(Some(tag.clone())).await;
+    assert_eq!(st, StatusCode::NOT_MODIFIED);
+    assert!(body.is_empty());
+    assert_eq!(h[header::ETAG], tag);
+
+    appv3_db::save_message(pool, &lead.id, appv3_db::NewMessage::assistant(Some("second".into()))).await.unwrap();
+    let (st, h, _) = get(Some(tag.clone())).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_ne!(h[header::ETAG], tag);
+
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{lid}"), None).await;
+    assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
 }
 
 /// The newest page reaches back to the latest prompt the user wrote, so a

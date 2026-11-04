@@ -1,8 +1,8 @@
 //! HTTP middleware stack and desktop-token auth.
 //!
 //! Layer order mirrors v2's `add_middleware` sequence (last added =
-//! outermost): CORS → SecurityHeaders → DesktopToken → SkipGzipForLoopback →
-//! GZip → RequestSizeLimit → NetworkBindGuard → router.
+//! outermost): CORS → SecurityHeaders → DesktopToken → TagPeer →
+//! SkipGzipForLoopback → GZip → RequestSizeLimit → NetworkBindGuard → router.
 
 use crate::util::json_status;
 use appv3_core::auth::{
@@ -63,6 +63,44 @@ impl axum::extract::connect_info::Connected<axum::serve::IncomingStream<'_, NoDe
 
 fn is_ws_upgrade(req: &Request) -> bool {
     req.headers().get(header::UPGRADE).and_then(|v| v.to_str().ok()).map(|v| v.eq_ignore_ascii_case("websocket")).unwrap_or(false)
+}
+
+/// Where a request came from, for gzip and for the transfer logs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Peer {
+    /// The TCP peer is on this machine.
+    pub loopback: bool,
+    /// The request carries proxy headers: a local reverse proxy or tunnel
+    /// relaying it for a remote user.
+    pub proxied: bool,
+}
+
+impl Peer {
+    pub fn of(req: &Request) -> Self {
+        let loopback = req.extensions().get::<ConnectInfo<ConnInfo>>().and_then(|c| c.0.remote).is_some_and(|a| a.ip().to_canonical().is_loopback());
+        let h = req.headers();
+        let proxied = h.contains_key(header::FORWARDED) || h.contains_key("x-forwarded-for") || h.contains_key(header::VIA);
+        Peer { loopback, proxied }
+    }
+
+    /// The bytes cross a network to reach the user.
+    pub fn remote(&self) -> bool {
+        !self.loopback || self.proxied
+    }
+}
+
+/// Records the request's [`Peer`] for handlers, and labels an SSE response's
+/// transfer counters with its path and peer, so `sse_stream_close` says
+/// which stream it was and whether it went over the network.
+pub async fn tag_peer(mut req: Request, next: Next) -> Response {
+    let peer = Peer::of(&req);
+    let path = req.uri().path().to_string();
+    req.extensions_mut().insert(peer);
+    let resp = next.run(req).await;
+    if let Some(stats) = resp.extensions().get::<Arc<crate::sse::SseStats>>() {
+        stats.label(format!("path={} remote={}", path, peer.remote()));
+    }
+    resp
 }
 
 /// Closing a WebSocket before `accept()` makes the ASGI server answer the
@@ -295,7 +333,9 @@ pub async fn security_headers(req: Request, next: Next) -> Response {
 /// Port of Starlette's `CORSMiddleware` as configured by v2
 /// (`allow_credentials=True`, `allow_methods=["*"]`, `allow_headers=["*"]`,
 /// `expose_headers=[Accept-Ranges, Content-Range, Content-Length]`,
-/// `max_age=600`). Requests without `Origin` pass through untouched.
+/// `max_age=600`), plus `ETag` exposed so a cross-origin client (the phone
+/// app's `tauri://localhost`) can revalidate with `If-None-Match`. Requests
+/// without `Origin` pass through untouched.
 ///
 /// Allowed origins: first-party clients (Tauri webviews, loopback pages),
 /// every entry of `OPENAGENTD_CORS_ORIGINS`, and — when it is unset — any
@@ -370,6 +410,9 @@ pub async fn cors(axum::extract::State(c): axum::extract::State<Cors>, req: Requ
             failures.push("private-network");
         }
         let (status, text) = if failures.is_empty() { (StatusCode::OK, "OK".to_string()) } else { (StatusCode::BAD_REQUEST, format!("Disallowed CORS {}", failures.join(", "))) };
+        // Each preflight is a round trip (and, through a relay, a billed
+        // message); the browser caches it per URL for `max-age`.
+        tracing::debug!("cors_preflight path={} method={} ok={}", req.uri().path(), method, failures.is_empty());
         let mut resp = Response::new(Body::from(text.clone()));
         *resp.status_mut() = status;
         let h = resp.headers_mut();
@@ -390,7 +433,7 @@ pub async fn cors(axum::extract::State(c): axum::extract::State<Cors>, req: Requ
     let mut resp = next.run(req).await;
     let h = resp.headers_mut();
     h.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, hv("true"));
-    h.insert(header::ACCESS_CONTROL_EXPOSE_HEADERS, hv("Accept-Ranges, Content-Range, Content-Length"));
+    h.insert(header::ACCESS_CONTROL_EXPOSE_HEADERS, hv("Accept-Ranges, Content-Range, Content-Length, ETag"));
     if c.allowed(&origin) {
         h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, hv(&origin));
         add_vary_origin(h);
@@ -440,10 +483,7 @@ pub fn gzip_layer() -> tower_http::compression::CompressionLayer<impl tower_http
 /// user, so it keeps gzip. Runs outside `gzip_layer`, which then sees no
 /// `Accept-Encoding` and leaves the body alone.
 pub async fn skip_gzip_for_loopback(mut req: Request, next: Next) -> Response {
-    let loopback = req.extensions().get::<ConnectInfo<ConnInfo>>().and_then(|c| c.0.remote).is_some_and(|a| a.ip().to_canonical().is_loopback());
-    let h = req.headers();
-    let proxied = h.contains_key(header::FORWARDED) || h.contains_key("x-forwarded-for") || h.contains_key(header::VIA);
-    if loopback && !proxied {
+    if !Peer::of(&req).remote() {
         req.headers_mut().remove(header::ACCEPT_ENCODING);
     }
     next.run(req).await
@@ -539,6 +579,26 @@ mod tests {
         for h in [("x-forwarded-for", "203.0.113.7"), ("forwarded", "for=203.0.113.7"), ("via", "1.1 proxy")] {
             assert_eq!(encoding_from(Some("127.0.0.1:50000"), &[h]).await.as_deref(), Some("gzip"), "{}", h.0);
         }
+    }
+
+    /// The label `tag_peer` gives an SSE response from `peer`.
+    async fn sse_label_from(peer: &str, extra: &[(&'static str, &'static str)]) -> Option<String> {
+        let app = axum::Router::new().route("/s", axum::routing::get(|| async { crate::sse::sse_response(futures::stream::empty()) })).layer(axum::middleware::from_fn(tag_peer));
+        let mut req = Request::get("/s");
+        for (k, v) in extra {
+            req = req.header(*k, *v);
+        }
+        let mut req = req.body(Body::empty()).unwrap();
+        req.extensions_mut().insert(ConnectInfo(ConnInfo { local: None, remote: Some(peer.parse().unwrap()) }));
+        let resp = app.oneshot(req).await.unwrap();
+        resp.extensions().get::<Arc<crate::sse::SseStats>>().and_then(|s| s.labelled().map(String::from))
+    }
+
+    #[tokio::test]
+    async fn sse_streams_are_labelled_with_path_and_peer() {
+        assert_eq!(sse_label_from("192.168.1.20:50000", &[]).await.as_deref(), Some("path=/s remote=true"));
+        assert_eq!(sse_label_from("127.0.0.1:50000", &[]).await.as_deref(), Some("path=/s remote=false"));
+        assert_eq!(sse_label_from("127.0.0.1:50000", &[("x-forwarded-for", "203.0.113.7")]).await.as_deref(), Some("path=/s remote=true"));
     }
 
     #[tokio::test]

@@ -14,6 +14,54 @@ pub const HISTORY_PAGE_SIZE: i64 = 100;
 /// latest prompt (see [`first_history_page`]).
 pub const FIRST_PAGE_MAX: i64 = 500;
 
+/// Most bytes of row bodies the lead's first history page holds: a long run of
+/// large tool results stops short of its prompt (which is pinned instead) and
+/// the rest pages in. Kept to at least [`FIRST_PAGE_MIN_ROWS`] rows.
+pub const FIRST_PAGE_MAX_BYTES: usize = 2 * 1024 * 1024;
+
+/// Rows the byte budget always leaves on the first page.
+pub const FIRST_PAGE_MIN_ROWS: usize = 20;
+
+/// Newest rows each member carries on the lead's first page. The lead's view
+/// never renders a member's rows (its own session does, from its own
+/// history), so a short tail is enough: a session with dozens of members sent
+/// a hundred rows each, nearly all of a 17 MB page.
+pub const MEMBER_FIRST_PAGE_SIZE: i64 = 10;
+
+/// Most bytes of row bodies one member carries on the lead's first page.
+pub const MEMBER_PAGE_MAX_BYTES: usize = 128 * 1024;
+
+/// The bytes a row takes on the wire: its history JSON, which leaves out what
+/// display strips (a tool result's image parts can be megabytes of `extra`).
+fn row_bytes(row: &SessionMessage) -> usize {
+    struct Count(usize);
+    impl std::io::Write for Count {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0 += buf.len();
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut count = Count(0);
+    let _ = serde_json::to_writer(&mut count, &crate::api::MessageView(row));
+    count.0
+}
+
+/// How many of the oldest `rows` (chronological) to drop so the rest fit in
+/// `max_bytes`, keeping at least `min_rows` of the newest.
+fn over_budget(rows: &[SessionMessage], max_bytes: usize, min_rows: usize) -> usize {
+    let mut total = 0usize;
+    for (kept, row) in rows.iter().rev().enumerate() {
+        total += row_bytes(row);
+        if total > max_bytes && kept >= min_rows.max(1) {
+            return rows.len() - kept;
+        }
+    }
+    0
+}
+
 /// A message to persist.
 #[derive(Debug, Default, Clone)]
 pub struct NewMessage {
@@ -368,9 +416,35 @@ pub async fn first_history_page(pool: &DbPool, session: &ChatSession) -> Result<
         None => HISTORY_PAGE_SIZE,
     };
     let (rows, has_more, boundary) = history_page_of(pool, &session.id, None, limit).await?;
+    let (rows, has_more, boundary) = trim_to_budget(rows, has_more, boundary, FIRST_PAGE_MAX_BYTES, FIRST_PAGE_MIN_ROWS);
     // Over the cap, or a row landed between the count and the page.
     let latest_prompt = prompt.filter(|p| !rows.iter().any(|r| r.id == p.id));
     Ok(FirstHistoryPage { rows, has_more, boundary, latest_prompt })
+}
+
+/// Drop the oldest rows of a newest-first page past `max_bytes`; the page
+/// then has more, and its oldest kept row is the next cursor.
+fn trim_to_budget(
+    mut rows: Vec<SessionMessage>,
+    has_more: bool,
+    boundary: Option<SessionMessage>,
+    max_bytes: usize,
+    min_rows: usize,
+) -> (Vec<SessionMessage>, bool, Option<SessionMessage>) {
+    let drop = over_budget(&rows, max_bytes, min_rows);
+    if drop == 0 {
+        return (rows, has_more, boundary);
+    }
+    rows.drain(..drop);
+    let boundary = rows.first().cloned();
+    (rows, true, boundary)
+}
+
+/// A member's part of the lead's first page: its newest
+/// [`MEMBER_FIRST_PAGE_SIZE`] rows, within [`MEMBER_PAGE_MAX_BYTES`].
+pub async fn member_first_page(pool: &DbPool, session_id: &str) -> Result<Vec<SessionMessage>> {
+    let (rows, has_more, boundary) = history_page_of(pool, session_id, None, MEMBER_FIRST_PAGE_SIZE).await?;
+    Ok(trim_to_budget(rows, has_more, boundary, MEMBER_PAGE_MAX_BYTES, 1).0)
 }
 
 async fn latest_prompt_row(pool: &DbPool, session: &ChatSession) -> Result<Option<SessionMessage>> {

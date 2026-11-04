@@ -1139,7 +1139,7 @@ async fn history_first_page_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::
     assert_eq!(page["lead"]["messages"][0]["id"], json!(appv3_db::codec::api_uuid(&prompt.id)));
     assert_eq!(page["has_more"], json!(true));
     assert!(page.get("latest_prompt").is_none(), "the prompt is in the page: {page}");
-    assert_eq!(page["members"][0]["messages"].as_array().map(Vec::len), Some(100), "members keep their newest page");
+    assert_eq!(page["members"][0]["messages"].as_array().map(Vec::len), Some(appv3_db::MEMBER_FIRST_PAGE_SIZE as usize), "members keep their newest rows");
 
     let long = new_session(None).await;
     let prompt = appv3_db::save_message(pool, &long.id, appv3_db::NewMessage::user("keep going")).await.unwrap();

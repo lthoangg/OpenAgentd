@@ -235,11 +235,53 @@ pub fn display_extra_len(raw: Option<&str>) -> usize {
     }
 }
 
+/// The stored `tool_calls` with long arguments sent short
+/// ([`crate::tool_args::display_args`]), each such call carrying
+/// `arguments_bytes`; `None` when every call goes out as stored.
+fn display_tool_calls(raw: &RawValue) -> Option<Value> {
+    let text = raw.get();
+    // Tool names are plain ASCII: a call to none of these leaves the text alone.
+    if !["\"shell\"", "\"patch\"", "\"plan\""].iter().any(|n| text.contains(n)) {
+        return None;
+    }
+    let Ok(Value::Array(mut calls)) = serde_json::from_str::<Value>(text) else { return None };
+    let mut changed = false;
+    for call in calls.iter_mut() {
+        let Some(call) = call.as_object_mut() else { continue };
+        let Some(function) = call.get_mut("function").and_then(Value::as_object_mut) else { continue };
+        let (Some(name), Some(args)) = (function.get("name").and_then(Value::as_str), function.get("arguments").and_then(Value::as_str)) else {
+            continue;
+        };
+        let Some(short) = crate::tool_args::display_args(name, args) else { continue };
+        let full = args.len();
+        function.insert("arguments".into(), Value::String(short));
+        call.insert("arguments_bytes".into(), Value::from(full));
+        changed = true;
+    }
+    changed.then_some(Value::Array(calls))
+}
+
+/// The stored `tool_calls` column as display shapes it: `None` when it is
+/// not a JSON array.
+fn tool_calls_json(raw: Option<&str>) -> Option<Json<'_>> {
+    let v = raw_col(raw).filter(|v| v.get().starts_with('['))?;
+    Some(display_tool_calls(v).map_or(Json::Raw(v), Json::Owned))
+}
+
+/// Bytes `tool_calls` takes on the wire once display has shortened it.
+pub fn display_tool_calls_len(raw: Option<&str>) -> usize {
+    match tool_calls_json(raw) {
+        None => 0,
+        Some(Json::Raw(r)) => r.get().len(),
+        Some(Json::Owned(v)) => serde_json::to_vec(&v).map_or(0, |b| b.len()),
+    }
+}
+
 impl Serialize for MessageView<'_> {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         let r = self.0;
         let display = DisplayExtra::of(r.extra.as_deref());
-        let tool_calls = raw_col(r.tool_calls.as_deref()).filter(|v| v.get().starts_with('['));
+        let tool_calls = tool_calls_json(r.tool_calls.as_deref());
         let reasoning = r.reasoning_content.as_deref().filter(|_| !display.hide_reasoning);
         let mut m = s.serialize_map(None)?;
         m.serialize_entry("id", &api_uuid(&r.id))?;
@@ -257,7 +299,7 @@ impl Serialize for MessageView<'_> {
         if let Some(v) = reasoning {
             m.serialize_entry("reasoning_content", v)?;
         }
-        if let Some(v) = tool_calls {
+        if let Some(v) = &tool_calls {
             m.serialize_entry("tool_calls", v)?;
         }
         if let Some(v) = &r.tool_call_id {
@@ -489,6 +531,33 @@ mod tests {
         let mut user = row("user");
         user.content = Some("hi".into());
         assert_eq!(message_response(&user)["content"], json!("hi"));
+    }
+
+    #[test]
+    fn message_response_sends_long_tool_arguments_short_with_their_size() {
+        let shell = json!({"command": "cargo test --workspace", "description": "Run every test"}).to_string();
+        let read = json!({"path": "src/a.rs"}).to_string();
+        let calls = json!([
+            {"id": "c1", "type": "function", "function": {"name": "shell", "arguments": shell}},
+            {"id": "c2", "type": "function", "function": {"name": "read", "arguments": read}},
+        ]);
+        let mut r = row("assistant");
+        r.tool_calls = Some(calls.to_string());
+        let m = message_response(&r);
+        assert_eq!(
+            m["tool_calls"],
+            json!([
+                {"id": "c1", "type": "function", "function": {"name": "shell", "arguments": r#"{"description":"Run every test"}"#}, "arguments_bytes": shell.len()},
+                {"id": "c2", "type": "function", "function": {"name": "read", "arguments": read}},
+            ])
+        );
+        assert_eq!(display_tool_calls_len(r.tool_calls.as_deref()), serde_json::to_string(&m["tool_calls"]).unwrap().len());
+
+        // Nothing to cut: the stored text goes out unchanged.
+        let stored = r#"[{"id": "c2", "function": {"name": "read", "arguments": "{\"path\": \"a\"}"}}]"#;
+        r.tool_calls = Some(stored.into());
+        assert!(serde_json::to_string(&MessageView(&r)).unwrap().contains(stored));
+        assert_eq!(display_tool_calls_len(Some(stored)), stored.len());
     }
 
     #[test]

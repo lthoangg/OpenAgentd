@@ -908,6 +908,34 @@ pub async fn find_tool_message_in_tree(pool: &DbPool, session_id: &str, tool_cal
     .await?)
 }
 
+/// The name and stored arguments (a JSON string) of the call *tool_call_id*
+/// made in a session or any session under it.
+pub async fn find_tool_call_in_tree(pool: &DbPool, session_id: &str, tool_call_id: &str) -> Result<Option<(String, String)>> {
+    // `instr` narrows to rows naming the id; the JSON decides.
+    let rows: Vec<String> = sqlx::query_scalar(
+        "WITH RECURSIVE tree(id) AS (SELECT ? UNION ALL SELECT c.id FROM chat_sessions c JOIN tree t ON c.parent_session_id = t.id) \
+         SELECT tool_calls FROM session_messages WHERE session_id IN (SELECT id FROM tree) AND role = 'assistant' \
+         AND tool_calls IS NOT NULL AND instr(tool_calls, ?) > 0",
+    )
+    .bind(db_id(session_id))
+    .bind(tool_call_id)
+    .fetch_all(pool)
+    .await?;
+    for text in rows {
+        let Ok(Value::Array(calls)) = serde_json::from_str::<Value>(&text) else { continue };
+        for call in calls {
+            if call.get("id").and_then(Value::as_str) != Some(tool_call_id) {
+                continue;
+            }
+            let function = call.get("function");
+            let name = function.and_then(|f| f.get("name")).and_then(Value::as_str).unwrap_or_default().to_string();
+            let args = function.and_then(|f| f.get("arguments")).and_then(Value::as_str).unwrap_or_default().to_string();
+            return Ok(Some((name, args)));
+        }
+    }
+    Ok(None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -42,6 +42,7 @@ pub fn router() -> Router<AppState> {
         .route("/sessions/{session_id}/subagents", get(session_subagents))
         .route("/{session_id}/history", get(agent_history))
         .route("/{session_id}/tool-results/{tool_call_id}", get(tool_result))
+        .route("/{session_id}/tool-calls/{tool_call_id}/arguments", get(tool_call_arguments))
         .route("/sessions/{session_id}/btw", post(ask_side_question).get(list_side_questions).delete(clear_side_questions))
         .route("/sessions/{session_id}/btw/count", get(count_side_questions))
         .route("/sessions/{session_id}/btw/{side_id}/stop", post(stop_side_question))
@@ -1119,6 +1120,16 @@ async fn tool_result(State(st): State<AppState>, AxPath((raw, tool_call_id)): Ax
     Ok(json(json!({"tool_call_id": tool_call_id, "name": row.name, "content": row.content.unwrap_or_default()})))
 }
 
+/// A tool call's full arguments, which history sends short for a few tools
+/// (`appv3_db::tool_args`); the card fetches them when the user opens it.
+async fn tool_call_arguments(State(st): State<AppState>, AxPath((raw, tool_call_id)): AxPath<(String, String)>) -> ApiResult<Response> {
+    let sid = path_uuid("session_id", &raw)?;
+    let Some((name, arguments)) = db::find_tool_call_in_tree(&st.pool, &sid, &tool_call_id).await? else {
+        return Err(ApiError::not_found("Tool call not found."));
+    };
+    Ok(json(json!({"tool_call_id": tool_call_id, "name": name, "arguments": arguments})))
+}
+
 // ── history ─────────────────────────────────────────────────────────────────
 
 async fn ensure_agent_ready(root: &db::ChatSession) -> ApiResult<()> {
@@ -1254,7 +1265,7 @@ impl RowBytes {
                 self.content += len(&r.content);
             }
             self.reasoning += len(&r.reasoning_content);
-            self.tool_args += len(&r.tool_calls);
+            self.tool_args += appv3_db::api::display_tool_calls_len(r.tool_calls.as_deref());
             self.extra += appv3_db::api::display_extra_len(r.extra.as_deref());
         }
     }

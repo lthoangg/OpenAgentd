@@ -1245,6 +1245,21 @@ explicitly.
   `agent/src/events.rs`, `agent/src/stream_store.rs`,
   `api/tests/http_api.rs` (`tool_result_on_demand_flow`). v2 sends every
   result.
+- **Short tool arguments in history (v3 only):** history `tool_calls` send
+  a short form of three tools' arguments, with the full size as
+  `arguments_bytes` on the call: `shell` without its `command` when it has
+  a `description` (otherwise the command's first line, at most 200 chars,
+  with `command_truncated: true`), `patch` as
+  `{files: [{path, kind, additions, deletions, move_to?}]}`, and `plan`
+  without `content` and `edits` (`edit_count` instead). Calls with nothing to
+  cut go out as stored. `GET
+  /api/agent/{sid}/tool-calls/{tool_call_id}/arguments` returns
+  `{tool_call_id, name, arguments}` from the session or any session under
+  it; the web card calls it when the user opens the row or copies its
+  arguments. Live and replayed `tool_start` keep full arguments: a running
+  call is not in the database yet. Tests: `db/src/tool_args.rs`,
+  `db/src/api.rs`, `api/tests/http_api.rs`
+  (`tool_arguments_on_demand_flow`). v2 sends them whole.
 - **Changed-files list (v3 only):** `GET /api/agent/workspace/git-diff/files`
   lists every changed path with status and +/− counts from
   `git diff --name-status/--numstat` and `ls-files --others` (capped at 5,000

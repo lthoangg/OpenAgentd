@@ -493,6 +493,7 @@ async fn http_api_end_to_end() {
     history_first_page_flow(&c, &pool, &ws).await;
     history_etag_flow(&c, &pool, &ws).await;
     tool_result_on_demand_flow(&c, &pool, &ws).await;
+    tool_arguments_on_demand_flow(&c, &pool, &ws).await;
     plan_review_flow(&c, &pool, &ws).await;
     linked_sessions_flow(&c, &pool).await;
     confirm_change_flow(&c, &pool, &ws).await;
@@ -1172,6 +1173,42 @@ async fn tool_result_on_demand_flow(c: &Client, pool: &appv3_db::DbPool, ws: &st
     assert_eq!(st, StatusCode::OK);
     assert_eq!(body["content"], "[Succeeded]\nmember output");
     let (st, _) = c.json("GET", &format!("/api/agent/{lid}/tool-results/call_nope"), None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{lid}"), None).await;
+    assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
+}
+
+/// History sends a described shell call without its command; opening the
+/// call fetches the full arguments, from the session or one of its members.
+async fn tool_arguments_on_demand_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
+    let workspace = ws.display().to_string();
+    let lead = appv3_db::create_session(pool, appv3_db::NewSession { workspace: workspace.clone(), ..Default::default() }).await.unwrap();
+    let member =
+        appv3_db::create_session(pool, appv3_db::NewSession { workspace, parent_session_id: Some(lead.id.clone()), agent_name: Some("explorer".into()), ..Default::default() })
+            .await
+            .unwrap();
+    let shell = json!({"command": "cargo test --workspace", "description": "Run every test"}).to_string();
+    let patch = json!({"patch_text": "*** Begin Patch\n*** Add File: a.txt\n+hi\n*** End Patch"}).to_string();
+    let call = |id: &str, name: &str, args: &str| json!([{"id": id, "type": "function", "function": {"name": name, "arguments": args}}]);
+    let with_calls = |calls| appv3_db::NewMessage { tool_calls: Some(calls), ..appv3_db::NewMessage::assistant(None) };
+    appv3_db::save_message(pool, &lead.id, with_calls(call("call_shell", "shell", &shell))).await.unwrap();
+    appv3_db::save_message(pool, &member.id, with_calls(call("call_patch", "patch", &patch))).await.unwrap();
+    let lid = appv3_db::codec::api_uuid(&lead.id);
+
+    let (st, page) = c.json("GET", &format!("/api/agent/{lid}/history"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    let sent = page["lead"]["messages"].as_array().unwrap().iter().find_map(|m| m["tool_calls"].get(0).cloned()).unwrap();
+    assert_eq!(sent["function"]["arguments"], r#"{"description":"Run every test"}"#);
+    assert_eq!(sent["arguments_bytes"], json!(shell.len()));
+
+    let (st, body) = c.json("GET", &format!("/api/agent/{lid}/tool-calls/call_shell/arguments"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body, json!({"tool_call_id": "call_shell", "name": "shell", "arguments": shell}));
+    let (st, body) = c.json("GET", &format!("/api/agent/{lid}/tool-calls/call_patch/arguments"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body["arguments"], json!(patch));
+    let (st, _) = c.json("GET", &format!("/api/agent/{lid}/tool-calls/call_nope/arguments"), None).await;
     assert_eq!(st, StatusCode::NOT_FOUND);
 
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{lid}"), None).await;

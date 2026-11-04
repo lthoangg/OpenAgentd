@@ -38,9 +38,11 @@ describe('shell command coverage', () => {
     if (shortcut) emitted.add(shortcut)
 
     // The scan found the View menu's new items, so an empty or partial match cannot pass.
-    for (const id of ['review_panel', 'split_review_panel', 'split_review_panel_down', 'terminal', 'maximize_review_panel', 'focus_mode', 'reset_layout', 'text_size_compact', 'text_size_large', 'next_needs_you']) {
+    for (const id of ['review_panel', 'split_review_panel', 'split_review_panel_down', 'terminal', 'maximize_review_panel', 'reset_layout', 'text_size_compact', 'text_size_large', 'next_needs_you']) {
       expect(emitted.has(id)).toBe(true)
     }
+    // Focus Mode is gone from the View menu.
+    expect(emitted.has('focus_mode')).toBe(false)
     expect(Array.from(emitted).filter((id) => !handled.has(id))).toEqual([])
   })
 })

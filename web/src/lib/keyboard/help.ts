@@ -45,7 +45,6 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         app('settings', 'Settings'),
         app('shortcutsHelp', 'Keyboard shortcuts'),
         app('sidebar', 'Toggle sidebar'),
-        app('focusMode', 'Focus mode'),
         app('sessionSettings', 'Model and thinking'),
         altHistory ? keys('Back', chordOf(APP_SHORTCUTS.historyBack), HISTORY_ALT_BACK) : app('historyBack', 'Back'),
         altHistory ? keys('Forward', chordOf(APP_SHORTCUTS.historyForward), HISTORY_ALT_FORWARD) : app('historyForward', 'Forward'),

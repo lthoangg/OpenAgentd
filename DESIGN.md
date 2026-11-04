@@ -1489,7 +1489,7 @@ Menus):
   is hidden and the header's ☰ (or a bare Alt tap outside a text field)
   pops the same menu up (`show_app_menu`). The View menu carries every
   layout command (Sidebar, Review Panel, Split Review Panel Right and Down,
-  Open Terminal, Maximize Review Panel, Focus Mode, Model and Thinking…, Text
+  Open Terminal, Maximize Review Panel, Model and Thinking…, Text
   Size, Reset Layout). Its shortcuts work with the bar hidden; on Linux each item
   answers GTK's `can-activate-accel` itself, since GTK only fires the
   shortcuts of a menu on screen.

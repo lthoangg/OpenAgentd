@@ -816,7 +816,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     Changes / History…) slides to the new choice, and switches ease their
     thumb to a soft stop.
   - **Focus Mode** (`⌘⇧F`/`Ctrl+Shift+F`) hides the sidebar and the Review
-    panel; press it again to bring both back.
+    panel; press it again to bring both back *(deprecated; removed in
+    v3.46.0: hide the sidebar with `⌘B` and the Review panel with `⌘D`)*.
   - **Find in Session** (`⌘F`/`Ctrl+F` while in the chat) searches the
     loaded conversation, with the match count and ↑/↓ to step through.
   - `F6` / `Shift+F6` move between the sidebar, the transcript, the composer,
@@ -997,8 +998,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - On Windows and Linux the menu bar is hidden: **☰** at the left of the
     header, or tapping Alt, opens the application menu. Its View menu has
     Sidebar, Review Panel, Split Review Panel Right and Down, Open Terminal,
-    Maximize Review Panel, Focus Mode, Model and Thinking…, Text Size and
-    Reset Layout
+    Maximize Review Panel, Focus Mode *(deprecated; removed in v3.46.0)*,
+    Model and Thinking…, Text Size and Reset Layout
     (macOS has them in its menu bar), and Quick Open is now **Find File…**.
     Its shortcuts (`Ctrl+Q`, `Ctrl+=`, `Ctrl+Shift+N`…) work in every
     window, and on Linux the bar no longer comes back when the window is

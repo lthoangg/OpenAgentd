@@ -175,39 +175,6 @@ describe('useOverlayState app events', () => {
     expect(result.current.sidebarDrawerOpen).toBe(false)
   })
 
-  it('focus mode hides the sidebar and the Review panel, and puts both back', () => {
-    setViewportWidth(1440)
-    useLayoutStore.getState().setSidebarCollapsed(false, false)
-    const { result } = renderOverlay()
-    act(() => result.current.handleOpenGit())
-    expect(result.current.workspacePanel).toBe('changed')
-
-    act(() => dispatchAppEvent(APP_EVENTS.toggleFocusMode))
-    expect(result.current.focusMode).toBe(true)
-    expect(result.current.sidebarCollapsed).toBe(true)
-    expect(result.current.workspacePanel).toBeNull()
-
-    act(() => dispatchAppEvent(APP_EVENTS.toggleFocusMode))
-    expect(result.current.focusMode).toBe(false)
-    expect(result.current.sidebarCollapsed).toBe(false)
-    expect(result.current.workspacePanel).toBe('changed')
-  })
-
-  it('showing the sidebar in focus mode ends it, as is', () => {
-    setViewportWidth(1440)
-    useLayoutStore.getState().setSidebarCollapsed(false, false)
-    const { result } = renderOverlay()
-    act(() => result.current.handleOpenGit())
-    act(() => dispatchAppEvent(APP_EVENTS.toggleFocusMode))
-
-    act(() => result.current.handleSidebarToggle())
-
-    expect(result.current.focusMode).toBe(false)
-    expect(result.current.sidebarCollapsed).toBe(false)
-    // The Review panel stays hidden: focus mode ended without restoring it.
-    expect(result.current.workspacePanel).toBeNull()
-  })
-
   it('opens the Review panel and asks it to split right, then down', () => {
     const { result } = renderOverlay()
 

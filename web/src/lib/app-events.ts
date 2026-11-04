@@ -17,7 +17,6 @@ export const APP_EVENTS = {
   // View menu: layout commands (their keys match physical codes or Control).
   splitReviewPanel: 'oa:split-review-panel',
   splitReviewPanelDown: 'oa:split-review-panel-down',
-  toggleFocusMode: 'oa:toggle-focus-mode',
   resetLayout: 'oa:reset-layout',
 } as const
 

@@ -41,7 +41,6 @@ pub const MENU_REVIEW_PANEL: &str = "review_panel";
 pub const MENU_SPLIT_REVIEW_PANEL: &str = "split_review_panel";
 pub const MENU_SPLIT_REVIEW_PANEL_DOWN: &str = "split_review_panel_down";
 pub const MENU_MAXIMIZE_REVIEW_PANEL: &str = "maximize_review_panel";
-pub const MENU_FOCUS_MODE: &str = "focus_mode";
 pub const MENU_RESET_LAYOUT: &str = "reset_layout";
 pub const MENU_SETTINGS: &str = "settings";
 #[cfg(not(target_os = "macos"))]
@@ -236,13 +235,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         Some("CmdOrCtrl+Shift+D"),
     )?;
-    let view_focus_mode = MenuItem::with_id(
-        app,
-        MENU_FOCUS_MODE,
-        "Focus Mode",
-        true,
-        Some("CmdOrCtrl+Shift+F"),
-    )?;
     let view_text_size = crate::app_menu::text_size_submenu(app)?;
     let view_reset_layout =
         MenuItem::with_id(app, MENU_RESET_LAYOUT, "Reset Layout", true, None::<&str>)?;
@@ -377,7 +369,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&view_split_review_panel_down)
         .item(&view_terminal)
         .item(&view_maximize_review_panel)
-        .item(&view_focus_mode)
         .separator()
         .item(&view_agent_capabilities)
         .item(&view_scheduler)
@@ -728,7 +719,6 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_SPLIT_REVIEW_PANEL => emit_frontend_command(app, "split_review_panel"),
         MENU_SPLIT_REVIEW_PANEL_DOWN => emit_frontend_command(app, "split_review_panel_down"),
         MENU_MAXIMIZE_REVIEW_PANEL => emit_frontend_command(app, "maximize_review_panel"),
-        MENU_FOCUS_MODE => emit_frontend_command(app, "focus_mode"),
         MENU_RESET_LAYOUT => emit_frontend_command(app, "reset_layout"),
         crate::global_shortcuts::MENU_GLOBAL_SHORTCUTS => crate::global_shortcuts::toggle(app),
         MENU_QUICK_OPEN => emit_frontend_command(app, "quick_open"),
@@ -1161,7 +1151,7 @@ pub async fn run_usage_poll_loop(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::{
-        external_usage_access_key, macos_tray_icon, MENU_FOCUS_MODE, MENU_MAXIMIZE_REVIEW_PANEL,
+        external_usage_access_key, macos_tray_icon, MENU_MAXIMIZE_REVIEW_PANEL,
         MENU_NEW_SESSION, MENU_NEW_WINDOW, MENU_OPEN_WORKSPACE, MENU_RESET_LAYOUT,
         MENU_REVIEW_PANEL, MENU_SPLIT_REVIEW_PANEL, MENU_SPLIT_REVIEW_PANEL_DOWN, MENU_TERMINAL,
         MENU_TOGGLE_SIDEBAR, tray_status_shows,
@@ -1188,7 +1178,6 @@ mod tests {
         assert_eq!(MENU_SPLIT_REVIEW_PANEL, "split_review_panel");
         assert_eq!(MENU_SPLIT_REVIEW_PANEL_DOWN, "split_review_panel_down");
         assert_eq!(MENU_MAXIMIZE_REVIEW_PANEL, "maximize_review_panel");
-        assert_eq!(MENU_FOCUS_MODE, "focus_mode");
         assert_eq!(MENU_RESET_LAYOUT, "reset_layout");
     }
 

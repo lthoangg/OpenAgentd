@@ -62,7 +62,7 @@ describe('terminalShortcut — find', () => {
     const event = keydown('f', { metaKey: true })
     expect(terminalShortcut(event, 'macos')).toBe('find')
     expect(routeTerminalKey(event, 'macos')).toBe(false)
-    // ⌘⇧F is the app's focus mode.
+    // Only plain ⌘F finds on macOS.
     expect(terminalShortcut(keydown('F', { metaKey: true, shiftKey: true }), 'macos')).toBeNull()
   })
 

@@ -71,7 +71,8 @@ describe('APP_SHORTCUTS', () => {
     expect(shortcutLabel(APP_SHORTCUTS.splitDock, 'macos')).toBe('⌘\\')
     expect(shortcutLabel(APP_SHORTCUTS.splitDockDown, 'macos')).toBe('⌘⇧\\')
     expect(chordOf(APP_SHORTCUTS.splitDockDown)).toEqual({ key: '\\', code: 'Backslash', mod: true, shift: true, alt: false })
-    expect(shortcutLabel(APP_SHORTCUTS.focusMode, 'macos')).toBe('⌘⇧F')
+    // Focus Mode is gone; ⌘⇧F is free.
+    expect('focusMode' in APP_SHORTCUTS).toBe(false)
     expect(shortcutLabel(APP_SHORTCUTS.findInSession, 'windows')).toBe('Ctrl+F')
   })
 

@@ -42,8 +42,6 @@ export const APP_SHORTCUTS = {
   splitTabRight: { key: 'ArrowRight', ctrl: true, alt: true },
   splitTabUp: { key: 'ArrowUp', ctrl: true, alt: true },
   splitTabDown: { key: 'ArrowDown', ctrl: true, alt: true },
-  // Hide everything but the chat; again to put the layout back.
-  focusMode: { key: 'F', shift: true },
   // Find in this session's transcript (only while focus is in the chat).
   findInSession: { key: 'F' },
   tasks: { key: 'T' },

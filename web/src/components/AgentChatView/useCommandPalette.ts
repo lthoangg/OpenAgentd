@@ -54,9 +54,6 @@ export interface UseCommandPaletteArgs {
   /** ⌘\ / ⌘⇧\ — split the Review panel's focused pane right / down (desktop + workspace). */
   handleSplitDock: () => void
   handleSplitDockDown: () => void
-  /** ⇧⌘F — focus mode (desktop). */
-  handleToggleFocusMode: () => void
-  focusMode: boolean
   /** ⌘F — find in the session; omitted where there is no transcript to search. */
   handleFindInSession?: () => void
   /** Only while the session has a plan; lists Open Plan. */
@@ -103,8 +100,6 @@ export function useCommandPalette({
   handleOpenTerminal,
   handleSplitDock,
   handleSplitDockDown,
-  handleToggleFocusMode,
-  focusMode,
   handleFindInSession,
   handleOpenPlan,
   planAwaitingReview,
@@ -147,8 +142,6 @@ export function useCommandPalette({
     handleToggleDockMaximized: workspace && !isMobile ? handleToggleDockMaximized : undefined,
     handleSplitDock: workspace && !isMobile ? handleSplitDock : undefined,
     handleSplitDockDown: workspace && !isMobile ? handleSplitDockDown : undefined,
-    handleToggleFocusMode: isMobile ? undefined : handleToggleFocusMode,
-    focusMode,
     handleFindInSession: isMobile ? undefined : handleFindInSession,
     handleOpenPlan,
     planAwaitingReview,
@@ -215,7 +208,6 @@ export function useCommandPalette({
     }),
     appShortcut('splitDock', () => { handleSplitDock() }, { enabled: !isMobile && Boolean(workspace) }),
     appShortcut('splitDockDown', () => { handleSplitDockDown() }, { enabled: !isMobile && Boolean(workspace) }),
-    appShortcut('focusMode', () => { handleToggleFocusMode() }, { enabled: !isMobile }),
     // Only from the chat: in a file or a terminal ⌘F stays theirs (and the
     // browser's own Find elsewhere).
     appShortcut('findInSession', () => { handleFindInSession?.() }, {

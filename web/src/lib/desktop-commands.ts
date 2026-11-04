@@ -75,9 +75,6 @@ function runDesktopCommand(command: unknown, router: AnyRouter): void {
     case 'maximize_review_panel':
       dispatchAppShortcut(APP_SHORTCUTS.maximizeDock, getPlatform().os)
       break
-    case 'focus_mode':
-      dispatchAppEvent(APP_EVENTS.toggleFocusMode)
-      break
     case 'reset_layout':
       dispatchAppEvent(APP_EVENTS.resetLayout)
       break

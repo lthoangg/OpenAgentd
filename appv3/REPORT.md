@@ -1231,16 +1231,23 @@ explicitly.
   per-call announcement after `tool_start` is gone from the stream and the
   event contract. Test: `agent/tests/session_turn.rs`. v2 sends it.
 - **Tool output on demand (v3 only):** history tool rows and `tool_end`
-  (live and replayed) leave out the output of every tool except the small
-  set whose card is built from it (`ask_user`, `plan`, `submit_plan`,
-  `update_goal`, `preview`, `workspace`, `team` and `team_*`, `todo`,
-  `schedule`, `mcp`, `patch`, plus their former names). Such a row has no
+  (live and replayed) leave out every tool's output except the answers a
+  collapsed card is built from (`appv3_db::api::result_rides_inline`):
+  all of `ask_user`, `plan`, `submit_plan` and `update_goal`; `preview`
+  only for "Opening …"; `workspace` only for "Sent to '…'" or the
+  confirmation placeholder, `mcp` only for that placeholder; `team`,
+  `team_*` and `delegate` only when the first line names the subagent;
+  `patch` only when it failed. `todo` and `schedule` output is always left
+  out. Such a row has no
   `content` and carries `result_omitted: true` and `result_bytes`;
   `tool_end` sends `result: null` with the same two keys in `metadata`.
   `GET /api/agent/{sid}/tool-results/{tool_call_id}` returns
   `{tool_call_id, name, content}` for a call in the session or any session
   under it (404 otherwise); the web card calls it when the user opens the
-  row or copies its result. `tool_output_delta` still streams while a tool
+  row or copies its result. Revision 00000032 adds the partial index
+  `ix_session_messages_tool_call_id`, so this lookup seeks instead of
+  reading the session tree, and the arguments endpoint walks back from the
+  result to its call. `tool_output_delta` still streams while a tool
   runs, and the agent still reads full output from the database. Tests: `db/src/api.rs`,
   `agent/src/events.rs`, `agent/src/stream_store.rs`,
   `api/tests/http_api.rs` (`tool_result_on_demand_flow`). v2 sends every

@@ -1165,10 +1165,10 @@ mod tests {
     async fn tool_end_keeps_its_result_on_every_match_path() {
         let s = leak();
         s.init_turn("w", false);
-        s.push_event("w", &events::tool_call("a", Some("t1"), "patch", None), false);
-        s.push_event("w", &events::tool_end("a", Some("t1"), "patch", Some("by-id"), None), false);
-        s.push_event("w", &events::tool_call("a", None, "todo", None), false);
-        s.push_event("w", &events::tool_end("a", None, "todo", Some("by-name"), None), false);
+        s.push_event("w", &events::tool_call("a", Some("t1"), "ask_user", None), false);
+        s.push_event("w", &events::tool_end("a", Some("t1"), "ask_user", Some("by-id"), None), false);
+        s.push_event("w", &events::tool_call("a", None, "update_goal", None), false);
+        s.push_event("w", &events::tool_end("a", None, "update_goal", Some("by-name"), None), false);
         s.push_event("w", &events::tool_end("a", Some("t9"), "plan", Some("orphan"), None), false);
         let results: Vec<Value> = s.debug_state("w").unwrap()["tool_calls"].as_array().unwrap().iter().map(|tc| tc["result"].clone()).collect();
         assert_eq!(results, vec![json!("by-id"), json!("by-name"), json!("orphan")]);

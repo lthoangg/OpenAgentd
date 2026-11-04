@@ -100,34 +100,42 @@ pub fn sent_from_json(origin: &ChatSession) -> Value {
 
 const INTERNAL_ATTACHMENT_FIELDS: [&str; 3] = ["converted_text", "path", "workspace_path"];
 
-/// Tools whose answer clients receive with the call, because the card or a
-/// follow-up is built from its text (an `ask_user` answer, a plan review's
-/// outcome, a goal verdict, `preview`'s "Opening …", the subagent a `team`
-/// call reached, a patch's hunk header and diagnostics) and it is small.
-/// Every other tool's output (reads, shell, search, fetches, MCP and plugin
-/// tools) is fetched when the user opens it; former names are listed too.
-const INLINE_RESULT_TOOLS: [&str; 15] = [
-    "ask_user",
-    "plan",
-    "submit_plan",
-    "update_goal",
-    "preview",
-    "workspace",
-    "send_to_workspace",
-    "team",
-    "delegate",
-    "todo",
-    "todo_manage",
-    "schedule",
-    "schedule_task",
-    "mcp",
-    "patch",
-];
+/// Whether a call to `tool` that answered `content` carries it to clients.
+/// Only answers a collapsed card or a follow-up is built from do, each
+/// matching the web parser that reads it; every other output (reads, shell,
+/// search, fetches, todo and schedule lists, MCP and plugin tools) is fetched
+/// when the user opens the call. Former tool names are matched too.
+pub fn result_rides_inline(tool: &str, content: &str) -> bool {
+    let text = content.trim_start();
+    let first = text.lines().next().unwrap_or_default();
+    // A confirmation card's row while its question waits (`useShowsConfirmationCard`);
+    // once settled the call is an ordinary row.
+    let awaits_answer = text.starts_with(crate::queries::questions::PLACEHOLDER_RESULT);
+    match tool {
+        // Cards that are the answer: `AskUser`, `PlanReviewCard` (and a plan's
+        // "Started a new plan"), `GoalClaimCard`.
+        "ask_user" | "plan" | "submit_plan" | "update_goal" => true,
+        // `isPreviewOpenSuccess`: the Open link and auto-open.
+        "preview" => content.starts_with("Opening "),
+        // `parseSendResult`: the link to the session a send reached.
+        "workspace" | "send_to_workspace" => text.starts_with("Sent to '") || awaits_answer,
+        "mcp" => awaits_answer,
+        // `teamMemberFromResult`: the subagent row under the call.
+        "team" | "delegate" => names_subagent(first),
+        t if t.starts_with("team_") => names_subagent(first),
+        // `isFailedResult`: a failed patch shows no diff stats and no changed files.
+        "patch" => {
+            let first = first.to_ascii_lowercase();
+            ["error:", "[failed", "[error", "[timed out"].iter().any(|p| first.starts_with(p))
+        }
+        _ => false,
+    }
+}
 
-/// Whether a call to `tool` carries its result to clients (see
-/// [`INLINE_RESULT_TOOLS`]).
-pub fn result_rides_inline(tool: &str) -> bool {
-    INLINE_RESULT_TOOLS.contains(&tool) || tool.starts_with("team_")
+/// A team answer's first line names the subagent it reached (not an error or a roster).
+fn names_subagent(first: &str) -> bool {
+    let lower = first.to_ascii_lowercase();
+    !lower.starts_with("error") && !lower.starts_with('{') && !lower.starts_with('[') && lower.contains("subagent '")
 }
 /// `extra` keys no client reads: a tool result's image `parts` and the
 /// provider replay state (Anthropic raw blocks and thinking signatures,
@@ -287,9 +295,8 @@ impl Serialize for MessageView<'_> {
         m.serialize_entry("id", &api_uuid(&r.id))?;
         m.serialize_entry("session_id", &api_uuid(&r.session_id))?;
         m.serialize_entry("role", &r.role)?;
-        let omit_result = r.role == "tool" && !r.name.as_deref().is_some_and(result_rides_inline);
         if let Some(v) = &r.content {
-            if omit_result {
+            if r.role == "tool" && !r.name.as_deref().is_some_and(|n| result_rides_inline(n, v)) {
                 m.serialize_entry("result_omitted", &true)?;
                 m.serialize_entry("result_bytes", &v.len())?;
             } else {
@@ -503,34 +510,59 @@ mod tests {
         assert_eq!(m["result_omitted"], json!(true));
         assert_eq!(m["result_bytes"], json!("[1-2/2]\nVi\u{1ec7}t\nb".len()));
         assert_eq!(m["extra"], json!({"duration_ms": 4}));
-        for name in [
-            "ask_user",
-            "plan",
-            "submit_plan",
-            "update_goal",
-            "preview",
-            "workspace",
-            "send_to_workspace",
-            "team",
-            "delegate",
-            "team_status",
-            "todo",
-            "todo_manage",
-            "schedule",
-            "schedule_task",
-            "mcp",
-            "patch",
-        ] {
+        for name in ["ask_user", "plan", "submit_plan", "update_goal"] {
             r.name = Some(name.into());
             let m = message_response(&r);
             assert_eq!(m["content"], json!("[1-2/2]\nVi\u{1ec7}t\nb"), "{name}");
             assert!(!m.contains_key("result_omitted"), "{name}");
+        }
+        for name in ["todo", "todo_manage", "schedule", "schedule_task"] {
+            r.name = Some(name.into());
+            assert!(!message_response(&r).contains_key("content"), "{name}");
         }
         r.name = None;
         assert!(!message_response(&r).contains_key("content"), "an unnamed tool row is output too");
         let mut user = row("user");
         user.content = Some("hi".into());
         assert_eq!(message_response(&user)["content"], json!("hi"));
+    }
+
+    /// Some cards read one kind of answer only (an opened preview, the
+    /// session a send reached, a failed patch): that one comes with the call,
+    /// the rest of the tool's output is fetched on open.
+    #[test]
+    fn only_the_answers_a_card_reads_ride_with_the_call() {
+        let inline = [
+            ("preview", "Opening src/a.html in the user's Preview tab (served at http://127.0.0.1:1/a.html)."),
+            ("workspace", "Sent to 'web' (/r/web) \u{2014} new session 01a00000-0000-7000-8000-000000000001 started."),
+            ("send_to_workspace", "Sent to 'web' (/r/web) \u{2014} delivered to session 01a00000-0000-7000-8000-000000000001."),
+            ("workspace", crate::queries::questions::PLACEHOLDER_RESULT),
+            ("mcp", crate::queries::questions::PLACEHOLDER_RESULT),
+            ("team", "Subagent 'explorer#1' dispatched. Its deliverable arrives as a message."),
+            ("team_send", "Message delivered to subagent 'worker#4'. It is working."),
+            ("delegate", "Subagent 'researcher#2' dispatched with task: Research X"),
+            ("patch", "Error: Could not find scope in src/a.rs"),
+        ];
+        for (name, text) in inline {
+            assert!(result_rides_inline(name, text), "{name}: {text}");
+        }
+        let fetched = [
+            ("preview", "Console for http://localhost:5173 (newest first, 0 of 4 entries):\n(no entries)"),
+            ("preview", "Error: No element matches [data-hero-video]."),
+            ("workspace", "Workspaces you can message (name \u{2014} path):\n- Chat"),
+            ("workspace", "The user applied the change. 'openagentd' is now in group x."),
+            ("mcp", "1 tool (run one with action='call', server, tool and arguments):"),
+            ("mcp", "The user applied the change. MCP server 'atlassian' saved."),
+            ("team", "- explorer#1: done (report delivered)\n- explorer#2: working"),
+            ("team", "Error delegating to subagent: Member 'worker#8' not found"),
+            ("patch", "@@ openagentd-diff-meta {\"files\":[]}\nPatch applied successfully. Updated paths:\na.rs"),
+            ("todo", "Created task_1"),
+            ("schedule", "Scheduled tasks (2):"),
+            ("read", "[1-2/2]\na\nb"),
+        ];
+        for (name, text) in fetched {
+            assert!(!result_rides_inline(name, text), "{name}: {text}");
+        }
     }
 
     #[test]

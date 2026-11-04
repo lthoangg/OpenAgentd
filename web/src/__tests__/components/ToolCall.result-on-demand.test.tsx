@@ -67,4 +67,17 @@ describe("a tool result fetched on demand", () => {
     fireEvent.click(await screen.findByText("Copy result"))
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith("the whole output"))
   })
+
+  // An applied patch's answer stays on the server: the row's stats come from
+  // the arguments, and opening it brings the diagnostics.
+  it("shows an applied patch's stats without its answer, and its diagnostics once opened", async () => {
+    answer = "Patch applied successfully. Updated paths:\na.py\n\n[LSP Diagnostics]\n- a.py:1:9: error: unexpected EOF while parsing (Ruff)"
+    const args = JSON.stringify({ patch_text: "*** Begin Patch\n*** Update File: a.py\n@@\n-old\n+new\n+more\n*** End Patch" })
+    render(<ToolCall name="patch" args={args} done toolCallId="c6" resultBytes={answer.length} />)
+    expect(row().textContent).toContain("+2")
+    expect(fetched).toEqual([])
+    fireEvent.click(row())
+    await waitFor(() => expect(screen.getByText(/unexpected EOF while parsing/)).toBeTruthy())
+    expect(fetched).toEqual([["s1", "c6"]])
+  })
 })

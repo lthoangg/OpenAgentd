@@ -161,7 +161,7 @@ pub fn tool_start(agent: &str, tool_call_id: Option<&str>, name: &str, arguments
 pub fn tool_end(agent: &str, tool_call_id: Option<&str>, name: &str, result: Option<&str>, metadata: Option<Value>) -> Envelope {
     let mut metadata = meta(metadata);
     let result = match result {
-        Some(text) if !appv3_db::api::result_rides_inline(name) => {
+        Some(text) if !appv3_db::api::result_rides_inline(name, text) => {
             metadata["result_omitted"] = Value::Bool(true);
             metadata["result_bytes"] = Value::from(text.len());
             None
@@ -392,8 +392,10 @@ mod tests {
         let e = tool_end("a", Some("c1"), "read", Some("12345"), Some(json!({"duration_ms": 2})));
         assert_eq!(e.data["result"], Value::Null);
         assert_eq!(e.data["metadata"], json!({"duration_ms": 2, "result_omitted": true, "result_bytes": 5}));
-        let kept = tool_end("a", Some("c1"), "patch", Some("Success. Updated a.rs"), None);
-        assert_eq!(kept.data["result"], json!("Success. Updated a.rs"));
+        let applied = tool_end("a", Some("c1"), "patch", Some("Patch applied successfully. Updated paths:\na.rs"), None);
+        assert_eq!(applied.data["result"], Value::Null, "the row reads an applied patch from its arguments");
+        let kept = tool_end("a", Some("c1"), "patch", Some("Error: Could not find scope"), None);
+        assert_eq!(kept.data["result"], json!("Error: Could not find scope"));
         assert_eq!(kept.data["metadata"], json!({}));
         let empty = tool_end("a", Some("c1"), "read", None, None);
         assert_eq!(empty.data["metadata"], json!({}), "nothing to leave out");

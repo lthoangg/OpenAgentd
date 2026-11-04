@@ -76,6 +76,8 @@ export interface SentSession {
  * Matches the ``workspace`` tool's success text (``tools/workspace.rs``):
  * ``Sent to '<name>' (<path>) — new session <id> started.`` and its
  * delivered / queued variants. Errors start with ``Error:`` and do not match.
+ * Only such answers reach the client with the call
+ * (``appv3_db::api::result_rides_inline``): change both together.
  */
 const SENT_RE = /^Sent to '(.+?)' \((.+)\) — (?:new session|delivered to session|queued in busy session|stopped the running turn in session) ([0-9a-fA-F-]{36})\b/
 /** `` Created worktree '<name>' on branch <branch>.`` after the sent line. */

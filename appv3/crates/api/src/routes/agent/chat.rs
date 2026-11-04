@@ -1258,8 +1258,10 @@ impl RowBytes {
         for r in rows {
             if r.role == "tool" {
                 // Only what goes out: most tools' output is fetched on demand.
-                if r.name.as_deref().is_some_and(appv3_db::api::result_rides_inline) {
-                    self.tool_results += len(&r.content);
+                if let (Some(name), Some(text)) = (r.name.as_deref(), r.content.as_deref()) {
+                    if appv3_db::api::result_rides_inline(name, text) {
+                        self.tool_results += text.len();
+                    }
                 }
             } else {
                 self.content += len(&r.content);
@@ -1409,9 +1411,9 @@ mod tests {
     #[test]
     fn page_bytes_are_split_by_what_the_rows_hold() {
         let mut b = RowBytes::default();
-        let patch = db::SessionMessage { name: Some("patch".into()), ..row("tool", "output!", None, None) };
+        let goal = db::SessionMessage { name: Some("update_goal".into()), ..row("tool", "output!", None, None) };
         let read = db::SessionMessage { name: Some("read".into()), ..row("tool", "left out", None, None) };
-        b.add(&[row("assistant", "hello", Some("hmm"), Some("[{\"a\":1}]")), patch, read, row("user", "hi", None, None)]);
+        b.add(&[row("assistant", "hello", Some("hmm"), Some("[{\"a\":1}]")), goal, read, row("user", "hi", None, None)]);
         assert_eq!(b, RowBytes { content: 7, reasoning: 3, tool_args: 9, tool_results: 7, extra: 8 });
     }
 

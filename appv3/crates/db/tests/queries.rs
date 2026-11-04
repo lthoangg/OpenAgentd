@@ -547,7 +547,7 @@ async fn first_history_page_stops_at_its_byte_budget() {
     let prompt = save_message(&pool, &s.id, NewMessage::user("read everything")).await.unwrap();
     let big = "x".repeat(100 * 1024);
     for i in 0..60 {
-        save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "patch", big.clone())).await.unwrap();
+        save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "plan", big.clone())).await.unwrap();
     }
 
     let page = first_history_page(&pool, &s).await.unwrap();
@@ -566,7 +566,7 @@ async fn first_history_page_keeps_its_newest_rows_past_the_budget() {
     let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
     let huge = "x".repeat(FIRST_PAGE_MAX_BYTES);
     for i in 0..(FIRST_PAGE_MIN_ROWS + 5) {
-        save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "patch", huge.clone())).await.unwrap();
+        save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "plan", huge.clone())).await.unwrap();
     }
     assert_eq!(first_history_page(&pool, &s).await.unwrap().rows.len(), FIRST_PAGE_MIN_ROWS);
 }
@@ -608,7 +608,7 @@ async fn member_first_page_is_a_short_tail_within_its_budget() {
 
     let big = "x".repeat(MEMBER_PAGE_MAX_BYTES / 2 - 1024);
     for i in 0..4 {
-        save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "patch", big.clone())).await.unwrap();
+        save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "plan", big.clone())).await.unwrap();
     }
     assert_eq!(member_first_page(&pool, &s.id).await.unwrap().len(), 2);
 }

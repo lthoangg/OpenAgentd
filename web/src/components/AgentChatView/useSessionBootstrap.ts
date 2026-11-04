@@ -59,7 +59,7 @@ export interface UseSessionBootstrapArgs {
   isAgentWorking: boolean
   inputRef: RefObject<InputComposerHandle | null>
   navigate: ReturnType<typeof useNavigate>
-  connectStream: () => AbortController
+  connectStream: (options?: { holdUntil?: Promise<unknown> }) => AbortController
   loadAgentStatus: (workspace?: string | null, expectedGeneration?: number, sessionId?: string | null) => Promise<void>
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   beginResolvedSession: (sessionId: string | null, options: { workspace: string; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
@@ -137,23 +137,20 @@ export function useSessionBootstrap({
     inputRef.current?.setValue(draft?.value ?? '')
     inputRef.current?.setFiles([])
 
-    // Order matters: load prior-turn history FIRST, then open the SSE.
-    //
-    // Before this ordering, `connectStream()` started SSE replay (which
-    // writes synthetic thinking/message events into `currentBlocks`)
-    // while `loadSession()` was still inflight. When `loadSession`
-    // resolved it unconditionally set `currentBlocks = []`, wiping the
-    // replayed state. On mid-turn refresh the UI looked blank until the
-    // next live chunk arrived — often until `done`.
-    //
-    // Awaiting the DB read first means `loadSession` has already committed
-    // `blocks` and emptied `currentBlocks` by the time any SSE event is
-    // dispatched, so replay + live events accumulate cleanly.
+    // The history read and the live feed's attach run at once, so a running
+    // turn shows as soon as the history lands instead of a round trip (or
+    // several, on a remote server) after it. The feed holds its frames until
+    // the history commits (`holdUntil`): applied while the read was in flight,
+    // they were wiped when it resolved and emptied `currentBlocks`, and a
+    // mid-turn refresh looked blank until the next live chunk. A step the
+    // attach replays and the read then found saved is dropped from the live
+    // blocks once they apply (`_alignLiveWithHistory`).
     let cancelled = false
     ;(async () => {
-      if (!consumeResolvedSessionReady(sessionId, agentWorkspace)) {
-        await loadSession(sessionId, agentWorkspace)
-      }
+      const history = consumeResolvedSessionReady(sessionId, agentWorkspace) ? null : loadSession(sessionId, agentWorkspace)
+      const controller = connectStream(history ? { holdUntil: history } : undefined)
+      if (controller) abortRef.current = controller
+      if (history) await history
       if (cancelled) return
       const store = useAgentStore.getState()
       const leadStream = store.leadName ? store.agentStreams[store.leadName] : undefined
@@ -185,8 +182,6 @@ export function useSessionBootstrap({
           }
         }
       }
-      const controller = connectStream()
-      if (controller) abortRef.current = controller
     })()
 
     return () => {

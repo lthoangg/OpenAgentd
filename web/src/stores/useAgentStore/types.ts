@@ -282,7 +282,19 @@ export interface AgentStoreActions {
   setPendingDraft: (draft: { content: string; attachments?: MessageAttachment[] } | null) => void
   /** ``keepGoal``: Stop & send, which leaves an active goal active. */
   stopAgent: (options?: { keepGoal?: boolean }) => Promise<void>
-  connectStream: () => AbortController
+  /**
+   * Attach to the session's live feed. ``holdUntil``: the history load the
+   * attach runs beside. Frames that arrive before it settles wait (no store
+   * update), then apply in order on top of the committed history, and live
+   * blocks it already holds are dropped.
+   */
+  connectStream: (options?: { holdUntil?: Promise<unknown> }) => AbortController
+  /**
+   * Drop the leading live blocks of each stream that the committed history
+   * already holds: a feed attached before the history read can replay a step
+   * the read then found saved.
+   */
+  _alignLiveWithHistory: () => void
   /**
    * A turn just started for this session: if the live feed then stays silent
    * past ``STREAM_SILENCE_MS``, reload and reattach.

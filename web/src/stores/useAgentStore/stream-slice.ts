@@ -430,7 +430,7 @@ export const createStreamSlice: StateCreator<
     }
   },
 
-  connectStream: () => {
+  connectStream: (options) => {
     const sessionId = get().sessionId
     if (!sessionId) return new AbortController()
     const generation = get()._sessionGeneration
@@ -522,7 +522,10 @@ export const createStreamSlice: StateCreator<
     }
     abort.signal.addEventListener('abort', disarmWatch, { once: true })
     activeWatch = { abort, arm: armWatch }
-    if (get().isAgentWorking && get().pendingQuestion === null) armWatch()
+    // Attached beside a history load, frames wait for it (see `holdUntil`);
+    // so does the silence check, since only the history says the turn runs.
+    let held: Array<() => void> | null = options?.holdUntil ? [] : null
+    if (!held && get().isAgentWorking && get().pendingQuestion === null) armWatch()
 
     // Reopening the moment the backend closes is right when the connection was
     // doing something — but a stream that closes having delivered nothing will
@@ -555,10 +558,7 @@ export const createStreamSlice: StateCreator<
       })
     }
 
-    agentStream(
-      sessionId,
-      {
-        onEvent: (type, data) => {
+    const onEvent = (type: string, data: unknown) => {
           // A read() already in flight can resolve with a chunk in the same
           // tick this exact connection was superseded (aborted in favor of a
           // fresh one) for the same session/generation, which the check below
@@ -587,11 +587,8 @@ export const createStreamSlice: StateCreator<
           }
           flushBufferedDeltas()
           current._handleSSEEvent(type, data)
-        },
-        onParseError: (err) => {
-          console.warn(err.message)
-        },
-        onError: (err) => {
+    }
+    const onError = (err: Error) => {
           disarmWatch()
           flushBufferedDeltas()
           abort.signal.removeEventListener('abort', flushBufferedDeltas)
@@ -607,8 +604,8 @@ export const createStreamSlice: StateCreator<
             return
           }
           set((draft) => { draft.error = err.message; draft.isConnected = false })
-        },
-        onDone: () => {
+    }
+    const onDone = () => {
           disarmWatch()
           flushBufferedDeltas()
           abort.signal.removeEventListener('abort', flushBufferedDeltas)
@@ -651,7 +648,52 @@ export const createStreamSlice: StateCreator<
               running: false,
             })
           })
+    }
+
+    if (held && options?.holdUntil) {
+      const release = () => {
+        const queued = held ?? []
+        held = null
+        if (abort.signal.aborted) return
+        const s = get()
+        if (s.sessionId !== sessionId || s._sessionGeneration !== generation) return
+        // Each frame applies as if it arrived now, on the committed history.
+        // A `done` commits the live blocks, so the ones the history already
+        // holds go first.
+        for (const run of queued) run()
+        flushBufferedDeltas()
+        if (queued.length > 0) get()._alignLiveWithHistory()
+        const after = get()
+        if (!receivedAnyEvent && after.isAgentWorking && after.pendingQuestion === null) armWatch()
+      }
+      void options.holdUntil.then(release, release)
+    }
+    const hold = (run: () => void) => {
+      if (held) held.push(run)
+      else run()
+    }
+
+    agentStream(
+      sessionId,
+      {
+        onEvent: (type, data) => {
+          if (held && !abort.signal.aborted) {
+            held.push(() => {
+              if (type === 'done') {
+                flushBufferedDeltas()
+                get()._alignLiveWithHistory()
+              }
+              onEvent(type, data)
+            })
+            return
+          }
+          onEvent(type, data)
         },
+        onParseError: (err) => {
+          console.warn(err.message)
+        },
+        onError: (err) => hold(() => onError(err)),
+        onDone: () => hold(onDone),
       },
       abort.signal,
       { direct: get()._directStreamSession === sessionId },

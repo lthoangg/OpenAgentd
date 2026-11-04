@@ -521,6 +521,7 @@ export type SessionSlice = Pick<
   | 'fillAttachGap'
   | 'loadOlderMessages'
   | 'loadOlderUntilPrompt'
+  | '_alignLiveWithHistory'
 >
 
 // Keyed by session generation, id and workspace. Coalesces concurrent
@@ -1161,6 +1162,17 @@ export const createSessionSlice: StateCreator<
     })
     inflightLoadSession.set(inflightKey, promise)
     return promise
+  },
+
+  _alignLiveWithHistory: () => {
+    const streams = Object.values(get().agentStreams)
+    if (!streams.some((stream) => stream.currentBlocks.length > 0 && stream.blocks.length > 0)) return
+    set((draft) => {
+      for (const stream of Object.values(draft.agentStreams)) {
+        // Every live block came from the attach, so any of them may be saved.
+        dropSnapshotAlignedPrefix(stream, stream.currentBlocks.length)
+      }
+    })
   },
 
   fillAttachGap: async (sessionId: string) => {

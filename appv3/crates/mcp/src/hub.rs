@@ -336,13 +336,14 @@ impl McpHubTool {
         if plan && !t.read_only() {
             return Err(ToolError::Execution(format!("{} '{server}.{}' is not marked read-only, so it is unavailable in Plan mode.", t.kind(), t.tool())));
         }
-        let args = parse_arguments(arguments)?;
+        let args = Value::Object(parse_arguments(arguments)?);
         let schema = t.input_schema();
-        let missing: Vec<&str> = schema["required"].as_array().into_iter().flatten().filter_map(Value::as_str).filter(|k| !args.contains_key(*k)).collect();
-        if !missing.is_empty() {
-            return Err(ToolError::Argument(format!("{} '{server}.{}' is missing required arguments: {}. Its input_schema: {schema}", t.kind(), t.tool(), missing.join(", "))));
+        // Every problem at once, before the server or plugin sees the call.
+        let problems = appv3_tools::arg_check::problems(&schema, &args);
+        if !problems.is_empty() {
+            return Err(ToolError::Argument(format!("{} '{server}.{}' got invalid arguments: {}. Its input_schema: {schema}", t.kind(), t.tool(), problems.join("; "))));
         }
-        t.run(ctx, Value::Object(args)).await
+        t.run(ctx, args).await
     }
 
     fn servers(&self) -> String {
@@ -597,7 +598,7 @@ mod tests {
             assert_eq!(ran, r#"ran {"since":"v1.2.0"}"#, "{tool}");
         }
         let e = run(&hub, false, json!({"action": "call", "server": "test-kit", "tool": "publish"})).await.unwrap_err();
-        assert!(e.contains("Plugin tool 'test-kit.publish' is missing required arguments: since. Its input_schema: {"), "{e}");
+        assert!(e.contains("Plugin tool 'test-kit.publish' got invalid arguments: 'since' is required. Its input_schema: {"), "{e}");
         let e = run(&hub, true, json!({"action": "call", "server": "test-kit", "tool": "publish", "arguments": args})).await.unwrap_err();
         assert!(e.contains("Plugin tool 'test-kit.publish' is not marked read-only, so it is unavailable in Plan mode."), "{e}");
         assert_eq!(run(&hub, true, json!({"action": "call", "server": "test-kit", "tool": "draft_notes", "arguments": args})).await.unwrap(), r#"ran {"since":"v1.2.0"}"#);
@@ -626,6 +627,31 @@ mod tests {
         );
     }
 
+    fn strict_kit() -> Vec<Arc<ExtraTool>> {
+        let schema = json!({"type": "object", "properties": {
+            "since": {"type": "string", "description": "A tag"},
+            "limit": {"type": "integer", "minimum": 1, "description": "Most notes"},
+            "format": {"type": "string", "enum": ["md", "txt"], "description": "Output format"}
+        }, "required": ["since"], "additionalProperties": false});
+        vec![Arc::new(ExtraTool { input_schema: schema, ..(*plugin_tool("notes", "Draft notes", true)).clone() })]
+    }
+
+    #[tokio::test]
+    async fn call_names_every_argument_problem_before_running_the_tool() {
+        let hub = McpHubTool { manager: Arc::new(McpManager::default()), plugin_tools: strict_kit };
+        let call = |arguments: Value| json!({"action": "call", "server": "test-kit", "tool": "notes", "arguments": arguments});
+        let e = run(&hub, false, call(json!({"since": 5, "limit": 0, "format": "pdf", "colour": "red"}))).await.unwrap_err();
+        assert!(
+            e.contains(r#"Plugin tool 'test-kit.notes' got invalid arguments: 'since' must be a string, not a number; 'limit' must be at least 1; 'format' must be one of "md", "txt"; 'colour' is not an allowed argument. Its input_schema: {"#),
+            "{e}"
+        );
+        assert_eq!(
+            run(&hub, false, call(json!({"since": "v1", "limit": 3, "format": null}))).await.unwrap(),
+            r#"ran {"since":"v1","limit":3,"format":null}"#,
+            "a null optional argument passes"
+        );
+    }
+
     #[tokio::test]
     async fn search_returns_schemas_and_call_checks_before_running() {
         let hub = McpHubTool::new(manager_with(
@@ -649,7 +675,7 @@ mod tests {
         assert!(run(&hub, false, json!({"action": "search", "server": "nope"})).await.unwrap_err().contains("'nope' is not configured. Servers: docs."));
 
         let e = run(&hub, false, json!({"action": "call", "server": "docs", "tool": "lookup", "arguments": {}})).await.unwrap_err();
-        assert!(e.contains("missing required arguments: q. Its input_schema: {"), "{e}");
+        assert!(e.contains("MCP tool 'docs.lookup' got invalid arguments: 'q' is required. Its input_schema: {"), "{e}");
         let e = run(&hub, true, json!({"action": "call", "server": "docs", "tool": "delete_page"})).await.unwrap_err();
         assert!(e.contains("not marked read-only, so it is unavailable in Plan mode"), "{e}");
         // Read-only in Plan mode, a JSON-string `arguments`, and the old

@@ -3364,6 +3364,12 @@ Four orthogonal ways to add capability.
     that finishes starting or reconnects is usable at once. In Plan mode the
     agent can search, and call tools the server marks read-only
     (`readOnlyHint`); the server sets that hint, so it is trusted as given.
+  - **Arguments checked before a call** `[v3.44.0]` — `call` checks the
+    arguments against the tool's input schema (types, required and unknown
+    fields, allowed values, lengths and bounds, nested objects and lists) and
+    returns every problem, with the schema, before the server or plugin sees
+    the call. The check is lenient: keywords it does not know pass, and a null
+    for an optional argument counts as left out.
   - **Set up MCP servers from chat** `[v3.35.0]` — ask the agent to connect a
     server ("add the GitHub MCP") and it proposes the `mcp.json` entry
     (`mcp` with `action: "save"`, or `"remove"`). A **Confirm change** card

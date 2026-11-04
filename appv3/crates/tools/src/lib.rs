@@ -4,6 +4,7 @@
 //! Session-bound tools (ask_user, team, skill, schedule, …) live in
 //! the agent crate and implement the same [`Tool`] trait.
 
+pub mod arg_check;
 pub mod args;
 pub mod denied;
 pub mod glob;

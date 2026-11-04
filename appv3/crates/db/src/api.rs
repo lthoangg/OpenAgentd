@@ -99,7 +99,13 @@ pub fn sent_from_json(origin: &ChatSession) -> Value {
 }
 
 const INTERNAL_ATTACHMENT_FIELDS: [&str; 3] = ["converted_text", "path", "workspace_path"];
-const DISPLAY_STRIPPED_EXTRA_FIELDS: [&str; 1] = ["parts"];
+/// `extra` keys no client reads: a tool result's image `parts` and the
+/// provider replay state (Anthropic raw blocks and thinking signatures,
+/// OpenAI reasoning items), which the agent reads from the database.
+const DISPLAY_STRIPPED_EXTRA_FIELDS: [&str; 4] = ["parts", "raw_content_blocks", "reasoning_signature", "reasoning_items"];
+/// The stored keys that send `extra` through the rewriting path, quoted as
+/// they appear in the JSON text.
+const DISPLAY_REWRITTEN_EXTRA_KEYS: [&str; 6] = ["\"parts\"", "\"raw_content_blocks\"", "\"reasoning_signature\"", "\"reasoning_items\"", "\"attachments\"", "\"is_continuation\""];
 
 /// The `MessageResponse` wire shape (strips `extra.parts`, internal
 /// attachment fields, and continuation reasoning).
@@ -160,7 +166,7 @@ impl<'a> DisplayExtra<'a> {
         let Some(text) = raw else { return pass(None) };
         // Rows without these keys go out untouched; stored keys are plain
         // ASCII, so a substring check is a safe filter.
-        if !["\"parts\"", "\"attachments\"", "\"is_continuation\""].iter().any(|k| text.contains(k)) {
+        if !DISPLAY_REWRITTEN_EXTRA_KEYS.iter().any(|k| text.contains(k)) {
             return pass(raw_col(raw).map(Json::Raw));
         }
         let Some(mut extra) = crate::codec::json_col(raw) else { return pass(None) };
@@ -187,6 +193,15 @@ impl<'a> DisplayExtra<'a> {
         }
         out.extra = Some(Json::Owned(extra));
         out
+    }
+}
+
+/// Bytes `extra` takes on the wire once display has rewritten it.
+pub fn display_extra_len(raw: Option<&str>) -> usize {
+    match DisplayExtra::of(raw).extra {
+        None => 0,
+        Some(Json::Raw(r)) => r.get().len(),
+        Some(Json::Owned(v)) => serde_json::to_vec(&v).map_or(0, |b| b.len()),
     }
 }
 
@@ -408,6 +423,22 @@ mod tests {
         }
         r.tool_calls = Some(" [] ".into());
         assert_eq!(message_response(&r)["tool_calls"], json!([]));
+    }
+
+    /// What a provider needs to replay its own turn (Anthropic's raw blocks
+    /// and thinking signatures, OpenAI's reasoning items) is read from the
+    /// database by the agent, never by a client; on the wire it was almost
+    /// half of every history page.
+    #[test]
+    fn message_response_leaves_out_provider_replay_state() {
+        let mut r = row("assistant");
+        r.extra = Some(
+            r#"{"raw_content_blocks": [{"type": "thinking", "thinking": "t", "signature": "s"}], "reasoning_signature": "sig", "reasoning_items": [{"id": "rs_1"}], "model": "m"}"#
+                .into(),
+        );
+        assert_eq!(message_response(&r)["extra"], json!({"model": "m"}));
+        r.extra = Some(r#"{"reasoning_signature": "sig"}"#.into());
+        assert!(!message_response(&r).contains_key("extra"));
     }
 
     #[test]

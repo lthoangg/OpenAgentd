@@ -1240,7 +1240,7 @@ impl RowBytes {
             }
             self.reasoning += len(&r.reasoning_content);
             self.tool_args += len(&r.tool_calls);
-            self.extra += len(&r.extra);
+            self.extra += appv3_db::api::display_extra_len(r.extra.as_deref());
         }
     }
 }
@@ -1385,6 +1385,15 @@ mod tests {
         let mut b = RowBytes::default();
         b.add(&[row("assistant", "hello", Some("hmm"), Some("[{\"a\":1}]")), row("tool", "output!", None, None), row("user", "hi", None, None)]);
         assert_eq!(b, RowBytes { content: 7, reasoning: 3, tool_args: 9, tool_results: 7, extra: 6 });
+    }
+
+    #[test]
+    fn page_bytes_count_extra_as_sent_not_as_stored() {
+        let mut r = row("tool", "", None, None);
+        r.extra = Some(r#"{"parts": [{"type": "image", "data": "AAAA"}], "duration_ms": 5}"#.into());
+        let mut b = RowBytes::default();
+        b.add(&[r]);
+        assert_eq!(b.extra, r#"{"duration_ms":5}"#.len());
     }
 
     #[test]

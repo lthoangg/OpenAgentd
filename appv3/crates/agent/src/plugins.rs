@@ -8,6 +8,7 @@
 
 use appv3_jsplugin::{JsPlugin, Mode, Target};
 use appv3_providers::ToolCall;
+use appv3_tools::{ToolContext, ToolResult};
 use async_trait::async_trait;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
@@ -205,6 +206,36 @@ fn load() -> Vec<ToolPluginRef> {
 pub fn tool_plugins() -> &'static Vec<ToolPluginRef> {
     static P: OnceLock<Vec<ToolPluginRef>> = OnceLock::new();
     P.get_or_init(load)
+}
+
+/// What runs an [`ExtraTool`].
+#[async_trait]
+pub trait ExtraRun: Send + Sync {
+    async fn run(&self, ctx: &ToolContext, args: Value) -> ToolResult;
+}
+
+/// A tool a plugin's code adds outside the model's tools block: a kernel
+/// contribution of the plugin's module. The `mcp` tool lists and calls it
+/// under the plugin's name, as if the plugin were a server.
+#[derive(Clone)]
+pub struct ExtraTool {
+    /// The plugin that adds it.
+    pub plugin: String,
+    /// Its name within the plugin.
+    pub name: String,
+    pub description: String,
+    /// The JSON Schema of its arguments (`"type": "object"`).
+    pub input_schema: Value,
+    /// It only reads, so Plan mode may run it.
+    pub read_only: bool,
+    pub runner: Arc<dyn ExtraRun>,
+}
+
+/// The extra tools of the running modules, by plugin, then name.
+pub fn extra_tools() -> Vec<Arc<ExtraTool>> {
+    let mut tools = appv3_kernel::global().contributions::<ExtraTool>();
+    tools.sort_by(|a, b| (&a.plugin, &a.name).cmp(&(&b.plugin, &b.name)));
+    tools
 }
 
 /// The result of the innermost handler.

@@ -136,6 +136,7 @@ dependencies = [
  "appv3-core",
  "appv3-db",
  "appv3-jsplugin",
+ "appv3-kernel",
  "appv3-memory",
  "appv3-preview",
  "appv3-providers",

@@ -93,4 +93,18 @@ describe('SettingsPage + SaveBar', () => {
     expect(screen.getAllByRole('button', { name: 'Save' })).toHaveLength(1)
     expect(screen.getByRole('region', { name: 'Unsaved changes' })).toBeTruthy()
   })
+
+  it('saves a draft page once on ⌘S / Ctrl+S', () => {
+    const mac = getPlatform().os === 'macos'
+    const save = mock(async () => {})
+    render(
+      <div data-settings-modal="">
+        <SettingsPage title="Context" draft={draft({ save })}>
+          <div />
+        </SettingsPage>
+      </div>,
+    )
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Save' }), { key: 's', metaKey: mac, ctrlKey: !mac })
+    expect(save).toHaveBeenCalledTimes(1)
+  })
 })

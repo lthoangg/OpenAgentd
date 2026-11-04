@@ -9,7 +9,7 @@
  * except the few marked ``ctrl``, which are the Control key on every OS (⌃⌥←).
  */
 import type { OS } from '@/hooks/use-platform'
-import { dispatchShortcutKey, formatShortcut } from '@/lib/keyboard-shortcut'
+import { dispatchShortcutKey, formatShortcut, isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 import type { KeyChord } from '@/lib/keyboard/chord'
 
 export interface AppShortcut {
@@ -95,9 +95,9 @@ export const NEXT_DOCK_TAB_CHORD: KeyChord = { key: 'Tab', ctrl: true }
 export const PREV_DOCK_TAB_CHORD: KeyChord = { key: 'Tab', ctrl: true, shift: true }
 /**
  * The same steps the platform's way: ⌘⇧] / ⌘⇧[
- * on macOS, Ctrl+PageDown / PageUp elsewhere. Both
- * pairs work on every OS; the brackets match the physical key, which prints
- * "{" and "}" with Shift.
+ * on macOS, Ctrl+PageDown / PageUp elsewhere. Only the platform's own pair
+ * is bound (``dockTabStepKeys``); the brackets match the physical key, which
+ * prints "{" and "}" with Shift.
  */
 export const NEXT_DOCK_TAB_KEYS = {
   mac: { key: ']', code: 'BracketRight', mod: true, shift: true },
@@ -107,6 +107,13 @@ export const PREV_DOCK_TAB_KEYS = {
   mac: { key: '[', code: 'BracketLeft', mod: true, shift: true },
   other: { key: 'PageUp', ctrl: true, shift: false },
 } as const satisfies Record<string, KeyChord>
+
+/** The platform's own next / previous dock tab pair, beside ⌃Tab / ⌃⇧Tab. */
+export function dockTabStepKeys(os: OS): { next: KeyChord; prev: KeyChord } {
+  return isPrimaryModifierOS(os)
+    ? { next: NEXT_DOCK_TAB_KEYS.mac, prev: PREV_DOCK_TAB_KEYS.mac }
+    : { next: NEXT_DOCK_TAB_KEYS.other, prev: PREV_DOCK_TAB_KEYS.other }
+}
 
 /** The chord the keyboard dispatcher matches for a shortcut. */
 export function chordOf(shortcut: AppShortcut): KeyChord {

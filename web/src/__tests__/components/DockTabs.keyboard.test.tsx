@@ -34,9 +34,10 @@ mock.module('lucide-react', () => ({
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon, TerminalSquare: Icon, Eraser: Icon, Undo2: Icon, X: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
+let os: 'linux' | 'macos' = 'linux'
 mock.module('@/hooks/use-platform', () => ({
-  usePlatform: () => ({ isTauri: false, os: 'linux', isMacOverlay: false }),
-  getPlatform: () => ({ isTauri: false, os: 'linux', isMacOverlay: false }),
+  usePlatform: () => ({ isTauri: false, os, isMacOverlay: false }),
+  getPlatform: () => ({ isTauri: false, os, isMacOverlay: false }),
 }))
 mock.module('framer-motion', () => ({
   motion: {
@@ -153,22 +154,39 @@ describe('dock tab keys', () => {
     expect(isActive('Terminal 2')).toBe(true)
   })
 
-  // ⌘⇧[ / ⌘⇧] on macOS; Ctrl+PageUp/PageDown
-  // as in browsers on Windows and Linux. Linux here: Ctrl is ⌘.
-  it('Mod+Shift+[ / ] and Ctrl+PageUp / PageDown step through the tabs too', async () => {
+  // Ctrl+PageUp/PageDown as in browsers on Windows and Linux; the macOS
+  // pair (Ctrl+Shift+[ / ] here) is not bound off macOS.
+  it('Ctrl+PageUp / PageDown step through the tabs off macOS, Ctrl+Shift+[ / ] do not', async () => {
     await renderDock()
     await pick('Terminal 1')
     const key = (init: KeyboardEventInit) => act(async () => {
       document.body.dispatchEvent(new KeyboardEvent('keydown', { ctrlKey: true, bubbles: true, cancelable: true, ...init }))
     })
     await key({ key: '}', code: 'BracketRight', shiftKey: true })
-    expect(isActive('Terminal 2')).toBe(true)
-    await key({ key: '{', code: 'BracketLeft', shiftKey: true })
     expect(isActive('Terminal 1')).toBe(true)
     await key({ key: 'PageUp', code: 'PageUp' })
     expect(isActive('Terminal 3')).toBe(true)
     await key({ key: 'PageDown', code: 'PageDown' })
     expect(isActive('Terminal 1')).toBe(true)
+  })
+
+  it('⌘⇧[ / ⌘⇧] step through the tabs on macOS, Ctrl+PageUp / PageDown do not', async () => {
+    os = 'macos'
+    try {
+      await renderDock()
+      await pick('Terminal 1')
+      const key = (init: KeyboardEventInit) => act(async () => {
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }))
+      })
+      await key({ key: '}', code: 'BracketRight', metaKey: true, shiftKey: true })
+      expect(isActive('Terminal 2')).toBe(true)
+      await key({ key: '{', code: 'BracketLeft', metaKey: true, shiftKey: true })
+      expect(isActive('Terminal 1')).toBe(true)
+      await key({ key: 'PageUp', code: 'PageUp', ctrlKey: true })
+      expect(isActive('Terminal 1')).toBe(true)
+    } finally {
+      os = 'linux'
+    }
   })
 
   it('moves focus to the new tab only when focus was in the dock', async () => {

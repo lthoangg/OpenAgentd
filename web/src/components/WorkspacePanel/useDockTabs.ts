@@ -16,7 +16,8 @@ import { useShallow } from 'zustand/react/shallow'
 import type { GitCommit, WorkspaceFileInfo } from '@/api/types'
 import type { PreviewTarget } from '@/api/preview'
 import { appShortcut, useAppShortcut, useShortcuts } from '@/lib/keyboard/hooks'
-import { DOCK_TAB_SHORTCUTS, NEXT_DOCK_TAB_CHORD, NEXT_DOCK_TAB_KEYS, PREV_DOCK_TAB_CHORD, PREV_DOCK_TAB_KEYS } from '@/lib/app-shortcuts'
+import { DOCK_TAB_SHORTCUTS, NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD, dockTabStepKeys } from '@/lib/app-shortcuts'
+import { getPlatform } from '@/hooks/use-platform'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 
 import type { ChangedFileInfo } from './diff-helpers'
@@ -520,8 +521,9 @@ export function useDockTabs({
   }, [])
 
   // ⌘1–⌘8 pick a tab of the focused pane by position, ⌘9 the last one
-  // (browsers, editors); ⌃Tab / ⌃⇧Tab step through them, and so do ⌘⇧] /
-  // ⌘⇧[ and Ctrl+PageDown / PageUp. Only while the dock is open. Focus
+  // (browsers, editors); ⌃Tab / ⌃⇧Tab step through them, and so does the
+  // platform's own pair: ⌘⇧] / ⌘⇧[ on macOS, Ctrl+PageDown / PageUp
+  // elsewhere. Only while the dock is open. Focus
   // follows only when it was already in the dock, so
   // switching the file beside the composer does not pull the caret out of it.
   const focusedStrip = strips[focused] ?? []
@@ -536,14 +538,15 @@ export function useDockTabs({
     const index = Math.max(0, focusedStrip.findIndex((tab) => tab.id === activeTabId))
     activateByKey(focusedStrip[(index + delta + focusedStrip.length) % focusedStrip.length]?.id)
   }
+  const stepKeys = dockTabStepKeys(getPlatform().os)
   useShortcuts([
     ...DOCK_TAB_SHORTCUTS.map((name, i) => appShortcut(name, () => {
       activateByKey(i === DOCK_TAB_SHORTCUTS.length - 1 ? focusedStrip.at(-1)?.id : focusedStrip[i]?.id)
     })),
     { chord: NEXT_DOCK_TAB_CHORD, handler: () => stepTab(1), options: { allowInEditable: true } },
     { chord: PREV_DOCK_TAB_CHORD, handler: () => stepTab(-1), options: { allowInEditable: true } },
-    ...Object.values(NEXT_DOCK_TAB_KEYS).map((chord) => ({ chord, handler: () => stepTab(1), options: { allowInEditable: true } })),
-    ...Object.values(PREV_DOCK_TAB_KEYS).map((chord) => ({ chord, handler: () => stepTab(-1), options: { allowInEditable: true } })),
+    { chord: stepKeys.next, handler: () => stepTab(1), options: { allowInEditable: true } },
+    { chord: stepKeys.prev, handler: () => stepTab(-1), options: { allowInEditable: true } },
   ], { enabled: open && focusedStrip.length > 0 })
 
   return {

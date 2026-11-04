@@ -345,7 +345,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   you open the tool row or copy its result, and a running command still
   shows its output live. Tool rows no longer show a result summary (line or
   match counts, test totals) or a red failure mark; cards built from their
-  answer (questions, plans, goals, patches, todos) look as before.
+  answer (questions, plans, goals, patches, todos) look as before. A
+  reopened session also leaves out a described command's text, a patch's
+  diff and a plan's text: the row still shows the description, the files
+  with their line counts and the plan action, and the rest loads when you
+  open the row.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.

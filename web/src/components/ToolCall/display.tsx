@@ -16,7 +16,7 @@
 
 import type { ReactNode } from 'react'
 import type { ToolDisplay } from './types'
-import { parsePatchText } from './diffUtils'
+import { parsePatchText, patchFiles } from './diffUtils'
 import { pathBasename } from '@/utils/workspace'
 import { parsePartialJSON } from './displayText'
 import { canonicalToolName } from '@/utils/tool-names'
@@ -222,12 +222,13 @@ function diffLines(prefix: '-' | '+', text: string): string[] {
 function planDisplay(parsed: Record<string, unknown>): ToolDisplay {
   if (str(parsed, 'action') === 'edit') {
     const edits = planEdits(parsed)
-    const count = edits.length
+    // History sends a plan's edits short: only their count.
+    const count = edits.length || (typeof parsed.edit_count === 'number' ? parsed.edit_count : 0)
     const header = count ? `edit · ${count} ${count === 1 ? 'change' : 'changes'}` : 'edit'
     return {
       header,
       headerTitle: header,
-      formattedArgs: count
+      formattedArgs: edits.length
         ? edits.map((edit) => [...diffLines('-', edit.old), ...diffLines('+', edit.new)].join('\n')).join('\n\n')
         : null,
     }
@@ -583,7 +584,10 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
   // ── patch: touched file names in header, full envelope as args ─────
   if (name === 'patch') {
     const patchText = str(parsed, 'patch_text')
-    const paths = patchText ? patchPaths(patchText) : []
+    // History sends a patch short: its files, without the envelope.
+    const paths = patchText
+      ? patchPaths(patchText)
+      : [...new Set(patchFiles(JSON.stringify(parsed)).flatMap((file) => (file.moveTo ? [file.path, file.moveTo] : [file.path])))]
     const names = [...new Set(paths.map(pathBasename))]
     const summary = names.length > 0 ? trunc(names.join(', ')) : null
     return {

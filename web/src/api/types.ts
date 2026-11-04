@@ -204,7 +204,11 @@ export interface MessageResponse {
   content: string | null
   reasoning_content: string | null
   // Backend returns raw dicts; cast to ToolCall shape for UI convenience.
-  tool_calls: Array<Partial<ToolCall> & { id: string; function?: Partial<ToolCall['function']> }> | null
+  /**
+   * ``arguments_bytes`` is set when history sent the call's arguments short
+   * (``appv3_db::tool_args``): the full arguments' size.
+   */
+  tool_calls: Array<Partial<ToolCall> & { id: string; function?: Partial<ToolCall['function']>; arguments_bytes?: number }> | null
   tool_call_id: string | null
   name: string | null
   /** Canonical ordering key within a session — sort by (seq, id), not created_at. */
@@ -513,6 +517,12 @@ export interface ContentBlock {
   content: string
   toolName?: string
   toolArgs?: string
+  /**
+   * ``toolArgs`` is the short form history sends (a shell call without its
+   * command, a patch's files, a plan without its Markdown), and the full
+   * arguments are this many bytes; the card fetches them when opened.
+   */
+  toolArgsBytes?: number
   toolDone?: boolean
   toolCallId?: string   // for matching tool results
   toolOutput?: string   // live output streamed before tool_end

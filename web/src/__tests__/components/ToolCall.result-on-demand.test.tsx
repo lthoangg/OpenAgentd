@@ -13,6 +13,7 @@ mock.module("@/api/client/tool-results", () => ({
     fetched.push([sessionId, toolCallId])
     return { tool_call_id: toolCallId, name: "read", content: answer }
   }),
+  toolCallArguments: mock(async () => ({ tool_call_id: "", name: "", arguments: "{}" })),
 }))
 
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react"

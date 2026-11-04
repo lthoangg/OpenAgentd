@@ -119,6 +119,7 @@ function assistantBlocks(
       toolDone: false,
       timestamp,
     }
+    if (typeof tool.arguments_bytes === 'number') block.toolArgsBytes = tool.arguments_bytes
     blocks.push(block)
     if (tool.id) pendingToolBlocks.set(tool.id, block)
   }

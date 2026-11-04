@@ -49,7 +49,7 @@ import { teamMemberFromResult } from './subagentStatus'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 import { parseShellOutcome } from './summary'
-import { fetchToolResult, useToolResult } from './useToolResult'
+import { fetchToolArguments, fetchToolResult, useToolArguments, useToolResult } from './useToolResult'
 import { formatMetaDuration } from '@/components/ui/meta-row'
 import type { ToolCallState } from './types'
 import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
@@ -71,6 +71,12 @@ interface ToolCallProps {
   result?: string // tool response content
   /** Bytes of output that stayed on the server; fetched when the row opens. */
   resultBytes?: number
+  /**
+   * Set when ``args`` is the short form history sends (a shell call without
+   * its command, a patch's files, a plan without its Markdown): the full
+   * arguments' size. They are fetched when the row opens.
+   */
+  argsBytes?: number
   durationMs?: number
   startedAt?: number
   /** Needed by ``ask_user`` to match the call against the open question. */
@@ -169,7 +175,7 @@ const ShellCommand = memo(function ShellCommand({ command }: { command: string }
   return <code>{highlighted}</code>
 })
 
-export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result: inlineResult, resultBytes, durationMs, startedAt, toolCallId, isCurrentStep = false }: ToolCallProps) {
+export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result: inlineResult, resultBytes, argsBytes, durationMs, startedAt, toolCallId, isCurrentStep = false }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   // Reduced motion: snap the disclosure open/closed instead of animating
@@ -193,6 +199,11 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const [fetchWanted, setFetchWanted] = useState(false)
   const remote = useToolResult(toolCallId, onServer, fetchWanted)
   const result = inlineResult ?? remote.text
+  // Short arguments: the row reads them; the open details need the full ones.
+  const argsOnServer = argsBytes !== undefined && Boolean(toolCallId)
+  const remoteArgs = useToolArguments(toolCallId, argsOnServer, fetchWanted)
+  const fullArgs = argsOnServer ? remoteArgs.text : args
+  const awaitingArgs = argsOnServer && fullArgs === undefined
   // A change to OpenAgentd's setup waits on the user's Apply / Cancel.
   const confirmationCard = useShowsConfirmationCard(opensConfirmation(name, args ?? undefined), toolCallId, result)
 
@@ -207,8 +218,13 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // (`now`, below) doesn't re-run a full JSON.parse and, for edit/patch/
   // write, an O(oldLines*newLines) diff on every tick for the entire
   // lifetime of a running tool call just to redraw the duration label.
-  const { header, headerTitle, tooltip, formattedArgs, language, suppressResult } =
+  const { header, headerTitle, tooltip, language, suppressResult } =
     useMemo(() => getToolDisplay(name, args), [name, args])
+  // The details show the full arguments, once here.
+  const { formattedArgs } = useMemo(
+    () => (fullArgs === undefined ? { formattedArgs: null } : getToolDisplay(name, fullArgs)),
+    [name, fullArgs],
+  )
   const toolOperation = useMemo(() => {
     if (name !== 'lsp' || !args) return undefined
     const parsed = tryParseJSON(args)
@@ -291,7 +307,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const resultCopyButton = <CopyButton label="Copy result" text={result || ''} />
 
   const awaitingResult = onServer && !suppressResult && result === undefined
-  const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult || hasReadResult || awaitingResult)
+  const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult || hasReadResult || awaitingResult || awaitingArgs)
   const autoOpen = Boolean(shownLiveOutput)
   const [showedLiveOutput, setShowedLiveOutput] = useState(autoOpen)
   if (autoOpen && !showedLiveOutput) setShowedLiveOutput(true)
@@ -325,8 +341,15 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     const argsText = isShellTerminal ? formattedArgs : formatArgsDetails(formattedArgs)
     const resultText = done && (shownResult || hasReadResult) ? result : undefined
     const fetchable = awaitingResult && toolCallId
+    const argsFetchable = awaitingArgs && toolCallId
+    // What the details' args section would show, from arguments fetched now.
+    const copyFetchedArgs = (text: string) => {
+      const shown = getToolDisplay(name, text).formattedArgs
+      copyText(isShell ? shown ?? '' : formatArgsDetails(shown) || text)
+    }
     return [
       ...(argsText ? [{ label: 'Copy arguments', run: () => copyText(argsText) }] : []),
+      ...(!argsText && argsFetchable ? [{ label: 'Copy arguments', run: () => { void fetchToolArguments(argsFetchable).then(copyFetchedArgs) } }] : []),
       ...(resultText ? [{ label: 'Copy result', run: () => copyText(resultText) }] : []),
       ...(!resultText && fetchable ? [{ label: 'Copy result', run: () => { void fetchToolResult(fetchable).then(copyText) } }] : []),
     ]
@@ -478,13 +501,23 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             className="overflow-hidden"
           >
             <section className="group relative mt-1 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)">
+              {awaitingArgs && (usesDiffView || !formattedArgs) && (
+                <div>
+                  <SectionHeader label="arguments" controls={detailsId} onCollapse={collapse} />
+                  <p className="bg-(--bg-input) px-3 py-2.5 text-xs text-(--color-text-muted)" role="status">
+                    {remoteArgs.error ? `Could not load the arguments: ${remoteArgs.error}` : 'Loading arguments…'}
+                  </p>
+                </div>
+              )}
               {usesDiffView ? (
+                fullArgs !== undefined && (
                 <DiffView
                   toolName={name}
-                  args={args || ''}
+                  args={fullArgs || ''}
                   result={result}
                   onCollapse={() => setManualExpanded(false)}
                 />
+                )
               ) : usesReadView ? (
                 <ReadView
                   args={args || ''}

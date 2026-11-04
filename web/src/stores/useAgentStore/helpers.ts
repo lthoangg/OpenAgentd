@@ -1,4 +1,5 @@
 import type { ContentBlock, PendingQuestion } from '@/api/types'
+import { patchFiles } from '@/components/ToolCall/diffUtils'
 import { isGoalTurnBlock } from '@/lib/goal'
 import { restartNoteInfo } from '@/lib/restart-note'
 import type { AgentStream, CacheInvalidation, ResolvedQuestion } from './types'
@@ -190,39 +191,14 @@ export const TODO_MUTATING_TOOLS = new Set(['todo'])
 /** Tools whose completion may have changed the session plan. */
 export const PLAN_MUTATING_TOOLS = new Set(['plan'])
 
-const PATH_BEARING_TOOLS = new Set(['patch'])
-
-const PATCH_PATH_RE = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm
-
 export function extractToolPaths(
   toolName: string,
   toolArgs: string | undefined,
 ): string[] | null {
-  if (!toolArgs || !PATH_BEARING_TOOLS.has(toolName)) return null
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(toolArgs)
-  } catch {
-    return null
-  }
-  if (!parsed || typeof parsed !== 'object') return null
-
-  if (toolName === 'patch') {
-    const text = (parsed as { patch_text?: unknown }).patch_text
-    if (typeof text !== 'string') return null
-    const paths: string[] = []
-    for (const match of text.matchAll(PATCH_PATH_RE)) {
-      const p = match[1]?.trim()
-      if (p) paths.push(p)
-    }
-    return paths.length > 0 ? paths : null
-  }
-
-  const p = (parsed as { path?: unknown }).path
-  if (typeof p !== 'string') return null
-  const trimmed = p.trim()
-  return trimmed ? [trimmed] : null
+  if (!toolArgs || toolName !== 'patch') return null
+  // The envelope, or the short form history sends; a move names both ends.
+  const paths = patchFiles(toolArgs).flatMap((file) => (file.moveTo ? [file.path, file.moveTo] : [file.path]))
+  return paths.length > 0 ? paths : null
 }
 
 export function revokeBlobUrlsFromBlocks(blocks: ContentBlock[]) {

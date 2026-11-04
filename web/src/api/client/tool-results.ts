@@ -22,3 +22,21 @@ export async function toolResult(sessionId: string, toolCallId: string): Promise
   if (!res.ok) await parseDetailOrThrow(res, 'toolResult')
   return res.json()
 }
+
+export interface ToolCallArgumentsResponse {
+  tool_call_id: string
+  name: string
+  /** The arguments as the model sent them: a JSON-encoded string. */
+  arguments: string
+}
+
+/**
+ * A call's full arguments. History sends a few tools' arguments short
+ * (``arguments_bytes`` beside them: a shell command, a patch envelope, a
+ * plan's Markdown); the card asks for them when the user opens the call.
+ */
+export async function toolCallArguments(sessionId: string, toolCallId: string): Promise<ToolCallArgumentsResponse> {
+  const res = await fetch(`${apiBaseUrl()}/agent/${encodeURIComponent(sessionId)}/tool-calls/${encodeURIComponent(toolCallId)}/arguments`)
+  if (!res.ok) await parseDetailOrThrow(res, 'toolCallArguments')
+  return res.json()
+}

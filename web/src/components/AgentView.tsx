@@ -648,6 +648,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
             liveOutput={block.toolOutput}
             result={block.toolResult}
             resultBytes={block.toolResultBytes}
+            argsBytes={block.toolArgsBytes}
             durationMs={block.durationMs}
             startedAt={block.startedAt}
             toolCallId={block.toolCallId}

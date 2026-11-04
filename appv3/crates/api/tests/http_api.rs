@@ -321,7 +321,8 @@ async fn http_api_end_to_end() {
     let msgs = history["lead"]["messages"].as_array().expect("history persisted");
     assert_eq!(msgs[0]["role"], "user");
     assert_eq!(msgs[0]["content"], "hi");
-    assert!(msgs[0]["extra"]["snapshot"].as_str().map(|s| s.len() == 40).unwrap_or(false), "git snapshot recorded: {}", msgs[0]);
+    // The git snapshot stays on the server; the undo below proves it was recorded.
+    assert!(msgs[0]["extra"].get("snapshot").is_none(), "{}", msgs[0]);
     assert_eq!(msgs[1]["role"], "assistant");
     assert_eq!(msgs[1]["content"], "Hello from mock.");
     assert_eq!(msgs[1]["extra"]["usage"], json!({"input": 7, "output": 3}));

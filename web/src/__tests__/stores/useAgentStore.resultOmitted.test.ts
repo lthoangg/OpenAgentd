@@ -11,7 +11,7 @@ import type { OrphanToolResult } from "@/utils/messages"
 import type { MessageResponse } from "@/api/types"
 
 function row(fields: Partial<MessageResponse> & Record<string, unknown>): MessageResponse {
-  return { id: "m", session_id: "s", role: "assistant", content: null, reasoning_content: null, tool_calls: null, tool_call_id: null, name: null, is_summary: false, is_hidden: false, extra: null, created_at: "2026-11-05T00:00:00Z", attachments: null, ...fields } as MessageResponse
+  return { id: "m", role: "assistant", content: null, reasoning_content: null, tool_calls: null, tool_call_id: null, name: null, extra: null, created_at: "2026-11-05T00:00:00Z", attachments: null, ...fields } as MessageResponse
 }
 
 const call = row({ id: "a1", tool_calls: [{ id: "c1", type: "function", function: { name: "read", arguments: "{\"path\":\"a.rs\"}" } }] })

@@ -664,8 +664,8 @@ async fn real_v2_db_reads_existing_history() {
         assert_eq!(found.id, db_id(&hy));
         let (rows, _, _) = history_page(&pool, &hy, None).await.unwrap();
         for r in &rows {
-            let m = api::message_response(r);
-            assert_eq!(m["session_id"], hy);
+            assert_eq!(api_uuid(&r.session_id), hy);
+            assert!(api::message_response(r).contains_key("id"));
         }
         let _ = session_usage_totals(&pool, &hy).await.unwrap();
         let _ = llm_window_rows(&pool, &hy, true).await.unwrap();

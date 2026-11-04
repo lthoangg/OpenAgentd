@@ -11,15 +11,12 @@ import type { MessageResponse } from "@/api/types";
 function makeMsg(overrides: Partial<MessageResponse> = {}): MessageResponse {
   return {
     id: "msg-" + Math.random().toString(36).slice(2),
-    session_id: "sess-1",
     role: "assistant",
     content: "hello",
     reasoning_content: null,
     tool_calls: null,
     tool_call_id: null,
     name: null,
-    is_summary: false,
-    is_hidden: false,
     extra: null,
     created_at: new Date().toISOString(),
     attachments: null,
@@ -118,9 +115,9 @@ describe("sumUsageFromMessages", () => {
   });
 
   it("skips hidden messages (not filtered here — caller responsibility)", () => {
-    // sumUsageFromMessages does NOT filter is_hidden — it trusts the caller
-    // parseAgentBlocks filters is_hidden; sumUsageFromMessages sums all assistant msgs
-    const msgs = [makeMsg({ is_hidden: true, extra: { usage: { input: 10, output: 5, cache: 0 } } })];
+    // sumUsageFromMessages does NOT filter any rows — it trusts the caller
+    // and sums all assistant msgs
+    const msgs = [makeMsg({ extra: { usage: { input: 10, output: 5, cache: 0 } } })];
     const result = sumUsageFromMessages(msgs);
     // Me still counts hidden messages — this matches DatabaseHook behaviour (all turns are stored)
     expect(result.totalTokens).toBe(15);
@@ -132,7 +129,7 @@ describe("sumUsageFromMessages", () => {
     const t = (s: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, s)).toISOString();
     const msgs = [
       makeMsg({ created_at: t(1), extra: { usage: { input: 100, output: 20, cost: { estimated_usd: 0.001 } } } }),
-      makeMsg({ role: "user", is_summary: true, created_at: t(2), extra: { usage: { input: 9000, output: 50, cost: { estimated_usd: 0.0005 } } } }),
+      makeMsg({ role: "user", kind: "summary", created_at: t(2), extra: { usage: { input: 9000, output: 50, cost: { estimated_usd: 0.0005 } } } }),
       makeMsg({ created_at: t(3), extra: { usage: { input: 200, output: 30, cache: 40, cost: { estimated_usd: 0.002 } } } }),
     ];
     const result = sumUsageFromMessages(msgs);
@@ -150,7 +147,7 @@ describe("sumUsageFromMessages", () => {
     const t = (s: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, s)).toISOString();
     const msgs = [
       makeMsg({ created_at: t(1), extra: { usage: { input: 500, output: 20, cache: 10, cost: { estimated_usd: 0.001 } } } }),
-      makeMsg({ role: "user", is_summary: true, created_at: t(2), extra: { usage: { input: 250000, output: 400, cache: 200000, cost: { estimated_usd: 0.0005 } } } }),
+      makeMsg({ role: "user", kind: "summary", created_at: t(2), extra: { usage: { input: 250000, output: 400, cache: 200000, cost: { estimated_usd: 0.0005 } } } }),
     ];
     const result = sumUsageFromMessages(msgs);
     expect(result.estimatedCostUsd).toBe(0.0015);
@@ -165,9 +162,9 @@ describe("sumUsageFromMessages", () => {
     const t = (s: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, s)).toISOString();
     const msgs = [
       makeMsg({ created_at: t(1), extra: { usage: { input: 100, output: 10, cost: { estimated_usd: 0.001 } } } }),
-      makeMsg({ role: "user", is_summary: true, created_at: t(2), extra: { usage: { input: 5000, output: 40, cost: { estimated_usd: 0.0004 } } } }),
+      makeMsg({ role: "user", kind: "summary", created_at: t(2), extra: { usage: { input: 5000, output: 40, cost: { estimated_usd: 0.0004 } } } }),
       makeMsg({ created_at: t(3), extra: { usage: { input: 150, output: 20, cost: { estimated_usd: 0.002 } } } }),
-      makeMsg({ role: "user", is_summary: true, created_at: t(4), extra: { usage: { input: 6000, output: 50, cost: { estimated_usd: 0.0006 } } } }),
+      makeMsg({ role: "user", kind: "summary", created_at: t(4), extra: { usage: { input: 6000, output: 50, cost: { estimated_usd: 0.0006 } } } }),
       makeMsg({ created_at: t(5), extra: { usage: { input: 200, output: 30, cost: { estimated_usd: 0.003 } } } }),
     ];
     expect(sumUsageFromMessages(msgs).estimatedCostUsd).toBe(0.007);
@@ -176,7 +173,7 @@ describe("sumUsageFromMessages", () => {
   it("summary message without usage contributes nothing (pre-fix rows)", () => {
     const msgs = [
       makeMsg({ extra: { usage: { input: 100, output: 20, cost: { estimated_usd: 0.001 } } } }),
-      makeMsg({ role: "user", is_summary: true, extra: null }),
+      makeMsg({ role: "user", kind: "summary", extra: null }),
     ];
     const result = sumUsageFromMessages(msgs);
     expect(result.estimatedCostUsd).toBe(0.001);
@@ -325,7 +322,7 @@ describe("parseAgentBlocks", () => {
 
   it("renders summary messages as compaction divider blocks (legacy prefix stripped)", () => {
     const msgs = [makeMsg({
-      is_summary: true,
+      kind: "summary",
       role: "assistant",
       content: "[Summary of earlier conversation]\nthe gist",
     })];
@@ -339,7 +336,7 @@ describe("parseAgentBlocks", () => {
 
   it("renders new-style summary rows verbatim (no prefix in DB)", () => {
     const msgs = [makeMsg({
-      is_summary: true,
+      kind: "summary",
       role: "user",
       content: "## Goal\nDo the thing.\n\n## Progress\nDone.",
     })];
@@ -351,7 +348,7 @@ describe("parseAgentBlocks", () => {
   });
 
   it("summary with null content produces empty compaction block", () => {
-    const msgs = [makeMsg({ is_summary: true, role: "user", content: null as unknown as string })];
+    const msgs = [makeMsg({ kind: "summary", role: "user", content: null as unknown as string })];
     const blocks = parseAgentBlocks(msgs);
     expect(blocks).toHaveLength(1);
     expect(blocks[0].type).toBe("compaction");
@@ -359,8 +356,8 @@ describe("parseAgentBlocks", () => {
   });
 
   it("keeps a forced (/compact or idle) summary marked forced", () => {
-    const [forced] = parseAgentBlocks([makeMsg({ is_summary: true, role: "user", content: "s", extra: { forced: true } })]);
-    const [auto] = parseAgentBlocks([makeMsg({ is_summary: true, role: "user", content: "s" })]);
+    const [forced] = parseAgentBlocks([makeMsg({ kind: "summary", role: "user", content: "s", extra: { forced: true } })]);
+    const [auto] = parseAgentBlocks([makeMsg({ kind: "summary", role: "user", content: "s" })]);
     expect(forced.extra).toEqual({ state: "compacted", forced: true });
     expect(auto.extra).toEqual({ state: "compacted" });
   });
@@ -369,8 +366,8 @@ describe("parseAgentBlocks", () => {
     const t1 = new Date(Date.now() - 10000).toISOString();
     const t2 = new Date().toISOString();
     const msgs = [
-      makeMsg({ is_summary: true, role: "user", content: "first summary", created_at: t1 }),
-      makeMsg({ is_summary: true, role: "user", content: "second summary", created_at: t2 }),
+      makeMsg({ kind: "summary", role: "user", content: "first summary", created_at: t1 }),
+      makeMsg({ kind: "summary", role: "user", content: "second summary", created_at: t2 }),
     ];
     const blocks = parseAgentBlocks(msgs);
     expect(blocks).toHaveLength(2);
@@ -384,7 +381,7 @@ describe("parseAgentBlocks", () => {
     const base = Date.now();
     const msgs = [
       makeMsg({ role: "user", content: "question", created_at: new Date(base).toISOString() }),
-      makeMsg({ is_summary: true, role: "user", content: "compacted here", created_at: new Date(base + 1).toISOString() }),
+      makeMsg({ kind: "summary", role: "user", content: "compacted here", created_at: new Date(base + 1).toISOString() }),
       makeMsg({ role: "assistant", content: "answer", created_at: new Date(base + 2).toISOString() }),
     ];
     const blocks = parseAgentBlocks(msgs);
@@ -395,8 +392,8 @@ describe("parseAgentBlocks", () => {
     expect(blocks[2].type).toBe("text");
   });
 
-  it("shows hidden messages (user sees full history)", () => {
-    const msgs = [makeMsg({ is_hidden: true, role: "assistant", content: "old message" })];
+  it("shows older messages (user sees full history)", () => {
+    const msgs = [makeMsg({ role: "assistant", content: "old message" })];
     expect(parseAgentBlocks(msgs)).toHaveLength(1);
   });
 

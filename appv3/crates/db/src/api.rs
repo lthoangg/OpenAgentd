@@ -3,7 +3,7 @@
 //! rendering). Keep the wire shapes in sync with the web client's types.
 
 use crate::codec::{api_dt, api_uuid, parse_dt, py_isoformat};
-use crate::models::{kind, ChatSession, CodingWorkspace, PendingQuestion, ScheduledTask, SessionMessage};
+use crate::models::{ChatSession, CodingWorkspace, PendingQuestion, ScheduledTask, SessionMessage};
 use serde::ser::{SerializeMap, Serializer};
 use serde::Serialize;
 use serde_json::value::RawValue;
@@ -137,13 +137,44 @@ fn names_subagent(first: &str) -> bool {
     let lower = first.to_ascii_lowercase();
     !lower.starts_with("error") && !lower.starts_with('{') && !lower.starts_with('[') && lower.contains("subagent '")
 }
-/// `extra` keys no client reads: a tool result's image `parts` and the
+/// `extra` keys no client reads: a tool result's image `parts`, the
 /// provider replay state (Anthropic raw blocks and thinking signatures,
-/// OpenAI reasoning items), which the agent reads from the database.
-const DISPLAY_STRIPPED_EXTRA_FIELDS: [&str; 4] = ["parts", "raw_content_blocks", "reasoning_signature", "reasoning_items"];
+/// OpenAI reasoning items), which the agent reads from the database, and
+/// server bookkeeping (the stop reason, the credential id, the undo
+/// snapshot). `attachments` goes out beside `extra` instead.
+const DISPLAY_STRIPPED_EXTRA_FIELDS: [&str; 8] =
+    ["parts", "raw_content_blocks", "reasoning_signature", "reasoning_items", "finish_reason", "credential_id", "snapshot", "attachments"];
+/// The `usage` fields the web reads (`utils/messages.ts`); of `cost`, only
+/// `estimated_usd`. Change them together.
+const DISPLAY_USAGE_FIELDS: [&str; 5] = ["input", "output", "cache", "cache_percent", "estimated_cost_usd"];
 /// The stored keys that send `extra` through the rewriting path, quoted as
 /// they appear in the JSON text.
-const DISPLAY_REWRITTEN_EXTRA_KEYS: [&str; 6] = ["\"parts\"", "\"raw_content_blocks\"", "\"reasoning_signature\"", "\"reasoning_items\"", "\"attachments\"", "\"is_continuation\""];
+const DISPLAY_REWRITTEN_EXTRA_KEYS: [&str; 10] = [
+    "\"parts\"",
+    "\"raw_content_blocks\"",
+    "\"reasoning_signature\"",
+    "\"reasoning_items\"",
+    "\"finish_reason\"",
+    "\"credential_id\"",
+    "\"snapshot\"",
+    "\"attachments\"",
+    "\"is_continuation\"",
+    "\"usage\"",
+];
+
+/// Trims `usage` to [`DISPLAY_USAGE_FIELDS`] and `cost.estimated_usd`;
+/// whether anything was removed.
+fn trim_usage(usage: &mut Map<String, Value>) -> bool {
+    let before = usage.len();
+    let estimated = usage.get("cost").and_then(|c| c.get("estimated_usd")).cloned();
+    usage.retain(|k, _| DISPLAY_USAGE_FIELDS.contains(&k.as_str()));
+    let mut changed = usage.len() != before;
+    if let Some(v) = estimated {
+        changed |= usage.get("cost").and_then(Value::as_object).is_none_or(|c| c.len() != 1);
+        usage.insert("cost".into(), serde_json::json!({ "estimated_usd": v }));
+    }
+    changed
+}
 
 /// The `MessageResponse` wire shape (strips `extra.parts`, internal
 /// attachment fields, and continuation reasoning).
@@ -211,17 +242,27 @@ impl<'a> DisplayExtra<'a> {
         let mut out = DisplayExtra { extra: None, attachments: None, hide_reasoning: false };
         if let Value::Object(ref mut e) = extra {
             out.hide_reasoning = e.get("is_continuation").map(truthy).unwrap_or(false);
+            if let Some(Value::Array(atts)) = e.get("attachments") {
+                let public = atts
+                    .iter()
+                    .map(|a| match a {
+                        Value::Object(obj) => {
+                            Value::Object(obj.iter().filter(|(k, _)| !INTERNAL_ATTACHMENT_FIELDS.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect())
+                        }
+                        other => other.clone(),
+                    })
+                    .collect();
+                out.attachments = Some(Value::Array(public));
+            }
             let mut stripped = false;
             for key in DISPLAY_STRIPPED_EXTRA_FIELDS {
                 stripped |= e.remove(key).is_some();
             }
-            if let Some(Value::Array(atts)) = e.get_mut("attachments") {
-                for a in atts.iter_mut() {
-                    if let Value::Object(obj) = a {
-                        obj.retain(|k, _| !INTERNAL_ATTACHMENT_FIELDS.contains(&k.as_str()));
-                    }
+            if let Some(Value::Object(usage)) = e.get_mut("usage") {
+                stripped |= trim_usage(usage);
+                if usage.is_empty() {
+                    e.remove("usage");
                 }
-                out.attachments = Some(Value::Array(atts.clone()));
             }
             // Only the display-stripping branch collapses `{}` to None (v2
             // does `resp.extra = extra or None` there); `{}` as stored stays.
@@ -293,7 +334,6 @@ impl Serialize for MessageView<'_> {
         let reasoning = r.reasoning_content.as_deref().filter(|_| !display.hide_reasoning);
         let mut m = s.serialize_map(None)?;
         m.serialize_entry("id", &api_uuid(&r.id))?;
-        m.serialize_entry("session_id", &api_uuid(&r.session_id))?;
         m.serialize_entry("role", &r.role)?;
         if let Some(v) = &r.content {
             if r.role == "tool" && !r.name.as_deref().is_some_and(|n| result_rides_inline(n, v)) {
@@ -316,8 +356,8 @@ impl Serialize for MessageView<'_> {
             m.serialize_entry("name", v)?;
         }
         m.serialize_entry("seq", &r.seq)?;
+        // A summary is `kind: "summary"`; clients read that.
         m.serialize_entry("kind", &r.kind)?;
-        m.serialize_entry("is_summary", &(r.kind == kind::SUMMARY))?;
         if let Some(v) = &display.extra {
             m.serialize_entry("extra", v)?;
         }
@@ -325,7 +365,6 @@ impl Serialize for MessageView<'_> {
         if let Some(v) = &display.attachments {
             m.serialize_entry("attachments", v)?;
         }
-        m.serialize_entry("file_message", &display.attachments.is_some())?;
         m.end()
     }
 }
@@ -398,6 +437,7 @@ pub fn workspace_display_name(w: &CodingWorkspace) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::kind;
     use serde_json::json;
 
     const ID: &str = "0123456789abcdef0123456789abcdef";
@@ -430,10 +470,10 @@ mod tests {
         let mut r = row("user");
         r.content = Some("hi ✓".into());
         let m = message_response(&r);
-        assert_eq!(keys(&m), ["id", "session_id", "role", "content", "seq", "kind", "is_summary", "created_at", "file_message"]);
+        assert_eq!(keys(&m), ["id", "role", "content", "seq", "kind", "created_at"]);
         assert_eq!(
             Value::Object(m),
-            json!({"id": "01234567-89ab-cdef-0123-456789abcdef", "session_id": "fedcba98-7654-3210-fedc-ba9876543210", "role": "user", "content": "hi ✓", "seq": 7, "kind": "chat", "is_summary": false, "created_at": "2026-09-23T06:56:28.225815Z", "file_message": false})
+            json!({"id": "01234567-89ab-cdef-0123-456789abcdef", "role": "user", "content": "hi ✓", "seq": 7, "kind": "chat", "created_at": "2026-09-23T06:56:28.225815Z"})
         );
     }
 
@@ -446,16 +486,13 @@ mod tests {
         r.tool_calls = Some(r#"[{"id": "c1", "function": {"name": "read", "arguments": "{\"p\": \"Vi\u1ec7t\"}"}}]"#.into());
         r.tool_call_id = Some("c0".into());
         r.name = Some("read".into());
-        r.extra = Some(r#"{"usage": {"total_tokens": 3}, "model": "m"}"#.into());
+        r.extra = Some(r#"{"usage": {"output": 3}, "model": "m"}"#.into());
         r.kind = kind::SUMMARY.into();
         let m = message_response(&r);
-        assert_eq!(
-            keys(&m),
-            ["id", "session_id", "role", "content", "reasoning_content", "tool_calls", "tool_call_id", "name", "seq", "kind", "is_summary", "extra", "created_at", "file_message"]
-        );
+        assert_eq!(keys(&m), ["id", "role", "content", "reasoning_content", "tool_calls", "tool_call_id", "name", "seq", "kind", "extra", "created_at"]);
         assert_eq!(m["tool_calls"], json!([{"id": "c1", "function": {"name": "read", "arguments": "{\"p\": \"Việt\"}"}}]));
-        assert_eq!(m["extra"], json!({"usage": {"total_tokens": 3}, "model": "m"}));
-        assert_eq!(m["is_summary"], json!(true));
+        assert_eq!(m["extra"], json!({"usage": {"output": 3}, "model": "m"}));
+        assert_eq!(m["kind"], json!("summary"));
         assert_eq!(m["reasoning_content"], json!("think"));
     }
 
@@ -489,11 +526,14 @@ mod tests {
         r.extra = Some(r#"{"attachments": [{"name": "a.pdf", "path": "/x", "converted_text": "t", "workspace_path": "w", "size": 3}, "odd"], "k": 1}"#.into());
         let m = message_response(&r);
         let public = json!([{"name": "a.pdf", "size": 3}, "odd"]);
-        assert_eq!(m["extra"], json!({"attachments": public, "k": 1}));
+        // Sent once, beside `extra` rather than inside it.
+        assert_eq!(m["extra"], json!({"k": 1}));
         assert_eq!(m["attachments"], public);
-        assert_eq!(m["file_message"], json!(true));
-        assert_eq!(keys(&m).last(), Some(&"file_message"));
-        assert_eq!(keys(&m)[keys(&m).len() - 2], "attachments");
+        assert_eq!(keys(&m).last(), Some(&"attachments"));
+        r.extra = Some(r#"{"attachments": [{"name": "a.pdf"}]}"#.into());
+        let m = message_response(&r);
+        assert!(!m.contains_key("extra"));
+        assert_eq!(m["attachments"], json!([{"name": "a.pdf"}]));
     }
 
     /// A tool's output is read on demand: history carries how big it was,
@@ -622,11 +662,35 @@ mod tests {
         assert!(!message_response(&r).contains_key("extra"));
     }
 
+    /// Usage goes out as the fields a turn's footer and the session total
+    /// read (`utils/messages.ts`); the cost breakdown, cache writes, the
+    /// stop reason, the pinned credential and the undo snapshot stay on
+    /// the server.
+    #[test]
+    fn message_response_sends_only_the_extra_clients_read() {
+        let mut r = row("assistant");
+        r.extra = Some(
+            r#"{"usage": {"input": 73984, "output": 293, "cache": 73033, "cache_write": 949, "thoughts": 12, "cache_percent": 98.7, "estimated_cost_usd": 0.02, "cost": {"estimated_usd": 0.0252196, "cache_read_usd": 0.0146, "cache_write_usd": 0.0047, "input_usd": 8e-6, "output_usd": 0.0058}}, "finish_reason": "tool_calls", "duration_ms": 76745.8, "model": "claude:x", "thinking_level": "high", "credential_id": "cred_1", "credential_label": "fyc", "thinking_duration_ms": 5.8}"#
+                .into(),
+        );
+        assert_eq!(
+            message_response(&r)["extra"],
+            json!({"usage": {"input": 73984, "output": 293, "cache": 73033, "cache_percent": 98.7, "estimated_cost_usd": 0.02, "cost": {"estimated_usd": 0.0252196}}, "duration_ms": 76745.8, "model": "claude:x", "thinking_level": "high", "credential_label": "fyc", "thinking_duration_ms": 5.8})
+        );
+        // Nothing a client reads: no `usage` and no `extra` at all.
+        r.extra = Some(r#"{"usage": {"cache_write": 1, "cost": {"input_usd": 1}}, "finish_reason": "stop"}"#.into());
+        assert!(!message_response(&r).contains_key("extra"));
+        let mut user = row("user");
+        user.extra = Some(r#"{"snapshot": "abc123", "mentions": ["a.rs"]}"#.into());
+        assert_eq!(message_response(&user)["extra"], json!({"mentions": ["a.rs"]}));
+        assert_eq!(display_extra_len(user.extra.as_deref()), r#"{"mentions":["a.rs"]}"#.len());
+    }
+
     #[test]
     fn messages_view_bytes_match_message_response() {
         let mut a = row("assistant");
         a.tool_calls = Some(r#"[{"id": "c1", "args": "Vi\u1ec7t"}]"#.into());
-        a.extra = Some(r#"{"usage": {"n": 1.5}, "model": "m"}"#.into());
+        a.extra = Some(r#"{"usage": {"output": 1.5, "cache_write": 2}, "model": "m"}"#.into());
         let mut b = row("user");
         b.content = Some("x".into());
         b.extra = Some(r#"{"attachments": [{"name": "a", "path": "/p"}], "parts": []}"#.into());

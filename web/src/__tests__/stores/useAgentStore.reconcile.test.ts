@@ -499,7 +499,7 @@ describe('reconcileTurnTail', () => {
     useAgentStore.getState()._handleSSEEvent('done', {})
 
     // The server persisted the whole turn — pre-compaction reply, the
-    // is_summary row, and the post-compaction reply — as canonical rows.
+    // kind: 'summary' row, and the post-compaction reply — as canonical rows.
     mockSessionHistory.mockImplementation(() => Promise.resolve(fullHistory({
       lead: leadSession({
         messages: [
@@ -507,7 +507,7 @@ describe('reconcileTurnTail', () => {
           { id: 'm2', role: 'assistant', content: 'hi', created_at: '2026-07-01T00:00:01Z' },
           { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:02Z' },
           { id: 'a1', role: 'assistant', content: 'pre-compaction reply', created_at: '2026-07-01T00:00:02.500Z' },
-          { id: 's1', role: 'user', content: 'summary text', is_summary: true, created_at: '2026-07-01T00:00:03Z' },
+          { id: 's1', role: 'user', content: 'summary text', kind: 'summary', created_at: '2026-07-01T00:00:03Z' },
           { id: 'a2', role: 'assistant', content: 'post-compaction reply', created_at: '2026-07-01T00:00:04Z' },
         ],
       }),
@@ -568,7 +568,7 @@ describe('reconcileTurnTail', () => {
       lead: leadSession({
         messages: [
           { id: 'm1', role: 'user', content: 'hello', created_at: '2026-07-01T00:00:00Z' },
-          { id: 's1', role: 'user', content: 'summary text', is_summary: true, created_at: '2026-07-01T00:00:00.999Z' },
+          { id: 's1', role: 'user', content: 'summary text', kind: 'summary', created_at: '2026-07-01T00:00:00.999Z' },
           { id: 'm2', role: 'assistant', content: 'hi', created_at: '2026-07-01T00:00:01Z' },
           { id: 'a2', role: 'assistant', content: 'post-compaction reply', created_at: '2026-07-01T00:00:04Z' },
         ],
@@ -578,7 +578,7 @@ describe('reconcileTurnTail', () => {
     mockSessionHistorySince.mockImplementation(() => Promise.resolve(deltaHistory({
       lead: leadSession({
         messages: [
-          { id: 's1', role: 'user', content: 'summary text', is_summary: true, created_at: '2026-07-01T00:00:00.999Z' },
+          { id: 's1', role: 'user', content: 'summary text', kind: 'summary', created_at: '2026-07-01T00:00:00.999Z' },
           { id: 'a2', role: 'assistant', content: 'post-compaction reply', created_at: '2026-07-01T00:00:04Z' },
         ],
       }),

@@ -1242,6 +1242,13 @@ explicitly.
   `reasoning_items` (as it already went without `parts`); the agent reads
   them from the database. Test:
   `db/src/api.rs`. v2 sends them.
+- **History rows carry only what clients read (v3 only):** message rows
+  drop `session_id`, `is_summary` (a summary is `kind: "summary"`) and
+  `file_message`; `extra` drops `finish_reason`, `credential_id`,
+  `snapshot` and its copy of `attachments` (sent once, beside it); `usage`
+  keeps `input`, `output`, `cache`, `cache_percent`, `estimated_cost_usd`
+  and `cost.estimated_usd`. Test: `db/src/api.rs`. v2
+  sends them.
 - **No `permission_asked` (v3 only):** tools are always allowed, so the
   per-call announcement after `tool_start` is gone from the stream and the
   event contract. Test: `agent/tests/session_turn.rs`. v2 sends it.

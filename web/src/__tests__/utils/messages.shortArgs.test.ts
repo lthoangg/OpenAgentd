@@ -8,7 +8,7 @@ import { parseAgentBlocks } from "@/utils/messages"
 import type { MessageResponse } from "@/api/types"
 
 function assistant(toolCalls: MessageResponse["tool_calls"]): MessageResponse {
-  return { id: "a1", session_id: "s", role: "assistant", content: null, reasoning_content: null, tool_calls: toolCalls, tool_call_id: null, name: null, is_summary: false, is_hidden: false, extra: null, created_at: "2026-11-05T00:00:00Z", attachments: null } as MessageResponse
+  return { id: "a1", role: "assistant", content: null, reasoning_content: null, tool_calls: toolCalls, tool_call_id: null, name: null, extra: null, created_at: "2026-11-05T00:00:00Z", attachments: null } as MessageResponse
 }
 
 describe("short tool arguments in history", () => {

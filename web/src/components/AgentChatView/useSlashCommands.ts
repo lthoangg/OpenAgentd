@@ -163,7 +163,7 @@ export function useSlashCommands({
       case 'undo':
         void useAgentStore.getState().undoAgent().then(async (response) => {
           const message = response?.message
-          if (!message || message.role !== 'user' || message.is_summary) return
+          if (!message || message.role !== 'user' || message.kind === 'summary') return
           // A goal's own turn gives nothing back.
           const text = restoredPromptText(message.content ?? '', message.extra)
           if (text === null) return

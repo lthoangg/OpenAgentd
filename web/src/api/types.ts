@@ -199,7 +199,6 @@ export interface MessageAttachment {
 
 export interface MessageResponse {
   id: string
-  session_id: string
   role: string
   content: string | null
   reasoning_content: string | null
@@ -215,11 +214,8 @@ export interface MessageResponse {
   seq?: number
   /** Row kind: chat | note | queued | summary | reverted. */
   kind?: string
-  is_summary: boolean
-  is_hidden: boolean
   extra: Record<string, unknown> | null
   created_at: string | null
-  file_message?: boolean
   attachments: MessageAttachment[] | null
   /** A tool row whose output stays on the server (fetched on open). */
   result_omitted?: boolean

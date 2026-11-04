@@ -1454,7 +1454,7 @@ mod tests {
             pending_question: None,
             latest_prompt: None,
         };
-        let msg = r#"{"id":"01234567-89ab-cdef-0123-456789abcdef","session_id":"fedcba98-7654-3210-fedc-ba9876543210","role":"assistant","tool_calls":[{"id": "c"}],"seq":5,"kind":"chat","is_summary":false,"created_at":"2026-09-23T06:56:28Z","file_message":false}"#;
+        let msg = r#"{"id":"01234567-89ab-cdef-0123-456789abcdef","role":"assistant","tool_calls":[{"id": "c"}],"seq":5,"kind":"chat","created_at":"2026-09-23T06:56:28Z"}"#;
         let expected = format!(
             r#"{{"lead":{{"id":"l","messages":[{msg}]}},"members":[{{"name":"m","session_id":"s","messages":[],"running":true,"estimated_cost_usd":0.5,"completion_tokens":3}}],"has_more":true,"next_cursor":"5|x","truncated":false,"pending_question":null}}"#
         );

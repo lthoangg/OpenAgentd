@@ -148,7 +148,7 @@ function assistantBlocks(
  * Rules: input = last turn, output = sum all turns, cache = last turn.
  * Reads from message.extra.usage persisted by DatabaseHook.
  *
- * Summary rows (``is_summary``, role user) carry the summariser call's usage —
+ * Summary rows (``kind: 'summary'``, role user) carry the summariser call's usage —
  * a real, billed model call — so their output and cost accumulate too. When
  * a summary row is the newest message, its output defines the current input
  * context (the compacted size) so the user immediately sees the reduced usage.
@@ -159,7 +159,8 @@ export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
   let lastCache = 0
   let lastCachePercent: number | undefined = undefined
   for (const msg of sortMessages(msgs)) {
-    if (msg.role !== 'assistant' && !msg.is_summary) continue
+    const isSummary = msg.kind === 'summary'
+    if (msg.role !== 'assistant' && !isSummary) continue
     const extra = msg.extra as {
       usage?: {
         input?: number
@@ -191,7 +192,7 @@ export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
       : typeof usage.cache === 'number'
       ? (inputForCache > 0 ? Math.round((cacheTokens / inputForCache) * 10000) / 100 : 0)
       : undefined
-    if (msg.is_summary) {
+    if (isSummary) {
       lastInput = usage.output ?? 0
       lastCache = usage.cache ?? 0
       lastCachePercent = calcPercent
@@ -222,7 +223,7 @@ export function userMessageSender(msg: MessageResponse): string | undefined {
  * (``extra.restart_resume``). Matches the server's ``PROMPT``.
  */
 export function isPromptMessage(msg: MessageResponse): boolean {
-  if (msg.kind === 'queued' || msg.extra?.queue_status === 'queued' || msg.is_summary) return false
+  if (msg.kind === 'queued' || msg.kind === 'summary' || msg.extra?.queue_status === 'queued') return false
   return msg.role === 'user' && !userMessageSender(msg) && !msg.extra?.goal_turn && !isRestartNoteExtra(msg.extra)
 }
 
@@ -248,7 +249,7 @@ export function parseAgentBlocks(
 
     // Summaries surface as inline "Session compacted" dividers rather than
     // being hidden — preserves the visual marker across page reloads.
-    if (msg.is_summary) {
+    if (msg.kind === 'summary') {
       const timestamp = msg.created_at ? new Date(msg.created_at) : new Date()
       result.push({
         id: msg.id,

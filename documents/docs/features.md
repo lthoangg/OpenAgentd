@@ -355,7 +355,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   open the row. Opening a session with subagents no longer downloads their
   latest messages (the main view never shows them; opening a subagent loads
   its own conversation), and images you attached or the agent showed are
-  not downloaded again when you reopen a session.
+  not downloaded again when you reopen a session. Each saved message also
+  leaves out the fields the app never reads (stop reason, cost breakdown,
+  undo bookkeeping), about a fifth of what is left of a long session.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.

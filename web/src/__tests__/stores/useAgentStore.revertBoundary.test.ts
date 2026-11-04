@@ -76,18 +76,14 @@ function makeStream(overrides: Partial<AgentStream> = {}): AgentStream {
 function makeMessageResponse(overrides: Record<string, unknown> = {}) {
   return {
     id: "msg-1",
-    session_id: "sess-1",
     role: "user",
     content: "hello",
     reasoning_content: null,
     tool_calls: null,
     tool_call_id: null,
     name: null,
-    is_summary: false,
-    is_hidden: false,
     extra: null,
     created_at: "2024-01-01T00:00:00Z",
-    file_message: false,
     attachments: null,
     ...overrides,
   }

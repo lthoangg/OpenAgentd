@@ -26,6 +26,8 @@ export interface AppShortcut {
 
 export const APP_SHORTCUTS = {
   newSession: { key: 'N' },
+  // Open a folder as a workspace (File → Open Workspace… on the desktop).
+  openWorkspace: { key: 'O' },
   // The run picker (model, thinking, account): one short chord, matched on
   // the physical key for layouts that print another character there.
   sessionSettings: { key: '.', code: 'Period' },

@@ -17,6 +17,7 @@ import {
 } from '@/queries/workspace-files'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
+import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
@@ -192,6 +193,7 @@ export function useCommandPalette({
   // these (switchers aside), so none of them act on the app underneath.
   useShortcuts([
     appShortcut('newSession', () => { handleNewSession() }),
+    appShortcut('openWorkspace', () => { dispatchAppEvent(APP_EVENTS.openWorkspace) }),
     appShortcut('sessionSettings', () => { handleToggleRunPicker() }),
     appShortcut('workspaceFiles', () => { handleWorkspaceFiles() }),
     appShortcut('maximizeDock', () => { handleToggleDockMaximized() }, { enabled: !isMobile && Boolean(workspace) }),

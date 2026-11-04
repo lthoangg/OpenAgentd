@@ -224,6 +224,31 @@ describe("useAgentCommands — open-terminal", () => {
 //  Navigation commands
 // ════════════════════════════════════════════════════════════════════════════
 describe("useAgentCommands — navigation", () => {
+  it("opens a workspace from the palette, with ⌘O / Ctrl+O shown", () => {
+    const seen: string[] = []
+    const listener = (event: Event) => { seen.push(event.type) }
+    window.addEventListener("oa:open-workspace", listener)
+    try {
+      const { result } = renderHook(() => useAgentCommands(makeArgs()))
+      const cmd = byId(result.current, "open-workspace")
+      expect(cmd.label).toBe("Open Workspace…")
+      expect(cmd.shortcut).toBe("Ctrl+O")
+      cmd.action()
+      expect(seen).toEqual(["oa:open-workspace"])
+    } finally {
+      window.removeEventListener("oa:open-workspace", listener)
+    }
+  })
+
+  it("offers the next session that needs you, which the global shortcut alone reached", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    const cmd = byId(result.current, "next-needs-you")
+    expect(cmd.label).toBe("Next Session That Needs You")
+    // It runs the same openNextNeedsYou as the global shortcut (covered in
+    // desktop-commands.test.tsx); this hook test has no router to navigate.
+    expect(cmd.shortcut).toBeUndefined()
+  })
+
   it("go-settings opens the Settings modal at the agents section", () => {
     const openSettings = mock(() => {})
     useSettingsStore.setState({ openSettings })

@@ -14,6 +14,7 @@
  *   - ``Navigation`` — app-level surfaces (Settings, Telemetry)
  */
 import { useMemo } from 'react'
+import { useRouter } from '@tanstack/react-router'
 import type { Command } from '../CommandPalette'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
@@ -23,6 +24,8 @@ import { useThemePreference } from '@/hooks/useThemePreference'
 import { TEXT_SIZES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { APP_SHORTCUTS as KEYS, shortcutLabel } from '@/lib/app-shortcuts'
+import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
+import { openNextNeedsYou } from '@/lib/desktop-commands'
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 
 /** The session's goal as the palette needs it: given only while it has one. */
@@ -105,6 +108,7 @@ export function useAgentCommands({
   const textSize = useDisplayPrefsStore((s) => s.textSize)
   const setTextSize = useDisplayPrefsStore((s) => s.setTextSize)
   const { os, isTauri } = usePlatform()
+  const router = useRouter()
   return useMemo<Command[]>(() => [
     { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
     ...goalCommands(goal),
@@ -160,6 +164,8 @@ export function useAgentCommands({
       : []),
     { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'The last terminal, or a new shell in the workspace (runs on the connected server)', keywords: 'shell console', action: handleOpenTerminal },
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Agents, skills, providers and more', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
+    { id: 'open-workspace', group: 'Navigation', label: 'Open Workspace…', description: 'Add a folder as a workspace', keywords: 'folder project repo add', shortcut: shortcutLabel(KEYS.openWorkspace, os), action: () => dispatchAppEvent(APP_EVENTS.openWorkspace) },
+    { id: 'next-needs-you', group: 'Navigation', label: 'Next Session That Needs You', description: 'Jump to the next session waiting for an answer or a review', keywords: 'waiting attention ask question approve', action: () => openNextNeedsYou(router) },
     { id: 'go-telemetry', group: 'Navigation', label: 'Open Usage', description: 'Spend, turns and traces by workspace and model', keywords: 'telemetry usage spend cost traces', action: () => openTelemetry() },
     { id: 'keyboard-shortcuts', group: 'Navigation', label: 'Keyboard Shortcuts', description: 'Every shortcut, by where it works', keywords: 'keys hotkeys keybindings', shortcut: shortcutLabel(KEYS.shortcutsHelp, os), action: () => useUIStore.getState().toggleShortcutsHelp() },
     {
@@ -212,5 +218,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleSplitDock, handleSplitDockDown, handleFindInSession, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode, textSize, setTextSize])
+  ], [os, isTauri, router, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleSplitDock, handleSplitDockDown, handleFindInSession, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode, textSize, setTextSize])
 }

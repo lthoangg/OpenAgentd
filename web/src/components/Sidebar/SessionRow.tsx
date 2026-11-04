@@ -1,10 +1,11 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import { ChevronRight, GitBranch, Loader2, MoreHorizontal, Pin, PinOff, SquarePen, Target } from 'lucide-react'
+import { ArrowUpRight, ChevronRight, CornerLeftUp, GitBranch, Loader2, MoreHorizontal, Pin, PinOff, SquarePen, Target } from 'lucide-react'
 import { useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { formatRelativeDate } from '@/utils/format'
+import { workspaceLabel } from '@/utils/workspace'
 import { useCompactRelative } from '@/hooks/useCompactRelative'
 import { sessionActivityTime } from '../Sidebar.helpers'
 import { LongPressButton } from '@/components/ui/long-press-button'
@@ -28,6 +29,75 @@ export type MenuPoint = Pick<React.MouseEvent, 'clientX' | 'clientY'>
 function menuBelow(button: HTMLElement): MenuPoint {
   const rect = button.getBoundingClientRect()
   return { clientX: rect.left, clientY: rect.bottom + 4 }
+}
+
+/**
+ * A session another workspace ran for this row's session: the workspace in
+ * mono, then the title, like a subagent row. Selecting it opens that
+ * session in its own workspace.
+ */
+function LinkedSessionRow({
+  session,
+  isCurrent,
+  mobileLongPressActions,
+  onSelect,
+  onContextActions,
+}: {
+  session: SessionResponse
+  isCurrent: boolean
+  mobileLongPressActions: boolean
+  onSelect: (session: SessionResponse, event: React.MouseEvent) => void
+  onContextActions: (session: SessionResponse, at: MenuPoint) => void
+}) {
+  const unread = useUnreadStore((state) => state.ids.includes(session.id))
+  const failed = useUnreadStore((state) => state.failed.includes(session.id))
+  const status = sessionStatus(session, unread, failed)
+  const title = session.title || 'Untitled'
+  const where = workspaceLabel(session.workspace ?? '')
+  const stateWord = sessionStateWord(status)
+  return (
+    <div data-linked-session={session.id} className={`group/sub flex h-6 items-center rounded-sm pr-1 pointer-coarse:h-(--spacing-list-row) ${isCurrent ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'}`}>
+      <button
+        type="button"
+        title={[title, where, stateWord].filter(Boolean).join(' · ')}
+        data-sidebar-session=""
+        aria-current={isCurrent ? 'page' : undefined}
+        aria-label={`${title}, in ${where}${stateWord ? `, ${stateWord}` : ''}`}
+        {...(isCurrent ? {} : sessionPrefetchProps(session.id, session.workspace))}
+        onKeyDown={(e) => {
+          if (isMenuKey(e) && !mobileLongPressActions) {
+            e.preventDefault()
+            onContextActions(session, menuPointFor(e.currentTarget))
+          }
+        }}
+        onClick={(e) => onSelect(session, e)}
+        onContextMenu={(e) => {
+          if (mobileLongPressActions) return
+          e.preventDefault()
+          onContextActions(session, e)
+        }}
+        className={`flex h-6 w-full min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors pointer-coarse:h-(--spacing-list-row) ${
+          isCurrent ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2) hover:text-(--color-text)'
+        }`}
+      >
+        <SessionStatusMark status={status} />
+        <span data-linked-workspace className="max-w-[45%] shrink-0 truncate font-mono text-meta font-semibold text-(--color-text)">
+          {where}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-meta text-(--color-text-muted)">{title}</span>
+      </button>
+      <button
+        type="button"
+        onClick={(e) => onContextActions(session, menuBelow(e.currentTarget))}
+        className={`${ROW_ACTION} ${mobileLongPressActions ? 'hidden' : rowActionsReveal('sub')}`}
+        aria-haspopup="menu"
+        aria-label={`More actions for ${title}`}
+        title="More"
+      >
+        <MoreHorizontal size={12} aria-hidden="true" />
+      </button>
+    </div>
+  )
 }
 
 function SessionRowView({
@@ -134,6 +204,20 @@ function SessionRowView({
   const isExpanded = isChildActive || (expandedOverride ?? false)
   const subagentToggleLabel = `${isExpanded ? 'Collapse' : 'Expand'} ${subagents.length} subagents`
 
+  // Sessions other workspaces ran for this one fold behind their own count
+  // pill; opening one of them keeps the group open.
+  const linked = session.linked_sessions ?? []
+  const hasLinked = linked.length > 0
+  const isLinkedCurrent = Boolean(currentSessionId) && linked.some((s) => s.id === currentSessionId)
+  const [linkedOverride, setLinkedOverride] = useState<boolean | null>(null)
+  const isLinkedExpanded = isLinkedCurrent || (linkedOverride ?? false)
+  const linkedWaiting = linked.some((s) => s.needs_input === true)
+  const linkedWorking = linked.some((s) => s.needs_input !== true && sessionStatus(s, false) === 'running')
+  const linkedToggleLabel = `${isLinkedExpanded ? 'Collapse' : 'Expand'} ${linked.length} ${linked.length === 1 ? 'session' : 'sessions'} in other workspaces`
+  const sentFrom = session.sent_from ?? null
+  const sentFromName = sentFrom ? workspaceLabel(sentFrom.workspace) : null
+  const selectLinked = (target: SessionResponse, event: React.MouseEvent) => onSessionSelect(target, target.workspace ?? path, event)
+
   // Keyboard shortcuts for the hover-revealed row actions.
   const handleRowKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (isRenameKey(event)) {
@@ -216,6 +300,7 @@ function SessionRowView({
                 />
                 {checkoutName && <span className="sr-only">{`, in worktree ${checkoutName}`}</span>}
                 {contextLabel && <span className="sr-only">{`, in ${contextLabel}`}</span>}
+                {sentFromName && <span className="sr-only">{`, sent from ${sentFromName}`}</span>}
                 {pinned && <span className="sr-only">, pinned</span>}
                 {session.goal_status && <span className="sr-only">{`, goal ${session.goal_status}`}</span>}
               </LongPressButton>
@@ -250,6 +335,37 @@ function SessionRowView({
             />
           </button>
         )}
+        {/* Sessions other workspaces ran for this one, behind their own
+            pill: the arrow says they live elsewhere. */}
+        {hasLinked && !isEditing && (
+          <button
+            type="button"
+            data-linked-toggle=""
+            onClick={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              setLinkedOverride(!isLinkedExpanded)
+            }}
+            className={`ml-1 ${rowChipClass(!isLinkedExpanded && (linkedWaiting || linkedWorking))}`}
+            aria-expanded={isLinkedExpanded}
+            aria-label={linkedToggleLabel}
+            title={linkedToggleLabel}
+          >
+            {!isLinkedExpanded && (linkedWaiting || linkedWorking) && (
+              <SessionStatusMark
+                status={linkedWaiting ? 'needs_input' : 'running'}
+                label={linkedWaiting ? 'A session in another workspace needs you' : 'A session in another workspace is running'}
+              />
+            )}
+            <ArrowUpRight size={11} className="shrink-0" aria-hidden="true" />
+            <span>{linked.length}</span>
+            <ChevronRight
+              size={11}
+              className={`shrink-0 transition-transform duration-(--motion-fast) ${isLinkedExpanded ? 'rotate-90' : ''}`}
+              aria-hidden="true"
+            />
+          </button>
+        )}
         {/* Meta slot: the worktree tag and age read at rest; hover/focus
             swaps them for the row actions in the same place, so neither
             covers the title. The tag is its own flex item with an explicit
@@ -269,6 +385,28 @@ function SessionRowView({
           >
             {contextLabel}
           </span>
+        )}
+        {/* Where the work came from: stays put on hover (it is a link),
+            and opens the session that sent it. */}
+        {sentFrom && sentFromName && !isEditing && (
+          <button
+            type="button"
+            data-sent-from={sentFrom.session_id}
+            onClick={(e) => {
+              e.stopPropagation()
+              onSessionSelect(
+                { id: sentFrom.session_id, workspace: sentFrom.workspace, title: sentFrom.title ?? null, agent_name: null, created_at: null, updated_at: null },
+                sentFrom.workspace,
+                e,
+              )
+            }}
+            className="ml-1 inline-flex min-w-8 max-w-24 shrink-2 items-center gap-0.5 rounded-xs font-mono text-meta text-(--color-text-muted) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+            aria-label={`Open the session that sent this, in ${sentFromName}`}
+            title={`Sent from ${sentFrom.title ? `“${sentFrom.title}” in ` : ''}${sentFromName}`}
+          >
+            <CornerLeftUp size={11} className="shrink-0" aria-hidden="true" />
+            <span className="truncate">{sentFromName}</span>
+          </button>
         )}
         {pinned && !isEditing && (
           <span data-pin-mark="" className={`ml-1 flex shrink-0 items-center text-(--color-text-muted) ${pinMarkVisibility}`} aria-hidden="true">
@@ -404,6 +542,22 @@ function SessionRowView({
             </div>
             )
           })}
+        </div>
+      </Collapsible>
+
+      {/* Sessions other workspaces ran for this one, down the whole chain. */}
+      <Collapsible open={hasLinked && isLinkedExpanded}>
+        <div className="space-y-px py-0.5 pl-[18px]" data-linked-sessions="">
+          {linked.map((item) => (
+            <LinkedSessionRow
+              key={item.id}
+              session={item}
+              isCurrent={item.id === currentSessionId}
+              mobileLongPressActions={mobileLongPressActions}
+              onSelect={selectLinked}
+              onContextActions={onSessionContextActions}
+            />
+          ))}
         </div>
       </Collapsible>
     </div>

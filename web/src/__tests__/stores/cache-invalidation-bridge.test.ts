@@ -609,6 +609,46 @@ describe('patchSessionRunning', () => {
     const child = after.pages[0].data[0].subagents?.[0]
     expect(child?.running).toBe(false)
   })
+
+  it('patches a session another workspace runs for a listed row, where it is nested and where it is listed', () => {
+    const client = new QueryClient()
+    const infra = { ...makeSession('infra-1', 'Orders table'), workspace: '/r/infra' }
+    const sender = { ...makeSession('app-1', 'Orders API'), linked_sessions: [infra, { ...makeSession('web-1', 'Orders page'), running: true }] }
+    seedInfinite(client, [[sender, infra]])
+
+    expect(patchSessionRunning(client, 'infra-1', true, true)).toBe(true)
+
+    const [row, own] = readInfinite(client)!.pages[0].data
+    expect(row.linked_sessions?.map((s) => [s.id, s.running, s.needs_input ?? false])).toEqual([['infra-1', true, true], ['web-1', true, false]])
+    expect([own.running, own.needs_input]).toEqual([true, true])
+  })
+
+  it('finds a session that is only nested under its sender, so no refetch is needed', () => {
+    const client = new QueryClient()
+    const sender = { ...makeSession('app-1', 'Orders API'), linked_sessions: [{ ...makeSession('infra-1', 'Orders table'), running: true }] }
+    seedInfinite(client, [[sender]])
+    const before = readInfinite(client)
+
+    // Already in that state: found, and the cache is left as it was.
+    expect(patchSessionRunning(client, 'infra-1', true)).toBe(true)
+    expect(readInfinite(client)).toBe(before)
+    expect(patchSessionRunning(client, 'infra-1', false)).toBe(true)
+    expect(readInfinite(client)!.pages[0].data[0].linked_sessions?.[0].running).toBe(false)
+  })
+})
+
+describe('patchSessionTitle — sessions another workspace runs', () => {
+  it('retitles the nested row under its sender too', () => {
+    const client = new QueryClient()
+    const sender = { ...makeSession('app-1', 'Orders API'), linked_sessions: [makeSession('infra-1', null)] }
+    seedInfinite(client, [[sender]])
+
+    patchSessionTitle(client, 'infra-1', 'Orders table')
+
+    const row = readInfinite(client)!.pages[0].data[0]
+    expect(row.title).toBe('Orders API')
+    expect(row.linked_sessions?.[0].title).toBe('Orders table')
+  })
 })
 
 describe('appendSubagent', () => {

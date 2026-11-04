@@ -2184,6 +2184,19 @@ executes tools, manages its task list, and inspects workspace repositories.
   and pick each worktree yourself. The tool card shows a **Created worktree**
   chip and the checkout the message reached. Folders that are not git
   repositories cannot have worktrees, and the agent is told so.
+
+  **Sessions that work together, in one place** `[v3.46.0]` — a session a send
+  started is listed in the sidebar under the session that sent it, down the
+  whole chain (app sent to infra, infra sent to web: both under app). The
+  sender's row has a **↗ N** pill, folded at first like subagents, whose mark
+  says when one of those sessions is running or waiting on you. Open it to see
+  each session with its workspace and state, and click one to switch to it.
+  The started session still sits in its own workspace too, with a **↰ app**
+  mark that opens the sender. In the Status, Date and None views it is listed
+  only under its sender, so no session shows twice; Needs you still lists it
+  when it asks you something. A session you started yourself stays where it
+  is when another workspace messages it. Sessions sends started before this
+  release are grouped too, and deleting the sender leaves them in place.
 - **Workspace groups** `[v3.21.0]` — named tags on
   repositories that say which workspaces belong together. Set them up in
   **Settings → Workspaces → Groups**: create a group, give it a

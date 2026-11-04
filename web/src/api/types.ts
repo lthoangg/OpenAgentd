@@ -286,6 +286,23 @@ export interface SessionResponse {
   pinned_at?: string | null
   /** The session's live goal (v3); absent without one. */
   goal_status?: 'active' | 'paused' | null
+  /**
+   * The session in another workspace whose ``workspace`` send started this
+   * one (v3); absent for every other session.
+   */
+  sent_from?: SessionSentFrom | null
+  /**
+   * Sessions in other workspaces this one's sends started, directly or down
+   * a chain, oldest first (v3, list rows); absent when none.
+   */
+  linked_sessions?: SessionResponse[]
+}
+
+/** Who started a session from another workspace (``SessionResponse.sent_from``). */
+export interface SessionSentFrom {
+  session_id: string
+  workspace: string
+  title?: string | null
 }
 
 export interface SessionDetailResponse extends SessionResponse {

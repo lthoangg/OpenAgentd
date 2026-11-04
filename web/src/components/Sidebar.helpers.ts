@@ -140,6 +140,16 @@ export interface SessionGroup {
 }
 
 /**
+ * Whether a flat list already shows ``session`` under the session that
+ * sent it: a send from another workspace started it, and that sender is
+ * one of ``listedIds``, whose row nests it (``linked_sessions``).
+ */
+export function nestedUnderSender(session: SessionResponse, listedIds: ReadonlySet<string>): boolean {
+  const sender = session.sent_from?.session_id
+  return Boolean(sender && sender !== session.id && listedIds.has(sender))
+}
+
+/**
  * When a session was last used: its newest message. ``updated_at`` stands in
  * for a server that predates ``last_message_at``.
  */

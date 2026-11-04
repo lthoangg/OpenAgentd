@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use regex::bytes::Regex as BRegex;
 use serde_json::Value;
 use std::collections::VecDeque;
+use std::ffi::{OsStr, OsString};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -388,6 +389,36 @@ fn scrubbed_env(cmd: &mut tokio::process::Command) {
     }
 }
 
+/// `PATH` for the commands the agent runs, when it needs a change: `path`
+/// plus, at the end, the folder of the running `exe` when no `agentd` is
+/// reachable through `path`.
+///
+/// The desktop app keeps `agentd` inside its bundle and puts nothing on
+/// `PATH`, so without this the `agentd plugin` commands the self-healing
+/// skill points to would not exist for the agent. Appended, so an `agentd`
+/// the user installed still wins. Nothing when `exe` is not `agentd` (tests,
+/// embedders), or when `PATH` is unset: setting it would drop the shell's
+/// default.
+fn path_with_cli(path: Option<&OsStr>, exe: Option<&Path>) -> Option<OsString> {
+    let (path, exe) = (path?, exe?);
+    let dir = exe.parent()?;
+    if exe.file_stem() != Some(OsStr::new("agentd")) || appv3_core::which::which_in("agentd", path).is_some() {
+        return None;
+    }
+    std::env::join_paths(std::env::split_paths(path).chain([dir.to_path_buf()])).ok()
+}
+
+/// [`path_with_cli`] for this process, worked out once: the server's own
+/// `PATH` does not change while it runs.
+fn command_path() -> Option<&'static OsStr> {
+    static P: OnceLock<Option<OsString>> = OnceLock::new();
+    P.get_or_init(|| {
+        let exe = std::env::current_exe().ok().and_then(|p| dunce::canonicalize(p).ok());
+        path_with_cli(std::env::var_os("PATH").as_deref(), exe.as_deref())
+    })
+    .as_deref()
+}
+
 fn snapshot_cache() -> &'static crate::shell_snapshot::Cache {
     static C: OnceLock<crate::shell_snapshot::Cache> = OnceLock::new();
     C.get_or_init(Default::default)
@@ -404,8 +435,12 @@ async fn snapshot_argv(shell_bin: &str, command: &str) -> Option<Vec<String>> {
     // v2's rc-sourcing prelude, so the snapshot sees what v2's shell sees.
     let prefix = build_argv(shell_bin, "").get(2)?.strip_suffix("eval \"$1\"")?.to_string();
     let blocked = appv3_core::env::child_env_blocklist();
-    let env: std::collections::HashMap<String, String> =
+    let mut env: std::collections::HashMap<String, String> =
         std::env::vars_os().filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?))).filter(|(k, _)| !blocked.contains(k)).collect();
+    // The rc sees the PATH commands get, so a PATH it exports keeps the addition.
+    if let Some(p) = command_path().and_then(OsStr::to_str) {
+        env.insert("PATH".into(), p.into());
+    }
     let dir = appv3_core::settings().cache_dir.join("shell-snapshots");
     let path = snapshot_cache().get(kind, shell_bin, &prefix, &env, LEAK_KEYS, &dir).await?;
     Some(snap::argv(kind, &path, command))
@@ -519,6 +554,9 @@ impl Tool for ShellTool {
         let mut cmd = tokio::process::Command::new(&shell_bin);
         appv3_core::proctree::hide_window(&mut cmd).args(&argv).current_dir(&cwd).stdin(std::process::Stdio::null());
         scrubbed_env(&mut cmd);
+        if let Some(p) = command_path() {
+            cmd.env("PATH", p);
+        }
         #[cfg(unix)]
         cmd.process_group(0);
         if background {
@@ -708,6 +746,36 @@ mod tests {
         for k in ["OPENAGENTD_DESKTOP_TOKEN", "OPENAGENTD_ACCESS_KEY", "OPENAGENTD_HANDSHAKE_FILE"] {
             assert!(removed.iter().any(|r| r == k), "{k} reaches agent shell commands: {removed:?}");
         }
+    }
+
+    #[test]
+    fn commands_reach_the_running_agentd_when_path_has_none() {
+        let make_exe = |dir: &Path, stem: &str| {
+            std::fs::create_dir_all(dir).unwrap();
+            let p = dir.join(if cfg!(windows) { format!("{stem}.exe") } else { stem.to_string() });
+            std::fs::write(&p, b"").unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            p
+        };
+        let d = tempfile::tempdir().unwrap();
+        let (app, user, usr) = (d.path().join("App/sidecar/bin"), d.path().join("user/bin"), d.path().join("usr/bin"));
+        let exe = make_exe(&app, "agentd");
+        make_exe(&usr, "ls");
+        let path = std::env::join_paths([&usr]).unwrap();
+
+        // The desktop app's case: no agentd on PATH, so its folder is added last.
+        assert_eq!(path_with_cli(Some(&path), Some(&exe)), Some(std::env::join_paths([&usr, &app]).unwrap()));
+        // An agentd the user installed is left to win.
+        make_exe(&user, "agentd");
+        assert_eq!(path_with_cli(Some(&std::env::join_paths([&usr, &user]).unwrap()), Some(&exe)), None);
+        // A binary that is not agentd (a test, an embedder) adds nothing.
+        assert_eq!(path_with_cli(Some(&path), Some(&make_exe(&app, "embedder"))), None);
+        // Without PATH the shell's default stays in force.
+        assert_eq!(path_with_cli(None, Some(&exe)), None);
     }
 
     #[test]

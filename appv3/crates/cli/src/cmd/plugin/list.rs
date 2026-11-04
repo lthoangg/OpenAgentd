@@ -189,8 +189,8 @@ fn server_view(body: &Value, at: &str) -> Vec<Line> {
     out
 }
 
-/// Why `list` shows the disk instead of a server.
-fn disk_reason(reply: &Reply, find_error: Option<&str>) -> Line {
+/// Why `list` shows the disk instead of a server looked for at `addr`.
+fn disk_reason(reply: &Reply, find_error: Option<&str>, addr: &str) -> Line {
     match (reply, find_error) {
         (_, Some(e)) => verdict(Tone::Warn, "⚠", &format!("{}; showing what is on disk", inline(e, 200))),
         (Reply::Denied { key_sent: false }, _) => verdict(Tone::Warn, "⚠", "The server needs an access key — set OPENAGENTD_ACCESS_KEY to see its view; showing what is on disk"),
@@ -199,7 +199,7 @@ fn disk_reason(reply: &Reply, find_error: Option<&str>) -> Line {
         }
         (Reply::NotFound, _) => vec![ind(2), sp(Tone::Dim, "This server does not report plugins; showing what is on disk")],
         (Reply::Failed(status), _) => verdict(Tone::Warn, "⚠", &format!("The server answered HTTP {status}; showing what is on disk")),
-        _ => vec![ind(2), sp(Tone::Dim, "The server is not running; showing what is on disk")],
+        _ => vec![ind(2), sp(Tone::Dim, format!("No server answered at {addr}; showing what is on disk"))],
     }
 }
 
@@ -241,7 +241,10 @@ pub(super) fn list() -> Result<ExitCode> {
     let mut out = vec![blank()];
     match (&reply, &api) {
         (Reply::Json(body), Ok(api)) => out.extend(server_view(body, &api.address())),
-        _ => out.extend(disk_view(&ctx, disk_reason(&reply, api.as_ref().err().map(|e| format!("{e:#}")).as_deref()))),
+        _ => {
+            let addr = api.as_ref().map(Api::address).unwrap_or_default();
+            out.extend(disk_view(&ctx, disk_reason(&reply, api.as_ref().err().map(|e| format!("{e:#}")).as_deref(), &addr)))
+        }
     }
     out.push(blank());
     emit(&out);
@@ -334,8 +337,8 @@ mod tests {
 
     #[test]
     fn the_reason_for_showing_the_disk_is_told() {
-        let why = |reply: Reply, err: Option<&str>| text(&[disk_reason(&reply, err)]).remove(0);
-        assert_eq!(why(Reply::Down, None), "  The server is not running; showing what is on disk");
+        let why = |reply: Reply, err: Option<&str>| text(&[disk_reason(&reply, err, "127.0.0.1:4082")]).remove(0);
+        assert_eq!(why(Reply::Down, None), "  No server answered at 127.0.0.1:4082; showing what is on disk");
         assert!(why(Reply::Denied { key_sent: false }, None).contains("OPENAGENTD_ACCESS_KEY"));
         assert!(why(Reply::Denied { key_sent: true }, None).contains("did not accept"));
         assert!(why(Reply::NotFound, None).contains("does not report plugins"));

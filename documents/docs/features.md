@@ -3510,6 +3510,14 @@ Four orthogonal ways to add capability.
     marked), permissions, errors and warnings. Plugin MCP servers appear in
     Settings → MCP marked "from <plugin>": they can be restarted there, go on
     and off with their plugin, and the agent's `mcp` tool cannot change them.
+  - **`agentd` for the agent in the desktop app** `[v3.44.0]` — the desktop
+    app keeps `agentd` inside the app and puts nothing on `PATH`, so the
+    agent's `shell` now adds that folder at the end of `PATH` when it finds no
+    `agentd`, and the agent can run `agentd plugin check`, `add`, `list` and
+    `remove`. An `agentd` you installed still comes first. When `add` or
+    `remove` reaches no server (the desktop app's listens on a port of its
+    own), they say no server answered and that a running server picks the
+    change up on its own, instead of saying none is running.
 - **Slash commands** `[since v1.0]` — `.md` files with optional frontmatter,
   available globally or scoped to a coding workspace (`[v1.17.0]`). One nested
   namespace level is supported and displayed in the composer as colon syntax

@@ -102,6 +102,13 @@ Use the `agentd plugin` command from `shell`:
 3. `agentd plugin list` shows each plugin and its state;
    `agentd plugin remove <name>` deletes the folder and keeps its data.
 
+In the desktop app `agentd` lives inside the app, and `shell` adds its folder
+to the end of `PATH`. The user's own terminal does not have it: for them, give
+the full path that `command -v agentd` prints. From `shell` the CLI may not
+reach the app's server (it listens on a port of its own), so `add` and
+`remove` report that no server answered; the server still sees the folder
+change and reloads by itself.
+
 To write a plugin, create the folder with `patch`, run `agentd plugin check`
 on it, and fix what it reports. Settings → Plugins turns a plugin on or off,
 reloads the folders, and shows each plugin's contents and errors.

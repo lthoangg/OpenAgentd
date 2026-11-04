@@ -28,12 +28,22 @@ fn bundle_named<'a>(body: &'a Value, name: &str) -> Option<&'a Value> {
 }
 
 /// What the server said after `add` (or, with `removed`, `remove`) asked it
-/// to reload.
-fn reload_lines(reply: &Reply, name: &str, removed: bool) -> Vec<Line> {
+/// to reload; `addr` is where it was looked for.
+fn reload_lines(reply: &Reply, name: &str, removed: bool, addr: &str) -> Vec<Line> {
     let later = if removed { "it drops the plugin when it next starts" } else { "it loads the plugin when it next starts" };
+    let verb = if removed { "drops" } else { "loads" };
     let say = |tone: Tone, glyph: &str, text: String| vec![verdict(tone, glyph, &text)];
     match reply {
-        Reply::Down => vec![vec![ind(2), sp(Tone::Dim, format!("The server is not running; {later}."))]],
+        // Nothing at the configured address does not mean no server runs: the
+        // desktop app's listens on a port of its own, and its shell gets no
+        // token to ask it. Its config watcher sees the folder change anyway.
+        Reply::Down => vec![vec![
+            ind(2),
+            sp(
+                Tone::Dim,
+                format!("No server answered at {addr}. One on another port, such as the desktop app's, {verb} the plugin on its own when the folder changes; a stopped one {verb} it when it next starts."),
+            ),
+        ]],
         Reply::NotFound => vec![vec![ind(2), sp(Tone::Dim, format!("This server cannot reload plugins; {later}."))]],
         Reply::Denied { key_sent: false } => say(Tone::Warn, "⚠", format!("The server needs an access key — set OPENAGENTD_ACCESS_KEY to reload it; {later}.")),
         Reply::Denied { key_sent: true } => say(Tone::Warn, "⚠", format!("The server did not accept the access key — set OPENAGENTD_ACCESS_KEY to its key to reload it; {later}.")),
@@ -77,7 +87,7 @@ pub(super) fn reload_server(name: &str, removed: bool) -> (Vec<Line>, bool) {
     match Api::find() {
         Ok(api) => {
             let reply = api.reload();
-            (reload_lines(&reply, name, removed), will_load(&reply, name))
+            (reload_lines(&reply, name, removed, &api.address()), will_load(&reply, name))
         }
         Err(e) => (vec![verdict(Tone::Warn, "⚠", &format!("{}; the server picks the change up when it next starts", inline(&format!("{e:#}"), 200)))], true),
     }
@@ -92,9 +102,17 @@ mod tests {
     #[test]
     fn after_an_install_the_server_says_what_became_of_the_plugin() {
         let reloaded = |bundle: Value| Reply::Json(json!({"bundles": [bundle]}));
-        let say = |reply: &Reply, removed| text(&reload_lines(reply, "demo", removed));
-        assert_eq!(say(&Reply::Down, false), ["  The server is not running; it loads the plugin when it next starts."]);
-        assert_eq!(say(&Reply::Down, true), ["  The server is not running; it drops the plugin when it next starts."]);
+        let say = |reply: &Reply, removed| text(&reload_lines(reply, "demo", removed, "127.0.0.1:4082"));
+        // Run from the desktop app's shell, the CLI cannot see that server (another port, no
+        // token): it must not claim no server is running.
+        assert_eq!(
+            say(&Reply::Down, false),
+            ["  No server answered at 127.0.0.1:4082. One on another port, such as the desktop app's, loads the plugin on its own when the folder changes; a stopped one loads it when it next starts."]
+        );
+        assert_eq!(
+            say(&Reply::Down, true),
+            ["  No server answered at 127.0.0.1:4082. One on another port, such as the desktop app's, drops the plugin on its own when the folder changes; a stopped one drops it when it next starts."]
+        );
         assert_eq!(say(&Reply::NotFound, false), ["  This server cannot reload plugins; it loads the plugin when it next starts."]);
         assert!(say(&Reply::Denied { key_sent: false }, false)[0].contains("needs an access key — set OPENAGENTD_ACCESS_KEY"));
         assert!(say(&Reply::Denied { key_sent: true }, false)[0].contains("did not accept the access key"));

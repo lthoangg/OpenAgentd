@@ -490,7 +490,8 @@ fn add_installs_a_folder_and_list_remove_follow() {
     }
     assert_eq!(names(&sb.plugins()), ["changelog-tools"], "no staging folder is left");
     assert!(out.contains("✓  Installed changelog-tools in "), "{out}");
-    assert!(out.contains("The server is not running; it loads the plugin when it next starts."), "{out}");
+    assert!(out.contains("No server answered at 127.0.0.1:"), "{out}");
+    assert!(out.contains("loads the plugin on its own when the folder changes; a stopped one loads it when it next starts."), "{out}");
     assert!(out.trim_end().ends_with("New sessions get its skills, MCP servers and tools."), "{out}");
     // The command shown is the one that will run: in the installed folder, not the staging one.
     let shown = out.lines().find(|l| l.trim_start().starts_with("echo  ")).unwrap();
@@ -501,7 +502,7 @@ fn add_installs_a_folder_and_list_remove_follow() {
     let o = sb.run(&["plugin", "list"]);
     let list = stdout(&o);
     assert_eq!(code(&o), 0, "{list}\n{}", stderr(&o));
-    assert!(list.contains("The server is not running; showing what is on disk"), "{list}");
+    assert!(list.contains("No server answered at 127.0.0.1:") && list.contains("; showing what is on disk"), "{list}");
     let row = list.lines().find(|l| l.contains("changelog-tools")).unwrap_or_else(|| panic!("no row in:\n{list}"));
     assert_eq!(row.split_whitespace().collect::<Vec<_>>(), ["changelog-tools", "1.2.0", "enabled", "valid", "1", "skill,", "1", "MCP", "server,", "has", "code"], "{row}");
     assert!(list.contains(&format!("Folders  {}", sb.plugins().display())), "{list}");

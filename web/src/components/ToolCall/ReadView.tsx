@@ -7,6 +7,8 @@ import { truncateForDisplay, parsePartialJSON } from './displayText'
 interface ReadViewProps {
   args: string
   result?: string
+  /** The output is on its way from the server. */
+  loading?: boolean
   onCollapse?: () => void
 }
 
@@ -30,7 +32,7 @@ function parseReadResult(result?: string): { label: string; body: string; startL
   }
 }
 
-export function ReadView({ args, result, onCollapse }: ReadViewProps) {
+export function ReadView({ args, result, loading = false, onCollapse }: ReadViewProps) {
   const [expanded, setExpanded] = useState(true)
   const { path } = useMemo(() => parseArgs(args), [args])
   const { label, body, startLine } = useMemo(() => parseReadResult(result), [result])
@@ -63,7 +65,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
           <span className="truncate">{path}</span>
         </button>
         <span className="shrink-0 px-1 font-sans text-meta font-normal tabular-nums text-(--color-text-muted)">
-          {label}
+          {loading ? 'Loading…' : label}
         </span>
         <CopyButton label="Copy read result" text={body} />
       </div>

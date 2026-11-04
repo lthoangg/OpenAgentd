@@ -29,4 +29,4 @@ export interface ToolDisplay {
   suppressResult?: boolean
 }
 
-export type ToolCallState = 'start' | 'running' | 'success' | 'failed'
+export type ToolCallState = 'start' | 'running' | 'success'

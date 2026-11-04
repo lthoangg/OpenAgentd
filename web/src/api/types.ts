@@ -217,6 +217,10 @@ export interface MessageResponse {
   created_at: string | null
   file_message?: boolean
   attachments: MessageAttachment[] | null
+  /** A tool row whose output stays on the server (fetched on open). */
+  result_omitted?: boolean
+  /** Its size in bytes, when ``result_omitted``. */
+  result_bytes?: number
 }
 
 export interface ToolCall {
@@ -513,6 +517,12 @@ export interface ContentBlock {
   toolCallId?: string   // for matching tool results
   toolOutput?: string   // live output streamed before tool_end
   toolResult?: string   // the role:"tool" response content
+  /**
+   * The call finished with this many bytes of output that stay on the
+   * server: ``toolResult`` is absent and the card fetches it when opened
+   * (``useToolResult``). Absent when the result rode with the call.
+   */
+  toolResultBytes?: number
   durationMs?: number         // client-side elapsed since first chunk (what the live timer shows, frozen on completion)
   serverDurationMs?: number   // server-measured execution time from tool_end duration_ms
   startedAt?: number          // client timestamp when block was first created (for live elapsed display)

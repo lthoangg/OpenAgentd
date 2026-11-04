@@ -1,19 +1,8 @@
 /**
- * Regression: a completed tool call that failed must read as failed in the
- * *collapsed* row, not only inside the expanded result body.
- *
- * `isFailedResult` recognised only the shell tool's bracketed vocabulary
- * (`[Failed ...]`, `[Timed out ...]`) — every other tool funnels a raised
- * exception through `sanitize_error` as a plain `"Error: ..."` string (see
- * `app/agent/agent_loop/tool_executor.py`), which matched none of those
- * prefixes. Together, a failed `patch` (or any other non-shell tool) call
- * looked identical to a successful one unless the user expanded it and read
- * the body text.
- *
- * The row keeps the tool name neutral and carries a non-shell failure in two
- * places: a red result summary holding the error text, and an `error` chip in
- * the meta column. Shell rows show neither: the agent reads and fixes a failed
- * command, so the row stays a quiet record (no exit chip, no red text).
+ * Tool rows are a quiet record: no result summary, no exit chip, no red
+ * failure mark on the collapsed row. Most results no longer travel with the
+ * history at all (they load when the row is opened), so the row cannot judge
+ * success; a failure shows only in the opened body.
  */
 import { describe, it, expect, afterEach, beforeEach } from "bun:test"
 import { render, cleanup } from "@testing-library/react"
@@ -47,7 +36,7 @@ function chip(container: HTMLElement): HTMLElement | null {
 }
 
 describe("ToolCall — failure indication", () => {
-  it("shows a red error summary and an error chip for a generic tool's 'Error: ...' result", () => {
+  it("keeps a failed patch row neutral: no red summary, no error chip", () => {
     const { container } = render(
       <ToolCall
         name="patch"
@@ -57,9 +46,8 @@ describe("ToolCall — failure indication", () => {
       />,
     )
 
-    expect(errorSummary(container, "Could not find patch context in src/utils.py.")).toBeTruthy()
-    expect(chip(container)?.textContent).toBe("error")
-    expect(chip(container)?.getAttribute("data-tone")).toBe("error")
+    expect(errorSummary(container, "Could not find patch context in src/utils.py.")).toBeUndefined()
+    expect(chip(container)).toBeNull()
     expect(toolName(container, "patch").className).not.toContain("color-error")
   })
 
@@ -88,13 +76,13 @@ describe("ToolCall — failure indication", () => {
     expect(container.querySelector("button .text-\\(--color-error\\)")).toBeNull()
   })
 
-  it("keeps a test run's counts as the shell summary, uncoloured", () => {
+  it("shows no test-count summary on a shell row", () => {
     const { container } = render(
       <ToolCall name="shell" args={JSON.stringify({ command: "bun test" })} done={true} result={"[Failed — exit code 1]\n\n 1 fail\n 11 pass"} />,
     )
 
     const summary = Array.from(container.querySelectorAll<HTMLElement>("button span")).find((s) => s.textContent === "1 failed, 11 passed")
-    expect(summary?.className).not.toContain("color-error")
+    expect(summary).toBeUndefined()
   })
 
   it("shows no error styling or error chip on success", () => {

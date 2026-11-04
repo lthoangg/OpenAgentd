@@ -353,7 +353,7 @@ export function addTool(
 
 function completedTool(
   block: ContentBlock,
-  toolResult: string | undefined,
+  toolResult: ToolResultArrival,
   serverDurationMs: number | undefined,
   extra: Record<string, unknown> | undefined,
   completedAt: number,
@@ -364,22 +364,30 @@ function completedTool(
   const clientElapsedMs = block.startedAt !== undefined
     ? Math.max(0, completedAt - block.startedAt)
     : undefined
+  const omitted = typeof toolResult === 'object' && toolResult !== null
   return {
     ...block,
     toolDone: true,
-    toolResult,
+    toolResult: omitted ? undefined : toolResult,
+    ...(omitted ? { toolResultBytes: toolResult.omittedBytes } : {}),
     durationMs: clientElapsedMs ?? block.durationMs,
     serverDurationMs: serverDurationMs ?? block.serverDurationMs,
     extra: extra ? { ...(block.extra ?? {}), ...extra } : block.extra,
   }
 }
 
+/**
+ * What a finished call brought: its result text, or how many bytes of it
+ * stayed on the server (``result_omitted``) for the card to fetch.
+ */
+export type ToolResultArrival = string | { omittedBytes: number } | undefined
+
 /** tool_end event — the call finished. See ``initToolInto``. */
 export function completeToolInto(
   blocks: ContentBlock[],
   name: string,
   toolCallId?: string,
-  toolResult?: string,
+  toolResult?: ToolResultArrival,
   serverDurationMs?: number,
   extra?: Record<string, unknown>,
   completedAt = Date.now(),

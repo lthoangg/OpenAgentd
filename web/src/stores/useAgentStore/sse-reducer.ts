@@ -10,6 +10,7 @@ import {
   appendCompactionContentInto,
   endCompaction,
 } from '@/utils/blocks'
+import type { ToolResultArrival } from '@/utils/blocks'
 import { createDefaultAgentStream } from './defaults'
 import {
   FS_MUTATING_TOOLS,
@@ -336,8 +337,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const agent = (d.agent as string) || get().leadName || Object.keys(get().agentStreams)[0] || 'openagentd'
         const toolName = d.name as string
         const toolCallId = d.tool_call_id as string | undefined
-        const result = d.result as string | undefined
         const metadata = d.metadata as Record<string, unknown> | undefined
+        const result = typeof d.result === 'string' ? d.result : undefined
+        // Most tools' output stays on the server; the card fetches it on open.
+        const arrival: ToolResultArrival = metadata?.result_omitted === true
+          ? { omittedBytes: typeof metadata.result_bytes === 'number' ? metadata.result_bytes : 0 }
+          : result
         const serverDurationMs = typeof d.duration_ms === 'number'
           ? d.duration_ms
           : typeof metadata?.duration_ms === 'number'
@@ -363,7 +368,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               stream.blocks,
               toolName,
               toolCallId,
-              result,
+              arrival,
               serverDurationMs,
               mcpApp ? { mcp_app: mcpApp } : undefined,
             )
@@ -373,7 +378,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             stream.currentBlocks,
             toolName,
             toolCallId,
-            result,
+            arrival,
             serverDurationMs,
             mcpApp ? { mcp_app: mcpApp } : undefined,
           )

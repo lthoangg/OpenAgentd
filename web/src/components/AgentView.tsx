@@ -647,6 +647,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
             done={block.toolDone}
             liveOutput={block.toolOutput}
             result={block.toolResult}
+            resultBytes={block.toolResultBytes}
             durationMs={block.durationMs}
             startedAt={block.startedAt}
             toolCallId={block.toolCallId}
@@ -886,7 +887,7 @@ export function AgentView({
   // A change key for auto-follow, not the content itself: the streamed fields
   // only grow, so their lengths move whenever they do.
   const lastContent = lastBlock
-    ? `${lastBlock.id}:${lastBlock.content?.length ?? -1}:${lastBlock.toolOutput?.length ?? -1}:${lastBlock.toolResult?.length ?? -1}:${lastBlock.toolArgs?.length ?? -1}`
+    ? `${lastBlock.id}:${lastBlock.content?.length ?? -1}:${lastBlock.toolOutput?.length ?? -1}:${lastBlock.toolResult?.length ?? -1}:${lastBlock.toolDone ? 1 : 0}:${lastBlock.toolArgs?.length ?? -1}`
     : ''
   const isUserMessage = lastBlock ? isTypedPromptBlock(lastBlock) : false
   const isEmpty = !isWorking &&

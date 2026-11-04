@@ -437,6 +437,7 @@ function toolResultsOf(rows: MessageResponse[]): Record<string, OrphanToolResult
     if (row.role !== 'tool' || !row.tool_call_id) continue
     const extra = row.extra as { duration_ms?: number; mcp_app?: Record<string, unknown> } | null
     const result: OrphanToolResult = { content: row.content || '' }
+    if (row.result_omitted) result.omittedBytes = row.result_bytes ?? 0
     if (typeof extra?.duration_ms === 'number') result.serverDurationMs = extra.duration_ms
     if (extra?.mcp_app) result.mcpApp = extra.mcp_app
     results[row.tool_call_id] = result

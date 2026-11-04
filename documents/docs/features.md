@@ -340,7 +340,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   was in the background, and tool cards that finished meanwhile show as
   done at once. History pages no longer carry the provider-internal replay
   data (raw content blocks, thinking signatures, reasoning items) that made
-  up close to half of their bytes.
+  up close to half of their bytes. A tool's output (a file read, a command's
+  output, search results) no longer comes with the session: it loads when
+  you open the tool row or copy its result, and a running command still
+  shows its output live. Tool rows no longer show a result summary (line or
+  match counts, test totals) or a red failure mark; cards built from their
+  answer (questions, plans, goals, patches, todos) look as before.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.

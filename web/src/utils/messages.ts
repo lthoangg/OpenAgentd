@@ -15,6 +15,8 @@ import { isRestartNoteExtra } from '@/lib/restart-note'
  */
 export interface OrphanToolResult {
   content: string
+  /** The output stayed on the server (``result_omitted``): its size. */
+  omittedBytes?: number
   serverDurationMs?: number
   mcpApp?: Record<string, unknown>
 }
@@ -278,7 +280,8 @@ export function parseAgentBlocks(
       const block = pendingToolBlocks.get(msg.tool_call_id)
       const extra = msg.extra as { duration_ms?: number; mcp_app?: Record<string, unknown> } | null
       if (block) {
-        block.toolResult = msg.content || ''
+        if (msg.result_omitted) block.toolResultBytes = msg.result_bytes ?? 0
+        else block.toolResult = msg.content || ''
         block.toolDone = true
         if (typeof extra?.duration_ms === 'number') {
           // Persisted messages have no client startedAt, so server duration doubles
@@ -294,6 +297,7 @@ export function parseAgentBlocks(
         }
       } else if (orphanToolResults) {
         const orphan: OrphanToolResult = { content: msg.content || '' }
+        if (msg.result_omitted) orphan.omittedBytes = msg.result_bytes ?? 0
         if (typeof extra?.duration_ms === 'number') orphan.serverDurationMs = extra.duration_ms
         if (extra?.mcp_app) orphan.mcpApp = extra.mcp_app
         orphanToolResults[msg.tool_call_id] = orphan
@@ -335,7 +339,7 @@ export function applyOrphanToolResults(
     result[i] = {
       ...block,
       toolDone: true,
-      toolResult: orphan.content,
+      ...(orphan.omittedBytes !== undefined ? { toolResultBytes: orphan.omittedBytes } : { toolResult: orphan.content }),
       ...(orphan.serverDurationMs !== undefined
         ? { serverDurationMs: orphan.serverDurationMs, durationMs: orphan.serverDurationMs }
         : {}),

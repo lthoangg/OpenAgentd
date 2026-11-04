@@ -62,7 +62,8 @@ async fn tool_turn_persists_and_streams_like_v2() {
     assert!(!names.contains(&"permission_asked"), "{names:?}");
     assert_eq!(*names.last().unwrap(), "done");
     let tool_end = events.iter().find(|(e, _)| e == "tool_end").unwrap();
-    assert!(tool_end.1.contains("hello world"), "{}", tool_end.1);
+    // A read's text stays on the server until the user opens the call.
+    assert!(!tool_end.1.contains("hello world") && tool_end.1.contains("\"result_omitted\":true"), "{}", tool_end.1);
 
     let rows = appv3_db::llm_window_rows(&pool, &sid, false).await.unwrap();
     let roles: Vec<&str> = rows.iter().map(|r| r.role.as_str()).collect();

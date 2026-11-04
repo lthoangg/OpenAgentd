@@ -492,6 +492,7 @@ async fn http_api_end_to_end() {
     history_missing_folder_flow(&c, &pool, root.path()).await;
     history_first_page_flow(&c, &pool, &ws).await;
     history_etag_flow(&c, &pool, &ws).await;
+    tool_result_on_demand_flow(&c, &pool, &ws).await;
     plan_review_flow(&c, &pool, &ws).await;
     linked_sessions_flow(&c, &pool).await;
     confirm_change_flow(&c, &pool, &ws).await;
@@ -1141,6 +1142,37 @@ async fn history_etag_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::
     let (st, h, _) = get(Some(tag.clone())).await;
     assert_eq!(st, StatusCode::OK);
     assert_ne!(h[header::ETAG], tag);
+
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{lid}"), None).await;
+    assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
+}
+
+/// History leaves a read's text out; opening the call fetches it, from the
+/// session or one of its members, by tool-call id.
+async fn tool_result_on_demand_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
+    let workspace = ws.display().to_string();
+    let lead = appv3_db::create_session(pool, appv3_db::NewSession { workspace: workspace.clone(), ..Default::default() }).await.unwrap();
+    let member =
+        appv3_db::create_session(pool, appv3_db::NewSession { workspace, parent_session_id: Some(lead.id.clone()), agent_name: Some("explorer".into()), ..Default::default() })
+            .await
+            .unwrap();
+    appv3_db::save_message(pool, &lead.id, appv3_db::NewMessage::tool("call_lead", "read", "[1-1/1]\nlead file")).await.unwrap();
+    appv3_db::save_message(pool, &member.id, appv3_db::NewMessage::tool("call_member", "shell", "[Succeeded]\nmember output")).await.unwrap();
+    let lid = appv3_db::codec::api_uuid(&lead.id);
+
+    let (st, page) = c.json("GET", &format!("/api/agent/{lid}/history"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    let row = page["lead"]["messages"].as_array().unwrap().iter().find(|m| m["tool_call_id"] == "call_lead").unwrap().clone();
+    assert_eq!((row.get("content"), &row["result_omitted"], &row["result_bytes"]), (None, &json!(true), &json!(17)));
+
+    let (st, body) = c.json("GET", &format!("/api/agent/{lid}/tool-results/call_lead"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body, json!({"tool_call_id": "call_lead", "name": "read", "content": "[1-1/1]\nlead file"}));
+    let (st, body) = c.json("GET", &format!("/api/agent/{lid}/tool-results/call_member"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body["content"], "[Succeeded]\nmember output");
+    let (st, _) = c.json("GET", &format!("/api/agent/{lid}/tool-results/call_nope"), None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
 
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{lid}"), None).await;
     assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");

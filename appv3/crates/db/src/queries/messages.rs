@@ -895,6 +895,19 @@ pub async fn find_tool_message(pool: &DbPool, session_id: &str, tool_call_id: &s
         .await?)
 }
 
+/// The `role='tool'` row for *tool_call_id* in a session or any session
+/// under it (its members, theirs): a team view shows members' calls too.
+pub async fn find_tool_message_in_tree(pool: &DbPool, session_id: &str, tool_call_id: &str) -> Result<Option<SessionMessage>> {
+    Ok(sqlx::query_as::<_, SessionMessage>(
+        "WITH RECURSIVE tree(id) AS (SELECT ? UNION ALL SELECT c.id FROM chat_sessions c JOIN tree t ON c.parent_session_id = t.id) \
+         SELECT * FROM session_messages WHERE session_id IN (SELECT id FROM tree) AND role = 'tool' AND tool_call_id = ? LIMIT 1",
+    )
+    .bind(db_id(session_id))
+    .bind(tool_call_id)
+    .fetch_optional(pool)
+    .await?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

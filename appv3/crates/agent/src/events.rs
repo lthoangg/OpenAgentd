@@ -154,10 +154,23 @@ pub fn tool_start(agent: &str, tool_call_id: Option<&str>, name: &str, arguments
     }))
 }
 
+/// The end of a tool call. Most tools' output stays on the server
+/// (`appv3_db::api::result_rides_inline`): `result` is null and the
+/// metadata says `result_omitted` with `result_bytes`; clients fetch it when
+/// the user opens the call. The live feed, its replay and history agree.
 pub fn tool_end(agent: &str, tool_call_id: Option<&str>, name: &str, result: Option<&str>, metadata: Option<Value>) -> Envelope {
+    let mut metadata = meta(metadata);
+    let result = match result {
+        Some(text) if !appv3_db::api::result_rides_inline(name) => {
+            metadata["result_omitted"] = Value::Bool(true);
+            metadata["result_bytes"] = Value::from(text.len());
+            None
+        }
+        other => other,
+    };
     Envelope::typed(json!({
         "type": "tool_end", "agent": agent, "tool_call_id": tool_call_id, "name": name,
-        "result": result, "metadata": meta(metadata)
+        "result": result, "metadata": metadata
     }))
 }
 
@@ -370,6 +383,20 @@ mod tests {
             sorted.dedup();
             assert_eq!(sorted.len(), list.len(), "duplicate event names: {list:?}");
         }
+    }
+
+    /// A tool's output is fetched when the user opens it; the event says
+    /// how big it was. Tools whose card reads their answer keep it.
+    #[test]
+    fn tool_end_leaves_out_output_but_keeps_answers_cards_read() {
+        let e = tool_end("a", Some("c1"), "read", Some("12345"), Some(json!({"duration_ms": 2})));
+        assert_eq!(e.data["result"], Value::Null);
+        assert_eq!(e.data["metadata"], json!({"duration_ms": 2, "result_omitted": true, "result_bytes": 5}));
+        let kept = tool_end("a", Some("c1"), "patch", Some("Success. Updated a.rs"), None);
+        assert_eq!(kept.data["result"], json!("Success. Updated a.rs"));
+        assert_eq!(kept.data["metadata"], json!({}));
+        let empty = tool_end("a", Some("c1"), "read", None, None);
+        assert_eq!(empty.data["metadata"], json!({}), "nothing to leave out");
     }
 
     #[test]

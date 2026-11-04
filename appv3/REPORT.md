@@ -1230,6 +1230,21 @@ explicitly.
 - **No `permission_asked` (v3 only):** tools are always allowed, so the
   per-call announcement after `tool_start` is gone from the stream and the
   event contract. Test: `agent/tests/session_turn.rs`. v2 sends it.
+- **Tool output on demand (v3 only):** history tool rows and `tool_end`
+  (live and replayed) leave out the output of every tool except the small
+  set whose card is built from it (`ask_user`, `plan`, `submit_plan`,
+  `update_goal`, `preview`, `workspace`, `team` and `team_*`, `todo`,
+  `schedule`, `mcp`, `patch`, plus their former names). Such a row has no
+  `content` and carries `result_omitted: true` and `result_bytes`;
+  `tool_end` sends `result: null` with the same two keys in `metadata`.
+  `GET /api/agent/{sid}/tool-results/{tool_call_id}` returns
+  `{tool_call_id, name, content}` for a call in the session or any session
+  under it (404 otherwise); the web card calls it when the user opens the
+  row or copies its result. `tool_output_delta` still streams while a tool
+  runs, and the agent still reads full output from the database. Tests: `db/src/api.rs`,
+  `agent/src/events.rs`, `agent/src/stream_store.rs`,
+  `api/tests/http_api.rs` (`tool_result_on_demand_flow`). v2 sends every
+  result.
 - **Changed-files list (v3 only):** `GET /api/agent/workspace/git-diff/files`
   lists every changed path with status and +/− counts from
   `git diff --name-status/--numstat` and `ls-files --others` (capped at 5,000

@@ -99,6 +99,36 @@ pub fn sent_from_json(origin: &ChatSession) -> Value {
 }
 
 const INTERNAL_ATTACHMENT_FIELDS: [&str; 3] = ["converted_text", "path", "workspace_path"];
+
+/// Tools whose answer clients receive with the call, because the card or a
+/// follow-up is built from its text (an `ask_user` answer, a plan review's
+/// outcome, a goal verdict, `preview`'s "Opening …", the subagent a `team`
+/// call reached, a patch's hunk header and diagnostics) and it is small.
+/// Every other tool's output (reads, shell, search, fetches, MCP and plugin
+/// tools) is fetched when the user opens it; former names are listed too.
+const INLINE_RESULT_TOOLS: [&str; 15] = [
+    "ask_user",
+    "plan",
+    "submit_plan",
+    "update_goal",
+    "preview",
+    "workspace",
+    "send_to_workspace",
+    "team",
+    "delegate",
+    "todo",
+    "todo_manage",
+    "schedule",
+    "schedule_task",
+    "mcp",
+    "patch",
+];
+
+/// Whether a call to `tool` carries its result to clients (see
+/// [`INLINE_RESULT_TOOLS`]).
+pub fn result_rides_inline(tool: &str) -> bool {
+    INLINE_RESULT_TOOLS.contains(&tool) || tool.starts_with("team_")
+}
 /// `extra` keys no client reads: a tool result's image `parts` and the
 /// provider replay state (Anthropic raw blocks and thinking signatures,
 /// OpenAI reasoning items), which the agent reads from the database.
@@ -215,8 +245,14 @@ impl Serialize for MessageView<'_> {
         m.serialize_entry("id", &api_uuid(&r.id))?;
         m.serialize_entry("session_id", &api_uuid(&r.session_id))?;
         m.serialize_entry("role", &r.role)?;
+        let omit_result = r.role == "tool" && !r.name.as_deref().is_some_and(result_rides_inline);
         if let Some(v) = &r.content {
-            m.serialize_entry("content", v)?;
+            if omit_result {
+                m.serialize_entry("result_omitted", &true)?;
+                m.serialize_entry("result_bytes", &v.len())?;
+            } else {
+                m.serialize_entry("content", v)?;
+            }
         }
         if let Some(v) = reasoning {
             m.serialize_entry("reasoning_content", v)?;
@@ -409,6 +445,50 @@ mod tests {
         assert_eq!(m["file_message"], json!(true));
         assert_eq!(keys(&m).last(), Some(&"file_message"));
         assert_eq!(keys(&m)[keys(&m).len() - 2], "attachments");
+    }
+
+    /// A tool's output is read on demand: history carries how big it was,
+    /// not the text. Tools whose card is built from their answer keep it.
+    #[test]
+    fn message_response_leaves_out_tool_output_but_keeps_answers_cards_need() {
+        let mut r = row("tool");
+        r.name = Some("read".into());
+        r.tool_call_id = Some("c1".into());
+        r.content = Some("[1-2/2]\nVi\u{1ec7}t\nb".into());
+        r.extra = Some(r#"{"duration_ms": 4}"#.into());
+        let m = message_response(&r);
+        assert!(!m.contains_key("content"));
+        assert_eq!(m["result_omitted"], json!(true));
+        assert_eq!(m["result_bytes"], json!("[1-2/2]\nVi\u{1ec7}t\nb".len()));
+        assert_eq!(m["extra"], json!({"duration_ms": 4}));
+        for name in [
+            "ask_user",
+            "plan",
+            "submit_plan",
+            "update_goal",
+            "preview",
+            "workspace",
+            "send_to_workspace",
+            "team",
+            "delegate",
+            "team_status",
+            "todo",
+            "todo_manage",
+            "schedule",
+            "schedule_task",
+            "mcp",
+            "patch",
+        ] {
+            r.name = Some(name.into());
+            let m = message_response(&r);
+            assert_eq!(m["content"], json!("[1-2/2]\nVi\u{1ec7}t\nb"), "{name}");
+            assert!(!m.contains_key("result_omitted"), "{name}");
+        }
+        r.name = None;
+        assert!(!message_response(&r).contains_key("content"), "an unnamed tool row is output too");
+        let mut user = row("user");
+        user.content = Some("hi".into());
+        assert_eq!(message_response(&user)["content"], json!("hi"));
     }
 
     #[test]

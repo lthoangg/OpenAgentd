@@ -41,6 +41,7 @@ pub fn router() -> Router<AppState> {
         .route("/sessions/{session_id}", get(session_detail).patch(update_session).delete(delete_session_route))
         .route("/sessions/{session_id}/subagents", get(session_subagents))
         .route("/{session_id}/history", get(agent_history))
+        .route("/{session_id}/tool-results/{tool_call_id}", get(tool_result))
         .route("/sessions/{session_id}/btw", post(ask_side_question).get(list_side_questions).delete(clear_side_questions))
         .route("/sessions/{session_id}/btw/count", get(count_side_questions))
         .route("/sessions/{session_id}/btw/{side_id}/stop", post(stop_side_question))
@@ -1107,6 +1108,17 @@ async fn session_subagents(State(st): State<AppState>, AxPath(raw): AxPath<Strin
     Ok(json(appv3_agent::subagents::list_subagents(&sid, &st.pool).await))
 }
 
+/// A tool call's output, which history and the live feed leave out for most
+/// tools (`appv3_db::api::result_rides_inline`): fetched when the user opens
+/// the call. Looks in the session and the sessions under it.
+async fn tool_result(State(st): State<AppState>, AxPath((raw, tool_call_id)): AxPath<(String, String)>) -> ApiResult<Response> {
+    let sid = path_uuid("session_id", &raw)?;
+    let Some(row) = db::find_tool_message_in_tree(&st.pool, &sid, &tool_call_id).await? else {
+        return Err(ApiError::not_found("Tool result not found."));
+    };
+    Ok(json(json!({"tool_call_id": tool_call_id, "name": row.name, "content": row.content.unwrap_or_default()})))
+}
+
 // ── history ─────────────────────────────────────────────────────────────────
 
 async fn ensure_agent_ready(root: &db::ChatSession) -> ApiResult<()> {
@@ -1234,7 +1246,10 @@ impl RowBytes {
         let len = |s: &Option<String>| s.as_ref().map_or(0, String::len);
         for r in rows {
             if r.role == "tool" {
-                self.tool_results += len(&r.content);
+                // Only what goes out: most tools' output is fetched on demand.
+                if r.name.as_deref().is_some_and(appv3_db::api::result_rides_inline) {
+                    self.tool_results += len(&r.content);
+                }
             } else {
                 self.content += len(&r.content);
             }
@@ -1383,8 +1398,10 @@ mod tests {
     #[test]
     fn page_bytes_are_split_by_what_the_rows_hold() {
         let mut b = RowBytes::default();
-        b.add(&[row("assistant", "hello", Some("hmm"), Some("[{\"a\":1}]")), row("tool", "output!", None, None), row("user", "hi", None, None)]);
-        assert_eq!(b, RowBytes { content: 7, reasoning: 3, tool_args: 9, tool_results: 7, extra: 6 });
+        let patch = db::SessionMessage { name: Some("patch".into()), ..row("tool", "output!", None, None) };
+        let read = db::SessionMessage { name: Some("read".into()), ..row("tool", "left out", None, None) };
+        b.add(&[row("assistant", "hello", Some("hmm"), Some("[{\"a\":1}]")), patch, read, row("user", "hi", None, None)]);
+        assert_eq!(b, RowBytes { content: 7, reasoning: 3, tool_args: 9, tool_results: 7, extra: 8 });
     }
 
     #[test]

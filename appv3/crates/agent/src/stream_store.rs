@@ -302,14 +302,18 @@ fn match_tool_start(tcs: &mut Vec<Map<String, Value>>, id: Option<&str>, name: &
     tcs.push(m);
 }
 
-/// `_tool_state.match_tool_end`.
-fn match_tool_end(tcs: &mut Vec<Map<String, Value>>, id: Option<&str>, name: &str, result: Value, agent: &str) {
+/// `_tool_state.match_tool_end`. `omitted_bytes`: the result stayed on the
+/// server, so the replay says so too.
+fn match_tool_end(tcs: &mut Vec<Map<String, Value>>, id: Option<&str>, name: &str, result: Value, omitted_bytes: Option<Value>, agent: &str) {
     let by_id = id.filter(|s| !s.is_empty()).and_then(|i| tcs.iter().rposition(|tc| tc_str(tc, "tool_call_id") == Some(i)));
     let hit = by_id.or_else(|| tcs.iter().rposition(|tc| tc_str(tc, "name") == Some(name) && !tc_bool(tc, "done")));
     if let Some(i) = hit {
         let tc = &mut tcs[i];
         tc.insert("done".into(), Value::Bool(true));
         tc.insert("result".into(), result);
+        if let Some(bytes) = omitted_bytes {
+            tc.insert("result_bytes".into(), bytes);
+        }
         if !agent.is_empty() && tc_str(tc, "agent").map(|a| a.is_empty()).unwrap_or(true) {
             tc.insert("agent".into(), Value::String(agent.into()));
         }
@@ -320,6 +324,9 @@ fn match_tool_end(tcs: &mut Vec<Map<String, Value>>, id: Option<&str>, name: &st
     m.insert("name".into(), Value::String(name.into()));
     m.insert("arguments".into(), Value::Null);
     m.insert("result".into(), result);
+    if let Some(bytes) = omitted_bytes {
+        m.insert("result_bytes".into(), bytes);
+    }
     m.insert("agent".into(), Value::String(agent.into()));
     m.insert("started".into(), Value::Bool(true));
     m.insert("done".into(), Value::Bool(true));
@@ -412,7 +419,11 @@ impl StreamStore {
             "tool_start" => {
                 match_tool_start(&mut state.tool_calls, get_str("tool_call_id"), get_str("name").unwrap_or(""), data.get("arguments").cloned().unwrap_or(Value::Null), agent)
             }
-            "tool_end" => match_tool_end(&mut state.tool_calls, get_str("tool_call_id"), get_str("name").unwrap_or(""), data.get("result").cloned().unwrap_or(Value::Null), agent),
+            "tool_end" => {
+                let meta = data.get("metadata");
+                let omitted = meta.filter(|m| m.get("result_omitted") == Some(&Value::Bool(true))).and_then(|m| m.get("result_bytes")).cloned();
+                match_tool_end(&mut state.tool_calls, get_str("tool_call_id"), get_str("name").unwrap_or(""), data.get("result").cloned().unwrap_or(Value::Null), omitted, agent)
+            }
             "usage" => state.usage = Some(data.clone()),
             "error" => state.error = Some(get_str("message").unwrap_or("error").to_string()),
             "done" => state.is_streaming = false,
@@ -710,7 +721,8 @@ impl StreamStore {
                 replay.push(e);
             }
             if tc_bool(tc, "done") {
-                let mut e = events::tool_end(agent, id, name, None, None);
+                let metadata = tc.get("result_bytes").map(|bytes| json!({"result_omitted": true, "result_bytes": bytes}));
+                let mut e = events::tool_end(agent, id, name, None, metadata);
                 e.data.insert("result".into(), tc.get("result").cloned().unwrap_or(Value::Null));
                 replay.push(e);
             }
@@ -1153,12 +1165,26 @@ mod tests {
     async fn tool_end_keeps_its_result_on_every_match_path() {
         let s = leak();
         s.init_turn("w", false);
-        s.push_event("w", &events::tool_call("a", Some("t1"), "read", None), false);
-        s.push_event("w", &events::tool_end("a", Some("t1"), "read", Some("by-id"), None), false);
-        s.push_event("w", &events::tool_call("a", None, "grep", None), false);
-        s.push_event("w", &events::tool_end("a", None, "grep", Some("by-name"), None), false);
-        s.push_event("w", &events::tool_end("a", Some("t9"), "glob", Some("orphan"), None), false);
+        s.push_event("w", &events::tool_call("a", Some("t1"), "patch", None), false);
+        s.push_event("w", &events::tool_end("a", Some("t1"), "patch", Some("by-id"), None), false);
+        s.push_event("w", &events::tool_call("a", None, "todo", None), false);
+        s.push_event("w", &events::tool_end("a", None, "todo", Some("by-name"), None), false);
+        s.push_event("w", &events::tool_end("a", Some("t9"), "plan", Some("orphan"), None), false);
         let results: Vec<Value> = s.debug_state("w").unwrap()["tool_calls"].as_array().unwrap().iter().map(|tc| tc["result"].clone()).collect();
         assert_eq!(results, vec![json!("by-id"), json!("by-name"), json!("orphan")]);
+    }
+
+    #[tokio::test]
+    async fn an_attach_replays_a_left_out_result_as_left_out() {
+        let s = leak();
+        s.init_turn("lo", false);
+        s.push_event("lo", &events::tool_call("a", Some("t1"), "read", None), false);
+        s.push_event("lo", &events::tool_start("a", Some("t1"), "read", Some("{}")), false);
+        s.push_event("lo", &events::tool_end("a", Some("t1"), "read", Some("12345"), Some(json!({"duration_ms": 2}))), false);
+        let sub = s.attach("lo").unwrap();
+        let end = sub.replay.iter().find(|e| e.event == "tool_end").unwrap();
+        let data: Value = serde_json::from_str(&end.data).unwrap();
+        assert_eq!(data["result"], Value::Null);
+        assert_eq!(data["metadata"], json!({"result_omitted": true, "result_bytes": 5}));
     }
 }

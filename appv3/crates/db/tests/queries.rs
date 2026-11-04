@@ -596,23 +596,6 @@ async fn first_history_page_budget_skips_left_out_tool_output() {
     assert_eq!(first_history_page(&pool, &s).await.unwrap().rows.len(), 60);
 }
 
-/// A member rides on the lead's page with its short tail only.
-#[tokio::test]
-async fn member_first_page_is_a_short_tail_within_its_budget() {
-    let (_d, pool) = fresh().await;
-    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
-    save_steps(&pool, &s.id, 50).await;
-    let rows = member_first_page(&pool, &s.id).await.unwrap();
-    assert_eq!(rows.len(), MEMBER_FIRST_PAGE_SIZE as usize);
-    assert_eq!(rows.last().and_then(|r| r.content.clone()).as_deref(), Some("step 49"), "the newest rows, in order");
-
-    let big = "x".repeat(MEMBER_PAGE_MAX_BYTES / 2 - 1024);
-    for i in 0..4 {
-        save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "plan", big.clone())).await.unwrap();
-    }
-    assert_eq!(member_first_page(&pool, &s.id).await.unwrap().len(), 2);
-}
-
 #[tokio::test]
 async fn pending_question_round_trip() {
     let (_d, pool) = fresh().await;

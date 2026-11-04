@@ -1048,11 +1048,10 @@ async fn history_missing_folder_flow(c: &Client, pool: &appv3_db::DbPool, root: 
     assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
 }
 
-/// History pages for a lead with a member: the newest page carries the
-/// members and the session-wide usage totals; older pages carry only older
-/// lead rows. Member rows are shown from the newest page only, and a member's
-/// `seq` is not comparable to the lead's cursor, so re-sending them on every
-/// older page duplicated them.
+/// History pages for a lead with a member: the newest page and the delta
+/// carry each member's name, state and usage totals but none of its rows
+/// (the lead's view never renders them; opening a member loads its own
+/// session); older pages carry only older lead rows.
 async fn history_paging_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
     let workspace = ws.display().to_string();
     let lead = appv3_db::create_session(pool, appv3_db::NewSession { workspace: workspace.clone(), ..Default::default() }).await.unwrap();
@@ -1079,7 +1078,8 @@ async fn history_paging_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path
     assert_eq!(newest["has_more"], json!(true));
     let members = newest["members"].as_array().expect("members");
     assert_eq!(members.len(), 1, "{newest}");
-    assert_eq!(members[0]["messages"].as_array().map(Vec::len), Some(10));
+    assert_eq!(members[0]["messages"], json!([]), "member rows load with the member");
+    assert_eq!((&members[0]["name"], &members[0]["session_id"]), (&json!("explorer"), &json!(appv3_db::codec::api_uuid(&member.id))));
     assert_eq!(newest["lead"]["estimated_cost_usd"], json!(1.5), "lead total covers every page");
     assert_eq!(newest["lead"]["completion_tokens"], json!(300));
     assert_eq!(members[0]["estimated_cost_usd"], json!(5.0));
@@ -1101,6 +1101,14 @@ async fn history_paging_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path
     let (st, delta) = c.json("GET", &format!("/api/agent/{lid}/history?since={newest_id}"), None).await;
     assert_eq!(st, StatusCode::OK, "{delta}");
     assert_eq!(delta["lead"]["messages"], json!([]));
+    assert_eq!(delta["members"][0]["messages"], json!([]), "{delta}");
+    assert_eq!(delta["members"][0]["estimated_cost_usd"], json!(5.0));
+    for i in 0..150 {
+        appv3_db::save_message(pool, &member.id, costed(format!("member late {i}"), 0.5)).await.unwrap();
+    }
+    let (st, delta) = c.json("GET", &format!("/api/agent/{lid}/history?since={newest_id}"), None).await;
+    assert_eq!(st, StatusCode::OK, "{delta}");
+    assert_eq!(delta["truncated"], json!(false), "a busy member does not force a reload: {delta}");
     for q in ["before=2026-09-23T06:56:28Z", "since=2026-09-23T06:56:28Z", "before=2026-09-23T06:56:28Z|"] {
         let (st, body) = c.json("GET", &format!("/api/agent/{lid}/history?{}", q.replace(':', "%3A").replace('|', "%7C")), None).await;
         assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{q}: {body}");
@@ -1252,8 +1260,7 @@ async fn files_revalidate_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::pa
 
 /// The newest page reaches back to the latest prompt the user wrote, so a
 /// reopened run shows what it answers. A run longer than the cap comes back
-/// as its newest rows plus the prompt, for the client to pin; members keep
-/// their own newest page.
+/// as its newest rows plus the prompt, for the client to pin.
 async fn history_first_page_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
     let workspace = ws.display().to_string();
     let new_session = |parent: Option<String>| {
@@ -1282,7 +1289,7 @@ async fn history_first_page_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::
     assert_eq!(page["lead"]["messages"][0]["id"], json!(appv3_db::codec::api_uuid(&prompt.id)));
     assert_eq!(page["has_more"], json!(true));
     assert!(page.get("latest_prompt").is_none(), "the prompt is in the page: {page}");
-    assert_eq!(page["members"][0]["messages"].as_array().map(Vec::len), Some(appv3_db::MEMBER_FIRST_PAGE_SIZE as usize), "members keep their newest rows");
+    assert_eq!(page["members"][0]["messages"], json!([]), "members come without their rows");
 
     let long = new_session(None).await;
     let prompt = appv3_db::save_message(pool, &long.id, appv3_db::NewMessage::user("keep going")).await.unwrap();

@@ -1205,6 +1205,21 @@ explicitly.
   cross-origin) can read it; the web client revalidates the newest history
   page of its last four sessions. Tests: `api/src/routes/agent/files.rs`,
   `api/tests/http_api.rs` (`history_etag_flow`). v2 always returns 200.
+- **Uploads and media revalidate (v3 only):** `GET /api/agent/{sid}/uploads/…`
+  and `/media/…` answer a matching `If-None-Match` (weak comparison, `*`),
+  or without one an `If-Modified-Since` no older than the file, with `304`
+  and no body (Starlette always sends the file). Uploads, which get a new
+  name each (`dedupe_upload_filename`), send `Cache-Control: private,
+  max-age=31536000, immutable`; media, which can change under its path,
+  `private, no-cache`. Tests: `api/src/fileresp.rs`, `api/tests/http_api.rs`
+  (`files_revalidate_flow`). v2 sends neither.
+- **Members without rows in history (v3 only):** the newest history page and
+  the `since` delta carry each member's `name`, `session_id`, `running`,
+  `estimated_cost_usd` and `completion_tokens` with `messages: []` (v3
+  earlier sent its newest 10 rows within 128 KB; v2 sends 100). The lead's
+  view never renders them, and opening a member loads its own session. A
+  busy member no longer sets `truncated` on the delta. Tests:
+  `api/tests/http_api.rs` (`history_paging_flow`, `history_first_page_flow`).
 - **Joined live deltas (v3 only):** the stream store sends the first
   `message`, `thinking`, `tool_output_delta` or `summarization_content`
   piece of a stream (an agent's text, one tool's output) at once, then joins

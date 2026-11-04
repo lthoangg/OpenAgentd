@@ -387,6 +387,11 @@ export interface SessionHistoryResponse {
   members: Array<{
     name: string
     session_id: string
+    /**
+     * Empty from servers since v3.46.0: the lead's view never renders a
+     * member's rows, and opening a member loads its own session. Older
+     * servers send its newest rows.
+     */
     messages: MessageResponse[]
     running?: boolean
     estimated_cost_usd?: number | null

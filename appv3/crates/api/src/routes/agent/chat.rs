@@ -1186,11 +1186,15 @@ struct HistoryBody<'a> {
     latest_prompt: Option<MessageView<'a>>,
 }
 
-fn member_part<'a>(statuses: &[(String, String)], sub: &db::ChatSession, msgs: &'a [db::SessionMessage], totals: &UsageTotals) -> MemberPart<'a> {
+/// A member as the lead's history shows it: who, whether it works, and its
+/// usage. Its rows stay out (`messages` is empty, kept for older clients):
+/// the lead's view never renders them, and opening a member loads its own
+/// session.
+fn member_part(statuses: &[(String, String)], sub: &db::ChatSession, totals: &UsageTotals) -> MemberPart<'static> {
     let name = sub.agent_name.clone().unwrap_or_else(|| db::codec::api_uuid(&sub.id));
     let (cost, completion) = totals.get(&sub.id).copied().unwrap_or((0.0, 0));
     let running = statuses.iter().any(|(n, s)| *n == name && s == "working");
-    MemberPart { name, session_id: db::codec::api_uuid(&sub.id), messages: MessagesView(msgs), running, estimated_cost_usd: cost, completion_tokens: completion }
+    MemberPart { name, session_id: db::codec::api_uuid(&sub.id), messages: MessagesView(&[]), running, estimated_cost_usd: cost, completion_tokens: completion }
 }
 
 /// The lead's part of a history response. `totals` is `None` on older pages:
@@ -1273,15 +1277,11 @@ impl RowBytes {
     }
 }
 
-fn log_page_breakdown(sid: &str, lead: &[db::SessionMessage], members: &[Vec<db::SessionMessage>]) {
+fn log_page_breakdown(sid: &str, lead: &[db::SessionMessage]) {
     let mut l = RowBytes::default();
     l.add(lead);
-    let mut m = RowBytes::default();
-    for rows in members {
-        m.add(rows);
-    }
     tracing::info!(
-        "history_page_breakdown session_id={} rows={} content={} reasoning={} tool_args={} tool_results={} extra={} member_rows={} member_bytes={}",
+        "history_page_breakdown session_id={} rows={} content={} reasoning={} tool_args={} tool_results={} extra={}",
         sid,
         lead.len(),
         l.content,
@@ -1289,8 +1289,6 @@ fn log_page_breakdown(sid: &str, lead: &[db::SessionMessage], members: &[Vec<db:
         l.tool_args,
         l.tool_results,
         l.extra,
-        members.iter().map(Vec::len).sum::<usize>(),
-        m.content + m.reasoning + m.tool_args + m.tool_results + m.extra,
     );
 }
 
@@ -1306,20 +1304,13 @@ async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<Stri
         let since_id = py_uuid(&since).ok_or_else(|| ApiError::unprocessable(format!("Invalid since cursor: {since}")))?;
         let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("Lead session not found.")) };
         const LIMIT: i64 = 100;
-        let (lead_rows, mut truncated) = db::history_since(pool, &sid, &since_id, LIMIT).await?;
+        let (lead_rows, truncated) = db::history_since(pool, &sid, &since_id, LIMIT).await?;
         let subs = db::list_child_sessions(pool, std::slice::from_ref(&sid)).await?;
         ensure_agent_ready(&root).await?;
-        let member_rows = futures::future::try_join_all(subs.iter().map(|sub| db::history_since(pool, &sub.id, &since_id, LIMIT))).await?;
         let totals = usage_totals(pool, &root, &subs).await?;
         let statuses = store().get_agent_statuses(&sid);
         let lead = lead_part(&root, &lead_rows, Some(&totals));
-        let mut members = Vec::with_capacity(subs.len());
-        for (sub, (rows, _)) in subs.iter().zip(&member_rows) {
-            if rows.len() as i64 >= LIMIT {
-                truncated = true;
-            }
-            members.push(member_part(&statuses, sub, rows, &totals));
-        }
+        let members = subs.iter().map(|sub| member_part(&statuses, sub, &totals)).collect();
         return Ok(json_status(StatusCode::OK, &HistoryBody { lead, members, has_more: false, next_cursor: None, truncated, pending_question: None, latest_prompt: None }));
     }
 
@@ -1348,31 +1339,22 @@ async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<Stri
     // The newest page reaches back to the latest prompt (see
     // `first_history_page`). Its reads are independent, so they run at once:
     // the lead's page, the agent's start, the members with their usage, and
-    // the open question.
-    //
-    // Members ride on the newest page only, and only their short tail: the
-    // lead's view never renders their rows, and a member's `seq` is its own —
-    // paging it with the lead's cursor re-sent (and duplicated) its newest
-    // rows on every older page.
+    // the open question. Members come without rows (`member_part`).
     let members = async {
         let subs = db::list_child_sessions(pool, std::slice::from_ref(&sid)).await?;
-        let (member_rows, totals) = futures::future::try_join(
-            futures::future::try_join_all(subs.iter().map(|sub| db::member_first_page(pool, &sub.id))),
-            db::session_usage_totals_many(pool, &std::iter::once(root.id.as_str()).chain(subs.iter().map(|s| s.id.as_str())).collect::<Vec<_>>()),
-        )
-        .await?;
-        Ok::<_, ApiError>((subs, member_rows, totals))
+        let totals = db::session_usage_totals_many(pool, &std::iter::once(root.id.as_str()).chain(subs.iter().map(|s| s.id.as_str())).collect::<Vec<_>>()).await?;
+        Ok::<_, ApiError>((subs, totals))
     };
-    let (page, (), (subs, member_rows, totals), pending) =
+    let (page, (), (subs, totals), pending) =
         futures::future::try_join4(async { Ok::<_, ApiError>(db::first_history_page(pool, &root).await?) }, ensure_agent_ready(&root), members, async {
             Ok::<_, ApiError>(db::get_pending_question(pool, &sid).await?.map(|q| db::api::pending_question_response(&q)))
         })
         .await?;
     let statuses = store().get_agent_statuses(&sid);
     let db::FirstHistoryPage { rows: lead_rows, has_more, boundary, latest_prompt } = page;
-    log_page_breakdown(&sid, &lead_rows, &member_rows);
+    log_page_breakdown(&sid, &lead_rows);
     let next_cursor = boundary.map(|b| format!("{}|{}", b.seq, db::codec::api_uuid(&b.id)));
-    let members = subs.iter().zip(&member_rows).map(|(sub, rows)| member_part(&statuses, sub, rows, &totals)).collect();
+    let members = subs.iter().map(|sub| member_part(&statuses, sub, &totals)).collect();
     let lead = lead_part(&root, &lead_rows, Some(&totals));
     let latest_prompt = latest_prompt.as_ref().map(MessageView);
     Ok(json_status(StatusCode::OK, &HistoryBody { lead, members, has_more, next_cursor, truncated: false, pending_question: pending, latest_prompt }))

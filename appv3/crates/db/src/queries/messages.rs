@@ -22,15 +22,6 @@ pub const FIRST_PAGE_MAX_BYTES: usize = 2 * 1024 * 1024;
 /// Rows the byte budget always leaves on the first page.
 pub const FIRST_PAGE_MIN_ROWS: usize = 20;
 
-/// Newest rows each member carries on the lead's first page. The lead's view
-/// never renders a member's rows (its own session does, from its own
-/// history), so a short tail is enough: a session with dozens of members sent
-/// a hundred rows each, nearly all of a 17 MB page.
-pub const MEMBER_FIRST_PAGE_SIZE: i64 = 10;
-
-/// Most bytes of row bodies one member carries on the lead's first page.
-pub const MEMBER_PAGE_MAX_BYTES: usize = 128 * 1024;
-
 /// The bytes a row takes on the wire: its history JSON, which leaves out what
 /// display strips (a tool result's image parts can be megabytes of `extra`).
 fn row_bytes(row: &SessionMessage) -> usize {
@@ -438,13 +429,6 @@ fn trim_to_budget(
     rows.drain(..drop);
     let boundary = rows.first().cloned();
     (rows, true, boundary)
-}
-
-/// A member's part of the lead's first page: its newest
-/// [`MEMBER_FIRST_PAGE_SIZE`] rows, within [`MEMBER_PAGE_MAX_BYTES`].
-pub async fn member_first_page(pool: &DbPool, session_id: &str) -> Result<Vec<SessionMessage>> {
-    let (rows, has_more, boundary) = history_page_of(pool, session_id, None, MEMBER_FIRST_PAGE_SIZE).await?;
-    Ok(trim_to_budget(rows, has_more, boundary, MEMBER_PAGE_MAX_BYTES, 1).0)
 }
 
 async fn latest_prompt_row(pool: &DbPool, session: &ChatSession) -> Result<Option<SessionMessage>> {

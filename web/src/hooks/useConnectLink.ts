@@ -10,7 +10,7 @@
  * Every live `onOpenUrl` event is a fresh scan, so it always opens the
  * dialog, even for a QR code this phone already used. Only the `getCurrent()`
  * replay is deduplicated: the plugin keeps reporting the last opened URL for
- * the life of the app, including after Save & Connect reloads the page and
+ * the life of the app, including after Save and use reloads the page and
  * after iOS kills a backgrounded WebContent process and Tauri reloads it.
  * That second reload can lose sessionStorage, so a replay is also dropped
  * when it points at the server and access key the app already uses.

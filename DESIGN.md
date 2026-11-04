@@ -398,7 +398,7 @@ Three deliberate tensions define the personality:
   system earns that density with a strict 11px legibility floor and generous
   horizontal padding. Working surfaces (transcript, sidebar, review dock,
   Telemetry) stay dense; management surfaces (Settings, Scheduled tasks,
-  Keyboard shortcuts, Backend connection) keep the same type
+  Keyboard shortcuts, the Server dialog) keep the same type
   scale but trade height for room to breathe.
 - **Flat, not sterile.** Hierarchy comes from tonal steps and hairline borders,
   never from drop shadows. Only true overlays cast a shadow.
@@ -1288,7 +1288,7 @@ per-day activity, then dense section-card breakdowns whose rows double as
 filters, then recent turns. Escape steps out of a trace before it closes the overlay.
 
 **Panels and management surfaces** (Settings, Scheduled tasks, Session
-settings, Keyboard shortcuts, the Backend connection dialog) are roomier than
+settings, Keyboard shortcuts, the Server dialog) are roomier than
 the working surfaces. Text stays at the same sizes. They compose the shared
 primitives in `components/ui/`:
 
@@ -1369,8 +1369,8 @@ Settings adds its own shell on top:
 - **Long lists are rows, not cards.** Providers is one bordered list of
   rows (name, a subline such as "API key · 1 key · 13 models", a status
   chip); a row opens in place. Secondary row actions go in a "More" menu.
-- **Backend connection.** The same `AppBackendPanel` appears as Settings →
-  Connection and as the Backend connection dialog. The dialog is used before
+- **Server.** The same `AppBackendPanel` appears as Settings → Server and
+  as the Server dialog. The dialog is used before
   the app is ready, from the footer health dot, and for scanned connect links.
 
 **Scheduled tasks** use the same primitives in the overlay and the review

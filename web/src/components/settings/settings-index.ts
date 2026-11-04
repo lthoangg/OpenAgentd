@@ -50,7 +50,7 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   { section: 'agents', label: 'Agent model', keywords: ['model', 'thinking', 'reasoning', 'effort', 'subagent', 'system prompt', 'tools'], anchor: 'Agents' },
   { section: 'skills', label: 'Skill instructions', keywords: ['skill.md', 'instruction pack', 'new skill', 'create skill'], anchor: 'Skills' },
   { section: 'mcp', label: 'MCP server tools', keywords: ['model context protocol', 'stdio', 'http', 'oauth', 'restart', 'new server', 'tool'], anchor: 'MCP servers' },
-  { section: 'plugins', label: 'Plugin bundles', keywords: ['bundle', 'skills', 'mcp servers', 'tools', 'permissions', 'enable', 'disable', 'reload', 'install', 'add plugin', 'agentd plugin add'], anchor: 'Bundles' },
+  { section: 'plugins', label: 'Plugin folders', keywords: ['folder', 'bundle', 'skills', 'mcp servers', 'tools', 'permissions', 'enable', 'disable', 'reload', 'install', 'add plugin', 'agentd plugin add'], anchor: 'Plugin folders' },
   { section: 'plugins', label: 'Single-file plugins', keywords: ['hooks', 'extensions', 'python', 'typescript', 'javascript', 'provider'] },
   { section: 'goals', label: 'Keep going after approval by default', keywords: ['goal', 'plan', 'approve', 'continue', 'autonomous'] },
   { section: 'goals', label: 'Turns per goal', keywords: ['goal', 'limit', 'max turns'] },

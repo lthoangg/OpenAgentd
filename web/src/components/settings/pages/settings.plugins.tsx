@@ -1,7 +1,7 @@
 /**
  * /settings/plugins — what the plugin runtime loaded (v3 only).
  *
- * Two lists. Bundles (folders with a manifest) are managed here: each has a
+ * Two lists. Plugin folders (with a manifest) are managed here: each has a
  * switch and details that say what it adds, what will run on this machine and
  * what its code may do, and Reload rescans the plugin folders. Single-file
  * plugins stay read-only: they are files in the plugin folder, loaded once per
@@ -389,7 +389,7 @@ export function PluginsSettingsPage() {
   return (
     <SettingsPage
       title="Plugins"
-      description="Bundles add skills, MCP servers and tools to OpenAgentd."
+      description="Plugin folders add skills, MCP servers and tools to OpenAgentd."
       actions={
         <Tooltip>
           <TooltipTrigger
@@ -400,7 +400,7 @@ export function PluginsSettingsPage() {
               </Button>
             }
           />
-          <TooltipContent>Rescan the plugin folders and restart changed bundles. Single-file plugins load only when OpenAgentd starts.</TooltipContent>
+          <TooltipContent>Rescan the plugin folders and restart the ones that changed. Single-file plugins load only when OpenAgentd starts.</TooltipContent>
         </Tooltip>
       }
     >
@@ -443,15 +443,15 @@ export function PluginsSettingsPage() {
       ) : (
         <>
           <PanelSection
-            aria-label="Bundles"
-            title="Bundles"
-            actions={bundles.length > 0 ? <span className={cn('tabular-nums', TEXT.hint)}>{countLine(bundles.length, 'bundle', failedBundles)}</span> : undefined}
+            aria-label="Plugin folders"
+            title="Plugin folders"
+            actions={bundles.length > 0 ? <span className={cn('tabular-nums', TEXT.hint)}>{countLine(bundles.length, 'folder', failedBundles)}</span> : undefined}
             flush={bundles.length > 0}
             className={bundles.length === 0 ? 'border-dashed' : undefined}
           >
             {bundles.length === 0 ? (
               <p className={cn('py-2 text-center', TEXT.body)}>
-                No bundles yet. Add one with <code className={CODE_IN_CARD}>{ADD_BUNDLE_COMMAND}</code>.
+                No plugin folders yet. Ask an agent to install one, or run <code className={CODE_IN_CARD}>{ADD_BUNDLE_COMMAND}</code>.
               </p>
             ) : (
               <ul className="divide-y divide-(--color-border-subtle)">

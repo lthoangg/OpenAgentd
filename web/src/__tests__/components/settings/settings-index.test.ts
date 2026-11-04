@@ -33,9 +33,9 @@ describe('searchSettings', () => {
     }
   })
 
-  it('finds plugin bundles and single-file plugins under Plugins', () => {
-    for (const query of ['bundle', 'agentd plugin add', 'permissions', 'reload']) {
-      expect(labelsFor(query)).toContain('setting:plugins:Plugin bundles')
+  it('finds plugin folders and single-file plugins under Plugins', () => {
+    for (const query of ['folder', 'bundle', 'agentd plugin add', 'permissions', 'reload']) {
+      expect(labelsFor(query)).toContain('setting:plugins:Plugin folders')
     }
     for (const query of ['single-file', 'hooks', 'typescript']) {
       expect(labelsFor(query)).toContain('setting:plugins:Single-file plugins')
@@ -46,7 +46,7 @@ describe('searchSettings', () => {
     const anchors = Object.fromEntries(
       searchSettings('plugins', SETTINGS_SECTIONS).flatMap((hit) => (hit.kind === 'setting' && hit.section === 'plugins' ? [[hit.label, hit.anchor]] : [])),
     )
-    expect(anchors).toEqual({ 'Plugin bundles': 'Bundles', 'Single-file plugins': 'Single-file plugins' })
+    expect(anchors).toEqual({ 'Plugin folders': 'Plugin folders', 'Single-file plugins': 'Single-file plugins' })
   })
 
   it('needs every word of the query, in any order', () => {

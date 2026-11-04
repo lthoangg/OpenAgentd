@@ -189,8 +189,8 @@ describe('PluginsSettingsPage — single-file plugins', () => {
 describe('PluginsSettingsPage — bundles', () => {
   it('lists each bundle with its name, version, description, state and a switch', () => {
     renderPage(WITH_BUNDLES)
-    const list = screen.getByRole('region', { name: 'Bundles' })
-    expect(within(list).getByText('3 bundles · 1 failed')).toBeInTheDocument()
+    const list = screen.getByRole('region', { name: 'Plugin folders' })
+    expect(within(list).getByText('3 folders · 1 failed')).toBeInTheDocument()
 
     const changelog = bundleRow('changelog-tools')
     expect(within(changelog).getByText('1.2.0')).toBeInTheDocument()
@@ -505,7 +505,7 @@ describe('PluginsSettingsPage — Reload', () => {
 
     expect(await screen.findByRole('listitem', { name: 'notes-sync' })).toBeInTheDocument()
     expect(calls).toEqual([{ method: 'POST', path: '/api/plugins/reload', headers: undefined, body: undefined }])
-    expect(within(screen.getByRole('region', { name: 'Bundles' })).getByText('2 bundles')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Plugin folders' })).getByText('2 folders')).toBeInTheDocument()
     expect(useToastStore.getState().toasts).toHaveLength(1)
     expect(useToastStore.getState().toasts[0]).toMatchObject({ tone: 'success', title: 'Plugins reloaded' })
   })
@@ -560,18 +560,19 @@ describe('PluginsSettingsPage — older servers and empty lists', () => {
     // The single-file list is whole, and bundles read as none.
     const files = screen.getByRole('region', { name: 'Single-file plugins' })
     expect(within(files).getByText('scrub.ts')).toBeInTheDocument()
-    const bundles = screen.getByRole('region', { name: 'Bundles' })
+    const bundles = screen.getByRole('region', { name: 'Plugin folders' })
     expect(within(bundles).queryByRole('listitem')).toBeNull()
     expect(within(bundles).getByText('agentd plugin add <git-url or folder>')).toBeInTheDocument()
   })
 
-  it('points to `agentd plugin add` when no bundle is installed', () => {
+  it('points to an agent and `agentd plugin add` when no plugin folder is installed', () => {
     renderPage({ dirs: ['/p'], plugins: [], unported: [], bundles: [] })
-    const bundles = screen.getByRole('region', { name: 'Bundles' })
-    expect(within(bundles).getByText(/^No bundles yet\./)).toBeInTheDocument()
+    const bundles = screen.getByRole('region', { name: 'Plugin folders' })
+    // The desktop app puts no `agentd` on PATH, so the command alone leaves its users stuck.
+    expect(within(bundles).getByText(/^No plugin folders yet\. Ask an agent to install one, or run/)).toBeInTheDocument()
     expect(within(bundles).getByText('agentd plugin add <git-url or folder>').tagName).toBe('CODE')
     // Nothing to count yet.
-    expect(within(bundles).queryByText(/0 bundles/)).toBeNull()
+    expect(within(bundles).queryByText(/0 folders/)).toBeNull()
   })
 
   it('has no bundle empty state once there is a bundle', () => {

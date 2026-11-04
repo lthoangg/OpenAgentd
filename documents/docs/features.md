@@ -162,9 +162,9 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Switch Server from the command palette** `[v3.32.0]` — run **Switch Server…** in the
   command palette (⌘K) to list the builtin sidecar and saved servers (current one
   marked, online/offline shown) and connect with Enter. It reuses the Settings →
-  Connection checks (reachable, access key accepted); a failure shows a toast and
+  Server checks (reachable, access key accepted); a failure shows a toast and
   keeps the current server. No keyboard shortcut; desktop app only.
-  Since `[v3.34.0]`, picking a server here or in Settings → Connection covers
+  Since `[v3.34.0]`, picking a server here or in Settings → Server covers
   the window with **Switching to *name*…** right away (it fades in after a
   beat, so an instant switch never flashes it), and the startup screen keeps
   the same words through the reload until the new server is up. A failed
@@ -211,7 +211,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   group. **General** has theme and transcript style. **Connection** shows the
   backend servers and the add / edit server form
   directly on the page, using the same panel as the **Backend connection**
-  dialog. **About OpenAgentd** has the version, updates and community links.
+  dialog (both are called **Server** since `[v3.40.0]`). **About OpenAgentd**
+  has the version, updates and community links.
   Every page shares one layout: a page header with actions, titled sections
   above their cards, label-left / control-right rows, and more space between
   fields. Server forms test and save from a footer row instead of buttons
@@ -1186,7 +1187,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A jump onto a window, or back down, starts with a look at where it is
     going and a crouch, then the pet leaps in an arc and lands with a squash
     and a puff of dust, instead of gliding straight up.
-  - The notch, the tray's "Needs you" list and Settings → Connection follow
+  - The notch, the tray's "Needs you" list and Settings → Server follow
     the builtin server whenever it runs, so its sessions stay listed with
     only windows on an external server open, or none.
   - In reader mode the jump chip says "Jump to latest" without a count of
@@ -1404,7 +1405,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     pill then opens the session it names. The pill grows out of the notch,
     springs open and shrinks back in, and clicks beside it still reach the
     menu bar. It never takes focus and steps aside for full-screen apps.
-    Settings → General → Desktop turns it off, and can also keep it up
+    Settings → Desktop turns it off, and can also keep it up
     while OpenAgentd is in front (off by default), stop keeping finished
     sessions, or turn on **Expand on hover**.
     Since `[v3.29.0]` it follows every server that has a window open,
@@ -1507,7 +1508,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     chaotic. None starts when movement is stay put, with reduced motion,
     while the pet is dragged or its menu is open, while a bubble is up or a
     question waits (one under way is cut short), nor ladders and balloons
-    while an agent runs. Settings → General → Desktop pet → **Ladders and
+    while an agent runs. Settings → Desktop → Desktop pet → **Ladders and
     balloons** (on by default) turns the first two off; falls stay.
   - **Desktop pet: no sheet over the desktop (screen sharing)** `[v3.42.0]` —
     the pet's window is no longer a transparent sheet over the whole work
@@ -2017,9 +2018,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
 - **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on mobile; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`. Since `[v3.29.0]` the desktop app never connects to a saved server on its own: launch always starts the builtin backend, and saved servers are listed with Online/Offline and Connect, joining only the window where you click Connect (the next launch is back on builtin). The mobile app, which has no builtin backend, still reconnects to its last server.
   - **Add and edit in place** `[v3.40.0]` — Settings → Server opens no form by itself: **Add a server**, at the end of the list, opens the form for a new one (Test, then **Save and use**). Each saved server has **Edit**, which opens its form right under its row; **Save** updates it there without switching to it (a new address or access key needs a passing Test first, a rename does not). Escape or **Cancel** closes the form and puts focus back on the button that opened it. A scanned connect link still opens the add form filled in.
-  The desktop keeps them in `access-keys.json`, a file only your user can read, in its app config folder, instead of the OS credential store `[v3.22.0]`: macOS ties a keychain item to the signing Team ID of the app that saved it, which the unsigned desktop app does not have, so it asked for keychain access after every update. Keys saved in the keychain by earlier versions are not carried over; enter them again in the Server connection dialog.
+  The desktop keeps them in `access-keys.json`, a file only your user can read, in its app config folder, instead of the OS credential store `[v3.22.0]`: macOS ties a keychain item to the signing Team ID of the app that saved it, which the unsigned desktop app does not have, so it asked for keychain access after every update. Keys saved in the keychain by earlier versions are not carried over; enter them again in the Server dialog.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
-- **Desktop network access** `[v3.15.0]` — a **Network access** switch in desktop **Settings → Network access** (and the **Backend connection** dialog) lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in a file only your user can read (`network-access-key` in its app config folder; before v3.22.0 it was in the OS credential store, so devices paired earlier need the new key), and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. `[v3.16.0]` While network access is on, **Show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Backend connection** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save & Connect**. The code hides when the key changes or network access turns off.
+- **Desktop network access** `[v3.15.0]` — a **Network access** switch in desktop **Settings → Server → Access from other devices** (and the **Server** dialog) lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in a file only your user can read (`network-access-key` in its app config folder; before v3.22.0 it was in the OS credential store, so devices paired earlier need the new key), and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. `[v3.16.0]` While network access is on, **Show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Server** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save and use**. The code hides when the key changes or network access turns off.
 
 ---
 
@@ -3505,11 +3506,13 @@ Four orthogonal ways to add capability.
     or other plugin has its id. MCP servers from a plugin run as ordinary
     processes and are not sandboxed.
   - **Manage plugins in Settings** `[v3.44.0]` — Settings → Plugins lists each
-    folder with its state, an on/off switch, a Reload button, and details:
-    skills, the command or URL of each MCP server, tools (read-only ones
-    marked), permissions, errors and warnings. Plugin MCP servers appear in
+    folder under **Plugin folders** with its state, an on/off switch, a
+    Reload button, and details: skills, the command or URL of each MCP
+    server, tools (read-only ones marked), permissions, errors and warnings.
+    Plugin MCP servers appear in
     Settings → MCP marked "from <plugin>": they can be restarted there, go on
     and off with their plugin, and the agent's `mcp` tool cannot change them.
+    With no plugin folder yet, it suggests asking an agent to install one.
   - **`agentd` for the agent in the desktop app** `[v3.44.0]` — the desktop
     app keeps `agentd` inside the app and puts nothing on `PATH`, so the
     agent's `shell` now adds that folder at the end of `PATH` when it finds no

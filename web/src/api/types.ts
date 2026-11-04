@@ -427,7 +427,6 @@ export const SSE_EVENT_TYPES = [
   'agent_not_configured',
   'interaction_mode',
   'queued_turn_start',
-  'permission_asked',
   'question_asked',
   'question_answered',
   'question_dismissed',

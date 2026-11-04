@@ -55,9 +55,11 @@ async fn tool_turn_persists_and_streams_like_v2() {
     session.wait_turn_finished().await;
 
     let names: Vec<&str> = events.iter().map(|(e, _)| e.as_str()).collect();
-    for want in ["agent_status", "tool_call", "tool_start", "permission_asked", "tool_end", "message", "usage", "done"] {
+    for want in ["agent_status", "tool_call", "tool_start", "tool_end", "message", "usage", "done"] {
         assert!(names.contains(&want), "missing {want} in {names:?}");
     }
+    // Tools are always allowed; no client acted on a per-call announcement.
+    assert!(!names.contains(&"permission_asked"), "{names:?}");
     assert_eq!(*names.last().unwrap(), "done");
     let tool_end = events.iter().find(|(e, _)| e == "tool_end").unwrap();
     assert!(tool_end.1.contains("hello world"), "{}", tool_end.1);

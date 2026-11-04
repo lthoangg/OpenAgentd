@@ -338,7 +338,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   app the file list and git status revalidate the same way. Coming back to
   the phone app while the agent works fetches only what was saved while it
   was in the background, and tool cards that finished meanwhile show as
-  done at once.
+  done at once. History pages no longer carry the provider-internal replay
+  data (raw content blocks, thinking signatures, reasoning items) that made
+  up close to half of their bytes.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.
@@ -3993,7 +3995,8 @@ The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed i
 - **SSE event protocol** `[since v1.0]` — typed events: `thinking`, `message`,
   `tool_call`, `tool_start`, `tool_output_delta`, `tool_end`, `usage`,
   `inbox`, `agent_status`, `queued_turn_start`, `rate_limit`,
-  `provider_status`, `permission_asked`, `error`, `done`.
+  `provider_status`, `error`, `done`. *(`permission_asked` removed in
+  v3.46.0: tools are always allowed and no client acted on it.)*
 - **Mid-turn reconnect** `[since v1.0]` — close the tab, reopen later; the
   stream replays buffered state then resumes live.
 - **Self-healing live feed** `[v3.26.0]` — a session's live feed that goes

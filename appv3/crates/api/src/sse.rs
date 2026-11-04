@@ -178,7 +178,7 @@ mod tests {
 
     #[tokio::test]
     async fn events_ready_together_go_out_as_one_write() {
-        let ready = vec![ev("message", "{\"text\":\"a\"}"), ev("tool_start", "{}"), ev("permission_asked", "{}")];
+        let ready = vec![ev("message", "{\"text\":\"a\"}"), ev("tool_call", "{}"), ev("tool_start", "{}")];
         let expected: String = ready.iter().map(|e| e.to_sse()).collect();
         let events = futures::stream::iter(ready).chain(futures::stream::pending());
         let mut body = sse_response(events).into_body().into_data_stream();

@@ -221,31 +221,8 @@ impl Hook for StreamPublisherHook {
         let name = tc.function.name.clone();
         let ui_id = self.resolver.lock().unwrap().resolve_start(&name, &tc.id);
         scope.ui_id = ui_id.clone();
-        // Permission patterns (AutoAllowPermissionService still announces).
-        let args: Value = serde_json::from_str(if tc.function.arguments.is_empty() { "{}" } else { &tc.function.arguments }).unwrap_or(json!({}));
-        let pattern = if let Some(cmd) = args.get("command") {
-            let s = match cmd {
-                Value::String(s) => s.trim().to_string(),
-                other => crate::pystr::py_str(other).trim().to_string(),
-            };
-            if s.is_empty() {
-                name.clone()
-            } else {
-                crate::util::head_chars(&s, 200).to_string()
-            }
-        } else if args.get("path").is_some() || args.get("file_path").is_some() {
-            let p = args.get("path").filter(|v| crate::util::truthy(v)).or_else(|| args.get("file_path").filter(|v| crate::util::truthy(v)));
-            match p {
-                Some(Value::String(s)) => s.clone(),
-                Some(other) => crate::pystr::py_str(other),
-                None => name.clone(),
-            }
-        } else {
-            name.clone()
-        };
         scope.started = Instant::now();
         self.push(events::tool_start(&self.agent, Some(&ui_id), &name, Some(&tc.function.arguments)));
-        self.push(events::permission_asked(&uuid::Uuid::new_v4().to_string(), &self.session_id, &name, &[pattern], json!({"tool_call_id": ui_id, "agent": self.agent})));
         let seq = Arc::new(AtomicI64::new(0));
         let sid = self.session_id.clone();
         let agent = self.agent.clone();

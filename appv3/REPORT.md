@@ -1222,6 +1222,14 @@ explicitly.
   per turn; `history_page_served` (info) and `history_page_breakdown` log
   what each history page weighed. Tests: `agent/src/stream_store.rs`,
   `api/src/sse.rs`, `api/src/middleware.rs`. v2 sends one frame per chunk.
+- **History leaves out provider replay state (v3 only):** a message's
+  `extra` goes out without `raw_content_blocks`, `reasoning_signature` and
+  `reasoning_items` (as it already went without `parts`); the agent reads
+  them from the database. Test:
+  `db/src/api.rs`. v2 sends them.
+- **No `permission_asked` (v3 only):** tools are always allowed, so the
+  per-call announcement after `tool_start` is gone from the stream and the
+  event contract. Test: `agent/tests/session_turn.rs`. v2 sends it.
 - **Changed-files list (v3 only):** `GET /api/agent/workspace/git-diff/files`
   lists every changed path with status and +/− counts from
   `git diff --name-status/--numstat` and `ls-files --others` (capped at 5,000

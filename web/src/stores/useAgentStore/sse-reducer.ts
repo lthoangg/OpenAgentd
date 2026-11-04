@@ -35,7 +35,6 @@ type Getter = () => AgentStore
  */
 export const IGNORED_SSE_EVENTS: Partial<Record<SSEEventType, string>> = {
   rate_limit: 'always followed by a provider_status "retrying" event carrying the same retry_after, which the UI renders',
-  permission_asked: 'tools are auto-allowed; the event is an announcement for API clients that implement approvals',
 }
 
 /**

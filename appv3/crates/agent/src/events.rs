@@ -247,13 +247,6 @@ pub fn agent_status(agent: &str, status: &str, metadata: Option<Value>) -> Envel
     Envelope::typed(json!({"type": "agent_status", "agent": agent, "status": status, "metadata": meta(metadata)}))
 }
 
-pub fn permission_asked(request_id: &str, session_id: &str, tool: &str, patterns: &[String], metadata: Value) -> Envelope {
-    Envelope::typed(json!({
-        "type": "permission_asked", "request_id": request_id, "session_id": session_id,
-        "tool": tool, "patterns": patterns, "metadata": meta(Some(metadata))
-    }))
-}
-
 pub fn question_asked(question_id: &str, session_id: &str, tool_call_id: &str, questions: &[Value]) -> Envelope {
     Envelope::typed(json!({
         "type": "question_asked", "question_id": question_id, "session_id": session_id,
@@ -351,7 +344,6 @@ mod tests {
             provider_status("a", &ProviderStatus::default()),
             agent_not_configured("a", "m"),
             agent_status("a", "idle", None),
-            permission_asked("r", "s", "read", &[], json!({})),
             question_asked("q", "s", "c", &[]),
             question_answered("q", "s", &json!({})),
             plan_review_asked("q", "s", "c", &[], 1),

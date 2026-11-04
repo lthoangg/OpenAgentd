@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Download, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control'
-import { FilePreviewContent, CopyButton, canCopyFileContents, isMarkdownFile, type MarkdownView } from '../FileViewerPanel'
+import { FilePreviewContent, CopyFileButton, canCopyFileContents, isMarkdownFile, type MarkdownView } from '../FileViewerPanel'
 import { FileRefContext, type FileRefOpener } from '../FileRefLink'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { downloadWorkspaceFile } from '@/lib/workspace-download'
@@ -173,7 +173,7 @@ export function FilePreviewSubPanel({
             />
             <TooltipContent side="bottom">{downloadLabel}</TooltipContent>
           </Tooltip>
-          {canCopyFileContents(file) && <CopyButton workspace={workspace} file={file} />}
+          {canCopyFileContents(file) && <CopyFileButton workspace={workspace} file={file} />}
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">

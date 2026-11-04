@@ -1,4 +1,5 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from 'react'
+import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 import { ArrowUpRight, Check, ChevronDown, ChevronUp, Copy, Pencil } from 'lucide-react'
 import { MarkdownBlock } from '@/utils/markdown'
 
@@ -368,7 +369,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   onOpenSession?: OpenSessionHandler
 }) {
   const [showTime, setShowTime] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopyFeedback()
   // Long text, opened, keeps its collapse control in view and closes in place.
   const { open: expanded, setOpen: setExpanded, close: closeText, anchorRef: toggleRef } = useStickyFold()
   const report = useStickyFold<HTMLDivElement>()
@@ -377,15 +378,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   // Height before an expand/collapse, so the layout effect can animate from it.
   const toggleFromHeight = useRef<number | null>(null)
 
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(content)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // ignore
-    }
-  }
+  const handleCopy = () => copy(content)
 
   // Design feedback from the Preview tab shows as cards, not raw text; the
   // collapse and mention rendering below only see the typed text.

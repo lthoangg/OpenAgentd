@@ -5,7 +5,8 @@
  * a collapsed group at the end. Null attributes are dropped.
  */
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
+import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 import { Check, ChevronRight, Copy, X } from 'lucide-react'
 import type { SpanDetail } from '@/api/client'
 import { Button } from '@/components/ui/button'
@@ -30,18 +31,14 @@ function Kv({ label, value, mono = true }: { label: ReactNode; value: ReactNode;
   )
 }
 
-function CopyButton({ value, label }: { value: string; label: string }) {
-  const [done, setDone] = useState(false)
+function CopyAttrButton({ value, label }: { value: string; label: string }) {
+  const { copied: done, copy } = useCopyFeedback()
   return (
     <button
       type="button"
       aria-label={label}
       title={label}
-      onClick={() => {
-        copyText(value)
-        setDone(true)
-        setTimeout(() => setDone(false), 1500)
-      }}
+      onClick={() => void copy(value)}
       className="inline-flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9 pointer-coarse:opacity-100"
     >
       {done ? <Check size={11} aria-hidden="true" /> : <Copy size={11} aria-hidden="true" />}
@@ -60,7 +57,7 @@ function AttrRow({ k, v }: { k: string; v: string }) {
         {v}
       </dd>
       <span className="col-start-2 row-span-2 row-start-1 md:col-start-3 md:row-span-1">
-        <CopyButton value={v} label={`Copy ${k}`} />
+        <CopyAttrButton value={v} label={`Copy ${k}`} />
       </span>
     </div>
   )

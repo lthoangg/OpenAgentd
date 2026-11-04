@@ -3,7 +3,8 @@
  * much), then the span waterfall with the selected span's attributes beside
  * it (over it on phones).
  */
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
+import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 import { Check, Copy } from 'lucide-react'
 import { Chip } from '@/components/ui/chip'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -45,19 +46,12 @@ export function TraceView({
   const selectedSpanId = useTelemetryStore((s) => s.spanId)
   const setSelectedSpanId = useTelemetryStore((s) => s.selectSpan)
   const setDays = useTelemetryStore((s) => s.setDays)
-  const [copied, setCopied] = useState(false)
+  // The id stays visible when the clipboard is unavailable (insecure context).
+  const { copied, copy } = useCopyFeedback(2000)
   const summary = useMemo(() => (data ? traceSummary(data.spans) : null), [data])
   const selectedSpan = data?.spans.find((s) => s.span_id === selectedSpanId) ?? null
 
-  const copyTraceId = async () => {
-    try {
-      await navigator.clipboard.writeText(traceId)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // Clipboard can be unavailable (insecure context); the id stays visible.
-    }
-  }
+  const copyTraceId = () => copy(traceId)
 
   if (isPending) {
     return (

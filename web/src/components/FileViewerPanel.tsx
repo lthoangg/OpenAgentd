@@ -5,6 +5,7 @@
  * the surrounding toolbar.
  */
 import { useEffect, useMemo, useRef, useState, memo } from 'react'
+import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 import { FileLightbox } from './LazyFileLightbox'
 import { Check, Copy, Download, ExternalLink, FileHeadphone, FileText, Loader2, Plus } from 'lucide-react'
 import { codingWorkspaceFileUrl } from '@/api/client'
@@ -87,8 +88,8 @@ function workspaceMediaResolver(workspace: string, filePath: string): (src: stri
   }
 }
 
-export function CopyButton({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
-  const [copied, setCopied] = useState(false)
+export function CopyFileButton({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
+  const { copied, copy } = useCopyFeedback()
   const [busy, setBusy] = useState(false)
   const tooLarge = file.size > MAX_TEXT_PREVIEW_BYTES
 
@@ -98,9 +99,7 @@ export function CopyButton({ workspace, file }: { workspace: string; file: Works
     try {
       const res = await fetch(codingWorkspaceFileUrl(workspace, file.path))
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      await navigator.clipboard.writeText(await res.text())
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
+      await copy(await res.text())
     } catch {
       // Best-effort copy. The user can still download/open the file.
     } finally {

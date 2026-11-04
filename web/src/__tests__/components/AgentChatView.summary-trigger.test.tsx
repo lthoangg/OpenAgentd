@@ -10,7 +10,7 @@
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render } from '@testing-library/react'
-import { forwardRef, useImperativeHandle } from 'react'
+import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
 
 // ── Stable mocks required by AgentChatView ────────────────────────────────────
 
@@ -62,13 +62,14 @@ mock.module('@/api/client', () => ({
   resolveSession: async () => ({ id: 'new-session', created: true }),
 }))
 
-// ── Capture headerTokens.trigger as rendered by AgentChatHeader ───────────────
+// ── Capture the trigger the composer's context meter is given ─────────────────
 
 let capturedTrigger: number | undefined = undefined
 
-mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
-  AgentChatHeader: ({ headerTokens }: { headerTokens?: { trigger?: number } }) => {
-    capturedTrigger = headerTokens?.trigger
+mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHeader: () => null }))
+mock.module('@/components/composer/ContextMeter', () => ({
+  ContextMeter: ({ trigger }: { trigger?: number }) => {
+    capturedTrigger = trigger
     return null
   },
 }))
@@ -90,10 +91,10 @@ mock.module('@/stores/useUIStore', () => ({
 mock.module('@/components/composer/Composer', () => ({
   Composer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
-    object
-  >(function Mock(_props, ref) {
+    { deckEnd?: ReactNode }
+  >(function Mock({ deckEnd }, ref) {
     useImperativeHandle(ref, () => ({ setValue: () => {}, setFiles: () => {} }))
-    return null
+    return <>{deckEnd}</>
   }),
 }))
 
@@ -196,13 +197,13 @@ import { AgentChatView } from '@/components/AgentChatView'
 describe('TokenMeter trigger — model switch', () => {
   it('uses the agent config model trigger when no session override', () => {
     mock.module('@/stores/useAgentStore', () => makeStore(null))
-    render(<AgentChatView sessionId="test-session" />)
+    render(<AgentChatView sessionId="test-session" workspace="/repo/project" />)
     expect(capturedTrigger).toBe(MODEL_A_TRIGGER)
   })
 
   it('uses the session model trigger when the session overrides to model B', () => {
     mock.module('@/stores/useAgentStore', () => makeStore(MODEL_B_ID))
-    render(<AgentChatView sessionId="test-session" />)
+    render(<AgentChatView sessionId="test-session" workspace="/repo/project" />)
     expect(capturedTrigger).toBe(MODEL_B_TRIGGER)
   })
 

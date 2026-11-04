@@ -317,7 +317,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleSplitDockDown,
     openWorkspaceDialogKey,
     showTodos,
-    showMobileActions,
     handleWorkspaceFiles,
     handleOpenGit,
     handleSidebarToggle,
@@ -326,8 +325,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleMentionFileOpen,
     handleFileRefOpen,
     handleDiffOpen,
-    closeMobileActionsMenu,
-    handleSetShowMobileActions,
     handleToggleRunPicker,
     handleToggleScheduler,
     handleTogglePalette,
@@ -341,7 +338,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleOpenTerminal,
     edgeSwipeHandlers,
     sidebarDragOffset,
-    actionsDragOffset,
     workspacePanelDragOffset,
   } = useOverlayState({
     isMobile,
@@ -853,7 +849,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           sessionTitle={sessionTitle}
           onOpenLead={parentSessionId ? handleOpenLead : undefined}
           onSidebarToggle={handleSidebarToggle}
-          headerTokens={headerTokens}
           sessionId={sessionIdState}
           todos={todos}
           onToggleTasks={handleToggleTasks}
@@ -862,14 +857,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           workspacePanel={workspacePanel}
 
         onWorkspaceFiles={handleWorkspaceFiles}
-        showMobileActions={showMobileActions}
-        setShowMobileActions={handleSetShowMobileActions}
-        mobileActionsDragOffset={actionsDragOffset}
-        onToggleScheduler={handleToggleScheduler}
-        onOpenTerminal={workspace && !isChatWorkspace ? handleOpenTerminal : undefined}
-        onCloseMobileActionsMenu={closeMobileActionsMenu}
-        onOpenPalette={handleTogglePalette}
-        onQuickOpen={workspace ? handleToggleQuickOpen : undefined}
       />
 
       {/* Body row — sidebar + main content column. On
@@ -888,6 +875,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             dockOpen={Boolean(workspace) && workspacePanel !== null}
             mobileOpen={mobileSidebarOpen}
             mobileDragOffset={sidebarDragOffset}
+            onOpenPalette={handleTogglePalette}
             onMobileClose={() => {
               setMobileSidebarOpen(false)
               setSidebarDrawerOpen(false)

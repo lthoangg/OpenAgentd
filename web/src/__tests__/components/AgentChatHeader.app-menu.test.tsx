@@ -47,10 +47,6 @@ function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>>
     tasksViewActive: false,
     workspacePanel: null,
     onWorkspaceFiles: () => undefined,
-    showMobileActions: false,
-    setShowMobileActions: () => undefined,
-    onToggleScheduler: () => undefined,
-    onCloseMobileActionsMenu: () => undefined,
     ...overrides,
   }
   return render(<AgentChatHeader {...props} />)

@@ -58,7 +58,6 @@ mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => true })
 const { render, cleanup, screen } = await import('@testing-library/react')
 const userEvent = (await import('@testing-library/user-event')).default
 const { ToolCall } = await import('@/components/ToolCall')
-const { MobileChatActions } = await import('@/components/AgentChatView/MobileChatActions')
 const { SettingsPage } = await import('@/components/settings/SettingsPage')
 
 afterEach(() => {
@@ -123,40 +122,5 @@ describe('reduced motion — SettingsPage save bar', () => {
     expect(bar!.transition).toMatchObject({ duration: 0 })
     expectNoMovement(bar!.initial)
     expectNoMovement(bar!.animate)
-  })
-})
-
-describe('reduced motion — MobileChatActions drawer', () => {
-  const props = {
-    open: true,
-    onOpenChange: () => {},
-    title: 'Fix the login bug',
-    subtitle: 'app',
-    onScheduler: () => {},
-  }
-
-  it('fades the drawer in rather than sliding it 280px', () => {
-    render(<MobileChatActions {...props} />)
-
-    const drawer = captured.find((p) => p.__tag === 'aside')
-    expect(drawer).toBeDefined()
-    expect(drawer!.initial).toEqual({ opacity: 0 })
-    expect(drawer!.exit).toEqual({ opacity: 0 })
-    expect(drawer!.transition).toMatchObject({ duration: 0 })
-  })
-
-  it('still tracks the finger while an edge-swipe drag is in flight', () => {
-    render(<MobileChatActions {...props} dragOffset={120} />)
-
-    const drawer = captured.find((p) => p.__tag === 'aside')
-    expect(drawer!.animate).toMatchObject({ x: 120 })
-  })
-
-  it('applies no residual transform when idle', () => {
-    render(<MobileChatActions {...props} />)
-
-    const drawer = captured.find((p) => p.__tag === 'aside')
-    expectNoMovement(drawer!.initial)
-    expectNoMovement(drawer!.exit)
   })
 })

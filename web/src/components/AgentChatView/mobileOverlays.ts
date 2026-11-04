@@ -1,8 +1,8 @@
 /**
  * mobileOverlays — the single-overlay rule for the mobile chat layout.
  *
- * On mobile every large surface (session sidebar, chat-actions menu,
- * workspace panel, session settings, scheduler, todos, files panel,
+ * On mobile every large surface (session sidebar, workspace panel,
+ * session settings, scheduler, todos, files panel,
  * command palette) is a full-screen or near-full-screen overlay. Two open
  * at once is always a layering bug, so opening any one closes the rest.
  *
@@ -14,7 +14,6 @@
 
 export type MobileOverlay =
   | 'sidebar'
-  | 'actions'
   | 'workspace-panel'
   | 'todos'
   | 'files'
@@ -22,8 +21,8 @@ export type MobileOverlay =
   | 'capabilities'
   | 'palette'
 
-/** The three overlays owned by the edge-swipe drawer controller. */
-const DRAWER_OVERLAYS: MobileOverlay[] = ['sidebar', 'actions', 'workspace-panel']
+/** The overlays owned by the edge-swipe drawer controller. */
+const DRAWER_OVERLAYS: MobileOverlay[] = ['sidebar', 'workspace-panel']
 
 const ALL_OVERLAYS: MobileOverlay[] = [
   ...DRAWER_OVERLAYS,

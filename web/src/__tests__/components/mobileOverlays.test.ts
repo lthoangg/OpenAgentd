@@ -2,9 +2,9 @@ import { describe, expect, it } from 'bun:test'
 import { overlaysToClose, type MobileOverlay } from '@/components/AgentChatView/mobileOverlays'
 
 const ALL: MobileOverlay[] = [
-  'sidebar', 'actions', 'workspace-panel', 'todos', 'files', 'scheduler', 'capabilities', 'palette',
+  'sidebar', 'workspace-panel', 'todos', 'files', 'scheduler', 'capabilities', 'palette',
 ]
-const DRAWERS: MobileOverlay[] = ['sidebar', 'actions', 'workspace-panel']
+const DRAWERS: MobileOverlay[] = ['sidebar', 'workspace-panel']
 
 describe('overlaysToClose', () => {
   it('never includes the overlay being kept', () => {
@@ -20,7 +20,7 @@ describe('overlaysToClose', () => {
       if (other === 'capabilities') continue
       expect(closed).toContain(other)
     }
-    // Explicitly: all three drawers are torn down.
+    // Explicitly: both drawers are torn down.
     for (const drawer of DRAWERS) expect(closed).toContain(drawer)
   })
 
@@ -35,7 +35,6 @@ describe('overlaysToClose', () => {
     // Opening the sidebar should NOT list other drawers (useEdgeSwipe owns
     // that), but SHOULD close every non-drawer overlay.
     const closed = overlaysToClose('sidebar')
-    expect(closed).not.toContain('actions')
     expect(closed).not.toContain('workspace-panel')
     expect(closed).toContain('todos')
     expect(closed).toContain('files')
@@ -51,6 +50,5 @@ describe('overlaysToClose', () => {
     expect(closed).toContain('palette')
     // but not the sibling drawers
     expect(closed).not.toContain('sidebar')
-    expect(closed).not.toContain('actions')
   })
 })

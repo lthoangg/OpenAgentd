@@ -45,6 +45,9 @@ pub struct ChatSession {
     /// The stored credential (key or account) the session is pinned to;
     /// `None` is Auto (the provider's pool picks and rotates).
     pub credential_id: Option<String>,
+    /// The session in another workspace whose `workspace` send started this
+    /// one; `None` for every other session.
+    pub sent_from_session_id: Option<String>,
 }
 
 impl ChatSession {

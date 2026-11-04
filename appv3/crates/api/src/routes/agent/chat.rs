@@ -21,7 +21,7 @@ use axum::Router;
 use bytes::Bytes;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 pub fn router() -> Router<AppState> {
@@ -774,6 +774,10 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     };
     let ids: Vec<String> = sessions.iter().map(|s| s.id.clone()).collect();
     let children = db::list_child_sessions(&st.pool, &ids).await?;
+    // v3 addition: sessions other workspaces ran for these (`linked_sessions`)
+    // and, on any row a send started, who sent it (`sent_from`).
+    let linked = db::list_linked_sessions(&st.pool, &ids).await?;
+    let senders = sent_from_by_id(&st.pool, sessions.iter().chain(linked.iter().map(|(_, s)| s))).await?;
     let goals = db::live_goal_summaries(&st.pool, &ids).await?;
     let overlay = |s: &db::ChatSession| SessionOverlay {
         running: running.contains(&db::codec::api_uuid(&s.id)),
@@ -781,6 +785,7 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
         background_work: pending.contains(&db::codec::api_uuid(&s.id)),
         goal_status: goals.get(&s.id).map(|g| g.status.clone()),
         goal_turns: goals.get(&s.id).map(|g| (g.turns_used, g.max_turns)),
+        sent_from: s.sent_from_session_id.as_ref().and_then(|o| senders.get(o).cloned()),
         ..Default::default()
     };
     let data: Vec<Value> = sessions
@@ -789,10 +794,20 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
             let subs: Vec<Value> = children.iter().filter(|c| c.parent_session_id.as_deref() == Some(s.id.as_str())).map(|c| Value::Object(session_json(c, &overlay(c)))).collect();
             let mut o = overlay(s);
             o.subagents = subs;
+            o.linked_sessions = linked.iter().filter(|(root, _)| *root == s.id).map(|(_, l)| Value::Object(session_json(l, &overlay(l)))).collect();
             Value::Object(session_json(s, &o))
         })
         .collect();
     Ok(json(json!({"data": data, "next_cursor": next_cursor, "has_more": has_more})))
+}
+
+/// `sent_from` values for the senders of `sessions`, by sender id (stored
+/// form). A sender that is gone has no entry.
+async fn sent_from_by_id<'a>(pool: &DbPool, sessions: impl Iterator<Item = &'a db::ChatSession>) -> ApiResult<HashMap<String, Value>> {
+    let mut ids: Vec<String> = sessions.filter_map(|s| s.sent_from_session_id.clone()).collect();
+    ids.sort();
+    ids.dedup();
+    Ok(db::get_sessions_by_ids(pool, &ids).await?.iter().map(|o| (o.id.clone(), db::api::sent_from_json(o))).collect())
 }
 
 /// `session_response` plus, as a v3 addition omitted on Auto, the pinned
@@ -880,7 +895,8 @@ async fn session_detail(State(st): State<AppState>, AxPath(raw): AxPath<String>)
     let pending = manager::find_live_session_serving_session(&sid).and_then(|s| s.pending_interaction_mode());
     let goal = db::live_session_goal(&st.pool, &sid).await?;
     let (goal_status, goal_turns) = (goal.as_ref().map(|g| g.status.clone()), goal.as_ref().map(|g| (g.turns_used, g.max_turns)));
-    let m = session_json(&root, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: pending, goal_status, goal_turns, ..Default::default() });
+    let sent_from = sent_from_by_id(&st.pool, std::iter::once(&root)).await?.into_values().next();
+    let m = session_json(&root, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: pending, goal_status, goal_turns, sent_from, ..Default::default() });
     Ok(json_status(StatusCode::OK, &WithMessages { session: m, messages: MessagesView(&lead) }))
 }
 

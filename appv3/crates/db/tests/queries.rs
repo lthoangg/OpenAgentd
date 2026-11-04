@@ -36,6 +36,40 @@ async fn deleting_a_session_removes_its_side_questions() {
     assert!(live_session_goal(&pool, &other.id).await.unwrap().is_some());
 }
 
+/// Sessions a workspace send started list under the session that sent it,
+/// down a chain of sends; the first sender keeps the link, and deleting it
+/// leaves the started sessions in place, unlinked.
+#[tokio::test]
+async fn linked_sessions_follow_sends_down_the_chain() {
+    let (_d, pool) = fresh().await;
+    let new = |ws: &str| NewSession { workspace: ws.into(), ..Default::default() };
+    let app = create_session(&pool, new("/r/app")).await.unwrap();
+    let infra = create_session(&pool, new("/r/infra")).await.unwrap();
+    let web = create_session(&pool, new("/r/web")).await.unwrap();
+    let seed = create_session(&pool, new("/r/web")).await.unwrap();
+    let other = create_session(&pool, new("/r/app")).await.unwrap();
+    set_sent_from_session(&pool, &api_uuid(&infra.id), &api_uuid(&app.id)).await.unwrap();
+    set_sent_from_session(&pool, &web.id, &app.id).await.unwrap();
+    set_sent_from_session(&pool, &seed.id, &infra.id).await.unwrap();
+    // A later sender does not take the session over.
+    set_sent_from_session(&pool, &infra.id, &other.id).await.unwrap();
+    // Nor can a session link to itself or to a session that does not exist.
+    set_sent_from_session(&pool, &other.id, &other.id).await.unwrap();
+    set_sent_from_session(&pool, &other.id, "00000000000000000000000000000001").await.unwrap();
+
+    let linked = list_linked_sessions(&pool, &[app.id.clone(), infra.id.clone(), other.id.clone()]).await.unwrap();
+    let under = |root: &str| linked.iter().filter(|(r, _)| r == root).map(|(_, s)| s.id.clone()).collect::<Vec<_>>();
+    assert_eq!(under(&app.id), vec![infra.id.clone(), web.id.clone(), seed.id.clone()]);
+    assert_eq!(under(&infra.id), vec![seed.id.clone()]);
+    assert!(under(&other.id).is_empty());
+    assert_eq!(get_session(&pool, &infra.id).await.unwrap().unwrap().sent_from_session_id.as_deref(), Some(app.id.as_str()));
+    assert_eq!(get_session(&pool, &other.id).await.unwrap().unwrap().sent_from_session_id, None);
+
+    delete_session_rows(&pool, &app.id).await.unwrap();
+    assert_eq!(get_session(&pool, &infra.id).await.unwrap().unwrap().sent_from_session_id, None);
+    assert_eq!(get_session(&pool, &seed.id).await.unwrap().unwrap().sent_from_session_id.as_deref(), Some(infra.id.as_str()));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_saves_get_distinct_positions() {
     // A queued user message and the agent's reply can be written at the

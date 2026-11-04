@@ -492,6 +492,7 @@ async fn http_api_end_to_end() {
     history_missing_folder_flow(&c, &pool, root.path()).await;
     history_first_page_flow(&c, &pool, &ws).await;
     plan_review_flow(&c, &pool, &ws).await;
+    linked_sessions_flow(&c, &pool).await;
     confirm_change_flow(&c, &pool, &ws).await;
     workspace_isolation_flow(&c, &pool, &ws, &root.path().join("other-ws")).await;
     worktree_tree_flow(&c, root.path()).await;
@@ -1246,6 +1247,46 @@ async fn workspace_isolation_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std:
 }
 
 /// Plan routes and plan-review answers on a Plan-mode session in `ws`.
+/// Sessions a workspace send started (v3 addition): the list nests them,
+/// down a chain, under the session that sent them (`linked_sessions`), and
+/// each names its sender (`sent_from`), in the list and in its detail.
+async fn linked_sessions_flow(c: &Client, pool: &appv3_db::DbPool) {
+    let new = |ws: &str, title: &str| appv3_db::NewSession { workspace: ws.into(), title: Some(title.into()), ..Default::default() };
+    let app = appv3_db::create_session(pool, new("/r/linked-app", "Orders API")).await.unwrap();
+    let infra = appv3_db::create_session(pool, new("/r/linked-infra", "Orders table")).await.unwrap();
+    let seed = appv3_db::create_session(pool, new("/r/linked-web", "Seed data")).await.unwrap();
+    appv3_db::set_sent_from_session(pool, &infra.id, &app.id).await.unwrap();
+    appv3_db::set_sent_from_session(pool, &seed.id, &infra.id).await.unwrap();
+    let id = |s: &appv3_db::ChatSession| appv3_db::codec::api_uuid(&s.id);
+    let enc = |p: &str| form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>();
+
+    let (st, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}", enc("/r/linked-app")), None).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let row = &v["data"][0];
+    assert_eq!(row["id"], json!(id(&app)), "{v}");
+    assert!(row.get("sent_from").is_none(), "{v}");
+    let linked: Vec<_> = row["linked_sessions"].as_array().unwrap().iter().map(|l| (l["id"].clone(), l["workspace"].clone(), l["running"].clone())).collect();
+    assert_eq!(linked, vec![(json!(id(&infra)), json!("/r/linked-infra"), json!(false)), (json!(id(&seed)), json!("/r/linked-web"), json!(false))], "{v}");
+    assert_eq!(row["linked_sessions"][1]["sent_from"]["session_id"], json!(id(&infra)), "{v}");
+
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}", enc("/r/linked-infra")), None).await;
+    let row = &v["data"][0];
+    assert_eq!(row["sent_from"], json!({"session_id": id(&app), "workspace": "/r/linked-app", "title": "Orders API"}), "{v}");
+    assert_eq!(row["linked_sessions"][0]["id"], json!(id(&seed)), "{v}");
+
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions/{}", id(&infra)), None).await;
+    assert_eq!(v["sent_from"]["session_id"], json!(id(&app)), "{v}");
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions/{}", id(&app)), None).await;
+    assert!(v.get("sent_from").is_none() && v.get("linked_sessions").is_none(), "{v}");
+
+    // Deleting the sender leaves the started session where it is, unlinked.
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{}", id(&app)), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}", enc("/r/linked-infra")), None).await;
+    assert_eq!(v["data"][0]["id"], json!(id(&infra)), "{v}");
+    assert!(v["data"][0].get("sent_from").is_none(), "{v}");
+}
+
 async fn plan_review_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
     use appv3_agent::plan::{self, PlanChange, PlanTarget};
     let new = appv3_db::NewSession { workspace: ws.display().to_string(), interaction_mode: Some("plan".into()), ..Default::default() };

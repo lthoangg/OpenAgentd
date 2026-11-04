@@ -26,6 +26,12 @@ pub struct SessionOverlay {
     pub goal_status: Option<String>,
     /// The live goal's `(turns_used, max_turns)`, if any.
     pub goal_turns: Option<(i64, i64)>,
+    /// The session in another workspace whose send started this one:
+    /// `{session_id, workspace, title}` (v3 addition, omitted when none).
+    pub sent_from: Option<Value>,
+    /// Sessions in other workspaces this one's sends started, directly or
+    /// down a chain, oldest first (v3 addition, omitted when empty).
+    pub linked_sessions: Vec<Value>,
 }
 
 fn put(map: &mut Map<String, Value>, key: &str, value: Option<Value>) {
@@ -75,7 +81,21 @@ pub fn session_response(s: &ChatSession, o: &SessionOverlay) -> Map<String, Valu
         m.insert("goal_turns_used".into(), serde_json::json!(used));
         m.insert("goal_max_turns".into(), serde_json::json!(max));
     }
+    put(&mut m, "sent_from", o.sent_from.clone());
+    if !o.linked_sessions.is_empty() {
+        m.insert("linked_sessions".into(), Value::Array(o.linked_sessions.clone()));
+    }
     m
+}
+
+/// The `sent_from` value of a session whose send started another: who sent
+/// it, and where.
+pub fn sent_from_json(origin: &ChatSession) -> Value {
+    let mut m = Map::new();
+    m.insert("session_id".into(), Value::String(api_uuid(&origin.id)));
+    m.insert("workspace".into(), Value::String(origin.workspace.clone()));
+    put(&mut m, "title", origin.title.clone().map(Value::String));
+    Value::Object(m)
 }
 
 const INTERNAL_ATTACHMENT_FIELDS: [&str; 3] = ["converted_text", "path", "workspace_path"];

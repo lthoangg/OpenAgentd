@@ -199,6 +199,58 @@ pub async fn get_sessions_by_ids(pool: &DbPool, ids: &[String]) -> Result<Vec<Ch
     Ok(q.fetch_all(pool).await?)
 }
 
+/// Record that a `workspace` send from `source` started session `id`. An
+/// existing link is kept: the first sender is the one the session works for.
+pub async fn set_sent_from_session(pool: &DbPool, id: &str, source: &str) -> Result<()> {
+    let (sid, src) = (db_id(id), db_id(source));
+    if sid == src {
+        return Ok(());
+    }
+    sqlx::query("UPDATE chat_sessions SET sent_from_session_id = ? WHERE id = ? AND sent_from_session_id IS NULL AND EXISTS (SELECT 1 FROM chat_sessions p WHERE p.id = ?)")
+        .bind(&src)
+        .bind(&sid)
+        .bind(&src)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Longest chain of sends [`list_linked_sessions`] follows (a guard; a send
+/// is refused after three hops).
+const MAX_LINK_DEPTH: i64 = 8;
+
+/// Every session that sends from `root_ids` started, directly or down a
+/// chain (A sent to B, B sent to C: both under A), as `(root id, session)`
+/// with the root in its stored form, oldest session first.
+pub async fn list_linked_sessions(pool: &DbPool, root_ids: &[String]) -> Result<Vec<(String, ChatSession)>> {
+    if root_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = vec!["?"; root_ids.len()].join(",");
+    let sql = format!(
+        "WITH RECURSIVE linked(root, id, depth) AS ( \
+           SELECT sent_from_session_id, id, 1 FROM chat_sessions WHERE sent_from_session_id IN ({placeholders}) \
+           UNION \
+           SELECT l.root, c.id, l.depth + 1 FROM chat_sessions c JOIN linked l ON c.sent_from_session_id = l.id WHERE l.depth < {MAX_LINK_DEPTH} \
+         ) SELECT DISTINCT root, id FROM linked WHERE root != id"
+    );
+    let mut q = sqlx::query_as::<_, (String, String)>(sqlx::AssertSqlSafe(&*sql));
+    for id in root_ids {
+        q = q.bind(db_id(id));
+    }
+    let pairs = q.fetch_all(pool).await?;
+    let ids: Vec<String> = pairs.iter().map(|(_, id)| id.clone()).collect();
+    let mut rows = get_sessions_by_ids(pool, &ids).await?;
+    rows.sort_by(|a, b| (&a.created_at, &a.id).cmp(&(&b.created_at, &b.id)));
+    let mut out = Vec::new();
+    for row in rows {
+        for (root, _) in pairs.iter().filter(|(_, id)| *id == row.id) {
+            out.push((root.clone(), row.clone()));
+        }
+    }
+    Ok(out)
+}
+
 /// `(id, workspace)` of every session, ids in their stored (hex) form.
 /// The telemetry page uses it to attribute spans that name a session but
 /// not its workspace.

@@ -358,6 +358,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   not downloaded again when you reopen a session. Each saved message also
   leaves out the fields the app never reads (stop reason, cost breakdown,
   undo bookkeeping), about a fifth of what is left of a long session.
+  A running reply reaches a phone or another computer compressed, at about
+  a ninth of the bytes, with each update still arriving at once.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.

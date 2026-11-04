@@ -1249,6 +1249,12 @@ explicitly.
   keeps `input`, `output`, `cache`, `cache_percent`, `estimated_cost_usd`
   and `cost.estimated_usd`. Test: `db/src/api.rs`. v2
   sends them.
+- **Gzipped event streams for remote clients (v3 only):** `text/event-stream`
+  responses to a client that is remote (`Peer::remote()`) and accepts gzip
+  go out gzipped with a sync flush after every frame, so each frame decodes
+  as soon as it arrives (`middleware::gzip_event_stream`); `sse_gzip_closed`
+  logs bytes in and out. A 24 s streamed reply: 51.6 KB → 5.9 KB. Loopback
+  stays identity. Tests: `middleware.rs`. v2 sends identity.
 - **No `permission_asked` (v3 only):** tools are always allowed, so the
   per-call announcement after `tool_start` is gone from the stream and the
   event contract. Test: `agent/tests/session_turn.rs`. v2 sends it.

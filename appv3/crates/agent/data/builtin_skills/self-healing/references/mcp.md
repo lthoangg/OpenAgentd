@@ -18,6 +18,10 @@ of reading `mcp.json` or calling the API.
 Use the `mcp` tool. Don't edit `mcp.json` by hand: a hand edit needs a
 restart, and the tool's change starts the server at once.
 
+A repository with a `plugin.json` at its root is a plugin: install it with
+`agentd plugin add` (see `plugins.md`), which brings its skills too, instead of
+saving its servers here.
+
 - `mcp(action='save', server='<name>', config={…})` adds a server or replaces
   its entry. Names match `^[a-zA-Z][a-zA-Z0-9_-]*$`.
 - `mcp(action='remove', server='<name>')` deletes one.

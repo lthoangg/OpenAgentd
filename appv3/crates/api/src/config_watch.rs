@@ -103,6 +103,9 @@ impl Layout {
         let under = |root: &Path| path.starts_with(root);
         if path == self.mcp {
             Some("mcp")
+        } else if path.parent() == Some(self.config.as_path()) && name == appv3_plugins::STATE_FILE {
+            // Which plugins are off: a reload starts or stops them.
+            Some("plugins")
         } else if under(&self.agents) {
             Some("agents")
         } else if self.skills.iter().any(|r| under(r)) {
@@ -231,6 +234,7 @@ mod tests {
         assert_eq!(l.classify(Path::new("/cfg/home/.agents/skills/y/SKILL.md")), Some("skills"));
         assert_eq!(l.classify(Path::new("/cfg/commands/review.md")), Some("commands"));
         assert_eq!(l.classify(Path::new("/cfg/plugins/scrub.ts")), Some("plugins"));
+        assert_eq!(l.classify(Path::new("/cfg/plugins.json")), Some("plugins"), "turning a plugin on or off reloads the plugins");
         assert_eq!(l.classify(Path::new("/cfg/config.toml")), Some("settings"));
         assert_eq!(l.classify(Path::new("/cfg/agents/.code.md.swp")), None);
         assert_eq!(l.classify(Path::new("/cfg/plugins/__pycache__/x.pyc")), None);

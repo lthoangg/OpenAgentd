@@ -3840,6 +3840,9 @@ Desktop is primary. CLI / server is the developer path.
   `agentd plugin check <folder>` validates a plugin without installing it,
   `agentd plugin list` shows each plugin and its state, and
   `agentd plugin remove <name>` deletes it and keeps its data.
+  `agentd plugin disable <name>` turns a plugin off without removing it and
+  `agentd plugin enable <name>` turns it back on; a running server applies
+  either at once, as it does a hand edit of `plugins.json` `[v3.45.0]`.
 - **CLI artifact cleanup** `[v2.18.0]` — `agentd cleanup` previews a dry run
   and, with `--apply`, deletes sessions older than `--older-than-days`
   (default 14) together with their messages, session artifacts, undo/redo

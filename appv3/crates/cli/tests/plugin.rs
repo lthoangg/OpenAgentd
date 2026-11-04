@@ -369,7 +369,8 @@ fn list_shows_a_single_file_plugin_without_running_it() {
     let sb = Sandbox::new();
     write(&sb.plugins().join("legacy.ts"), "export default {}\n");
     let list = stdout(&sb.run(&["plugin", "list"]));
-    assert!(list.contains("Single-file plugins") && list.contains("legacy.ts  not loaded  loaded when the server starts"), "{list}");
+    assert!(list.contains("Single-file plugins") && list.contains("legacy.ts  on disk  a running server loads it at start"), "{list}");
+    assert!(!list.contains("not loaded"), "a server that rejected the key may well have loaded it: {list}");
 }
 
 #[test]
@@ -777,6 +778,87 @@ fn disabled_plugins_are_listed_and_remove_drops_the_mark() {
 }
 
 // ── with a server ───────────────────────────────────────────────────────────
+
+fn disabled_in(sb: &Sandbox) -> Value {
+    let state: Value = serde_json::from_str(&std::fs::read_to_string(sb.path("config/plugins.json")).unwrap()).unwrap();
+    state["disabled"].clone()
+}
+
+#[test]
+fn disable_and_enable_turn_an_installed_plugin_off_and_on() {
+    let sb = Sandbox::new();
+    sb.run(&["plugin", "add", fixture("review-kit").to_str().unwrap(), "--yes"]);
+    let switch = |sb: &Sandbox| {
+        let list = stdout(&sb.run(&["plugin", "list"]));
+        let line = list.lines().find(|l| l.contains("review-kit")).unwrap().to_string();
+        line.split_whitespace().find(|w| *w == "enabled" || *w == "disabled").unwrap().to_string()
+    };
+    assert_eq!(switch(&sb), "enabled");
+
+    let o = sb.run(&["plugin", "disable", "review-kit"]);
+    assert_eq!(code(&o), 0, "{}\n{}", stdout(&o), stderr(&o));
+    assert!(stdout(&o).contains("✓  Disabled review-kit"), "{}", stdout(&o));
+    assert_eq!(disabled_in(&sb), json!(["review-kit"]));
+    assert_eq!(switch(&sb), "disabled");
+    assert!(sb.plugins().join("review-kit/plugin.json").is_file(), "it stays installed");
+
+    let o = sb.run(&["plugin", "disable", "review-kit"]);
+    assert_eq!(code(&o), 0, "{}\n{}", stdout(&o), stderr(&o));
+    assert!(stdout(&o).contains("✓  review-kit is already disabled"), "{}", stdout(&o));
+    assert_eq!(disabled_in(&sb), json!(["review-kit"]));
+
+    let o = sb.run(&["plugin", "enable", "review-kit"]);
+    assert_eq!(code(&o), 0, "{}\n{}", stdout(&o), stderr(&o));
+    assert!(stdout(&o).contains("✓  Enabled review-kit"), "{}", stdout(&o));
+    assert_eq!(disabled_in(&sb), json!([]));
+    assert_eq!(switch(&sb), "enabled");
+    let o = sb.run(&["plugin", "enable", "review-kit"]);
+    assert_eq!(code(&o), 0);
+    assert!(stdout(&o).contains("✓  review-kit is already enabled"), "{}", stdout(&o));
+}
+
+#[test]
+fn disable_and_enable_refuse_a_name_that_is_not_an_installed_bundle() {
+    let sb = Sandbox::new();
+    for verb in ["disable", "enable"] {
+        let o = sb.run(&["plugin", verb, "nope"]);
+        assert_eq!(code(&o), 1);
+        assert!(stderr(&o).contains("no plugin named nope; none is installed"), "{}", stderr(&o));
+    }
+    sb.run(&["plugin", "add", fixture("review-kit").to_str().unwrap(), "--yes"]);
+    let o = sb.run(&["plugin", "disable", "nope"]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("no plugin named nope; installed: review-kit"), "{}", stderr(&o));
+    assert!(!sb.path("config/plugins.json").exists(), "nothing is written");
+
+    write(&sb.plugins().join("legacy.ts"), "export default {}\n");
+    let o = sb.run(&["plugin", "disable", "legacy"]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("legacy is a single-file plugin") && stderr(&o).contains("rename it to start with `_`"), "{}", stderr(&o));
+    let o = sb.run(&["plugin", "enable", "legacy"]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("legacy is a single-file plugin") && stderr(&o).contains("on whenever the server runs"), "{}", stderr(&o));
+}
+
+#[test]
+fn disable_asks_a_running_server_to_reload_and_a_second_disable_does_not() {
+    let sb = Sandbox::new();
+    sb.run(&["plugin", "add", fixture("review-kit").to_str().unwrap(), "--yes"]);
+    let mut off = bundle_json("review-kit", "disabled", &[]);
+    off["enabled"] = json!(false);
+    let stub = Stub::start(vec![("POST", "/api/plugins/reload", 200, json!({"bundles": [off]}).to_string())]);
+    sb.point_at(stub.port, Some("k"));
+    let o = sb.run(&["plugin", "disable", "review-kit"]);
+    let out = stdout(&o);
+    assert_eq!(code(&o), 0, "{out}\n{}", stderr(&o));
+    assert!(out.contains("✓  Disabled review-kit") && out.contains("✓  Server: reloaded; review-kit is off"), "{out}");
+    assert!(!out.contains("still lists"), "{out}");
+    assert_eq!(stub.requests(), ["POST /api/plugins/reload"]);
+
+    let o = sb.run(&["plugin", "disable", "review-kit"]);
+    assert!(stdout(&o).contains("is already disabled"), "{}", stdout(&o));
+    assert_eq!(stub.requests().len(), 1, "no reload when nothing changed");
+}
 
 #[test]
 fn add_and_remove_ask_a_running_server_to_reload() {

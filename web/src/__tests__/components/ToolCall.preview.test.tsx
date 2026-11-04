@@ -16,7 +16,7 @@ afterEach(cleanup)
 const OPENED = "Opening http://localhost:5173/pricing in the user's Preview tab (served at http://127.0.0.1:52011/pricing)."
 
 function header(title: string): HTMLElement | undefined {
-  return Array.from(document.querySelectorAll<HTMLElement>('[title]')).find((node) => node.getAttribute('title') === title)
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-tool-label]')).find((node) => node.getAttribute('data-tool-label') === title)
 }
 
 describe('preview tool card', () => {

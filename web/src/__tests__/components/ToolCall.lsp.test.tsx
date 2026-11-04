@@ -8,9 +8,9 @@ import { ToolCall } from "@/components/ToolCall"
 afterEach(cleanup)
 
 function getHeader(title: string): HTMLElement {
-  const match = Array.from(document.querySelectorAll<HTMLElement>("[title]"))
-    .find((node) => node.getAttribute("title") === title)
-  if (!match) throw new Error(`Header with title="${title}" not found`)
+  const match = Array.from(document.querySelectorAll<HTMLElement>("[data-tool-label]"))
+    .find((node) => node.getAttribute("data-tool-label") === title)
+  if (!match) throw new Error(`Header with data-tool-label="${title}" not found`)
   return match
 }
 

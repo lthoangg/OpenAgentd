@@ -84,8 +84,8 @@ describe("CodeBlock", () => {
     expect(copyBtn.className).toContain("text-(--color-text-muted)")
     expect(copyBtn.className).not.toContain("opacity-0")
     expect(copyBtn.className).not.toContain("group-hover")
-    // The app tooltip names it; no native title.
-    expect(copyBtn.getAttribute("title")).toBeNull()
+    // Named by a title, which the app's title layer draws as its tooltip.
+    expect(copyBtn.getAttribute("title")).toBe("Copy code")
   })
 
   it("gives a block with no language the same header, captioned 'text'", () => {

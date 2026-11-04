@@ -45,7 +45,12 @@ function holdTitle(el: Element): string | null {
   if (!named) {
     el.setAttribute('aria-label', title)
     el.setAttribute(ADDED_ARIA, 'label')
-  } else if (!el.hasAttribute('aria-description') && !el.hasAttribute('aria-describedby')) {
+  } else if (
+    !el.hasAttribute('aria-description') &&
+    !el.hasAttribute('aria-describedby') &&
+    // A hint that repeats the name ("Copy message" on Copy message) says nothing new.
+    el.getAttribute('aria-label') !== title
+  ) {
     el.setAttribute('aria-description', title)
     el.setAttribute(ADDED_ARIA, 'description')
   }

@@ -1,6 +1,5 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from 'react'
 import { ArrowUpRight, Check, ChevronDown, ChevronUp, Copy, Pencil } from 'lucide-react'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MarkdownBlock } from '@/utils/markdown'
 
 import type { FileLightboxItem, FileLightboxItemType } from '../FileLightbox'
@@ -327,23 +326,17 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
 
   // All non-image types: icon chip that opens the lightbox
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            onClick={onOpen}
-            className="flex items-center gap-2 rounded-sm bg-(--bg-key) px-2.5 py-1.5 text-xs text-(--color-text) transition-colors hover:bg-(--color-fill-key-hover) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
-          >
-            <span className="shrink-0 text-(--color-text-muted)">
-              <FileTypeIcon name={item.name} size={14} />
-            </span>
-            <span className="max-w-[160px] truncate font-medium">{item.name}</span>
-          </button>
-        }
-      />
-      <TooltipContent>{item.name}</TooltipContent>
-    </Tooltip>
+    <button
+      type="button"
+      onClick={onOpen}
+      title={item.name}
+      className="flex items-center gap-2 rounded-sm bg-(--bg-key) px-2.5 py-1.5 text-xs text-(--color-text) transition-colors hover:bg-(--color-fill-key-hover) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+    >
+      <span className="shrink-0 text-(--color-text-muted)">
+        <FileTypeIcon name={item.name} size={14} />
+      </span>
+      <span className="max-w-[160px] truncate font-medium">{item.name}</span>
+    </button>
   )
 }
 
@@ -548,22 +541,16 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
            {needsCollapse && (
              <div className="pointer-events-none absolute top-1.5 right-1.5 bottom-1.5 z-10">
                <div className="pointer-events-auto sticky top-1.5">
-                 <Tooltip>
-                   <TooltipTrigger
-                     render={
-                       <button
-                         ref={toggleRef}
-                         onClick={(event) => toggleExpanded(event.currentTarget)}
-                         aria-expanded={expanded}
-                         aria-label={expanded ? 'Collapse' : 'Expand'}
-                         className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-(--bg-card) text-(--color-text-2) pointer-coarse:size-9 transition-[color,background-color,scale] duration-(--motion-instant) ease-(--ease-in-out) hover:text-(--color-text) active:scale-90"
-                       >
-                         {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                       </button>
-                     }
-                   />
-                   <TooltipContent>{expanded ? 'Collapse' : 'Expand'}</TooltipContent>
-                 </Tooltip>
+                 <button
+                   ref={toggleRef}
+                   onClick={(event) => toggleExpanded(event.currentTarget)}
+                   aria-expanded={expanded}
+                   aria-label={expanded ? 'Collapse' : 'Expand'}
+                   title={expanded ? 'Collapse' : 'Expand'}
+                   className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-(--bg-card) text-(--color-text-2) pointer-coarse:size-9 transition-[color,background-color,scale] duration-(--motion-instant) ease-(--ease-in-out) hover:text-(--color-text) active:scale-90"
+                 >
+                   {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                 </button>
                </div>
              </div>
            )}
@@ -600,85 +587,61 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                 answer's footer does; ``touch-hit`` keeps each a 36px target. */}
             <div className={cn('flex items-center gap-1 transition-opacity duration-(--motion-fast) focus-within:opacity-100 pointer-coarse:opacity-100 max-md:pointer-coarse:gap-0', actionsAtRest || showTime ? 'opacity-100' : 'opacity-0')}>
               {modelId && (
-                // One tooltip for the whole line: a native title here over
-                // the model name's own tooltip drew two on top of each other.
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <span data-prompt-model className="mr-1 flex min-w-0 font-mono text-meta text-(--color-text-subtle)">
-                        <ModelName id={modelId} tooltip={false} />
-                        {thinkingLevel && <span className="shrink-0 whitespace-pre">{` · ${thinkingLevel}`}</span>}
-                      </span>
-                    }
-                  />
-                  <TooltipContent>{thinkingLevel ? `${modelId} · thinking ${thinkingLevel}` : modelId}</TooltipContent>
-                </Tooltip>
+                // One tooltip for the whole line: the model name draws none of
+                // its own here, so two never stack.
+                <span
+                  data-prompt-model
+                  title={thinkingLevel ? `${modelId} · thinking ${thinkingLevel}` : modelId}
+                  className="mr-1 flex min-w-0 font-mono text-meta text-(--color-text-subtle)"
+                >
+                  <ModelName id={modelId} tooltip={false} />
+                  {thinkingLevel && <span className="shrink-0 whitespace-pre">{` · ${thinkingLevel}`}</span>}
+                </span>
               )}
               {onEdit && editLocked && (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      // ``aria-disabled``, not ``disabled``: it stays focusable, so the reason shows on keyboard focus too.
-                      <button
-                        type="button"
-                        aria-disabled="true"
-                        onClick={(event) => event.preventDefault()}
-                        className="relative touch-hit flex size-6 cursor-not-allowed items-center justify-center rounded-xs text-(--color-text-muted) opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9 max-md:pointer-coarse:size-7"
-                        aria-label="Edit message, available when this turn ends"
-                      >
-                        <Pencil size={13} aria-hidden="true" />
-                      </button>
-                    }
-                  />
-                  <TooltipContent>Available when this turn ends</TooltipContent>
-                </Tooltip>
+                // ``aria-disabled``, not ``disabled``: it stays focusable, so the reason shows on keyboard focus too.
+                <button
+                  type="button"
+                  aria-disabled="true"
+                  onClick={(event) => event.preventDefault()}
+                  title="Available when this turn ends"
+                  className="relative touch-hit flex size-6 cursor-not-allowed items-center justify-center rounded-xs text-(--color-text-muted) opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9 max-md:pointer-coarse:size-7"
+                  aria-label="Edit message, available when this turn ends"
+                >
+                  <Pencil size={13} aria-hidden="true" />
+                </button>
               )}
               {onEdit && !editLocked && (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        onClick={onEdit}
-                        className="relative touch-hit flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-9 max-md:pointer-coarse:size-7"
-                        aria-label="Edit message"
-                      >
-                        <Pencil size={13} aria-hidden="true" />
-                      </button>
-                    }
-                  />
-                  {/* Undo, so later turns come back with Redo. */}
-                  <TooltipContent>Edit message</TooltipContent>
-                </Tooltip>
+                // Undo, so later turns come back with Redo.
+                <button
+                  onClick={onEdit}
+                  title="Edit message"
+                  className="relative touch-hit flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-9 max-md:pointer-coarse:size-7"
+                  aria-label="Edit message"
+                >
+                  <Pencil size={13} aria-hidden="true" />
+                </button>
               )}
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={handleCopy}
-                      className="relative touch-hit flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-9 max-md:pointer-coarse:size-7"
-                      aria-label="Copy message"
-                    >
-                      {copied ? (
-                        <Check size={13} aria-hidden="true" className="text-(--accent-green-text)" />
-                      ) : (
-                        <Copy size={13} aria-hidden="true" />
-                      )}
-                    </button>
-                  }
-                />
-                <TooltipContent>Copy message</TooltipContent>
-              </Tooltip>
+              <button
+                onClick={handleCopy}
+                title="Copy message"
+                className="relative touch-hit flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-9 max-md:pointer-coarse:size-7"
+                aria-label="Copy message"
+              >
+                {copied ? (
+                  <Check size={13} aria-hidden="true" className="text-(--accent-green-text)" />
+                ) : (
+                  <Copy size={13} aria-hidden="true" />
+                )}
+              </button>
               {timestamp && (
-                <Tooltip className="text-xs text-(--color-text-subtle)">
-                  <TooltipTrigger
-                    render={
-                      <span className="text-xs text-(--color-text-subtle)" aria-hidden={!(actionsAtRest || showTime)}>
-                        {formatTime(timestamp)}
-                      </span>
-                    }
-                  />
-                  <TooltipContent>{formatFullDateTime(timestamp)}</TooltipContent>
-                </Tooltip>
+                <span
+                  className="text-xs text-(--color-text-subtle)"
+                  title={formatFullDateTime(timestamp)}
+                  aria-hidden={!(actionsAtRest || showTime)}
+                >
+                  {formatTime(timestamp)}
+                </span>
               )}
             </div>
       </div>

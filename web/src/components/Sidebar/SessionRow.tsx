@@ -12,7 +12,6 @@ import { InlineTitleInput } from '@/components/ui/inline-title-input'
 import { AnimatedTitle, useTitleWash } from '@/components/ui/animated-title'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Collapsible } from '@/components/ui/collapsible'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isDeleteKey, isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/item-keys'
 import { sessionPrefetchProps } from '@/lib/session-prefetch-row'
 import { SessionStateWord, SessionStatusMark, sessionStateWord, sessionStatus } from './SessionStatusMark'
@@ -179,11 +178,10 @@ function SessionRowView({
             />
           </div>
         ) : (
-        <Tooltip className="w-full">
-          <TooltipTrigger
-            className="w-full"
-            render={
-              <LongPressButton
+        // A ``title``, drawn by the app's title layer: a long session list
+        // mounted a full tooltip component per row.
+        <LongPressButton
+                title={[sessionTitle, stateWord, contextLabel, checkoutName, sessionDate].filter(Boolean).join(' · ')}
                 enabled={mobileLongPressActions}
                 onLongPress={() => onSessionLongPress(session)}
                 type="button"
@@ -221,10 +219,6 @@ function SessionRowView({
                 {pinned && <span className="sr-only">, pinned</span>}
                 {session.goal_status && <span className="sr-only">{`, goal ${session.goal_status}`}</span>}
               </LongPressButton>
-            }
-          />
-          <TooltipContent>{[sessionTitle, stateWord, contextLabel, checkoutName, sessionDate].filter(Boolean).join(' · ')}</TooltipContent>
-        </Tooltip>
         )}
         </div>
         {/* Subagents fold behind a count pill beside the title, so rows
@@ -353,12 +347,11 @@ function SessionRowView({
             }
             return (
               <div key={sub.session_id} className={`group/sub flex h-6 items-center rounded-sm pr-1 pointer-coarse:h-(--spacing-list-row) ${isSubCurrent ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'}`}>
-                <Tooltip className="min-w-0 flex-1">
-                <TooltipTrigger
-                  className="w-full min-w-0"
-                  render={
                     <button
                       type="button"
+                      title={`${sub.member_id}: ${subTitle} · ${
+                        isSubWaiting ? 'Waiting for main agent' : isSubWorking ? 'Working' : 'Completed'
+                      }`}
                       data-sidebar-session=""
                       aria-current={isSubCurrent ? 'page' : undefined}
                       {...(isSubCurrent ? {} : sessionPrefetchProps(sub.session_id, session.workspace))}
@@ -380,7 +373,7 @@ function SessionRowView({
                         e.preventDefault()
                         onSessionContextActions(subSessionPayload, e)
                       }}
-                      className={`flex h-6 w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors pointer-coarse:h-(--spacing-list-row) ${
+                      className={`flex h-6 w-full min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors pointer-coarse:h-(--spacing-list-row) ${
                         isSubCurrent
                           ? 'text-(--color-text) font-semibold'
                           : 'text-(--color-text-2) hover:text-(--color-text)'
@@ -398,14 +391,6 @@ function SessionRowView({
                         {subTitle}
                       </span>
                     </button>
-                  }
-                />
-                <TooltipContent>
-                  {`${sub.member_id}: ${subTitle} · ${
-                    isSubWaiting ? 'Waiting for main agent' : isSubWorking ? 'Working' : 'Completed'
-                  }`}
-                </TooltipContent>
-              </Tooltip>
               <button
                 type="button"
                 onClick={(e) => onSessionContextActions(subSessionPayload, menuBelow(e.currentTarget))}

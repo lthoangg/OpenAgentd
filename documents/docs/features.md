@@ -850,8 +850,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     folder or checkout), **Remove**, **Undo** / **Redo**, the **Built-in
     server**.
   - The header has no command palette button (`⌘K`/`Ctrl+K`, the View menu
-    and the phone's More sheet open it), and a hidden sidebar leaves no
-    hairline at the window's edge.
+    and the phone's More sheet open it; *the More sheet deprecated; removed
+    in v3.45.0: on a phone the drawer footer's icon opens it*), and a hidden
+    sidebar leaves no hairline at the window's edge.
 - **Transcript: act where you read** `[v3.40.0]`:
   - Under the last finished answer, **Copy · Edit prompt · Undo** *(Undo
     deprecated; removed in v3.42.0)* show at
@@ -1081,7 +1082,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A segmented control that wraps onto two lines (the Providers status
     filter) fills only the chosen segment.
   - The More sheet no longer lists Model and thinking; the run chip under
-    the composer opens it.
+    the composer opens it *(the More sheet deprecated; removed in v3.45.0)*.
 - **Quieter and simpler** `[v3.41.0]`:
   - In dark mode a chosen segment or tab (Code / Plan, the thinking level)
     fills more softly.
@@ -1204,6 +1205,19 @@ run from the terminal (the native Rust binary since v3.0.0).
     over it.
   - A question with several answers allowed shows checkboxes without the
     1–9 digit beside each; the digit keys still pick options.
+- **Faster sessions, one panel on phones** `[v3.45.0]`:
+  - A running session, or one with a long history, opens in about half the
+    time, and over a slow link (a phone on the LAN) several times faster:
+    the history and the live answer load together, and the first page of a
+    lead's history carries only the latest few rows of each subagent.
+  - The phone header has no More (⋯) sheet: it shows the sidebar, the title,
+    the Task list and the Review panel. Terminal, find file and scheduled
+    tasks open from the Review panel, the command palette from the drawer
+    footer, and a swipe from the right edge opens the Review panel.
+  - A shell call's tooltip shows only its description (the command is
+    already on the row), and other tooltips (copy buttons, a prompt's and an
+    answer's actions, session rows) are the system's plain tooltips, so a
+    long transcript renders lighter.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

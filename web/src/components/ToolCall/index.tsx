@@ -202,7 +202,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // (`now`, below) doesn't re-run a full JSON.parse and, for edit/patch/
   // write, an O(oldLines*newLines) diff on every tick for the entire
   // lifetime of a running tool call just to redraw the duration label.
-  const { header, headerTitle, formattedArgs, language, suppressResult } =
+  const { header, headerTitle, tooltip, formattedArgs, language, suppressResult } =
     useMemo(() => getToolDisplay(name, args), [name, args])
   const toolOperation = useMemo(() => {
     if (name !== 'lsp' || !args) return undefined
@@ -302,7 +302,9 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // collapsed rows at once: the parse + pretty-print waits for the expand.
   const displayedArgs = useMemo(() => (expanded ? formatArgsDetails(formattedArgs) : ''), [expanded, formattedArgs])
   const displayName = name || 'tool'
-  const title = headerTitle ? `${displayName}: ${headerTitle}` : displayName
+  // The whole label, for tools and tests that read it; the tooltip says only
+  // what the row does not already show (see ``ToolDisplay.tooltip``).
+  const label = headerTitle ? `${displayName}: ${headerTitle}` : displayName
   // Shell rows carry no exit status or error mark: the agent reads and fixes
   // a failed command. Other tools still flag a failure with an error chip.
   const failed = state === 'failed'
@@ -365,7 +367,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                 'aria-label': `${expanded ? 'Collapse' : 'Expand'} ${displayName} details`,
               }
             : { 'aria-label': `${displayName} (no details)` })}
-          title={title}
+          title={tooltip || undefined}
+          data-tool-label={label}
           className="group"
           meta={
             <>

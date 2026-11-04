@@ -14,6 +14,7 @@ import type { FileRefOpener } from "@/components/FileRefLink"
 import { useAgentStore } from "@/stores/useAgentStore"
 import { useDisplayPrefsStore } from "@/stores/useDisplayPrefsStore"
 import type { ContentBlock } from "@/api/types"
+import { TitleTooltipLayer } from '@/components/ui/title-tooltip'
 
 const revertToMessage = mock(async (_id: unknown) => null)
 const { revertToMessage: realRevert } = useAgentStore.getState()
@@ -107,10 +108,11 @@ describe("AgentView — Edit prompt in the footer", () => {
 
     const edit = screen.getByRole("button", { name: /Edit prompt, available when this turn ends/ })
     expect(edit.getAttribute("aria-disabled")).toBe("true")
-    expect(edit.getAttribute("title")).toBeNull()
     fireEvent.click(edit)
     expect(revertToMessage).not.toHaveBeenCalled()
 
+    // The reason is a title, drawn by the app's title layer.
+    render(<TitleTooltipLayer />)
     await user.hover(edit)
     expect((await screen.findByRole("tooltip")).textContent).toBe("Available when this turn ends")
   })

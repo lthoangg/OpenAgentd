@@ -19,7 +19,7 @@ describe("ToolCall generate_video display", () => {
     expect(screen.getByText("cube_spin.mp4")).toBeInTheDocument();
     expect(screen.queryByText(/Filming/i)).toBeNull();
     expect(screen.queryByText(/Generate Video/)).toBeNull();
-    expect(document.querySelector('[title="generate_video: cube_spin.mp4"]')).not.toBeNull();
+    expect(document.querySelector('[data-tool-label="generate_video: cube_spin.mp4"]')).not.toBeNull();
   });
 
   it("shows only the tool name when filename is not provided", () => {
@@ -31,7 +31,7 @@ describe("ToolCall generate_video display", () => {
     expect(screen.getByText("generate_video")).toBeInTheDocument();
     expect(screen.queryByText(/Filming/i)).toBeNull();
     // No target: the row title is just the tool name
-    expect(document.querySelector('[title="generate_video"]')).not.toBeNull();
+    expect(document.querySelector('[data-tool-label="generate_video"]')).not.toBeNull();
   });
 
   it("sanitizes filename by removing extension and adding .mp4", () => {

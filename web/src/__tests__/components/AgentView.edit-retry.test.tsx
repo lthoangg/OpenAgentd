@@ -7,6 +7,7 @@ mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 import { AgentView } from '@/components/AgentView'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { ContentBlock } from '@/api/types'
+import { TitleTooltipLayer } from '@/components/ui/title-tooltip'
 
 const revertToMessage = mock(async () => null)
 const initialRevertToMessage = useAgentStore.getState().revertToMessage
@@ -48,11 +49,11 @@ describe('AgentView — edit any prompt', () => {
     const edits = screen.getAllByRole('button', { name: /Edit message, available when this turn ends/ })
     expect(edits).toHaveLength(2)
     expect(edits[0].getAttribute('aria-disabled')).toBe('true')
-    // The app tooltip, not a native title.
-    expect(edits[0].getAttribute('title')).toBeNull()
     fireEvent.click(edits[0])
     expect(revertToMessage).not.toHaveBeenCalled()
 
+    // The reason is a title, drawn by the app's title layer.
+    render(<TitleTooltipLayer />)
     await user.hover(edits[0])
     expect((await screen.findByRole('tooltip')).textContent).toBe('Available when this turn ends')
   })

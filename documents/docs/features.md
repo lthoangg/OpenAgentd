@@ -1272,6 +1272,38 @@ run from the terminal (the native Rust binary since v3.0.0).
     touch deeper.
   - The macOS tray's warning and status colours, the desktop pet's marks in
     dark mode and the Windows taskbar badge digits read clearly.
+- **Smoother motion everywhere** `[v3.47.0]`:
+  - Nothing jumps any more. If you reopen a menu or popover while it is
+    closing, it carries on from where it was. Sending a message glides the
+    chat to the end. When an answer finishes streaming, the rest of the text
+    keeps flowing in instead of appearing all at once. "N new" scrolls
+    smoothly, and tool details, attachments and queued messages fold and
+    fade instead of popping in.
+  - In the Review panel, closing a tab slides the tabs next to it across,
+    and a new tab fades in. Maximize slides, a dragged tab lifts and lands
+    on a spring, and sidebar sessions fold one row at a time.
+  - Dragging the sidebar edge, the Review panel edge or a pane divider
+    snaps to the default size when you get close to it. On a Mac with a
+    Force Touch trackpad you also feel a tick, like Finder.
+  - On phones, a drawer keeps the speed of your swipe when you let go and
+    stops cleanly at the edge. Full-screen views rise as a sheet that you
+    drag down to close. A pressed row lifts. The header line appears only
+    once you scroll the chat under it. Stop, Approve, Deny, an answer and a
+    failed send give haptic feedback.
+  - Controls react like the system ones: a switch stretches when pressed
+    and can be dragged, a checkbox draws its check, the selection in a
+    segmented control can be slid, a menu item blinks once when chosen, a
+    rejected key or URL shakes, and the keyboard focus ring settles in.
+  - Details: icons such as Copy → ✓ and Send ↔ Stop swap smoothly, and
+    usage, spend, token and Git `+/−` numbers roll only the digits that
+    change. Badges bump when their count goes up. "Thinking…" and
+    "running…" have a light sweep across them, and a finished task gets
+    struck through from left to right. The lightbox grows out of the
+    thumbnail you opened and shrinks back into it. Images fade in once they
+    have loaded. The command palette's highlight glides when you use the
+    arrow keys. Switching between light and dark crossfades the whole
+    window.
+  - With Reduce Motion turned on, all of these changes happen instantly.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.

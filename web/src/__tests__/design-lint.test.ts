@@ -310,4 +310,13 @@ describe('design lint', () => {
       expect(countMatches(rule.pattern)).toEqual(rule.allow)
     })
   }
+
+  // A bare ``transition-colors`` (a hover) takes Tailwind's default timing,
+  // so the theme pins it to the hover step instead of Tailwind's 150ms:
+  // every button changes colour at ``instant`` without naming a duration.
+  it('bare-transition-timing: a transition with no duration runs at instant on ease-in-out', () => {
+    const css = readFileSync(join(SRC, 'index.css'), 'utf8')
+    expect(css).toMatch(/--default-transition-duration:\s*var\(--motion-instant\);/)
+    expect(css).toMatch(/--default-transition-timing-function:\s*var\(--ease-in-out\);/)
+  })
 })

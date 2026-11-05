@@ -70,6 +70,12 @@
     --spacing-toolbar: 2rem;       /* 32px view toolbar under a tab bar */
     --spacing-list-row: 1.75rem;   /* 28px sidebar / dock list row */
 
+    /* A bare transition-colors / -opacity / -transform takes the hover
+     * step (DESIGN.md → Motion: buttons change colour at instant); a fold,
+     * slide or fade names its own duration-(--motion-*). */
+    --default-transition-duration: var(--motion-instant);
+    --default-transition-timing-function: var(--ease-in-out);
+
     /* Type scale (DESIGN.md → Typography). Every step is rem times
      * --oa-text-scale, the Text size setting (Compact 1, Default 13/12,
      * Large 14/12), so UI text is 12/13/14px and meta 11/12/13px. On iOS the
@@ -549,7 +555,7 @@ html[data-mobile-shell][data-vp-anim] .app-overlay-modal {
 }
 
 html[data-mobile-shell][data-vp-anim] .app-overlay-modal {
-  transition: transform 0.2s var(--ease-sheet);
+  transition: transform var(--motion-base) var(--ease-sheet);
 }
 
 /* ── Keyboard open (iOS/Android Tauri) ──────────────────────────────────────
@@ -670,8 +676,8 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 html[data-mobile-shell][data-vp-anim] .mobile-viewport,
 html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   transition:
-    height 0.2s var(--ease-sheet),
-    transform 0.2s var(--ease-sheet);
+    height var(--motion-base) var(--ease-sheet),
+    transform var(--motion-base) var(--ease-sheet);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -817,10 +823,11 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   background: var(--bg-send);
   color: var(--color-text-on-accent);
   z-index: 100;
-  transition: top var(--motion-fast) var(--ease-out);
+  translate: 0 0;
+  transition: translate var(--motion-fast) var(--ease-out);
 }
 .skip-link:focus-visible {
-  top: 0;
+  translate: 0 40px;
 }
 
 /* ─────────────────────────────────────────────────────────────

@@ -66,7 +66,7 @@ function AttrRow({ k, v }: { k: string; v: string }) {
 function Group({ title, count, children, collapsible = false }: { title: string; count: number; children: ReactNode; collapsible?: boolean }) {
   const header = (
     <>
-      {collapsible && <ChevronRight size={12} aria-hidden="true" className="transition-transform group-open/grp:rotate-90" />}
+      {collapsible && <ChevronRight size={12} aria-hidden="true" className="transition-transform duration-(--motion-fast) group-open/grp:rotate-90" />}
       <span className="truncate">{title}</span>
       <span className="ml-auto font-sans text-(--color-text-subtle)">{count}</span>
     </>

@@ -6,7 +6,9 @@
  * same checklist lives in the review dock's Tasks tab instead.
  */
 import { ListTodo } from 'lucide-react'
+import { useRef } from 'react'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
+import { usePresenceMotion } from '@/components/ui/_use-presence-motion'
 import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { DURATIONS_S } from '@/lib/motion'
 import { cn } from '@/lib/utils'
@@ -37,7 +39,11 @@ interface TodosPopoverProps {
 export function TodosPopover({ open, onOpenChange, todos, goal = null, plan = null, onClearPlan, onOpenPlan, onOpenGoal, onGoalAction }: TodosPopoverProps) {
   const summary = summarizeTodos(todos)
   const doneWhen = readDoneWhen(plan, { todos, goal })
-  const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.instant * 1000)
+  const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.fast * 1000)
+  // Grows from the Tasks button's corner at ``fast`` and leaves the same way;
+  // a reopen mid-exit turns back from where it is.
+  const panelRef = useRef<HTMLElement>(null)
+  usePresenceMotion(panelRef, mounted, closing, { enter: DURATIONS_S.fast })
   const layer = useKeyLayer(open, { kind: 'transient', onClose: () => onOpenChange(false) })
   if (!mounted) return null
 
@@ -60,21 +66,17 @@ export function TodosPopover({ open, onOpenChange, todos, goal = null, plan = nu
       <button
         type="button"
         className={cn(
-          'absolute inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] cursor-default bg-transparent transition-opacity duration-(--motion-instant) ease-(--ease-out) pointer-events-auto',
+          'absolute inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] cursor-default bg-transparent transition-opacity duration-(--motion-fast) ease-(--ease-out) pointer-events-auto',
           closing ? 'opacity-0' : 'opacity-100',
         )}
         aria-label="Close tasks"
         onClick={() => onOpenChange(false)}
       />
       <section
+        ref={panelRef}
         role="dialog"
         aria-label="Tasks"
-        className={cn(
-          'absolute right-2 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px)+0.5rem)] w-[min(calc(100vw-1rem),20rem)] overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) p-0 shadow-(--shadow-depth) pointer-events-auto',
-          closing
-            ? 'animate-out fade-out-0 zoom-out-95 animation-duration-(--motion-instant) ease-(--ease-out)'
-            : 'animate-in fade-in-0 animation-duration-(--motion-instant) ease-(--ease-out)',
-        )}
+        className="absolute right-2 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px)+0.5rem)] w-[min(calc(100vw-1rem),20rem)] origin-top-right overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) p-0 shadow-(--shadow-depth) pointer-events-auto"
       >
         <div className="flex items-center justify-between border-b border-(--color-border-subtle) px-2.5 py-2">
           <span className="text-meta font-medium text-(--color-text)">Tasks</span>

@@ -89,51 +89,74 @@ describe('floating panels — entrance', () => {
 })
 
 /**
- * DESIGN.md → Motion: dropdowns are ``base`` (240ms) with the ``ease-out``
- * entrance curve. The exit is ``fast`` (150ms) so a picked item's panel is
- * out of the way sooner, and the panel stays mounted until the exit ends.
+ * DESIGN.md → Motion: dropdowns and popovers grow in at ``base`` (240ms) on
+ * the ``ease-out`` curve and leave at ``fast`` (150ms), staying mounted until
+ * the exit ends. The motion runs through the Web Animations API
+ * (usePresenceMotion), so the calls are what we can observe.
  */
 describe('floating panels — motion tokens', () => {
-  const has = (el: Element, token: string) => el.className.split(/\s+/).includes(token)
+  type Call = { el: Element; frames: Keyframe[]; options: KeyframeAnimationOptions }
+  function recordAnimations() {
+    const calls: Call[] = []
+    const original = HTMLElement.prototype.animate
+    HTMLElement.prototype.animate = function (this: HTMLElement, frames, options) {
+      calls.push({ el: this, frames: frames as Keyframe[], options: options as KeyframeAnimationOptions })
+      return original.call(this, frames, options)
+    }
+    return { calls, restore: () => { HTMLElement.prototype.animate = original } }
+  }
 
   it('opens a dropdown at the base duration and closes it at the fast one', async () => {
-    render(
-      <Dropdown trigger="More" aria-label="More">
-        <DropdownItem>One</DropdownItem>
-      </Dropdown>,
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'More' }))
-    const panel = screen.getByRole('menu')
-    expect(has(panel, 'animation-duration-(--motion-base)')).toBe(true)
-    expect(has(panel, 'ease-(--ease-out)')).toBe(true)
+    const rec = recordAnimations()
+    try {
+      render(
+        <Dropdown trigger="More" aria-label="More">
+          <DropdownItem>One</DropdownItem>
+        </Dropdown>,
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'More' }))
+      const panel = screen.getByRole('menu')
+      const enter = rec.calls.filter((c) => c.el === panel).at(-1)!
+      expect(enter.options.duration).toBe(240)
+      expect(enter.options.easing).toBe('cubic-bezier(0.16, 1, 0.3, 1)')
+      expect(enter.frames[0]).toEqual({ opacity: 0, transform: 'scale(0.95)' })
 
-    await userEvent.keyboard('{Escape}')
-    const closing = screen.getByRole('menu')
-    expect(has(closing, 'animate-out')).toBe(true)
-    expect(has(closing, 'animation-duration-(--motion-fast)')).toBe(true)
+      await userEvent.keyboard('{Escape}')
+      const exit = rec.calls.filter((c) => c.el === panel).at(-1)!
+      expect(exit.options.duration).toBe(150)
+      expect(exit.options.fill).toBe('forwards')
 
-    await new Promise((resolve) => setTimeout(resolve, 120))
-    expect(screen.queryByRole('menu')).not.toBeNull()
-    await waitForElementToBeRemoved(() => screen.queryByRole('menu'))
+      await new Promise((resolve) => setTimeout(resolve, 120))
+      expect(screen.queryByRole('menu')).not.toBeNull()
+      await waitForElementToBeRemoved(() => screen.queryByRole('menu'))
+    } finally {
+      rec.restore()
+    }
   })
 
   it('opens a popover at the base duration and closes it at the fast one', async () => {
-    render(
-      <Popover>
-        <PopoverTrigger>Open</PopoverTrigger>
-        <PopoverContent>Details</PopoverContent>
-      </Popover>,
-    )
-    const content = () => document.querySelector<HTMLElement>('[data-slot="popover-content"]')
+    const rec = recordAnimations()
+    try {
+      render(
+        <Popover>
+          <PopoverTrigger>Open</PopoverTrigger>
+          <PopoverContent>Details</PopoverContent>
+        </Popover>,
+      )
+      const content = () => document.querySelector<HTMLElement>('[data-slot="popover-content"]')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open' }))
-    expect(has(content()!, 'animation-duration-(--motion-base)')).toBe(true)
-    expect(has(content()!, 'ease-(--ease-out)')).toBe(true)
+      await userEvent.click(screen.getByRole('button', { name: 'Open' }))
+      const enter = rec.calls.filter((c) => c.el === content()).at(-1)!
+      expect(enter.options.duration).toBe(240)
+      expect(content()!.className).toMatch(/(^|\s)origin-top(\s|$)/)
 
-    await userEvent.keyboard('{Escape}')
-    expect(has(content()!, 'animation-duration-(--motion-fast)')).toBe(true)
-    await new Promise((resolve) => setTimeout(resolve, 120))
-    expect(content()).not.toBeNull()
-    await waitForElementToBeRemoved(content)
+      await userEvent.keyboard('{Escape}')
+      expect(rec.calls.filter((c) => c.el === content()).at(-1)!.options.duration).toBe(150)
+      await new Promise((resolve) => setTimeout(resolve, 120))
+      expect(content()).not.toBeNull()
+      await waitForElementToBeRemoved(content)
+    } finally {
+      rec.restore()
+    }
   })
 })

@@ -31,6 +31,11 @@ export const EASINGS = {
   linear: [0, 0, 1, 1],
 } as const satisfies Record<string, [number, number, number, number]>
 
+/** An easing as a CSS / Web Animations ``easing`` string. */
+export function cssEasing(curve: readonly [number, number, number, number]): string {
+  return `cubic-bezier(${curve.join(', ')})`
+}
+
 /**
  * Enter/exit for a card in the floating notices column (the TypeScript tools
  * prompt, the update card): drops in from the header at ``base``, fades out

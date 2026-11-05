@@ -30,6 +30,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
+import { usePresenceMotion } from '@/components/ui/_use-presence-motion'
 import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { DURATIONS_S } from '@/lib/motion'
 import { cn } from '@/lib/utils'
@@ -181,6 +182,15 @@ function computePosition(trigger: DOMRect, content: DOMRect, side: Side, align: 
   return { top: top + window.scrollY, left: left + window.scrollX, anchorWidth: trigger.width, above }
 }
 
+/** The corner a popover grows from: the side facing its trigger, at the aligned end. */
+function originClass(side: Side, align: Align, above: boolean): string {
+  if (side === 'left') return 'origin-right'
+  if (side === 'right') return 'origin-left'
+  // Literal class names, so Tailwind generates them.
+  if (above) return align === 'start' ? 'origin-bottom-left' : align === 'end' ? 'origin-bottom-right' : 'origin-bottom'
+  return align === 'start' ? 'origin-top-left' : align === 'end' ? 'origin-top-right' : 'origin-top'
+}
+
 const samePos = (a: Pos | null, b: Pos) =>
   a !== null && a.top === b.top && a.left === b.left && a.anchorWidth === b.anchorWidth && a.above === b.above
 
@@ -200,8 +210,11 @@ function PopoverContent({
   const [pos, setPos] = useState<Pos | null>(null)
 
   // Must be called before any conditional returns (Rules of Hooks)
-  // Matches the exit's ``animation-duration-(--motion-fast)`` below.
+  // Unmounts when the ``fast`` exit ends.
   const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.fast * 1000)
+  // In at ``base`` on ``ease-out``, out at ``fast``; a reopen mid-exit turns
+  // back from where it is (``usePresenceMotion``).
+  usePresenceMotion(contentRef, mounted, closing)
 
   const reposition = useCallback(() => {
     const trigger = triggerRef.current
@@ -281,14 +294,8 @@ function PopoverContent({
         'flex w-[min(18rem,calc(100vw-1rem))] flex-col gap-2.5',
         'rounded-md border border-(--color-border-subtle) bg-(--bg-card)',
         'p-3.5 text-xs text-(--color-text) shadow-(--shadow-depth) outline-none',
-        // Animation only: ``duration-*`` would also transition ``top``/``left``
-        // (``transition-property`` defaults to ``all``) as the content moves
-        // from where it mounts, hidden, to where it measures itself into place.
-        // DESIGN.md → Motion: in at ``base`` on the ``ease-out`` curve, out at ``fast``.
-        'ease-(--ease-out)',
-        closing
-          ? 'animate-out fade-out-0 zoom-out-95 animation-duration-(--motion-fast)'
-          : 'animate-in fade-in-0 animation-duration-(--motion-base)',
+        // Grow out of the trigger: the edge that faces it, on the aligned side.
+        originClass(side, align, pos?.above ?? side === 'top'),
         className,
       )}
       style={{

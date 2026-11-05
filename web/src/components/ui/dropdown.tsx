@@ -53,6 +53,7 @@ import { getVisibleViewport, onVisibleViewportChange } from '@/lib/visible-viewp
 import { DURATIONS_S } from '@/lib/motion'
 import { buttonVariants } from '@/components/ui/button'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
+import { usePresenceMotion } from '@/components/ui/_use-presence-motion'
 import { MENU_ITEM_CLASS, MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
 import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { hoverIntent } from '@/hooks/use-hover-intent'
@@ -163,10 +164,11 @@ function Dropdown({
   dense = false,
 }: DropdownProps) {
   const [open, setOpen] = useState(false)
-  // Matches the exit's ``animation-duration-(--motion-fast)`` below.
+  // Unmounts when the ``fast`` exit (usePresenceMotion) ends.
   const { mounted: panelMounted, closing: panelClosing } = useDeferredUnmount(open, DURATIONS_S.fast * 1000)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
+  usePresenceMotion(panelRef, panelMounted, panelClosing)
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0, flipsUp: false })
   const uid = useId()
   /** Index of the keyboard's active option, or -1 for none. */
@@ -395,19 +397,11 @@ function Dropdown({
             'min-w-(--dropdown-anchor-width) overscroll-contain',
             MENU_PANEL_CLASS,
             'outline-none',
-            // Only the animation gets a duration: ``duration-*`` also sets
-            // ``transition-duration``, and with ``transition-property`` at its
-            // ``all`` default the panel slid from where it first mounted to
-            // where it measured itself into place. DESIGN.md → Motion: in at
-            // ``base`` on the ``ease-out`` curve, out at ``fast``.
-            'ease-(--ease-out)',
-            // Grow out of the corner at the trigger.
+            // Grow out of the corner at the trigger (usePresenceMotion: in at
+            // ``base`` on ``ease-out``, out at ``fast``, interruptible).
             pos.flipsUp
               ? (align === 'end' ? 'origin-bottom-right' : 'origin-bottom-left')
               : (align === 'end' ? 'origin-top-right' : 'origin-top-left'),
-            panelClosing
-              ? 'animate-out fade-out-0 zoom-out-95 animation-duration-(--motion-fast)'
-              : 'animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base)',
             panelClassName,
           )}
           style={{ top: pos.top, left: pos.left, '--dropdown-anchor-width': `${pos.width}px` } as React.CSSProperties}

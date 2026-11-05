@@ -134,12 +134,11 @@ describe('TodosPopover', () => {
     expect(screen.getByText('Cancelled task').className).toContain('line-through')
   })
 
-  it('fades in without the zoom-in animation', () => {
+  it('grows from the corner under the Tasks button', () => {
     render(<TodosPopover open onOpenChange={() => {}} todos={[]} />)
 
     const dialog = screen.getByRole('dialog', { name: 'Tasks' })
-    expect(dialog.className).not.toContain('zoom-in-95')
-    expect(dialog.className).toContain('fade-in-0')
+    expect(dialog.className).toContain('origin-top-right')
   })
 
   it('closes from the backdrop', () => {

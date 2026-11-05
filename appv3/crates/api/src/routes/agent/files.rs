@@ -19,8 +19,8 @@ use bytes::Bytes;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
-use std::time::Duration;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 const MAX_FILES_LISTED: usize = 5_000;
 // A gitignored directory holding more than `MAX_IGNORED_DIR_FILES` is build
@@ -141,6 +141,8 @@ async fn get_media(State(st): State<AppState>, AxPath((sid, file_path)): AxPath<
 // ── listings ────────────────────────────────────────────────────────────────
 
 fn git_stdout(cwd: &Path, args: &[&str]) -> Option<String> {
+    #[cfg(test)]
+    tests::count_git_spawn(cwd);
     let out = appv3_core::proctree::hide_window_std(&mut std::process::Command::new("git"))
         .arg("-C")
         .arg(cwd)
@@ -378,10 +380,79 @@ fn walk_files(root: &Path, base: &Path, out: &mut Listing) {
     }
 }
 
+/// Workspaces whose listing is kept: the file watcher's cap.
+const MAX_CACHED_LISTINGS: usize = 16;
+
+/// `(size, mtime_ns)` of a file, `None` when it is missing.
+type FileSig = Option<(u64, i128)>;
+
+fn file_sig(p: &Path) -> FileSig {
+    let m = std::fs::metadata(p).ok()?;
+    let mtime = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos() as i128).unwrap_or(0);
+    Some((m.len(), mtime))
+}
+
+/// A workspace listing and what it was computed against.
+struct CachedListing {
+    generation: u64,
+    /// The git index and its signature. The watcher skips `.git/index` (git
+    /// status rewrites it), but `git rm --cached` / `git add -f` move a file
+    /// between visible and ignored without touching the work tree.
+    index: Option<(PathBuf, FileSig)>,
+    files: Vec<Value>,
+    truncated: bool,
+    used: Instant,
+}
+
+fn listings() -> &'static Mutex<HashMap<PathBuf, CachedListing>> {
+    static L: LazyLock<Mutex<HashMap<PathBuf, CachedListing>>> = LazyLock::new(Mutex::default);
+    &L
+}
+
+/// The index file of the repo holding `root` (also for a subdirectory or a
+/// linked worktree, whose index lives outside it); `None` outside git.
+fn git_index_path(root: &Path) -> Option<PathBuf> {
+    let out = git_stdout(root, &["rev-parse", "--git-path", "index"])?;
+    let p = PathBuf::from(out.trim_end_matches(['\n', '\r']));
+    Some(if p.is_absolute() { p } else { root.join(p) })
+}
+
+/// The file listing of `root`. It is polled after every `patch`/`shell`
+/// call, so while the workspace's watcher reports no change and the git
+/// index is untouched, the last listing is reused: no git process, no stat
+/// per file. A change that lands just before a poll can still be missed
+/// until the watcher's event arrives; that event also makes the UI fetch
+/// the listing again, by when the generation has moved.
 fn list_files(root: &Path) -> (Vec<Value>, bool) {
     if !root.is_dir() {
         return (vec![], false);
     }
+    let Ok(key) = dunce::canonicalize(root) else { return list_files_now(root) };
+    let Some(generation) = crate::watch::generation(&key) else {
+        listings().lock().unwrap().remove(&key);
+        return list_files_now(root);
+    };
+    if let Some(hit) = listings().lock().unwrap().get_mut(&key).filter(|c| c.generation == generation && c.index.as_ref().is_none_or(|(p, sig)| file_sig(p) == *sig)) {
+        hit.used = Instant::now();
+        return (hit.files.clone(), hit.truncated);
+    }
+    // Read before listing: a change made meanwhile moves them, so the entry
+    // stored below is not reused past it.
+    let index = git_index_path(root).map(|p| {
+        let sig = file_sig(&p);
+        (p, sig)
+    });
+    let (files, truncated) = list_files_now(root);
+    let mut cache = listings().lock().unwrap();
+    cache.insert(key, CachedListing { generation, index, files: files.clone(), truncated, used: Instant::now() });
+    while cache.len() > MAX_CACHED_LISTINGS {
+        let Some(oldest) = cache.iter().min_by_key(|(_, c)| c.used).map(|(k, _)| k.clone()) else { break };
+        cache.remove(&oldest);
+    }
+    (files, truncated)
+}
+
+fn list_files_now(root: &Path) -> (Vec<Value>, bool) {
     let mut out = Listing::default();
     collect_files(root, root, &mut out);
     out.finish(root)
@@ -1480,8 +1551,99 @@ mod tests {
         assert_eq!(again.status(), 304);
         assert!(axum::body::to_bytes(again.into_body(), usize::MAX).await.unwrap().is_empty());
         std::fs::write(d.path().join("new.txt"), "n").unwrap();
-        let changed = with_etag(&h, list_workspace_files(ws_query(d.path(), "")).await.unwrap()).await;
-        assert_eq!(changed.status(), 200);
-        assert_ne!(changed.headers()[axum::http::header::ETAG], tag);
+        // The first call started a watcher, so the listing may be reused
+        // until its event for `new.txt` arrives.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let changed = with_etag(&h, list_workspace_files(ws_query(d.path(), "")).await.unwrap()).await;
+            if changed.status() == 200 {
+                assert_ne!(changed.headers()[axum::http::header::ETAG], tag);
+                break;
+            }
+            assert!(Instant::now() < deadline, "the listing never showed new.txt");
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+
+    static GIT_SPAWNS: LazyLock<Mutex<HashMap<PathBuf, usize>>> = LazyLock::new(Mutex::default);
+
+    pub(super) fn count_git_spawn(cwd: &Path) {
+        *GIT_SPAWNS.lock().unwrap().entry(cwd.to_path_buf()).or_default() += 1;
+    }
+
+    /// Git processes started so far for `root` or a directory inside it.
+    fn git_spawns(root: &Path) -> usize {
+        GIT_SPAWNS.lock().unwrap().iter().filter(|(p, _)| p.starts_with(root)).map(|(_, n)| n).sum()
+    }
+
+    /// `dir`, canonical, with its file watcher running.
+    fn watched(dir: &Path) -> PathBuf {
+        let root = dunce::canonicalize(dir).unwrap();
+        crate::watch::touch_workspace(&root, "test");
+        assert!(eventually(|| crate::watch::generation(&root).is_some()), "the watcher never started");
+        root
+    }
+
+    /// Whether `cond` holds within 10 s (file watcher events take a moment).
+    fn eventually(cond: impl Fn() -> bool) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !cond() {
+            if Instant::now() > deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        true
+    }
+
+    #[test]
+    fn a_watched_listing_is_reused_until_the_workspace_changes() {
+        let d = repo_on_main();
+        let root = watched(d.path());
+        let first = listed(&root);
+        let spawns = git_spawns(&root);
+        assert!(spawns > 0);
+        assert_eq!(listed(&root), first);
+        assert_eq!(git_spawns(&root), spawns, "an unchanged workspace ran git again");
+
+        std::fs::write(root.join("new.txt"), "n").unwrap();
+        assert!(eventually(|| listed(&root).contains(&"new.txt".to_string())), "a new file never showed up");
+        std::fs::remove_file(root.join("a.txt")).unwrap();
+        assert!(eventually(|| !listed(&root).contains(&"a.txt".to_string())), "a deleted file stayed listed");
+
+        git_ok(&root, &["checkout", "-q", "-b", "side"]);
+        commit(&root, "side.txt");
+        git_ok(&root, &["checkout", "-q", "main"]);
+        assert!(eventually(|| !listed(&root).contains(&"side.txt".to_string())), "a checkout that removed side.txt was not seen");
+    }
+
+    #[test]
+    fn untracking_an_ignored_file_is_seen_without_a_watcher_event() {
+        let d = repo_on_main();
+        std::fs::write(d.path().join(".gitignore"), "*.log\n").unwrap();
+        std::fs::write(d.path().join("keep.log"), "k").unwrap();
+        git_ok(d.path(), &["add", ".gitignore"]);
+        git_ok(d.path(), &["add", "-f", "keep.log"]);
+        git_ok(d.path(), &["commit", "-qm", "logs"]);
+        let root = watched(d.path());
+        assert!(eventually(|| {
+            listed(&root);
+            listed(&root) == [".gitignore", "a.txt", "keep.log"] && ignored_of(&root).is_empty()
+        }));
+        // Only `.git/index` changes, which the watcher skips.
+        git_ok(&root, &["rm", "-q", "--cached", "keep.log"]);
+        assert_eq!(ignored_of(&root), ["keep.log"]);
+    }
+
+    #[test]
+    fn an_unwatched_workspace_is_listed_afresh_every_time() {
+        let d = repo_on_main();
+        let root = dunce::canonicalize(d.path()).unwrap();
+        listed(&root);
+        let spawns = git_spawns(&root);
+        listed(&root);
+        assert!(git_spawns(&root) > spawns);
+        std::fs::write(root.join("new.txt"), "n").unwrap();
+        assert!(listed(&root).contains(&"new.txt".to_string()));
     }
 }

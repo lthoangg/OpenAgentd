@@ -27,6 +27,7 @@ use notify::{Config, Event, EventKind, PollWatcher, RecommendedWatcher, Recursiv
 use serde_json::json;
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
 use std::time::{Duration, Instant};
@@ -177,9 +178,16 @@ struct Ctx {
     aliases: Mutex<BTreeSet<String>>,
     sessions: Mutex<BTreeSet<String>>,
     limit_warned: std::sync::atomic::AtomicBool,
+    /// Moves on every change the listing could see, see [`generation`].
+    generation: AtomicU64,
 }
 
 impl Ctx {
+    /// A change arrived: give the workspace a generation no one has seen.
+    fn bump(&self) {
+        self.generation.store(next_generation(), Ordering::Release);
+    }
+
     /// Whether the gitignored directory `rel` is too big to list, counted at
     /// most once per [`BIG_DIR_TTL`] so a build's event flood stays cheap.
     fn is_big_ignored_dir(&self, rel: &str) -> bool {
@@ -211,6 +219,7 @@ fn handle(ctx: &Ctx, tx: &Sender<Msg>, res: notify::Result<Event>) {
         Ok(ev) => ev,
         Err(e) => {
             if matches!(e.kind, notify::ErrorKind::MaxFilesWatch) {
+                ctx.bump();
                 let _ = tx.send(Msg::Limit);
             } else {
                 tracing::debug!("fs_watch_error workspace={} err={}", ctx.root.display(), e);
@@ -219,6 +228,7 @@ fn handle(ctx: &Ctx, tx: &Sender<Msg>, res: notify::Result<Event>) {
         }
     };
     if ev.need_rescan() {
+        ctx.bump();
         let _ = tx.send(Msg::Rescan);
         return;
     }
@@ -233,6 +243,10 @@ fn handle(ctx: &Ctx, tx: &Sender<Msg>, res: notify::Result<Event>) {
         if class == Class::Ignore {
             continue;
         }
+        // Before the debounce: a listing cached from here on is checked
+        // against the new generation, and the event published after the
+        // debounce makes the UI fetch it.
+        ctx.bump();
         let new_dir =
             (per_dir && is_dir && class == Class::File && matches!(ev.kind, EventKind::Create(_) | EventKind::Modify(notify::event::ModifyKind::Name(_)) | EventKind::Any))
                 .then(|| path.clone());
@@ -292,6 +306,7 @@ fn start(root: PathBuf, backend: Backend) -> notify::Result<(Arc<Ctx>, SharedWat
         aliases: Mutex::default(),
         sessions: Mutex::default(),
         limit_warned: Default::default(),
+        generation: AtomicU64::new(next_generation()),
     });
     let (tx, rx) = channel::<Msg>();
     let (hctx, htx) = (ctx.clone(), tx);
@@ -423,6 +438,28 @@ fn remember(set: &Mutex<BTreeSet<String>>, value: Option<&str>) {
     if s.len() < MAX_ALIASES || s.contains(v) {
         s.insert(v.to_string());
     }
+}
+
+/// One counter for every watcher, so a restarted watcher never repeats a
+/// generation an earlier one handed out.
+fn next_generation() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+/// A value that changes whenever the watcher of `root` (canonical, as
+/// [`touch_workspace`] stores it) sees a change a file listing could show:
+/// a listing computed while it held still is still current. `None` when
+/// nothing vouches for that: no watcher yet (or any more), the polling
+/// backend (it notices changes seconds late), or a watch limit that left
+/// directories unwatched. `.git/index` is not watched (see [`classify`]).
+pub fn generation(root: &Path) -> Option<u64> {
+    let reg = registry().lock().unwrap();
+    let ctx = reg.get(root)?.ctx.as_ref()?;
+    if matches!(ctx.backend, Backend::Poll(_)) || ctx.limit_warned.load(Ordering::Relaxed) {
+        return None;
+    }
+    Some(ctx.generation.load(Ordering::Acquire))
 }
 
 /// The UI just read `workspace` (as the client spelled it): keep it watched.

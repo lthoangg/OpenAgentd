@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { compile } from '@tailwindcss/node'
 
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8')
 const css = read('../../index.css').replace(/\/\*[\s\S]*?\*\//g, '')
@@ -80,5 +81,39 @@ describe('phone controls', () => {
   it('makes Send a 44px circle on a phone', () => {
     const composer = read('../../components/InputComposer.tsx')
     expect(composer).toMatch(/const sendSlotClass =\s*'[^']*phone:size-11/)
+  })
+})
+
+/**
+ * The phone block redeclares ``--text-*`` on ``:root``, so a utility must read
+ * the variable. In an ``@theme inline`` block Tailwind writes the value into
+ * the utility instead (``text-xs`` → ``calc(0.75rem * …)``) and the phone
+ * scale silently does nothing. Compile the real stylesheet and look.
+ */
+describe('phone type utilities', () => {
+  const base = fileURLToPath(new URL('../..', import.meta.url))
+  const STEPS = ['text-meta', 'text-subhead', 'text-xs', 'text-sm', 'text-base', 'text-code', 'text-large-title']
+
+  it('reads the variable the phone block overrides, not an inlined value', async () => {
+    const compiler = await compile(read('../../index.css'), { base, onDependency() {} })
+    const out = compiler.build(STEPS)
+    const utility = (name: string) =>
+      (new RegExp(`\\.${name}\\s*\\{([^}]*)\\}`).exec(out)?.[1] ?? '').replace(/\s+/g, ' ').trim()
+    for (const name of STEPS) {
+      expect({ name, css: utility(name) }).toEqual({
+        name,
+        css: expect.stringContaining(`font-size: var(--${name})`),
+      })
+    }
+  })
+
+  it('keeps the type scale out of @theme inline', () => {
+    const inline = /@theme inline\s*\{[^}]*\}/.exec(css)?.[0] ?? ''
+    expect(inline).not.toBe('')
+    expect(inline).not.toMatch(/--text-/)
+  })
+
+  it('has a 34px large title that follows Text size', () => {
+    expect(css).toMatch(/--text-large-title:\s*calc\(2\.125rem \* var\(--oa-phone-scale\)\);/)
   })
 })

@@ -79,12 +79,20 @@
      * slide or fade names its own duration-(--motion-*). */
     --default-transition-duration: var(--motion-instant);
     --default-transition-timing-function: var(--ease-in-out);
+}
 
-    /* Type scale (DESIGN.md → Typography). Every step is rem times
-     * --oa-text-scale, the Text size setting (Compact 1, Default 13/12,
-     * Large 14/12), so UI text is 12/13/14px and meta 11/12/13px. On iOS the
-     * root font size follows Dynamic Type on top of it. ``meta`` and ``code``
-     * set no line height of their own: they keep the line they sit in. */
+/* Type scale (DESIGN.md → Typography). Every step is rem times
+ * --oa-text-scale, the Text size setting (Compact 1, Default 13/12,
+ * Large 14/12), so UI text is 12/13/14px and meta 11/12/13px. On iOS the
+ * root font size follows Dynamic Type on top of it. ``meta`` and ``code``
+ * set no line height of their own: they keep the line they sit in.
+ *
+ * Not ``inline``: an ``@theme inline`` block writes each value into its
+ * utility (``text-xs`` → ``calc(0.75rem * …)``), so the phone block below,
+ * which redeclares these variables, would change nothing. Here a utility is
+ * ``font-size: var(--text-xs)`` and the phone scale takes effect
+ * (``phone-scale.test.ts`` compiles this file to hold it). */
+@theme {
     --text-meta: calc(0.6875rem * var(--oa-text-scale));
     /* A row's second line and status words: meta on desktop, 15px on a phone. */
     --text-subhead: calc(0.6875rem * var(--oa-text-scale));
@@ -101,6 +109,11 @@
     --text-xl--line-height: calc(1.75 / 1.25);
     --text-2xl: calc(1.5rem * var(--oa-text-scale));
     --text-2xl--line-height: calc(2 / 1.5);
+    /* The phone's page title (Sessions): 34px bold under the navigation bar,
+     * 30px at Compact, 38px at Large. Only a phone screen uses it, so there
+     * is no desktop value. */
+    --text-large-title: calc(2.125rem * var(--oa-phone-scale));
+    --text-large-title--line-height: calc(41 / 34);
 }
 
 /* Text size (stores/useDisplayPrefsStore.ts, set before paint by

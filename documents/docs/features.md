@@ -1306,6 +1306,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A running session in the sidebar shows only its spinner, without the
     word "Running" or the goal icon beside it, so the title keeps its room
     and nothing moves when you hover the row.
+  - Tool rows open only when you click them. A shell or any other tool that
+    streams output stays closed while it runs, so the chat no longer
+    unfolds and folds by itself. A row you opened stays open after the tool
+    finishes.
   - With Reduce Motion turned on, all of these changes happen instantly.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
@@ -1810,7 +1814,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Code in a long answer is highlighted as each part finishes, not all at
     once when the answer ends.
   - A tool whose live output you were watching stays open when it finishes,
-    until the next step starts.
+    until the next step starts. *(Replaced in v3.47.0: tool rows open only
+    when clicked.)*
 - **One way of moving** `[v3.25.0]` — everything that opens also closes, at
   the same pace:
   - Sidebar sections and date groups, changed files, Git groups and commits,

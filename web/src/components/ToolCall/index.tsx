@@ -12,6 +12,8 @@
  * Running state is carried by subtle header animation. The row makes no
  * success/failure claim and shows no result summary: most tools' output
  * stays on the server (``resultBytes``) and is fetched when the row opens.
+ * The row opens only when the user opens it, live output included: a
+ * streaming tool never unfolds (or folds) the transcript by itself.
  *
  * The per-tool header/args customisation lives in ``./display.tsx``;
  * this module owns only the chrome (collapse, copy, motion).
@@ -79,12 +81,6 @@ interface ToolCallProps {
   startedAt?: number
   /** Needed by ``ask_user`` to match the call against the open question. */
   toolCallId?: string
-  /**
-   * The turn's latest step (no later block has opened). A row that opened
-   * itself for live output stays open on its result until the next step
-   * starts, so output the reader was watching does not vanish on finish.
-   */
-  isCurrentStep?: boolean
 }
 
 
@@ -173,9 +169,10 @@ const ShellCommand = memo(function ShellCommand({ command }: { command: string }
   return <code>{highlighted}</code>
 })
 
-export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result: inlineResult, resultBytes, argsBytes, durationMs, startedAt, toolCallId, isCurrentStep = false }: ToolCallProps) {
+export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result: inlineResult, resultBytes, argsBytes, durationMs, startedAt, toolCallId }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
-  const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
+  // Closed until the user opens it; nothing opens the row on its own.
+  const [expanded, setManualExpanded] = useState(false)
   // The open details region: the row's toggle and every section header point at it.
   const detailsId = useId()
   const liveOutputRef = useRef<HTMLPreElement>(null)
@@ -188,8 +185,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const [animatesIn] = useState(() => !done)
   // The output stayed on the server: the row fetches it once opened.
   const onServer = Boolean(done) && inlineResult === undefined && resultBytes !== undefined && Boolean(toolCallId)
-  // The fetch waits for the user: a row that opened itself to show live
-  // output already shows it.
+  // The fetch waits for the user to open the row.
   const [fetchWanted, setFetchWanted] = useState(false)
   const remote = useToolResult(toolCallId, onServer, fetchWanted)
   const result = inlineResult ?? remote.text
@@ -302,10 +298,6 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
 
   const awaitingResult = onServer && !suppressResult && result === undefined
   const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult || hasReadResult || awaitingResult || awaitingArgs)
-  const autoOpen = Boolean(shownLiveOutput)
-  const [showedLiveOutput, setShowedLiveOutput] = useState(autoOpen)
-  if (autoOpen && !showedLiveOutput) setShowedLiveOutput(true)
-  const expanded = manualExpanded ?? (autoOpen || (showedLiveOutput && isCurrentStep))
   // Open, the header pins while long details scroll under it (inside a reader
   // fold, just below the fold's row); closing leaves it where it was pressed.
   const pinned = expanded && hasDetails

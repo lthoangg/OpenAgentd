@@ -4,7 +4,7 @@
  * (a status word, a count, a duration).
  */
 import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { ToolCall } from '@/components/ToolCall'
 import { ToolResult } from '@/components/ToolResult'
@@ -26,13 +26,14 @@ function expectContentSize(node: HTMLElement) {
 describe('tool content is at least 12px', () => {
   it('reads live output and arguments at text-xs', () => {
     render(<ToolCall name="custom_tool" args={JSON.stringify({ path: 'a.py' })} liveOutput={'building…\nstep 2'} />)
-    // Live output opens the row by itself.
+    fireEvent.click(screen.getAllByRole('button')[0])
     expectContentSize(screen.getByText(/building…/))
     expectContentSize(screen.getByText(/"path": "a\.py"/))
   })
 
   it('reads a shell command and its output at text-xs', () => {
     render(<ToolCall name="shell" args={JSON.stringify({ command: 'echo hi' })} done={false} liveOutput="hi from the shell" />)
+    fireEvent.click(screen.getAllByRole('button')[0])
     expectContentSize(screen.getByText(/hi from the shell/))
   })
 

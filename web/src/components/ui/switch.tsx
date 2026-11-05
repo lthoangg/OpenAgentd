@@ -118,8 +118,9 @@ function Switch({
         toggle(!checked)
       }}
       className={cn(
-        // Track — a solid pill with no border, like an OS switch
-        'relative inline-flex h-[22px] w-10 shrink-0',
+        // Track — a solid pill with no border, like an OS switch; a phone
+        // draws it at the iOS 51×31.
+        'relative inline-flex h-[22px] w-10 shrink-0 phone:h-[31px] phone:w-[51px]',
         'rounded-full',
         // A horizontal drag moves the thumb; vertical pans still scroll the page.
         'touch-pan-y',
@@ -130,8 +131,9 @@ function Switch({
         checked ? 'bg-(--switch-on)' : 'bg-(--color-border-strong)',
         // Transitions: the track's colour crossfades while the thumb slides
         'transition-colors duration-(--motion-base) ease-(--ease-in-out)',
-        // Touch: a 44px hit area around the 40×22 track, without moving the layout.
+        // Touch: a 44px hit area around the 40×22 track (51×31 on a phone), without moving the layout.
         "pointer-coarse:before:absolute pointer-coarse:before:-inset-x-0.5 pointer-coarse:before:-inset-y-[11px] pointer-coarse:before:content-['']",
+        'phone:before:-inset-y-[7px]',
         // Focus ring
         'focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:ring-offset-1 outline-none',
         // Disabled
@@ -147,6 +149,7 @@ function Switch({
           // On, the thumb takes the ink that sits on the accent: white on
           // Bark, near-black on cream.
           'absolute top-[3px] left-[3px] block h-4 rounded-full shadow-(--shadow-depth)',
+          'phone:top-[2px] phone:left-[2px] phone:h-[27px]',
           checked ? 'bg-(--color-text-on-accent)' : 'bg-(--color-surface) dark:bg-(--color-text)',
           // A slight spring at the end of its travel, like an OS switch. The
           // press stretch animates ``width``: the one layout property we
@@ -154,9 +157,10 @@ function Switch({
           // inside a fixed-size track, so nothing around it re-lays out.
           'transition-[translate,width] duration-(--motion-base) ease-(--ease-spring-soft)',
           // 40px track − 6px padding: the right edge rests at 34px, so a 22px
-          // thumb sits at 12px and a 16px one at 18px.
-          pressed ? 'w-[22px]' : 'w-4',
-          side ? (pressed ? 'translate-x-[12px]' : 'translate-x-[18px]') : 'translate-x-0',
+          // thumb sits at 12px and a 16px one at 18px. A phone's 51px track −
+          // 4px: a 33px thumb sits at 14px and a 27px one at 20px.
+          pressed ? 'w-[22px] phone:w-[33px]' : 'w-4 phone:w-[27px]',
+          side ? (pressed ? 'translate-x-[12px] phone:translate-x-[14px]' : 'translate-x-[18px] phone:translate-x-[20px]') : 'translate-x-0',
         )}
       />
     </button>

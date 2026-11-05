@@ -39,6 +39,10 @@
 @custom-variant focus-key (&:focus-visible:not([data-quiet-focus]));
 /* OS "reduce transparency": frosted surfaces turn opaque and drop their blur. */
 @custom-variant reduce-transparency (@media (prefers-reduced-transparency: reduce));
+/* A phone: narrow (or a landscape phone, short) and touch, the same test as
+ * useIsMobile plus a coarse pointer, so a narrow mouse window and a tablet
+ * keep the dense desktop scale (DESIGN.md → Touch density). */
+@custom-variant phone (@media (pointer: coarse) and (max-width: 767px), (pointer: coarse) and (max-height: 580px));
 
 /* ─────────────────────────────────────────────────────────────
  * Tailwind @theme — expose design tokens as utilities.
@@ -82,6 +86,8 @@
      * root font size follows Dynamic Type on top of it. ``meta`` and ``code``
      * set no line height of their own: they keep the line they sit in. */
     --text-meta: calc(0.6875rem * var(--oa-text-scale));
+    /* A row's second line and status words: meta on desktop, 15px on a phone. */
+    --text-subhead: calc(0.6875rem * var(--oa-text-scale));
     --text-xs: calc(0.75rem * var(--oa-text-scale));
     --text-xs--line-height: calc(1 / 0.75);
     --text-code: calc(0.8125rem * var(--oa-text-scale));
@@ -101,12 +107,15 @@
  * public/theme-init.js). Default is one step above the old density. */
 :root {
   --oa-text-scale: calc(13 / 12);
+  --oa-phone-scale: 1;
 }
 :root[data-text-size="compact"] {
   --oa-text-scale: 1;
+  --oa-phone-scale: calc(15 / 17);
 }
 :root[data-text-size="large"] {
   --oa-text-scale: calc(14 / 12);
+  --oa-phone-scale: calc(19 / 17);
 }
 
 @layer base {
@@ -1502,6 +1511,46 @@ html[data-app-hidden="true"] *::after {
     content: "";
     position: absolute;
     inset: min(0px, calc((100% - 36px) / 2));
+  }
+}
+
+/* Phone (DESIGN.md → Touch density): Apple's sizes, as a phone app reads.
+   17px for row titles, buttons, menus, fields, chat and bar titles; 15px for
+   a row's second line and code; 13px for times and captions. Rows, the
+   header and every button are 44px (48px in the Android app, Material's
+   size). Text size scales it: Compact 15px, Large 19px; Dynamic Type adds
+   on top through rem. Tablets and narrow mouse windows keep the dense scale. */
+@media (pointer: coarse) and (max-width: 767px), (pointer: coarse) and (max-height: 580px) {
+  :root {
+    --text-meta: calc(0.8125rem * var(--oa-phone-scale));
+    --text-subhead: calc(0.9375rem * var(--oa-phone-scale));
+    --text-xs: calc(1.0625rem * var(--oa-phone-scale));
+    --text-xs--line-height: calc(22 / 17);
+    --text-code: calc(0.9375rem * var(--oa-phone-scale));
+    --text-sm: calc(1.0625rem * var(--oa-phone-scale));
+    --text-sm--line-height: calc(22 / 17);
+    --text-base: calc(1.0625rem * var(--oa-phone-scale));
+    --text-base--line-height: calc(22 / 17);
+    --spacing-list-row: 2.75rem;
+    --spacing-app-header: 2.75rem;
+  }
+  html[data-mobile-shell="android"] {
+    --spacing-list-row: 3rem;
+  }
+  [data-slot="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  html[data-mobile-shell="android"] [data-slot="button"] {
+    min-height: 48px;
+    min-width: 48px;
+  }
+  .touch-hit::before {
+    inset: min(0px, calc((100% - 44px) / 2));
+  }
+  .oa-prose a::before,
+  [data-file-ref]::before {
+    inset: calc((100% - 44px) / 2) 0;
   }
 }
 

@@ -1,0 +1,84 @@
+/**
+ * Phone scale (DESIGN.md → Touch density): on a phone, Apple's sizes: 17px
+ * text in rows, buttons, menus, fields and chat, 15px second lines, 13px
+ * times, 44px rows and targets (48px in the Android app). Desktop, tablets
+ * and narrow mouse windows keep their dense scale. happy-dom does not
+ * evaluate media queries, so this guards the rules themselves.
+ */
+import { describe, expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8')
+const css = read('../../index.css').replace(/\/\*[\s\S]*?\*\//g, '')
+
+const PHONE = '(pointer: coarse) and (max-width: 767px), (pointer: coarse) and (max-height: 580px)'
+
+function block(media: string): string {
+  const at = css.indexOf(`@media ${media} {`)
+  if (at < 0) return ''
+  let depth = 0
+  for (let i = css.indexOf('{', at); i < css.length; i++) {
+    if (css[i] === '{') depth++
+    if (css[i] === '}' && --depth === 0) return css.slice(at, i + 1)
+  }
+  return ''
+}
+
+describe('phone scale', () => {
+  const phone = block(PHONE)
+
+  it('has one phone query, the same one useIsMobile reads, on touch only', () => {
+    expect(phone).not.toBe('')
+    expect(css).toContain(`@custom-variant phone (@media ${PHONE});`)
+  })
+
+  it('sets 17px for UI text and chat, 15px for second lines and code, 13px for times', () => {
+    expect(phone).toMatch(/--text-xs:\s*calc\(1\.0625rem \* var\(--oa-phone-scale\)\);/)
+    expect(phone).toMatch(/--text-sm:\s*calc\(1\.0625rem \* var\(--oa-phone-scale\)\);/)
+    expect(phone).toMatch(/--text-base:\s*calc\(1\.0625rem \* var\(--oa-phone-scale\)\);/)
+    expect(phone).toMatch(/--text-subhead:\s*calc\(0\.9375rem \* var\(--oa-phone-scale\)\);/)
+    expect(phone).toMatch(/--text-code:\s*calc\(0\.9375rem \* var\(--oa-phone-scale\)\);/)
+    expect(phone).toMatch(/--text-meta:\s*calc\(0\.8125rem \* var\(--oa-phone-scale\)\);/)
+  })
+
+  it('makes rows, the header and every button 44px, and 48px in the Android app', () => {
+    expect(phone).toMatch(/--spacing-list-row:\s*2\.75rem;/)
+    expect(phone).toMatch(/--spacing-app-header:\s*2\.75rem;/)
+    expect(phone).toMatch(/\[data-slot="button"\]\s*\{\s*min-height:\s*44px;\s*min-width:\s*44px;/)
+    expect(phone).toMatch(/html\[data-mobile-shell="android"\]\s*\{\s*--spacing-list-row:\s*3rem;/)
+    expect(phone).toMatch(/html\[data-mobile-shell="android"\] \[data-slot="button"\]\s*\{\s*min-height:\s*48px;\s*min-width:\s*48px;/)
+  })
+
+  it('grows small icons and inline links to a 44px hit area', () => {
+    expect(phone).toMatch(/\.touch-hit::before\s*\{\s*inset:\s*min\(0px, calc\(\(100% - 44px\) \/ 2\)\);/)
+    expect(phone).toMatch(/\[data-file-ref\]::before\s*\{\s*inset:\s*calc\(\(100% - 44px\) \/ 2\) 0;/)
+  })
+
+  it('keeps Text size: Compact one step down (15px), Large one step up (19px)', () => {
+    expect(css).toMatch(/:root\s*\{\s*--oa-text-scale:\s*calc\(13 \/ 12\);\s*--oa-phone-scale:\s*1;/)
+    expect(css).toMatch(/:root\[data-text-size="compact"\]\s*\{\s*--oa-text-scale:\s*1;\s*--oa-phone-scale:\s*calc\(15 \/ 17\);/)
+    expect(css).toMatch(/:root\[data-text-size="large"\]\s*\{\s*--oa-text-scale:\s*calc\(14 \/ 12\);\s*--oa-phone-scale:\s*calc\(19 \/ 17\);/)
+  })
+
+  it('leaves the desktop scale as it was', () => {
+    expect(css).toMatch(/--text-xs:\s*calc\(0\.75rem \* var\(--oa-text-scale\)\);/)
+    expect(css).toMatch(/--text-meta:\s*calc\(0\.6875rem \* var\(--oa-text-scale\)\);/)
+    expect(css).toMatch(/--text-subhead:\s*calc\(0\.6875rem \* var\(--oa-text-scale\)\);/)
+    expect(css).toMatch(/--spacing-list-row:\s*1\.75rem;/)
+  })
+})
+
+describe('phone controls', () => {
+  it('draws the switch at the iOS 51×31 on a phone', () => {
+    const sw = read('../../components/ui/switch.tsx')
+    expect(sw).toContain('phone:h-[31px] phone:w-[51px]')
+    expect(sw).toContain('phone:h-[27px]')
+    expect(sw).toContain("'w-4 phone:w-[27px]'")
+  })
+
+  it('makes Send a 44px circle on a phone', () => {
+    const composer = read('../../components/InputComposer.tsx')
+    expect(composer).toMatch(/const sendSlotClass =\s*'[^']*phone:size-11/)
+  })
+})

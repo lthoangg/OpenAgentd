@@ -91,7 +91,7 @@ function deliveryForKey(e: { metaKey: boolean; ctrlKey: boolean; altKey: boolean
 const DELIVERY_TRIGGER_CLASS =
   // Same height as the Steer half on every pointer: the Dropdown's own
   // touch minimum (36px) would otherwise leave it taller than a 32px pill.
-  'flex h-8 min-h-0 w-5 shrink-0 items-center justify-center gap-0 rounded-l-none rounded-r-full border-0 border-l border-l-(--color-text-on-accent)/20 bg-(--bg-send) px-0 py-0 text-(--color-text-on-accent) hover:bg-(--bg-send) hover:opacity-90 hover:shadow-none active:bg-(--bg-send) pointer-coarse:min-h-0 md:h-7 pointer-coarse:h-9 [&>span]:hidden [&_svg]:text-(--color-text-on-accent)'
+  'flex h-8 min-h-0 w-5 shrink-0 items-center justify-center gap-0 rounded-l-none rounded-r-full border-0 border-l border-l-(--color-text-on-accent)/20 bg-(--bg-send) px-0 py-0 text-(--color-text-on-accent) hover:bg-(--bg-send) hover:opacity-90 hover:shadow-none active:bg-(--bg-send) pointer-coarse:min-h-0 md:h-7 pointer-coarse:h-9 phone:h-11 [&>span]:hidden [&_svg]:text-(--color-text-on-accent)'
 
 export interface InputComposerProps {
   onSubmit: (message: string, files?: File[], mentionedFiles?: string[], delivery?: SendDelivery) => void
@@ -821,7 +821,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // A press darkens it under a mouse (as a macOS control does) and gives under
   // a finger (as an iOS one does).
   const sendSlotClass =
-    'flex size-8 shrink-0 items-center justify-center rounded-full transition-[color,background-color,opacity,scale] duration-(--motion-instant) pointer-fine:active:opacity-80 pointer-coarse:active:scale-90 motion-reduce:active:scale-100 md:size-7 pointer-coarse:size-9'
+    'flex size-8 shrink-0 items-center justify-center rounded-full transition-[color,background-color,opacity,scale] duration-(--motion-instant) pointer-fine:active:opacity-80 pointer-coarse:active:scale-90 motion-reduce:active:scale-100 md:size-7 pointer-coarse:size-9 phone:size-11'
   const sendPillClass = 'bg-(--bg-send) text-(--color-text-on-accent) hover:opacity-90'
 
   // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.

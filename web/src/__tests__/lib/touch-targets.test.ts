@@ -106,8 +106,9 @@ describe('coarse-pointer touch targets', () => {
     expect(offenders).toEqual([])
   })
 
-  it('sizes Send to 36px on any touch screen, as the split Steer half beside its chevron', () => {
+  it('sizes Send to 36px on a touch tablet (44px on a phone), as the split Steer half beside its chevron', () => {
     const composer = readFileSync(fileURLToPath(new URL('../../components/InputComposer.tsx', import.meta.url)), 'utf8')
-    expect(composer).toMatch(/sendSlotClass =\s*'[^']*pointer-coarse:size-9'/)
+    expect(composer).toMatch(/sendSlotClass =\s*'[^']*pointer-coarse:size-9 phone:size-11'/)
+    expect(composer).toMatch(/DELIVERY_TRIGGER_CLASS =[\s\S]*?pointer-coarse:h-9 phone:h-11/)
   })
 })

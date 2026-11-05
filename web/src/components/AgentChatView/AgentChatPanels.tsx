@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { lazySurface } from '@/lib/lazy-surface'
-import { TodosPopover } from '../TodosPopover'
 import type { SessionGoal, SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 
 // Kept out of the startup bundle; prefetched while the app is idle.
 const SchedulerPanel = lazySurface(() => import('../SchedulerPanel'), 'SchedulerPanel')
 const PaletteHost = lazySurface(() => import('./PaletteHost'), 'PaletteHost')
+const TodosPopover = lazySurface(() => import('../TodosPopover'), 'TodosPopover')
 
 /** True from the first time ``open`` is set, so a panel mounted then can still animate out. */
 function useOpenedOnce(open: boolean): boolean {
@@ -86,6 +86,7 @@ export function AgentChatPanels({
   onCloseQuickOpen,
 }: AgentChatPanelsProps) {
   const schedulerOpened = useOpenedOnce(schedulerOpen)
+  const todosOpened = useOpenedOnce(showTodos)
   // ⌘K and ⌘P open the same overlay; only its scope differs.
   const files = {
     workspaceFiles: quickOpenWorkspaceFiles,
@@ -95,6 +96,7 @@ export function AgentChatPanels({
   }
   return (
     <>
+      {todosOpened && (
       <TodosPopover
         open={showTodos}
         onOpenChange={onShowTodosChange}
@@ -106,6 +108,7 @@ export function AgentChatPanels({
         onOpenGoal={onOpenGoal}
         onGoalAction={onGoalAction}
       />
+      )}
       {schedulerOpened && (
         <SchedulerPanel
           open={schedulerOpen}

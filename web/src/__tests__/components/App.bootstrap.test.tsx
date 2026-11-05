@@ -130,6 +130,10 @@ mock.module('@/lib/connected-app-preload', () => ({
 mock.module('@/components/AppBackendDialog', () => ({
   AppBackendDialog: ({ open }: { open: boolean }) => open ? <div role="dialog">Server chooser</div> : null,
 }))
+// App loads the dialog lazily; the flow under test is the recovery screen's.
+mock.module('@/components/LazyAppBackendDialog', () => ({
+  AppBackendDialog: ({ open }: { open: boolean }) => open ? <div role="dialog">Server chooser</div> : null,
+}))
 
 mock.module('@/hooks/use-platform', () => ({
   getPlatform: () => ({ isTauri: true, os: 'macos', isMacOverlay: true }),

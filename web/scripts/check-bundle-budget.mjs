@@ -40,7 +40,7 @@ export function measureBundle(directory) {
 // Surfaces kept out of the startup path (`web/src/lib/lazy-surface.tsx`):
 // each loads on first use or while the app is idle after it starts. A static
 // import from startup code would quietly put it back; this check fails then.
-export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult', 'RunPicker', 'PlanTabView', 'GoalTabView', 'TerminalFindBar', 'TerminalSubPanel', 'CommitTabView']
+export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult', 'RunPicker', 'PlanTabView', 'GoalTabView', 'TerminalFindBar', 'TerminalSubPanel', 'CommitTabView', 'AppBackendDialog', 'TodosPopover']
 
 // The startup path loads everything not behind a dynamic import. History:
 // features had grown it from 2.37 MB / 705 kB gzip (early October) to
@@ -67,6 +67,11 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // v3.42.0 (terminal reattach, quotas, lead navigation) reached 661.5 kB; the
 // terminal pane and the commit tab, shown only once opened, moved behind
 // lazySurface (656.1 kB).
+// v3.48.0 (the phone stack: Sessions, push and swipe, sheets with detents,
+// iOS alerts) reached 673.6 kB; the Server dialog (with the network-access
+// card and QR code) and the task list, opened only on demand, moved behind
+// lazySurface (658.8 kB). Making the Review panel's Git and file views lazy
+// did not help: Rolldown merged the shared file viewer into a startup chunk.
 export const LIMITS = { eagerBytes: 2_070_000, eagerGzipBytes: 661_000, largestChunkBytes: 1_180_000 }
 
 /** Each lazy surface must have a chunk of its own, outside the startup path. */

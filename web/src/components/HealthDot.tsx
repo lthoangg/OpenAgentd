@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { AppBackendDialog } from '@/components/AppBackendDialog'
+import { AppBackendDialog } from '@/components/LazyAppBackendDialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
 import { formatBackendConnectionLabel } from '@/lib/app-backend'

@@ -43,6 +43,7 @@ import {
   followLedge,
   frameCovers,
   growFrame,
+  isThrow,
   jumpMs,
   jumpPath,
   jumpReach,
@@ -58,6 +59,9 @@ import {
   shrinkable,
   startX,
   startY,
+  throwPath,
+  throwVelocity,
+  throwsAllowed,
   toArea,
   visibleBubble,
   withinPounce,
@@ -75,6 +79,8 @@ import {
   type PetView,
   type OtherWindow,
   type Perch,
+  type PointerSample,
+  type Velocity,
   type ZoomPhase,
 } from './state'
 
@@ -104,6 +110,8 @@ const REACTION_MS: Record<PetReaction, number> = { hop: 1700, droop: 2500, look:
 const FIT_EVERY_MS = 100
 /** How long the pet's reply to a poke stays up. */
 const POKE_SAY_MS = 2500
+/** Pointer samples older than this are dropped during a drag (only the last THROW_SAMPLE_MS count). */
+const SAMPLE_KEEP_MS = 200
 
 type MenuAction = { action: 'dismiss'; id: string } | { action: 'clear' }
 
@@ -117,16 +125,17 @@ type PointerAt = { x: number; y: number } | null
 type Fold = 'folding' | 'unfolding'
 
 /**
- * A fall under way. `ms` and `ease` are how the pet's move to its new
- * place goes (CSS does the moving: one transition on the pet, no per-frame
- * work in the page).
+ * A fall or a throw under way. `ms` and `ease` are how the pet's move to
+ * its new place goes in a fall (CSS does the moving: one transition on the
+ * pet, no per-frame work in the page); a throw's flight (`fly`) is one Web
+ * Animation along its path, with no transition.
  */
-type Lift = { ms: number; ease: string; phase: 'fall' | 'land' }
+type Lift = { ms: number; ease: string; phase: 'fall' | 'fly' | 'land' }
 
-/** The pose of a fall: it sits after the landing. */
+/** The pose of a fall or a throw: it sits after the landing. */
 function liftPose(lift: Lift | null): 'sit' | 'fall' | null {
   if (!lift) return null
-  return lift.phase === 'fall' ? 'fall' : 'sit'
+  return lift.phase === 'land' ? 'sit' : 'fall'
 }
 
 /** The steps of a jump: look toward the target, crouch, leap along an arc, land. */
@@ -299,7 +308,8 @@ export function Pet() {
   const hiddenForRef = useRef('')
   const yRef = useRef(0)
   const targetRef = useRef<number | null>(null)
-  const dragRef = useRef<{ startX: number; startY: number; petX: number; petY: number; moved: boolean } | null>(null)
+  /** A press on the pet: where it started (area px), where the pet was, and the pointer's way since (for a throw). */
+  const dragRef = useRef<{ startX: number; startY: number; petX: number; petY: number; moved: boolean; samples: PointerSample[] } | null>(null)
   const lastFitRef = useRef('')
   const dashesRef = useRef(0)
   /** A finished turn asked for zoomies; they start once nothing holds the pet. */
@@ -791,6 +801,82 @@ export function Pet() {
   startFallRef.current = startFall
 
   /**
+   * Thrown: it flies along the path of the fling (gravity, a bounce off the
+   * sides and the top of the screen) and lands where that path ends, a
+   * window edge or the ground, with the fall's squash and a puff of dust.
+   * One Web Animation draws the flight; the page stands at the landing spot
+   * from the start. It can be caught mid-air like a fall or a jump. Returns
+   * where it lands.
+   */
+  const startThrow = useCallback(
+    (velocity: Velocity): { x: number; y: number } => {
+      window.clearTimeout(liftTimerRef.current)
+      stopJump()
+      setJumpPhase(null)
+      const { petWidth: pw, petHeight: ph, width: w, height: h } = geomRef.current
+      const pet = { width: pw, height: ph }
+      const path = throwPath({
+        from: { x: xRef.current, y: yRef.current },
+        velocity,
+        area: { width: w, height: h },
+        pet,
+        ledges: climbRef.current ? ledgesRef.current : [],
+        groundY: groundRef.current,
+      })
+      const { land } = path
+      if (Math.abs(velocity.vx) > 1) setFacingLeft(velocity.vx < 0)
+      const done = () => {
+        fallOnPlaceRef.current = false
+        setLift(null)
+        setSitting(true)
+      }
+      const landed = () => {
+        const el = petRef.current
+        jumpAnimRef.current?.cancel()
+        jumpAnimRef.current = null
+        // Leave the pet at its place, not under an animation, so later moves work.
+        if (el) el.style.transform = `translate(${xRef.current}px, ${yRef.current}px)`
+        if (land.ledge) {
+          // The window may have moved or gone while it was in the air.
+          const onto = followLedge({ id: land.ledge.id, ledgeX: land.ledge.x }, land.x, ledgesRef.current, pet)
+          if (!onto) {
+            startFallRef.current()
+            return
+          }
+          perchRef.current = onto.perch
+          if (onto.x !== xRef.current || onto.y !== yRef.current) {
+            place(onto.x, onto.y)
+            if (el) el.style.transform = `translate(${onto.x}px, ${onto.y}px)`
+          }
+        }
+        setLift({ phase: 'land', ms: 0, ease: LINEAR })
+        window.clearTimeout(dustTimerRef.current)
+        setDust({ x: xRef.current + pw / 2, y: yRef.current + ph, at: Date.now() })
+        dustTimerRef.current = window.setTimeout(() => setDust(null), DUST_MS)
+        liftTimerRef.current = window.setTimeout(done, LAND_MS)
+      }
+      const fly = () => {
+        perchRef.current = null
+        setSitting(false)
+        setLift({ phase: 'fly', ms: 0, ease: LINEAR })
+        place(land.x, land.y)
+        const el = petRef.current
+        if (el && typeof el.animate === 'function') {
+          const frames = path.points.map((p) => ({ transform: `translate(${p.x}px, ${p.y}px)`, offset: p.t / path.ms }))
+          const anim = el.animate(frames, { duration: path.ms, easing: 'linear', fill: 'forwards' })
+          // Cancelling it later rejects its `finished` promise: nobody waits on that.
+          anim.finished?.catch(() => {})
+          jumpAnimRef.current = anim
+        }
+        liftTimerRef.current = window.setTimeout(landed, path.ms)
+      }
+      needFrame(path.reach, fly)
+      return { x: land.x, y: land.y }
+    },
+    [needFrame, place, setLift, stopJump],
+  )
+
+  /**
    * Jump to `nextX`, with its top `nextY` (the edge of the window `perch`, or
    * the ground), like a cat: it looks toward where it is going, crouches,
    * leaps along an arc (the Web Animations API moves it, one animation, no
@@ -1090,13 +1176,17 @@ export function Pet() {
       petX: spot?.x ?? xRef.current,
       petY: spot?.y ?? yRef.current,
       moved: false,
+      samples: [{ x: event.clientX + frameRef.current.x, y: event.clientY + frameRef.current.y, t: performance.now() }],
     }
   }
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current
     if (!drag) return
-    const dx = event.clientX + frameRef.current.x - drag.startX
-    const dy = event.clientY + frameRef.current.y - drag.startY
+    const at = { x: event.clientX + frameRef.current.x, y: event.clientY + frameRef.current.y, t: performance.now() }
+    drag.samples.push(at)
+    if (drag.samples[0].t < at.t - SAMPLE_KEEP_MS) drag.samples = drag.samples.filter((s) => s.t >= at.t - SAMPLE_KEEP_MS)
+    const dx = at.x - drag.startX
+    const dy = at.y - drag.startY
     if (!drag.moved && Math.hypot(dx, dy) < DRAG_SLOP) return
     if (!drag.moved) {
       drag.moved = true
@@ -1112,12 +1202,25 @@ export function Pet() {
     setX(xRef.current)
     setY(yRef.current)
   }
-  const onPointerUp = () => {
+  const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current
     dragRef.current = null
     if (!drag) return
     if (drag.moved) {
       setDragging(false)
+      // Let go mid-fling, it is thrown: it flies on with the pointer's speed
+      // and lands where that takes it (on the ground, whatever climbing says,
+      // or on a window edge it comes down onto when it may climb).
+      const velocity = event.type === 'pointercancel' ? { vx: 0, vy: 0 } : throwVelocity(drag.samples, performance.now())
+      if (isThrow(velocity) && throwsAllowed({ movement: movementRef.current, reducedMotion: reducedMotionRef.current })) {
+        groundRef.current = Math.max(0, height - petHeight)
+        const feet = groundRef.current + petHeight
+        fallOnPlaceRef.current = true
+        const land = startThrow(velocity)
+        reportedRef.current = { x: land.x, y: feet, frame: `${width}|${height}|${petWidth}|${petHeight}` }
+        void invoke(DRAG_END_COMMAND, { x: land.x, y: feet }).catch(() => {})
+        return
+      }
       // Dropped in mid-air it falls to the nearest surface below (a window
       // edge or the ground), unless it may not climb: then the height it was
       // dropped at is where it stands from now on. What is saved is the

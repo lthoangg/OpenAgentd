@@ -1631,6 +1631,18 @@ run from the terminal (the native Rust binary since v3.0.0).
     question waits (one under way is cut short), nor ladders and balloons
     while an agent runs. Settings → Desktop → Desktop pet → **Ladders and
     balloons** (on by default) turns the first two off; falls stay.
+  - **Desktop pet: throws** `[v3.47.0]` — fling the pet and let go mid-move
+    and it flies on with the pointer's speed instead of dropping straight
+    down: an arc under gravity, a bounce off the sides and the top of the
+    screen (at half its speed), and a landing with the fall's squash and
+    dust, on the ground or, with climbing on, on a window edge it comes down
+    onto. The spot it lands on is saved like a drop's (the ground below a
+    window edge). Its speed is read over the last 80 ms of the drag; slower
+    than 400 px/s, or held still for 50 ms before letting go, is a drop as
+    before, so a gentle drop with climbing off still stays at that height.
+    A throw with climbing off lands on the ground. Grab it in mid-air to catch it.
+    No throws when told to stay put or with reduced motion, and none across
+    displays (letting go over another display moves it there, as before).
   - **Desktop pet: no sheet over the desktop (screen sharing)** `[v3.42.0]` —
     the pet's window is no longer a transparent sheet over the whole work
     area, which a meeting app's window picker (Zoom, Meet, the macOS share

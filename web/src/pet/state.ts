@@ -425,6 +425,167 @@ export function fallTarget(
   return best
 }
 
+// ── Throws ─────────────────────────────────────────────────────────────────
+
+/** A fling at least this fast (CSS px per second) when it is let go throws the pet; slower is a drop. */
+export const THROW_MIN_SPEED = 400
+/** The fastest a throw goes, and the fastest it falls while flying. */
+export const THROW_MAX_SPEED = 2800
+/** The fling's speed is read over this last stretch of the drag. */
+export const THROW_SAMPLE_MS = 80
+/** The pointer stood still this long before it let go: no throw. */
+export const THROW_STALE_MS = 50
+/** Samples closer together than this say nothing reliable about speed. */
+export const THROW_MIN_SPAN_MS = 12
+/** What is left of its speed after it bounces off the side or the top of the screen. */
+export const WALL_BOUNCE = 0.5
+/** The flight is worked out in steps this long (ms). */
+const THROW_STEP_MS = 1000 / 120
+/** However it bounces, a flight ends by then (it is down long before). */
+const THROW_MAX_MS = 5000
+
+/** Where the pointer was during a drag (area px) and when (ms). */
+export interface PointerSample {
+  x: number
+  y: number
+  t: number
+}
+
+/** A speed in CSS px per second; y grows downward. */
+export interface Velocity {
+  vx: number
+  vy: number
+}
+
+/**
+ * How fast the pointer was going when it let go at `releasedAt`: over the
+ * last THROW_SAMPLE_MS of the drag, capped at THROW_MAX_SPEED. Nothing when
+ * it stood still before letting go, or with too little to go on.
+ */
+export function throwVelocity(samples: PointerSample[], releasedAt: number): Velocity {
+  const still = { vx: 0, vy: 0 }
+  const last = samples.at(-1)
+  if (!last || releasedAt - last.t > THROW_STALE_MS) return still
+  const first = samples.find((s) => s.t >= last.t - THROW_SAMPLE_MS) ?? last
+  const span = last.t - first.t
+  if (span < THROW_MIN_SPAN_MS) return still
+  const vx = ((last.x - first.x) / span) * 1000
+  const vy = ((last.y - first.y) / span) * 1000
+  const speed = Math.hypot(vx, vy)
+  if (!Number.isFinite(speed)) return still
+  const scale = speed > THROW_MAX_SPEED ? THROW_MAX_SPEED / speed : 1
+  return { vx: vx * scale, vy: vy * scale }
+}
+
+/** Whether a release at this speed throws the pet (else it is a drop). */
+export function isThrow(v: Velocity): boolean {
+  return Math.hypot(v.vx, v.vy) >= THROW_MIN_SPEED
+}
+
+/** Whether it may be thrown at all: not when told to stay put, nor with reduced motion. */
+export function throwsAllowed(ctx: { movement: PetMovement; reducedMotion: boolean }): boolean {
+  return ctx.movement !== 'still' && !ctx.reducedMotion
+}
+
+export interface ThrowInput {
+  /** The pet's top-left when it is let go. */
+  from: { x: number; y: number }
+  velocity: Velocity
+  area: { width: number; height: number }
+  pet: { width: number; height: number }
+  /** Window edges it may land on (none with climbing off). */
+  ledges: Ledge[]
+  /** The pet's top when it stands on the ground. */
+  groundY: number
+}
+
+export interface ThrowPath {
+  /** The pet's top-left along the way, from `from` (t = 0) to where it lands (t = ms). */
+  points: PointerSample[]
+  ms: number
+  land: { x: number; y: number; ledge: Ledge | null }
+  /** The box the whole flight covers, the pet included: what the window must hold. */
+  reach: Box
+}
+
+/**
+ * The flight of a thrown pet: gravity pulls it down (falling no faster than
+ * THROW_MAX_SPEED), it bounces off the sides of the screen and the room at
+ * the top at WALL_BOUNCE of its speed, and it lands on the first window
+ * edge it comes down onto with its middle over it, or else on the ground.
+ * Going up it passes in front of windows.
+ */
+export function throwPath({ from, velocity, area, pet, ledges: all, groundY }: ThrowInput): ThrowPath {
+  const maxX = Math.max(0, area.width - pet.width)
+  const minY = Math.min(TOP_ROOM, groundY)
+  const dt = THROW_STEP_MS / 1000
+  let { x, y } = from
+  let { vx, vy } = velocity
+  let t = 0
+  const points: PointerSample[] = [{ x, y, t: 0 }]
+  let land: ThrowPath['land'] | null = null
+  while (!land) {
+    if (t >= THROW_MAX_MS) {
+      land = { x, y: groundY, ledge: null }
+      points.push({ x, y: groundY, t })
+      break
+    }
+    vy = Math.min(vy + GRAVITY * dt, THROW_MAX_SPEED)
+    let nx = x + vx * dt
+    let ny = y + vy * dt
+    if (nx < 0) {
+      nx = Math.min(-nx, maxX)
+      vx = -vx * WALL_BOUNCE
+    } else if (nx > maxX) {
+      nx = Math.max(2 * maxX - nx, 0)
+      vx = -vx * WALL_BOUNCE
+    }
+    if (ny < minY) {
+      ny = minY
+      vy = -vy * WALL_BOUNCE
+    }
+    if (ny > y) {
+      // Coming down: the first surface it crosses in this step, the ground at the latest.
+      let hit: { top: number; ledge: Ledge | null } = ny >= groundY ? { top: groundY, ledge: null } : { top: Infinity, ledge: null }
+      for (const l of all) {
+        const top = l.y - pet.height
+        if (top < y || top > ny || top >= hit.top) continue
+        const f = (top - y) / (ny - y)
+        const middle = x + (nx - x) * f + pet.width / 2
+        if (middle >= l.x && middle <= l.x + l.width) hit = { top, ledge: l }
+      }
+      if (Number.isFinite(hit.top)) {
+        const f = ny === y ? 1 : (hit.top - y) / (ny - y)
+        const at = x + (nx - x) * f
+        const landX = hit.ledge ? Math.min(Math.max(at, hit.ledge.x), hit.ledge.x + hit.ledge.width - pet.width) : at
+        t += THROW_STEP_MS * f
+        land = { x: landX, y: hit.top, ledge: hit.ledge }
+        points.push({ x: landX, y: hit.top, t })
+        break
+      }
+    }
+    x = nx
+    y = ny
+    t += THROW_STEP_MS
+    points.push({ x, y, t })
+  }
+  // Whole milliseconds for the timer; drop a point the rounding put at or past the end.
+  const ms = Math.max(1, Math.round(t))
+  const end = points.pop()!
+  const path = points.filter((p) => p.t < ms)
+  path.push({ x: end.x, y: end.y, t: ms })
+  const xs = path.map((p) => p.x)
+  const ys = path.map((p) => p.y)
+  const left = Math.min(...xs)
+  const top = Math.min(...ys)
+  return {
+    points: path,
+    ms,
+    land,
+    reach: { x: left, y: top, width: Math.max(...xs) - left + pet.width, height: Math.max(...ys) - top + pet.height },
+  }
+}
+
 // ── Pose ───────────────────────────────────────────────────────────────────
 
 export type PetPose = 'walk' | 'sit' | 'sleep' | 'work' | 'alert' | 'hop' | 'droop' | 'look' | 'zoom' | 'pant' | 'fall'

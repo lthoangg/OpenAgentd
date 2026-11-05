@@ -413,7 +413,6 @@ export function SettingsModal() {
           back={atIndex ? undefined : {
             label: backTarget === 'index' ? 'Settings' : (sectionDef(backTarget)?.label ?? 'Back'),
             onBack: goBack,
-            ariaLabel: backTarget === 'index' ? 'Back to settings' : 'Back to list',
             className: 'md:hidden group-has-[[data-editor-kind]]/settings:hidden',
           }}
         />

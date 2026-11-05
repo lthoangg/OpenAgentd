@@ -152,7 +152,7 @@ describe('SettingsModal — phone navigation', () => {
     renderModal()
 
     expect(screen.getByRole('navigation', { name: 'Settings sections' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Back to settings' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Back to Settings' })).toBeNull()
 
     act(() => useSettingsStore.getState().setSection('providers'))
     expect(screen.queryByRole('navigation', { name: 'Settings sections' })).toBeNull()
@@ -164,11 +164,11 @@ describe('SettingsModal — phone navigation', () => {
     act(() => useSettingsStore.getState().openSettings('skills-edit', 'review'))
     renderModal()
 
-    act(() => screen.getByRole('button', { name: 'Back to list' }).click())
+    act(() => screen.getByRole('button', { name: 'Back to Skills' }).click())
     expect(useSettingsStore.getState().section).toBe('skills')
     expect(useSettingsStore.getState().mobileView).toBe('section')
 
-    act(() => screen.getByRole('button', { name: 'Back to settings' }).click())
+    act(() => screen.getByRole('button', { name: 'Back to Settings' }).click())
     expect(useSettingsStore.getState().mobileView).toBe('index')
     expect(screen.getByRole('navigation', { name: 'Settings sections' })).toBeTruthy()
   })
@@ -423,7 +423,7 @@ describe('SettingsModal — on a phone', () => {
     renderModal()
     act(() => useSettingsStore.getState().setSection('providers'))
 
-    const back = screen.getByRole('button', { name: 'Back to settings' })
+    const back = screen.getByRole('button', { name: 'Back to Settings' })
     expect(back.textContent).toBe('Settings')
     act(() => back.click())
     expect(useSettingsStore.getState().mobileView).toBe('index')

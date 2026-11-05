@@ -66,22 +66,28 @@ describe('ActivePlanSection', () => {
     expect(onClear).not.toHaveBeenCalled()
   })
 
-  it('opens the Plan tab instead of a document when it can', () => {
+  it('opens the Plan tab instead of a document when it can, and leaves Clear to that tab', () => {
     const onOpen = mock(() => {})
     render(<ActivePlanSection plan={PLAN} onClear={() => {}} onOpen={onOpen} />)
+    // The Plan tab has Clear plan…; the row stays one tap target.
+    expect(screen.queryByRole('button', { name: 'Clear plan…' })).toBeNull()
+    expect(screen.getAllByRole('button')).toHaveLength(1)
     fireEvent.click(screen.getByRole('button', { name: 'Open plan' }))
     expect(onOpen).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('has one verb for opening the plan, in both modes: "Open plan"', () => {
-    const { unmount } = render(<ActivePlanSection plan={PLAN} onClear={() => {}} />)
-    expect(screen.getByRole('button', { name: 'Open plan' }).textContent).toBe('Open plan')
+  it('opens from the whole row, in both modes, named "Open plan"', () => {
+    const titled = { ...PLAN, content: '# Ship it\n\nBody.', revision: 2 }
+    const { unmount } = render(<ActivePlanSection plan={titled} onClear={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Open plan' }).textContent).toContain('Ship it')
     expect(screen.queryByRole('button', { name: /view plan/i })).toBeNull()
     unmount()
 
-    render(<ActivePlanSection plan={PLAN} onClear={() => {}} onOpen={() => {}} />)
-    expect(screen.getByRole('button', { name: 'Open plan' }).textContent).toBe('Open plan')
+    render(<ActivePlanSection plan={titled} onClear={() => {}} onOpen={() => {}} />)
+    const row = screen.getByRole('button', { name: 'Open plan' })
+    expect(row.textContent).toContain('Ship it')
+    expect(row.textContent).toContain('rev 2')
     expect(screen.queryByRole('button', { name: /view plan/i })).toBeNull()
   })
 

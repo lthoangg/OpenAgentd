@@ -74,7 +74,7 @@ describe('TodosPopover', () => {
     const onOpenGoal = mock(() => {})
     const onGoalAction = mock((..._args: unknown[]) => {})
     render(
-      <TodosPopover open onOpenChange={onOpenChange} todos={TODOS} goal={goal} plan={plan} onClearPlan={() => {}} onOpenGoal={onOpenGoal} onGoalAction={onGoalAction} />,
+      <TodosPopover open onOpenChange={onOpenChange} todos={TODOS} goal={goal} plan={plan} onClearPlan={() => {}} onOpenPlan={() => {}} onOpenGoal={onOpenGoal} onGoalAction={onGoalAction} />,
     )
 
     const summary = document.querySelector('[data-work-summary]')!
@@ -84,12 +84,30 @@ describe('TodosPopover', () => {
     expect(summary.querySelector('[data-goal-summary]')?.textContent).not.toContain('Working')
     expect(summary.querySelector('[data-plan-status]')?.getAttribute('data-plan-status')).toBe('approved')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pause' }))
-    expect(onGoalAction).toHaveBeenCalledWith('pause')
+    // With Plan and Goal tabs to open, each row is one tap target: Pause,
+    // Resume and Clear live in those tabs, so nothing crowds the 20rem panel.
+    expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Clear plan…' })).toBeNull()
+    expect(Array.from(summary.querySelectorAll('button')).map((b) => b.getAttribute('aria-label'))).toEqual(['Open plan', 'Open goal'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Open goal' }))
     expect(onOpenChange).toHaveBeenCalledWith(false)
     expect(onOpenGoal).toHaveBeenCalledTimes(1)
+    expect(onGoalAction).not.toHaveBeenCalled()
+  })
+
+  // The popover is 20rem wide: the Done when flag sits on its own line above
+  // the criteria, so the criteria take the full width instead of leaving an
+  // empty gutter under the flag.
+  it('stacks the Done when flag above its criteria', () => {
+    const plan = { content: '# Ship it', updated_at: new Date().toISOString(), revision: 1, approved_revision: 1, done_when: 'It ships.' }
+    render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} plan={plan} onClearPlan={() => {}} />)
+
+    const row = document.querySelector<HTMLElement>('[data-done-when]')!
+    expect(row.className.split(/\s+/)).toContain('flex-col')
+    const [flag, criteria] = Array.from(row.children)
+    expect(flag.textContent).toBe('Done when')
+    expect(criteria.textContent).toContain('It ships.')
   })
 
   it('keeps a goal that runs something else on its own status row, and resumes a paused one', () => {

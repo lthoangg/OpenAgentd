@@ -545,8 +545,12 @@ run from the terminal (the native Rust binary since v3.0.0).
     paused, orange waiting on you, red blocked) with the state and next task
     in its tooltip; the Tasks tab and task popover lead with one status line
     for the plan and its goal ("Approved · Running", "All tasks done ·
-    checking") with Pause and Resume, and end the checklist with the plan's
-    **Done when** and whether the completion check has confirmed it. An
+    checking"), and end the checklist with the plan's **Done when** (its
+    flag on its own line above the criteria) and whether the completion
+    check has confirmed it. Since `[v3.47.0]` tapping the plan or goal row
+    opens the Plan or Goal tab, where Clear plan, Pause and Resume are; only
+    without a dock do the rows keep Clear plan and Pause or Resume beside
+    them. An
     approved plan that has a Done when and no goal can be started as a goal
     later with **Run as goal** in the Plan tab. The Stop button pauses the
     goal, Plan mode and running subagents make it wait, and since

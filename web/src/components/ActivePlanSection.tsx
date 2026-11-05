@@ -2,14 +2,15 @@
  * ActivePlanSection — the session plan as one row above the task list.
  *
  * The lead writes the plan with the ``plan`` tool, and the backend restates it
- * after every context compaction. Open plan shows it in the Plan tab (a
- * read-only document where there is no dock — same name, one verb for it
- * everywhere); Clear stops using it in the session, so later compactions stop
- * carrying a plan the session has moved past. A workspace plan file stays on
- * disk.
+ * after every context compaction. The whole row is one tap target, "Open
+ * plan": it shows the plan in the Plan tab, or as a read-only document where
+ * there is no dock. Clear stops using the plan in the session, so later
+ * compactions stop carrying a plan the session has moved past (a workspace
+ * plan file stays on disk). The Plan tab has its own Clear, so the row offers
+ * Clear only where there is no tab to open.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FileText } from 'lucide-react'
+import { ChevronRight, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -23,7 +24,7 @@ import { FileLightbox } from './LazyFileLightbox'
 export interface ActivePlanSectionProps {
   plan: SessionPlan
   onClear: () => void
-  /** Open the plan in the Plan tab. Without it, Open plan shows a read-only document. */
+  /** Open the plan in the Plan tab, where Clear lives. Without it, the row shows a read-only document and keeps Clear. */
   onOpen?: () => void
   clearing?: boolean
   /** Where the plan stands; without it, read from the plan alone. */
@@ -73,49 +74,61 @@ export function ActivePlanSection({ plan, onClear, onOpen, clearing = false, sta
 
   return (
     <div className={cn('flex shrink-0 items-center gap-2 border-b border-(--color-border-subtle) px-2.5 py-1', className)} data-plan-status={shown}>
-      <FileText size={12} aria-hidden="true" className="shrink-0 text-(--color-text-subtle)" />
-      <span className="text-xs font-medium text-(--color-text)">Plan</span>
-      {title && <span className="min-w-0 truncate text-xs text-(--color-text-2)" title={title}>{title}</span>}
-      {plan.revision !== undefined && (
-        <span className="shrink-0 font-mono text-meta tabular-nums text-(--color-text-muted)">rev {plan.revision}</span>
+      <button type="button" aria-label="Open plan" onClick={onOpen ?? openPlan} className={SUMMARY_ROW_BUTTON_CLASS}>
+        <FileText size={12} aria-hidden="true" className="shrink-0 text-(--color-text-subtle)" />
+        <span className="text-xs font-medium text-(--color-text)">Plan</span>
+        {/* Title and status share what the 20rem popover leaves; both truncate, so a long status never pushes the row past the panel. */}
+        {title && <span className="min-w-10 truncate text-xs text-(--color-text-2)" title={title}>{title}</span>}
+        {plan.revision !== undefined && (
+          <span className="shrink-0 font-mono text-meta tabular-nums text-(--color-text-muted)">rev {plan.revision}</span>
+        )}
+        {statusClass && <span data-plan-status-label title={statusText} className={cn('min-w-0 truncate text-meta font-medium', statusClass)}>{statusText}</span>}
+        <span
+          className="shrink-0 font-mono text-meta tabular-nums text-(--color-text-muted)"
+          title={`Updated ${formatRelativeDate(plan.updated_at)}`}
+        >
+          {formatCompactRelative(plan.updated_at)}
+        </span>
+        <span className="flex-1" aria-hidden="true" />
+        <ChevronRight size={12} aria-hidden="true" className="shrink-0 text-(--color-text-subtle)" />
+      </button>
+      {!onOpen && (
+        <>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setConfirmClear(true)}
+                  disabled={clearing}
+                  aria-label="Clear plan…"
+                >
+                  Clear plan…
+                </Button>
+              }
+            />
+            <TooltipContent>Stops using this plan in the session; the file stays.</TooltipContent>
+          </Tooltip>
+          <ConfirmDialog
+            open={confirmClear}
+            onOpenChange={setConfirmClear}
+            title="Clear this plan?"
+            description="The session stops following this plan and the agent no longer sees it. The plan file stays on disk."
+            confirmLabel="Clear plan"
+            onConfirm={onClear}
+          />
+        </>
       )}
-      {statusClass && <span data-plan-status-label className={cn('shrink-0 text-meta font-medium', statusClass)}>{statusText}</span>}
-      <span
-        className="shrink-0 font-mono text-meta tabular-nums text-(--color-text-muted)"
-        title={`Updated ${formatRelativeDate(plan.updated_at)}`}
-      >
-        {formatCompactRelative(plan.updated_at)}
-      </span>
-      <span className="flex-1" aria-hidden="true" />
-      <Button type="button" variant="ghost" size="xs" onClick={onOpen ?? openPlan}>
-        Open plan
-      </Button>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              onClick={() => setConfirmClear(true)}
-              disabled={clearing}
-              aria-label="Clear plan…"
-            >
-              Clear plan…
-            </Button>
-          }
-        />
-        <TooltipContent>Stops using this plan in the session; the file stays.</TooltipContent>
-      </Tooltip>
-      <ConfirmDialog
-        open={confirmClear}
-        onOpenChange={setConfirmClear}
-        title="Clear this plan?"
-        description="The session stops following this plan and the agent no longer sees it. The plan file stays on disk."
-        confirmLabel="Clear plan"
-        onConfirm={onClear}
-      />
       {doc && <FileLightbox items={[doc]} isOpen onClose={closePlan} />}
     </div>
   )
 }
+
+/**
+ * A summary row (plan, goal) as one tap target: it fills the row, so nothing
+ * else needs to sit beside it in a narrow panel.
+ */
+export const SUMMARY_ROW_BUTTON_CLASS =
+  '-mx-1.5 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-xs px-1.5 py-0.5 text-left transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9'

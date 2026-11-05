@@ -129,7 +129,7 @@ impl GoalSettings {
     }
 }
 
-/// `telemetry` — how long local spans and metrics are kept (v3 only).
+/// `telemetry` — how long local spans are kept (v3 only).
 /// Written only when it differs from the default, so files stay unchanged.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]

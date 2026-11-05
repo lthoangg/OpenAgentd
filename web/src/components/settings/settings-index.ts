@@ -75,8 +75,8 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   // Data and safety
   { section: 'memory', label: 'Memory pages', keywords: ['wiki', 'knowledge base', 'markdown', 'notes', 'remember'], anchor: 'Memory' },
   { section: 'denied_paths', label: 'Denied patterns', keywords: ['block', 'deny', 'gitignore', 'glob', 'files', 'folders', 'forbidden'] },
-  { section: 'telemetry', label: 'Keep forever', keywords: ['retention', 'delete', 'traces', 'metrics', 'privacy'] },
-  { section: 'telemetry', label: 'Keep traces and metrics for', keywords: ['retention', 'days', 'delete', 'privacy'] },
+  { section: 'telemetry', label: 'Keep forever', keywords: ['retention', 'delete', 'traces', 'privacy'] },
+  { section: 'telemetry', label: 'Keep traces for', keywords: ['retention', 'days', 'delete', 'privacy'] },
   // About
   { section: 'about', label: 'Check for updates', keywords: ['version', 'update', 'download', 'restart', 'upgrade', 'release'], anchor: 'Updates' },
   { section: 'about', label: 'Community and support', keywords: ['discord', 'facebook', 'website', 'help', 'feedback'] },

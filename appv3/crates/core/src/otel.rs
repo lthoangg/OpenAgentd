@@ -1,9 +1,13 @@
 //! File-based
-//! OpenTelemetry-shaped spans and metrics, no external service.
+//! OpenTelemetry-shaped spans, no external service.
 //!
 //! Layout (unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set):
 //!   `{STATE_DIR}/otel/spans/YYYY-MM-DD-HH.jsonl`  (hourly, by span end)
-//!   `{STATE_DIR}/otel/metrics/YYYY-MM-DD.jsonl`   (daily)
+//!
+//! Every number the Telemetry page shows comes from spans. Metrics were
+//! dropped: nothing read them, and their cumulative histograms, rewritten
+//! every minute, grew the state dir every day. [`run_retention_once`]
+//! removes the old `otel/metrics` directory.
 //!
 //! Context propagation mirrors Python `contextvars`: a task-local "current
 //! span" that [`scope`] establishes for a future and [`attach`] mutates in
@@ -315,11 +319,9 @@ fn span_to_dict(s: &SpanData) -> (Value, u64, StatusCode, u128, u64) {
 
 struct Otel {
     spans: Option<JsonlWriter>,
-    metrics: JsonlWriter,
     service: String,
     ratio: f64,
     slow_ns: u64,
-    metric_thread_stop: Mutex<Option<SyncSender<()>>>,
 }
 
 static OTEL: OnceLock<Otel> = OnceLock::new();
@@ -392,45 +394,27 @@ pub fn setup(service_name: &str, otel_dir: Option<&Path>) {
             Some(JsonlWriter::new(d, hourly_partition, "spans"))
         }
     };
-    let metrics = JsonlWriter::new(dir.join("metrics"), daily_partition, "metrics");
-    let o = Otel { spans, metrics, service: service_name.to_string(), ratio: sample_ratio(), slow_ns: slow_span_threshold_ns(), metric_thread_stop: Mutex::new(None) };
+    let o = Otel { spans, service: service_name.to_string(), ratio: sample_ratio(), slow_ns: slow_span_threshold_ns() };
     if OTEL.set(o).is_err() {
         return;
     }
-    let (tx, rx) = sync_channel::<()>(1);
-    *OTEL.get().unwrap().metric_thread_stop.lock().unwrap() = Some(tx);
-    std::thread::Builder::new()
-        .name("otel-metrics".into())
-        .spawn(move || loop {
-            match rx.recv_timeout(Duration::from_secs(60)) {
-                Err(RecvTimeoutError::Timeout) => export_metrics(),
-                _ => return,
-            }
-        })
-        .ok();
-    tracing::info!("otel_setup_complete service={} spans_dir={} metrics_dir={}", service_name, dir.join("spans").display(), dir.join("metrics").display());
+    tracing::info!("otel_setup_complete service={} spans_dir={}", service_name, dir.join("spans").display());
 }
 
-/// `shutdown_otel` — final metric export, flush and close the writers.
+/// `shutdown_otel` — flush and close the span writer.
 pub fn shutdown() {
     let Some(o) = OTEL.get() else { return };
-    if let Some(tx) = o.metric_thread_stop.lock().unwrap().take() {
-        let _ = tx.try_send(());
-        export_metrics();
-    }
     if let Some(w) = &o.spans {
         w.close();
     }
-    o.metrics.close();
 }
 
-/// Flush pending span/metric records now (tests and harnesses).
+/// Flush pending span records now (tests and harnesses).
 pub fn flush() {
     if let Some(o) = OTEL.get() {
         if let Some(w) = &o.spans {
             w.flush_now();
         }
-        o.metrics.flush_now();
     }
 }
 
@@ -438,10 +422,6 @@ pub fn flush() {
 
 pub fn hourly_partition(ts: DateTime<Utc>) -> String {
     ts.format("%Y-%m-%d-%H").to_string()
-}
-
-pub fn daily_partition(ts: DateTime<Utc>) -> String {
-    ts.format("%Y-%m-%d").to_string()
 }
 
 enum Msg {
@@ -573,335 +553,6 @@ fn flush_batch(batch: &mut Vec<(Value, DateTime<Utc>)>, root: &Path, partition: 
     }
 }
 
-// ── metrics ─────────────────────────────────────────────────────────────────
-
-const DEFAULT_BOUNDS: [f64; 15] = [0.0, 5.0, 10.0, 25.0, 50.0, 75.0, 100.0, 250.0, 500.0, 750.0, 1000.0, 2500.0, 5000.0, 7500.0, 10000.0];
-
-#[derive(Clone)]
-enum Num {
-    I(i64),
-    F(f64),
-}
-
-impl Num {
-    fn f(&self) -> f64 {
-        match self {
-            Num::I(i) => *i as f64,
-            Num::F(f) => *f,
-        }
-    }
-    fn add(&self, o: &Num) -> Num {
-        match (self, o) {
-            (Num::I(a), Num::I(b)) => Num::I(a + b),
-            _ => Num::F(self.f() + o.f()),
-        }
-    }
-    fn repr(&self) -> String {
-        match self {
-            Num::I(i) => i.to_string(),
-            Num::F(f) => crate::pyjson::float_repr(*f),
-        }
-    }
-}
-
-type Attrs = Vec<(String, Value)>;
-
-fn same_attrs(a: &Attrs, b: &Attrs) -> bool {
-    a.len() == b.len() && a.iter().all(|(k, v)| b.iter().any(|(k2, v2)| k == k2 && v == v2))
-}
-
-/// A measurement taken while a (sampled) span was current — the SDK's
-/// `TraceBasedExemplarFilter`.
-#[derive(Clone)]
-struct Exemplar {
-    value: Num,
-    time: u64,
-    span_id: u64,
-    trace_id: u128,
-}
-
-impl Exemplar {
-    fn new(v: &Num, ctx: Option<SpanCtx>) -> Option<Exemplar> {
-        ctx.map(|c| Exemplar { value: v.clone(), time: now_ns(), span_id: c.span_id, trace_id: c.trace_id })
-    }
-    fn repr(&self) -> String {
-        format!("Exemplar(filtered_attributes={{}}, value={}, time_unix_nano={}, span_id={}, trace_id={})", self.value.repr(), self.time, self.span_id, self.trace_id)
-    }
-}
-
-struct HistPoint {
-    attrs: Attrs,
-    start: u64,
-    count: u64,
-    sum: Num,
-    buckets: [u64; 16],
-    min: Num,
-    max: Num,
-    /// `AlignedHistogramBucketExemplarReservoir`: last measurement per bucket
-    /// since the previous collection.
-    exemplars: [Option<Exemplar>; 16],
-}
-
-struct SumPoint {
-    attrs: Attrs,
-    start: u64,
-    value: Num,
-    /// `SimpleFixedSizeExemplarReservoir(size=1)`.
-    exemplar: Option<Exemplar>,
-    seen: u64,
-}
-
-enum Points {
-    Hist(Vec<HistPoint>),
-    Sum(Vec<SumPoint>),
-}
-
-struct Instrument {
-    name: String,
-    description: String,
-    unit: String,
-    points: Points,
-    /// Sequence of the first measurement: the Python SDK's reader storage
-    /// creates per-instrument state lazily, so export order is
-    /// first-measurement order, not creation order.
-    first_seen: u64,
-}
-
-fn mark_seen(i: &mut Instrument) {
-    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    if i.first_seen == u64::MAX {
-        i.first_seen = SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    }
-}
-
-fn instruments() -> &'static Mutex<Vec<Instrument>> {
-    static I: OnceLock<Mutex<Vec<Instrument>>> = OnceLock::new();
-    I.get_or_init(|| Mutex::new(vec![]))
-}
-
-fn register(name: &str, description: &str, unit: &str, hist: bool) {
-    let mut g = instruments().lock().unwrap();
-    if g.iter().any(|i| i.name == name) {
-        return;
-    }
-    g.push(Instrument {
-        name: name.into(),
-        description: description.into(),
-        unit: unit.into(),
-        points: if hist { Points::Hist(vec![]) } else { Points::Sum(vec![]) },
-        first_seen: u64::MAX,
-    });
-}
-
-fn to_num(v: &Value) -> Num {
-    match v.as_i64() {
-        Some(i) if !v.is_f64() => Num::I(i),
-        _ => Num::F(v.as_f64().unwrap_or(0.0)),
-    }
-}
-
-fn attrs_of(attrs: Vec<(&str, Value)>) -> Attrs {
-    attrs.into_iter().filter(|(_, v)| valid_attr(v)).map(|(k, v)| (k.to_string(), v)).collect()
-}
-
-/// A histogram instrument (`meter.create_histogram`).
-#[derive(Clone, Copy)]
-pub struct Histogram {
-    name: &'static str,
-}
-
-pub fn histogram(name: &'static str, description: &str, unit: &str) -> Histogram {
-    register(name, description, unit, true);
-    Histogram { name }
-}
-
-impl Histogram {
-    /// Record under the current span context.
-    pub fn record(&self, value: impl Into<Value>, attrs: Vec<(&str, Value)>) {
-        self.record_in(current(), value, attrs)
-    }
-
-    /// Record with an explicit span context (the span the measurement was
-    /// taken in, for the exemplar).
-    pub fn record_in(&self, ctx: Option<SpanCtx>, value: impl Into<Value>, attrs: Vec<(&str, Value)>) {
-        let v = to_num(&value.into());
-        let ex = Exemplar::new(&v, ctx);
-        let attrs = attrs_of(attrs);
-        let mut g = instruments().lock().unwrap();
-        let Some(inst) = g.iter_mut().find(|i| i.name == self.name) else { return };
-        mark_seen(inst);
-        let Instrument { points: Points::Hist(pts), .. } = inst else { return };
-        let idx = DEFAULT_BOUNDS.iter().position(|b| v.f() <= *b).unwrap_or(DEFAULT_BOUNDS.len());
-        match pts.iter_mut().find(|p| same_attrs(&p.attrs, &attrs)) {
-            Some(p) => {
-                p.count += 1;
-                p.sum = p.sum.add(&v);
-                p.buckets[idx] += 1;
-                if ex.is_some() {
-                    p.exemplars[idx] = ex;
-                }
-                if v.f() < p.min.f() {
-                    p.min = v.clone();
-                }
-                if v.f() > p.max.f() {
-                    p.max = v;
-                }
-            }
-            None => {
-                let mut buckets = [0u64; 16];
-                buckets[idx] = 1;
-                let mut exemplars: [Option<Exemplar>; 16] = Default::default();
-                exemplars[idx] = ex;
-                pts.push(HistPoint { attrs, start: now_ns(), count: 1, sum: v.clone(), buckets, min: v.clone(), max: v, exemplars });
-            }
-        }
-    }
-}
-
-/// A monotonic counter instrument (`meter.create_counter`).
-#[derive(Clone, Copy)]
-pub struct Counter {
-    name: &'static str,
-}
-
-pub fn counter(name: &'static str, description: &str) -> Counter {
-    register(name, description, "", false);
-    Counter { name }
-}
-
-impl Counter {
-    pub fn add(&self, value: impl Into<Value>, attrs: Vec<(&str, Value)>) {
-        let v = to_num(&value.into());
-        let ex = Exemplar::new(&v, current());
-        let attrs = attrs_of(attrs);
-        let mut g = instruments().lock().unwrap();
-        let Some(inst) = g.iter_mut().find(|i| i.name == self.name) else { return };
-        mark_seen(inst);
-        let Instrument { points: Points::Sum(pts), .. } = inst else { return };
-        let idx = match pts.iter().position(|p| same_attrs(&p.attrs, &attrs)) {
-            Some(i) => {
-                pts[i].value = pts[i].value.add(&v);
-                i
-            }
-            None => {
-                pts.push(SumPoint { attrs, start: now_ns(), value: v, exemplar: None, seen: 0 });
-                pts.len() - 1
-            }
-        };
-        if ex.is_some() {
-            // `randrange(0, seen) < 1` — the first offer always lands.
-            let p = &mut pts[idx];
-            p.seen += 1;
-            if uuid::Uuid::new_v4().as_u128().is_multiple_of(p.seen as u128) {
-                p.exemplar = ex;
-            }
-        }
-    }
-}
-
-fn py_value_repr(v: &Value) -> String {
-    match v {
-        Value::String(s) => py_str_repr(s),
-        Value::Bool(b) => {
-            if *b {
-                "True".into()
-            } else {
-                "False".into()
-            }
-        }
-        Value::Number(_) => to_num(v).repr(),
-        Value::Array(a) => format!("({}{})", a.iter().map(py_value_repr).collect::<Vec<_>>().join(", "), if a.len() == 1 { "," } else { "" }),
-        _ => "None".into(),
-    }
-}
-
-fn py_str_repr(s: &str) -> String {
-    let q = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
-    let mut out = String::from(q);
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c == q => {
-                out.push('\\');
-                out.push(c);
-            }
-            c if (c as u32) < 0x20 || c as u32 == 0x7f => out.push_str(&format!("\\x{:02x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push(q);
-    out
-}
-
-fn attrs_repr(a: &Attrs) -> String {
-    format!("{{{}}}", a.iter().map(|(k, v)| format!("{}: {}", py_str_repr(k), py_value_repr(v))).collect::<Vec<_>>().join(", "))
-}
-
-/// Collect every instrument with data into v2's `{"metrics": [...]}` shape
-/// (`data` is the Python SDK's dataclass `repr`).
-pub fn collect_metrics() -> Option<Value> {
-    let now = now_ns();
-    let mut g = instruments().lock().unwrap();
-    let mut ordered: Vec<&mut Instrument> = g.iter_mut().collect();
-    ordered.sort_by_key(|i| i.first_seen);
-    let mut out = vec![];
-    for i in ordered {
-        let data = match &mut i.points {
-            Points::Hist(p) if !p.is_empty() => {
-                // Exemplar reservoirs reset on every collection.
-                let exs: Vec<String> = p.iter_mut().map(|h| std::mem::take(&mut h.exemplars).iter().flatten().map(Exemplar::repr).collect::<Vec<_>>().join(", ")).collect();
-                let bounds = format!("({})", DEFAULT_BOUNDS.iter().map(|b| crate::pyjson::float_repr(*b)).collect::<Vec<_>>().join(", "));
-                let pts: Vec<String> = p
-                    .iter()
-                    .zip(exs)
-                    .map(|(h, ex)| {
-                        format!(
-                            "HistogramDataPoint(attributes={}, start_time_unix_nano={}, time_unix_nano={now}, count={}, sum={}, bucket_counts=({}), explicit_bounds={bounds}, min={}, max={}, exemplars=[{ex}])",
-                            attrs_repr(&h.attrs),
-                            h.start,
-                            h.count,
-                            h.sum.repr(),
-                            h.buckets.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(", "),
-                            h.min.repr(),
-                            h.max.repr()
-                        )
-                    })
-                    .collect();
-                format!("Histogram(data_points=[{}], aggregation_temporality=<AggregationTemporality.CUMULATIVE: 2>)", pts.join(", "))
-            }
-            Points::Sum(p) if !p.is_empty() => {
-                let pts: Vec<String> = p
-                    .iter_mut()
-                    .map(|s| {
-                        let ex = s.exemplar.take().map(|e| e.repr()).unwrap_or_default();
-                        s.seen = 0;
-                        format!(
-                            "NumberDataPoint(attributes={}, start_time_unix_nano={}, time_unix_nano={now}, value={}, exemplars=[{ex}])",
-                            attrs_repr(&s.attrs),
-                            s.start,
-                            s.value.repr()
-                        )
-                    })
-                    .collect();
-                format!("Sum(data_points=[{}], aggregation_temporality=<AggregationTemporality.CUMULATIVE: 2>, is_monotonic=True)", pts.join(", "))
-            }
-            _ => continue,
-        };
-        out.push(json!({"name": i.name, "description": i.description, "unit": i.unit, "data": data}));
-    }
-    (!out.is_empty()).then(|| json!({"metrics": out}))
-}
-
-fn export_metrics() {
-    let Some(o) = OTEL.get() else { return };
-    if let Some(m) = collect_metrics() {
-        o.metrics.write(m, Utc::now());
-    }
-}
-
 // ── retention ───────────────────────────────────────────────────────────────
 
 fn int_env(name: &str, default: i64, min: i64) -> i64 {
@@ -960,36 +611,70 @@ pub fn sweep_old_partitions(root: &Path, max_age_days: i64, now: Option<f64>) ->
     r
 }
 
-/// Days spans and metrics are kept: the `telemetry.retention_days` setting,
+/// Days spans are kept: the `telemetry.retention_days` setting,
 /// where 0 keeps them forever. Read on every sweep, so a change in Settings
 /// applies without a restart.
 fn retention_days() -> i64 {
     crate::runtime_settings::telemetry_settings().retention_days()
 }
 
-/// One retention pass over spans and metrics (nothing when retention is 0).
-pub fn run_retention_once(otel_dir: Option<&Path>) -> (SweepResult, SweepResult) {
+/// Remove `{otel_dir}/metrics`, which older versions filled with daily
+/// metric files nobody read. Only a real directory: a symlink there is left
+/// alone, so its target is never touched. Returns the bytes freed, `None`
+/// when there was nothing to remove.
+pub fn remove_legacy_metrics(otel_dir: &Path) -> Option<u64> {
+    let dir = otel_dir.join("metrics");
+    let meta = std::fs::symlink_metadata(&dir).ok()?;
+    if !meta.is_dir() {
+        return None;
+    }
+    let bytes = dir_bytes(&dir);
+    match std::fs::remove_dir_all(&dir) {
+        Ok(()) => {
+            tracing::info!("otel_metrics_removed path={} bytes={}", dir.display(), bytes);
+            Some(bytes)
+        }
+        Err(e) => {
+            tracing::warn!("otel_metrics_remove_failed path={} error={}", dir.display(), e);
+            None
+        }
+    }
+}
+
+/// Total size of the regular files under `dir`, not following symlinks.
+fn dir_bytes(dir: &Path) -> u64 {
+    let mut total = 0;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        for e in rd.flatten() {
+            match e.file_type() {
+                Ok(t) if t.is_dir() => stack.push(e.path()),
+                Ok(t) if t.is_file() => total += e.metadata().map(|m| m.len()).unwrap_or(0),
+                _ => {}
+            }
+        }
+    }
+    total
+}
+
+/// One retention pass over spans (nothing when retention is 0). Also drops
+/// the legacy metrics directory, whatever the retention.
+pub fn run_retention_once(otel_dir: Option<&Path>) -> SweepResult {
     let base = otel_dir.map(Path::to_path_buf).unwrap_or_else(|| crate::settings().state_dir.join("otel"));
+    remove_legacy_metrics(&base);
     let days = retention_days();
     if days <= 0 {
         tracing::debug!("otel_retention_off keep_forever");
-        return (SweepResult::default(), SweepResult::default());
+        return SweepResult::default();
     }
     let s = sweep_old_partitions(&base.join("spans"), days, None);
-    let m = sweep_old_partitions(&base.join("metrics"), days, None);
-    if s.deleted > 0 || m.deleted > 0 {
-        tracing::info!(
-            "otel_retention_swept spans_deleted={} spans_bytes={} metrics_deleted={} metrics_bytes={} days={}",
-            s.deleted,
-            s.bytes_freed,
-            m.deleted,
-            m.bytes_freed,
-            days
-        );
+    if s.deleted > 0 {
+        tracing::info!("otel_retention_swept spans_deleted={} spans_bytes={} days={}", s.deleted, s.bytes_freed, days);
     } else {
-        tracing::debug!("otel_retention_swept nothing_to_delete spans_scanned={} metrics_scanned={}", s.scanned, m.scanned);
+        tracing::debug!("otel_retention_swept nothing_to_delete spans_scanned={}", s.scanned);
     }
-    (s, m)
+    s
 }
 
 fn retention_task() -> &'static Mutex<Option<tokio::task::JoinHandle<()>>> {
@@ -1097,16 +782,30 @@ mod tests {
     }
 
     #[test]
-    fn metrics_repr() {
-        let h = histogram("t.h", "desc", "s");
-        h.record(0.5, vec![("k", json!("v"))]);
-        h.record(7, vec![("k", json!("v"))]);
-        let c = counter("t.c", "count");
-        c.add(1, vec![("a", json!("x"))]);
-        c.add(1, vec![("a", json!("x"))]);
-        let m = collect_metrics().unwrap().to_string();
-        assert!(m.contains("count=2, sum=7.5, bucket_counts=(0, 1, 1, 0"));
-        assert!(m.contains("min=0.5, max=7"));
-        assert!(m.contains("value=2, exemplars=[]"));
+    fn removes_the_legacy_metrics_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let metrics = tmp.path().join("metrics");
+        std::fs::create_dir_all(metrics.join("nested")).unwrap();
+        std::fs::write(metrics.join("2026-08-07.jsonl"), vec![b'x'; 100]).unwrap();
+        std::fs::write(metrics.join("nested/a.jsonl"), vec![b'x'; 20]).unwrap();
+        std::fs::create_dir_all(tmp.path().join("spans")).unwrap();
+        assert_eq!(remove_legacy_metrics(tmp.path()), Some(120));
+        assert!(!metrics.exists());
+        assert!(tmp.path().join("spans").is_dir());
+        assert_eq!(remove_legacy_metrics(tmp.path()), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn leaves_a_symlinked_metrics_dir_and_its_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("elsewhere");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("keep.jsonl"), b"x").unwrap();
+        let otel = tmp.path().join("otel");
+        std::fs::create_dir_all(&otel).unwrap();
+        std::os::unix::fs::symlink(&target, otel.join("metrics")).unwrap();
+        assert_eq!(remove_legacy_metrics(&otel), None);
+        assert!(target.join("keep.jsonl").is_file());
     }
 }

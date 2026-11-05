@@ -134,25 +134,6 @@ pub fn parse_model_id(model_id: Option<&str>) -> (String, String) {
     }
 }
 
-struct Instruments {
-    op_duration: otel::Histogram,
-    time_to_first_chunk: otel::Histogram,
-    token_usage: otel::Histogram,
-    tool_duration: otel::Histogram,
-    runs: otel::Counter,
-}
-
-fn instruments() -> &'static Instruments {
-    static I: OnceLock<Instruments> = OnceLock::new();
-    I.get_or_init(|| Instruments {
-        op_duration: otel::histogram("gen_ai.client.operation.duration", "GenAI operation duration", "s"),
-        time_to_first_chunk: otel::histogram("gen_ai.client.operation.time_to_first_chunk", "Time to receive the first chunk of a streaming response", "s"),
-        token_usage: otel::histogram("gen_ai.client.token.usage", "Number of input and output tokens used", "{token}"),
-        tool_duration: otel::histogram("openagentd.tool.execution.duration", "Tool execution duration", "s"),
-        runs: otel::counter("openagentd.agent.runs.total", "Total completed agent runs"),
-    })
-}
-
 /// How a wrapped model call ended.
 pub enum ModelOutcome<'a> {
     Ok(&'a AssistantMessage, StreamTiming),
@@ -192,7 +173,6 @@ pub struct OtelHook {
 impl OtelHook {
     pub fn new(agent_name: &str, model_id: Option<&str>) -> Self {
         let (provider, model) = parse_model_id(model_id);
-        instruments();
         Self { agent_name: agent_name.into(), provider, model, agent_span: Mutex::new(None), token: Mutex::new(None), run_start: Mutex::new(None), run_attrs: Vec::new() }
     }
 
@@ -236,7 +216,6 @@ impl OtelHook {
         if let Some(prev) = self.token.lock().unwrap().take() {
             otel::attach(prev);
         }
-        instruments().runs.add(1, vec![("gen_ai.agent.name", json!(self.agent_name)), ("gen_ai.provider.name", json!(self.provider)), ("gen_ai.request.model", json!(self.model))]);
     }
 
     /// `(WORKSPACE_ATTR, workspace)` when the run has a workspace.
@@ -278,7 +257,7 @@ impl OtelHook {
         last.insert(key, fp);
     }
 
-    pub fn end_model_span(&self, span: &Span, started: Instant, outcome: ModelOutcome<'_>) {
+    pub fn end_model_span(&self, span: &Span, outcome: ModelOutcome<'_>) {
         match outcome {
             ModelOutcome::Err(name, qualified, msg) => {
                 span.set_attr("error.type", name);
@@ -286,7 +265,6 @@ impl OtelHook {
                 span.exit_with_exception(qualified, msg);
             }
             ModelOutcome::Ok(result, timing) => {
-                let elapsed = started.elapsed().as_secs_f64();
                 let usage = result.meta.extra.as_ref().and_then(|e| e.get("usage")).cloned().unwrap_or(json!({}));
                 set_usage_span_attributes(span, &usage);
                 if let Some(m) = result.meta.extra.as_ref().and_then(|e| e.get("model")).filter(|m| crate::util::truthy(m)) {
@@ -301,23 +279,6 @@ impl OtelHook {
                 }
                 span.set_ok();
                 span.end();
-                let attrs = || vec![("gen_ai.operation.name", json!("chat")), ("gen_ai.provider.name", json!(self.provider)), ("gen_ai.request.model", json!(self.model))];
-                instruments().op_duration.record_in(Some(span.ctx()), elapsed, attrs());
-                if let Some(ttft) = timing.ttft {
-                    instruments().time_to_first_chunk.record_in(Some(span.ctx()), ttft.as_secs_f64(), attrs());
-                }
-                let input = usage.get("input").cloned().unwrap_or(json!(0));
-                let output = usage.get("output").cloned().unwrap_or(json!(0));
-                if crate::util::truthy(&input) {
-                    let mut a = attrs();
-                    a.push(("gen_ai.token.type", json!("input")));
-                    instruments().token_usage.record_in(Some(span.ctx()), input, a);
-                }
-                if crate::util::truthy(&output) {
-                    let mut a = attrs();
-                    a.push(("gen_ai.token.type", json!("output")));
-                    instruments().token_usage.record_in(Some(span.ctx()), output, a);
-                }
             }
         }
     }
@@ -335,7 +296,7 @@ impl OtelHook {
         Span::start(format!("execute_tool {}", tc.function.name), SpanKind::Internal, attrs)
     }
 
-    pub fn end_tool_span(&self, span: &Span, tool_name: &str, started: Instant, outcome: ToolOutcome<'_>) {
+    pub fn end_tool_span(&self, span: &Span, outcome: ToolOutcome<'_>) {
         match outcome {
             ToolOutcome::QuestionSuspended(msg) => {
                 span.set_attr("tool.suspended", true);
@@ -351,11 +312,6 @@ impl OtelHook {
                 span.set_attr("tool.result.length", result.chars().count());
                 span.set_ok();
                 span.end();
-                instruments().tool_duration.record_in(
-                    Some(span.ctx()),
-                    started.elapsed().as_secs_f64(),
-                    vec![("gen_ai.tool.name", json!(tool_name)), ("gen_ai.agent.name", json!(self.agent_name))],
-                );
             }
         }
     }
@@ -564,13 +520,13 @@ mod tests {
         let hook = OtelHook::new("lead", Some("mock:mock"));
         let timing = StreamTiming { ttft: Some(Duration::from_millis(800)), generation: Some(Duration::from_secs(2)) };
         let span = Span::start_with_parent("chat mock", SpanKind::Client, None, vec![]);
-        hook.end_model_span(&span, Instant::now(), ModelOutcome::Ok(&answer(100), timing));
+        hook.end_model_span(&span, ModelOutcome::Ok(&answer(100), timing));
         assert!(span.has_attr(TTFT_ATTR));
         assert!(span.has_attr(OUTPUT_TPS_ATTR));
 
         // Nothing streamed (or no usage): neither is recorded.
         let span = Span::start_with_parent("chat mock", SpanKind::Client, None, vec![]);
-        hook.end_model_span(&span, Instant::now(), ModelOutcome::Ok(&answer(0), StreamTiming::default()));
+        hook.end_model_span(&span, ModelOutcome::Ok(&answer(0), StreamTiming::default()));
         assert!(!span.has_attr(TTFT_ATTR));
         assert!(!span.has_attr(OUTPUT_TPS_ATTR));
     }

@@ -73,11 +73,9 @@ async fn generate(
     obs.span.set_attr("gen_ai.provider.name", cfg.provider.as_str());
     obs.span.set_attr("gen_ai.request.model", cfg.model.as_str());
     obs.span.set_name(format!("generate_image {}:{}", cfg.provider, cfg.model));
-    obs.set_provider(&cfg.provider);
     if !PROVIDERS.contains(&cfg.provider.as_str()) {
         return fail("unknown_provider", &format!("provider '{}' is not supported for image generation. Supported providers: {}.", cfg.provider, PROVIDERS.join(", ")));
     }
-    obs.set_model(&cfg.model);
     let mut overrides: Overrides = vec![];
     for (k, v) in [("size", &size), ("output_format", &output_format), ("aspect_ratio", &aspect_ratio), ("image_size", &image_size)] {
         if let Some(v) = v.as_ref().filter(|v| !v.is_empty()) {
@@ -88,7 +86,6 @@ async fn generate(
     let images = images.filter(|i| !i.is_empty());
     let mode = if images.is_some() { "edit" } else { "generate" };
     obs.span.set_attr("image.mode", mode);
-    obs.set_mode(mode);
     let ov = (!overrides.is_empty()).then_some(&overrides);
     let result = match &images {
         Some(paths) => {

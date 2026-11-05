@@ -1,4 +1,4 @@
-/** Settings → Retention: how many days local traces and metrics are kept. */
+/** Settings → Retention: how many days local traces are kept. */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -58,7 +58,7 @@ describe('TelemetrySettingsPage', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Retention' })).toBeTruthy()
     expect(screen.queryByText('Data retention')).toBeNull()
-    const input = await screen.findByLabelText('Days to keep traces and metrics') as HTMLInputElement
+    const input = await screen.findByLabelText('Days to keep traces') as HTMLInputElement
     await waitFor(() => expect(input.value).toBe('90'))
     // Longer than the saved window, so nothing is deleted and no confirmation is asked.
     fireEvent.change(input, { target: { value: '120' } })
@@ -78,7 +78,7 @@ describe('TelemetrySettingsPage', () => {
     )
     renderPage()
 
-    const input = await screen.findByLabelText('Days to keep traces and metrics') as HTMLInputElement
+    const input = await screen.findByLabelText('Days to keep traces') as HTMLInputElement
     await waitFor(() => expect(input.value).toBe('90'))
     fireEvent.change(input, { target: { value: '30' } })
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
@@ -103,7 +103,7 @@ describe('TelemetrySettingsPage', () => {
     )
     renderPage()
 
-    const input = await screen.findByLabelText('Days to keep traces and metrics') as HTMLInputElement
+    const input = await screen.findByLabelText('Days to keep traces') as HTMLInputElement
     await waitFor(() => expect(input.value).toBe('90'))
     fireEvent.change(input, { target: { value: '0' } })
     expect(await screen.findByText(/everything is kept/i)).toBeTruthy()
@@ -124,7 +124,7 @@ describe('TelemetrySettingsPage', () => {
     )
     renderPage()
 
-    const input = await screen.findByLabelText('Days to keep traces and metrics') as HTMLInputElement
+    const input = await screen.findByLabelText('Days to keep traces') as HTMLInputElement
     await waitFor(() => expect(input.value).toBe('90'))
     const keep = screen.getByRole('switch', { name: 'Keep forever' })
     expect(keep.getAttribute('aria-checked')).toBe('false')
@@ -153,7 +153,7 @@ describe('TelemetrySettingsPage', () => {
     )
     renderPage()
 
-    const input = await screen.findByLabelText('Days to keep traces and metrics') as HTMLInputElement
+    const input = await screen.findByLabelText('Days to keep traces') as HTMLInputElement
     await waitFor(() => expect(input.value).toBe('90'))
     fireEvent.change(input, { target: { value } })
     expect((await screen.findAllByText(/whole number from 0 to 3650/i)).length).toBeGreaterThan(0)

@@ -3809,6 +3809,10 @@ Everything stays local. No third-party telemetry SaaS.
   90; 0 keeps them forever). Saving a shorter period deletes older telemetry
   right away instead of at the next daily sweep. This replaces
   `OPENAGENTD_OTEL_RETENTION_ENABLED`, which is no longer read.
+- **No more local metric files** `[v3.47.0]` — telemetry keeps traces only.
+  The daily `{STATE_DIR}/otel/metrics` files fed nothing (every number in
+  Usage comes from traces) yet grew every day until the retention sweep.
+  The folder is deleted on the first start of this version.
 - **OpenTelemetry spans** `[since v1.0]` — `OpenTelemetryHook` emits spans for
   agent runs, model calls, tool calls. Optional OTLP exporter.
 - **Estimated model-call cost telemetry** `[v1.34.0]` — chat, title-generation,

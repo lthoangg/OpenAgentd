@@ -39,8 +39,8 @@ function trunc(s: string, maxLen = 60): string {
   return s.length > maxLen ? s.slice(0, maxLen) + '…' : s
 }
 
-/** ``full`` as a tooltip, only when the header shows it cut. */
-function cutTooltip(full: string | null, maxLen = 60): string | null {
+/** ``full``, only when the header shows it cut (``ToolDisplay.fullTarget``). */
+function cutFull(full: string | null, maxLen = 60): string | null {
   return full && full.length > maxLen ? full : null
 }
 
@@ -287,7 +287,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
     if (action === 'chain') {
       const { short, full } = previewChainLabel(parsed)
-      return { header: <Arg>{short}</Arg>, headerTitle: full, tooltip: short === full ? null : full, formattedArgs: null }
+      return { header: <Arg>{short}</Arg>, headerTitle: full, fullTarget: short === full ? null : full, formattedArgs: null }
     }
     const page = action ? previewPageActionLabel(action, parsed) : null
     if (page) return { header: <Arg>{page}</Arg>, headerTitle: page, formattedArgs: null }
@@ -297,7 +297,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
   }
 
   // ── shell: the agent's description is the target, the command its
-  //    tooltip and bash block; without a description, the command ───
+  //    bash block; without a description, the command ───
   if (name === 'shell') {
     const description = str(parsed, 'description')
     const command = str(parsed, 'command')
@@ -305,9 +305,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return {
       header: description ? <Arg>{description}</Arg> : oneLine ? <Arg>{trunc(oneLine, 80)}</Arg> : null,
       headerTitle: description && oneLine ? `${description}\n${oneLine}` : description ?? oneLine,
-      // A described row shows the command in full on hover; a bare command
-      // is already the target, and the details show it whole.
-      tooltip: description ? command : null,
+      // The details show the command whole, described or not.
       formattedArgs: command,
       language: 'bash',
     }
@@ -320,7 +318,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return {
       header: truncated ? <Arg>"{truncated}"</Arg> : null,
       headerTitle: truncated ? `"${truncated}"` : null,
-      tooltip: cutTooltip(query),
+      fullTarget: cutFull(query),
       formattedArgs: null,
     }
   }
@@ -405,8 +403,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return {
       header: label ? <Arg>{trunc(label)}</Arg> : null,
       headerTitle: label,
-      // A long location is cut in the row; the tooltip keeps it whole.
-      tooltip: cutTooltip(label),
+      // A long location is cut in the row; the open row shows it whole.
+      fullTarget: cutFull(label),
       formattedArgs: null,
     }
   }
@@ -609,7 +607,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return {
       header: truncatedPattern ? <Arg>{`${truncatedPattern}${scope}${modeSuffix}`}</Arg> : null,
       headerTitle: truncatedPattern ? `${truncatedPattern}${scope}${modeSuffix}` : null,
-      tooltip: cutTooltip(pattern),
+      fullTarget: cutFull(pattern),
       formattedArgs: null,
     }
   }
@@ -627,7 +625,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return {
       header: truncatedPattern ? <Arg>{`"${truncatedPattern}"${scope}${filter}`}</Arg> : null,
       headerTitle: truncatedPattern ? `"${truncatedPattern}"${scope}${filter}` : null,
-      tooltip: cutTooltip(pattern),
+      fullTarget: cutFull(pattern),
       formattedArgs: null,
     }
   }

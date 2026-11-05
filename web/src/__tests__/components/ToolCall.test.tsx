@@ -129,41 +129,41 @@ describe("ToolCall — shell display", () => {
     expect(header.className).not.toContain("sticky")
   })
 
-  it("shows the description as the target and keeps the command in the tooltip", () => {
+  it("shows the description as the target, with the command only in the details", () => {
     const args = JSON.stringify({ command: "npm test", description: "Run unit tests" })
     render(<ToolCall name="shell" args={args} done={false} />)
     const header = getHeader("shell: Run unit tests\nnpm test")
     expectPlainArg(header, "Run unit tests")
     expect(screen.getByText("shell").className).toContain("font-mono")
-    // The command is tooltip-only on the collapsed row, not visible row text
+    // The collapsed row shows only the description: no command, no tooltip.
     expect(screen.queryByText("npm test")).toBeNull()
-    expect(header.getAttribute("title")).toBe("npm test")
-  })
-
-  it("puts a described row's whole command, line breaks kept, in its tooltip", () => {
-    const command = `echo ${"x".repeat(100)}\necho second`
-    render(<ToolCall name="shell" args={JSON.stringify({ command, description: "Echo twice" })} done={false} />)
-    const header = getHeader(`shell: Echo twice\n${command.replace(/\s*\n\s*/g, " ")}`)
-    expect(header.getAttribute("title")).toBe(command)
-    expect(screen.getByText("Echo twice")).toBeTruthy()
+    expect(header.hasAttribute("title")).toBe(false)
   })
 
   it("truncates a long multi-line command to one line of 80 chars", () => {
     const command = `echo ${"x".repeat(100)}\necho second`
     render(<ToolCall name="shell" args={JSON.stringify({ command })} done={false} />)
     const oneLine = command.replace(/\s*\n\s*/g, " ")
-    // No tooltip of the long command: the details show it whole.
     expect(getHeader(`shell: ${oneLine}`).hasAttribute("title")).toBe(false)
     expect(screen.getByText(`${oneLine.slice(0, 80)}…`)).toBeTruthy()
   })
 
-  it("gives a row a tooltip only for what it does not already show", () => {
-    const { unmount } = render(<ToolCall name="read" args={JSON.stringify({ path: "src/app.ts" })} done={false} />)
-    expect(getHeader("read: src/app.ts").hasAttribute("title")).toBe(false)
-    unmount()
-
-    render(<ToolCall name="shell" args={JSON.stringify({ command: "ls" })} done={false} />)
-    expect(getHeader("shell: ls").hasAttribute("title")).toBe(false)
+  it("gives no tool row a tooltip, cut or not", () => {
+    const long = "x".repeat(120)
+    const rows: Array<[string, Record<string, unknown>]> = [
+      ["read", { path: "src/app.ts" }],
+      ["shell", { command: "ls" }],
+      ["shell", { command: `echo ${long}`, description: "Echo" }],
+      ["web_search", { query: long }],
+      ["web_fetch", { url: `https://example.com/${long}` }],
+      ["grep", { pattern: long }],
+      ["glob", { pattern: long }],
+    ]
+    for (const [name, args] of rows) {
+      const { container, unmount } = render(<ToolCall name={name} args={JSON.stringify(args)} done={false} />)
+      expect({ name, titles: Array.from(container.querySelectorAll("[title]")).map((el) => el.getAttribute("title")) }).toEqual({ name, titles: [] })
+      unmount()
+    }
   })
 
 
@@ -492,16 +492,18 @@ describe("ToolCall — web_fetch display", () => {
     expectPlainArg(getHeader("web_fetch: example.com"), "example.com")
   })
 
-  it("truncates a long path at 60 chars but keeps the full URL in the tooltip", () => {
+  it("truncates a long path at 60 chars and shows the whole URL once the row opens", () => {
     const url = "https://www.nytimes.com/2024/03/15/technology/artificial-intelligence-regulation-europe.html"
     render(<ToolCall name="web_fetch" args={JSON.stringify({ url })} done={false} />)
-    // Tooltip carries the untruncated location (80 chars, www stripped)…
     const header = getHeader("web_fetch: nytimes.com/2024/03/15/technology/artificial-intelligence-regulation-europe.html")
-    expect(header.getAttribute("title")).toBe("nytimes.com/2024/03/15/technology/artificial-intelligence-regulation-europe.html")
-    // …while the visible text is capped at 60 chars + ellipsis.
+    expect(header.hasAttribute("title")).toBe(false)
+    // The row's text is capped at 60 chars + ellipsis…
     expectPlainArg(header, "nytimes.com/2024/03/15/technology/artificial-intelligence-re…")
     expect(screen.getByText("nytimes.com/2024/03/15/technology/artificial-intelligence-re…")).toBeTruthy()
     expect(header.textContent).not.toContain("regulation-europe")
+    // …and the open row shows the location whole (www stripped).
+    fireEvent.click(screen.getByRole("button", { name: "Expand web_fetch details" }))
+    expect(screen.getByText("nytimes.com/2024/03/15/technology/artificial-intelligence-regulation-europe.html")).toBeTruthy()
   })
 
   it("truncates a long URL carrying a fragment", () => {
@@ -518,8 +520,9 @@ describe("ToolCall — web_fetch display", () => {
     render(<ToolCall name="web_fetch" args={JSON.stringify({ url })} done={false} />)
     const header = getHeader("web_fetch: example.com/docs/guides/getting-started/installation")
     expectPlainArg(header, "example.com/docs/guides/getting-started/installation")
-    // Nothing cut, so nothing to add in a tooltip.
+    // Nothing cut, so nothing for the details to add: the running row has none.
     expect(header.hasAttribute("title")).toBe(false)
+    expect(screen.queryByRole("button", { name: "Expand web_fetch details" })).toBeNull()
     // The target span is the whole URL, uncut (the row's own "running…" is a separate span)
     const target = screen.getByText("example.com/docs/guides/getting-started/installation")
     expect(target.textContent).not.toContain("…")

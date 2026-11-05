@@ -13,10 +13,11 @@ export interface ToolDisplay {
   /** Plain-text version of the header, uncut (the row's ``data-tool-label``). */
   headerTitle: string | null
   /**
-   * The row's tooltip: only what the row does not already show (the shell
-   * command's description, a target the header had to cut). Absent: none.
+   * The target uncut, set only when the header had to cut it (a long URL,
+   * query or pattern) and the details would not show it otherwise. Rows have
+   * no tooltip: the open row shows this in its arguments section.
    */
-  tooltip?: string | null
+  fullTarget?: string | null
   /** Simplified args body; ``null`` hides the args section entirely. */
   formattedArgs: string | null
   /** When set, render args as a code block with this language label. */

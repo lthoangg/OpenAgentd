@@ -208,7 +208,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // (`now`, below) doesn't re-run a full JSON.parse and, for edit/patch/
   // write, an O(oldLines*newLines) diff on every tick for the entire
   // lifetime of a running tool call just to redraw the duration label.
-  const { header, headerTitle, tooltip, language, suppressResult } =
+  const { header, headerTitle, fullTarget, language, suppressResult } =
     useMemo(() => getToolDisplay(name, args), [name, args])
   // The details show the full arguments, once here.
   const { formattedArgs } = useMemo(
@@ -297,7 +297,11 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const resultCopyButton = <CopyButton label="Copy result" text={result || ''} />
 
   const awaitingResult = onServer && !suppressResult && result === undefined
-  const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult || hasReadResult || awaitingResult || awaitingArgs)
+  // A target the header cut (a long URL, query or pattern) shows whole in the
+  // open row, as its arguments, when the tool has no other arguments to show.
+  const targetArg = formattedArgs ? null : fullTarget ?? null
+  const argsShown = Boolean(formattedArgs || targetArg)
+  const hasDetails = Boolean(argsShown || shownLiveOutput || shownResult || hasReadResult || awaitingResult || awaitingArgs)
   // Open, the header pins while long details scroll under it (inside a reader
   // fold, just below the fold's row); closing leaves it where it was pressed.
   const pinned = expanded && hasDetails
@@ -314,8 +318,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // collapsed rows at once: the parse + pretty-print waits for the expand.
   const displayedArgs = useMemo(() => (expanded ? formatArgsDetails(formattedArgs) : ''), [expanded, formattedArgs])
   const displayName = name || 'tool'
-  // The whole label, for tools and tests that read it; the tooltip says only
-  // what the row does not already show (see ``ToolDisplay.tooltip``).
+  // The whole label, for tools and tests that read it. The row has no
+  // tooltip: what it cuts, the open row shows (``ToolDisplay.fullTarget``).
   const label = headerTitle ? `${displayName}: ${headerTitle}` : displayName
   const elapsedMs = durationMs ?? (!done && startedAt ? now - startedAt : undefined)
 
@@ -383,7 +387,6 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                 'aria-label': `${expanded ? 'Collapse' : 'Expand'} ${displayName} details`,
               }
             : { 'aria-label': `${displayName} (no details)` })}
-          title={tooltip || undefined}
           data-tool-label={label}
           className="group"
           meta={
@@ -529,6 +532,19 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                       )}
                     </div>
                   )}
+                  {targetArg && (
+                    <div>
+                      <SectionHeader
+                        label="arguments"
+                        controls={detailsId}
+                        onCollapse={collapse}
+                        action={<CopyButton label="Copy arguments" text={targetArg} />}
+                      />
+                      <p className="whitespace-pre-wrap break-all bg-(--bg-input) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
+                        {targetArg}
+                      </p>
+                    </div>
+                  )}
 
                   {shownLiveOutput && !isShellTerminal && (
                     <div>
@@ -536,7 +552,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                         label="output"
                         controls={detailsId}
                         onCollapse={collapse}
-                        divided={Boolean(formattedArgs)}
+                        divided={argsShown}
                         action={<CopyButton label="Copy output" text={shownLiveOutput} />}
                       />
                       <pre
@@ -557,7 +573,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                         label="result"
                         controls={detailsId}
                         onCollapse={collapse}
-                        divided={Boolean(formattedArgs)}
+                        divided={argsShown}
                       />
                       <p className="bg-(--bg-input) px-3 py-2.5 text-xs text-(--color-text-muted)" role="status">
                         {remote.error ? `Could not load the result: ${remote.error}` : 'Loading result…'}
@@ -575,7 +591,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                           label="result"
                           controls={detailsId}
                           onCollapse={collapse}
-                          divided={Boolean(formattedArgs || shownLiveOutput)}
+                          divided={Boolean(argsShown || shownLiveOutput)}
                           action={resultCopyButton}
                         />
                         <div className="bg-(--bg-input) px-3 py-2.5 text-xs leading-relaxed text-(--color-text)">

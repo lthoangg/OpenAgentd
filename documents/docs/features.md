@@ -2078,6 +2078,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   undercounts the meter — the client adopts the server total instead of
   re-summing the truncated page, and older-page loads no longer re-add usage
   `[v2.4.2]`.
+  The ring now sits in the composer's run deck, not the header. The whole
+  session's cost moved from its popover to Usage, so cost shows per turn
+  (the answer's footer) and for the last 24 hours (the status bar)
+  `[v3.48.0]`.
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation.
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer
@@ -2089,6 +2093,54 @@ run from the terminal (the native Rust binary since v3.0.0).
   palette `[v3.0.0]`.
   Sending a message and an agent asking you a question each give a light tap
   in the phone apps `[v3.25.0]`.
+- **The phone app reads like an iOS app** `[v3.48.0]`. It is still the web
+  UI; the changes apply only on a phone (touch and narrow). Tablets and
+  narrow mouse windows keep their layout.
+  - The app opens on **Sessions**, which has a large title, a search field,
+    and *Needs you* at the top, then Pinned and the workspaces. Pull down to
+    refresh. Swipe a row left to Pin or Delete it; Delete asks first. A long
+    press still opens the row's menu.
+  - A tapped chat slides in from the right. ‹ Sessions, or a swipe from the
+    left edge that follows your finger, goes back to Sessions. Android Back
+    goes up one level, and from Sessions it leaves the app. Links,
+    notifications and widgets open the chat with Sessions underneath.
+  - Text and touch targets use Apple's sizes: 17px text, 44px rows and
+    buttons (48px on Android), a 51×31 switch and a 44px Send. Text size
+    Compact and Large go one step down or up from there, and Dynamic Type
+    applies on top.
+  - Settings, Scheduled tasks and Usage open from a toolbar at the bottom of
+    Sessions. They are full-width sheets with a grabber and a Done button. A
+    Settings section slides in over the list, and ‹ or a swipe goes back.
+  - Review opens as its own page with ‹ Chat. Tasks, the "+" menu and the
+    model picker are sheets that open at half height and pull up to almost
+    full height.
+  - On iPhone, confirmations are iOS alerts: Cancel sits beside the action,
+    and a destructive action is red and is never the default button.
+- **One look across the app** `[v3.48.0]`:
+  - The same status looks the same everywhere. Needs you is orange and
+    Failed is red. Connected and passing checks are green. Running and Done
+    are quiet muted text.
+  - Dates follow one rule: `5m · 3h · 3d · Oct 29` in lists, and
+    `Today 14:32 · Oct 29, 14:32` in details and tooltips. The year appears
+    only when it isn't the current year.
+  - Each kind of control has one form: one close ×, one button style, empty
+    states with an action, skeletons while loading, and "Couldn't load X."
+    with Retry when loading fails.
+- **A quieter desktop** `[v3.48.0]`. The layout of sidebar, chat, Review
+  panel and status bar is unchanged.
+  - Each turn shows the model, the time and Edit once, under your message,
+    and only while you hover or focus it. The answer's footer keeps the
+    duration, the cost and Copy response.
+  - The New session screen names the workspace once and drops the hint
+    line and the branch chip.
+  - Sidebar rows show their status or age at rest. A missing folder is a
+    small ⚠ with a tooltip, and worktrees show as a count.
+  - Model pickers name the provider once, as a group header.
+  - The Review panel's tab strip keeps +, Maximize and a ⋯ menu.
+    Menus show their keys (F2, ⌫, ⌘W).
+  - Scheduled tasks open as a Review panel tab, with an overlay only when no
+    workspace is open.
+  - Settings and Usage use the same overlay frame as every other panel.
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
 - **Restored desktop window size** `[v1.52.0, updated v3.31.0]` — desktop windows reopen at the

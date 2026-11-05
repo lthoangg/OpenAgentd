@@ -1090,7 +1090,7 @@ hovered; `danger` is the soft error fill.
 | `icon-dense` | **28×28px** | `p-0` | 14px | — | `rounded-sm` (6px) | Panel-header and detail-pane actions (close, back) |
 | `icon` | **36×36px** | `p-0` | 14px | — | `rounded-md` (8px) | Standard standalone icon actions |
 
-**Phone scale**: a phone (the `phone:` variant: touch, and narrow or a landscape phone, the same test as `useIsMobile`) uses Apple's sizes, as a phone app reads: **17px** for row titles, buttons, menus, fields, chat and bar titles (`text-xs`, `text-sm`, `text-base`), **15px** for a row's second line, status words and code (`text-subhead`, `text-code`), **13px** for times and captions (`text-meta`). Rows, the header and every `Button` are **44px** (48px rows and buttons in the Android app); `.touch-hit` and prose links grow to 44px; the switch is 51×31 and Send a 44px circle. Text size scales the phone too: Compact 15px, Large 19px, with Dynamic Type on top. Tablets and narrow mouse windows keep the dense scale below.
+**Phone scale**: a phone (the `phone:` variant: touch, and narrow or a landscape phone, the same test as `useIsMobile`) uses Apple's sizes, as a phone app reads: **17px** for row titles, buttons, menus, fields, chat and bar titles (`text-xs`, `text-sm`, `text-base`), **15px** for a row's second line, status words and code (`text-subhead`, `text-code`), **13px** for times and captions (`text-meta`). Rows, the header and every `Button` are **44px** (48px rows and buttons in the Android app); `.touch-hit` and prose links grow to 44px; the switch is 51×31. The composer is the exception, a step smaller so it stays compact: 15px message text, 13px deck labels, 36px controls (Send a 36px circle) whose touch area still grows to 44px (Composer and run deck). Text size scales the phone too: Compact 15px, Large 19px, with Dynamic Type on top. Tablets and narrow mouse windows keep the dense scale below.
 
 **Mobile Touch Parity Scaling**: On touch tablets (`pointer: coarse`), standalone icon actions scale up to one compact **36×36px touch target** (`size-9`), while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`). A phone takes the 44px phone scale above instead.
 
@@ -1138,7 +1138,7 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Active Segment**: filled with `fill-selected` edge to edge (a sand in light, a raised warm tone in dark), `text-(--color-text-on-selected)`, `font-medium`. Nothing else marks it: no border, no inner card, no shadow.
 - **Inactive Segment**: square inside the track, `text-(--color-text-muted)`, hover `text-(--color-text-2)` and a keycap step. Keyboard focus is an inset ring so it never spills past the track.
 - **Sizes**: `TabsList size="sm"` is the 24px variant for dense panel toolbars (12px label, no shadow); on touch it is 28px so it still fits the 32px toolbar (the `default` list grows to 42px on touch).
-- **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 36px on touch), `sm` (24px, 28px on touch so it fits the 32px toolbar, like `TabsList size="sm"`) and `composer` (32px, 28px from `md`, 36px on a touch tablet, 44px on a phone, so it matches "+" and Send beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
+- **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 36px on touch), and `sm` (24px, 28px on touch so it fits the 32px toolbar, like `TabsList size="sm"`). The composer's Code / Plan is not one: it is a single toggle button (Composer and run deck). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
 
 **Editor Tabs** (review dock tab bar):
 - **Strip**: `tab-bar` height (37px, 45px on touch) on the chrome tone (`bg-page` in light, `bg-sidebar` in dark; `DOCK_TAB_STRIP_CLASS`) with one `border-subtle` hairline below; tabs are 28px pills (36px on touch) 4px from its edges, scroll horizontally, and the actions stay pinned right.
@@ -1341,13 +1341,16 @@ no drag, no collapse, no saved position. It is one framed field (one
 the text sits the run deck, which says how the next message runs:
 
 ```
-[+•] [Code|Plan] [provider:model · Level · Account ▾]   (ring 42%) [Send]
+[+•] [Code] [provider:model · Level · Account ▾]   (ring 42%) [Send]
 ```
 
 Every control in the deck is one height, the same steps as Send: 28px on
-desktop, 32px in a narrow mouse window, 36px on a touch tablet, 44px on a
-phone (the Android app too, where other buttons are 48px). All are rounded
-`radius-sm` (6px) but Send, a full circle. The context ring stays 36px wide
+desktop, 32px in a narrow mouse window, 36px on touch. A phone keeps the
+composer compact: its controls stay 36px (the deck's "+" skips the Button
+floor of 44px, 48px on Android) and `touch-hit` grows their touch area to
+44px; the message is 15px and the deck's labels 13px, a step under the rest
+of the phone scale. All are rounded `radius-sm` (6px) but Send, a full
+circle. The context ring stays 36px wide
 on a phone so a 320px screen leaves the chip its room. With a mouse, the
 stacked chip (below) is 36px: its two lines need it.
 
@@ -1356,8 +1359,12 @@ stacked chip (below) is 36px: its two lines need it.
   button: while a server needs the user, "+" carries a 6px dot in the
   orange text tone (its description names the server) and opens at that
   section.
-- **Code/Plan** is the segmented control (selection fill, no border). Plan mode
-  changes the placeholder to say the agent reads and proposes without editing.
+- **Code/Plan** is one toggle button naming the mode in force; a tap (or Tab
+  in the message field) switches to the other. Code, the default, sits on the
+  keycap wash; Plan takes the selection fill, so it shows at a glance. Both
+  words hold the slot, so a switch moves nothing beside it. A switch queued
+  behind a running turn is italic until it applies. Plan mode changes the
+  placeholder to say the agent reads and proposes without editing.
 - **The run chip** reads `provider:model` in mono, then the thinking level and
   a pinned account in words. The `provider:` part gives way first; a long
   model name then gives up its middle (`antigravit…sonnet-4-6`, then

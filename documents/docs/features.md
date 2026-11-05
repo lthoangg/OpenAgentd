@@ -2107,7 +2107,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     goes up one level, and from Sessions it leaves the app. Links,
     notifications and widgets open the chat with Sessions underneath.
   - Text and touch targets use Apple's sizes: 17px text, 44px rows and
-    buttons (48px on Android), a 51×31 switch and a 44px Send. Text size
+    buttons (48px on Android) and a 51×31 switch. The composer is a step
+    smaller so it stays compact: 15px text and 36px buttons that still
+    take a 44px touch. Text size
     Compact and Large go one step down or up from there, and Dynamic Type
     applies on top.
   - Settings, Scheduled tasks and Usage open from a toolbar at the bottom of
@@ -2143,7 +2145,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Scheduled tasks open as a Review panel tab, with an overlay only when no
     workspace is open.
   - Settings and Usage use the same overlay frame as every other panel.
-- **Tool rows open files; one-height run deck** `[v3.48.0]`:
+- **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query
     or pattern), the whole value is the first line of the open row.
@@ -2155,9 +2157,14 @@ run from the terminal (the native Rust binary since v3.0.0).
     Files open in the Review panel. Other tool rows keep the system menu,
     and nothing is fetched to build the menu.
   - The run deck's controls (**+**, Code / Plan, the model chip, the
-    context ring and Send) are one height: 28px on desktop, 36px on a touch
-    tablet, 44px on a phone (Android included). All are rounded 6px except
-    Send, which stays a circle.
+    context ring and Send) are one height: 28px on desktop and 36px on touch
+    screens, phones included, where their touch area is 44px. All are
+    rounded 6px except Send, which stays a circle.
+  - Code / Plan is one button that names the mode in force; a tap switches
+    to the other, as Tab in the message field does. Plan is filled, so it
+    shows at a glance. It takes half the room the two segments did, which
+    goes to the model chip.
+    *(The Code | Plan segmented control is deprecated; removed in v3.48.0.)*
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
 - **Restored desktop window size** `[v1.52.0, updated v3.31.0]` — desktop windows reopen at the

@@ -233,6 +233,18 @@ describe('PreviewTabView', () => {
     expect((onSendComments.mock.calls[0][0] as DesignFeedback).items[0].comment).toBe('Make this much larger')
   })
 
+  it('removes a comment with the shared × (CloseButton at row size, named for the comment)', async () => {
+    const { frameWindow } = await renderView()
+    await addComment(frameWindow, 'Make this larger')
+
+    const remove = screen.getByRole('button', { name: 'Remove comment 1' })
+    expect(remove.hasAttribute('data-close-button')).toBe(true)
+    expect(remove.className).toContain('size-6')
+    expect(remove.querySelector('svg')?.getAttribute('width')).toBe('14')
+    fireEvent.click(remove)
+    expect(screen.queryByText('1 comment')).toBeNull()
+  })
+
   it('toggles picking with Alt+C from the dock or the page', async () => {
     const { frameWindow } = await renderView()
     fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
@@ -340,6 +352,19 @@ describe('PreviewTabView', () => {
     expect(await screen.findByRole('button', { name: 'Console' })).toBeTruthy()
   })
 
+  it('shows an empty state, not a stray line, in a console with no output', async () => {
+    await renderView()
+    fireEvent.click(await screen.findByRole('button', { name: 'Console' }))
+    expect(screen.getByRole('heading', { name: 'No console output yet' })).toBeTruthy()
+    expect(screen.getByText('0 entries')).toBeTruthy()
+  })
+
+  it('names the reload "Refresh" (not Reload), the same word as every Refresh in the Review panel', async () => {
+    await renderView()
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Reload' })).toBeNull()
+  })
+
   it('shows its own "Nothing is running" state for a server that is down, with Back, Forward and Comment off', async () => {
     const { frameWindow } = await renderView()
     fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Waiting for localhost:5173', status: 'down' })
@@ -402,7 +427,7 @@ describe('PreviewTabView', () => {
     const controls = [
       screen.getByRole('button', { name: 'Device size' }),
       screen.getByRole('button', { name: 'More preview actions' }),
-      screen.getByRole('button', { name: 'Reload' }),
+      screen.getByRole('button', { name: 'Refresh' }),
     ]
     for (const control of controls) {
       // No 36px touch growth (h-9, min-h-9, size-9) on any of them.

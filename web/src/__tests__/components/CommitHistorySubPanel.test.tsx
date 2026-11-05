@@ -69,7 +69,7 @@ describe('CommitHistorySubPanel load errors', () => {
       gitHistory: { isLoading: false, isError: true, isFetchingNextPage: false, hasNextPage: false, fetchNextPage: async () => {}, refetch },
     })
 
-    expect(screen.getByRole('alert').textContent).toMatch(/^Failed to load commits/)
+    expect(screen.getByRole('alert').textContent).toBe("Couldn't load commit history.")
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(refetch).toHaveBeenCalledTimes(1)
   })

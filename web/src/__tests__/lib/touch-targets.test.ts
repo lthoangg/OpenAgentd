@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { DOCK_ACTION_BUTTON_CLASS, DOCK_ROW_ACTION_CLASS, dockTabCloseClass } from '@/components/WorkspacePanel/dock-tab-styles'
+import { DOCK_ACTION_BUTTON_CLASS, DOCK_ROW_ACTION_CLASS, DOCK_TAB_CLOSE_CLASS } from '@/components/WorkspacePanel/dock-tab-styles'
 import { segmentedItemClass, segmentedTrackClass } from '@/components/ui/segmented-control'
 
 const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.url)), 'utf8')
@@ -21,21 +21,15 @@ describe('coarse-pointer touch targets', () => {
 
   it('grows dock row actions and the tab close control on touch', () => {
     expect(DOCK_ROW_ACTION_CLASS).toContain('pointer-coarse:size-9')
-    expect(dockTabCloseClass(false)).toContain('pointer-coarse:size-9')
-    expect(dockTabCloseClass(true)).toContain('pointer-coarse:size-9')
+    expect(DOCK_TAB_CLOSE_CLASS).toContain('pointer-coarse:size-9')
   })
 
-  it('shows every tab close at rest: 24px, a step down the text ramp on tabs that are not open, ink on hover', () => {
-    for (const active of [false, true]) {
-      const close = dockTabCloseClass(active)
-      expect(close).toContain('size-6')
-      expect(close).not.toMatch(/(^|\s)(hidden|opacity-0|size-5)(\s|$)/)
-      expect(close).toContain('hover:text-(--color-text)')
-    }
-    // An icon at 3:1 or more: subtle on a closed tab (60% opacity was 2.5:1),
-    // muted on the open one.
-    expect(dockTabCloseClass(false)).toContain('text-(--color-text-subtle)')
-    expect(dockTabCloseClass(true)).toContain('text-(--color-text-muted)')
+  it('shows every tab close at rest, 24px (the CloseButton primitive at icon-xs), never hidden or faded', () => {
+    expect(DOCK_TAB_CLOSE_CLASS).not.toMatch(/(^|\s)(hidden|opacity-\d+|size-5)(\s|$)/)
+    const button = readFileSync(fileURLToPath(new URL('../../components/ui/button.tsx', import.meta.url)), 'utf8')
+    expect(button).toMatch(/'icon-xs':\s*'size-6 /)
+    const tab = readFileSync(fileURLToPath(new URL('../../components/WorkspacePanel/DockTabCloseButton.tsx', import.meta.url)), 'utf8')
+    expect(tab).toContain('size="icon-xs"')
   })
 
   it('sizes buttons 36px on touch, and 40px in the Android app', () => {

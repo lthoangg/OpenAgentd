@@ -4,7 +4,8 @@
  * Desktop: right-click menus anchored at the pointer. Mobile: long-press
  * action sheets with the same choices. Both route into the panel's
  * handlers; this module only renders. The discard confirmation lives here
- * too because both surfaces open it.
+ * too because both surfaces open it: a confirm dialog has no ×, Cancel
+ * dismisses it, and the destructive action is never the default.
  */
 import { useState } from 'react'
 import { Copy, ExternalLink, FileDiff, FolderOpen, RotateCcw, Undo2 } from 'lucide-react'
@@ -93,7 +94,7 @@ export function DockActionMenus({
       <Dialog open={mobileFileActions !== null} onOpenChange={(open) => { if (!open) setMobileFileActions(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="truncate font-mono text-sm">{mobileFileActions?.path ?? ''}</DialogTitle>
+            <DialogTitle className="truncate pr-8 font-mono text-sm">{mobileFileActions?.path ?? ''}</DialogTitle>
             <DialogDescription>Choose an action for this file.</DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
@@ -133,7 +134,7 @@ export function DockActionMenus({
               if (f) setDiscardTarget(f)
             }}>
               <Undo2 size={14} aria-hidden="true" />
-              Discard changes
+              Discard changes…
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -142,7 +143,7 @@ export function DockActionMenus({
       <Dialog open={mobileCommitActions !== null} onOpenChange={(open) => { if (!open && !gitActionPending) setMobileCommitActions(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="truncate font-mono text-sm">{mobileCommitActions?.subject ?? ''}</DialogTitle>
+            <DialogTitle className="truncate pr-8 font-mono text-sm">{mobileCommitActions?.subject ?? ''}</DialogTitle>
             <DialogDescription>SHA: {mobileCommitActions?.shortSha}</DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
@@ -334,7 +335,7 @@ export function DockActionMenus({
       )}
 
       <Dialog open={discardTarget !== null} onOpenChange={(open) => { if (!open && !discarding) setDiscardTarget(null) }}>
-        <DialogContent>
+        <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Discard changes?</DialogTitle>
             <DialogDescription>

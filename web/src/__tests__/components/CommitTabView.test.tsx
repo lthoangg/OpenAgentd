@@ -61,12 +61,12 @@ describe('CommitTabView — load failure', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={client}><CommitTabView workspace="/w" commit={commit} /></QueryClientProvider>)
 
-    expect(await screen.findByText('Failed to load commit changes.')).toBeTruthy()
+    expect(await screen.findByText("Couldn't load commit changes.")).toBeTruthy()
     fail = false
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 
     // A boolean: a failing toBeNull pretty-prints the element on every retry.
-    await waitFor(() => expect(screen.queryByText('Failed to load commit changes.') === null).toBe(true))
+    await waitFor(() => expect(screen.queryByText("Couldn't load commit changes.") === null).toBe(true))
     expect(screen.getByRole('button', { name: /a\.ts/ })).toBeTruthy()
   })
 })

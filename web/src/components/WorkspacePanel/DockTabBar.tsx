@@ -2,11 +2,12 @@
  * DockTabBar — one Review panel pane's editor-tab strip.
  *
  * One row: scrolling tabs on the left, a fixed action cluster on the right:
- * the tab list (when the strip overflows), "Open…" (every view and tool,
- * including Terminal and Preview, and Split Right / Split Down), refresh
- * while a Git or file tab shows, maximize on desktop, and Close on an empty
- * pane beside others. Views
- * (Git, Plan, Tasks…) come before a hairline and documents after it, as in
+ * the tab list (when the strip overflows), "+" (every view and tool,
+ * including Terminal and Preview), maximize on desktop, and the pane's ⋯
+ * menu (Split right / down, and Close pane on an empty pane beside others).
+ * One 28px size and one 14px glyph for all of them, as for the tab's own ×.
+ * Refresh is not here: it sits in the toolbar of the view it reloads.
+ * Views (Git, Plan, Tasks…) come before a hairline and documents after it, as in
  * an editor; the pane's preview tab is set in italics until it is kept.
  * Hiding the dock lives on the header's review-dock toggle (and ⌘D), which
  * is always visible because the dock never covers the header.
@@ -15,6 +16,8 @@
  * ``tablist`` (each has a sibling close button and a context menu, which
  * tab semantics do not model). ⌘W, middle-click and the tab menu
  * (right-click or Shift+F10) also close tabs; double-click keeps a preview.
+ * Every menu row that has a key shows it (read from ``APP_SHORTCUTS`` and the
+ * dock's chords), so a menu and its key cannot drift apart.
  *
  * Tabs move by drag (fine pointers, see ``useTabDrag``): along the strip,
  * onto another pane's strip or middle, or onto a pane's edge to split it.
@@ -23,14 +26,15 @@
  * right-click on the strip's free end opens the "+" menu there.
  */
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
-import { CalendarClock, Check, ChevronDown, Copy, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, MessageCircleQuestion, Minimize2, Plus, RefreshCw, Target, X } from 'lucide-react'
+import { CalendarClock, Check, ChevronDown, Columns2, Copy, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, MessageCircleQuestion, Minimize2, MoreHorizontal, Plus, Rows2, Target, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { CONTEXT_MENU_ITEM_CLASS, ContextMenu, ContextMenuSeparator } from '@/components/ui/context-menu'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { TerminalTabButton } from '../Terminal/TerminalTabButton'
 import type { OS } from '@/hooks/use-platform'
-import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { APP_SHORTCUTS, DOCK_TAB_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
+import { formatChord, matchChord } from '@/lib/keyboard/chord'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
 import { cn } from '@/lib/utils'
 import type { TerminalSessionMeta } from '@/stores/useTerminalStore'
@@ -40,16 +44,29 @@ import {
   DOCK_TAB_STRIP_CLASS,
   dockTabButtonClass,
   dockTabClass,
-  dockTabCloseClass,
 } from './dock-tab-styles'
-import { type DockTab, dockTabLabel, dockTabTooltip, isViewTab } from './dock-tabs'
+import { MOVE_TAB_LEFT_CHORD, MOVE_TAB_RIGHT_CHORD, type DockTab, dockTabLabel, dockTabTooltip, isViewTab } from './dock-tabs'
 import type { SplitSide } from './dock-panes'
 import type { DockOpenItem } from './DockLauncher'
+import { DockTabCloseButton } from './DockTabCloseButton'
+import { MenuKeys } from './MenuKeys'
 import { DOCK_TAB_ATTR, useTabDrag } from './useTabDrag'
 import type { TabDropTarget } from './useDockTabs'
 
 /** Width the "+" menu is laid out for, so it opens right-aligned under the button. */
 const OPEN_MENU_WIDTH = 192
+
+/** The one glyph size of the strip's action buttons (and, in the tabs, of the ×). */
+const STRIP_ICON = 14
+
+/** A new empty pane beside this one: the ⋯ menu's splits, each with its ⌘\ key. */
+const PANE_SPLITS = [
+  { side: 'right', label: 'Split right', key: 'splitDock', Icon: Columns2 },
+  { side: 'down', label: 'Split down', key: 'splitDockDown', Icon: Rows2 },
+] as const satisfies readonly { side: PaneSplit; label: string; key: keyof typeof APP_SHORTCUTS; Icon: typeof Columns2 }[]
+
+/** Which way a pane's ⋯ menu splits it: a new empty pane right of it or under it. */
+export type PaneSplit = 'right' | 'down'
 
 export interface DockTabBarProps {
   tabs: DockTab[]
@@ -83,13 +100,18 @@ export interface DockTabBarProps {
   onRevealInGit?: (path: string) => void
   /** An empty pane beside others: its Close button. */
   onClosePane?: () => void
+  /** The pane's ⋯ menu: a new empty pane right of it or under it. Omitted on phones. */
+  onSplitPane?: (side: PaneSplit) => void
   /** A tab dragged out of the strip and let go over a pane (see ``useTabDrag``). */
   onDropTab?: (id: string, target: TabDropTarget) => void
-  onRefresh: () => void
-  /** What refresh reloads for the active tab ("Refresh Git status"); null hides it. */
-  refreshLabel?: string | null
   /** The "+" menu's rows (see ``dockOpenItems``); empty hides the button. */
   openItems?: DockOpenItem[]
+  /**
+   * Spell ⌘1–⌘9 beside the tabs in the "All tabs" list: this pane has focus
+   * (the keys pick from its strip) and the app is the desktop one (a browser
+   * keeps those keys for its own tabs).
+   */
+  numberKeys?: boolean
   /** ``null`` hides the toggle (mobile, or a forced narrow-window overlay). */
   maximized: boolean | null
   onToggleMaximized: () => void
@@ -124,8 +146,10 @@ function TabIcon({ tab }: { tab: DockTab }) {
   }
 }
 
-function ActionButton({ label, onClick, children, expanded }: {
+function ActionButton({ label, tooltip = label, onClick, children, expanded }: {
   label: string
+  /** Hint text when it says more than the accessible name. */
+  tooltip?: string
   onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void
   children: React.ReactNode
   /** Set on a button that opens a menu: whether it is showing. */
@@ -147,7 +171,7 @@ function ActionButton({ label, onClick, children, expanded }: {
           </button>
         }
       />
-      <TooltipContent side="bottom">{label}</TooltipContent>
+      <TooltipContent side="bottom">{tooltip}</TooltipContent>
     </Tooltip>
   )
 }
@@ -170,7 +194,9 @@ function tabPath(tab: DockTab, workspace: string): string | null {
 /**
  * The tab-strip items every tab's menu shares (terminal tabs add theirs
  * first), in order and groups: closing, then keeping, splitting and
- * moving, then the path. ``dismiss`` closes the menu before the action runs.
+ * moving, then the path. Close all stands apart from the other closings
+ * (it is the one that empties the pane). ``dismiss`` closes the menu before
+ * the action runs.
  */
 export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onCloseOthers, onCloseToRight, onCloseToLeft, onCloseAll, onMove, preview = false, onKeep, onSplit, canSplit, onMoveToNextPane, canMoveToNextPane, onRevealInGit, os }: {
   tab: DockTab
@@ -190,8 +216,8 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
   onMoveToNextPane?: (id: string) => void
   canMoveToNextPane?: (id: string) => boolean
   onRevealInGit?: (path: string) => void
-  /** Spells the keys beside the splits (⌃⌥→, ⌃⌥←, ⌃⌥↑, ⌃⌥↓). */
-  os?: OS
+  /** Spells the keys beside Close (⌘W), the splits (⌃⌥→…) and the moves (⌥⇧←, ⌥⇧→). */
+  os: OS
 }): ReactNode {
   const index = tabs.findIndex((item) => item.id === tab.id)
   const hasOthers = tabs.length > 1
@@ -210,29 +236,29 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
     >
       {icon ?? <span className="w-3" aria-hidden="true" />}
       <span className="flex-1">{label}</span>
-      {shortcut && (
-        <kbd aria-hidden="true" className="hidden font-mono text-meta text-(--color-text-subtle) md:inline">{shortcut}</kbd>
-      )}
+      {shortcut && <MenuKeys>{shortcut}</MenuKeys>}
     </button>
   )
   const splitDisabled = !(canSplit?.(tab.id) ?? true)
   const groups: ReactNode[][] = [
     [
-      onClose && item('Close', () => onClose(tab.id), <X size={12} aria-hidden="true" />),
+      onClose && item('Close', () => onClose(tab.id), <X size={12} aria-hidden="true" />, false, shortcutLabel(APP_SHORTCUTS.closeTab, os)),
       onCloseOthers && item('Close others', () => onCloseOthers(tab.id), undefined, !hasOthers),
       onCloseToLeft && item('Close to the left', () => onCloseToLeft(tab.id), undefined, !hasLeft),
       onCloseToRight && item('Close to the right', () => onCloseToRight(tab.id), undefined, !hasRight),
+    ],
+    [
       onCloseAll && item('Close all', () => onCloseAll(tab.id)),
     ],
     [
       preview && onKeep && item('Keep open', () => onKeep(tab.id)),
       ...(onSplit
         ? SPLITS.map(({ side, label, key }) =>
-            item(label, () => onSplit(tab.id, side), undefined, splitDisabled, os ? shortcutLabel(APP_SHORTCUTS[key], os) : undefined))
+            item(label, () => onSplit(tab.id, side), undefined, splitDisabled, shortcutLabel(APP_SHORTCUTS[key], os)))
         : []),
       onMoveToNextPane && (canMoveToNextPane?.(tab.id) ?? true) && item('Move to next pane', () => onMoveToNextPane(tab.id)),
-      onMove && item('Move left', () => onMove(tab.id, index - 1), undefined, index <= 0),
-      onMove && item('Move right', () => onMove(tab.id, index + 1), undefined, !hasRight),
+      onMove && item('Move left', () => onMove(tab.id, index - 1), undefined, index <= 0, formatChord(MOVE_TAB_LEFT_CHORD, os)),
+      onMove && item('Move right', () => onMove(tab.id, index + 1), undefined, !hasRight, formatChord(MOVE_TAB_RIGHT_CHORD, os)),
     ],
     [
       path && item('Copy path', () => { void navigator.clipboard?.writeText(path) }, <Copy size={12} aria-hidden="true" />),
@@ -280,10 +306,10 @@ export function DockTabBar({
   canMoveToNextPane,
   onRevealInGit,
   onClosePane,
+  onSplitPane,
   onDropTab,
-  onRefresh,
-  refreshLabel = null,
   openItems = [],
+  numberKeys = false,
   maximized,
   onToggleMaximized,
 }: DockTabBarProps) {
@@ -298,6 +324,7 @@ export function DockTabBar({
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [openMenuAt, setOpenMenuAt] = useState<{ x: number; y: number } | null>(null)
   const [listMenuAt, setListMenuAt] = useState<{ x: number; y: number } | null>(null)
+  const [paneMenuAt, setPaneMenuAt] = useState<{ x: number; y: number } | null>(null)
   const menuTab = menu ? tabs.find((tab) => tab.id === menu.id) : undefined
   const paneMenuProps = {
     onKeep,
@@ -347,16 +374,24 @@ export function DockTabBar({
   const viewCount = tabs.filter(isViewTab).length
   // ⌥⇧←/→ moves the focused tab one place; focus stays on it.
   const handleStripKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!moveAndFocus || !event.altKey || !event.shiftKey || event.metaKey || event.ctrlKey) return
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    if (!moveAndFocus) return
+    const direction = matchChord(event.nativeEvent, MOVE_TAB_LEFT_CHORD, os) ? -1 : matchChord(event.nativeEvent, MOVE_TAB_RIGHT_CHORD, os) ? 1 : 0
+    if (direction === 0) return
     const id = (event.target as Element).closest(`[${DOCK_TAB_ATTR}]`)?.getAttribute(DOCK_TAB_ATTR)
     const index = id ? tabs.findIndex((tab) => tab.id === id) : -1
     if (!id || index < 0) return
     event.preventDefault()
-    const to = index + (event.key === 'ArrowLeft' ? -1 : 1)
+    const to = index + direction
     if (to < 0 || to >= tabs.length) return
     moveAndFocus(id, to)
   }
+  // ⌘1–⌘8 pick the tab at that position, ⌘9 the last one (see ``useDockTabs``).
+  const tabNumberKey = (index: number): string | undefined => {
+    if (!numberKeys) return undefined
+    const slot = index < DOCK_TAB_SHORTCUTS.length - 1 ? index : index === tabs.length - 1 ? DOCK_TAB_SHORTCUTS.length - 1 : -1
+    return slot < 0 ? undefined : shortcutLabel(APP_SHORTCUTS[DOCK_TAB_SHORTCUTS[slot]], os)
+  }
+  const hasPaneMenu = !mobile && (onSplitPane !== undefined || onClosePane !== undefined)
   return (
     <div ref={stripRef} data-dock-strip="" className={DOCK_TAB_STRIP_CLASS}>
       <div
@@ -384,6 +419,7 @@ export function DockTabBar({
                 }}
                 active={active}
                 mobile={mobile}
+                os={os}
                 onActivate={() => onActivate(tab.id)}
                 onClose={() => onClose(tab.id)}
                 extraMenuItems={(dismiss) => sharedMenu(tab, dismiss)}
@@ -438,15 +474,7 @@ export function DockTabBar({
                   <TooltipContent side="bottom">{tooltip}</TooltipContent>
                 </Tooltip>
               ) : tabButton}
-              <button
-                type="button"
-                data-dock-tab-close
-                onClick={() => onClose(tab.id)}
-                className={dockTabCloseClass(active)}
-                aria-label={`Close ${label}`}
-              >
-                <X size={11} aria-hidden="true" />
-              </button>
+              <DockTabCloseButton title={label} active={active} os={os} onClick={() => onClose(tab.id)} />
             </div>
           )]
         })}
@@ -483,7 +511,7 @@ export function DockTabBar({
                   aria-expanded={listMenuAt !== null}
                 >
                   {tabs.length}
-                  <ChevronDown size={11} aria-hidden="true" />
+                  <ChevronDown size={STRIP_ICON} aria-hidden="true" />
                 </button>
               }
             />
@@ -491,34 +519,16 @@ export function DockTabBar({
           </Tooltip>
         )}
         {openItems.length > 0 && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    const rect = event.currentTarget.getBoundingClientRect()
-                    setOpenMenuAt({ x: rect.right - OPEN_MENU_WIDTH, y: rect.bottom + 2 })
-                  }}
-                  className={cn(
-                    // The + alone, the same square as Refresh.
-                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7 pointer-coarse:h-9 pointer-coarse:w-9',
-                    openMenuAt !== null && 'bg-(--bg-key) text-(--color-text)',
-                  )}
-                  aria-label="Open in Review panel"
-                  aria-haspopup="menu"
-                  aria-expanded={openMenuAt !== null}
-                >
-                  <Plus size={13} aria-hidden="true" />
-                </button>
-              }
-            />
-            <TooltipContent side="bottom">Open a view, terminal, preview or file</TooltipContent>
-          </Tooltip>
-        )}
-        {refreshLabel && (
-          <ActionButton label={refreshLabel} onClick={onRefresh}>
-            <RefreshCw size={14} aria-hidden="true" />
+          <ActionButton
+            label="Open in Review panel"
+            tooltip="Open a view, terminal, preview or file"
+            expanded={openMenuAt !== null}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect()
+              setOpenMenuAt({ x: rect.right - OPEN_MENU_WIDTH, y: rect.bottom + 2 })
+            }}
+          >
+            <Plus size={STRIP_ICON} aria-hidden="true" />
           </ActionButton>
         )}
         {!mobile && maximized !== null && (
@@ -527,32 +537,44 @@ export function DockTabBar({
             onClick={onToggleMaximized}
           >
             {maximized
-              ? <Minimize2 size={13} aria-hidden="true" />
-              : <Maximize2 size={13} aria-hidden="true" />}
+              ? <Minimize2 size={STRIP_ICON} aria-hidden="true" />
+              : <Maximize2 size={STRIP_ICON} aria-hidden="true" />}
           </ActionButton>
         )}
-        {onClosePane && (
-          <ActionButton label={`Close pane (${shortcutLabel(APP_SHORTCUTS.closeTab, os)})`} onClick={onClosePane}>
-            <X size={14} aria-hidden="true" />
+        {/* Last, as in every toolbar: the pane's own actions. */}
+        {hasPaneMenu && (
+          <ActionButton
+            label="Pane actions"
+            expanded={paneMenuAt !== null}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect()
+              setPaneMenuAt({ x: rect.right - OPEN_MENU_WIDTH, y: rect.bottom + 2 })
+            }}
+          >
+            <MoreHorizontal size={STRIP_ICON} aria-hidden="true" />
           </ActionButton>
         )}
       </div>
       {listMenuAt && (
         <ContextMenu at={listMenuAt} label="All tabs" onDismiss={() => setListMenuAt(null)} className="w-56">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="menuitemradio"
-              aria-checked={tab.id === activeTabId}
-              className={cn(CONTEXT_MENU_ITEM_CLASS, 'pointer-coarse:h-9 pointer-coarse:text-sm')}
-              onClick={() => { setListMenuAt(null); onActivate(tab.id) }}
-            >
-              <TabIcon tab={tab} />
-              <span className={cn('min-w-0 flex-1 truncate', !isViewTab(tab) && 'font-mono', tab.id === previewTabId && 'italic')}>{tab.title}</span>
-              {tab.id === activeTabId && <Check size={12} className="shrink-0" aria-hidden="true" />}
-            </button>
-          ))}
+          {tabs.map((tab, index) => {
+            const keys = tabNumberKey(index)
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={tab.id === activeTabId}
+                className={cn(CONTEXT_MENU_ITEM_CLASS, 'pointer-coarse:h-9 pointer-coarse:text-sm')}
+                onClick={() => { setListMenuAt(null); onActivate(tab.id) }}
+              >
+                <TabIcon tab={tab} />
+                <span className={cn('min-w-0 flex-1 truncate', !isViewTab(tab) && 'font-mono', tab.id === previewTabId && 'italic')}>{tab.title}</span>
+                {keys && <MenuKeys>{keys}</MenuKeys>}
+                {tab.id === activeTabId && <Check size={12} className="shrink-0" aria-hidden="true" />}
+              </button>
+            )
+          })}
         </ContextMenu>
       )}
       {openMenuAt && (
@@ -569,13 +591,41 @@ export function DockTabBar({
               >
                 {item.icon}
                 <span className="flex-1">{item.label}</span>
-                {item.shortcut && (
-                  <kbd aria-hidden="true" className="hidden font-mono text-meta text-(--color-text-subtle) md:inline">{item.shortcut}</kbd>
-                )}
+                {item.shortcut && <MenuKeys>{item.shortcut}</MenuKeys>}
                 {item.open && <Check size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />}
               </button>
             </Fragment>
           ))}
+        </ContextMenu>
+      )}
+      {paneMenuAt && (
+        <ContextMenu at={paneMenuAt} label="Pane actions" onDismiss={() => setPaneMenuAt(null)} className="w-48">
+          {onSplitPane && PANE_SPLITS.map(({ side, label, key, Icon }) => (
+            <button
+              key={side}
+              type="button"
+              role="menuitem"
+              className={cn(CONTEXT_MENU_ITEM_CLASS, 'pointer-coarse:h-9 pointer-coarse:text-sm')}
+              onClick={() => { setPaneMenuAt(null); onSplitPane(side) }}
+            >
+              <Icon size={STRIP_ICON} aria-hidden="true" />
+              <span className="flex-1">{label}</span>
+              <MenuKeys>{shortcutLabel(APP_SHORTCUTS[key], os)}</MenuKeys>
+            </button>
+          ))}
+          {onSplitPane && onClosePane && <ContextMenuSeparator />}
+          {onClosePane && (
+            <button
+              type="button"
+              role="menuitem"
+              className={cn(CONTEXT_MENU_ITEM_CLASS, 'pointer-coarse:h-9 pointer-coarse:text-sm')}
+              onClick={() => { setPaneMenuAt(null); onClosePane() }}
+            >
+              <X size={STRIP_ICON} aria-hidden="true" />
+              <span className="flex-1">Close pane</span>
+              <MenuKeys>{shortcutLabel(APP_SHORTCUTS.closeTab, os)}</MenuKeys>
+            </button>
+          )}
         </ContextMenu>
       )}
       {menu && menuTab && (

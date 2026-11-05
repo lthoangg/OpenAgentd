@@ -12,6 +12,7 @@ import { codingWorkspaceFileUrl } from '@/api/client'
 import { downloadWorkspaceFile } from '@/lib/workspace-download'
 import { cn } from '@/lib/utils'
 import { Button, buttonVariants } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { useImageReveal } from '@/hooks/useImageReveal'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
@@ -25,6 +26,8 @@ import { MarkdownBlock } from '@/utils/markdown'
 import { PdfThumbnail } from './PdfThumbnail'
 import { parseFrontmatter } from './file-viewer/frontmatter'
 import { FrontmatterTable } from './file-viewer/FrontmatterTable'
+import { DOCK_ACTION_BUTTON_CLASS } from './WorkspacePanel/dock-tab-styles'
+import { DockLoadError } from './WorkspacePanel/DockLoadError'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'])
@@ -118,9 +121,9 @@ export function CopyFileButton({ workspace, file }: { workspace: string; file: W
             onClick={handleCopy}
             disabled={busy || tooLarge}
             aria-label={label}
-            className="flex h-9 min-w-9 items-center justify-center gap-1 rounded-md px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:min-w-0 md:py-1"
+            className={DOCK_ACTION_BUTTON_CLASS}
           >
-            {copied ? <Check size={12} className="text-(--accent-green-text)" /> : busy ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
+            {copied ? <Check size={14} className="text-(--accent-green-text)" /> : busy ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
           </button>
         }
       />
@@ -322,6 +325,8 @@ function TextPreview({
   const [content, setContent] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(!tooLarge)
+  // Retry on a failed load: bumping it runs the fetch again.
+  const [attempt, setAttempt] = useState(0)
   const [selection, setSelection] = useState<{ anchor: number; focus: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   const deleted = file.deleted === true
@@ -402,7 +407,7 @@ function TextPreview({
     return () => {
       cancelled = true
     }
-  }, [workspace, file.path, tooLarge, deleted])
+  }, [workspace, file.path, tooLarge, deleted, attempt])
 
   // Highlight the full content, split into per-line HTML strings. Small files
   // highlight synchronously; large ones show plain lines at once and swap in
@@ -457,15 +462,27 @@ function TextPreview({
 
   if (tooLarge) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-        <FileText size={24} className="text-(--color-text-subtle)" />
-        <p className="text-sm text-(--color-text-2)">File too large to preview</p>
-        <p className="text-xs text-(--color-text-subtle)">{formatBytes(file.size)} — limit is {formatBytes(MAX_TEXT_PREVIEW_BYTES)}</p>
-      </div>
+      <EmptyState
+        icon={FileText}
+        title="File too large to preview"
+        body={`${formatBytes(file.size)} — limit is ${formatBytes(MAX_TEXT_PREVIEW_BYTES)}`}
+      />
     )
   }
   if (loading) return <div role="status" aria-label="Loading file" className="oa-fade-in-late flex h-full items-center justify-center"><Loader2 size={16} aria-hidden="true" className="animate-spin text-(--color-text-subtle)" /></div>
-  if (error) return <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-text-muted)">{error.includes('404') ? 'File no longer exists' : `Failed to load: ${error}`}</div>
+  if (error) {
+    if (error.includes('404')) return <EmptyState icon={FileText} title="File no longer exists" />
+    return (
+      <DockLoadError
+        message="Couldn't load the file."
+        onRetry={() => {
+          setError(null)
+          setLoading(true)
+          setAttempt((n) => n + 1)
+        }}
+      />
+    )
+  }
   if (content === null) return null
   if (markdown !== null) {
     return (
@@ -637,14 +654,12 @@ function AudioPreview({ workspace, file }: { workspace: string; file: WorkspaceF
   if (file.deleted) return <DeletedFilePreview />
   const url = codingWorkspaceFileUrl(workspace, file.path)
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-      <FileHeadphone size={28} className="text-(--color-text-subtle)" />
-      <div className="min-w-0 max-w-full">
-        <p className="truncate text-sm text-(--color-text-2)">{file.name}</p>
-        <p className="mt-0.5 text-xs text-(--color-text-subtle)">{file.mime} · {formatBytes(file.size)}</p>
-      </div>
-      <audio key={url} src={url} controls preload="metadata" className="w-full max-w-md" />
-    </div>
+    <EmptyState
+      icon={FileHeadphone}
+      title={file.name}
+      body={`${file.mime} · ${formatBytes(file.size)}`}
+      action={<audio key={url} src={url} controls preload="metadata" className="w-full max-w-md" />}
+    />
   )
 }
 
@@ -652,31 +667,31 @@ function BinaryPreview({ workspace, file }: { workspace: string; file: Workspace
   if (file.deleted) return <DeletedFilePreview />
   const url = codingWorkspaceFileUrl(workspace, file.path)
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-      <FileText size={28} className="text-(--color-text-subtle)" />
-      <div>
-        <p className="text-sm text-(--color-text-2)">No inline preview for this file type</p>
-        <p className="mt-0.5 text-xs text-(--color-text-subtle)">{file.mime} · {formatBytes(file.size)}</p>
-      </div>
-      <div className="flex items-center gap-2">
-        <a href={url} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: 'primary', size: 'sm' })}>
-          <ExternalLink size={12} /> Open in new tab
-        </a>
-        <Button type="button" size="sm" onClick={() => void downloadWorkspaceFile(workspace, file)}>
-          <Download size={12} /> Download
-        </Button>
-      </div>
-    </div>
+    <EmptyState
+      icon={FileText}
+      title="No inline preview for this file type"
+      body={`${file.mime} · ${formatBytes(file.size)}`}
+      action={
+        <div className="flex items-center gap-2">
+          <a href={url} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: 'primary', size: 'sm' })}>
+            <ExternalLink size={12} aria-hidden="true" /> Open in new tab
+          </a>
+          <Button type="button" size="sm" onClick={() => void downloadWorkspaceFile(workspace, file)}>
+            <Download size={12} aria-hidden="true" /> Download
+          </Button>
+        </div>
+      }
+    />
   )
 }
 
 function DeletedFilePreview() {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-      <FileText size={24} className="text-(--color-text-subtle)" />
-      <p className="text-sm text-(--color-text-2)">File deleted from workspace</p>
-      <p className="text-xs text-(--color-text-subtle)">Open Changes to review the removed contents.</p>
-    </div>
+    <EmptyState
+      icon={FileText}
+      title="File deleted from workspace"
+      body="Open Changes to review the removed contents."
+    />
   )
 }
 

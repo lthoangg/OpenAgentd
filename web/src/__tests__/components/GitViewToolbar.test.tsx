@@ -47,6 +47,24 @@ describe('GitViewToolbar', () => {
     expect(screen.getByRole('button', { name: 'Expand all diffs' })).toBeTruthy()
   })
 
+  it('ends with Refresh, the tab\'s own button (it left the tab strip), on either view', () => {
+    const onRefresh = mock(() => {})
+    for (const subTab of ['changes', 'commits'] as const) {
+      renderToolbar({ subTab, allExpanded: false, onRefresh })
+      const names = screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'))
+      expect(names.at(-1)).toBe('Refresh Git status')
+      cleanup()
+    }
+    renderToolbar({ onRefresh })
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh Git status' }))
+    expect(onRefresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows no Refresh when the caller gives none', () => {
+    renderToolbar()
+    expect(screen.queryByRole('button', { name: /^Refresh/ })).toBeNull()
+  })
+
   it('keeps the Changes / History tabs short enough for the 32px toolbar on touch', () => {
     renderToolbar()
     const tablist = screen.getByRole('tablist', { name: 'Git view' })

@@ -220,30 +220,31 @@ describe("ImageLightbox", () => {
 
   // ── Download Button: Tooltips ────────────────────────────────────────────────
 
-  it("renders download button with tooltip", () => {
+  // The shared Tooltip: a hint on hover (after its short delay), not a hidden node in the page.
+  it("hints Download on the download button on hover", async () => {
+    const user = userEvent.setup()
     render(
       <ImageLightbox src="https://example.com/image.jpg" alt="Test" isOpen={true} onClose={mock(() => {})} />
     )
 
-    const downloadBtn = screen.getByLabelText("Download image")
-    expect(downloadBtn).toBeTruthy()
-
-    const tooltip = document.querySelector("[role='tooltip']")
-    expect(tooltip).toBeTruthy()
-    expect(tooltip?.textContent).toBe("Download")
+    await user.hover(await screen.findByLabelText("Download image"))
+    const tooltip = await screen.findByRole("tooltip", {}, { timeout: 2000 })
+    expect(tooltip.textContent).toBe("Download")
   })
 
-  it("renders close button with tooltip", () => {
+  it("hints Close (Esc) on the one shared close button on hover", async () => {
+    const user = userEvent.setup()
     render(
       <ImageLightbox src="https://example.com/image.jpg" alt="Test" isOpen={true} onClose={mock(() => {})} />
     )
 
-    const closeBtn = screen.getByLabelText("Close lightbox")
-    expect(closeBtn).toBeTruthy()
-
-    const tooltips = document.querySelectorAll("[role='tooltip']")
-    const closeTooltip = Array.from(tooltips).find((t) => t.textContent === "Close (Esc)")
-    expect(closeTooltip).toBeTruthy()
+    const closeBtn = await screen.findByLabelText("Close lightbox")
+    // The app's one × (CloseButton): a ghost icon button on a card tile.
+    expect(closeBtn.hasAttribute("data-close-button")).toBe(true)
+    expect(screen.getAllByRole("button").filter((b) => b.hasAttribute("data-close-button"))).toHaveLength(1)
+    await user.hover(closeBtn)
+    const tooltip = await screen.findByRole("tooltip", {}, { timeout: 2000 })
+    expect(tooltip.textContent).toBe("Close (Esc)")
   })
 
   // ── Download Button: Fetch Success Path ──────────────────────────────────────

@@ -26,9 +26,7 @@ import {
   getCodingWorkspaceStatus,
   getCodingWorkspaceGitHistory,
 } from '@/api/client'
-import { Columns2, Rows2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { useToastStore } from '@/stores/useToastStore'
 import { queryKeys } from '@/queries'
 import {
@@ -99,7 +97,7 @@ import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { PaneSplitHandle } from './WorkspacePanel/PaneSplitHandle'
 import { lazySurface } from '@/lib/lazy-surface'
-import { DockLauncher, dockOpenItems, type DockOpenItem } from './WorkspacePanel/DockLauncher'
+import { DockLauncher, dockOpenItems } from './WorkspacePanel/DockLauncher'
 import { DockActionMenus, type CommitActionTarget } from './WorkspacePanel/DockActionMenus'
 import { CloseTerminalDialog } from './WorkspacePanel/CloseTerminalDialog'
 import { useGitActions } from './WorkspacePanel/useGitActions'
@@ -282,7 +280,7 @@ export function WorkspacePanel({
   onRequestClose?: () => void
 }) {
   const prefersReducedMotion = useReducedMotion()
-  const { os } = usePlatform()
+  const { os, isTauri } = usePlatform()
   const gitViewIdBase = useId()
   // Preview listener behind each preview tab; file tabs of one workspace
   // share a listener, so it closes only with the last tab using it.
@@ -654,7 +652,8 @@ export function WorkspacePanel({
   // The tab strip's "+" menu: every view and tool this dock can open, so one
   // is a tap away while other tabs are open. Tasks and side questions open
   // above the chat on phones, so only desktop lists them here; the plan and
-  // the goal open here everywhere. Each pane's menu opens in that pane.
+  // the goal open here everywhere. Each pane's menu opens in that pane. The
+  // pane's splits are in its ⋯ menu (desktop), not here.
   const openIds = new Set(visibleTabs.map((tab) => tab.id))
   const openItemsFor = (pane: PaneId) => dockOpenItems(os, {
     onOpenGit: chatWorkspace ? undefined : () => openGitTab(pane),
@@ -667,12 +666,6 @@ export function WorkspacePanel({
     onOpenPreview: canPreview ? () => openNewPreview(pane) : undefined,
     onOpenFile: openQuickOpen,
   }, openIds)
-  // The "+" menu ends with the pane's splits (desktop): a new empty pane beside it.
-  const menuItemsFor = (pane: PaneId): DockOpenItem[] => mobile ? openItemsFor(pane) : [
-    ...openItemsFor(pane),
-    { id: 'split-right', label: 'Split right', icon: <Columns2 size={14} aria-hidden="true" />, shortcut: shortcutLabel(APP_SHORTCUTS.splitDock, os), group: 'pane', run: () => splitPane(pane, 'right') },
-    { id: 'split-down', label: 'Split down', icon: <Rows2 size={14} aria-hidden="true" />, shortcut: shortcutLabel(APP_SHORTCUTS.splitDockDown, os), group: 'pane', run: () => splitPane(pane, 'down') },
-  ]
 
   const handleRefresh = useCallback(() => {
     void files.refetch()
@@ -756,6 +749,7 @@ export function WorkspacePanel({
           mobile={mobile}
           allExpanded={changedFiles.length > 0 ? allExpanded : null}
           onToggleExpandAll={toggleExpandAll}
+          onRefresh={handleRefresh}
         />
       )}
       <div
@@ -910,13 +904,6 @@ export function WorkspacePanel({
     onAddComment?.(path, startLine, endLine)
   }, [keep, onAddComment])
 
-  const refreshLabelFor = (tab: DockTab | undefined) =>
-    tab?.type === 'review' || tab?.type === 'diff' || tab?.type === 'commit'
-      ? chatWorkspace ? 'Refresh files' : 'Refresh Git status'
-      : tab?.type === 'file'
-        ? 'Refresh files'
-        : null
-
   const renderContent = (tab: DockTab | undefined, pane: PaneId, paneShown: boolean) => {
     if (!chatWorkspace && tab?.type === 'review') return reviewView
     switch (tab?.type) {
@@ -930,6 +917,7 @@ export function WorkspacePanel({
             onOpenFile={openChangedFile}
             isListed={isListedFile}
             listingTruncated={files.data?.truncated === true}
+            onRefresh={handleRefresh}
           />
         )
       case 'diff':
@@ -1030,10 +1018,11 @@ export function WorkspacePanel({
           canMoveToNextPane={canMoveToNextPane}
           onRevealInGit={chatWorkspace ? undefined : revealInGit}
           onClosePane={!mobile && empty && shownPanes.length > 1 ? () => closePane(pane) : undefined}
+          onSplitPane={mobile ? undefined : (side) => splitPane(pane, side)}
           onDropTab={mobile ? undefined : dropTab}
-          onRefresh={handleRefresh}
-          refreshLabel={refreshLabelFor(shown)}
-          openItems={menuItemsFor(pane)}
+          openItems={openItemsFor(pane)}
+          // ⌘1–⌘9 pick from the focused pane's strip, and only the desktop app receives them.
+          numberKeys={isTauri && pane === focused}
           maximized={pane === cornerPane ? maximizeState : null}
           onToggleMaximized={() => useLayoutStore.getState().toggleDockMaximized()}
         />

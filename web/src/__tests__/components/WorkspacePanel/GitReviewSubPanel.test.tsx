@@ -242,7 +242,7 @@ describe('Changes load errors', () => {
       </QueryClientProvider>,
     )
 
-    expect(screen.getByRole('alert').textContent).toBe('Failed to load changed files.')
+    expect(screen.getByRole('alert').textContent).toBe("Couldn't load changed files.")
     await user.click(screen.getByRole('button', { name: 'Retry' }))
     expect(refetch).toHaveBeenCalledTimes(1)
   })

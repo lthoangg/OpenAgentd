@@ -251,7 +251,7 @@ export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: 
         <span className="truncate text-meta text-(--color-text-subtle)">Turns run on their own until a check confirms it</span>
       </div>
       {sessionId && !data && isError ? (
-        <DockLoadError message="Failed to load the goal." onRetry={() => void refetch()} retrying={isFetching} />
+        <DockLoadError message="Couldn't load the goal." onRetry={() => void refetch()} retrying={isFetching} />
       ) : !sessionId || (!goal && !isLoading) ? (
         <EmptyState icon={Target} title="No goal" body={NO_GOAL_BODY} />
       ) : !goal ? (

@@ -529,17 +529,17 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
         ) : null}
         {!mobile && canEdit && !editing && (
           <ToolbarAction label="Edit plan" onClick={startEditing}>
-            <Pencil size={12} aria-hidden="true" />
+            <Pencil size={14} aria-hidden="true" />
           </ToolbarAction>
         )}
         {!mobile && plan.workspace_path && onOpenFile && (
           <ToolbarAction label="Open file" tooltip={plan.workspace_path} onClick={() => onOpenFile(plan.workspace_path as string)}>
-            <ExternalLink size={12} aria-hidden="true" />
+            <ExternalLink size={14} aria-hidden="true" />
           </ToolbarAction>
         )}
         {!mobile && (
           <ToolbarAction label={copied ? 'Copied' : 'Copy plan'} onClick={copy}>
-            {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
+            {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
           </ToolbarAction>
         )}
         {!mobile && onClearPlan && (
@@ -549,7 +549,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
             onClick={() => setConfirmClear(true)}
             disabled={Boolean(review)}
           >
-            <Unlink size={12} aria-hidden="true" />
+            <Unlink size={14} aria-hidden="true" />
           </ToolbarAction>
         )}
         {onClearPlan && (
@@ -704,7 +704,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
               >
                 {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
                 <ChevronRight
-                  size={11}
+                  size={12}
                   aria-hidden="true"
                   className={cn('motion-safe:transition-transform duration-(--motion-fast)', showComments ? '-rotate-90' : 'rotate-90')}
                 />

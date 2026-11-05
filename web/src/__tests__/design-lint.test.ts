@@ -148,8 +148,6 @@ const RULES: Rule[] = [
     why: 'nothing appears only on hover: show an action at rest (muted) or put it in the More / right-click / long-press menu',
     pattern: /^(?=.*(?<![\w:/-])(?:md:)?opacity-0(?![\w-]))(?=.*group-hover(?:\/[\w-]+)?:opacity-100).*$/g,
     allow: {
-      // A tooltip-style caption, not an action.
-      'components/FileLightbox.tsx': 1,
       // The transcript's ambient timeline; scrolling does the same job.
       'components/AgentView/TimelineScrubber.tsx': 1,
       // The table copy button: shown on focus and always on touch, and

@@ -5,11 +5,13 @@
  * Changes list, and the shared changed-paths list for its counts, so both
  * follow the agent's writes through the normal invalidation path. The inline
  * peek in the Changes list keeps its capped height; this is the "give it the
- * whole dock" view.
+ * whole dock" view. Its toolbar ends with Refresh (it moved here from the tab
+ * strip), which reloads this diff and the changed-paths list.
  */
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, FileDiff } from 'lucide-react'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { DiffPreview } from '../FileViewerPanel'
@@ -19,6 +21,7 @@ import { changedFilesFromResponse, fileDiffBody } from './diff-helpers'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
 import { ChangeCounts } from './ChangeCounts'
 import { DockLoadError } from './DockLoadError'
+import { DockRefreshButton } from './DockRefreshButton'
 
 export interface DiffTabViewProps {
   workspace: string
@@ -36,6 +39,10 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
   )
   const fileDiff = useMemo(() => fileDiffBody(diff.data, path), [diff.data, path])
   const canOpen = onOpenFile && changed?.status !== 'D'
+  const refresh = () => {
+    void diff.refetch()
+    void changes.refetch()
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -59,19 +66,20 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
                   className={DOCK_ACTION_BUTTON_CLASS}
                   aria-label={`Open ${path}`}
                 >
-                  <ExternalLink size={13} aria-hidden="true" />
+                  <ExternalLink size={14} aria-hidden="true" />
                 </button>
               }
             />
             <TooltipContent side="bottom">Open file</TooltipContent>
           </Tooltip>
         )}
+        <DockRefreshButton label="Refresh diff" onClick={refresh} />
       </div>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto touch-pan-y">
         {diff.isLoading ? (
           <p className="px-3 py-4 text-xs text-(--color-text-subtle)">Loading diff…</p>
         ) : diff.isError ? (
-          <DockLoadError message="Failed to load the diff." onRetry={() => void diff.refetch()} retrying={diff.isFetching} />
+          <DockLoadError message="Couldn't load the diff." onRetry={() => void diff.refetch()} retrying={diff.isFetching} />
         ) : fileDiff ? (
           <>
             {diff.data?.truncated && (
@@ -82,9 +90,11 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
             <DiffPreview diff={fileDiff} />
           </>
         ) : (
-          <p className="px-3 py-4 text-xs text-(--color-text-subtle)">
-            {changed ? 'No diff body for this file.' : 'No uncommitted changes in this file.'}
-          </p>
+          <EmptyState
+            icon={FileDiff}
+            title={changed ? 'No diff body for this file' : 'No uncommitted changes in this file'}
+            body={changed ? undefined : 'It matches the last commit.'}
+          />
         )}
       </div>
     </div>

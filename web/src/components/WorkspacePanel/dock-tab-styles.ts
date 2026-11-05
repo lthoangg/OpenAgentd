@@ -55,16 +55,12 @@ export const DOCK_DROP_ZONE_CLASS = 'pointer-events-none fixed z-9998 rounded-sm
 export const DOCK_DROP_CARET_CLASS = 'pointer-events-none fixed z-9998 w-0.5 rounded-full bg-(--color-text-2)'
 
 /**
- * Inline close control, always shown: muted on the open tab, a step lower
- * (subtle) on the others, ink on hover (never hidden, so a touch screen and a
- * keyboard find it). 24px, 36px on touch.
+ * Layout of a tab's inline ``CloseButton`` (``DockTabCloseButton``): always
+ * shown, never hidden (so a touch screen and a keyboard find it), 24px
+ * (``icon-xs``), 36px on touch. The button primitive supplies the glyph (14px,
+ * the same as the pane's ⋯ menu), the muted ink and the hover wash.
  */
-export function dockTabCloseClass(active: boolean): string {
-  return [
-    'mr-1 flex size-6 shrink-0 items-center justify-center rounded-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:mr-0 pointer-coarse:size-9',
-    active ? 'text-(--color-text-muted)' : 'text-(--color-text-subtle) group-hover/tab:text-(--color-text-muted)',
-  ].join(' ')
-}
+export const DOCK_TAB_CLOSE_CLASS = 'mr-1 pointer-coarse:mr-0 pointer-coarse:size-9'
 
 /**
  * Icon-only action in the tab bar or a view toolbar. On touch it stays 28px

@@ -22,12 +22,13 @@ describe('DiffTabView — load failure', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={client}><DiffTabView workspace="/w" path="a.ts" /></QueryClientProvider>)
 
-    expect(await screen.findByText('Failed to load the diff.')).toBeTruthy()
+    expect(await screen.findByText("Couldn't load the diff.")).toBeTruthy()
     fail = false
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 
     // A boolean: a failing toBeNull pretty-prints the element on every retry.
-    await waitFor(() => expect(screen.queryByText('Failed to load the diff.') === null).toBe(true))
-    expect(screen.getByText('No uncommitted changes in this file.')).toBeTruthy()
+    await waitFor(() => expect(screen.queryByText("Couldn't load the diff.") === null).toBe(true))
+    // An empty state, not a stray line of text.
+    expect(screen.getByRole('heading', { name: 'No uncommitted changes in this file' })).toBeTruthy()
   })
 })

@@ -179,6 +179,42 @@ describe('Review dock diff tabs', () => {
     expect(screen.getByRole('button', { name: 'app.ts' }).getAttribute('aria-current')).toBe('true')
   })
 
+  it('refreshes a diff from its own toolbar, after Open file, not from the tab strip', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await openDiffTabFor(user, 'src/app.ts')
+    await screen.findByRole('button', { name: 'app.ts diff' })
+    const refresh = await screen.findByRole('button', { name: 'Refresh diff' })
+    const strip = document.querySelector<HTMLElement>('[data-dock-strip]')!
+    expect(strip.contains(refresh)).toBe(false)
+    const toolbar = refresh.closest('[class*="spacing-toolbar"]') as HTMLElement
+    expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Open src/app.ts', 'Refresh diff'])
+
+    const diffRequests = () => requestedUrls.filter((url) => url.includes('/workspace/git-diff')).length
+    const before = diffRequests()
+    await user.click(refresh)
+    await waitFor(() => expect(diffRequests()).toBeGreaterThan(before))
+  })
+
+  it('refreshes a file from its own toolbar, last after the file actions', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'More actions for src/app.ts' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Open file' }))
+    const refresh = await screen.findByRole('button', { name: 'Refresh file' })
+    const strip = document.querySelector<HTMLElement>('[data-dock-strip]')!
+    expect(strip.contains(refresh)).toBe(false)
+    const toolbar = refresh.closest('[class*="spacing-toolbar"]') as HTMLElement
+    expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label')).at(-1)).toBe('Refresh file')
+
+    const listRequests = () => requestedUrls.filter((url) => url.includes('/workspace/files/list')).length
+    const before = listRequests()
+    await user.click(refresh)
+    await waitFor(() => expect(listRequests()).toBeGreaterThan(before))
+  })
+
   it('opens a tab after the active one, and closing it goes back to the tab used before', async () => {
     const user = userEvent.setup()
     await renderPanel()
@@ -321,10 +357,29 @@ describe('Git view toolbar', () => {
     expect(screen.queryByText(/Graph view|All branches/)).toBeNull()
   })
 
-  it('leaves file search to Quick Open and names what Refresh reloads on the Git tab', async () => {
+  it('leaves file search to Quick Open; Refresh sits in the Git toolbar (not the tab strip) and reloads the status', async () => {
+    const user = userEvent.setup()
     await renderPanel()
     expect(screen.queryByRole('button', { name: /Search files/ })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Refresh Git status' })).toBeTruthy()
+
+    const refresh = screen.getByRole('button', { name: 'Refresh Git status' })
+    const strip = document.querySelector<HTMLElement>('[data-dock-strip]')!
+    expect(strip.contains(refresh)).toBe(false)
+    expect(within(strip).queryByRole('button', { name: /^Refresh/ })).toBeNull()
+    // The same 32px toolbar as the Changes / History control.
+    expect(refresh.closest('[class*="spacing-toolbar"]')?.contains(screen.getByRole('tablist', { name: 'Git view' }))).toBe(true)
+
+    const statusRequests = () => requestedUrls.filter((url) => url.includes('/workspace/status')).length
+    const before = statusRequests()
+    await user.click(refresh)
+    await waitFor(() => expect(statusRequests()).toBeGreaterThan(before))
+  })
+
+  it('Refresh sits last in the Git toolbar, after expand-all', async () => {
+    await renderPanel()
+    const toolbar = screen.getByRole('button', { name: 'Refresh Git status' }).closest('[class*="spacing-toolbar"]')!
+    const names = within(toolbar as HTMLElement).getAllByRole('button').map((button) => button.getAttribute('aria-label'))
+    expect(names.slice(-2)).toEqual(['Expand all diffs', 'Refresh Git status'])
   })
 
   it('expand-all toggles every changed-file diff open and closed', async () => {

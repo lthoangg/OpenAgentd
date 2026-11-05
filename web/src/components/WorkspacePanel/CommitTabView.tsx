@@ -97,7 +97,7 @@ export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
                   className={cn(DOCK_ACTION_BUTTON_CLASS, '-mt-1 -mr-1')}
                   aria-label="Copy full SHA"
                 >
-                  <Copy size={12} aria-hidden="true" />
+                  <Copy size={14} aria-hidden="true" />
                 </button>
               }
             />
@@ -121,7 +121,7 @@ export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
       {commitDiff.isLoading ? (
         <p className="px-3 py-4 text-xs text-(--color-text-subtle)">Loading commit changes…</p>
       ) : commitDiff.isError ? (
-        <DockLoadError message="Failed to load commit changes." onRetry={() => void commitDiff.refetch()} retrying={commitDiff.isFetching} />
+        <DockLoadError message="Couldn't load commit changes." onRetry={() => void commitDiff.refetch()} retrying={commitDiff.isFetching} />
       ) : files.length === 0 ? (
         <p className="px-3 py-4 text-xs text-(--color-text-subtle)">No files changed in this commit.</p>
       ) : (

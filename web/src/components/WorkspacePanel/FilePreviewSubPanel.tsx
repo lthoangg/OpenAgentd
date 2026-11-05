@@ -12,6 +12,7 @@ import { documentRefCandidates, resolveDocumentRef } from '@/utils/file-refs'
 import { formatBytes } from '@/utils/format'
 import type { WorkspaceFileInfo } from '@/api/types'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
+import { DockRefreshButton } from './DockRefreshButton'
 
 interface FilePreviewSubPanelProps {
   workspace: string
@@ -25,6 +26,8 @@ interface FilePreviewSubPanelProps {
   isListed?: (path: string) => boolean
   /** The listing was cut short, so an unlisted file may still exist. */
   listingTruncated?: boolean
+  /** Reloads the workspace's files (the file's size and contents follow); omitted, no button. */
+  onRefresh?: () => void
 }
 
 const HTML_FILE = /\.html?$/i
@@ -79,7 +82,7 @@ function documentFileOpener(
 
 const ALWAYS_LISTED = () => true
 
-/** A file tab: one 32px toolbar (path, size, actions) over the preview. */
+/** A file tab: one 32px toolbar (path, size, actions, Refresh last) over the preview. */
 export function FilePreviewSubPanel({
   workspace,
   file,
@@ -88,6 +91,7 @@ export function FilePreviewSubPanel({
   onOpenFile,
   isListed = ALWAYS_LISTED,
   listingTruncated = false,
+  onRefresh,
 }: FilePreviewSubPanelProps) {
   const deleted = file.deleted === true
   const downloadLabel = deleted ? 'File deleted from workspace' : 'Download file'
@@ -150,7 +154,7 @@ export function FilePreviewSubPanel({
                     aria-label="Open in preview"
                     className={DOCK_ACTION_BUTTON_CLASS}
                   >
-                    <Globe size={13} aria-hidden="true" />
+                    <Globe size={14} aria-hidden="true" />
                   </button>
                 }
               />
@@ -167,13 +171,14 @@ export function FilePreviewSubPanel({
                   aria-label={downloadLabel}
                   className={DOCK_ACTION_BUTTON_CLASS}
                 >
-                  <Download size={13} aria-hidden="true" />
+                  <Download size={14} aria-hidden="true" />
                 </button>
               }
             />
             <TooltipContent side="bottom">{downloadLabel}</TooltipContent>
           </Tooltip>
           {canCopyFileContents(file) && <CopyFileButton workspace={workspace} file={file} />}
+          {onRefresh && <DockRefreshButton label="Refresh file" onClick={onRefresh} />}
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">

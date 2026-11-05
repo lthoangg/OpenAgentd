@@ -74,7 +74,7 @@ export function CommitDetail({
     return <p className="py-2 text-xs md:text-meta text-(--color-text-subtle)">Loading commit changes…</p>
   }
   if (commitDiff.isError) {
-    return <p className="py-2 text-xs md:text-meta text-(--color-error)">Failed to load commit changes</p>
+    return <p role="alert" className="py-2 text-xs md:text-meta text-(--color-error)">Couldn&apos;t load commit changes.</p>
   }
 
   if (commitChangedFiles.length === 0) {
@@ -110,7 +110,7 @@ export function CommitDetail({
                     className="flex h-7 w-full cursor-pointer items-center gap-1.5 px-2 text-left text-xs md:h-6 md:text-meta text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
                     aria-expanded={expanded}
                   >
-                    <ChevronRight size={11} className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ease-(--ease-out)', expanded && 'rotate-90')} aria-hidden="true" />
+                    <ChevronRight size={12} className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ease-(--ease-out)', expanded && 'rotate-90')} aria-hidden="true" />
                     <FileTypeIcon name={changedFile.path} size={12} />
                     <span className="min-w-0 flex-1 truncate font-mono">{changedFile.path}</span>
                     <ChangeCounts file={changedFile} />

@@ -18,7 +18,7 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
-async function setup(mobile = false) {
+async function setup(mobile = false, os: 'macos' | 'linux' = 'linux') {
   const { TerminalTabButton } = await import('@/components/Terminal/TerminalTabButton')
   const id = useTerminalStore.getState().open({ workspace: '/tmp/ws' }, '/tmp/ws')
   const onActivate = mock(() => {})
@@ -27,6 +27,7 @@ async function setup(mobile = false) {
       meta={useTerminalStore.getState().sessions[id]}
       active
       mobile={mobile}
+      os={os}
       onActivate={onActivate}
     />,
   )
@@ -59,6 +60,33 @@ describe('TerminalTabButton', () => {
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Terminal 1' }))
     expect(await screen.findByRole('menuitem', { name: /Rename/ })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: /Close/ })).toBeTruthy()
+  })
+
+  it('the menu spells the key of each row that has one: F2 renames, ⌘W closes', async () => {
+    await setup(false, 'macos')
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Terminal 1' }))
+    const menu = await screen.findByRole('menu', { name: 'Actions for Terminal 1' })
+    const keyOf = (name: string) => Array.from(menu.querySelectorAll('[role="menuitem"]'))
+      .find((item) => (item.querySelector('span.flex-1')?.textContent ?? item.textContent) === name)?.querySelector('kbd')?.textContent
+    expect(keyOf('Rename')).toBe('F2')
+    expect(keyOf('Close')).toBe('⌘W')
+    expect(keyOf('Clear')).toBeUndefined()
+  })
+
+  it('spells Close for Windows and Linux too', async () => {
+    await setup(false, 'linux')
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Terminal 1' }))
+    const menu = await screen.findByRole('menu', { name: 'Actions for Terminal 1' })
+    const close = Array.from(menu.querySelectorAll('[role="menuitem"]')).find((item) => item.querySelector('span.flex-1')?.textContent === 'Close')
+    expect(close?.querySelector('kbd')?.textContent).toBe('Ctrl+W')
+  })
+
+  it('closes with the shared CloseButton: named for the terminal, one glyph size with the other tabs', async () => {
+    await setup()
+    const close = screen.getByRole('button', { name: 'Close Terminal 1' })
+    expect(close.hasAttribute('data-close-button')).toBe(true)
+    expect(close.hasAttribute('data-dock-tab-close')).toBe(true)
+    expect(close.className).toContain('size-6')
   })
 
   it('Clear in the desktop menu clears the scrollback (⌘K now opens the palette)', async () => {

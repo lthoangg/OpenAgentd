@@ -27,11 +27,11 @@ import {
   type RefObject,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { X } from 'lucide-react'
 import { getPlatform } from '@/hooks/use-platform'
 import { cn } from '@/lib/utils'
 import { DURATIONS_S } from '@/lib/motion'
 import { Button } from '@/components/ui/button'
+import { CloseButton } from '@/components/ui/close-button'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { usePresenceMotion } from '@/components/ui/_use-presence-motion'
 import { useModalFocus } from '@/hooks/useModalFocus'
@@ -211,15 +211,7 @@ function DialogContent({ className, children, showCloseButton = true, size = 'sm
           {children}
         </DialogPaddingContext.Provider>
         {showCloseButton && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="absolute top-2 right-2"
-            onClick={() => setOpen(false)}
-            aria-label="Close dialog"
-          >
-            <X size={14} />
-          </Button>
+          <CloseButton className="absolute top-2 right-2" onClick={() => setOpen(false)} />
         )}
       </div>
     </DialogPortal>

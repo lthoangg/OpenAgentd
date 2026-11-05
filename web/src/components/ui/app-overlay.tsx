@@ -50,9 +50,7 @@
 
 import { type ReactNode } from 'react'
 import { motion, AnimatePresence, useDragControls, type PanInfo } from 'framer-motion'
-import { X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { CloseButton } from '@/components/ui/close-button'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -117,23 +115,7 @@ export function OverlayHeader({
         <div className="flex shrink-0 items-center gap-1">
           {actions}
           {onClose && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className={OVERLAY_HEADER_BUTTON_CLASS}
-                    onClick={onClose}
-                    aria-label={closeLabel}
-                  >
-                    <X size={14} aria-hidden="true" />
-                  </Button>
-                }
-              />
-              <TooltipContent>{closeTooltip}</TooltipContent>
-            </Tooltip>
+            <CloseButton className={OVERLAY_HEADER_BUTTON_CLASS} onClick={onClose} label={closeLabel} tooltip={closeTooltip} />
           )}
         </div>
       )}

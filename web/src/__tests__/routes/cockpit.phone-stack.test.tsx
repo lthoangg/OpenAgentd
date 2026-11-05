@@ -12,6 +12,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 let params: Record<string, string> = {}
 let search: { workspace?: string } = {}
 let pathname = '/'
+// The location's own search; null reads the route's (``search``). They
+// differ only while a navigation is pending.
+let locationSearch: { workspace?: string } | null = null
 let phone = true
 const navigate = mock((..._args: unknown[]) => {})
 const latestTopLevelSession = mock(async () => null)
@@ -22,7 +25,8 @@ mock.module('@tanstack/react-router', () => ({
   useParams: () => params,
   useSearch: () => search,
   useNavigate: () => navigate,
-  useLocation: ({ select }: { select: (location: { pathname: string }) => unknown }) => select({ pathname }),
+  useLocation: ({ select }: { select: (location: { pathname: string; search: { workspace?: string } }) => unknown }) =>
+    select({ pathname, search: locationSearch ?? search }),
 }))
 
 type ChatViewProps = {
@@ -52,7 +56,8 @@ mock.module('@tauri-apps/api/core', () => ({ invoke }))
 mock.module('@/lib/broadcast-sync', () => ({ initBroadcastSync: () => () => {}, broadcastMessage: () => {} }))
 mock.module('@/lib/window-title', () => ({ syncDesktopWindowTitle: () => {} }))
 mock.module('@/hooks/use-needs-you-badge', () => ({ useNeedsYouBadge: () => 0, useNeedsYouCount: () => 0 }))
-mock.module('@/queries/useChatWorkspace', () => ({ useChatWorkspace: () => null }))
+const realChatWorkspace = await import('@/queries/useChatWorkspace')
+mock.module('@/queries/useChatWorkspace', () => ({ ...realChatWorkspace, useChatWorkspace: () => null }))
 mock.module('@/lib/fresh-window', () => ({ isFreshDesktopWindow: () => false, clearFreshDesktopWindow: () => {} }))
 
 mock.module('@/stores/useAgentStore', () => {
@@ -115,6 +120,7 @@ beforeEach(() => {
   params = {}
   search = {}
   pathname = '/'
+  locationSearch = null
   phone = true
   navigate.mockClear()
   latestTopLevelSession.mockClear()
@@ -170,6 +176,21 @@ describe('the phone stack in the app layout', () => {
     expect(handleBackPress(true)).toBe('handler')
     await settle()
     expect(invoke).toHaveBeenCalledWith('app_move_to_background')
+  })
+
+  it('lets ✎ push a draft: the pending render on /?workspace= is not sent back to /sessions', async () => {
+    pathname = '/sessions'
+    const { rerender } = renderLayout()
+    await settle()
+    navigate.mockClear()
+
+    // The location is at the draft already; the matched route's search not yet.
+    pathname = '/'
+    locationSearch = { workspace: '/repo' }
+    rerender()
+    await settle()
+
+    expect(navigate).not.toHaveBeenCalledWith({ to: '/sessions', replace: true })
   })
 
   it('names the session a popped draft created without pushing it', () => {

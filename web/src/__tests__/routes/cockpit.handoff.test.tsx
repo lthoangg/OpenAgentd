@@ -12,7 +12,8 @@ mock.module('@tanstack/react-router', () => ({
   useParams: () => params,
   useSearch: () => search,
   useNavigate: () => navigate,
-  useLocation: ({ select }: { select: (location: { pathname: string }) => unknown }) => select({ pathname: '/' }),
+  useLocation: ({ select }: { select: (location: { pathname: string; search: { workspace?: string } }) => unknown }) =>
+    select({ pathname: '/', search }),
 }))
 
 const chatViewProps: Array<{ sessionId?: string; workspace: string | null; sessionLoading: boolean }> = []
@@ -34,7 +35,8 @@ mock.module('@/components/Sidebar.workspace', () => ({ latestTopLevelSession: as
 mock.module('@/lib/broadcast-sync', () => ({ initBroadcastSync: () => () => {}, broadcastMessage: () => {} }))
 mock.module('@/lib/window-title', () => ({ syncDesktopWindowTitle: () => {} }))
 mock.module('@/hooks/use-needs-you-badge', () => ({ useNeedsYouBadge: () => 0, useNeedsYouCount: () => 0 }))
-mock.module('@/queries/useChatWorkspace', () => ({ useChatWorkspace: () => null }))
+const realChatWorkspace = await import('@/queries/useChatWorkspace')
+mock.module('@/queries/useChatWorkspace', () => ({ ...realChatWorkspace, useChatWorkspace: () => null }))
 mock.module('@/lib/fresh-window', () => ({ isFreshDesktopWindow: () => false, clearFreshDesktopWindow: () => {} }))
 
 mock.module('@/stores/useAgentStore', () => {

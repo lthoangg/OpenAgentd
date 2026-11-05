@@ -32,6 +32,10 @@ function AgentLayoutBase() {
   // `/?workspace=<path>`: a new-session draft there (nothing saved yet).
   const routeDraftWorkspace = routeSessionId ? null : (search.workspace ?? null)
   const pathname = useLocation({ select: (location) => location.pathname })
+  // Read from the location itself, so it always agrees with ``pathname``:
+  // while a navigation is pending the location has moved on but the
+  // matched route's search (``search`` above) has not.
+  const locationHasDraft = useLocation({ select: (location) => Boolean((location.search as { workspace?: unknown }).workspace) })
   const navigate = useNavigate()
   // A phone is a navigation stack: with no chat in the route (/sessions, or a
   // bare / on its way there) the Sessions screen is on top. The chat it was
@@ -98,10 +102,13 @@ function AgentLayoutBase() {
   // history holds (a notification or a link may have opened the chat).
   const backToSessions = useCallback(() => { void navigate({ to: '/sessions', replace: true }) }, [navigate])
   const phoneStack = useMemo(() => (isPhone ? { atSessions, onBack: backToSessions } : undefined), [atSessions, backToSessions, isPhone])
-  // A bare / on a phone is the Sessions screen: name it in the URL.
+  // A bare / on a phone is the Sessions screen: name it in the URL. Only a
+  // bare one: a push from Sessions to a chat or a draft passes through a
+  // render where the location is already there but the route is not.
   useEffect(() => {
-    if (atSessions && pathname !== '/sessions') navigate({ to: '/sessions', replace: true })
-  }, [atSessions, navigate, pathname])
+    const bare = pathname === '/' || pathname === '/index.html'
+    if (atSessions && bare && !locationHasDraft) navigate({ to: '/sessions', replace: true })
+  }, [atSessions, locationHasDraft, navigate, pathname])
   // Desktop and tablets list sessions in the sidebar: /sessions shows it.
   useEffect(() => {
     if (isPhone || pathname !== '/sessions') return

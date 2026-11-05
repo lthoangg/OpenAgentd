@@ -127,6 +127,8 @@ export interface SegmentDragHandlers {
   onPointerMove: (event: PointerEvent<HTMLDivElement>) => void
   onPointerUp: (event: PointerEvent<HTMLDivElement>) => void
   onPointerCancel: (event: PointerEvent<HTMLDivElement>) => void
+  onLostPointerCapture: () => void
+  onClick: () => void
 }
 
 /** A segment's rectangle in the track's scrolled coordinates. */
@@ -255,6 +257,10 @@ export function useSegmentIndicator(
           if (over != null && over !== value) onPickRef.current?.(over)
         },
         onPointerCancel: endDrag,
+        // A press ends with its click or by losing the pointer, so the fill
+        // lets go even when a pointerup never reached the track.
+        onLostPointerCapture: endDrag,
+        onClick: endDrag,
       }
     : {}
 

@@ -30,6 +30,15 @@ describe('Switch', () => {
     expect(onCheckedChange).toHaveBeenCalledWith(false)
   })
 
+  it('lets the thumb go on the click even when no pointerup arrived', () => {
+    render(<Switch checked={false} aria-label="Wi-Fi" />)
+    press(10)
+    expect(toggle().hasAttribute('data-pressed')).toBe(true)
+    fireEvent.click(toggle())
+    expect(toggle().hasAttribute('data-pressed')).toBe(false)
+    expect(thumb().className).toContain('w-4')
+  })
+
   it('keeps the data attributes and role', () => {
     render(<Switch checked aria-label="Wi-Fi" />)
     expect(toggle().getAttribute('aria-checked')).toBe('true')

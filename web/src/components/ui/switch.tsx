@@ -104,7 +104,11 @@ function Switch({
         onPointerCancel?.(event)
         endPress()
       }}
+      // A press always ends with its click, or by losing the pointer: either
+      // way the thumb lets go, even when a pointerup never reached it.
+      onLostPointerCapture={endPress}
       onClick={(event) => {
+        endPress()
         // ``detail`` is 0 for a keyboard-made click, which always toggles.
         if (gesture.current.suppressClick && event.detail !== 0) {
           gesture.current.suppressClick = false

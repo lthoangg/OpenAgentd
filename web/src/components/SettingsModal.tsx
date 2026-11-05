@@ -460,9 +460,9 @@ export function SettingsModal() {
                   atIndex && 'max-md:hidden',
                 )}
               >
-                <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
+                {/* Keyed by the page, so a new section fades in (``fast``). */}
+                <div key={`${section}:${selectedName ?? ''}`} className="oa-fade-in-fast min-h-0 flex-1 overflow-hidden flex flex-col">
                   <SectionContent
-                    key={`${section}:${selectedName ?? ''}`}
                     section={section}
                     selectedName={selectedName}
                     setSection={setSection}

@@ -4,6 +4,7 @@
  * a bottom sheet. Text the user is selecting keeps the system's own menu.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { readFileSync } from 'node:fs'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { useFakeTimers } from '../fake-timers'
@@ -152,14 +153,14 @@ describe('long press in the iOS app', () => {
     const sheet = screen.getByRole('dialog', { name: 'Actions for message' })
     expect(sheet.getAttribute('data-bottom-sheet')).toBe('')
     expect(shellCalls).toEqual([])
-    expect(haptics).toEqual(['soft'])
+    expect(haptics).toEqual(['medium'])
     await act(async () => { screen.getByRole('button', { name: 'Edit' }).click() })
     expect(picked).toEqual(['Edit'])
   })
 })
 
 describe('long press on touch', () => {
-  it('opens the items as a bottom sheet with a light haptic, not a floating menu', async () => {
+  it('opens the items as a bottom sheet with a medium haptic, not a floating menu', async () => {
     setCoarse(true)
     picked.length = 0
     render(<Message />)
@@ -170,7 +171,7 @@ describe('long press on touch', () => {
     const sheet = screen.getByRole('dialog', { name: 'Actions for message' })
     expect(sheet.getAttribute('data-bottom-sheet')).toBe('')
     expect(screen.queryByRole('menu')).toBeNull()
-    expect(haptics).toEqual(['soft'])
+    expect(haptics).toEqual(['medium'])
 
     const buttons = Array.from(sheet.querySelectorAll('button')).map((b) => b.textContent)
     expect(buttons).toEqual(['Copy', 'Edit'])
@@ -219,9 +220,69 @@ describe('long press on touch', () => {
   it('ignores a mouse press: desktop keeps right-click', async () => {
     setCoarse(true)
     render(<Message />)
-    fireEvent.pointerDown(screen.getByText('Fix the build'), touch({ pointerType: 'mouse' }))
+    const target = screen.getByText('Fix the build')
+    fireEvent.pointerDown(target, touch({ pointerType: 'mouse' }))
+    expect(screen.getByTestId('message').hasAttribute('data-pressing')).toBe(false)
     await hold()
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  describe('the press lifts the surface while it is held', () => {
+    const pressing = () => screen.getByTestId('message').hasAttribute('data-pressing')
+
+    it('marks the surface from pointerdown and clears it once the menu opens', async () => {
+      setCoarse(true)
+      render(<Message />)
+      fireEvent.pointerDown(screen.getByText('Fix the build'), touch())
+      expect(pressing()).toBe(true)
+      await hold()
+      expect(screen.getByRole('dialog', { name: 'Actions for message' })).toBeTruthy()
+      expect(pressing()).toBe(false)
+    })
+
+    it('clears on lift, move-out, cancel and scroll', () => {
+      setCoarse(true)
+      render(<Message />)
+      const target = screen.getByText('Fix the build')
+      for (const end of [
+        () => fireEvent.pointerUp(target, touch()),
+        () => fireEvent.pointerMove(target, touch({ clientY: 40 + 11 })),
+        () => fireEvent.pointerCancel(target, touch()),
+        () => fireEvent.scroll(document.body),
+      ]) {
+        fireEvent.pointerDown(target, touch())
+        expect(pressing()).toBe(true)
+        end()
+        expect(pressing()).toBe(false)
+      }
+    })
+
+    it('keeps it through a small wobble, and drops it when a second finger lands', () => {
+      setCoarse(true)
+      render(<Message />)
+      const target = screen.getByText('Fix the build')
+      fireEvent.pointerDown(target, touch())
+      fireEvent.pointerMove(target, touch({ clientX: 40 + 5, clientY: 40 + 5 }))
+      expect(pressing()).toBe(true)
+      fireEvent.pointerDown(target, touch({ pointerId: 2 }))
+      expect(pressing()).toBe(false)
+    })
+
+    it('marks only the innermost surface a held link belongs to', () => {
+      setCoarse(true)
+      render(<Message><Link /></Message>)
+      fireEvent.pointerDown(screen.getByRole('link', { name: 'the docs' }), touch())
+      expect(screen.getByRole('link', { name: 'the docs' }).hasAttribute('data-pressing')).toBe(true)
+      expect(pressing()).toBe(false)
+    })
+
+    it('is drawn by index.css: scale 0.98 at the instant token, via the scale property', () => {
+      const css = readFileSync(new URL('../../index.css', import.meta.url), 'utf8')
+      const rule = css.match(/\[data-pressing\]\s*\{([^}]*)\}/)?.[1] ?? ''
+      expect(rule).toContain('scale: 0.98')
+      expect(rule).toContain('transition: scale var(--motion-instant) var(--ease-out)')
+      expect(rule).not.toContain('transform')
+    })
   })
 
   it('does not open over text the user is selecting', async () => {
@@ -244,7 +305,7 @@ describe('long press on touch', () => {
     await hold()
     expect(screen.getAllByRole('dialog')).toHaveLength(1)
     expect(screen.getByRole('dialog', { name: 'Actions for link' })).toBeTruthy()
-    expect(haptics).toEqual(['soft'])
+    expect(haptics).toEqual(['medium'])
   })
 
   it('leaves a button inside the surface to its own press', async () => {
@@ -270,7 +331,7 @@ describe('long press on touch', () => {
     fireEvent.pointerDown(screen.getByText('Fix the build'), touch())
     await hold()
     expect(screen.getAllByRole('dialog')).toHaveLength(1)
-    expect(haptics).toEqual(['soft'])
+    expect(haptics).toEqual(['medium'])
   })
 
   it('listens on the document once for all surfaces, and stops with the last one', () => {

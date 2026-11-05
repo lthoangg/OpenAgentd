@@ -108,7 +108,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   // Data and safety
   { id: 'memory', label: 'Memory', description: 'Shared Markdown knowledge base', icon: Brain, group: 'privacy' },
   { id: 'denied_paths', label: 'Denied paths', description: 'Files and folders agents cannot touch', icon: Shield, group: 'privacy' },
-  { id: 'telemetry', label: 'Retention', description: 'How long local traces and metrics are kept', icon: Activity, group: 'privacy' },
+  { id: 'telemetry', label: 'Retention', description: 'How long local traces are kept', icon: Activity, group: 'privacy' },
   // About
   { id: 'about', label: 'About OpenAgentd', description: 'Version, updates and community', icon: Info, group: 'about' },
 ]

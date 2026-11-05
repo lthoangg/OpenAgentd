@@ -66,18 +66,18 @@ describe('CompactionDivider — labels', () => {
 describe('CompactionDivider — animated ellipsis', () => {
   it('says it is working with a static "…", never pulsing text', () => {
     const { container } = render(<CompactionDivider state="compacting" />)
-    expect(container.querySelector('.animate-pulse')).toBeNull()
+    expect(container.querySelector('.oa-breathe')).toBeNull()
     expect(screen.getByRole('status').textContent).toBe('Summarizing earlier messages…')
   })
 
   it('does not render the animated "…" span once compacted', () => {
     const { container } = render(<CompactionDivider state="compacted" />)
-    expect(container.querySelector('.animate-pulse')).toBeNull()
+    expect(container.querySelector('.oa-breathe')).toBeNull()
   })
 
   it('does not render the animated "…" on error', () => {
     const { container } = render(<CompactionDivider state="compacting" error />)
-    expect(container.querySelector('.animate-pulse')).toBeNull()
+    expect(container.querySelector('.oa-breathe')).toBeNull()
   })
 })
 

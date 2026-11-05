@@ -70,11 +70,9 @@ async fn generate(
     obs.span.set_attr("gen_ai.provider.name", cfg.provider.as_str());
     obs.span.set_attr("gen_ai.request.model", cfg.model.as_str());
     obs.span.set_name(format!("generate_video {}:{}", cfg.provider, cfg.model));
-    obs.set_provider(&cfg.provider);
     if cfg.provider != "googlegenai" {
         return fail("unknown_provider", &format!("provider '{}' is not supported for video generation. Supported providers: googlegenai.", cfg.provider));
     }
-    obs.set_model(&cfg.model);
     if last_frame.is_some() && first_frame.is_none() {
         return fail("validation", "`last_frame` requires `first_frame` to also be set.");
     }
@@ -119,7 +117,6 @@ async fn generate(
         "text"
     };
     obs.span.set_attr("video.mode", mode);
-    obs.set_mode(mode);
     let mut overrides: Overrides = vec![];
     for (k, v) in [("aspect_ratio", &aspect_ratio), ("resolution", &resolution), ("duration_seconds", &duration_seconds)] {
         if let Some(v) = v.as_ref().filter(|v| !v.is_empty()) {

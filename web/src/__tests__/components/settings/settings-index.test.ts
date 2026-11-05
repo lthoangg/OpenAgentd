@@ -24,7 +24,7 @@ describe('searchSettings', () => {
     expect(labelsFor('text size')).toContain('setting:general:Text size')
     expect(labelsFor('dark')).toContain('setting:general:Theme')
     expect(labelsFor('gitignore')).toContain('setting:denied_paths:Denied patterns')
-    expect(labelsFor('retention days')).toContain('setting:telemetry:Keep traces and metrics for')
+    expect(labelsFor('retention days')).toContain('setting:telemetry:Keep traces for')
   })
 
   it('finds the fallback order of accounts under Providers', () => {

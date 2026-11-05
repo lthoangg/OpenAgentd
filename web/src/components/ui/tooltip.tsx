@@ -47,6 +47,7 @@ import {
 import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
+import { usePresenceMotion, type PresencePose } from '@/components/ui/_use-presence-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { DURATIONS_S } from '@/lib/motion'
 
@@ -265,6 +266,14 @@ interface TooltipContentProps extends ComponentPropsWithRef<'div'> {
   sideOffset?: number
 }
 
+/** The pose a tooltip enters from: a touch smaller, 4px nearer its anchor. */
+const TOOLTIP_FROM: Record<Side, PresencePose> = {
+  top: { opacity: 0, scale: 0.95, y: 4 },
+  bottom: { opacity: 0, scale: 0.95, y: -4 },
+  left: { opacity: 0, scale: 0.95, x: 4 },
+  right: { opacity: 0, scale: 0.95, x: -4 },
+}
+
 /** Minimum gap kept between the tooltip box and the viewport edge. */
 const VIEWPORT_MARGIN = 8
 
@@ -278,6 +287,9 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
   // for a frame — the box stays `invisible` until then).
   const [placement, setPlacement] = useState<Side>(side)
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
+  // Fades in at ``fast`` from 4px toward its anchor, out at ``fast``;
+  // interruptible, so a tooltip that reopens mid-exit doesn't flash.
+  usePresenceMotion(contentRef, mounted, closing, { from: TOOLTIP_FROM[placement], enter: DURATIONS_S.fast })
 
   useLayoutEffect(() => {
     if (!mounted) {
@@ -345,13 +357,6 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
   if (!mounted || isMobile) return null
 
   // Animation classes per side (post-flip)
-  const slideIn = {
-    top: 'slide-in-from-bottom-1',
-    bottom: 'slide-in-from-top-1',
-    left: 'slide-in-from-right-1',
-    right: 'slide-in-from-left-1',
-  }[placement]
-
   // Arrow: a 5×5 rotated square positioned at the edge facing the trigger
   // (its two outward sides carry the box's hairline).
   const arrowClass = {
@@ -376,9 +381,6 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
         // Hide (not unmount) until the first measurement lands, so the box
         // never flashes at (0, 0) before `reposition()` places it.
         !coords && 'invisible',
-        closing
-          ? 'animate-out fade-out-0 zoom-out-95 animation-duration-(--motion-fast)'
-          : `animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-fast) ${slideIn}`,
         className,
       )}
       style={{ top: coords?.top ?? 0, left: coords?.left ?? 0 }}

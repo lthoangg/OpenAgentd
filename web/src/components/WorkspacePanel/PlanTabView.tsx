@@ -453,7 +453,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
       <ChevronRight
         size={12}
         aria-hidden="true"
-        className={cn('shrink-0 text-(--color-text-muted) motion-safe:transition-transform', appendixOpen && 'rotate-90')}
+        className={cn('shrink-0 text-(--color-text-muted) motion-safe:transition-transform duration-(--motion-fast)', appendixOpen && 'rotate-90')}
       />
       <span className="shrink-0 font-medium text-(--color-text)">{parts.title}</span>
       {parts.sections.length > 0 && (
@@ -706,7 +706,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
                 <ChevronRight
                   size={11}
                   aria-hidden="true"
-                  className={cn('motion-safe:transition-transform', showComments ? '-rotate-90' : 'rotate-90')}
+                  className={cn('motion-safe:transition-transform duration-(--motion-fast)', showComments ? '-rotate-90' : 'rotate-90')}
                 />
               </button>
             ) : (

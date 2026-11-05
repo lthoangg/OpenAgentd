@@ -73,7 +73,12 @@ function RadioGroupItem({ className, value, onChange, name, checked, ...props }:
         }}
         {...props}
       />
-      <span className="pointer-events-none absolute inset-0 m-auto size-2 rounded-full bg-(--color-accent) opacity-0 transition-opacity peer-checked:opacity-100" aria-hidden="true" />
+      {/* The dot grows in from 50% with a soft spring while it fades up (``fast``). */}
+      <span
+        data-slot="radio-group-dot"
+        className="pointer-events-none absolute inset-0 m-auto size-2 scale-50 rounded-full bg-(--color-accent) opacity-0 transition-[opacity,scale] duration-(--motion-fast) ease-(--ease-spring-soft) peer-checked:scale-100 peer-checked:opacity-100"
+        aria-hidden="true"
+      />
     </span>
   )
 }

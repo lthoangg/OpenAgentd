@@ -25,6 +25,7 @@ fn main() {
                 "show_snap_layouts",
                 "set_attention_badge",
                 "share_url",
+                "haptic_alignment",
                 "get_tray_usage_summary",
                 "tray_action",
                 "tray_fit",

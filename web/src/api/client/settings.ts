@@ -170,7 +170,7 @@ export async function updateGoalSettings(body: GoalSettingsUpdate): Promise<Goal
 }
 
 export type TelemetrySettings = {
-  /** Days local traces and metrics are kept before the daily sweep deletes them. */
+  /** Days local traces are kept before the daily sweep deletes them. */
   retention_days: number
   default_retention_days: number
   max_retention_days: number

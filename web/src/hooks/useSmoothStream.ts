@@ -1,4 +1,12 @@
 import { useEffect, useState, useRef } from 'react'
+import { prefersReducedMotion } from '@/lib/motion'
+
+/**
+ * The most text that still flows in after the stream ends. A larger gap (an
+ * answer that finished while the window was hidden, a history reload) is
+ * shown at once: revealing it would only hold the reader back.
+ */
+const MAX_DRAIN_CHARS = 4000
 
 /**
  * A hook that takes a fast or chunky streaming string and smoothly interpolates
@@ -7,12 +15,31 @@ import { useEffect, useState, useRef } from 'react'
  * Uses a self-contained rAF loop with functional setState so that a single
  * effect handles the entire animation without triggering a re-render per frame.
  *
+ * When the stream ends while text is still being revealed (the last delta
+ * usually lands with "done"), the rest keeps flowing at the same pace
+ * instead of appearing in one frame; the caller can tell from the returned
+ * text differing from ``targetText`` that it is still settling. Text that was
+ * never streamed, and reduced motion, show at once.
+ *
  * @param targetText The actual text content from the stream
  * @param isStreaming Whether the stream is currently active
  * @returns The smoothed text content to display
  */
 export function useSmoothStream(targetText: string, isStreaming: boolean): string {
   const [displayedText, setDisplayedText] = useState(targetText)
+  // Whether this text has streamed since it last settled: only then may the
+  // end keep flowing. Reset once the reveal catches up, so a later edit of a
+  // finished message shows at once.
+  const [streamed, setStreamed] = useState(isStreaming)
+  if (isStreaming && !streamed) setStreamed(true)
+
+  const draining = !isStreaming
+    && streamed
+    && displayedText !== targetText
+    && targetText.startsWith(displayedText)
+    && targetText.length - displayedText.length <= MAX_DRAIN_CHARS
+    && !prefersReducedMotion()
+
   const targetRef = useRef(targetText)
   const displayedLengthRef = useRef(targetText.length)
   // Outlives the effect: it re-runs on every delta (~16 ms), and a clock local
@@ -21,10 +48,11 @@ export function useSmoothStream(targetText: string, isStreaming: boolean): strin
 
   useEffect(() => {
     targetRef.current = targetText
-    // Not streaming: always show the real text immediately.
-    if (!isStreaming) {
+    // Not streaming and nothing left to flow: show the real text.
+    if (!isStreaming && !draining) {
       setDisplayedText(targetText)
       displayedLengthRef.current = targetText.length
+      if (streamed) setStreamed(false)
       return
     }
 
@@ -101,7 +129,10 @@ export function useSmoothStream(targetText: string, isStreaming: boolean): strin
       active = false
       cancelAnimationFrame(frameId)
     }
-  }, [isStreaming, targetText])
+    // ``draining`` turns false when the reveal catches up, which re-runs this
+    // to settle; ``streamed`` is only read on that settle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStreaming, targetText, draining])
 
-  return isStreaming ? displayedText : targetText
+  return isStreaming || draining ? displayedText : targetText
 }

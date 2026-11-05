@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import { ArrowUpRight, ChevronRight, CornerLeftUp, GitBranch, Loader2, MoreHorizontal, Pin, PinOff, SquarePen, Target } from 'lucide-react'
+import { ArrowUpRight, ChevronRight, CornerLeftUp, GitBranch, Loader2, MoreHorizontal, Pin, PinOff, SquarePen } from 'lucide-react'
 import { useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -413,17 +413,10 @@ function SessionRowView({
             <Pin size={11} />
           </span>
         )}
-        {session.goal_status && !isEditing && (
-          <span
-            data-goal-status={session.goal_status}
-            className={`ml-1 flex shrink-0 items-center ${session.goal_status === 'active' ? 'text-(--color-text-2)' : 'text-(--color-text-muted)'} ${metaVisibility}`}
-            title={session.goal_status === 'active' ? 'Working toward a goal' : 'Goal paused'}
-            aria-hidden="true"
-          >
-            <Target size={11} />
-          </span>
-        )}
-        {!isEditing && (stateWord
+        {/* A running row says so with its leading spinner alone: a word or a
+            goal icon here only squeezed the title and swapped out on hover.
+            The goal stays in the row's accessible name (sr-only above). */}
+        {!isEditing && status !== 'running' && (stateWord
           ? <SessionStateWord status={status} className={pinMarkVisibility} />
           : sessionAge && (
             <span className={`shrink-0 pl-1 pr-1 text-meta tabular-nums text-(--color-text-muted) ${ageVisibility}`} aria-hidden="true">

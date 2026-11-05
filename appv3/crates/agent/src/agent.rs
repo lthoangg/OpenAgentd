@@ -309,17 +309,14 @@ impl Agent {
             return self.run_tool_inner(ctx, meta, hooks, tools, base, tc, progress).await;
         };
         let span = o.start_tool_span(ctx, tc);
-        let t0 = Instant::now();
         let r = appv3_core::otel::scope(Some(span.ctx()), self.run_tool_inner(ctx, meta, hooks, tools, base, tc, progress)).await;
         use crate::hooks::otel::ToolOutcome;
         match &r {
-            Ok(res) => o.end_tool_span(&span, &tc.function.name, t0, ToolOutcome::Ok(&res.text)),
+            Ok(res) => o.end_tool_span(&span, ToolOutcome::Ok(&res.text)),
             Err(Suspension::Question { question_id, .. }) => {
-                o.end_tool_span(&span, &tc.function.name, t0, ToolOutcome::QuestionSuspended(&format!("Turn suspended awaiting user answer ({question_id})")))
+                o.end_tool_span(&span, ToolOutcome::QuestionSuspended(&format!("Turn suspended awaiting user answer ({question_id})")))
             }
-            Err(Suspension::Lead { question, .. }) => {
-                o.end_tool_span(&span, &tc.function.name, t0, ToolOutcome::LeadSuspended(&format!("Turn suspended awaiting lead answer: {question}")))
-            }
+            Err(Suspension::Lead { question, .. }) => o.end_tool_span(&span, ToolOutcome::LeadSuspended(&format!("Turn suspended awaiting lead answer: {question}"))),
         }
         r
     }
@@ -501,10 +498,9 @@ impl Agent {
                 match otel_hook {
                     Some(o) => {
                         let span = o.start_model_span(&ctx, &req);
-                        let t0 = Instant::now();
                         let _ = appv3_core::otel::scope(Some(span.ctx()), Self::prepare_call(&hooks, &ctx, &mut state, req)).await;
                         let stub = AssistantMessage::default();
-                        o.end_model_span(&span, t0, crate::hooks::otel::ModelOutcome::Ok(&stub, Default::default()));
+                        o.end_model_span(&span, crate::hooks::otel::ModelOutcome::Ok(&stub, Default::default()));
                     }
                     None => {
                         let _ = Self::prepare_call(&hooks, &ctx, &mut state, req).await;
@@ -516,11 +512,11 @@ impl Agent {
             }
 
             // ── model call with transient-failure resume ──
-            let model_span = otel_hook.map(|o| (o, o.start_model_span(&ctx, &req), Instant::now()));
-            let span_ctx = model_span.as_ref().map(|(_, s, _)| s.ctx()).or_else(appv3_core::otel::current);
+            let model_span = otel_hook.map(|o| (o, o.start_model_span(&ctx, &req)));
+            let span_ctx = model_span.as_ref().map(|(_, s)| s.ctx()).or_else(appv3_core::otel::current);
             let call = appv3_core::otel::scope(span_ctx, async {
                 let ModelRequest { messages, system_prompt } = Self::prepare_call(&hooks, &ctx, &mut state, req).await;
-                if let Some((o, span, _)) = &model_span {
+                if let Some((o, span)) = &model_span {
                     o.record_request(span, &ctx, &system_prompt, &tool_defs, &messages);
                 }
                 stream_and_assemble(StreamArgs {
@@ -540,18 +536,18 @@ impl Agent {
                 .await
             })
             .await;
-            if let Some((o, span, t0)) = &model_span {
+            if let Some((o, span)) = &model_span {
                 use crate::hooks::otel::ModelOutcome;
                 match &call {
-                    Ok((a, _, timing)) => o.end_model_span(span, *t0, ModelOutcome::Ok(a, *timing)),
+                    Ok((a, _, timing)) => o.end_model_span(span, ModelOutcome::Ok(a, *timing)),
                     Err(ModelError::Agent(AgentError::Cancelled)) => {
                         span.exit_with_exception("asyncio.exceptions.CancelledError", "");
                     }
                     Err(ModelError::Agent(e)) => {
                         let (name, qual) = crate::errors::python_exception_names(e);
-                        o.end_model_span(span, *t0, ModelOutcome::Err(name, &qual, &e.to_string()));
+                        o.end_model_span(span, ModelOutcome::Err(name, &qual, &e.to_string()));
                     }
-                    Err(ModelError::Transient { error_type, message }) => o.end_model_span(span, *t0, ModelOutcome::Err(error_type, &format!("httpx2.{error_type}"), message)),
+                    Err(ModelError::Transient { error_type, message }) => o.end_model_span(span, ModelOutcome::Err(error_type, &format!("httpx2.{error_type}"), message)),
                 }
             }
             let (mut assistant, usage): (AssistantMessage, Option<Usage>) = match call {

@@ -25,7 +25,12 @@ import {
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Download, ExternalLink, File, X } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
+import { DURATIONS_S } from '@/lib/motion'
+import { cn } from '@/lib/utils'
+import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { usePanZoom } from '@/hooks/use-pan-zoom'
+import { useImageReveal } from '@/hooks/useImageReveal'
+import { zoomInFrom, zoomOutTo } from '@/lib/lightbox-zoom'
 import { useKeyLayer, useShortcut } from '@/lib/keyboard/hooks'
 import { resolveApiUrl } from '@/api/client'
 import { tauriDownload } from '@/lib/tauri-download'
@@ -145,10 +150,23 @@ interface ImageProps {
   item: FileLightboxItem
   imgRef: React.RefObject<HTMLImageElement | null>
   panZoom: ReturnType<typeof usePanZoom<HTMLImageElement>>
+  /** Called once, on the frame the image first shows (after decode). */
+  onShown?: (img: HTMLImageElement) => void
 }
 
-export function FileLightboxImage({ item, imgRef, panZoom }: ImageProps) {
+export function FileLightboxImage({ item, imgRef, panZoom, onShown }: ImageProps) {
   const [error, setError] = useState(false)
+  const { ref: revealRef, reveal, revealProps } = useImageReveal(item.src)
+  const setImg = useCallback((img: HTMLImageElement | null) => {
+    imgRef.current = img
+    revealRef(img)
+  }, [imgRef, revealRef])
+  const shown = revealProps['data-revealed'] !== undefined
+  const onShownRef = useRef(onShown)
+  onShownRef.current = onShown
+  useLayoutEffect(() => {
+    if (shown && imgRef.current) onShownRef.current?.(imgRef.current)
+  }, [shown, imgRef])
 
   return (
     <div
@@ -169,14 +187,16 @@ export function FileLightboxImage({ item, imgRef, panZoom }: ImageProps) {
         )
         : (
           <img
-            ref={imgRef}
+            ref={setImg}
             key={item.src}
             src={item.src}
             alt={item.name}
             draggable={false}
             decoding="async"
+            data-revealed={revealProps['data-revealed']}
+            onLoad={reveal}
             onError={() => setError(true)}
-            className="block h-auto w-auto max-h-full max-w-full rounded-sm object-contain cursor-zoom-in transition-[cursor] duration-(--motion-instant)"
+            className={cn(revealProps.className, 'block h-auto w-auto max-h-full max-w-full rounded-sm object-contain cursor-zoom-in')}
             style={{ willChange: 'transform' }}
             onClick={(e) => e.stopPropagation()}
           />
@@ -368,11 +388,16 @@ export function FileLightbox(props: FileLightboxProps) {
   // Every markdown image and attachment bubble mounts a closed lightbox, so
   // its hooks (six global shortcuts, a key layer, pan/zoom) only exist while
   // it is open. Reopening remounts it, which also resets index and zoom.
-  if (!props.isOpen) return null
-  return <OpenFileLightbox {...props} />
+  // Closing keeps it for the ``fast`` fade out (it was a hard cut).
+  const { mounted, closing } = useDeferredUnmount(props.isOpen, DURATIONS_S.fast * 1000)
+  if (!mounted) return null
+  return <OpenFileLightbox {...props} isOpen closing={closing} />
 }
 
-function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file' }: FileLightboxProps) {
+function OpenFileLightbox({ items, index = 0, isOpen: open, closing = false, onClose, labelMode = 'file' }: FileLightboxProps & { closing?: boolean }) {
+  // While it fades out it no longer counts as open: its keys, scroll lock
+  // and pointer go back to the app at once.
+  const isOpen = open && !closing
   const isImageMode   = labelMode === 'image'
   const dialogLabel   = isImageMode ? 'Image lightbox' : `File preview: ${items[Math.max(0, Math.min(index, items.length - 1))]?.name ?? ''}`
   const downloadLabel = isImageMode ? 'Download image' : 'Download file'
@@ -409,15 +434,31 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
     if (slideRef.current) slideRef.current.style.transform = `translate3d(${dx}px, ${dy}px, 0)`
   }, [])
 
-  // ── Overlay fade-in ─────────────────────────────────────────────────────────
+  // ── Overlay fade in and out ─────────────────────────────────────────────────
+  // A transition, so a reopen mid-fade turns back from where it is.
   useLayoutEffect(() => {
-    if (!isOpen) return
     const el = overlayRef.current
     if (!el) return
-    el.style.opacity = '0'
+    if (closing) {
+      el.style.opacity = '0'
+      return
+    }
     const id = requestAnimationFrame(() => { el.style.opacity = '1' })
     return () => cancelAnimationFrame(id)
-  }, [isOpen])
+  }, [closing])
+
+  // ── Zoom from and back to the thumbnail (lib/lightbox-zoom.ts) ────────────
+  // Only the image it opened on grows out of its thumbnail; paging slides.
+  const zoomedInRef = useRef(false)
+  const handleImageShown = useCallback((img: HTMLImageElement) => {
+    if (zoomedInRef.current) return
+    zoomedInRef.current = true
+    zoomInFrom(img, img.getAttribute('src') ?? '')
+  }, [])
+  useLayoutEffect(() => {
+    const img = imgRef.current
+    if (closing && img && activeTypeRef.current === 'image') zoomOutTo(img, img.getAttribute('src') ?? '')
+  }, [closing])
 
   // ── Index sync on (re)open ─────────────────────────────────────────────────
   useEffect(() => {
@@ -459,12 +500,12 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
   // Its keys only work while it is the top layer; ⌘K and friends close it.
   const layer = useKeyLayer(isOpen, { kind: 'overlay', closeOnSwitch: true, onClose })
   const isImage = active.type === 'image'
-  useShortcut({ key: 'ArrowLeft' }, goPrev, { layer, enabled: hasMultiple })
-  useShortcut({ key: 'ArrowRight' }, goNext, { layer, enabled: hasMultiple })
-  useShortcut({ key: '+' }, zoomIn, { layer, enabled: isImage })
-  useShortcut({ key: '=' }, zoomIn, { layer, enabled: isImage })
-  useShortcut({ key: '-' }, zoomOut, { layer, enabled: isImage })
-  useShortcut({ key: '0' }, resetZoom, { layer, enabled: isImage })
+  useShortcut({ key: 'ArrowLeft' }, goPrev, { layer, enabled: isOpen && hasMultiple })
+  useShortcut({ key: 'ArrowRight' }, goNext, { layer, enabled: isOpen && hasMultiple })
+  useShortcut({ key: '+' }, zoomIn, { layer, enabled: isOpen && isImage })
+  useShortcut({ key: '=' }, zoomIn, { layer, enabled: isOpen && isImage })
+  useShortcut({ key: '-' }, zoomOut, { layer, enabled: isOpen && isImage })
+  useShortcut({ key: '0' }, resetZoom, { layer, enabled: isOpen && isImage })
 
   // ── Close ──────────────────────────────────────────────────────────────────
   const closeLightbox = useCallback(() => {
@@ -530,18 +571,25 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  if (!isOpen || !active) return null
+  if (!active) return null
 
   return createPortal(
     <div
       ref={overlayRef}
-      className="mobile-safe-overlay below-window-caption fixed inset-0 z-50 flex select-none flex-col bg-black/80"
+      className={cn(
+        'mobile-safe-overlay below-window-caption fixed inset-0 z-50 flex select-none flex-col bg-black/80',
+        closing && 'pointer-events-none',
+      )}
+      inert={closing || undefined}
+      data-lightbox=""
       // opacity starts at 0, useLayoutEffect rAF sets it to 1 — CSS transition fires
       style={{ opacity: 0, transition: 'opacity var(--motion-fast) var(--ease-out)' }}
       onClick={closeLightbox}
-      role="dialog"
-      aria-modal="true"
-      aria-label={dialogLabel}
+      // Fading out it is no longer a dialog: assistive tech leaves it at once.
+      role={closing ? undefined : 'dialog'}
+      aria-modal={closing ? undefined : 'true'}
+      aria-hidden={closing || undefined}
+      aria-label={closing ? undefined : dialogLabel}
       // The lightbox is portalled to <body> and owns its own touch
       // handling (pan/swipe-to-navigate, swipe-down-to-close). It doesn't
       // stop propagation on those touches, so without this the outer
@@ -616,6 +664,7 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
                 item={active}
                 imgRef={imgRef}
                 panZoom={panZoom}
+                onShown={handleImageShown}
               />
             )}
             {active.type === 'video'  && <FileLightboxVideo   key={active.src} item={active} />}

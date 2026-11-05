@@ -33,6 +33,7 @@ import { Field } from '@/components/ui/field'
 import { PanelSection } from '@/components/ui/panel-section'
 import { ICON_SIZE_INLINE, ROW_PAD, TEXT } from '@/components/settings/tokens'
 import { isDesktopShell } from '@/lib/desktop-shell'
+import { shake } from '@/lib/shake'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
 import { cn } from '@/lib/utils'
 
@@ -623,10 +624,16 @@ function ServerForm({
   onCancel: () => void
 }) {
   const urlRef = useRef<HTMLInputElement>(null)
+  const fieldsRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     urlRef.current?.focus({ preventScroll: true })
     urlRef.current?.scrollIntoView?.({ block: 'nearest' })
   }, [])
+  // A rejected URL or key shakes the fields (a repeat of the same message
+  // too: the error clears when a new try starts).
+  useEffect(() => {
+    if (error) shake(fieldsRef.current)
+  }, [error])
   const title = mode === 'edit' ? `Edit ${label}` : 'Add a server'
   return (
     <div
@@ -642,7 +649,7 @@ function ServerForm({
       }}
     >
       <p className={cn('px-4 pt-4', TEXT.title)}>{title}</p>
-      <div className="grid gap-y-5 px-4 py-4">
+      <div ref={fieldsRef} className="grid gap-y-5 px-4 py-4">
         <Field label="Server URL" htmlFor="app-backend-url">
           <Input
             ref={urlRef}
@@ -776,7 +783,7 @@ function ServerStatusDot({ status }: { status: Health | undefined }) {
     ? 'bg-(--accent-green-text)'
     : status === 'offline'
       ? 'bg-(--color-error)'
-      : 'animate-pulse bg-(--color-text-muted)'
+      : 'oa-breathe bg-(--color-text-muted)'
   const label = status === 'online' ? 'Online' : status === 'offline' ? 'Offline' : 'Checking'
   return (
     <Tooltip>

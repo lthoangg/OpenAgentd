@@ -3,9 +3,10 @@
  * actions as right-click (Pin, Edit title, Delete), so the row carries no
  * one-click delete. Subagent rows offer More too.
  *
- * A row that is running, waiting on you or unread names that state in words
- * (Running, Needs you, Done) in its meta slot in place of its age; the mark
- * beside the title is only the secondary cue.
+ * A row that is waiting on you, unread or failed names that state in words
+ * (Needs you, Done, Failed) in its meta slot in place of its age; the mark
+ * beside the title is only the secondary cue. A running row shows its
+ * spinner alone.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { ComponentProps } from 'react'
@@ -103,16 +104,16 @@ describe('SessionRow actions', () => {
 })
 
 describe('SessionRow goal mark', () => {
-  it('marks a session working toward a goal, and one whose goal is paused', () => {
+  // No 🎯 on the row: it sat beside the state and squeezed the title. The
+  // goal stays in what assistive tech reads.
+  it('draws no goal icon, and still names the goal for assistive tech', () => {
     const { container, rerender } = render(row(() => {}, { ...lead, goal_status: 'active' }))
-    expect(container.querySelector('[data-goal-status]')?.getAttribute('title')).toBe('Working toward a goal')
+    expect(container.querySelector('[data-goal-status]')).toBeNull()
     expect(screen.getByText(/goal active/)).toBeTruthy()
 
     rerender(row(() => {}, { ...lead, goal_status: 'paused' }))
-    expect(container.querySelector('[data-goal-status]')?.getAttribute('title')).toBe('Goal paused')
-
-    rerender(row(() => {}, { ...lead, goal_status: null }))
     expect(container.querySelector('[data-goal-status]')).toBeNull()
+    expect(screen.getByText(/goal paused/)).toBeTruthy()
   })
 })
 
@@ -125,20 +126,22 @@ describe('SessionRow state words', () => {
   }
   const word = (container: HTMLElement) => container.querySelector<HTMLElement>('[data-session-state]')
 
-  it('says Running in place of the age, and keeps the mark and its label', () => {
+  // The leading spinner already says it runs: no word beside it, which only
+  // squeezed the title and swapped out on hover.
+  it('shows only the spinner for a running session: no word, no age', () => {
     const { container } = render(row(() => {}, { ...idle, running: true }))
 
-    expect(word(container)?.textContent).toBe('Running')
-    expect(word(container)?.getAttribute('data-session-state')).toBe('running')
-    expect(word(container)?.className).toContain('text-(--color-text-muted)')
+    expect(word(container)).toBeNull()
+    expect(screen.queryByText('Running')).toBeNull()
     expect(screen.getByRole('img', { name: 'Session running' })).toBeTruthy()
     expect(screen.queryByText('3h')).toBeNull()
   })
 
-  it('says Running for a lead whose subagents still work', () => {
+  it('says no word for a lead whose subagents still work either', () => {
     const { container } = render(row(() => {}))
 
-    expect(word(container)?.textContent).toBe('Running')
+    expect(word(container)).toBeNull()
+    expect(screen.queryByText('Running')).toBeNull()
   })
 
   it('says Needs you in orange, ahead of Running, and keeps its label', () => {
@@ -194,7 +197,7 @@ describe('SessionRow state words', () => {
   })
 
   it('stays on one line: the word never shrinks or wraps, so the title gives way', () => {
-    const { container } = render(row(() => {}, { ...idle, running: true }))
+    const { container } = render(row(() => {}, { ...idle, needs_input: true }))
 
     expect(word(container)?.className).toContain('shrink-0')
     expect(word(container)?.className).toContain('whitespace-nowrap')
@@ -204,9 +207,9 @@ describe('SessionRow state words', () => {
   })
 
   it('keeps the word when Show details is off, since it is the state and not a detail', () => {
-    const { container } = render(row(() => {}, { ...idle, running: true }, { showDetails: false }))
+    const { container } = render(row(() => {}, { ...idle, needs_input: true }, { showDetails: false }))
 
-    expect(word(container)?.textContent).toBe('Running')
+    expect(word(container)?.textContent).toBe('Needs you')
     expect(word(container)?.className.split(/\s+/)).not.toContain('hidden')
 
     cleanup()
@@ -215,7 +218,7 @@ describe('SessionRow state words', () => {
   })
 
   it('gives way to the row actions on hover and focus, and stays on touch', () => {
-    const { container } = render(row(() => {}, { ...idle, running: true }))
+    const { container } = render(row(() => {}, { ...idle, needs_input: true }))
     const classes = (word(container)?.className ?? '').split(/\s+/)
 
     expect(classes).toContain('group-hover/row:hidden')

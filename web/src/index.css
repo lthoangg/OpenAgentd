@@ -70,6 +70,12 @@
     --spacing-toolbar: 2rem;       /* 32px view toolbar under a tab bar */
     --spacing-list-row: 1.75rem;   /* 28px sidebar / dock list row */
 
+    /* A bare transition-colors / -opacity / -transform takes the hover
+     * step (DESIGN.md → Motion: buttons change colour at instant); a fold,
+     * slide or fade names its own duration-(--motion-*). */
+    --default-transition-duration: var(--motion-instant);
+    --default-transition-timing-function: var(--ease-in-out);
+
     /* Type scale (DESIGN.md → Typography). Every step is rem times
      * --oa-text-scale, the Text size setting (Compact 1, Default 13/12,
      * Large 14/12), so UI text is 12/13/14px and meta 11/12/13px. On iOS the
@@ -130,6 +136,14 @@
   }
   html {
     @apply font-sans;
+  }
+  /* macOS app, dark: grayscale antialiasing, as native Mac apps and Apple's
+   * own pages draw light text on dark. Subpixel smoothing (the WebKit
+   * default) thickens light-on-dark strokes so text looks bold and blurry.
+   * Light mode keeps the default. The colours (and their APCA pairs) do not
+   * change, only the stroke weight. */
+  html[data-platform="mac-overlay"].dark {
+    -webkit-font-smoothing: antialiased;
   }
 }
 
@@ -307,6 +321,24 @@ input:-webkit-autofill:focus {
 .oa-menu-item:is([data-highlighted], :focus-visible, :active):not(:disabled, [aria-disabled="true"]) :is(kbd, [data-slot="chip"]) {
   background-color: color-mix(in srgb, currentColor 16%, transparent);
   border-color: transparent;
+}
+/* Choosing a row blinks it once before it acts (ui/_menu-blink.ts): the
+ * highlight goes off for a beat, back to the row's own resting look. The
+ * extra specificity beats every highlight rule above, danger included;
+ * ``revert-layer`` falls back to the utilities layer, where the row's tone
+ * lives. */
+:root .oa-menu-item[data-blink="off"]:not(:disabled):not([aria-disabled="true"]) {
+  background-color: revert-layer;
+  color: revert-layer;
+}
+/* A keyed list with one sliding highlight (hooks/useSlidingHighlight.ts):
+ * the pill paints the fill, so the active row's own fill steps aside; its
+ * words still invert. The pill goes dark with a row's blink. */
+.oa-slide-list[data-pill] .oa-menu-item[data-highlighted] {
+  background-color: transparent;
+}
+.oa-slide-list:has(.oa-menu-item[data-blink="off"]) > .oa-slide-pill {
+  visibility: hidden;
 }
 
 .mobile-safe-shell {
@@ -549,7 +581,7 @@ html[data-mobile-shell][data-vp-anim] .app-overlay-modal {
 }
 
 html[data-mobile-shell][data-vp-anim] .app-overlay-modal {
-  transition: transform 0.2s var(--ease-sheet);
+  transition: transform var(--motion-base) var(--ease-sheet);
 }
 
 /* ── Keyboard open (iOS/Android Tauri) ──────────────────────────────────────
@@ -670,8 +702,8 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 html[data-mobile-shell][data-vp-anim] .mobile-viewport,
 html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   transition:
-    height 0.2s var(--ease-sheet),
-    transform 0.2s var(--ease-sheet);
+    height var(--motion-base) var(--ease-sheet),
+    transform var(--motion-base) var(--ease-sheet);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -795,11 +827,24 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 /* ─────────────────────────────────────────────────────────────
  * Focus ring — :focus-visible only, never on mouse click
  * ───────────────────────────────────────────────────────────── */
+/* The ring glides in as macOS does: it closes from 6px out to 2px while its
+ * colour comes up from transparent (``fast``, ``ease-out``). Only the
+ * ``from`` frame is written, so the ring the rules below draw (and the
+ * desktop rules that hide it, which set the colour transparent) are the end
+ * state. An animation rather than a transition: a control that names its own
+ * ``transition-property`` (every ``transition-colors`` button) would have
+ * swallowed a transition declared here. Reduced motion zeroes it (below). */
+@keyframes oa-focus-ring-in {
+  from {
+    outline-color: transparent;
+    outline-offset: 6px;
+  }
+}
 @layer base {
   :focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
-    transition: outline-color var(--motion-fast) var(--ease-out);
+    animation: oa-focus-ring-in var(--motion-fast) var(--ease-out);
   }
   :focus:not(:focus-visible) {
     outline: none;
@@ -817,10 +862,11 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   background: var(--bg-send);
   color: var(--color-text-on-accent);
   z-index: 100;
-  transition: top var(--motion-fast) var(--ease-out);
+  translate: 0 0;
+  transition: translate var(--motion-fast) var(--ease-out);
 }
 .skip-link:focus-visible {
-  top: 0;
+  translate: 0 40px;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -888,6 +934,15 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 }
 .interactive-weight:hover  { font-weight: 500; }
 .interactive-weight:active { font-weight: 600; }
+
+/* A held transcript surface (lib/chat-long-press) lifts slightly while the
+ * hold runs, so the 520ms before the menu opens reads as a press taking
+ * hold. Cleared the moment the hold is dropped, lifts or the menu opens;
+ * reduced motion snaps it. */
+[data-pressing] {
+  scale: 0.98;
+  transition: scale var(--motion-instant) var(--ease-out);
+}
 
 /* ─────────────────────────────────────────────────────────────
  * prefers-reduced-motion — honor system-wide.
@@ -1195,6 +1250,94 @@ html[data-app-hidden="true"] *::after {
 .oa-fade-in {
   animation: oa-fade-in var(--motion-base) var(--ease-out) backwards;
 }
+/* A message you just sent (or queued) rises into place from the composer's
+ * side: a short lift and fade, on ``translate`` so it never fights a
+ * transform the element already has. */
+@keyframes oa-rise-in {
+  from { opacity: 0; translate: 0 8px; }
+}
+.oa-rise-in {
+  animation: oa-rise-in var(--motion-base) var(--ease-out) backwards;
+}
+/* An icon that took another's place in a control that re-rendered as a new
+ * element (Send ↔ Stop): it springs up as SF Symbols' replace does.
+ * ``IconSwap`` (ui/swap.tsx) does the same, with the old icon leaving, where
+ * the control stays one element. */
+@keyframes oa-icon-in {
+  from { opacity: 0; scale: 0.5; filter: blur(2px); }
+}
+.oa-icon-in {
+  animation: oa-icon-in var(--motion-base) var(--ease-spring-soft) backwards;
+}
+/* Work in progress said in words ("running…", "Thinking…"): a light passes
+ * over the label, as Apple Intelligence marks it. The words stay the muted
+ * tone (AA) with the ink tone sweeping across; under reduced motion the
+ * animation is zeroed and the label rests on the muted tone. */
+@keyframes oa-shimmer {
+  from { background-position: 100% 0; }
+  to   { background-position: -150% 0; }
+}
+.oa-shimmer {
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    var(--color-text-muted) 0%,
+    var(--color-text-muted) 40%,
+    var(--color-text) 50%,
+    var(--color-text-muted) 60%,
+    var(--color-text-muted) 100%
+  );
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: oa-shimmer 1800ms linear infinite;
+}
+/* A finished task's strike: a 1px line drawn left to right through the
+ * words (a background, so it follows wrapped lines in reading order). */
+.oa-strike {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--color-text-subtle) 60%, transparent),
+    color-mix(in srgb, var(--color-text-subtle) 60%, transparent)
+  );
+  background-repeat: no-repeat;
+  background-position: 0 55%;
+  background-size: 0% 1px;
+  transition: background-size var(--motion-base) var(--ease-out);
+}
+.oa-strike[data-struck] {
+  background-size: 100% 1px;
+}
+/* Light ↔ dark and text size crossfade the window (lib/view-transition.ts). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--motion-base);
+  animation-timing-function: var(--ease-in-out);
+}
+/* A live dot, mark or skeleton breathing (never words): Tailwind's pulse
+ * on the app's own timing and curve. Reduced motion holds it still. */
+@keyframes oa-breathe {
+  50% { opacity: 0.5; }
+}
+.oa-breathe {
+  animation: oa-breathe var(--motion-linger) var(--ease-in-out) infinite;
+}
+/* An image fades in once decoded (hooks/useImageReveal.ts). */
+.oa-img-reveal {
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+.oa-img-reveal:not([data-revealed]) {
+  opacity: 0;
+}
+/* Row actions that take the meta's place on hover (ui/list-row.ts). */
+.oa-reveal {
+  animation: oa-fade-in var(--motion-instant) var(--ease-out) backwards;
+}
+/* A view that replaces another in place (a Settings section, a selected
+ * task or span): a quick crossfade rather than a cut. */
+.oa-fade-in-fast {
+  animation: oa-fade-in var(--motion-fast) var(--ease-out) backwards;
+}
 /* Loading placeholders: hidden for a beat first, so a fast load never
  * flashes one. Reduced motion keeps the beat and drops the fade. */
 .oa-fade-in-late {
@@ -1280,6 +1423,8 @@ html[data-app-hidden="true"] *::after {
  * drop box-shadows, which erases Tailwind focus rings and any state shown
  * only by a fill. Paint those in system colours instead. */
 @media (forced-colors: active) {
+  /* The shimmer paints words through a gradient; forced colors drop it. */
+  .oa-shimmer { color: CanvasText; background: none; }
   :focus-visible:not([data-quiet-focus]) {
     outline: 2px solid Highlight;
     outline-offset: 2px;

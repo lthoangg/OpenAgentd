@@ -19,6 +19,9 @@ This file adds source-level guidance to `web/AGENTS.md`.
 
 - `hooks/use-edge-swipe.ts` arbitrates mobile drawers. New mobile panels must
   integrate with it rather than owning competing `onTouch*` gestures.
+  A drawer follows the finger through `lib/drawer-motion` (DOM writes, no React
+  state per touchmove): mark the panel `data-edge-drawer="<id>"` (and a scrim
+  `data-edge-drawer-scrim="<id>"`) and bind it with `hooks/use-drawer-motion`.
 - Overlay backdrops and panels that should win over an open drawer carry
   `data-swipe-ignore`; follow `AppOverlay`, dialog, and sheet patterns.
 - Haptics are optional enhancement through `lib/haptics.ts`; UX must not depend

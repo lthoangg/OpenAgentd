@@ -6,16 +6,32 @@
  *   focus steps the edge to the subtle text tone (3:1+) · no hover border jump
  *
  * No base-ui. Plain <input> only.
+ *
+ * An input that turns invalid (``aria-invalid`` goes true) shakes once, like
+ * an OS field refusing text (``lib/shake``); one that renders invalid does not.
  */
-import { type ComponentPropsWithRef } from 'react'
+import { useCallback, useEffect, useRef, type ComponentPropsWithRef } from 'react'
 import { cn } from '@/lib/utils'
+import { shake } from '@/lib/shake'
 
 type InputProps = ComponentPropsWithRef<'input'>
 
 function Input({ className, ref, ...props }: InputProps) {
+  const inner = useRef<HTMLInputElement | null>(null)
+  const setRefs = useCallback((node: HTMLInputElement | null) => {
+    inner.current = node
+    if (typeof ref === 'function') ref(node)
+    else if (ref) ref.current = node
+  }, [ref])
+  const invalid = props['aria-invalid'] === true || props['aria-invalid'] === 'true'
+  const wasInvalid = useRef(invalid)
+  useEffect(() => {
+    if (invalid && !wasInvalid.current) shake(inner.current)
+    wasInvalid.current = invalid
+  }, [invalid])
   return (
     <input
-      ref={ref}
+      ref={setRefs}
       data-slot="input"
       // iOS: off by default (most inputs are ids/paths/keys). Prose fields opt
       // in with autoCapitalize="sentences" / autoCorrect="on".

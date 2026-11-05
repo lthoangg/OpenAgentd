@@ -7,8 +7,12 @@
  * runs the plan, the plan row carries the one status ("Approved · Running")
  * and the goal row under it only adds the turn, with Pause or Resume. A goal
  * that runs something else keeps its own status row.
+ *
+ * Each row is one tap target that opens its tab, where the actions are (Clear
+ * plan on the Plan tab; Pause, Resume and Clear on the Goal tab). Only where
+ * there is no tab to open (no dock) does a row keep its action beside it.
  */
-import { CircleCheck } from 'lucide-react'
+import { ChevronRight, CircleCheck } from 'lucide-react'
 import type { SessionGoal, SessionPlan, TodoItem } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { goalStatusTone, goalTurnNumber, pauseReasonLabel, type GoalAction, type GoalTone } from '@/lib/goal'
@@ -16,7 +20,7 @@ import { isPlanGoal, planStatus } from '@/lib/plan'
 import { workStatusLabel } from '@/lib/work'
 import { cn } from '@/lib/utils'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { ActivePlanSection } from './ActivePlanSection'
+import { ActivePlanSection, SUMMARY_ROW_BUTTON_CLASS } from './ActivePlanSection'
 
 const TONE_CLASS: Record<GoalTone, string> = {
   active: 'text-(--color-text-2)',
@@ -41,7 +45,7 @@ function GoalMark({ tone }: { tone: GoalTone }) {
   return (
     <span
       aria-hidden="true"
-      className={cn('relative size-2.5 shrink-0 rounded-full border-2 border-current', tone === 'active' && 'animate-pulse motion-reduce:animate-none')}
+      className={cn('relative size-2.5 shrink-0 rounded-full border-2 border-current', tone === 'active' && 'oa-breathe')}
     >
       {tone === 'active' && <span className="absolute inset-px rounded-full bg-current" />}
     </span>
@@ -50,8 +54,9 @@ function GoalMark({ tone }: { tone: GoalTone }) {
 
 export function GoalSummaryRow({ goal, onOpen, onAction, bare = false, className }: {
   goal: SessionGoal
+  /** Open the Goal tab, where its actions are; the whole row is the target. */
   onOpen?: () => void
-  /** Pause and Resume; without it the row has no buttons. */
+  /** Pause and Resume, shown only without ``onOpen`` (no Goal tab to open). */
   onAction?: (action: Extract<GoalAction, 'pause' | 'resume'>) => void
   /** The plan row above already says how the goal stands: show only its turn. */
   bare?: boolean
@@ -61,27 +66,34 @@ export function GoalSummaryRow({ goal, onOpen, onAction, bare = false, className
   const tone = goalStatusTone(goal)
   const turn = Math.max(1, goalTurnNumber(goal, running))
   const text = bare && goal.status !== 'achieved' ? `Turn ${turn}/${goal.max_turns}` : goalSummaryText(goal, running)
-  return (
-    <div className={cn('flex shrink-0 items-center gap-2 border-b border-(--color-border-subtle) px-2.5 py-1', className)} data-goal-summary={goal.status}>
+  const content = (
+    <>
       <span className={cn('flex shrink-0 items-center', TONE_CLASS[tone])}><GoalMark tone={tone} /></span>
       <span className="text-xs font-medium text-(--color-text)">Goal</span>
       <span className={cn('shrink-0 text-meta font-medium', TONE_CLASS[tone])}>{text}</span>
       {bare ? <span className="flex-1" aria-hidden="true" /> : (
         <span className="min-w-0 flex-1 truncate text-xs text-(--color-text-subtle)" title={goal.objective}>{goal.objective}</span>
       )}
-      {onAction && goal.status === 'active' && (
+    </>
+  )
+  return (
+    <div className={cn('flex shrink-0 items-center gap-2 border-b border-(--color-border-subtle) px-2.5 py-1', className)} data-goal-summary={goal.status}>
+      {onOpen ? (
+        <button type="button" aria-label="Open goal" onClick={onOpen} className={SUMMARY_ROW_BUTTON_CLASS}>
+          {content}
+          <ChevronRight size={12} aria-hidden="true" className="shrink-0 text-(--color-text-subtle)" />
+        </button>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-center gap-2">{content}</div>
+      )}
+      {!onOpen && onAction && goal.status === 'active' && (
         <Button type="button" variant="ghost" size="xs" onClick={() => onAction('pause')} title="Let the current turn finish, then start no new one">
           Pause
         </Button>
       )}
-      {onAction && goal.status === 'paused' && (
+      {!onOpen && onAction && goal.status === 'paused' && (
         <Button type="button" variant="ghost" size="xs" onClick={() => onAction('resume')}>
           Resume
-        </Button>
-      )}
-      {onOpen && (
-        <Button type="button" variant="ghost" size="xs" onClick={onOpen} aria-label="Open goal">
-          Open
         </Button>
       )}
     </div>

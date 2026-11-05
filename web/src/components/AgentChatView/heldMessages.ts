@@ -5,7 +5,7 @@
  * composer whenever sending it would no longer be what the user asked for.
  */
 import { useEffect, useRef, type RefObject } from 'react'
-import { haptic } from '@/lib/haptics'
+import { haptic, outcomeHapticFeedback } from '@/lib/haptics'
 import { pauseSessionGoal } from '@/api/client'
 import { useAgentStore, type PendingMessage } from '@/stores/useAgentStore'
 import { useHeldMessagesStore, type HeldMessage } from '@/stores/useHeldMessagesStore'
@@ -106,6 +106,7 @@ export async function deliverFromComposer(
   // The composer cleared itself on submit; a send that never landed gets its
   // draft and attachments back instead of vanishing behind an error banner.
   if (!delivered) {
+    outcomeHapticFeedback('error')
     composer?.restoreLastSubmission()
     // Nothing is left to run the goal's next turn: pause it, as a plain Stop
     // would have (a session without a goal answers with an error, ignored).
@@ -154,6 +155,7 @@ export function useReleaseHeldMessages({ workspace, sessionId, composerRef }: {
     void sendFromComposer(workspace, next.content, next.files, next.mentions)
       .then((delivered) => {
         if (!delivered) {
+          outcomeHapticFeedback('error')
           returnToComposer(composerRef.current, [next, ...useHeldMessagesStore.getState().takeAll(sessionId)])
         }
       })

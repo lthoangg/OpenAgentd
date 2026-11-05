@@ -21,6 +21,8 @@ mock.module('@/lib/haptics', () => ({ haptic: () => undefined, softHapticFeedbac
 
 import { useOverlayState } from '@/components/AgentChatView/useOverlayState'
 
+let renders = 0
+
 function Harness({ workspace }: { workspace: string | null }) {
   const overlay = useOverlayState({
     isMobile: true,
@@ -30,6 +32,7 @@ function Harness({ workspace }: { workspace: string | null }) {
     togglePalette: () => {},
     toggleQuickOpen: () => {},
   })
+  renders += 1
   return (
     <div
       data-testid="surface"
@@ -55,6 +58,20 @@ function swipe(el: HTMLElement, fromX: number, toX: number) {
 afterEach(cleanup)
 
 describe('useOverlayState edge swipes on a phone', () => {
+  // The state lives at the chat's root: a render per touchmove re-rendered the
+  // whole chat per frame. The drawers follow the finger through the DOM now.
+  it('does not re-render the chat view while a drawer follows the finger', () => {
+    const surface = renderSurface('/repo/project')
+    fireEvent.touchStart(surface, { touches: [{ clientX: 10, clientY: 200 }] })
+    fireEvent.touchMove(surface, { touches: [{ clientX: 40, clientY: 203 }] })
+    const before = renders
+    for (let x = 50; x <= 180; x += 10) fireEvent.touchMove(surface, { touches: [{ clientX: x, clientY: 205 }] })
+    expect(renders).toBe(before)
+    // Only the release commits state.
+    fireEvent.touchEnd(surface)
+    expect(surface.dataset.sidebar).toBe('true')
+  })
+
   it('opens the Review panel from the right edge with a workspace', () => {
     const surface = renderSurface('/repo/project')
     swipe(surface, 392, 280)

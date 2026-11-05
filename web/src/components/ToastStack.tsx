@@ -38,9 +38,11 @@ const SWIPE_THRESHOLD = 60
 interface ToastItemProps {
   t: Toast
   dismiss: (id: string) => void
+  /** AnimatePresence's ``popLayout`` measures the leaving toast through it. */
+  ref?: React.Ref<HTMLDivElement>
 }
 
-function ToastItem({ t, dismiss }: ToastItemProps) {
+function ToastItem({ t, dismiss, ref }: ToastItemProps) {
   const { icon: Icon, iconClass } = TONE_STYLES[t.tone]
   const prefersReducedMotion = useReducedMotion()
 
@@ -78,11 +80,14 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
     }
   }
 
+  // Two layers: the outer one enters, leaves and reflows (its opacity is
+  // the variants'); the inner one follows the finger and fades with the
+  // drag. On one element the drag's derived opacity overrode the variants,
+  // so a toast popped in and out without its fade.
   return (
     <motion.div
-      key={t.id}
+      ref={ref}
       layout
-      style={{ x, y, opacity }}
       variants={{
         enter: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -12, scale: 0.96, transition: { type: 'spring', damping: 26, stiffness: 320 } },
         visible: prefersReducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', damping: 26, stiffness: 320 } },
@@ -91,6 +96,10 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
       initial="enter"
       animate="visible"
       exit="exit"
+      className="pointer-events-auto"
+    >
+    <motion.div
+      style={{ x, y, opacity }}
       drag
       dragConstraints={{ left: 0, right: 200, top: -200, bottom: 0 }}
       dragElastic={{ left: 0.05, right: 0.4, top: 0.4, bottom: 0.05 }}
@@ -135,6 +144,7 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
         <X size={12} />
       </button>
     </motion.div>
+    </motion.div>
   )
 }
 
@@ -147,8 +157,10 @@ export function ToastStack() {
   const dismiss = useToastStore(dismissSelector)
 
   return (
-    <div className="pointer-events-none flex w-full flex-col gap-2 sm:max-w-sm">
-      <AnimatePresence initial={false}>
+    <div className="pointer-events-none relative flex w-full flex-col gap-2 sm:max-w-sm">
+      {/* popLayout: the toasts that stay close the gap while one leaves,
+          not after its exit has finished. */}
+      <AnimatePresence initial={false} mode="popLayout">
         {/* The store appends; the column reads newest first. */}
         {[...toasts].reverse().map((t) => (
           <ToastItem key={t.id} t={t} dismiss={dismiss} />

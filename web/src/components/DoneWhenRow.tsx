@@ -3,6 +3,10 @@
  * Done when and whether the goal's completion check has confirmed it.
  * Quiet while the tasks are open, orange while the check is next, blue once
  * met.
+ *
+ * The flag sits on its own line above the criteria: beside them it left an
+ * empty gutter under itself and squeezed the criteria into a narrow column
+ * in the 20rem task popover.
  */
 import { InlineCodeText } from '@/components/InlineCodeText'
 import { cn } from '@/lib/utils'
@@ -20,9 +24,9 @@ export function DoneWhenRow({ doneWhen, className }: { doneWhen: DoneWhen; class
     <div
       data-done-when={doneWhen.state}
       // Only the flag carries the state colour; the row stays on the card.
-      className={cn('mt-1 flex items-start gap-2 border-t border-dashed border-(--color-border-subtle) px-3.5 py-2', className)}
+      className={cn('mt-1 flex flex-col gap-1 border-t border-dashed border-(--color-border-subtle) px-3.5 py-2', className)}
     >
-      <span className={cn('mt-px shrink-0 label-caps', FLAG_CLASS[doneWhen.state])}>Done when</span>
+      <span className={cn('label-caps', FLAG_CLASS[doneWhen.state])}>Done when</span>
       <div className="min-w-0 text-xs leading-4 text-(--color-text-2)">
         <p className="break-words"><InlineCodeText text={doneWhen.text} /></p>
         <p className="mt-0.5 text-meta text-(--color-text-muted)">{doneWhen.note}</p>

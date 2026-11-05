@@ -20,7 +20,7 @@ Inside `logs/` and `otel/` (written by `appv3/crates/cli/src/logging.rs` and the
 - `logs/app/app.log`: loguru-format JSON, DEBUG+, rotated at 10 MB, 7 days.
 - `logs/app/app-error.log`: ERROR+, 14 days. Rotated files: `app.<timestamp>.log`.
 - `logs/sessions/<session_id>/session.log`: per-session records.
-- `otel/spans/YYYY-MM-DD-HH.jsonl` (hourly spans) and `otel/metrics/YYYY-MM-DD.jsonl`.
+- `otel/spans/YYYY-MM-DD-HH.jsonl` (hourly spans; metrics are no longer written).
 
 Record `name` is the Rust module path (`appv3_tools`, `appv3_agent.session`, …);
 messages are `event key=value …` (`tool_start agent= tool= id= args=`,

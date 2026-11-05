@@ -472,7 +472,7 @@ describe("ToolCall — generate_image status indicators", () => {
     const btn = screen.getByRole("button")
     // Running is the "running…" text: no coloured dot, no pulsing label
     expect(btn.querySelector("[data-running-dot]")).toBeNull()
-    expect(btn.querySelector(".animate-pulse")).toBeNull()
+    expect(btn.querySelector(".oa-breathe")).toBeNull()
     expect(btn.textContent).toContain("cloud.png")
     expect(btn.textContent).toContain("running…")
   })

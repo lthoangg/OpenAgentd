@@ -332,3 +332,31 @@ describe('a strip that cannot show every tab', () => {
     expect(screen.getByRole('button', { name: 'Terminal 2' }).getAttribute('aria-current')).toBe('true')
   })
 })
+
+describe('a split\'s new pane', () => {
+  const proto = HTMLElement.prototype as unknown as Record<string, unknown>
+  const savedAnimate = proto.animate
+  const fades: { pane: string; keyframes: Keyframe[]; options: KeyframeAnimationOptions }[] = []
+  beforeEach(() => {
+    fades.length = 0
+    proto.animate = function (this: HTMLElement, keyframes: Keyframe[], options: KeyframeAnimationOptions) {
+      const pane = this.getAttribute('data-dock-pane')
+      if (pane) fades.push({ pane, keyframes, options })
+      return { cancel() {}, finished: Promise.resolve() }
+    }
+  })
+  afterEach(() => { proto.animate = savedAnimate })
+
+  it('fades in at base, opacity only, and the panes already there stay still', async () => {
+    const { update } = await renderPanel({ viewRequest: GIT })
+    expect(fades).toEqual([])
+
+    await update({ layoutRequest: { action: 'split-right', key: 1 } })
+
+    expect(fades).toHaveLength(1)
+    expect(fades[0].pane).not.toBe(pane(1).getAttribute('data-dock-pane'))
+    expect(fades[0].pane).toBe(pane(2).getAttribute('data-dock-pane'))
+    expect(fades[0].keyframes).toEqual([{ opacity: 0 }, { opacity: 1 }])
+    expect(fades[0].options.duration).toBe(240)
+  })
+})

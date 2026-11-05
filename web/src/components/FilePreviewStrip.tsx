@@ -22,6 +22,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { TEXT_FILE_EXTENSIONS } from '@/utils/file-extensions'
+import { useImageReveal } from '@/hooks/useImageReveal'
+import { cn } from '@/lib/utils'
 import { FileCard } from './FileCard'
 import { FileTypeIcon } from './FileTypeIcon'
 import type { FileLightboxItem, FileLightboxItemType } from './FileLightbox'
@@ -113,6 +115,7 @@ interface CardProps {
 
 function ImageCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
   const [error, setError] = useState(false)
+  const { ref: revealRef, reveal, revealProps } = useImageReveal(blobUrl)
 
   return (
     <div className="group relative inline-block">
@@ -130,12 +133,15 @@ function ImageCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
           )
           : (
             <img
+              ref={revealRef}
               src={blobUrl}
               alt={file.name}
               loading="lazy"
               decoding="async"
+              data-revealed={revealProps['data-revealed']}
+              onLoad={reveal}
               onError={() => setError(true)}
-              className="max-h-[120px] max-w-[120px] rounded-md object-cover"
+              className={cn(revealProps.className, 'max-h-[120px] max-w-[120px] rounded-md object-cover')}
             />
           )}
       </button>
@@ -371,7 +377,8 @@ export function FilePreviewStrip({ files, blobUrls, onRemove, filesBelow }: File
               const type = itemTypeOf(file)
 
               return (
-                <div key={idx} className="shrink-0">
+                // A new card fades in where it lands.
+                <div key={idx} className="oa-fade-in shrink-0">
                   {type === 'image' && (
                     <ImageCard file={file} blobUrl={blobUrl} onRemove={remove} onOpen={open} />
                   )}

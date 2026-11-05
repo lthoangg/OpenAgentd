@@ -26,8 +26,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useDrawerMotion } from '@/hooks/use-drawer-motion'
 import { usePlatform } from '@/hooks/use-platform'
 import { cn } from '@/lib/utils'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
@@ -165,7 +165,6 @@ import {
   shouldOpenSessionInNewWindow,
 } from './Sidebar.window'
 import { SessionSearch } from './Sidebar/SessionSearch'
-import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
 /** How long a deleted session can be brought back before the server forgets it. */
@@ -217,8 +216,6 @@ interface SidebarProps {
   dockOpen?: boolean
   /** Mobile only: whether the overlay drawer is open. */
   mobileOpen?: boolean
-  /** Mobile only: live edge-swipe drag offset (px) for finger-tracking. */
-  mobileDragOffset?: number | null
   /** Mobile only: called when the drawer should close (backdrop tap, navigation). */
   onMobileClose?: () => void
   /** Mobile drawer footer: opens the command palette; the icon hides without it. */
@@ -276,7 +273,6 @@ export function Sidebar({
   drawer = false,
   dockOpen = false,
   mobileOpen = false,
-  mobileDragOffset = null,
   onMobileClose,
   onOpenPalette,
 }: SidebarProps) {
@@ -775,6 +771,7 @@ export function Sidebar({
     edge: 'right' as const,
     onCommit: commitSidebarWidth,
     onReset: resetSidebarWidth,
+    detent: SIDEBAR_DEFAULT_WIDTH,
     disabled: isMobile || desktopCollapsed,
     label: 'Resize sidebar',
   }
@@ -783,15 +780,18 @@ export function Sidebar({
   // they slide rather than rewrap every frame.
   const sliding = useToggleTween(desktopCollapsed, PANEL_SLIDE_MS) && !isMobile
   const pinRows = !isMobile && (desktopCollapsed || sliding)
-  const sidebarMotion = ({ width, isResizing }: LiveWidth) => ({
+  // The phone drawer slides by ``translate`` (and its scrim fades) through
+  // ``lib/drawer-motion``: an edge swipe writes it per frame without
+  // re-rendering, and a release springs on with the finger's speed. Closed
+  // sits 280px out so its shadow clears the edge.
+  useDrawerMotion('sidebar', { open: mobileOpen, enabled: isMobile, hidden: -280, reduced: prefersReducedMotion ?? false })
+  const sidebarMotion = ({ width }: LiveWidth) => ({
     animate: isMobile
-      ? { x: mobileDragOffset ?? (mobileOpen ? 0 : -280), width: 'min(272px, calc(100vw - 2rem))' }
+      ? { width: 'min(272px, calc(100vw - 2rem))' }
       : { width: desktopCollapsed ? 0 : width },
     // Desktop sets the width as a style (no frame loop), sliding it only
-    // while a toggle runs; the phone drawer moves with framer-motion.
-    transition: mobileDragOffset !== null
-      ? { duration: 0 }
-      : { duration: !isMobile || isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
+    // while a toggle runs.
+    transition: { duration: 0 },
     instantWidth: !isMobile,
     tweenWidth: sliding,
   })
@@ -1035,23 +1035,19 @@ export function Sidebar({
 
   return (
     <KeyLayerScope layer={drawerLayer}>
-      {/* Mobile backdrop — closes the drawer on tap. Fades with the drag. */}
-      <AnimatePresence>
-        {isMobile && (mobileOpen || mobileDragOffset !== null) && (
-          <motion.div
-            key="sidebar-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: mobileDragOffset !== null ? Math.max(0, Math.min(1, 1 + mobileDragOffset / 280)) : 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: mobileDragOffset !== null ? 0 : (prefersReducedMotion ? 0.01 : DURATIONS_S.base), ease: EASINGS.sheet }}
-            // No `md:hidden`: a landscape phone is wider than md but still
-            // mobile (useIsMobile's height rule); `isMobile` already gates it.
-            className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-(--color-overlay)"
-            aria-hidden="true"
-            onClick={onMobileClose}
-          />
-        )}
-      </AnimatePresence>
+      {/* Mobile backdrop — closes the drawer on tap. Its opacity is the
+          drawer's progress (see useDrawerMotion), so it fades with a drag
+          and with the release spring; shut, it takes no touches. */}
+      {isMobile && (
+        <div
+          data-edge-drawer-scrim="sidebar"
+          // No `md:hidden`: a landscape phone is wider than md but still
+          // mobile (useIsMobile's height rule); `isMobile` already gates it.
+          className={cn('mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-(--color-overlay)', !mobileOpen && 'pointer-events-none')}
+          aria-hidden="true"
+          onClick={onMobileClose}
+        />
+      )}
       {/* A desktop drawer dims what it covers, as drawer scrims do (DESIGN.md),
           and closes on a click anywhere outside it. z-25: over the Review
           panel, even one covering the chat (z-20), and under the drawer (z-30). */}
@@ -1073,7 +1069,8 @@ export function Sidebar({
       inFlow={isMobile || !drawer}
       // Collapsed (desktop) or closed (mobile), the sidebar is off screen
       // but still in the DOM: keep Tab and screen readers out of it.
-      inert={isMobile ? !mobileOpen && mobileDragOffset === null : desktopCollapsed}
+      inert={isMobile ? !mobileOpen : desktopCollapsed}
+      data-edge-drawer={isMobile ? 'sidebar' : undefined}
       // The drawer is fixed to the left edge, outside the shell's safe-area
       // padding: `pl-safe` keeps its rows clear of a landscape cutout while
       // its width (and so the closed -280px offset) stays the same.

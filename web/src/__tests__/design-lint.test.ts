@@ -125,7 +125,7 @@ const RULES: Rule[] = [
   {
     name: 'pulsing-text',
     why: 'pulse only a live dot, a mark or a skeleton; pulsing words are hard to read (state goes in a chip or a static "…")',
-    pattern: /(?<![\w-])animate-pulse(?![\w-])/g,
+    pattern: /(?<![\w-])(?:animate-pulse|oa-breathe)(?![\w-])/g,
     allow: {
       // Skeleton blocks.
       'components/ui/skeleton.tsx': 1,
@@ -152,6 +152,9 @@ const RULES: Rule[] = [
       'components/FileLightbox.tsx': 1,
       // The transcript's ambient timeline; scrolling does the same job.
       'components/AgentView/TimelineScrubber.tsx': 1,
+      // The table copy button: shown on focus and always on touch, and
+      // text in a table can still be selected and copied by hand.
+      'utils/markdown.tsx': 1,
     },
   },
   // ── Contrast with the existing palette (DESIGN.md → Colors) ─────────────
@@ -268,6 +271,8 @@ const RULES: Rule[] = [
       'components/LspInstallPrompt.tsx': 1,
       // The current page dot widens into a pill among its few siblings.
       'components/FileLightbox.tsx': 1,
+      // The switch thumb stretches while pressed (16px → 22px) inside a fixed track.
+      'components/ui/switch.tsx': 1,
     },
   },
   {
@@ -308,4 +313,13 @@ describe('design lint', () => {
       expect(countMatches(rule.pattern)).toEqual(rule.allow)
     })
   }
+
+  // A bare ``transition-colors`` (a hover) takes Tailwind's default timing,
+  // so the theme pins it to the hover step instead of Tailwind's 150ms:
+  // every button changes colour at ``instant`` without naming a duration.
+  it('bare-transition-timing: a transition with no duration runs at instant on ease-in-out', () => {
+    const css = readFileSync(join(SRC, 'index.css'), 'utf8')
+    expect(css).toMatch(/--default-transition-duration:\s*var\(--motion-instant\);/)
+    expect(css).toMatch(/--default-transition-timing-function:\s*var\(--ease-in-out\);/)
+  })
 })

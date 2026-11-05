@@ -12,13 +12,14 @@
  * Running state is carried by subtle header animation. The row makes no
  * success/failure claim and shows no result summary: most tools' output
  * stays on the server (``resultBytes``) and is fetched when the row opens.
+ * The row opens only when the user opens it, live output included: a
+ * streaming tool never unfolds (or folds) the transcript by itself.
  *
  * The per-tool header/args customisation lives in ``./display.tsx``;
  * this module owns only the chrome (collapse, copy, motion).
  */
 
 import { useEffect, useId, useRef, useState, useMemo, useCallback, memo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowUpRight, ChevronRight, FileText, GitBranch, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { previewsAvailable } from '@/api/preview'
@@ -29,11 +30,10 @@ import { AskUser, useShowsConfirmationCard } from '../AskUser'
 import { PlanReviewCard } from '../PlanReview/PlanReviewCard'
 import { PREVIEW_TOOL, isPreviewOpenSuccess, previewTargetFromArgs, requestOpenPreview } from '../Preview/preview-events'
 import { parseSendResult, requestOpenSession } from '@/utils/workspace-messages'
-import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { tokenizeCode } from '@/utils/code-highlight'
-import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { PINNED_HEADER, useCloseInPlace } from '@/hooks/useStickyFold'
 import { cn } from '@/lib/utils'
+import { Collapsible } from '@/components/ui/collapsible'
 import { getToolDisplay } from './display'
 import { DiffView } from './DiffView'
 import { ReadView } from './ReadView'
@@ -81,12 +81,6 @@ interface ToolCallProps {
   startedAt?: number
   /** Needed by ``ask_user`` to match the call against the open question. */
   toolCallId?: string
-  /**
-   * The turn's latest step (no later block has opened). A row that opened
-   * itself for live output stays open on its result until the next step
-   * starts, so output the reader was watching does not vanish on finish.
-   */
-  isCurrentStep?: boolean
 }
 
 
@@ -175,13 +169,10 @@ const ShellCommand = memo(function ShellCommand({ command }: { command: string }
   return <code>{highlighted}</code>
 })
 
-export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result: inlineResult, resultBytes, argsBytes, durationMs, startedAt, toolCallId, isCurrentStep = false }: ToolCallProps) {
+export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result: inlineResult, resultBytes, argsBytes, durationMs, startedAt, toolCallId }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
-  const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
-  // Reduced motion: snap the disclosure open/closed instead of animating
-  // height. Also skips framer's per-frame height measurement of the details
-  // subtree, which can be a large diff.
-  const prefersReducedMotion = useReducedMotion()
+  // Closed until the user opens it; nothing opens the row on its own.
+  const [expanded, setManualExpanded] = useState(false)
   // The open details region: the row's toggle and every section header point at it.
   const detailsId = useId()
   const liveOutputRef = useRef<HTMLPreElement>(null)
@@ -194,8 +185,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const [animatesIn] = useState(() => !done)
   // The output stayed on the server: the row fetches it once opened.
   const onServer = Boolean(done) && inlineResult === undefined && resultBytes !== undefined && Boolean(toolCallId)
-  // The fetch waits for the user: a row that opened itself to show live
-  // output already shows it.
+  // The fetch waits for the user to open the row.
   const [fetchWanted, setFetchWanted] = useState(false)
   const remote = useToolResult(toolCallId, onServer, fetchWanted)
   const result = inlineResult ?? remote.text
@@ -308,10 +298,6 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
 
   const awaitingResult = onServer && !suppressResult && result === undefined
   const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult || hasReadResult || awaitingResult || awaitingArgs)
-  const autoOpen = Boolean(shownLiveOutput)
-  const [showedLiveOutput, setShowedLiveOutput] = useState(autoOpen)
-  if (autoOpen && !showedLiveOutput) setShowedLiveOutput(true)
-  const expanded = manualExpanded ?? (autoOpen || (showedLiveOutput && isCurrentStep))
   // Open, the header pins while long details scroll under it (inside a reader
   // fold, just below the fold's row); closing leaves it where it was pressed.
   const pinned = expanded && hasDetails
@@ -426,7 +412,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             </span>
           )}
           {state === 'running' ? (
-            <span className="shrink-0 text-(--color-text-muted)">running…</span>
+            <span className="oa-shimmer shrink-0">running…</span>
           ) : null}
         </ToolRow>
         {(previewTarget || planLink || imageRead || sentSession) && (
@@ -487,19 +473,9 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
       </div>
 
       {/* Expandable details — divider then warm paper body per pencil LJOUY */}
-      <AnimatePresence initial={false}>
-        {expanded && hasDetails && (
-          <motion.div
-            key="tool-details"
-            id={detailsId}
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: prefersReducedMotion ? 0 : DURATIONS_S.base, ease: EASINGS.out }}
-            // Clips for the height animation; the details keep the column's
-            // width, so nothing inside is cut off.
-            className="overflow-hidden"
-          >
+      {/* The shared fold (grid rows, no per-frame measuring), as every
+          other fold in the transcript. */}
+      <Collapsible open={expanded && hasDetails} id={detailsId}>
             <section className="group relative mt-1 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)">
               {awaitingArgs && (usesDiffView || !formattedArgs) && (
                 <div>
@@ -611,9 +587,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                 </>
               )}
             </section>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </Collapsible>
     </div>
   )
 })

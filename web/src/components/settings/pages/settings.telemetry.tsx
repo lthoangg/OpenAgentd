@@ -1,5 +1,5 @@
 /**
- * Settings → Retention — how many days local traces and metrics are kept.
+ * Settings → Retention — how many days local traces are kept.
  * A daily sweep deletes older files; saving a new value sweeps right away.
  * "Keep forever" stores 0 (the server's "never delete").
  */
@@ -53,13 +53,13 @@ export function TelemetrySettingsPage() {
   return (
     <SettingsPage
       title="Retention"
-      description="Traces and metrics for every turn are stored on this computer and power the Usage view. Nothing is sent anywhere."
+      description="Traces for every turn are stored on this computer and power the Usage view. Nothing is sent anywhere."
       draft={{ ...draft, canSave: draft.canSave && !daysError }}
       saveBlockedReason={daysError ? `Fix the number of days to save. ${daysError}` : null}
       confirmSave={{
         when: deletesHistory,
         title: `Delete history older than ${days} days?`,
-        description: 'Traces, metrics and spend older than this are deleted as soon as you save, and the Usage view can no longer show them.',
+        description: 'Traces and spend older than this are deleted as soon as you save, and the Usage view can no longer show them.',
         confirmLabel: 'Delete and save',
       }}
       loading={telemetryQ.isLoading}
@@ -83,12 +83,12 @@ export function TelemetrySettingsPage() {
           />
         </PanelRow>
         <PanelRow
-          label="Keep traces and metrics for"
+          label="Keep traces for"
           htmlFor="telemetry-retention-days"
           description={
             keepForever
               ? 'Everything is kept. Turn off Keep forever to set a number of days.'
-              : `Older traces and metrics are deleted daily, and right away when you save. Spend and turns older than this disappear from Usage. Default: ${defaultDays} days.`
+              : `Older traces are deleted daily, and right away when you save. Spend and turns older than this disappear from Usage. Default: ${defaultDays} days.`
           }
           error={daysError}
         >
@@ -98,7 +98,7 @@ export function TelemetrySettingsPage() {
               type="number"
               min={0}
               max={maxDays}
-              aria-label="Days to keep traces and metrics"
+              aria-label="Days to keep traces"
               disabled={keepForever}
               value={Number.isFinite(days) ? String(days) : ''}
               onChange={(e) => draft.patch({ retention_days: parseInt(e.target.value, 10) })}

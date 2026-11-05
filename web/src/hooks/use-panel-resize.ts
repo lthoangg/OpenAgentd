@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 
 import { RESIZE_KEY_STEP, RESIZE_KEY_STEP_LARGE } from '@/lib/workbench-layout'
+import { alignmentHapticFeedback } from '@/lib/haptics'
+import { snapToDetent } from '@/lib/resize-snap'
 
 /**
  * usePanelResize — controlled resize handle for a side panel.
@@ -10,6 +12,10 @@ import { RESIZE_KEY_STEP, RESIZE_KEY_STEP_LARGE } from '@/lib/workbench-layout'
  * not write persisted state on every frame. The returned ``handleProps`` make
  * the separator reachable by keyboard (arrows ±16px, Shift ±64px, Home/End,
  * Enter or double-click to reset) as well as by pointer.
+ *
+ * With a ``detent`` (the panel's default width) a drag snaps onto it within
+ * 8px, like a Finder split view, and gives the trackpad's alignment tick the
+ * moment it snaps in.
  */
 export interface PanelResizeOptions {
   /** Committed width in px. */
@@ -20,6 +26,8 @@ export interface PanelResizeOptions {
   edge: 'left' | 'right'
   onCommit: (width: number) => void
   onReset?: () => void
+  /** The default width in px: a drag within 8px of it lands exactly on it. */
+  detent?: number
   disabled?: boolean
   label: string
 }
@@ -28,7 +36,7 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-export function usePanelResize({ width, min, max, edge, onCommit, onReset, disabled = false, label }: PanelResizeOptions) {
+export function usePanelResize({ width, min, max, edge, onCommit, onReset, detent, disabled = false, label }: PanelResizeOptions) {
   const [dragWidth, setDragWidth] = useState<number | null>(null)
   const frameRef = useRef<number | null>(null)
   const latestRef = useRef(width)
@@ -49,10 +57,21 @@ export function usePanelResize({ width, min, max, edge, onCommit, onReset, disab
     const startWidth = clamp(width, min, upper)
     latestRef.current = startWidth
     setDragWidth(startWidth)
+    const detentWidth = detent !== undefined && Number.isFinite(detent) ? clamp(detent, min, upper) : undefined
+    // A drag that starts on the detent only ticks once it has left and come back.
+    let held = detentWidth !== undefined && snapToDetent(startWidth, detentWidth).snapped
 
     const handleMove = (moveEvent: PointerEvent) => {
       const delta = edge === 'right' ? moveEvent.clientX - startX : startX - moveEvent.clientX
-      latestRef.current = clamp(startWidth + delta, min, upper)
+      const raw = clamp(startWidth + delta, min, upper)
+      if (detentWidth === undefined) {
+        latestRef.current = raw
+      } else {
+        const { value, snapped } = snapToDetent(raw, detentWidth)
+        latestRef.current = value
+        if (snapped && !held) alignmentHapticFeedback()
+        held = snapped
+      }
       if (frameRef.current !== null) return
       frameRef.current = requestAnimationFrame(() => {
         frameRef.current = null
@@ -86,7 +105,7 @@ export function usePanelResize({ width, min, max, edge, onCommit, onReset, disab
     window.addEventListener('pointermove', handleMove)
     window.addEventListener('pointerup', finish)
     window.addEventListener('pointercancel', finish)
-  }, [disabled, edge, min, onCommit, upper, width])
+  }, [detent, disabled, edge, min, onCommit, upper, width])
 
   const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
     if (disabled) return

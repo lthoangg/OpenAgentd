@@ -8,6 +8,7 @@ import { useState } from 'react'
 
 import { answerQuestion } from '@/api/client'
 import type { PendingQuestion } from '@/api/types'
+import { softHapticFeedback } from '@/lib/haptics'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { forgetQuestionDraft } from './draft-cache'
@@ -91,6 +92,9 @@ export function useQuestionResolver(question: PendingQuestion | null) {
     /** ``options.keepGoing``: a plan approval that also starts a goal (see ``answerQuestion``). */
     answer: (answers: string[][], options?: { keepGoing?: { maxTurns?: number } }) => {
       if (!question || !sessionId) return
+      // Every answer goes through here: a question's Send, a confirmation's
+      // Approve or Deny, the composer's reply and a plan's Approve.
+      softHapticFeedback()
       void resolve(question.id, () => answerQuestion(sessionId, question.id, answers, options), 'Could not send the answer.', answers)
     },
   }

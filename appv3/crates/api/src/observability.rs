@@ -317,7 +317,135 @@ impl WindowBounds {
     }
 }
 
-/// Every span in one file that has an `end_time`, with that time.
+/// Top-level span fields the queries read. `events` and the `resource`
+/// block older files carry are skipped while parsing.
+const SPAN_FIELDS: [&str; 10] = ["name", "trace_id", "span_id", "parent_id", "kind", "start_time", "end_time", "duration_ms", "status", "attributes"];
+
+/// Span attributes the queries read; the others are skipped while parsing.
+/// Trace detail shows every attribute, so it re-reads its spans whole
+/// ([`reread_whole`]). Add a key here when a query starts reading it.
+const READ_ATTRS: [&str; 15] = [
+    "gen_ai.agent.name",
+    "gen_ai.conversation.id",
+    "gen_ai.operation.name",
+    "gen_ai.provider.name",
+    "gen_ai.request.model",
+    "gen_ai.tool.name",
+    "gen_ai.usage.cache_creation.input_tokens",
+    "gen_ai.usage.cache_read.input_tokens",
+    "gen_ai.usage.estimated_cost_usd",
+    "gen_ai.usage.input_tokens",
+    "gen_ai.usage.output_tokens",
+    "run_id",
+    OUTPUT_TPS_ATTR,
+    TTFT_ATTR,
+    WORKSPACE_ATTR,
+];
+
+/// A span line with only [`SPAN_FIELDS`] and [`READ_ATTRS`]: the rest is
+/// skipped by the parser, never allocated. A 90-day window holds hundreds of
+/// thousands of spans.
+struct SlimSpan(Map<String, Value>);
+
+/// A map key as the matching entry of `keys`, `None` for any other; no
+/// allocation either way.
+fn known_key<'de, D: serde::Deserializer<'de>>(d: D, keys: &'static [&'static str]) -> Result<Option<&'static str>, D::Error> {
+    struct V(&'static [&'static str]);
+    impl serde::de::Visitor<'_> for V {
+        type Value = Option<&'static str>;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a string key")
+        }
+        fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+            Ok(self.0.iter().find(|k| **k == v).copied())
+        }
+    }
+    d.deserialize_str(V(keys))
+}
+
+/// A span key, `Some` when it is one of [`SPAN_FIELDS`].
+struct SpanKey(Option<&'static str>);
+
+impl<'de> serde::Deserialize<'de> for SpanKey {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Ok(SpanKey(known_key(d, &SPAN_FIELDS)?))
+    }
+}
+
+/// An attribute key, `Some` when it is one of [`READ_ATTRS`].
+struct AttrKey(Option<&'static str>);
+
+impl<'de> serde::Deserialize<'de> for AttrKey {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Ok(AttrKey(known_key(d, &READ_ATTRS)?))
+    }
+}
+
+/// `attributes`, keeping [`READ_ATTRS`] (a `null` stays `null`).
+struct SlimAttrs(Value);
+
+impl<'de> serde::Deserialize<'de> for SlimAttrs {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> serde::de::Visitor<'de> for V {
+            type Value = SlimAttrs;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("an attributes object")
+            }
+            fn visit_unit<E: serde::de::Error>(self) -> Result<SlimAttrs, E> {
+                Ok(SlimAttrs(Value::Null))
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(self, mut m: A) -> Result<SlimAttrs, A::Error> {
+                let mut out = Map::new();
+                while let Some(AttrKey(key)) = m.next_key()? {
+                    match key {
+                        Some(k) => {
+                            out.insert(k.to_string(), m.next_value()?);
+                        }
+                        None => {
+                            m.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(SlimAttrs(Value::Object(out)))
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for SlimSpan {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> serde::de::Visitor<'de> for V {
+            type Value = SlimSpan;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a span object")
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(self, mut m: A) -> Result<SlimSpan, A::Error> {
+                let mut out = Map::new();
+                while let Some(SpanKey(key)) = m.next_key()? {
+                    match key {
+                        Some("attributes") => {
+                            out.insert("attributes".into(), m.next_value::<SlimAttrs>()?.0);
+                        }
+                        Some(k) => {
+                            out.insert(k.to_string(), m.next_value()?);
+                        }
+                        None => {
+                            m.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(SlimSpan(out))
+            }
+        }
+        d.deserialize_map(V)
+    }
+}
+
+/// Every span in one file that has an `end_time`, with that time, kept to
+/// what the queries read ([`SlimSpan`]).
 fn parse_span_file(path: &std::path::Path) -> Vec<(f64, Span)> {
     let Ok(bytes) = std::fs::read(path) else { return vec![] };
     let mut out = vec![];
@@ -325,7 +453,7 @@ fn parse_span_file(path: &std::path::Path) -> Vec<(f64, Span)> {
         if line.iter().all(|b| b.is_ascii_whitespace()) {
             continue;
         }
-        let Ok(Value::Object(s)) = serde_json::from_slice::<Value>(line) else { continue };
+        let Ok(SlimSpan(s)) = serde_json::from_slice::<SlimSpan>(line) else { continue };
         if let Some(et) = num(s.get("end_time")) {
             out.push((et, Arc::new(s)));
         }
@@ -594,49 +722,119 @@ struct ParsedFile {
     spans: Arc<Vec<(f64, Span)>>,
 }
 
-/// The latest window, plus the parse of each file it read. While an agent
-/// runs only the live hour's file changes, so a new window re-reads that
-/// file and reuses the rest. Files outside the latest window are dropped,
-/// so what is held stays bounded to one window's files.
+/// Span files parsed earlier but outside the latest window (switching 90d →
+/// 7d → 90d), kept up to this many bytes of source; the oldest hours go first.
+const MAX_OUTSIDE_WINDOW_BYTES: u64 = 300 * 1024 * 1024;
+
+/// With no telemetry request for this long, everything parsed is dropped:
+/// a 90-day window holds hundreds of MB.
+const IDLE_RELEASE: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+
+/// The latest window, plus the parse of each file read so far. While an
+/// agent runs only the live hour's file changes, so a new window re-reads
+/// that file and reuses the rest; switching between ranges re-reads nothing
+/// (see [`MAX_OUTSIDE_WINDOW_BYTES`]).
 #[derive(Default)]
 struct SpanCacheState {
     window: Option<Arc<SpanWindow>>,
     files: HashMap<String, ParsedFile>,
+    last_used: Option<std::time::Instant>,
 }
 
 #[derive(Default)]
 struct SpanWindowCache(Mutex<SpanCacheState>);
 
+/// Drop the parsed files outside `window` (paths) beyond `cap` bytes of
+/// source, oldest hour (smallest name) first.
+fn trim_outside_window(files: &mut HashMap<String, ParsedFile>, window: &std::collections::HashSet<&str>, cap: u64) {
+    let mut outside: Vec<(String, u64)> = files.iter().filter(|(p, _)| !window.contains(p.as_str())).map(|(p, f)| (p.clone(), f.sig.0)).collect();
+    outside.sort();
+    let mut total: u64 = outside.iter().map(|(_, n)| n).sum();
+    for (path, size) in outside {
+        if total <= cap {
+            break;
+        }
+        files.remove(&path);
+        total -= size;
+    }
+}
+
 impl SpanWindowCache {
     fn get(&self, dir: &str, sigs: &Signatures, start: DateTime<Utc>, end: DateTime<Utc>) -> Arc<SpanWindow> {
+        use rayon::prelude::*;
         let key = sig_key("spans", &[], 0, dir, sigs);
         // Held while loading, so requests sent together wait for one parse
         // instead of each starting their own.
         let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        state.last_used = Some(std::time::Instant::now());
         if let Some(w) = state.window.as_ref().filter(|w| w.key == key && w.bounds.selects_same(window_ns(start), window_ns(end))) {
             return w.clone();
         }
-        let mut parsed = Vec::with_capacity(sigs.len());
-        let mut files = HashMap::with_capacity(sigs.len());
-        for (path, size, mtime, ino) in sigs {
-            let sig = (*size, *mtime, *ino);
-            let spans = match state.files.remove(path) {
-                Some(f) if f.sig == sig => f.spans,
-                _ => Arc::new(parse_span_file(std::path::Path::new(path))),
-            };
-            parsed.push(spans.clone());
-            files.insert(path.clone(), ParsedFile { sig, spans });
+        // Files new or changed since their parse, parsed side by side.
+        let stale: Vec<&String> = sigs.iter().filter(|(p, size, mtime, ino)| state.files.get(p).is_none_or(|f| f.sig != (*size, *mtime, *ino))).map(|(p, ..)| p).collect();
+        let fresh: Vec<Arc<Vec<(f64, Span)>>> = stale.par_iter().map(|p| Arc::new(parse_span_file(std::path::Path::new(p.as_str())))).collect();
+        for (path, spans) in stale.into_iter().zip(fresh) {
+            let (_, size, mtime, ino) = sigs.iter().find(|(p, ..)| p == path).unwrap();
+            state.files.insert(path.clone(), ParsedFile { sig: (*size, *mtime, *ino), spans });
         }
+        let parsed: Vec<Arc<Vec<(f64, Span)>>> = sigs.iter().filter_map(|(p, ..)| state.files.get(p).map(|f| f.spans.clone())).collect();
         let (spans, bounds) = select_window(parsed.iter().map(|f| f.as_slice()), start, end);
         let window = Arc::new(SpanWindow { key, bounds, index: TurnIndex::build(&spans), spans });
-        *state = SpanCacheState { window: Some(window.clone()), files };
+        state.window = Some(window.clone());
+        let in_window: std::collections::HashSet<&str> = sigs.iter().map(|(p, ..)| p.as_str()).collect();
+        trim_outside_window(&mut state.files, &in_window, MAX_OUTSIDE_WINDOW_BYTES);
         window
+    }
+
+    /// Drop everything when unused for `idle`; `true` when it did.
+    fn release_if_idle(&self, idle: std::time::Duration) -> bool {
+        let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if state.last_used.is_none_or(|t| t.elapsed() < idle) {
+            return false;
+        }
+        *state = SpanCacheState::default();
+        true
     }
 }
 
 fn span_windows() -> &'static SpanWindowCache {
     static C: OnceLock<SpanWindowCache> = OnceLock::new();
-    C.get_or_init(SpanWindowCache::default)
+    C.get_or_init(|| {
+        let _ = std::thread::Builder::new().name("oad-telemetry-idle".into()).spawn(|| loop {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            if span_windows().release_if_idle(IDLE_RELEASE) {
+                cache().lock().unwrap().clear();
+                release_freed_memory();
+                tracing::debug!("telemetry_cache_released idle_s={}", IDLE_RELEASE.as_secs());
+            }
+        });
+        SpanWindowCache::default()
+    })
+}
+
+/// Hand freed heap pages back to the OS now, so the process's footprint
+/// drops with the cache instead of whenever the allocator gets to it.
+fn release_freed_memory() {
+    #[cfg(target_os = "macos")]
+    {
+        extern "C" {
+            fn malloc_zone_pressure_relief(zone: *mut std::ffi::c_void, goal: usize) -> usize;
+        }
+        // SAFETY: a null zone means every zone; a goal of 0 releases all it can.
+        unsafe {
+            malloc_zone_pressure_relief(std::ptr::null_mut(), 0);
+        }
+    }
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        extern "C" {
+            fn malloc_trim(pad: usize) -> i32;
+        }
+        // SAFETY: glibc's `malloc_trim` only returns free memory to the OS.
+        unsafe {
+            malloc_trim(0);
+        }
+    }
 }
 
 // ── summary ─────────────────────────────────────────────────────────────────
@@ -1119,35 +1317,85 @@ pub fn get_trace(trace_id: &str, days: i64) -> Option<Value> {
             return None;
         }
         let w = span_windows().get(&dir, &sigs, start, now);
-        let mut matching: Vec<&Map<String, Value>> = w.spans.iter().map(|s| &**s).filter(|s| py_str(s.get("trace_id").unwrap_or(&Value::Null)).to_lowercase() == tid).collect();
-        if matching.is_empty() {
-            return None;
-        }
-        let start_key = |s: &Map<String, Value>| num(Some(&ns_or_zero(s.get("start_time")))).unwrap_or(0.0);
-        matching.sort_by(|a, b| cmp_f64(start_key(a), start_key(b)));
-        let out: Vec<Value> = matching
-            .into_iter()
-            .map(|s| {
-                let attrs: Map<String, Value> = match s.get("attributes") {
-                    Some(Value::Object(m)) => m.iter().filter(|(_, v)| !v.is_null()).map(|(k, v)| (k.clone(), v.clone())).collect(),
-                    _ => Map::new(),
-                };
-                json!({
-                    "span_id": py_str(s.get("span_id").unwrap_or(&Value::Null)),
-                    "parent_span_id": opt_str(s.get("parent_id")),
-                    "trace_id": py_str(s.get("trace_id").unwrap_or(&Value::Null)),
-                    "name": str_or(s.get("name"), ""),
-                    "kind": str_or(s.get("kind"), "INTERNAL"),
-                    "start_ms": ns_to_ms(&ns_or_zero(s.get("start_time"))),
-                    "end_ms": ns_to_ms(&ns_or_zero(s.get("end_time"))),
-                    "duration_ms": py_round(safe_float(s.get("duration_ms")), 1),
-                    "status": str_or(s.get("status"), "UNSET"),
-                    "attributes": attrs,
-                })
-            })
-            .collect();
-        Some(json!({"trace_id": out[0]["trace_id"], "spans": out}))
+        trace_detail(&w, &sigs, &tid)
     })
+}
+
+/// Which span a whole re-read line is: `(span_id, end_time bits)`.
+fn span_key(s: &Map<String, Value>) -> (String, u64) {
+    (py_str(s.get("span_id").unwrap_or(&Value::Null)), num(s.get("end_time")).unwrap_or(0.0).to_bits())
+}
+
+/// Every span of trace `tid` in `paths`, parsed whole, by [`span_key`].
+fn reread_whole<'a>(paths: impl IntoIterator<Item = &'a str>, tid: &str, out: &mut HashMap<(String, u64), Map<String, Value>>) {
+    // Trace ids are written as lowercase hex, whatever the spacing of the line.
+    let hex = tid.trim_start_matches("0x");
+    for path in paths {
+        let Ok(bytes) = std::fs::read(path) else { continue };
+        for line in bytes.split(|b| *b == b'\n') {
+            if !std::str::from_utf8(line).is_ok_and(|l| l.contains(hex)) {
+                continue;
+            }
+            let Ok(Value::Object(s)) = serde_json::from_slice::<Value>(line) else { continue };
+            if py_str(s.get("trace_id").unwrap_or(&Value::Null)).to_lowercase() == tid {
+                out.insert(span_key(&s), s);
+            }
+        }
+    }
+}
+
+/// One trace's spans, every attribute included. The window holds spans kept
+/// to what the queries read, so they are read whole again: from the hourly
+/// file each one's `end_time` names (where the writer put it), then, for any
+/// still missing, from every file of the window.
+fn trace_detail(w: &SpanWindow, sigs: &Signatures, tid: &str) -> Option<Value> {
+    let matching: Vec<&Map<String, Value>> = w.spans.iter().map(|s| &**s).filter(|s| py_str(s.get("trace_id").unwrap_or(&Value::Null)).to_lowercase() == tid).collect();
+    if matching.is_empty() {
+        return None;
+    }
+    let window_files: std::collections::HashSet<&str> = sigs.iter().map(|(p, ..)| p.as_str()).collect();
+    let hour_file = |s: &Map<String, Value>| {
+        let end = num(s.get("end_time"))? as i64;
+        let name = format!("{}.jsonl", appv3_core::otel::hourly_partition(Utc.timestamp_nanos(end)));
+        sigs.iter().map(|(p, ..)| p.as_str()).find(|p| std::path::Path::new(p).file_name().is_some_and(|n| n.to_string_lossy() == name))
+    };
+    let mut whole = HashMap::new();
+    let likely: BTreeSet<&str> = matching.iter().filter_map(|s| hour_file(s)).collect();
+    reread_whole(likely.iter().copied(), tid, &mut whole);
+    if matching.iter().any(|s| !whole.contains_key(&span_key(s))) {
+        reread_whole(window_files.iter().copied().filter(|p| !likely.contains(p)), tid, &mut whole);
+    }
+    // A span gone from disk meanwhile shows what the window kept of it.
+    let spans: Vec<&Map<String, Value>> = matching.iter().map(|s| whole.get(&span_key(s)).unwrap_or(s)).collect();
+    Some(trace_json(spans))
+}
+
+/// The trace detail payload for `spans` (one trace), by start time.
+fn trace_json(mut spans: Vec<&Map<String, Value>>) -> Value {
+    let start_key = |s: &Map<String, Value>| num(Some(&ns_or_zero(s.get("start_time")))).unwrap_or(0.0);
+    spans.sort_by(|a, b| cmp_f64(start_key(a), start_key(b)));
+    let out: Vec<Value> = spans
+        .into_iter()
+        .map(|s| {
+            let attrs: Map<String, Value> = match s.get("attributes") {
+                Some(Value::Object(m)) => m.iter().filter(|(_, v)| !v.is_null()).map(|(k, v)| (k.clone(), v.clone())).collect(),
+                _ => Map::new(),
+            };
+            json!({
+                "span_id": py_str(s.get("span_id").unwrap_or(&Value::Null)),
+                "parent_span_id": opt_str(s.get("parent_id")),
+                "trace_id": py_str(s.get("trace_id").unwrap_or(&Value::Null)),
+                "name": str_or(s.get("name"), ""),
+                "kind": str_or(s.get("kind"), "INTERNAL"),
+                "start_ms": ns_to_ms(&ns_or_zero(s.get("start_time"))),
+                "end_ms": ns_to_ms(&ns_or_zero(s.get("end_time"))),
+                "duration_ms": py_round(safe_float(s.get("duration_ms")), 1),
+                "status": str_or(s.get("status"), "UNSET"),
+                "attributes": attrs,
+            })
+        })
+        .collect();
+    json!({"trace_id": out[0]["trace_id"], "spans": out})
 }
 
 #[cfg(test)]
@@ -1561,9 +1809,115 @@ mod tests {
         assert!(Arc::ptr_eq(&span_of(&first, "0xa"), &span_of(&next, "0xa")), "the closed file was parsed again");
         assert!(!Arc::ptr_eq(&span_of(&first, "0xb"), &span_of(&next, "0xb")), "the live file was not re-read");
 
-        // A file that leaves the window is dropped from the cache.
+        // A file that leaves the window stays parsed, so widening the range
+        // again (7d → 90d) parses nothing.
         let live_only = [write_spans(&live, &live_spans)].concat();
         let _ = cache.get(&dir, &live_only, at(base - 60e9), end);
+        assert_eq!(cache.0.lock().unwrap().files.len(), 2);
+        let wide = cache.get(&dir, &grown, start, end);
+        assert!(Arc::ptr_eq(&span_of(&first, "0xa"), &span_of(&wide, "0xa")), "the closed file was parsed again");
+    }
+
+    #[test]
+    fn files_outside_the_window_are_trimmed_oldest_first_past_the_cap() {
+        let parsed = |size| ParsedFile { sig: (size, 0, 0), spans: Arc::new(vec![]) };
+        let mut files: HashMap<String, ParsedFile> = ["h1", "h2", "h3", "live"].into_iter().map(|p| (p.to_string(), parsed(10))).collect();
+        let window = std::collections::HashSet::from(["live"]);
+        trim_outside_window(&mut files, &window, 20);
+        let mut kept: Vec<&str> = files.keys().map(String::as_str).collect();
+        kept.sort();
+        assert_eq!(kept, ["h2", "h3", "live"]);
+        trim_outside_window(&mut files, &window, 0);
+        assert_eq!(files.keys().collect::<Vec<_>>(), ["live"]);
+    }
+
+    #[test]
+    fn an_idle_cache_lets_go_of_every_parse() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_string_lossy().into_owned();
+        let base = 1_700_000_000e9;
+        let sigs = write_spans(&tmp.path().join("2023-11-14-22.jsonl"), &turn("0xa", None, "openai:gpt", "OK", base, 0.5));
+        let cache = SpanWindowCache::default();
+        assert!(!cache.release_if_idle(std::time::Duration::ZERO), "nothing to release before any use");
+        cache.get(&dir, &sigs, at(base - 60e9), at(base + 60e9));
+        assert!(!cache.release_if_idle(std::time::Duration::from_secs(300)));
         assert_eq!(cache.0.lock().unwrap().files.len(), 1);
+        assert!(cache.release_if_idle(std::time::Duration::ZERO));
+        let state = cache.0.lock().unwrap();
+        assert!(state.window.is_none() && state.files.is_empty());
+    }
+
+    /// A span line as files hold it: what the queries read, plus what they
+    /// never do — the resource block older files repeat, events, and
+    /// attributes such as tool call ids and request fingerprints.
+    fn as_written(mut s: Map<String, Value>, parent: Option<&str>) -> Map<String, Value> {
+        s.insert("parent_id".into(), json!(parent));
+        s.insert("kind".into(), json!("INTERNAL"));
+        s.insert("events".into(), json!([{"name": "exception", "timestamp": 1, "attributes": {"exception.message": "boom"}}]));
+        s.insert("resource".into(), json!({"service.name": "openagentd", "telemetry.sdk.version": "3.0.0"}));
+        let attrs = s["attributes"].as_object_mut().unwrap();
+        attrs.insert("gen_ai.tool.call.id".into(), json!("call_1"));
+        attrs.insert("openagentd.request.system_sha".into(), json!("abc"));
+        attrs.insert(TTFT_ATTR.into(), json!(0.25));
+        attrs.insert(OUTPUT_TPS_ATTR.into(), json!(40.0));
+        attrs.insert("run_id".into(), json!("r1"));
+        attrs.insert("gen_ai.agent.name".into(), json!("lead"));
+        attrs.insert("empty".into(), Value::Null);
+        s
+    }
+
+    /// Summary, trace list and trace detail from the kept-to-what-is-read
+    /// parse match those from parsing every line whole, as before.
+    #[test]
+    fn slim_parse_answers_exactly_like_a_whole_parse() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_string_lossy().into_owned();
+        let hour: f64 = 3600e9;
+        let base = (1_700_000_000e9_f64 / hour).floor() * hour + 600e9;
+        let mut all: Vec<Map<String, Value>> = vec![];
+        for (i, s) in fixture().into_iter().enumerate() {
+            all.push(as_written(s, if i % 2 == 1 { Some("0xparent") } else { None }));
+        }
+        // One trace spread over two hours, and a span the writer would not
+        // have put in its file (found by the full scan).
+        let mut late = span("execute_tool shell", "0xa", "OK", base + hour, json!({"gen_ai.tool.name": "shell", "gen_ai.conversation.id": "s-0xa"}));
+        late = as_written(late, Some("0xa-agent_run lead"));
+        all.push(late);
+        let stray = as_written(span("execute_tool read", "0xa", "OK", base + 30.0 * 60e9, json!({"gen_ai.tool.name": "read"})), None);
+        let mut by_file: std::collections::BTreeMap<String, Vec<Map<String, Value>>> = Default::default();
+        for s in &all {
+            let end = s["end_time"].as_f64().unwrap() as i64;
+            by_file.entry(appv3_core::otel::hourly_partition(Utc.timestamp_nanos(end))).or_default().push(s.clone());
+        }
+        let other_hour = appv3_core::otel::hourly_partition(Utc.timestamp_nanos((base + 5.0 * hour) as i64));
+        by_file.entry(other_hour).or_default().push(stray.clone());
+        all.push(stray);
+        let mut sigs = vec![];
+        for (name, spans) in &by_file {
+            sigs.extend(write_spans(&tmp.path().join(format!("{name}.jsonl")), spans));
+        }
+        let (start, end) = (at(base - 400.0 * DAY_NS), at(base + 400.0 * DAY_NS));
+
+        let w = SpanWindowCache::default().get(&dir, &sigs, start, end);
+        assert_eq!(w.spans.len(), all.len());
+        assert!(w.spans.iter().all(|s| !s.contains_key("events") && !s.contains_key("resource")));
+        assert!(w.spans.iter().all(|s| !attrs_of(s).contains_key("gen_ai.tool.call.id")));
+        let r = Resolver { index: &w.index, known: &KnownWorkspaces::new() };
+        let mut slim = run_queries(&apply_filters(&w.spans, &r, &Filters::default()), &r, start, end);
+        slim["facets"] = facets(&w.spans, &r);
+        let slim_traces = list_traces(&apply_filters(&w.spans, &r, &Filters::default()), &r, 200, 0, false);
+
+        let index = TurnIndex::build(&all);
+        let r = Resolver { index: &index, known: &KnownWorkspaces::new() };
+        let mut whole = run_queries(&apply_filters(&all, &r, &Filters::default()), &r, start, end);
+        whole["facets"] = facets(&all, &r);
+        assert_eq!(slim, whole);
+        assert_eq!(slim_traces, list_traces(&apply_filters(&all, &r, &Filters::default()), &r, 200, 0, false));
+
+        for tid in ["0xa", "0xb", "0xe"] {
+            let expected = trace_json(all.iter().filter(|s| s["trace_id"] == tid).collect());
+            assert_eq!(trace_detail(&w, &sigs, tid), Some(expected), "trace {tid}");
+        }
+        assert_eq!(trace_detail(&w, &sigs, "0xnope"), None);
     }
 }

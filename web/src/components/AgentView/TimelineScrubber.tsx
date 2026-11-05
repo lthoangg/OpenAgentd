@@ -180,7 +180,7 @@ export function TimelineScrubber({ scrollRef, contentRef }: {
       ref={railRef}
       aria-hidden="true"
       data-transcript-scrubber=""
-      className="group/scrubber absolute inset-y-0 right-0 z-10 hidden w-3 touch-none select-none md:block"
+      className="oa-fade-in-fast group/scrubber absolute inset-y-0 right-0 z-10 hidden w-3 touch-none select-none md:block"
       onPointerDown={onPointerDown}
       onPointerMove={(event) => scrubTo(event.clientY)}
       onPointerUp={endDrag}

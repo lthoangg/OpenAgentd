@@ -201,7 +201,7 @@ export function ExchangeView({ exchange, sessionId }: { exchange: BtwExchange; s
       {exchange.answer ? (
         <MarkdownBlock content={exchange.answer} sessionId={sessionId} isStreaming={streaming && exchange.live} />
       ) : streaming ? (
-        <p role="status" className="text-(--color-text-muted)">Thinking…</p>
+        <p role="status"><span className="oa-shimmer">Thinking…</span></p>
       ) : null}
       {exchange.status === 'error' && (
         <p role="alert" className="text-(--color-error)">{exchange.error || 'The side question failed.'}</p>

@@ -169,7 +169,6 @@ export function useMobileViewportGuards() {
     //              scroll content (AgentView) just gets a shorter scrollport —
     //              no expensive content reflow.
     //   --app-vt → visual viewport offsetTop, for the rare scrolled/zoomed case.
-    let keyboardOpen = false
     const baselineLayoutHeight = window.innerHeight
     const applyViewport = () => {
       const height = vv ? vv.height : window.innerHeight
@@ -186,8 +185,10 @@ export function useMobileViewportGuards() {
       // offsetTop reported alongside the first keyboard resize cannot shift
       // the entire app for one frame.
       root.style.setProperty('--app-vt', `${Math.round(nextOpen ? 0 : top)}px`)
-      if (nextOpen !== keyboardOpen) {
-        keyboardOpen = nextOpen
+      // The attribute is the state, not a copy of it: ``dismissKeyboard``
+      // removes it ahead of the viewport's own events, and a closure flag left
+      // true would then never restore it when the keyboard comes back.
+      if (nextOpen !== root.hasAttribute('data-keyboard-open')) {
         if (nextOpen) {
           root.setAttribute('data-keyboard-open', '')
           // Opening must stay frame-locked (no transition lag on the way up) —

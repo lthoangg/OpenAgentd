@@ -23,7 +23,7 @@ export function GoalRing({ tone, className }: { tone: GoalTone; className?: stri
       className={cn(
         'relative size-2.5 shrink-0 rounded-full border-2 border-current',
         TONE_CLASS[tone],
-        tone === 'active' && 'animate-pulse motion-reduce:animate-none',
+        tone === 'active' && 'oa-breathe',
         className,
       )}
     >

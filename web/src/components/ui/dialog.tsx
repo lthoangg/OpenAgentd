@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils'
 import { DURATIONS_S } from '@/lib/motion'
 import { Button } from '@/components/ui/button'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
+import { usePresenceMotion } from '@/components/ui/_use-presence-motion'
 import { useModalFocus } from '@/hooks/useModalFocus'
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -91,10 +92,16 @@ function DialogPortal({ children }: { children: ReactNode }) {
   return createPortal(children, document.body)
 }
 
-function DialogOverlay({ className, closing, ...props }: ComponentPropsWithRef<'div'> & { closing?: boolean }) {
+/** The scrim fades with its dialog, on the dialog's timing. */
+const SCRIM_FROM = { opacity: 0 }
+
+function DialogOverlay({ className, closing = false, ...props }: ComponentPropsWithRef<'div'> & { closing?: boolean }) {
   const { setOpen } = useDialog()
+  const ref = useRef<HTMLDivElement>(null)
+  usePresenceMotion(ref, true, closing, { from: SCRIM_FROM })
   return (
     <div
+      ref={ref}
       data-slot="dialog-overlay"
       // Dialogs are frequently stacked on top of an already-open mobile
       // drawer (session actions, delete/edit confirmations, etc). Without
@@ -103,9 +110,6 @@ function DialogOverlay({ className, closing, ...props }: ComponentPropsWithRef<'
       data-swipe-ignore
       className={cn(
         'fixed inset-0 z-50 bg-(--color-overlay)',
-        closing
-          ? 'animate-out fade-out-0 animation-duration-(--motion-fast)'
-          : 'animate-in fade-in-0 animation-duration-(--motion-fast)',
         className,
       )}
       onClick={() => setOpen(false)}
@@ -158,13 +162,18 @@ const FOOTER_BLEED = {
   none: '',
 } as const
 
+const DIALOG_FROM = { opacity: 0, scale: 0.96 }
+
 const DialogPaddingContext = createContext<keyof typeof DIALOG_PADDING>('default')
 
 function DialogContent({ className, children, showCloseButton = true, size = 'sm', padding = 'default', initialFocus, ...props }: DialogContentProps) {
   const { open, setOpen, titleId } = useDialog()
-  // Unmount when the exit animation (`animation-duration-(--motion-fast)`) ends.
+  // Unmount when the ``fast`` exit ends.
   const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.fast * 1000)
   const contentRef = useRef<HTMLDivElement>(null)
+  // Settles in at ``base`` from 96% (an alert's scale), leaves at ``fast``;
+  // reopening mid-exit turns back from where it is.
+  usePresenceMotion(contentRef, mounted, closing, { from: DIALOG_FROM })
 
   useModalFocus(open && mounted, () => setOpen(false), initialFocus)
 
@@ -193,9 +202,6 @@ function DialogContent({ className, children, showCloseButton = true, size = 'sm
           'rounded-lg border border-(--color-border-subtle) bg-(--bg-card)',
           DIALOG_PADDING[padding],
           'text-sm text-(--color-text) shadow-(--shadow-depth) outline-none',
-          closing
-            ? 'animate-out fade-out-0 zoom-out-95 animation-duration-(--motion-fast)'
-            : 'animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-fast)',
           className,
         )}
         onClick={(e) => e.stopPropagation()}

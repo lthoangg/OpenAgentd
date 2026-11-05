@@ -11,9 +11,9 @@
  *   In the desktop app this also stands in for the webview's own menu
  *   (Reload, Inspect, "Open Link" inside the app), which
  *   ``lib/desktop-shell.ts`` suppresses.
- * - A long press (touch) opens the items as a bottom sheet, with a light
- *   haptic; the press is the house hold (``lib/chat-long-press``). In the
- *   iPhone and iPad app too: the app's sheet, not the system's action sheet.
+ * - A long press (touch) opens the items as a bottom sheet, with a medium
+ *   haptic as it opens; the press is the house hold (``lib/chat-long-press``).
+ *   In the iPhone and iPad app too: the app's sheet, not the system's action sheet.
  * - Selected text always keeps the system menu, which has Copy: a right-click
  *   or a long press over a selection opens nothing of ours.
  *
@@ -27,7 +27,7 @@ import { CONTEXT_MENU_ITEM_CLASS, ContextMenu } from '@/components/ui/context-me
 import { hasTextSelection } from '@/lib/desktop-shell'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
 import { registerLongPressSurface } from '@/lib/chat-long-press'
-import { softHapticFeedback } from '@/lib/haptics'
+import { mediumHapticFeedback } from '@/lib/haptics'
 
 export interface ChatMenuItem {
   label: string
@@ -81,7 +81,7 @@ export function useChatMenu(label: string, items: () => ChatMenuItem[]) {
     const list = itemsRef.current()
     if (list.length === 0) return
     sheetUp.current = true
-    softHapticFeedback()
+    mediumHapticFeedback()
     setSheet({ items: list, open: true })
   }
   const closeSheet = () => {

@@ -27,6 +27,9 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   on Windows.
 - `src/share.rs`: the system share sheet (`share_url`): `NSSharingServicePicker`
   on macOS, `DataTransferManager` on Windows, "unsupported" on Linux.
+- `src/haptics.rs`: the trackpad "alignment" tick (`haptic_alignment`,
+  `NSHapticFeedbackManager` on the main thread) the page fires when a resize
+  drag snaps onto its default; a no-op `Ok` on every other platform.
 - `src/global_shortcuts.rs`: opt-in system-wide shortcuts. The plugin is only
   started once the user ticks "Global Shortcuts"; nothing is registered by
   default.

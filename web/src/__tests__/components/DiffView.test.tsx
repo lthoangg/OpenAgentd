@@ -81,13 +81,18 @@ describe("diffLines", () => {
     expect(out.filter((l) => l.type === "added")).toHaveLength(n)
   })
 
-  it("handles a large all-different diff without blowing up", () => {
-    const mk = (s: string) =>
-      Array.from({ length: 3000 }, (_, i) => `line ${i} ${s}`).join("\n")
-    const started = Date.now()
-    expectValidDiff(mk("a"), mk("b"))
-    // The pre-fix quadratic path spent ~60ms and ~69MB here.
-    expect(Date.now() - started).toBeLessThan(1000)
+  it("skips the LCS matrix for a large edit instead of allocating it", () => {
+    // 3000x3000 = 9M cells: the quadratic path would cost ~69MB here. Every
+    // other line is shared, so an exact LCS would keep them as `equal`; the
+    // block fallback keeps none. That shows which path ran without timing it.
+    // The first and last lines differ, so prefix/suffix trimming keeps all of it.
+    const n = 3000
+    expect(n * n).toBeGreaterThan(MAX_LCS_CELLS)
+    const mk = (s: string) => Array.from({ length: n }, (_, i) => (i % 2 && i < n - 1 ? `shared ${i}` : `line ${i} ${s}`)).join("\n")
+    const out = expectValidDiff(mk("a"), mk("b"))
+    expect(out.some((l) => l.type === "equal")).toBe(false)
+    expect(out.slice(0, n).every((l) => l.type === "removed")).toBe(true)
+    expect(out.slice(n).every((l) => l.type === "added")).toBe(true)
   })
 })
 

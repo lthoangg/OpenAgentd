@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-haptic-alignment"
+description = "Enables the haptic_alignment command without any pre-configured scope."
+commands.allow = ["haptic_alignment"]
+
+[[permission]]
+identifier = "deny-haptic-alignment"
+description = "Denies the haptic_alignment command without any pre-configured scope."
+commands.deny = ["haptic_alignment"]

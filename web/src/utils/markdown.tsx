@@ -17,6 +17,7 @@ import { apiUrl } from '@/api/base-url'
 import { withTokenParam } from '@/api/auth'
 import { cn } from '@/lib/utils'
 import { useImageBox } from '@/lib/image-size'
+import { useImageReveal } from '@/hooks/useImageReveal'
 import { ImageLightbox } from '@/components/ImageLightbox'
 import { CodeBlock } from '@/components/CodeBlock'
 import { FileRefCode, MarkdownLink } from '@/components/FileRefLink'
@@ -399,6 +400,10 @@ function MarkdownImage({
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [errored, setErrored] = useState(false)
   const box = useImageBox(src)
+  // A remembered size already holds the box, so the image fades into it;
+  // a first load shows its own placeholder until the pixels land instead.
+  const [fades] = useState(() => !box.pending)
+  const { ref: revealRef, reveal, revealProps } = useImageReveal(src)
   const fileName = extractFileName(rawSrc, src)
 
   if (!src || errored) {
@@ -436,6 +441,7 @@ function MarkdownImage({
         aria-label={alt ? `Open image preview: ${alt}` : 'Open image preview'}
       >
         <img
+          ref={fades ? revealRef : undefined}
           src={src}
           alt={alt}
           title={title}
@@ -448,10 +454,15 @@ function MarkdownImage({
           // a placeholder instead of collapsing to 0px.
           style={box.width && box.height ? { maxWidth: `min(100%, calc(80vh * ${box.width / box.height}))` } : undefined}
           data-pending={box.pending ? '' : undefined}
-          onLoad={box.onLoad}
+          data-revealed={fades ? revealProps['data-revealed'] : undefined}
+          onLoad={(e) => {
+            box.onLoad(e)
+            if (fades) reveal(e)
+          }}
           onError={() => setErrored(true)}
           className={cn(
             'h-auto max-h-[80vh] max-w-full cursor-zoom-in object-contain rounded-sm border border-(--color-border) transition-opacity hover:opacity-90',
+            fades && revealProps.className,
             box.pending && 'min-h-32 min-w-48 bg-(--bg-key)',
           )}
         />
@@ -584,8 +595,11 @@ export const MarkdownTable = memo(function MarkdownTable(
   }, [])
 
   return (
-    <div className="oa-table-container group relative">
-      <div className="absolute top-1 right-1 z-10">
+    <div className="oa-table-container group/table relative">
+      {/* Hidden at rest; hovering this table or focusing the button reveals
+          it. Touch has no hover, so it always shows there. The named group
+          keeps a hovered ancestor `group` (a message row) from revealing it. */}
+      <div className="absolute top-1 right-1 z-10 opacity-0 transition-opacity duration-(--motion-fast) group-hover/table:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
         <Tooltip>
           <TooltipTrigger
             render={
@@ -656,34 +670,38 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   allowHtml?: boolean
 }) {
   const smoothedContent = useSmoothStream(content, isStreaming)
-  const displayContent = isStreaming ? smoothedContent : content
+  // Live until the reveal catches up: the end of an answer keeps flowing
+  // after the stream closes (useSmoothStream), and so do its caret and its
+  // open tail chunk.
+  const live = isStreaming || smoothedContent !== content
+  const displayContent = live ? smoothedContent : content
 
   // Me: fixNestedFences is pure; memoize so we don't re-walk the whole
   // string on scroll-triggered parent re-renders either.
   const fixedContent = useMemo(
     () => {
       const fixed = fixNestedFences(normalizeProposedPlanTags(displayContent))
-      return isStreaming ? markClosedStreamingMermaidFences(fixed) : fixed
+      return live ? markClosedStreamingMermaidFences(fixed) : fixed
     },
-    [displayContent, isStreaming],
+    [displayContent, live],
   )
   const [streamed, setStreamed] = useState(isStreaming)
   if (isStreaming && !streamed) setStreamed(true)
   const [chunk] = useState(() => createMarkdownChunker(parseMarkdownText))
   const chunks = useMemo(
-    () => (streamed ? chunk(fixedContent, !isStreaming) : null),
-    [streamed, chunk, fixedContent, isStreaming],
+    () => (streamed ? chunk(fixedContent, !live) : null),
+    [streamed, chunk, fixedContent, live],
   )
 
   return (
-    <MarkdownStreamingContext.Provider value={isStreaming}>
+    <MarkdownStreamingContext.Provider value={live}>
       <MarkdownSessionContext.Provider value={sessionId}>
         <MarkdownMediaContext.Provider value={resolveMediaSrc}>
           {/* `data-streaming` draws the live caret after the last text block (index.css). */}
-          <div className="oa-prose text-sm" data-streaming={isStreaming ? '' : undefined}>
+          <div className="oa-prose text-sm" data-streaming={live ? '' : undefined}>
             {chunks ? (
               chunks.map((c, index) => (
-                <MarkdownChunkView key={index} doc={c.doc} live={isStreaming && index === chunks.length - 1} />
+                <MarkdownChunkView key={index} doc={c.doc} live={live && index === chunks.length - 1} />
               ))
             ) : (
               <Markdown

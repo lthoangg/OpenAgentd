@@ -14,93 +14,31 @@ use std::time::Duration;
 pub use image::GenerateImageTool;
 pub use video::GenerateVideoTool;
 
-/// Span + metrics bookkeeping shared by `generate_image` / `generate_video`
-/// (failure marking, duration recording and metrics).
+/// Span bookkeeping shared by `generate_image` / `generate_video`.
 pub(crate) struct MediaObs {
     pub span: appv3_core::otel::Span,
     kind: &'static str,
-    t0: std::time::Instant,
-    /// `(provider, model, mode)` dimensions resolved so far.
-    pub dims: Mutex<(Option<String>, Option<String>, Option<String>)>,
-}
-
-fn media_histograms(kind: &str) -> &'static (appv3_core::otel::Histogram, appv3_core::otel::Histogram) {
-    use appv3_core::otel::histogram;
-    static IMAGE: OnceLock<(appv3_core::otel::Histogram, appv3_core::otel::Histogram)> = OnceLock::new();
-    static VIDEO: OnceLock<(appv3_core::otel::Histogram, appv3_core::otel::Histogram)> = OnceLock::new();
-    if kind == "image" {
-        IMAGE.get_or_init(|| {
-            (
-                histogram("openagentd.image.generation.duration", "generate_image tool duration (includes backend HTTP + disk write)", "s"),
-                histogram("openagentd.image.output.bytes", "generate_image output file size (success only)", "By"),
-            )
-        })
-    } else {
-        VIDEO.get_or_init(|| {
-            (
-                histogram("openagentd.video.generation.duration", "generate_video tool duration (predictLongRunning + poll + download)", "s"),
-                histogram("openagentd.video.output.bytes", "generate_video output file size (success only)", "By"),
-            )
-        })
-    }
 }
 
 impl MediaObs {
     pub fn start(kind: &'static str) -> Self {
         let span = appv3_core::otel::Span::start(format!("generate_{kind}"), appv3_core::otel::SpanKind::Internal, vec![]);
         span.set_attr("gen_ai.operation.name", format!("generate_{kind}"));
-        Self { span, kind, t0: std::time::Instant::now(), dims: Mutex::new((None, None, None)) }
+        Self { span, kind }
     }
 
-    pub fn set_provider(&self, provider: &str) {
-        self.dims.lock().unwrap().0 = Some(provider.into());
-    }
-    pub fn set_model(&self, model: &str) {
-        self.dims.lock().unwrap().1 = Some(model.into());
-    }
-    pub fn set_mode(&self, mode: &str) {
-        self.dims.lock().unwrap().2 = Some(mode.into());
-    }
-
-    fn record_duration(&self, status: &str) {
-        let (p, m, mode) = self.dims.lock().unwrap().clone();
-        let unk = |v: Option<String>| serde_json::json!(v.unwrap_or_else(|| "unknown".into()));
-        media_histograms(self.kind).0.record_in(
-            Some(self.span.ctx()),
-            self.t0.elapsed().as_secs_f64(),
-            vec![
-                ("gen_ai.provider.name", unk(p)),
-                ("gen_ai.request.model", unk(m)),
-                (if self.kind == "image" { "image.mode" } else { "video.mode" }, unk(mode)),
-                ("status", serde_json::json!(status)),
-            ],
-        );
-    }
-
-    /// ERROR status + duration point; returns the framed text.
+    /// ERROR status; returns the framed text.
     pub fn fail(&self, error_type: &str, message: &str) -> crate::ToolResult {
         self.span.set_attr("error.type", error_type);
         self.span.set_attr("error.message", take_chars(message, 200));
         self.span.set_error();
-        self.record_duration("error");
         Ok(crate::ToolOutput::text(format!("Error: {message}")))
     }
 
-    /// Success tail: output bytes attr, OK, duration + size histograms.
+    /// Success tail: output bytes attr and OK.
     pub fn ok(&self, output_bytes: usize) {
         self.span.set_attr(&format!("{}.output_bytes", self.kind), output_bytes);
         self.span.set_ok();
-        self.record_duration("ok");
-        let (p, m, mode) = self.dims.lock().unwrap().clone();
-        media_histograms(self.kind).1.record_in(
-            Some(self.span.ctx()),
-            output_bytes,
-            vec![
-                ("gen_ai.provider.name", serde_json::json!(p.unwrap_or_default())),
-                ("gen_ai.request.model", serde_json::json!(m.unwrap_or_default())),
-                (if self.kind == "image" { "image.mode" } else { "video.mode" }, serde_json::json!(mode.unwrap_or_default())),
-            ],
-        );
     }
 
     /// Close the span: an `Err` escaping the body is recorded like an

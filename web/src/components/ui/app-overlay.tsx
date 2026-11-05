@@ -49,10 +49,11 @@
  */
 
 import { type ReactNode } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useDragControls, type PanInfo } from 'framer-motion'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { APP_SHORTCUTS, chordOf, type AppShortcutName } from '@/lib/app-shortcuts'
@@ -181,16 +182,28 @@ interface AppOverlayProps {
 
 // ─── Animation variants ───────────────────────────────────────────────────────
 
+// Desktop: settles in from 96% on ``ease-out`` at ``base`` (an alert's
+// scale), leaves at ``fast``. Phone: a full-screen modal is a sheet, so it
+// rises from the bottom edge on the sheet curve and can be pulled back down.
 const MODAL_VARIANTS = {
-  hidden:  { opacity: 0, scale: 0.97, y: 6 },
+  hidden:  { opacity: 0, scale: 0.96, y: 6 },
   visible: { opacity: 1, scale: 1,    y: 0 },
-  exit:    { opacity: 0, scale: 0.97, y: 6 },
+  exit:    { opacity: 0, scale: 0.96, y: 6 },
+}
+const SHEET_VARIANTS = {
+  hidden:  { opacity: 1, y: '100%' },
+  visible: { opacity: 1, y: 0 },
+  exit:    { opacity: 1, y: '100%' },
 }
 const MODAL_VARIANTS_REDUCED = {
   hidden:  { opacity: 0 },
   visible: { opacity: 1 },
   exit:    { opacity: 0 },
 }
+
+/** A pull past this, or a flick faster than SHEET_CLOSE_VELOCITY, closes the sheet. */
+const SHEET_CLOSE_DISTANCE = 120
+const SHEET_CLOSE_VELOCITY = 500
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -206,11 +219,26 @@ export function AppOverlay({
   toggleShortcut,
 }: AppOverlayProps) {
   const reduced = useReducedMotion()
+  const isMobile = useIsMobile()
+  const dragControls = useDragControls()
   // An overlay: ⌘K / ⌘P / ⌘, may swap it for another one.
   const layer = useModalFocus(open, onClose, initialFocus, { kind: 'overlay' })
   useShortcut(toggleShortcut ? chordOf(APP_SHORTCUTS[toggleShortcut]) : null, () => { onClose() }, { layer })
 
-  const panelVariants = reduced ? MODAL_VARIANTS_REDUCED : MODAL_VARIANTS
+  const sheet = isMobile && variant === 'modal' && !reduced
+  const panelVariants = reduced ? MODAL_VARIANTS_REDUCED : sheet ? SHEET_VARIANTS : MODAL_VARIANTS
+  const panelTransition = reduced
+    ? { duration: 0 }
+    : sheet
+      ? { duration: DURATIONS_S.base, ease: EASINGS.sheet }
+      : { duration: DURATIONS_S.base, ease: EASINGS.out }
+  const panelExit = reduced
+    ? { duration: 0 }
+    : { duration: sheet ? DURATIONS_S.base : DURATIONS_S.fast, ease: sheet ? EASINGS.sheet : EASINGS.inOut }
+
+  const onSheetDragEnd = (_: unknown, info: PanInfo) => {
+    if (info.offset.y > SHEET_CLOSE_DISTANCE || info.velocity.y > SHEET_CLOSE_VELOCITY) onClose()
+  }
 
   // Pass sizing token as a CSS variable so media-query rules can reference it.
   const inlineStyle: React.CSSProperties =
@@ -226,9 +254,8 @@ export function AppOverlay({
             key="backdrop"
             data-swipe-ignore
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: DURATIONS_S.fast }}
+            animate={{ opacity: 1, transition: { duration: DURATIONS_S.base, ease: EASINGS.out } }}
+            exit={{ opacity: 0, transition: panelExit }}
             className="fixed inset-0 z-40 bg-(--color-overlay)"
             onClick={onClose}
             aria-hidden="true"
@@ -245,12 +272,15 @@ export function AppOverlay({
             data-overlay-variant={variant}
             style={inlineStyle}
             initial={panelVariants.hidden}
-            animate={panelVariants.visible}
-            exit={panelVariants.exit}
-            transition={{
-              duration: reduced ? 0.01 : DURATIONS_S.fast,
-              ease: EASINGS.inOut,
-            }}
+            animate={{ ...panelVariants.visible, transition: panelTransition }}
+            exit={{ ...panelVariants.exit, transition: panelExit }}
+            // Phone sheet: the grabber pulls it down; the body keeps scrolling.
+            drag={sheet ? 'y' : false}
+            dragListener={false}
+            dragControls={dragControls}
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.6 }}
+            onDragEnd={sheet ? onSheetDragEnd : undefined}
             className={[
               // ── Shared ──────────────────────────────────────────────────────
               'z-50 flex flex-col overflow-hidden',
@@ -262,6 +292,16 @@ export function AppOverlay({
               className,
             ].join(' ')}
           >
+            {sheet && (
+              <div
+                aria-hidden="true"
+                data-slot="sheet-grabber"
+                className="absolute inset-x-0 top-0 z-10 flex h-4 cursor-grab touch-none justify-center pt-1.5"
+                onPointerDown={(e) => dragControls.start(e)}
+              >
+                <span className="h-1 w-9 rounded-full bg-(--color-border-strong)" />
+              </div>
+            )}
             {children}
           </motion.div>
         </>

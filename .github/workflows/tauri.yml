@@ -38,9 +38,9 @@ jobs:
       mobile: ${{ steps.filter.outputs.mobile }}
       shell_core: ${{ steps.filter.outputs.shell_core }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dorny/paths-filter@v4
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           filters: |
@@ -66,16 +66,16 @@ jobs:
       run:
         working-directory: native/shell-core
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: clippy, rustfmt
 
       # No Tauri or WebKit here — the crate is deliberately platform-neutral,
       # so this job stays fast and needs no system packages.
       - name: Cache cargo registry + target
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: native/shell-core
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -98,7 +98,7 @@ jobs:
       run:
         working-directory: desktop/src-tauri
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Linux WebKitGTK deps
         run: |
@@ -110,12 +110,12 @@ jobs:
             librsvg2-dev \
             libssl-dev
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: clippy
 
       - name: Cache cargo registry + target
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: desktop/src-tauri
           # Only ``main`` writes cache entries. These blobs are ~0.5-1.5 GB
@@ -144,9 +144,9 @@ jobs:
       run:
         working-directory: desktop/src-tauri
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: clippy
 
@@ -156,7 +156,7 @@ jobs:
           echo "RUSTFLAGS=-C link-arg=/FASTLINK" >> $env:GITHUB_ENV
 
       - name: Cache cargo registry + target
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: desktop/src-tauri
           key: windows-x86_64
@@ -181,7 +181,7 @@ jobs:
       run:
         working-directory: mobile/src-tauri
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Linux WebKitGTK deps
         run: |
@@ -192,10 +192,10 @@ jobs:
             librsvg2-dev \
             libssl-dev
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
       - name: Cache cargo registry + target
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: mobile/src-tauri
           # See the desktop job: main-only saves protect the 10 GB budget.
@@ -203,3 +203,6 @@ jobs:
 
       - name: Cargo check
         run: TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo check --locked
+
+      - name: Cargo clippy
+        run: TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo clippy --locked --all-targets

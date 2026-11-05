@@ -79,16 +79,19 @@ function expectNoMovement(target: unknown) {
 }
 
 describe('reduced motion — ToolCall disclosure', () => {
-  it('snaps the details open instead of animating height', async () => {
+  // The details fold through the shared CSS Collapsible, which the global
+  // reduced-motion rule snaps; no JS-driven height is left for it to miss.
+  it('opens the details through the CSS fold, with no JS-driven height', async () => {
     const user = userEvent.setup()
-    render(<ToolCall name="Bash" args="ls -la" done result="total 0" />)
+    const { container } = render(<ToolCall name="Bash" args="ls -la" done result="total 0" />)
 
     // The disclosure toggle is the tool header button (first in the row).
     await user.click(screen.getAllByRole('button')[0]!)
 
-    const details = captured.find((p) => p.className === 'overflow-hidden')
-    expect(details).toBeDefined()
-    expect(details!.transition).toMatchObject({ duration: 0 })
+    expect(container.querySelector('[data-slot="collapsible"][data-state="open"]')).not.toBeNull()
+    for (const props of captured) {
+      expectNoMovement(props.animate ?? {})
+    }
   })
 })
 

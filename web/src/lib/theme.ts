@@ -10,6 +10,7 @@
  * Keep the storage key and logic here in sync with that script.
  */
 
+import { withViewTransition } from '@/lib/view-transition'
 import { broadcastMessage } from './broadcast-channel'
 import { isDesktopShell } from './desktop-shell'
 import { desktopWindowId, windowScopedKey } from './desktop-window-identity'
@@ -112,6 +113,19 @@ function syncShellTheme(preference: ThemePreference): void {
     .catch(() => {})
 }
 
+/**
+ * Apply a theme the user (or the OS) just changed to: the window crossfades
+ * into it rather than switching every surface in one frame. The same theme
+ * applies without one.
+ */
+function changeTheme(resolved: ResolvedTheme): void {
+  if (typeof document === 'undefined' || document.documentElement.classList.contains(resolved)) {
+    applyTheme(resolved)
+    return
+  }
+  withViewTransition(() => applyTheme(resolved))
+}
+
 export function setThemePreference(preference: ThemePreference): void {
   const key = themeStorageKey()
   try {
@@ -119,7 +133,7 @@ export function setThemePreference(preference: ThemePreference): void {
   } catch {
     // best-effort — still apply class below
   }
-  applyTheme(resolveTheme(preference))
+  changeTheme(resolveTheme(preference))
   syncShellTheme(preference)
   broadcastMessage({ type: 'theme_changed', preference, storageKey: key })
 }
@@ -146,7 +160,7 @@ export function initTheme(): () => void {
   const onSystemChange = () => {
     // Only react when the user prefers "system"; explicit picks are sticky.
     if (readStoredPreference() === 'system') {
-      applyTheme(mql.matches ? 'dark' : 'light')
+      changeTheme(mql.matches ? 'dark' : 'light')
       syncShellTheme('system')
     }
   }

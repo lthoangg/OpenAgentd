@@ -117,6 +117,38 @@ describe('Review dock layout', () => {
     expect(dock.querySelector('[data-review-dock]')!.hasAttribute('data-dock-maximized')).toBe(false)
   })
 
+  it('slides the width when maximized and restored, but not when resized', async () => {
+    const user = userEvent.setup()
+    const { dock } = await renderPanel({ centerWidth: 1000 })
+    expect(dock.style.transition).toBe('')
+
+    // A resize (here the keyboard's, the same path as a drag) stays a cut.
+    fireEvent.keyDown(screen.getByRole('separator', { name: 'Resize Review panel' }), { key: 'ArrowLeft' })
+    expect(dock.style.transition).toBe('')
+
+    await user.click(screen.getByRole('button', { name: /^Maximize Review panel/ }))
+    expect(dock.style.transition).toContain('width')
+    // The body keeps one width while the edge moves, instead of reflowing every frame.
+    expect(dock.querySelector<HTMLElement>('[data-review-dock]')!.parentElement!.style.width).not.toBe('100%')
+
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)) })
+    expect(dock.style.transition).toBe('')
+
+    await user.click(screen.getByRole('button', { name: /^Restore Review panel/ }))
+    expect(dock.style.transition).toContain('width')
+  })
+
+  it('slides the width when Escape gives the chat back', async () => {
+    useLayoutStore.setState({ dockMaximized: true })
+    const { dock } = await renderPanel({ centerWidth: 1000 })
+    expect(dock.style.transition).toBe('')
+
+    fireEvent.keyDown(dock.querySelector('[data-review-dock]')!, { key: 'Escape' })
+
+    expect(useLayoutStore.getState().dockMaximized).toBe(false)
+    expect(dock.style.transition).toContain('width')
+  })
+
   it('slides in the first time it opens too (mounted by the toggle), from 0 to its width', async () => {
     const { WorkspacePanel } = await import('@/components/WorkspacePanel')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })

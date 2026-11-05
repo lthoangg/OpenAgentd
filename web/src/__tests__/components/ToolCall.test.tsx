@@ -78,7 +78,7 @@ describe("ToolCall — header", () => {
     expect(btn).toBeTruthy()
     // Running reads "running…" (no summary yet), with no coloured dot or pulse
     expect(btn.querySelector("[data-running-dot]")).toBeNull()
-    expect(btn.querySelector(".animate-pulse")).toBeNull()
+    expect(btn.querySelector(".oa-breathe")).toBeNull()
     expect(btn.textContent).toContain("running…")
   })
 
@@ -222,9 +222,22 @@ describe("ToolCall — shell display", () => {
     expect(screen.getByText("Run unit tests")).toBeTruthy()
   })
 
-  it("auto-expands live output before the final result arrives", () => {
+  // A streaming tool never opens itself: its details open only on a click.
+  it("stays closed while live output streams", () => {
     const args = JSON.stringify({ command: "echo hi" })
     render(<ToolCall name="shell" args={args} done={false} liveOutput={"hi\n"} />)
+
+    const toggle = screen.getAllByRole("button")[0]
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+    expect(toggle.querySelector("svg")?.getAttribute("class") ?? "").not.toContain("rotate-90")
+    expect(screen.queryByText("terminal")).toBeNull()
+    expect(document.querySelector("pre")).toBeNull()
+  })
+
+  it("shows live output once the user opens the row", () => {
+    const args = JSON.stringify({ command: "echo hi" })
+    render(<ToolCall name="shell" args={args} done={false} liveOutput={"hi\n"} />)
+    fireEvent.click(screen.getAllByRole("button")[0])
 
     expect(screen.getByText("terminal")).toBeTruthy()
     // "hi" may be wrapped in a token span — query the pre's full textContent
@@ -233,7 +246,7 @@ describe("ToolCall — shell display", () => {
     expect(pre!.textContent).toContain("hi")
   })
 
-  it("does not keep auto-expanded state after final result replaces live output", () => {
+  it("stays closed when the final result replaces live output", () => {
     const args = JSON.stringify({ command: "printf live" })
     const { rerender } = render(
       <ToolCall name="shell" args={args} done={false} liveOutput={"live-output\n"} />,
@@ -252,31 +265,27 @@ describe("ToolCall — shell display", () => {
     expect(screen.getAllByRole("button")[0].getAttribute("aria-expanded")).toBe("false")
   })
 
-  // Output the reader was watching should not vanish the moment the tool
-  // finishes: the row stays open while it is still the turn's latest step,
-  // and folds once the next step starts.
-  it("stays open after the result while it is still the latest step, then folds", () => {
+  // A row the user opened while it ran stays open on its result.
+  it("keeps a row the user opened open after the tool finishes", () => {
     const args = JSON.stringify({ command: "printf live" })
     const { rerender } = render(
-      <ToolCall name="shell" args={args} done={false} liveOutput={"live-output\n"} isCurrentStep />,
+      <ToolCall name="shell" args={args} done={false} liveOutput={"live-output\n"} />,
     )
     const toggle = () => screen.getAllByRole("button")[0]
-    expect(toggle().getAttribute("aria-expanded")).toBe("true")
-
-    rerender(
-      <ToolCall name="shell" args={args} done liveOutput={"live-output\n"} result={"[Succeeded]\n\nfinal-output\n"} isCurrentStep />,
-    )
-    expect(toggle().getAttribute("aria-expanded")).toBe("true")
-
-    rerender(
-      <ToolCall name="shell" args={args} done liveOutput={"live-output\n"} result={"[Succeeded]\n\nfinal-output\n"} isCurrentStep={false} />,
-    )
     expect(toggle().getAttribute("aria-expanded")).toBe("false")
+    fireEvent.click(toggle())
+    expect(toggle().getAttribute("aria-expanded")).toBe("true")
+
+    rerender(
+      <ToolCall name="shell" args={args} done liveOutput={"live-output\n"} result={"[Succeeded]\n\nfinal-output\n"} />,
+    )
+    expect(toggle().getAttribute("aria-expanded")).toBe("true")
+    expect(document.querySelector("pre")!.textContent).toContain("final-output")
   })
 
-  it("does not open a finished tool that never showed live output", () => {
+  it("does not open a finished tool", () => {
     const args = JSON.stringify({ command: "true" })
-    render(<ToolCall name="shell" args={args} done result={"[Succeeded]\n"} isCurrentStep />)
+    render(<ToolCall name="shell" args={args} done result={"[Succeeded]\n"} />)
     expect(screen.getAllByRole("button")[0].getAttribute("aria-expanded")).toBe("false")
   })
 
@@ -285,6 +294,7 @@ describe("ToolCall — shell display", () => {
     const { rerender } = render(
       <ToolCall name="shell" args={args} done={false} liveOutput={"line-1\n"} />,
     )
+    fireEvent.click(screen.getAllByRole("button")[0])
     const pre = document.querySelector("pre") as HTMLPreElement
     let scrollWrites = 0
     Object.defineProperty(pre, "scrollTop", {
@@ -306,6 +316,7 @@ describe("ToolCall — shell display", () => {
     const { rerender } = render(
       <ToolCall name="shell" args={args} done={false} liveOutput={"line-1\n"} />,
     )
+    fireEvent.click(screen.getAllByRole("button")[0])
     const pre = document.querySelector("pre") as HTMLPreElement
     let currentScrollTop = 0
     let scrollWrites = 0

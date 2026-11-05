@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import { DURATIONS_S } from '@/lib/motion'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { useDeferredUnmount } from './ui/_use-deferred-unmount'
+import { RollingNumber } from './ui/swap'
 
 /** Where the chip floats: above or below the composer, or inside the transcript's own corner. */
 type ChipSide = 'above' | 'below' | 'inside'
@@ -61,7 +62,9 @@ export function JumpToLatest({ unseen, onJump, side = 'above', fadeOut = true }:
       )}
     >
       <ArrowDown size={13} aria-hidden="true" />
-      <span className="pr-0.5 font-medium tabular-nums">{count > 0 ? `${count} new` : 'Jump to latest'}</span>
+      <span className="pr-0.5 font-medium tabular-nums">
+        {count > 0 ? <RollingNumber text={String(count)} value={count} suffix=" new" /> : 'Jump to latest'}
+      </span>
     </button>
   )
 }

@@ -1,6 +1,6 @@
 [package]
 name = "openagentd-desktop"
-version = "3.46.0"
+version = "3.47.0"
 description = "OpenAgentd — on-machine coding agent (desktop shell)"
 authors = ["openagentd contributors"]
 license = "Apache-2.0"
@@ -68,7 +68,8 @@ objc2 = "0.6"
 # NSString/NSURL/NSObject: the share sheet (src/share.rs) builds an NSURL item.
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSArray", "NSString", "NSURL", "NSObject", "objc2-core-foundation"] }
 # NSView/NSSharingService: the share sheet (src/share.rs).
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSEvent", "NSResponder", "NSScreen", "NSWindow", "NSView", "NSSharingService", "objc2-core-foundation"] }
+# NSHapticFeedback: the alignment tick on a snapping drag (src/haptics.rs).
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSEvent", "NSResponder", "NSScreen", "NSWindow", "NSView", "NSSharingService", "NSHapticFeedback", "objc2-core-foundation"] }
 # The desktop pet reads where other apps' windows are (CGWindowListCopyWindowInfo:
 # frames only, no window titles, so no Screen Recording permission).
 objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGWindow", "CGGeometry"] }

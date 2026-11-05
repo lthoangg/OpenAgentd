@@ -1,6 +1,8 @@
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo, type ReactNode } from 'react'
 import { ArrowUp, Loader2, Paperclip, Square } from 'lucide-react'
 import { FilePreviewStrip } from './FilePreviewStrip'
+import { Collapsible } from '@/components/ui/collapsible'
+import { useHasSwapped } from '@/components/ui/swap'
 import { DesignFeedbackStrip } from './DesignFeedbackViews'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputComposer.mentions'
 import { COMPOSER_TEXT_CLASS, MentionOverlay } from './InputComposer.overlay'
@@ -695,14 +697,20 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // Single-row, horizontally scrollable list so many attachments don't push
   // the input off-screen vertically. The strip owns its own scroll-position
   // hint (matches pencil's MultiAttachOverflow `attachmentScrollHint`).
-  const filePreviews = files.length > 0 ? (
-    <FilePreviewStrip
-      files={files}
-      blobUrls={blobUrls}
-      onRemove={removeFile}
-      filesBelow={filesBelow}
-    />
-  ) : null
+  // The strip folds open (ui/collapsible) as the first file lands, instead of
+  // pushing the composer, and the transcript above it, up in one frame.
+  const filePreviews = (
+    <Collapsible open={files.length > 0}>
+      {files.length > 0 && (
+        <FilePreviewStrip
+          files={files}
+          blobUrls={blobUrls}
+          onRemove={removeFile}
+          filesBelow={filesBelow}
+        />
+      )}
+    </Collapsible>
+  )
 
   const feedbackChips = designFeedback.length > 0 ? (
     <DesignFeedbackStrip
@@ -720,7 +728,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // ghost at rest, keycap fill on hover. 28px on desktop, 32px on a narrow
   // screen with a mouse, 36px for a finger.
   const actionBtnClass =
-    'flex size-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:size-7 pointer-coarse:size-9'
+    'flex size-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-[color,background-color,scale] duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:bg-(--color-border-subtle) dark:active:bg-(--color-border) pointer-coarse:active:scale-90 motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:size-7 pointer-coarse:size-9'
 
   const stopClick = (e: React.MouseEvent) => e.stopPropagation()
 
@@ -810,23 +818,29 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // DESIGN.md `button-send`: the one inverted surface, a full pill. Stop takes
   // the same slot and shape while a turn runs — neutral ink, not an error red.
   // Idle with nothing to send it is a keycap, borderless like every control.
+  // A press darkens it under a mouse (as a macOS control does) and gives under
+  // a finger (as an iOS one does).
   const sendSlotClass =
-    'flex size-8 shrink-0 items-center justify-center rounded-full transition duration-(--motion-instant) active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:size-7 pointer-coarse:size-9'
+    'flex size-8 shrink-0 items-center justify-center rounded-full transition-[color,background-color,opacity,scale] duration-(--motion-instant) pointer-fine:active:opacity-80 pointer-coarse:active:scale-90 motion-reduce:active:scale-100 md:size-7 pointer-coarse:size-9'
   const sendPillClass = 'bg-(--bg-send) text-(--color-text-on-accent) hover:opacity-90'
 
   // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.
   const mac = isPrimaryModifierOS(os)
   const splitSend = isStreaming && hasMessage && !disabled
 
+  // Send ↔ Stop: the new icon springs up in the slot (not on first render).
+  const sendState = canStop && !hasMessage ? 'stop' : splitSend ? 'steer' : disabled ? 'busy' : 'send'
+  const iconIn = useHasSwapped(sendState) ? 'oa-icon-in' : undefined
+
   const sendOrStopEl = canStop && !hasMessage ? (
     <button
       type="button"
       {...keepKeyboard}
-      onClick={(e) => { stopClick(e); onStop?.(); refocusAfterTap() }}
+      onClick={(e) => { stopClick(e); softHapticFeedback(); onStop?.(); refocusAfterTap() }}
       aria-label="Stop generation"
       className={cn(sendSlotClass, sendPillClass)}
     >
-      <Square size={11} fill="currentColor" aria-hidden="true" />
+      <Square size={11} fill="currentColor" aria-hidden="true" className={iconIn} />
     </button>
   ) : splitSend ? (
     <div role="group" aria-label="Send" className="flex shrink-0 items-center">
@@ -838,7 +852,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         aria-keyshortcuts="Enter"
         className={cn(sendSlotClass, sendPillClass, 'rounded-r-none')}
       >
-        <ArrowUp size={14} aria-hidden="true" />
+        <ArrowUp size={14} aria-hidden="true" className={iconIn} />
       </button>
       <DeliveryMenu className={DELIVERY_TRIGGER_CLASS} mac={mac} showShortcuts={!isMobile} onPick={submit} />
     </div>
@@ -865,7 +879,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       {disabled ? (
         <Loader2 size={14} className="animate-spin" aria-hidden="true" />
       ) : (
-        <ArrowUp size={14} aria-hidden="true" />
+        <ArrowUp size={14} aria-hidden="true" className={iconIn} />
       )}
     </button>
   )

@@ -54,7 +54,10 @@ export function rowChipClass(active = false): string {
  * Tailwind group name (`row`, `sub`, or `''` for an unnamed `group`).
  */
 export function rowActionsReveal(group: 'row' | 'sub' | '' = 'row'): string {
-  if (group === 'row') return 'hidden group-hover/row:flex group-focus-within/row:flex pointer-coarse:flex'
-  if (group === 'sub') return 'hidden group-hover/sub:flex group-focus-within/sub:flex pointer-coarse:flex'
-  return 'hidden group-hover:flex group-focus-within:flex pointer-coarse:flex'
+  // ``oa-reveal``: the actions fade in over ``instant`` each time they show
+  // (a CSS animation replays when ``display`` turns it back on), so the
+  // swap with the row's meta reads as one change rather than a flicker.
+  if (group === 'row') return 'oa-reveal hidden group-hover/row:flex group-focus-within/row:flex pointer-coarse:flex'
+  if (group === 'sub') return 'oa-reveal hidden group-hover/sub:flex group-focus-within/sub:flex pointer-coarse:flex'
+  return 'oa-reveal hidden group-hover:flex group-focus-within:flex pointer-coarse:flex'
 }

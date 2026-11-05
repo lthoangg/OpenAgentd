@@ -59,7 +59,7 @@ describe('tool section headers', () => {
 
   it('give the live output section its own Copy output control', async () => {
     render(<ToolCall name="custom_tool" args={ARGS} liveOutput={'line 1\nline 2'} />)
-    // Live output opens the row by itself.
+    open()
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Copy output' })) })
     expect(writeText).toHaveBeenCalledWith('line 1\nline 2')
   })

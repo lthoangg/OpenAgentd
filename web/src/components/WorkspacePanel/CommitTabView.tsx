@@ -138,7 +138,7 @@ export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
               >
                 <ChevronRight
                   size={12}
-                  className={cn('shrink-0 text-(--color-text-subtle) transition-transform', open && 'rotate-90')}
+                  className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast)', open && 'rotate-90')}
                   aria-hidden="true"
                 />
                 <FileTypeIcon name={file.path} size={13} />

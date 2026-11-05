@@ -14,6 +14,7 @@ import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { GoalTone } from '@/lib/goal'
 import { GoalRing } from './goal-ring'
+import { useBadgeBump } from './swap'
 
 export interface TopbarActionProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -45,6 +46,7 @@ export const TopbarAction = forwardRef<HTMLButtonElement, TopbarActionProps>(
     },
     ref,
   ) {
+    const badgeRef = useBadgeBump<HTMLSpanElement>(badge)
     return (
       <button
         ref={ref}
@@ -60,7 +62,7 @@ export const TopbarAction = forwardRef<HTMLButtonElement, TopbarActionProps>(
           <span className={cn(hideLabelOnMobile && 'hidden md:inline')}>{label}</span>
         )}
         {badge && (
-          <span className="font-mono text-xs md:text-meta text-(--color-text-muted)">{badge}</span>
+          <span ref={badgeRef} className="inline-block font-mono text-xs md:text-meta text-(--color-text-muted)">{badge}</span>
         )}
         {indicator && (
           <span

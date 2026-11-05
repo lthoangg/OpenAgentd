@@ -288,10 +288,12 @@ function formatQuotaCountdown(resetsAt: number, now = Date.now()): string | null
 /** The "about to respond" dots: a reply is on its way and nothing shows yet. */
 function PendingDots() {
   return (
-    <div className="flex items-center gap-1.5 py-1" role="status" aria-label="Agent is preparing a response">
-      <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
-      <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />
-      <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '300ms' }} />
+    // Fades in rather than popping; the dots breathe on the token pulse
+    // (``thinking-dot``), not Tailwind's bounce curve.
+    <div className="oa-fade-in flex items-center gap-1.5 py-1" role="status" aria-label="Agent is preparing a response">
+      <span aria-hidden="true" className="thinking-dot h-1.5 w-1.5 rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
+      <span aria-hidden="true" className="thinking-dot h-1.5 w-1.5 rounded-full bg-(--color-accent)" style={{ animationDelay: '200ms' }} />
+      <span aria-hidden="true" className="thinking-dot h-1.5 w-1.5 rounded-full bg-(--color-accent)" style={{ animationDelay: '400ms' }} />
     </div>
   )
 }
@@ -504,6 +506,12 @@ interface AgentViewProps {
    * publishes its follow state instead of drawing its own button.
    */
   jumpToLatestInComposer?: boolean
+  /**
+   * The main transcript: whether it has scrolled off its top is marked on the
+   * chat shell (``data-transcript-scrolled``), so the phone header draws its
+   * bottom line only once text passes under it, like an iOS navigation bar.
+   */
+  marksScrollEdge?: boolean
 }
 
 /** The server's error title, with its legacy Title Case default in plain words. */
@@ -652,7 +660,6 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
             durationMs={block.durationMs}
             startedAt={block.startedAt}
             toolCallId={block.toolCallId}
-            isCurrentStep={isStreaming}
           />
           {block.toolDone && Boolean(mcpApp) && latestMCPAppBlockIds?.has(block.id) ? (
             <div className="mt-2">
@@ -714,6 +721,7 @@ export function AgentView({
   onRetry,
   onSwitchModel,
   jumpToLatestInComposer = false,
+  marksScrollEdge = false,
 }: AgentViewProps) {
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const storeSessionId = useAgentStore((s) => s.sessionId) ?? undefined
@@ -927,6 +935,26 @@ export function AgentView({
   })
   // Phone: drag or tap the transcript to put the keyboard away.
   useDismissKeyboardOnTouch(scrollRef)
+
+  // An attribute on the shell, not state: a scroll never re-renders the chat.
+  useEffect(() => {
+    const el = scrollRef.current
+    const shell = marksScrollEdge ? el?.closest('[data-chat-shell]') : null
+    if (!el || !shell) return
+    let scrolled: boolean | null = null
+    const sync = () => {
+      const next = el.scrollTop > 1
+      if (next === scrolled) return
+      scrolled = next
+      shell.toggleAttribute('data-transcript-scrolled', next)
+    }
+    sync()
+    el.addEventListener('scroll', sync, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', sync)
+      shell.removeAttribute('data-transcript-scrolled')
+    }
+  }, [marksScrollEdge, scrollRef])
 
   // A switch fades the next session's transcript in once it has something to
   // show, before paint so its first frame never shows at full strength. The
@@ -1369,7 +1397,9 @@ export function AgentView({
             <PendingMessageQueue />
 
             {showsLastError && lastError && (
-              <ErrorCard message={lastError} onRetry={errorRetry} onSwitchModel={errorSwitchModel} />
+              <div className="oa-fade-in">
+                <ErrorCard message={lastError} onRetry={errorRetry} onSwitchModel={errorSwitchModel} />
+              </div>
             )}
 
            <div ref={anchorRef} data-chat-scroll-anchor aria-hidden="true" />

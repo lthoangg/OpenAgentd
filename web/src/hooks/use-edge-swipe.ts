@@ -16,21 +16,24 @@
  *     the currently-open drawer.
  *
  * Beyond the open/close decision it provides:
- *   - **Drag-follow** — a live ``drag`` descriptor (which drawer, which
- *     edge, signed pixel offset) so the drawer tracks the finger instead
- *     of snapping at a fixed threshold.
+ *   - **Drag-follow** — the drawer tracks the finger instead of snapping at
+ *     a fixed threshold. The live position goes straight to the drawer's
+ *     driver (``lib/drawer-motion``), which writes the DOM: no React state
+ *     changes per touchmove, so the chat does not re-render per frame.
  *   - **Velocity / fling** — a fast flick commits with much less travel
  *     than a slow drag, matching native drawer feel. The drawer follows
- *     the finger for the entire gesture and commits only on release.
+ *     the finger for the entire gesture and commits only on release; the
+ *     release spring keeps the finger's speed.
  *   - **Haptics** — a short tick when a gesture commits.
  *
  * Only active on Tauri iOS/Android shells — desktop pointer swipes are
  * owned by ``useHistorySwipeNavigation`` and must not be hijacked.
  */
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { usePlatform } from '@/hooks/use-platform'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { haptic } from '@/lib/haptics'
+import { getDrawerMotion } from '@/lib/drawer-motion'
 
 /** Identifier for whichever drawer is currently open (or null). */
 export type DrawerId = string | null
@@ -76,23 +79,8 @@ interface EdgeSwipeState {
   velocity: number
 }
 
-/**
- * Live drag descriptor surfaced to consumers so a drawer can follow the
- * finger. ``offset`` is signed in CSS-x terms (negative pulls a left
- * drawer toward its hidden position, positive pushes a right drawer out).
- */
-export interface EdgeSwipeDrag {
-  drawerId: string
-  edge: Edge
-  intent: 'open' | 'close'
-  /** Signed x offset in px to apply on top of the drawer's resting x. */
-  offset: number
-  /** 0..1 reveal progress (1 = fully open). */
-  progress: number
-}
-
 /** px from the screen edge that counts as an edge-start for opening. */
-const EDGE_ZONE = 16
+const EDGE_ZONE = 20
 /** px of horizontal travel required to commit a *slow* gesture. */
 const COMMIT_DISTANCE = 96
 /** px/ms flick speed that commits regardless of distance. */
@@ -110,6 +98,8 @@ const AXIS_LOCK_SLOP = 8
 const HORIZONTAL_DOMINANCE = 1.5
 /** default drawer width (matches CSS ``min(272px, 100vw-2rem)``). */
 const DEFAULT_DRAWER_WIDTH = 272
+/** A finger that rested this long before lifting has no release speed to carry. */
+const VELOCITY_STALE_MS = 80
 
 /**
  * Elements that own their own horizontal drag (toasts, carousels, range
@@ -156,14 +146,12 @@ function canScrollHorizontally(target: EventTarget | null, boundary: EventTarget
 export interface EdgeSwipeHandlers {
   onTouchStart: (event: React.TouchEvent) => void
   onTouchMove: (event: React.TouchEvent) => void
-  onTouchEnd: () => void
+  onTouchEnd: (event?: React.TouchEvent) => void
   onTouchCancel: () => void
 }
 
 export interface EdgeSwipeResult {
   handlers: EdgeSwipeHandlers
-  /** Live drag descriptor for the drawer under the finger, or null. */
-  drag: EdgeSwipeDrag | null
   /** True only on a Tauri mobile shell where these gestures apply. */
   enabled: boolean
 }
@@ -180,9 +168,24 @@ export function useEdgeSwipe({
   const enabled = isMobile && (os === 'ios' || os === 'android')
 
   const stateRef = useRef<EdgeSwipeState | null>(null)
-  const [drag, setDrag] = useState<EdgeSwipeDrag | null>(null)
 
-  const clearDrag = useCallback(() => setDrag(null), [])
+  /**
+   * Hand a locked drawer to its release spring: ``goal`` is where it ends
+   * (1 open, 0 shut), and the finger's speed (px/ms toward the gesture's
+   * target) becomes progress/s. A fling away from the goal starts from rest.
+   */
+  const settleDrawer = useCallback((state: EdgeSwipeState, goal: number, now: number) => {
+    const fresh = now - state.lastT <= VELOCITY_STALE_MS
+    const towardTarget = fresh ? (state.velocity * 1000) / drawerWidth : 0
+    // An open gesture raises progress as it travels; a close gesture lowers it.
+    getDrawerMotion(state.drawerId).settle(goal, state.intent === 'open' ? towardTarget : -towardTarget)
+  }, [drawerWidth])
+
+  /** The gesture ended without committing (or was torn up): the drawer returns to where it began. */
+  const abandon = useCallback((state: EdgeSwipeState | null, now = performance.now()) => {
+    stateRef.current = null
+    if (state?.locked && !state.fired) settleDrawer(state, state.intent === 'open' ? 0 : 1, now)
+  }, [settleDrawer])
 
   const onTouchStart = useCallback((event: React.TouchEvent) => {
     stateRef.current = null
@@ -233,16 +236,14 @@ export function useEdgeSwipe({
       close()
     }
     stateRef.current = null
-    clearDrag()
-  }, [close, left, right, clearDrag])
+  }, [close, left, right])
 
   const onTouchMove = useCallback((event: React.TouchEvent) => {
     const state = stateRef.current
     if (!state) return
     // A second finger landing mid-swipe turns it into a pinch — abandon.
     if (event.touches.length > 1) {
-      stateRef.current = null
-      clearDrag()
+      abandon(state)
       return
     }
     const touch = event.touches[0]
@@ -263,14 +264,12 @@ export function useEdgeSwipe({
       if (Math.max(absX, absY) < AXIS_LOCK_SLOP) return
       if (absX < absY * HORIZONTAL_DOMINANCE) {
         stateRef.current = null
-        clearDrag()
         return
       }
       // Horizontal intent — but a nested scroller that can still move in
       // this direction (wide table, code block) owns it, not the drawer.
       if (canScrollHorizontally(state.target, event.currentTarget, deltaX)) {
         stateRef.current = null
-        clearDrag()
         return
       }
       state.locked = true
@@ -295,26 +294,22 @@ export function useEdgeSwipe({
     state.lastT = now
 
     // ── Drag-follow feedback ──────────────────────────────────────────
-    // Resting x for the drawer: open drawers rest at 0; for a close drag
-    // we start from fully-open and pull toward hidden. For an open drag
-    // we start from fully-hidden and pull toward 0.
+    // Hard edges: the finger's travel is clamped to the drawer's width, so
+    // the drawer never passes fully open or fully shut. An open drag starts
+    // fully hidden and pulls toward open; a close drag the reverse.
     const clampedSigned = Math.max(0, Math.min(drawerWidth, signed))
     const progress = state.intent === 'open'
       ? clampedSigned / drawerWidth
       : 1 - clampedSigned / drawerWidth
-    // Offset to apply on top of resting x=0 (drawer fully open).
-    // left drawer hides at -drawerWidth, right drawer hides at +drawerWidth.
-    const hidden = state.edge === 'left' ? -drawerWidth : drawerWidth
-    const offset = hidden * (1 - progress)
-
-    setDrag({ drawerId: state.drawerId, edge: state.edge, intent: state.intent, offset, progress })
+    getDrawerMotion(state.drawerId).drag(progress)
     // Once horizontal intent is established, prevent the page from moving
     // beneath the drawer while it tracks the complete finger travel.
     event.preventDefault()
-  }, [clearDrag, drawerWidth])
+  }, [abandon, drawerWidth])
 
-  const onTouchEnd = useCallback(() => {
+  const onTouchEnd = useCallback((event?: React.TouchEvent) => {
     const state = stateRef.current
+    const now = event?.timeStamp || performance.now()
     if (state && state.locked && !state.fired) {
       const deltaX = state.lastX - state.startX
       const towardOpen = state.edge === 'left' ? deltaX : -deltaX
@@ -322,18 +317,17 @@ export function useEdgeSwipe({
       const flingCommit = state.velocity >= FLING_VELOCITY && signed >= FLING_MIN_DISTANCE
       const distanceCommit = signed >= COMMIT_DISTANCE
       if (flingCommit || distanceCommit) {
+        settleDrawer(state, state.intent === 'open' ? 1 : 0, now)
         commit(state)
         return
       }
     }
-    stateRef.current = null
-    clearDrag()
-  }, [clearDrag, commit])
+    abandon(state, now)
+  }, [abandon, commit, settleDrawer])
 
   const onTouchCancel = useCallback(() => {
-    stateRef.current = null
-    clearDrag()
-  }, [clearDrag])
+    abandon(stateRef.current)
+  }, [abandon])
 
   const handlers = useMemo<EdgeSwipeHandlers>(() => ({
     onTouchStart,
@@ -342,5 +336,5 @@ export function useEdgeSwipe({
     onTouchCancel,
   }), [onTouchStart, onTouchMove, onTouchEnd, onTouchCancel])
 
-  return { handlers, drag, enabled }
+  return { handlers, enabled }
 }

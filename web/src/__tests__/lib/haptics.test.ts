@@ -7,6 +7,15 @@ const impactCalls: string[] = []
 const selectionCalls: number[] = []
 const notificationCalls: string[] = []
 const vibrateCalls: number[] = []
+const invokeCalls: string[] = []
+let invokeShouldReject = false
+
+mock.module('@tauri-apps/api/core', () => ({
+  invoke: (command: string) => {
+    invokeCalls.push(command)
+    return invokeShouldReject ? Promise.reject(new Error('unavailable')) : Promise.resolve(null)
+  },
+}))
 
 mock.module('@/hooks/use-platform', () => ({
   usePlatform: () => ({ isTauri, os: platformOs, isMacOverlay: false }),
@@ -47,6 +56,8 @@ beforeEach(() => {
   selectionCalls.length = 0
   notificationCalls.length = 0
   vibrateCalls.length = 0
+  invokeCalls.length = 0
+  invokeShouldReject = false
   Object.defineProperty(navigator, 'vibrate', {
     configurable: true,
     value: (ms: number) => {
@@ -58,6 +69,41 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (navigator as { vibrate?: unknown }).vibrate
+})
+
+// Only the Mac desktop shell has the trackpad tick; the snap works anywhere.
+describe('alignmentHapticFeedback', () => {
+  it('ticks the trackpad through the desktop shell on macOS', async () => {
+    platformOs = 'macos'
+    const { alignmentHapticFeedback } = await haptics()
+    alignmentHapticFeedback()
+    await flush()
+    expect(invokeCalls).toEqual(['haptic_alignment'])
+  })
+
+  it('is silent on the web and on other desktop and mobile shells', async () => {
+    const { alignmentHapticFeedback } = await haptics()
+    platformOs = 'macos'
+    isTauri = false
+    alignmentHapticFeedback()
+    for (const os of ['windows', 'linux', 'ios', 'android']) {
+      platformOs = os
+      isTauri = true
+      alignmentHapticFeedback()
+    }
+    await flush()
+    expect(invokeCalls).toEqual([])
+    expect(vibrateCalls).toEqual([])
+  })
+
+  it('swallows a failing command', async () => {
+    platformOs = 'macos'
+    invokeShouldReject = true
+    const { alignmentHapticFeedback } = await haptics()
+    expect(() => alignmentHapticFeedback()).not.toThrow()
+    await flush()
+    expect(invokeCalls).toEqual(['haptic_alignment'])
+  })
 })
 
 describe('softHapticFeedback', () => {

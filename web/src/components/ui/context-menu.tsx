@@ -30,7 +30,7 @@
  * other menus and popovers, and Settings, a dialog or an app shortcut
  * opening over it closes it, so two menus are never open at once.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import { cn } from '@/lib/utils'
@@ -38,6 +38,7 @@ import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { DURATIONS_S } from '@/lib/motion'
 import { MENU_ITEM_CLASS, MENU_ITEM_DANGER, MENU_PANEL_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
+import { blinkThen, isBlinking, shouldBlink } from '@/components/ui/_menu-blink'
 
 /** Gap kept between the menu and the viewport edge. */
 const VIEWPORT_MARGIN = 8
@@ -180,6 +181,34 @@ export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', chil
     }
   }
 
+  // Choosing an item blinks its row once, then its own handler runs (and the
+  // menu closes): the click is held back in the capture phase and replayed
+  // when the blink ends, so callers' handlers stay as they were. A key press
+  // on a focused item arrives as a click too, so Enter and Space blink alike.
+  const replayingRef = useRef(false)
+  const handleClickCapture = (event: MouseEvent<HTMLDivElement>) => {
+    if (replayingRef.current || !(event.target instanceof Element)) return
+    const item = event.target.closest<HTMLElement>(ITEM_SELECTOR)
+    if (!item || !menuRef.current?.contains(item)) return
+    if (isBlinking(item)) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+    if (!shouldBlink(item)) return
+    event.preventDefault()
+    event.stopPropagation()
+    blinkThen(item, () => {
+      if (!item.isConnected) return
+      replayingRef.current = true
+      try {
+        item.click()
+      } finally {
+        replayingRef.current = false
+      }
+    })
+  }
+
   return createPortal(
     <div
       role="presentation"
@@ -205,6 +234,7 @@ export function ContextMenu({ at, label, onDismiss, className = 'min-w-40', chil
           className,
         )}
         style={{ left: at.x, top: at.y }}
+        onClickCapture={handleClickCapture}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDown}
       >

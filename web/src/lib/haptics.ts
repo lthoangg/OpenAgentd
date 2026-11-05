@@ -58,6 +58,24 @@ export function selectionHapticFeedback(): void {
     .catch(() => webVibrate(10))
 }
 
+/**
+ * The trackpad's "alignment" tick: a drag has just snapped onto its default
+ * (a panel edge, a pane split). Only the Mac desktop shell can give it
+ * (``haptic_alignment``, NSHapticFeedbackManager); everywhere else it is a
+ * silent no-op, and the snap itself still applies.
+ */
+export function alignmentHapticFeedback(): void {
+  try {
+    const { isTauri, os } = getPlatform()
+    if (!isTauri || os !== 'macos') return
+    void import('@tauri-apps/api/core')
+      .then(({ invoke }) => invoke('haptic_alignment'))
+      .catch(() => {})
+  } catch {
+    // Never let a tick break a drag.
+  }
+}
+
 /** The system's success or error pattern for an action's result. */
 export function outcomeHapticFeedback(outcome: 'success' | 'error'): void {
   if (!isTouchShell()) return

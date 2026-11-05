@@ -18,7 +18,7 @@ import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
 import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
 import { useImageBox } from '@/lib/image-size'
-import { DURATIONS_S, EASINGS } from '@/lib/motion'
+import { DURATIONS_S, EASINGS, cssEasing } from '@/lib/motion'
 import { replyLabel, type ReplyFrom, type SentFrom } from '@/utils/workspace-messages'
 
 /** Matches http:// and https:// URLs (greedy, stops at whitespace or common trailing punctuation). */
@@ -341,6 +341,9 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
+/** A prompt younger than this when it mounts was just sent. */
+const FRESH_BUBBLE_MS = 2000
+
 export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, editLocked = false, actionsAtRest = false, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, fromLeadSessionId, replyFrom, onOpenSession }: {
   content: string
   timestamp?: Date
@@ -368,6 +371,9 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   replyFrom?: ReplyFrom | null
   onOpenSession?: OpenSessionHandler
 }) {
+  // Just sent (a live prompt, not one loaded from history): it rises into
+  // place. Decided once, on mount.
+  const [fresh] = useState(() => timestamp != null && Date.now() - timestamp.getTime() < FRESH_BUBBLE_MS)
   const [showTime, setShowTime] = useState(false)
   const { copied, copy } = useCopyFeedback()
   // Long text, opened, keeps its collapse control in view and closes in place.
@@ -398,6 +404,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   const toggleReport = (control: HTMLElement) => (reportExpanded ? report.close(control) : report.setOpen(true))
 
   // Glide between the folded and full height instead of jumping.
+  const glideRef = useRef<Animation | null>(null)
   useLayoutEffect(() => {
     const el = textRef.current
     const from = toggleFromHeight.current
@@ -406,12 +413,21 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
     const to = el.getBoundingClientRect().height
     if (Math.abs(to - from) < 1) return
+    // A second toggle mid-glide replaces the first (``from`` was measured as
+    // drawn), rather than stacking two height animations.
+    glideRef.current?.cancel()
     el.style.overflow = 'hidden'
     const animation = el.animate([{ height: `${from}px` }, { height: `${to}px` }], {
       duration: DURATIONS_S.base * 1000,
-      easing: `cubic-bezier(${EASINGS.out.join(', ')})`,
+      easing: cssEasing(EASINGS.out),
     })
-    const settle = () => { el.style.overflow = '' }
+    animation.finished.catch(() => {})
+    glideRef.current = animation
+    const settle = () => {
+      if (glideRef.current !== animation) return
+      glideRef.current = null
+      el.style.overflow = ''
+    }
     animation.onfinish = settle
     animation.oncancel = settle
   }, [expanded])
@@ -512,7 +528,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   return (
     <div
       data-user-bubble=""
-      className="group mb-3 flex justify-end"
+      className={cn('group mb-3 flex justify-end', fresh && 'oa-rise-in')}
       onMouseEnter={() => setShowTime(true)}
       onMouseLeave={() => setShowTime(false)}
     >
@@ -540,7 +556,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                    aria-expanded={expanded}
                    aria-label={expanded ? 'Collapse' : 'Expand'}
                    title={expanded ? 'Collapse' : 'Expand'}
-                   className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-(--bg-card) text-(--color-text-2) pointer-coarse:size-9 transition-[color,background-color,scale] duration-(--motion-instant) ease-(--ease-in-out) hover:text-(--color-text) active:scale-90"
+                   className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-(--bg-card) text-(--color-text-2) pointer-coarse:size-9 transition-[color,background-color,scale] duration-(--motion-instant) ease-(--ease-in-out) hover:text-(--color-text) active:bg-(--color-border-subtle) dark:active:bg-(--color-border) pointer-coarse:active:scale-90"
                  >
                    {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                  </button>
@@ -609,7 +625,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                 <button
                   onClick={onEdit}
                   title="Edit message"
-                  className="relative touch-hit flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-9 max-md:pointer-coarse:size-7"
+                  className="relative touch-hit flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-[color,background-color,scale] duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:bg-(--color-border-subtle) dark:active:bg-(--color-border) pointer-coarse:active:scale-90 pointer-coarse:size-9 max-md:pointer-coarse:size-7"
                   aria-label="Edit message"
                 >
                   <Pencil size={13} aria-hidden="true" />
@@ -618,7 +634,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
               <button
                 onClick={handleCopy}
                 title="Copy message"
-                className="relative touch-hit flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:scale-90 pointer-coarse:size-9 max-md:pointer-coarse:size-7"
+                className="relative touch-hit flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-[color,background-color,scale] duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:bg-(--color-border-subtle) dark:active:bg-(--color-border) pointer-coarse:active:scale-90 pointer-coarse:size-9 max-md:pointer-coarse:size-7"
                 aria-label="Copy message"
               >
                 {copied ? (

@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.46.0 · November 5, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.46.0)
+**Latest release:** v3.47.0 · November 5, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.47.0)
 
 ---
 
@@ -545,8 +545,12 @@ run from the terminal (the native Rust binary since v3.0.0).
     paused, orange waiting on you, red blocked) with the state and next task
     in its tooltip; the Tasks tab and task popover lead with one status line
     for the plan and its goal ("Approved · Running", "All tasks done ·
-    checking") with Pause and Resume, and end the checklist with the plan's
-    **Done when** and whether the completion check has confirmed it. An
+    checking"), and end the checklist with the plan's **Done when** (its
+    flag on its own line above the criteria) and whether the completion
+    check has confirmed it. Since `[v3.47.0]` tapping the plan or goal row
+    opens the Plan or Goal tab, where Clear plan, Pause and Resume are; only
+    without a dock do the rows keep Clear plan and Pause or Resume beside
+    them. An
     approved plan that has a Done when and no goal can be started as a goal
     later with **Run as goal** in the Plan tab. The Stop button pauses the
     goal, Plan mode and running subagents make it wait, and since
@@ -1272,6 +1276,45 @@ run from the terminal (the native Rust binary since v3.0.0).
     touch deeper.
   - The macOS tray's warning and status colours, the desktop pet's marks in
     dark mode and the Windows taskbar badge digits read clearly.
+- **Smoother motion everywhere** `[v3.47.0]`:
+  - Nothing jumps any more. If you reopen a menu or popover while it is
+    closing, it carries on from where it was. Sending a message glides the
+    chat to the end. When an answer finishes streaming, the rest of the text
+    keeps flowing in instead of appearing all at once. "N new" scrolls
+    smoothly, and tool details, attachments and queued messages fold and
+    fade instead of popping in.
+  - In the Review panel, closing a tab slides the tabs next to it across,
+    and a new tab fades in. Maximize slides, a dragged tab lifts and lands
+    on a spring, and sidebar sessions fold one row at a time.
+  - Dragging the sidebar edge, the Review panel edge or a pane divider
+    snaps to the default size when you get close to it. On a Mac with a
+    Force Touch trackpad you also feel a tick, like Finder.
+  - On phones, a drawer keeps the speed of your swipe when you let go and
+    stops cleanly at the edge. Full-screen views rise as a sheet that you
+    drag down to close. A pressed row lifts. The header line appears only
+    once you scroll the chat under it. Stop, Approve, Deny, an answer and a
+    failed send give haptic feedback.
+  - Controls react like the system ones: a switch stretches when pressed
+    and can be dragged, a checkbox draws its check, the selection in a
+    segmented control can be slid, a menu item blinks once when chosen, a
+    rejected key or URL shakes, and the keyboard focus ring settles in.
+  - Details: icons such as Copy → ✓ and Send ↔ Stop swap smoothly, and
+    usage, spend, token and Git `+/−` numbers roll only the digits that
+    change. Badges bump when their count goes up. "Thinking…" and
+    "running…" have a light sweep across them, and a finished task gets
+    struck through from left to right. The lightbox grows out of the
+    thumbnail you opened and shrinks back into it. Images fade in once they
+    have loaded. The command palette's highlight glides when you use the
+    arrow keys. Switching between light and dark crossfades the whole
+    window.
+  - A running session in the sidebar shows only its spinner, without the
+    word "Running" or the goal icon beside it, so the title keeps its room
+    and nothing moves when you hover the row.
+  - Tool rows open only when you click them. A shell or any other tool that
+    streams output stays closed while it runs, so the chat no longer
+    unfolds and folds by itself. A row you opened stays open after the tool
+    finishes.
+  - With Reduce Motion turned on, all of these changes happen instantly.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.
@@ -1588,6 +1631,18 @@ run from the terminal (the native Rust binary since v3.0.0).
     question waits (one under way is cut short), nor ladders and balloons
     while an agent runs. Settings → Desktop → Desktop pet → **Ladders and
     balloons** (on by default) turns the first two off; falls stay.
+  - **Desktop pet: throws** `[v3.47.0]` — fling the pet and let go mid-move
+    and it flies on with the pointer's speed instead of dropping straight
+    down: an arc under gravity, a bounce off the sides and the top of the
+    screen (at half its speed), and a landing with the fall's squash and
+    dust, on the ground or, with climbing on, on a window edge it comes down
+    onto. The spot it lands on is saved like a drop's (the ground below a
+    window edge). Its speed is read over the last 80 ms of the drag; slower
+    than 400 px/s, or held still for 50 ms before letting go, is a drop as
+    before, so a gentle drop with climbing off still stays at that height.
+    A throw with climbing off lands on the ground. Grab it in mid-air to catch it.
+    No throws when told to stay put or with reduced motion, and none across
+    displays (letting go over another display moves it there, as before).
   - **Desktop pet: no sheet over the desktop (screen sharing)** `[v3.42.0]` —
     the pet's window is no longer a transparent sheet over the whole work
     area, which a meeting app's window picker (Zoom, Meet, the macOS share
@@ -1775,7 +1830,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Code in a long answer is highlighted as each part finishes, not all at
     once when the answer ends.
   - A tool whose live output you were watching stays open when it finishes,
-    until the next step starts.
+    until the next step starts. *(Replaced in v3.47.0: tool rows open only
+    when clicked.)*
 - **One way of moving** `[v3.25.0]` — everything that opens also closes, at
   the same pace:
   - Sidebar sections and date groups, changed files, Git groups and commits,
@@ -3774,6 +3830,10 @@ Everything stays local. No third-party telemetry SaaS.
   90; 0 keeps them forever). Saving a shorter period deletes older telemetry
   right away instead of at the next daily sweep. This replaces
   `OPENAGENTD_OTEL_RETENTION_ENABLED`, which is no longer read.
+- **No more local metric files** `[v3.47.0]` — telemetry keeps traces only.
+  The daily `{STATE_DIR}/otel/metrics` files fed nothing (every number in
+  Usage comes from traces) yet grew every day until the retention sweep.
+  The folder is deleted on the first start of this version.
 - **OpenTelemetry spans** `[since v1.0]` — `OpenTelemetryHook` emits spans for
   agent runs, model calls, tool calls. Optional OTLP exporter.
 - **Estimated model-call cost telemetry** `[v1.34.0]` — chat, title-generation,

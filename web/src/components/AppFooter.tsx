@@ -14,6 +14,7 @@
  * footer carries no help button. Hidden below ``md``; mobile surfaces these
  * in the sidebar drawer footer instead.
  */
+import { RollingNumber } from '@/components/ui/swap'
 import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import {
   GitBranch,
@@ -275,7 +276,7 @@ export const AppFooter = memo(function AppFooter({
                   className={cn(ITEM, 'font-mono tabular-nums')}
                   aria-label={`Spend in the last 24 hours: ${spendLabel}`}
                 >
-                  <span>{spendLabel}</span>
+                  <RollingNumber text={spendLabel} value={spend ?? 0} />
                   <span className="text-(--color-text-subtle)">· 24h</span>
                 </button>
               }

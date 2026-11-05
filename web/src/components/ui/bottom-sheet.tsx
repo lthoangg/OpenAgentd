@@ -11,28 +11,42 @@
  * on the content closes it once there is nothing above to scroll back to
  * (the content, and any list the finger is on, sit at their top).
  *
+ * One ``y`` drives every pull — the handle's and the content's. It is a
+ * ``SpringValue`` (``lib/drawer-motion``) written to the sheet's ``translate``
+ * and, as the sheet leaves, to its scrim: the scrim is as clear as the sheet
+ * is far down (full at rest, gone 300px lower). A release that closes hands
+ * the finger's speed to the exit spring; one that stays springs back with it,
+ * never above its resting place.
+ *
  * It renders into document.body: the composer is a size container, and
  * older WebKit and Chromium (Android 15's Chrome 124 among them) place a
  * fixed child inside such a container, so the sheet and its backdrop sat
  * in the composer instead of over the page.
  */
-import { useEffect, useRef, type ReactNode, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion'
+import { AnimatePresence, motion, type TargetAndTransition } from 'framer-motion'
 
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { softHapticFeedback } from '@/lib/haptics'
+import { DRAWER_SPRING, SpringValue } from '@/lib/drawer-motion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 /** A drag past this distance, or flicked faster than this, closes the sheet. */
 const CLOSE_DISTANCE_PX = 80
 const CLOSE_VELOCITY = 500
-/** The sheet follows a pull past its resting place at this share of the finger, as the handle's drag does. */
+/** The sheet follows a pull past its resting place at this share of the finger. */
 const PULL_ELASTIC = 0.6
 /** Movement under this is still a tap, not a pull. */
 const PULL_SLOP_PX = 6
+/** The scrim clears over this much downward travel (px). */
+const SCRIM_FADE_PX = 300
+/** A finger that rested this long before lifting has no release speed to carry. */
+const VELOCITY_STALE_MS = 80
+/** The plain slide: enter, and any exit that is not a release. */
+const SLIDE = { duration: DURATIONS_S.base, ease: EASINGS.sheet } as const
 
 export interface BottomSheetProps {
   open: boolean
@@ -51,18 +65,50 @@ export interface BottomSheetProps {
 
 export function BottomSheet({ open, onClose, label, children, initialFocus, className }: BottomSheetProps) {
   const reduced = useReducedMotion()
-  const dragControls = useDragControls()
   const sheetRef = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
+  const scrimRef = useRef<HTMLDivElement>(null)
   useModalFocus(open, onClose, initialFocus ?? sheetRef, { kind: 'overlay' })
-  usePullToClose(sheetRef, bodyRef, open && !reduced, onClose)
+  // The one ``y``: pulled by the finger, sprung on release.
+  const y = useMemo(() => new SpringValue((value) => {
+    const sheet = sheetRef.current
+    if (sheet) sheet.style.translate = value > 0 ? `0 ${value}px` : ''
+    const scrim = scrimRef.current
+    if (scrim) scrim.style.opacity = value > 0 ? String(Math.max(0, 1 - value / SCRIM_FADE_PX)) : ''
+  }, { min: 0, restDistance: 0.5, restSpeed: 5 }), [])
+  useEffect(() => () => y.cancel(), [y])
+  // The exit that follows a release that closes: from where the finger left
+  // the sheet, carrying its speed. Any other close (Escape, the backdrop) runs
+  // the plain slide; both are the same object so a release can set the spring
+  // in the render the sheet is leaving in.
+  const exitMotion = useRef<TargetAndTransition>({ y: '100%', transition: SLIDE })
+  useEffect(() => {
+    if (!open) return
+    y.set(0)
+    exitMotion.current.y = '100%'
+    exitMotion.current.transition = SLIDE
+  }, [open, y])
 
-  const handleDragEnd = (_event: unknown, info: PanInfo) => {
-    if (info.offset.y > CLOSE_DISTANCE_PX || info.velocity.y > CLOSE_VELOCITY) {
+  /** A pull ends: close past the distance or on a flick, else spring back. */
+  const finishPull = (offset: number, velocity: number) => {
+    if (offset > CLOSE_DISTANCE_PX || velocity > CLOSE_VELOCITY) {
+      const sheet = sheetRef.current
+      // Mutated, not replaced: the exiting sheet keeps the props of its last render.
+      exitMotion.current.y = sheet ? sheet.offsetHeight : '100%'
+      exitMotion.current.transition = { type: 'spring', ...DRAWER_SPRING, velocity: Math.max(0, velocity) }
       softHapticFeedback()
       onClose()
+    } else {
+      y.settle(0, velocity)
     }
   }
+  const finishPullRef = useRef(finishPull)
+  useEffect(() => {
+    finishPullRef.current = finishPull
+  })
+  const release = useRef((offset: number, velocity: number) => finishPullRef.current(offset, velocity)).current
+  usePullToClose(sheetRef, bodyRef, y, open && !reduced, release)
+  const handleProps = useHandlePull(y, open && !reduced, release)
 
   return createPortal(
     <AnimatePresence>
@@ -75,10 +121,13 @@ export function BottomSheet({ open, onClose, label, children, initialFocus, clas
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: DURATIONS_S.fast }}
-            className="fixed inset-0 z-40 bg-(--color-overlay)"
+            className="fixed inset-0 z-40"
             onClick={onClose}
             aria-hidden="true"
-          />
+          >
+            {/* The pull dims this layer; the outer one fades with the sheet's arrival and exit. */}
+            <div ref={scrimRef} data-sheet-scrim="" className="h-full w-full bg-(--color-overlay)" />
+          </motion.div>
           <motion.div
             key="sheet"
             ref={sheetRef}
@@ -91,20 +140,14 @@ export function BottomSheet({ open, onClose, label, children, initialFocus, clas
             data-modal-focus="true"
             initial={reduced ? { opacity: 0 } : { y: '100%' }}
             animate={reduced ? { opacity: 1 } : { y: 0 }}
-            exit={reduced ? { opacity: 0 } : { y: '100%' }}
+            exit={reduced ? { opacity: 0 } : exitMotion.current}
             transition={{ duration: reduced ? 0.01 : DURATIONS_S.base, ease: EASINGS.sheet }}
-            drag={reduced ? false : 'y'}
-            dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={{ top: 0, bottom: 0.6 }}
-            dragControls={dragControls}
-            dragListener={false}
-            onDragEnd={handleDragEnd}
             className={cn(
               'fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] flex-col overflow-hidden rounded-t-lg border-t border-(--color-border-subtle) bg-(--bg-page) pb-safe shadow-(--shadow-depth) outline-none',
               className,
             )}
           >
-            <SheetHandle onPointerDown={(event) => dragControls.start(event)} />
+            <SheetHandle {...handleProps} />
             <div ref={bodyRef} data-sheet-body="" className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">{children}</div>
           </motion.div>
         </>
@@ -114,29 +157,46 @@ export function BottomSheet({ open, onClose, label, children, initialFocus, clas
   )
 }
 
+/** Tracks a finger's last two samples, for the release speed (px/s, positive down). */
+function velocityTracker() {
+  let last = { y: 0, t: 0 }
+  let previous = { y: 0, t: 0 }
+  return {
+    reset(y: number) {
+      last = previous = { y, t: performance.now() }
+    },
+    push(y: number) {
+      previous = last
+      last = { y, t: performance.now() }
+    },
+    /** Zero when the finger rested before it lifted: nothing to carry. */
+    velocity(): number {
+      const dt = last.t - previous.t
+      if (dt <= 0 || performance.now() - last.t > VELOCITY_STALE_MS) return 0
+      return ((last.y - previous.y) / dt) * 1000
+    },
+  }
+}
+
 /**
  * A pull down on the sheet's content moves the sheet, and past the close
  * distance (or on a flick) closes it. Only when nothing between the finger
  * and the sheet is scrolled down: then the pull scrolls back up instead.
  *
  * Touch events, not pointer events: once the browser takes a pan for
- * scrolling it cancels the pointer, so framer's drag never hears the rest.
- * The listener is not passive, so the pull can keep the page from scrolling.
- * The pull moves the sheet by the CSS ``translate`` property, which adds to
- * the ``transform`` framer animates: a close slides on from where the
- * finger left it.
+ * scrolling it cancels the pointer, so the rest of the pull would never be
+ * heard. The listener is not passive, so the pull can keep the page from
+ * scrolling. The pull writes ``y`` (the sheet's CSS ``translate``, which adds
+ * to the ``transform`` its enter and exit animate): a close slides on from
+ * where the finger left it.
  */
 function usePullToClose(
   sheetRef: RefObject<HTMLDivElement | null>,
   bodyRef: RefObject<HTMLDivElement | null>,
+  y: SpringValue,
   enabled: boolean,
-  onClose: () => void,
+  onRelease: (offset: number, velocity: number) => void,
 ) {
-  const onCloseRef = useRef(onClose)
-  useEffect(() => {
-    onCloseRef.current = onClose
-  }, [onClose])
-
   useEffect(() => {
     const sheet = sheetRef.current
     const body = bodyRef.current
@@ -145,8 +205,8 @@ function usePullToClose(
     let mode: 'pending' | 'pull' | 'pass' = 'pass'
     let startX = 0
     let startY = 0
-    let last = { y: 0, t: 0 }
-    let previous = { y: 0, t: 0 }
+    let lastY = 0
+    const speed = velocityTracker()
 
     const scrolledAbove = (target: EventTarget | null) => {
       for (let el = target instanceof Element ? target : null; el; el = el.parentElement) {
@@ -164,8 +224,8 @@ function usePullToClose(
       }
       mode = scrolledAbove(event.target) ? 'pass' : 'pending'
       startX = touch.clientX
-      startY = touch.clientY
-      last = previous = { y: touch.clientY, t: performance.now() }
+      startY = lastY = touch.clientY
+      speed.reset(touch.clientY)
     }
 
     const onMove = (event: TouchEvent) => {
@@ -184,12 +244,11 @@ function usePullToClose(
         event.preventDefault()
         if (dy < PULL_SLOP_PX) return
         mode = 'pull'
-        sheet.style.transition = 'none'
       }
       event.preventDefault()
-      previous = last
-      last = { y: touch.clientY, t: performance.now() }
-      sheet.style.translate = `0 ${Math.max(0, dy) * PULL_ELASTIC}px`
+      lastY = touch.clientY
+      speed.push(touch.clientY)
+      y.set(Math.max(0, dy) * PULL_ELASTIC)
     }
 
     const onEnd = () => {
@@ -198,39 +257,74 @@ function usePullToClose(
         return
       }
       mode = 'pass'
-      const offset = last.y - startY
-      const dt = last.t - previous.t
-      const velocity = dt > 0 ? ((last.y - previous.y) / dt) * 1000 : 0
-      if (offset > CLOSE_DISTANCE_PX || velocity > CLOSE_VELOCITY) {
-        softHapticFeedback()
-        onCloseRef.current()
-      } else {
-        sheet.style.transition = `translate ${DURATIONS_S.fast}s cubic-bezier(${EASINGS.sheet.join(', ')})`
-        sheet.style.translate = ''
-      }
+      onRelease(lastY - startY, speed.velocity())
+    }
+
+    // A cancelled touch is not a decision to close: the sheet springs home.
+    const onCancel = () => {
+      if (mode === 'pull') y.settle(0)
+      mode = 'pass'
     }
 
     body.addEventListener('touchstart', onStart, { passive: true })
     body.addEventListener('touchmove', onMove, { passive: false })
     body.addEventListener('touchend', onEnd)
-    body.addEventListener('touchcancel', onEnd)
+    body.addEventListener('touchcancel', onCancel)
     return () => {
       body.removeEventListener('touchstart', onStart)
       body.removeEventListener('touchmove', onMove)
       body.removeEventListener('touchend', onEnd)
-      body.removeEventListener('touchcancel', onEnd)
+      body.removeEventListener('touchcancel', onCancel)
     }
-  }, [sheetRef, bodyRef, enabled])
+  }, [sheetRef, bodyRef, y, enabled, onRelease])
+}
+
+/**
+ * The grab handle's drag, on the same ``y`` as the content's pull (pointer
+ * events: the handle is ``touch-action: none``, so the browser never takes
+ * the gesture for a scroll). Pulling up does nothing; down follows at
+ * ``PULL_ELASTIC``.
+ */
+function useHandlePull(y: SpringValue, enabled: boolean, onRelease: (offset: number, velocity: number) => void) {
+  const drag = useRef<{ id: number; startY: number; lastY: number; speed: ReturnType<typeof velocityTracker> } | null>(null)
+  return {
+    onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+      if (!enabled || !event.isPrimary) return
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+      const speed = velocityTracker()
+      speed.reset(event.clientY)
+      drag.current = { id: event.pointerId, startY: event.clientY, lastY: event.clientY, speed }
+    },
+    onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+      const current = drag.current
+      if (!current || current.id !== event.pointerId) return
+      current.lastY = event.clientY
+      current.speed.push(event.clientY)
+      y.set(Math.max(0, event.clientY - current.startY) * PULL_ELASTIC)
+    },
+    onPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+      const current = drag.current
+      if (!current || current.id !== event.pointerId) return
+      drag.current = null
+      onRelease(current.lastY - current.startY, current.speed.velocity())
+    },
+    onPointerCancel(event: React.PointerEvent<HTMLDivElement>) {
+      const current = drag.current
+      if (!current || current.id !== event.pointerId) return
+      drag.current = null
+      y.settle(0)
+    },
+  }
 }
 
 /** The grab handle; dragging starts here so the list below still scrolls. */
-function SheetHandle({ onPointerDown }: { onPointerDown: (event: React.PointerEvent) => void }) {
+function SheetHandle(props: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      {...props}
       className="flex h-6 shrink-0 cursor-grab items-center justify-center"
       data-sheet-handle=""
       aria-hidden="true"
-      onPointerDown={onPointerDown}
       style={{ touchAction: 'none' }}
     >
       <span className="h-1 w-9 rounded-full bg-(--color-text-subtle)" />

@@ -369,7 +369,7 @@ describe("MarkdownBlock tables", () => {
     expect(td!.querySelectorAll("br").length).toBe(3);
   });
 
-  it("renders a copy button in the top right of the table wrap, visible at rest", () => {
+  it("renders a copy button in the top right of the table wrap, revealed on hover, focus and touch", () => {
     render(
       <MarkdownBlock
         content={["| A | B |", "|---|---|", "| 1 | 2 |"].join("\n")}
@@ -378,7 +378,7 @@ describe("MarkdownBlock tables", () => {
 
     const container = document.querySelector(".oa-table-container");
     expect(container).not.toBeNull();
-    expect(container?.className).toContain("group");
+    expect(container?.className.split(/\s+/)).toContain("group/table");
     expect(container?.className).toContain("relative");
 
     const copyBtn = screen.getByRole("button", { name: /copy table/i });
@@ -388,9 +388,17 @@ describe("MarkdownBlock tables", () => {
     expect(btnContainer).not.toBeNull();
     expect(btnContainer?.className).toContain("top-1");
     expect(btnContainer?.className).toContain("right-1");
-    // Never hover-only, never faded: the button's own muted tone is its rest
-    // state (a 60% wrapper left the icon at 2.4:1).
-    expect(btnContainer?.className).not.toMatch(/(?:^|\s)opacity-\d+(?:\s|$)/);
+    // Hidden at rest; hovering this table (its own named `group/table`, so a
+    // hovered message row does not leak in) or focusing the button reveals
+    // it. Touch has no hover, so it always shows there.
+    const classes = btnContainer!.className.split(/\s+/);
+    expect(classes).toContain("opacity-0");
+    expect(classes).toContain("group-hover/table:opacity-100");
+    expect(classes).toContain("focus-within:opacity-100");
+    expect(classes).toContain("pointer-coarse:opacity-100");
+    // Once shown it is fully opaque, never a partial fade (a 60% wrapper left
+    // the icon at 2.4:1); the button's own muted tone is its colour.
+    expect(classes.some((c) => /^(?:[\w-]+:)*opacity-(?!0$|100$)\d+$/.test(c))).toBe(false);
     expect(copyBtn.className).toContain("text-(--color-text-muted)");
   });
 

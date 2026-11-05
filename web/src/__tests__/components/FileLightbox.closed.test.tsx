@@ -21,7 +21,7 @@ mock.module('@/lib/keyboard/hooks', () => ({
 }))
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, render, waitFor } from '@testing-library/react'
 import { FileLightbox } from '@/components/FileLightbox'
 
 afterEach(cleanup)
@@ -40,10 +40,11 @@ describe('FileLightbox when closed', () => {
     expect(liveShortcuts).toBe(0)
   })
 
-  it('registers its shortcuts while open and drops them on close', () => {
+  it('registers its shortcuts while open and drops them on close', async () => {
     const { rerender } = render(<FileLightbox items={items} isOpen onClose={() => {}} />)
     expect(liveShortcuts).toBeGreaterThan(0)
     rerender(<FileLightbox items={items} isOpen={false} onClose={() => {}} />)
-    expect(liveShortcuts).toBe(0)
+    // It fades out over ``fast`` (its keys are off at once), then unmounts.
+    await waitFor(() => expect(liveShortcuts).toBe(0))
   })
 })

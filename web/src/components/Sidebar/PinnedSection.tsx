@@ -1,4 +1,5 @@
-import { useId } from 'react'
+import { useId, useRef } from 'react'
+import { useFlipReorder } from '@/hooks/useFlipReorder'
 import { usePinnedSessionsQuery } from '@/queries/useSessionsQuery'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
 import { SidebarHeading } from './SidebarHeading'
@@ -30,20 +31,29 @@ export function PinnedSection({
   const stable = useStableSessionHandlers(handlers)
   const listId = useId()
   const sessions = (data?.pages.flatMap((page) => page.data) ?? []).filter((session) => !session.parent_session_id)
-  if (sessions.length === 0) return null
+  // The section folds in with the first pin and out with the last, instead
+  // of pushing the list below it in one frame; while it folds out it keeps
+  // showing the row that was just unpinned.
+  const lastShownRef = useRef(sessions)
+  if (sessions.length > 0) lastShownRef.current = sessions
+  const shown = sessions.length > 0 ? sessions : lastShownRef.current
+  // Pinning and unpinning slide the other pins (new ones fade in).
+  const listRef = useRef<HTMLDivElement>(null)
+  useFlipReorder(listRef)
 
   return (
+    <Collapsible open={sessions.length > 0}>
     <section aria-label="Pinned" className="shrink-0 pb-1.5">
       <SidebarHeading
         label="Pinned"
-        count={sessions.length}
+        count={shown.length}
         collapsed={collapsed}
         onToggle={() => setCollapsed(!collapsed)}
         controls={listId}
       />
       <Collapsible open={!collapsed}>
-        <div id={listId} className="space-y-px px-1.5">
-          {sessions.map((session) => (
+        <div ref={listRef} id={listId} className="relative space-y-px px-1.5">
+          {shown.map((session) => (
             <SessionRow
               key={session.id}
               session={session}
@@ -61,5 +71,6 @@ export function PinnedSection({
         </div>
       </Collapsible>
     </section>
+    </Collapsible>
   )
 }

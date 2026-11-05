@@ -12,6 +12,7 @@ import {
   LAND_MS,
   fallMs,
   jumpMs,
+  throwPath,
   type PetBubble,
   type PetSettings,
   type PetView,
@@ -23,6 +24,12 @@ let calls: Call[] = []
 let view: PetView
 let closeMenu: () => void = () => {}
 const handlers = new Map<string, (event: { payload: unknown }) => void>()
+/**
+ * The page's clock for pointer samples (`performance.now`): it stands still
+ * unless a test moves it, so a drag is never read as a fling by accident.
+ */
+let clock = 0
+const realNow = performance.now.bind(performance)
 
 mock.module('@tauri-apps/api/core', () => ({
   invoke: async (cmd: string, args?: Record<string, unknown>) => {
@@ -83,8 +90,13 @@ beforeEach(() => {
   calls = []
   handlers.clear()
   view = { settings: settings(), status: { running: 0, needsInput: 0 }, shown: true }
+  clock = 0
+  performance.now = () => clock
 })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  performance.now = realNow
+})
 
 describe('Pet', () => {
   it('draws nothing while the pet is off or hidden', async () => {
@@ -989,6 +1001,169 @@ describe('Pet changing height', () => {
       act(() => timers.tick(5000))
       expect(petEl()).not.toHaveClass('pet--fall')
       expect(petAt().y).toBe(bottom - 300 - 48)
+    })
+  })
+
+  describe('thrown', () => {
+    const pet = { width: 64, height: 48 }
+    /**
+     * Press on the pet at `from` and move `count` times, `step` px every
+     * 16 ms; `pause` ms of standing still, then let go. Returns where the
+     * pet was when it was let go.
+     */
+    const fling = (from: { x: number; y: number }, step: { dx: number; dy: number }, { count = 6, pause = 0 } = {}) => {
+      fireEvent.pointerDown(petEl(), { button: 0, clientX: from.x, clientY: from.y })
+      for (let i = 1; i <= count; i += 1) {
+        clock += 16
+        fireEvent.pointerMove(petEl(), { clientX: from.x + step.dx * i, clientY: from.y + step.dy * i })
+      }
+      const at = petAt()
+      clock += pause
+      fireEvent.pointerUp(petEl(), { clientX: from.x + step.dx * count, clientY: from.y + step.dy * count })
+      return at
+    }
+    const area = () => ({ width: window.innerWidth, height: window.innerHeight })
+    const dropped = () => calls.find(([cmd]) => cmd === 'pet_drag_end')?.[1]
+
+    it('flies on the way it was flung, lands where the flight ends in dust, and saves that spot', async () => {
+      const stub = recordLeaps()
+      try {
+        await scene({ settings: settings({ movement: 'calm' }) }, (timers, ground) => {
+          const bottom = window.innerHeight
+          // 1000 px/s to the right and 2500 px/s up.
+          const at = fling({ x: 100, y: bottom - 10 }, { dx: 16, dy: -40 })
+          const path = throwPath({ from: at, velocity: { vx: 1000, vy: -2500 }, area: area(), pet, ledges: [], groundY: ground.y })
+          expect(path.land.x).toBeGreaterThan(at.x + 100)
+          // What is saved is where it lands.
+          expect(dropped()).toEqual({ x: path.land.x, y: bottom })
+          expect(petEl()).toHaveClass('pet--fall')
+          expect(petAt()).toEqual({ x: path.land.x, y: ground.y })
+          // One animation draws the flight, from where it was let go to where it lands.
+          expect(stub.leaps).toHaveLength(1)
+          const [flight] = stub.leaps
+          expect(flight.options.duration).toBe(path.ms)
+          expect(frameAt(flight.frames[0])).toEqual(at)
+          expect(frameAt(flight.frames.at(-1)!)).toEqual({ x: path.land.x, y: ground.y })
+          expect(dust()).toBeNull()
+          act(() => timers.tick(path.ms))
+          expect(flight.cancelled).toBe(true)
+          expect(petEl()).toHaveClass('pet--land')
+          expect(dust()).not.toBeNull()
+          act(() => timers.tick(LAND_MS))
+          expect(petEl()).toHaveClass('pet--sit')
+          expect(petAt()).toEqual({ x: path.land.x, y: ground.y })
+        })
+      } finally {
+        stub.restore()
+      }
+    })
+
+    it('is only dropped when moved slowly, or held still a moment before it is let go', async () => {
+      const stub = recordLeaps()
+      try {
+        await scene({ settings: settings({ movement: 'calm' }) }, (timers, ground) => {
+          const bottom = window.innerHeight
+          // About 350 px/s: a drop. It falls straight down where it was let go.
+          const slow = fling({ x: 100, y: bottom - 10 }, { dx: 4, dy: -4 }, { count: 6 })
+          expect(dropped()).toEqual({ x: slow.x, y: bottom })
+          expect(petAt()).toEqual({ x: slow.x, y: ground.y })
+          expect(stub.leaps).toHaveLength(0)
+          act(() => timers.tick(5000))
+          calls = []
+          // Fast, but it stood still before it was let go: a drop too.
+          const held = fling({ x: 100, y: bottom - 10 }, { dx: 30, dy: -40 }, { pause: 100 })
+          expect(dropped()).toEqual({ x: held.x, y: bottom })
+          expect(petAt()).toEqual({ x: held.x, y: ground.y })
+          expect(stub.leaps).toHaveLength(0)
+        })
+      } finally {
+        stub.restore()
+      }
+    })
+
+    it('is never thrown when told to stay put: it stays where it was let go', async () => {
+      const stub = recordLeaps()
+      try {
+        await scene({ settings: settings({ movement: 'still' }) }, (timers) => {
+          const bottom = window.innerHeight
+          const at = fling({ x: 100, y: bottom - 10 }, { dx: 16, dy: -40 })
+          expect(dropped()).toEqual({ x: at.x, y: at.y + 48 })
+          act(() => timers.tick(5000))
+          expect(stub.leaps).toHaveLength(0)
+          expect(petAt()).toEqual(at)
+        })
+      } finally {
+        stub.restore()
+      }
+    })
+
+    it('lands on the ground with climbing off, though a drop would stay where it was let go', async () => {
+      const stub = recordLeaps()
+      try {
+        await scene({ settings: settings({ movement: 'calm', climb: false }) }, (timers) => {
+          emit('pet-windows', [ledgeWindow])
+          const bottom = window.innerHeight
+          const ground = bottom - 48
+          const at = fling({ x: 100, y: bottom - 10 }, { dx: 16, dy: -40 })
+          const path = throwPath({ from: at, velocity: { vx: 1000, vy: -2500 }, area: area(), pet, ledges: [], groundY: ground })
+          expect(dropped()).toEqual({ x: path.land.x, y: bottom })
+          act(() => timers.tick(path.ms + LAND_MS))
+          expect(petAt()).toEqual({ x: path.land.x, y: ground })
+          expect(petEl()).toHaveClass('pet--sit')
+        })
+      } finally {
+        stub.restore()
+      }
+    })
+
+    it('lands on a window edge it comes down onto, and rides along with that window', async () => {
+      const stub = recordLeaps()
+      try {
+        await scene({ settings: settings({ movement: 'calm' }) }, (timers, ground) => {
+          emit('pet-windows', [ledgeWindow])
+          const bottom = window.innerHeight
+          // Straight up, from above the edge: up to the top, back down onto it.
+          const at = fling({ x: 100, y: bottom - 10 }, { dx: 0, dy: -70 })
+          expect(at.y).toBeLessThan(ledgeWindow.y - 48)
+          expect(at.x + 32).toBeGreaterThan(ledgeWindow.x)
+          expect(at.x + 32).toBeLessThan(ledgeWindow.x + ledgeWindow.width)
+          // What is saved is the ground below, as with a drop.
+          expect(dropped()).toEqual({ x: at.x, y: bottom })
+          expect(petAt()).toEqual({ x: at.x, y: ledgeWindow.y - 48 })
+          const [flight] = stub.leaps
+          act(() => timers.tick(Number(flight.options.duration) + LAND_MS))
+          expect(petAt()).toEqual({ x: at.x, y: ledgeWindow.y - 48 })
+          expect(ground.y).toBeGreaterThan(ledgeWindow.y)
+          emit('pet-windows', [{ ...ledgeWindow, x: ledgeWindow.x + 40, y: 450 }])
+          expect(petAt()).toEqual({ x: at.x + 40, y: 450 - 48 })
+        })
+      } finally {
+        stub.restore()
+      }
+    })
+
+    it('can be caught in mid-air: the flight stops where it is and it lands nowhere', async () => {
+      const stub = recordLeaps()
+      try {
+        await scene({ settings: settings({ movement: 'calm' }) }, (timers) => {
+          const bottom = window.innerHeight
+          fling({ x: 100, y: bottom - 10 }, { dx: 16, dy: -40 })
+          const [flight] = stub.leaps
+          act(() => timers.tick(Number(flight.options.duration) / 2))
+          fireEvent.pointerDown(petEl(), { button: 0, clientX: 400, clientY: 300 })
+          fireEvent.pointerMove(petEl(), { clientX: 440, clientY: 300 })
+          expect(flight.cancelled).toBe(true)
+          expect(petEl()).toHaveClass('pet--dragging')
+          expect(petEl()).not.toHaveClass('pet--fall')
+          // The flight's landing never comes.
+          act(() => timers.tick(Number(flight.options.duration)))
+          expect(petEl()).not.toHaveClass('pet--land')
+          expect(dust()).toBeNull()
+          fireEvent.pointerUp(petEl(), { clientX: 440, clientY: 300 })
+        })
+      } finally {
+        stub.restore()
+      }
     })
   })
 

@@ -17,6 +17,7 @@ import { ChangeCounts } from './ChangeCounts'
 import { type ChangedFileInfo, fileDiffBody } from './diff-helpers'
 import { DockLoadError } from './DockLoadError'
 import { DiffSkeleton } from './DiffSkeleton'
+import { DockRowsSkeleton } from './DockSkeleton'
 
 /** Rows rendered per step; thousands of untracked files must not stall a render. */
 export const CHANGED_ROWS_PAGE = 200
@@ -203,7 +204,7 @@ function GitReviewSubPanelView({
   setDesktopFileActions,
 }: GitReviewSubPanelProps) {
   const [shownRows, setShownRows] = useState(CHANGED_ROWS_PAGE)
-  if (changes.isLoading || files.isLoading) return <DockListNotice>Loading changed files…</DockListNotice>
+  if (changes.isLoading || files.isLoading) return <DockRowsSkeleton label="Loading changed files" rows={6} />
   if (changes.isError) {
     const refetch = changes.refetch
     if (!refetch) return <DockListNotice tone="error">Couldn&apos;t load changed files.</DockListNotice>

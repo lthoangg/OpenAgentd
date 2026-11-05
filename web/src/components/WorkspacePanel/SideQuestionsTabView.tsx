@@ -20,6 +20,7 @@ import { ExchangeView } from '@/components/BtwPanel'
 import { useSideQuestions, type BtwExchange } from '@/queries/useSideQuestionsQuery'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useToastStore } from '@/stores/useToastStore'
+import { DockLinesSkeleton } from './DockSkeleton'
 
 export interface SideQuestionsTabViewProps {
   sessionId: string | null
@@ -91,7 +92,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
       </div>
       {exchanges.length === 0 ? (
         btw.isLoading ? (
-          <p className="px-4 py-3 text-xs text-(--color-text-subtle)">Loading side questions…</p>
+          <DockLinesSkeleton label="Loading side questions" className="px-4 py-4" />
         ) : (
           <EmptyState
             icon={MessageCircleQuestion}

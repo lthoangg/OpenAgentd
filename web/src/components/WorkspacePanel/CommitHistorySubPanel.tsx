@@ -17,6 +17,7 @@ import {
 import { CommitDetail } from './CommitDetail'
 import { DOCK_ROW_ACTION_CLASS } from './dock-tab-styles'
 import { DockLoadError } from './DockLoadError'
+import { DockRowsSkeleton } from './DockSkeleton'
 import { DockListNotice } from './GitReviewSubPanel'
 
 type CommitTarget = { sha: string; shortSha: string; subject: string }
@@ -122,7 +123,7 @@ function CommitHistorySubPanelView({
     }
   }
 
-  if (gitHistory.isLoading) return <DockListNotice>Loading commits…</DockListNotice>
+  if (gitHistory.isLoading) return <DockRowsSkeleton label="Loading commits" rows={5} twoLine />
   if (gitHistory.isError) {
     const refetch = gitHistory.refetch
     if (!refetch) return <DockListNotice tone="error">Couldn&apos;t load commit history.</DockListNotice>

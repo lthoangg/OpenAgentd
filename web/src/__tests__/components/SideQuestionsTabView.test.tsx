@@ -99,6 +99,23 @@ describe('SideQuestionsTabView', () => {
     expect(await screen.findByText('No side questions yet')).toBeTruthy()
   })
 
+  // Rulebook 10: loading is a skeleton, not text, and not "No side questions yet".
+  it('shows text lines named "Loading side questions" until the list arrives', () => {
+    globalThis.fetch = mock(() => new Promise<Response>(() => {})) as unknown as typeof fetch
+    const { container } = renderTab()
+
+    const loading = screen.getByRole('status', { name: 'Loading side questions' })
+    expect(loading.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThanOrEqual(3)
+    expect(container.textContent).not.toContain('Loading side questions')
+    expect(screen.queryByText('No side questions yet')).toBeNull()
+  })
+
+  it('swaps the skeleton for the list once it arrives', async () => {
+    renderTab()
+    expect(await screen.findByText('first answer')).toBeTruthy()
+    expect(screen.queryByRole('status', { name: 'Loading side questions' })).toBeNull()
+  })
+
   it('says why Clear is off while there is nothing to clear', async () => {
     items = []
     renderTab()

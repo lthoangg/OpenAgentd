@@ -26,6 +26,7 @@ import {
 } from './diff-helpers'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
 import { DockLoadError } from './DockLoadError'
+import { DockRowsSkeleton } from './DockSkeleton'
 
 /** Larger commits open collapsed so the tab paints without every patch. */
 const AUTO_EXPAND_MAX_FILES = 10
@@ -119,7 +120,7 @@ export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
         )}
       </header>
       {commitDiff.isLoading ? (
-        <p className="px-3 py-4 text-xs text-(--color-text-subtle)">Loading commit changes…</p>
+        <DockRowsSkeleton label="Loading commit changes" rows={3} />
       ) : commitDiff.isError ? (
         <DockLoadError message="Couldn't load commit changes." onRetry={() => void commitDiff.refetch()} retrying={commitDiff.isFetching} />
       ) : files.length === 0 ? (

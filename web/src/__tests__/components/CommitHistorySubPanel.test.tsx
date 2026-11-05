@@ -106,3 +106,36 @@ describe('CommitHistorySubPanel commit detail errors', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
   })
 })
+
+// Rulebook 10: loading is a skeleton shaped like what will load, not text.
+describe('CommitHistorySubPanel loading', () => {
+  const skeletons = (el: HTMLElement) => el.querySelectorAll('[data-slot="skeleton"]').length
+
+  it('shows commit-shaped rows named "Loading commits" while the history loads', () => {
+    const { container } = renderPanel({
+      commits: [],
+      gitHistory: { isLoading: true, isError: false, isFetchingNextPage: false, hasNextPage: false, fetchNextPage: async () => {} },
+    })
+
+    const loading = screen.getByRole('status', { name: 'Loading commits' })
+    // A subject line and a meta line per row, over several rows.
+    expect(skeletons(loading)).toBeGreaterThanOrEqual(6)
+    expect(container.textContent).not.toContain('Loading commits')
+  })
+
+  it('shows file rows named "Loading commit changes" inside the open commit', () => {
+    const { container } = renderPanel({ expandedCommitSha: commit.sha, commitDiff: { isLoading: true, isError: false } })
+
+    const loading = screen.getByRole('status', { name: 'Loading commit changes' })
+    expect(skeletons(loading)).toBeGreaterThanOrEqual(3)
+    expect(container.textContent).not.toContain('Loading commit changes')
+  })
+
+  it('leaves "Loading more commits…" under a list that has rows as it was', () => {
+    renderPanel({
+      gitHistory: { isLoading: false, isError: false, isFetchingNextPage: true, hasNextPage: true, fetchNextPage: async () => {} },
+    })
+    expect(screen.getByText('Loading more commits…')).toBeTruthy()
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+})

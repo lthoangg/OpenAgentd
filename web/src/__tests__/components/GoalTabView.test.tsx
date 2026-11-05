@@ -240,4 +240,17 @@ describe('GoalTabView', () => {
     await user.click(screen.getByRole('button', { name: 'Retry' }))
     await waitFor(() => expect(now()?.dataset.goalNow).toBe('active'))
   })
+
+  // Rulebook 10: loading is a skeleton, not text, and not "No goal".
+  it('shows text lines named "Loading the goal" while it loads, instead of saying there is none', () => {
+    globalThis.fetch = mock(() => new Promise<Response>(() => {})) as unknown as typeof fetch
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(queryKeys.session.subagents('s1'), { available_profiles: [], live_members: [] })
+    const { container } = render(<QueryClientProvider client={client}><GoalTabView sessionId="s1" /></QueryClientProvider>)
+
+    const loading = screen.getByRole('status', { name: 'Loading the goal' })
+    expect(loading.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThanOrEqual(3)
+    expect(container.textContent).not.toContain('Loading the goal')
+    expect(screen.queryByRole('heading', { name: 'No goal' })).toBeNull()
+  })
 })

@@ -86,6 +86,19 @@ describe('Changes list', () => {
     expect(screen.queryByText('Loading diff…')).toBeNull()
   })
 
+  it('shows file rows named "Loading changed files" while the list loads', async () => {
+    await renderList(changesOf([]), [], { changes: { isLoading: true, isError: false } })
+
+    const loading = screen.getByRole('status', { name: 'Loading changed files' })
+    expect(loading.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThanOrEqual(4)
+    expect(screen.queryByText('Loading changed files…')).toBeNull()
+  })
+
+  it('shows the same rows while the file listing loads', async () => {
+    await renderList(changesOf([]), [], { files: { isLoading: true } })
+    expect(screen.getByRole('status', { name: 'Loading changed files' })).toBeTruthy()
+  })
+
   it('leads each row with the file name, its folder after it', async () => {
     // A path cut at the end ("web/src/__tests__/components/In…") hid the
     // one part that tells files apart.

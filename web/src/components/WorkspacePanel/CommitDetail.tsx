@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { ChangeCounts } from './ChangeCounts'
 import type { ChangedFileInfo, DiffFileSection } from './diff-helpers'
 import { DockLoadError } from './DockLoadError'
+import { DockRowsSkeleton } from './DockSkeleton'
 
 export interface CommitDetailProps {
   commitDiff: {
@@ -78,7 +79,8 @@ export function CommitDetail({
   }
 
   if (commitDiff.isLoading) {
-    return <p className="py-2 text-xs md:text-meta text-(--color-text-subtle)">Loading commit changes…</p>
+    // The card around it insets the content; the rows match the file rows below.
+    return <DockRowsSkeleton label="Loading commit changes" rows={3} inset="px-2" className="mt-1.5" />
   }
   if (commitDiff.isError) {
     const refetch = commitDiff.refetch

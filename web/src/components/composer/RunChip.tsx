@@ -12,8 +12,9 @@ import { ChevronDown } from 'lucide-react'
 
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import type { SheetDetent } from '@/components/ui/_sheet'
-import { MODEL_LINE_CLASS, ModelPart, PROVIDER_PART_CLASS } from '@/components/ui/model-name'
+import { MODEL_LINE_CLASS, ModelPart, PROVIDER_PART_CLASS, splitModelTail } from '@/components/ui/model-name'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
@@ -43,6 +44,10 @@ function composerInput(): HTMLElement | null {
 
 export function RunChip({ settings, disabled = false }: { settings: RunSettings; disabled?: boolean }) {
   const isMobile = useIsMobile()
+  // A phone's deck has room for the model's name only: its distinguishing end
+  // (``sonnet-4-6``), at 15px, truncating last. The picker and the label have
+  // the whole ID.
+  const isPhone = useIsPhone()
   const { os } = usePlatform()
   const open = useUIStore((s) => s.runPickerOpen)
   const focus = useUIStore((s) => s.runPickerFocus)
@@ -96,15 +101,20 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
         'md:h-7 pointer-coarse:h-9',
         // Stacked: two lines in a 36px chip, capped so Send keeps its room.
         '@max-[520px]:h-9 @max-[520px]:max-w-[11rem] @max-[520px]:pr-1.5',
+        'phone:text-subhead',
       )}
     >
       <span className="flex min-w-0 items-baseline gap-1.5 leading-tight @max-[520px]:flex-col @max-[520px]:items-start @max-[520px]:gap-0">
-        <span className={cn('flex', MODEL_LINE_CLASS)}>
-          {/* The provider part gives way first, whole; the model part only
-              truncates after that (see ui/model-name). */}
-          {provider && <span className={cn(PROVIDER_PART_CLASS, 'text-(--color-text-muted)')}>{provider}:</span>}
-          <ModelPart model={model} />
-        </span>
+        {isPhone ? (
+          <span data-run-chip-model="" className="min-w-0 max-w-full truncate font-mono">{splitModelTail(model).tail || model}</span>
+        ) : (
+          <span className={cn('flex', MODEL_LINE_CLASS)}>
+            {/* The provider part gives way first, whole; the model part only
+                truncates after that (see ui/model-name). */}
+            {provider && <span className={cn(PROVIDER_PART_CLASS, 'text-(--color-text-muted)')}>{provider}:</span>}
+            <ModelPart model={model} />
+          </span>
+        )}
         {meta && (
           <span className="max-w-full shrink-0 truncate whitespace-nowrap text-(--color-text-muted) @max-[520px]:text-meta">
             <span aria-hidden="true" className="mr-1.5 @max-[520px]:hidden">·</span>

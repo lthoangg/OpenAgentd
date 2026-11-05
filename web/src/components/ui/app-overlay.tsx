@@ -53,13 +53,21 @@
  *
  * Modal panels open with an ``OverlayHeader``: a 44px ``bg-sidebar`` strip
  * with the title, optional icon / subtitle / actions, and the close button.
+ * On a phone it is the sheet's navigation bar instead: ‹ and the parent's
+ * name on the left, the title centred (left-aligned after a ← on Android),
+ * the actions and Done on the right, as an iOS sheet reads.
  */
 
 import { type ReactNode } from 'react'
 import { motion, AnimatePresence, useDragControls, type PanInfo } from 'framer-motion'
+import { ArrowLeft, ChevronLeft } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { CloseButton } from '@/components/ui/close-button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SHEET_CLOSE_DISTANCE, SHEET_CLOSE_VELOCITY } from '@/components/ui/_sheet'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { usePlatform } from '@/hooks/use-platform'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { APP_SHORTCUTS, chordOf, type AppShortcutName } from '@/lib/app-shortcuts'
@@ -77,6 +85,12 @@ interface OverlayHeaderProps {
   subtitle?: ReactNode
   /** Controls before the icon/title, e.g. a Back button. */
   leading?: ReactNode
+  /**
+   * Up one level inside the overlay (a Settings section → the list). A
+   * phone shows "‹ label" in the accent; elsewhere it is a ← icon button.
+   * ``className`` places it (e.g. hidden where a sidebar lists the pages).
+   */
+  back?: { label: string; onBack: () => void; ariaLabel?: string; tooltip?: ReactNode; className?: string }
   /** Controls before the close button. */
   actions?: ReactNode
   /** Renders the close button when set. */
@@ -90,18 +104,73 @@ interface OverlayHeaderProps {
 
 /** Icon button sizing shared by header controls: 44px on touch, 28px on desktop. */
 const OVERLAY_HEADER_BUTTON_CLASS = 'md:size-7'
+/** A sheet's bar buttons are bare tint, no fill: iOS dims one when pressed. */
+const SHEET_BAR_BUTTON_CLASS = 'h-11 min-w-11 bg-transparent! text-(--color-accent)! active:opacity-50'
 
 export function OverlayHeader({
   title,
   icon,
   subtitle,
   leading,
+  back,
   actions,
   onClose,
   closeLabel = 'Close',
   closeTooltip = 'Close (Esc)',
   className,
 }: OverlayHeaderProps) {
+  const phone = useIsPhone()
+  const android = usePlatform().os === 'android'
+  if (phone) {
+    const backButton = back && (
+      <Button
+        type="button"
+        variant="ghost"
+        size="trigger"
+        onClick={back.onBack}
+        aria-label={back.ariaLabel ?? `Back to ${back.label}`}
+        data-overlay-back=""
+        className={cn(SHEET_BAR_BUTTON_CLASS, 'font-normal', android ? 'px-0' : 'max-w-full justify-start gap-0.5 pl-0 pr-2', back.className)}
+      >
+        {android ? (
+          <ArrowLeft size={20} aria-hidden="true" className="size-5" />
+        ) : (
+          <>
+            <ChevronLeft size={20} strokeWidth={2.25} aria-hidden="true" className="-ml-1.5 size-5" />
+            <span className="truncate text-xs">{back.label}</span>
+          </>
+        )}
+      </Button>
+    )
+    return (
+      <header
+        data-slot="overlay-header"
+        data-sheet-bar=""
+        className={cn(
+          'min-h-11 shrink-0 select-none border-b border-(--color-border) bg-(--bg-page) px-2 pt-1.5',
+          android ? 'flex items-center gap-2' : 'grid grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)] items-center gap-2',
+          className,
+        )}
+      >
+        <div className={cn('flex min-w-0 items-center', android ? 'shrink-0' : 'justify-start')}>
+          {backButton}
+          {leading}
+        </div>
+        <div className={cn('min-w-0', android ? 'flex-1' : 'text-center')}>
+          <h2 className="truncate text-base font-semibold text-(--color-text)">{title}</h2>
+          {subtitle != null && <div className="truncate text-meta text-(--color-text-muted)">{subtitle}</div>}
+        </div>
+        <div className="flex min-w-0 shrink-0 items-center justify-end gap-1">
+          {actions}
+          {onClose && (
+            <Button type="button" variant="ghost" size="trigger" onClick={onClose} data-sheet-done="" className={cn(SHEET_BAR_BUTTON_CLASS, 'px-1 text-xs font-semibold')}>
+              Done
+            </Button>
+          )}
+        </div>
+      </header>
+    )
+  }
   return (
     <header
       data-slot="overlay-header"
@@ -112,6 +181,26 @@ export function OverlayHeader({
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2">
+        {back && (
+          <Tooltip className={back.className}>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  className={OVERLAY_HEADER_BUTTON_CLASS}
+                  onClick={back.onBack}
+                  aria-label={back.ariaLabel ?? `Back to ${back.label}`}
+                  data-overlay-back=""
+                >
+                  <ArrowLeft size={14} aria-hidden="true" />
+                </Button>
+              }
+            />
+            <TooltipContent>{back.tooltip ?? back.ariaLabel ?? `Back to ${back.label}`}</TooltipContent>
+          </Tooltip>
+        )}
         {leading}
         {icon && <span className="flex shrink-0 text-(--color-text-muted)" aria-hidden="true">{icon}</span>}
         <div className="min-w-0">

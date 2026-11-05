@@ -11,7 +11,9 @@
  *
  * Desktop shows the sidebar beside the section. Phones show either the
  * grouped section list or one section full-screen (`mobileView`), with Back
- * in the header.
+ * in the header. On a phone the two are a navigation stack (PhoneStack): a
+ * section slides in over the list, ‹ Settings, an edge swipe or Android Back
+ * slide it away again.
  *
  * The sidebar is a labelled list from 900px up and an icon rail below it
  * (names in tooltips), so the form keeps its width on a narrow window.
@@ -22,7 +24,7 @@
  * above the status bar, border and motion as every other overlay.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { AppOverlay, OVERLAY_MAX_WIDTH, OverlayHeader } from '@/components/ui/app-overlay'
@@ -40,6 +42,8 @@ import {
   type TopLevelSection,
 } from '@/components/settings/sections'
 import { useSettingsSectionCounts, useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
+import { PhoneStack } from '@/components/phone/PhoneStack'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { ICON_SIZE } from '@/components/settings/tokens'
 import { SettingsMobileIndex } from '@/components/settings/SettingsMobileIndex'
 import { SettingsSearchField, SettingsSearchResults, useSettingsSearch } from '@/components/settings/SettingsSearch'
@@ -344,16 +348,43 @@ export function SettingsModal() {
   }), [])
   const atIndex = mobileView === 'index'
   const sectionLabel = sectionDef(section)?.label ?? 'Settings'
+  const backTarget = mobileBackTarget(section)
   const goBack = () => {
-    const target = mobileBackTarget(section)
-    if (target === 'index') showIndex()
-    else setSection(target)
+    if (backTarget === 'index') showIndex()
+    else setSection(backTarget)
   }
+  // A phone's Settings is a stack: the list, a section pushed over it. Back
+  // (Android's included, which reaches the overlay as Escape) climbs a level
+  // before it closes the sheet.
+  const phone = useIsPhone()
+
+  const page = (
+    <main
+      ref={mainRef}
+      // Focusable, so Settings can open with focus in the page.
+      tabIndex={-1}
+      className={cn(
+        'flex min-w-0 flex-1 flex-col overflow-hidden bg-(--bg-page) outline-none',
+        atIndex && !phone && 'max-md:hidden',
+        phone && 'h-full',
+      )}
+    >
+      {/* Keyed by the page, so a new section fades in (``fast``). */}
+      <div key={`${section}:${selectedName ?? ''}`} className="oa-fade-in-fast min-h-0 flex-1 overflow-hidden flex flex-col">
+        <SectionContent
+          section={section}
+          selectedName={selectedName}
+          setSection={setSection}
+        />
+      </div>
+    </main>
+  )
 
   return (
     <AppOverlay
       open={open}
       onClose={closeSettings}
+      onEscape={phone && !atIndex ? goBack : undefined}
       label="Settings"
       maxWidth={OVERLAY_MAX_WIDTH.wide}
       appLevel
@@ -370,7 +401,7 @@ export function SettingsModal() {
       <div data-settings-modal="" className="group/settings flex min-h-0 flex-1 flex-col">
         <OverlayHeader
           title={
-            atIndex ? 'Settings' : (
+            atIndex ? 'Settings' : phone ? sectionLabel : (
               <>
                 <span className="md:hidden">{sectionLabel}</span>
                 <span className="max-md:hidden">Settings</span>
@@ -379,23 +410,31 @@ export function SettingsModal() {
           }
           onClose={closeSettings}
           closeLabel="Close settings"
-          leading={
-            !atIndex && (
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="ghost"
-                className="md:hidden group-has-[[data-editor-kind]]/settings:hidden"
-                onClick={goBack}
-                aria-label={mobileBackTarget(section) === 'index' ? 'Back to settings' : 'Back to list'}
-              >
-                <ArrowLeft size={ICON_SIZE} aria-hidden="true" />
-              </Button>
-            )
-          }
+          back={atIndex ? undefined : {
+            label: backTarget === 'index' ? 'Settings' : (sectionDef(backTarget)?.label ?? 'Back'),
+            onBack: goBack,
+            ariaLabel: backTarget === 'index' ? 'Back to settings' : 'Back to list',
+            className: 'md:hidden group-has-[[data-editor-kind]]/settings:hidden',
+          }}
         />
 
         {/* Body */}
+        {phone ? (
+          <div className="relative min-h-0 flex-1">
+            <PhoneStack
+              root={(
+                <div className="flex h-full min-w-0 flex-col overflow-hidden">
+                  <SettingsMobileIndex onSelect={(s) => setSection(s)} onOpenHit={openHit} />
+                </div>
+              )}
+              page={page}
+              pushed={!atIndex}
+              onBack={goBack}
+              // An editor two levels down brings its own Back to its list.
+              backEnabled={backTarget === 'index'}
+            />
+          </div>
+        ) : (
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <ModalSidebar section={section} onSelect={(s) => setSection(s)} onOpenHit={openHit} />
 
@@ -405,25 +444,9 @@ export function SettingsModal() {
             </div>
           )}
 
-          <main
-            ref={mainRef}
-            // Focusable, so Settings can open with focus in the page.
-            tabIndex={-1}
-            className={cn(
-              'flex min-w-0 flex-1 flex-col overflow-hidden bg-(--bg-page) outline-none',
-              atIndex && 'max-md:hidden',
-            )}
-          >
-            {/* Keyed by the page, so a new section fades in (``fast``). */}
-            <div key={`${section}:${selectedName ?? ''}`} className="oa-fade-in-fast min-h-0 flex-1 overflow-hidden flex flex-col">
-              <SectionContent
-                section={section}
-                selectedName={selectedName}
-                setSection={setSection}
-              />
-            </div>
-          </main>
+          {page}
         </div>
+        )}
       </div>
       <ConfirmDialog
         open={pendingNavigation !== null}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, ArrowLeft } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   useScheduledTasksQuery,
@@ -106,6 +106,9 @@ export function SchedulerPanel({
     <AppOverlay
       open={open}
       onClose={close}
+      // A phone's Back (Escape here) leaves a task for the list before it
+      // closes the sheet, as the ‹ does.
+      onEscape={isMobile && mobilePane !== 'list' ? () => guard(handleBackToList) : undefined}
       label="Scheduled tasks"
       maxWidth={OVERLAY_MAX_WIDTH.split}
     >
@@ -129,20 +132,9 @@ export function SchedulerPanel({
         }
         onClose={close}
         closeLabel="Close scheduled tasks"
-        leading={
-          isMobile && mobilePane !== 'list' && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button variant="ghost" size="icon-sm" className="md:size-7" onClick={handleBackToList} aria-label="Back to task list">
-                    <ArrowLeft size={14} />
-                  </Button>
-                }
-              />
-              <TooltipContent>Back to task list</TooltipContent>
-            </Tooltip>
-          )
-        }
+        back={isMobile && mobilePane !== 'list'
+          ? { label: 'Scheduled', onBack: handleBackToList, ariaLabel: 'Back to task list' }
+          : undefined}
         actions={
           <>
             {!isMobile && tasks.length > 0 && (selectedTaskId !== null || !creating) && (

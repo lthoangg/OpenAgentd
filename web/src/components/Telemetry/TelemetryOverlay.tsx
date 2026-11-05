@@ -11,11 +11,8 @@
  */
 import { useCallback, type RefObject } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowLeft } from 'lucide-react'
 
 import { AppOverlay, OVERLAY_MAX_WIDTH, OverlayHeader } from '@/components/ui/app-overlay'
-import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useTelemetryStore } from '@/stores/useTelemetryStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { TelemetryView } from './TelemetryView'
@@ -82,27 +79,14 @@ export function TelemetryOverlay() {
         onClose={close}
         closeLabel="Close usage"
         closeTooltip={traceId ? 'Close' : 'Close (Esc)'}
-        leading={
-          traceId && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="md:size-7"
-                    onClick={() => void stepBack()}
-                    aria-label={spanId ? 'Back to the trace' : 'Back to usage'}
-                  >
-                    <ArrowLeft size={14} aria-hidden="true" />
-                  </Button>
-                }
-              />
-              <TooltipContent>{spanId ? 'Back to the trace (Esc)' : 'Back to usage (Esc)'}</TooltipContent>
-            </Tooltip>
-          )
-        }
+        // A phone reads "‹ Usage" (or "‹ Turn" from a span), as iOS names the
+        // screen it returns to; elsewhere a ← whose tooltip names it.
+        back={traceId ? {
+          label: spanId ? 'Turn' : 'Usage',
+          onBack: () => void stepBack(),
+          ariaLabel: spanId ? 'Back to the trace' : 'Back to usage',
+          tooltip: spanId ? 'Back to the trace (Esc)' : 'Back to usage (Esc)',
+        } : undefined}
       />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <TelemetryView onOpenSession={openSession} />

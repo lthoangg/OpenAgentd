@@ -24,6 +24,10 @@ mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 let reduceMotion = false
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => reduceMotion }))
 
+// A phone: the sheet's iOS bar and the list → section stack. Off by default.
+let phone = false
+mock.module('@/hooks/use-is-phone', () => ({ useIsPhone: () => phone }))
+
 // Prop-capturing framer stub — setup.ts's global stub strips the animation
 // props these tests need to inspect. `data-*` still reaches the DOM so the
 // edge-swipe assertions keep working.
@@ -77,6 +81,7 @@ afterEach(() => {
   useSettingsStore.setState({ open: false, section: 'about', selectedName: null, mobileView: 'index', dirtyDrafts: {}, pendingNavigation: null })
   captured.length = 0
   reduceMotion = false
+  phone = false
 })
 
 function renderModal() {
@@ -379,5 +384,63 @@ describe('SettingsModal — one name for the server section', () => {
     const nav = within(screen.getByRole('navigation', { name: 'Settings categories' }))
     expect(nav.getByRole('button', { name: 'Retention' })).toBeTruthy()
     expect(nav.queryByRole('button', { name: 'Data retention' })).toBeNull()
+  })
+})
+
+describe('SettingsModal — on a phone', () => {
+  it('closes with Done, the sheet\'s own word, instead of ×', () => {
+    phone = true
+    useSettingsStore.setState({ open: false })
+    act(() => useSettingsStore.getState().openSettings())
+    renderModal()
+
+    expect(screen.queryByRole('button', { name: 'Close settings' })).toBeNull()
+    act(() => screen.getByRole('button', { name: 'Done' }).click())
+    expect(useSettingsStore.getState().open).toBe(false)
+  })
+
+  it('pushes a section over the list, which stays mounted under it', () => {
+    phone = true
+    useSettingsStore.setState({ open: false })
+    act(() => useSettingsStore.getState().openSettings())
+    renderModal()
+
+    const stack = document.querySelector('[data-settings-modal] [data-phone-stack]')
+    expect(stack).not.toBeNull()
+    expect(document.querySelector('[data-phone-stack-page]')?.hasAttribute('inert')).toBe(true)
+
+    act(() => useSettingsStore.getState().setSection('providers'))
+    expect(document.querySelector('[data-phone-stack-page]')?.hasAttribute('inert')).toBe(false)
+    expect(screen.getByRole('heading', { name: 'Providers' })).toBeTruthy()
+    // The list is still there, under the section, for the pop.
+    expect(screen.getByRole('navigation', { name: 'Settings sections', hidden: true })).toBeTruthy()
+  })
+
+  it('names the list it goes back to: ‹ Settings', () => {
+    phone = true
+    useSettingsStore.setState({ open: false })
+    act(() => useSettingsStore.getState().openSettings())
+    renderModal()
+    act(() => useSettingsStore.getState().setSection('providers'))
+
+    const back = screen.getByRole('button', { name: 'Back to settings' })
+    expect(back.textContent).toBe('Settings')
+    act(() => back.click())
+    expect(useSettingsStore.getState().mobileView).toBe('index')
+  })
+
+  it('climbs back to the list on Escape (Android Back) before it closes', () => {
+    phone = true
+    useSettingsStore.setState({ open: false })
+    act(() => useSettingsStore.getState().openSettings())
+    renderModal()
+    act(() => useSettingsStore.getState().setSection('providers'))
+
+    act(() => { fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' }) })
+    expect(useSettingsStore.getState().open).toBe(true)
+    expect(useSettingsStore.getState().mobileView).toBe('index')
+
+    act(() => { fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' }) })
+    expect(useSettingsStore.getState().open).toBe(false)
   })
 })

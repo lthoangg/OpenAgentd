@@ -83,7 +83,7 @@ describe('InputComposer — split Send', () => {
     expect(screen.queryByRole('button', { name: 'More ways to send' })).toBeNull()
   })
 
-  it('sizes both halves of the split Send, and the composer controls, to 36px on any touch screen', async () => {
+  it('sizes both halves of the split Send, and the composer controls, to 36px on a touch tablet and 44px on a phone', async () => {
     await typeWhileStreaming()
     const steer = screen.getByRole('button', { name: 'Steer the running turn' })
     const chevron = await moreWaysToSend()
@@ -92,8 +92,9 @@ describe('InputComposer — split Send', () => {
     for (const el of [steer, screen.getByRole('button', { name: 'Attach file' })]) {
       expect(el.className).toContain('pointer-coarse:size-9')
     }
-    // A lone Send is the same 36px, so splitting it changes no height.
-    expect(steer.className).not.toContain('size-11')
+    // A lone Send is the same size, so splitting it changes no height.
+    expect(steer.className).toContain('phone:size-11')
+    expect(chevron.className).toContain('phone:h-11')
   })
 
   it('lists each way to send with its shortcut', async () => {

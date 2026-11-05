@@ -2133,7 +2133,7 @@ export function Sidebar({
       >
         <DialogContent size="xs" padding="compact">
           <form onSubmit={submitWorktreeTitle} className="space-y-3">
-            <DialogHeader className="pr-8">
+            <DialogHeader>
               <DialogTitle>Rename worktree</DialogTitle>
               {worktreeEditTarget?.directory ? (
                 <Tooltip className="min-w-0">

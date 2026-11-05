@@ -6,6 +6,7 @@ import { CornerUpLeft, ListTodo, Menu, PanelLeft, PanelRight } from 'lucide-reac
 
 import { AgentTopbar } from '@/components/AgentTopbar'
 import { usePanelWidthSink } from '@/components/ResizableAside'
+import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { hasWindowCaption, usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
@@ -27,7 +28,7 @@ interface AgentChatHeaderProps {
   chatWorkspace?: CodingWorkspaceTreeChat | null
   sessionTitle: string | null
   /**
-   * Opens the lead agent's session. Set only for a subagent's session: the
+   * Opens the main agent's session. Set only for a subagent's session: the
    * header then carries a way back, whatever the composer area shows.
    */
   onOpenLead?: () => void
@@ -43,6 +44,15 @@ interface AgentChatHeaderProps {
   workspacePanel: null | 'changed' | 'files'
   onWorkspaceFiles: () => void
 }
+
+/**
+ * The macOS traffic lights' inset is one token, ``--spacing-mac-traffic-inset``
+ * (index.css, shared with MacTitleBar). The sidebar toggle sits one 8px gap
+ * past it, in the desktop cap and on the phone bar alike (there the bar takes
+ * the inset and the left cluster's ``pl-2`` is the gap), so its glyph lands in
+ * the same place on both.
+ */
+const MAC_TOGGLE_INSET_CLASS = 'pl-[calc(var(--spacing-mac-traffic-inset)+0.5rem)]'
 
 /**
  * ☰: the application menu where the OS menu bar is hidden (Windows, Linux),
@@ -80,16 +90,17 @@ function AppMenuButton({ hidden }: { hidden: boolean }) {
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             ref={buttonRef}
             type="button"
+            variant="ghost"
+            size="icon-sm"
             onClick={open}
             aria-label="Application menu"
             aria-haspopup="menu"
-            className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7 pointer-coarse:size-9"
           >
             <Menu size={14} strokeWidth={1.8} aria-hidden="true" />
-          </button>
+          </Button>
         }
       />
       <TooltipContent>Application menu (Alt)</TooltipContent>
@@ -97,27 +108,26 @@ function AppMenuButton({ hidden }: { hidden: boolean }) {
   )
 }
 
-/** ↰ in a subagent's header: one click back to the lead agent's session. */
+/** ↰ in a subagent's header: one click back to the main agent's session. */
 function OpenLeadButton({ onOpen, className }: { onOpen: () => void; className?: string }) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             onClick={onOpen}
-            aria-label="Open the lead agent"
+            aria-label="Open the main agent"
             data-open-lead=""
-            className={cn(
-              'flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 md:w-7 pointer-coarse:size-9',
-              className,
-            )}
+            className={className}
           >
             <CornerUpLeft size={14} strokeWidth={1.8} aria-hidden="true" />
-          </button>
+          </Button>
         }
       />
-      <TooltipContent>Open the lead agent</TooltipContent>
+      <TooltipContent>Open the main agent</TooltipContent>
     </Tooltip>
   )
 }
@@ -162,30 +172,31 @@ export const AgentChatHeader = memo(function AgentChatHeader({
 
   const leadButtons = (
     <>
-          {hasAppMenuButton() && <AppMenuButton hidden={isMobile} />}
-          {/* Toggles the desktop sidebar, or the drawer on mobile. */}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSidebarToggle()
-                  }}
-                  aria-label="Toggle sidebar"
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7 pointer-coarse:size-9"
-                >
-                  {/* Phones open a drawer (menu); desktop folds a rail (panel). */}
-                  {isMobile ? (
-                    <Menu size={14} strokeWidth={1.8} aria-hidden="true" />
-                  ) : (
-                    <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
-                  )}
-                </button>
-              }
-            />
-            <TooltipContent>{`Toggle sidebar (${sidebarShortcut})`}</TooltipContent>
-          </Tooltip>
+      {hasAppMenuButton() && <AppMenuButton hidden={isMobile} />}
+      {/* Toggles the desktop sidebar, or the drawer on mobile. */}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => {
+                onSidebarToggle()
+              }}
+              aria-label="Toggle sidebar"
+            >
+              {/* Phones open a drawer (menu); desktop folds a rail (panel). */}
+              {isMobile ? (
+                <Menu size={14} strokeWidth={1.8} aria-hidden="true" />
+              ) : (
+                <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
+              )}
+            </Button>
+          }
+        />
+        <TooltipContent>{`Toggle sidebar (${sidebarShortcut})`}</TooltipContent>
+      </Tooltip>
     </>
   )
 
@@ -209,7 +220,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
           // The traffic lights sit over the sidebar, as in a native app; the
           // toggle keeps a native gap from them (they end near 66px). The cap
           // is only as wide as its buttons: it does not follow the sidebar.
-          className={cn('flex shrink-0 items-center gap-1 pr-1', isMacOverlay ? 'pl-[80px]' : 'pl-3')}
+          className={cn('flex shrink-0 items-center gap-1 pr-1', isMacOverlay ? MAC_TOGGLE_INSET_CLASS : 'pl-3')}
         >
           {leadButtons}
         </div>
@@ -247,7 +258,6 @@ export const AgentChatHeader = memo(function AgentChatHeader({
             className={cn('oa-header-cap-dock flex shrink-0 items-center justify-end gap-0.5 pl-1', captionInset ? 'pr-[138px]' : 'pr-1')}
           >
             <AgentTopbar
-              isMobile={false}
               todosAction={{
                 Icon: ListTodo,
                 onClick: onToggleTasks,
@@ -286,7 +296,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
       // on the shell, from AgentView), like an iOS navigation bar.
       className={cn(
         'mobile-safe-header grid h-(--spacing-app-header) shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center overflow-hidden border-b border-transparent bg-(--bg-page) transition-colors duration-(--motion-fast) in-data-[transcript-scrolled]:border-(--color-border) md:dark:bg-(--bg-sidebar)',
-        isMacOverlay && 'select-none pl-[70px]',
+        isMacOverlay && 'select-none pl-(--spacing-mac-traffic-inset)',
         captionInset && 'select-none pr-[138px]',
       )}
     >

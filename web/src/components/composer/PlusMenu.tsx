@@ -67,7 +67,7 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
       onClick={isMobile ? () => setOpen(!open) : undefined}
       className="relative flex size-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:cursor-not-allowed disabled:opacity-50 md:size-7 pointer-coarse:size-9"
     >
-      <Plus size={15} aria-hidden="true" />
+      <Plus size={14} aria-hidden="true" />
       {attention.summary && (
         <>
           <span

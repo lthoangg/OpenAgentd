@@ -196,19 +196,19 @@ export const AppFooter = memo(function AppFooter({
                     className={cn(ITEM, 'max-w-[240px] font-mono')}
                     aria-label={branchLabel}
                   >
-                    <GitBranch size={11} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+                    <GitBranch size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
                     <span className="truncate">{branch}</span>
                     {ahead ? <span className="shrink-0" aria-label={`${ahead} commits to push`}>↑{ahead}</span> : null}
                     {behind ? <span className="shrink-0" aria-label={`${behind} commits to pull`}>↓{behind}</span> : null}
                     {dirtyTotal > 0 && (
-                      <span className="shrink-0 rounded-xs bg-(--accent-orange-soft) px-1 font-semibold text-(--accent-orange-text)">*{dirtyTotal}</span>
+                      <span className="shrink-0 rounded-xs bg-(--accent-orange-soft) px-1 text-(--accent-orange-text)">{dirtyTotal} changed</span>
                     )}
                   </button>
                 }
               />
               <TooltipContent>
                 <span className="block">{branchTooltip}</span>
-                <span className="block text-(--color-text-muted)">Open Git</span>
+                <span className="block text-(--color-text-muted)">{`Open Git (${shortcutLabel(APP_SHORTCUTS.openGit, os)})`}</span>
               </TooltipContent>
             </Tooltip>
           </>
@@ -226,7 +226,7 @@ export const AppFooter = memo(function AppFooter({
                     onClick={() => dispatchAppEvent(APP_EVENTS.openTerminal)}
                     className={cn(ITEM, 'shrink-0')}
                   >
-                    <TerminalSquare size={11} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+                    <TerminalSquare size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
                     <span className="whitespace-nowrap">{terminalsLabel}</span>
                   </button>
                 }
@@ -246,16 +246,15 @@ export const AppFooter = memo(function AppFooter({
           <Tooltip>
             <TooltipTrigger
               render={
-                // Not a control, but a Tab stop all the same, so its tooltip
-                // is reachable from the keyboard like every other item here.
+                // A badge, not a control: no Tab stop. Its tooltip is a hover
+                // detail; the badge's own label says what it means.
                 <span
-                  tabIndex={0}
                   role="img"
                   aria-label="Fast mode is on"
                   data-status-fast=""
-                  className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded-xs bg-(--accent-orange-soft) px-1 font-mono text-meta font-medium text-(--accent-orange-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                  className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded-xs bg-(--accent-orange-soft) px-1 font-mono text-meta font-medium text-(--accent-orange-text)"
                 >
-                  <Zap size={11} aria-hidden="true" />
+                  <Zap size={12} aria-hidden="true" />
                   <span aria-hidden="true">fast</span>
                 </span>
               }
@@ -283,7 +282,7 @@ export const AppFooter = memo(function AppFooter({
             />
             <TooltipContent>
               <span className="block">Estimated spend, last 24 hours</span>
-              <span className="block text-(--color-text-muted)">Open Usage</span>
+              <span className="block text-(--color-text-muted)">Open usage</span>
             </TooltipContent>
           </Tooltip>
         )}

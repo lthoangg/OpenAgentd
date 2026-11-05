@@ -61,7 +61,15 @@ function settings(over: Partial<RunSettings> = {}): RunSettings {
 }
 
 function wrap(node: ReactNode) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  // The providers list is loaded, as in the app: headings use its display names.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+  client.setQueryData(queryKeys.settings.providers(), {
+    providers: [
+      { id: 'anthropic', label: 'Claude' },
+      { id: 'openai', label: 'OpenAI' },
+      { id: 'agy', label: 'Antigravity' },
+    ],
+  })
   return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>)
 }
 
@@ -146,19 +154,22 @@ describe('RunPicker', () => {
     })
   })
 
-  it('lists every model as provider:model and marks the one that runs', () => {
+  it("lists every model by its name under its provider's heading and marks the one that runs", () => {
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
     const options = screen.getAllByRole('option')
-    expect(options.map((o) => o.textContent?.replace(/default$/, ''))).toEqual(['anthropic:sonnet', 'anthropic:opus', 'openai:gpt-5'])
+    expect(options.map((o) => o.textContent?.replace(/default$/, ''))).toEqual(['sonnet', 'opus', 'gpt-5'])
     expect(options[0].getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByText('Claude')).toBeTruthy()
+    expect(screen.getByText('OpenAI')).toBeTruthy()
+    expect(screen.queryByText('anthropic')).toBeNull()
   })
 
   it('opens on the model that runs, not the first row', () => {
     wrap(<RunPicker settings={settings({ model: 'openai:gpt-5', provider: 'openai', customized: true })} focus="model" onDone={() => {}} />)
     const highlighted = screen.getAllByRole('option').filter((o) => o.hasAttribute('data-highlighted'))
-    expect(highlighted.map((o) => o.textContent)).toEqual(['openai:gpt-5'])
+    expect(highlighted.map((o) => o.textContent)).toEqual(['gpt-5'])
     const search = screen.getByRole('searchbox', { name: 'Search models' })
-    expect(document.getElementById(search.getAttribute('aria-activedescendant') ?? '')?.textContent).toBe('openai:gpt-5')
+    expect(document.getElementById(search.getAttribute('aria-activedescendant') ?? '')?.textContent).toBe('gpt-5')
   })
 
   it('picks the highlighted running model with Enter and closes', () => {
@@ -169,11 +180,13 @@ describe('RunPicker', () => {
     expect(onDone).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps the provider part whole: it never truncates to a stub like "ag…"', () => {
+  it('drops the provider: prefix from rows: the model part is all a row shows', () => {
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
-    const provider = screen.getAllByText('anthropic:')[0]
-    expect(provider.className).not.toContain('truncate')
-    expect(provider.className).toContain('whitespace-nowrap')
+    expect(screen.queryByText('anthropic:')).toBeNull()
+    expect(screen.getByRole('listbox', { name: 'Models' }).textContent).not.toContain(':')
+    const line = screen.getAllByRole('option')[0].querySelector('.font-mono') as HTMLElement
+    expect(line.textContent).toBe('sonnet')
+    expect(line.className).toContain('h-[1lh]')
   })
 
   it('saves another model on the session and keeps a level it supports', () => {
@@ -215,7 +228,8 @@ describe('RunPicker', () => {
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search models' }), { target: { value: 'gpt5' } })
 
-    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['openai:gpt-5'])
+    // Ranked results have no heading: the provider's name trails the row.
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['gpt-5OpenAI'])
   })
 
   it('ranks the closest match first, in one list without provider headings, so Enter picks it', () => {
@@ -226,9 +240,9 @@ describe('RunPicker', () => {
 
     fireEvent.change(search, { target: { value: 'opus' } })
 
-    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['anthropic:opus', 'agy:antigravity-claude-opus-4-6-thinking'])
-    expect(screen.queryByText('anthropic')).toBeNull()
-    expect(screen.queryByText('agy')).toBeNull()
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['opusClaude', 'antigravity-claude-opus-4-6-thinkingAntigravity'])
+    // No provider headings in ranked results.
+    expect(document.querySelector('[role="listbox"] .select-none')).toBeNull()
     fireEvent.keyDown(search, { key: 'Enter' })
     expect(lastPatch().model).toBe('anthropic:opus')
   })
@@ -335,7 +349,7 @@ describe('RunPicker', () => {
   it('lists recent models first', () => {
     window.localStorage.setItem('oa.recentModels.v1', JSON.stringify(['openai:gpt-5']))
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
-    expect(screen.getAllByRole('option')[0].textContent).toContain('openai:gpt-5')
+    expect(screen.getAllByRole('option')[0].textContent).toBe('gpt-5OpenAI')
     expect(screen.getByText('Recent')).toBeTruthy()
   })
 
@@ -374,10 +388,10 @@ describe('RunPicker', () => {
 
     fireEvent.mouseMove(screen.getByRole('option', { name: /gpt-5/ }), { clientX: 30, clientY: 30 })
     // Still the running model (its row also says "default").
-    expect(highlighted()).toEqual(['anthropic:sonnetdefault'])
+    expect(highlighted()).toEqual(['sonnetdefault'])
 
     fireEvent.mouseMove(screen.getByRole('option', { name: /gpt-5/ }), { clientX: 32, clientY: 34 })
-    expect(highlighted()).toEqual(['openai:gpt-5'])
+    expect(highlighted()).toEqual(['gpt-5'])
   })
 
   it('keeps the highlight on the same model when the list changes under it', () => {
@@ -390,7 +404,7 @@ describe('RunPicker', () => {
       </QueryClientProvider>,
     )
     const highlighted = screen.getAllByRole('option').filter((o) => o.hasAttribute('data-highlighted'))
-    expect(highlighted.map((o) => o.textContent)).toEqual(['anthropic:opus'])
+    expect(highlighted.map((o) => o.textContent)).toEqual(['opus'])
   })
 
   it('keeps the level while the model list is still loading and the new model\'s levels are unknown', () => {

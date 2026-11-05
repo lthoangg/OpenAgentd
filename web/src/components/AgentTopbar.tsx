@@ -1,7 +1,7 @@
 /**
  * AgentTopbar — right-cluster composite for the chat header.
  *
- * Layout: tokens · view toggle · todos/files/agents etc.
+ * Layout: todos · scheduler · files · agents, then any extra actions.
  * Props-driven so previews and future single-agent surfaces can reuse
  * it without pulling in AgentChatView's stores. Design source:
  * `AgentTopbar` (`E8lml9`) in `.diagrams/OpenAgentd-ui.pen`.
@@ -16,20 +16,9 @@ import {
 } from 'lucide-react'
 
 import { TopbarAction } from '@/components/ui/topbar-action'
-import { TokenMeter } from '@/components/ui/token-meter'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { GoalTone } from '@/lib/goal'
-
-export interface AgentTopbarTokens {
-  input: number
-  output: number
-  cached?: number
-  cachedPercent?: number
-  sessionCostUsd?: number
-  trigger?: number
-  pulsing?: boolean
-}
 
 export interface AgentTopbarActionDescriptor {
   /** Lucide icon component. */
@@ -56,10 +45,6 @@ export interface AgentTopbarActionDescriptor {
 }
 
 export interface AgentTopbarProps {
-  /** Token totals; when omitted the TokenMeter is hidden. */
-  tokens?: AgentTopbarTokens
-  /** Force the mobile/desktop layout. Defaults to desktop. */
-  isMobile?: boolean
   todosAction?: AgentTopbarActionDescriptor
   /** Scheduler action — opens the scheduled-tasks drawer. */
   schedulerAction?: AgentTopbarActionDescriptor
@@ -78,8 +63,6 @@ export interface AgentTopbarProps {
  * left side.
  */
 export function AgentTopbar({
-  tokens,
-  isMobile = false,
   todosAction,
   schedulerAction,
   filesAction,
@@ -87,8 +70,6 @@ export function AgentTopbar({
   extraActions,
   className,
 }: AgentTopbarProps) {
-  const showTokens = !isMobile && Boolean(tokens)
-
   return (
     <div
       className={cn(
@@ -100,19 +81,6 @@ export function AgentTopbar({
         className,
       )}
     >
-      {showTokens && tokens && (
-        <TokenMeter
-          input={tokens.input}
-          output={tokens.output}
-          cached={tokens.cached}
-          cachedPercent={tokens.cachedPercent}
-          sessionCostUsd={tokens.sessionCostUsd}
-          trigger={tokens.trigger}
-          pulsing={tokens.pulsing}
-          className="mr-0.5"
-        />
-      )}
-
       {todosAction && <AgentTopbarActionButton action={todosAction} fallbackIcon={ListChecks} />}
       {schedulerAction && (
         <AgentTopbarActionButton action={schedulerAction} fallbackIcon={CalendarClock} />

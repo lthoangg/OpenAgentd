@@ -10,6 +10,11 @@
  * search while rows are clicked, so the keys keep working after a mouse pick.
  * A search matches loosely and ranks the closest model first (fuzzysort, as
  * the palette and Settings' model field do), in one list.
+ *
+ * Models sit under their provider's display name ("Claude", not `anthropic`)
+ * and a row is just the model. Where no heading names the provider (Recent,
+ * ranked results) its name trails the row. A search still matches the whole
+ * ``provider:model`` id, so ``openai:`` lists that provider's models.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import fuzzysort from 'fuzzysort'
@@ -20,10 +25,10 @@ import { getAgent, getCodeAgent } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { MENU_ITEM_CLASS } from '@/components/ui/menu-styles'
-import { MODEL_LINE_CLASS, ModelPart, PROVIDER_PART_CLASS } from '@/components/ui/model-name'
+import { MODEL_LINE_CLASS, ModelPart } from '@/components/ui/model-name'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { hoverIntent } from '@/hooks/use-hover-intent'
-import { useProviderUsageQuery } from '@/queries/useProvidersQuery'
+import { useProvidersQuery, useProviderUsageQuery } from '@/queries/useProvidersQuery'
 import { useUpdateAgentMutation } from '@/queries/useAgentSettingsQueries'
 import { selectionHapticFeedback } from '@/lib/haptics'
 import {
@@ -47,7 +52,7 @@ const MAX_LISTED = 60
 
 interface ModelRow {
   id: string
-  /** The heading the row sits under; ``null`` in ranked search results. */
+  /** The heading the row sits under (a provider id, or "Recent"); ``null`` in ranked search results. */
   group: 'Recent' | string | null
 }
 
@@ -58,7 +63,7 @@ function rowsFor(settings: RunSettings, query: string, recent: string[]): ModelR
   if (settings.model && !ids.includes(settings.model)) ids.unshift(settings.model)
   const q = query.trim()
   if (q) {
-    // Ranked, so headings would repeat; each row names its provider anyway.
+    // Ranked, so headings would repeat; each row names its provider instead.
     return fuzzysort
       .go(q, ids, { threshold: 0.2, limit: MAX_LISTED })
       .map((result) => ({ id: result.target, group: null }))
@@ -87,6 +92,9 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
   // does not reorder under the pointer while it is open.
   const [recent] = useState(loadRecentModels)
   const rows = useMemo(() => rowsFor(settings, query, recent), [settings, query, recent])
+  // A provider's display name, from the providers list (its id until that loads).
+  const providers = useProvidersQuery().data?.providers
+  const providerLabel = (id: string) => providers?.find((p) => p.id === id)?.label ?? id
   // The list opens on the model that runs, as a native pop-up menu opens on
   // its checked item; a search, or the user moving, takes over from there. The
   // highlight follows a model, not a position, so a list that changes (the
@@ -266,14 +274,17 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
         {settings.modelsLoading && rows.length === 0 ? (
           <p className="px-2 py-3 text-xs text-(--color-text-muted)" role="status">Loading models…</p>
         ) : rows.length === 0 ? (
-          <p className="px-2 py-3 text-xs text-(--color-text-muted)">No model matches “{query}”.</p>
+          <p className="px-2 py-3 text-xs text-(--color-text-muted)">No model matches "{query}".</p>
         ) : rows.map((row, index) => {
           const header = row.group !== null && (index === 0 || rows[index - 1].group !== row.group)
           const { provider, model } = splitModelId(row.id)
           const selected = row.id === settings.model
+          // Under a provider's heading the row is just the model; elsewhere
+          // (Recent, ranked search results) the provider's name trails it.
+          const nameProvider = provider !== '' && (row.group === null || row.group === 'Recent')
           return (
             <div key={`${row.group}:${row.id}`}>
-              {header && <div className="px-2 pb-0.5 pt-2 text-meta font-medium text-(--color-text-muted) select-none first:pt-1">{row.group}</div>}
+              {header && <div className="px-2 pb-0.5 pt-2 text-meta font-medium text-(--color-text-muted) select-none first:pt-1">{providerLabel(row.group!)}</div>}
               <button
                 type="button"
                 role="option"
@@ -290,12 +301,10 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
                 tabIndex={-1}
                 className={rowClass}
               >
-                {/* provider:model as everywhere (ui/model-name): the provider
-                    part shows whole or drops, never as a stub like "ag…". */}
                 <span className={cn('flex flex-1', MODEL_LINE_CLASS)}>
-                  {provider && <span className={cn(PROVIDER_PART_CLASS, 'text-(--color-text-muted)')}>{provider}:</span>}
                   <ModelPart model={model} className="text-(--color-text)" />
                 </span>
+                {nameProvider && <span className="max-w-[8rem] shrink-0 truncate text-meta text-(--color-text-muted)">{providerLabel(provider)}</span>}
                 {row.id === settings.agentModel && <span className="text-meta text-(--color-text-muted)">default</span>}
                 <Check size={13} aria-hidden="true" className={selected ? 'opacity-100' : 'opacity-0'} />
               </button>

@@ -63,8 +63,8 @@ mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
 }))
 // The context meter rides in the composer's run deck, on every layout.
 mock.module('@/components/composer/ContextMeter', () => ({
-  ContextMeter: ({ sessionCostUsd }: { sessionCostUsd?: number }) => (
-    <div data-testid="session-cost">{sessionCostUsd}</div>
+  ContextMeter: (props: Record<string, unknown>) => (
+    <div data-testid="context-meter" data-props={Object.keys(props).sort().join(',')} />
   ),
 }))
 /** The composer's ``onHistoryRecall``, as the mounted chat view passed it. */
@@ -73,13 +73,14 @@ let recall: ((prompt: string | null) => void) | undefined
 mock.module('@/components/composer/Composer', () => ({
   Composer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
-    { historyPrompts?: string[]; onHistoryRecall?: (prompt: string | null) => void; deckEnd?: ReactNode }
-  >(function ComposerMock({ historyPrompts, onHistoryRecall, deckEnd }, ref) {
+    { historyPrompts?: string[]; onHistoryRecall?: (prompt: string | null) => void; deckEnd?: ReactNode; placeholder?: string }
+  >(function ComposerMock({ historyPrompts, onHistoryRecall, deckEnd, placeholder }, ref) {
     useImperativeHandle(ref, () => ({ setValue: () => {}, setFiles: () => {} }))
     recall = onHistoryRecall
     return (
       <>
         <div data-testid="history-prompts">{(historyPrompts ?? []).join(',')}</div>
+        <div data-testid="composer-placeholder">{placeholder}</div>
         {deckEnd}
       </>
     )
@@ -222,39 +223,6 @@ describe('AgentChatView reactive derived state', () => {
     useTranscriptFollowStore.setState({ showPrompt: null, jumpToLatest: null })
   })
 
-  it('sums current session costs exactly and excludes stale agent streams', () => {
-    useAgentStore.setState((state) => {
-      state.agentStreams.lead.usage = {
-        promptTokens: 10,
-        completionTokens: 5,
-        totalTokens: 15,
-        cachedTokens: 0,
-        estimatedCostUsd: 0.0012,
-      }
-      state.agentStreams['worker#1'].usage = {
-        promptTokens: 20,
-        completionTokens: 8,
-        totalTokens: 28,
-        cachedTokens: 0,
-        estimatedCostUsd: 0.0023,
-      }
-      state.agentStreams['stale#1'] = {
-        ...state.agentStreams.lead,
-        usage: {
-          promptTokens: 100,
-          completionTokens: 100,
-          totalTokens: 200,
-          cachedTokens: 0,
-          estimatedCostUsd: 1,
-        },
-      }
-    })
-
-    render(<AgentChatView sessionId="session-1" workspace="/repo/project" />)
-
-    expect(screen.getByTestId('session-cost').textContent).toBe('0.0035')
-  })
-
   it('shows the header meter while the team is working, before any usage lands', () => {
     // Usage arrives when the first model call completes, so gating on totals
     // alone hid the meter for the whole first response of a new session.
@@ -265,12 +233,26 @@ describe('AgentChatView reactive derived state', () => {
 
     render(<AgentChatView sessionId="session-1" workspace="/repo/project" />)
 
-    expect(screen.queryByTestId('session-cost')).not.toBeNull()
+    expect(screen.queryByTestId('context-meter')).not.toBeNull()
   })
 
   it('shows the header meter even when idle with no usage', () => {
     render(<AgentChatView sessionId="session-1" workspace="/repo/project" />)
 
-    expect(screen.queryByTestId('session-cost')).not.toBeNull()
+    expect(screen.queryByTestId('context-meter')).not.toBeNull()
+  })
+
+  it('gives the context meter no cost: spend shows per turn and for the last 24 hours only', () => {
+    render(<AgentChatView sessionId="session-1" workspace="/repo/project" />)
+
+    const props = (screen.getByTestId('context-meter').getAttribute('data-props') ?? '').split(',')
+    expect(props).toContain('input')
+    expect(props).not.toContain('sessionCostUsd')
+  })
+
+  it('asks "Ask anything…" in the composer, without repeating the workspace name the screen already shows', () => {
+    render(<AgentChatView sessionId="session-1" workspace="/repo/project" />)
+
+    expect(screen.getByTestId('composer-placeholder').textContent).toBe('Ask anything…')
   })
 })

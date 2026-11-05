@@ -227,10 +227,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         leadCompletionTokens: leadStream?.usage.completionTokens ?? 0,
         leadCachedTokens: leadStream?.usage.cachedTokens ?? 0,
         leadCachedPercent: leadStream?.usage.cachedPercent,
-        sessionCostUsd: Math.round(s.agentNames.reduce(
-          (total, name) => total + (s.agentStreams[name]?.usage.estimatedCostUsd ?? 0),
-          0,
-        ) * 1e8) / 1e8,
       }
     })
   )
@@ -262,7 +258,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     leadCompletionTokens,
     leadCachedTokens,
     leadCachedPercent,
-    sessionCostUsd,
   } = storeState
 
 
@@ -460,7 +455,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     cachedPercent: leadCachedPercent,
     trigger: summaryTriggerTokens,
     pulsing: isAgentWorking,
-    sessionCostUsd,
   }
 
   const {
@@ -589,7 +583,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         giveBack()
         break
       case 'attachments':
-        pushToast({ tone: 'error', title: 'Side questions can’t include attachments', description: 'Remove the files, or send them as a normal message.' })
+        pushToast({ tone: 'error', title: "Side questions can't include attachments", description: 'Remove the files, or send them as a normal message.' })
         giveBack()
         break
       case 'reopen':
@@ -762,7 +756,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           : composerMode === 'plan'
             // Says what Plan mode does before the first message does it.
             ? 'Plan mode: the agent reads and proposes a plan, without editing files…'
-            : isChatWorkspace ? 'Ask anything…' : `Ask anything in ${workspaceName}…`
+            : 'Ask anything…'
       }
       capabilities={leadCapabilities}
       // A switch requested mid-turn is queued server-side, so the toggle
@@ -789,7 +783,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           input={headerTokens.input}
           output={headerTokens.output}
           cachedPercent={headerTokens.cachedPercent}
-          sessionCostUsd={headerTokens.sessionCostUsd}
           trigger={headerTokens.trigger}
           canSummarize={leadHasVisibleBlocks && !isAgentWorking}
         />
@@ -829,7 +822,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       {isDraggingFile && (
         <div className="pointer-events-none fixed inset-0 z-50 p-4 drag-overlay-enter">
           <div className="w-full h-full rounded-lg border-2 border-dashed border-(--color-accent)/30 bg-(--bg-card)/80 backdrop-blur-xs reduce-transparency:bg-(--bg-card) reduce-transparency:backdrop-blur-none flex flex-col items-center justify-center gap-2 drag-card-enter">
-            <FileUp size={24} className="text-(--color-accent) oa-breathe" />
+            <FileUp size={16} className="text-(--color-accent) oa-breathe" />
             <span className="text-sm font-medium text-(--color-text)">
               Drop files to attach
             </span>
@@ -921,7 +914,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
             <div>
-              <h2 className="text-sm font-medium text-(--color-text)">
+              <h2 className="text-base font-semibold text-(--color-text)">
                 {isChatWorkspace ? 'Opening chat…' : 'Opening session…'}
               </h2>
               <p className="mt-1 text-xs text-(--color-text-muted)">
@@ -935,7 +928,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
             <div>
-              <h2 className="text-sm font-medium text-(--color-text)">
+              <h2 className="text-base font-semibold text-(--color-text)">
                 {isChatWorkspace ? 'Opening chat…' : 'Opening workspace…'}
               </h2>
               <p className="mt-1 text-xs text-(--color-text-muted)">

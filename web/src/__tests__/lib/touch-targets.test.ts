@@ -70,7 +70,6 @@ describe('coarse-pointer touch targets', () => {
   it('grows the small controls found in the phone audit to 36px on touch', () => {
     const src = (rel: string) => readFileSync(fileURLToPath(new URL(`../../components/${rel}`, import.meta.url)), 'utf8')
     const cases: Array<[string, RegExp]> = [
-      ['ToastStack.tsx', /aria-label="Dismiss"[\s\S]{0,40}className="[^"]*pointer-coarse:size-9/],
       ['Telemetry/SessionHeader.tsx', /pointer-coarse:h-9"[\s\S]{0,80}Open session/],
       ['PendingMessageQueue.tsx', /aria-label=\{expanded \? 'Collapse' : 'Expand'\}\s*className="[^"]*pointer-coarse:size-9/],
       ['PendingMessageQueue.tsx', /aria-label="Edit queued message"\s*className="[^"]*pointer-coarse:size-9/],

@@ -610,7 +610,7 @@ export function CommandPalette({
                 className="inline-flex shrink-0 items-center gap-1 rounded-xs bg-(--bg-key) py-0.5 pl-1.5 pr-1 text-meta font-medium text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
               >
                 <span>Files</span>
-                <X size={10} className="shrink-0" aria-hidden="true" />
+                <X size={12} className="shrink-0" aria-hidden="true" />
               </button>
             )}
             <input

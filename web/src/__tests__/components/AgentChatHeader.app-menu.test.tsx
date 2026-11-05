@@ -86,6 +86,15 @@ describe('AgentChatHeader application menu', () => {
     expect(screen.queryByRole('button', { name: 'Application menu' })).toBeNull()
   })
 
+  it('is the Button primitive, and its tooltip names the key as "Application menu (Alt)"', async () => {
+    renderHeader()
+    const button = screen.getByRole('button', { name: 'Application menu' })
+    expect([button.dataset.slot, button.dataset.variant]).toEqual(['button', 'ghost'])
+
+    fireEvent.mouseEnter(button.parentElement!)
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(/^Application menu \(Alt\)$/)
+  })
+
   it('pops the application menu up at the buttons bottom-left when clicked', async () => {
     renderHeader()
     placeAppMenuButton(12, 36)

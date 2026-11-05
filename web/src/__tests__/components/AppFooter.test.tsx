@@ -129,7 +129,26 @@ describe('AppFooter', () => {
 
     expect(await screen.findByLabelText('2 commits to push')).toBeTruthy()
     expect(screen.getByLabelText('1 commits to pull')).toBeTruthy()
-    expect(screen.getByText('*3')).toBeTruthy()
+    expect(screen.getByText('3 changed')).toBeTruthy()
+  })
+
+  it('says "N changed" for the dirty files, not a bare "*N", and leaves the chip out when clean', async () => {
+    renderWithQueryClient(<AppFooter workspace="/path/to/project" />, undefined, { dirty: { staged: 0, unstaged: 0, untracked: 0 } })
+
+    expect(await screen.findByText('main')).toBeTruthy()
+    expect(screen.queryByText(/changed/)).toBeNull()
+    expect(screen.queryByText(/^\*/)).toBeNull()
+  })
+
+  it('names the branch action "Open Git" with its shortcut, in the muted tone', async () => {
+    renderWithQueryClient(<AppFooter workspace="/path/to/project" />, undefined, {})
+    const branch = await screen.findByRole('button', { name: /^Git branch main/ })
+
+    fireEvent.mouseEnter(branch.parentElement!)
+    const tooltip = await screen.findByRole('tooltip')
+    const action = within(tooltip).getByText(/^Open Git \(.+\)$/)
+    expect(action.textContent).toMatch(/^Open Git \((⌘⇧G|⇧⌘G|Ctrl\+Shift\+G)\)$/)
+    expect(action.className).toContain('text-(--color-text-muted)')
   })
 
   it('skips the git branch and its probe for the chat workspace', () => {
@@ -163,10 +182,15 @@ describe('AppFooter', () => {
     expect((await screen.findByRole('tooltip')).textContent).toMatch(/^Fast mode is on/)
   })
 
-  it('lets the keyboard reach every status item, the fast mode pill too', () => {
+  it('keeps the fast mode badge out of the Tab order: it is a badge, not a control', () => {
     renderWithQueryClient(<AppFooter sessionFastMode={true} />)
-    const pill = screen.getByRole('img', { name: 'Fast mode is on' })
-    expect(pill.tabIndex).toBe(0)
+    const badge = screen.getByRole('img', { name: 'Fast mode is on' })
+    expect(badge.hasAttribute('tabindex')).toBe(false)
+    expect(badge.tabIndex).toBe(-1)
+    // Every real control in the bar stays reachable.
+    const footer = screen.getByLabelText('Status bar')
+    const buttons = Array.from(footer.querySelectorAll<HTMLElement>('button'))
+    expect(buttons.every((el) => el.tabIndex === 0)).toBe(true)
   })
 
 
@@ -182,12 +206,27 @@ describe('AppFooter', () => {
     expect(mockOpenSettings).toHaveBeenCalledTimes(1)
   })
 
-  it('shows the last 24 hours of spend and opens Telemetry on that range', () => {
-    useTelemetryStore.setState({ traceId: 'stale-trace' })
+  it('shows the last 24 hours of spend', () => {
     renderWithQueryClient(<AppFooter />, 1.234)
     const button = screen.getByRole('button', { name: 'Spend in the last 24 hours: $1.23' })
     expect(button.textContent).toContain('$1.23')
     expect(button.textContent).toContain('24h')
+  })
+
+  it('names the spend action "Open usage", in sentence case', async () => {
+    renderWithQueryClient(<AppFooter />, 1.234)
+    const button = screen.getByRole('button', { name: 'Spend in the last 24 hours: $1.23' })
+
+    fireEvent.mouseEnter(button.parentElement!)
+    const tooltip = await screen.findByRole('tooltip')
+    expect(within(tooltip).getByText('Open usage')).toBeTruthy()
+    expect(tooltip.textContent).not.toContain('Open Usage')
+  })
+
+  it('opens Telemetry on that range from the spend item', () => {
+    useTelemetryStore.setState({ traceId: 'stale-trace' })
+    renderWithQueryClient(<AppFooter />, 1.234)
+    const button = screen.getByRole('button', { name: 'Spend in the last 24 hours: $1.23' })
 
     fireEvent.click(button)
     expect(useUIStore.getState().telemetryOpen).toBe(true)

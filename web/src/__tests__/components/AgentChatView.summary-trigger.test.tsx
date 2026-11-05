@@ -1,5 +1,5 @@
 /**
- * Verifies that the token-meter trigger threshold updates correctly when the
+ * Verifies that the context meter's trigger threshold updates correctly when the
  * session switches from one model to another.
  *
  * The logic under test (in AgentChatView/index.tsx):
@@ -194,7 +194,7 @@ afterEach(() => {
 
 import { AgentChatView } from '@/components/AgentChatView'
 
-describe('TokenMeter trigger — model switch', () => {
+describe('ContextMeter trigger — model switch', () => {
   it('uses the agent config model trigger when no session override', () => {
     mock.module('@/stores/useAgentStore', () => makeStore(null))
     render(<AgentChatView sessionId="test-session" workspace="/repo/project" />)

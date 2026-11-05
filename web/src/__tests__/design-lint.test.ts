@@ -125,7 +125,7 @@ const RULES: Rule[] = [
   {
     name: 'pulsing-text',
     why: 'pulse only a live dot, a mark or a skeleton; pulsing words are hard to read (state goes in a chip or a static "…")',
-    pattern: /(?<![\w-])animate-pulse(?![\w-])/g,
+    pattern: /(?<![\w-])(?:animate-pulse|oa-breathe)(?![\w-])/g,
     allow: {
       // Skeleton blocks.
       'components/ui/skeleton.tsx': 1,
@@ -268,6 +268,8 @@ const RULES: Rule[] = [
       'components/LspInstallPrompt.tsx': 1,
       // The current page dot widens into a pill among its few siblings.
       'components/FileLightbox.tsx': 1,
+      // The switch thumb stretches while pressed (16px → 22px) inside a fixed track.
+      'components/ui/switch.tsx': 1,
     },
   },
   {

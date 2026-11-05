@@ -16,12 +16,15 @@
  * native segmented control. No shadow, no border. Once the segments have
  * widths, that fill is one element that slides from the old choice to the
  * new one (``base``, ``ease-out``) as on macOS and iOS, the words crossing
- * over to the inverted tone at the same pace.
+ * over to the inverted tone at the same pace. Pressing the chosen segment
+ * shrinks the fill a little (``scale`` .92 at ``fast``); with the pointer held
+ * the fill can be dragged across the segments and the one under the pointer
+ * is picked on release. A plain click and the keys work as before.
  *
  * ``segmentedTrackClass`` / ``segmentedItemClass`` expose the same look for
  * controls that need other semantics (e.g. a toggle-button group).
  */
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from 'react'
 import { selectionHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -118,6 +121,19 @@ const NEXT_KEYS = new Set(['ArrowRight', 'ArrowDown'])
 
 interface IndicatorBox { x: number; y: number; w: number; h: number }
 
+/** Pointer handlers a track takes to let its fill be dragged (see ``useSegmentIndicator``). */
+export interface SegmentDragHandlers {
+  onPointerDown: (event: PointerEvent<HTMLDivElement>) => void
+  onPointerMove: (event: PointerEvent<HTMLDivElement>) => void
+  onPointerUp: (event: PointerEvent<HTMLDivElement>) => void
+  onPointerCancel: (event: PointerEvent<HTMLDivElement>) => void
+}
+
+/** A segment's rectangle in the track's scrolled coordinates. */
+function boxOf(segment: HTMLElement): IndicatorBox {
+  return { x: segment.offsetLeft, y: segment.offsetTop, w: segment.offsetWidth, h: segment.offsetHeight }
+}
+
 /**
  * The sliding fill for a segmented track: put ``trackRef`` on the track,
  * ``indicator`` first inside it, and ``slideItemClass`` on every segment.
@@ -128,22 +144,40 @@ interface IndicatorBox { x: number; y: number; w: number; h: number }
  * change, a fill-width track, a reflow) and is null until the segments have
  * widths, so the first frame never slides in from 0 and the chosen segment
  * keeps its own fill until then.
+ *
+ * Pass ``onPick`` to make the fill draggable: spread ``trackProps`` on the
+ * track and mark each segment ``data-segment-value``. A press on the chosen
+ * segment shrinks the fill; moving with the pointer held carries it to the
+ * enabled segment under the pointer, and releasing there calls ``onPick``
+ * with that segment's value (not when it is the chosen one). A press on any
+ * other segment is left to its own click.
  */
-export function useSegmentIndicator(value: string, chosen = '[role="radio"][aria-checked="true"]'): {
+export function useSegmentIndicator(
+  value: string,
+  chosen = '[role="radio"][aria-checked="true"]',
+  onPick?: (value: string) => void,
+): {
   trackRef: RefObject<HTMLDivElement | null>
   indicator: ReactNode
   slideItemClass: string
+  trackProps: Partial<SegmentDragHandlers>
 } {
   const trackRef = useRef<HTMLDivElement>(null)
   const [box, setBox] = useState<IndicatorBox | null>(null)
+  // While dragging: the box under the pointer, and whether the fill is pressed.
+  const [dragBox, setDragBox] = useState<IndicatorBox | null>(null)
+  const [pressed, setPressed] = useState(false)
+  const drag = useRef<{ over: string | null } | null>(null)
+  const onPickRef = useRef(onPick)
+  useLayoutEffect(() => {
+    onPickRef.current = onPick
+  })
   useLayoutEffect(() => {
     const track = trackRef.current
     if (!track) return
     const measure = () => {
       const segment = track.querySelector<HTMLElement>(chosen)
-      const next = segment && segment.offsetWidth > 0
-        ? { x: segment.offsetLeft, y: segment.offsetTop, w: segment.offsetWidth, h: segment.offsetHeight }
-        : null
+      const next = segment && segment.offsetWidth > 0 ? boxOf(segment) : null
       setBox((current) => (
         current?.x === next?.x && current?.y === next?.y && current?.w === next?.w && current?.h === next?.h ? current : next
       ))
@@ -154,21 +188,99 @@ export function useSegmentIndicator(value: string, chosen = '[role="radio"][aria
     observer.observe(track)
     return () => observer.disconnect()
   }, [value, chosen])
-  const indicator = box ? (
+
+  /** The enabled segment under the pointer, or the nearest one across. */
+  const segmentAt = useCallback((event: PointerEvent<HTMLDivElement>): HTMLElement | null => {
+    const track = trackRef.current
+    if (!track) return null
+    const rect = track.getBoundingClientRect()
+    const x = event.clientX - rect.left + track.scrollLeft
+    const y = event.clientY - rect.top + track.scrollTop
+    const segments = Array.from(track.querySelectorAll<HTMLElement>('[data-segment-value]'))
+      .filter((segment) => !(segment as HTMLButtonElement).disabled && segment.offsetWidth > 0)
+    const inside = segments.find((segment) => (
+      x >= segment.offsetLeft && x < segment.offsetLeft + segment.offsetWidth
+      && y >= segment.offsetTop && y < segment.offsetTop + segment.offsetHeight
+    ))
+    if (inside) return inside
+    // Between segments or past the ends: the nearest one by horizontal distance.
+    let nearest: HTMLElement | null = null
+    let best = Infinity
+    for (const segment of segments) {
+      const gap = Math.max(segment.offsetLeft - x, x - (segment.offsetLeft + segment.offsetWidth), 0)
+      if (gap < best) {
+        best = gap
+        nearest = segment
+      }
+    }
+    return nearest
+  }, [])
+
+  const endDrag = useCallback(() => {
+    drag.current = null
+    setPressed(false)
+    setDragBox(null)
+  }, [])
+
+  const trackProps: Partial<SegmentDragHandlers> = onPick
+    ? {
+        onPointerDown: (event) => {
+          if (event.button !== 0) return
+          const track = trackRef.current
+          const target = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-segment-value]') : null
+          const current = track?.querySelector<HTMLElement>(chosen)
+          // Only the chosen segment's fill is picked up; others click as usual.
+          if (!track || !target || target !== current || (target as HTMLButtonElement).disabled) return
+          drag.current = { over: target.dataset.segmentValue ?? null }
+          try {
+            track.setPointerCapture?.(event.pointerId)
+          } catch {
+            // A synthetic or already-gone pointer: the press still works without capture.
+          }
+          setPressed(true)
+        },
+        onPointerMove: (event) => {
+          if (!drag.current) return
+          const segment = segmentAt(event)
+          const over = segment?.dataset.segmentValue ?? null
+          if (!segment || over === drag.current.over) return
+          drag.current.over = over
+          setDragBox(boxOf(segment))
+        },
+        onPointerUp: (event) => {
+          if (!drag.current) return
+          const segment = segmentAt(event)
+          const over = segment?.dataset.segmentValue ?? drag.current.over
+          endDrag()
+          if (over != null && over !== value) onPickRef.current?.(over)
+        },
+        onPointerCancel: endDrag,
+      }
+    : {}
+
+  const shown = dragBox ?? box
+  const indicator = shown ? (
     // A 1px box scaled to the segment's width and height: it moves by
     // transform alone, and has no corners for the scale to distort (the
-    // track clips the ends).
+    // track clips the ends). The inner fill takes the press dip, so it
+    // shrinks in both axes about its own centre.
     <span
       aria-hidden="true"
       data-segment-indicator=""
-      className="pointer-events-none absolute top-0 left-0 h-px w-px origin-top-left bg-(--color-fill-selected) transition-[translate,scale] duration-(--motion-base) ease-(--ease-out)"
-      style={{ translate: `${box.x}px ${box.y}px`, scale: `${box.w} ${box.h}` }}
-    />
+      data-pressed={pressed || undefined}
+      className="pointer-events-none absolute top-0 left-0 h-px w-px origin-top-left transition-[translate,scale] duration-(--motion-base) ease-(--ease-out)"
+      style={{ translate: `${shown.x}px ${shown.y}px`, scale: `${shown.w} ${shown.h}` }}
+    >
+      <span
+        className="block size-full bg-(--color-fill-selected) transition-[scale] duration-(--motion-fast) ease-(--ease-out)"
+        style={{ scale: pressed ? 0.92 : 1 }}
+      />
+    </span>
   ) : null
   // Above the fill, the words cross to the inverted tone at its pace rather
   // than ahead of it.
   const slideItemClass = cn('relative duration-(--motion-fast)', box && 'bg-transparent')
-  return { trackRef, indicator, slideItemClass }
+  return { trackRef, indicator, slideItemClass, trackProps }
 }
 
 export function SegmentedControl<T extends string>({
@@ -186,7 +298,13 @@ export function SegmentedControl<T extends string>({
   const enabled = options.filter((option) => !disabled && !option.disabled)
   // The chosen segment is the tab stop; fall back to the first enabled one.
   const tabStop = enabled.some((option) => option.value === value) ? value : enabled[0]?.value
-  const { trackRef, indicator, slideItemClass } = useSegmentIndicator(value)
+  const pick = (next: string) => {
+    const option = options.find((candidate) => candidate.value === next)
+    if (!option || option.disabled || disabled || next === value) return
+    selectionHapticFeedback()
+    onChange(option.value)
+  }
+  const { trackRef, indicator, slideItemClass, trackProps } = useSegmentIndicator(value, undefined, pick)
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, current: T) => {
     if (!enabled.length) return
@@ -215,7 +333,9 @@ export function SegmentedControl<T extends string>({
       aria-label={label}
       aria-disabled={disabled || undefined}
       data-slot="segmented-control"
-      className={cn(segmentedTrackClass({ size, fill }), className)}
+      // ``touch-pan-y``: a horizontal swipe drags the fill instead of scrolling the track.
+      className={cn(segmentedTrackClass({ size, fill }), 'touch-pan-y', className)}
+      {...trackProps}
     >
       {indicator}
       {options.map((option) => {

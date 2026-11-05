@@ -3,6 +3,7 @@ import React from "react";
 import { mock, afterEach } from "bun:test";
 import { readFileSync } from "node:fs";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { menuBlink } from "@/components/ui/_menu-blink";
 
 // Stub every material-icon-theme SVG `?url` import so Bun's module loader
 // doesn't crash on them (Bun doesn't run Vite transforms). Each stub returns a
@@ -62,6 +63,10 @@ mock.module('framer-motion', () => ({
   useSpring: (v: unknown) => ({ get: () => v, set: () => {} }),
   useReducedMotion: () => false,
 }))
+
+// Menu rows blink for ~110ms before they act (ui/_menu-blink.ts). Off here so
+// a click runs its action synchronously; ui/MenuBlink.test.tsx turns it on.
+menuBlink.enabled = false;
 
 // Stub TerminalView globally: it renders xterm DOM owned by the terminal
 // store. Tests that need terminal behaviour use TerminalKeyBar directly,

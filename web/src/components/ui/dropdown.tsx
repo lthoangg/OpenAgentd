@@ -55,6 +55,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { usePresenceMotion } from '@/components/ui/_use-presence-motion'
 import { MENU_ITEM_CLASS, MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
+import { blinkThen, isBlinking, shouldBlink } from '@/components/ui/_menu-blink'
 import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { hoverIntent } from '@/hooks/use-hover-intent'
 
@@ -111,9 +112,16 @@ function DropdownItem({
         'text-(--color-text)',
         className,
       )}
-      onClick={() => {
-        onSelect?.()
-        setOpen(false)
+      onClick={(event) => {
+        const row = event.currentTarget
+        const run = () => {
+          onSelect?.()
+          setOpen(false)
+        }
+        // The chosen row blinks once before it acts and the menu closes.
+        if (isBlinking(row)) return
+        if (shouldBlink(row)) blinkThen(row, run)
+        else run()
       }}
       {...props}
     >
@@ -340,6 +348,15 @@ function Dropdown({
         return
       }
       const target = meta[highlight]
+      const row = target && !target.disabled ? document.getElementById(target.id) : null
+      if (row && isBlinking(row)) return
+      if (target && row && shouldBlink(row)) {
+        blinkThen(row, () => {
+          target.select()
+          setOpen(false)
+        })
+        return
+      }
       if (target && !target.disabled) target.select()
       setOpen(false)
     }

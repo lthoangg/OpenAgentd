@@ -4,7 +4,7 @@
  * without installing the CLI. Mounted by AppBackendPanel in the desktop shell
  * (Settings → Server and the Server dialog).
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { ConnectQrCode } from '@/components/ConnectQrCode'
@@ -17,6 +17,7 @@ import { PanelSection } from '@/components/ui/panel-section'
 import { TEXT } from '@/components/settings/tokens'
 import { getPlatform, type OS } from '@/hooks/use-platform'
 import { cn } from '@/lib/utils'
+import { shake } from '@/lib/shake'
 import {
   DEFAULT_NETWORK_ACCESS_PORT,
   getNetworkAccessKey,
@@ -70,6 +71,8 @@ export function NetworkAccessCard({ title = 'Network access' }: {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmKey, setConfirmKey] = useState<{ next: string | null } | null>(null)
+  const portRef = useRef<HTMLInputElement>(null)
+  const customKeyRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -85,16 +88,22 @@ export function NetworkAccessCard({ title = 'Network access' }: {
     return () => { cancelled = true }
   }, [])
 
-  async function run(action: () => Promise<NetworkAccessStatus>) {
+  /** Runs a change; resolves true when it succeeded (no error came back). */
+  async function run(action: () => Promise<NetworkAccessStatus>): Promise<boolean> {
     setPending(true)
     setError(null)
     try {
       const next = await action()
       setStatus(next)
       setPort(String(next.requested_port))
-      if (next.error) setError(next.error)
+      if (next.error) {
+        setError(next.error)
+        return false
+      }
+      return true
     } catch (err) {
       setError(message(err))
+      return false
     } finally {
       setPending(false)
     }
@@ -104,6 +113,7 @@ export function NetworkAccessCard({ title = 'Network access' }: {
     const parsed = Number(port)
     if (!Number.isInteger(parsed) || parsed < 1024 || parsed > 65535) {
       setError('Choose a port between 1024 and 65535.')
+      shake(portRef.current)
       return
     }
     setKey(null)
@@ -152,7 +162,11 @@ export function NetworkAccessCard({ title = 'Network access' }: {
     setKey(null)
     setRevealed(false)
     setQrLink(null)
-    void run(() => setNetworkAccessKey(next)).then(() => setCustomKey(''))
+    void run(() => setNetworkAccessKey(next)).then((ok) => {
+      // A refused key shakes the field and stays in it to be fixed.
+      if (ok) setCustomKey('')
+      else shake(customKeyRef.current)
+    })
   }
 
   const enabled = status?.enabled ?? false
@@ -195,6 +209,7 @@ export function NetworkAccessCard({ title = 'Network access' }: {
           }
         >
           <Input
+            ref={portRef}
             id="network-access-port"
             value={port}
             onChange={(event) => setPort(event.target.value.replace(/\D/g, ''))}
@@ -277,6 +292,7 @@ export function NetworkAccessCard({ title = 'Network access' }: {
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Input
+                    ref={customKeyRef}
                     aria-label="Custom access key"
                     value={customKey}
                     onChange={(event) => setCustomKey(event.target.value)}

@@ -152,6 +152,9 @@ const RULES: Rule[] = [
       'components/FileLightbox.tsx': 1,
       // The transcript's ambient timeline; scrolling does the same job.
       'components/AgentView/TimelineScrubber.tsx': 1,
+      // The table copy button: shown on focus and always on touch, and
+      // text in a table can still be selected and copied by hand.
+      'utils/markdown.tsx': 1,
     },
   },
   // ── Contrast with the existing palette (DESIGN.md → Colors) ─────────────

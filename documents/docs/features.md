@@ -927,7 +927,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - On touch, a long press on a message, a code block or a link opens its
     menu as the app's bottom sheet, the iOS app included. A tool row has
     a menu too (right-click or long-press): **Copy arguments** and **Copy
-    result**.
+    result** *(deprecated; removed in v3.48.0: the menu opens files, and
+    Copy is on each section of the open row)*.
   - The plan tool's chip reads **Open plan**, like every other way to the
     plan.
   - A question card always ends in **Send**, dimmed with its reason until
@@ -1259,7 +1260,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A shell row shows the agent's description of the command (`shell  Run
     the unit tests`), and hovering it shows the whole command; the expanded
     row still shows the command and its output. A call without a
-    description shows its command as before.
+    description shows its command as before. *(Hovering for the command
+    deprecated; removed in v3.48.0: open the row.)*
   - On a phone the Review panel button sits as far from the right edge as
     the sidebar button does from the left.
 - **Readable contrast everywhere** `[v3.46.0]`:
@@ -2141,6 +2143,21 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Scheduled tasks open as a Review panel tab, with an overlay only when no
     workspace is open.
   - Settings and Usage use the same overlay frame as every other panel.
+- **Tool rows open files; one-height run deck** `[v3.48.0]`:
+  - Tool rows have no hover tooltip, so hovering a shell row no longer
+    shows its command. When a row's title is cut short (a long URL, query
+    or pattern), the whole value is the first line of the open row.
+  - Right-click or long-press on a **patch** row lists an **Open** item
+    (`Open web/src/app.tsx`) for each file the patch left in place, named
+    relative to the workspace. A deleted file isn't listed, and a renamed
+    one opens under its new name.
+    On a **read** row it opens the file at the line the read started from.
+    Files open in the Review panel. Other tool rows keep the system menu,
+    and nothing is fetched to build the menu.
+  - The run deck's controls (**+**, Code / Plan, the model chip, the
+    context ring and Send) are one height: 28px on desktop, 36px on a touch
+    tablet, 44px on a phone (Android included). All are rounded 6px except
+    Send, which stays a circle.
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
 - **Restored desktop window size** `[v1.52.0, updated v3.31.0]` — desktop windows reopen at the

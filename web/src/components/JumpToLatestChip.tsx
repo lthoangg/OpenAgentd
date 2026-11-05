@@ -52,9 +52,11 @@ export function JumpToLatest({ unseen, onJump, side = 'above', fadeOut = true }:
       aria-hidden={leaving || undefined}
       inert={leaving}
       // Centred by margin against ``inset-x-0`` (DESIGN.md: no transform
-      // layout). The gap clears the composer's drag grip.
+      // layout). The gap clears the composer's drag grip. On touch it is
+      // sized like the run deck: 36px tall, its words 13px on a phone, where
+      // ``text-xs`` is 17px; ``touch-hit`` grows the touch area to 44px.
       className={cn(
-        'touch-hit absolute inset-x-0 z-10 mx-auto flex h-7 w-fit items-center gap-1 rounded-full bg-(--bg-card) px-2.5 text-xs text-(--color-text-2) shadow-(--shadow-depth) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-95 motion-reduce:active:scale-100',
+        'touch-hit absolute inset-x-0 z-10 mx-auto flex h-7 w-fit items-center gap-1 rounded-full bg-(--bg-card) px-2.5 text-xs text-(--color-text-2) shadow-(--shadow-depth) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-95 motion-reduce:active:scale-100 pointer-coarse:h-9 pointer-coarse:px-3 phone:text-meta',
         SIDE_CLASS[side],
         leaving
           ? 'pointer-events-none animate-out fade-out-0 zoom-out-95 fill-mode-forwards animation-duration-(--motion-fast) ease-(--ease-in-out)'

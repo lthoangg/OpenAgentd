@@ -54,6 +54,16 @@ describe('JumpToLatestChip', () => {
     expect(screen.getByRole('button', { name: /jump to latest/i }).className).not.toMatch(/(?<![\w-])border(?![\w-])/)
   })
 
+  it('is sized like the run deck on touch screens: 13px words on a phone, 36px tall', () => {
+    useTranscriptFollowStore.setState({ unseen: 2, jumpToLatest: () => {} })
+    render(<JumpToLatestChip />)
+
+    const classes = screen.getByRole('button', { name: /jump to latest/i }).className.split(/\s+/)
+    // ``text-xs`` is 17px on a phone (iOS sizes); the deck's labels are 13px.
+    expect(classes).toContain('phone:text-meta')
+    expect(classes).toContain('pointer-coarse:h-9')
+  })
+
   it('fades out of reach, keeping its count, when the reader is back at the live end', () => {
     useTranscriptFollowStore.setState({ unseen: 4, jumpToLatest: () => {} })
     const { container } = render(<JumpToLatestChip />)

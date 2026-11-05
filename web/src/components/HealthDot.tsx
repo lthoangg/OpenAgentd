@@ -16,10 +16,18 @@ import { cn } from '@/lib/utils'
 export function HealthDot({
   className,
   labeled = false,
+  chip = false,
 }: {
   className?: string
   /** When true, render the connected backend name next to the dot. */
   labeled?: boolean
+  /**
+   * With ``labeled``: a 32px pill on the keycap wash in the phone's text
+   * size, as the Sessions screen's top bar draws the server (the bar is 44px,
+   * and ``touch-hit`` grows the target to match). ``className`` cannot do
+   * this: ``cn`` does not merge, so it would fight the footer's classes.
+   */
+  chip?: boolean
 } = {}) {
   const health = useHealthQuery()
   const backendStatus = useBackendStatusQuery()
@@ -46,9 +54,11 @@ export function HealthDot({
   // A bare dot (the phone drawer) has no visible name, so the label carries it.
   const label = labeled ? status : `${serverName}. ${status}`
 
-  const defaultClasses = labeled
-    ? 'flex h-5 items-center gap-1.5 rounded-sm px-1.5 font-mono text-xs md:text-meta text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
-    : 'flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-8 md:w-8'
+  const defaultClasses = labeled && chip
+    ? 'touch-hit relative flex h-8 max-w-full items-center gap-2 rounded-full bg-(--bg-key) px-3 text-subhead text-(--color-text-2) transition-colors hover:bg-(--color-fill-key-hover) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
+    : labeled
+      ? 'flex h-5 items-center gap-1.5 rounded-sm px-1.5 font-mono text-xs md:text-meta text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
+      : 'flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-8 md:w-8'
 
   return (
     <>

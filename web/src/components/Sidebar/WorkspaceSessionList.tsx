@@ -11,7 +11,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ROW_TEXT_ACTION } from '@/components/ui/list-row'
 import type { SessionResponse } from '@/api/types'
 import { sessionActivityTime } from '../Sidebar.helpers'
-import { DraftSessionRow, SessionRow, SessionRowsSkeleton, ShowMoreRow, useStableSessionHandlers, type MenuPoint } from './SessionRow'
+import { DraftSessionRow, SessionRow, SessionRowsSkeleton, ShowMoreRow, useStableSessionHandlers, type MenuPoint, type SessionDeleteHandler } from './SessionRow'
 
 export type { MenuPoint } from './SessionRow'
 
@@ -63,7 +63,7 @@ export function WorkspaceSessionList({
   mobileLongPressActions?: boolean
   className?: string
   onSessionSelect: (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => void
-  onSessionDelete: (e: React.SyntheticEvent, session: SessionResponse) => void
+  onSessionDelete: SessionDeleteHandler
   onSessionEdit: (session: SessionResponse) => void
   onSessionRename?: (session: SessionResponse, title: string) => void
   onSessionRenameCancel?: () => void

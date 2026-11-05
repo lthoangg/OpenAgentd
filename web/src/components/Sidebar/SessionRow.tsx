@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import { ArrowUpRight, Bot, CornerLeftUp, GitBranch, Loader2, MoreHorizontal, Pin, PinOff, SquarePen } from 'lucide-react'
+import { ArrowUpRight, Bot, CornerLeftUp, GitBranch, Loader2, MoreHorizontal, Pin, PinOff, SquarePen, Trash2 } from 'lucide-react'
 import { useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -17,8 +17,10 @@ import { isDeleteKey, isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/i
 import { sessionPrefetchProps } from '@/lib/session-prefetch-row'
 import { SessionStateWord, SessionStatusMark, sessionStateWord, sessionStatus } from './SessionStatusMark'
 import { LIST_ROW_GEOMETRY, ROW_ACTION, listRowSurface, listRowText, rowActionsReveal } from '@/components/ui/list-row'
+import { SwipeRow, type SwipeAction } from '@/components/phone/SwipeRow'
 import { CountChip } from './CountChip'
 import { TREE_INDENT_PX } from './tree-indent'
+import { useSidebarPage } from './SidebarPageContext'
 
 function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
   return event.button === 0 && (event.metaKey || event.ctrlKey)
@@ -27,10 +29,37 @@ function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
 /** Where a session's context menu opens: the pointer, or the row for keys. */
 export type MenuPoint = Pick<React.MouseEvent, 'clientX' | 'clientY'>
 
+/**
+ * Delete, from a row's own key (a keyboard event) or its swipe action (no
+ * event). Either way it only asks: the sidebar opens its confirmation.
+ */
+export type SessionDeleteHandler = (e: React.SyntheticEvent | null, session: SessionResponse) => void
+
 /** The row's actions menu opens under its More button, like a dropdown. */
 function menuBelow(button: HTMLElement): MenuPoint {
   const rect = button.getBoundingClientRect()
   return { clientX: rect.left, clientY: rect.bottom + 4 }
+}
+
+/**
+ * A row on the phone's Sessions screen swipes left to Pin and Delete; any
+ * other row (the drawer, desktop, a subagent) is drawn as it is.
+ */
+function SwipeActions({
+  actions,
+  disabled,
+  children,
+}: {
+  actions: SwipeAction[] | null
+  disabled: boolean
+  children: React.ReactNode
+}) {
+  if (!actions) return <>{children}</>
+  return (
+    <SwipeRow actions={actions} disabled={disabled} className="rounded-sm">
+      {children}
+    </SwipeRow>
+  )
 }
 
 /**
@@ -56,7 +85,7 @@ function LinkedSessionRow({
   /** F2, as the row menu's Rename shows it. */
   onEdit: (session: SessionResponse) => void
   /** Delete, as the row menu's Delete session… shows it. */
-  onDelete: (e: React.SyntheticEvent, session: SessionResponse) => void
+  onDelete: SessionDeleteHandler
 }) {
   const unread = useUnreadStore((state) => state.ids.includes(session.id))
   const failed = useUnreadStore((state) => state.failed.includes(session.id))
@@ -150,7 +179,7 @@ function SessionRowView({
   showDetails?: boolean
   mobileLongPressActions: boolean
   onSessionSelect: (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => void
-  onSessionDelete: (e: React.SyntheticEvent, session: SessionResponse) => void
+  onSessionDelete: SessionDeleteHandler
   onSessionEdit: (session: SessionResponse) => void
   onSessionRename: (session: SessionResponse, title: string) => void
   onSessionRenameCancel: () => void
@@ -173,6 +202,24 @@ function SessionRowView({
   // Only top-level sessions can be pinned.
   const canPin = Boolean(onSessionPinToggle) && !session.parent_session_id
   const pinLabel = `${pinned ? 'Unpin' : 'Pin'} session ${sessionTitle}`
+  // The Sessions screen (``page``): Pin and Delete behind a left swipe, Delete
+  // last, at the edge. A session still asks before it is deleted, and the
+  // row stays put while it is renamed or a chat covers the screen.
+  const page = useSidebarPage()
+  const swipeActions: SwipeAction[] | null = page && !session.parent_session_id
+    ? [
+        ...(canPin
+          ? [{
+              id: 'pin',
+              label: pinned ? 'Unpin' : 'Pin',
+              icon: pinned ? PinOff : Pin,
+              tone: 'accent' as const,
+              onAction: () => onSessionPinToggle?.(session),
+            }]
+          : []),
+        { id: 'delete', label: 'Delete', icon: Trash2, tone: 'destructive' as const, onAction: () => onSessionDelete(null, session) },
+      ]
+    : null
   // Touch without long-press sheets has no hover: keep actions visible there.
   const actionsVisibility = mobileLongPressActions ? 'hidden' : rowActionsReveal('row')
   const metaVisibility = mobileLongPressActions
@@ -262,6 +309,9 @@ function SessionRowView({
   return (
     // data-flip-id: the list slides this row (and its subagents) when it moves.
     <div className="space-y-px" data-flip-id={session.id}>
+      {/* The row's own markup is wrapped, not re-indented, so a diff of it
+          stays readable; off the page the wrapper renders nothing. */}
+      <SwipeActions actions={swipeActions} disabled={!page?.active || isEditing}>
       <div
         ref={rowRef}
         data-session-row
@@ -464,6 +514,7 @@ function SessionRowView({
           </button>
         </div>
       </div>
+      </SwipeActions>
 
       {/* Flat, no guide: subagent marks line up under the lead's title (the
           tree's one indent). The rows fold open and shut (height motion). */}

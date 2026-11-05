@@ -4,6 +4,7 @@ import { useDebouncedValue } from '@tanstack/react-pacer'
 import { Search } from 'lucide-react'
 import type { SessionResponse } from '@/api/types'
 import { SearchBar } from '@/components/ui/search-bar'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ROW_TEXT_ACTION } from '@/components/ui/list-row'
 import { useSessionSearchQuery } from '@/queries/useSessionsQuery'
@@ -18,6 +19,7 @@ export function SessionSearch({
   workspaceName,
   onSessionSelect,
   onClose,
+  cancel = false,
 }: {
   currentSessionId?: string
   /** Bump to move focus back into the field (a search request while already open). */
@@ -25,6 +27,11 @@ export function SessionSearch({
   workspaceName: (path: string) => string
   onSessionSelect: (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => void
   onClose: () => void
+  /**
+   * A Cancel button beside the field that calls ``onClose``: the phone's
+   * Sessions screen has no header Search toggle to close it with.
+   */
+  cancel?: boolean
 }) {
   const [text, setText] = useState('')
   const [query] = useDebouncedValue(text.trim(), { wait: 200 })
@@ -47,9 +54,10 @@ export function SessionSearch({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 px-1.5 pb-1">
+      <div className={cancel ? 'flex shrink-0 items-center gap-1 px-1.5 pb-1' : 'shrink-0 px-1.5 pb-1'}>
         <SearchBar
           ref={inputRef}
+          wrapperClassName={cancel ? 'min-w-0 flex-1' : undefined}
           value={text}
           onChange={(event) => setText(event.target.value)}
           placeholder="Search sessions"
@@ -64,6 +72,11 @@ export function SessionSearch({
             }
           }}
         />
+        {cancel && (
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+        )}
       </div>
       <div role="region" aria-label="Search results" className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
         {needle && !isFetching && results.length === 0 && (

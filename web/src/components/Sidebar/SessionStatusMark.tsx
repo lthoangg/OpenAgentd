@@ -51,14 +51,16 @@ export function sessionStateWord(status: SessionStatus): string | null {
 /**
  * A session's state as a word, for the row's meta slot in place of its age.
  * Decorative for assistive tech: the status mark carries the same state in
- * its label. ``className`` adds visibility rules for the row.
+ * its label. ``className`` adds visibility rules for the row. It is a status
+ * word, so ``text-subhead``: the same size as ``text-meta`` on desktop, 15px
+ * (where an age or a caption is 13px) on a phone.
  */
 export function SessionStateWord({ status, className = '' }: { status: SessionStatus; className?: string }) {
   if (status === 'idle') return null
   return (
     <span
       data-session-state={status}
-      className={`shrink-0 whitespace-nowrap px-1 text-meta ${STATE_WORD_TONES[status]} ${className}`}
+      className={`shrink-0 whitespace-nowrap px-1 text-subhead ${STATE_WORD_TONES[status]} ${className}`}
       aria-hidden="true"
     >
       {STATE_WORDS[status]}

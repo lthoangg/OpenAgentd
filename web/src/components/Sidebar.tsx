@@ -16,6 +16,12 @@
  *     page in with an explicit "Show more" row.
  *   • Mobile drawer footer: Settings, Usage, command palette, server and theme
  *     icons. On desktop those live in the status bar (the palette is ⌘K).
+ *   • Phone Sessions screen (``page``): the same list as the root of the
+ *     phone's navigation stack instead of a drawer. A top bar (server, ✎ New
+ *     session), a large title and search field that scroll with the list,
+ *     pull to refresh, swipe actions on session rows and a bottom toolbar
+ *     (Settings · Scheduled · Usage · Commands) in place of the drawer
+ *     footer, the New session row and the Scheduled section.
  *
  * ``activeWorkspace`` is
  * the workspace driving
@@ -83,6 +89,8 @@ import { getCodingWorkspaceTree, listSessions, listWorktrees, setCodingWorkspace
 import { WORKSPACES_KEY, workspaceLabel } from '@/utils/workspace'
 import { startNewSession } from '@/lib/new-session'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
+import { useUIStore } from '@/stores/useUIStore'
+import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
@@ -167,6 +175,10 @@ import {
   shouldOpenSessionInNewWindow,
 } from './Sidebar.window'
 import { SessionSearch } from './Sidebar/SessionSearch'
+import { SessionsPageBar, SessionsPageHeader, SessionsPageToolbar } from './Sidebar/SessionsPage'
+import { SidebarPageContext } from './Sidebar/SidebarPageContext'
+import { SidebarScroller } from './Sidebar/SidebarScroller'
+import { useLargeTitleCollapse } from './Sidebar/useLargeTitleCollapse'
 import { CountChip } from './Sidebar/CountChip'
 import { MenuShortcut } from './Sidebar/MenuShortcut'
 import { ROW_KEYS, type RowKeyName } from './Sidebar/row-keys'
@@ -228,6 +240,15 @@ interface SidebarProps {
   onMobileClose?: () => void
   /** Mobile drawer footer: opens the command palette; the icon hides without it. */
   onOpenPalette?: () => void
+  /**
+   * Phone: draw the full-screen Sessions page (the navigation stack's root
+   * layer, which this fills) instead of the drawer. There is no scrim, no
+   * drawer motion and no resize edge. ``mobileOpen`` then means Sessions is
+   * the screen on top: long-press and swipe actions work only while it is.
+   */
+  page?: boolean
+  /** The page toolbar's Scheduled button; without it the scheduler opens as the sidebar's own entries do. */
+  onOpenScheduler?: () => void
 }
 
 async function pickWorkspaceDirectory(): Promise<string | null> {
@@ -291,12 +312,22 @@ export function Sidebar({
   mobileOpen = false,
   onMobileClose,
   onOpenPalette,
+  page = false,
+  onOpenScheduler,
 }: SidebarProps) {
-  const isMobile = useIsMobile()
+  const isPage = page
+  // The page is a phone layout whatever the window says: sheets for row
+  // actions, no desktop resize. Only the drawer's own motion (scrim, slide,
+  // inert) is left out of it, below.
+  const isMobile = useIsMobile() || isPage
   const { isTauri, os } = usePlatform()
   const [nativeFolderPickerEnabled, setNativeFolderPickerEnabled] = useState(isTauri)
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
-  const mobileLongPressActions = isMobile && isTauriMobile && mobileOpen
+  // Held rows open the session sheet in the iOS and Android apps while the
+  // drawer is open, and on the Sessions page in any phone browser (the page
+  // has no inline ⋯ to fall back on). The page keeps it while a chat covers
+  // it: rows that changed shape under the sliding chat would be seen doing it.
+  const mobileLongPressActions = isPage || (isMobile && isTauriMobile && mobileOpen)
   const prefersReducedMotion = useReducedMotion()
   // The header's sidebar button and ⌘B open and close the column; a drawer
   // also closes on a click outside it or Escape.
@@ -492,6 +523,22 @@ export function Sidebar({
     () => queryClient.invalidateQueries({ queryKey: queryKeys.coding.tree() }),
     [queryClient],
   )
+  // Pull to refresh on the Sessions page: every session list (the tree's,
+  // Pinned, Needs you, the flat views) and the workspace tree. The promise
+  // settles when the refetches do, which is when the spinner may stop.
+  const refreshSessionList = useCallback(
+    () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() }),
+      refreshWorkspaceTree(),
+    ]),
+    [queryClient, refreshWorkspaceTree],
+  )
+  // Scheduled on the page toolbar: the caller's way, else the way the
+  // drawer's Scheduled section opens it.
+  const openScheduler = onOpenScheduler ?? (() => {
+    useUIStore.getState().focusScheduledTask(null)
+    dispatchAppEvent(APP_EVENTS.openScheduler)
+  })
 
   useEffect(() => {
     const handler = () => { void refreshWorkspaceTree() }
@@ -536,6 +583,10 @@ export function Sidebar({
     refocusSearchButton.current = false
     searchButtonRef.current?.focus()
   }, [searchOpen])
+  // The large title hands over to the top bar's small one as it scrolls away.
+  const { barRef, titleRef, onScroll: onListScroll } = useLargeTitleCollapse(isPage && searchOpen)
+  // Session rows read this to swipe; only while Sessions is the screen on top.
+  const pageState = useMemo(() => (isPage ? { active: mobileOpen } : null), [isPage, mobileOpen])
 
   // A new session is a draft until its first message: nothing is created
   // here, the draft screen opens for ``path``.
@@ -800,11 +851,14 @@ export function Sidebar({
   // ``lib/drawer-motion``: an edge swipe writes it per frame without
   // re-rendering, and a release springs on with the finger's speed. Closed
   // sits 280px out so its shadow clears the edge.
-  useDrawerMotion('sidebar', { open: mobileOpen, enabled: isMobile, hidden: -280, reduced: prefersReducedMotion ?? false })
+  useDrawerMotion('sidebar', { open: mobileOpen, enabled: isMobile && !isPage, hidden: -280, reduced: prefersReducedMotion ?? false })
   const sidebarMotion = ({ width }: LiveWidth) => ({
-    animate: isMobile
-      ? { width: 'min(272px, calc(100vw - 2rem))' }
-      : { width: desktopCollapsed ? 0 : width },
+    // The page fills its layer: no width of its own to animate.
+    animate: isPage
+      ? {}
+      : isMobile
+        ? { width: 'min(272px, calc(100vw - 2rem))' }
+        : { width: desktopCollapsed ? 0 : width },
     // Desktop sets the width as a style (no frame loop), sliding it only
     // while a toggle runs.
     transition: { duration: 0 },
@@ -912,8 +966,10 @@ export function Sidebar({
     })
   }
 
-  const handleSessionDelete = (e: React.SyntheticEvent, session: SessionResponse) => {
-    e.stopPropagation()
+  // From a row's key (an event) or its swipe action (none): either way it
+  // only opens the confirmation.
+  const handleSessionDelete = (e: React.SyntheticEvent | null, session: SessionResponse) => {
+    e?.stopPropagation()
     setDeleteTarget(session)
   }
 
@@ -1005,7 +1061,11 @@ export function Sidebar({
   const confirmSessionDelete = () => {
     if (!deleteTarget) return
     const target = deleteTarget
-    const wasOpen = target.id === currentSessionId
+    // On the Sessions page, ``currentSessionId`` is the chat kept under the
+    // list, not one on screen: deleting it neither leaves for another session
+    // (that would push a chat over Sessions) nor, on Undo, goes back to it.
+    const stay = isPage && mobileOpen
+    const wasOpen = !stay && target.id === currentSessionId
     // The row leaves at once; the server delete waits out the Undo window.
     // Undo (or a refusal) brings the row back.
     const undo = new AbortController()
@@ -1025,6 +1085,7 @@ export function Sidebar({
       deleteTarget: target,
       currentSessionId,
       workspaceSessions,
+      stay,
       mutateDelete: (mutationTarget) => deleteSession.mutate(
         typeof mutationTarget === 'string'
           ? { id: mutationTarget, holdMs: SESSION_DELETE_UNDO_MS, undo: undo.signal }
@@ -1050,13 +1111,23 @@ export function Sidebar({
       : 'Workspace actions'
   // ``aria-keyshortcuts`` for ⌘N, on the New session button and its menu entry.
   const newSessionKeys = isPrimaryModifierOS(os) ? 'Meta+N' : 'Control+N'
+  // Status grouping lists the waiting sessions itself. The sidebar puts this
+  // section after Pinned; the Sessions page puts it first, above everything.
+  const needsYouSection = groupBy !== 'status' && (
+    <NeedsYouSection
+      currentSessionId={currentSessionId}
+      workspaceName={workspaceDisplayName}
+      onSessionSelect={handleSessionSelect}
+    />
+  )
 
   return (
     <KeyLayerScope layer={drawerLayer}>
       {/* Mobile backdrop — closes the drawer on tap. Its opacity is the
           drawer's progress (see useDrawerMotion), so it fades with a drag
-          and with the release spring; shut, it takes no touches. */}
-      {isMobile && (
+          and with the release spring; shut, it takes no touches. The Sessions
+          page is no drawer: nothing to dim. */}
+      {isMobile && !isPage && (
         <div
           data-edge-drawer-scrim="sidebar"
           // No `md:hidden`: a landscape phone is wider than md but still
@@ -1078,22 +1149,31 @@ export function Sidebar({
         />
       )}
 
+    <SidebarPageContext.Provider value={pageState}>
     <ResizableAside
       initial={false}
       resize={sidebarResize}
       getMotion={sidebarMotion}
       // A desktop drawer floats over the chat and the Review panel: it takes
       // no room, so the panel must not size itself around it.
-      inFlow={isMobile || !drawer}
+      inFlow={!isPage && (isMobile || !drawer)}
       // Collapsed (desktop) or closed (mobile), the sidebar is off screen
       // but still in the DOM: keep Tab and screen readers out of it.
-      inert={isMobile ? !mobileOpen : desktopCollapsed}
-      data-edge-drawer={isMobile ? 'sidebar' : undefined}
+      // The page is never inert here: the navigation stack inerts its own
+      // covered layer.
+      inert={isPage ? false : isMobile ? !mobileOpen : desktopCollapsed}
+      data-edge-drawer={isMobile && !isPage ? 'sidebar' : undefined}
+      data-sidebar-page={isPage ? '' : undefined}
       // The drawer is fixed to the left edge, outside the shell's safe-area
       // padding: `pl-safe` keeps its rows clear of a landscape cutout while
       // its width (and so the closed -280px offset) stays the same.
+      // The page is not fixed: it fills the stack's layer, inside the chat
+      // view's ``mobile-safe-shell`` (which pads left and right), so only its
+      // top bar pads the top and its toolbar the bottom.
       className={
-        isMobile
+        isPage
+          ? 'flex h-full w-full min-w-0 flex-col bg-(--bg-page)'
+          : isMobile
           ? 'mobile-safe-top pl-safe fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)'
           : drawer
             // Closed, the drawer is 0 wide: hide it so its edge and shadow do not show.
@@ -1105,6 +1185,8 @@ export function Sidebar({
       data-sidebar-drawer={drawer && !isMobile ? '' : undefined}
     >
       {!isMobile && !desktopCollapsed && <PanelResizeHandle edge="right" />}
+
+      {isPage && <SessionsPageBar barRef={barRef} onNewSession={startSessionFromSidebar} />}
 
       <div
         data-focus-region="sidebar"
@@ -1136,7 +1218,9 @@ export function Sidebar({
           header.focus()
         }}
       >
-      {/* Always visible, above the scroller: the one-step way to start. */}
+      {/* Always visible, above the scroller: the one-step way to start. The
+          Sessions page starts one from ✎ in its top bar instead. */}
+      {!isPage && (
       <div className="shrink-0 px-1.5 pb-1 pt-1.5">
         <button
           type="button"
@@ -1152,9 +1236,10 @@ export function Sidebar({
           </kbd>
         </button>
       </div>
+      )}
 
       {/* Section header — actions stay reachable however long the list is. */}
-      {searchOpen && (
+      {searchOpen && !isPage && (
         <SidebarSectionHeader
           groupBy={groupBy}
           workspaceGroups={workspaceGroups}
@@ -1176,12 +1261,15 @@ export function Sidebar({
             handleSessionSelect(session, workspacePath, event)
           }}
           onClose={closeSessionSearch}
+          cancel={isPage}
         />
       ) : (
       <>
       {/* The sessions scroller: Pinned, Needs you and the sessions (under a
           header that sticks) scroll together. Scheduled is pinned below it. */}
-      <div data-sidebar-scroller="" className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+      <SidebarScroller page={isPage} onRefresh={refreshSessionList} onScroll={onListScroll}>
+      {isPage && <SessionsPageHeader titleRef={titleRef} searchRef={searchButtonRef} onSearch={openSessionSearch} />}
+      {isPage && needsYouSection}
       <PinnedSection
         currentSessionId={currentSessionId}
         workspaceName={workspaceDisplayName}
@@ -1191,14 +1279,7 @@ export function Sidebar({
         {...sessionRowHandlers}
       />
 
-      {/* Status grouping lists the waiting sessions itself. */}
-      {groupBy !== 'status' && (
-        <NeedsYouSection
-          currentSessionId={currentSessionId}
-          workspaceName={workspaceDisplayName}
-          onSessionSelect={handleSessionSelect}
-        />
-      )}
+      {!isPage && needsYouSection}
 
       <SidebarSectionHeader
         groupBy={groupBy}
@@ -1208,6 +1289,7 @@ export function Sidebar({
         onToggleSearch={openSessionSearch}
         onCollapseAll={collapseAllWorkspaces}
         onOpenFolder={() => { void openWorkspaceDialog() }}
+        page={isPage}
       />
 
       {groupBy !== 'project' ? (
@@ -1533,16 +1615,28 @@ export function Sidebar({
         )}
       </div>
       )}
-      </div>
+      </SidebarScroller>
 
-      {/* Pinned at the bottom, own scroll past 224px; hidden during search. */}
+      {/* Pinned at the bottom, own scroll past 224px; hidden during search.
+          The Sessions page has no Scheduled section: its toolbar opens it. */}
+      {!isPage && (
       <div data-sidebar-scheduled-scroller="" className="max-h-56 shrink-0 overflow-y-auto overflow-x-hidden">
         <ScheduledSection onMobileClose={onMobileClose} />
       </div>
+      )}
       </>
       )}
       </div>
 
+      {isPage ? (
+        <SessionsPageToolbar
+          onOpenSettings={() => openSettings()}
+          onOpenScheduler={openScheduler}
+          onOpenUsage={() => openTelemetry()}
+          onOpenPalette={onOpenPalette}
+        />
+      ) : (
+      <>
       {/* Mobile drawer footer — on desktop this lives in AppFooter status bar */}
       {/* Settings, Usage and theme are icons; the server takes the free width
           and names itself, so the connection is readable at a glance. */}
@@ -1576,6 +1670,8 @@ export function Sidebar({
         <HealthDot labeled className="h-9 min-w-0 flex-1 justify-start px-2 text-xs" />
         <ThemeToggle collapsed className="h-9 w-9" />
       </div>
+      </>
+      )}
 
       <Dialog
         open={dialogOpen}
@@ -2180,6 +2276,7 @@ export function Sidebar({
         onConfirmRemoveWorktree={confirmRemoveWorktree}
       />
     </ResizableAside>
+    </SidebarPageContext.Provider>
     </KeyLayerScope>
   )
 }

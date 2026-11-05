@@ -5,6 +5,7 @@ import type { WorkspaceGroup } from '@/api/types'
 import type { SidebarGroupBy } from '@/stores/useSidebarViewStore'
 import { SidebarViewMenu } from './SidebarViewMenu'
 import { SidebarHeading } from './SidebarHeading'
+import { cn } from '@/lib/utils'
 
 const ACTION_CLASS =
   'flex h-8 w-8 items-center justify-center rounded-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 pointer-coarse:size-9'
@@ -57,6 +58,10 @@ function HeaderAction({
  * from New session at the top of the sidebar, a workspace's "+", ⌘N or the
  * command palette. It sticks to the top of the sidebar's one scroller, so its
  * actions stay reachable however long the list is.
+ *
+ * On the phone's Sessions screen (``page``) the search field above the list
+ * is the one way in, so the header keeps only View options, and it sticks on
+ * the page's own tone.
  */
 export function SidebarSectionHeader({
   groupBy,
@@ -66,6 +71,7 @@ export function SidebarSectionHeader({
   onToggleSearch,
   onCollapseAll,
   onOpenFolder,
+  page = false,
 }: {
   groupBy: SidebarGroupBy
   /** Workspace groups for the View options filter (Workspace view). */
@@ -75,25 +81,28 @@ export function SidebarSectionHeader({
   onToggleSearch: () => void
   onCollapseAll: () => void
   onOpenFolder: () => void
+  page?: boolean
 }) {
   const [viewMenuAt, setViewMenuAt] = useState<{ x: number; y: number } | null>(null)
   const project = groupBy === 'project'
 
   return (
-    <div className="sticky top-0 z-10 shrink-0 bg-(--bg-page) dark:bg-(--bg-sidebar)">
+    <div className={cn('sticky top-0 z-10 shrink-0 bg-(--bg-page)', !page && 'dark:bg-(--bg-sidebar)')}>
       <SidebarHeading
         label={project ? 'Workspaces' : 'Sessions'}
         actions={(
           <>
-          <HeaderAction
-            label="Search sessions"
-            active={searchOpen}
-            pressed={searchOpen}
-            buttonRef={searchButtonRef}
-            onClick={onToggleSearch}
-          >
-            <Search size={13} aria-hidden="true" />
-          </HeaderAction>
+          {!page && (
+            <HeaderAction
+              label="Search sessions"
+              active={searchOpen}
+              pressed={searchOpen}
+              buttonRef={searchButtonRef}
+              onClick={onToggleSearch}
+            >
+              <Search size={13} aria-hidden="true" />
+            </HeaderAction>
+          )}
           <HeaderAction
             label="View options"
             active={viewMenuAt !== null}

@@ -11,6 +11,7 @@ import { AnimatePresence, motion, useMotionValue, useTransform } from 'framer-mo
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { CloseButton } from '@/components/ui/close-button'
 import { useToastStore, type Toast } from '@/stores/useToastStore'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -126,16 +127,17 @@ function ToastItem({ t, dismiss, ref }: ToastItemProps) {
         )}
       </div>
       {t.action && (
-        <button
+        <Button
           type="button"
+          size="sm"
           onClick={() => {
             t.action?.onAction()
             dismiss(t.id)
           }}
-          className="-my-1 inline-flex h-7 shrink-0 items-center rounded-xs bg-(--bg-key) px-2.5 text-sm font-medium text-(--color-text) transition-colors hover:bg-(--color-fill-key-hover) pointer-coarse:h-9"
+          className="-my-1 md:h-7"
         >
           {t.action.label}
-        </button>
+        </Button>
       )}
       {/* No Esc tooltip: Esc does not dismiss a toast, and swipe does. */}
       <CloseButton size="icon-xs" label="Dismiss" tooltip={null} className="-my-1" onClick={() => dismiss(t.id)} />

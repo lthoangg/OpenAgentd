@@ -23,7 +23,7 @@ export function useUpdateSummarizationSettingsMutation() {
       queryClient.invalidateQueries({ queryKey: queryKeys.settings.summarization() })
       // Invalidate the agent registry and model registry caches — both embed
       // summary_trigger_tokens computed from the effective threshold, so the
-      // token-meter ring in the chat header updates immediately after saving.
+      // context ring in the composer (ContextMeter) updates as soon as it saves.
       queryClient.invalidateQueries({ queryKey: queryKeys.agentRegistry() })
       queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
     },

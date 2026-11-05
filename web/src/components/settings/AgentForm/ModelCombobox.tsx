@@ -6,6 +6,7 @@ import { QueryClientContext } from '@tanstack/react-query'
 
 import type { ProvidersListBody } from '@/api/client'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { MENU_ITEM_CLASS, MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
 import { cn } from '@/lib/utils'
 import { Chip } from '@/components/ui/chip'
@@ -265,8 +266,10 @@ export function ModelCombobox({
           className="min-h-9 pr-9 font-mono pointer-coarse:min-h-9 pointer-coarse:pr-11"
         />
         {query && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             tabIndex={-1}
             aria-label="Clear model"
             onMouseDown={(e) => {
@@ -280,10 +283,10 @@ export function ModelCombobox({
               setOpen(true)
             }}
             disabled={disabled}
-            className="absolute top-1/2 right-1 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:text-(--color-text) disabled:opacity-50 md:h-7 md:w-7 pointer-coarse:size-9"
+            className="absolute top-1/2 right-1 -translate-y-1/2 md:size-7"
           >
             <X size={12} aria-hidden="true" />
-          </button>
+          </Button>
         )}
       </div>
 

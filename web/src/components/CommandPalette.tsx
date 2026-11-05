@@ -30,6 +30,7 @@ import { useDebouncedCallback } from '@tanstack/react-pacer'
 import fuzzysort from 'fuzzysort'
 import { Search, CornerDownLeft, ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react'
 import { AppOverlay } from '@/components/ui/app-overlay'
+import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isImeComposing } from '@/lib/keyboard/chord'
 import type { WorkspaceFileInfo } from '@/api/types'
@@ -627,12 +628,9 @@ export function CommandPalette({
               aria-label={searchLabel}
             />
             {query && (
-              <button
-                onClick={() => handleQueryChange('')}
-                className="rounded-xs px-1.5 py-1 text-meta text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-              >
+              <Button type="button" variant="ghost" size="xs" onClick={() => handleQueryChange('')}>
                 Clear
-              </button>
+              </Button>
             )}
           </div>
 

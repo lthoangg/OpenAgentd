@@ -10,6 +10,7 @@ import { useEffect, useId, useRef } from 'react'
 import { AtSign, Hash, MessageCircleQuestion, Paperclip, Plus } from 'lucide-react'
 
 import { SessionMcpServers } from '@/components/SessionMcpServers'
+import { Button } from '@/components/ui/button'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import type { SheetDetent } from '@/components/ui/_sheet'
 import { MENU_ITEM_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
@@ -65,14 +66,16 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
   }
 
   const trigger = (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon-sm"
       disabled={disabled}
       aria-label="Add to message"
       aria-haspopup="dialog"
       aria-describedby={attention.summary ? attentionId : undefined}
       onClick={isMobile ? () => setOpen(!open) : undefined}
-      className="relative flex size-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:cursor-not-allowed disabled:opacity-50 md:size-7 pointer-coarse:size-9"
+      className="relative rounded-md aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) md:size-7"
     >
       <Plus size={14} aria-hidden="true" />
       {attention.summary && (
@@ -85,7 +88,7 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
           <span id={attentionId} hidden>{attention.summary}</span>
         </>
       )}
-    </button>
+    </Button>
   )
 
   const content = (

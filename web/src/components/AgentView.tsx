@@ -915,7 +915,7 @@ export function AgentView({
     attachedRef,
     syncAnchor,
     showScrollBtn,
-    scrollToBottom,
+    jumpToLatest: jumpToEnd,
   } = useAutoFollowScroll({
     totalLen,
     lastContent,
@@ -1001,11 +1001,6 @@ export function AgentView({
     // A reconcile can swap the anchor's id; keep the last count then.
     publishUnseen(counted ?? unseenRef.current ?? 0)
   }, [blocks, liveTail, publishUnseen, readerTranscript, showScrollBtn])
-  useEffect(() => {
-    if (!jumpToLatestInComposer) return
-    useTranscriptFollowStore.setState({ jumpToLatest: () => scrollToBottom('smooth') })
-    return () => useTranscriptFollowStore.setState({ jumpToLatest: null, unseen: null })
-  }, [jumpToLatestInComposer, scrollToBottom])
 
   /** Hold the view while earlier turns land above it; call the release once they have. */
   const holdView = useCallback(() => {
@@ -1158,6 +1153,18 @@ export function AgentView({
     if (promptJumpRef.current) promptJumpRef.current.jump = false
   }, [])
 
+  /** Jump to latest. A prompt jump still loading would land after it and take the reader back up. */
+  const jumpToLatest = useCallback(() => {
+    cancelPromptJump()
+    pendingJumpRef.current = null
+    jumpToEnd()
+  }, [cancelPromptJump, jumpToEnd])
+  useEffect(() => {
+    if (!jumpToLatestInComposer) return
+    useTranscriptFollowStore.setState({ jumpToLatest })
+    return () => useTranscriptFollowStore.setState({ jumpToLatest: null, unseen: null })
+  }, [jumpToLatest, jumpToLatestInComposer])
+
   /** Bring a loaded prompt into view by block id, rendering down to it when it is hidden. */
   const showPrompt = useCallback((id: string) => {
     const root = scrollRef.current
@@ -1204,9 +1211,9 @@ export function AgentView({
     }
     pendingJumpRef.current = null
     // Past the newest prompt is the live end; before the oldest, earlier turns.
-    if (direction > 0) scrollToBottom('smooth')
+    if (direction > 0) jumpToEnd()
     else requestOlderPrompt()
-  }, [cancelPromptJump, requestOlderPrompt, scrollPromptIntoView, scrollRef, scrollToBottom])
+  }, [cancelPromptJump, jumpToEnd, requestOlderPrompt, scrollPromptIntoView, scrollRef])
 
   // The mobile chat actions step prompts without a keyboard.
   const jumpToPromptRef = useRef(jumpToPrompt)
@@ -1398,7 +1405,7 @@ export function AgentView({
     {/* The floating composer carries the chip when it is up; with none (a
         subagent's session) the same chip sits in the transcript's corner. */}
     {!jumpToLatestInComposer && (
-      <JumpToLatest unseen={showScrollBtn ? inlineUnseen ?? 0 : null} side="inside" fadeOut={false} onJump={() => scrollToBottom('smooth')} />
+      <JumpToLatest unseen={showScrollBtn ? inlineUnseen ?? 0 : null} side="inside" fadeOut={false} onJump={jumpToLatest} />
     )}
     </div>
     </FileRefContext.Provider>

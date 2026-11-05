@@ -310,7 +310,6 @@ fn span_to_dict(s: &SpanData) -> (Value, u64, StatusCode, u128, u64) {
         "status": s.status.name(),
         "attributes": s.attrs,
         "events": s.events,
-        "resource": resource(),
     });
     (v, end, s.status, s.ctx.trace_id, end - s.start)
 }
@@ -319,24 +318,11 @@ fn span_to_dict(s: &SpanData) -> (Value, u64, StatusCode, u128, u64) {
 
 struct Otel {
     spans: Option<JsonlWriter>,
-    service: String,
     ratio: f64,
     slow_ns: u64,
 }
 
 static OTEL: OnceLock<Otel> = OnceLock::new();
-static INSTANCE_ID: OnceLock<String> = OnceLock::new();
-
-fn resource() -> Value {
-    let service = OTEL.get().map(|o| o.service.clone()).unwrap_or_else(|| "openagentd".into());
-    json!({
-        "telemetry.sdk.language": "rust",
-        "telemetry.sdk.name": "openagentd-v3",
-        "telemetry.sdk.version": crate::VERSION,
-        "service.instance.id": INSTANCE_ID.get_or_init(|| uuid::Uuid::new_v4().to_string()),
-        "service.name": service,
-    })
-}
 
 pub fn sample_ratio() -> f64 {
     let raw = crate::settings::env_var("OPENAGENTD_OTEL_SPAN_SAMPLE_RATIO").unwrap_or_else(|| "1.0".into());
@@ -394,7 +380,7 @@ pub fn setup(service_name: &str, otel_dir: Option<&Path>) {
             Some(JsonlWriter::new(d, hourly_partition, "spans"))
         }
     };
-    let o = Otel { spans, service: service_name.to_string(), ratio: sample_ratio(), slow_ns: slow_span_threshold_ns() };
+    let o = Otel { spans, ratio: sample_ratio(), slow_ns: slow_span_threshold_ns() };
     if OTEL.set(o).is_err() {
         return;
     }
@@ -779,6 +765,16 @@ mod tests {
             assert_eq!(spawn(async { current() }).await.unwrap(), Some(c));
         })
         .await;
+    }
+
+    /// Nothing reads a resource block, and it repeated the same five fields
+    /// on every line.
+    #[test]
+    fn span_records_carry_no_resource_block() {
+        let s = Span::start_with_parent("x", SpanKind::Internal, None, vec![("k", json!("v"))]);
+        let (v, ..) = span_to_dict(&s.0.lock().unwrap());
+        let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(keys, ["name", "trace_id", "span_id", "parent_id", "kind", "start_time", "end_time", "duration_ms", "status", "attributes", "events"]);
     }
 
     #[test]

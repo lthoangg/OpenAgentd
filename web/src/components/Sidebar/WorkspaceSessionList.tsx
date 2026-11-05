@@ -1,11 +1,14 @@
 import type React from 'react'
 import { useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { MessageCircle, TriangleAlert } from 'lucide-react'
 import { useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
 import { queryKeys } from '@/queries/keys'
 import { getSession } from '@/api/client/agent'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
 import { Collapsible } from '@/components/ui/collapsible'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ROW_TEXT_ACTION } from '@/components/ui/list-row'
 import type { SessionResponse } from '@/api/types'
 import { sessionActivityTime } from '../Sidebar.helpers'
 import { DraftSessionRow, SessionRow, SessionRowsSkeleton, ShowMoreRow, useStableSessionHandlers, type MenuPoint } from './SessionRow'
@@ -120,19 +123,24 @@ export function WorkspaceSessionList({
       {draftActive && <DraftSessionRow />}
       {!collapsed && sessions.isLoading && <SessionRowsSkeleton />}
       {!collapsed && sessions.isError && workspaceSessions.length === 0 && (
-        <p role="alert" className="flex min-h-6 items-center gap-2 pl-6 text-meta text-(--color-text-muted)">
-          Couldn't load sessions.
-          <button
-            type="button"
-            onClick={() => { void sessions.refetch() }}
-            className="rounded-xs font-medium text-(--color-accent) hover:underline focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
-          >
-            Retry
-          </button>
-        </p>
+        <div role="alert">
+          <EmptyState
+            compact
+            tone="error"
+            icon={TriangleAlert}
+            title="Couldn't load sessions."
+            className="px-3 py-1"
+            action={(
+              <button type="button" onClick={() => { void sessions.refetch() }} className={`${ROW_TEXT_ACTION} -ml-2`}>
+                Retry
+              </button>
+            )}
+          />
+        </div>
       )}
       {workspaceSessions.length === 0 && !collapsed && !sessions.isLoading && !sessions.isError && !draftActive && (
-        <p className="flex h-6 items-center pl-6 text-meta text-(--color-text-subtle)">No sessions yet.</p>
+        // The icon sits in the status-mark slot, so the words line up with the titles.
+        <EmptyState compact icon={MessageCircle} title="No sessions yet" className="px-1.5 py-1" />
       )}
       {rows.map((session) => {
         const isCurrent = session.id === currentSessionId

@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import { ArrowUpRight, ChevronRight, CornerLeftUp, GitBranch, Loader2, MoreHorizontal, Pin, PinOff, SquarePen } from 'lucide-react'
+import { ArrowUpRight, Bot, CornerLeftUp, GitBranch, Loader2, MoreHorizontal, Pin, PinOff, SquarePen } from 'lucide-react'
 import { useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -16,7 +16,9 @@ import { Collapsible } from '@/components/ui/collapsible'
 import { isDeleteKey, isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/item-keys'
 import { sessionPrefetchProps } from '@/lib/session-prefetch-row'
 import { SessionStateWord, SessionStatusMark, sessionStateWord, sessionStatus } from './SessionStatusMark'
-import { LIST_ROW_GEOMETRY, ROW_ACTION, listRowSurface, listRowText, rowActionsReveal, rowChipClass } from '@/components/ui/list-row'
+import { LIST_ROW_GEOMETRY, ROW_ACTION, listRowSurface, listRowText, rowActionsReveal } from '@/components/ui/list-row'
+import { CountChip } from './CountChip'
+import { TREE_INDENT_PX } from './tree-indent'
 
 function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
   return event.button === 0 && (event.metaKey || event.ctrlKey)
@@ -34,7 +36,8 @@ function menuBelow(button: HTMLElement): MenuPoint {
 /**
  * A session another workspace ran for this row's session: the workspace in
  * mono, then the title, like a subagent row. Selecting it opens that
- * session in its own workspace.
+ * session in its own workspace. A child row has the geometry and text of
+ * every other list row (``list-row``): the name is its one emphasis.
  */
 function LinkedSessionRow({
   session,
@@ -42,12 +45,18 @@ function LinkedSessionRow({
   mobileLongPressActions,
   onSelect,
   onContextActions,
+  onEdit,
+  onDelete,
 }: {
   session: SessionResponse
   isCurrent: boolean
   mobileLongPressActions: boolean
   onSelect: (session: SessionResponse, event: React.MouseEvent) => void
   onContextActions: (session: SessionResponse, at: MenuPoint) => void
+  /** F2, as the row menu's Rename shows it. */
+  onEdit: (session: SessionResponse) => void
+  /** Delete, as the row menu's Delete session… shows it. */
+  onDelete: (e: React.SyntheticEvent, session: SessionResponse) => void
 }) {
   const unread = useUnreadStore((state) => state.ids.includes(session.id))
   const failed = useUnreadStore((state) => state.failed.includes(session.id))
@@ -56,7 +65,7 @@ function LinkedSessionRow({
   const where = workspaceLabel(session.workspace ?? '')
   const stateWord = sessionStateWord(status)
   return (
-    <div data-linked-session={session.id} className={`group/sub flex h-6 items-center rounded-sm pr-1 pointer-coarse:h-(--spacing-list-row) ${isCurrent ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'}`}>
+    <div data-linked-session={session.id} className={`group/sub flex h-(--spacing-list-row) items-center rounded-sm pr-1 ${listRowSurface(isCurrent)}`}>
       <button
         type="button"
         title={[title, where, stateWord].filter(Boolean).join(' · ')}
@@ -65,7 +74,15 @@ function LinkedSessionRow({
         aria-label={`${title}, in ${where}${stateWord ? `, ${stateWord}` : ''}`}
         {...(isCurrent ? {} : sessionPrefetchProps(session.id, session.workspace))}
         onKeyDown={(e) => {
-          if (isMenuKey(e) && !mobileLongPressActions) {
+          // The keys the row's menu lists beside Rename and Delete session…
+          // (``row-keys``) do those things here too.
+          if (isRenameKey(e)) {
+            e.preventDefault()
+            onEdit(session)
+          } else if (isDeleteKey(e)) {
+            e.preventDefault()
+            onDelete(e, session)
+          } else if (isMenuKey(e) && !mobileLongPressActions) {
             e.preventDefault()
             onContextActions(session, menuPointFor(e.currentTarget))
           }
@@ -76,15 +93,13 @@ function LinkedSessionRow({
           e.preventDefault()
           onContextActions(session, e)
         }}
-        className={`flex h-6 w-full min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors pointer-coarse:h-(--spacing-list-row) ${
-          isCurrent ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2) hover:text-(--color-text)'
-        }`}
+        className={`${LIST_ROW_GEOMETRY} transition-colors ${listRowText(isCurrent)}`}
       >
         <SessionStatusMark status={status} />
-        <span data-linked-workspace className="max-w-[45%] shrink-0 truncate font-mono text-meta font-semibold text-(--color-text)">
+        <span data-linked-workspace className="max-w-[45%] shrink-0 truncate font-mono font-medium text-(--color-text)">
           {where}
         </span>
-        <span className="min-w-0 flex-1 truncate text-meta text-(--color-text-muted)">{title}</span>
+        <span className="min-w-0 flex-1 truncate">{title}</span>
       </button>
       <button
         type="button"
@@ -128,7 +143,10 @@ function SessionRowView({
   checkoutName: string | null
   /** Where the session lives (workspace name), for lists across workspaces. */
   contextLabel?: string | null
-  /** Show the age, worktree tag and workspace label at rest. */
+  /**
+   * Show the age at rest. The workspace and worktree are in the row's tooltip
+   * (on touch with long-press sheets, which has no tooltip, they stay on the row).
+   */
   showDetails?: boolean
   mobileLongPressActions: boolean
   onSessionSelect: (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => void
@@ -147,8 +165,10 @@ function SessionRowView({
   const sessionTitle = session.title || 'Untitled'
   const rowRef = useRef<HTMLDivElement>(null)
   useTitleWash(rowRef, session.id, sessionTitle)
-  const sessionDate = formatRelativeDate(session.created_at)
-  const sessionAge = useCompactRelative(sessionActivityTime(session))
+  // The tooltip and the age at rest both say when the session was last used.
+  const activityAt = sessionActivityTime(session)
+  const sessionDate = formatRelativeDate(activityAt)
+  const sessionAge = useCompactRelative(activityAt)
   const pinned = Boolean(session.pinned_at)
   // Only top-level sessions can be pinned.
   const canPin = Boolean(onSessionPinToggle) && !session.parent_session_id
@@ -165,7 +185,7 @@ function SessionRowView({
   // not hide it. It gives way to the actions like the pin mark does, and
   // stays on touch, where the title truncates before it does.
   const stateWord = sessionStateWord(status)
-  // "Show details" off hides the at-rest meta; the tooltip still carries it.
+  // "Show details" off hides the age; the tooltip still carries it.
   const ageVisibility = showDetails ? metaVisibility : 'hidden'
 
   const isChildSessionCurrent = Boolean(
@@ -265,7 +285,7 @@ function SessionRowView({
         // A ``title``, drawn by the app's title layer: a long session list
         // mounted a full tooltip component per row.
         <LongPressButton
-                title={[sessionTitle, stateWord, contextLabel, checkoutName, sessionDate].filter(Boolean).join(' · ')}
+                title={[sessionTitle, stateWord, contextLabel, checkoutName && `worktree ${checkoutName}`, sessionDate].filter(Boolean).join(' · ')}
                 enabled={mobileLongPressActions}
                 onLongPress={() => onSessionLongPress(session)}
                 type="button"
@@ -296,7 +316,7 @@ function SessionRowView({
                 <AnimatedTitle
                   text={sessionTitle}
                   sessionId={session.id}
-                  className={`flex-1 ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${status !== 'idle' ? 'text-(--color-text)' : ''}`}
+                  className={`flex-1 ${isCurrent ? 'font-medium text-(--color-text)' : ''} ${status !== 'idle' ? 'text-(--color-text)' : ''}`}
                 />
                 {checkoutName && <span className="sr-only">{`, in worktree ${checkoutName}`}</span>}
                 {contextLabel && <span className="sr-only">{`, in ${contextLabel}`}</span>}
@@ -309,75 +329,65 @@ function SessionRowView({
         {/* Subagents fold behind a count pill beside the title, so rows
             without any keep no chevron gutter before it. */}
         {hasSubagents && !isEditing && (
-          <button
-            type="button"
+          <CountChip
+            icon={Bot}
+            count={subagents.length}
+            active={!isExpanded && hasActiveWork}
+            expanded={isExpanded}
+            mark={!isExpanded && hasActiveWork ? (
+              <SessionStatusMark
+                status={hasWaitingSubagent ? 'needs_input' : 'running'}
+                label={hasWaitingSubagent ? 'Subagent waiting for the main agent' : 'Subagent working'}
+              />
+            ) : undefined}
             onClick={(e) => {
               e.stopPropagation()
               e.preventDefault()
               setExpandedOverride(!isExpanded)
             }}
-            className={`ml-1 ${rowChipClass(!isExpanded && hasActiveWork)}`}
             aria-expanded={isExpanded}
             aria-label={subagentToggleLabel}
             title={subagentToggleLabel}
-          >
-            {!isExpanded && hasActiveWork && (
-              <SessionStatusMark
-                status={hasWaitingSubagent ? 'needs_input' : 'running'}
-                label={hasWaitingSubagent ? 'Subagent waiting for the main agent' : 'Subagent working'}
-              />
-            )}
-            <span>{subagents.length}</span>
-            <ChevronRight
-              size={11}
-              className={`shrink-0 transition-transform duration-(--motion-fast) ${isExpanded ? 'rotate-90' : ''}`}
-              aria-hidden="true"
-            />
-          </button>
+          />
         )}
         {/* Sessions other workspaces ran for this one, behind their own
             pill: the arrow says they live elsewhere. */}
         {hasLinked && !isEditing && (
-          <button
-            type="button"
+          <CountChip
             data-linked-toggle=""
+            icon={ArrowUpRight}
+            count={linked.length}
+            active={!isLinkedExpanded && (linkedWaiting || linkedWorking)}
+            expanded={isLinkedExpanded}
+            mark={!isLinkedExpanded && (linkedWaiting || linkedWorking) ? (
+              <SessionStatusMark
+                status={linkedWaiting ? 'needs_input' : 'running'}
+                label={linkedWaiting ? 'A session in another workspace needs you' : 'A session in another workspace is running'}
+              />
+            ) : undefined}
             onClick={(e) => {
               e.stopPropagation()
               e.preventDefault()
               setLinkedOverride(!isLinkedExpanded)
             }}
-            className={`ml-1 ${rowChipClass(!isLinkedExpanded && (linkedWaiting || linkedWorking))}`}
             aria-expanded={isLinkedExpanded}
             aria-label={linkedToggleLabel}
             title={linkedToggleLabel}
-          >
-            {!isLinkedExpanded && (linkedWaiting || linkedWorking) && (
-              <SessionStatusMark
-                status={linkedWaiting ? 'needs_input' : 'running'}
-                label={linkedWaiting ? 'A session in another workspace needs you' : 'A session in another workspace is running'}
-              />
-            )}
-            <ArrowUpRight size={11} className="shrink-0" aria-hidden="true" />
-            <span>{linked.length}</span>
-            <ChevronRight
-              size={11}
-              className={`shrink-0 transition-transform duration-(--motion-fast) ${isLinkedExpanded ? 'rotate-90' : ''}`}
-              aria-hidden="true"
-            />
-          </button>
+          />
         )}
-        {/* Meta slot: the worktree tag and age read at rest; hover/focus
-            swaps them for the row actions in the same place, so neither
-            covers the title. The tag is its own flex item with an explicit
-            minimum, so it shrinks (faster than the title) instead of
-            holding its full width. */}
-        {checkoutName && !isEditing && (
+        {/* Meta slot: at rest it reads the state word or the age and nothing
+            else; hover/focus swaps them for the row actions in the same
+            place, so neither covers the title. Where the session lives (its
+            workspace and worktree) is in the row's tooltip. Touch with
+            long-press sheets has no tooltip and no hover, so there the place
+            stays on the row, after the title, giving way first when narrow. */}
+        {mobileLongPressActions && checkoutName && !isEditing && (
           <span className={`ml-1 inline-flex min-w-12 max-w-24 shrink-2 items-center gap-0.5 font-mono text-meta text-(--color-text-muted) ${ageVisibility}`} aria-hidden="true">
-            <GitBranch size={11} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
+            <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
             <span data-checkout-tag className="truncate">{checkoutName}</span>
           </span>
         )}
-        {contextLabel && !isEditing && (
+        {mobileLongPressActions && contextLabel && !isEditing && (
           <span
             data-context-label
             className={`ml-1 min-w-8 max-w-24 shrink-2 truncate font-mono text-meta text-(--color-text-muted) ${ageVisibility}`}
@@ -402,15 +412,15 @@ function SessionRowView({
             }}
             className="ml-1 inline-flex min-w-8 max-w-24 shrink-2 items-center gap-0.5 rounded-xs font-mono text-meta text-(--color-text-muted) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
             aria-label={`Open the session that sent this, in ${sentFromName}`}
-            title={`Sent from ${sentFrom.title ? `“${sentFrom.title}” in ` : ''}${sentFromName}`}
+            title={`Sent from ${sentFrom.title ? `"${sentFrom.title}" in ` : ''}${sentFromName}`}
           >
-            <CornerLeftUp size={11} className="shrink-0" aria-hidden="true" />
+            <CornerLeftUp size={12} className="shrink-0" aria-hidden="true" />
             <span className="truncate">{sentFromName}</span>
           </button>
         )}
         {pinned && !isEditing && (
           <span data-pin-mark="" className={`ml-1 flex shrink-0 items-center text-(--color-text-muted) ${pinMarkVisibility}`} aria-hidden="true">
-            <Pin size={11} />
+            <Pin size={12} />
           </span>
         )}
         {/* A running row says so with its leading spinner alone: a word or a
@@ -436,7 +446,7 @@ function SessionRowView({
               aria-label={pinLabel}
               title={pinned ? 'Unpin' : 'Pin'}
             >
-              {pinned ? <PinOff size={11} aria-hidden="true" /> : <Pin size={11} aria-hidden="true" />}
+              {pinned ? <PinOff size={12} aria-hidden="true" /> : <Pin size={12} aria-hidden="true" />}
             </button>
           )}
           <button
@@ -455,10 +465,10 @@ function SessionRowView({
         </div>
       </div>
 
-      {/* Flat, no guide: subagent marks line up under the lead's title. The
-          rows fold open and shut (height motion). */}
+      {/* Flat, no guide: subagent marks line up under the lead's title (the
+          tree's one indent). The rows fold open and shut (height motion). */}
       <Collapsible open={hasSubagents && isExpanded}>
-        <div className="space-y-px py-0.5 pl-[18px]">
+        <div className="space-y-px py-0.5" style={{ paddingLeft: TREE_INDENT_PX }}>
           {subagents.map((sub) => {
             const isSubCurrent = sub.session_id === currentSessionId
             const subTitle = sub.title ? sub.title.replace(/^[^:]+:\s*/, '') : sub.member_id
@@ -477,7 +487,7 @@ function SessionRowView({
               updated_at: null,
             }
             return (
-              <div key={sub.session_id} className={`group/sub flex h-6 items-center rounded-sm pr-1 pointer-coarse:h-(--spacing-list-row) ${isSubCurrent ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'}`}>
+              <div key={sub.session_id} className={`group/sub flex h-(--spacing-list-row) items-center rounded-sm pr-1 ${listRowSurface(isSubCurrent)}`}>
                     <button
                       type="button"
                       title={`${sub.member_id}: ${subTitle} · ${
@@ -504,21 +514,17 @@ function SessionRowView({
                         e.preventDefault()
                         onSessionContextActions(subSessionPayload, e)
                       }}
-                      className={`flex h-6 w-full min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors pointer-coarse:h-(--spacing-list-row) ${
-                        isSubCurrent
-                          ? 'text-(--color-text) font-semibold'
-                          : 'text-(--color-text-2) hover:text-(--color-text)'
-                      }`}
+                      className={`${LIST_ROW_GEOMETRY} transition-colors ${listRowText(isSubCurrent)}`}
                     >
                       <SessionStatusMark
                         status={isSubWaiting ? 'needs_input' : isSubWorking ? 'running' : 'idle'}
                         label={isSubWaiting ? 'Subagent waiting for the main agent' : 'Subagent working'}
                       />
                       {/* Capped: a handle can fall back to the session id. */}
-                      <span className="max-w-[45%] shrink-0 truncate font-mono text-meta font-semibold text-(--color-text)">
+                      <span className="max-w-[45%] shrink-0 truncate font-mono font-medium text-(--color-text)">
                         {sub.member_id}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-meta text-(--color-text-muted)">
+                      <span className="min-w-0 flex-1 truncate">
                         {subTitle}
                       </span>
                     </button>
@@ -540,7 +546,7 @@ function SessionRowView({
 
       {/* Sessions other workspaces ran for this one, down the whole chain. */}
       <Collapsible open={hasLinked && isLinkedExpanded}>
-        <div className="space-y-px py-0.5 pl-[18px]" data-linked-sessions="">
+        <div className="space-y-px py-0.5" style={{ paddingLeft: TREE_INDENT_PX }} data-linked-sessions="">
           {linked.map((item) => (
             <LinkedSessionRow
               key={item.id}
@@ -549,6 +555,8 @@ function SessionRowView({
               mobileLongPressActions={mobileLongPressActions}
               onSelect={selectLinked}
               onContextActions={onSessionContextActions}
+              onEdit={onSessionEdit}
+              onDelete={onSessionDelete}
             />
           ))}
         </div>
@@ -607,7 +615,7 @@ export function ShowMoreRow({ loading, onLoadMore }: { loading: boolean; onLoadM
     >
       {/* The status-mark slot, so the label lines up with the titles. */}
       <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
-        {loading && <Loader2 size={11} className="animate-spin" />}
+        {loading && <Loader2 size={12} className="animate-spin" />}
       </span>
       {loading ? 'Loading…' : 'Show more'}
     </button>
@@ -646,10 +654,10 @@ export function DraftSessionRow({ label = null }: { label?: string | null }) {
       aria-current="page"
       className={`${LIST_ROW_GEOMETRY} ${listRowSurface(true)} ${listRowText(true)}`}
     >
-      <span className="flex size-3 shrink-0 items-center justify-center text-(--color-text-subtle)" aria-hidden="true">
-        <SquarePen size={11} />
+      <span className="flex size-3 shrink-0 items-center justify-center text-(--color-text-muted)" aria-hidden="true">
+        <SquarePen size={12} />
       </span>
-      <span className="min-w-0 flex-1 truncate font-semibold italic">New session</span>
+      <span className="min-w-0 flex-1 truncate font-medium">New session</span>
       {label && <span className="max-w-[40%] shrink-0 truncate font-mono text-meta text-(--color-text-muted)">{label}</span>}
     </div>
   )

@@ -6,7 +6,10 @@ import {
   useSidebarViewStore,
 } from '@/stores/useSidebarViewStore'
 import type { WorkspaceGroup } from '@/api/types'
+import { usePlatform } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { groupColor } from './groupColor'
+import { MenuShortcut } from './MenuShortcut'
 
 function MenuGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -49,11 +52,12 @@ function CheckItem({
   )
 }
 
-function ActionItem({ onSelect, children }: { onSelect: () => void; children: ReactNode }) {
+function ActionItem({ onSelect, shortcut, children }: { onSelect: () => void; shortcut?: string; children: ReactNode }) {
   return (
     <button type="button" role="menuitem" className={CONTEXT_MENU_ITEM_CLASS} onClick={onSelect}>
       <span className="size-3 shrink-0" aria-hidden="true" />
-      {children}
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {shortcut && <MenuShortcut>{shortcut}</MenuShortcut>}
     </button>
   )
 }
@@ -82,6 +86,7 @@ export function SidebarViewMenu({
   onDismiss: () => void
 }) {
   const groupBy = useSidebarViewStore((s) => s.groupBy)
+  const { os } = usePlatform()
   const showDetails = useSidebarViewStore((s) => s.showDetails)
   const groupFilter = useSidebarViewStore((s) => s.groupFilter)
   const setGroupBy = useSidebarViewStore((s) => s.setGroupBy)
@@ -121,7 +126,11 @@ export function SidebarViewMenu({
       </CheckItem>
       <ContextMenuSeparator />
       {onCollapseAll && <ActionItem onSelect={() => { onCollapseAll(); onDismiss() }}>Collapse all workspaces</ActionItem>}
-      {onOpenFolder && <ActionItem onSelect={() => { onDismiss(); onOpenFolder() }}>Open workspace…</ActionItem>}
+      {onOpenFolder && (
+        <ActionItem shortcut={shortcutLabel(APP_SHORTCUTS.openWorkspace, os)} onSelect={() => { onDismiss(); onOpenFolder() }}>
+          Open workspace…
+        </ActionItem>
+      )}
       {(onCollapseAll || onOpenFolder) && <ContextMenuSeparator />}
       <button
         type="button"

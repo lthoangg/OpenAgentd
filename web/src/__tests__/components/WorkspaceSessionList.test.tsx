@@ -32,6 +32,30 @@ describe('WorkspaceSessionList — first load', () => {
       </QueryClientProvider>,
     )
     expect(screen.getByRole('status', { name: 'Loading sessions' })).toBeTruthy()
+    expect(screen.queryByText('No sessions yet')).toBeNull()
+  })
+
+  it('says "No sessions yet" as a compact empty state once the list loaded empty', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    globalThis.fetch = mock(async () => new Response(JSON.stringify({ data: [], has_more: false, next_cursor: null }))) as unknown as typeof fetch
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceSessionList
+          path="/empty/workspace"
+          onSessionSelect={() => {}}
+          onSessionDelete={() => {}}
+          onSessionEdit={() => {}}
+          onSessionLongPress={() => {}}
+          onSessionContextActions={() => {}}
+        />
+      </QueryClientProvider>,
+    )
+
+    // Sentence case, no trailing period, at row scale (no centred 48px chip).
+    const title = await screen.findByText('No sessions yet')
+    const empty = title.closest('[data-empty-state="compact"]') as HTMLElement
+    expect(empty).toBeTruthy()
+    expect(empty.className).toContain('px-1.5')
     expect(screen.queryByText('No sessions yet.')).toBeNull()
   })
 })
@@ -366,8 +390,10 @@ describe('WorkspaceSessionList — several checkouts', () => {
 
     const worktreeRow = screen.getByText('Worktree work').closest('[data-session-row]') as HTMLElement
     const mainRow = screen.getByText('Main work').closest('[data-session-row]') as HTMLElement
-    expect(worktreeRow.querySelector('[data-checkout-tag]')?.textContent).toBe('task-a')
-    expect(mainRow.querySelector('[data-checkout-tag]')).toBeNull()
+    // The worktree is in the row's tooltip, not drawn on the row at rest.
+    expect(worktreeRow.querySelector('[data-checkout-tag]')).toBeNull()
+    expect(worktreeRow.querySelector('[data-sidebar-session]')?.getAttribute('title')).toContain('worktree task-a')
+    expect(mainRow.querySelector('[data-sidebar-session]')?.getAttribute('title')).not.toContain('worktree')
     // Screen readers hear the checkout as part of the row name.
     expect(screen.getByText('Worktree work').closest('button')?.textContent).toContain('in worktree task-a')
   })
@@ -481,6 +507,6 @@ describe('WorkspaceSessionList — the open session', () => {
 
     expect((await screen.findByRole('alert')).textContent).toContain("Couldn't load sessions.")
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
-    expect(screen.queryByText('No sessions yet.')).toBeNull()
+    expect(screen.queryByText('No sessions yet')).toBeNull()
   })
 })

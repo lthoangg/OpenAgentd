@@ -64,6 +64,7 @@ import {
   Settings,
   SquarePen,
   Trash2,
+  TriangleAlert,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -96,8 +97,9 @@ import {
 } from '@/components/ui/context-menu'
 import { MENU_ITEM_CLASS, MENU_ITEM_DANGER, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { ROW_ACTION, ROW_TEXT_ACTION, listRowClass, rowActionsReveal, rowChipClass } from '@/components/ui/list-row'
+import { ROW_ACTION, ROW_TEXT_ACTION, listRowClass, rowActionsReveal } from '@/components/ui/list-row'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
@@ -165,6 +167,10 @@ import {
   shouldOpenSessionInNewWindow,
 } from './Sidebar.window'
 import { SessionSearch } from './Sidebar/SessionSearch'
+import { CountChip } from './Sidebar/CountChip'
+import { MenuShortcut } from './Sidebar/MenuShortcut'
+import { ROW_KEYS, type RowKeyName } from './Sidebar/row-keys'
+import { TREE_INDENT_PX } from './Sidebar/tree-indent'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
 /** How long a deleted session can be brought back before the server forgets it. */
@@ -184,6 +190,8 @@ interface SessionMenuAction {
   danger?: boolean
   /** Starts a new group of entries. */
   separatorBefore?: boolean
+  /** The row key that does the same thing (``ROW_KEYS``), shown beside the entry. */
+  rowKey?: RowKeyName
   run: () => void
 }
 
@@ -232,25 +240,33 @@ async function pickWorkspaceDirectory(): Promise<string | null> {
   return typeof selected === 'string' ? selected : null
 }
 
-/** One pick-one row of a repository's checkout menu. */
-/** A workspace or checkout whose folder is gone from disk: a warning, not an error. */
-function MissingBadge({ path }: { path?: string }) {
+/**
+ * A workspace or checkout whose folder is gone from disk: a warning, not an
+ * error. A small ⚠ in the warning tone beside the name, not a chip, so the
+ * name keeps the whole row. It has no tooltip of its own: its row's says
+ * "Folder not found at <path>".
+ */
+function MissingBadge() {
   return (
-    <Chip tone="warning" data-sidebar-missing="" title={path ? `Folder not found at ${path}` : 'Folder not found on disk'}>
-      {/* Phones and touch tablets (whose row actions always show) keep the
-          workspace name readable; the title says the rest. */}
-      <span className="max-md:hidden pointer-coarse:hidden">folder not found</span>
-      <span className="hidden max-md:inline pointer-coarse:inline">missing</span>
-    </Chip>
+    <span
+      data-sidebar-missing=""
+      role="img"
+      aria-label="Folder not found"
+      className="flex shrink-0 items-center text-(--accent-orange-text)"
+    >
+      <TriangleAlert size={12} aria-hidden="true" />
+    </span>
   )
 }
 
-function CheckoutMenuItem({ checked, onSelect, children }: { checked: boolean; onSelect: () => void; children: ReactNode }) {
+/** One pick-one row of a repository's checkout menu. */
+function CheckoutMenuItem({ checked, title, onSelect, children }: { checked: boolean; title?: string; onSelect: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
       role="menuitemradio"
       aria-checked={checked}
+      title={title}
       className={`${CONTEXT_MENU_ITEM_CLASS} ${checked ? 'text-(--color-text)' : ''}`}
       onClick={onSelect}
     >
@@ -969,7 +985,7 @@ export function Sidebar({
       actions.push({ id: 'window', label: 'Open in new window', icon: AppWindow, run: () => openInNewWindow(session) })
     }
     if (topLevel) {
-      actions.push({ id: 'rename', label: 'Rename', icon: Pencil, run: () => handleSessionEdit(session) })
+      actions.push({ id: 'rename', label: 'Rename', icon: Pencil, rowKey: 'rename', run: () => handleSessionEdit(session) })
       actions.push({
         id: 'pin',
         label: session.pinned_at ? 'Unpin' : 'Pin',
@@ -977,7 +993,7 @@ export function Sidebar({
         run: () => toggleSessionPinned(session),
       })
     }
-    actions.push({ id: 'delete', label: 'Delete session…', icon: Trash2, danger: true, separatorBefore: actions.length > 0, run: () => setDeleteTarget(session) })
+    actions.push({ id: 'delete', label: 'Delete session…', icon: Trash2, danger: true, separatorBefore: actions.length > 0, rowKey: 'delete', run: () => setDeleteTarget(session) })
     return actions
   }
 
@@ -1032,6 +1048,8 @@ export function Sidebar({
     : mobileWorkspaceActions
       ? workspaceLabel(mobileWorkspaceActions.path)
       : 'Workspace actions'
+  // ``aria-keyshortcuts`` for ⌘N, on the New session button and its menu entry.
+  const newSessionKeys = isPrimaryModifierOS(os) ? 'Meta+N' : 'Control+N'
 
   return (
     <KeyLayerScope layer={drawerLayer}>
@@ -1124,7 +1142,7 @@ export function Sidebar({
           type="button"
           data-sidebar-new-session=""
           onClick={startSessionFromSidebar}
-          aria-keyshortcuts={isPrimaryModifierOS(os) ? 'Meta+N' : 'Control+N'}
+          aria-keyshortcuts={newSessionKeys}
           className={`${listRowClass()} font-medium`}
         >
           <SquarePen size={13} aria-hidden="true" className="shrink-0 text-(--color-text-muted)" />
@@ -1210,28 +1228,41 @@ export function Sidebar({
       /* Workspace + sessions tree */
       <div className="flex flex-1 flex-col pb-2">
         {workspaceTreeFailed && workspaceTree.length === 0 && (
-          <div role="alert" className="flex flex-col items-start gap-1 px-3 py-1.5" data-sidebar-tree-error="">
-            <p className="text-xs text-(--color-text-muted)">Couldn’t load workspaces.</p>
-            <button
-              type="button"
-              className={`${ROW_TEXT_ACTION} -ml-2`}
-              disabled={workspaceTreeRetrying}
-              onClick={() => { void refetchWorkspaceTree() }}
-            >
-              {workspaceTreeRetrying && <Loader2 size={11} className="mr-1 animate-spin" aria-hidden="true" />}
-              {workspaceTreeRetrying ? 'Retrying…' : 'Retry'}
-            </button>
+          <div role="alert" data-sidebar-tree-error="">
+            <EmptyState
+              compact
+              tone="error"
+              icon={TriangleAlert}
+              title="Couldn't load workspaces."
+              className="px-3 py-1.5"
+              action={(
+                <button
+                  type="button"
+                  className={`${ROW_TEXT_ACTION} -ml-2`}
+                  disabled={workspaceTreeRetrying}
+                  onClick={() => { void refetchWorkspaceTree() }}
+                >
+                  {workspaceTreeRetrying && <Loader2 size={12} className="mr-1 animate-spin" aria-hidden="true" />}
+                  {workspaceTreeRetrying ? 'Retrying…' : 'Retry'}
+                </button>
+              )}
+            />
           </div>
         )}
 
         {!workspaceTreePending && !workspaceTreeFailed && visibleWorkspaces.length === 0 && (
-          <div className="flex flex-col items-start gap-2 px-3 py-3">
-            <p className="text-xs text-(--color-text-muted)">No workspaces yet.</p>
-            <Button type="button" size="sm" onClick={() => { void openWorkspaceDialog() }}>
-              <FolderPlus size={13} aria-hidden="true" />
-              Open workspace…
-            </Button>
-          </div>
+          <EmptyState
+            compact
+            icon={FolderPlus}
+            title="No workspaces yet"
+            className="px-3 py-3"
+            action={(
+              <Button type="button" size="sm" onClick={() => { void openWorkspaceDialog() }}>
+                <FolderPlus size={13} aria-hidden="true" />
+                Open workspace…
+              </Button>
+            )}
+          />
         )}
 
         {activeGroupFilter && (
@@ -1272,7 +1303,10 @@ export function Sidebar({
             .filter(sessionWorking)
             .sort((a, b) => (sessionActivityTime(b) ?? '').localeCompare(sessionActivityTime(a) ?? ''))
           const sourceHasRunningSession = sourceRunningSessions.length > 0
-          const checkoutLabel = selectedWorktree?.name ?? (checkouts.selected ? 'Workspace' : 'all')
+          const sourceMissing = Boolean(workspaceByPath.get(path)?.missing)
+          const worktreeChipHint = checkouts.selected
+            ? `Showing ${selectedWorktree?.name ?? 'the workspace'} only · change worktree`
+            : `Showing the workspace and ${worktrees.length} worktree${worktrees.length === 1 ? '' : 's'}`
 
           return (
             <div key={path} className="relative" data-sidebar-workspace-group="">
@@ -1289,7 +1323,7 @@ export function Sidebar({
                   aria-expanded={sourceIsExpanded}
                   aria-label={`${sourceIsExpanded ? 'Collapse' : 'Expand'} workspace ${sourceLabel}`}
                 >
-                  <ChevronRight size={11} className={`shrink-0 transition-transform duration-(--motion-fast) ${sourceIsExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
+                  <ChevronRight size={12} className={`shrink-0 transition-transform duration-(--motion-fast) ${sourceIsExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
                 </button>
                 <Tooltip className="h-full min-w-0 flex-1">
                   <TooltipTrigger
@@ -1326,62 +1360,63 @@ export function Sidebar({
                         aria-description={sourceIsExpanded ? 'Expanded' : 'Collapsed'}
                       >
                         {sourceIsChat ? (
-                          <MessageCircle size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+                          <MessageCircle size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
                         ) : (
-                          <Folder size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+                          <Folder size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
                         )}
-                        <span className={`truncate ${sourceIsActive ? 'font-medium text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)'}`}>
+                        {/* A folder that is gone reads muted, with a ⚠ after it
+                            (its tooltip says where it was). */}
+                        <span
+                          className={cn(
+                            'truncate',
+                            sourceIsActive && 'font-medium',
+                            sourceMissing
+                              ? 'text-(--color-text-muted)'
+                              : sourceIsActive ? 'text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)',
+                          )}
+                        >
                           {sourceLabel}
                         </span>
-                        {workspaceByPath.get(path)?.missing && <MissingBadge path={path} />}
+                        {sourceMissing && <MissingBadge />}
                         <WorkspaceGroupDots groups={sourceGroups} />
                         {sourceIsPending && (
                           <span>
-                            <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
+                            <Loader2 size={12} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
                           </span>
                         )}
                       </LongPressButton>
                     }
                   />
                   <TooltipContent>
-                    {sourceIsChat ? 'Chat workspace' : path}
-                    {workspaceByPath.get(path)?.missing && <span className="block">Folder not found on disk</span>}
+                    {sourceIsChat ? 'Chat workspace' : sourceMissing ? `Folder not found at ${path}` : path}
                     {sourceGroups.length > 0 && <span className="block">{workspaceGroupsLabel(sourceGroups)}</span>}
                   </TooltipContent>
                 </Tooltip>
                 {worktrees.length > 0 && (
-                  // Always visible and always compact (icon + worktree count),
-                  // so the repository name keeps the row; a filter shows as
-                  // the chip's fill and as a row atop the list.
+                  // Always visible and always compact (branch icon + worktree
+                  // count, the pill every row count uses), so the repository
+                  // name keeps the row; a filter shows as the chip's fill and
+                  // as a row atop the list.
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <button
-                          type="button"
+                        <CountChip
+                          icon={GitBranch}
+                          count={worktrees.length}
+                          active={Boolean(checkouts.selected)}
+                          mark={worktreeIsRemoving ? <Loader2 size={12} className="shrink-0 animate-spin" aria-hidden="true" /> : undefined}
                           onClick={(event) => {
                             const rect = event.currentTarget.getBoundingClientRect()
                             setCheckoutMenu({ repo: path, x: rect.left, y: rect.bottom + 4 })
                           }}
-                          className={`ml-1 ${rowChipClass(Boolean(checkouts.selected))}`}
                           aria-haspopup="menu"
                           aria-expanded={checkoutMenu?.repo === path}
-                          aria-label={`Worktrees for ${sourceLabel}: ${checkoutLabel} (${worktrees.length})`}
-                        >
-                          {worktreeIsRemoving && <Loader2 size={11} className="shrink-0 animate-spin" aria-hidden="true" />}
-                          <span className="whitespace-nowrap">
-                            <span className="tabular-nums">{worktrees.length}</span>
-                            {/* Phones and touch tablets: the count and the branch mark the session rows use for worktrees. */}
-                            <span className="max-md:hidden pointer-coarse:hidden">{worktrees.length === 1 ? ' worktree' : ' worktrees'}</span>
-                          </span>
-                          <GitBranch size={11} className="hidden shrink-0 max-md:block pointer-coarse:block" aria-hidden="true" />
-                        </button>
+                          aria-label={`${worktrees.length} ${worktrees.length === 1 ? 'worktree' : 'worktrees'}`}
+                          aria-description={`${sourceLabel}: ${worktreeChipHint}`}
+                        />
                       }
                     />
-                    <TooltipContent>
-                      {checkouts.selected
-                        ? `Showing ${selectedWorktree?.name ?? 'the workspace'} only · change worktree`
-                        : `Showing the workspace and ${worktrees.length} worktree${worktrees.length === 1 ? '' : 's'}`}
-                    </TooltipContent>
+                    <TooltipContent>{worktreeChipHint}</TooltipContent>
                   </Tooltip>
                 )}
                 <Tooltip>
@@ -1395,7 +1430,7 @@ export function Sidebar({
                         className={`ml-1 ${ROW_ACTION} ${mobileLongPressActions ? 'hidden' : rowActionsReveal('')}`}
                         aria-label={selectedWorktree ? `New session in worktree ${selectedWorktree.name}` : `New session in ${sourceLabel}`}
                       >
-                        <Plus size={11} aria-hidden="true" />
+                        <Plus size={12} aria-hidden="true" />
                       </button>
                     }
                   />
@@ -1434,17 +1469,18 @@ export function Sidebar({
 
               <Collapsible open={sourceIsExpanded || sourceHasRunningSession}>
                 {/* One level: every checkout's sessions hang off a single
-                    guide under the chevron, status marks under the folder.
-                    Expanding and collapsing fold the rows (height motion). */}
-                <div className="ml-[17px] mr-1.5 border-l border-(--color-border-subtle) pb-1 pl-1">
+                    guide under the chevron (the tree's one indent, which a
+                    session's subagent rows use too), status marks under the
+                    folder. Expanding and collapsing fold the rows (height motion). */}
+                <div className="mr-1.5 border-l border-(--color-border-subtle) pb-1 pl-1" style={{ marginLeft: TREE_INDENT_PX }}>
                   {checkouts.selected && sourceIsExpanded && (
                     // The active filter, named where its sessions are, with
                     // a one-step way back to every checkout.
                     <div className="flex h-6 items-center gap-1.5 px-1.5 text-meta text-(--color-text-subtle) pointer-coarse:h-9">
                       <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
                         {selectedWorktree
-                          ? <GitBranch size={11} className="text-(--accent-orange-text)" />
-                          : <Folder size={11} className="text-(--color-accent)" />}
+                          ? <GitBranch size={12} className="text-(--accent-orange-text)" />
+                          : <Folder size={12} className="text-(--color-accent)" />}
                       </span>
                       <span className="min-w-0 flex-1 truncate font-mono text-(--color-text-2)">
                         {selectedWorktree?.name ?? 'Workspace'}
@@ -1613,10 +1649,14 @@ export function Sidebar({
                     </button>
                   )}
                   {loading && dirs.length === 0 && (
-                    <p className="px-2 py-4 text-center text-xs text-(--color-text-subtle)">Loading folders…</p>
+                    <div role="status" aria-label="Loading folders" className="space-y-2 px-2 py-3">
+                      <Skeleton className="h-3 w-2/3" />
+                      <Skeleton className="h-3 w-1/2" />
+                      <Skeleton className="h-3 w-3/5" />
+                    </div>
                   )}
                   {!loading && dirs.length === 0 && (
-                    <p className="px-2 py-4 text-center text-xs text-(--color-text-subtle)">No folders here</p>
+                    <EmptyState compact icon={Folder} title="No folders here" className="px-2 py-3" />
                   )}
                   {dirs.map((dir) => (
                     <button
@@ -1728,27 +1768,15 @@ export function Sidebar({
         open={worktreeTarget !== null}
         onOpenChange={(open) => { if (!open) setWorktreeTarget(null) }}
       >
-        <DialogContent showCloseButton={false} size="none" padding="none" className="flex max-h-[min(86dvh,520px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden sm:w-[min(560px,calc(100vw-2rem))] sm:max-w-none">
-          <form onSubmit={submitWorktree} className="flex h-full min-h-0 flex-col">
-            <DialogHeader className="shrink-0 gap-0 border-b border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
-              <div className="flex items-start gap-2">
-                <div className="min-w-0 flex-1">
-                  <DialogTitle>Create worktree</DialogTitle>
-                  <DialogDescription className="mt-0.5 text-xs leading-4 text-(--color-text-muted)">
-                    Isolated copy of {worktreeTarget ? workspaceLabel(worktreeTarget) : 'this workspace'}.
-                  </DialogDescription>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setWorktreeTarget(null)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-                  aria-label="Close create worktree dialog"
-                >
-                  <X size={14} aria-hidden="true" />
-                </button>
-              </div>
+        <DialogContent size="lg">
+          <form onSubmit={submitWorktree} className="space-y-3">
+            <DialogHeader>
+              <DialogTitle>Create worktree</DialogTitle>
+              <DialogDescription>
+                Isolated copy of {worktreeTarget ? workspaceLabel(worktreeTarget) : 'this workspace'}.
+              </DialogDescription>
             </DialogHeader>
-            <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-3 sm:px-4">
+            <div className="space-y-2.5">
               <div className="rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1.5">
                 <div className="mb-0.5 flex items-center gap-1.5 label-caps text-(--color-text-subtle)">
                   <Folder size={12} aria-hidden="true" />
@@ -1776,11 +1804,11 @@ export function Sidebar({
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-text-subtle) md:min-h-8"
+                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-xs text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-text-subtle) md:min-h-8 max-md:pointer-coarse:text-base"
                     maxLength={80}
                     autoFocus
                   />
-                  <p className="text-xs md:text-meta font-normal text-(--color-text-subtle)">Blank uses “session”.</p>
+                  <p className="text-xs md:text-meta font-normal text-(--color-text-muted)">Blank uses &quot;session&quot;.</p>
                 </label>
                 <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
                   <span>Branch</span>
@@ -1791,19 +1819,19 @@ export function Sidebar({
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-text-subtle) md:min-h-8"
+                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-xs text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-text-subtle) md:min-h-8 max-md:pointer-coarse:text-base"
                     maxLength={255}
                   />
-                  <p className="text-xs md:text-meta font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
+                  <p className="text-xs md:text-meta font-normal text-(--color-text-muted)">Blank defaults to openagentd/name.</p>
                 </label>
               </div>
               <div className="rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-2 text-xs text-(--color-text-muted)">
                 <div className="mb-1 flex items-center justify-between gap-2">
                     <p className="font-medium text-(--color-text-2)">Existing worktrees</p>
-                    <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-xs md:text-meta text-(--color-text-muted)">{worktreeOptions.length}</span>
+                    <Chip mono>{worktreeOptions.length}</Chip>
                 </div>
                 {worktreeOptions.length === 0 ? (
-                    <p className="py-1 text-(--color-text-subtle)">No worktrees yet.</p>
+                    <EmptyState compact icon={GitBranch} title="No worktrees yet" className="py-1" />
                 ) : (
                   <ul className="max-h-32 space-y-0.5 overflow-y-auto pr-1">
                       {worktreeOptions.map((item) => (
@@ -1825,21 +1853,22 @@ export function Sidebar({
                             <Tooltip>
                               <TooltipTrigger
                                 render={
-                                  <button
+                                  <Button
                                     type="button"
+                                    variant="ghost"
+                                    size="icon-xs"
                                     onClick={() => setRemoveWorktreeTarget(item)}
                                     disabled={worktreeRemoving === item.directory}
-                                    className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) opacity-100 transition-colors hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50"
                                     aria-label={`Delete worktree ${item.name}…`}
                                   >
-                                    {worktreeRemoving === item.directory ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Trash2 size={12} aria-hidden="true" />}
-                                  </button>
+                                    {worktreeRemoving === item.directory ? <Loader2 className="size-3 animate-spin" aria-hidden="true" /> : <Trash2 className="size-3" aria-hidden="true" />}
+                                  </Button>
                                 }
                               />
                               <TooltipContent>Delete worktree…</TooltipContent>
                             </Tooltip>
                           ) : (
-                            <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-xs md:text-meta text-(--color-text-muted)">external</span>
+                            <Chip>external</Chip>
                           )}
                         </li>
                       ))}
@@ -1848,7 +1877,7 @@ export function Sidebar({
               </div>
               {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
             </div>
-            <DialogFooter className="mx-0 mb-0 shrink-0 flex-row justify-end gap-2 rounded-none border-t border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
+            <DialogFooter>
               <Button type="button" variant="default" onClick={() => setWorktreeTarget(null)}>Cancel</Button>
               <Button variant="primary" type="submit" disabled={worktreeLoading}>
                 {worktreeLoading ? 'Creating…' : 'Create and open'}
@@ -1869,6 +1898,9 @@ export function Sidebar({
               type="button"
               role="menuitem"
               className={CONTEXT_MENU_ITEM_CLASS}
+              // ⌘N starts a session in the workspace on screen: the key and the
+              // entry agree only for that one, so only its menu shows the key.
+              aria-keyshortcuts={desktopWorkspaceActions.sessionPath === activeWorkspace ? newSessionKeys : undefined}
               onClick={() => {
                 const action = desktopWorkspaceActions
                 setDesktopWorkspaceActions(null)
@@ -1876,8 +1908,12 @@ export function Sidebar({
               }}
             >
               <Plus size={12} aria-hidden="true" />
-              New session
+              <span className="min-w-0 flex-1 truncate">New session</span>
+              {desktopWorkspaceActions.sessionPath === activeWorkspace && (
+                <MenuShortcut>{shortcutLabel(APP_SHORTCUTS.newSession, os)}</MenuShortcut>
+              )}
             </button>
+            <ContextMenuSeparator />
             <button
               type="button"
               role="menuitem"
@@ -1952,14 +1988,15 @@ export function Sidebar({
             <CheckoutMenuItem
               key={item.path}
               checked={checkoutMenuRepository.selected === item.path}
+              title={item.missing ? `Folder not found at ${item.path}` : undefined}
               onSelect={() => { selectCheckout(checkoutMenu.repo, item.path); setCheckoutMenu(null) }}
             >
               {item.kind === 'folder'
-                ? <Folder size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+                ? <Folder size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
                 : <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />}
               <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
               {item.missing
-                ? <MissingBadge path={item.path} />
+                ? <MissingBadge />
                 : item.kind === 'folder'
                   ? <Chip>folder</Chip>
                   : !item.managed && <Chip>external</Chip>}
@@ -2036,20 +2073,22 @@ export function Sidebar({
           onDismiss={() => setDesktopSessionActions(null)}
           className="min-w-44"
         >
-          {sessionMenuActions(desktopSessionActions.session).map(({ id, label, icon: Icon, danger, separatorBefore, run }) => (
+          {sessionMenuActions(desktopSessionActions.session).map(({ id, label, icon: Icon, danger, separatorBefore, rowKey, run }) => (
             <Fragment key={id}>
               {separatorBefore && <ContextMenuSeparator />}
               <button
                 type="button"
                 role="menuitem"
                 className={danger ? CONTEXT_MENU_ITEM_DANGER_CLASS : CONTEXT_MENU_ITEM_CLASS}
+                aria-keyshortcuts={rowKey ? ROW_KEYS[rowKey].aria(os) : undefined}
                 onClick={() => {
                   setDesktopSessionActions(null)
                   run()
                 }}
               >
                 <Icon size={12} aria-hidden="true" />
-                {label}
+                <span className="min-w-0 flex-1 truncate">{label}</span>
+                {rowKey && <MenuShortcut>{ROW_KEYS[rowKey].label(os)}</MenuShortcut>}
               </button>
             </Fragment>
           ))}
@@ -2092,10 +2131,10 @@ export function Sidebar({
         open={worktreeEditTarget !== null}
         onOpenChange={(open) => { if (!open) setWorktreeEditTarget(null) }}
       >
-        <DialogContent size="xs" padding="compact" className="gap-3">
+        <DialogContent size="xs" padding="compact">
           <form onSubmit={submitWorktreeTitle} className="space-y-3">
-            <DialogHeader className="gap-1 pr-8">
-              <DialogTitle>Edit worktree title</DialogTitle>
+            <DialogHeader className="pr-8">
+              <DialogTitle>Rename worktree</DialogTitle>
               {worktreeEditTarget?.directory ? (
                 <Tooltip className="min-w-0">
                   <TooltipTrigger
@@ -2116,13 +2155,13 @@ export function Sidebar({
                 autoCorrect="off"
                 autoCapitalize="off"
                 spellCheck={false}
-                className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none transition-colors focus:outline-none focus:border-(--color-text-subtle) md:min-h-8"
+                className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-xs text-(--color-text) outline-none transition-colors focus:outline-none focus:border-(--color-text-subtle) md:min-h-8 max-md:pointer-coarse:text-base"
                 aria-label="Worktree title"
                 maxLength={255}
               />
               {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
             </div>
-            <DialogFooter className="-mx-3 -mb-3 p-3">
+            <DialogFooter>
               <Button type="button" variant="default" onClick={() => setWorktreeEditTarget(null)}>Cancel</Button>
               <Button variant="primary" type="submit" disabled={!worktreeEditTitle.trim() || worktreeEditLoading}>
                 {worktreeEditLoading ? 'Saving…' : 'Save'}

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { useDebouncedValue } from '@tanstack/react-pacer'
+import { Search } from 'lucide-react'
 import type { SessionResponse } from '@/api/types'
 import { SearchBar } from '@/components/ui/search-bar'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ROW_TEXT_ACTION } from '@/components/ui/list-row'
 import { useSessionSearchQuery } from '@/queries/useSessionsQuery'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -65,19 +67,24 @@ export function SessionSearch({
       </div>
       <div role="region" aria-label="Search results" className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
         {needle && !isFetching && results.length === 0 && (
-          <div className="flex flex-col items-start gap-1 px-1.5 py-1">
-            <p className="break-words text-meta text-(--color-text-subtle)">No sessions match “{query}”.</p>
-            <button
-              type="button"
-              className={`${ROW_TEXT_ACTION} -ml-2`}
-              onClick={() => {
-                setText('')
-                inputRef.current?.focus()
-              }}
-            >
-              Clear search
-            </button>
-          </div>
+          <EmptyState
+            compact
+            icon={Search}
+            title={`No sessions match "${query}"`}
+            className="px-1.5 py-1"
+            action={(
+              <button
+                type="button"
+                className={`${ROW_TEXT_ACTION} -ml-2`}
+                onClick={() => {
+                  setText('')
+                  inputRef.current?.focus()
+                }}
+              >
+                Clear search
+              </button>
+            )}
+          />
         )}
         <ul className="space-y-px">
           {results.map((session) => (

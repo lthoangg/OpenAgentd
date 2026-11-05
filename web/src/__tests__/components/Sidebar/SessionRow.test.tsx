@@ -13,14 +13,16 @@ import type { ComponentProps } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { SessionResponse } from '@/api/types'
 import { useUnreadStore } from '@/stores/useUnreadStore'
+import { formatRelativeDate } from '@/utils/format'
 import { useFakeTimers } from '../../fake-timers'
 
 mock.module('@/queries/useSessionsQuery', () => ({
   useSessionSubagentsQuery: () => ({ data: undefined }),
 }))
 
-const { SessionRow } = await import('@/components/Sidebar/SessionRow')
+const { DraftSessionRow, SessionRow } = await import('@/components/Sidebar/SessionRow')
 const { SessionStateWord } = await import('@/components/Sidebar/SessionStatusMark')
+const { TREE_INDENT_PX } = await import('@/components/Sidebar/tree-indent')
 
 beforeEach(() => {
   useUnreadStore.setState({ ids: [], failed: [] })
@@ -308,7 +310,7 @@ describe('SessionRow sessions in other workspaces', () => {
     render(row(() => {}, started, { isCurrent: false, currentSessionId: 'other', path: '/r/infra', onSessionSelect: onSelect }))
     const mark = screen.getByRole('button', { name: 'Open the session that sent this, in app' })
     expect(mark.textContent).toBe('app')
-    expect(mark.getAttribute('title')).toBe('Sent from “Orders API” in app')
+    expect(mark.getAttribute('title')).toBe('Sent from "Orders API" in app')
     fireEvent.click(mark)
     expect(calls).toHaveLength(1)
     expect(calls[0][0]).toMatchObject({ id: 'origin', workspace: '/r/app' })
@@ -321,5 +323,176 @@ describe('SessionRow sessions in other workspaces', () => {
     render(row(() => {}, { ...origin, linked_sessions: undefined }))
     expect(document.querySelector('[data-linked-toggle]')).toBeNull()
     expect(document.querySelector('[data-sent-from]')).toBeNull()
+  })
+
+  // The row menu lists F2 beside Rename and Delete beside Delete session…:
+  // the keys must do those things on every row the menu opens from.
+  it('renames on F2 and asks to delete on Delete, like the menu beside them says', () => {
+    const onEdit = mock(() => {})
+    const onDelete = mock(() => {})
+    render(row(() => {}, origin, { isCurrent: false, currentSessionId: 'infra-1', onSessionEdit: onEdit, onSessionDelete: onDelete }))
+    const linkedRow = screen.getByRole('button', { name: 'Orders table, in infra, Running' })
+
+    fireEvent.keyDown(linkedRow, { key: 'F2' })
+    expect(onEdit).toHaveBeenCalledTimes(1)
+    expect((onEdit.mock.calls[0] as unknown as [SessionResponse])[0].id).toBe('infra-1')
+
+    fireEvent.keyDown(linkedRow, { key: 'Delete' })
+    expect(onDelete).toHaveBeenCalledTimes(1)
+    expect((onDelete.mock.calls[0] as unknown as [unknown, SessionResponse])[1].id).toBe('infra-1')
+  })
+})
+
+describe('SessionRow meta slot', () => {
+  const DAY = 24 * 60 * 60 * 1000
+  const lastUsed = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
+  const created = new Date(Date.now() - 30 * DAY).toISOString()
+  const idle: SessionResponse = { ...lead, subagents: undefined, created_at: created, last_message_at: lastUsed }
+  const tooltipOf = (container: HTMLElement) => container.querySelector('[data-sidebar-session]')?.getAttribute('title') ?? ''
+
+  it('reads the age and nothing else at rest: the workspace and worktree are in the tooltip', () => {
+    const { container } = render(row(() => {}, idle, { checkoutName: 'task-a', contextLabel: 'acme', isCurrent: false }))
+
+    expect(screen.getByText('3h')).toBeTruthy()
+    expect(container.querySelector('[data-checkout-tag]')).toBeNull()
+    expect(container.querySelector('[data-context-label]')).toBeNull()
+    expect(tooltipOf(container)).toContain('acme')
+    expect(tooltipOf(container)).toContain('worktree task-a')
+    // Assistive tech still hears where it is.
+    expect(screen.getByText(', in worktree task-a')).toBeTruthy()
+    expect(screen.getByText(', in acme')).toBeTruthy()
+  })
+
+  it('reads the state word and nothing else when the session needs you', () => {
+    const { container } = render(row(() => {}, { ...idle, needs_input: true }, { checkoutName: 'task-a', contextLabel: 'acme' }))
+
+    expect(container.querySelector('[data-session-state]')?.textContent).toBe('Needs you')
+    expect(screen.queryByText('3h')).toBeNull()
+    expect(container.querySelector('[data-checkout-tag]')).toBeNull()
+    expect(container.querySelector('[data-context-label]')).toBeNull()
+    expect(tooltipOf(container)).toContain('Needs you')
+  })
+
+  it('puts the last-activity time in the tooltip, the same time the age counts from', () => {
+    const { container } = render(row(() => {}, idle))
+
+    const tooltip = tooltipOf(container)
+    expect(tooltip).toContain(formatRelativeDate(lastUsed))
+    expect(tooltip).not.toContain(formatRelativeDate(created))
+    // The age ("3h") counts from that same last use, not from creation.
+    expect(screen.getByText('3h')).toBeTruthy()
+  })
+
+  it('keeps the place on the row where there is no tooltip: touch with long-press sheets', () => {
+    const { container } = render(row(() => {}, idle, { checkoutName: 'task-a', contextLabel: 'acme', mobileLongPressActions: true }))
+
+    expect(container.querySelector('[data-checkout-tag]')?.textContent).toBe('task-a')
+    expect(container.querySelector('[data-context-label]')?.textContent).toBe('acme')
+  })
+})
+
+describe('SessionRow weight and icons', () => {
+  const idle: SessionResponse = { ...lead, subagents: undefined }
+  const titleOf = () => screen.getByText('Refactor sidebar rows').parentElement as HTMLElement
+
+  it('emphasises the open row with medium weight, and no row is semibold', () => {
+    const { container, rerender } = render(row(() => {}, idle, { isCurrent: true }))
+    expect(titleOf().className.split(' ')).toContain('font-medium')
+    expect(container.innerHTML).not.toContain('font-semibold')
+
+    // A row that is not open is regular: one emphasis per row.
+    rerender(row(() => {}, idle, { isCurrent: false }))
+    expect(titleOf().className).not.toContain('font-medium')
+    expect(container.innerHTML).not.toContain('font-semibold')
+  })
+
+  it('draws every glyph at 12px, in the row and in its pin mark', () => {
+    const { container } = render(row(() => {}, { ...idle, pinned_at: '2026-09-01T10:00:00Z', running: true }, { isCurrent: false }))
+    const sizes = Array.from(container.querySelectorAll('svg')).map((svg) => svg.getAttribute('width'))
+    expect(sizes.length).toBeGreaterThan(2)
+    expect(new Set(sizes)).toEqual(new Set(['12']))
+  })
+})
+
+describe('SessionRow count pills and child rows', () => {
+  const done = { ...lead.subagents![0], running: false }
+  const parent: SessionResponse = {
+    ...lead,
+    subagents: [done],
+    linked_sessions: [{
+      id: 'infra-1',
+      title: 'Orders table',
+      workspace: '/r/infra',
+      interaction_mode: 'code',
+      created_at: null,
+      updated_at: null,
+      agent_name: 'code',
+    }],
+  }
+
+  it('draws the subagent and linked pills in one style: kind icon, count, fold chevron', () => {
+    const { container } = render(row(() => {}, parent, { isCurrent: false, currentSessionId: 'other' }))
+
+    const [subagents, linked] = Array.from(container.querySelectorAll<HTMLElement>('[data-count-chip]'))
+    expect(subagents.getAttribute('aria-label')).toBe('Expand 1 subagents')
+    expect(linked.getAttribute('aria-label')).toBe('Expand 1 session in other workspaces')
+    // Same shape, tone and size (muted, 20px mono pill, 36px on touch).
+    expect(subagents.className).toBe(linked.className)
+    expect(subagents.className).toContain('text-(--color-text-muted)')
+    expect(subagents.className).toContain('pointer-coarse:h-9')
+    for (const pill of [subagents, linked]) {
+      const icons = Array.from(pill.querySelectorAll('svg'))
+      expect(icons.map((svg) => svg.getAttribute('width'))).toEqual(['12', '12'])
+      expect(pill.querySelector('.lucide-chevron-right')).toBeTruthy()
+      expect(pill.textContent).toBe('1')
+    }
+  })
+
+  it('gives child rows the geometry and text of every other row, with the name as their one emphasis', () => {
+    const { container } = render(row(() => {}, parent, { isCurrent: false, currentSessionId: 'other' }))
+    fireEvent.click(screen.getByLabelText('Expand 1 subagents'))
+    fireEvent.click(screen.getByLabelText('Expand 1 session in other workspaces'))
+
+    const children = [
+      container.querySelector('[data-linked-session]') as HTMLElement,
+      screen.getByLabelText('More actions for subagent explorer#1').parentElement as HTMLElement,
+    ]
+    for (const child of children) {
+      // 28px (36px on touch) from the row token, like the session row above.
+      expect(child.className).toContain('h-(--spacing-list-row)')
+      expect(child.className).not.toContain('h-6 ')
+      const button = child.querySelector('[data-sidebar-session]') as HTMLElement
+      expect(button.className).toContain('h-(--spacing-list-row)')
+      expect(button.className).toContain('text-xs')
+      expect(button.className).not.toContain('h-6 ')
+      // The name is mono, medium; the title is regular, inheriting the row's text.
+      const [name, title] = Array.from(button.querySelectorAll<HTMLElement>(':scope > span')).slice(-2)
+      expect(name.className).toContain('font-medium')
+      expect(name.className).toContain('font-mono')
+      expect(`${name.className} ${title.className}`).not.toContain('text-meta')
+      expect(`${name.className} ${title.className}`).not.toContain('font-semibold')
+    }
+  })
+
+  it('indents child rows by the tree indent, the same constant the workspace guide uses', () => {
+    const { container } = render(row(() => {}, parent, { isCurrent: false, currentSessionId: 'other' }))
+    fireEvent.click(screen.getByLabelText('Expand 1 subagents'))
+    fireEvent.click(screen.getByLabelText('Expand 1 session in other workspaces'))
+
+    const subagentRows = screen.getByLabelText('More actions for subagent explorer#1').closest('.space-y-px') as HTMLElement
+    expect(subagentRows.style.paddingLeft).toBe(`${TREE_INDENT_PX}px`)
+    expect((container.querySelector('[data-linked-sessions]') as HTMLElement).style.paddingLeft).toBe(`${TREE_INDENT_PX}px`)
+  })
+})
+
+describe('DraftSessionRow', () => {
+  it('reads "New session" upright in the open row\'s medium weight', () => {
+    const { container } = render(<DraftSessionRow label="acme" />)
+
+    const title = screen.getByText('New session')
+    expect(title.className).toContain('font-medium')
+    expect(title.className).not.toContain('italic')
+    expect(title.className).not.toContain('font-semibold')
+    expect(container.querySelector('svg')?.getAttribute('width')).toBe('12')
   })
 })

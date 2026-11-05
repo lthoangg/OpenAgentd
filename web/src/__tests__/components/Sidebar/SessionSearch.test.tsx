@@ -28,7 +28,9 @@ describe('SessionSearch — no matches', () => {
     fireEvent.change(input, { target: { value: 'migration' } })
 
     const results = screen.getByRole('region', { name: 'Search results' })
-    expect(within(results).getByText('No sessions match “migration”.')).toBeTruthy()
+    // An empty state at row scale: straight quotes, no trailing period.
+    const title = within(results).getByText('No sessions match "migration"')
+    expect(title.closest('[data-empty-state="compact"]')).toBeTruthy()
 
     fireEvent.click(within(results).getByRole('button', { name: 'Clear search' }))
     expect((input as HTMLInputElement).value).toBe('')

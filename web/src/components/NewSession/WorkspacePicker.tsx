@@ -1,6 +1,7 @@
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Check, ChevronDown, Folder, FolderPlus, GitBranch, MessageCircle, Search } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { EmptyState } from '@/components/ui/empty-state'
 import type { CodingWorkspaceTreeChat, CodingWorkspaceTreeRepository } from '@/api/types'
 import { MENU_ITEM_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 import { sameWorkspacePath } from '@/utils/workspace'
@@ -146,7 +147,7 @@ export function WorkspacePicker({
         </div>
         <div id={listId} role="listbox" aria-label="Folders" className="max-h-72 overflow-y-auto pt-1">
           {options.length === 0 && (
-            <p className="px-2 py-1.5 text-xs text-(--color-text-subtle)">No folder matches.</p>
+            <EmptyState compact icon={Search} title="No folder matches" className="px-2 py-1.5" />
           )}
           {options.map((option, index) => {
             const selected = sameWorkspacePath(option.path, workspace)

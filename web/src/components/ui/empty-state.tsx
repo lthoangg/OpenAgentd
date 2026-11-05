@@ -7,6 +7,12 @@
  * Layout: centred icon chip · title · body · optional action slot · optional
  * tips list. Pass `tone="error"` to tint the icon chip for failure states.
  *
+ * `compact` is the same state at row scale, for dense lists and inline panes
+ * (the sidebar, a popover, a small card): a left-aligned 12px icon (a row's
+ * icon size) beside a `text-xs` title, with the body and action beneath, and
+ * no centring, chip box or padding of its own. The caller sets the inset
+ * through `className`.
+ *
  * Zero external deps — matches the house rule for `components/ui/`.
  */
 import type { LucideIcon } from 'lucide-react'
@@ -30,6 +36,8 @@ interface EmptyStateProps {
   tone?: 'muted' | 'error'
   /** Fill and centre within the parent (default). Set false to render inline. */
   fill?: boolean
+  /** Row-scale layout for dense lists and inline panes; ignores `fill` and `tips`. */
+  compact?: boolean
   className?: string
 }
 
@@ -38,14 +46,15 @@ interface EmptyStateProps {
  * instantiate at the primitive's icon size. `isValidElement` tells them apart:
  * lucide-react exports forwardRef objects, which are not valid elements.
  */
-function EmptyStateIcon({ icon, tone }: { icon: EmptyStateProps['icon']; tone: 'muted' | 'error' }) {
+function EmptyStateIcon({ icon, tone, compact = false }: { icon: EmptyStateProps['icon']; tone: 'muted' | 'error'; compact?: boolean }) {
   if (isValidElement(icon)) return icon
   const IconComponent = icon as LucideIcon
   return (
     <IconComponent
-      size={20}
+      // 20px illustration in the chip; the compact form's icon is a 12px row glyph.
+      size={compact ? 12 : 20}
       aria-hidden="true"
-      className={tone === 'error' ? 'text-(--color-error)' : 'text-(--color-text-muted)'}
+      className={cn(compact && 'shrink-0', tone === 'error' ? 'text-(--color-error)' : 'text-(--color-text-muted)')}
     />
   )
 }
@@ -58,8 +67,21 @@ export function EmptyState({
   tips,
   tone = 'muted',
   fill = true,
+  compact = false,
   className,
 }: EmptyStateProps) {
+  if (compact) {
+    return (
+      <div data-empty-state="compact" className={cn('flex flex-col items-start gap-1.5', className)}>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <EmptyStateIcon icon={icon} tone={tone} compact />
+          <p className="min-w-0 text-xs text-(--color-text-2) [overflow-wrap:anywhere]">{title}</p>
+        </div>
+        {body && <p className="text-meta text-(--color-text-muted) [overflow-wrap:anywhere]">{body}</p>}
+        {action}
+      </div>
+    )
+  }
   return (
     <div className={cn(fill && 'flex h-full items-center justify-center p-10', className)}>
       <div className="flex max-w-md flex-col items-center gap-4 text-center">

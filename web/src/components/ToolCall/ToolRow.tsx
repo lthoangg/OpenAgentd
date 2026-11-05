@@ -81,7 +81,7 @@ export function ToolRow({ menuLabel, menuItems, className, children, ...row }: T
     press.current = null
     if (menuItems().length > 0) chatMenu.onKeyDown(event)
   }
-  // A row with nothing to copy yet leaves right-click to the browser, rather
+  // A row with no file to open leaves right-click to the browser, rather
   // than swallowing it for a menu that never opens.
   const onContextMenu = (event: MouseEvent<HTMLElement>) => {
     if (menuItems().length > 0) chatMenu.onContextMenu(event)

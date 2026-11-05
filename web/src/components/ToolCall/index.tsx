@@ -16,16 +16,18 @@
  * streaming tool never unfolds (or folds) the transcript by itself.
  *
  * The per-tool header/args customisation lives in ``./display.tsx``;
- * this module owns only the chrome (collapse, copy, motion).
+ * this module owns only the chrome (collapse, copy, the row's menu, motion).
  */
 
-import { useEffect, useId, useRef, useState, useMemo, useCallback, memo } from 'react'
+import { useContext, useEffect, useId, useRef, useState, useMemo, useCallback, memo } from 'react'
 import { ArrowUpRight, ChevronRight, FileText, GitBranch, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { previewsAvailable } from '@/api/preview'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { ToolResult } from '../ToolResult'
-import { copyText, type ChatMenuItem } from '../ChatContextMenu'
+import type { ChatMenuItem } from '../ChatContextMenu'
+import { FileRefContext } from '../FileRefLink'
+import { workspaceRelativePath } from '@/utils/file-refs'
 import { AskUser, useShowsConfirmationCard } from '../AskUser'
 import { PlanReviewCard } from '../PlanReview/PlanReviewCard'
 import { PREVIEW_TOOL, isPreviewOpenSuccess, previewTargetFromArgs, requestOpenPreview } from '../Preview/preview-events'
@@ -49,7 +51,8 @@ import { teamMemberFromResult } from './subagentStatus'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 import { parseShellOutcome } from './summary'
-import { fetchToolArguments, fetchToolResult, useToolArguments, useToolResult } from './useToolResult'
+import { useToolArguments, useToolResult } from './useToolResult'
+import { toolFileTargets } from './fileTargets'
 import { formatMetaDuration } from '@/components/ui/meta-row'
 import type { ToolCallState } from './types'
 import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
@@ -323,26 +326,20 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const label = headerTitle ? `${displayName}: ${headerTitle}` : displayName
   const elapsedMs = durationMs ?? (!done && startedAt ? now - startedAt : undefined)
 
-  // The row's right-click menu and touch long-press sheet. Like the Copy
-  // controls in the details, it copies what the details show: a tool that hides
-  // its args (a search, a glob) has none to copy, and one that hides its result
-  // (a generated image) has none either. A result only exists once the tool is done.
+  // The row's right-click menu and touch long-press sheet open files: each
+  // one a patch left in place, the file a read read (``fileTargets``), named
+  // relative to the workspace. No file, no menu: the system's stays. Copy is
+  // the open details' own (each section's Copy button).
+  const fileOpener = useContext(FileRefContext)
   const menuItems = (): ChatMenuItem[] => {
-    const argsText = isShellTerminal ? formattedArgs : formatArgsDetails(formattedArgs)
-    const resultText = done && (shownResult || hasReadResult) ? result : undefined
-    const fetchable = awaitingResult && toolCallId
-    const argsFetchable = awaitingArgs && toolCallId
-    // What the details' args section would show, from arguments fetched now.
-    const copyFetchedArgs = (text: string) => {
-      const shown = getToolDisplay(name, text).formattedArgs
-      copyText(isShell ? shown ?? '' : formatArgsDetails(shown) || text)
-    }
-    return [
-      ...(argsText ? [{ label: 'Copy arguments', run: () => copyText(argsText) }] : []),
-      ...(!argsText && argsFetchable ? [{ label: 'Copy arguments', run: () => { void fetchToolArguments(argsFetchable).then(copyFetchedArgs) } }] : []),
-      ...(resultText ? [{ label: 'Copy result', run: () => copyText(resultText) }] : []),
-      ...(!resultText && fetchable ? [{ label: 'Copy result', run: () => { void fetchToolResult(fetchable).then(copyText) } }] : []),
-    ]
+    if (!fileOpener) return []
+    // A patch still running has applied nothing yet: like a failed one.
+    return toolFileTargets(name, args, !done || isFailedResult(result))
+      .filter((ref) => fileOpener.canOpen(ref))
+      .map((ref) => ({
+        label: `Open ${workspaceRelativePath(ref.path, fileOpener.workspace ?? null) ?? ref.path}`,
+        run: () => fileOpener.open(ref),
+      }))
   }
 
   // ``ask_user`` owns its whole card — frame and label included, since

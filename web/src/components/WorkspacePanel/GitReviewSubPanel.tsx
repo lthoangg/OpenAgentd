@@ -16,6 +16,7 @@ import type { WorkspaceChangesResponse, WorkspaceFileInfo } from '@/api/types'
 import { ChangeCounts } from './ChangeCounts'
 import { type ChangedFileInfo, fileDiffBody } from './diff-helpers'
 import { DockLoadError } from './DockLoadError'
+import { DiffSkeleton } from './DiffSkeleton'
 
 /** Rows rendered per step; thousands of untracked files must not stall a render. */
 export const CHANGED_ROWS_PAGE = 200
@@ -60,7 +61,7 @@ const NOTICE_CLASS = 'border-b border-(--color-border-subtle) bg-(--color-warnin
 function ChangedFileDiff({ workspace, path }: { workspace: string; path: string }) {
   const diff = useQuery({ ...workspaceFileDiffQueryOptions(workspace, path), staleTime: WORKSPACE_DIFF_STALE_MS })
   const body = useMemo(() => fileDiffBody(diff.data, path), [diff.data, path])
-  if (diff.isLoading) return <p className="px-3 py-3 text-xs text-(--color-text-subtle)">Loading diff…</p>
+  if (diff.isLoading) return <DiffSkeleton />
   if (diff.isError) {
     return <DockLoadError message="Couldn't load the diff." onRetry={() => void diff.refetch()} retrying={diff.isFetching} />
   }

@@ -43,7 +43,12 @@ export interface CommitHistorySubPanelProps {
   setExpandedCommitSha: (updater: string | null | ((prev: string | null) => string | null)) => void
   expandedCommitFiles: Set<string>
   setExpandedCommitFiles: React.Dispatch<React.SetStateAction<Set<string>>>
-  commitDiff: { isLoading: boolean; isError: boolean }
+  commitDiff: {
+    isLoading: boolean
+    isError: boolean
+    isFetching?: boolean
+    refetch?: () => Promise<unknown>
+  }
   commitChangedFiles: ChangedFileInfo[]
   commitDiffSections: Map<string, DiffFileSection>
   commitsScrollRef: React.RefObject<HTMLDivElement | null>

@@ -76,6 +76,16 @@ describe('Changes list', () => {
     expect(screen.queryByText(/incomplete|Showing/)).toBeNull()
   })
 
+  // Rulebook 10: loading is a skeleton, not a line of text.
+  it('shows skeleton rows named "Loading diff" under a row while its diff loads', async () => {
+    globalThis.fetch = mock(() => new Promise<Response>(() => {})) as unknown as typeof fetch
+    await renderList(changesOf(['a.ts']), ['a.ts'])
+
+    const loading = screen.getByRole('status', { name: 'Loading diff' })
+    expect(loading.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThanOrEqual(3)
+    expect(screen.queryByText('Loading diff…')).toBeNull()
+  })
+
   it('leads each row with the file name, its folder after it', async () => {
     // A path cut at the end ("web/src/__tests__/components/In…") hid the
     // one part that tells files apart.

@@ -630,9 +630,11 @@ export function WorkspacePanel({
     () => ({ isLoading: historyLoading, isError: historyError, isFetching: historyFetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetch: refetchHistory, data: historyData }),
     [historyLoading, historyError, historyFetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetchHistory, historyData],
   )
+  // ``isFetching`` matters only to a failed load's Retry (as for the lists above).
+  const commitDiffRetrying = commitDiff.isError && commitDiff.isFetching
   const commitDiffView = useMemo(
-    () => ({ isLoading: commitDiff.isLoading, isError: commitDiff.isError }),
-    [commitDiff.isLoading, commitDiff.isError],
+    () => ({ isLoading: commitDiff.isLoading, isError: commitDiff.isError, isFetching: commitDiffRetrying, refetch: commitDiff.refetch }),
+    [commitDiff.isLoading, commitDiff.isError, commitDiffRetrying, commitDiff.refetch],
   )
   const commitChangedFiles = useMemo(() => {
     if (!commitDiffText) return []

@@ -21,6 +21,7 @@ import { changedFilesFromResponse, fileDiffBody } from './diff-helpers'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
 import { ChangeCounts } from './ChangeCounts'
 import { DockLoadError } from './DockLoadError'
+import { DiffSkeleton } from './DiffSkeleton'
 import { DockRefreshButton } from './DockRefreshButton'
 
 export interface DiffTabViewProps {
@@ -77,7 +78,7 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
       </div>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto touch-pan-y">
         {diff.isLoading ? (
-          <p className="px-3 py-4 text-xs text-(--color-text-subtle)">Loading diff…</p>
+          <DiffSkeleton />
         ) : diff.isError ? (
           <DockLoadError message="Couldn't load the diff." onRetry={() => void diff.refetch()} retrying={diff.isFetching} />
         ) : fileDiff ? (

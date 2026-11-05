@@ -8,9 +8,16 @@ import { FileTypeIcon } from '../FileTypeIcon'
 import { cn } from '@/lib/utils'
 import { ChangeCounts } from './ChangeCounts'
 import type { ChangedFileInfo, DiffFileSection } from './diff-helpers'
+import { DockLoadError } from './DockLoadError'
 
 export interface CommitDetailProps {
-  commitDiff: { isLoading: boolean; isError: boolean }
+  commitDiff: {
+    isLoading: boolean
+    isError: boolean
+    /** A failed load being retried (Retry waits). */
+    isFetching?: boolean
+    refetch?: () => Promise<unknown>
+  }
   commitChangedFiles: ChangedFileInfo[]
   commitDiffSections: Map<string, DiffFileSection>
   expandedCommitFiles: Set<string>
@@ -74,7 +81,10 @@ export function CommitDetail({
     return <p className="py-2 text-xs md:text-meta text-(--color-text-subtle)">Loading commit changes…</p>
   }
   if (commitDiff.isError) {
-    return <p role="alert" className="py-2 text-xs md:text-meta text-(--color-error)">Couldn&apos;t load commit changes.</p>
+    const refetch = commitDiff.refetch
+    if (!refetch) return <p role="alert" className="py-2 text-xs md:text-meta text-(--color-error)">Couldn&apos;t load commit changes.</p>
+    // The card around it already insets the content.
+    return <DockLoadError message="Couldn't load commit changes." onRetry={() => void refetch()} retrying={commitDiff.isFetching} className="py-2" />
   }
 
   if (commitChangedFiles.length === 0) {

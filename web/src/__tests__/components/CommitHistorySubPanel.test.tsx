@@ -82,3 +82,27 @@ describe('CommitHistorySubPanel load errors', () => {
     expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })
+
+describe('CommitHistorySubPanel commit detail errors', () => {
+  const opened = { expandedCommitSha: commit.sha }
+
+  it('shows the failure with Retry under the open commit, and Retry reloads its changes', () => {
+    const refetch = mock(async () => {})
+    renderPanel({ ...opened, commitDiff: { isLoading: false, isError: true, refetch } })
+
+    expect(screen.getByRole('alert').textContent).toBe("Couldn't load commit changes.")
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(refetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables Retry while it runs', () => {
+    renderPanel({ ...opened, commitDiff: { isLoading: false, isError: true, isFetching: true, refetch: async () => {} } })
+    expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('keeps the plain message where there is nothing to retry with', () => {
+    renderPanel({ ...opened, commitDiff: { isLoading: false, isError: true } })
+    expect(screen.getByRole('alert').textContent).toBe("Couldn't load commit changes.")
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+  })
+})

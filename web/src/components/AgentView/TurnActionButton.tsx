@@ -3,9 +3,9 @@
  * under the answer. A ghost `Button` (24px), muted at rest.
  *
  * A phone draws it 28px so the row fits an iPhone mini; `touch-hit` keeps the
- * touch target 36px around it. `Button`'s coarse-pointer floor (index.css,
- * unlayered) would stretch it to 36px, so the phone size sets its own floor
- * with `!`.
+ * touch target 44px around it (36px on a tablet). `Button`'s coarse-pointer
+ * floor (index.css, unlayered) would stretch it, so the phone size sets its
+ * own floor with `!`.
  *
  * `locked` is for an action that is not available yet: it stays focusable
  * (`aria-disabled`, not `disabled`) so its reason, the `title`, shows on

@@ -1996,6 +1996,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     step. Its `@` mentions arrive with it `[v3.4.0]`. A steer sent while a
     question or plan review waits replaces it and starts a new turn; a held
     message waits until the question is answered or dismissed.
+  - A steer sent with another model or thinking level switches the running
+    turn to it from the step that reads the steer `[v3.48.0]`.
   - Stop, or a turn that fails, returns what the agent has not read yet to
     the composer: unread steers, then held messages `[v3.4.0]`. A steer the
     agent read first stays in the transcript. A steer with files sent from

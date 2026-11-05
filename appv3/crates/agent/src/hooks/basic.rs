@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 // ── inject_current_date ─────────────────────────────────────────────────────
 
@@ -296,6 +296,56 @@ pub struct QueuedInjectionHook {
     pub agent_name: String,
     pub pool: DbPool,
     pub support_interrupt: bool,
+    /// Switches the turn when a steer carries other model/thinking settings.
+    pub switch: Option<SteerSwitch>,
+}
+
+/// Builds the provider for a session's `(model, thinking_level)` overrides.
+pub type ResolveModel = Arc<dyn Fn(Option<&str>, Option<&str>) -> Result<super::ModelSwitch, String> + Send + Sync>;
+
+/// The overrides the turn runs with now, and how to build another provider.
+pub struct SteerSwitch {
+    pub resolve: ResolveModel,
+    pub current: Mutex<(Option<String>, Option<String>)>,
+}
+
+impl QueuedInjectionHook {
+    /// A steer the user sent (its row records the settings it was sent
+    /// with; a member's report records none) moves the turn to the
+    /// session's settings, which the send already saved.
+    async fn switch_for(&self, state: &mut AgentState, rows: &[&appv3_db::SessionMessage]) {
+        let Some(sw) = &self.switch else { return };
+        if !rows.iter().any(|r| r.extra_json().is_some_and(|e| e.get("model").is_some())) {
+            return;
+        }
+        let row = match appv3_db::get_session(&self.pool, &self.session_id).await {
+            Ok(Some(row)) => row,
+            Ok(None) => return,
+            Err(e) => {
+                tracing::warn!("steer_model_switch_failed session_id={} error={}", self.session_id, e);
+                return;
+            }
+        };
+        let norm = |v: Option<String>| v.filter(|s| !s.is_empty());
+        let wanted = (norm(row.model), norm(row.thinking_level));
+        if *sw.current.lock().unwrap() == wanted {
+            return;
+        }
+        match (sw.resolve)(wanted.0.as_deref(), wanted.1.as_deref()) {
+            Ok(next) => {
+                tracing::info!(
+                    "steer_model_switched session_id={} from={} to={} thinking={}",
+                    self.session_id,
+                    state.meta_str("effective_model").unwrap_or_default(),
+                    next.model_id.as_deref().unwrap_or_default(),
+                    next.thinking_level.as_deref().unwrap_or("default")
+                );
+                *sw.current.lock().unwrap() = wanted;
+                state.model_switch = Some(next);
+            }
+            Err(e) => tracing::warn!("steer_model_switch_failed session_id={} error={}", self.session_id, e),
+        }
+    }
 }
 
 #[async_trait]
@@ -318,6 +368,7 @@ impl Hook for QueuedInjectionHook {
         state.meta_pop("question_resume");
         // The UI shows only what the user wrote.
         let visible: Vec<&appv3_db::SessionMessage> = queued.iter().filter(|r| !appv3_db::is_attached_row(r)).collect();
+        self.switch_for(state, &visible).await;
         let ids: Vec<String> = visible.iter().map(|r| appv3_db::codec::api_uuid(&r.id)).collect();
         let data: Vec<Value> =
             visible.iter().map(|r| json!({"id": appv3_db::codec::api_uuid(&r.id), "content": r.content.clone().unwrap_or_default(), "extra": r.extra_json()})).collect();

@@ -1424,11 +1424,22 @@ impl AgentSession {
             Arc::new(MemoryContextHook { content: memory, lead: is_lead }),
         ];
         if is_lead {
+            let me = self.me.clone();
+            let (agent_for_switch, cred_for_switch) = (agent.clone(), credential.clone());
+            let resolve: crate::hooks::basic::ResolveModel = Arc::new(move |model, thinking| {
+                let me = me.upgrade().ok_or_else(|| "session gone".to_string())?;
+                let rp = me.resolve_runtime_provider(&agent_for_switch, model, thinking, cred_for_switch.as_deref()).map_err(|e| e.to_string())?;
+                Ok(crate::hooks::ModelSwitch { provider: rp.provider(&agent_for_switch), model_id: rp.effective_model, thinking_level: rp.thinking_level })
+            });
             hooks.push(Arc::new(QueuedInjectionHook {
                 session_id: sid.clone(),
                 agent_name: name.clone(),
                 pool: self.pool.clone(),
                 support_interrupt: provider_for_hooks.support_interrupt(),
+                switch: Some(crate::hooks::basic::SteerSwitch {
+                    resolve,
+                    current: std::sync::Mutex::new((runtime_model.clone().filter(|m| !m.is_empty()), runtime_thinking.clone().filter(|t| !t.is_empty()))),
+                }),
             }));
             if let Some(t) = build_title_generation_hook(provider_for_hooks.clone(), self.pool.clone(), credential.as_deref()) {
                 hooks.push(Arc::new(t));

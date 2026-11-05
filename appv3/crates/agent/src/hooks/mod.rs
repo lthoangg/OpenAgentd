@@ -47,11 +47,21 @@ pub struct AgentState {
     pub system_prompt: String,
     pub tool_names: Vec<String>,
     pub tool_defs: Vec<Value>,
+    /// Set by a `before_model` hook to run the rest of the turn on another
+    /// provider (a steer sent with another model or thinking level).
+    pub model_switch: Option<ModelSwitch>,
+}
+
+/// The provider, model and thinking level the rest of a run switches to.
+pub struct ModelSwitch {
+    pub provider: Arc<dyn appv3_providers::LlmProvider>,
+    pub model_id: Option<String>,
+    pub thinking_level: Option<String>,
 }
 
 impl AgentState {
     pub fn new(messages: Vec<ChatMessage>, system_prompt: String) -> Self {
-        Self { messages, usage: UsageInfo::default(), metadata: Arc::new(Mutex::new(Map::new())), system_prompt, tool_names: vec![], tool_defs: vec![] }
+        Self { messages, usage: UsageInfo::default(), metadata: Arc::new(Mutex::new(Map::new())), system_prompt, tool_names: vec![], tool_defs: vec![], model_switch: None }
     }
     /// Messages visible to the LLM (no system, no excluded), as the model
     /// reads them (see [`summarization::for_model`]).

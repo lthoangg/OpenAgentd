@@ -790,7 +790,11 @@ impl SummarizationHook {
 impl Hook for SummarizationHook {
     async fn before_model(&self, ctx: &RunContext, state: &mut AgentState, _req: &ModelRequest) -> Option<ModelRequest> {
         let force = state.meta_get("force_summarization") == Some(Value::Bool(true));
-        let threshold = self.threshold();
+        // A steer may have switched the turn's model; its window sets the trigger.
+        let threshold = match state.meta_str("effective_model") {
+            Some(m) if Some(&m) != self.model_id.as_ref() => resolve_prompt_token_threshold(Some(&m), (self.custom_threshold)()),
+            _ => self.threshold(),
+        };
         if threshold <= 0 && !force {
             return None;
         }

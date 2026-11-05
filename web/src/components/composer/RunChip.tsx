@@ -11,6 +11,7 @@ import { useLayoutEffect, useRef } from 'react'
 import { ChevronDown } from 'lucide-react'
 
 import { BottomSheet } from '@/components/ui/bottom-sheet'
+import type { SheetDetent } from '@/components/ui/_sheet'
 import { MODEL_LINE_CLASS, ModelPart, PROVIDER_PART_CLASS } from '@/components/ui/model-name'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -25,6 +26,9 @@ import type { RunSettings } from './useRunSettings'
 // The picker (search, model lists, accounts) is not on the first screen: it
 // loads while the app is idle after it starts, or on first open.
 const RunPicker = lazySurface(() => import('./RunPicker'), 'RunPicker')
+
+/** The phone sheet opens at medium and pulls up to large; a shorter picker just fits its content. */
+const SHEET_DETENTS: SheetDetent[] = ['medium', 'large']
 
 /** The message box of the composer the chip sits in. */
 function composerInput(): HTMLElement | null {
@@ -116,7 +120,7 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
     return (
       <>
         {chip}
-        <BottomSheet open={open} onClose={() => setOpen(false)} label="Model and thinking">
+        <BottomSheet open={open} onClose={() => setOpen(false)} label="Model and thinking" detents={SHEET_DETENTS}>
           <div className="px-3 pb-3">
             <RunPicker settings={settings} focus={focus} onDone={() => setOpen(false)} touch />
           </div>

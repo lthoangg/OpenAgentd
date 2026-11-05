@@ -58,6 +58,7 @@
 import { type ReactNode } from 'react'
 import { motion, AnimatePresence, useDragControls, type PanInfo } from 'framer-motion'
 import { CloseButton } from '@/components/ui/close-button'
+import { SHEET_CLOSE_DISTANCE, SHEET_CLOSE_VELOCITY } from '@/components/ui/_sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -225,10 +226,6 @@ const MODAL_VARIANTS_REDUCED = {
   visible: { opacity: 1 },
   exit:    { opacity: 0 },
 }
-
-/** A pull past this, or a flick faster than SHEET_CLOSE_VELOCITY, closes the sheet. */
-const SHEET_CLOSE_DISTANCE = 120
-const SHEET_CLOSE_VELOCITY = 500
 
 // ─── Component ────────────────────────────────────────────────────────────────
 

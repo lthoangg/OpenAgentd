@@ -11,6 +11,7 @@ import { AtSign, Hash, MessageCircleQuestion, Paperclip, Plus } from 'lucide-rea
 
 import { SessionMcpServers } from '@/components/SessionMcpServers'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
+import type { SheetDetent } from '@/components/ui/_sheet'
 import { MENU_ITEM_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -18,6 +19,12 @@ import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/useUIStore'
 import { useMcpAttention } from './useMcpAttention'
+
+/**
+ * The phone sheet opens at medium, and a long MCP list pulls it up to large.
+ * With the usual few rows it is shorter than medium and just fits them.
+ */
+const SHEET_DETENTS: SheetDetent[] = ['medium', 'large']
 
 /** What the "+" menu can do to the draft; supplied by the composer. */
 export interface ComposerActions {
@@ -97,7 +104,7 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
     return (
       <>
         {trigger}
-        <BottomSheet open={open} onClose={() => setOpen(false)} label="Add to message">
+        <BottomSheet open={open} onClose={() => setOpen(false)} label="Add to message" detents={SHEET_DETENTS}>
           <div className="px-2 pb-3">{content}</div>
         </BottomSheet>
       </>

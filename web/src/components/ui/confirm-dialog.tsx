@@ -11,6 +11,10 @@
  * Default button, as in native alerts: a non-destructive confirm takes focus,
  * so Enter confirms; a destructive one never does: Cancel takes focus, so
  * Enter cancels and the destructive action always needs its own press.
+ *
+ * On a phone it is an alert (see ``ui/dialog``): a centred 270px card, Cancel
+ * and the action side by side under a hairline, the destructive action in red
+ * text. ``tone="danger"`` is that destructive action.
  */
 import { useRef, useState, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
@@ -48,6 +52,7 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const [pending, setPending] = useState(false)
   const confirmRef = useRef<HTMLButtonElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
 
   const confirm = async () => {
     setPending(true)
@@ -61,13 +66,13 @@ export function ConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!pending) onOpenChange(next) }}>
-      <DialogContent showCloseButton={false} initialFocus={tone === 'danger' ? undefined : confirmRef}>
+      <DialogContent showCloseButton={false} alert initialFocus={tone === 'danger' ? cancelRef : confirmRef}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
         <DialogFooter>
-          <Button type="button" variant="default" onClick={() => onOpenChange(false)} disabled={pending}>
+          <Button ref={cancelRef} type="button" variant="default" onClick={() => onOpenChange(false)} disabled={pending}>
             {cancelLabel}
           </Button>
           <Button

@@ -1138,7 +1138,7 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Active Segment**: filled with `fill-selected` edge to edge (a sand in light, a raised warm tone in dark), `text-(--color-text-on-selected)`, `font-medium`. Nothing else marks it: no border, no inner card, no shadow.
 - **Inactive Segment**: square inside the track, `text-(--color-text-muted)`, hover `text-(--color-text-2)` and a keycap step. Keyboard focus is an inset ring so it never spills past the track.
 - **Sizes**: `TabsList size="sm"` is the 24px variant for dense panel toolbars (12px label, no shadow); on touch it is 28px so it still fits the 32px toolbar (the `default` list grows to 42px on touch).
-- **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 36px on touch), `sm` (24px, 28px on touch so it fits the 32px toolbar, like `TabsList size="sm"`) and `composer` (32px, 28px from `md`, 36px on a touch phone, so it matches the attach and send buttons beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
+- **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 36px on touch), `sm` (24px, 28px on touch so it fits the 32px toolbar, like `TabsList size="sm"`) and `composer` (32px, 28px from `md`, 36px on a touch tablet, 44px on a phone, so it matches "+" and Send beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
 
 **Editor Tabs** (review dock tab bar):
 - **Strip**: `tab-bar` height (37px, 45px on touch) on the chrome tone (`bg-page` in light, `bg-sidebar` in dark; `DOCK_TAB_STRIP_CLASS`) with one `border-subtle` hairline below; tabs are 28px pills (36px on touch) 4px from its edges, scroll horizontally, and the actions stay pinned right.
@@ -1203,6 +1203,12 @@ A subagent row is a button to its session, with its state in words
 (Running, Done, Failed, Needs you, Stopped) and a live clock. A tool section
 header (arguments, command, output) is a `button` with `aria-expanded`; its
 Copy is a sibling, always visible, and says "Copied" for a moment.
+A tool row has no tooltip: what its title cuts short (a long URL, query or
+pattern) is the first line of the open row. Its menu (right-click, long
+press) only opens files: **Open** `path` for each file a `patch` left in
+place (no deleted file; a moved one at its new path) and the file a `read`
+read, at the line it started from (`ToolCall/fileTargets.ts`), into the
+Review panel. Other tool rows open no app menu; Copy is the open row's.
 
 **Turn footer** (`AssistantTurnFooter.tsx`): under the last finished answer
 the actions show at rest as muted 24px icon buttons (13px lucide icons, the
@@ -1228,12 +1234,12 @@ stopped turn says why and since when, lists its ways forward and has
 **Copy details**. Content text in cards is at least 12px (`text-xs`);
 `text-meta` is for chips and meta lines.
 
-**Touch menus.** A long press on a link or a tool row (Copy arguments,
-Copy result) opens the same items as right-click, as a bottom sheet with a
+**Touch menus.** A long press on a link or a `patch` / `read` row (Open the
+file) opens the same items as right-click, as a bottom sheet with a
 light haptic, the app's own sheet in the iOS and Android apps alike, and so
-is a session row's menu. Messages (yours and the agent's) and code blocks have no
-app menu, on desktop or touch: they keep the system menu and native text
-selection, and their Copy / Edit buttons.
+is a session row's menu. Messages (yours and the agent's), code blocks and
+other tool rows have no app menu, on desktop or touch: they keep the system
+menu and native text selection, and their Copy / Edit buttons.
 
 **Confirmations** (`ui/confirm-dialog.tsx`): every action that cannot be
 undone (stop a server, regenerate a key, delete, discard edits, revert a
@@ -1337,6 +1343,13 @@ the text sits the run deck, which says how the next message runs:
 ```
 [+•] [Code|Plan] [provider:model · Level · Account ▾]   (ring 42%) [Send]
 ```
+
+Every control in the deck is one height, the same steps as Send: 28px on
+desktop, 32px in a narrow mouse window, 36px on a touch tablet, 44px on a
+phone (the Android app too, where other buttons are 48px). All are rounded
+`radius-sm` (6px) but Send, a full circle. The context ring stays 36px wide
+on a phone so a 320px screen leaves the chip its room. With a mouse, the
+stacked chip (below) is 36px: its two lines need it.
 
 - **"+"** opens the add menu: Attach, Mention a file, Snippet, Side question
   and MCP servers (state in words, Sign in, on/off). The deck has no MCP

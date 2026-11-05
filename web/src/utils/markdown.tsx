@@ -595,8 +595,11 @@ export const MarkdownTable = memo(function MarkdownTable(
   }, [])
 
   return (
-    <div className="oa-table-container group relative">
-      <div className="absolute top-1 right-1 z-10">
+    <div className="oa-table-container group/table relative">
+      {/* Hidden at rest; hovering this table or focusing the button reveals
+          it. Touch has no hover, so it always shows there. The named group
+          keeps a hovered ancestor `group` (a message row) from revealing it. */}
+      <div className="absolute top-1 right-1 z-10 opacity-0 transition-opacity duration-(--motion-fast) group-hover/table:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
         <Tooltip>
           <TooltipTrigger
             render={

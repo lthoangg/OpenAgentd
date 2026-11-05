@@ -29,6 +29,7 @@ mock.module('@/stores/useToastStore', () => ({
 
 import { AskUser } from '@/components/AskUser'
 import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
+import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { PendingQuestion } from '@/api/types'
 
@@ -626,6 +627,9 @@ describe('AskUser — frame and type', () => {
 
     const frame = container.querySelector('[data-question-waiting]') as HTMLElement
     expect(frame.className).toContain('border-(--color-border-subtle)')
+    // The transcript's one card token: rounded-sm, not rounded-md.
+    for (const token of TRANSCRIPT_CARD.split(' ')) expect(frame.className.split(/\s+/)).toContain(token)
+    expect(frame.className).not.toContain('rounded-md')
     // Only the frame carries a border class: not the header, the steps, the options or the footer.
     const inside = Array.from(frame.querySelectorAll('*')).filter((el) => (el.getAttribute('class') ?? '').match(BORDER))
     expect(inside.map((el) => el.tagName)).toEqual([])

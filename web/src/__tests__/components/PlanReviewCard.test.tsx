@@ -16,6 +16,7 @@ mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 import { PlanReviewCard, planReviewFromResult } from '@/components/PlanReview/PlanReviewCard'
 import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { clearPlanReviewDrafts } from '@/components/PlanReview/plan-comments'
+import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
 import { resetPlanDecisionChoice } from '@/components/PlanReview/usePlanDecision'
 import { APP_EVENTS } from '@/lib/app-events'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -265,6 +266,9 @@ describe('PlanReviewCard — look', () => {
 
     const frame = container.querySelector('[data-question-waiting]') as HTMLElement
     expect(frame.className).toContain('border-(--color-border-subtle)')
+    // The transcript's one card token: rounded-sm, not rounded-md.
+    for (const token of TRANSCRIPT_CARD.split(' ')) expect(frame.className.split(/\s+/)).toContain(token)
+    expect(frame.className).not.toContain('rounded-md')
     expect(Array.from(frame.querySelectorAll('*')).filter((el) => BORDER.test(el.getAttribute('class') ?? '')).map((el) => el.tagName)).toEqual([])
     const title = screen.getByText('Plan review')
     expect(title.querySelector('svg')).toBeNull()

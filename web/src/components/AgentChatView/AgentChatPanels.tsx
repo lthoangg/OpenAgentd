@@ -16,11 +16,15 @@ function useOpenedOnce(open: boolean): boolean {
 }
 
 interface AgentChatPanelsProps {
-  /** Popover fallback: mobile, or desktop without a review dock. */
+  /**
+   * The task list where the review dock's Tasks tab is not it: a popover under
+   * the header on mobile and on desktop without a dock, and on a phone a
+   * bottom sheet with two detents (``TodosPopover`` picks the form).
+   */
   showTodos: boolean
   onShowTodosChange: (open: boolean) => void
   todos: TodoItem[]
-  /** The session's goal; it heads the task popover. */
+  /** The session's goal; it heads the task list. */
   goal?: SessionGoal | null
   plan?: SessionPlan | null
   onClearPlan?: () => void
@@ -28,7 +32,7 @@ interface AgentChatPanelsProps {
   onOpenPlan?: () => void
   /** Open the goal in the dock's Goal tab; unset without a workspace. */
   onOpenGoal?: () => void
-  /** Pause and Resume from the task popover's goal row. */
+  /** Pause and Resume from the task list's goal row. */
   onGoalAction?: (action: 'pause' | 'resume') => void
   schedulerOpen: boolean
   onCloseScheduler: () => void

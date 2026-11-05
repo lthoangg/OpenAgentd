@@ -12,6 +12,12 @@
  * side-by-side split; then it leaves the composer uncovered unless
  * maximized). Mobile keeps the fixed full-screen sheet with one strip.
  *
+ * A phone (touch and narrow, ``useIsPhone``) draws it as a page pushed over
+ * the chat: it covers the whole screen under its own navigation bar (‹ Chat,
+ * "Review", and the "+" that opens a view or tool), slides in from the right
+ * over its full width and follows the edge swipe that closes it. A narrow
+ * mouse window and a tablet keep the sheet under the app header.
+ *
  * Tab state lives in ``useDockTabs`` (remembered per session) and Git write actions in
  * ``useGitActions``; this component owns the queries and the layout.
  *
@@ -41,6 +47,10 @@ import {
 } from '@/queries/workspace-git'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useDrawerMotion } from '@/hooks/use-drawer-motion'
+import { useIsPhone } from '@/hooks/use-is-phone'
+import { PhoneNavBar } from '@/components/phone/PhoneNavBar'
+import { Button } from '@/components/ui/button'
+import { Plus } from 'lucide-react'
 import {
   PANEL_SLIDE_MS,
   PanelResizeHandle,
@@ -95,6 +105,8 @@ import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
+import { DockOpenMenu, menuPointBelow } from './WorkspacePanel/DockOpenMenu'
+import { usePhonePageWidth } from './WorkspacePanel/usePhonePageWidth'
 import { PaneSplitHandle } from './WorkspacePanel/PaneSplitHandle'
 import { lazySurface } from '@/lib/lazy-surface'
 import { DockLauncher, dockOpenItems } from './WorkspacePanel/DockLauncher'
@@ -156,6 +168,10 @@ const DEFAULT_PREVIEW_URL = 'http://localhost:5173'
 const NO_CENTER: React.RefObject<HTMLElement | null> = { current: null }
 /** A closed dock parks (hidden, inert) once its close tween (0.22 s) is done. */
 const PARK_AFTER_MS = 260
+/** A phone's page leaves on the drawer spring, which takes about half a second to come to rest. */
+const PHONE_PARK_AFTER_MS = 500
+/** px a narrow mouse window's drawer slides (the phone's page slides its whole width). */
+const DRAWER_TRAVEL_PX = 272
 
 /**
  * A pane's place over the panes' area (``top``: an inset from its top, the
@@ -281,6 +297,10 @@ export function WorkspacePanel({
 }) {
   const prefersReducedMotion = useReducedMotion()
   const { os, isTauri } = usePlatform()
+  // A phone is touch and narrow: its Review panel is a page over the chat. A
+  // narrow mouse window (``mobile`` without touch) keeps the drawer.
+  const phone = useIsPhone() && mobile
+  const phonePageWidth = usePhonePageWidth(phone)
   const gitViewIdBase = useId()
   // Preview listener behind each preview tab; file tabs of one workspace
   // share a listener, so it closes only with the last tab using it.
@@ -377,6 +397,8 @@ export function WorkspacePanel({
     onNoRoomToSplit: noRoomToSplit,
   })
   const [mobileFileActions, setMobileFileActions] = useState<ChangedFileInfo | null>(null)
+  // Where the phone bar's "+" menu is open, if it is.
+  const [phoneOpenMenuAt, setPhoneOpenMenuAt] = useState<{ x: number; y: number } | null>(null)
   const [mobileCommitActions, setMobileCommitActions] = useState<CommitActionTarget | null>(null)
   const [desktopCommitActions, setDesktopCommitActions] = useState<(CommitActionTarget & { x: number; y: number }) | null>(null)
   const [desktopFileActions, setDesktopFileActions] = useState<{ file: ChangedFileInfo; x: number; y: number } | null>(null)
@@ -391,9 +413,9 @@ export function WorkspacePanel({
       setParked(false)
       return
     }
-    const timer = window.setTimeout(() => setParked(true), PARK_AFTER_MS)
+    const timer = window.setTimeout(() => setParked(true), phone ? PHONE_PARK_AFTER_MS : PARK_AFTER_MS)
     return () => window.clearTimeout(timer)
-  }, [open])
+  }, [open, phone])
   // Whether the open or close tween (mounting counts as opening on a phone)
   // is still running. Only then, and while closed, is the body pinned to the
   // open width; any other width change moves the body with the dock's edge.
@@ -455,17 +477,28 @@ export function WorkspacePanel({
   // Desktop sets the width as a style and slides it only while showing or
   // hiding (never for a drag or a window resize). Closed or sliding, the
   // body keeps its open width, clipped rather than reflowed, so it rides
-  // the moving edge. The phone sheet fades and follows a swipe.
+  // the moving edge.
   // The phone sheet follows an edge swipe by ``translate`` (see
   // ``lib/drawer-motion``): no re-render per frame, and a release springs on
-  // with the finger's speed. Opening and closing fade (below) as they slide.
-  useDrawerMotion('workspace-panel', { open: shownOpen, enabled: mobile, hidden: 272, reduced: prefersReducedMotion ?? false })
+  // with the finger's speed. A narrow mouse window's drawer fades (below) as it
+  // slides 272px; a phone's page is opaque and slides its whole width, in from
+  // the right when the toggle mounts it.
+  useDrawerMotion('workspace-panel', {
+    open: shownOpen,
+    enabled: mobile,
+    hidden: phone ? phonePageWidth : DRAWER_TRAVEL_PX,
+    reduced: prefersReducedMotion ?? false,
+    slideIn: phone && slideIn,
+  })
   const dockMotion = ({ width, isResizing }: LiveWidth) => ({
-    animate: !shownOpen
-      ? (mobile ? { opacity: 0 } : { width: 0 })
-      : !mobile
-        ? { width: overlay ? layout.width : width }
-        : { opacity: 1 },
+    // A phone's page has nothing for framer to animate: the drawer driver slides it.
+    animate: phone
+      ? {}
+      : !shownOpen
+        ? (mobile ? { opacity: 0 } : { width: 0 })
+        : !mobile
+          ? { width: overlay ? layout.width : width }
+          : { opacity: 1 },
     transition: { duration: !mobile || isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
     pinWidth: !mobile && (!open || toggle.running || sliding || maximizeSliding) ? (overlay ? layout.width : width) : undefined,
     instantWidth: !mobile,
@@ -666,6 +699,9 @@ export function WorkspacePanel({
     onOpenPreview: canPreview ? () => openNewPreview(pane) : undefined,
     onOpenFile: openQuickOpen,
   }, openIds)
+
+  // A phone's "+" is in the page's navigation bar, for the pane in focus.
+  const phoneOpenItems = phone ? openItemsFor(focused) : []
 
   const handleRefresh = useCallback(() => {
     void files.refetch()
@@ -992,40 +1028,44 @@ export function WorkspacePanel({
         onFocusCapture={() => focusPane(pane)}
         onPointerDownCapture={() => focusPane(pane)}
       >
-        <DockTabBar
-          tabs={stripTabs[pane] ?? []}
-          activeTabId={shown?.id ?? ''}
-          previewTabId={panes.panes[pane]?.preview ?? null}
-          workspace={workspace}
-          terminalMetas={terminalMetas}
-          mobile={mobile}
-          os={os}
-          registerTabRef={(id, node) => {
-            if (node) tabButtonRefs.current.set(id, node)
-            else tabButtonRefs.current.delete(id)
-          }}
-          onActivate={activate}
-          onClose={closeTab}
-          onCloseOthers={closeOtherTabs}
-          onCloseToRight={closeTabsToRight}
-          onCloseToLeft={closeTabsToLeft}
-          onCloseAll={closeAllTabs}
-          onMove={moveWithin}
-          onKeep={keep}
-          onSplit={mobile ? undefined : (id, side) => splitPane(pane, side, id)}
-          canSplit={canSplitTab}
-          onMoveToNextPane={mobile || shownPanes.length < 2 ? undefined : moveToNextPane}
-          canMoveToNextPane={canMoveToNextPane}
-          onRevealInGit={chatWorkspace ? undefined : revealInGit}
-          onClosePane={!mobile && empty && shownPanes.length > 1 ? () => closePane(pane) : undefined}
-          onSplitPane={mobile ? undefined : (side) => splitPane(pane, side)}
-          onDropTab={mobile ? undefined : dropTab}
-          openItems={openItemsFor(pane)}
-          // ⌘1–⌘9 pick from the focused pane's strip, and only the desktop app receives them.
-          numberKeys={isTauri && pane === focused}
-          maximized={pane === cornerPane ? maximizeState : null}
-          onToggleMaximized={() => useLayoutStore.getState().toggleDockMaximized()}
-        />
+        {/* A phone's "+" is in the page's navigation bar, and its empty page has
+            no tabs to strip: the launcher starts right under the bar. */}
+        {!(phone && empty) && (
+          <DockTabBar
+            tabs={stripTabs[pane] ?? []}
+            activeTabId={shown?.id ?? ''}
+            previewTabId={panes.panes[pane]?.preview ?? null}
+            workspace={workspace}
+            terminalMetas={terminalMetas}
+            mobile={mobile}
+            os={os}
+            registerTabRef={(id, node) => {
+              if (node) tabButtonRefs.current.set(id, node)
+              else tabButtonRefs.current.delete(id)
+            }}
+            onActivate={activate}
+            onClose={closeTab}
+            onCloseOthers={closeOtherTabs}
+            onCloseToRight={closeTabsToRight}
+            onCloseToLeft={closeTabsToLeft}
+            onCloseAll={closeAllTabs}
+            onMove={moveWithin}
+            onKeep={keep}
+            onSplit={mobile ? undefined : (id, side) => splitPane(pane, side, id)}
+            canSplit={canSplitTab}
+            onMoveToNextPane={mobile || shownPanes.length < 2 ? undefined : moveToNextPane}
+            canMoveToNextPane={canMoveToNextPane}
+            onRevealInGit={chatWorkspace ? undefined : revealInGit}
+            onClosePane={!mobile && empty && shownPanes.length > 1 ? () => closePane(pane) : undefined}
+            onSplitPane={mobile ? undefined : (side) => splitPane(pane, side)}
+            onDropTab={mobile ? undefined : dropTab}
+            openItems={phone ? [] : openItemsFor(pane)}
+            // ⌘1–⌘9 pick from the focused pane's strip, and only the desktop app receives them.
+            numberKeys={isTauri && pane === focused}
+            maximized={pane === cornerPane ? maximizeState : null}
+            onToggleMaximized={() => useLayoutStore.getState().toggleDockMaximized()}
+          />
+        )}
         <div data-dock-pane-body="" className="relative min-h-0 flex-1 overflow-hidden">
           {renderContent(shown, pane, box !== undefined)}
         </div>
@@ -1068,13 +1108,41 @@ export function WorkspacePanel({
   // message can be written beside the diff; maximized, it covers both.
   const leavesComposer = overlay && !dockMaximized
 
+  // A phone's navigation bar: ‹ Chat (the one way out: no × beside it), the
+  // title, and the "+" that opens a view or tool, as the tab strip's does on
+  // other layouts. The tab strip under it draws the hairline; an empty page
+  // has none, so the bar does.
+  const phoneStripShown = (strips[focused]?.length ?? 0) > 0
+  const phoneBar = phone && (
+    <PhoneNavBar
+      className={phoneStripShown ? 'border-transparent!' : undefined}
+      back={onRequestClose ? { label: 'Chat', onBack: onRequestClose } : undefined}
+      title="Review"
+      trailing={phoneOpenItems.length > 0 && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Open in Review panel"
+          aria-haspopup="menu"
+          aria-expanded={phoneOpenMenuAt !== null}
+          className="text-(--color-accent)!"
+          onClick={(event) => setPhoneOpenMenuAt(menuPointBelow(event.currentTarget))}
+        >
+          <Plus size={20} aria-hidden="true" className="size-5" />
+        </Button>
+      )}
+    />
+  )
+
   return (
     <ResizableAside
       aria-label="Review panel"
       data-edge-drawer={mobile ? 'workspace-panel' : undefined}
       // Desktop sets its width as a style (``instantWidth``): no tween in or out.
-      initial={mobile ? { opacity: 0 } : false}
-      exit={mobile ? { opacity: 0 } : undefined}
+      // A narrow mouse window's drawer fades; a phone's page only slides.
+      initial={mobile && !phone ? { opacity: 0 } : false}
+      exit={mobile && !phone ? { opacity: 0 } : undefined}
       resize={dockResize}
       getMotion={dockMotion}
       onAnimationComplete={settleToggle}
@@ -1083,13 +1151,16 @@ export function WorkspacePanel({
       // beside the chat (open, or sliding); an overlay or the phone sheet floats.
       publishWidthAs={!mobile && !overlay && (shownOpen || sliding) ? '--oa-dock-w' : undefined}
       className={cn(
-        'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth)',
+        'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden bg-(--bg-page) shadow-(--shadow-depth)',
+        // A phone's page is edged by its shadow, as the stack's pages are.
+        !phone && 'border-l border-(--color-border)',
         // Overlay covers the chat column (kept mounted underneath); side mode
         // is an in-flow sibling that takes its ratio of the center. Keyed on
         // `mobile`, not only `md:`: a landscape phone is wider than md but
-        // keeps the full-screen mobile dock, clear of side cutouts.
+        // keeps the full-screen mobile dock, clear of side cutouts. The
+        // drawer sits under the app header; a phone's page covers the screen.
         mobile
-          ? 'mobile-safe-top pl-safe pr-safe max-w-none'
+          ? cn('pl-safe pr-safe max-w-none', phone ? 'top-0' : 'mobile-safe-top')
           : cn(
               'h-full md:w-auto md:shadow-none',
               overlay
@@ -1121,6 +1192,7 @@ export function WorkspacePanel({
         }}
       >
         {!mobile && !overlay && open && <PanelResizeHandle edge="left" />}
+        {phoneBar}
         <div ref={panesRef} data-dock-panes="" className="relative min-h-0 flex-1">
           {paneIds.map(renderPane)}
           {previewTabs.map(({ tab, pane }) => {
@@ -1173,6 +1245,9 @@ export function WorkspacePanel({
           onConfirm={confirmCloseTab}
           onCancel={cancelCloseTab}
         />
+        {phoneOpenMenuAt && (
+          <DockOpenMenu at={phoneOpenMenuAt} items={phoneOpenItems} onDismiss={() => setPhoneOpenMenuAt(null)} />
+        )}
         <DockActionMenus
           mobileFileActions={mobileFileActions}
           setMobileFileActions={setMobileFileActions}

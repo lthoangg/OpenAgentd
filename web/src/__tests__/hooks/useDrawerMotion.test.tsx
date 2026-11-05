@@ -3,8 +3,8 @@ import { cleanup, render } from '@testing-library/react'
 import { useDrawerMotion } from '@/hooks/use-drawer-motion'
 import { _resetDrawerMotionsForTests, getDrawerMotion } from '@/lib/drawer-motion'
 
-function Drawer({ open, enabled = true, reduced = false }: { open: boolean; enabled?: boolean; reduced?: boolean }) {
-  useDrawerMotion('d', { open, enabled, hidden: -280, reduced })
+function Drawer({ open, enabled = true, reduced = false, slideIn = false }: { open: boolean; enabled?: boolean; reduced?: boolean; slideIn?: boolean }) {
+  useDrawerMotion('d', { open, enabled, hidden: -280, reduced, slideIn })
   return (
     <>
       <div data-edge-drawer-scrim="d" />
@@ -51,6 +51,38 @@ describe('useDrawerMotion', () => {
     render(<Drawer open />)
     expect(aside().style.translate).toBe('')
     expect(scrim().style.opacity).toBe('1')
+  })
+
+  // A drawer that is mounted by its toggle (the Review panel) has no shut
+  // state to spring from unless it starts there.
+  it('mounted open by its toggle, starts shut and springs in when asked to slide in', () => {
+    render(<Drawer open slideIn />)
+    expect(aside().style.translate).toBe('-280px 0')
+    expect(scrim().style.opacity).toBe('0')
+    runFrames()
+    expect(aside().style.translate).toBe('')
+    expect(scrim().style.opacity).toBe('1')
+  })
+
+  it('slides in from where an edge swipe left it, without restarting its spring', () => {
+    const motion = getDrawerMotion('d')
+    motion.drag(0.5)
+    motion.settle(1, 3) // the release; the drawer mounts as the commit lands
+    render(<Drawer open slideIn />)
+    expect(frames).toHaveLength(1)
+    expect(motion.progress).toBe(0.5)
+  })
+
+  it('mounted shut, slides in nowhere', () => {
+    render(<Drawer open={false} slideIn />)
+    expect(aside().style.translate).toBe('-280px 0')
+    expect(frames).toHaveLength(0)
+  })
+
+  it('snaps in under reduced motion', () => {
+    render(<Drawer open slideIn reduced />)
+    expect(aside().style.translate).toBe('')
+    expect(frames).toHaveLength(0)
   })
 
   it('springs open and shut as the state flips', () => {

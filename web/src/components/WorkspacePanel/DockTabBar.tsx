@@ -50,11 +50,9 @@ import type { SplitSide } from './dock-panes'
 import type { DockOpenItem } from './DockLauncher'
 import { DockTabCloseButton } from './DockTabCloseButton'
 import { MenuKeys } from './MenuKeys'
+import { DockOpenMenu, OPEN_MENU_WIDTH, menuPointBelow } from './DockOpenMenu'
 import { DOCK_TAB_ATTR, useTabDrag } from './useTabDrag'
 import type { TabDropTarget } from './useDockTabs'
-
-/** Width the "+" menu is laid out for, so it opens right-aligned under the button. */
-const OPEN_MENU_WIDTH = 192
 
 /** The one glyph size of the strip's action buttons (and, in the tabs, of the ×). */
 const STRIP_ICON = 14
@@ -104,7 +102,10 @@ export interface DockTabBarProps {
   onSplitPane?: (side: PaneSplit) => void
   /** A tab dragged out of the strip and let go over a pane (see ``useTabDrag``). */
   onDropTab?: (id: string, target: TabDropTarget) => void
-  /** The "+" menu's rows (see ``dockOpenItems``); empty hides the button. */
+  /**
+   * The "+" menu's rows (see ``dockOpenItems``); empty hides the button. A
+   * phone's Review page keeps "+" in its navigation bar instead (``DockOpenMenu``).
+   */
   openItems?: DockOpenItem[]
   /**
    * Spell ⌘1–⌘9 beside the tabs in the "All tabs" list: this pane has focus
@@ -523,10 +524,7 @@ export function DockTabBar({
             label="Open in Review panel"
             tooltip="Open a view, terminal, preview or file"
             expanded={openMenuAt !== null}
-            onClick={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect()
-              setOpenMenuAt({ x: rect.right - OPEN_MENU_WIDTH, y: rect.bottom + 2 })
-            }}
+            onClick={(event) => setOpenMenuAt(menuPointBelow(event.currentTarget))}
           >
             <Plus size={STRIP_ICON} aria-hidden="true" />
           </ActionButton>
@@ -578,25 +576,7 @@ export function DockTabBar({
         </ContextMenu>
       )}
       {openMenuAt && (
-        <ContextMenu at={openMenuAt} label="Open in Review panel" onDismiss={() => setOpenMenuAt(null)} className="w-48">
-          {openItems.map((item, index) => (
-            <Fragment key={item.id}>
-              {index > 0 && openItems[index - 1].group !== item.group && <ContextMenuSeparator />}
-              <button
-                type="button"
-                role="menuitem"
-                aria-label={item.open ? `${item.label} (open)` : item.label}
-                className={cn(CONTEXT_MENU_ITEM_CLASS, 'pointer-coarse:h-9 pointer-coarse:text-sm')}
-                onClick={() => { setOpenMenuAt(null); item.run() }}
-              >
-                {item.icon}
-                <span className="flex-1">{item.label}</span>
-                {item.shortcut && <MenuKeys>{item.shortcut}</MenuKeys>}
-                {item.open && <Check size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />}
-              </button>
-            </Fragment>
-          ))}
-        </ContextMenu>
+        <DockOpenMenu at={openMenuAt} items={openItems} onDismiss={() => setOpenMenuAt(null)} />
       )}
       {paneMenuAt && (
         <ContextMenu at={paneMenuAt} label="Pane actions" onDismiss={() => setPaneMenuAt(null)} className="w-48">

@@ -1,15 +1,26 @@
 /**
- * TodosPopover — the agent task list as a panel under the app header.
+ * TodosPopover — the agent task list: a panel under the app header, and on a
+ * phone a bottom sheet with two detents.
  *
  * Mobile (and desktop without a workspace, where there is no review dock)
  * opens this from the header Tasks button. On desktop with a workspace the
  * same checklist lives in the review dock's Tasks tab instead.
+ *
+ * A phone (touch and narrow, ``useIsPhone``) gets the list in a ``BottomSheet``
+ * that opens at medium, with the chat still in view, and pulls up to large for
+ * a long list or the plan and goal rows. The sheet closes by its own gestures
+ * (a pull down, the backdrop, Escape) and by Done, for a hand that does not
+ * drag. A narrow mouse window and a tablet keep the panel.
  */
 import { ListTodo } from 'lucide-react'
 import { useRef } from 'react'
+import { BottomSheet } from '@/components/ui/bottom-sheet'
+import type { SheetDetent } from '@/components/ui/_sheet'
+import { Button } from '@/components/ui/button'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { usePresenceMotion } from '@/components/ui/_use-presence-motion'
 import { EmptyState } from '@/components/ui/empty-state'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { DURATIONS_S } from '@/lib/motion'
 import { cn } from '@/lib/utils'
@@ -37,7 +48,61 @@ interface TodosPopoverProps {
   onGoalAction?: (action: Extract<GoalAction, 'pause' | 'resume'>) => void
 }
 
-export function TodosPopover({ open, onOpenChange, todos, goal = null, plan = null, onClearPlan, onOpenPlan, onOpenGoal, onGoalAction }: TodosPopoverProps) {
+/** The phone sheet opens at medium and pulls up to large. */
+const SHEET_DETENTS: SheetDetent[] = ['medium', 'large']
+
+export function TodosPopover(props: TodosPopoverProps) {
+  return useIsPhone() ? <TodosSheet {...props} /> : <TodosPanel {...props} />
+}
+
+/** A phone's Tasks: the list in a bottom sheet, resting at medium. */
+function TodosSheet({ open, onOpenChange, todos, goal = null, plan = null, onClearPlan, onOpenPlan, onOpenGoal, onGoalAction }: TodosPopoverProps) {
+  const summary = summarizeTodos(todos)
+  const doneWhen = readDoneWhen(plan, { todos, goal })
+  return (
+    <BottomSheet open={open} onClose={() => onOpenChange(false)} label="Tasks" detents={SHEET_DETENTS} initialDetent="medium">
+      <div className="pb-2">
+        <div className="flex items-center gap-2 px-4 pb-1">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-semibold text-(--color-text)">Tasks</h2>
+            {summary.total > 0 && (
+              <p className={cn('text-meta text-(--color-text-muted)', summary.allDone && 'text-(--accent-green-text)')}>
+                {summary.finished} of {summary.total} done
+              </p>
+            )}
+          </div>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} className="-mr-2 text-(--color-accent)!">
+            Done
+          </Button>
+        </div>
+        <WorkSummary
+          goal={goal}
+          plan={plan}
+          todos={todos}
+          // Rows are 44px to a finger; the plan and goal rows grow with them.
+          className="min-h-11 [&_button]:min-h-11"
+          onClearPlan={onClearPlan}
+          onOpenPlan={onOpenPlan ? () => { onOpenChange(false); onOpenPlan() } : undefined}
+          onOpenGoal={onOpenGoal ? () => { onOpenChange(false); onOpenGoal() } : undefined}
+          onGoalAction={onGoalAction}
+        />
+        {summary.total > 0 && <TaskProgressBar summary={summary} />}
+        {summary.total === 0 ? (
+          <EmptyState fill={false} icon={ListTodo} title="No tasks yet" className="px-3 py-8" />
+        ) : (
+          <>
+            {/* The sheet's body scrolls, so the list has no height of its own.
+                A task wraps rather than truncating: there is no tooltip to read it in. */}
+            <TaskChecklist todos={todos} overflow="wrap" className="px-2 py-1 [&_li]:py-3 [&_p]:leading-snug" />
+            {doneWhen && <DoneWhenRow doneWhen={doneWhen} />}
+          </>
+        )}
+      </div>
+    </BottomSheet>
+  )
+}
+
+function TodosPanel({ open, onOpenChange, todos, goal = null, plan = null, onClearPlan, onOpenPlan, onOpenGoal, onGoalAction }: TodosPopoverProps) {
   const summary = summarizeTodos(todos)
   const doneWhen = readDoneWhen(plan, { todos, goal })
   const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.fast * 1000)

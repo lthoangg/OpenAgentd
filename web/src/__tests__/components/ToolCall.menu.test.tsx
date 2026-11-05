@@ -205,7 +205,7 @@ describe('right-click on a tool row', () => {
 })
 
 describe('long press on a tool row (touch)', () => {
-  it('opens the items as a bottom sheet with a light haptic, and the hold does not toggle the row', async () => {
+  it('opens the items as a bottom sheet with a medium haptic, and the hold does not toggle the row', async () => {
     setCoarse(true)
     render(<ToolCall name="custom_tool" args={ARGS} done result="some result" />)
     const button = row()
@@ -217,7 +217,7 @@ describe('long press on a tool row (touch)', () => {
     const sheet = screen.getByRole('dialog', { name: 'Actions for custom_tool' })
     expect(sheet.getAttribute('data-bottom-sheet')).toBe('')
     expect(screen.queryByRole('menu')).toBeNull()
-    expect(haptics).toEqual(['soft'])
+    expect(haptics).toEqual(['medium'])
     expect(Array.from(sheet.querySelectorAll('button')).map((item) => item.textContent)).toEqual(['Copy arguments', 'Copy result'])
 
     // The finger lifts: some touch browsers send a click after a hold.

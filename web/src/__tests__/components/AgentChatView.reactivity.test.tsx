@@ -116,8 +116,6 @@ mock.module('@/components/AgentChatView/useOverlayState', () => ({
     handleOpenTerminal: () => {},
     openLeftDrawer: () => {},
     edgeSwipeHandlers: {},
-    sidebarDragOffset: null,
-    workspacePanelDragOffset: null,
   }),
 }))
 mock.module('@/components/AgentChatView/useSessionBootstrap', () => ({

@@ -130,7 +130,8 @@ function QueuedBubble({ content, attachments, label, sender, onEdit, onRemove }:
     }
   }
   return (
-    <div className="group flex justify-end">
+    // Queued from the composer: it rises into place like a sent prompt.
+    <div className="oa-rise-in group flex justify-end">
       <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]">
         <div className="flex max-w-full items-start gap-2">
           <QueuedMessageContent content={content} attachments={attachments} />

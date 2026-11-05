@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { ChevronDown, ChevronUp, X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { prefersReducedMotion } from '@/lib/motion'
 
 const MAX_MATCHES = 1000
 const HIGHLIGHT_ALL = 'oa-find'
@@ -93,6 +94,9 @@ export function TranscriptFind({ onClose }: { onClose: () => void }) {
   const count = ranges.length
   const index = count === 0 ? 0 : Math.min(current, count - 1)
 
+  // Stepping between matches of the same search glides to the next one;
+  // a new search (each key typed) jumps, so typing never trails a glide.
+  const lastRangesRef = useRef(ranges)
   useEffect(() => {
     const registry = highlights()
     const range = ranges[index]
@@ -100,7 +104,10 @@ export function TranscriptFind({ onClose }: { onClose: () => void }) {
       registry.set(HIGHLIGHT_ALL, makeHighlight(ranges))
       registry.set(HIGHLIGHT_CURRENT, makeHighlight(range ? [range] : []))
     }
-    range?.startContainer.parentElement?.scrollIntoView?.({ block: 'center' })
+    const stepping = lastRangesRef.current === ranges
+    lastRangesRef.current = ranges
+    const behavior: ScrollBehavior = stepping && !prefersReducedMotion() ? 'smooth' : 'auto'
+    range?.startContainer.parentElement?.scrollIntoView?.({ block: 'center', behavior })
   }, [ranges, index])
   useEffect(() => () => {
     const registry = highlights()

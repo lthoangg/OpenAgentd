@@ -15,7 +15,7 @@
  * (DESIGN.md → Motion); reduced motion fades without moving.
  */
 import { useLayoutEffect, useRef, type RefObject } from 'react'
-import { DURATIONS_S, EASINGS, cssEasing } from '@/lib/motion'
+import { DURATIONS_S, EASINGS, cssEasing, prefersReducedMotion } from '@/lib/motion'
 
 /** The pose a layer enters from and leaves to (it rests at opacity 1, no transform). */
 export interface PresencePose {
@@ -36,10 +36,7 @@ export interface PresenceMotionOptions {
 
 const DEFAULT_FROM: PresencePose = { opacity: 0, scale: 0.95 }
 
-export function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-}
+export { prefersReducedMotion }
 
 /** A pose as a keyframe: opacity plus one transform. */
 export function poseFrame(pose: PresencePose, reduced = false): Keyframe {

@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
 
 const haptic = mock((..._args: unknown[]) => {})
-mock.module('@/lib/haptics', () => ({ haptic }))
+const outcomeHapticFeedback = mock((..._args: unknown[]) => {})
+mock.module('@/lib/haptics', () => ({ haptic, outcomeHapticFeedback }))
 
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
@@ -49,6 +50,7 @@ const held = () => useHeldMessagesStore.getState().messages.map((m) => m.content
 beforeEach(() => {
   useHeldMessagesStore.setState({ messages: [] })
   haptic.mockClear()
+  outcomeHapticFeedback.mockClear()
   goalCalls = []
   globalThis.fetch = mock(async (...args: unknown[]) => {
     const init = args[1] as RequestInit | undefined
@@ -405,5 +407,17 @@ describe('deliverFromComposer', () => {
     await deliverFromComposer('/repo', composer.ref.current, { content: 'later' }, 'after-turn')
 
     expect(haptic.mock.calls).toEqual([['tick'], ['tick']])
+  })
+
+  // A send that never lands is felt as an error, as a failed git action is.
+  it('buzzes an error when the message never lands, and not when it does', async () => {
+    const composer = fakeComposer()
+    useAgentStore.setState({ sendMessage: sendThatStartsATurn(true), isAgentWorking: false })
+    await deliverFromComposer('/repo', composer.ref.current, { content: 'fine' }, 'steer')
+    expect(outcomeHapticFeedback).not.toHaveBeenCalled()
+
+    useAgentStore.setState({ sendMessage: mock(async () => false), isAgentWorking: false })
+    await deliverFromComposer('/repo', composer.ref.current, { content: 'broken' }, 'steer')
+    expect(outcomeHapticFeedback.mock.calls).toEqual([['error']])
   })
 })

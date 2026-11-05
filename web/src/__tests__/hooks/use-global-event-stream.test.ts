@@ -7,7 +7,7 @@ import { setApiBaseUrl } from '@/api/base-url'
 const sendDesktopNotification = mock(async () => ({ status: 'sent', message: 'sent' }))
 mock.module('@/lib/desktop-notifications', () => ({ sendDesktopNotification }))
 const haptic = mock((..._args: unknown[]) => {})
-mock.module('@/lib/haptics', () => ({ haptic }))
+mock.module('@/lib/haptics', () => ({ haptic, outcomeHapticFeedback: () => {} }))
 type GlobalCallbacks = { onOpen?: () => void; onEvent?: (type: string, data: unknown) => void }
 let globalCallbacks: GlobalCallbacks | null = null
 let globalSignals: AbortSignal[] = []

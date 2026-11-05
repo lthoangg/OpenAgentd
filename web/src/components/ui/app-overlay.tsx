@@ -228,12 +228,12 @@ export function AppOverlay({
   const sheet = isMobile && variant === 'modal' && !reduced
   const panelVariants = reduced ? MODAL_VARIANTS_REDUCED : sheet ? SHEET_VARIANTS : MODAL_VARIANTS
   const panelTransition = reduced
-    ? { duration: 0.01 }
+    ? { duration: 0 }
     : sheet
       ? { duration: DURATIONS_S.base, ease: EASINGS.sheet }
       : { duration: DURATIONS_S.base, ease: EASINGS.out }
   const panelExit = reduced
-    ? { duration: 0.01 }
+    ? { duration: 0 }
     : { duration: sheet ? DURATIONS_S.base : DURATIONS_S.fast, ease: sheet ? EASINGS.sheet : EASINGS.inOut }
 
   const onSheetDragEnd = (_: unknown, info: PanInfo) => {

@@ -78,7 +78,7 @@ describe("ToolCall — header", () => {
     expect(btn).toBeTruthy()
     // Running reads "running…" (no summary yet), with no coloured dot or pulse
     expect(btn.querySelector("[data-running-dot]")).toBeNull()
-    expect(btn.querySelector(".animate-pulse")).toBeNull()
+    expect(btn.querySelector(".oa-breathe")).toBeNull()
     expect(btn.textContent).toContain("running…")
   })
 

@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
+import { useFakeTimers } from '../fake-timers'
 import { act, render, cleanup } from "@testing-library/react"
 import { AgentView } from "@/components/AgentView"
 import { useAgentStore } from "@/stores/useAgentStore"
@@ -193,7 +194,7 @@ describe("AgentView — scroll-to-bottom button", () => {
     expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
   })
 
-  it("re-attaches to stream after clicking scroll-to-bottom: ResizeObserver fires scrollToBottom", async () => {
+  it("re-attaches after Jump to latest: a delta lets the glide run, then it lands on the new end", async () => {
     const { container, rerender } = renderStream({
       blocks: [makeTextBlock("b1", "First")],
       isWorking: true,
@@ -204,29 +205,45 @@ describe("AgentView — scroll-to-bottom button", () => {
     await fireScroll(el, 200)
     expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeTruthy()
 
-    // Click button — sets attached=true
-    const btn = container.querySelector('button[aria-label^="Jump to latest"]') as HTMLButtonElement
-    await act(async () => { btn.click() })
-    expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
+    // Click button — sets attached=true and glides to the end. The glide's
+    // fallback timer is held, so a slow parallel run cannot end it early.
+    // The browser's own glide is stubbed out: happy-dom lands a smooth
+    // scrollTo on a later timer, which a slow run lets fall after the
+    // scrollTop spy below and read as the hook's own write.
+    el.scrollTo = (() => {}) as typeof el.scrollTo
+    const timers = useFakeTimers()
+    try {
+      const btn = container.querySelector('button[aria-label^="Jump to latest"]') as HTMLButtonElement
+      await act(async () => { btn.click() })
+      expect(container.querySelector('button[aria-label^="Jump to latest"]')).toBeNull()
 
-    // New stream content — ResizeObserver should scroll (attached=true)
-    let scrollTopSet = false
-    Object.defineProperty(el, "scrollTop", {
-      get() { return 0 },
-      set() { scrollTopSet = true },
-      configurable: true,
-    })
-    await act(async () => {
-      rerender(
-        <AgentView
-          blocks={[makeTextBlock("b1", "First"), makeTextBlock("b2", "Streamed")]}
-          currentBlocks={[]}
-          isWorking={true}
-        />,
-      )
-    })
-    await waitFrame()
-    expect(scrollTopSet).toBe(true)
+      // New stream content while the glide runs: no instant write cuts it short.
+      const writes: number[] = []
+      Object.defineProperty(el, "scrollHeight", { get: () => 1000, configurable: true })
+      Object.defineProperty(el, "clientHeight", { get: () => 400, configurable: true })
+      Object.defineProperty(el, "scrollTop", {
+        get() { return 200 },
+        set(value: number) { writes.push(value) },
+        configurable: true,
+      })
+      await act(async () => {
+        rerender(
+          <AgentView
+            blocks={[makeTextBlock("b1", "First"), makeTextBlock("b2", "Streamed")]}
+            currentBlocks={[]}
+            isWorking={true}
+          />,
+        )
+      })
+      await waitFrame()
+      expect(writes).toEqual([])
+
+      // The glide ends: it settles on the end as it is now.
+      await act(async () => { el.dispatchEvent(new Event("scrollend")) })
+      expect(writes).toEqual([600])
+    } finally {
+      timers.restore()
+    }
   })
 
   it("observes both the inner content and the outer scroll container with ResizeObserver", () => {
@@ -511,12 +528,12 @@ describe("chat layout resize", () => {
 describe("AgentView — bounce dots indicator", () => {
   it("no dots when isWorking=false and no blocks", () => {
     const { container } = renderStream({ blocks: [], currentBlocks: [], isWorking: false })
-    expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
+    expect(container.querySelectorAll('[aria-label="Agent is preparing a response"] > span').length).toBe(0)
   })
 
   it("shows 3 dots when isWorking=true before the first block arrives", () => {
     const { container } = renderStream({ blocks: [], currentBlocks: [], isWorking: true })
-    expect(container.querySelectorAll(".animate-bounce").length).toBe(3)
+    expect(container.querySelectorAll('[aria-label="Agent is preparing a response"] > span').length).toBe(3)
   })
 
   it("shows 3 dots when isWorking=true with only user currentBlocks", () => {
@@ -525,7 +542,7 @@ describe("AgentView — bounce dots indicator", () => {
       currentBlocks: [makeUserBlock("u1", "Hello")],
       isWorking: true,
     })
-    expect(container.querySelectorAll(".animate-bounce").length).toBe(3)
+    expect(container.querySelectorAll('[aria-label="Agent is preparing a response"] > span').length).toBe(3)
   })
 
   it("no dots when isWorking=true with a text block in currentBlocks", () => {
@@ -534,7 +551,7 @@ describe("AgentView — bounce dots indicator", () => {
       currentBlocks: [makeTextBlock("b1", "Response")],
       isWorking: true,
     })
-    expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
+    expect(container.querySelectorAll('[aria-label="Agent is preparing a response"] > span').length).toBe(0)
   })
 
   it("no dots when isWorking=true with mixed blocks including text", () => {
@@ -543,7 +560,7 @@ describe("AgentView — bounce dots indicator", () => {
       currentBlocks: [makeUserBlock("u1", "Hi"), makeTextBlock("b1", "Response")],
       isWorking: true,
     })
-    expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
+    expect(container.querySelectorAll('[aria-label="Agent is preparing a response"] > span').length).toBe(0)
   })
 
   it("no dots when isWorking=true with thinking block only", () => {
@@ -552,7 +569,7 @@ describe("AgentView — bounce dots indicator", () => {
       currentBlocks: [makeThinkingBlock("t1", "Thinking...")],
       isWorking: true,
     })
-    expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
+    expect(container.querySelectorAll('[aria-label="Agent is preparing a response"] > span').length).toBe(0)
   })
 
   it("no dots when isWorking=true with user and thinking blocks", () => {
@@ -561,7 +578,7 @@ describe("AgentView — bounce dots indicator", () => {
       currentBlocks: [makeUserBlock("u1", "Hi"), makeThinkingBlock("t1", "Thinking...")],
       isWorking: true,
     })
-    expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
+    expect(container.querySelectorAll('[aria-label="Agent is preparing a response"] > span').length).toBe(0)
   })
 
   // Regression: a provider (e.g. OpenAI /responses reasoning-part boundary,
@@ -577,7 +594,7 @@ describe("AgentView — bounce dots indicator", () => {
       currentBlocks: [makeUserBlock("u1", "Hi"), makeThinkingBlock("t1", "\n\n")],
       isWorking: true,
     })
-    expect(container.querySelectorAll(".animate-bounce").length).toBe(3)
+    expect(container.querySelectorAll('[aria-label="Agent is preparing a response"] > span').length).toBe(3)
   })
 
   it("still shows dots when the only non-user block is a whitespace-only text chunk", () => {
@@ -586,7 +603,7 @@ describe("AgentView — bounce dots indicator", () => {
       currentBlocks: [makeUserBlock("u1", "Hi"), makeTextBlock("b1", "   ")],
       isWorking: true,
     })
-    expect(container.querySelectorAll(".animate-bounce").length).toBe(3)
+    expect(container.querySelectorAll('[aria-label="Agent is preparing a response"] > span').length).toBe(3)
   })
 })
 

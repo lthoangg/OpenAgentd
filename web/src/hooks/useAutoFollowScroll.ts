@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { prefersReducedMotion } from '@/lib/motion'
 
 const SCROLL_THRESHOLD = 40
+/** Sending from up to this many screens above the end glides there; further jumps. */
+const SMOOTH_SEND_SCREENS = 2
 const USER_SCROLL_INTENT_MS = 250
 /** Quiet time after the last visual-viewport resize before the keyboard counts as settled. */
 export const KEYBOARD_SETTLE_MS = 120
@@ -366,15 +369,27 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
   }, [sessionId, scrollToBottom, syncAnchor, tryRestore])
 
   useLayoutEffect(() => {
+    let behavior: ScrollBehavior = 'auto'
     if (isUserMessage) {
-      // Sending in a session returns it to the live end.
+      // Sending in a session returns it to the live end: a glide when the
+      // reader was a short way up (as a prompt jump within two screens),
+      // a jump from further back.
       pendingRestoreRef.current = null
+      const el = scrollRef.current
+      if (!attachedRef.current && el && !prefersReducedMotion()) {
+        const distance = el.scrollHeight - el.clientHeight - el.scrollTop
+        if (distance <= el.clientHeight * SMOOTH_SEND_SCREENS) behavior = 'smooth'
+      }
       attachedRef.current = true
     }
     if (pendingRestoreRef.current && tryRestore()) return
     if (attachedRef.current) {
       syncAnchor()
-      scrollToBottom()
+      // A glide to the end is under way (Jump to latest, a send): a delta
+      // must not cut it short with an instant write; it lands on the end
+      // as it finishes.
+      if (behavior === 'auto' && smoothScrollFinishRef.current) return
+      scrollToBottom(behavior)
     }
   }, [totalLen, lastContent, isUserMessage, scrollToBottom, syncAnchor, tryRestore])
 
@@ -413,6 +428,8 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       lastScrollTopRef.current = el.scrollTop
       if (!attachedRef.current) return
       if (pointerDownRef.current) return
+      // A glide to the end is under way; it settles on the new end itself.
+      if (smoothScrollFinishRef.current) return
       if (document.documentElement.hasAttribute('data-keyboard-open') && viewportChanged && !contentGrew && !contentChanged) return
       const target = Math.max(0, el.scrollHeight - el.clientHeight)
       if (Math.abs(el.scrollTop - target) > 0.5) {

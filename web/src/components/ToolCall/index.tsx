@@ -18,7 +18,6 @@
  */
 
 import { useEffect, useId, useRef, useState, useMemo, useCallback, memo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowUpRight, ChevronRight, FileText, GitBranch, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { previewsAvailable } from '@/api/preview'
@@ -29,11 +28,10 @@ import { AskUser, useShowsConfirmationCard } from '../AskUser'
 import { PlanReviewCard } from '../PlanReview/PlanReviewCard'
 import { PREVIEW_TOOL, isPreviewOpenSuccess, previewTargetFromArgs, requestOpenPreview } from '../Preview/preview-events'
 import { parseSendResult, requestOpenSession } from '@/utils/workspace-messages'
-import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { tokenizeCode } from '@/utils/code-highlight'
-import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { PINNED_HEADER, useCloseInPlace } from '@/hooks/useStickyFold'
 import { cn } from '@/lib/utils'
+import { Collapsible } from '@/components/ui/collapsible'
 import { getToolDisplay } from './display'
 import { DiffView } from './DiffView'
 import { ReadView } from './ReadView'
@@ -178,10 +176,6 @@ const ShellCommand = memo(function ShellCommand({ command }: { command: string }
 export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result: inlineResult, resultBytes, argsBytes, durationMs, startedAt, toolCallId, isCurrentStep = false }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
-  // Reduced motion: snap the disclosure open/closed instead of animating
-  // height. Also skips framer's per-frame height measurement of the details
-  // subtree, which can be a large diff.
-  const prefersReducedMotion = useReducedMotion()
   // The open details region: the row's toggle and every section header point at it.
   const detailsId = useId()
   const liveOutputRef = useRef<HTMLPreElement>(null)
@@ -426,7 +420,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             </span>
           )}
           {state === 'running' ? (
-            <span className="shrink-0 text-(--color-text-muted)">running…</span>
+            <span className="oa-shimmer shrink-0">running…</span>
           ) : null}
         </ToolRow>
         {(previewTarget || planLink || imageRead || sentSession) && (
@@ -487,19 +481,9 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
       </div>
 
       {/* Expandable details — divider then warm paper body per pencil LJOUY */}
-      <AnimatePresence initial={false}>
-        {expanded && hasDetails && (
-          <motion.div
-            key="tool-details"
-            id={detailsId}
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: prefersReducedMotion ? 0 : DURATIONS_S.base, ease: EASINGS.out }}
-            // Clips for the height animation; the details keep the column's
-            // width, so nothing inside is cut off.
-            className="overflow-hidden"
-          >
+      {/* The shared fold (grid rows, no per-frame measuring), as every
+          other fold in the transcript. */}
+      <Collapsible open={expanded && hasDetails} id={detailsId}>
             <section className="group relative mt-1 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)">
               {awaitingArgs && (usesDiffView || !formattedArgs) && (
                 <div>
@@ -611,9 +595,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                 </>
               )}
             </section>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </Collapsible>
     </div>
   )
 })

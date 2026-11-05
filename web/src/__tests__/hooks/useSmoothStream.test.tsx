@@ -94,21 +94,74 @@ describe('useSmoothStream', () => {
     expect(result.current).toBe(text)
   })
 
-  it('instantly snaps to targetText when isStreaming becomes false mid-animation', () => {
+  it('keeps the rest flowing when the stream ends mid-reveal, instead of snapping', () => {
     let text = 'Hello'
     let streaming = true
     const { result, rerender } = renderHook(() => useSmoothStream(text, streaming))
     expect(result.current).toBe('Hello')
 
+    // The last delta lands together with "done", as it usually does.
     text = 'Hello, world! This is a longer message.'
     rerender()
+    advanceFrames(1)
+    const shown = result.current.length
+    expect(shown).toBeLessThan(text.length)
 
-    // One frame in — still mid-animation.
-    act(() => { flushFrames(1) })
+    streaming = false
+    rerender()
+    // Not in one frame: it picks up where it was.
+    expect(result.current.length).toBe(shown)
+    advanceFrames(1)
+    expect(result.current.length).toBeGreaterThan(shown)
     expect(result.current.length).toBeLessThan(text.length)
 
-    // Turn off streaming — must snap immediately.
+    advanceFrames(60)
+    expect(result.current).toBe(text)
+  })
+
+  it('shows the whole text at once when the end is too far behind to reveal', () => {
+    let text = 'Hello'
+    let streaming = true
+    const { result, rerender } = renderHook(() => useSmoothStream(text, streaming))
+    text = 'Hello' + 'x'.repeat(5000)
     streaming = false
+    rerender()
+    expect(result.current).toBe(text)
+  })
+
+  it('snaps at the end under reduced motion', () => {
+    const original = window.matchMedia
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('reduce'), media: query, onchange: null,
+      addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+    })) as typeof window.matchMedia
+    try {
+      let text = 'Hello'
+      let streaming = true
+      const { result, rerender } = renderHook(() => useSmoothStream(text, streaming))
+      text = 'Hello, world! This is a longer message.'
+      rerender()
+      advanceFrames(1)
+      streaming = false
+      rerender()
+      expect(result.current).toBe(text)
+    } finally {
+      window.matchMedia = original
+    }
+  })
+
+  it('shows a later edit of a settled message at once', () => {
+    let text = 'Hello'
+    let streaming = true
+    const { result, rerender } = renderHook(() => useSmoothStream(text, streaming))
+    text = 'Hello, world!'
+    rerender()
+    streaming = false
+    rerender()
+    advanceFrames(60)
+    expect(result.current).toBe('Hello, world!')
+
+    text = 'Hello, world! Edited later.'
     rerender()
     expect(result.current).toBe(text)
   })

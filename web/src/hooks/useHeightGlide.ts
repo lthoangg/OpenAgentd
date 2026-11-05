@@ -14,8 +14,7 @@
  * a missing Web Animations API snap.
  */
 import { useLayoutEffect, type RefObject } from 'react'
-import { prefersReducedMotion } from '@/components/ui/_use-presence-motion'
-import { DURATIONS_S, EASINGS, cssEasing } from '@/lib/motion'
+import { DURATIONS_S, EASINGS, cssEasing, prefersReducedMotion } from '@/lib/motion'
 
 /**
  * ``mounted``: pass the flag that mounts the two elements when they come and

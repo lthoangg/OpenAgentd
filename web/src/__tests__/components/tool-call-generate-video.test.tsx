@@ -172,7 +172,7 @@ describe("ToolCall generate_video display", () => {
     render(<ToolCall name="generate_video" args={args} done={true} />);
 
     const btn = screen.getByRole("button");
-    expect(btn.querySelector(".animate-pulse")).toBeNull();
+    expect(btn.querySelector(".oa-breathe")).toBeNull();
     expect(btn.querySelector("[data-running-dot]")).toBeNull();
     expect(btn.textContent).not.toContain("running…");
   });
@@ -186,7 +186,7 @@ describe("ToolCall generate_video display", () => {
 
     const btn = screen.getByRole("button");
     expect(btn.querySelector("[data-running-dot]")).toBeNull();
-    expect(btn.querySelector(".animate-pulse")).toBeNull();
+    expect(btn.querySelector(".oa-breathe")).toBeNull();
     expect(btn.textContent).toContain("video.mp4");
     expect(btn.textContent).toContain("running…");
   });

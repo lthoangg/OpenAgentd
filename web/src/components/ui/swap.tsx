@@ -13,8 +13,7 @@
  * under reduced motion the content swaps at once.
  */
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { prefersReducedMotion } from '@/components/ui/_use-presence-motion'
-import { DURATIONS_S, EASINGS, cssEasing } from '@/lib/motion'
+import { DURATIONS_S, EASINGS, cssEasing, prefersReducedMotion } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 type SwapKey = string | number | boolean
@@ -173,9 +172,11 @@ function Digit({ char, up }: { char: string; up: boolean }) {
  * A number whose changed digits roll (up as it grows, down as it falls),
  * like SwiftUI's ``numericText``. Pass the formatted text; ``value`` (the
  * raw number) sets the direction. Digits line up by their place from the
- * right, in tabular figures, so unchanged places stay still.
+ * right, in tabular figures, so unchanged places stay still. ``suffix``
+ * (" used", " new") is words that stay still after it; the number and its
+ * words read as one phrase.
  */
-export function RollingNumber({ text, value, className }: { text: string; value: number; className?: string }) {
+export function RollingNumber({ text, value, suffix, className }: { text: string; value: number; suffix?: string; className?: string }) {
   const prevRef = useRef(value)
   const up = value >= prevRef.current
   useLayoutEffect(() => {
@@ -192,7 +193,46 @@ export function RollingNumber({ text, value, className }: { text: string; value:
           <Digit key={chars.length - i} char={char} up={up} />
         ))}
       </span>
-      <span className="sr-only">{text}</span>
+      {/* Drawn from the attribute too, so the phrase reads once. */}
+      {suffix && <span aria-hidden="true" data-suffix={suffix} className="whitespace-pre before:content-[attr(data-suffix)]" />}
+      <span className="sr-only">{suffix ? `${text}${suffix}` : text}</span>
     </span>
   )
+}
+
+/**
+ * Whether ``key`` has changed since mount: for a control that renders a new
+ * element per state (so IconSwap would mount fresh and stay still), give its
+ * icon ``oa-icon-in`` once this is true, and the first render stays still.
+ */
+export function useHasSwapped(key: SwapKey): boolean {
+  const [first] = useState(key)
+  const [swapped, setSwapped] = useState(false)
+  if (!swapped && key !== first) setSwapped(true)
+  return swapped
+}
+
+/**
+ * A badge that bumps when its count grows (or its label changes): a quick
+ * spring swell and back, the way an iOS badge takes a new count. Put the
+ * returned ref on the badge. A count that falls, the first render and
+ * reduced motion stay still.
+ */
+export function useBadgeBump<T extends HTMLElement>(value: number | string | undefined) {
+  const ref = useRef<T>(null)
+  const prevRef = useRef(value)
+  useLayoutEffect(() => {
+    const prev = prevRef.current
+    prevRef.current = value
+    const el = ref.current
+    if (prev === value || value === undefined || prev === undefined) return
+    if (typeof value === 'number' && typeof prev === 'number' && value < prev) return
+    if (!el || typeof el.animate !== 'function' || prefersReducedMotion()) return
+    const anim = el.animate(
+      [{ transform: 'scale(1)' }, { transform: 'scale(1.2)', offset: 0.4 }, { transform: 'scale(1)' }],
+      { duration: DURATIONS_S.base * 1000, easing: cssEasing(EASINGS.out) },
+    )
+    anim.finished.catch(() => {})
+  }, [value])
+  return ref
 }

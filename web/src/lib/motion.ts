@@ -31,6 +31,12 @@ export const EASINGS = {
   linear: [0, 0, 1, 1],
 } as const satisfies Record<string, [number, number, number, number]>
 
+/** The OS asks for reduced motion (read at the moment of the change). */
+export function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
 /** An easing as a CSS / Web Animations ``easing`` string. */
 export function cssEasing(curve: readonly [number, number, number, number]): string {
   return `cubic-bezier(${curve.join(', ')})`

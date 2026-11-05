@@ -594,7 +594,7 @@ describe('the server list: select, use, in use, one close', () => {
     // Every server URL appears once: the connected row holds its own, nothing repeats it above the list.
     expect(screen.getAllByText('http://127.0.0.1:4082')).toHaveLength(1)
     const badge = within(active).getByText('In use').closest('[data-slot="chip"]')
-    expect(badge?.getAttribute('data-tone')).toBe('success')
+    expect(badge?.getAttribute('data-tone')).toBe('neutral')
     expect(screen.getAllByText('In use')).toHaveLength(1)
   })
 
@@ -604,7 +604,7 @@ describe('the server list: select, use, in use, one close', () => {
 
     const row = (await screen.findByText('Built-in server', { selector: 'span' })).closest('[data-server-row]') as HTMLElement
     expect(within(row).getByText('http://127.0.0.1:49545')).toBeTruthy()
-    expect(within(row).getByText('In use').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('success')
+    expect(within(row).getByText('In use').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('neutral')
     expect(screen.queryByText(/^Current:/)).toBeNull()
     expect(screen.queryByText('Saved server')).toBeNull()
     expect(screen.getAllByText('In use')).toHaveLength(1)

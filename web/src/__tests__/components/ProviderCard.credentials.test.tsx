@@ -211,7 +211,7 @@ describe('ProviderCard — several API keys', () => {
   it('shows key statuses as chips', () => {
     renderCard(openai)
     const list = rows('OpenAI keys')
-    expect(within(list[0]).getByText('In use').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('info')
+    expect(within(list[0]).getByText('In use').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('neutral')
     expect(within(list[0]).getByText('Ready').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('success')
     expect(within(list[1]).getByText(/Usage limit reached/).closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('warning')
   })

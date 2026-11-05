@@ -152,7 +152,7 @@ export function TaskDetailView({
         {/* Status strip */}
         <section aria-label="Status" className="grid grid-cols-2 gap-3 @xl:grid-cols-4">
           <StatTile label="Status">
-            <Chip tone={state.tone} dot={state.dot}>
+            <Chip tone={state.tone} spinner={state.spinner}>
               {state.label}
             </Chip>
           </StatTile>

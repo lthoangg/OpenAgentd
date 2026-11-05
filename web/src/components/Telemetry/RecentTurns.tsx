@@ -8,7 +8,8 @@ import { useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import type { TraceListItem } from '@/api/client'
 import { Button } from '@/components/ui/button'
-import { Chip } from '@/components/ui/chip'
+import { StatusChip } from '@/components/ui/chip'
+import { STATUS } from '@/lib/status'
 import { SectionCard, SectionCardHeader } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatCompact, formatMs, formatSpend, timeAgo } from '@/utils/telemetryFormat'
@@ -189,7 +190,7 @@ function TurnRow({
         {formatSpend(turn.estimated_cost_usd)}
       </td>
       <td className={TD}>
-        {turn.error ? <Chip tone="error">failed</Chip> : <Chip tone="success">ok</Chip>}
+        <StatusChip status={turn.error ? STATUS.failed : STATUS.done} />
       </td>
       <td className="w-8 px-2 py-2 text-right">
         <ChevronRight size={14} aria-hidden="true" className="inline text-(--color-text-subtle) transition-colors group-hover:text-(--color-text-muted)" />
@@ -224,7 +225,7 @@ function TurnCard({
           <span className="text-(--color-text-2) tabular-nums">
             {shortDateTime(turn.start_ms)} <span className="text-(--color-text-muted)">· {when}</span>
           </span>
-          {turn.error ? <Chip tone="error">failed</Chip> : <Chip tone="success">ok</Chip>}
+          <StatusChip status={turn.error ? STATUS.failed : STATUS.done} />
         </span>
         <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-meta text-(--color-text-muted)">
           {showModel && model && <ModelId id={model} />}

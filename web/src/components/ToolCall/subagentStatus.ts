@@ -1,25 +1,24 @@
 /**
  * How a subagent's state reads in a team tool result: a word first (Running,
- * Done, Failed, Needs you), a tone second. The raw states come from the
- * tool result (``spawned``, ``completed``…) and from the live roster
- * (``working``, ``waiting_lead``, ``error``…); both map here.
+ * Done, Failed, Needs you), a tone second, both from the shared vocabulary
+ * (``lib/status``). The raw states come from the tool result (``spawned``,
+ * ``completed``…) and from the live roster (``working``, ``waiting_lead``,
+ * ``error``…); both map here.
  */
-import type { ChipTone } from '@/components/ui/chip'
+import { STATUS, type StatusView } from '@/lib/status'
 
-export interface SubagentStatusView {
-  label: string
-  tone: ChipTone
-  /** Still going: the chip carries a live dot and the row an elapsed timer. */
+export interface SubagentStatusView extends StatusView {
+  /** Still going: the chip spins and the row runs an elapsed timer. */
   running: boolean
   /** Waiting on an answer: the dot shows, but no clock runs. */
   waiting: boolean
 }
 
-const RUNNING: SubagentStatusView = { label: 'Running', tone: 'info', running: true, waiting: false }
-const DONE: SubagentStatusView = { label: 'Done', tone: 'success', running: false, waiting: false }
-const FAILED: SubagentStatusView = { label: 'Failed', tone: 'error', running: false, waiting: false }
-const NEEDS_YOU: SubagentStatusView = { label: 'Needs you', tone: 'warning', running: false, waiting: true }
-const STOPPED: SubagentStatusView = { label: 'Stopped', tone: 'neutral', running: false, waiting: false }
+const RUNNING: SubagentStatusView = { ...STATUS.running, running: true, waiting: false }
+const DONE: SubagentStatusView = { ...STATUS.done, running: false, waiting: false }
+const FAILED: SubagentStatusView = { ...STATUS.failed, running: false, waiting: false }
+const NEEDS_YOU: SubagentStatusView = { ...STATUS.needsYou, running: false, waiting: true }
+const STOPPED: SubagentStatusView = { ...STATUS.stopped, running: false, waiting: false }
 
 const BY_STATE: Record<string, SubagentStatusView> = {
   working: RUNNING,
@@ -32,7 +31,7 @@ const BY_STATE: Record<string, SubagentStatusView> = {
   waiting_lead: NEEDS_YOU,
   waiting_input: NEEDS_YOU,
   stopped: STOPPED,
-  idle: { label: 'Idle', tone: 'neutral', running: false, waiting: false },
+  idle: { ...STATUS.idle, running: false, waiting: false },
   sent: { label: 'Sent', tone: 'neutral', running: false, waiting: false },
 }
 

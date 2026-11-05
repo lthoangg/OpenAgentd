@@ -168,7 +168,7 @@ describe('TaskListItem', () => {
   it('shows the schedule as a mono line, and the state as a chip', () => {
     renderItem()
     expect(screen.getByText('every 1 h').className).toContain('font-mono')
-    const state = screen.getByText('scheduled').closest('[data-slot="chip"]')
+    const state = screen.getByText('Scheduled').closest('[data-slot="chip"]')
     expect(state?.getAttribute('data-tone')).toBe('neutral')
   })
 
@@ -180,7 +180,7 @@ describe('TaskListItem', () => {
       last_run_at: new Date(Date.now() - 2 * 60_000).toISOString(),
       next_fire_at: new Date(Date.now() + 3_600_000).toISOString(),
     })
-    expect(screen.getByText('last run failed').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('error')
+    expect(screen.getByText('Last run failed').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('error')
     expect(screen.getByText('Model unavailable').className).toContain('text-(--color-error)')
     expect(screen.getByText(/^Last run 2m ago · failed · next in /)).toBeInTheDocument()
   })

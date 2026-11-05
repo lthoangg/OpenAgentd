@@ -7,22 +7,23 @@
  * state (``auth_required``) stays in its tooltip for matching against logs.
  */
 import { type ServerStatus } from '@/api/client'
-import { Chip, type ChipTone } from '@/components/ui/chip'
+import { Chip } from '@/components/ui/chip'
+import { STATUS, type StatusView } from '@/lib/status'
 
-export function mcpServerStatus(server: ServerStatus): { label: string; tone: ChipTone } {
-  if (!server.enabled) return { label: 'Off', tone: 'neutral' }
-  if (server.state === 'auth_required') return { label: 'Needs sign-in', tone: 'warning' }
+export function mcpServerStatus(server: ServerStatus): StatusView {
+  if (!server.enabled) return STATUS.off
+  if (server.state === 'auth_required') return STATUS.needsSignIn
   if (server.state === 'ready') {
     const count = server.tool_names.length
-    return { label: count > 0 ? `Ready · ${count} ${count === 1 ? 'tool' : 'tools'}` : 'Ready', tone: 'success' }
+    return count > 0 ? { ...STATUS.ready, label: `Ready · ${count} ${count === 1 ? 'tool' : 'tools'}` } : STATUS.ready
   }
-  if (server.state === 'starting') return { label: 'Starting…', tone: 'info' }
-  if (server.state === 'error') return { label: 'Error', tone: 'error' }
-  return { label: 'Stopped', tone: 'neutral' }
+  if (server.state === 'starting') return STATUS.starting
+  if (server.state === 'error') return STATUS.error
+  return STATUS.stopped
 }
 
 export function McpStatusChip({ server }: { server: ServerStatus }) {
   const status = mcpServerStatus(server)
   const raw = server.enabled ? `state: ${server.state}${server.state === 'error' && server.error ? ` · ${server.error}` : ''}` : undefined
-  return <Chip tone={status.tone} title={raw}>{status.label}</Chip>
+  return <Chip tone={status.tone} spinner={status.spinner} title={raw}>{status.label}</Chip>
 }

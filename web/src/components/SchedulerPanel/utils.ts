@@ -1,5 +1,5 @@
 import type { ScheduledTaskResponse } from '@/api/types'
-import type { ChipTone } from '@/components/ui/chip'
+import { STATUS, type StatusView } from '@/lib/status'
 import { formatInTimezone } from '@/utils/format'
 
 export const FIELD_CLASS = 'bg-(--bg-page) dark:bg-(--bg-page)'
@@ -60,22 +60,23 @@ export function formatScheduleLabel(task: Pick<ScheduledTaskResponse, 'schedule_
 }
 
 /**
- * What the task is doing, as one chip. The backend's ``pending`` means
- * "waiting for its next run", and ``failed`` on a repeating task only means
- * the last run failed: it still runs again.
+ * What the task is doing, as one chip in the shared vocabulary
+ * (``lib/status``). The backend's ``pending`` means "waiting for its next
+ * run", and ``failed`` on a repeating task only means the last run failed:
+ * it still runs again.
  */
-export function taskState(task: Pick<ScheduledTaskResponse, 'status' | 'enabled' | 'next_fire_at'>): { label: string; tone: ChipTone; dot?: boolean } {
+export function taskState(task: Pick<ScheduledTaskResponse, 'status' | 'enabled' | 'next_fire_at'>): StatusView {
   switch (task.status) {
     case 'running':
-      return { label: 'running', tone: 'info', dot: true }
+      return STATUS.running
     case 'paused':
-      return { label: 'paused', tone: 'warning' }
+      return STATUS.paused
     case 'completed':
-      return { label: 'done', tone: 'success' }
+      return STATUS.done
     case 'failed':
-      return task.next_fire_at ? { label: 'last run failed', tone: 'error' } : { label: 'failed', tone: 'error' }
+      return task.next_fire_at ? { label: 'Last run failed', tone: 'error' } : STATUS.failed
     case 'pending':
-      return task.enabled ? { label: 'scheduled', tone: 'neutral' } : { label: 'paused', tone: 'warning' }
+      return task.enabled ? STATUS.scheduled : STATUS.paused
     default:
       return { label: task.status, tone: 'neutral' }
   }

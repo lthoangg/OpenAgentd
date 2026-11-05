@@ -538,11 +538,11 @@ describe("ToolResult — team tools", () => {
       output: "Audit finished: 5 endpoints found.",
     })
     render(<ToolResult toolName="team_spawn" result={res} />)
-    // The member is a row: its handle in mono, its state in words as a success chip
+    // The member is a row: its handle in mono, its state in words as a quiet chip
     const row = screen.getByText("explorer#1").closest("[data-subagent-row]")
     expect(row).toBeTruthy()
     expect(screen.getByText("explorer#1").className).toContain("font-mono")
-    expect(screen.getByText("Done").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("success")
+    expect(screen.getByText("Done").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("neutral")
     expect(screen.queryByText("completed")).toBeNull()
     expect(screen.getByText(/Audit finished: 5 endpoints found\./)).toBeTruthy()
   })
@@ -608,7 +608,7 @@ describe("ToolResult — team tools", () => {
     expect(screen.getByText("explorer#1")).toBeTruthy()
     // Roster statuses are chips; an unknown status keeps its raw text
     expect(screen.getByText("Running").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("info")
-    expect(screen.getByText("Done").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("success")
+    expect(screen.getByText("Done").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("neutral")
     expect(screen.getByText("researcher#1")).toBeTruthy()
   })
 })

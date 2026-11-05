@@ -79,26 +79,26 @@ describe('taskState', () => {
   const state = (status: ScheduledTaskResponse['status'], enabled = true, next_fire_at: string | null = null) =>
     taskState({ status, enabled, next_fire_at })
 
-  it('calls a waiting, enabled task "scheduled"', () => {
-    expect(state('pending')).toEqual({ label: 'scheduled', tone: 'neutral' })
+  it('calls a waiting, enabled task "Scheduled"', () => {
+    expect(state('pending')).toEqual({ label: 'Scheduled', tone: 'neutral' })
   })
 
-  it('calls a disabled or paused task "paused"', () => {
-    expect(state('pending', false)).toEqual({ label: 'paused', tone: 'warning' })
-    expect(state('paused')).toEqual({ label: 'paused', tone: 'warning' })
+  it('calls a disabled or paused task "Paused", in quiet text', () => {
+    expect(state('pending', false)).toEqual({ label: 'Paused', tone: 'neutral' })
+    expect(state('paused')).toEqual({ label: 'Paused', tone: 'neutral' })
   })
 
-  it('calls a finished one-off "done"', () => {
-    expect(state('completed')).toEqual({ label: 'done', tone: 'success' })
+  it('calls a finished one-off "Done", in quiet text', () => {
+    expect(state('completed')).toEqual({ label: 'Done', tone: 'neutral' })
   })
 
   it('says the last run failed when the task will still run again', () => {
-    expect(state('failed', true, '2026-10-25T09:00:00Z')).toEqual({ label: 'last run failed', tone: 'error' })
-    expect(state('failed')).toEqual({ label: 'failed', tone: 'error' })
+    expect(state('failed', true, '2026-10-25T09:00:00Z')).toEqual({ label: 'Last run failed', tone: 'error' })
+    expect(state('failed')).toEqual({ label: 'Failed', tone: 'error' })
   })
 
-  it('shows a running task with a live dot', () => {
-    expect(state('running')).toEqual({ label: 'running', tone: 'info', dot: true })
+  it('shows a running task with a spinner', () => {
+    expect(state('running')).toEqual({ label: 'Running', tone: 'info', spinner: true })
   })
 })
 

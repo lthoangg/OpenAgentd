@@ -1120,9 +1120,26 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 tags. 18px, `rounded-xs`, `text-meta`, tones `neutral | info | success |
 warning | error`, soft fills only (there is no outlined chip). Mono for identifiers and numbers (`exit 1`,
 `429 rate_limit`), sans for words (`not yet`, `Vision`). A status chip always
-carries text, never colour alone; `dot` adds a leading dot for live states.
+carries text, never colour alone; `spinner` marks a live state and `dot` one
+waiting on someone.
 Do not hand-roll pills; reach for `Chip` (agent identity chips keep their
 full-radius triplet).
+
+**Status** (`lib/status.ts`, `StatusChip`): one vocabulary, so a state reads
+with the same word and tone on every surface (sidebar, Scheduled tasks,
+subagents, MCP, providers, servers, Usage). Colour is kept for what needs a
+look:
+
+| State | Word | Look |
+|---|---|---|
+| Needs you, Needs sign-in | `Needs you` | warning (orange) |
+| Running, Starting | `Running`, `Starting…` | neutral chip with a spinner |
+| Done, Stopped, Paused, Scheduled, Idle, Off | `Done`… | neutral: quiet text, never green |
+| In use | `In use` | neutral |
+| Failed, Error | `Failed`, `Error` | error (red) |
+| Healthy | `Ready`, `Connected` | success (green), the only green state |
+
+Words are sentence case. Add a state to `STATUS` before using it anywhere.
 
 **Transcript rows** (`ui/meta-row.tsx`): tool calls, reader steps and file
 operations share one row: the content on the left and a right-aligned 96px

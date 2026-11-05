@@ -117,7 +117,7 @@ describe('TaskDetailView tiles', () => {
     expect(labels).toEqual(['Status', 'Last run', 'Next run', 'Runs'])
     expect(screen.queryByText('Enabled')).toBeNull()
 
-    const chip = within(tile('Status')).getByText('scheduled').closest('[data-slot="chip"]')
+    const chip = within(tile('Status')).getByText('Scheduled').closest('[data-slot="chip"]')
     expect(chip?.getAttribute('data-tone')).toBe('neutral')
     expect(within(tile('Last run')).getByText('Not yet')).toBeInTheDocument()
     expect(within(tile('Next run')).getByText('None scheduled')).toBeInTheDocument()
@@ -135,13 +135,14 @@ describe('TaskDetailView tiles', () => {
     expect(within(tile('Runs')).getByText('30 of 30')).toBeInTheDocument()
     expect(within(tile('Last run')).getByText('2m ago · ok')).toBeInTheDocument()
     expect(within(tile('Next run')).getByText('in 1h')).toBeInTheDocument()
-    expect(within(tile('Status')).getByText('done').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('success')
+    expect(within(tile('Status')).getByText('Done').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('neutral')
   })
 
   it('names a failed repeating task by its last run', () => {
     renderDetail({ status: 'failed', last_error: 'Model unavailable', next_fire_at: new Date(Date.now() + 3_600_000).toISOString() })
-    expect(within(tile('Status')).getByText('last run failed').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('error')
-    expect(screen.getByText('Last run failed', { selector: 'p, div, span' })).toBeInTheDocument()
+    expect(within(tile('Status')).getByText('Last run failed').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('error')
+    // The chip and the callout both name it.
+    expect(screen.getAllByText('Last run failed')).toHaveLength(2)
     expect(screen.getByText('Model unavailable')).toBeInTheDocument()
   })
 })

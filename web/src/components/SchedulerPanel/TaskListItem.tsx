@@ -126,7 +126,7 @@ export function TaskListItem({
 
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <WorkspaceBadge task={task} />
-            <Chip tone={state.tone} dot={state.dot}>
+            <Chip tone={state.tone} spinner={state.spinner}>
               {state.label}
             </Chip>
           </div>

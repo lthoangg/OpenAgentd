@@ -240,9 +240,13 @@ interface BackgroundProcess {
 }
 
 function statusTone(status: string): ChipTone {
-  if (status === 'running' || status.includes('running')) return 'info'
+  if (isRunning(status)) return 'info'
   if (status.startsWith('exited') || status.startsWith('stopped') || status.startsWith('no output')) return 'neutral'
   return 'error'
+}
+
+function isRunning(status: string): boolean {
+  return status === 'running' || status.includes('running')
 }
 
 /** One header for every ``bg`` result: ``pid 4312`` · status chip · detail. */
@@ -250,7 +254,7 @@ function BgStatus({ pid, status, detail }: { pid?: string | null; status?: strin
   return (
     <>
       {pid && <span className="font-mono text-(--color-text)">pid {pid}</span>}
-      {status && <Chip tone={statusTone(status)} dot={statusTone(status) === 'info'}>{status}</Chip>}
+      {status && <Chip tone={statusTone(status)} spinner={isRunning(status)}>{status}</Chip>}
       {detail && <span className="font-sans text-(--color-text-muted)">{detail}</span>}
     </>
   )
@@ -322,7 +326,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
           {listRows.map((process) => (
             <li key={process.pid} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 border-b border-(--color-border) px-2.5 py-2 font-mono text-xs last:border-b-0 sm:grid-cols-[4rem_5.5rem_minmax(0,1fr)] sm:items-center">
               <span className="text-(--color-text)">pid {process.pid}</span>
-              <span><Chip tone={statusTone(process.status)} dot={statusTone(process.status) === 'info'}>{process.status}</Chip></span>
+              <span><Chip tone={statusTone(process.status)} spinner={isRunning(process.status)}>{process.status}</Chip></span>
               <code className="col-span-2 break-words text-(--color-text-2) sm:col-span-1">{process.command}</code>
             </li>
           ))}
@@ -915,7 +919,7 @@ function TeamResult({ obj }: { obj: Record<string, unknown> }) {
       ) : (
         headerView && (
           <div className="flex flex-wrap items-center gap-1.5 font-sans">
-            <Chip tone={headerView.tone} dot={headerView.running || headerView.waiting} data-team-status={status}>
+            <Chip tone={headerView.tone} spinner={headerView.spinner} dot={headerView.waiting} data-team-status={status}>
               {headerView.label}
             </Chip>
           </div>

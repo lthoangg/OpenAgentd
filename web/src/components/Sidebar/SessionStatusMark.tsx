@@ -84,7 +84,7 @@ export function SessionStatusMark({ status, label }: { status: SessionStatus; la
         {status === 'needs_input' && (
           <span className="text-meta font-bold leading-none text-(--accent-orange-text)" aria-hidden="true">!</span>
         )}
-        {status === 'running' && <Loader2 size={11} className="animate-spin text-(--color-accent)" aria-hidden="true" />}
+        {status === 'running' && <Loader2 size={11} className="animate-spin text-(--color-text-2)" aria-hidden="true" />}
         {status === 'unread' && <span className="size-1.5 rounded-full bg-(--color-accent)" aria-hidden="true" />}
         {status === 'failed' && <X size={11} strokeWidth={2.5} className="text-(--color-error)" aria-hidden="true" />}
       </IconSwap>

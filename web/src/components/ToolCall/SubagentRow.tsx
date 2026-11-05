@@ -59,7 +59,7 @@ export function SubagentRow({ handle, status, sessionId, startedAt = null, hasPe
     <>
       <span className="min-w-0 truncate font-mono font-medium text-(--color-text)">{handle}</span>
       {view && (
-        <Chip tone={view.tone} dot={view.running || view.waiting} data-subagent-status={view.label}>
+        <Chip tone={view.tone} spinner={view.spinner} dot={view.waiting} data-subagent-status={view.label}>
           {view.label}
         </Chip>
       )}

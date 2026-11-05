@@ -265,8 +265,8 @@ describe('TelemetryView overview', () => {
     const model = ok.querySelector('[data-model-name]') as HTMLElement
     expect(model.className).toContain('font-mono')
     expect(model.textContent).toBe('openai:gpt-5')
-    expect(within(ok).getByText('ok').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('success')
-    expect(within(failed).getByText('failed').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('error')
+    expect(within(ok).getByText('Done').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('neutral')
+    expect(within(failed).getByText('Failed').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('error')
   })
 
   it('shows time to first token and output speed, overall and per model', async () => {
@@ -633,7 +633,7 @@ describe('TelemetryView trace', () => {
     const model = facts.querySelector('[data-model-name]')
     expect(model?.className).toContain('font-mono')
     expect(model?.textContent).toBe('openai:gpt-5')
-    expect(within(facts).getByText('ok').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('success')
+    expect(within(facts).getByText('Done').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('neutral')
     expect(within(facts).queryByText('Completed')).toBeNull()
     expect(within(facts).getByText('12K / 800')).toBeTruthy()
     expect(within(facts).getByText('$0.08')).toBeTruthy()

@@ -3,7 +3,8 @@ import { MoreHorizontal } from 'lucide-react'
 
 import type { ProviderInfo, StoredCredential } from '@/api/client'
 import { Button } from '@/components/ui/button'
-import { Chip } from '@/components/ui/chip'
+import { Chip, StatusChip } from '@/components/ui/chip'
+import { STATUS } from '@/lib/status'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
@@ -66,8 +67,8 @@ function StatusChips({ c, ctx }: { c: StoredCredential; ctx: RowContext }) {
         <Chip>Standby</Chip>
       ) : (
         <>
-          {c.in_use && c.status !== 'disabled' && <Chip tone="info">In use</Chip>}
-          {c.status === 'ready' && <Chip tone="success">Ready</Chip>}
+          {c.in_use && c.status !== 'disabled' && <StatusChip status={STATUS.inUse} />}
+          {c.status === 'ready' && <StatusChip status={STATUS.ready} />}
           {c.status === 'disabled' && <Chip>Hidden</Chip>}
           {c.status === 'needs_reconnect' && <Chip tone="error">Reconnect required</Chip>}
           {c.status === 'cooling_down' && <CooldownPill reason={c.cooldown_reason} until={c.cooldown_until} />}
@@ -496,7 +497,7 @@ export function CredentialList({
                         <span className="text-xs font-semibold text-(--color-text)">From environment</span>
                         {provider.env_var && <span className="font-mono text-meta text-(--color-text-muted)">{provider.env_var}</span>}
                         {plan && <Chip>{plan}</Chip>}
-                        <Chip tone="info">In use</Chip>
+                        <StatusChip status={STATUS.inUse} />
                         <Chip>Read-only</Chip>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">{refresh}</div>
@@ -515,7 +516,7 @@ export function CredentialList({
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-xs font-semibold text-(--color-text)">From environment</span>
                     {provider.env_var && <span className="font-mono text-meta text-(--color-text-muted)">{provider.env_var}</span>}
-                    <Chip tone="info">In use</Chip>
+                    <StatusChip status={STATUS.inUse} />
                     <Chip>Read-only</Chip>
                   </div>
                   <p className="mt-0.5 text-meta leading-relaxed text-(--color-text-muted)">

@@ -1304,8 +1304,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     arrow keys. Switching between light and dark crossfades the whole
     window.
   - A running session in the sidebar shows only its spinner, without the
-    word "Running", so the title keeps its room and nothing moves when you
-    hover the row.
+    word "Running" or the goal icon beside it, so the title keeps its room
+    and nothing moves when you hover the row.
   - With Reduce Motion turned on, all of these changes happen instantly.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get

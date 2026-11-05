@@ -3,9 +3,10 @@
  * actions as right-click (Pin, Edit title, Delete), so the row carries no
  * one-click delete. Subagent rows offer More too.
  *
- * A row that is running, waiting on you or unread names that state in words
- * (Running, Needs you, Done) in its meta slot in place of its age; the mark
- * beside the title is only the secondary cue.
+ * A row that is waiting on you, unread or failed names that state in words
+ * (Needs you, Done, Failed) in its meta slot in place of its age; the mark
+ * beside the title is only the secondary cue. A running row shows its
+ * spinner alone.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { ComponentProps } from 'react'
@@ -103,16 +104,16 @@ describe('SessionRow actions', () => {
 })
 
 describe('SessionRow goal mark', () => {
-  it('marks a session working toward a goal, and one whose goal is paused', () => {
+  // No 🎯 on the row: it sat beside the state and squeezed the title. The
+  // goal stays in what assistive tech reads.
+  it('draws no goal icon, and still names the goal for assistive tech', () => {
     const { container, rerender } = render(row(() => {}, { ...lead, goal_status: 'active' }))
-    expect(container.querySelector('[data-goal-status]')?.getAttribute('title')).toBe('Working toward a goal')
+    expect(container.querySelector('[data-goal-status]')).toBeNull()
     expect(screen.getByText(/goal active/)).toBeTruthy()
 
     rerender(row(() => {}, { ...lead, goal_status: 'paused' }))
-    expect(container.querySelector('[data-goal-status]')?.getAttribute('title')).toBe('Goal paused')
-
-    rerender(row(() => {}, { ...lead, goal_status: null }))
     expect(container.querySelector('[data-goal-status]')).toBeNull()
+    expect(screen.getByText(/goal paused/)).toBeTruthy()
   })
 })
 

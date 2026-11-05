@@ -9,9 +9,10 @@
  *
  * Blocks are grouped into "turns" via `partitionTurns` (see `utils/turns.ts`):
  * a turn is a contiguous run of non-user blocks. Each finalized turn renders a
- * single `AssistantTurnFooter` (Copy, Edit prompt, files changed, and the
- * turn's details); only the trailing turn hides its footer while the turn is
- * open.
+ * single `AssistantTurnFooter` (Copy response, files changed, and the turn's
+ * details); only the trailing turn hides its footer while the turn is open.
+ * The prompt's own row (model, Edit, Copy, time) is `UserBubble`'s, shown on
+ * hover: a turn shows each of those once.
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react'
@@ -520,7 +521,7 @@ function providerErrorTitle(title: unknown): string {
   return title
 }
 
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, leadSessionId, onEdit, editLocked, actionsAtRest, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, activeQuotaWaitBlockId, activeRetryBlockId }: {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, leadSessionId, onEdit, editLocked, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, activeQuotaWaitBlockId, activeRetryBlockId }: {
   block: ContentBlock
   isStreaming: boolean
   sessionId?: string
@@ -530,8 +531,6 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   onEdit?: (blockId: string) => void
   /** A turn is running: Edit shows, disabled, until it ends. */
   editLocked?: boolean
-  /** The prompt's Edit and Copy show at rest (the latest prompt), not only on hover or focus. */
-  actionsAtRest?: boolean
   /** The model and thinking level a prompt ran with; strings so memo holds while streaming. */
   promptModel?: string
   promptThinkingLevel?: string
@@ -555,7 +554,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       // The lead's message to this subagent: its prefix is the chip's job, and
       // Edit would rewind the subagent, which the lead directs.
       const lead = fromAgent ? null : fromLead(block.extra, block.content, leadSessionId)
-      return <UserBubble content={lead ? lead.content : block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent && !lead ? () => onEdit(block.id) : undefined} editLocked={editLocked} actionsAtRest={actionsAtRest} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} fromLeadSessionId={lead?.sessionId} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
+      return <UserBubble content={lead ? lead.content : block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent && !lead ? () => onEdit(block.id) : undefined} editLocked={editLocked} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} fromLeadSessionId={lead?.sessionId} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} durationMs={block.thinkingDurationMs} />
@@ -794,14 +793,6 @@ export function AgentView({
   const endingErrorId = isTurnOpen || showsLastError ? undefined : endingProviderError(trailingBlocks)?.id
   const errorRetry = canRetry ? onRetry : undefined
   const errorSwitchModel = isTurnOpen ? undefined : onSwitchModel ?? openModelPicker
-  // The newest prompt keeps its Edit and Copy at rest; older ones show them on hover or focus.
-  const latestTypedPromptId = useMemo(() => {
-    for (let i = turnItems.length - 1; i >= 0; i--) {
-      const item = turnItems[i]
-      if (item.kind === 'user' && isTypedPromptBlock(item.block)) return item.block.id
-    }
-    return undefined
-  }, [turnItems])
   const { hiddenTurnCount, visibleTurnItems } = useMemo(
     () => getVisibleTurnWindow(turnItems, renderedTurnCount),
     [renderedTurnCount, turnItems],
@@ -1265,8 +1256,8 @@ export function AgentView({
              <EmptyState
                fill={false}
                className="py-16 select-none"
-               icon={<Seal size={24} className="text-(--color-text)" />}
-               title={'what\u2019s on your mind?'}
+               icon={<Seal size={16} className="text-(--color-text)" />}
+               title="What's on your mind?"
              />
            )
          )}
@@ -1316,7 +1307,6 @@ export function AgentView({
                          leadSessionId={leadSessionId}
                          onEdit={handleEdit}
                          editLocked={editLocked}
-                         actionsAtRest={item.block.id === latestTypedPromptId}
                          promptModel={promptModelById.get(item.block.id)?.model}
                          promptThinkingLevel={promptModelById.get(item.block.id)?.thinkingLevel}
                          latestMCPAppBlockIds={mcpAppResourceUri(item.block) ? latestMCPAppBlockIds : undefined}
@@ -1345,9 +1335,6 @@ export function AgentView({
                   // own start mark, the prompt's time survives a reload.
                   const prompt = isTrailingTurn ? turnItems[globalTurnIndex - 1] : undefined
                   const turnStartedAt = prompt?.kind === 'user' ? prompt.block.timestamp?.getTime() : isTrailingTurn ? pinnedStartedAt : undefined
-                  // The prompt this answer came from, for the footer's Edit prompt.
-                  const promptItem = turnItems[globalTurnIndex - 1]
-                  const promptId = promptItem?.kind === 'user' && isTypedPromptBlock(promptItem.block) && !isLeadMessage(promptItem.block, leadSessionId) ? promptItem.block.id : undefined
                  return (
                    <AssistantTurn
                      key={`turn-${item.blocks[0]?.id ?? item.startIndex}`}
@@ -1365,9 +1352,6 @@ export function AgentView({
                      reader={readerTranscript}
                      startedAt={turnStartedAt}
                       renderBlock={renderTurnBlock}
-                     promptId={promptId}
-                     onEditPrompt={handleEdit}
-                     editLocked={editLocked}
                    />
                  )
                 })}

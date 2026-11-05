@@ -9,10 +9,10 @@
  * to only. Earlier turns that are not loaded are not searched.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { ChevronDown, ChevronUp, X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { prefersReducedMotion } from '@/lib/motion'
+import { FindBarButtons } from '@/components/ui/find-bar-buttons'
 
 const MAX_MATCHES = 1000
 const HIGHLIGHT_ALL = 'oa-find'
@@ -132,7 +132,6 @@ export function TranscriptFind({ onClose }: { onClose: () => void }) {
   }
 
   const status = query === '' ? '' : count === 0 ? 'No results' : `${index + 1} of ${count}${count >= MAX_MATCHES ? '+' : ''}`
-  const iconButton = 'flex size-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-40 pointer-coarse:size-9'
 
   return (
     <div
@@ -151,20 +150,12 @@ export function TranscriptFind({ onClose }: { onClose: () => void }) {
         aria-label="Find in session"
         autoComplete="off"
         spellCheck={false}
-        className="h-7 w-48 bg-transparent text-sm text-(--color-text) placeholder-(--color-text-muted) outline-none"
+        className="h-7 w-48 bg-transparent text-xs text-(--color-text) placeholder-(--color-text-muted) outline-none"
       />
       <span role="status" className={cn('min-w-16 text-right font-mono text-meta tabular-nums text-(--color-text-muted)', !status && 'invisible')}>
         {status}
       </span>
-      <button type="button" className={iconButton} onClick={() => step(-1)} disabled={count === 0} aria-label="Previous match (Shift+Enter)">
-        <ChevronUp size={14} aria-hidden="true" />
-      </button>
-      <button type="button" className={iconButton} onClick={() => step(1)} disabled={count === 0} aria-label="Next match (Enter)">
-        <ChevronDown size={14} aria-hidden="true" />
-      </button>
-      <button type="button" className={iconButton} onClick={onClose} aria-label="Close find">
-        <X size={13} aria-hidden="true" />
-      </button>
+      <FindBarButtons onPrevious={() => step(-1)} onNext={() => step(1)} onClose={onClose} stepDisabled={count === 0} />
     </div>
   )
 }

@@ -29,6 +29,8 @@ import type { AgentStoreState, ResolvedQuestion } from '@/stores/useAgentStore'
 import type { ContentBlock, QuestionItem } from '@/api/types'
 import { QuestionCard } from './QuestionCard'
 import { useQuestionResolver } from './useQuestionResolver'
+import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
+import { cn } from '@/lib/utils'
 
 /** Mirrors ``question_service.PLACEHOLDER_RESULT``. */
 const PLACEHOLDER_PREFIX = 'Waiting for the user to answer'
@@ -167,7 +169,7 @@ function QuestionShell({
   children: ReactNode
 }) {
   return (
-    <div data-question-waiting={open ? '' : undefined} className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border-subtle) bg-(--bg-card)">
+    <div data-question-waiting={open ? '' : undefined} className={cn('tool-row-enter my-2', TRANSCRIPT_CARD)}>
       <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 label-caps text-(--color-text-muted)">
         {waiting ? 'Needs your input' : 'Your input'}
       </div>

@@ -18,6 +18,7 @@ import { InlineCodeText } from '@/components/InlineCodeText'
 import { Collapsible } from '@/components/ui/collapsible'
 import { parseGoalClaim, type GoalClaim } from '@/lib/goal'
 import { cn } from '@/lib/utils'
+import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
 
 function Evidence({ items, label, defaultOpen }: { items: string[]; label: string; defaultOpen: boolean }) {
   // Follows the outcome (opens when a live claim is accepted) until the user
@@ -90,7 +91,7 @@ export const GoalClaimCard = memo(function GoalClaimCard({ args, result, done, a
     <section
       aria-label={`Goal check: ${outcomeLabel}`}
       data-goal-claim={claim.kind}
-      className={cn('my-2 overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card)', animatesIn && 'tool-row-enter')}
+      className={cn('my-2', TRANSCRIPT_CARD, animatesIn && 'tool-row-enter')}
     >
       <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-1">
         <span className="label-caps text-(--color-text-muted)">Goal check</span>

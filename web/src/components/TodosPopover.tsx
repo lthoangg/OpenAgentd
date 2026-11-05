@@ -9,6 +9,7 @@ import { ListTodo } from 'lucide-react'
 import { useRef } from 'react'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { usePresenceMotion } from '@/components/ui/_use-presence-motion'
+import { EmptyState } from '@/components/ui/empty-state'
 import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
 import { DURATIONS_S } from '@/lib/motion'
 import { cn } from '@/lib/utils'
@@ -102,10 +103,7 @@ export function TodosPopover({ open, onOpenChange, todos, goal = null, plan = nu
         />
         {summary.total > 0 && <TaskProgressBar summary={summary} />}
         {summary.total === 0 ? (
-          <div role="status" className="flex flex-col items-center gap-1 px-3 py-5 text-center">
-            <ListTodo size={14} aria-hidden="true" className="text-(--color-text-subtle) opacity-40" />
-            <p className="text-xs text-(--color-text-subtle)">No tasks yet</p>
-          </div>
+          <EmptyState fill={false} icon={ListTodo} title="No tasks yet" className="px-3 py-5" />
         ) : (
           <div className="scrollbar-none max-h-[min(46vh,17rem)] overflow-y-auto overscroll-contain">
             <TaskChecklist todos={todos} className="px-1.5 py-1" />

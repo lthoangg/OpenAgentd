@@ -1,7 +1,8 @@
 /**
  * The footer of a finished turn (T2, T4, T6): its actions show at rest in
- * both transcript styles: Copy, Edit prompt on the turn's prompt, and "N
- * files changed". There is no Undo (Edit prompt does it) and no Regenerate.
+ * both transcript styles: Copy response and "N files changed". Edit prompt is
+ * not here: it lives on the prompt's own row (one Edit per turn), and there is
+ * no Undo (Edit prompt does it) and no Regenerate.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
@@ -56,13 +57,13 @@ describe("AgentView — the footer's actions", () => {
     }
   })
 
-  it("offers Copy and Edit prompt on every finished turn, and no Undo or Regenerate", () => {
+  it("offers Copy response on every finished turn, and no Edit, Undo or Regenerate", () => {
     render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
 
     const [first, last] = actionGroups()
-    expect(names(first)).toEqual(["Copy response", "Edit prompt"])
-    // Edit prompt already undoes the turn and puts the prompt back.
-    expect(names(last)).toEqual(["Copy response", "Edit prompt"])
+    expect(names(first)).toEqual(["Copy response"])
+    // Edit prompt (on the prompt's row) already undoes the turn and puts the prompt back.
+    expect(names(last)).toEqual(["Copy response"])
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull()
     expect(screen.queryByRole("button", { name: /Regenerate/ })).toBeNull()
     // Icons only: the words live in the names and the tooltips.
@@ -79,14 +80,14 @@ describe("AgentView — the footer's actions", () => {
   })
 })
 
-describe("AgentView — Edit prompt in the footer", () => {
-  it("rewinds to the prompt the turn answers, for any turn", () => {
+describe("AgentView — Edit prompt on the prompt's row", () => {
+  it("rewinds to the prompt it sits under, for any turn", () => {
     render(<AgentView blocks={TWO_TURNS} currentBlocks={[]} isWorking={false} />)
 
-    const [first, last] = actionGroups()
-    fireEvent.click(within(first).getByRole("button", { name: "Edit prompt" }))
+    const [first, last] = screen.getAllByRole("button", { name: "Edit prompt" })
+    fireEvent.click(first)
     expect(revertToMessage).toHaveBeenLastCalledWith("m1")
-    fireEvent.click(within(last).getByRole("button", { name: "Edit prompt" }))
+    fireEvent.click(last)
     expect(revertToMessage).toHaveBeenLastCalledWith("m2")
   })
 
@@ -96,7 +97,7 @@ describe("AgentView — Edit prompt in the footer", () => {
     expect(screen.queryByRole("button", { name: /Edit prompt/ })).toBeNull()
   })
 
-  it("shows disabled while a later turn runs, and says when it will work", async () => {
+  it("shows disabled while a turn runs, and says when it will work", async () => {
     const user = userEvent.setup()
     render(
       <AgentView
@@ -106,7 +107,10 @@ describe("AgentView — Edit prompt in the footer", () => {
       />,
     )
 
-    const edit = screen.getByRole("button", { name: /Edit prompt, available when this turn ends/ })
+    // Every prompt's Edit waits for the running turn: one per prompt.
+    const edits = screen.getAllByRole("button", { name: /Edit prompt, available when this turn ends/ })
+    expect(edits).toHaveLength(2)
+    const edit = edits[0]
     expect(edit.getAttribute("aria-disabled")).toBe("true")
     fireEvent.click(edit)
     expect(revertToMessage).not.toHaveBeenCalled()

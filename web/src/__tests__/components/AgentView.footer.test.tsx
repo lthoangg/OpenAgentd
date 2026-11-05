@@ -1,11 +1,12 @@
 import { describe, it, expect, afterEach, mock } from "bun:test"
-import { fireEvent, render, screen, cleanup } from "@testing-library/react"
+import { fireEvent, render, screen, cleanup, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AgentView } from "@/components/AgentView"
 import { useAgentStore } from "@/stores/useAgentStore"
 import { useDisplayPrefsStore } from "@/stores/useDisplayPrefsStore"
 import type { ContentBlock } from "@/api/types"
 import { TitleTooltipLayer } from '@/components/ui/title-tooltip'
+import { formatFullDateTime, formatTime } from '@/utils/format'
 
 afterEach(() => {
   cleanup()
@@ -383,7 +384,7 @@ describe("AgentView — AssistantFooter", () => {
         isWorking: false,
       })
 
-      expect(screen.getByText("what’s on your mind?")).toBeTruthy()
+      expect(screen.getByText("What's on your mind?")).toBeTruthy()
       expect(screen.getByRole("region", { name: "Earlier messages summarized" })).toBeTruthy()
     })
 
@@ -549,41 +550,45 @@ describe("AgentView — AssistantFooter", () => {
   })
 
   describe("timestamp rendering", () => {
-    it("renders timestamp when last non-user block has a timestamp", () => {
+    // A turn shows its time once, on the prompt's row; the answer's line keeps
+    // the finish time in its details (the popover and the aria summary).
+    it("leaves the finish time out of the footer's line; it is in the turn details", () => {
       const date = new Date(2024, 0, 15, 14, 30, 0)
+      const block = makeTextBlock("b1", "Hello", date)
+      block.responseDurationMs = 1234
       const { container } = renderStream({
-        blocks: [makeTextBlock("b1", "Hello", date)],
+        blocks: [block],
         currentBlocks: [],
         isWorking: false,
       })
-      // Look for the timestamp in the footer specifically
       const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
       expect(footer).toBeTruthy()
       const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) =>
         /\d+:\d+/.test(el.textContent ?? ""),
       )
-      expect(timeEl?.textContent).toMatch(/\d+:\d+/)
+      expect(timeEl).toBeUndefined()
+      expect(screen.getByRole("button", { name: /Turn details/ }).getAttribute("aria-label")).toContain(formatTime(date))
     })
 
-    it("uses timestamp from last non-user block even if earlier blocks have timestamps", () => {
+    it("details the time of the last non-user block even if earlier blocks have timestamps", () => {
       const date1 = new Date(2024, 0, 15, 10, 0, 0)
       const date2 = new Date(2024, 0, 15, 14, 30, 0)
-      const { container } = renderStream({
+      const second = makeTextBlock("b2", "Second", date2)
+      second.responseDurationMs = 1234
+      renderStream({
         blocks: [
           makeTextBlock("b1", "First", date1),
           makeThinkingBlock("t1", "Thinking"),
-          makeTextBlock("b2", "Second", date2),
+          second,
         ],
         currentBlocks: [],
         isWorking: false,
       })
-      // Should render the time from the last block (b2)
-      const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
-      expect(footer).toBeTruthy()
-      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) =>
-        /\d+:\d+/.test(el.textContent ?? ""),
-      )
-      expect(timeEl?.textContent).toMatch(/\d+:\d+/)
+      // The time of the last block (b2) is the one in the details.
+      fireEvent.click(screen.getByRole("button", { name: /Turn details/ }))
+      expect(screen.getByText("Finished")).toBeTruthy()
+      expect(screen.getByText(formatFullDateTime(date2))).toBeTruthy()
+      expect(screen.queryByText(formatFullDateTime(date1))).toBeNull()
     })
 
     it("does not render timestamp when no block has a timestamp", () => {
@@ -622,7 +627,7 @@ describe("AgentView — AssistantFooter", () => {
       expect(timeSpan).toBeUndefined()
     })
 
-    it("renders timestamp from tool block if it's the last non-user block", () => {
+    it("details the time of a tool block when it is the last non-user block", () => {
       const date = new Date(2024, 0, 15, 14, 30, 0)
       const toolBlock: ContentBlock = {
         id: "tool1",
@@ -631,6 +636,7 @@ describe("AgentView — AssistantFooter", () => {
         toolName: "read",
         toolDone: true,
         timestamp: date,
+        responseDurationMs: 800,
       }
       const { container } = renderStream({
         blocks: [
@@ -640,17 +646,15 @@ describe("AgentView — AssistantFooter", () => {
         currentBlocks: [],
         isWorking: false,
       })
-      // Footer should render because there's a non-user block with timestamp
+      // The footer renders for its duration; the time is in its details.
       const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
       expect(footer).toBeTruthy()
-      // The footer also carries "Edit prompt" for the prompt this turn answered.
-      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) => /\d+:\d+/.test(el.textContent ?? ""))
-      expect(timeEl?.textContent).toMatch(/\d+:\d+/)
+      expect(screen.getByRole("button", { name: /Turn details/ }).getAttribute("aria-label")).toContain(formatTime(date))
     })
   })
 
   describe("footer with mixed content", () => {
-    it("renders footer with copy button, timestamp, model, and duration", () => {
+    it("renders footer with copy button and duration, and no time or model: the prompt's row and the details have them", () => {
       const date = new Date(2024, 0, 15, 14, 30, 0)
       const response = makeTextBlock("b1", "Response", date)
       response.extra = { model: "openrouter:anthropic/claude-sonnet-4.5" }
@@ -668,18 +672,18 @@ describe("AgentView — AssistantFooter", () => {
       const copyBtn = screen.getByRole("button", { name: /copy response/i })
       expect(copyBtn).toBeTruthy()
       const footerText = footer?.textContent ?? ""
-      const modelIndex = footerText.indexOf("claude-sonnet-4.5")
-      const timeMatch = footerText.match(/\d+:\d+/)
-      const durationIndex = footerText.indexOf("1.2 s")
-      expect(modelIndex).toBeGreaterThanOrEqual(0)
-      expect(timeMatch).not.toBeNull()
-      expect(durationIndex).toBeGreaterThanOrEqual(0)
-      // Time, then model, then duration: ``14:30 · claude-sonnet-4.5 · 1.2 s``.
-      expect(timeMatch?.index ?? -1).toBeLessThan(modelIndex)
-      expect(modelIndex).toBeLessThan(durationIndex)
+      expect(footerText).toContain("1.2 s")
+      expect(footerText).not.toContain("claude-sonnet-4.5")
+      expect(footerText).not.toMatch(/\d+:\d+/)
+      // Both stay in the details.
+      const label = screen.getByRole("button", { name: /Turn details/ }).getAttribute("aria-label") ?? ""
+      expect(label).toContain("claude-sonnet-4.5")
+      expect(label).toContain(formatTime(date))
+      // The model is on the prompt's row, once.
+      expect(container.querySelectorAll("[data-prompt-model]")).toHaveLength(1)
     })
 
-    it("renders footer with only timestamp when there is no text content", () => {
+    it("renders no footer for a turn with only a timestamp and no text content", () => {
       const date = new Date(2024, 0, 15, 14, 30, 0)
       const toolBlock: ContentBlock = {
         id: "tool1",
@@ -699,10 +703,7 @@ describe("AgentView — AssistantFooter", () => {
       })
       const copyBtn = screen.queryByRole("button", { name: /copy response/i })
       expect(copyBtn).toBeNull()
-      const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
-      expect(footer).toBeTruthy()
-      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) => /\d+:\d+/.test(el.textContent ?? ""))
-      expect(timeEl?.textContent).toMatch(/\d+:\d+/)
+      expect(container.querySelector(".mt-1.flex.items-center.gap-1\\.5")).toBeNull()
     })
   })
 
@@ -759,10 +760,6 @@ describe("AgentView — AssistantFooter", () => {
       expect(copyBtn).toBeTruthy()
       const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
       expect(footer).toBeTruthy()
-      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) =>
-        /\d+:\d+/.test(el.textContent ?? ""),
-      )
-      expect(timeEl?.textContent).toMatch(/\d+:\d+/)
     })
   })
 
@@ -850,7 +847,7 @@ describe("AgentView — footer model label", () => {
     return { id, type: "text", content: `answer ${id}`, extra: { model } }
   }
 
-  it("names the model on every answer as provider:model", () => {
+  it("names each turn's model once, on its prompt, as provider:model", () => {
     const { container } = renderStream({
       blocks: [
         makeUserBlock("u1", "one"),
@@ -864,14 +861,18 @@ describe("AgentView — footer model label", () => {
       isWorking: false,
     })
 
-    const labels = [...container.querySelectorAll("[data-turn-model]")].map((el) => el.textContent)
+    const labels = [...container.querySelectorAll("[data-prompt-model]")].map((el) => el.textContent)
     expect(labels).toEqual(["openai:gpt-5", "openai:gpt-5", "anthropic:claude-opus-4"])
-    expect(container.querySelector("[data-turn-model]")?.className).toContain("font-mono")
+    expect(container.querySelector("[data-prompt-model]")?.className).toContain("font-mono")
+    // The answer's line repeats none of them.
+    expect(container.querySelector("[data-turn-model]")).toBeNull()
   })
 
   it("names the thinking level in each answer's turn details", () => {
+    // A duration gives each answer a line, and so its details.
     const leveled = (id: string, model: string, level: string): ContentBlock => ({
       ...answer(id, model),
+      responseDurationMs: 1000,
       extra: { model, thinking_level: level },
     })
     const { container } = renderStream({
@@ -883,14 +884,14 @@ describe("AgentView — footer model label", () => {
         makeUserBlock("u3", "three"),
         leveled("a3", "openai:gpt-5", "low"),
         makeUserBlock("u4", "four"),
-        answer("a4", "openai:gpt-5"),
+        { ...answer("a4", "openai:gpt-5"), responseDurationMs: 1000 },
       ],
       currentBlocks: [],
       isWorking: false,
     })
 
-    const labels = [...container.querySelectorAll("[data-turn-model]")].map((el) => el.textContent)
-    expect(labels).toEqual(["openai:gpt-5", "openai:gpt-5", "openai:gpt-5", "openai:gpt-5"])
+    const labels = [...container.querySelectorAll("[data-prompt-model]")].map((el) => el.textContent)
+    expect(labels).toEqual(["openai:gpt-5 · high", "openai:gpt-5 · high", "openai:gpt-5 · low", "openai:gpt-5"])
     const details = screen.getAllByRole("button", { name: /Turn details/ }).map((el) => el.getAttribute("aria-label"))
     expect(details.map((d) => /thinking (\w+)/.exec(d ?? "")?.[1] ?? null)).toEqual(["high", "high", "low", null])
   })
@@ -933,5 +934,59 @@ describe("AgentView — footer model label", () => {
     const tips = await screen.findAllByRole("tooltip")
     expect(tips).toHaveLength(1)
     expect(tips[0]?.textContent).toBe("openai:gpt-5 · thinking high")
+  })
+})
+
+// A turn is one prompt and its answer. The prompt's row (model, Edit, Copy,
+// time) carries the model, the time and Edit; the answer's line carries
+// Copy response, the duration and the cost, so none of the three shows twice.
+describe("AgentView — a turn shows its model, time and Edit once", () => {
+  const at = (hour: number, minute: number) => new Date(2024, 0, 15, hour, minute, 0)
+  const turn = (n: number, promptAt: Date, answerAt: Date): ContentBlock[] => [
+    { ...makeUserBlock(`u${n}`, `prompt ${n}`), timestamp: promptAt, extra: { model: "openai:gpt-5" } },
+    {
+      id: `a${n}`,
+      type: "text",
+      content: `answer ${n}`,
+      timestamp: answerAt,
+      responseDurationMs: 1500,
+      usage: { outputTokens: 100, costUsd: 0.02 },
+      extra: { model: "openai:gpt-5" },
+    },
+  ]
+
+  it("puts the model, the time and Edit on the prompt's row only", () => {
+    const { container } = renderStream({
+      blocks: [...turn(1, at(10, 0), at(10, 5)), ...turn(2, at(11, 0), at(11, 5))],
+      currentBlocks: [],
+      isWorking: false,
+    })
+
+    // Model: one per turn, on the prompt; none on the answer's line.
+    expect(container.querySelectorAll("[data-prompt-model]")).toHaveLength(2)
+    expect(container.querySelectorAll("[data-turn-model]")).toHaveLength(0)
+    expect((container.textContent ?? "").split("openai:gpt-5")).toHaveLength(3)
+    // Time: the prompt's, once; the answer's finish time is in its details only.
+    expect(screen.getAllByText(formatTime(at(10, 0)))).toHaveLength(1)
+    expect(screen.getAllByText(formatTime(at(11, 0)))).toHaveLength(1)
+    expect(screen.queryByText(formatTime(at(10, 5)))).toBeNull()
+    expect(screen.queryByText(formatTime(at(11, 5)))).toBeNull()
+    // Edit: one per turn, on the prompt, with one name.
+    expect(screen.getAllByRole("button", { name: /Edit prompt/ })).toHaveLength(2)
+    for (const group of screen.getAllByRole("group", { name: "Turn actions" })) {
+      expect(within(group).queryByRole("button", { name: /Edit/ })).toBeNull()
+    }
+    // What the answer's line does keep: Copy, the duration and the cost.
+    expect(screen.getAllByRole("button", { name: "Copy response" })).toHaveLength(2)
+    expect(screen.getAllByText("1.5 s")).toHaveLength(2)
+    expect(screen.getAllByText("$0.02")).toHaveLength(2)
+  })
+
+  it("names Copy by what it copies: the prompt under the prompt, the response under the answer", () => {
+    renderStream({ blocks: turn(1, at(10, 0), at(10, 5)), currentBlocks: [], isWorking: false })
+
+    expect(screen.getAllByRole("button", { name: "Copy prompt" })).toHaveLength(1)
+    expect(screen.getAllByRole("button", { name: "Copy response" })).toHaveLength(1)
+    expect(screen.queryByRole("button", { name: "Copy message" })).toBeNull()
   })
 })

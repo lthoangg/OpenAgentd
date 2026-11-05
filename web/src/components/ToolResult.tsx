@@ -12,7 +12,7 @@
  * rather than an overlay. Theme-aware, no hard-coded rgba.
  */
 
-import { ArrowUpRight, Check, Circle, ExternalLink, FileText, Globe, Loader2, Minus } from 'lucide-react'
+import { ArrowUpRight, Check, Circle, ExternalLink, FileText, Globe, ListTodo, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useContext, type ReactNode } from 'react'
 import { FileRefButton, FileRefContext, LinkifiedText } from './FileRefLink'
@@ -22,6 +22,7 @@ import { truncateForDisplay } from './ToolCall/displayText'
 import { canonicalToolName } from '@/utils/tool-names'
 import { Button } from '@/components/ui/button'
 import { Chip, type ChipTone } from '@/components/ui/chip'
+import { EmptyState } from '@/components/ui/empty-state'
 import type { LiveSubagent } from '@/api/types'
 import { SubagentRow, openSubagentSession, type SubagentRowProps } from './ToolCall/SubagentRow'
 import { parseStartedAt, subagentStatusView } from './ToolCall/subagentStatus'
@@ -616,7 +617,7 @@ function describeTodoOutcome(outcome: string, tasks: TodoResultTask[]): string {
 
 function TodoListResult({ result }: { result: string }) {
   if (result.trim() === 'No todos.') {
-    return <div className="text-xs text-(--color-text-muted)">No todos.</div>
+    return <EmptyState fill={false} icon={ListTodo} title="No todos" className="py-3" />
   }
   const parsed = parseTodoList(result)
   if (!parsed) return <GenericResult result={result} />

@@ -112,6 +112,8 @@ describe("AssistantTurn — which blocks count as streaming", () => {
 describe("AssistantTurnFooter", () => {
   // An iPhone mini fits the row on one line: 28px controls drawn close
   // together, each still a 36px touch target (``touch-hit``). Tablets keep 36px.
+  // The Copy response button is a ``Button``: 24px on desktop, with the phone
+  // size setting its own floor (``!``) so the 36px touch floor does not stretch it.
   it("draws its actions 28px on a phone, close together, with a 36px hit area", () => {
     const blocks: ContentBlock[] = [{
       id: "b1",
@@ -122,7 +124,7 @@ describe("AssistantTurnFooter", () => {
     }]
     const changed = [{ path: "a.ts", additions: 3, deletions: 1 }] as never
 
-    render(<AssistantTurnFooter turnBlocks={blocks} size="roomy" changedFiles={changed} onEditPrompt={() => {}} />)
+    render(<AssistantTurnFooter turnBlocks={blocks} size="roomy" changedFiles={changed} />)
 
     const phoneSmall = (el: Element, size: string) => {
       const classes = el.className.split(/\s+/)
@@ -130,7 +132,12 @@ describe("AssistantTurnFooter", () => {
       expect(classes).toContain("touch-hit")
       expect(classes).toContain("relative")
     }
-    for (const name of ["Copy response", "Edit prompt"]) phoneSmall(screen.getByRole("button", { name }), "size-7")
+    const copy = screen.getByRole("button", { name: "Copy response" })
+    phoneSmall(copy, "size-7")
+    expect(copy.getAttribute("data-slot")).toBe("button")
+    expect(copy.className.split(/\s+/)).toContain("size-6")
+    expect(copy.className.split(/\s+/)).toContain("max-md:pointer-coarse:min-h-7!")
+    expect(copy.className.split(/\s+/)).toContain("max-md:pointer-coarse:min-w-7!")
     phoneSmall(screen.getByRole("button", { name: /files? changed/ }), "h-7")
     phoneSmall(screen.getByRole("button", { name: /^Turn details/ }), "min-h-7")
     const group = screen.getByRole("group", { name: "Turn actions" })
@@ -138,20 +145,53 @@ describe("AssistantTurnFooter", () => {
     expect(group.parentElement?.className.split(/\s+/)).toContain("max-md:pointer-coarse:gap-1")
   })
 
-  it("shows response duration after copy, continue, and timestamp controls", () => {
+  it("shows the response duration after its actions, and no time or model: those are on the prompt's row", () => {
     const blocks: ContentBlock[] = [{
       id: "b1",
       type: "text",
       content: "Assistant answer",
       timestamp: new Date("2026-05-23T12:34:56Z"),
       responseDurationMs: 1234,
+      extra: { model: "openai:gpt-5" },
+    }]
+
+    const { container } = render(<AssistantTurnFooter turnBlocks={blocks} />)
+
+    expect(screen.getByLabelText("Copy response")).toBeTruthy()
+    expect(screen.getByText("1.2 s")).toBeTruthy()
+    expect(screen.queryByText("12:34")).toBeNull()
+    expect(container.querySelector("[data-turn-model]")).toBeNull()
+    expect(container.textContent).not.toContain("gpt-5")
+    expect(screen.queryByRole("button", { name: /Edit prompt/ })).toBeNull()
+  })
+
+  it("keeps the time and the model in the details: the aria summary and the popover", () => {
+    const blocks: ContentBlock[] = [{
+      id: "b1",
+      type: "text",
+      content: "Assistant answer",
+      timestamp: new Date("2026-05-23T12:34:56Z"),
+      responseDurationMs: 1234,
+      extra: { model: "openai:gpt-5", thinking_level: "high" },
     }]
 
     render(<AssistantTurnFooter turnBlocks={blocks} />)
 
-    expect(screen.getByLabelText("Copy response")).toBeTruthy()
-    expect(screen.getByText("12:34")).toBeTruthy()
-    expect(screen.getByText("1.2 s")).toBeTruthy()
+    const details = screen.getByRole("button", { name: /^Turn details/ })
+    expect(details.getAttribute("aria-label")).toContain("12:34")
+    expect(details.getAttribute("aria-label")).toContain("openai:gpt-5 (thinking high)")
+    fireEvent.click(details)
+    expect(screen.getByText("Finished")).toBeTruthy()
+    expect(screen.getByText("Model")).toBeTruthy()
+    expect(screen.getByText("openai:gpt-5")).toBeTruthy()
+  })
+
+  it("has no footer for a turn with nothing to copy, no files and no numbers", () => {
+    const blocks: ContentBlock[] = [{ id: "t1", type: "tool", content: "", toolName: "read", toolDone: true, timestamp: new Date("2026-05-23T12:34:56Z") }]
+
+    const { container } = render(<AssistantTurnFooter turnBlocks={blocks} />)
+
+    expect(container.firstChild).toBeNull()
   })
 
   it("shows long response durations as minutes and seconds", () => {

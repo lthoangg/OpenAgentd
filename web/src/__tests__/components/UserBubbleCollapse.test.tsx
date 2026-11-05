@@ -328,8 +328,8 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
-    // Copy button should be present (aria-label="Copy message")
-    const copyBtn = screen.getByLabelText("Copy message")
+    // Copy button should be present (aria-label="Copy prompt")
+    const copyBtn = screen.getByLabelText("Copy prompt")
     expect(copyBtn).toBeTruthy()
   })
 
@@ -347,7 +347,7 @@ describe("AgentView — UserBubble collapse feature", () => {
     render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
     // Copy does not depend on the metadata row's contents.
-    expect(screen.getByLabelText("Copy message")).toBeTruthy()
+    expect(screen.getByLabelText("Copy prompt")).toBeTruthy()
   })
 
   it("copies message content to clipboard when copy button is clicked", async () => {
@@ -372,7 +372,7 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
-    const copyBtn = screen.getByLabelText("Copy message")
+    const copyBtn = screen.getByLabelText("Copy prompt")
     await user.click(copyBtn)
 
     expect(clipboardWriteText).toHaveBeenCalledWith(content)
@@ -384,7 +384,6 @@ describe("AgentView — UserBubble collapse feature", () => {
     const user = userEvent.setup()
     const content = "Test message"
     const timestamp = new Date("2026-04-29T12:00:00Z")
-    // An earlier prompt: only the latest one keeps its row at rest.
     const blocks: ContentBlock[] = [
       {
         id: "1",
@@ -392,21 +391,20 @@ describe("AgentView — UserBubble collapse feature", () => {
         content,
         timestamp,
       },
-      { id: "2", type: "user", content: "A later prompt" },
     ]
 
     const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
-    // Find the outer wrapper (group div)
-    const groupDiv = container.querySelector("div[class*='group']")
-    expect(groupDiv).toBeTruthy()
+    // The hover region: the prompt and its row (one wrapper).
+    const region = container.querySelector("[data-user-bubble] > div")
+    expect(region).toBeTruthy()
 
-    // Find the timestamp span by looking for the time text
+    // The latest (here the only) prompt hides its row at rest too.
     const timeSpan = screen.getByText("12:00")
     expect(timeSpan.closest("div")?.className).toContain("opacity-0")
 
-    // Hover over the group
-    await user.hover(groupDiv!)
+    // Hover over the prompt
+    await user.hover(region!)
 
     // Timestamp should now have opacity-100
     expect(timeSpan.closest("div")?.className).toContain("opacity-100")
@@ -422,7 +420,6 @@ describe("AgentView — UserBubble collapse feature", () => {
         timestamp: new Date("2026-04-29T12:00:00Z"),
         extra: { model: "openrouter:anthropic/claude-sonnet-4.5" },
       },
-      { id: "2", type: "user", content: "A later prompt" },
     ]
 
     const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
@@ -430,7 +427,7 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(modelLabel.textContent).toBe("openrouter:anthropic/claude-sonnet-4.5")
     expect(modelLabel.closest("div")?.className).toContain("opacity-0")
 
-    await user.hover(container.querySelector("div[class*='group']")!)
+    await user.hover(container.querySelector("[data-user-bubble] > div")!)
 
     expect(modelLabel.closest("div")?.className).toContain("opacity-100")
   })
@@ -447,8 +444,7 @@ describe("AgentView — UserBubble collapse feature", () => {
     ]
 
     const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
-    const groupDiv = container.querySelector("div[class*='group']")
-    await user.hover(groupDiv!)
+    await user.hover(container.querySelector("[data-user-bubble] > div")!)
 
     expect(screen.queryByText("gpt-4")).toBeNull()
     expect(screen.getByText("12:00")).toBeTruthy()
@@ -465,21 +461,38 @@ describe("AgentView — UserBubble collapse feature", () => {
         content,
         timestamp,
       },
-      { id: "2", type: "user", content: "A later prompt" },
     ]
 
     const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
-    const groupDiv = container.querySelector("div[class*='group']")
+    const region = container.querySelector("[data-user-bubble] > div")
     const timeSpan = screen.getByText("12:00")
 
     // Hover in
-    await user.hover(groupDiv!)
+    await user.hover(region!)
     expect(timeSpan.closest("div")?.className).toContain("opacity-100")
 
     // Hover out
-    await user.unhover(groupDiv!)
+    await user.unhover(region!)
     expect(timeSpan.closest("div")?.className).toContain("opacity-0")
+  })
+
+  it("keeps the row hidden at rest on desktop, even on the latest prompt, and shown on touch and keyboard focus", () => {
+    const blocks: ContentBlock[] = [
+      { id: "1", type: "user", content: "First", timestamp: new Date("2026-04-29T12:00:00Z") },
+      { id: "2", type: "user", content: "Latest", timestamp: new Date("2026-04-29T12:30:00Z") },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    for (const time of ["12:00", "12:30"]) {
+      const row = screen.getByText(time).closest("div") as HTMLElement
+      const classes = row.className.split(/\s+/)
+      expect(classes).toContain("opacity-0")
+      expect(classes).not.toContain("opacity-100")
+      expect(row.className).toContain("focus-within:opacity-100")
+      expect(row.className).toContain("pointer-coarse:opacity-100")
+    }
   })
 
   // ── Gradient fade overlay ────────────────────────────────────────────────

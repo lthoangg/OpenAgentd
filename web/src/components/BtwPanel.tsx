@@ -16,8 +16,9 @@
  * questions" (one name; it truncates when space is short).
  */
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, Copy, MessageCircleQuestion, Square, Trash2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Copy, MessageCircleQuestion, Square, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { CloseButton } from '@/components/ui/close-button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { copyText } from '@/components/ChatContextMenu'
@@ -150,15 +151,14 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
             </HeaderAction>
           </>
         )}
-        <HeaderAction label="Copy answer" tooltip="Copy answer as Markdown" disabled={!current?.answer} onClick={() => current && copyText(current.answer)}>
+        <HeaderAction label="Copy response" tooltip="Copy response" disabled={!current?.answer} onClick={() => current && copyText(current.answer)}>
           <Copy />
         </HeaderAction>
-        <HeaderAction label="Clear side questions" tooltip={count === 0 ? 'No side questions yet' : 'Delete all side questions of this session'} disabled={count === 0} onClick={() => setConfirmClear(true)}>
+        {/* "…": it opens a confirmation. */}
+        <HeaderAction label="Clear side questions…" tooltip={count === 0 ? 'No side questions yet' : 'Delete all side questions of this session'} disabled={count === 0} onClick={() => setConfirmClear(true)}>
           <Trash2 />
         </HeaderAction>
-        <HeaderAction label="Close side questions" tooltip="Close (Esc)" onClick={() => store.dismiss(sessionId)}>
-          <X />
-        </HeaderAction>
+        <CloseButton size="icon-xs" label="Close side questions" onClick={() => store.dismiss(sessionId)} />
       </header>
       <div className="max-h-[calc(var(--app-vh,100vh)*0.4)] min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-3 py-2">
         {current ? (
@@ -185,7 +185,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
       onOpenChange={setConfirmClear}
       title="Delete all side questions?"
       description="Every side question and answer of this session is deleted. They were never part of the chat, and this cannot be undone."
-      confirmLabel="Delete all"
+      confirmLabel="Delete side questions"
       onConfirm={onClear}
     />
     </>

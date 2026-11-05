@@ -70,7 +70,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
               <Button
                 size="icon-xs"
                 variant="ghost"
-                aria-label="Clear side questions"
+                aria-label="Clear side questions…"
                 disabled={exchanges.length === 0}
                 onClick={() => setConfirmClear(true)}
               >
@@ -85,7 +85,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
           onOpenChange={setConfirmClear}
           title="Delete all side questions?"
           description="Every side question and answer of this session is deleted. They were never part of the chat, and this cannot be undone."
-          confirmLabel="Delete all"
+          confirmLabel="Delete side questions"
           onConfirm={onClear}
         />
       </div>
@@ -125,7 +125,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
                           <Button
                             size="icon-xs"
                             variant="ghost"
-                            aria-label="Copy answer"
+                            aria-label="Copy response"
                             disabled={!exchange.answer}
                             onClick={() => copyText(exchange.answer)}
                           >
@@ -133,7 +133,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
                           </Button>
                         }
                       />
-                      <TooltipContent>Copy answer as Markdown</TooltipContent>
+                      <TooltipContent>Copy response</TooltipContent>
                     </Tooltip>
                   </div>
                 </article>

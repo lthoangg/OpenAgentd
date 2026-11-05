@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Collapsible } from '@/components/ui/collapsible'
 import { designFeedbackPlainText } from '@/lib/design-feedback'
+import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
+import { cn } from '@/lib/utils'
 
 interface RevertNoticeProps {
   count: number
@@ -37,7 +39,7 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
 
   return (
     <div className="my-2 flex justify-center">
-      <div className="flex w-full max-w-xl flex-col gap-2 rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-3 py-2.5 text-xs text-(--color-text-muted)">
+      <div className={cn('flex w-full max-w-xl flex-col gap-2 px-3 py-2.5 text-xs text-(--color-text-muted)', TRANSCRIPT_CARD)}>
         <p className="leading-relaxed">{caption}</p>
         <div className="flex flex-wrap items-center gap-1.5">
           <Tooltip>

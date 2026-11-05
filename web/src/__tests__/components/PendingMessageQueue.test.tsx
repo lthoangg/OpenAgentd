@@ -369,7 +369,7 @@ describe('PendingMessageQueue', () => {
       expect(useToastStore.getState().toasts[0]?.action?.label).toBe('Undo')
     })
 
-    it('sits beside Edit on every queued message, drawn as a cross, 24px and 36px on touch', () => {
+    it('sits beside Edit on every queued message, drawn as a cross, 24px (the touch floor makes it 36px)', () => {
       useAgentStore.setState({
         sessionId: 'session-1',
         _pendingMessages: [
@@ -384,8 +384,14 @@ describe('PendingMessageQueue', () => {
       expect(removes).toHaveLength(2)
       expect(screen.getAllByRole('button', { name: 'Edit queued message' })).toHaveLength(2)
       expect(removes[0]?.querySelector('svg')?.getAttribute('class')).toContain('lucide-x')
-      expect(removes[0]?.className).toContain('md:h-6 md:w-6')
-      expect(removes[0]?.className).toContain('pointer-coarse:size-9')
+      // The shared ×: a Button, icon-xs, named for what it does.
+      expect(removes[0]?.hasAttribute('data-close-button')).toBe(true)
+      expect(removes[0]?.getAttribute('data-slot')).toBe('button')
+      expect(removes[0]?.className).toContain('size-6')
+      for (const edit of screen.getAllByRole('button', { name: 'Edit queued message' })) {
+        expect(edit.getAttribute('data-slot')).toBe('button')
+        expect(edit.className).toContain('size-6')
+      }
     })
 
     it('names itself in a tooltip, not a native title', async () => {

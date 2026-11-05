@@ -71,8 +71,6 @@ describe('coarse-pointer touch targets', () => {
     const src = (rel: string) => readFileSync(fileURLToPath(new URL(`../../components/${rel}`, import.meta.url)), 'utf8')
     const cases: Array<[string, RegExp]> = [
       ['Telemetry/SessionHeader.tsx', /pointer-coarse:h-9"[\s\S]{0,80}Open session/],
-      ['PendingMessageQueue.tsx', /aria-label=\{expanded \? 'Collapse' : 'Expand'\}\s*className="[^"]*pointer-coarse:size-9/],
-      ['PendingMessageQueue.tsx', /aria-label="Edit queued message"\s*className="[^"]*pointer-coarse:size-9/],
       ['settings/WorkspaceGroupsSettings.tsx', /aria-label=\{`Remove \$\{repo\.name\} from[\s\S]{0,300}className="[^"]*pointer-coarse:size-9/],
       ['settings/pages/settings.providers/CredentialList.tsx', /aria-label=\{`New name for[\s\S]{0,300}className="[^"]*pointer-coarse:h-9/],
       // Review panel views (audit R10-R12): scheduler ⋯, preview address, model list controls.

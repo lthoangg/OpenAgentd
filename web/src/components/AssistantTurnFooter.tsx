@@ -9,12 +9,11 @@
  */
 import { memo, useCallback, useId, useMemo, type ReactNode } from 'react'
 import { useCopyFeedback } from '@/hooks/use-copy-feedback'
-import { Check, Copy, FileDiff, Pencil, type LucideIcon } from 'lucide-react'
+import { Check, Copy, FileDiff, type LucideIcon } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Collapsible } from '@/components/ui/collapsible'
 import { Term } from '@/components/ui/term'
 import { formatMetaDuration } from '@/components/ui/meta-row'
-import { ModelName } from '@/components/ui/model-name'
 import { cn } from '@/lib/utils'
 import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
 import { formatTime, formatFullDateTime, lastTurnText } from '@/utils/format'
@@ -26,6 +25,7 @@ import { WorkSummaryRow } from '@/components/ReaderTurn'
 import { readerSegments, turnChangedFiles } from '@/components/ReaderTurn/segments'
 import type { ChangedFileInfo } from '@/components/WorkspacePanel/diff-helpers'
 import { TurnFileList } from '@/components/AgentView/TurnFileList'
+import { TurnActionButton } from '@/components/AgentView/TurnActionButton'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
 
@@ -36,36 +36,26 @@ export interface AssistantTurnFooterProps {
   size?: 'compact' | 'roomy'
   /** Files the turn edited; listed behind "N files changed". */
   changedFiles?: readonly ChangedFileInfo[]
-  /** Edit the prompt this turn answers. */
-  onEditPrompt?: () => void
-  /** A turn is running, so the prompt cannot be edited yet: the action shows disabled, with the reason. */
-  editLocked?: boolean
 }
 
 const NO_FILES: readonly ChangedFileInfo[] = []
-
-/**
- * An icon action on the footer (DESIGN.md → Transcript rows): muted, shown
- * at rest, a keycap wash on hover, its words in the name and the tooltip.
- * 24px square, 36px on touch, like the prompt's own Edit and Copy. A phone
- * draws it 28px so the row fits an iPhone mini; ``touch-hit`` keeps the
- * touch target 36px around it.
- */
-const ACTION_CLASS = 'relative touch-hit inline-flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-[color,background-color,scale] duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9 max-md:pointer-coarse:size-7'
 
 /** The files toggle carries numbers, so it is a short pill, not a square. */
 const FILES_CLASS = 'relative touch-hit inline-flex h-6 shrink-0 items-center gap-1.5 rounded-xs px-1.5 text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:h-9 pointer-coarse:px-2.5 max-md:pointer-coarse:h-7 max-md:pointer-coarse:gap-1 max-md:pointer-coarse:px-1.5 max-md:pointer-coarse:text-meta'
 
 /**
- * A footer icon action with its hint on hover and keyboard focus. The hint is
- * a ``title`` (drawn by the app's title layer): every finished turn has these,
- * and a long transcript mounted a full tooltip component for each.
+ * An icon action on the footer (DESIGN.md → Transcript rows): muted, shown at
+ * rest, its words in the name and the hint. The same button as the prompt's own
+ * Copy and Edit (``TurnActionButton``: 24px, 36px on touch, 28px with a 36px
+ * hit area on a phone). The hint is a ``title`` (drawn by the app's title
+ * layer): every finished turn has these, and a long transcript mounted a full
+ * tooltip component for each.
  */
 function FooterAction({ icon: Icon, label, hint, onClick, iconClassName }: { icon: LucideIcon; label: string; hint: string; onClick: () => void; iconClassName?: string }) {
   return (
-    <button type="button" onClick={onClick} aria-label={label} title={hint} className={ACTION_CLASS}>
-      <Icon size={13} aria-hidden="true" className={iconClassName} />
-    </button>
+    <TurnActionButton onClick={onClick} aria-label={label} title={hint}>
+      <Icon size={14} aria-hidden="true" className={iconClassName} />
+    </TurnActionButton>
   )
 }
 
@@ -81,18 +71,17 @@ function DetailRow({ label, children }: { label: ReactNode; children: ReactNode 
 
 /**
  * The meta line under a finished turn (DESIGN.md → Transcript rows):
- * ``20:13 · claude-sonnet-4-6 · 12.0 s · $0.02`` in muted mono, no icons.
- * The line is a button; its popover lists every number with a label
- * (time, full model ID, thinking, duration, tokens in / cached / out, cost)
- * and opens this session in Usage. A popover rather than a tooltip so it
- * works on touch and can hold the link.
+ * ``12.0 s · $0.02`` in muted mono, no icons. A turn shows its model, its
+ * time and its Edit once, on the prompt's row (``UserBubble``), so the line
+ * leaves them out. The line is a button; its popover lists every number with
+ * a label (finish time, full model ID, thinking, duration, tokens in / cached
+ * / out, cost) and opens this session in Usage. A popover rather than a
+ * tooltip so it works on touch and can hold the link.
  */
 export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   turnBlocks,
   size = 'compact',
   changedFiles = NO_FILES,
-  onEditPrompt,
-  editLocked = false,
 }: AssistantTurnFooterProps) {
   const { copied, copy } = useCopyFeedback()
   const filesFold = useStickyFold()
@@ -144,8 +133,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
     openTelemetry(session ? { session } : {})
   }, [])
 
-  const hasActions = Boolean(textContent || onEditPrompt || changedFiles.length > 0)
-  if (!hasActions && !timestamp && responseDurationMs === undefined && !model) return null
+  const hasActions = Boolean(textContent || changedFiles.length > 0)
 
   // Phones keep the row tight: an iPhone mini has ~340px for it.
   const wrapperClass = size === 'roomy' ? 'mt-1 flex min-w-0 flex-wrap items-center gap-1.5 max-md:pointer-coarse:gap-1' : 'mt-0.5 flex min-w-0 flex-wrap items-center gap-1 max-md:pointer-coarse:gap-1'
@@ -159,10 +147,8 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   ].filter(Boolean).join(', ')
 
   const parts: ReactNode[] = []
-  // One line: the model ID truncates first (its provider part before its
-  // model part); time, duration and cost never wrap.
-  if (timestamp) parts.push(<span key="time" className="shrink-0">{formatTime(timestamp)}</span>)
-  if (model) parts.push(<ModelName key="model" id={model} data-turn-model />)
+  // One line: the account truncates; duration and cost never wrap. Time and
+  // model are on the prompt's row, and in the details below.
   if (account) parts.push(<span key="account" data-turn-account className="min-w-0 max-w-[10rem] truncate">{account}</span>)
   if (responseDurationMs !== undefined) parts.push(<span key="dur" className="shrink-0">{formatMetaDuration(responseDurationMs)}</span>)
   if (hasUsage) {
@@ -177,6 +163,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
     responseDurationMs !== undefined && formatMetaDuration(responseDurationMs),
     hasUsage && (costUsd > 0 ? formatSpend(costUsd) : `${formatInt(outputTokens)} output tokens`),
   ].filter(Boolean).join(', ')
+  if (!hasActions && parts.length === 0) return null
   const cachePercent = inputTokens && cachedTokens !== undefined && inputTokens > 0
     ? Math.round((cachedTokens / inputTokens) * 100)
     : undefined
@@ -197,21 +184,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
               onClick={handleCopy}
             />
           )}
-          {onEditPrompt && (editLocked ? (
-            // ``aria-disabled``, not ``disabled``: it stays focusable, so the reason shows on keyboard focus too.
-            <button
-              type="button"
-              aria-disabled="true"
-              aria-label="Edit prompt, available when this turn ends"
-              title="Available when this turn ends"
-              onClick={(event) => event.preventDefault()}
-              className={cn(ACTION_CLASS, 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-(--color-text-muted)')}
-            >
-              <Pencil size={13} aria-hidden="true" />
-            </button>
-          ) : (
-            <FooterAction icon={Pencil} label="Edit prompt" hint="Edit prompt: undo this turn and put the prompt back in the composer" onClick={onEditPrompt} />
-          ))}
           {changedFiles.length > 0 && (
             <button
               ref={filesFold.anchorRef}
@@ -324,12 +296,6 @@ export interface AssistantTurnProps {
    * Reader mode's work row shows how long the agent has been working.
    */
   startedAt?: number
-  /** The prompt this turn answers, so its footer can offer Edit prompt. */
-  promptId?: string
-  /** Rewind to a prompt and put it back in the composer (the same flow as editing it in its bubble). */
-  onEditPrompt?: (promptId: string) => void
-  /** A turn is running, so a prompt cannot be edited yet. */
-  editLocked?: boolean
 }
 
 export const AssistantTurn = memo(function AssistantTurn({
@@ -344,9 +310,6 @@ export const AssistantTurn = memo(function AssistantTurn({
   size = 'compact',
   reader = false,
   startedAt,
-  promptId,
-  onEditPrompt,
-  editLocked = false,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
   // rather than merely for the stream to stop.
@@ -357,9 +320,6 @@ export const AssistantTurn = memo(function AssistantTurn({
   const segments = useMemo(() => (reader ? readerSegments(blocks, awaitsUser) : null), [reader, blocks, awaitsUser])
   // Both transcript styles list the files a finished turn edited.
   const changedFiles = useMemo(() => (turnIsOpen ? NO_FILES : turnChangedFiles(blocks)), [turnIsOpen, blocks])
-  const editPrompt = useCallback(() => {
-    if (promptId !== undefined) onEditPrompt?.(promptId)
-  }, [onEditPrompt, promptId])
   // A compaction divider ends the fold before it (see ``readerSegments``), so
   // only a fold after the turn's last divider can still be working.
   const lastCompaction = useMemo(() => {
@@ -419,8 +379,6 @@ export const AssistantTurn = memo(function AssistantTurn({
           turnBlocks={blocks}
           size={size}
           changedFiles={changedFiles}
-          onEditPrompt={promptId !== undefined && onEditPrompt ? editPrompt : undefined}
-          editLocked={editLocked}
         />
       )}
     </div>

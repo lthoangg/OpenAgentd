@@ -183,10 +183,8 @@ const RULES: Rule[] = [
     allow: {
       // Disabled controls (WCAG exempts them).
       'components/ui/calendar.tsx': 1,
-      'components/AgentView/UserBubble.tsx': 1,
       // Decorative empty-state icons.
       'components/settings/pages/settings.memory.tsx': 1,
-      'components/TodosPopover.tsx': 1,
       // A queued message, held back at 75% (ink stays above 7:1).
       'components/PendingMessageQueue.tsx': 1,
       // The tab carried under the pointer while dragging.

@@ -15,6 +15,7 @@
  * One thin frame and nothing bordered inside; no icon before the title.
  */
 import { Button } from '@/components/ui/button'
+import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { cn } from '@/lib/utils'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -211,7 +212,7 @@ export function PlanReviewCard({
   return (
     <div
       data-question-waiting={open ? '' : undefined}
-      className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border-subtle) bg-(--bg-card)"
+      className={cn('tool-row-enter my-2', TRANSCRIPT_CARD)}
     >
       <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 label-caps text-(--color-text-muted)">
         Plan review

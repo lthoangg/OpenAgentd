@@ -474,9 +474,13 @@ describe("ToolResult — todo_manage", () => {
     expect(screen.getByText(/Threads weave in tandem/)).toBeTruthy()
   })
 
-  it("renders the empty board message", () => {
+  it("renders the empty board as an inline empty state: sentence case, no trailing period", () => {
     render(<ToolResult toolName="todo_manage" result="No todos." />)
-    expect(screen.getByText("No todos.")).toBeTruthy()
+    const title = screen.getByText("No todos")
+    expect(title.tagName).toBe("H2")
+    // Inline (``fill={false}``): it does not stretch to fill the parent.
+    expect(title.closest("[class*='h-full']")).toBeNull()
+    expect(screen.queryByText("No todos.")).toBeNull()
   })
 
   it("renders claim result with outcome line and claimed task card", () => {

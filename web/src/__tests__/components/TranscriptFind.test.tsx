@@ -50,7 +50,31 @@ describe('TranscriptFind', () => {
     const onClose = mock(() => {})
     renderFind(onClose)
     fireEvent.keyDown(screen.getByRole('searchbox', { name: 'Find in session' }), { key: 'Escape' })
-    fireEvent.click(screen.getByRole('button', { name: 'Close find' }))
+    const close = screen.getByRole('button', { name: 'Close find' })
+    // The shared ×, 28px like the bar's other buttons.
+    expect(close.hasAttribute('data-close-button')).toBe(true)
+    expect(close.className).toContain('size-7')
+    fireEvent.click(close)
     expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  it('steps with shared Button icon buttons, and reads its input at text-xs', () => {
+    renderFind()
+    const input = screen.getByRole('searchbox', { name: 'Find in session' })
+    expect(input.className).toContain('text-xs')
+    expect(input.className).not.toContain('text-sm')
+    const previous = screen.getByRole('button', { name: /Previous match/ })
+    const next = screen.getByRole('button', { name: /Next match/ })
+    for (const button of [previous, next]) {
+      expect(button.getAttribute('data-slot')).toBe('button')
+      expect(button.className).toContain('size-7')
+      // Nothing to step through yet.
+      expect((button as HTMLButtonElement).disabled).toBe(true)
+    }
+    fireEvent.change(input, { target: { value: 'rotate' } })
+    fireEvent.click(next)
+    expect(screen.getByRole('status').textContent).toBe('2 of 2')
+    fireEvent.click(previous)
+    expect(screen.getByRole('status').textContent).toBe('1 of 2')
   })
 })

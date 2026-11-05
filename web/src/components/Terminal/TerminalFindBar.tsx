@@ -7,9 +7,10 @@
  * the "3 of 12" count, which needs the decoration options.
  */
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { CaseSensitive, ChevronDown, ChevronUp, X } from 'lucide-react'
+import { CaseSensitive } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { FindBarButton, FindBarButtons } from '@/components/ui/find-bar-buttons'
 import { formatMatchStatus, searchDecorations, type TerminalSearch } from './terminal-search'
 import type { TerminalResolvedTheme } from './terminal-themes'
 
@@ -22,8 +23,6 @@ interface TerminalFindBarProps {
   /** Bump to move focus back into the input (find pressed while already open). */
   focusSignal?: number
 }
-
-const iconButton = 'flex size-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-40 pointer-coarse:size-9'
 
 export function TerminalFindBar({ search, theme, onClose, initialQuery = '', focusSignal = 0 }: TerminalFindBarProps) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -107,14 +106,13 @@ export function TerminalFindBar({ search, theme, onClose, initialQuery = '', foc
         aria-label="Find in terminal"
         autoComplete="off"
         spellCheck={false}
-        className="h-7 w-40 bg-transparent text-sm text-(--color-text) placeholder-(--color-text-muted) outline-none pointer-coarse:h-9"
+        className="h-7 w-40 bg-transparent text-xs text-(--color-text) placeholder-(--color-text-muted) outline-none pointer-coarse:h-9"
       />
       <span role="status" className={cn('min-w-16 text-right font-mono text-meta tabular-nums text-(--color-text-muted)', !status && 'invisible')}>
         {status}
       </span>
-      <button
-        type="button"
-        className={cn(iconButton, caseSensitive && 'bg-(--bg-key) text-(--color-text)')}
+      <FindBarButton
+        className={cn(caseSensitive && 'bg-(--bg-key) text-(--color-text) hover:bg-(--color-fill-key-hover)')}
         aria-label="Match case"
         aria-pressed={caseSensitive}
         onClick={() => {
@@ -122,17 +120,9 @@ export function TerminalFindBar({ search, theme, onClose, initialQuery = '', foc
           run(query, !caseSensitive)
         }}
       >
-        <CaseSensitive size={15} aria-hidden="true" />
-      </button>
-      <button type="button" className={iconButton} onClick={() => step(true)} disabled={empty} aria-label="Previous match (Shift+Enter)">
-        <ChevronUp size={14} aria-hidden="true" />
-      </button>
-      <button type="button" className={iconButton} onClick={() => step(false)} disabled={empty} aria-label="Next match (Enter)">
-        <ChevronDown size={14} aria-hidden="true" />
-      </button>
-      <button type="button" className={iconButton} onClick={onClose} aria-label="Close find">
-        <X size={13} aria-hidden="true" />
-      </button>
+        <CaseSensitive size={14} aria-hidden="true" />
+      </FindBarButton>
+      <FindBarButtons onPrevious={() => step(true)} onNext={() => step(false)} onClose={onClose} stepDisabled={empty} />
     </div>
   )
 }

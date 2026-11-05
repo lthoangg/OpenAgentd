@@ -89,6 +89,18 @@ describe('TerminalFindBar', () => {
     expect(calls.at(-1)).toMatchObject({ kind: 'next' })
   })
 
+  it('uses the same buttons and input size as the transcript find bar', () => {
+    const { input } = setup()
+    expect(input.className).toContain('text-xs')
+    expect(input.className).not.toContain('text-sm')
+    for (const name of [/Previous match/, 'Match case', /Next match/, 'Close find']) {
+      const button = screen.getByRole('button', { name })
+      expect(button.getAttribute('data-slot')).toBe('button')
+      expect(button.className).toContain('size-7')
+    }
+    expect(screen.getByRole('button', { name: 'Close find' }).hasAttribute('data-close-button')).toBe(true)
+  })
+
   it('toggles case sensitivity and searches again', () => {
     const { input, calls } = setup()
     fireEvent.change(input, { target: { value: 'Err' } })

@@ -85,6 +85,7 @@ import type {
 } from '@/api/types'
 import { ConnectionBanner } from '@/components/ConnectionBanner'
 import { TranscriptFind } from '@/components/TranscriptFind'
+import { PhoneStack } from '@/components/phone/PhoneStack'
 import { AgentChatHeader } from './AgentChatHeader'
 import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
@@ -166,9 +167,58 @@ interface AgentChatViewProps {
   sessionLoading?: boolean
   /** The URL names a session the server does not have. */
   sessionNotFound?: boolean
+  /**
+   * A phone: the screen is a navigation stack, Sessions (the sidebar as a
+   * page) with this chat pushed over it. ``atSessions``: the list is on top.
+   * ``onBack``: up to Sessions (‹, the edge swipe, Android Back).
+   */
+  phoneStack?: { atSessions: boolean; onBack: () => void }
 }
 
-export function AgentChatView({ sessionId, workspace = null, sessionLoading = false, sessionNotFound = false }: AgentChatViewProps) {
+interface ChatFrameProps {
+  phoneStack?: { atSessions: boolean; onBack: () => void }
+  /** The phone's edge swipe and Back may pop to Sessions. */
+  backEnabled: boolean
+  header: React.ReactNode
+  sidebar: React.ReactNode
+  footer: React.ReactNode
+  /** The chat column and the Review panel. */
+  children: React.ReactNode
+}
+
+/**
+ * The workbench around the chat. Desktop: the header, the sidebar beside
+ * the chat, the status bar. A phone: a navigation stack, the sidebar as the
+ * Sessions screen with the chat, header and all, pushed over it.
+ */
+function ChatFrame({ phoneStack, backEnabled, header, sidebar, footer, children }: ChatFrameProps) {
+  const body = <div className="relative flex min-h-0 flex-1 overflow-hidden">{children}</div>
+  if (!phoneStack) {
+    return (
+      <>
+        {header}
+        <div className="relative flex min-h-0 flex-1 overflow-hidden">
+          {sidebar}
+          {children}
+        </div>
+        {footer}
+      </>
+    )
+  }
+  return (
+    <div className="relative min-h-0 flex-1">
+      <PhoneStack
+        root={sidebar}
+        page={<div className="flex h-full flex-col">{header}{body}</div>}
+        pushed={!phoneStack.atSessions}
+        onBack={phoneStack.onBack}
+        backEnabled={backEnabled}
+      />
+    </div>
+  )
+}
+
+export function AgentChatView({ sessionId, workspace = null, sessionLoading = false, sessionNotFound = false, phoneStack }: AgentChatViewProps) {
   const navigate = useNavigate()
   const openSettings = useSettingsStore((s) => s.openSettings)
   const pushToast = useToastStore((s) => s.push)
@@ -335,6 +385,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     edgeSwipeHandlers,
   } = useOverlayState({
     isMobile,
+    phoneStack,
     workspace,
     toggleScheduler,
     toggleRunPicker,
@@ -829,10 +880,15 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           </div>
         </div>
       )}
-      {/* 36 px header above the sidebar/content row. On macOS Tauri it
-          doubles as the window drag region via useTauriDrag, with a
-          70 px left inset reserved for the OS traffic-lights. */}
-        <AgentChatHeader
+      <ChatFrame
+        phoneStack={phoneStack}
+        // The Review panel and a file sheet cover the chat on a phone, and
+        // close by their own swipe and Back first.
+        backEnabled={workspacePanel === null && fileViewer === null}
+        // 36 px header above the sidebar/content row. On macOS Tauri it
+        // doubles as the window drag region via useTauriDrag, with a 70 px
+        // left inset reserved for the OS traffic-lights.
+        header={<AgentChatHeader
           dragHandlers={dragHandlers}
           isMacOverlay={isMacOverlay}
           isMobile={isMobile}
@@ -841,21 +897,18 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           sessionTitle={sessionTitle}
           onOpenLead={parentSessionId ? handleOpenLead : undefined}
           onSidebarToggle={handleSidebarToggle}
+          onBack={phoneStack?.onBack}
           sessionId={sessionIdState}
           todos={todos}
           onToggleTasks={handleToggleTasks}
           tasksViewActive={dockViewsEnabled ? workspacePanel !== null && dockActiveView === 'tasks' : showTodos}
           goalState={headerGoalState}
           workspacePanel={workspacePanel}
-
-        onWorkspaceFiles={handleWorkspaceFiles}
-      />
-
-      {/* Body row — sidebar + main content column. On
-          mobile the Sidebar is position:fixed (overlay drawer), so it
-          takes no space here and the main column is always full-width. */}
-      <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        <Sidebar
+          onWorkspaceFiles={handleWorkspaceFiles}
+        />}
+        // Beside the chat on desktop. A narrow window's drawer is
+        // position:fixed and takes no room; a phone's is the Sessions screen.
+        sidebar={<Sidebar
             currentSessionId={sessionIdState || undefined}
             workspace={workspace}
             draftWorkspace={sessionId ? null : workspace}
@@ -865,14 +918,23 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             desktopCollapsed={sidebarDrawer ? !sidebarDrawerOpen : sidebarCollapsed}
             drawer={sidebarDrawer}
             dockOpen={Boolean(workspace) && workspacePanel !== null}
-            mobileOpen={mobileSidebarOpen}
+            page={Boolean(phoneStack)}
+            mobileOpen={phoneStack ? phoneStack.atSessions : mobileSidebarOpen}
             onOpenPalette={handleTogglePalette}
+            onOpenScheduler={handleToggleScheduler}
             onMobileClose={() => {
               setMobileSidebarOpen(false)
               setSidebarDrawerOpen(false)
             }}
-        />
-
+        />}
+        footer={<AppFooter
+          workspace={workspace}
+          chatWorkspace={isChatWorkspace}
+          sessionId={sessionIdState}
+          sessionFastMode={storeState.sessionFastMode}
+          onOpenGitChanges={workspace && !isChatWorkspace ? handleOpenGit : undefined}
+        />}
+      >
         <div ref={centerRef} data-workbench-center="" className="relative flex min-w-0 flex-1 overflow-hidden">
         <main
           id="main"
@@ -1083,15 +1145,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           )}
         </AnimatePresence>
         </div>
-      </div>
-
-      <AppFooter
-        workspace={workspace}
-        chatWorkspace={isChatWorkspace}
-        sessionId={sessionIdState}
-        sessionFastMode={storeState.sessionFastMode}
-        onOpenGitChanges={workspace && !isChatWorkspace ? handleOpenGit : undefined}
-      />
+      </ChatFrame>
 
       <AgentChatPanels
         showTodos={!dockViewsEnabled && showTodos}

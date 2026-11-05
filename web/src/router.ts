@@ -43,6 +43,14 @@ const sessionRoute = createRoute({
   path: '$sessionId',
   component: () => null,
 })
+// /sessions: the phone's root screen, the session list with chats pushed
+// over it. A desktop or tablet has the list in its sidebar, so the layout
+// sends it to / with the sidebar shown (routes/cockpit.tsx).
+const sessionsRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/sessions',
+  component: () => null,
+})
 
 // Links from older builds (bookmarks, notifications, other windows) used a
 // /coding prefix; they redirect and render nothing of their own.
@@ -102,7 +110,7 @@ const settingsSectionRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   packagedIndexRoute,
-  appLayoutRoute.addChildren([newSessionRoute, sessionRoute]),
+  appLayoutRoute.addChildren([newSessionRoute, sessionsRoute, sessionRoute]),
   legacyCodingRoute,
   legacyCodingSessionRoute,
   telemetryRoute,

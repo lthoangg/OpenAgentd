@@ -111,6 +111,12 @@ export function _resetDockRestoreForTests(): void {
 
 export interface UseOverlayStateArgs {
   isMobile: boolean
+  /**
+   * A phone's navigation stack (see AgentChatView): Sessions is a screen, not
+   * a drawer, so the left edge belongs to the stack's back swipe. While the
+   * list is on top (``atSessions``) the chat under it opens nothing.
+   */
+  phoneStack?: { atSessions: boolean; onBack?: () => void }
   workspace: string | null
   toggleScheduler: () => void
   toggleRunPicker: () => void
@@ -218,6 +224,7 @@ export interface UseOverlayStateResult {
 
 export function useOverlayState({
   isMobile,
+  phoneStack,
   workspace,
   toggleScheduler,
   toggleRunPicker,
@@ -246,7 +253,9 @@ export function useOverlayState({
   const handledDockLauncherFocusKeyRef = useRef(0)
   const [dockActiveView, setDockActiveView] = useState<DockView | null>(null)
   const dockViewsEnabled = !isMobile && Boolean(workspace)
-  const schedulerInDock = Boolean(workspace)
+  // A phone opens Scheduled tasks as a sheet over whatever is on screen
+  // (Sessions has it in its toolbar), never inside the chat's Review panel.
+  const schedulerInDock = Boolean(workspace) && !phoneStack
   // Desktop sidebar collapse is persisted in the layout store. Until the user
   // toggles it once, wide windows open with the sidebar expanded.
   const storedSidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed)
@@ -334,6 +343,11 @@ export function useOverlayState({
   }, [closeOtherMobileOverlays, isMobile, revealSidebar, workspace, workspacePanel])
 
   const handleSidebarToggle = useCallback(() => {
+    // A phone has no sidebar to toggle: its list is the Sessions screen.
+    if (phoneStack) {
+      phoneStack.onBack?.()
+      return
+    }
     if (isMobile) {
       setWorkspacePanel(null)
       setFileViewer(null)
@@ -349,7 +363,7 @@ export function useOverlayState({
       return
     }
     setSidebarCollapsed((value) => !value)
-  }, [closeOtherMobileOverlays, isMobile, setSidebarCollapsed, sidebarDrawer])
+  }, [closeOtherMobileOverlays, isMobile, phoneStack, setSidebarCollapsed, sidebarDrawer])
 
   const handleOpenGit = useCallback(() => {
     if (!workspace) return
@@ -655,7 +669,7 @@ export function useOverlayState({
   // One controller owns every mobile drawer so only ONE can be open at a
   // time. Left-edge opens the session sidebar; right-edge opens the Review
   // panel, so only with a workspace attached.
-  const workspacePanelOpenForSwipe = Boolean(workspace)
+  const workspacePanelOpenForSwipe = Boolean(workspace) && !phoneStack?.atSessions
 
   // Single source of truth for "what is open right now". Closing routes to
   // whichever drawer the id names, so swipe-to-close hits the right one.
@@ -691,7 +705,7 @@ export function useOverlayState({
   // no state), so this view does not re-render per touchmove.
   const { handlers: edgeSwipeHandlers } = useEdgeSwipe({
     activeDrawer,
-    left: { id: 'sidebar', open: openLeftDrawer },
+    left: phoneStack ? undefined : { id: 'sidebar', open: openLeftDrawer },
     right: workspacePanelOpenForSwipe ? { id: 'workspace-panel', open: openRightDrawer } : undefined,
     close: closeAllDrawers,
   })

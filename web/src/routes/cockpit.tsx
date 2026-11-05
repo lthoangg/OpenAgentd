@@ -1,5 +1,5 @@
-import { useRef, useEffect, useLayoutEffect, useState } from 'react'
-import { Outlet, useParams, useNavigate, useSearch } from '@tanstack/react-router'
+import { useCallback, useMemo, useRef, useEffect, useLayoutEffect, useState } from 'react'
+import { Outlet, useLocation, useParams, useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AgentChatView } from '@/components/AgentChatView'
 import { getSession, validateWorkspace } from '@/api/client'
@@ -15,19 +15,36 @@ import { syncDesktopWindowTitle } from '@/lib/window-title'
 import { useNeedsYouCount } from '@/hooks/use-needs-you-badge'
 import { useChatWorkspace } from '@/queries/useChatWorkspace'
 import { clearFreshDesktopWindow, isFreshDesktopWindow } from '@/lib/fresh-window'
+import { useIsPhone } from '@/hooks/use-is-phone'
+import { moveAppToBackground, useBackHandler } from '@/lib/back-button'
+import { useLayoutStore } from '@/stores/useLayoutStore'
 
 /**
- * The app layout for / (new session) and /<session id>.
+ * The app layout for / (new session), /<session id> and, on a phone,
+ * /sessions (the session list, with the chat pushed over it).
  * Stays mounted across URL changes — handles navigation when a new
  * agent session_id arrives from POST /agent/chat.
  */
 function AgentLayoutBase() {
   const params = useParams({ strict: false }) as Record<string, string>
-  const sessionId = params.sessionId as string | undefined
+  const routeSessionId = params.sessionId as string | undefined
   const search = useSearch({ strict: false }) as { workspace?: string }
   // `/?workspace=<path>`: a new-session draft there (nothing saved yet).
-  const draftWorkspace = sessionId ? null : (search.workspace ?? null)
+  const routeDraftWorkspace = routeSessionId ? null : (search.workspace ?? null)
+  const pathname = useLocation({ select: (location) => location.pathname })
   const navigate = useNavigate()
+  // A phone is a navigation stack: with no chat in the route (/sessions, or a
+  // bare / on its way there) the Sessions screen is on top. The chat it was
+  // popped from stays under it, so the pop slides the real chat away and
+  // pushing it again neither reloads nor remounts it.
+  const isPhone = useIsPhone()
+  const atSessions = isPhone && !routeSessionId && !routeDraftWorkspace
+  const [kept, setKept] = useState({ sessionId: routeSessionId, draftWorkspace: routeDraftWorkspace })
+  if (!atSessions && (kept.sessionId !== routeSessionId || kept.draftWorkspace !== routeDraftWorkspace)) {
+    setKept({ sessionId: routeSessionId, draftWorkspace: routeDraftWorkspace })
+  }
+  const sessionId = atSessions ? kept.sessionId : routeSessionId
+  const draftWorkspace = atSessions ? kept.draftWorkspace : routeDraftWorkspace
   const queryClient = useQueryClient()
   const cachedSessionPages = queryClient.getQueryData<{
     pages: Array<{
@@ -69,11 +86,31 @@ function AgentLayoutBase() {
   const navigateRef = useRef(navigate)
   const sessionIdRef = useRef(sessionId)
   const workspaceRef = useRef<string | null>(null)
+  const atSessionsRef = useRef(atSessions)
   useEffect(() => {
     navigateRef.current = navigate
     sessionIdRef.current = sessionId
     workspaceRef.current = workspace
+    atSessionsRef.current = atSessions
   })
+
+  // Back from a phone chat goes up a level, to Sessions, whatever the
+  // history holds (a notification or a link may have opened the chat).
+  const backToSessions = useCallback(() => { void navigate({ to: '/sessions', replace: true }) }, [navigate])
+  const phoneStack = useMemo(() => (isPhone ? { atSessions, onBack: backToSessions } : undefined), [atSessions, backToSessions, isPhone])
+  // A bare / on a phone is the Sessions screen: name it in the URL.
+  useEffect(() => {
+    if (atSessions && pathname !== '/sessions') navigate({ to: '/sessions', replace: true })
+  }, [atSessions, navigate, pathname])
+  // Desktop and tablets list sessions in the sidebar: /sessions shows it.
+  useEffect(() => {
+    if (isPhone || pathname !== '/sessions') return
+    useLayoutStore.getState().setSidebarCollapsed(false, false)
+    navigate({ to: '/', replace: true })
+  }, [isPhone, navigate, pathname])
+  // Sessions is the phone's first screen: Android Back there leaves the
+  // app rather than walking back through the chats it has shown.
+  useBackHandler(atSessions, moveAppToBackground)
 
   useEffect(() => {
     if (workspace) saveLastWorkspace(workspace)
@@ -95,10 +132,11 @@ function AgentLayoutBase() {
 
   // The bare route picks where to go: the last workspace's latest session,
   // else a new-session draft there, else a Chat draft. A New Window starts
-  // on a draft. Drafts (`?workspace=`) and sessions stay put.
+  // on a draft. Drafts (`?workspace=`) and sessions stay put, and so does a
+  // phone, whose first screen is Sessions.
   const chatPath = chatWorkspace?.path ?? null
   useEffect(() => {
-    if (sessionId || draftWorkspace) return
+    if (sessionId || draftWorkspace || atSessions || pathname === '/sessions') return
     let cancelled = false
     const openDraft = (path: string) => {
       startNewSession({ navigate: navigateRef.current, workspace: path, replace: true })
@@ -150,7 +188,7 @@ function AgentLayoutBase() {
       cancelled = true
       window.clearTimeout(restore)
     }
-  }, [navigate, sessionId, draftWorkspace, chatPath])
+  }, [navigate, sessionId, draftWorkspace, chatPath, atSessions, pathname])
 
   // Leaving a session for a draft by history (Back) skips
   // `startNewSession`, so the store still holds that session: reset it, or
@@ -195,11 +233,17 @@ function AgentLayoutBase() {
           saveLastWorkspace(workspace)
           setAdopted({ id: state.sessionId, workspace })
         }
-        navigateRef.current({
-          to: '/$sessionId',
-          params: { sessionId: state.sessionId },
-          replace: true,
-        })
+        // A draft popped back to Sessions before its first reply named the
+        // session: it becomes the chat kept under the list, not a push.
+        if (atSessionsRef.current) {
+          setKept({ sessionId: state.sessionId, draftWorkspace: null })
+        } else {
+          navigateRef.current({
+            to: '/$sessionId',
+            params: { sessionId: state.sessionId },
+            replace: true,
+          })
+        }
       }
 
       // When title_update arrives, patch the cached session list
@@ -241,6 +285,7 @@ function AgentLayoutBase() {
         workspace={workspace}
         sessionLoading={Boolean(sessionId) && !workspace && sessionQuery.isLoading}
         sessionNotFound={Boolean(sessionId) && !workspace && isMissingSessionError(sessionQuery.error)}
+        phoneStack={phoneStack}
       />
       <Outlet />
     </>

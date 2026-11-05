@@ -459,4 +459,33 @@ describe('AgentChatHeader', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Review panel' }))
     expect(onWorkspaceFiles).toHaveBeenCalledTimes(1)
   })
+
+  describe('on a phone stack', () => {
+    it('trades the sidebar toggle for ‹ Sessions, which goes back', async () => {
+      const onBack = mock(() => {})
+      const onSidebarToggle = mock(() => {})
+      renderHeader({ onBack, onSidebarToggle })
+      expect(screen.queryByRole('button', { name: 'Toggle sidebar' })).toBeNull()
+      const back = screen.getByRole('button', { name: 'Back to Sessions' })
+      expect(back).toHaveTextContent('Sessions')
+      await userEvent.setup().click(back)
+      expect(onBack).toHaveBeenCalledTimes(1)
+      expect(onSidebarToggle).not.toHaveBeenCalled()
+    })
+
+    it('keeps the title, its workspace, Tasks and Review panel', () => {
+      const { container } = renderHeader({ onBack: () => undefined })
+      expect(container.querySelector('[data-phone-nav-title]')).toHaveTextContent('Fix updater restart')
+      expect(container.querySelector('[data-phone-nav-title]')).toHaveTextContent('Workspace A')
+      const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
+      expect(names).toEqual(['Back to Sessions', 'Tasks', 'Review panel'])
+    })
+
+    it('draws every bar button with the Button primitive', () => {
+      const { container } = renderHeader({ onBack: () => undefined, onOpenLead: () => undefined })
+      for (const button of container.querySelectorAll<HTMLElement>('header button')) {
+        expect(button.dataset.slot).toBe('button')
+      }
+    })
+  })
 })

@@ -6,6 +6,7 @@ import { CornerUpLeft, ListTodo, Menu, PanelLeft, PanelRight } from 'lucide-reac
 
 import { AgentTopbar } from '@/components/AgentTopbar'
 import { usePanelWidthSink } from '@/components/ResizableAside'
+import { PhoneNavBar } from '@/components/phone/PhoneNavBar'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { hasWindowCaption, usePlatform } from '@/hooks/use-platform'
@@ -33,6 +34,11 @@ interface AgentChatHeaderProps {
    */
   onOpenLead?: () => void
   onSidebarToggle: () => void
+  /**
+   * A phone's navigation stack: ‹ Sessions replaces the sidebar toggle and
+   * the bar takes iOS's layout (see PhoneNavBar).
+   */
+  onBack?: () => void
   sessionId: string | null
   todos: TodoItem[]
   /** ⌘T target: the dock's Tasks tab on desktop, the popover otherwise. */
@@ -141,6 +147,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   sessionTitle,
   onOpenLead,
   onSidebarToggle,
+  onBack,
   sessionId,
   todos,
   onToggleTasks,
@@ -288,6 +295,48 @@ export const AgentChatHeader = memo(function AgentChatHeader({
     )
   }
 
+  const tasksAction = (
+    <MobileHeaderAction
+      Icon={ListTodo}
+      label={activeTodoCount > 0 ? `Tasks, ${activeTodoCount} open` : 'Tasks'}
+      tooltip={goalState ? `${goalState.text} · Tasks` : 'Tasks'}
+      onClick={sessionId ? onToggleTasks : undefined}
+      active={tasksViewActive}
+      disabled={!sessionId}
+      badge={activeTodoCount}
+      goalTone={goalState?.tone}
+    />
+  )
+  const reviewAction = (
+    <MobileHeaderAction
+      Icon={PanelRight}
+      label="Review panel"
+      onClick={workspace ? onWorkspaceFiles : undefined}
+      active={workspacePanel !== null}
+      disabled={!workspace}
+    />
+  )
+
+  if (onBack) {
+    return (
+      <PhoneNavBar
+        separator="scrolled"
+        back={{ label: 'Sessions', onBack }}
+        title={!workspace
+          ? 'Choose a workspace'
+          : sessionTitle ? <AnimatedTitle text={sessionTitle} sessionId={sessionId} /> : sessionId ? 'Untitled session' : 'New session'}
+        subtitle={workspace ? workspaceName : undefined}
+        trailing={(
+          <div data-header-cluster="end" className="flex items-center">
+            {onOpenLead && <OpenLeadButton onOpen={onOpenLead} />}
+            {tasksAction}
+            {reviewAction}
+          </div>
+        )}
+      />
+    )
+  }
+
   return (
     <header
       {...dragHandlers}
@@ -325,23 +374,8 @@ export const AgentChatHeader = memo(function AgentChatHeader({
             whose "+" menu holds terminal, find file and scheduled tasks. Its
             pr-2 mirrors the left cluster's pl-2. */}
         <div data-header-cluster="end" className="flex min-w-0 items-center justify-self-end gap-0.5 pr-2 md:pr-1">
-            <MobileHeaderAction
-              Icon={ListTodo}
-              label={activeTodoCount > 0 ? `Tasks, ${activeTodoCount} open` : 'Tasks'}
-              tooltip={goalState ? `${goalState.text} · Tasks` : 'Tasks'}
-              onClick={sessionId ? onToggleTasks : undefined}
-              active={tasksViewActive}
-              disabled={!sessionId}
-              badge={activeTodoCount}
-              goalTone={goalState?.tone}
-            />
-            <MobileHeaderAction
-              Icon={PanelRight}
-              label="Review panel"
-              onClick={workspace ? onWorkspaceFiles : undefined}
-              active={workspacePanel !== null}
-              disabled={!workspace}
-            />
+            {tasksAction}
+            {reviewAction}
         </div>
     </header>
   )

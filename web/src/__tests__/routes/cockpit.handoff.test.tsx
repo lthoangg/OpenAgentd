@@ -12,6 +12,7 @@ mock.module('@tanstack/react-router', () => ({
   useParams: () => params,
   useSearch: () => search,
   useNavigate: () => navigate,
+  useLocation: ({ select }: { select: (location: { pathname: string }) => unknown }) => select({ pathname: '/' }),
 }))
 
 const chatViewProps: Array<{ sessionId?: string; workspace: string | null; sessionLoading: boolean }> = []

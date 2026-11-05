@@ -95,10 +95,10 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
       data-run-chip=""
       onClick={isMobile ? () => setOpen(!open) : undefined}
       className={cn(
-        'flex h-8 min-w-0 shrink items-center gap-1.5 rounded-md px-2 text-xs text-(--color-text-2) transition-colors duration-(--motion-instant)',
+        'flex h-8 min-w-0 shrink items-center gap-1.5 rounded-sm px-2 text-xs text-(--color-text-2) transition-colors duration-(--motion-instant)',
         'hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text)',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:cursor-not-allowed disabled:opacity-50',
-        'md:h-7 pointer-coarse:h-9',
+        'md:h-7 pointer-coarse:h-9 phone:h-11',
         // Stacked: two lines in a 36px chip, capped so Send keeps its room.
         '@max-[520px]:h-9 @max-[520px]:max-w-[11rem] @max-[520px]:pr-1.5',
         // A 320px phone (Display Zoom) leaves the chip ~50px: it drops the

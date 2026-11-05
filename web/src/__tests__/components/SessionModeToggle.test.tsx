@@ -6,10 +6,11 @@ import { SessionModeToggle } from '@/components/SessionModeToggle'
 afterEach(cleanup)
 
 describe('SessionModeToggle', () => {
-  test('grows to the composer 36px touch height on a phone', () => {
+  test('takes the run deck heights: 36px on a touch tablet, 44px on a phone', () => {
     render(<SessionModeToggle mode="code" onChange={() => {}} />)
 
-    expect(screen.getByRole('group', { name: 'Interaction mode' }).className).toContain('max-md:pointer-coarse:h-9')
+    const classes = screen.getByRole('group', { name: 'Interaction mode' }).className.split(/\s+/)
+    expect(classes).toEqual(expect.arrayContaining(['md:h-7', 'pointer-coarse:h-9', 'phone:h-11']))
   })
 
   test('shows the active mode and selects the other mode directly', () => {

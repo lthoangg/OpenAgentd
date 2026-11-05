@@ -725,10 +725,11 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   ) : null
 
   // Icon controls on the action row are borderless (DESIGN.md → Buttons):
-  // ghost at rest, keycap fill on hover. 28px on desktop, 32px on a narrow
-  // screen with a mouse, 36px for a finger.
+  // ghost at rest, keycap fill on hover. The run deck's steps, as Send: 28px
+  // on desktop, 32px in a narrow mouse window, 36px on a touch tablet, 44px
+  // on a phone.
   const actionBtnClass =
-    'flex size-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-[color,background-color,scale] duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:bg-(--color-border-subtle) dark:active:bg-(--color-border) pointer-coarse:active:scale-90 motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:size-7 pointer-coarse:size-9'
+    'flex size-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-[color,background-color,scale] duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:bg-(--color-border-subtle) dark:active:bg-(--color-border) pointer-coarse:active:scale-90 motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:size-7 pointer-coarse:size-9 phone:size-11'
 
   const stopClick = (e: React.MouseEvent) => e.stopPropagation()
 

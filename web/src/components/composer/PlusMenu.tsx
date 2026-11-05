@@ -75,7 +75,9 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
       aria-haspopup="dialog"
       aria-describedby={attention.summary ? attentionId : undefined}
       onClick={isMobile ? () => setOpen(!open) : undefined}
-      className="relative rounded-md aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) md:size-7"
+      // The run deck's steps (InputComposer → Send): explicit, since the
+      // popover trigger a tablet gets carries no button touch floor.
+      className="relative aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) md:size-7 pointer-coarse:size-9 phone:size-11"
     >
       <Plus size={14} aria-hidden="true" />
       {attention.summary && (

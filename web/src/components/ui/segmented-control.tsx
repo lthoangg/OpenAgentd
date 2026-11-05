@@ -37,9 +37,10 @@ const TRACK_SIZE: Record<SegmentedSize, string> = {
   sm: 'h-6 pointer-coarse:h-7',
   // 32px; on touch each segment is a 44px target.
   default: 'h-8 pointer-coarse:h-auto',
-  // Composer toolbar: matches the attach/send buttons beside it (32px, 28px
-  // on desktop, 36px on a touch phone), so the row stays one height.
-  composer: 'h-8 md:h-7 max-md:pointer-coarse:h-9',
+  // Composer toolbar: matches the "+" and Send beside it (32px, 28px on
+  // desktop, 36px on a touch tablet, 44px on a phone), so the row stays one
+  // height.
+  composer: 'h-8 md:h-7 pointer-coarse:h-9 phone:h-11',
 }
 
 const ITEM_SIZE: Record<SegmentedSize, string> = {

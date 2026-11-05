@@ -1561,6 +1561,12 @@ html[data-app-hidden="true"] *::after {
     min-height: 48px;
     min-width: 48px;
   }
+  /* The composer's run deck is one row height, 44px in both phone apps, as
+     Send (a bare button) is: its "+" keeps that rather than Material's 48. */
+  html[data-mobile-shell="android"] [data-run-deck] [data-slot="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
   .touch-hit::before {
     inset: min(0px, calc((100% - 44px) / 2));
   }

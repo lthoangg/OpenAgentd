@@ -137,6 +137,14 @@
   html {
     @apply font-sans;
   }
+  /* macOS app, dark: grayscale antialiasing, as native Mac apps and Apple's
+   * own pages draw light text on dark. Subpixel smoothing (the WebKit
+   * default) thickens light-on-dark strokes so text looks bold and blurry.
+   * Light mode keeps the default. The colours (and their APCA pairs) do not
+   * change, only the stroke weight. */
+  html[data-platform="mac-overlay"].dark {
+    -webkit-font-smoothing: antialiased;
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────

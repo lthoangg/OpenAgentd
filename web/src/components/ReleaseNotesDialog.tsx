@@ -3,7 +3,8 @@
  * update card and the Settings → Updates section so both show the same
  * Dialog (focus trap, Escape, focus return) instead of two hand-built modals.
  */
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { useHeightGlide } from '@/hooks/useHeightGlide'
 import { fetchReleaseNotes, type ReleaseNotes } from '@/lib/updater'
 import { openExternalUrl } from '@/lib/open-external'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -24,6 +25,9 @@ export function ReleaseNotesButton({ version, fallbackNotes, className }: Releas
   const [open, setOpen] = useState(false)
   const [notes, setNotes] = useState<ReleaseNotes | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const bodyClipRef = useRef<HTMLDivElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  useHeightGlide(bodyClipRef, bodyRef, open)
 
   async function openNotes() {
     setOpen(true)
@@ -78,10 +82,14 @@ export function ReleaseNotesButton({ version, fallbackNotes, className }: Releas
               </Button>
             </div>
           </DialogHeader>
-          <div className="max-h-[24rem] overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 text-(--color-text)">
-            <MarkdownBlock
-              content={`${notes?.body ?? fallbackNotes ?? 'Loading release notes…'}${error ? `\n\nCould not load GitHub release notes: ${error}` : ''}`}
-            />
+          {/* The notes load after the dialog opens: the body glides to their
+              height (useHeightGlide) rather than the centred dialog jumping. */}
+          <div ref={bodyClipRef} className="overflow-hidden">
+            <div ref={bodyRef} className="max-h-[24rem] overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 text-(--color-text)">
+              <MarkdownBlock
+                content={`${notes?.body ?? fallbackNotes ?? 'Loading release notes…'}${error ? `\n\nCould not load GitHub release notes: ${error}` : ''}`}
+              />
+            </div>
           </div>
         </DialogContent>
       </Dialog>

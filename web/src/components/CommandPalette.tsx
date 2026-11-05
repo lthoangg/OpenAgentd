@@ -35,6 +35,7 @@ import { isImeComposing } from '@/lib/keyboard/chord'
 import type { WorkspaceFileInfo } from '@/api/types'
 import { IGNORED_FILE_PENALTY } from '@/components/InputComposer.mentions'
 import { hoverIntent } from '@/hooks/use-hover-intent'
+import { useHeightGlide } from '@/hooks/useHeightGlide'
 
 /** Nested list a command opens in place of running. */
 export interface CommandPage {
@@ -304,6 +305,8 @@ export function CommandPalette({
   const [activeIdx, setActiveIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const listClipRef = useRef<HTMLDivElement>(null)
+  useHeightGlide(listClipRef, listRef)
   const headingId = useId()
 
   const trail = useMemo(() => {
@@ -628,6 +631,9 @@ export function CommandPalette({
           </div>
 
           {/* Results: groups of rows, walked by the arrows as one list. */}
+          {/* The clip glides to the list's new height as results narrow or
+              grow (useHeightGlide), so the card's edge never jumps per key. */}
+          <div ref={listClipRef} className="flex min-h-0 flex-col overflow-hidden">
           <div ref={listRef} className="max-h-80 min-h-0 overflow-y-auto overscroll-contain p-1.5 md:max-h-[28rem]">
             {sections.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-1 px-4 py-8 text-center" role="status">
@@ -676,6 +682,7 @@ export function CommandPalette({
                 </div>
               ))
             )}
+          </div>
           </div>
 
           {/* Keyboard hints: phones have no keys to press, and the row would

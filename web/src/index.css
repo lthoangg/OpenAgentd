@@ -1202,6 +1202,11 @@ html[data-app-hidden="true"] *::after {
 .oa-fade-in {
   animation: oa-fade-in var(--motion-base) var(--ease-out) backwards;
 }
+/* A view that replaces another in place (a Settings section, a selected
+ * task or span): a quick crossfade rather than a cut. */
+.oa-fade-in-fast {
+  animation: oa-fade-in var(--motion-fast) var(--ease-out) backwards;
+}
 /* Loading placeholders: hidden for a beat first, so a fast load never
  * flashes one. Reduced motion keeps the beat and drops the fade. */
 .oa-fade-in-late {

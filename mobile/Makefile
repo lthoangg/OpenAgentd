@@ -117,8 +117,13 @@ ios-ipa: ## Build the release archive and package a sideloadable IPA into dist/
 ios-release: ios-ipa ## Build the IPA and upload it plus source.json to the GitHub release (DRY_RUN=1 to preview)
 	./scripts/publish-ipa.sh
 
+# The device-taking targets read a device name as the next goal (`make
+# ios-dev-device MyPhone`); this rule makes that goal a no-op. Defined only
+# for them, so a mistyped target still fails.
+ifneq ($(filter ios-dev-device ios-install-device ios-install-device-fast android-dev,$(firstword $(MAKECMDGOALS))),)
 %:
 	@:
+endif
 
 ios-build: ## Build the iOS app
 	$(MAKE) ios-icons

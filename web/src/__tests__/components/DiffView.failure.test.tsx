@@ -8,8 +8,8 @@
  * the collapsed header counted lines that were never written. See
  * `ToolCall.failure.test.tsx` for the sibling header-level regression.
  *
- * The error now shows twice by design: as the red one-line summary on the
- * collapsed row, and in full in the expanded body.
+ * The collapsed row carries no result summary or failure mark (results load
+ * on demand); the error shows in full in the expanded body.
  */
 import { describe, it, expect, afterEach, beforeEach } from "bun:test"
 import { render, screen, cleanup } from "@testing-library/react"
@@ -52,10 +52,8 @@ describe("DiffView — failed patch call", () => {
 
     await user.click(screen.getByRole("button"))
 
-    // Red summary on the row, plus the full message in the expanded body
-    expect(screen.getAllByText(/Could not find patch context/)).toHaveLength(2)
-    const summary = screen.getByText("Could not find patch context in src/utils.py.")
-    expect(summary.className).toContain("text-(--color-error)")
+    // Only the expanded body holds the message; the row has no summary.
+    expect(screen.getAllByText(/Could not find patch context/)).toHaveLength(1)
     const body = document.querySelector("section pre")
     expect(body?.textContent).toBe(ERROR_RESULT)
     expect(body?.className).toContain("text-(--color-error)")

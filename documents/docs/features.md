@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-11-04
+updated: 2026-11-05
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.45.0 · November 4, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.45.0)
+**Latest release:** v3.46.0 · November 5, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.46.0)
 
 ---
 
@@ -330,6 +330,36 @@ run from the terminal (the native Rust binary since v3.0.0).
   or reloading mid-turn no longer repeats the reply or a steer message, and
   a step saved during the reconnect shows up right away instead of at the
   end of the turn.
+- **Lighter over a remote connection** `[v3.46.0]` — a running reply reaches
+  the phone app (or any browser on another machine) in about a third as many
+  stream updates and roughly 60% fewer bytes; the first words still appear
+  at once and text stays in order. Reopening a session that has not changed
+  downloads nothing (the server answers "not modified"), and on the phone
+  app the file list and git status revalidate the same way. Coming back to
+  the phone app while the agent works fetches only what was saved while it
+  was in the background, and tool cards that finished meanwhile show as
+  done at once. History pages no longer carry the provider-internal replay
+  data (raw content blocks, thinking signatures, reasoning items) that made
+  up close to half of their bytes. A tool's output (a file read, a command's
+  output, search results) no longer comes with the session: it loads when
+  you open the tool row or copy its result, and a running command still
+  shows its output live. Tool rows no longer show a result summary (line or
+  match counts, test totals) or a red failure mark; cards built from their
+  answer (questions, plans, goals) look as before, and a patch's line
+  numbers and diagnostics, a todo or schedule list, and a preview's page
+  outline load when you open the row. Opening a tool row in a long session
+  answers in under a millisecond on the server. A
+  reopened session also leaves out a described command's text, a patch's
+  diff and a plan's text: the row still shows the description, the files
+  with their line counts and the plan action, and the rest loads when you
+  open the row. Opening a session with subagents no longer downloads their
+  latest messages (the main view never shows them; opening a subagent loads
+  its own conversation), and images you attached or the agent showed are
+  not downloaded again when you reopen a session. Each saved message also
+  leaves out the fields the app never reads (stop reason, cost breakdown,
+  undo bookkeeping), about a fifth of what is left of a long session.
+  A running reply reaches a phone or another computer compressed, at about
+  a ninth of the bytes, with each update still arriving at once.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.
@@ -816,7 +846,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     Changes / History…) slides to the new choice, and switches ease their
     thumb to a soft stop.
   - **Focus Mode** (`⌘⇧F`/`Ctrl+Shift+F`) hides the sidebar and the Review
-    panel; press it again to bring both back.
+    panel; press it again to bring both back *(deprecated; removed in
+    v3.46.0: hide the sidebar with `⌘B` and the Review panel with `⌘D`)*.
   - **Find in Session** (`⌘F`/`Ctrl+F` while in the chat) searches the
     loaded conversation, with the match count and ↑/↓ to step through.
   - `F6` / `Shift+F6` move between the sidebar, the transcript, the composer,
@@ -997,8 +1028,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - On Windows and Linux the menu bar is hidden: **☰** at the left of the
     header, or tapping Alt, opens the application menu. Its View menu has
     Sidebar, Review Panel, Split Review Panel Right and Down, Open Terminal,
-    Maximize Review Panel, Focus Mode, Model and Thinking…, Text Size and
-    Reset Layout
+    Maximize Review Panel, Focus Mode *(deprecated; removed in v3.46.0)*,
+    Model and Thinking…, Text Size and Reset Layout
     (macOS has them in its menu bar), and Quick Open is now **Find File…**.
     Its shortcuts (`Ctrl+Q`, `Ctrl+=`, `Ctrl+Shift+N`…) work in every
     window, and on Linux the bar no longer comes back when the window is
@@ -1025,7 +1056,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     opened in the window, and scroll bars follow System Settings.
   - Optional global shortcuts, off by default: **Global Shortcuts** in the
     OpenAgentd menu turns on `⌥⌘O`/`Ctrl+Alt+O` (Show OpenAgentd) and
-    `⌥⌘J`/`Ctrl+Alt+J` (Next session that needs you).
+    `⌥⌘J`/`Ctrl+Alt+J` (Next session that needs you). Since `[v3.46.0]` the
+    command palette has Next Session That Needs You too.
   - On Android the system font size now enlarges text, up to 125%, as
     Dynamic Type does on iOS.
   - In the phone apps, long-press menus (sessions, tabs, tool rows,
@@ -1217,7 +1249,29 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A shell call's tooltip shows only its description (the command is
     already on the row), and other tooltips (copy buttons, a prompt's and an
     answer's actions, session rows) are the system's plain tooltips, so a
-    long transcript renders lighter.
+    long transcript renders lighter. *(Since v3.46.0 the row shows the
+    description and the tooltip the command.)*
+- **Shell rows say what they do; phone header padding** `[v3.46.0]`:
+  - A shell row shows the agent's description of the command (`shell  Run
+    the unit tests`), and hovering it shows the whole command; the expanded
+    row still shows the command and its output. A call without a
+    description shows its command as before.
+  - On a phone the Review panel button sits as far from the right edge as
+    the sidebar button does from the left.
+- **Readable contrast everywhere** `[v3.46.0]`:
+  - Dark mode's secondary text (timestamps, hints, metadata) is a step
+    brighter, as readable as in comparable dark apps.
+  - The chosen option of a segmented control or tab (Theme: Light / Dark /
+    System, Code / Plan, a question's options) reads at a glance; a switch
+    that is off and the edge of a text field are clearly visible; keyboard
+    focus in light mode is a deeper blue that shows on every surface.
+  - Placeholders, the tabs of a pane without focus, close and copy buttons
+    and Telemetry bars are no longer faded below a readable level.
+  - Terminal output in any colour stays readable (ANSI black on the dark
+    background, white on the light one), and light-mode code colours are a
+    touch deeper.
+  - The macOS tray's warning and status colours, the desktop pet's marks in
+    dark mode and the Windows taskbar badge digits read clearly.
 - **Increased contrast and Windows contrast themes** `[v3.31.0]` — with the
   system's "Increase contrast" setting on, muted text and borders get
   stronger tones in both themes, with borders at least 3:1 against the page.
@@ -1320,7 +1374,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   platform-aware shortcuts `[v1.93.1]`.
   - **Platform-standard menus** `[v3.0.0]` — File has New Session (`⌘N`), New
     Window (`⌘⇧N`), Open Workspace… (`⌘O`), and Close Window (`⌘W`, which
-    closes an open dock tab first). View
+    closes an open dock tab first; since `[v3.46.0]` `⌘O` / `Ctrl+O` and
+    Open Workspace… in the command palette work in the browser too). View
     adds Toggle Sidebar (`⌘B`). A new Help menu
     links GitHub, release notes, and issue reporting, and holds the config
     folder and log shortcuts. The macOS app menu gains Services and
@@ -2044,6 +2099,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   The desktop keeps them in `access-keys.json`, a file only your user can read, in its app config folder, instead of the OS credential store `[v3.22.0]`: macOS ties a keychain item to the signing Team ID of the app that saved it, which the unsigned desktop app does not have, so it asked for keychain access after every update. Keys saved in the keychain by earlier versions are not carried over; enter them again in the Server dialog.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
 - **Desktop network access** `[v3.15.0]` — a **Network access** switch in desktop **Settings → Server → Access from other devices** (and the **Server** dialog) lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in a file only your user can read (`network-access-key` in its app config folder; before v3.22.0 it was in the OS credential store, so devices paired earlier need the new key), and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. `[v3.16.0]` While network access is on, **Show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Server** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save and use**. The code hides when the key changes or network access turns off.
+  `[v3.46.0]` The code carries the OpenAgentd seal in its centre and uses a higher error-correction level, so it still scans.
 
 ---
 
@@ -2158,6 +2214,19 @@ executes tools, manages its task list, and inspects workspace repositories.
   and pick each worktree yourself. The tool card shows a **Created worktree**
   chip and the checkout the message reached. Folders that are not git
   repositories cannot have worktrees, and the agent is told so.
+
+  **Sessions that work together, in one place** `[v3.46.0]` — a session a send
+  started is listed in the sidebar under the session that sent it, down the
+  whole chain (app sent to infra, infra sent to web: both under app). The
+  sender's row has a **↗ N** pill, folded at first like subagents, whose mark
+  says when one of those sessions is running or waiting on you. Open it to see
+  each session with its workspace and state, and click one to switch to it.
+  The started session still sits in its own workspace too, with a **↰ app**
+  mark that opens the sender. In the Status, Date and None views it is listed
+  only under its sender, so no session shows twice; Needs you still lists it
+  when it asks you something. A session you started yourself stays where it
+  is when another workspace messages it. Sessions sends started before this
+  release are grouped too, and deleting the sender leaves them in place.
 - **Workspace groups** `[v3.21.0]` — named tags on
   repositories that say which workspaces belong together. Set them up in
   **Settings → Workspaces → Groups**: create a group, give it a
@@ -2237,8 +2306,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   Since `[v3.0.0]` a dropped connection, DNS failure, or timeout during a turn
   retries every 3–5 seconds for as long as the network is down (Stop ends it),
   so the turn picks up within seconds of the connection returning; the
-  transcript keeps one retry notice that counts the attempts. Summarization,
-  which cannot be stopped mid-call, gives up after 10 attempts.
+  transcript keeps one retry notice that counts the attempts, and since
+  `[v3.46.0]` it goes away once the call answers or the turn ends.
+  Summarization, which cannot be stopped mid-call, gives up after 10 attempts.
 - **Automatic max-tokens truncation recovery** `[v1.87.0]` — when a provider
   hits the output token limit (`finish_reason="max_tokens"` or `"length"`), the
   loop automatically injects a recovery message (requesting a continuation for
@@ -2269,7 +2339,11 @@ executes tools, manages its task list, and inspects workspace repositories.
   the window resets. Stale quota-wait banners are cleared when turns resume,
   when later transcript activity supersedes the wait state, or when a reopened
   session is no longer actively waiting. The user can manually stop or
-  interrupt at any time. An account spend cap (such as Anthropic's monthly
+  interrupt at any time. Since `[v3.46.0]` the card gives way to the reply
+  dots the moment the quota resets, a reload keeps a pinned account's card
+  and its choices, and a run of failed retries ends in one line ("Stopped
+  retrying … after 5 attempts") above a single error card instead of a
+  blank "Model error" card. An account spend cap (such as Anthropic's monthly
   spend limit) is not waited out: the turn fails at once and says to raise
   the limit or switch model `[v3.30.0]`.
   With several keys or accounts for the provider, a limit first switches to
@@ -2776,8 +2850,11 @@ agent against it.
   Includes PTY output backpressure, GPU-accelerated WebGL rendering `[v1.118.0]`,
   debounced SIGWINCH resizing, and mobile key bar ergonomics (touch-and-hold arrow repeat,
   soft-keyboard focus preservation, quick symbol row).
-  Terminal font defaults to a best-guess Nerd Font stack
-  (MesloLGS NF and similar) for correct Powerlevel10k/Starship glyph rendering.
+  Terminal font is a best-guess Nerd Font stack (MesloLGS NF and similar)
+  for correct Powerlevel10k/Starship glyph rendering, at 13 px. A custom
+  terminal font and size *(deprecated; removed in v3.46.0, with the Terminal
+  settings page that set them)* no longer apply, and their stored values are
+  cleared.
   App shortcuts work from a focused terminal: on macOS every `⌘` shortcut,
   including `⌘K` for the palette, and on
   Windows/Linux `Ctrl+K` and `Ctrl+P` skip the shell to open the palette and
@@ -3225,6 +3302,12 @@ MCP.
 - **View an image the agent read** `[v3.24.0]` — a `read` of an image in the
   workspace gets a **View image** button on its transcript row, which opens the
   image in the side panel. It is hidden once the image is gone from the workspace.
+- **SVG files read as text** `[v3.46.0]` — `read` returns an `.svg` file's XML
+  instead of sending it as an image, which every provider rejected (the session
+  then failed on every later turn). Other images models cannot view (BMP, ICO,
+  TIFF) come back as a note with a command to convert them to PNG, and a request
+  replaces any such image already in the history with a one-line note, so
+  sessions that broke this way work again.
 - **Real-time LSP diagnostics injection** `[v1.89.0, v1.105.0, v2.0.0]` — in **coding mode**, after the
   `patch` tool modifies one or more files, OpenAgentd runs the
   matching language server(s) over the changed files and injects the resulting
@@ -3931,7 +4014,8 @@ The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed i
 - **SSE event protocol** `[since v1.0]` — typed events: `thinking`, `message`,
   `tool_call`, `tool_start`, `tool_output_delta`, `tool_end`, `usage`,
   `inbox`, `agent_status`, `queued_turn_start`, `rate_limit`,
-  `provider_status`, `permission_asked`, `error`, `done`.
+  `provider_status`, `error`, `done`. *(`permission_asked` removed in
+  v3.46.0: tools are always allowed and no client acted on it.)*
 - **Mid-turn reconnect** `[since v1.0]` — close the tab, reopen later; the
   stream replays buffered state then resumes live.
 - **Self-healing live feed** `[v3.26.0]` — a session's live feed that goes

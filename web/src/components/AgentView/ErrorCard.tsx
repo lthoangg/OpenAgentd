@@ -1,31 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
+import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useUIStore } from '@/stores/useUIStore'
 
-/** How long "Copied" shows before the label returns. */
-const COPIED_MS = 1500
-
 /** A "Copy details" text action that says "Copied" for a moment. */
 export function CopyDetailsButton({ text, size = 'xs' }: { text: string; size?: 'xs' | 'sm' }) {
-  const [copied, setCopied] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => () => { if (timer.current !== null) clearTimeout(timer.current) }, [])
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      if (timer.current !== null) clearTimeout(timer.current)
-      timer.current = setTimeout(() => setCopied(false), COPIED_MS)
-    } catch {
-      // The clipboard can be unavailable (insecure context, denied permission).
-    }
-  }
+  const { copied, copy } = useCopyFeedback()
   return (
-    <Button type="button" size={size} variant="ghost" onClick={() => void copy()}>
+    <Button type="button" size={size} variant="ghost" onClick={() => void copy(text)}>
       {copied ? 'Copied' : 'Copy details'}
     </Button>
   )

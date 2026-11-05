@@ -14,6 +14,7 @@
  *   - ``Navigation`` — app-level surfaces (Settings, Telemetry)
  */
 import { useMemo } from 'react'
+import { useRouter } from '@tanstack/react-router'
 import type { Command } from '../CommandPalette'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
@@ -23,6 +24,8 @@ import { useThemePreference } from '@/hooks/useThemePreference'
 import { TEXT_SIZES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { APP_SHORTCUTS as KEYS, shortcutLabel } from '@/lib/app-shortcuts'
+import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
+import { openNextNeedsYou } from '@/lib/desktop-commands'
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 
 /** The session's goal as the palette needs it: given only while it has one. */
@@ -52,9 +55,6 @@ interface UseAgentCommandsArgs {
   /** Desktop with a workspace: split the Review panel's focused pane right (⌘\) or down (⌘⇧\). */
   handleSplitDock?: () => void
   handleSplitDockDown?: () => void
-  /** Desktop: hide the sidebar and the Review panel, or bring them back. */
-  handleToggleFocusMode?: () => void
-  focusMode?: boolean
   /** Desktop: find in this session's transcript (⌘F). */
   handleFindInSession?: () => void
   /** Only while the session has a plan: opens it (dock Plan tab, or the task popover without a workspace). */
@@ -94,8 +94,6 @@ export function useAgentCommands({
   handleToggleDockMaximized,
   handleSplitDock,
   handleSplitDockDown,
-  handleToggleFocusMode,
-  focusMode = false,
   handleFindInSession,
   handleOpenPlan,
   planAwaitingReview = false,
@@ -110,6 +108,7 @@ export function useAgentCommands({
   const textSize = useDisplayPrefsStore((s) => s.textSize)
   const setTextSize = useDisplayPrefsStore((s) => s.setTextSize)
   const { os, isTauri } = usePlatform()
+  const router = useRouter()
   return useMemo<Command[]>(() => [
     { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
     ...goalCommands(goal),
@@ -148,9 +147,6 @@ export function useAgentCommands({
     ...(handleSplitDockDown
       ? [{ id: 'split-dock-down', group: 'View' as const, label: 'Split Review Panel Down', description: 'A new pane under the focused one; closing its last tab joins it back', keywords: 'dock split pane group top bottom down horizontal', shortcut: shortcutLabel(KEYS.splitDockDown, os), action: handleSplitDockDown }]
       : []),
-    ...(handleToggleFocusMode
-      ? [{ id: 'focus-mode', group: 'View' as const, label: focusMode ? 'Leave Focus Mode' : 'Focus Mode', description: focusMode ? 'Bring the sidebar and Review panel back' : 'Hide the sidebar and Review panel; again to bring them back', keywords: 'zen distraction free hide panels', shortcut: shortcutLabel(KEYS.focusMode, os), action: handleToggleFocusMode }]
-      : []),
     ...(handleFindInSession
       ? [{ id: 'find-in-session', group: 'Session' as const, label: 'Find in Session', description: 'Search this conversation', keywords: 'search text transcript', shortcut: shortcutLabel(KEYS.findInSession, os), action: handleFindInSession }]
       : []),
@@ -168,6 +164,8 @@ export function useAgentCommands({
       : []),
     { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'The last terminal, or a new shell in the workspace (runs on the connected server)', keywords: 'shell console', action: handleOpenTerminal },
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Agents, skills, providers and more', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
+    { id: 'open-workspace', group: 'Navigation', label: 'Open Workspace…', description: 'Add a folder as a workspace', keywords: 'folder project repo add', shortcut: shortcutLabel(KEYS.openWorkspace, os), action: () => dispatchAppEvent(APP_EVENTS.openWorkspace) },
+    { id: 'next-needs-you', group: 'Navigation', label: 'Next Session That Needs You', description: 'Jump to the next session waiting for an answer or a review', keywords: 'waiting attention ask question approve', action: () => openNextNeedsYou(router) },
     { id: 'go-telemetry', group: 'Navigation', label: 'Open Usage', description: 'Spend, turns and traces by workspace and model', keywords: 'telemetry usage spend cost traces', action: () => openTelemetry() },
     { id: 'keyboard-shortcuts', group: 'Navigation', label: 'Keyboard Shortcuts', description: 'Every shortcut, by where it works', keywords: 'keys hotkeys keybindings', shortcut: shortcutLabel(KEYS.shortcutsHelp, os), action: () => useUIStore.getState().toggleShortcutsHelp() },
     {
@@ -220,5 +218,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleSplitDock, handleSplitDockDown, handleToggleFocusMode, focusMode, handleFindInSession, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode, textSize, setTextSize])
+  ], [os, isTauri, router, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleSplitDock, handleSplitDockDown, handleFindInSession, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode, textSize, setTextSize])
 }

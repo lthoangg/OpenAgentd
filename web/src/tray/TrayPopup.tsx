@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { Plug, RefreshCw, WifiOff } from 'lucide-react'
 import { Wordmark } from '@/components/brand/Logo'
+import { PET_SETTINGS_EVENT } from '@/lib/pet-setting'
 import { ProviderCard, ProviderSkeleton } from './ProviderCard'
 import { ServerPicker } from './ServerPicker'
 import { TRAY_STATUS_LABEL, failureReason, providerView, trayStatus } from './providerView'
@@ -14,7 +15,6 @@ const ACTION_COMMAND = 'tray_action'
 const FIT_COMMAND = 'tray_fit'
 const TRAY_REFRESH_EVENT = 'tray-popup-refresh'
 const PET_SETTINGS_COMMAND = 'pet_settings'
-const PET_SETTINGS_EVENT = 'pet-settings-changed'
 /** "Checked 2m ago" is re-read this often while the popup is up. */
 const CHECKED_TICK_MS = 30_000
 /** Stable empty list, so hooks keyed on the servers don't rerun every render. */

@@ -366,8 +366,8 @@ export function UpdateCard() {
                   <div className="h-full w-full rounded-full bg-(--color-accent) transition-transform duration-(--motion-base) ease-(--ease-out)" style={{ translate: `${(progress ?? 10) - 100}% 0` }} />
                 </div>
                 <div className="mt-1 text-xs text-(--color-text-muted)">
-                  {formatBytes(status.downloaded_bytes)}
-                  {status.total_bytes ? ` / ${formatBytes(status.total_bytes)}` : ''}
+                  {formatMegabytes(status.downloaded_bytes)}
+                  {status.total_bytes ? ` / ${formatMegabytes(status.total_bytes)}` : ''}
                 </div>
               </div>
             ) : null}
@@ -426,11 +426,11 @@ function minimizedLabel(status: UpdateStatus): string {
 }
 
 function titleForStatus(status: UpdateStatus): string {
-  if (status.status === 'checking') return 'Checking for updates...'
+  if (status.status === 'checking') return 'Checking for updates…'
   if (status.status === 'available') return `OpenAgentd ${status.version} is available`
   if (status.status === 'downloading') return `Downloading OpenAgentd ${status.version}`
   if (status.status === 'downloaded') return `OpenAgentd ${status.version} is ready to install`
-  if (status.status === 'installing') return 'Installing update...'
+  if (status.status === 'installing') return 'Installing update…'
   if (status.status === 'up_to_date') return 'OpenAgentd is up to date'
   if (status.status === 'error') return 'Update failed'
   return ''
@@ -445,7 +445,8 @@ function descriptionForStatus(status: UpdateStatus): string {
   return ''
 }
 
-function formatBytes(bytes?: number | null): string {
+/** Whole megabytes, so a download's progress does not flicker by tenths. */
+function formatMegabytes(bytes?: number | null): string {
   if (!bytes) return '0 MB'
   return `${Math.max(1, Math.round(bytes / (1024 * 1024)))} MB`
 }

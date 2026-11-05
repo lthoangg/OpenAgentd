@@ -68,6 +68,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 import { sessionWorking } from '@/lib/active-sessions'
 import {
   useDeleteSessionMutation,
@@ -395,9 +396,6 @@ export function Sidebar({
   // worktree's). Absent means every checkout.
   const [checkoutFilter, setCheckoutFilter] = useState<Record<string, string>>({})
   const [checkoutMenu, setCheckoutMenu] = useState<{ repo: string; x: number; y: number } | null>(null)
-  // Workspace pending removal — null when no confirmation is open. The
-  // confirmation dialog reads this; ``confirmRemoveWorkspace`` commits.
-  const [removeWorkspaceTarget, setRemoveWorkspaceTarget] = useState<string | null>(null)
   const [worktreeTarget, setWorktreeTarget] = useState<string | null>(null)
   const [worktreeName, setWorktreeName] = useState('')
   const [worktreeBranch, setWorktreeBranch] = useState('')
@@ -619,11 +617,8 @@ export function Sidebar({
   // Remove a workspace (and its worktrees) from the sidebar. Sessions stay in
   // the backend — reopening the same folder later resurfaces them. Leaving a
   // removed active workspace for the empty / route happens inside
-  // ``confirmWorkspaceRemoval``. Called from the confirmation dialog below.
-  const confirmRemoveWorkspace = () => {
-    const path = removeWorkspaceTarget
-    if (!path) return
-    setRemoveWorkspaceTarget(null)
+  // ``confirmWorkspaceRemoval``. Hiding is reversible, so it asks nothing.
+  const hideWorkspaceFromSidebar = (path: string) => {
     const worktreePaths = (workspaceByPath.get(path)?.worktrees ?? []).map((item) => item.path)
     setExpandedWorkspaces((current) => {
       const next = new Set(current)
@@ -1132,7 +1127,7 @@ export function Sidebar({
           type="button"
           data-sidebar-new-session=""
           onClick={startSessionFromSidebar}
-          aria-keyshortcuts={os === 'macos' || os === 'ios' ? 'Meta+N' : 'Control+N'}
+          aria-keyshortcuts={isPrimaryModifierOS(os) ? 'Meta+N' : 'Control+N'}
           className={`${listRowClass()} font-medium`}
         >
           <SquarePen size={13} aria-hidden="true" className="shrink-0 text-(--color-text-muted)" />
@@ -1721,11 +1716,11 @@ export function Sidebar({
                   onClick={() => {
                     const action = mobileWorkspaceActions
                     setMobileWorkspaceActions(null)
-                    if (action) setRemoveWorkspaceTarget(action.path)
+                    if (action) hideWorkspaceFromSidebar(action.path)
                   }}
                 >
                   <span className="size-4 shrink-0" aria-hidden="true" />
-                  Hide from sidebar…
+                  Hide from sidebar
                 </button>
               </>
             )}
@@ -1784,7 +1779,7 @@ export function Sidebar({
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border-subtle) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-border-strong) md:min-h-8"
+                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-text-subtle) md:min-h-8"
                     maxLength={80}
                     autoFocus
                   />
@@ -1799,7 +1794,7 @@ export function Sidebar({
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border-subtle) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-border-strong) md:min-h-8"
+                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-text-subtle) md:min-h-8"
                     maxLength={255}
                   />
                   <p className="text-xs md:text-meta font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
@@ -1838,13 +1833,13 @@ export function Sidebar({
                                     onClick={() => setRemoveWorktreeTarget(item)}
                                     disabled={worktreeRemoving === item.directory}
                                     className="touch-hit relative flex h-7 w-7 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) opacity-100 transition-colors hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50"
-                                    aria-label={`Remove worktree ${item.name}`}
+                                    aria-label={`Delete worktree ${item.name}…`}
                                   >
                                     {worktreeRemoving === item.directory ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Trash2 size={12} aria-hidden="true" />}
                                   </button>
                                 }
                               />
-                              <TooltipContent>Remove managed worktree</TooltipContent>
+                              <TooltipContent>Delete worktree…</TooltipContent>
                             </Tooltip>
                           ) : (
                             <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-xs md:text-meta text-(--color-text-muted)">external</span>
@@ -1927,11 +1922,11 @@ export function Sidebar({
               onClick={() => {
                 const action = desktopWorkspaceActions
                 setDesktopWorkspaceActions(null)
-                setRemoveWorkspaceTarget(action.path)
+                hideWorkspaceFromSidebar(action.path)
               }}
             >
               <span className="size-3 shrink-0" aria-hidden="true" />
-              Hide from sidebar…
+              Hide from sidebar
             </button>
         </ContextMenu>
       )}
@@ -2124,7 +2119,7 @@ export function Sidebar({
                 autoCorrect="off"
                 autoCapitalize="off"
                 spellCheck={false}
-                className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border-subtle) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none transition-colors focus:outline-none focus:border-(--color-border-strong) md:min-h-8"
+                className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none transition-colors focus:outline-none focus:border-(--color-text-subtle) md:min-h-8"
                 aria-label="Worktree title"
                 maxLength={255}
               />
@@ -2144,9 +2139,6 @@ export function Sidebar({
         deleteTarget={deleteTarget}
         setDeleteTarget={setDeleteTarget}
         onConfirmSessionDelete={confirmSessionDelete}
-        removeWorkspaceTarget={removeWorkspaceTarget}
-        setRemoveWorkspaceTarget={setRemoveWorkspaceTarget}
-        onConfirmRemoveWorkspace={confirmRemoveWorkspace}
         removeWorktreeTarget={removeWorktreeTarget}
         setRemoveWorktreeTarget={setRemoveWorktreeTarget}
         onConfirmRemoveWorktree={confirmRemoveWorktree}

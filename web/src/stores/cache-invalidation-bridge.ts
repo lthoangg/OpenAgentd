@@ -134,6 +134,15 @@ export function patchSessionRunning(
               return { ...session, subagents: newSubagents }
             }
           }
+          const linked = patchLinkedSession(session, sessionId, (row) =>
+            row.running === running && (row.needs_input ?? false) === needsInput ? row : { ...row, running, needs_input: needsInput })
+          if (linked) {
+            found = true
+            if (linked !== session) {
+              pageChanged = true
+              return linked
+            }
+          }
           return session
         })
         if (!pageChanged) return page
@@ -155,6 +164,29 @@ export function patchSessionRunning(
   )
 
   return found
+}
+
+/**
+ * ``row`` with its nested ``linked_sessions`` entry for ``sessionId`` (a
+ * session another workspace ran for it) passed through ``patch``. ``null``
+ * when the row does not nest that session; ``row`` itself when ``patch``
+ * changed nothing.
+ */
+function patchLinkedSession(
+  row: SessionResponse,
+  sessionId: string,
+  patch: (linked: SessionResponse) => SessionResponse,
+): SessionResponse | null {
+  const linked = row.linked_sessions
+  if (!linked || !linked.some((item) => item.id === sessionId)) return null
+  let changed = false
+  const next = linked.map((item) => {
+    if (item.id !== sessionId) return item
+    const patched = patch(item)
+    if (patched !== item) changed = true
+    return patched
+  })
+  return changed ? { ...row, linked_sessions: next } : row
 }
 
 /** Session lists the server orders by ``last_message_at`` (``sort=activity``). */
@@ -289,7 +321,9 @@ export function patchSessionTitle(
         ...old,
         pages: old.pages.map((page) => ({
           ...page,
-          data: page.data.map((s) => s.id === sessionId ? { ...s, title } : s),
+          data: page.data.map((s) => s.id === sessionId
+            ? { ...s, title }
+            : (patchLinkedSession(s, sessionId, (row) => (row.title === title ? row : { ...row, title })) ?? s)),
         })),
       }
     },

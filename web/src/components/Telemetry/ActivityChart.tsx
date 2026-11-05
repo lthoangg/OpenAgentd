@@ -123,10 +123,10 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
                       className="group flex h-full min-w-0 flex-1 items-end rounded-t-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
                     >
                       <div
-                        className="flex w-full flex-col-reverse overflow-hidden rounded-t-xs bg-(--color-text-subtle)/45 transition-colors duration-(--motion-instant) group-hover:bg-(--color-accent)/70 group-focus-visible:bg-(--color-accent)/70"
+                        className="flex w-full flex-col-reverse overflow-hidden rounded-t-xs bg-(--color-text-subtle) transition-colors duration-(--motion-instant) group-hover:bg-(--color-accent) group-focus-visible:bg-(--color-accent)"
                         style={{ height: `${height}%` }}
                       >
-                        {failedShare > 0 && <div className="w-full bg-(--color-error)/70" style={{ height: `${failedShare}%` }} />}
+                        {failedShare > 0 && <div className="w-full bg-(--color-error)" style={{ height: `${failedShare}%` }} />}
                       </div>
                     </div>
                   }

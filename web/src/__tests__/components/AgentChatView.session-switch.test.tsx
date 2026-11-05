@@ -213,7 +213,7 @@ describe('AgentChatView — switching sessions', () => {
     expect(screen.getByTestId('transcript')).toBeTruthy()
     expect(screen.getByText("This session's folder was moved or deleted.")).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Open workspace…' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Hide workspace' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Hide from sidebar' })).toBeTruthy()
   })
 
   it('shows no folder banner while the folder exists', () => {

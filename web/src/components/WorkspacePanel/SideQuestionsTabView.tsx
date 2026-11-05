@@ -78,7 +78,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
               </Button>
             }
           />
-          <TooltipContent side="bottom">Delete all side questions of this session</TooltipContent>
+          <TooltipContent side="bottom">{exchanges.length === 0 ? 'No side questions yet' : 'Delete all side questions of this session'}</TooltipContent>
         </Tooltip>
         <ConfirmDialog
           open={confirmClear}

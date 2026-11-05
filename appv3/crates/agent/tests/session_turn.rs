@@ -55,12 +55,15 @@ async fn tool_turn_persists_and_streams_like_v2() {
     session.wait_turn_finished().await;
 
     let names: Vec<&str> = events.iter().map(|(e, _)| e.as_str()).collect();
-    for want in ["agent_status", "tool_call", "tool_start", "permission_asked", "tool_end", "message", "usage", "done"] {
+    for want in ["agent_status", "tool_call", "tool_start", "tool_end", "message", "usage", "done"] {
         assert!(names.contains(&want), "missing {want} in {names:?}");
     }
+    // Tools are always allowed; no client acted on a per-call announcement.
+    assert!(!names.contains(&"permission_asked"), "{names:?}");
     assert_eq!(*names.last().unwrap(), "done");
     let tool_end = events.iter().find(|(e, _)| e == "tool_end").unwrap();
-    assert!(tool_end.1.contains("hello world"), "{}", tool_end.1);
+    // A read's text stays on the server until the user opens the call.
+    assert!(!tool_end.1.contains("hello world") && tool_end.1.contains("\"result_omitted\":true"), "{}", tool_end.1);
 
     let rows = appv3_db::llm_window_rows(&pool, &sid, false).await.unwrap();
     let roles: Vec<&str> = rows.iter().map(|r| r.role.as_str()).collect();

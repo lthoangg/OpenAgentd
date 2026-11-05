@@ -223,7 +223,7 @@ export const createStreamSlice: StateCreator<
             boundaryContent: response.message?.content ?? null,
           })
         })
-        const restored = restoreDraft && response.message?.role === 'user' && !response.message.is_summary
+        const restored = restoreDraft && response.message?.role === 'user' && response.message.kind !== 'summary'
           ? restoredPromptText(response.message.content ?? '', response.message.extra)
           : null
         if (restored !== null) {

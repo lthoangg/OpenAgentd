@@ -36,10 +36,10 @@ describe('AgentChatHeader', () => {
     expect(screen.getByText('Workspace A')).toBeInTheDocument()
   })
 
-  it('keeps the mobile header to sidebar, title, Task list and Review panel, with no More sheet', () => {
+  it('keeps the mobile header to sidebar, title, Tasks and Review panel, with no More sheet', () => {
     const { container } = renderHeader({ isMobile: true })
     const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
-    expect(names).toEqual(['Toggle sidebar', 'Task list', 'Review panel'])
+    expect(names).toEqual(['Toggle sidebar', 'Tasks', 'Review panel'])
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
@@ -79,10 +79,10 @@ describe('AgentChatHeader', () => {
       expect(lead.className.split(' ').some((c) => c.startsWith('border'))).toBe(false)
     })
 
-    it('puts the Task list and Review panel buttons in a cap as wide as the Review panel', () => {
+    it('puts the Tasks and Review panel buttons in a cap as wide as the Review panel', () => {
       renderHeader({ isMobile: false })
       const trail = cap('dock')
-      expect(trail.contains(screen.getByRole('button', { name: 'Task list' }))).toBe(true)
+      expect(trail.contains(screen.getByRole('button', { name: 'Tasks' }))).toBe(true)
       expect(trail.contains(screen.getByRole('button', { name: 'Review panel' }))).toBe(true)
       expect(trail).toHaveClass('oa-header-cap-dock')
       const geometry = rule('.oa-header-cap-dock')
@@ -151,7 +151,7 @@ describe('AgentChatHeader', () => {
 
       const { container } = renderHeader({ isMobile: true, onOpenLead })
       const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
-      expect(names).toEqual(['Toggle sidebar', 'Open the lead agent', 'Task list', 'Review panel'])
+      expect(names).toEqual(['Toggle sidebar', 'Open the lead agent', 'Tasks', 'Review panel'])
     })
 
     it('says what it does in a tooltip', async () => {
@@ -242,7 +242,7 @@ describe('AgentChatHeader', () => {
 
     expect(buttons.map((el) => el.getAttribute('aria-label'))).toEqual([
       'Toggle sidebar',
-      'Task list',
+      'Tasks',
       'Review panel',
     ])
     for (const el of buttons) {
@@ -264,9 +264,16 @@ describe('AgentChatHeader', () => {
   it('sizes every mobile header action to the full header height on touch', () => {
     renderHeader({ isMobile: true })
 
-    for (const name of ['Toggle sidebar', 'Task list', 'Review panel']) {
+    for (const name of ['Toggle sidebar', 'Tasks', 'Review panel']) {
       expect(screen.getByRole('button', { name }).className).toContain('pointer-coarse:size-9')
     }
+  })
+
+  it('keeps the phone Review panel button off the right edge, as the sidebar button is off the left', () => {
+    renderHeader({ isMobile: true })
+    const cluster = (name: string) => screen.getByRole('button', { name }).closest('header > div') as HTMLElement
+    expect(cluster('Review panel').className.split(' ')).toContain('pr-2')
+    expect(cluster('Toggle sidebar').className.split(' ')).toContain('pl-2')
   })
 
   it('labels the chat workspace "Chat" instead of its home-directory basename', () => {
@@ -343,21 +350,21 @@ describe('AgentChatHeader', () => {
       ],
     })
 
-    const button = screen.getByRole('button', { name: 'Task list' })
+    const button = screen.getByRole('button', { name: 'Tasks' })
     expect(button).toHaveAttribute('aria-pressed', 'true')
     expect(button).toHaveTextContent('1/3')
     await user.click(button)
     expect(onToggleTasks).toHaveBeenCalledTimes(1)
   })
 
-  it('shows the live goal as a ring on the Task list button, and nothing without one', () => {
+  it('shows the live goal as a ring on the Tasks button, and nothing without one', () => {
     const goalState = { tone: 'wait' as const, text: 'Goal · Waiting for your answer' }
     const { unmount } = renderHeader({ isMobile: false, goalState })
-    expect(screen.getByRole('button', { name: 'Task list' }).querySelector('[data-goal-ring="wait"]')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Tasks' }).querySelector('[data-goal-ring="wait"]')).not.toBeNull()
     unmount()
 
     const phone = renderHeader({ isMobile: true, goalState })
-    expect(screen.getByRole('button', { name: 'Task list' }).querySelector('[data-goal-ring="wait"]')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Tasks' }).querySelector('[data-goal-ring="wait"]')).not.toBeNull()
     phone.unmount()
 
     renderHeader({ isMobile: false })
@@ -366,7 +373,7 @@ describe('AgentChatHeader', () => {
 
   it('disables the desktop Tasks button without a session', () => {
     renderHeader({ isMobile: false, sessionId: null })
-    expect(screen.getByRole('button', { name: 'Task list' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Tasks' })).toBeDisabled()
   })
 
   it('opens tasks from the phone header through the same handler, with the open-task count', async () => {
@@ -381,7 +388,7 @@ describe('AgentChatHeader', () => {
       ],
     })
 
-    const button = screen.getByRole('button', { name: 'Task list, 2 open' })
+    const button = screen.getByRole('button', { name: 'Tasks, 2 open' })
     expect(button).toHaveTextContent('2')
     await user.click(button)
     expect(onToggleTasks).toHaveBeenCalledTimes(1)
@@ -389,7 +396,7 @@ describe('AgentChatHeader', () => {
 
   it('disables the phone Tasks button without a session', () => {
     renderHeader({ isMobile: true, sessionId: null })
-    expect(screen.getByRole('button', { name: 'Task list' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Tasks' })).toBeDisabled()
   })
 
   it('opens the Review panel (terminal, find file, scheduled tasks) from the phone header in one tap', async () => {

@@ -128,18 +128,14 @@ function makeStream(overrides: object = {}) {
 function makeMessageResponse(overrides: object = {}) {
   return {
     id: "msg-1",
-    session_id: "sess-1",
     role: "user",
     content: "hello",
     reasoning_content: null,
     tool_calls: null,
     tool_call_id: null,
     name: null,
-    is_summary: false,
-    is_hidden: false,
     extra: null,
     created_at: "2024-01-01T00:00:00Z",
-    file_message: false,
     attachments: null,
     ...overrides,
   }
@@ -2227,7 +2223,7 @@ describe("loadSession", () => {
           model: "codex:gpt-5.4",
           sub_sessions: [],
           messages: [
-            { id: "u1", session_id: "lead-sess", role: "user", content: "hi", reasoning_content: null, tool_calls: null, tool_call_id: null, name: null, is_summary: false, is_hidden: false, extra: { service_tier: "fast" }, created_at: null, attachments: null },
+            { id: "u1", role: "user", content: "hi", reasoning_content: null, tool_calls: null, tool_call_id: null, name: null, extra: { service_tier: "fast" }, created_at: null, attachments: null },
           ],
         },
         members: [],

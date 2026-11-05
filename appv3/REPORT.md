@@ -1197,10 +1197,104 @@ explicitly.
   `mcp/src/lib.rs`. v2 waits without a deadline.
 - **ETag on workspace listings (v3 only):** `GET /api/agent/{sid}/files`,
   `/api/agent/workspace/files/list`, `/api/agent/workspace/status`,
-  `/api/agent/workspace/git-diff/view` and `/git-diff/files` send an `ETag` (64-bit hash of the
-  JSON body) with `Cache-Control: no-cache`, and answer `304` with an empty
-  body when `If-None-Match` matches. The body is still computed on every
-  request. Test: `api/src/routes/agent/files.rs`. v2 always returns 200.
+  `/api/agent/workspace/git-diff/view`, `/git-diff/files` and every
+  `/api/agent/{sid}/history` page send an `ETag` (64-bit hash of the JSON
+  body) with `Cache-Control: private, no-cache`, and answer `304` with an
+  empty body when `If-None-Match` matches. The body is still computed on
+  every request. CORS exposes `ETag` so the phone app (`tauri://localhost`,
+  cross-origin) can read it; the web client revalidates the newest history
+  page of its last four sessions. Tests: `api/src/routes/agent/files.rs`,
+  `api/tests/http_api.rs` (`history_etag_flow`). v2 always returns 200.
+- **Uploads and media revalidate (v3 only):** `GET /api/agent/{sid}/uploads/…`
+  and `/media/…` answer a matching `If-None-Match` (weak comparison, `*`),
+  or without one an `If-Modified-Since` no older than the file, with `304`
+  and no body (Starlette always sends the file). Uploads, which get a new
+  name each (`dedupe_upload_filename`), send `Cache-Control: private,
+  max-age=31536000, immutable`; media, which can change under its path,
+  `private, no-cache`. Tests: `api/src/fileresp.rs`, `api/tests/http_api.rs`
+  (`files_revalidate_flow`). v2 sends neither.
+- **Members without rows in history (v3 only):** the newest history page and
+  the `since` delta carry each member's `name`, `session_id`, `running`,
+  `estimated_cost_usd` and `completion_tokens` with `messages: []` (v3
+  earlier sent its newest 10 rows within 128 KB; v2 sends 100). The lead's
+  view never renders them, and opening a member loads its own session. A
+  busy member no longer sets `truncated` on the delta. Tests:
+  `api/tests/http_api.rs` (`history_paging_flow`, `history_first_page_flow`).
+- **Joined live deltas (v3 only):** the stream store sends the first
+  `message`, `thinking`, `tool_output_delta` or `summarization_content`
+  piece of a stream (an agent's text, one tool's output) at once, then joins
+  the pieces that follow within 50 ms (or up to 8 KB) into one frame, keyed
+  by event, agent and `tool_call_id`, so tools running side by side are
+  joined each on its own. An agent's reply, thinking and summary share one
+  order: a piece of one sends the held piece of another first (the client
+  appends them to one transcript in arrival order). Held text goes out
+  before any other event, before
+  an attach (whose replay already has it) and at the end of the turn. The
+  replay blob still takes every piece. The SSE writer sends events that are
+  ready together as one write and pings only after 15 s of silence.
+  `sse_stream_close` logs events, writes, pings, bytes, path and whether
+  the peer is remote; `stream_deltas` logs pieces received and frames sent
+  per turn; `history_page_served` (info) and `history_page_breakdown` log
+  what each history page weighed. Tests: `agent/src/stream_store.rs`,
+  `api/src/sse.rs`, `api/src/middleware.rs`. v2 sends one frame per chunk.
+- **History leaves out provider replay state (v3 only):** a message's
+  `extra` goes out without `raw_content_blocks`, `reasoning_signature` and
+  `reasoning_items` (as it already went without `parts`); the agent reads
+  them from the database. Test:
+  `db/src/api.rs`. v2 sends them.
+- **History rows carry only what clients read (v3 only):** message rows
+  drop `session_id`, `is_summary` (a summary is `kind: "summary"`) and
+  `file_message`; `extra` drops `finish_reason`, `credential_id`,
+  `snapshot` and its copy of `attachments` (sent once, beside it); `usage`
+  keeps `input`, `output`, `cache`, `cache_percent`, `estimated_cost_usd`
+  and `cost.estimated_usd`. Test: `db/src/api.rs`. v2
+  sends them.
+- **Gzipped event streams for remote clients (v3 only):** `text/event-stream`
+  responses to a client that is remote (`Peer::remote()`) and accepts gzip
+  go out gzipped with a sync flush after every frame, so each frame decodes
+  as soon as it arrives (`middleware::gzip_event_stream`); `sse_gzip_closed`
+  logs bytes in and out. A 24 s streamed reply: 51.6 KB → 5.9 KB. Loopback
+  stays identity. Tests: `middleware.rs`. v2 sends identity.
+- **No `permission_asked` (v3 only):** tools are always allowed, so the
+  per-call announcement after `tool_start` is gone from the stream and the
+  event contract. Test: `agent/tests/session_turn.rs`. v2 sends it.
+- **Tool output on demand (v3 only):** history tool rows and `tool_end`
+  (live and replayed) leave out every tool's output except the answers a
+  collapsed card is built from (`appv3_db::api::result_rides_inline`):
+  all of `ask_user`, `plan`, `submit_plan` and `update_goal`; `preview`
+  only for "Opening …"; `workspace` only for "Sent to '…'" or the
+  confirmation placeholder, `mcp` only for that placeholder; `team`,
+  `team_*` and `delegate` only when the first line names the subagent;
+  `patch` only when it failed. `todo` and `schedule` output is always left
+  out. Such a row has no
+  `content` and carries `result_omitted: true` and `result_bytes`;
+  `tool_end` sends `result: null` with the same two keys in `metadata`.
+  `GET /api/agent/{sid}/tool-results/{tool_call_id}` returns
+  `{tool_call_id, name, content}` for a call in the session or any session
+  under it (404 otherwise); the web card calls it when the user opens the
+  row or copies its result. Revision 00000032 adds the partial index
+  `ix_session_messages_tool_call_id`, so this lookup seeks instead of
+  reading the session tree, and the arguments endpoint walks back from the
+  result to its call. `tool_output_delta` still streams while a tool
+  runs, and the agent still reads full output from the database. Tests: `db/src/api.rs`,
+  `agent/src/events.rs`, `agent/src/stream_store.rs`,
+  `api/tests/http_api.rs` (`tool_result_on_demand_flow`). v2 sends every
+  result.
+- **Short tool arguments in history (v3 only):** history `tool_calls` send
+  a short form of three tools' arguments, with the full size as
+  `arguments_bytes` on the call: `shell` without its `command` when it has
+  a `description` (otherwise the command's first line, at most 200 chars,
+  with `command_truncated: true`), `patch` as
+  `{files: [{path, kind, additions, deletions, move_to?}]}`, and `plan`
+  without `content` and `edits` (`edit_count` instead). Calls with nothing to
+  cut go out as stored. `GET
+  /api/agent/{sid}/tool-calls/{tool_call_id}/arguments` returns
+  `{tool_call_id, name, arguments}` from the session or any session under
+  it; the web card calls it when the user opens the row or copies its
+  arguments. Live and replayed `tool_start` keep full arguments: a running
+  call is not in the database yet. Tests: `db/src/tool_args.rs`,
+  `db/src/api.rs`, `api/tests/http_api.rs`
+  (`tool_arguments_on_demand_flow`). v2 sends them whole.
 - **Changed-files list (v3 only):** `GET /api/agent/workspace/git-diff/files`
   lists every changed path with status and +/− counts from
   `git diff --name-status/--numstat` and `ls-files --others` (capped at 5,000

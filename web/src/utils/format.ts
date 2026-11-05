@@ -40,13 +40,6 @@ export function formatFullDateTime(date: Date): string {
   return format(date, 'dd/MM/yyyy HH:mm:ss')
 }
 
-export function formatTokens(n: number): string {
-  if (n >= 1000) {
-    return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
-  }
-  return String(n)
-}
-
 /** Human-readable byte size — "523 B", "12.4 KB", "3.1 MB". */
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
@@ -55,10 +48,6 @@ export function formatBytes(n: number): string {
   return `${(n / (1024 * 1024 * 1024)).toFixed(1).replace(/\.0$/, '')} GB`
 }
 
-export function formatDate(dateStr: string | null): Date {
-  if (!dateStr) return new Date()
-  return new Date(dateStr)
-}
 
 import { isToday, isYesterday, isSameDay, format } from 'date-fns'
 

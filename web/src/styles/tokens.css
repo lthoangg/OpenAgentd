@@ -67,13 +67,17 @@
     /* Borders */
     --color-border-subtle: #2C231A;
     --color-border:        #3A2F23;
-    --color-border-strong: #5C4B36;
+    /* Strong: a switch that is off and a link underline, 2.5:1 on the card. */
+    --color-border-strong: #6A5640;
 
-    /* Text */
+    /* Text
+     * Set by eye as well as by WCAG 2, which overstates contrast near black:
+     * at 5.6:1 the old muted tone was only APCA Lc 40, dimmer than GitHub,
+     * Material or macOS secondary text (Lc 45–50). Now 95 / 72 / 51 / 45. */
     --color-text:           #F5EBD8;
-    --color-text-2:         #C5B59A;
-    --color-text-muted:     #9C8A72;
-    --color-text-subtle:    #8E7D66; /* AA-compliant on --bg-page (≥4.5:1) */
+    --color-text-2:         #D3C5AD;
+    --color-text-muted:     #AF9F85;
+    --color-text-subtle:    #A4937B; /* AA on page, card and the keycap wash */
     --color-text-on-accent: #15110D;
 
     /* Accent (UI) */
@@ -81,11 +85,11 @@
     --color-overlay: #00000099;
 
     /* Selection fills: a chosen segment or tab, the highlighted menu row, a
-     * tooltip. Quiet: a warm tone a step above the track and the menu, the
-     * text colour on it, like a native dark segmented control. Not the
-     * near-white accent (a cream block glows brighter than the words around
-     * it), and not a bright brown either. */
-    --color-fill-selected:   #3E3227;
+     * tooltip. A warm tone clearly above the track (1.47:1, so a chosen
+     * Light / Dark / System reads at a glance), the text colour on it, like a
+     * native dark segmented control. Not the near-white accent (a cream block
+     * glows brighter than the words around it). */
+    --color-fill-selected:   #4A3C2E;
     --color-text-on-selected: #F5EBD8;
     /* The menu row under the pointer or keyboard: a wash a step softer than
      * a chosen segment, since it only follows the pointer. */
@@ -153,14 +157,14 @@
     --color-diff-del-text:  #FCA5A5;
 
     /* Syntax highlighting */
-    --color-syn-comment:  #9C8A72;
+    --color-syn-comment:  #AF9F85;
     --color-syn-keyword:  #A78BFA;
     --color-syn-function: #38BDF8;
     --color-syn-variable: #F87171;
     --color-syn-string:   #4ADE80;
     --color-syn-number:   #FBBF24;
     --color-syn-type:     #FCC780;
-    --color-syn-operator: #C5B59A;
+    --color-syn-operator: #D3C5AD;
 
     /* Depth & focus
      * Focus ring uses --accent-blue rather than --color-accent because the
@@ -208,10 +212,10 @@
     --color-accent:  #3F3429;
     --color-overlay: rgba(26, 23, 20, 0.40);
 
-    /* Selection fills (see the dark theme): a light sand a step darker than
-     * the track and the menu, with the ink on it. Paper stays light: no Bark
-     * blocks behind a chosen segment, a menu row or a tooltip. */
-    --color-fill-selected:   #E3D6BA;
+    /* Selection fills (see the dark theme): a sand clearly darker than the
+     * track (1.46:1) and the menu, with the ink on it. Paper stays light: no
+     * Bark blocks behind a chosen segment, a menu row or a tooltip. */
+    --color-fill-selected:   #D2C19B;
     --color-text-on-selected: #1A1714;
     /* The menu row under the pointer or keyboard: a light wash, as a native
      * list's hover, so a moving pointer does not darken every row it crosses. */
@@ -252,7 +256,7 @@
     /* Markers (charts) */
     --color-marker-blue:   #0284C7;
     --color-marker-mint:   #16A34A;
-    --color-marker-orange: #FA8030;
+    --color-marker-orange: #D06519;
     --color-marker-pink:   #DB2777;
     --color-marker-yellow: #B77900;
     --color-violet:        #7C3AED;
@@ -281,13 +285,15 @@
     --color-syn-keyword:  #7C3AED;
     --color-syn-function: #026F9E;
     --color-syn-variable: #B91C1C;
-    --color-syn-string:   #15803D;
-    --color-syn-number:   #A16207;
-    --color-syn-type:     #B45309;
+    --color-syn-string:   #15702F;
+    --color-syn-number:   #8A5A00;
+    --color-syn-type:     #A04A07;
     --color-syn-operator: #4B3E32;
 
-    /* Focus + depth (see dark-mode comment) */
-    --focus-ring:   var(--accent-blue);
+    /* Focus + depth (see dark-mode comment). Signal Blue itself is 2.4:1 on
+     * paper, so the light ring takes a deeper step of the same blue: 3:1 or
+     * more on every paper surface, a chosen segment included. */
+    --focus-ring:   #2569A0;
     --shadow-depth: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.05);
     /* The logo's dot (the agent) is Signal Blue (components/brand/Logo.tsx). */
     --logo-signal:  var(--accent-blue);
@@ -305,7 +311,7 @@
     :root.light {
         --color-text-muted:    #4B3E32;
         --color-text-subtle:   #4B3E32;
-        --color-border-subtle: #B8A47E;
+        --color-border-subtle: #8C7A5B;
         --color-border:        #8C7A5B;
         --color-border-strong: #6E604F;
         /* The chosen segment and highlighted row at 3:1 on the track: Bark. */
@@ -319,9 +325,9 @@
     }
 
     :root.dark {
-        --color-text-muted:    #C5B59A;
-        --color-text-subtle:   #C5B59A;
-        --color-border-subtle: #5C4B36;
+        --color-text-muted:    #D3C5AD;
+        --color-text-subtle:   #D3C5AD;
+        --color-border-subtle: #7A6A54;
         --color-border:        #7A6A54;
         --color-border-strong: #9C8A72;
         /* The chosen segment and highlighted row at 3:1 on the track. */

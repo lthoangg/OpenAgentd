@@ -9,6 +9,13 @@ import type { ITheme } from '@xterm/xterm'
 
 export type TerminalResolvedTheme = 'dark' | 'light'
 
+/**
+ * xterm lifts any foreground under this ratio against its cell, as VS Code
+ * does by default. Programs print ANSI black on the dark background and
+ * white on the light one (1:1); without it those words vanished.
+ */
+export const TERMINAL_MIN_CONTRAST_RATIO = 4.5
+
 const DARK: ITheme = {
   // Matches the wrapper's --color-surface / --color-text (dark) so the canvas
   // and its padding read as one surface.
@@ -18,7 +25,8 @@ const DARK: ITheme = {
   cursorAccent: '#221c16',
   selectionBackground: '#5c4b3680',
   black: '#221c16',
-  brightBlack: '#6b645a',
+  // Dim text (comments, hints, autosuggestions): the muted tone, 6:1.
+  brightBlack: '#a89880',
   red: '#e06c58',
   brightRed: '#f08b78',
   green: '#8aa864',

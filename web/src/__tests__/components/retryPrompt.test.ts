@@ -22,8 +22,8 @@ const { retryLatestPrompt } = await import('@/components/AgentChatView/retryProm
 
 function undone(id: string, content: string): AgentCommandResponse {
   const message: MessageResponse = {
-    id, session_id: 'session-1', role: 'user', content, reasoning_content: null, tool_calls: null,
-    tool_call_id: null, name: null, is_summary: false, is_hidden: false, extra: null,
+    id, role: 'user', content, reasoning_content: null, tool_calls: null,
+    tool_call_id: null, name: null, extra: null,
     created_at: '2026-01-01T00:00:00Z', attachments: null,
   }
   return { status: 'accepted', session_id: 'session-1', command: 'undo', message }

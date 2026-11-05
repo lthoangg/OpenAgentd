@@ -199,8 +199,8 @@ describe('useSlashCommands', () => {
   const undone = (content: string, extra: Record<string, unknown> | null): AgentCommandResponse => ({
     status: 'accepted', session_id: 'session-1', command: 'undo',
     message: {
-      id: 'm1', session_id: 'session-1', role: 'user', content, reasoning_content: null, tool_calls: null,
-      tool_call_id: null, name: null, is_summary: false, is_hidden: false, extra, created_at: null, attachments: null,
+      id: 'm1', role: 'user', content, reasoning_content: null, tool_calls: null,
+      tool_call_id: null, name: null, extra, created_at: null, attachments: null,
     },
   })
 

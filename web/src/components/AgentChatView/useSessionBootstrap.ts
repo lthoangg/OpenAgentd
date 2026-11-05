@@ -62,6 +62,8 @@ export interface UseSessionBootstrapArgs {
   connectStream: (options?: { holdUntil?: Promise<unknown> }) => AbortController
   loadAgentStatus: (workspace?: string | null, expectedGeneration?: number, sessionId?: string | null) => Promise<void>
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
+  /** Foreground resume of a running turn from the rows since the last sync (see the store action). */
+  catchUpLiveTurn: (sessionId: string, workspace: string | null) => Promise<'attach' | 'reload' | 'stale'>
   beginResolvedSession: (sessionId: string | null, options: { workspace: string; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
   consumeResolvedSessionReady: (sessionId: string, workspace?: string | null) => boolean
 }
@@ -89,6 +91,7 @@ export function useSessionBootstrap({
   connectStream,
   loadAgentStatus,
   loadSession,
+  catchUpLiveTurn,
   beginResolvedSession,
   consumeResolvedSessionReady,
 }: UseSessionBootstrapArgs): UseSessionBootstrapResult {
@@ -234,20 +237,29 @@ export function useSessionBootstrap({
       // Mobile webviews may freeze a fetch-based SSE connection while the app
       // is backgrounded without closing it. In that case isConnected remains
       // true even though the stream can no longer deliver events. Always
-      // reconcile persisted history and replace the stream on foreground.
+      // catch up with persisted history and replace the stream on foreground:
+      // a running turn from the rows saved since the last sync (the attach
+      // replays the step in progress), anything else from the full page.
       resumeInFlightRef.current = true
       active?.abort()
       abortRef.current?.abort()
       state._abortController?.abort()
       abortRef.current = null
       useAgentStore.setState({ _unloading: false, isConnected: false, _abortController: null })
-      void loadSession(sessionId, agentWorkspace).then(() => {
+      const attach = () => {
+        const controller = connectStream()
+        if (controller) abortRef.current = controller
+      }
+      void catchUpLiveTurn(sessionId, agentWorkspace).then(async (verdict) => {
+        if (verdict === 'stale') return
+        if (verdict === 'attach') {
+          attach()
+          return
+        }
+        await loadSession(sessionId, agentWorkspace)
         const current = useAgentStore.getState()
         if (current.sessionId !== sessionId || current._workspace !== agentWorkspace) return
-        if (current.isAgentWorking) {
-          const controller = connectStream()
-          if (controller) abortRef.current = controller
-        }
+        if (current.isAgentWorking) attach()
       }).finally(() => {
         resumeInFlightRef.current = false
       })
@@ -265,7 +277,7 @@ export function useSessionBootstrap({
       window.removeEventListener('pageshow', resumeStream)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [sessionId, agentWorkspace, loadSession, connectStream])
+  }, [sessionId, agentWorkspace, loadSession, catchUpLiveTurn, connectStream])
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 

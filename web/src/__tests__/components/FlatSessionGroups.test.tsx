@@ -199,4 +199,41 @@ describe('FlatSessionGroups', () => {
     expect(button.textContent).toBe('Today1')
     expect(button.querySelector('.label-caps')).toBeNull()
   })
+
+  describe('sessions another workspace started', () => {
+    const from = { session_id: 's-app', workspace: '/r/app', title: 'Orders API' }
+    const infra = session('s-infra', 'Orders table', '/r/infra', HOUR, { running: true, sent_from: from })
+    const web = session('s-web', 'Orders page', '/r/web', HOUR, { needs_input: true, sent_from: from })
+    const app = session('s-app', 'Orders API', '/r/app', 2 * HOUR, { background_work: true, linked_sessions: [infra, web] })
+    /** Titles of the list's own rows (not the ones nested under a sender). */
+    const ownRows = (root: ParentNode = document) =>
+      Array.from(root.querySelectorAll('[data-session-row]')).map((row) => row.querySelector('[data-sidebar-session]')?.getAttribute('title')?.split(' · ')[0])
+    const expandLinked = () => fireEvent.click(screen.getByRole('button', { name: 'Expand 2 sessions in other workspaces' }))
+    const nested = () => Array.from(document.querySelectorAll('[data-linked-session]')).map((row) => row.getAttribute('data-linked-session'))
+
+    for (const groupBy of ['date', 'none'] as const) {
+      it(`list once, under their sender (${groupBy})`, () => {
+        setup({ groupBy, all: [infra, app, web] })
+        expect(ownRows()).toEqual(['Orders API'])
+        expandLinked()
+        expect(nested()).toEqual(['s-infra', 's-web'])
+      })
+    }
+
+    it('list once by status too, and a question still shows under Needs you', () => {
+      setup({ groupBy: 'status', all: [infra, app, web], active: [infra, app, web] })
+      // Orders table runs, but only under its sender: no Running group of its own.
+      expect(groupLabels()).toEqual(['Needs you', 'Recent'])
+      expect(ownRows(screen.getByRole('region', { name: 'Needs you' }))).toEqual(['Orders page'])
+      expect(ownRows(screen.getByRole('region', { name: 'Recent' }))).toEqual(['Orders API'])
+      expandLinked()
+      expect(nested()).toEqual(['s-infra', 's-web'])
+    })
+
+    it('keep their own row, marked with the sender, when the sender is not listed', () => {
+      setup({ groupBy: 'none', all: [infra] })
+      expect(ownRows()).toEqual(['Orders table'])
+      expect(document.querySelector('[data-sent-from="s-app"]')?.textContent).toBe('app')
+    })
+  })
 })

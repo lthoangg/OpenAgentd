@@ -370,6 +370,12 @@ button:focus-visible {
   color: var(--color-text);
 }
 
+/* Dark mode's text tone is cream, 1.5:1 on these bright fills: the marks
+ * keep a dark ink in both themes. */
+:root.dark .pet-mark--alert { color: var(--bg-page); }
+:root.dark .pet-mark--look { color: var(--bg-page); }
+:root.dark .pet-mark--pant { color: var(--bg-page); }
+
 .pet-zzz {
   position: absolute;
   right: -6px;

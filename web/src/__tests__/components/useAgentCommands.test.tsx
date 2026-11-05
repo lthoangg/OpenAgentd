@@ -224,6 +224,31 @@ describe("useAgentCommands — open-terminal", () => {
 //  Navigation commands
 // ════════════════════════════════════════════════════════════════════════════
 describe("useAgentCommands — navigation", () => {
+  it("opens a workspace from the palette, with ⌘O / Ctrl+O shown", () => {
+    const seen: string[] = []
+    const listener = (event: Event) => { seen.push(event.type) }
+    window.addEventListener("oa:open-workspace", listener)
+    try {
+      const { result } = renderHook(() => useAgentCommands(makeArgs()))
+      const cmd = byId(result.current, "open-workspace")
+      expect(cmd.label).toBe("Open Workspace…")
+      expect(cmd.shortcut).toBe("Ctrl+O")
+      cmd.action()
+      expect(seen).toEqual(["oa:open-workspace"])
+    } finally {
+      window.removeEventListener("oa:open-workspace", listener)
+    }
+  })
+
+  it("offers the next session that needs you, which the global shortcut alone reached", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    const cmd = byId(result.current, "next-needs-you")
+    expect(cmd.label).toBe("Next Session That Needs You")
+    // It runs the same openNextNeedsYou as the global shortcut (covered in
+    // desktop-commands.test.tsx); this hook test has no router to navigate.
+    expect(cmd.shortcut).toBeUndefined()
+  })
+
   it("go-settings opens the Settings modal at the agents section", () => {
     const openSettings = mock(() => {})
     useSettingsStore.setState({ openSettings })
@@ -277,40 +302,31 @@ describe("useAgentCommands — navigation", () => {
 })
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Layout — split, focus mode, find, text size, reset
+//  Layout — split, find, text size, reset
 // ════════════════════════════════════════════════════════════════════════════
 describe("useAgentCommands — layout", () => {
   it("lists the layout commands only when the shell can run them", () => {
     const none = renderHook(() => useAgentCommands(makeArgs()))
-    for (const id of ["split-dock", "focus-mode", "find-in-session"]) {
+    for (const id of ["split-dock", "find-in-session"]) {
       expect(none.result.current.find((c) => c.id === id)).toBeUndefined()
     }
+    // Focus Mode is gone from the palette.
+    expect(none.result.current.find((c) => c.id === "focus-mode")).toBeUndefined()
   })
 
   it("runs each layout handler, with its shortcut", () => {
     const split = mock(() => {})
-    const focus = mock(() => {})
     const find = mock(() => {})
     const { result } = renderHook(() => useAgentCommands(makeArgs({
       handleSplitDock: split,
-      handleToggleFocusMode: focus,
       handleFindInSession: find,
     })))
     expect(byId(result.current, "split-dock").label).toBe("Split Review Panel Right")
     expect(byId(result.current, "split-dock").shortcut).toBe("Ctrl+\\")
-    expect(byId(result.current, "focus-mode").shortcut).toBe("Ctrl+Shift+F")
     expect(byId(result.current, "find-in-session").shortcut).toBe("Ctrl+F")
     byId(result.current, "split-dock").action()
-    byId(result.current, "focus-mode").action()
     byId(result.current, "find-in-session").action()
-    expect([split, focus, find].map((fn) => fn.mock.calls.length)).toEqual([1, 1, 1])
-  })
-
-  it("names Focus Mode by what it will do", () => {
-    const off = renderHook(() => useAgentCommands(makeArgs({ handleToggleFocusMode: () => {} })))
-    expect(byId(off.result.current, "focus-mode").label).toBe("Focus Mode")
-    const on = renderHook(() => useAgentCommands(makeArgs({ handleToggleFocusMode: () => {}, focusMode: true })))
-    expect(byId(on.result.current, "focus-mode").label).toBe("Leave Focus Mode")
+    expect([split, find].map((fn) => fn.mock.calls.length)).toEqual([1, 1])
   })
 
   it("sets the text size from its page, marking the current one", () => {

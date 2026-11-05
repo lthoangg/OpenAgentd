@@ -91,7 +91,8 @@ async fn stopping_a_running_tool_keeps_its_output_and_runtime() {
 
     let end = tool_end.expect("the cancelled call still ends in a tool_end frame");
     assert_eq!(end["tool_call_id"], "call_1");
-    assert_cancelled_result(end["result"].as_str().unwrap());
+    // The output stays on the server (fetched when opened); the frame says so.
+    assert_eq!(end["metadata"]["result_omitted"], true, "{end}");
 
     let rows = appv3_db::llm_window_rows(&pool, &sid, false).await.unwrap();
     let tool = rows.iter().find(|r| r.role == "tool" && r.tool_call_id.as_deref() == Some("call_1")).expect("tool result persisted");

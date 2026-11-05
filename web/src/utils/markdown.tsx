@@ -585,7 +585,7 @@ export const MarkdownTable = memo(function MarkdownTable(
 
   return (
     <div className="oa-table-container group relative">
-      <div className="absolute top-1 right-1 z-10 opacity-60 transition-opacity duration-(--motion-fast) group-hover:opacity-100 focus-within:opacity-100">
+      <div className="absolute top-1 right-1 z-10">
         <Tooltip>
           <TooltipTrigger
             render={
@@ -869,9 +869,6 @@ const _EXTENSIONS = [streamingMarkdownExtension(), ..._SETTLED_EXTENSIONS]
 // Workspace files only: HTML nodes become the safe components above.
 const _HTML_EXTENSIONS = [..._SETTLED_EXTENSIONS, safeHtmlMarkdownExtension()]
 
-/** Extensions for the live tail and for settled chunks. */
-// eslint-disable-next-line react-refresh/only-export-components
-export const MARKDOWN_EXTENSIONS = { live: _EXTENSIONS, settled: _SETTLED_EXTENSIONS }
 
 /** Parses like `MarkdownBlock` renders; `live` for a stream's last chunk. */
 // eslint-disable-next-line react-refresh/only-export-components

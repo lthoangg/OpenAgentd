@@ -35,7 +35,6 @@ import { cn } from '@/lib/utils'
 import type { TerminalSessionMeta } from '@/stores/useTerminalStore'
 import {
   DOCK_ACTION_BUTTON_CLASS,
-  DOCK_STRIP_PART_CLASS,
   DOCK_TAB_LIFTED_CLASS,
   DOCK_TAB_STRIP_CLASS,
   dockTabButtonClass,
@@ -154,10 +153,10 @@ function ActionButton({ label, onClick, children, expanded }: {
 
 /** The tab menu's splits, in order, with the ⌃⌥+arrow key for each. */
 const SPLITS = [
-  { side: 'right', label: 'Split Right', key: 'splitTabRight' },
-  { side: 'left', label: 'Split Left', key: 'splitTabLeft' },
-  { side: 'up', label: 'Split Up', key: 'splitTabUp' },
-  { side: 'down', label: 'Split Down', key: 'splitTabDown' },
+  { side: 'right', label: 'Split right', key: 'splitTabRight' },
+  { side: 'left', label: 'Split left', key: 'splitTabLeft' },
+  { side: 'up', label: 'Split up', key: 'splitTabUp' },
+  { side: 'down', label: 'Split down', key: 'splitTabDown' },
 ] as const satisfies readonly { side: SplitSide; label: string; key: keyof typeof APP_SHORTCUTS }[]
 
 /** The path a file or diff tab shows, absolute, for "Copy Path". */
@@ -219,23 +218,23 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
   const groups: ReactNode[][] = [
     [
       onClose && item('Close', () => onClose(tab.id), <X size={12} aria-hidden="true" />),
-      onCloseOthers && item('Close Others', () => onCloseOthers(tab.id), undefined, !hasOthers),
-      onCloseToLeft && item('Close to the Left', () => onCloseToLeft(tab.id), undefined, !hasLeft),
-      onCloseToRight && item('Close to the Right', () => onCloseToRight(tab.id), undefined, !hasRight),
-      onCloseAll && item('Close All', () => onCloseAll(tab.id)),
+      onCloseOthers && item('Close others', () => onCloseOthers(tab.id), undefined, !hasOthers),
+      onCloseToLeft && item('Close to the left', () => onCloseToLeft(tab.id), undefined, !hasLeft),
+      onCloseToRight && item('Close to the right', () => onCloseToRight(tab.id), undefined, !hasRight),
+      onCloseAll && item('Close all', () => onCloseAll(tab.id)),
     ],
     [
-      preview && onKeep && item('Keep Open', () => onKeep(tab.id)),
+      preview && onKeep && item('Keep open', () => onKeep(tab.id)),
       ...(onSplit
         ? SPLITS.map(({ side, label, key }) =>
             item(label, () => onSplit(tab.id, side), undefined, splitDisabled, os ? shortcutLabel(APP_SHORTCUTS[key], os) : undefined))
         : []),
-      onMoveToNextPane && (canMoveToNextPane?.(tab.id) ?? true) && item('Move to Next Pane', () => onMoveToNextPane(tab.id)),
-      onMove && item('Move Left', () => onMove(tab.id, index - 1), undefined, index <= 0),
-      onMove && item('Move Right', () => onMove(tab.id, index + 1), undefined, !hasRight),
+      onMoveToNextPane && (canMoveToNextPane?.(tab.id) ?? true) && item('Move to next pane', () => onMoveToNextPane(tab.id)),
+      onMove && item('Move left', () => onMove(tab.id, index - 1), undefined, index <= 0),
+      onMove && item('Move right', () => onMove(tab.id, index + 1), undefined, !hasRight),
     ],
     [
-      path && item('Copy Path', () => { void navigator.clipboard?.writeText(path) }, <Copy size={12} aria-hidden="true" />),
+      path && item('Copy path', () => { void navigator.clipboard?.writeText(path) }, <Copy size={12} aria-hidden="true" />),
       changedPath && onRevealInGit && item('Reveal in Git', () => onRevealInGit(changedPath)),
     ],
   ].map((group) => group.filter(Boolean)).filter((group) => group.length > 0)
@@ -352,7 +351,7 @@ export function DockTabBar({
     <div ref={stripRef} data-dock-strip="" className={DOCK_TAB_STRIP_CLASS}>
       <div
         ref={scrollerRef}
-        className={cn('scrollbar-none flex min-w-0 flex-1 gap-0.5 overflow-x-auto overflow-y-hidden py-1 pl-1', DOCK_STRIP_PART_CLASS)}
+        className="scrollbar-none flex min-w-0 flex-1 gap-0.5 overflow-x-auto overflow-y-hidden py-1 pl-1"
         onKeyDown={handleStripKeyDown}
         {...drag.handlers}
       >
@@ -454,7 +453,7 @@ export function DockTabBar({
           }}
         />
       </div>
-      <div className={cn('flex shrink-0 items-center gap-0.5 px-1', DOCK_STRIP_PART_CLASS)}>
+      <div className="flex shrink-0 items-center gap-0.5 px-1">
         {overflowing && tabs.length > 1 && (
           <Tooltip>
             <TooltipTrigger

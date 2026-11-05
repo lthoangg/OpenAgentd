@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { TodoItem } from '@/api/types'
 
-const todosTitle = 'Task list (Ctrl+T)'
+const todosTitle = 'Tasks (Ctrl+T)'
 
 function TodosPopoverMock({
   todos,

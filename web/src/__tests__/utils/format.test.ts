@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { formatTokens, formatRelativeDate, formatCompactRelative, formatCompactUpcoming, formatDate, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText, finalAnswerBlocks, getTimezoneOffsetMinutes, wallClockToISO, isoToWallClock, formatInTimezone } from "@/utils/format";
+import { formatRelativeDate, formatCompactRelative, formatCompactUpcoming, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText, finalAnswerBlocks, getTimezoneOffsetMinutes, wallClockToISO, isoToWallClock, formatInTimezone } from "@/utils/format";
 import { formatCommitTime } from "@/components/WorkspacePanel/diff-helpers";
 
 // ---------------------------------------------------------------------------
@@ -50,34 +50,6 @@ describe("formatTime matches toLocaleTimeString", () => {
 });
 
 // ---------------------------------------------------------------------------
-// formatTokens
-// ---------------------------------------------------------------------------
-
-describe("formatTokens", () => {
-  it("returns plain number below 1000", () => {
-    expect(formatTokens(0)).toBe("0");
-    expect(formatTokens(999)).toBe("999");
-  });
-
-  it("formats 1000 as 1k", () => {
-    expect(formatTokens(1000)).toBe("1k");
-  });
-
-  it("formats 1500 as 1.5k", () => {
-    expect(formatTokens(1500)).toBe("1.5k");
-  });
-
-  it("strips trailing .0 from k suffix", () => {
-    expect(formatTokens(2000)).toBe("2k");
-    expect(formatTokens(10000)).toBe("10k");
-  });
-
-  it("formats large numbers", () => {
-    expect(formatTokens(120000)).toBe("120k");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // formatRelativeDate
 // ---------------------------------------------------------------------------
 
@@ -112,28 +84,6 @@ describe("formatRelativeDate", () => {
     const old = new Date(2023, 2, 5, 8, 3); // 5 Mar 2023 08:03
     const result = formatRelativeDate(old.toISOString());
     expect(result).toBe("05/03/2023 08:03");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// formatDate
-// ---------------------------------------------------------------------------
-
-describe("formatDate", () => {
-  it("parses ISO string into Date", () => {
-    const iso = "2024-06-01T10:30:00.000Z";
-    const result = formatDate(iso);
-    expect(result).toBeInstanceOf(Date);
-    expect(result.getTime()).toBe(new Date(iso).getTime());
-  });
-
-  it("returns a Date instance for null (fallback to now)", () => {
-    const before = Date.now();
-    const result = formatDate(null);
-    const after = Date.now();
-    expect(result).toBeInstanceOf(Date);
-    expect(result.getTime()).toBeGreaterThanOrEqual(before);
-    expect(result.getTime()).toBeLessThanOrEqual(after);
   });
 });
 

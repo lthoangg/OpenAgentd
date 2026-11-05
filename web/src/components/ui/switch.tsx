@@ -36,11 +36,11 @@ function Switch({ checked = false, onCheckedChange, disabled, className, ...prop
         // Track — a solid pill with no border, like an OS switch
         'relative inline-flex h-[22px] w-10 shrink-0',
         'items-center rounded-full p-[3px]',
-        // Off: a hairline tone as a fill, light on paper like a native light
-        // switch (the thumb's shadow sets it off) and the strong tone on dark;
-        // both step up under the OS "Increase contrast". On: the warm accent
+        // Off: the strong border tone as a fill in both themes (the hairline
+        // tone left it at 1.5:1 on a paper card, the thumb lost in it); it
+        // steps up under the OS "Increase contrast". On: the warm accent
         // (Bark on paper, cream on dark), like a checked box.
-        checked ? 'bg-(--switch-on)' : 'bg-(--color-border) dark:bg-(--color-border-strong)',
+        checked ? 'bg-(--switch-on)' : 'bg-(--color-border-strong)',
         // Transitions: the track's colour crossfades while the thumb slides
         'transition-colors duration-(--motion-base) ease-(--ease-in-out)',
         // Touch: a 44px hit area around the 40×22 track, without moving the layout.

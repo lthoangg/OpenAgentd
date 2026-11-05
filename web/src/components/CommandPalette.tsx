@@ -614,7 +614,7 @@ export function CommandPalette({
               spellCheck={false}
               enterKeyHint="search"
               // 16px on touch phones, or iOS zooms the page when the field takes focus.
-              className="min-w-0 flex-1 border-none bg-transparent text-xs text-(--color-text) placeholder-(--color-text-muted)/60 outline-none ring-0 focus:border-none focus:outline-none focus:ring-0 focus-visible:border-none focus-visible:outline-none focus-visible:ring-0 md:text-sm max-md:pointer-coarse:text-base"
+              className="min-w-0 flex-1 border-none bg-transparent text-xs text-(--color-text) placeholder-(--color-text-muted) outline-none ring-0 focus:border-none focus:outline-none focus:ring-0 focus-visible:border-none focus-visible:outline-none focus-visible:ring-0 md:text-sm max-md:pointer-coarse:text-base"
               aria-label={searchLabel}
             />
             {query && (

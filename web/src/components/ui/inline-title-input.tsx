@@ -64,7 +64,7 @@ export function InlineTitleInput({
       onClick={(event) => event.stopPropagation()}
       aria-label={label}
       maxLength={maxLength}
-      className={`min-w-0 rounded-xs border border-(--color-border-strong) bg-(--bg-page) px-1 text-(--color-text) outline-none ${className}`}
+      className={`min-w-0 rounded-xs border border-(--color-text-subtle) bg-(--bg-page) px-1 text-(--color-text) outline-none ${className}`}
     />
   )
 }

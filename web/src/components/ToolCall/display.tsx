@@ -16,7 +16,7 @@
 
 import type { ReactNode } from 'react'
 import type { ToolDisplay } from './types'
-import { parsePatchText } from './diffUtils'
+import { parsePatchText, patchFiles } from './diffUtils'
 import { pathBasename } from '@/utils/workspace'
 import { parsePartialJSON } from './displayText'
 import { canonicalToolName } from '@/utils/tool-names'
@@ -222,12 +222,13 @@ function diffLines(prefix: '-' | '+', text: string): string[] {
 function planDisplay(parsed: Record<string, unknown>): ToolDisplay {
   if (str(parsed, 'action') === 'edit') {
     const edits = planEdits(parsed)
-    const count = edits.length
+    // History sends a plan's edits short: only their count.
+    const count = edits.length || (typeof parsed.edit_count === 'number' ? parsed.edit_count : 0)
     const header = count ? `edit · ${count} ${count === 1 ? 'change' : 'changes'}` : 'edit'
     return {
       header,
       headerTitle: header,
-      formattedArgs: count
+      formattedArgs: edits.length
         ? edits.map((edit) => [...diffLines('-', edit.old), ...diffLines('+', edit.new)].join('\n')).join('\n\n')
         : null,
     }
@@ -295,18 +296,18 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return { header: label ? <Arg>{label}</Arg> : null, headerTitle: label, formattedArgs: null }
   }
 
-  // ── shell: the command itself is the target, the full command in the
-  //    bash block; the tooltip carries only the agent's description ───
+  // ── shell: the agent's description is the target, the command its
+  //    tooltip and bash block; without a description, the command ───
   if (name === 'shell') {
     const description = str(parsed, 'description')
     const command = str(parsed, 'command')
     const oneLine = command ? command.replace(/\s*\n\s*/g, ' ') : null
     return {
-      header: oneLine ? <Arg>{trunc(oneLine, 80)}</Arg> : description ? <Arg>{description}</Arg> : null,
-      headerTitle: oneLine && description ? `${oneLine}\n${description}` : oneLine ?? description,
-      // The header already shows the command (the description, when there
-      // is none), so a tooltip repeating it adds nothing.
-      tooltip: oneLine ? description : null,
+      header: description ? <Arg>{description}</Arg> : oneLine ? <Arg>{trunc(oneLine, 80)}</Arg> : null,
+      headerTitle: description && oneLine ? `${description}\n${oneLine}` : description ?? oneLine,
+      // A described row shows the command in full on hover; a bare command
+      // is already the target, and the details show it whole.
+      tooltip: description ? command : null,
       formattedArgs: command,
       language: 'bash',
     }
@@ -583,7 +584,10 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
   // ── patch: touched file names in header, full envelope as args ─────
   if (name === 'patch') {
     const patchText = str(parsed, 'patch_text')
-    const paths = patchText ? patchPaths(patchText) : []
+    // History sends a patch short: its files, without the envelope.
+    const paths = patchText
+      ? patchPaths(patchText)
+      : [...new Set(patchFiles(JSON.stringify(parsed)).flatMap((file) => (file.moveTo ? [file.path, file.moveTo] : [file.path])))]
     const names = [...new Set(paths.map(pathBasename))]
     const summary = names.length > 0 ? trunc(names.join(', ')) : null
     return {

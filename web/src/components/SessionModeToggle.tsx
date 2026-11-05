@@ -61,7 +61,7 @@ export function SessionModeToggle({
               slideItemClass,
               inert && 'cursor-default',
               inert && !active && 'cursor-not-allowed opacity-50',
-              queued && 'italic opacity-70',
+              queued && 'italic',
             )}
           >
             {item.label}

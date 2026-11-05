@@ -17,7 +17,9 @@ pub const MAX_DIR_ENTRIES: usize = 500;
 /// A NUL byte this early means binary content, which is not decoded.
 const BINARY_SNIFF_BYTES: usize = 8192;
 
-const IMAGE_EXT: &[&str] = &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".ico", ".tiff", ".tif"];
+/// `.svg` is not here: it is XML, and models take it as text (no provider
+/// accepts `image/svg+xml` as an image).
+const IMAGE_EXT: &[&str] = &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".tiff", ".tif"];
 const DOC_EXT: &[&str] = &[".pdf", ".docx"];
 
 pub fn ext_of(p: &Path) -> String {
@@ -206,8 +208,15 @@ pub fn handle_image(resolved: &Path, rel: &str) -> Result<ToolOutput, ToolError>
     let (label, raw, media_type) = match appv3_providers::images::fit_image_bytes(&raw, appv3_providers::images::MAX_IMAGE_EDGE) {
         Some(f) => (format!("[Image: {rel} (resized {}×{} → {}×{})]", f.from.0, f.from.1, f.to.0, f.to.1), f.bytes, f.media_type.to_string()),
         None => {
-            let mt = appv3_providers::images::sniff_media_type(&raw).map(String::from).unwrap_or_else(|| image_mime(resolved));
-            (format!("[Image: {rel}]"), raw, mt)
+            // Only formats every provider accepts go out as image data: one
+            // other block fails the request, and every later turn with it.
+            let Some(mt) = appv3_providers::images::sniff_media_type(&raw) else {
+                return Ok(ToolOutput::Text(format!(
+                    "[Image: {rel}] ({}) is not a format the model can view. Convert it to PNG with the shell first, for example `sips -s format png {rel} --out /tmp/image.png` (macOS) or `magick {rel} /tmp/image.png`, then read that file.",
+                    image_mime(resolved)
+                )));
+            };
+            (format!("[Image: {rel}]"), raw, mt.to_string())
         }
     };
     Ok(ToolOutput::Parts {
@@ -410,6 +419,27 @@ mod tests {
         let ToolOutput::Parts { parts, .. } = handle_image(&p, "shot.png").unwrap() else { panic!("parts") };
         let ContentBlock::ImageData { media_type, .. } = &parts[1] else { panic!("image") };
         assert_eq!(media_type, "image/jpeg");
+    }
+
+    /// SVG is XML: sent as `image/svg+xml` it made every provider reject the
+    /// request (and every later turn of the session).
+    #[test]
+    fn svg_reads_as_text() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("logo.svg");
+        std::fs::write(&p, "<svg xmlns=\"http://www.w3.org/2000/svg\"><circle r=\"4\"/></svg>\n").unwrap();
+        assert_eq!(classify_file(&p), "text");
+        assert_eq!(read_text(&p, "logo.svg", 1, None).unwrap(), "<svg xmlns=\"http://www.w3.org/2000/svg\"><circle r=\"4\"/></svg>\n");
+    }
+
+    #[test]
+    fn images_models_cannot_take_are_reported_not_sent() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("icon.bmp");
+        std::fs::write(&p, b"BM\x3a\x00\x00\x00\x00\x00\x00\x00\x36\x00\x00\x00").unwrap();
+        let ToolOutput::Text(t) = handle_image(&p, "icon.bmp").unwrap() else { panic!("expected a text note, not image data") };
+        assert!(t.starts_with("[Image: icon.bmp] (image/bmp) is not a format the model can view."), "{t}");
+        assert!(t.contains("sips -s format png icon.bmp --out"), "{t}");
     }
 
     #[test]

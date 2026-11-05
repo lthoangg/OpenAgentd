@@ -28,9 +28,10 @@ pub fn json_code(code: u16, v: Value) -> Response {
 
 /// Give a `200` response an `ETag` (a hash of its body) and answer `304 Not
 /// Modified`, without the body, when the request's `If-None-Match` already
-/// names it. For polled reads (file listings, git status) whose result
-/// usually has not changed: the server still computes it, but the client
-/// skips the transfer, the JSON parse and the re-render.
+/// names it. For reads whose result usually has not changed (file listings,
+/// git status, a session's history): the server still computes it, but the
+/// client skips the transfer, the JSON parse and the re-render. `private`:
+/// the bodies are the user's own data, never for a shared cache.
 pub async fn with_etag(req: &axum::http::HeaderMap, resp: Response) -> Response {
     use std::hash::Hasher;
     if resp.status() != StatusCode::OK {
@@ -45,13 +46,15 @@ pub async fn with_etag(req: &axum::http::HeaderMap, resp: Response) -> Response 
     let tag = format!("\"{:016x}\"", h.finish());
     let tag_value = HeaderValue::from_str(&tag).expect("hex etag is a valid header");
     parts.headers.insert(header::ETAG, tag_value.clone());
-    parts.headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    parts.headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(ETAG_CACHE_CONTROL));
     let matches = req.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()).is_some_and(|v| v.split(',').any(|t| t.trim() == tag || t.trim() == "*"));
     if matches {
-        return (StatusCode::NOT_MODIFIED, [(header::ETAG, tag_value), (header::CACHE_CONTROL, HeaderValue::from_static("no-cache"))]).into_response();
+        return (StatusCode::NOT_MODIFIED, [(header::ETAG, tag_value), (header::CACHE_CONTROL, HeaderValue::from_static(ETAG_CACHE_CONTROL))]).into_response();
     }
     Response::from_parts(parts, axum::body::Body::from(bytes))
 }
+
+const ETAG_CACHE_CONTROL: &str = "private, no-cache";
 
 /// [`with_etag`] for a handler result.
 pub async fn etagged(req: &axum::http::HeaderMap, r: ApiResult<Response>) -> ApiResult<Response> {

@@ -199,24 +199,28 @@ export interface MessageAttachment {
 
 export interface MessageResponse {
   id: string
-  session_id: string
   role: string
   content: string | null
   reasoning_content: string | null
   // Backend returns raw dicts; cast to ToolCall shape for UI convenience.
-  tool_calls: Array<Partial<ToolCall> & { id: string; function?: Partial<ToolCall['function']> }> | null
+  /**
+   * ``arguments_bytes`` is set when history sent the call's arguments short
+   * (``appv3_db::tool_args``): the full arguments' size.
+   */
+  tool_calls: Array<Partial<ToolCall> & { id: string; function?: Partial<ToolCall['function']>; arguments_bytes?: number }> | null
   tool_call_id: string | null
   name: string | null
   /** Canonical ordering key within a session — sort by (seq, id), not created_at. */
   seq?: number
   /** Row kind: chat | note | queued | summary | reverted. */
   kind?: string
-  is_summary: boolean
-  is_hidden: boolean
   extra: Record<string, unknown> | null
   created_at: string | null
-  file_message?: boolean
   attachments: MessageAttachment[] | null
+  /** A tool row whose output stays on the server (fetched on open). */
+  result_omitted?: boolean
+  /** Its size in bytes, when ``result_omitted``. */
+  result_bytes?: number
 }
 
 export interface ToolCall {
@@ -286,6 +290,23 @@ export interface SessionResponse {
   pinned_at?: string | null
   /** The session's live goal (v3); absent without one. */
   goal_status?: 'active' | 'paused' | null
+  /**
+   * The session in another workspace whose ``workspace`` send started this
+   * one (v3); absent for every other session.
+   */
+  sent_from?: SessionSentFrom | null
+  /**
+   * Sessions in other workspaces this one's sends started, directly or down
+   * a chain, oldest first (v3, list rows); absent when none.
+   */
+  linked_sessions?: SessionResponse[]
+}
+
+/** Who started a session from another workspace (``SessionResponse.sent_from``). */
+export interface SessionSentFrom {
+  session_id: string
+  workspace: string
+  title?: string | null
 }
 
 export interface SessionDetailResponse extends SessionResponse {
@@ -362,6 +383,11 @@ export interface SessionHistoryResponse {
   members: Array<{
     name: string
     session_id: string
+    /**
+     * Empty from servers since v3.46.0: the lead's view never renders a
+     * member's rows, and opening a member loads its own session. Older
+     * servers send its newest rows.
+     */
     messages: MessageResponse[]
     running?: boolean
     estimated_cost_usd?: number | null
@@ -410,7 +436,6 @@ export const SSE_EVENT_TYPES = [
   'agent_not_configured',
   'interaction_mode',
   'queued_turn_start',
-  'permission_asked',
   'question_asked',
   'question_answered',
   'question_dismissed',
@@ -493,10 +518,22 @@ export interface ContentBlock {
   content: string
   toolName?: string
   toolArgs?: string
+  /**
+   * ``toolArgs`` is the short form history sends (a shell call without its
+   * command, a patch's files, a plan without its Markdown), and the full
+   * arguments are this many bytes; the card fetches them when opened.
+   */
+  toolArgsBytes?: number
   toolDone?: boolean
   toolCallId?: string   // for matching tool results
   toolOutput?: string   // live output streamed before tool_end
   toolResult?: string   // the role:"tool" response content
+  /**
+   * The call finished with this many bytes of output that stay on the
+   * server: ``toolResult`` is absent and the card fetches it when opened
+   * (``useToolResult``). Absent when the result rode with the call.
+   */
+  toolResultBytes?: number
   durationMs?: number         // client-side elapsed since first chunk (what the live timer shows, frozen on completion)
   serverDurationMs?: number   // server-measured execution time from tool_end duration_ms
   startedAt?: number          // client timestamp when block was first created (for live elapsed display)

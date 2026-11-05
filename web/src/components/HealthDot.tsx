@@ -68,7 +68,7 @@ export function HealthDot({
         />
         <TooltipContent>
           <span className="block">{`${serverName} · ${state}`}</span>
-          <span className="block font-mono opacity-70">{version ? `${address} · v${version}` : address}</span>
+          <span className="block font-mono text-(--color-text-muted)">{version ? `${address} · v${version}` : address}</span>
         </TooltipContent>
       </Tooltip>
       <AppBackendDialog open={dialogOpen} onOpenChange={setDialogOpen} />

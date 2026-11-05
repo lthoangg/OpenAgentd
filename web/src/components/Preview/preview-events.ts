@@ -34,7 +34,10 @@ export function previewTargetFromArgs(args: string | undefined): PreviewTarget |
   return null
 }
 
-/** The backend's success text for an open call starts with this. */
+/**
+ * The backend's success text for an open call starts with this. Only such
+ * answers reach the client with the call (``appv3_db::api::result_rides_inline``).
+ */
 export function isPreviewOpenSuccess(result: string | undefined): boolean {
   return typeof result === 'string' && result.startsWith('Opening ')
 }

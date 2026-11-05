@@ -3,7 +3,7 @@ import type { SessionResponse } from '@/api/types'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
 import { useActiveSessionsQuery, useAllSessionsQuery } from '@/queries/useSessionsQuery'
 import { useSidebarViewStore, type SidebarGroupBy } from '@/stores/useSidebarViewStore'
-import { groupSessionsByDate, groupSessionsByStatus, type SessionGroup } from '../Sidebar.helpers'
+import { groupSessionsByDate, groupSessionsByStatus, nestedUnderSender, type SessionGroup } from '../Sidebar.helpers'
 import { SessionGroupHeader } from './SessionGroupHeader'
 import { Collapsible } from '@/components/ui/collapsible'
 import { DraftSessionRow, SessionRow, SessionRowsSkeleton, ShowMoreRow, useStableSessionHandlers, type SessionHandlers } from './SessionRow'
@@ -22,6 +22,9 @@ function uniqueById(sessions: readonly SessionResponse[]): SessionResponse[] {
  * grouped by status (Needs you · Running · Recent), by date, or not at all.
  * Rows name their workspace. One Show more row at the bottom pages the
  * shared list, so the sidebar keeps its single scroller.
+ * A session another workspace's send started sits under its sender's row
+ * instead of on its own, when the sender is listed; Needs you still lists
+ * it, so a question never hides.
  */
 export function FlatSessionGroups({
   groupBy,
@@ -61,9 +64,14 @@ export function FlatSessionGroups({
     [active.data],
   )
   const groups: SessionGroup[] = useMemo(() => {
-    if (groupBy === 'status') return groupSessionsByStatus(sessions, activeSessions)
-    if (groupBy === 'date') return groupSessionsByDate(sessions)
-    return sessions.length > 0 ? [{ id: 'all', label: 'All', sessions }] : []
+    const listedIds = new Set([...sessions, ...activeSessions].map((session) => session.id))
+    const own = sessions.filter((session) => !nestedUnderSender(session, listedIds))
+    if (groupBy === 'status') {
+      const active = activeSessions.filter((session) => session.needs_input === true || !nestedUnderSender(session, listedIds))
+      return groupSessionsByStatus(own, active)
+    }
+    if (groupBy === 'date') return groupSessionsByDate(own)
+    return own.length > 0 ? [{ id: 'all', label: 'All', sessions: own }] : []
   }, [groupBy, sessions, activeSessions])
 
   const renderRow = (session: SessionResponse) => (

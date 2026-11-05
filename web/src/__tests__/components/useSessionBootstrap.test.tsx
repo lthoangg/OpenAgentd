@@ -22,6 +22,7 @@ import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 function Harness({
   loadSession,
   connectStream,
+  catchUpLiveTurn = mock(async () => 'reload' as const),
   sessionId = 'session-1',
   workspace = '/repo/app',
   navigate = mock(() => {}),
@@ -33,6 +34,7 @@ function Harness({
 }: {
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   connectStream: (options?: { holdUntil?: Promise<unknown> }) => AbortController
+  catchUpLiveTurn?: UseSessionBootstrapArgs['catchUpLiveTurn']
   /** ``null`` is a new-session draft (no session yet). */
   sessionId?: string | null
   workspace?: string
@@ -58,6 +60,7 @@ function Harness({
     connectStream,
     loadAgentStatus,
     loadSession,
+    catchUpLiveTurn,
     beginResolvedSession,
     consumeResolvedSessionReady: mock(() => false),
   })
@@ -164,6 +167,47 @@ describe('useSessionBootstrap foreground resume', () => {
 
     await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', '/repo/app'))
     expect(connectStream).toHaveBeenCalledTimes(1)
+  })
+
+  it('reattaches without the full page when the rows since the last sync are enough', async () => {
+    suspendsSockets = true
+    const loadSession = mock(async () => {})
+    const connectStream = mock(() => new AbortController())
+    const catchUpLiveTurn = mock(async () => 'attach' as const)
+    render(<Harness loadSession={loadSession} connectStream={connectStream} catchUpLiveTurn={catchUpLiveTurn} />)
+    await waitFor(() => expect(connectStream).toHaveBeenCalledTimes(1))
+
+    loadSession.mockClear()
+    connectStream.mockClear()
+    const stale = new AbortController()
+    useAgentStore.setState({ _workspace: '/repo/app', _abortController: stale })
+
+    window.dispatchEvent(new Event('pageshow'))
+
+    await waitFor(() => expect(connectStream).toHaveBeenCalledTimes(1))
+    expect(catchUpLiveTurn).toHaveBeenCalledWith('session-1', '/repo/app')
+    expect(loadSession).not.toHaveBeenCalled()
+    expect(stale.signal.aborted).toBe(true)
+  })
+
+  it('opens nothing when the user left the session during the catch-up', async () => {
+    suspendsSockets = true
+    const loadSession = mock(async () => {})
+    const connectStream = mock(() => new AbortController())
+    const catchUpLiveTurn = mock(async () => 'stale' as const)
+    render(<Harness loadSession={loadSession} connectStream={connectStream} catchUpLiveTurn={catchUpLiveTurn} />)
+    await waitFor(() => expect(connectStream).toHaveBeenCalledTimes(1))
+
+    loadSession.mockClear()
+    connectStream.mockClear()
+    useAgentStore.setState({ _workspace: '/repo/app' })
+
+    window.dispatchEvent(new Event('pageshow'))
+
+    await waitFor(() => expect(catchUpLiveTurn).toHaveBeenCalledTimes(1))
+    await act(async () => {})
+    expect(loadSession).not.toHaveBeenCalled()
+    expect(connectStream).not.toHaveBeenCalled()
   })
 
   it('does NOT abort or replace a live connected stream on visibilitychange on desktop', async () => {

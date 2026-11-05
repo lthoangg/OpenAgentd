@@ -73,6 +73,9 @@ fn fits(d: (u32, u32), max_edge: u32) -> bool {
     d.0 <= max_edge && d.1 <= max_edge
 }
 
+/// Image media types every provider accepts; [`sniff_media_type`] knows these.
+pub const ACCEPTED_MEDIA_TYPES: [&str; 4] = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
 /// Media type of image bytes from their magic number, or `None` when the
 /// bytes are not an image format providers accept.
 pub fn sniff_media_type(bytes: &[u8]) -> Option<&'static str> {
@@ -277,15 +280,28 @@ pub async fn fit_tool_parts(parts: &mut [ContentBlock]) -> usize {
 
 /// Shrink oversized images in an outgoing request (old history included),
 /// and relabel images whose bytes are another format than their media type
-/// says (providers reject the mismatch). Returns the messages, edited in
-/// place, and how many images were resized.
+/// says (providers reject the mismatch). An image in a format no provider
+/// takes (SVG, BMP, TIFF, …) becomes a one-line text note: one such block
+/// fails the whole request, and it stays in the history. Returns the
+/// messages, edited in place, and how many images were resized.
 pub async fn fit_request(mut messages: Vec<ChatMessage>) -> (Vec<ChatMessage>, usize) {
     for b in messages.iter_mut().filter_map(parts_mut).flat_map(|p| p.iter_mut()) {
-        if let ContentBlock::ImageData { data, media_type } = b {
-            if let Some(real) = media_type.starts_with("image/").then(|| sniff_media_type_b64(data)).flatten().filter(|real| media_type != real) {
+        let ContentBlock::ImageData { data, media_type } = b else { continue };
+        if !media_type.starts_with("image/") {
+            continue;
+        }
+        match sniff_media_type_b64(data) {
+            Some(real) if media_type != real => {
                 // Debug: a history image is relabelled again on every turn.
                 tracing::debug!("image_media_type_corrected declared={media_type} actual={real}");
                 *media_type = real.to_string();
+            }
+            Some(_) => {}
+            // Undecodable bytes under an accepted label are left alone (fail-open).
+            None if ACCEPTED_MEDIA_TYPES.contains(&media_type.as_str()) => {}
+            None => {
+                tracing::debug!("image_unsupported_omitted media_type={media_type}");
+                *b = ContentBlock::text(format!("[Image omitted: {media_type} is not an image format the model accepts.]"));
             }
         }
     }
@@ -548,5 +564,28 @@ mod tests {
         let ChatMessage::Tool { parts: Some(p), .. } = &out[0] else { panic!() };
         assert_eq!(p[1], image_part(&jpeg, "image/jpeg"));
         assert_eq!(p[2], pdf);
+    }
+
+    /// A `read` of an `.svg` used to send `image/svg+xml`, which every
+    /// provider rejects; the block sits in the history and fails each turn.
+    #[tokio::test]
+    async fn fit_request_replaces_images_in_formats_models_reject() {
+        let svg = image_part(b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>", "image/svg+xml");
+        let bmp = image_part(b"BM\x3a\x00\x00\x00\x00\x00\x00\x00\x36\x00\x00\x00", "image/bmp");
+        let png = image_part(&fixtures::png(32, 32), "image/png");
+        let pdf = image_part(b"%PDF-1.7", "application/pdf");
+        let messages = vec![ChatMessage::Tool {
+            content: Some("[Image: logo.svg]".into()),
+            tool_call_id: "c1".into(),
+            name: Some("read".into()),
+            parts: Some(vec![ContentBlock::text("[Image: logo.svg]"), svg, bmp, png.clone(), pdf.clone()]),
+            meta: MessageMeta::default(),
+        }];
+        let (out, _) = fit_request(messages).await;
+        let ChatMessage::Tool { parts: Some(p), .. } = &out[0] else { panic!() };
+        assert_eq!(p[1], ContentBlock::text("[Image omitted: image/svg+xml is not an image format the model accepts.]"));
+        assert_eq!(p[2], ContentBlock::text("[Image omitted: image/bmp is not an image format the model accepts.]"));
+        assert_eq!(p[3], png);
+        assert_eq!(p[4], pdf);
     }
 }

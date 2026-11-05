@@ -255,6 +255,12 @@ export function getDiffStats(toolName: string, args: string, _result?: string): 
     if (!parsed) return null
 
     if (toolName === 'patch') {
+      if (typeof parsed.patch_text !== 'string' && Array.isArray(parsed.files)) {
+        return shortPatchFiles(parsed.files).reduce(
+          (sum, file) => ({ additions: sum.additions + file.additions, deletions: sum.deletions + file.deletions }),
+          { additions: 0, deletions: 0 },
+        )
+      }
       const patchText = typeof parsed.patch_text === 'string' ? parsed.patch_text : ''
       const diffs = parsePatchText(patchText)
       let additions = 0
@@ -281,19 +287,59 @@ export interface PatchFileStat {
   deletions: number
 }
 
-/** Files a ``patch`` call touches, each with its own line counts. */
-export function patchFileStats(args: string | undefined): PatchFileStat[] {
-  let patchText: unknown
+interface ShortPatchFile extends PatchFileStat {
+  /** Where an update moved the file. */
+  moveTo?: string
+}
+
+/**
+ * The files of the short ``patch`` arguments history sends
+ * (``{files: [{path, kind, additions, deletions, move_to?}]}``,
+ * ``appv3_db::tool_args``) in place of the envelope.
+ */
+function shortPatchFiles(files: unknown[]): ShortPatchFile[] {
+  return files.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const f = item as Record<string, unknown>
+    if (typeof f.path !== 'string') return []
+    const kind = f.kind === 'add' || f.kind === 'delete' ? f.kind : 'update'
+    const count = (v: unknown) => (typeof v === 'number' ? v : 0)
+    const file: ShortPatchFile = { path: f.path, kind, additions: count(f.additions), deletions: count(f.deletions) }
+    if (typeof f.move_to === 'string') file.moveTo = f.move_to
+    return [file]
+  })
+}
+
+/**
+ * Each file a ``patch`` call touches, from the envelope or from the short
+ * form history sends; ``moveTo`` when an update moved it.
+ */
+export function patchFiles(args: string | undefined): ShortPatchFile[] {
+  let parsed: { patch_text?: unknown; files?: unknown } | null
   try {
-    patchText = args ? (JSON.parse(args) as { patch_text?: unknown } | null)?.patch_text : undefined
+    parsed = args ? (JSON.parse(args) as { patch_text?: unknown; files?: unknown } | null) : null
   } catch {
     return []
   }
-  if (typeof patchText !== 'string') return []
-  return parsePatchText(patchText).map((diff) => ({
-    path: diff.moveTo ?? diff.path,
-    kind: diff.kind,
-    additions: diff.lines.filter((line) => line.type === 'added').length,
-    deletions: diff.lines.filter((line) => line.type === 'removed').length,
+  if (!parsed) return []
+  if (typeof parsed.patch_text === 'string') {
+    return parsePatchText(parsed.patch_text).map((diff) => ({
+      path: diff.path,
+      kind: diff.kind,
+      additions: diff.lines.filter((line) => line.type === 'added').length,
+      deletions: diff.lines.filter((line) => line.type === 'removed').length,
+      ...(diff.moveTo ? { moveTo: diff.moveTo } : {}),
+    }))
+  }
+  return Array.isArray(parsed.files) ? shortPatchFiles(parsed.files) : []
+}
+
+/** Files a ``patch`` call touches, each with its own line counts. */
+export function patchFileStats(args: string | undefined): PatchFileStat[] {
+  return patchFiles(args).map((file) => ({
+    path: file.moveTo ?? file.path,
+    kind: file.kind,
+    additions: file.additions,
+    deletions: file.deletions,
   }))
 }

@@ -9,8 +9,9 @@
  *   - Expanded body: separate bordered inspector with section panels so
  *     args/results read as secondary diagnostic content.
  *
- * Running state is carried by subtle header animation; result content carries
- * success/failure details.
+ * Running state is carried by subtle header animation. The row makes no
+ * success/failure claim and shows no result summary: most tools' output
+ * stays on the server (``resultBytes``) and is fetched when the row opens.
  *
  * The per-tool header/args customisation lives in ``./display.tsx``;
  * this module owns only the chrome (collapse, copy, motion).
@@ -47,9 +48,9 @@ import { RosterSubagentRow } from './SubagentRow'
 import { teamMemberFromResult } from './subagentStatus'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
-import { parseShellOutcome, toolRowSummary } from './summary'
+import { parseShellOutcome } from './summary'
+import { fetchToolArguments, fetchToolResult, useToolArguments, useToolResult } from './useToolResult'
 import { formatMetaDuration } from '@/components/ui/meta-row'
-import { Chip } from '@/components/ui/chip'
 import type { ToolCallState } from './types'
 import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
 import { GoalClaimCard } from '../GoalClaimCard'
@@ -68,6 +69,14 @@ interface ToolCallProps {
   done?: boolean
   liveOutput?: string
   result?: string // tool response content
+  /** Bytes of output that stayed on the server; fetched when the row opens. */
+  resultBytes?: number
+  /**
+   * Set when ``args`` is the short form history sends (a shell call without
+   * its command, a patch's files, a plan without its Markdown): the full
+   * arguments' size. They are fetched when the row opens.
+   */
+  argsBytes?: number
   durationMs?: number
   startedAt?: number
   /** Needed by ``ask_user`` to match the call against the open question. */
@@ -166,7 +175,7 @@ const ShellCommand = memo(function ShellCommand({ command }: { command: string }
   return <code>{highlighted}</code>
 })
 
-export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result, durationMs, startedAt, toolCallId, isCurrentStep = false }: ToolCallProps) {
+export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result: inlineResult, resultBytes, argsBytes, durationMs, startedAt, toolCallId, isCurrentStep = false }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   // Reduced motion: snap the disclosure open/closed instead of animating
@@ -183,27 +192,39 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // reopen, a revealed turn, an older page, a reconnect replay), and
   // animating those started hundreds of compositor animations at once.
   const [animatesIn] = useState(() => !done)
+  // The output stayed on the server: the row fetches it once opened.
+  const onServer = Boolean(done) && inlineResult === undefined && resultBytes !== undefined && Boolean(toolCallId)
+  // The fetch waits for the user: a row that opened itself to show live
+  // output already shows it.
+  const [fetchWanted, setFetchWanted] = useState(false)
+  const remote = useToolResult(toolCallId, onServer, fetchWanted)
+  const result = inlineResult ?? remote.text
+  // Short arguments: the row reads them; the open details need the full ones.
+  const argsOnServer = argsBytes !== undefined && Boolean(toolCallId)
+  const remoteArgs = useToolArguments(toolCallId, argsOnServer, fetchWanted)
+  const fullArgs = argsOnServer ? remoteArgs.text : args
+  const awaitingArgs = argsOnServer && fullArgs === undefined
   // A change to OpenAgentd's setup waits on the user's Apply / Cancel.
   const confirmationCard = useShowsConfirmationCard(opensConfirmation(name, args ?? undefined), toolCallId, result)
 
-  // Determine status: start (name only) → running (args) → success/failed (result)
+  // Status: start (name only) → running (args) → done. No success/failure:
+  // the agent reads its tools' output and acts on a failure itself.
   const isPending = args === undefined || args === null
   const isRunning = !isPending && !done
-  const state: ToolCallState = isPending
-    ? 'start'
-    : isRunning
-      ? 'running'
-      : isFailedResult(result)
-        ? 'failed'
-        : 'success'
+  const state: ToolCallState = isPending ? 'start' : isRunning ? 'running' : 'success'
 
   // Me: getToolDisplay/getDiffStats are pure functions of (name, args,
   // result) — memoize them so ToolCall's own 1s elapsed-timer tick
   // (`now`, below) doesn't re-run a full JSON.parse and, for edit/patch/
   // write, an O(oldLines*newLines) diff on every tick for the entire
   // lifetime of a running tool call just to redraw the duration label.
-  const { header, headerTitle, tooltip, formattedArgs, language, suppressResult } =
+  const { header, headerTitle, tooltip, language, suppressResult } =
     useMemo(() => getToolDisplay(name, args), [name, args])
+  // The details show the full arguments, once here.
+  const { formattedArgs } = useMemo(
+    () => (fullArgs === undefined ? { formattedArgs: null } : getToolDisplay(name, fullArgs)),
+    [name, fullArgs],
+  )
   const toolOperation = useMemo(() => {
     if (name !== 'lsp' || !args) return undefined
     const parsed = tryParseJSON(args)
@@ -285,7 +306,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
 
   const resultCopyButton = <CopyButton label="Copy result" text={result || ''} />
 
-  const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult || hasReadResult)
+  const awaitingResult = onServer && !suppressResult && result === undefined
+  const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult || hasReadResult || awaitingResult || awaitingArgs)
   const autoOpen = Boolean(shownLiveOutput)
   const [showedLiveOutput, setShowedLiveOutput] = useState(autoOpen)
   if (autoOpen && !showedLiveOutput) setShowedLiveOutput(true)
@@ -298,6 +320,10 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     markClose(control)
     setManualExpanded(false)
   }
+  const open = () => {
+    setFetchWanted(true)
+    setManualExpanded(true)
+  }
   // Only an open row shows these, and reopening a long run mounts hundreds of
   // collapsed rows at once: the parse + pretty-print waits for the expand.
   const displayedArgs = useMemo(() => (expanded ? formatArgsDetails(formattedArgs) : ''), [expanded, formattedArgs])
@@ -305,11 +331,6 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // The whole label, for tools and tests that read it; the tooltip says only
   // what the row does not already show (see ``ToolDisplay.tooltip``).
   const label = headerTitle ? `${displayName}: ${headerTitle}` : displayName
-  // Shell rows carry no exit status or error mark: the agent reads and fixes
-  // a failed command. Other tools still flag a failure with an error chip.
-  const failed = state === 'failed'
-  const rowSummary = useMemo(() => (done ? toolRowSummary(name, result, failed) : null), [done, name, result, failed])
-  const exitChip = !isShell && failed ? <Chip tone="error" mono>error</Chip> : null
   const elapsedMs = durationMs ?? (!done && startedAt ? now - startedAt : undefined)
 
   // The row's right-click menu and touch long-press sheet. Like the Copy
@@ -319,9 +340,18 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const menuItems = (): ChatMenuItem[] => {
     const argsText = isShellTerminal ? formattedArgs : formatArgsDetails(formattedArgs)
     const resultText = done && (shownResult || hasReadResult) ? result : undefined
+    const fetchable = awaitingResult && toolCallId
+    const argsFetchable = awaitingArgs && toolCallId
+    // What the details' args section would show, from arguments fetched now.
+    const copyFetchedArgs = (text: string) => {
+      const shown = getToolDisplay(name, text).formattedArgs
+      copyText(isShell ? shown ?? '' : formatArgsDetails(shown) || text)
+    }
     return [
       ...(argsText ? [{ label: 'Copy arguments', run: () => copyText(argsText) }] : []),
+      ...(!argsText && argsFetchable ? [{ label: 'Copy arguments', run: () => { void fetchToolArguments(argsFetchable).then(copyFetchedArgs) } }] : []),
       ...(resultText ? [{ label: 'Copy result', run: () => copyText(resultText) }] : []),
+      ...(!resultText && fetchable ? [{ label: 'Copy result', run: () => { void fetchToolResult(fetchable).then(copyText) } }] : []),
     ]
   }
 
@@ -360,7 +390,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                 ref: headerRef,
                 onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
                   if (expanded) collapse(event.currentTarget)
-                  else setManualExpanded(true)
+                  else open()
                 },
                 'aria-expanded': expanded,
                 'aria-controls': expanded ? detailsId : undefined,
@@ -372,7 +402,6 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
           className="group"
           meta={
             <>
-              {exitChip}
               {elapsedMs !== undefined && <span>{formatMetaDuration(elapsedMs)}</span>}
               {hasDetails ? (
                 <ChevronRight
@@ -396,13 +425,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
               {diffStats.deletions > 0 && <span className="text-(--color-diff-del-text)">−{diffStats.deletions}</span>}
             </span>
           )}
-          {rowSummary ? (
-            // The summary keeps up to 60% of the row; the target before it
-            // takes the truncation, so "3 matches" never clips to "3 m…".
-            <span className={cn('min-w-0 max-w-[60%] shrink-0 truncate', rowSummary.error ? 'text-(--color-error)' : 'text-(--color-text-muted)')}>
-              {rowSummary.text}
-            </span>
-          ) : state === 'running' ? (
+          {state === 'running' ? (
             <span className="shrink-0 text-(--color-text-muted)">running…</span>
           ) : null}
         </ToolRow>
@@ -478,17 +501,28 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             className="overflow-hidden"
           >
             <section className="group relative mt-1 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)">
+              {awaitingArgs && (usesDiffView || !formattedArgs) && (
+                <div>
+                  <SectionHeader label="arguments" controls={detailsId} onCollapse={collapse} />
+                  <p className="bg-(--bg-input) px-3 py-2.5 text-xs text-(--color-text-muted)" role="status">
+                    {remoteArgs.error ? `Could not load the arguments: ${remoteArgs.error}` : 'Loading arguments…'}
+                  </p>
+                </div>
+              )}
               {usesDiffView ? (
+                fullArgs !== undefined && (
                 <DiffView
                   toolName={name}
-                  args={args || ''}
+                  args={fullArgs || ''}
                   result={result}
                   onCollapse={() => setManualExpanded(false)}
                 />
+                )
               ) : usesReadView ? (
                 <ReadView
                   args={args || ''}
                   result={result}
+                  loading={remote.loading}
                   onCollapse={() => setManualExpanded(false)}
                 />
               ) : (
@@ -541,6 +575,19 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
 
                   {/* Background-process output owns its PID/status header, so it
                       replaces the generic Result caption rather than nesting below it. */}
+                  {awaitingResult && !shownLiveOutput && (
+                    <div>
+                      <SectionHeader
+                        label="result"
+                        controls={detailsId}
+                        onCollapse={collapse}
+                        divided={Boolean(formattedArgs)}
+                      />
+                      <p className="bg-(--bg-input) px-3 py-2.5 text-xs text-(--color-text-muted)" role="status">
+                        {remote.error ? `Could not load the result: ${remote.error}` : 'Loading result…'}
+                      </p>
+                    </div>
+                  )}
                   {shownResult && !isShellTerminal && (
                     isBackgroundProcess ? (
                       <ToolResult toolName={name} operation={toolOperation} result={shownResult} headerAction={resultCopyButton} onCollapse={() => setManualExpanded(false)} />

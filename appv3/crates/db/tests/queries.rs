@@ -36,6 +36,40 @@ async fn deleting_a_session_removes_its_side_questions() {
     assert!(live_session_goal(&pool, &other.id).await.unwrap().is_some());
 }
 
+/// Sessions a workspace send started list under the session that sent it,
+/// down a chain of sends; the first sender keeps the link, and deleting it
+/// leaves the started sessions in place, unlinked.
+#[tokio::test]
+async fn linked_sessions_follow_sends_down_the_chain() {
+    let (_d, pool) = fresh().await;
+    let new = |ws: &str| NewSession { workspace: ws.into(), ..Default::default() };
+    let app = create_session(&pool, new("/r/app")).await.unwrap();
+    let infra = create_session(&pool, new("/r/infra")).await.unwrap();
+    let web = create_session(&pool, new("/r/web")).await.unwrap();
+    let seed = create_session(&pool, new("/r/web")).await.unwrap();
+    let other = create_session(&pool, new("/r/app")).await.unwrap();
+    set_sent_from_session(&pool, &api_uuid(&infra.id), &api_uuid(&app.id)).await.unwrap();
+    set_sent_from_session(&pool, &web.id, &app.id).await.unwrap();
+    set_sent_from_session(&pool, &seed.id, &infra.id).await.unwrap();
+    // A later sender does not take the session over.
+    set_sent_from_session(&pool, &infra.id, &other.id).await.unwrap();
+    // Nor can a session link to itself or to a session that does not exist.
+    set_sent_from_session(&pool, &other.id, &other.id).await.unwrap();
+    set_sent_from_session(&pool, &other.id, "00000000000000000000000000000001").await.unwrap();
+
+    let linked = list_linked_sessions(&pool, &[app.id.clone(), infra.id.clone(), other.id.clone()]).await.unwrap();
+    let under = |root: &str| linked.iter().filter(|(r, _)| r == root).map(|(_, s)| s.id.clone()).collect::<Vec<_>>();
+    assert_eq!(under(&app.id), vec![infra.id.clone(), web.id.clone(), seed.id.clone()]);
+    assert_eq!(under(&infra.id), vec![seed.id.clone()]);
+    assert!(under(&other.id).is_empty());
+    assert_eq!(get_session(&pool, &infra.id).await.unwrap().unwrap().sent_from_session_id.as_deref(), Some(app.id.as_str()));
+    assert_eq!(get_session(&pool, &other.id).await.unwrap().unwrap().sent_from_session_id, None);
+
+    delete_session_rows(&pool, &app.id).await.unwrap();
+    assert_eq!(get_session(&pool, &infra.id).await.unwrap().unwrap().sent_from_session_id, None);
+    assert_eq!(get_session(&pool, &seed.id).await.unwrap().unwrap().sent_from_session_id.as_deref(), Some(infra.id.as_str()));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_saves_get_distinct_positions() {
     // A queued user message and the agent's reply can be written at the
@@ -513,7 +547,7 @@ async fn first_history_page_stops_at_its_byte_budget() {
     let prompt = save_message(&pool, &s.id, NewMessage::user("read everything")).await.unwrap();
     let big = "x".repeat(100 * 1024);
     for i in 0..60 {
-        save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "read", big.clone())).await.unwrap();
+        save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "plan", big.clone())).await.unwrap();
     }
 
     let page = first_history_page(&pool, &s).await.unwrap();
@@ -532,7 +566,7 @@ async fn first_history_page_keeps_its_newest_rows_past_the_budget() {
     let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
     let huge = "x".repeat(FIRST_PAGE_MAX_BYTES);
     for i in 0..(FIRST_PAGE_MIN_ROWS + 5) {
-        save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "read", huge.clone())).await.unwrap();
+        save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "plan", huge.clone())).await.unwrap();
     }
     assert_eq!(first_history_page(&pool, &s).await.unwrap().rows.len(), FIRST_PAGE_MIN_ROWS);
 }
@@ -550,21 +584,16 @@ async fn first_history_page_budget_skips_what_display_strips() {
     assert_eq!(first_history_page(&pool, &s).await.unwrap().rows.len(), HISTORY_PAGE_SIZE as usize);
 }
 
-/// A member rides on the lead's page with its short tail only.
+/// Output that history leaves out (a read's text) does not count either.
 #[tokio::test]
-async fn member_first_page_is_a_short_tail_within_its_budget() {
+async fn first_history_page_budget_skips_left_out_tool_output() {
     let (_d, pool) = fresh().await;
     let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
-    save_steps(&pool, &s.id, 50).await;
-    let rows = member_first_page(&pool, &s.id).await.unwrap();
-    assert_eq!(rows.len(), MEMBER_FIRST_PAGE_SIZE as usize);
-    assert_eq!(rows.last().and_then(|r| r.content.clone()).as_deref(), Some("step 49"), "the newest rows, in order");
-
-    let big = "x".repeat(MEMBER_PAGE_MAX_BYTES / 2 - 1024);
-    for i in 0..4 {
+    let big = "x".repeat(100 * 1024);
+    for i in 0..60 {
         save_message(&pool, &s.id, NewMessage::tool(format!("call_{i}"), "read", big.clone())).await.unwrap();
     }
-    assert_eq!(member_first_page(&pool, &s.id).await.unwrap().len(), 2);
+    assert_eq!(first_history_page(&pool, &s).await.unwrap().rows.len(), 60);
 }
 
 #[tokio::test]
@@ -635,8 +664,8 @@ async fn real_v2_db_reads_existing_history() {
         assert_eq!(found.id, db_id(&hy));
         let (rows, _, _) = history_page(&pool, &hy, None).await.unwrap();
         for r in &rows {
-            let m = api::message_response(r);
-            assert_eq!(m["session_id"], hy);
+            assert_eq!(api_uuid(&r.session_id), hy);
+            assert!(api::message_response(r).contains_key("id"));
         }
         let _ = session_usage_totals(&pool, &hy).await.unwrap();
         let _ = llm_window_rows(&pool, &hy, true).await.unwrap();

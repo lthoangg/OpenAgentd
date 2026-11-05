@@ -7,7 +7,8 @@
  * view. Each view passes its own `renderBlock` so the per-view block visuals
  * (e.g. compact vs roomy `UserBubble`) stay independent.
  */
-import { memo, useCallback, useId, useMemo, useState, type ReactNode } from 'react'
+import { memo, useCallback, useId, useMemo, type ReactNode } from 'react'
+import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 import { Check, Copy, FileDiff, Pencil, type LucideIcon } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Collapsible } from '@/components/ui/collapsible'
@@ -93,7 +94,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   onEditPrompt,
   editLocked = false,
 }: AssistantTurnFooterProps) {
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopyFeedback()
   const filesFold = useStickyFold()
   const filesId = useId()
   const footerData = useMemo(() => {
@@ -136,13 +137,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   }, [turnBlocks])
   const { textContent, timestamp, responseDurationMs, model, thinkingLevel, account, outputTokens, inputTokens, cachedTokens, costUsd } = footerData
 
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(textContent)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch { /* ignore */ }
-  }, [textContent])
+  const handleCopy = useCallback(() => copy(textContent), [copy, textContent])
 
   const openInUsage = useCallback(() => {
     const session = useAgentStore.getState().sessionId

@@ -26,8 +26,8 @@ const reply = (id: string): ContentBlock => ({ id, type: 'text', content: `reply
 
 function undoResponse(id: string, content: string, extra: Record<string, unknown> | null = null): AgentCommandResponse {
   const message: MessageResponse = {
-    id, session_id: 'session-1', role: 'user', content, reasoning_content: null, tool_calls: null,
-    tool_call_id: null, name: null, is_summary: false, is_hidden: false, extra,
+    id, role: 'user', content, reasoning_content: null, tool_calls: null,
+    tool_call_id: null, name: null, extra,
     created_at: '2026-01-01T00:00:00Z', attachments: null,
   }
   return { status: 'accepted', session_id: 'session-1', command: 'undo', message }

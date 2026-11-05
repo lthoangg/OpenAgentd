@@ -38,6 +38,23 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05)
 }
 
+/**
+ * APCA lightness contrast (|Lc|, 0.0.98G constants). WCAG 2 overstates
+ * contrast near black, so dark secondary text that reads 5.6:1 can still look
+ * dim; APCA rates it the way the eye does (DESIGN.md → Colors).
+ */
+function apca(text: string, bg: string): number {
+  const y = (hex: string) => {
+    const [r, g, b] = [1, 3, 5].map((i) => (parseInt(hex.slice(i, i + 2), 16) / 255) ** 2.4)
+    const raw = 0.2126729 * r + 0.7151522 * g + 0.072175 * b
+    return raw < 0.022 ? raw + (0.022 - raw) ** 1.414 : raw
+  }
+  const [yt, yb] = [y(text), y(bg)]
+  const s = yb > yt ? (yb ** 0.56 - yt ** 0.57) * 1.14 : (yb ** 0.65 - yt ** 0.62) * 1.14
+  if (Math.abs(s) < 0.1) return 0
+  return Math.abs(s > 0 ? s - 0.027 : s + 0.027) * 100
+}
+
 const THEMES = [
   { name: 'light', t: themeProps(/:root,\s*:root\.light\s*\{/) },
   { name: 'dark', t: themeProps(/:root\.dark\s*\{/) },
@@ -53,23 +70,23 @@ describe.each(THEMES)('token pairs ($name)', ({ name, t }) => {
     }
   })
 
-  it('fills a chosen segment or a highlighted row softly: its label reads at AA, the fill just shows', () => {
+  it('fills a chosen segment clearly, never a dark block: its label reads at AA', () => {
     expect(contrast(t['--color-text-on-selected'], t['--color-fill-selected'])).toBeGreaterThanOrEqual(4.5)
-    // A quiet tone a step off the track and the menu, as a native control
-    // marks its choice; never a dark block on paper or a glowing one on
-    // dark (Increase contrast takes it to 3:1).
+    // A tone that reads as picked at a glance on the track and the card (a
+    // 1.2:1 step left Light / Dark / System looking unchosen), yet never a
+    // dark block on paper or a glowing one on dark (Increase contrast takes
+    // it to 3:1).
     for (const surface of ['--bg-key', '--bg-card', '--color-surface']) {
       const ratio = contrast(t['--color-fill-selected'], t[surface])
-      expect({ surface, shows: ratio >= 1.15, quiet: ratio <= 1.8 }).toEqual({ surface, shows: true, quiet: true })
+      expect({ surface, shows: ratio >= 1.4, quiet: ratio <= 1.8 }).toEqual({ surface, shows: true, quiet: true })
     }
     expect(contrast(t['--color-text-muted'], t['--bg-key'])).toBeGreaterThanOrEqual(4.5)
     expect(contrast(t['--color-text-on-danger'], t['--color-fill-danger'])).toBeGreaterThanOrEqual(4.5)
   })
 
-  it('marks a chosen segment on the keycap track (Code / Plan) as softly on dark as on paper', () => {
-    // On dark a 1.46:1 step read as a block beside the soft hovers; paper is 1.19:1.
+  it('marks a chosen segment on the keycap track (Code / Plan) as clearly on dark as on paper', () => {
     const ratio = contrast(t['--color-fill-selected'], t['--bg-key'])
-    expect({ shows: ratio >= 1.15, soft: ratio <= 1.3 }).toEqual({ shows: true, soft: true })
+    expect({ shows: ratio >= 1.4, soft: ratio <= 1.6 }).toEqual({ shows: true, soft: true })
   })
 
   it('lights the menu row under the pointer or keyboard with a wash, quieter than a chosen segment', () => {
@@ -127,6 +144,41 @@ describe.each(THEMES)('token pairs ($name)', ({ name, t }) => {
     expect(contrast(t['--switch-on'], t['--bg-page'])).toBeGreaterThanOrEqual(2)
   })
 
+  it('sets a switch that is off apart from the card it sits on, and its thumb from the track', () => {
+    // Off, the track is a solid border-strong (components/ui/switch.tsx); the
+    // thumb is the surface on paper and the ink on dark.
+    const track = t['--color-border-strong']
+    const thumb = name === 'light' ? t['--color-surface'] : t['--color-text']
+    for (const surface of ['--bg-page', '--bg-card']) {
+      expect({ surface, ratio: contrast(track, t[surface]) >= 2.2 }).toEqual({ surface, ratio: true })
+    }
+    expect(contrast(thumb, track)).toBeGreaterThanOrEqual(2.2)
+  })
+
+  it('draws keyboard focus at 3:1 on every surface a focused control sits on, chosen fills included', () => {
+    for (const surface of ['--bg-page', '--bg-sidebar', '--bg-card', '--bg-key', '--color-surface', '--color-fill-selected']) {
+      expect({ surface, ratio: contrast(t['--focus-ring'], t[surface]) >= 3 }).toEqual({ surface, ratio: true })
+    }
+  })
+
+  it('keeps secondary text readable by eye, not just by the WCAG 2 ratio (APCA)', () => {
+    // Comparable dark themes set secondary text at Lc 45–50 (GitHub, Material,
+    // macOS); at Lc 34–40 timestamps and hints looked dim beside the ink.
+    for (const surface of ['--bg-page', '--bg-sidebar', '--bg-card']) {
+      expect({ surface, text2: apca(t['--color-text-2'], t[surface]) >= 68 }).toEqual({ surface, text2: true })
+      expect({ surface, muted: apca(t['--color-text-muted'], t[surface]) >= 48 }).toEqual({ surface, muted: true })
+    }
+    for (const surface of ['--bg-page', '--bg-sidebar']) {
+      expect({ surface, subtle: apca(t['--color-text-subtle'], t[surface]) >= 42 }).toEqual({ surface, subtle: true })
+    }
+  })
+
+  it('keeps the text ramp in order: each step reads below the one above it', () => {
+    const page = t['--bg-page']
+    const steps = ['--color-text', '--color-text-2', '--color-text-muted', '--color-text-subtle'].map((k) => apca(t[k], page))
+    for (let i = 1; i < steps.length; i++) expect(steps[i]).toBeLessThan(steps[i - 1])
+  })
+
   it('draws status text and dots in the -text tones, readable on paper', () => {
     for (const hue of ['blue', 'green', 'orange']) {
       const tone = t[`--accent-${hue}-text`]
@@ -141,5 +193,21 @@ describe.each(THEMES)('token pairs ($name)', ({ name, t }) => {
 
   it('keeps an error AA on the page', () => {
     expect(contrast(t['--color-error'], t['--bg-page'])).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('reads every syntax colour at AA on code blocks and the keycap strips around them', () => {
+    const syntax = Object.keys(t).filter((k) => k.startsWith('--color-syn-'))
+    expect(syntax.length).toBeGreaterThan(5)
+    for (const token of syntax) {
+      for (const surface of ['--bg-input', '--bg-card', '--bg-key', '--color-surface']) {
+        expect({ token, surface, aa: contrast(t[token], t[surface]) >= 4.5 }).toEqual({ token, surface, aa: true })
+      }
+    }
+  })
+
+  it('draws chart markers at 3:1 on the card, as data graphics', () => {
+    for (const marker of ['--color-marker-blue', '--color-marker-mint', '--color-marker-orange', '--color-marker-pink', '--color-marker-yellow', '--color-violet']) {
+      expect({ marker, ratio: contrast(t[marker], t['--bg-card']) >= 3 }).toEqual({ marker, ratio: true })
+    }
   })
 })

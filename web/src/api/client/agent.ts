@@ -7,7 +7,7 @@ import { apiAuthHeaders, withTokenParam } from '../auth'
 import { readSSE } from '../sse'
 import type { SSECallbacks } from '../sse'
 import { sharedAgentStream } from '../stream-hub'
-import { fetchJsonWithEtag, parseDetailOrThrow } from './_shared'
+import { fetchJsonWithEtag, parseDetailOrThrow, registerEtagCache } from './_shared'
 import type {
   SessionDetailResponse,
   SessionResolveResponse,
@@ -619,11 +619,17 @@ export async function listMemberProfiles(): Promise<MemberProfile[]> {
   return res.json()
 }
 
+/**
+ * Newest history pages, revalidated with `If-None-Match`: reopening a
+ * session that has not changed costs a `304` and no body. Pages can run to
+ * megabytes, so only the last few sessions are kept.
+ */
+const newestHistoryPages = registerEtagCache(4)
+
 export async function sessionHistory(sessionId: string, before?: string): Promise<SessionHistoryResponse> {
-  const url = before
-    ? `${apiBaseUrl()}/agent/${encodeURIComponent(sessionId)}/history?before=${encodeURIComponent(before)}`
-    : `${apiBaseUrl()}/agent/${encodeURIComponent(sessionId)}/history`
-  const res = await fetch(url)
+  const base = `${apiBaseUrl()}/agent/${encodeURIComponent(sessionId)}/history`
+  if (!before) return fetchJsonWithEtag<SessionHistoryResponse>(base, 'sessionHistory', undefined, newestHistoryPages)
+  const res = await fetch(`${base}?before=${encodeURIComponent(before)}`)
   if (!res.ok) await parseDetailOrThrow(res, 'sessionHistory')
   return res.json()
 }

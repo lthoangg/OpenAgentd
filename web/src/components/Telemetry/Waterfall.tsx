@@ -216,7 +216,7 @@ const WaterfallRow = memo(function WaterfallRow({
           />
           <TooltipContent>
             <span className="font-mono">{span.name}</span>
-            {summary && <span className="block opacity-70">{summary}</span>}
+            {summary && <span className="block text-(--color-text-muted)">{summary}</span>}
           </TooltipContent>
         </Tooltip>
       </span>

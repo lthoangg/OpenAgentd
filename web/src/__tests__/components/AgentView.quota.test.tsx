@@ -185,6 +185,37 @@ describe("AgentView — waiting_quota status rendering", () => {
     expect(screen.queryByText("Waiting for quota reset")).toBeNull()
   })
 
+  it("gives way to the reply dots once the quota has reset", () => {
+    const start = Date.now()
+    const dateNow = spyOn(Date, "now").mockReturnValue(start)
+    const nativeSetTimeout = window.setTimeout
+    let wake: (() => void) | undefined
+    window.setTimeout = ((callback: TimerHandler, ms?: number) => {
+      if (typeof ms === "number" && ms > 1000) wake = callback as () => void
+      return nativeSetTimeout(() => {}, 0)
+    }) as typeof window.setTimeout
+    try {
+      render(
+        <AgentView
+          blocks={[makeUserBlock("u1")]}
+          currentBlocks={[makeQuotaBlock("q-reset", "codex:gpt-5.4", undefined, start / 1000 + 90)]}
+          isWorking={true}
+        />,
+      )
+      expect(screen.getByText("Waiting for quota reset")).toBeTruthy()
+
+      dateNow.mockReturnValue(start + 91_000)
+      act(() => wake?.())
+
+      expect(screen.queryByText("Waiting for quota reset")).toBeNull()
+      expect(screen.queryByRole("button", { name: "Stop" })).toBeNull()
+      expect(screen.getByRole("status", { name: "Agent is preparing a response" })).toBeTruthy()
+    } finally {
+      window.setTimeout = nativeSetTimeout
+      dateNow.mockRestore()
+    }
+  })
+
   it("does not keep the quota wait notice after chat activity resumes", () => {
     render(
       <AgentView
@@ -272,5 +303,19 @@ describe("AgentView — waiting for the pinned account", () => {
     render(<AgentView blocks={[makePinnedBlock("p4", "Waiting.")]} currentBlocks={[]} isWorking={true} />)
 
     expect(screen.getByText(/The pinned account hit its usage limit/)).toBeTruthy()
+  })
+
+  it("is still the pinned card, with its ways forward, after a page refresh", () => {
+    const first = render(<AgentView blocks={[makePinnedBlock("p5")]} currentBlocks={[]} isWorking={true} />)
+    expect(screen.getByText("Waiting for the pinned account")).toBeTruthy()
+    first.unmount()
+
+    render(<AgentView blocks={[]} currentBlocks={[]} isWorking={true} />)
+
+    expect(screen.getByText("Waiting for the pinned account")).toBeTruthy()
+    expect(screen.getByText("Personal")).toBeTruthy()
+    for (const name of ["Use Auto for this session", "Choose account…", "Stop", "Copy details"]) {
+      expect(screen.getByRole("button", { name })).toBeTruthy()
+    }
   })
 })

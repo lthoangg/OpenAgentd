@@ -19,6 +19,7 @@ import {
 } from '@/components/WorkspacePanel/dock-panes'
 import type { DockTab } from '@/components/WorkspacePanel/dock-tabs'
 import { useFakeTimers } from '../fake-timers'
+import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_SIZE } from '@/lib/terminal-font'
 
 // ── Module mocks (must precede store import) ────────────────────────────────
 
@@ -27,7 +28,7 @@ interface FakeTerm {
   dispose: ReturnType<typeof mock>
   focus: ReturnType<typeof mock>
   onData: ReturnType<typeof mock>
-  options: { theme?: unknown; fontFamily?: string }
+  options: { theme?: unknown; fontFamily?: string; fontSize?: number }
   rows: number
   cols: number
   element?: HTMLElement
@@ -58,9 +59,10 @@ function makeFakeTerm(): FakeTerm {
 }
 
 mock.module('@/components/Terminal/xterm-instance', () => ({
-  createXterm: fn((options: { fontFamily: string }) => {
+  createXterm: fn((options: { fontFamily: string; fontSize: number }) => {
     const term = makeFakeTerm()
     term.options.fontFamily = options.fontFamily
+    term.options.fontSize = options.fontSize
     createdTerms.push(term)
     return {
       term,
@@ -383,23 +385,16 @@ describe('useTerminalStore', () => {
     expect((createdTerms[0].options.theme as { background: string }).background).not.toBe(lightBg)
   })
 
-  it('syncFont swaps the xterm fontFamily on every live session', async () => {
+  it('opens every terminal with the fixed font stack and size, whatever was stored before', async () => {
+    localStorage.setItem('oa-terminal-font', 'Comic Mono')
+    localStorage.setItem('oa-terminal-font-size', '20')
     const s = useTerminalStore.getState()
     s.open({ workspace: '/tmp/ws' }, '/tmp/ws')
-    s.open({ workspace: '/workspace/project' }, 'workspace:/workspace/project')
     await settle()
-    s.syncFont('MesloLGS NF')
-    for (const t of createdTerms) {
-      expect(t.options.fontFamily).toContain('"MesloLGS NF"')
-    }
-  })
-
-  it('a newly opened terminal picks up the last-synced font', async () => {
-    const s = useTerminalStore.getState()
-    s.syncFont('Hack Nerd Font')
-    s.open({ workspace: '/tmp/ws' }, '/tmp/ws')
-    await settle()
-    expect(createdTerms[0].options.fontFamily).toContain('"Hack Nerd Font"')
+    expect(createdTerms[0].options.fontFamily).toBe(TERMINAL_FONT_FAMILY)
+    expect(createdTerms[0].options.fontSize).toBe(TERMINAL_FONT_SIZE)
+    localStorage.removeItem('oa-terminal-font')
+    localStorage.removeItem('oa-terminal-font-size')
   })
 
   it('reconnect() replaces a dead session in place', async () => {

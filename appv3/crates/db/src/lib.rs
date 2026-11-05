@@ -9,6 +9,7 @@ pub mod migrations;
 pub mod models;
 pub mod pool;
 pub mod queries;
+pub mod tool_args;
 
 pub use models::*;
 pub use pool::{close_pool, create_pool, DbPool};

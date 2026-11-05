@@ -207,7 +207,7 @@ export const AppFooter = memo(function AppFooter({
               />
               <TooltipContent>
                 <span className="block">{branchTooltip}</span>
-                <span className="block opacity-70">Open Git</span>
+                <span className="block text-(--color-text-muted)">Open Git</span>
               </TooltipContent>
             </Tooltip>
           </>
@@ -232,7 +232,7 @@ export const AppFooter = memo(function AppFooter({
               />
               <TooltipContent>
                 <span className="block">Terminals keep running while hidden</span>
-                <span className="block opacity-70">Show terminals</span>
+                <span className="block text-(--color-text-muted)">Open terminal</span>
               </TooltipContent>
             </Tooltip>
           </>
@@ -282,7 +282,7 @@ export const AppFooter = memo(function AppFooter({
             />
             <TooltipContent>
               <span className="block">Estimated spend, last 24 hours</span>
-              <span className="block opacity-70">Open Usage</span>
+              <span className="block text-(--color-text-muted)">Open Usage</span>
             </TooltipContent>
           </Tooltip>
         )}

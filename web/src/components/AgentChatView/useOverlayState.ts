@@ -52,9 +52,7 @@
  * Review panel); otherwise, and below ``SIDEBAR_DRAWER_MAX_VIEWPORT`` on a
  * touch tablet, it is a drawer over the content, open only until a click
  * outside, Escape or a pick (``sidebarIsDrawer``). Whether
- * the Review panel is open is remembered per window. Focus mode hides the
- * sidebar and the Review panel and puts both back on its second press;
- * opening either in the meantime simply ends it. Splitting the Review panel
+ * the Review panel is open is remembered per window. Splitting the Review panel
  * and opening a terminal reach the dock as keyed requests, like views.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -145,9 +143,6 @@ export interface UseOverlayStateResult {
   sidebarDrawer: boolean
   sidebarDrawerOpen: boolean
   setSidebarDrawerOpen: Dispatch<SetStateAction<boolean>>
-  /** Focus mode: sidebar and Review panel hidden until it ends. */
-  focusMode: boolean
-  handleToggleFocusMode: () => void
   /** ⌘\: split the Review panel's focused pane right. */
   handleSplitDock: () => void
   /** ⌘⇧\: split it down. */
@@ -289,26 +284,6 @@ export function useOverlayState({
   useEffect(() => {
     if (!isMobile && dockRestored) useLayoutStore.getState().setDockOpen(workspacePanel !== null)
   }, [dockRestored, isMobile, workspacePanel])
-
-  // Focus mode keeps what it hid, to put it back on the second press.
-  const [focusRestore, setFocusRestore] = useState<{ sidebarCollapsed: boolean; dockOpen: boolean } | null>(null)
-  const handleToggleFocusMode = useCallback(() => {
-    if (isMobile) return
-    if (focusRestore) {
-      setFocusRestore(null)
-      setSidebarCollapsed(focusRestore.sidebarCollapsed)
-      if (focusRestore.dockOpen) setWorkspacePanel((value) => value ?? 'changed')
-      return
-    }
-    setFocusRestore({ sidebarCollapsed, dockOpen: workspacePanel !== null })
-    setSidebarCollapsed(true)
-    setSidebarDrawerOpen(false)
-    setWorkspacePanel(null)
-  }, [focusRestore, isMobile, setSidebarCollapsed, sidebarCollapsed, workspacePanel])
-  // Showing the sidebar or the Review panel in focus mode ends it, as is.
-  useEffect(() => {
-    if (focusRestore && (!sidebarCollapsed || sidebarDrawerOpen || workspacePanel !== null)) setFocusRestore(null)
-  }, [focusRestore, sidebarCollapsed, sidebarDrawerOpen, workspacePanel])
 
   useEffect(() => {
     if (isMobile) {
@@ -642,14 +617,13 @@ export function useOverlayState({
       [APP_EVENTS.openPlan, handleOpenPlan],
       [APP_EVENTS.splitReviewPanel, handleSplitDock],
       [APP_EVENTS.splitReviewPanelDown, handleSplitDockDown],
-      [APP_EVENTS.toggleFocusMode, handleToggleFocusMode],
       [APP_EVENTS.resetLayout, () => useLayoutStore.getState().resetLayout()],
     ]
     for (const [event, handler] of routes) window.addEventListener(event, handler)
     return () => {
       for (const [event, handler] of routes) window.removeEventListener(event, handler)
     }
-  }, [handleOpenPlan, handleOpenScheduler, handleOpenTerminal, handleOpenWorkspaceDialog, handleSplitDock, handleSplitDockDown, handleToggleFocusMode, handleToggleScheduler])
+  }, [handleOpenPlan, handleOpenScheduler, handleOpenTerminal, handleOpenWorkspaceDialog, handleSplitDock, handleSplitDockDown, handleToggleScheduler])
 
   // ── Mobile edge-swipe drawers ──────────────────────────────────────────────
   //
@@ -736,8 +710,6 @@ export function useOverlayState({
     sidebarDrawer,
     sidebarDrawerOpen,
     setSidebarDrawerOpen,
-    focusMode: focusRestore !== null,
-    handleToggleFocusMode,
     handleSplitDock,
     handleSplitDockDown,
     openWorkspaceDialogKey,

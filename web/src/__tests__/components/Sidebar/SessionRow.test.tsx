@@ -12,6 +12,7 @@ import type { ComponentProps } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { SessionResponse } from '@/api/types'
 import { useUnreadStore } from '@/stores/useUnreadStore'
+import { useFakeTimers } from '../../fake-timers'
 
 mock.module('@/queries/useSessionsQuery', () => ({
   useSessionSubagentsQuery: () => ({ data: undefined }),
@@ -226,5 +227,96 @@ describe('SessionRow state words', () => {
     const { container } = render(row(() => {}, { ...idle, running: true }, { isEditing: true }))
 
     expect(word(container)).toBeNull()
+  })
+})
+
+describe('SessionRow sessions in other workspaces', () => {
+  const linkedSession = (id: string, title: string, workspace: string, extra: Partial<SessionResponse> = {}): SessionResponse => ({
+    id,
+    title,
+    workspace,
+    interaction_mode: 'code',
+    created_at: '2026-09-01T10:05:00Z',
+    updated_at: null,
+    agent_name: 'code',
+    sent_from: { session_id: 'origin', workspace: '/r/app', title: 'Orders API' },
+    ...extra,
+  })
+  const origin: SessionResponse = {
+    id: 'origin',
+    title: 'Orders API',
+    workspace: '/r/app',
+    interaction_mode: 'code',
+    created_at: '2026-09-01T10:00:00Z',
+    updated_at: null,
+    agent_name: 'code',
+    linked_sessions: [
+      linkedSession('infra-1', 'Orders table', '/r/infra', { running: true }),
+      linkedSession('web-1', 'Orders page', '/r/web', { needs_input: true }),
+    ],
+  }
+
+  it('folds them behind a count pill that shows their state, and lists each with its workspace', () => {
+    const timers = useFakeTimers()
+    try {
+      render(row(() => {}, origin, { isCurrent: false, currentSessionId: 'other' }))
+      const toggle = screen.getByRole('button', { name: 'Expand 2 sessions in other workspaces' })
+      expect(toggle.getAttribute('aria-expanded')).toBe('false')
+      expect(toggle.textContent).toContain('2')
+      // Folded, the pill still says one of them waits on you.
+      expect(screen.getByRole('img', { name: 'A session in another workspace needs you' })).toBeTruthy()
+      // Folded rows are not mounted.
+      expect(document.querySelector('[data-linked-session]')).toBeNull()
+
+      fireEvent.click(toggle)
+      act(() => timers.tick(300))
+      const rows = Array.from(document.querySelectorAll('[data-linked-session]'))
+      expect(rows.map((r) => r.querySelector('[data-linked-workspace]')?.textContent)).toEqual(['infra', 'web'])
+      expect(screen.getByRole('button', { name: 'Orders table, in infra, Running' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Orders page, in web, Needs you' })).toBeTruthy()
+      expect(screen.queryByRole('img', { name: 'A session in another workspace needs you' })).toBeNull()
+    } finally {
+      timers.restore()
+    }
+  })
+
+  it('opens a nested session in its own workspace', () => {
+    const calls: [SessionResponse, string][] = []
+    const onSelect = (selected: SessionResponse, path: string) => { calls.push([selected, path]) }
+    render(row(() => {}, origin, { isCurrent: false, currentSessionId: 'other', onSessionSelect: onSelect }))
+    fireEvent.click(screen.getByRole('button', { name: 'Expand 2 sessions in other workspaces' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Orders page, in web, Needs you' }))
+    expect(calls).toHaveLength(1)
+    expect(calls[0][0].id).toBe('web-1')
+    expect(calls[0][1]).toBe('/r/web')
+  })
+
+  it('stays open while one of them is the open session', () => {
+    render(row(() => {}, origin, { isCurrent: false, currentSessionId: 'infra-1' }))
+    const toggle = screen.getByRole('button', { name: 'Collapse 2 sessions in other workspaces' })
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Orders table, in infra, Running' }).getAttribute('aria-current')).toBe('page')
+  })
+
+  it('marks a session another workspace started, and the mark opens the sender', () => {
+    const calls: [SessionResponse, string][] = []
+    const onSelect = (selected: SessionResponse, path: string) => { calls.push([selected, path]) }
+    const started = linkedSession('infra-1', 'Orders table', '/r/infra')
+    render(row(() => {}, started, { isCurrent: false, currentSessionId: 'other', path: '/r/infra', onSessionSelect: onSelect }))
+    const mark = screen.getByRole('button', { name: 'Open the session that sent this, in app' })
+    expect(mark.textContent).toBe('app')
+    expect(mark.getAttribute('title')).toBe('Sent from “Orders API” in app')
+    fireEvent.click(mark)
+    expect(calls).toHaveLength(1)
+    expect(calls[0][0]).toMatchObject({ id: 'origin', workspace: '/r/app' })
+    expect(calls[0][1]).toBe('/r/app')
+    // The row's own name says it too.
+    expect(screen.getByText(', sent from app')).toBeTruthy()
+  })
+
+  it('shows no pill or mark on a session with neither', () => {
+    render(row(() => {}, { ...origin, linked_sessions: undefined }))
+    expect(document.querySelector('[data-linked-toggle]')).toBeNull()
+    expect(document.querySelector('[data-sent-from]')).toBeNull()
   })
 })

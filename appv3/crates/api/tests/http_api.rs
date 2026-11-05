@@ -7,7 +7,7 @@
 use appv3_api::{create_app, AppState, ConnInfo, Policy};
 use axum::body::Body;
 use axum::extract::ConnectInfo;
-use axum::http::{Request, StatusCode};
+use axum::http::{header, HeaderValue, Request, StatusCode};
 use axum::routing::post;
 use axum::Router;
 use http_body_util::BodyExt;
@@ -321,7 +321,8 @@ async fn http_api_end_to_end() {
     let msgs = history["lead"]["messages"].as_array().expect("history persisted");
     assert_eq!(msgs[0]["role"], "user");
     assert_eq!(msgs[0]["content"], "hi");
-    assert!(msgs[0]["extra"]["snapshot"].as_str().map(|s| s.len() == 40).unwrap_or(false), "git snapshot recorded: {}", msgs[0]);
+    // The git snapshot stays on the server; the undo below proves it was recorded.
+    assert!(msgs[0]["extra"].get("snapshot").is_none(), "{}", msgs[0]);
     assert_eq!(msgs[1]["role"], "assistant");
     assert_eq!(msgs[1]["content"], "Hello from mock.");
     assert_eq!(msgs[1]["extra"]["usage"], json!({"input": 7, "output": 3}));
@@ -491,7 +492,12 @@ async fn http_api_end_to_end() {
     history_paging_flow(&c, &pool, &ws).await;
     history_missing_folder_flow(&c, &pool, root.path()).await;
     history_first_page_flow(&c, &pool, &ws).await;
+    history_etag_flow(&c, &pool, &ws).await;
+    tool_result_on_demand_flow(&c, &pool, &ws).await;
+    tool_arguments_on_demand_flow(&c, &pool, &ws).await;
+    files_revalidate_flow(&c, &pool, &ws).await;
     plan_review_flow(&c, &pool, &ws).await;
+    linked_sessions_flow(&c, &pool).await;
     confirm_change_flow(&c, &pool, &ws).await;
     workspace_isolation_flow(&c, &pool, &ws, &root.path().join("other-ws")).await;
     worktree_tree_flow(&c, root.path()).await;
@@ -1043,11 +1049,10 @@ async fn history_missing_folder_flow(c: &Client, pool: &appv3_db::DbPool, root: 
     assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
 }
 
-/// History pages for a lead with a member: the newest page carries the
-/// members and the session-wide usage totals; older pages carry only older
-/// lead rows. Member rows are shown from the newest page only, and a member's
-/// `seq` is not comparable to the lead's cursor, so re-sending them on every
-/// older page duplicated them.
+/// History pages for a lead with a member: the newest page and the delta
+/// carry each member's name, state and usage totals but none of its rows
+/// (the lead's view never renders them; opening a member loads its own
+/// session); older pages carry only older lead rows.
 async fn history_paging_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
     let workspace = ws.display().to_string();
     let lead = appv3_db::create_session(pool, appv3_db::NewSession { workspace: workspace.clone(), ..Default::default() }).await.unwrap();
@@ -1074,7 +1079,8 @@ async fn history_paging_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path
     assert_eq!(newest["has_more"], json!(true));
     let members = newest["members"].as_array().expect("members");
     assert_eq!(members.len(), 1, "{newest}");
-    assert_eq!(members[0]["messages"].as_array().map(Vec::len), Some(10));
+    assert_eq!(members[0]["messages"], json!([]), "member rows load with the member");
+    assert_eq!((&members[0]["name"], &members[0]["session_id"]), (&json!("explorer"), &json!(appv3_db::codec::api_uuid(&member.id))));
     assert_eq!(newest["lead"]["estimated_cost_usd"], json!(1.5), "lead total covers every page");
     assert_eq!(newest["lead"]["completion_tokens"], json!(300));
     assert_eq!(members[0]["estimated_cost_usd"], json!(5.0));
@@ -1096,6 +1102,14 @@ async fn history_paging_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path
     let (st, delta) = c.json("GET", &format!("/api/agent/{lid}/history?since={newest_id}"), None).await;
     assert_eq!(st, StatusCode::OK, "{delta}");
     assert_eq!(delta["lead"]["messages"], json!([]));
+    assert_eq!(delta["members"][0]["messages"], json!([]), "{delta}");
+    assert_eq!(delta["members"][0]["estimated_cost_usd"], json!(5.0));
+    for i in 0..150 {
+        appv3_db::save_message(pool, &member.id, costed(format!("member late {i}"), 0.5)).await.unwrap();
+    }
+    let (st, delta) = c.json("GET", &format!("/api/agent/{lid}/history?since={newest_id}"), None).await;
+    assert_eq!(st, StatusCode::OK, "{delta}");
+    assert_eq!(delta["truncated"], json!(false), "a busy member does not force a reload: {delta}");
     for q in ["before=2026-09-23T06:56:28Z", "since=2026-09-23T06:56:28Z", "before=2026-09-23T06:56:28Z|"] {
         let (st, body) = c.json("GET", &format!("/api/agent/{lid}/history?{}", q.replace(':', "%3A").replace('|', "%7C")), None).await;
         assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{q}: {body}");
@@ -1107,10 +1121,147 @@ async fn history_paging_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path
     }
 }
 
+/// Reopening a session that has not changed costs a `304` and no body; a
+/// new row changes the tag. The phone app is cross-origin, so CORS must let
+/// it read `ETag`.
+async fn history_etag_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
+    let lead = appv3_db::create_session(pool, appv3_db::NewSession { workspace: ws.display().to_string(), ..Default::default() }).await.unwrap();
+    appv3_db::save_message(pool, &lead.id, appv3_db::NewMessage::assistant(Some("first".into()))).await.unwrap();
+    let lid = appv3_db::codec::api_uuid(&lead.id);
+    let get = |tag: Option<HeaderValue>| {
+        let mut b = Request::get(format!("/api/agent/{lid}/history")).header(header::ORIGIN, "tauri://localhost");
+        if let Some(t) = tag {
+            b = b.header(header::IF_NONE_MATCH, t);
+        }
+        c.send(b.body(Body::empty()).unwrap())
+    };
+
+    let (st, h, body) = get(None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(!body.is_empty());
+    let tag = h.get(header::ETAG).expect("history carries an ETag").clone();
+    assert_eq!(h[header::CACHE_CONTROL], "private, no-cache");
+    let exposed = h[header::ACCESS_CONTROL_EXPOSE_HEADERS].to_str().unwrap();
+    assert!(exposed.split(',').any(|v| v.trim().eq_ignore_ascii_case("etag")), "{exposed}");
+
+    let (st, h, body) = get(Some(tag.clone())).await;
+    assert_eq!(st, StatusCode::NOT_MODIFIED);
+    assert!(body.is_empty());
+    assert_eq!(h[header::ETAG], tag);
+
+    appv3_db::save_message(pool, &lead.id, appv3_db::NewMessage::assistant(Some("second".into()))).await.unwrap();
+    let (st, h, _) = get(Some(tag.clone())).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_ne!(h[header::ETAG], tag);
+
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{lid}"), None).await;
+    assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
+}
+
+/// History leaves a read's text out; opening the call fetches it, from the
+/// session or one of its members, by tool-call id.
+async fn tool_result_on_demand_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
+    let workspace = ws.display().to_string();
+    let lead = appv3_db::create_session(pool, appv3_db::NewSession { workspace: workspace.clone(), ..Default::default() }).await.unwrap();
+    let member =
+        appv3_db::create_session(pool, appv3_db::NewSession { workspace, parent_session_id: Some(lead.id.clone()), agent_name: Some("explorer".into()), ..Default::default() })
+            .await
+            .unwrap();
+    appv3_db::save_message(pool, &lead.id, appv3_db::NewMessage::tool("call_lead", "read", "[1-1/1]\nlead file")).await.unwrap();
+    appv3_db::save_message(pool, &member.id, appv3_db::NewMessage::tool("call_member", "shell", "[Succeeded]\nmember output")).await.unwrap();
+    let lid = appv3_db::codec::api_uuid(&lead.id);
+
+    let (st, page) = c.json("GET", &format!("/api/agent/{lid}/history"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    let row = page["lead"]["messages"].as_array().unwrap().iter().find(|m| m["tool_call_id"] == "call_lead").unwrap().clone();
+    assert_eq!((row.get("content"), &row["result_omitted"], &row["result_bytes"]), (None, &json!(true), &json!(17)));
+
+    let (st, body) = c.json("GET", &format!("/api/agent/{lid}/tool-results/call_lead"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body, json!({"tool_call_id": "call_lead", "name": "read", "content": "[1-1/1]\nlead file"}));
+    let (st, body) = c.json("GET", &format!("/api/agent/{lid}/tool-results/call_member"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body["content"], "[Succeeded]\nmember output");
+    let (st, _) = c.json("GET", &format!("/api/agent/{lid}/tool-results/call_nope"), None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{lid}"), None).await;
+    assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
+}
+
+/// History sends a described shell call without its command; opening the
+/// call fetches the full arguments, from the session or one of its members.
+async fn tool_arguments_on_demand_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
+    let workspace = ws.display().to_string();
+    let lead = appv3_db::create_session(pool, appv3_db::NewSession { workspace: workspace.clone(), ..Default::default() }).await.unwrap();
+    let member =
+        appv3_db::create_session(pool, appv3_db::NewSession { workspace, parent_session_id: Some(lead.id.clone()), agent_name: Some("explorer".into()), ..Default::default() })
+            .await
+            .unwrap();
+    let shell = json!({"command": "cargo test --workspace", "description": "Run every test"}).to_string();
+    let patch = json!({"patch_text": "*** Begin Patch\n*** Add File: a.txt\n+hi\n*** End Patch"}).to_string();
+    let call = |id: &str, name: &str, args: &str| json!([{"id": id, "type": "function", "function": {"name": name, "arguments": args}}]);
+    let with_calls = |calls| appv3_db::NewMessage { tool_calls: Some(calls), ..appv3_db::NewMessage::assistant(None) };
+    appv3_db::save_message(pool, &lead.id, with_calls(call("call_shell", "shell", &shell))).await.unwrap();
+    appv3_db::save_message(pool, &member.id, with_calls(call("call_patch", "patch", &patch))).await.unwrap();
+    let lid = appv3_db::codec::api_uuid(&lead.id);
+
+    let (st, page) = c.json("GET", &format!("/api/agent/{lid}/history"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    let sent = page["lead"]["messages"].as_array().unwrap().iter().find_map(|m| m["tool_calls"].get(0).cloned()).unwrap();
+    assert_eq!(sent["function"]["arguments"], r#"{"description":"Run every test"}"#);
+    assert_eq!(sent["arguments_bytes"], json!(shell.len()));
+
+    let (st, body) = c.json("GET", &format!("/api/agent/{lid}/tool-calls/call_shell/arguments"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body, json!({"tool_call_id": "call_shell", "name": "shell", "arguments": shell}));
+    let (st, body) = c.json("GET", &format!("/api/agent/{lid}/tool-calls/call_patch/arguments"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body["arguments"], json!(patch));
+    let (st, _) = c.json("GET", &format!("/api/agent/{lid}/tool-calls/call_nope/arguments"), None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{lid}"), None).await;
+    assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
+}
+
+/// A reopened session shows its images again: an upload (a new name per
+/// upload) is cached outright, a workspace file is revalidated, and an
+/// unchanged file answers 304 with no body.
+async fn files_revalidate_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
+    let lead = appv3_db::create_session(pool, appv3_db::NewSession { workspace: ws.display().to_string(), ..Default::default() }).await.unwrap();
+    let lid = appv3_db::codec::api_uuid(&lead.id);
+    std::fs::create_dir_all(ws.join("uploads")).unwrap();
+    std::fs::write(ws.join("uploads/shot.png"), b"png bytes").unwrap();
+    std::fs::write(ws.join("chart.png"), b"chart bytes").unwrap();
+    let get = |uri: String, etag: Option<String>| async move {
+        let mut b = Request::get(uri);
+        if let Some(tag) = etag {
+            b = b.header("if-none-match", tag);
+        }
+        c.send(b.body(Body::empty()).unwrap()).await
+    };
+    for (uri, cache) in [(format!("/api/agent/{lid}/uploads/shot.png"), "private, max-age=31536000, immutable"), (format!("/api/agent/{lid}/media/chart.png"), "private, no-cache")]
+    {
+        let (st, h, body) = get(uri.clone(), None).await;
+        assert_eq!(st, StatusCode::OK, "{uri}");
+        assert!(!body.is_empty());
+        assert_eq!(h["cache-control"], cache, "{uri}");
+        let etag = h["etag"].to_str().unwrap().to_string();
+        let (st, h, body) = get(uri.clone(), Some(etag.clone())).await;
+        assert_eq!(st, StatusCode::NOT_MODIFIED, "{uri}");
+        assert!(body.is_empty());
+        assert_eq!((h["etag"].to_str().unwrap(), h["cache-control"].to_str().unwrap()), (etag.as_str(), cache), "{uri}");
+        let (st, _, _) = get(uri.clone(), Some("\"other\"".into())).await;
+        assert_eq!(st, StatusCode::OK, "a changed file comes back whole: {uri}");
+    }
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{lid}"), None).await;
+    assert!(st == StatusCode::NO_CONTENT || st == StatusCode::NOT_FOUND, "{st}");
+}
+
 /// The newest page reaches back to the latest prompt the user wrote, so a
 /// reopened run shows what it answers. A run longer than the cap comes back
-/// as its newest rows plus the prompt, for the client to pin; members keep
-/// their own newest page.
+/// as its newest rows plus the prompt, for the client to pin.
 async fn history_first_page_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
     let workspace = ws.display().to_string();
     let new_session = |parent: Option<String>| {
@@ -1139,7 +1290,7 @@ async fn history_first_page_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::
     assert_eq!(page["lead"]["messages"][0]["id"], json!(appv3_db::codec::api_uuid(&prompt.id)));
     assert_eq!(page["has_more"], json!(true));
     assert!(page.get("latest_prompt").is_none(), "the prompt is in the page: {page}");
-    assert_eq!(page["members"][0]["messages"].as_array().map(Vec::len), Some(appv3_db::MEMBER_FIRST_PAGE_SIZE as usize), "members keep their newest rows");
+    assert_eq!(page["members"][0]["messages"], json!([]), "members come without their rows");
 
     let long = new_session(None).await;
     let prompt = appv3_db::save_message(pool, &long.id, appv3_db::NewMessage::user("keep going")).await.unwrap();
@@ -1246,6 +1397,46 @@ async fn workspace_isolation_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std:
 }
 
 /// Plan routes and plan-review answers on a Plan-mode session in `ws`.
+/// Sessions a workspace send started (v3 addition): the list nests them,
+/// down a chain, under the session that sent them (`linked_sessions`), and
+/// each names its sender (`sent_from`), in the list and in its detail.
+async fn linked_sessions_flow(c: &Client, pool: &appv3_db::DbPool) {
+    let new = |ws: &str, title: &str| appv3_db::NewSession { workspace: ws.into(), title: Some(title.into()), ..Default::default() };
+    let app = appv3_db::create_session(pool, new("/r/linked-app", "Orders API")).await.unwrap();
+    let infra = appv3_db::create_session(pool, new("/r/linked-infra", "Orders table")).await.unwrap();
+    let seed = appv3_db::create_session(pool, new("/r/linked-web", "Seed data")).await.unwrap();
+    appv3_db::set_sent_from_session(pool, &infra.id, &app.id).await.unwrap();
+    appv3_db::set_sent_from_session(pool, &seed.id, &infra.id).await.unwrap();
+    let id = |s: &appv3_db::ChatSession| appv3_db::codec::api_uuid(&s.id);
+    let enc = |p: &str| form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>();
+
+    let (st, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}", enc("/r/linked-app")), None).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let row = &v["data"][0];
+    assert_eq!(row["id"], json!(id(&app)), "{v}");
+    assert!(row.get("sent_from").is_none(), "{v}");
+    let linked: Vec<_> = row["linked_sessions"].as_array().unwrap().iter().map(|l| (l["id"].clone(), l["workspace"].clone(), l["running"].clone())).collect();
+    assert_eq!(linked, vec![(json!(id(&infra)), json!("/r/linked-infra"), json!(false)), (json!(id(&seed)), json!("/r/linked-web"), json!(false))], "{v}");
+    assert_eq!(row["linked_sessions"][1]["sent_from"]["session_id"], json!(id(&infra)), "{v}");
+
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}", enc("/r/linked-infra")), None).await;
+    let row = &v["data"][0];
+    assert_eq!(row["sent_from"], json!({"session_id": id(&app), "workspace": "/r/linked-app", "title": "Orders API"}), "{v}");
+    assert_eq!(row["linked_sessions"][0]["id"], json!(id(&seed)), "{v}");
+
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions/{}", id(&infra)), None).await;
+    assert_eq!(v["sent_from"]["session_id"], json!(id(&app)), "{v}");
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions/{}", id(&app)), None).await;
+    assert!(v.get("sent_from").is_none() && v.get("linked_sessions").is_none(), "{v}");
+
+    // Deleting the sender leaves the started session where it is, unlinked.
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{}", id(&app)), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}", enc("/r/linked-infra")), None).await;
+    assert_eq!(v["data"][0]["id"], json!(id(&infra)), "{v}");
+    assert!(v["data"][0].get("sent_from").is_none(), "{v}");
+}
+
 async fn plan_review_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
     use appv3_agent::plan::{self, PlanChange, PlanTarget};
     let new = appv3_db::NewSession { workspace: ws.display().to_string(), interaction_mode: Some("plan".into()), ..Default::default() };

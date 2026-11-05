@@ -189,20 +189,20 @@ describe('splitting the Review panel', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: main.name })).toBeTruthy())
 
     fireEvent.contextMenu(screen.getByRole('button', { name: main.name }))
-    await act(async () => { screen.getByRole('menuitem', { name: 'Split Right' }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: 'Split right' }).click() })
     expect(panes()).toHaveLength(2)
     expect(paneOf(main.name)).toBe(pane(2))
     expect(paneOf('Git')).toBe(pane(1))
 
     // Git is alone in its pane now: splitting it off would leave nothing.
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Git' }))
-    expect((screen.getByRole('menuitem', { name: 'Split Down' }) as HTMLButtonElement).disabled).toBe(true)
-    await act(async () => { screen.getByRole('menuitem', { name: 'Move to Next Pane' }).click() })
+    expect((screen.getByRole('menuitem', { name: 'Split down' }) as HTMLButtonElement).disabled).toBe(true)
+    await act(async () => { screen.getByRole('menuitem', { name: 'Move to next pane' }).click() })
     expect(panes()).toHaveLength(0)
     expect(screen.getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBe('true')
 
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Git' }))
-    await act(async () => { screen.getByRole('menuitem', { name: 'Split Down' }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: 'Split down' }).click() })
     expect(panes()).toHaveLength(2)
     await act(async () => { screen.getByRole('button', { name: 'Close Git' }).click() })
     expect(panes()).toHaveLength(0)
@@ -287,7 +287,7 @@ describe('preview tabs', () => {
     expect(screen.queryByRole('button', { name: main.name })).toBeNull()
 
     fireEvent.contextMenu(screen.getByRole('button', { name: other.name }))
-    await act(async () => { screen.getByRole('menuitem', { name: 'Keep Open' }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: 'Keep open' }).click() })
     expect(tabNode(other.name).hasAttribute('data-dock-tab-preview')).toBe(false)
 
     await update({ selectedFilePath: main.path, selectedFileOpenKey: 3 })

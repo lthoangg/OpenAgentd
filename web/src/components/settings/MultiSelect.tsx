@@ -125,8 +125,8 @@ export function MultiSelect({
             aria-haspopup="listbox"
             tabIndex={0}
             className={cn(
-              'flex min-h-9 w-full cursor-text flex-wrap items-center gap-1 rounded-sm border border-(--color-border-subtle) bg-(--bg-input) px-1.5 py-1 text-xs text-(--color-text) transition-colors outline-none md:min-h-8',
-              'focus:border-(--color-border-strong) aria-expanded:border-(--color-border-strong)',
+              'flex min-h-9 w-full cursor-text flex-wrap items-center gap-1 rounded-sm border border-(--color-border) bg-(--bg-input) px-1.5 py-1 text-xs text-(--color-text) transition-colors outline-none md:min-h-8',
+              'focus:border-(--color-text-subtle) aria-expanded:border-(--color-text-subtle)',
             )}
           >
             {value.length === 0 && (

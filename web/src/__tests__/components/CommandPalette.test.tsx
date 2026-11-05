@@ -479,7 +479,8 @@ describe("CommandPalette", () => {
       />,
     )
     await user.type(screen.getByPlaceholderText("Find file…"), "xyznotfound")
-    expect(screen.getByText(/No files match/)).toBeTruthy()
+    // The file filter reads a debounced query; wait for it to settle.
+    expect(await screen.findByText(/No files match/)).toBeTruthy()
   })
 
   // ── truncated listing ───────────────────────────────────────────────────────

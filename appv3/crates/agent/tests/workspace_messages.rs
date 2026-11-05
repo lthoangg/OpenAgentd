@@ -85,6 +85,8 @@ async fn send_reply_retry_and_guards() {
         MockProvider::text("Plan drafted."),
         // 4. a follow-up in the first infra session.
         MockProvider::text("Follow-up done."),
+        // 4b. a message to a session the user started in infra.
+        MockProvider::text("Own session answered."),
         // 5. a turn with the switch off.
         MockProvider::text("No tool."),
     ]));
@@ -148,6 +150,12 @@ async fn send_reply_retry_and_guards() {
     );
     assert_eq!(from["session_title"], "Orders service");
     assert!(from["replied_at"].is_string(), "{from}");
+    let link = |sid: String| {
+        let pool = pool.clone();
+        async move { appv3_db::get_session(&pool, &sid).await.unwrap().unwrap().sent_from_session_id.map(|s| appv3_db::codec::api_uuid(&s)) }
+    };
+    assert_eq!(link(infra_sid.clone()).await.as_deref(), Some(app_sid.as_str()), "the session the send started lists under the sender");
+    assert_eq!(link(app_sid.clone()).await, None);
     assert!(tool_names(&mock, 0).contains(&"workspace".to_string()), "leads get the tool");
     {
         let calls = mock.calls.lock().unwrap();
@@ -219,6 +227,7 @@ async fn send_reply_retry_and_guards() {
     assert!(out.contains("mode applies to new sessions only"), "the result says the mode was not changed: {out}");
     wait_turn(&infra_ws, &infra_sid).await;
     assert_eq!(appv3_db::get_session(&pool, &infra_sid).await.unwrap().unwrap().interaction_mode, "code");
+    assert_eq!(link(infra_sid.clone()).await.as_deref(), Some(app_sid.as_str()), "a follow-up keeps the link");
     let e = wm::send(&pool, send("app", "x", Some(infra_sid.clone()), false, None)).await.unwrap_err();
     assert!(e.contains("belongs to workspace"), "{e}");
     // A request that already crossed three workspaces goes no further.
@@ -250,6 +259,15 @@ async fn send_reply_retry_and_guards() {
     let first = sessions.lines().nth(1).unwrap_or_default();
     assert!(first.starts_with(&format!("- {infra_sid} | ")), "{sessions}");
     assert!(sessions.lines().next().unwrap().contains("most recently active first (id | title | last active | state)"), "{sessions}");
+
+    // ── 4b. a session the user started stays theirs ─────────────────────
+    // Another workspace messaging it does not list it under the sender.
+    let own = uuid::Uuid::now_v7();
+    appv3_db::create_session(&pool, appv3_db::NewSession { id: Some(own), workspace: infra_ws.clone(), ..Default::default() }).await.unwrap();
+    let sent = wm::send(&pool, send("infra", "Check this too.", Some(own.to_string()), false, None)).await.unwrap();
+    assert_eq!(sent.delivery, Delivery::Delivered);
+    wait_turn(&infra_ws, &own.to_string()).await;
+    assert_eq!(link(own.to_string()).await, None);
 
     // ── 5. the switch removes the tool ──────────────────────────────────
     write_settings(root, false);

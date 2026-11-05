@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 import { Check, Copy, Loader2, Pause, Pencil, Play, Trash2, X, Zap } from 'lucide-react'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { formatRelativeDate, formatInTimezone, isoToWallClock } from '@/utils/format'
@@ -38,7 +39,7 @@ export function TaskDetailView({
   hostTitled?: boolean
 }) {
   const [editing, setEditing] = useState(false)
-  const [copiedPrompt, setCopiedPrompt] = useState(false)
+  const { copied: copiedPrompt, copy } = useCopyFeedback(2000)
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false)
   const currentSessionId = useAgentStore((state) => state.sessionId)
   const headerClass = useSchedulerPaneHeaderClass()
@@ -65,15 +66,7 @@ export function TaskDetailView({
     })
   }
 
-  const handleCopyPrompt = async () => {
-    try {
-      await navigator.clipboard.writeText(task.prompt)
-      setCopiedPrompt(true)
-      setTimeout(() => setCopiedPrompt(false), 2000)
-    } catch {
-      // ignore
-    }
-  }
+  const handleCopyPrompt = () => copy(task.prompt)
 
   if (editing) {
     return (

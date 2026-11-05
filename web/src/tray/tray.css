@@ -52,8 +52,9 @@ button {
   cursor: default;
 }
 
+/* Solid: at 60% the ring fell under 3:1 on the paper glass. */
 button:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--focus-ring) 60%, transparent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -136,8 +137,8 @@ button:focus-visible {
   background: var(--color-text-subtle);
 }
 
-.status[data-tone="ok"]::before { background: var(--color-success); }
-.status[data-tone="warn"]::before { background: var(--color-warning); }
+.status[data-tone="ok"]::before { background: var(--accent-green-text); }
+.status[data-tone="warn"]::before { background: var(--accent-orange-text); }
 .status:is([data-tone="crit"], [data-tone="reached"])::before { background: var(--color-error); }
 
 .toolbar {
@@ -423,7 +424,7 @@ button:focus-visible {
   color: var(--color-text-2);
 }
 
-.row-percent[data-tone="warn"] { color: var(--color-warning); }
+.row-percent[data-tone="warn"] { color: var(--accent-orange-text); }
 .row-percent[data-tone="crit"] { color: var(--color-error); }
 
 .row-detail {
@@ -453,12 +454,12 @@ button:focus-visible {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: var(--color-success);
+  background: var(--accent-green-text);
   transform-origin: left;
   transition: transform var(--motion-base) var(--ease-out);
 }
 
-.meter-fill[data-tone="warn"] { background: var(--color-warning); }
+.meter-fill[data-tone="warn"] { background: var(--accent-orange-text); }
 .meter-fill[data-tone="crit"] { background: var(--color-error); }
 
 .meter-now {

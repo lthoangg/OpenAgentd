@@ -26,9 +26,6 @@ import { Callout } from '@/components/ui/callout'
 import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
 import type { DraftControls } from '@/components/settings/useSettingsDraft'
 import { SaveBar } from '@/components/settings/SaveBar'
-import { settingsRoot } from '@/components/settings/settings-root'
-import { APP_SHORTCUTS, chordOf } from '@/lib/app-shortcuts'
-import { useShortcut } from '@/lib/keyboard/hooks'
 
 interface SettingsPageProps {
   /** Page title (the page's only `h1`). */
@@ -74,23 +71,16 @@ export function SettingsPage({
     else void current.save()
   }
   useUnsavedSettings(Boolean(draft?.dirty || draft?.isSaving))
-  // Read through a ref inside the handler so the listener is bound once per
-  // page rather than re-bound on every keystroke: `draft.save` and `canSave`
+  // `requestSave` reads the draft through a ref: `draft.save` and `canSave`
   // both change identity whenever the draft value does.
   const draftRef = useRef(draft)
   useEffect(() => {
     draftRef.current = draft
   }, [draft])
 
-  // ⌘S / Ctrl+S saves without hunting for the button.
-  useShortcut(chordOf(APP_SHORTCUTS.save), () => {
-    const current = draftRef.current
-    if (!current?.canSave) return false
-    requestSave()
-  }, { within: settingsRoot })
-
   const saveBar = draft && (
     <>
+      {/* The bar owns ⌘S / Ctrl+S, as on every other settings form. */}
       <SaveBar draft={draft} onSave={requestSave} saveBlockedReason={saveBlockedReason} />
       {confirmSave && (
         <ConfirmDialog

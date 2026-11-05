@@ -46,4 +46,11 @@ describe('tray.css', () => {
       '.y { transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1); }',
     ])
   })
+
+  // The solid state hues are 1.8–2.8:1 on paper: a warn percent, a status
+  // dot and a meter fill take the -text tones, which read in both themes.
+  it('draws state text, dots and meter fills in the -text tones, never the solid hues', () => {
+    expect(CSS).not.toMatch(/var\(--color-(?:success|warning)\)/)
+    expect(CSS).toMatch(/\.row-percent\[data-tone="warn"\]\s*\{\s*color:\s*var\(--accent-orange-text\);/)
+  })
 })

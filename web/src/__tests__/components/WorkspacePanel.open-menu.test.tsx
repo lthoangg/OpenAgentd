@@ -97,7 +97,7 @@ describe('Review dock "+" menu', () => {
     await screen.findByRole('button', { name: 'Session plan' })
 
     const menu = await openMenu()
-    expect(rowNames(menu)).toEqual(['Git', 'Goal', 'Plan (open)', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…', 'Split Right', 'Split Down'])
+    expect(rowNames(menu)).toEqual(['Git', 'Goal', 'Plan (open)', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…', 'Split right', 'Split down'])
 
     await userEvent.setup().click(within(menu).getByRole('menuitem', { name: 'Git' }))
     expect(screen.queryByRole('menu')).toBeNull()
@@ -114,7 +114,7 @@ describe('Review dock "+" menu', () => {
 
     fireEvent.doubleClick(gap, { clientX: 120, clientY: 18 })
     const menu = screen.getByRole('menu', { name: 'Open in Review panel' })
-    expect(rowNames(menu)).toContain('Split Right')
+    expect(rowNames(menu)).toContain('Split right')
     expect(menu.style.left).toBe('120px')
     fireEvent.keyDown(menu, { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBeNull()

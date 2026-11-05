@@ -49,11 +49,7 @@ import { deleteTerminalSession, listTerminalSessions } from '@/api/terminal-sess
 import type { XtermHandle } from '@/components/Terminal/xterm-instance'
 import { TERMINAL_THEMES, type TerminalResolvedTheme } from '@/components/Terminal/terminal-themes'
 import { readStoredPreference, resolveTheme } from '@/lib/theme'
-import {
-  buildTerminalFontFamily,
-  readStoredTerminalFont,
-  readStoredTerminalFontSize,
-} from '@/lib/terminal-font'
+import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_SIZE } from '@/lib/terminal-font'
 
 export const TERMINAL_IDLE_CLOSE_MS = 15 * 60 * 1000
 const REAPER_TICK_MS = 60 * 1000
@@ -148,8 +144,6 @@ const runtimes = new Map<string, TerminalRuntime>()
 let nextOrder = 0
 let reaperTimer: ReturnType<typeof setInterval> | null = null
 let currentTheme: TerminalResolvedTheme = resolveTheme(readStoredPreference())
-let currentFontFamily: string = buildTerminalFontFamily(readStoredTerminalFont())
-let currentFontSize: number = readStoredTerminalFontSize()
 /** Size of the last terminal a view fitted: a decent guess for hidden ones. */
 let lastFittedSize: { rows: number; cols: number } | null = null
 /** Workspaces whose surviving shells were already listed this page load. */
@@ -301,10 +295,6 @@ interface TerminalStore {
   clear: (id: string) => void
   /** Swap every live terminal's palette when the app theme resolves anew. */
   syncTheme: (theme: TerminalResolvedTheme) => void
-  /** Swap every live terminal's font stack when the stored preference changes. */
-  syncFont: (customFont: string | null) => void
-  /** Swap every live terminal's font size when the stored preference changes. */
-  syncFontSize: (fontSize: number) => void
   /** Close detached sessions idle past TERMINAL_IDLE_CLOSE_MS. */
   reapIdle: (now?: number) => void
   sessionsForContext: (contextKey: string) => TerminalSessionMeta[]
@@ -452,7 +442,7 @@ async function connect(id: string, resume?: Resume): Promise<void> {
     // terminal, so only the first one waits.
     const { createXterm } = await import('@/components/Terminal/xterm-instance')
     if (!live()) return // closed while the chunk was loading
-    rt.handle = createXterm({ theme: currentTheme, fontSize: currentFontSize, fontFamily: currentFontFamily })
+    rt.handle = createXterm({ theme: currentTheme, fontSize: TERMINAL_FONT_SIZE, fontFamily: TERMINAL_FONT_FAMILY })
     // Wire keystrokes once, for the lifetime of this xterm instance — this is
     // the only place a handle is born, so it cannot double-register.
     rt.handle.term.onData((data) => useTerminalStore.getState().sendInput(id, data))
@@ -824,27 +814,6 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     currentTheme = theme
     for (const rt of runtimes.values()) {
       if (rt.handle) rt.handle.term.options.theme = TERMINAL_THEMES[theme]
-    }
-  },
-
-  syncFont: (customFont) => {
-    currentFontFamily = buildTerminalFontFamily(customFont)
-    for (const rt of runtimes.values()) {
-      if (rt.handle) rt.handle.term.options.fontFamily = currentFontFamily
-    }
-  },
-
-  syncFontSize: (fontSize) => {
-    currentFontSize = fontSize
-    for (const rt of runtimes.values()) {
-      if (rt.handle) {
-        rt.handle.term.options.fontSize = fontSize
-        try {
-          rt.handle.fit.fit()
-        } catch {
-          // container not mounted
-        }
-      }
     }
   },
 

@@ -4,6 +4,7 @@
 use super::helpers::*;
 use super::worktrees;
 use crate::error::{loc, verr, verr_ctx, ApiError, ApiResult};
+use crate::middleware::Peer;
 use crate::sse::sse_response;
 use crate::util::*;
 use crate::AppState;
@@ -21,7 +22,7 @@ use axum::Router;
 use bytes::Bytes;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 pub fn router() -> Router<AppState> {
@@ -40,6 +41,8 @@ pub fn router() -> Router<AppState> {
         .route("/sessions/{session_id}", get(session_detail).patch(update_session).delete(delete_session_route))
         .route("/sessions/{session_id}/subagents", get(session_subagents))
         .route("/{session_id}/history", get(agent_history))
+        .route("/{session_id}/tool-results/{tool_call_id}", get(tool_result))
+        .route("/{session_id}/tool-calls/{tool_call_id}/arguments", get(tool_call_arguments))
         .route("/sessions/{session_id}/btw", post(ask_side_question).get(list_side_questions).delete(clear_side_questions))
         .route("/sessions/{session_id}/btw/count", get(count_side_questions))
         .route("/sessions/{session_id}/btw/{side_id}/stop", post(stop_side_question))
@@ -774,6 +777,10 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     };
     let ids: Vec<String> = sessions.iter().map(|s| s.id.clone()).collect();
     let children = db::list_child_sessions(&st.pool, &ids).await?;
+    // v3 addition: sessions other workspaces ran for these (`linked_sessions`)
+    // and, on any row a send started, who sent it (`sent_from`).
+    let linked = db::list_linked_sessions(&st.pool, &ids).await?;
+    let senders = sent_from_by_id(&st.pool, sessions.iter().chain(linked.iter().map(|(_, s)| s))).await?;
     let goals = db::live_goal_summaries(&st.pool, &ids).await?;
     let overlay = |s: &db::ChatSession| SessionOverlay {
         running: running.contains(&db::codec::api_uuid(&s.id)),
@@ -781,6 +788,7 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
         background_work: pending.contains(&db::codec::api_uuid(&s.id)),
         goal_status: goals.get(&s.id).map(|g| g.status.clone()),
         goal_turns: goals.get(&s.id).map(|g| (g.turns_used, g.max_turns)),
+        sent_from: s.sent_from_session_id.as_ref().and_then(|o| senders.get(o).cloned()),
         ..Default::default()
     };
     let data: Vec<Value> = sessions
@@ -789,10 +797,20 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
             let subs: Vec<Value> = children.iter().filter(|c| c.parent_session_id.as_deref() == Some(s.id.as_str())).map(|c| Value::Object(session_json(c, &overlay(c)))).collect();
             let mut o = overlay(s);
             o.subagents = subs;
+            o.linked_sessions = linked.iter().filter(|(root, _)| *root == s.id).map(|(_, l)| Value::Object(session_json(l, &overlay(l)))).collect();
             Value::Object(session_json(s, &o))
         })
         .collect();
     Ok(json(json!({"data": data, "next_cursor": next_cursor, "has_more": has_more})))
+}
+
+/// `sent_from` values for the senders of `sessions`, by sender id (stored
+/// form). A sender that is gone has no entry.
+async fn sent_from_by_id<'a>(pool: &DbPool, sessions: impl Iterator<Item = &'a db::ChatSession>) -> ApiResult<HashMap<String, Value>> {
+    let mut ids: Vec<String> = sessions.filter_map(|s| s.sent_from_session_id.clone()).collect();
+    ids.sort();
+    ids.dedup();
+    Ok(db::get_sessions_by_ids(pool, &ids).await?.iter().map(|o| (o.id.clone(), db::api::sent_from_json(o))).collect())
 }
 
 /// `session_response` plus, as a v3 addition omitted on Auto, the pinned
@@ -880,7 +898,8 @@ async fn session_detail(State(st): State<AppState>, AxPath(raw): AxPath<String>)
     let pending = manager::find_live_session_serving_session(&sid).and_then(|s| s.pending_interaction_mode());
     let goal = db::live_session_goal(&st.pool, &sid).await?;
     let (goal_status, goal_turns) = (goal.as_ref().map(|g| g.status.clone()), goal.as_ref().map(|g| (g.turns_used, g.max_turns)));
-    let m = session_json(&root, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: pending, goal_status, goal_turns, ..Default::default() });
+    let sent_from = sent_from_by_id(&st.pool, std::iter::once(&root)).await?.into_values().next();
+    let m = session_json(&root, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: pending, goal_status, goal_turns, sent_from, ..Default::default() });
     Ok(json_status(StatusCode::OK, &WithMessages { session: m, messages: MessagesView(&lead) }))
 }
 
@@ -1090,6 +1109,27 @@ async fn session_subagents(State(st): State<AppState>, AxPath(raw): AxPath<Strin
     Ok(json(appv3_agent::subagents::list_subagents(&sid, &st.pool).await))
 }
 
+/// A tool call's output, which history and the live feed leave out for most
+/// tools (`appv3_db::api::result_rides_inline`): fetched when the user opens
+/// the call. Looks in the session and the sessions under it.
+async fn tool_result(State(st): State<AppState>, AxPath((raw, tool_call_id)): AxPath<(String, String)>) -> ApiResult<Response> {
+    let sid = path_uuid("session_id", &raw)?;
+    let Some(row) = db::find_tool_message_in_tree(&st.pool, &sid, &tool_call_id).await? else {
+        return Err(ApiError::not_found("Tool result not found."));
+    };
+    Ok(json(json!({"tool_call_id": tool_call_id, "name": row.name, "content": row.content.unwrap_or_default()})))
+}
+
+/// A tool call's full arguments, which history sends short for a few tools
+/// (`appv3_db::tool_args`); the card fetches them when the user opens it.
+async fn tool_call_arguments(State(st): State<AppState>, AxPath((raw, tool_call_id)): AxPath<(String, String)>) -> ApiResult<Response> {
+    let sid = path_uuid("session_id", &raw)?;
+    let Some((name, arguments)) = db::find_tool_call_in_tree(&st.pool, &sid, &tool_call_id).await? else {
+        return Err(ApiError::not_found("Tool call not found."));
+    };
+    Ok(json(json!({"tool_call_id": tool_call_id, "name": name, "arguments": arguments})))
+}
+
 // ── history ─────────────────────────────────────────────────────────────────
 
 async fn ensure_agent_ready(root: &db::ChatSession) -> ApiResult<()> {
@@ -1146,11 +1186,15 @@ struct HistoryBody<'a> {
     latest_prompt: Option<MessageView<'a>>,
 }
 
-fn member_part<'a>(statuses: &[(String, String)], sub: &db::ChatSession, msgs: &'a [db::SessionMessage], totals: &UsageTotals) -> MemberPart<'a> {
+/// A member as the lead's history shows it: who, whether it works, and its
+/// usage. Its rows stay out (`messages` is empty, kept for older clients):
+/// the lead's view never renders them, and opening a member loads its own
+/// session.
+fn member_part(statuses: &[(String, String)], sub: &db::ChatSession, totals: &UsageTotals) -> MemberPart<'static> {
     let name = sub.agent_name.clone().unwrap_or_else(|| db::codec::api_uuid(&sub.id));
     let (cost, completion) = totals.get(&sub.id).copied().unwrap_or((0.0, 0));
     let running = statuses.iter().any(|(n, s)| *n == name && s == "working");
-    MemberPart { name, session_id: db::codec::api_uuid(&sub.id), messages: MessagesView(msgs), running, estimated_cost_usd: cost, completion_tokens: completion }
+    MemberPart { name, session_id: db::codec::api_uuid(&sub.id), messages: MessagesView(&[]), running, estimated_cost_usd: cost, completion_tokens: completion }
 }
 
 /// The lead's part of a history response. `totals` is `None` on older pages:
@@ -1179,7 +1223,9 @@ async fn usage_totals(pool: &DbPool, root: &db::ChatSession, subs: &[db::ChatSes
     Ok(db::session_usage_totals_many(pool, &ids).await?)
 }
 
-async fn agent_history(st: State<AppState>, raw: AxPath<String>, q: Qs) -> ApiResult<Response> {
+/// Every page carries an `ETag`: a client reopening a session that has not
+/// changed gets `304` and no body (a newest page can run to megabytes).
+async fn agent_history(st: State<AppState>, raw: AxPath<String>, q: Qs, headers: axum::http::HeaderMap, peer: Option<axum::Extension<Peer>>) -> ApiResult<Response> {
     let started = std::time::Instant::now();
     let page = if q.opt("since").is_some() {
         "since"
@@ -1189,10 +1235,61 @@ async fn agent_history(st: State<AppState>, raw: AxPath<String>, q: Qs) -> ApiRe
         "newest"
     };
     let session = raw.0.clone();
-    let res = agent_history_page(st, raw, q).await;
-    let bytes = res.as_ref().ok().and_then(|r| axum::body::HttpBody::size_hint(r.body()).exact()).unwrap_or(0);
-    tracing::debug!("history_page_served session_id={} page={} ok={} bytes={} elapsed_ms={}", session, page, res.is_ok(), bytes, started.elapsed().as_millis());
+    let res = etagged(&headers, agent_history_page(st, raw, q).await).await;
+    let (status, bytes) = match &res {
+        Ok(r) => (r.status().as_u16(), axum::body::HttpBody::size_hint(r.body()).exact().unwrap_or(0)),
+        Err(_) => (0, 0),
+    };
+    let remote = peer.is_some_and(|p| p.0.remote());
+    tracing::info!("history_page_served session_id={} page={} status={} bytes={} remote={} elapsed_ms={}", session, page, status, bytes, remote, started.elapsed().as_millis());
     res
+}
+
+/// Bytes of a page's rows by what they hold, to see what makes a history
+/// page heavy (logged as `history_page_breakdown`).
+#[derive(Default, Debug, PartialEq)]
+struct RowBytes {
+    content: usize,
+    reasoning: usize,
+    tool_args: usize,
+    tool_results: usize,
+    extra: usize,
+}
+
+impl RowBytes {
+    fn add(&mut self, rows: &[db::SessionMessage]) {
+        let len = |s: &Option<String>| s.as_ref().map_or(0, String::len);
+        for r in rows {
+            if r.role == "tool" {
+                // Only what goes out: most tools' output is fetched on demand.
+                if let (Some(name), Some(text)) = (r.name.as_deref(), r.content.as_deref()) {
+                    if appv3_db::api::result_rides_inline(name, text) {
+                        self.tool_results += text.len();
+                    }
+                }
+            } else {
+                self.content += len(&r.content);
+            }
+            self.reasoning += len(&r.reasoning_content);
+            self.tool_args += appv3_db::api::display_tool_calls_len(r.tool_calls.as_deref());
+            self.extra += appv3_db::api::display_extra_len(r.extra.as_deref());
+        }
+    }
+}
+
+fn log_page_breakdown(sid: &str, lead: &[db::SessionMessage]) {
+    let mut l = RowBytes::default();
+    l.add(lead);
+    tracing::info!(
+        "history_page_breakdown session_id={} rows={} content={} reasoning={} tool_args={} tool_results={} extra={}",
+        sid,
+        lead.len(),
+        l.content,
+        l.reasoning,
+        l.tool_args,
+        l.tool_results,
+        l.extra,
+    );
 }
 
 async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<String>, q: Qs) -> ApiResult<Response> {
@@ -1207,20 +1304,13 @@ async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<Stri
         let since_id = py_uuid(&since).ok_or_else(|| ApiError::unprocessable(format!("Invalid since cursor: {since}")))?;
         let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("Lead session not found.")) };
         const LIMIT: i64 = 100;
-        let (lead_rows, mut truncated) = db::history_since(pool, &sid, &since_id, LIMIT).await?;
+        let (lead_rows, truncated) = db::history_since(pool, &sid, &since_id, LIMIT).await?;
         let subs = db::list_child_sessions(pool, std::slice::from_ref(&sid)).await?;
         ensure_agent_ready(&root).await?;
-        let member_rows = futures::future::try_join_all(subs.iter().map(|sub| db::history_since(pool, &sub.id, &since_id, LIMIT))).await?;
         let totals = usage_totals(pool, &root, &subs).await?;
         let statuses = store().get_agent_statuses(&sid);
         let lead = lead_part(&root, &lead_rows, Some(&totals));
-        let mut members = Vec::with_capacity(subs.len());
-        for (sub, (rows, _)) in subs.iter().zip(&member_rows) {
-            if rows.len() as i64 >= LIMIT {
-                truncated = true;
-            }
-            members.push(member_part(&statuses, sub, rows, &totals));
-        }
+        let members = subs.iter().map(|sub| member_part(&statuses, sub, &totals)).collect();
         return Ok(json_status(StatusCode::OK, &HistoryBody { lead, members, has_more: false, next_cursor: None, truncated, pending_question: None, latest_prompt: None }));
     }
 
@@ -1249,30 +1339,22 @@ async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<Stri
     // The newest page reaches back to the latest prompt (see
     // `first_history_page`). Its reads are independent, so they run at once:
     // the lead's page, the agent's start, the members with their usage, and
-    // the open question.
-    //
-    // Members ride on the newest page only, and only their short tail: the
-    // lead's view never renders their rows, and a member's `seq` is its own —
-    // paging it with the lead's cursor re-sent (and duplicated) its newest
-    // rows on every older page.
+    // the open question. Members come without rows (`member_part`).
     let members = async {
         let subs = db::list_child_sessions(pool, std::slice::from_ref(&sid)).await?;
-        let (member_rows, totals) = futures::future::try_join(
-            futures::future::try_join_all(subs.iter().map(|sub| db::member_first_page(pool, &sub.id))),
-            db::session_usage_totals_many(pool, &std::iter::once(root.id.as_str()).chain(subs.iter().map(|s| s.id.as_str())).collect::<Vec<_>>()),
-        )
-        .await?;
-        Ok::<_, ApiError>((subs, member_rows, totals))
+        let totals = db::session_usage_totals_many(pool, &std::iter::once(root.id.as_str()).chain(subs.iter().map(|s| s.id.as_str())).collect::<Vec<_>>()).await?;
+        Ok::<_, ApiError>((subs, totals))
     };
-    let (page, (), (subs, member_rows, totals), pending) =
+    let (page, (), (subs, totals), pending) =
         futures::future::try_join4(async { Ok::<_, ApiError>(db::first_history_page(pool, &root).await?) }, ensure_agent_ready(&root), members, async {
             Ok::<_, ApiError>(db::get_pending_question(pool, &sid).await?.map(|q| db::api::pending_question_response(&q)))
         })
         .await?;
     let statuses = store().get_agent_statuses(&sid);
     let db::FirstHistoryPage { rows: lead_rows, has_more, boundary, latest_prompt } = page;
+    log_page_breakdown(&sid, &lead_rows);
     let next_cursor = boundary.map(|b| format!("{}|{}", b.seq, db::codec::api_uuid(&b.id)));
-    let members = subs.iter().zip(&member_rows).map(|(sub, rows)| member_part(&statuses, sub, rows, &totals)).collect();
+    let members = subs.iter().map(|sub| member_part(&statuses, sub, &totals)).collect();
     let lead = lead_part(&root, &lead_rows, Some(&totals));
     let latest_prompt = latest_prompt.as_ref().map(MessageView);
     Ok(json_status(StatusCode::OK, &HistoryBody { lead, members, has_more, next_cursor, truncated: false, pending_question: pending, latest_prompt }))
@@ -1288,6 +1370,42 @@ mod tests {
         let mut agent = appv3_agent::Agent::new(Arc::new(MockProvider::new(vec![])), "code", "Hi", vec![], Some("mock:mock".into()));
         agent.thinking_level = thinking_level.map(String::from);
         agent
+    }
+
+    fn row(role: &str, content: &str, reasoning: Option<&str>, tool_calls: Option<&str>) -> db::SessionMessage {
+        db::SessionMessage {
+            id: "0123456789abcdef0123456789abcdef".into(),
+            session_id: "fedcba9876543210fedcba9876543210".into(),
+            role: role.into(),
+            content: Some(content.into()),
+            reasoning_content: reasoning.map(String::from),
+            tool_calls: tool_calls.map(String::from),
+            tool_call_id: None,
+            name: None,
+            extra: Some("{}".into()),
+            created_at: String::new(),
+            seq: 0,
+            kind: "message".into(),
+            pinned: false,
+        }
+    }
+
+    #[test]
+    fn page_bytes_are_split_by_what_the_rows_hold() {
+        let mut b = RowBytes::default();
+        let goal = db::SessionMessage { name: Some("update_goal".into()), ..row("tool", "output!", None, None) };
+        let read = db::SessionMessage { name: Some("read".into()), ..row("tool", "left out", None, None) };
+        b.add(&[row("assistant", "hello", Some("hmm"), Some("[{\"a\":1}]")), goal, read, row("user", "hi", None, None)]);
+        assert_eq!(b, RowBytes { content: 7, reasoning: 3, tool_args: 9, tool_results: 7, extra: 8 });
+    }
+
+    #[test]
+    fn page_bytes_count_extra_as_sent_not_as_stored() {
+        let mut r = row("tool", "", None, None);
+        r.extra = Some(r#"{"parts": [{"type": "image", "data": "AAAA"}], "duration_ms": 5}"#.into());
+        let mut b = RowBytes::default();
+        b.add(&[r]);
+        assert_eq!(b.extra, r#"{"duration_ms":5}"#.len());
     }
 
     #[test]
@@ -1336,7 +1454,7 @@ mod tests {
             pending_question: None,
             latest_prompt: None,
         };
-        let msg = r#"{"id":"01234567-89ab-cdef-0123-456789abcdef","session_id":"fedcba98-7654-3210-fedc-ba9876543210","role":"assistant","tool_calls":[{"id": "c"}],"seq":5,"kind":"chat","is_summary":false,"created_at":"2026-09-23T06:56:28Z","file_message":false}"#;
+        let msg = r#"{"id":"01234567-89ab-cdef-0123-456789abcdef","role":"assistant","tool_calls":[{"id": "c"}],"seq":5,"kind":"chat","created_at":"2026-09-23T06:56:28Z"}"#;
         let expected = format!(
             r#"{{"lead":{{"id":"l","messages":[{msg}]}},"members":[{{"name":"m","session_id":"s","messages":[],"running":true,"estimated_cost_usd":0.5,"completion_tokens":3}}],"has_more":true,"next_cursor":"5|x","truncated":false,"pending_question":null}}"#
         );

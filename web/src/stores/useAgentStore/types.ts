@@ -348,6 +348,14 @@ export interface AgentStoreActions {
    * between the history read and the attach.
    */
   fillAttachGap: (sessionId: string) => Promise<void>
+  /**
+   * Foreground resume of a running turn: fetch only the rows saved since the
+   * last sync and finish the shown tool cards they complete. ``'attach'``:
+   * reattaching the stream is enough; ``'reload'``: take the full page (the
+   * turn ended, a step or message was never shown, or no delta applies);
+   * ``'stale'``: the user left the session meanwhile.
+   */
+  catchUpLiveTurn: (sessionId: string, workspace: string | null) => Promise<'attach' | 'reload' | 'stale'>
   beginResolvedSession: (sessionId: string | null, options: { workspace: string; interactionMode?: SessionInteractionMode; model?: string | null; thinkingLevel?: string | null; credentialId?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
   loadOlderMessages: () => Promise<void>
   /**

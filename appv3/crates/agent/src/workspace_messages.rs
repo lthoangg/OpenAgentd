@@ -396,6 +396,8 @@ pub async fn send(pool: &DbPool, req: SendRequest) -> Result<Sent, String> {
         Err(e) => return Err(e.to_string()),
     };
     if !existing {
+        // The sidebar lists the new session under the one that sent it.
+        db::set_sent_from_session(pool, &sid, &req.source_session_id).await.map_err(err)?;
         if let Some(mode) = req.mode.as_deref().filter(|m| *m == "plan") {
             crate::interaction_mode::set_mode(pool, &sid, mode).await.map_err(err)?;
         }

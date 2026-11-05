@@ -44,7 +44,8 @@ export function nextNeedsYouSessionId(waiting: readonly { id: string }[], curren
   return (waiting.find((session) => session.id !== currentId) ?? waiting[0])?.id ?? null
 }
 
-function openNextNeedsYou(router: AnyRouter): void {
+/** Open the next session waiting on the user (global shortcut, palette). */
+export function openNextNeedsYou(router: AnyRouter): void {
   const data = queryClient.getQueryData<InfiniteData<SessionPageResponse>>(queryKeys.session.sessions.active())
   const path = router.state?.location?.pathname ?? ''
   const current = path.split('/')[1] ?? ''
@@ -74,9 +75,6 @@ function runDesktopCommand(command: unknown, router: AnyRouter): void {
       break
     case 'maximize_review_panel':
       dispatchAppShortcut(APP_SHORTCUTS.maximizeDock, getPlatform().os)
-      break
-    case 'focus_mode':
-      dispatchAppEvent(APP_EVENTS.toggleFocusMode)
       break
     case 'reset_layout':
       dispatchAppEvent(APP_EVENTS.resetLayout)

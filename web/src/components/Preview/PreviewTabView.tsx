@@ -41,6 +41,7 @@ import { DEVICE_PRESETS, type DevicePreset, deviceLabel, devicePreset, fitScale,
 import { type ComposerAnchor, PreviewCommentComposer, PreviewCommentList } from './PreviewComments'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { useShortcut } from '@/lib/keyboard/hooks'
+import { formatChord } from '@/lib/keyboard/chord'
 import { frameKeymap, useFrameKeys } from '@/lib/keyboard/frames'
 import { NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD } from '@/lib/app-shortcuts'
 import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
@@ -170,7 +171,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   const available = reach !== 'unavailable'
   const { os } = usePlatform()
   const phone = useIsMobile()
-  const designShortcut = os === 'macos' || os === 'ios' ? '⌥C' : 'Alt+C'
+  const designShortcut = formatChord(DESIGN_CHORD, os)
   const [info, setInfo] = useState<PreviewInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   // What was typed in the address bar cannot be shown: nothing to retry, editing clears it.
@@ -619,7 +620,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
             autoCorrect="off"
             inputMode="url"
             enterKeyHint="go"
-            className="h-8 w-full min-w-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-input) px-2 font-mono text-xs text-(--color-text) outline-none transition-colors focus:border-(--color-border-strong) pointer-coarse:h-9"
+            className="h-8 w-full min-w-0 rounded-xs border border-(--color-border) bg-(--bg-input) px-2 font-mono text-xs text-(--color-text) outline-none transition-colors focus:border-(--color-text-subtle) pointer-coarse:h-9"
           />
           {loading && !pageDown && (
             // Safari's way: a thin sweep along the field's bottom edge.

@@ -101,7 +101,7 @@ export function ActivePlanSection({ plan, onClear, onOpen, clearing = false, sta
               disabled={clearing}
               aria-label="Clear plan…"
             >
-              Clear…
+              Clear plan…
             </Button>
           }
         />

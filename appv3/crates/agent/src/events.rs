@@ -154,10 +154,23 @@ pub fn tool_start(agent: &str, tool_call_id: Option<&str>, name: &str, arguments
     }))
 }
 
+/// The end of a tool call. Most tools' output stays on the server
+/// (`appv3_db::api::result_rides_inline`): `result` is null and the
+/// metadata says `result_omitted` with `result_bytes`; clients fetch it when
+/// the user opens the call. The live feed, its replay and history agree.
 pub fn tool_end(agent: &str, tool_call_id: Option<&str>, name: &str, result: Option<&str>, metadata: Option<Value>) -> Envelope {
+    let mut metadata = meta(metadata);
+    let result = match result {
+        Some(text) if !appv3_db::api::result_rides_inline(name, text) => {
+            metadata["result_omitted"] = Value::Bool(true);
+            metadata["result_bytes"] = Value::from(text.len());
+            None
+        }
+        other => other,
+    };
     Envelope::typed(json!({
         "type": "tool_end", "agent": agent, "tool_call_id": tool_call_id, "name": name,
-        "result": result, "metadata": meta(metadata)
+        "result": result, "metadata": metadata
     }))
 }
 
@@ -245,13 +258,6 @@ pub fn agent_not_configured(agent: &str, message: &str) -> Envelope {
 
 pub fn agent_status(agent: &str, status: &str, metadata: Option<Value>) -> Envelope {
     Envelope::typed(json!({"type": "agent_status", "agent": agent, "status": status, "metadata": meta(metadata)}))
-}
-
-pub fn permission_asked(request_id: &str, session_id: &str, tool: &str, patterns: &[String], metadata: Value) -> Envelope {
-    Envelope::typed(json!({
-        "type": "permission_asked", "request_id": request_id, "session_id": session_id,
-        "tool": tool, "patterns": patterns, "metadata": meta(Some(metadata))
-    }))
 }
 
 pub fn question_asked(question_id: &str, session_id: &str, tool_call_id: &str, questions: &[Value]) -> Envelope {
@@ -351,7 +357,6 @@ mod tests {
             provider_status("a", &ProviderStatus::default()),
             agent_not_configured("a", "m"),
             agent_status("a", "idle", None),
-            permission_asked("r", "s", "read", &[], json!({})),
             question_asked("q", "s", "c", &[]),
             question_answered("q", "s", &json!({})),
             plan_review_asked("q", "s", "c", &[], 1),
@@ -378,6 +383,22 @@ mod tests {
             sorted.dedup();
             assert_eq!(sorted.len(), list.len(), "duplicate event names: {list:?}");
         }
+    }
+
+    /// A tool's output is fetched when the user opens it; the event says
+    /// how big it was. Tools whose card reads their answer keep it.
+    #[test]
+    fn tool_end_leaves_out_output_but_keeps_answers_cards_read() {
+        let e = tool_end("a", Some("c1"), "read", Some("12345"), Some(json!({"duration_ms": 2})));
+        assert_eq!(e.data["result"], Value::Null);
+        assert_eq!(e.data["metadata"], json!({"duration_ms": 2, "result_omitted": true, "result_bytes": 5}));
+        let applied = tool_end("a", Some("c1"), "patch", Some("Patch applied successfully. Updated paths:\na.rs"), None);
+        assert_eq!(applied.data["result"], Value::Null, "the row reads an applied patch from its arguments");
+        let kept = tool_end("a", Some("c1"), "patch", Some("Error: Could not find scope"), None);
+        assert_eq!(kept.data["result"], json!("Error: Could not find scope"));
+        assert_eq!(kept.data["metadata"], json!({}));
+        let empty = tool_end("a", Some("c1"), "read", None, None);
+        assert_eq!(empty.data["metadata"], json!({}), "nothing to leave out");
     }
 
     #[test]

@@ -388,10 +388,10 @@ describe("MarkdownBlock tables", () => {
     expect(btnContainer).not.toBeNull();
     expect(btnContainer?.className).toContain("top-1");
     expect(btnContainer?.className).toContain("right-1");
-    // Never hover-only: muted at rest, full on hover or keyboard focus.
-    expect(btnContainer?.className).not.toMatch(/(?:^|\s)opacity-0(?:\s|$)/);
-    expect(btnContainer?.className).toContain("opacity-60");
-    expect(btnContainer?.className).toContain("group-hover:opacity-100");
+    // Never hover-only, never faded: the button's own muted tone is its rest
+    // state (a 60% wrapper left the icon at 2.4:1).
+    expect(btnContainer?.className).not.toMatch(/(?:^|\s)opacity-\d+(?:\s|$)/);
+    expect(copyBtn.className).toContain("text-(--color-text-muted)");
   });
 
   it("keeps copy button outside the horizontal scroll container so it stays fixed during scroll", () => {

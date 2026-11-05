@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setApiBaseUrl } from '@/api/base-url'
 import { queryKeys } from '@/queries'
-import { loadLastWorkspace, loadWorkspaces, saveLastWorkspace } from '@/utils/workspace'
+import { loadLastWorkspace, loadWorkspaceEntries, saveLastWorkspace } from '@/utils/workspace'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -95,6 +95,8 @@ type TestSession = {
   pinned_at?: string | null
   parent_session_id?: string | null
   subagents?: TestSession[]
+  sent_from?: { session_id: string; workspace: string; title?: string | null } | null
+  linked_sessions?: TestSession[]
 }
 
 let sessionsData: TestSession[] = []
@@ -206,12 +208,14 @@ const Icon = () => null
 mock.module('lucide-react', () => ({
   SlidersHorizontal: Icon, Activity: Icon,
   AppWindow: Icon,
+  ArrowUpRight: Icon,
   Check: Icon,
   ChevronDown: Icon,
   ChevronRight: Icon,
   ChevronsDownUp: Icon,
   Clock: Icon,
   Command: Icon,
+  CornerLeftUp: Icon,
   Copy: Icon,
   Download: Icon,
   ExternalLink: Icon,
@@ -1351,9 +1355,8 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.getByLabelText('Collapse workspace project')).toBeTruthy()
     await user.click(screen.getByLabelText('Actions for project'))
     expect(screen.getByRole('menu', { name: 'Actions for project' })).toBeTruthy()
-    await user.click(screen.getByRole('menuitem', { name: /hide from sidebar/i }))
-    expect(screen.getByText('Hide this workspace from the sidebar?')).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: /^hide from sidebar$/i }))
+    await user.click(screen.getByRole('menuitem', { name: 'Hide from sidebar' }))
+    expect(screen.queryByText('Hide this workspace from the sidebar?')).toBeNull()
 
     expect(screen.queryByLabelText('Collapse workspace project')).toBeNull()
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/agent/workspace/visibility', expect.objectContaining({
@@ -1378,8 +1381,7 @@ describe('Sidebar workspace trust flow', () => {
     async function removeFromSidebar(name: string) {
       const user = userEvent.setup()
       await user.click(screen.getByLabelText(`Actions for ${name}`))
-      await user.click(screen.getByRole('menuitem', { name: /hide from sidebar/i }))
-      await user.click(screen.getByRole('button', { name: /^hide from sidebar$/i }))
+      await user.click(screen.getByRole('menuitem', { name: 'Hide from sidebar' }))
     }
 
     it('drops the repository row once the backend has hidden it', async () => {
@@ -1409,7 +1411,7 @@ describe('Sidebar workspace trust flow', () => {
 
       expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
       expect(lastWorkspaceAtNavigation).toBeNull()
-      expect(loadWorkspaces()).not.toContain('/repo/project')
+      expect(loadWorkspaceEntries().map((entry) => entry.path)).not.toContain('/repo/project')
       await waitFor(() => expect(screen.queryByLabelText('Actions for project')).toBeNull())
     })
 
@@ -3039,6 +3041,24 @@ describe('Sidebar workspace trust flow', () => {
       const menu = screen.getByRole('menu')
       expect(within(menu).queryByRole('menuitem', { name: 'Rename' })).toBeNull()
       expect(within(menu).getByRole('menuitem', { name: 'Delete session…' })).toBeTruthy()
+    })
+
+    it('lists a session another workspace ran under its sender, and its mark opens the sender', async () => {
+      const from = { session_id: 'session-1', workspace: '/repo/project', title: 'Orders API' }
+      const infra = projectSession('infra-1', 'Orders table', { workspace: '/repo/infra', running: true, sent_from: from })
+      sessionsData = [projectSession('session-1', 'Orders API', { linked_sessions: [infra] }), infra]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarForSessions('session-1')
+
+      const [toggle] = screen.getAllByRole('button', { name: 'Expand 1 session in other workspaces' })
+      expect(within(toggle).getByRole('img', { name: 'A session in another workspace is running' })).toBeTruthy()
+      fireEvent.click(toggle)
+      fireEvent.click(screen.getByRole('button', { name: 'Orders table, in infra, Running' }))
+      expect(navigate).toHaveBeenLastCalledWith({ to: '/$sessionId', params: { sessionId: 'infra-1' } })
+
+      fireEvent.click(screen.getAllByRole('button', { name: 'Open the session that sent this, in project' })[0])
+      expect(navigate).toHaveBeenLastCalledWith({ to: '/$sessionId', params: { sessionId: 'session-1' } })
     })
 
     it('unpins a pinned session from its row action', async () => {

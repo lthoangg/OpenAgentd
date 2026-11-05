@@ -71,7 +71,8 @@ export function parseStartedAt(value: unknown): number | null {
  * answers with (``Subagent 'explorer#1' dispatched…``, ``Message delivered to
  * subagent 'explorer#1'…``; ``appv3_agent::tools::team::delegate_result_text``).
  * ``null`` for an error, a list, or a JSON result, whose details carry their
- * own rows.
+ * own rows. Only answers this matches reach the client with the call
+ * (``appv3_db::api::result_rides_inline``): change both together.
  */
 export function teamMemberFromResult(result: string | null | undefined): string | null {
   const text = result?.trim()

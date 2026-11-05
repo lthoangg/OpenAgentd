@@ -21,7 +21,7 @@ import type { FileRef } from '@/utils/file-refs'
 import { addTerminalSelectionToChat, copyTerminalSelection, pasteIntoTerminal } from './terminal-actions'
 import { routeTerminalKey, terminalShortcut } from './terminal-keys'
 import { createFileLinkProvider, parseOsc7Cwd } from './terminal-links'
-import { TERMINAL_THEMES, type TerminalResolvedTheme } from './terminal-themes'
+import { TERMINAL_MIN_CONTRAST_RATIO, TERMINAL_THEMES, type TerminalResolvedTheme } from './terminal-themes'
 
 export interface XtermHandle {
   term: Terminal
@@ -42,15 +42,9 @@ export function createXterm(options: {
   theme: TerminalResolvedTheme
   fontSize: number
   /**
-   * Full CSS font-family stack — build with
-   * `buildTerminalFontFamily()` (see `lib/terminal-font.ts`). Nerd-Font-
-   * first: users running Powerlevel10k / Starship / oh-my-zsh themes
-   * almost certainly have one installed locally (p10k's own
-   * recommendation is MesloLGS NF), and a user-supplied exact font name
-   * is layered in front of the guess stack — that has to be manual rather
-   * than auto-detected (browsers don't
-   * expose the OS's installed font list). Plain JetBrains Mono remains
-   * the fallback for everyone else.
+   * Full CSS font-family stack: `TERMINAL_FONT_FAMILY` from
+   * `lib/terminal-font.ts` (Nerd Font guesses, the bundled icons font,
+   * then system monospace).
    */
   fontFamily: string
 }): XtermHandle {
@@ -59,6 +53,7 @@ export function createXterm(options: {
     fontFamily: options.fontFamily,
     fontSize: options.fontSize,
     theme: TERMINAL_THEMES[options.theme],
+    minimumContrastRatio: TERMINAL_MIN_CONTRAST_RATIO,
     allowProposedApi: true,
     scrollback: 5000,
   })

@@ -25,18 +25,17 @@ describe('coarse-pointer touch targets', () => {
     expect(dockTabCloseClass(true)).toContain('pointer-coarse:size-9')
   })
 
-  it('shows every tab close at rest: 24px, dimmed to 60% on tabs that are not open, full on hover or focus', () => {
+  it('shows every tab close at rest: 24px, a step down the text ramp on tabs that are not open, ink on hover', () => {
     for (const active of [false, true]) {
       const close = dockTabCloseClass(active)
       expect(close).toContain('size-6')
       expect(close).not.toMatch(/(^|\s)(hidden|opacity-0|size-5)(\s|$)/)
+      expect(close).toContain('hover:text-(--color-text)')
     }
-    const inactive = dockTabCloseClass(false)
-    expect(inactive).toContain('opacity-60')
-    expect(inactive).toContain('group-hover/tab:opacity-100')
-    expect(inactive).toContain('group-focus-within/tab:opacity-100')
-    expect(inactive).toContain('focus-visible:opacity-100')
-    expect(dockTabCloseClass(true)).toContain('opacity-100')
+    // An icon at 3:1 or more: subtle on a closed tab (60% opacity was 2.5:1),
+    // muted on the open one.
+    expect(dockTabCloseClass(false)).toContain('text-(--color-text-subtle)')
+    expect(dockTabCloseClass(true)).toContain('text-(--color-text-muted)')
   })
 
   it('sizes buttons 36px on touch, and 40px in the Android app', () => {

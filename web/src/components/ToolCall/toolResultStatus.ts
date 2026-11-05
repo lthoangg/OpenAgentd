@@ -10,6 +10,8 @@
  * ``ToolCall`` header's success/failure styling *and* per-tool result
  * renderers such as ``DiffView``, so a drift between them is exactly what
  * let a failed ``patch`` call render as if it had succeeded.
+ * A ``patch`` answer reaches the client with the call only when this calls it
+ * failed (``appv3_db::api::result_rides_inline``): change both together.
  */
 export function isFailedResult(result: string | undefined): boolean {
   if (!result) return false

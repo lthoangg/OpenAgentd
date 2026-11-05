@@ -29,7 +29,7 @@ use sqlx::{Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
 
 /// Alembic head revision this build is schema-compatible with.
-pub const ALEMBIC_HEAD: &str = "00000030";
+pub const ALEMBIC_HEAD: &str = "00000032";
 
 /// `(revision, statements)` in upgrade order.
 ///
@@ -73,7 +73,16 @@ pub const ALEMBIC_HEAD: &str = "00000030";
 /// - 00000030: `chat_sessions.credential_id`, the stored credential (key or
 ///   account) the session is pinned to. NULL is Auto: the provider's pool
 ///   picks and rotates as before.
-pub const MIGRATIONS: [(&str, &str); 30] = [
+/// - 00000031: `chat_sessions.sent_from_session_id`, the session in another
+///   workspace whose `workspace` send started this one (NULL otherwise; set
+///   NULL when that session is deleted). The sidebar lists such sessions
+///   under the one that started them. Backfilled from each top-level
+///   session's first user message: when it carries `extra.sent_from`, a
+///   send started the session.
+/// - 00000032: the partial `ix_session_messages_tool_call_id`, so opening a
+///   tool call finds its result (and, next to it, its arguments) with a seek
+///   instead of reading every row of the session tree.
+pub const MIGRATIONS: [(&str, &str); 32] = [
     ("00000001", include_str!("../resources/migrations/00000001.sql")),
     ("00000002", include_str!("../resources/migrations/00000002.sql")),
     ("00000003", include_str!("../resources/migrations/00000003.sql")),
@@ -104,6 +113,8 @@ pub const MIGRATIONS: [(&str, &str); 30] = [
     ("00000028", include_str!("../resources/migrations/00000028.sql")),
     ("00000029", include_str!("../resources/migrations/00000029.sql")),
     ("00000030", include_str!("../resources/migrations/00000030.sql")),
+    ("00000031", include_str!("../resources/migrations/00000031.sql")),
+    ("00000032", include_str!("../resources/migrations/00000032.sql")),
 ];
 
 /// Split a captured revision file into statements.
@@ -376,7 +387,7 @@ CREATE TABLE "chat_sessions" (
 	model VARCHAR(255), 
 	thinking_level VARCHAR(50), 
 	history_revision INTEGER DEFAULT '0' NOT NULL, 
-	history_structure_revision INTEGER DEFAULT '0' NOT NULL, interaction_mode VARCHAR(16) DEFAULT 'code' NOT NULL, pinned_at DATETIME, last_message_at DATETIME, title_locked BOOLEAN DEFAULT 0 NOT NULL, credential_id VARCHAR(64), 
+	history_structure_revision INTEGER DEFAULT '0' NOT NULL, interaction_mode VARCHAR(16) DEFAULT 'code' NOT NULL, pinned_at DATETIME, last_message_at DATETIME, title_locked BOOLEAN DEFAULT 0 NOT NULL, credential_id VARCHAR(64), sent_from_session_id CHAR(32) REFERENCES chat_sessions (id) ON DELETE SET NULL, 
 	PRIMARY KEY (id), 
 	FOREIGN KEY(parent_session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE
 );
@@ -457,10 +468,12 @@ CREATE INDEX ix_chat_sessions_top_created ON chat_sessions (parent_session_id, c
 CREATE INDEX ix_chat_sessions_top_workspace_created ON chat_sessions (parent_session_id, workspace, created_at, id);
 CREATE INDEX ix_chat_sessions_top_last_message ON chat_sessions (parent_session_id, last_message_at, id);
 CREATE INDEX ix_chat_sessions_top_workspace_last_message ON chat_sessions (parent_session_id, workspace, last_message_at, id);
+CREATE INDEX ix_chat_sessions_sent_from ON chat_sessions (sent_from_session_id) WHERE sent_from_session_id IS NOT NULL;
 CREATE UNIQUE INDEX ix_scheduled_task_slug ON scheduled_task (slug);
 CREATE UNIQUE INDEX ix_scheduled_task_name ON scheduled_task (name);
 CREATE INDEX ix_session_messages_usage ON session_messages (session_id, kind, json_extract(extra, '$.usage.cost.estimated_usd'), json_extract(extra, '$.usage.output'));
 CREATE INDEX ix_session_messages_queued ON session_messages (session_id, seq, id) WHERE kind = 'queued';
+CREATE INDEX ix_session_messages_tool_call_id ON session_messages (tool_call_id) WHERE tool_call_id IS NOT NULL;
 CREATE TABLE side_questions (
 	session_id CHAR(32) NOT NULL,
 	id CHAR(32) NOT NULL,
@@ -624,5 +637,47 @@ CREATE TABLE inflight_turns (
         assert_eq!(mark(owned).fetch_one(&mut conn).await.unwrap().as_deref(), Some("nightly"));
         assert_eq!(mark(users).fetch_one(&mut conn).await.unwrap(), None);
         assert_eq!(mark("unmarked".into()).fetch_one(&mut conn).await.unwrap(), None);
+    }
+
+    /// 00000031 links a session to the one whose workspace send started it:
+    /// its first user message carries `extra.sent_from`. A session the user
+    /// started, which only later got a message from another workspace, and
+    /// a sender that no longer exists stay unlinked.
+    #[tokio::test]
+    async fn sent_from_session_backfills_from_the_first_user_message() {
+        let mut conn = SqliteConnection::connect("sqlite::memory:").await.unwrap();
+        for (rev, sql) in MIGRATIONS.iter().take_while(|(r, _)| *r <= "00000030") {
+            apply(&mut conn, rev, sql).await.unwrap();
+        }
+        let origin = uuid::Uuid::now_v7();
+        let id = |u: &uuid::Uuid| u.simple().to_string();
+        let (started, own, orphan) = (uuid::Uuid::now_v7(), uuid::Uuid::now_v7(), uuid::Uuid::now_v7());
+        for s in [&origin, &started, &own, &orphan] {
+            exec(
+                &mut conn,
+                &format!(
+                    "INSERT INTO chat_sessions (id, created_at, updated_at, workspace) VALUES ('{}', '2026-01-01 00:00:00.000000', '2026-01-01 00:00:00.000000', '/w')",
+                    id(s)
+                ),
+            )
+            .await
+            .unwrap();
+        }
+        let from = |u: &uuid::Uuid| format!(r#"'{{"sent_from": {{"session_id": "{}", "workspace": "/app"}}}}'"#, u.hyphenated());
+        let msg = |n: &str, sid: &uuid::Uuid, seq: i64, kind: &str, extra: String| {
+            format!("INSERT INTO session_messages (id, session_id, role, created_at, seq, kind, extra) VALUES ('{n}', '{}', 'user', '2026-01-01 00:00:00.000000', {seq}, '{kind}', {extra})", id(sid))
+        };
+        // A hidden mode note may come first; it is not the request.
+        exec(&mut conn, &msg("n1", &started, 1, "note", "NULL".into())).await.unwrap();
+        exec(&mut conn, &msg("m1", &started, 2, "chat", from(&origin))).await.unwrap();
+        exec(&mut conn, &msg("m2", &own, 1, "chat", "NULL".into())).await.unwrap();
+        exec(&mut conn, &msg("m3", &own, 2, "chat", from(&origin))).await.unwrap();
+        exec(&mut conn, &msg("m4", &orphan, 1, "chat", from(&uuid::Uuid::now_v7()))).await.unwrap();
+        assert_eq!(upgrade(&mut conn).await.unwrap(), SchemaState::Upgraded("00000030".into()));
+        let link = |s: &uuid::Uuid| sqlx::query_scalar::<_, Option<String>>("SELECT sent_from_session_id FROM chat_sessions WHERE id = ?").bind(id(s));
+        assert_eq!(link(&started).fetch_one(&mut conn).await.unwrap(), Some(id(&origin)));
+        assert_eq!(link(&own).fetch_one(&mut conn).await.unwrap(), None);
+        assert_eq!(link(&orphan).fetch_one(&mut conn).await.unwrap(), None);
+        assert_eq!(link(&origin).fetch_one(&mut conn).await.unwrap(), None);
     }
 }

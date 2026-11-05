@@ -60,7 +60,8 @@ export function categoryDotClass(cat: SpanCategory): string {
 
 export function categoryBarClass(cat: SpanCategory, isError: boolean): string {
   if (isError) return 'bg-(--color-error)'
-  return cn(categoryDotClass(cat), cat === 'agent_run' ? 'opacity-55' : 'opacity-75')
+  // Solid: a bar is a data graphic, 3:1 on the card; faded it fell to 1.8–2.8:1.
+  return categoryDotClass(cat)
 }
 
 /** The type chip on a waterfall row and in the legend: swatch + word. */

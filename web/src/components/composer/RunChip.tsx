@@ -101,7 +101,9 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
         'md:h-7 pointer-coarse:h-9',
         // Stacked: two lines in a 36px chip, capped so Send keeps its room.
         '@max-[520px]:h-9 @max-[520px]:max-w-[11rem] @max-[520px]:pr-1.5',
-        'phone:text-subhead',
+        // A 320px phone (Display Zoom) leaves the chip ~50px: it drops the
+        // chevron and some padding so the name keeps a few letters.
+        'phone:text-subhead phone:@max-[300px]:px-1.5',
       )}
     >
       <span className="flex min-w-0 items-baseline gap-1.5 leading-tight @max-[520px]:flex-col @max-[520px]:items-start @max-[520px]:gap-0">
@@ -122,7 +124,7 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
           </span>
         )}
       </span>
-      <ChevronDown size={12} aria-hidden="true" className="shrink-0 text-(--color-text-muted)" />
+      <ChevronDown size={12} aria-hidden="true" className="shrink-0 text-(--color-text-muted) phone:@max-[300px]:hidden" />
     </button>
   )
 

@@ -46,8 +46,9 @@ const ITEM_SIZE: Record<SegmentedSize, string> = {
   sm: 'px-2 text-xs pointer-coarse:min-w-9 [&_svg:not([class*=size-])]:size-3',
   default: 'px-2.5 text-xs pointer-coarse:min-h-9 pointer-coarse:min-w-9 [&_svg:not([class*=size-])]:size-3.5',
   // A phone's run deck reads at 15px (iOS's subheadline), so Code/Plan, the
-  // model and Send fit across a 375px screen.
-  composer: 'px-2.5 text-xs phone:text-subhead [&_svg:not([class*=size-])]:size-3.5',
+  // model and Send fit across a 375px screen; a 320px one tightens the
+  // padding so the model chip keeps some room.
+  composer: 'px-2.5 text-xs phone:text-subhead phone:@max-[300px]:px-1.5 [&_svg:not([class*=size-])]:size-3.5',
 }
 
 /** Track (container) classes. */

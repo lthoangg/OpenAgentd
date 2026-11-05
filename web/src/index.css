@@ -563,7 +563,7 @@ html[data-mobile-shell] .app-overlay-modal {
  * Always auto-height (grows with content, never full-screen).
  *
  * Mobile: edge-to-edge horizontally just below the app header + safe-area top.
- * Desktop: centred 480px card, 1.5rem below the app header.
+ * Desktop: centred 600px card, 1.5rem below the app header.
  * ──────────────────────────────────────────────────────────────────────────── */
 .app-overlay-palette {
   position: fixed;
@@ -1561,6 +1561,43 @@ html[data-app-hidden="true"] *::after {
   .oa-prose a::before,
   [data-file-ref]::before {
     inset: calc((100% - 44px) / 2) 0;
+  }
+
+  /* A modal overlay is an iOS sheet: the full width, 10px under the status
+     bar so the screen behind shows above it, flush with the bottom edge (its
+     padding clears the home indicator and a landscape cutout), 12px top
+     corners, no side borders. Each selector restates an AppOverlay rule
+     above at its specificity, later in the file, so it wins. With the
+     keyboard up, an in-shell sheet ends on the keyboard (the shell is its
+     containing block and shrinks to the visible region); an app-level one
+     sizes itself from --app-vh, as the card did. */
+  .app-overlay-modal,
+  .app-overlay-modal[data-overlay-level="app"],
+  html[data-mobile-shell] .app-overlay-modal,
+  html[data-mobile-shell] .app-overlay-modal[data-overlay-level="app"] {
+    top: calc(env(safe-area-inset-top, 0px) + 0.625rem);
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    height: auto;
+    max-height: none;
+    margin: 0;
+    border-width: 1px 0 0;
+    border-radius: 0.75rem 0.75rem 0 0;
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  html[data-mobile-shell][data-keyboard-open] .app-overlay-modal {
+    bottom: 0;
+    padding-bottom: 0;
+  }
+  html[data-mobile-shell][data-keyboard-open] .app-overlay-modal[data-overlay-level="app"] {
+    bottom: auto;
+    height: calc(var(--app-vh, 100svh) - env(safe-area-inset-top, 0px) - 0.625rem);
+    max-height: none;
+    padding-bottom: 0;
   }
 }
 

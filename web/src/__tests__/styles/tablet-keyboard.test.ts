@@ -40,6 +40,10 @@ function rulesFor(selector: string): Array<{ within: string[]; body: string }> {
 }
 
 const APP_LEVEL = '.app-overlay-modal[data-overlay-level="app"]'
+const PHONE_MEDIA = [
+  '@media (max-width: 767px)',
+  '@media (pointer: coarse) and (max-width: 767px), (pointer: coarse) and (max-height: 580px)',
+]
 
 describe('app-level overlay card on a touch tablet', () => {
   it('keeps the phone-height rules to phone widths', () => {
@@ -48,7 +52,9 @@ describe('app-level overlay card on a touch tablet', () => {
       expect(rules.length).toBeGreaterThan(0)
       for (const rule of rules) {
         if (!/(?<![-\w])height\s*:/.test(rule.body)) continue
-        expect({ selector, within: rule.within }).toEqual({ selector, within: ['@media (max-width: 767px)'] })
+        // Phone widths, or the phone test itself (touch, and narrow or a
+        // landscape phone's short height: the `phone:` variant).
+        expect({ selector, phoneOnly: PHONE_MEDIA.includes(rule.within.join(' ')) }).toEqual({ selector, phoneOnly: true })
       }
     }
   })

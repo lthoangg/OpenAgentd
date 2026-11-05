@@ -117,3 +117,25 @@ describe('phone type utilities', () => {
     expect(css).toMatch(/--text-large-title:\s*calc\(2\.125rem \* var\(--oa-phone-scale\)\);/)
   })
 })
+
+describe('phone sheets', () => {
+  const phone = block(PHONE)
+
+  it('makes a phone\'s modal overlay a full-width sheet with 12px top corners', () => {
+    const sheet = /\.app-overlay-modal,[^{]*\{([^}]*)\}/.exec(phone)?.[1] ?? ''
+    expect(sheet).toMatch(/left:\s*0;/)
+    expect(sheet).toMatch(/right:\s*0;/)
+    expect(sheet).toMatch(/bottom:\s*0;/)
+    expect(sheet).toMatch(/border-radius:\s*0\.75rem 0\.75rem 0 0;/)
+    expect(sheet).toMatch(/padding-bottom:\s*env\(safe-area-inset-bottom/)
+  })
+
+  it('outranks the mobile shell\'s app-level card height', () => {
+    expect(phone).toContain('html[data-mobile-shell] .app-overlay-modal[data-overlay-level="app"]')
+  })
+
+  it('comes after every card rule it overrides', () => {
+    const phoneEnd = css.indexOf(`@media ${PHONE} {`) + phone.length
+    expect(css.slice(phoneEnd)).not.toContain('.app-overlay-modal')
+  })
+})

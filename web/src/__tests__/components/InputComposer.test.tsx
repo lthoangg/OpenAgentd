@@ -564,7 +564,7 @@ describe("InputComposer — interaction mode", () => {
       />,
     )
     const deck = document.querySelector("[data-run-deck]") as HTMLElement
-    expect(deck.contains(screen.getByRole("button", { name: "Code mode" }))).toBe(true)
+    expect(deck.contains(screen.getByRole("button", { name: "Code mode. Switch to Plan" }))).toBe(true)
   })
 
   it("switches modes with Tab when empty and when containing a draft", async () => {
@@ -651,7 +651,7 @@ describe("InputComposer — run deck", () => {
     )
     const deck = document.querySelector("[data-run-deck]") as HTMLElement
     const names = Array.from(deck.querySelectorAll("button")).map((b) => b.getAttribute("aria-label") ?? b.textContent)
-    expect(names).toEqual(["Attach file", "Code mode", "Plan mode", "Run chip", "Context", "Send message"])
+    expect(names).toEqual(["Attach file", "Code mode. Switch to Plan", "Run chip", "Context", "Send message"])
   })
 
   it("hands the + control actions that start a mention at the caret", async () => {

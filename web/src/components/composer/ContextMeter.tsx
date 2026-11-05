@@ -36,7 +36,7 @@ export function ContextMeter({ input, output, cachedPercent, trigger = DEFAULT_S
       <PopoverTrigger
         aria-label={label}
         data-context-meter=""
-        className="h-8 shrink-0 items-center gap-1 rounded-sm px-1.5 font-mono text-meta tabular-nums text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 pointer-coarse:h-9 phone:h-11 pointer-coarse:min-w-9 pointer-coarse:justify-center"
+        className="relative touch-hit h-8 shrink-0 items-center gap-1 rounded-sm px-1.5 font-mono text-meta tabular-nums text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 pointer-coarse:h-9 pointer-coarse:min-w-9 pointer-coarse:justify-center"
       >
         <svg className="size-4 -rotate-90" viewBox="0 0 18 18" aria-hidden="true">
           {/* A full, visible track: with a faint one, a part-filled ring read

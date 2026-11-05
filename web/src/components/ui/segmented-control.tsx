@@ -29,7 +29,7 @@ import { selectionHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
-type SegmentedSize = 'sm' | 'default' | 'composer'
+type SegmentedSize = 'sm' | 'default'
 
 const TRACK_SIZE: Record<SegmentedSize, string> = {
   // 24px dense toolbar variant; 28px on touch so it still fits the 32px
@@ -37,19 +37,11 @@ const TRACK_SIZE: Record<SegmentedSize, string> = {
   sm: 'h-6 pointer-coarse:h-7',
   // 32px; on touch each segment is a 44px target.
   default: 'h-8 pointer-coarse:h-auto',
-  // Composer toolbar: matches the "+" and Send beside it (32px, 28px on
-  // desktop, 36px on a touch tablet, 44px on a phone), so the row stays one
-  // height.
-  composer: 'h-8 md:h-7 pointer-coarse:h-9 phone:h-11',
 }
 
 const ITEM_SIZE: Record<SegmentedSize, string> = {
   sm: 'px-2 text-xs pointer-coarse:min-w-9 [&_svg:not([class*=size-])]:size-3',
   default: 'px-2.5 text-xs pointer-coarse:min-h-9 pointer-coarse:min-w-9 [&_svg:not([class*=size-])]:size-3.5',
-  // A phone's run deck reads at 15px (iOS's subheadline), so Code/Plan, the
-  // model and Send fit across a 375px screen; a 320px one tightens the
-  // padding so the model chip keeps some room.
-  composer: 'px-2.5 text-xs phone:text-subhead phone:@max-[300px]:px-1.5 [&_svg:not([class*=size-])]:size-3.5',
 }
 
 /** Track (container) classes. */

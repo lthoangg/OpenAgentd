@@ -85,9 +85,10 @@ describe('phone controls', () => {
     expect(sw).toContain("'w-4 phone:w-[27px]'")
   })
 
-  it('makes Send a 44px circle on a phone', () => {
+  it('keeps Send a 36px circle on a phone, its touch area grown to 44px', () => {
     const composer = read('../../components/InputComposer.tsx')
-    expect(composer).toMatch(/const sendSlotClass =\s*'[^']*phone:size-11/)
+    expect(composer).toMatch(/const sendSlotClass =\s*'relative touch-hit [^']*pointer-coarse:size-9'/)
+    expect(composer).not.toMatch(/const sendSlotClass =\s*'[^']*phone:size-11/)
   })
 })
 

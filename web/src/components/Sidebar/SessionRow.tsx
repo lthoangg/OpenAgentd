@@ -423,7 +423,9 @@ function SessionRowView({
             <Target size={11} />
           </span>
         )}
-        {!isEditing && (stateWord
+        {/* A running row says so with its leading spinner alone: a word
+            here only squeezed the title and swapped out on hover. */}
+        {!isEditing && status !== 'running' && (stateWord
           ? <SessionStateWord status={status} className={pinMarkVisibility} />
           : sessionAge && (
             <span className={`shrink-0 pl-1 pr-1 text-meta tabular-nums text-(--color-text-muted) ${ageVisibility}`} aria-hidden="true">

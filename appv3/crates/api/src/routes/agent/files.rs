@@ -164,19 +164,26 @@ fn git_stdout(cwd: &Path, args: &[&str]) -> Option<String> {
 /// list `app/target/` because only `repo/.gitignore` names it). `None` outside
 /// a work tree, or when `base` itself is ignored (git would only report `./`).
 fn git_listed_paths(base: &Path) -> Option<(Vec<String>, Vec<String>)> {
-    // Three independent git spawns (~10 ms each): run them side by side.
-    let (tracked, untracked, ignored) = std::thread::scope(|s| {
-        let tracked = s.spawn(|| git_stdout(base, &["ls-files", "-z", "--cached"]));
-        let untracked = s.spawn(|| git_stdout(base, &["ls-files", "-z", "--others", "--exclude-standard"]));
+    // Two independent git spawns (~10 ms each): run them side by side. `-t`
+    // tags untracked paths `? `. The ignored ones need a call of their own:
+    // `--ignored` next to `--cached` would mean "tracked yet ignored".
+    let (listed, ignored) = std::thread::scope(|s| {
+        let listed = s.spawn(|| git_stdout(base, &["ls-files", "-z", "-t", "--cached", "--others", "--exclude-standard"]));
         let ignored = git_stdout(base, &["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"]);
-        (tracked.join().ok().flatten(), untracked.join().ok().flatten(), ignored)
+        (listed.join().ok().flatten(), ignored)
     });
-    let (tracked, untracked, ignored) = (tracked?, untracked?, ignored?);
+    let (listed, ignored) = (listed?, ignored?);
     if ignored.split('\0').any(|r| r == "./") {
         return None;
     }
-    let mut paths: BTreeSet<String> = tracked.split('\0').filter(|r| !r.is_empty()).map(String::from).collect();
-    for rel in untracked.split('\0').filter(|r| !r.is_empty()) {
+    let mut paths = BTreeSet::new();
+    for row in listed.split('\0') {
+        // `<tag> <path>`: one row per stage of a conflicted path, deduplicated here.
+        let Some((tag, rel)) = row.split_once(' ') else { continue };
+        if tag != "?" {
+            paths.insert(rel.to_string());
+            continue;
+        }
         let parts: Vec<&str> = rel.trim_end_matches('/').split('/').collect();
         if !parts[..parts.len().saturating_sub(1)].iter().any(|p| NOISE_DIR_NAMES.contains(p)) {
             paths.insert(rel.to_string());
@@ -432,13 +439,19 @@ fn list_files(root: &Path) -> (Vec<Value>, bool) {
         listings().lock().unwrap().remove(&key);
         return list_files_now(root);
     };
-    if let Some(hit) = listings().lock().unwrap().get_mut(&key).filter(|c| c.generation == generation && c.index.as_ref().is_none_or(|(p, sig)| file_sig(p) == *sig)) {
-        hit.used = Instant::now();
-        return (hit.files.clone(), hit.truncated);
-    }
+    let known_index = {
+        let mut cache = listings().lock().unwrap();
+        let entry = cache.get_mut(&key);
+        let known_index = entry.as_ref().and_then(|c| c.index.as_ref()).map(|(p, _)| p.clone());
+        if let Some(hit) = entry.filter(|c| c.generation == generation && c.index.as_ref().is_none_or(|(p, sig)| file_sig(p) == *sig)) {
+            hit.used = Instant::now();
+            return (hit.files.clone(), hit.truncated);
+        }
+        known_index
+    };
     // Read before listing: a change made meanwhile moves them, so the entry
     // stored below is not reused past it.
-    let index = git_index_path(root).map(|p| {
+    let index = known_index.filter(|p| index_path_still_holds(root, p)).or_else(|| git_index_path(root)).map(|p| {
         let sig = file_sig(&p);
         (p, sig)
     });
@@ -450,6 +463,16 @@ fn list_files(root: &Path) -> (Vec<Value>, bool) {
         cache.remove(&oldest);
     }
     (files, truncated)
+}
+
+/// Whether the index path found for `root` earlier can be reused without
+/// asking git again (a `git rev-parse` per miss, and every `patch` makes the
+/// next poll miss). It moves only when its repo goes away or `root` gets a
+/// repo of its own (`git init` in a subdirectory workspace). A root that had
+/// no repo is always asked again, so a `git init` there is noticed.
+fn index_path_still_holds(root: &Path, index: &Path) -> bool {
+    let own_git = root.join(".git");
+    index.parent().is_some_and(Path::is_dir) && (!own_git.is_dir() || index.starts_with(&own_git))
 }
 
 fn list_files_now(root: &Path) -> (Vec<Value>, bool) {
@@ -1645,5 +1668,87 @@ mod tests {
         assert!(git_spawns(&root) > spawns);
         std::fs::write(root.join("new.txt"), "n").unwrap();
         assert!(listed(&root).contains(&"new.txt".to_string()));
+    }
+
+    /// Make the next listing of `root` miss the cache, as a watcher event would.
+    fn force_miss(root: &Path) {
+        listings().lock().unwrap().get_mut(root).expect("a cached listing").generation = u64::MAX;
+    }
+
+    fn cached_index(root: &Path) -> Option<PathBuf> {
+        listings().lock().unwrap().get(root).expect("a cached listing").index.as_ref().map(|(p, _)| p.clone())
+    }
+
+    /// Git processes one listing of `root` starts.
+    fn spawns_of_one_listing(root: &Path) -> usize {
+        let before = git_spawns(root);
+        listed(root);
+        git_spawns(root) - before
+    }
+
+    #[test]
+    fn a_cache_miss_reuses_the_known_index_path() {
+        let d = repo_on_main();
+        let root = watched(d.path());
+        let first = spawns_of_one_listing(&root);
+        force_miss(&root);
+        // `git ls-files` for the listing, but no `git rev-parse` for the index again.
+        let again = spawns_of_one_listing(&root);
+        assert_eq!(again, 2, "a miss on a known root ran {again} git processes (first listing: {first})");
+        assert_eq!(first, again + 1);
+        // Still checked: `git rm --cached` is seen without a watcher event.
+        assert!(cached_index(&root).is_some());
+    }
+
+    #[test]
+    fn a_miss_notices_git_init_and_a_removed_git_dir() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("a.txt"), "a").unwrap();
+        let root = watched(d.path());
+        listed(&root);
+        assert_eq!(cached_index(&root), None);
+        git_ok(&root, &["init", "-q"]);
+        force_miss(&root);
+        listed(&root);
+        assert!(cached_index(&root).is_some_and(|p| p.ends_with(".git/index")), "git init was not noticed");
+        std::fs::remove_dir_all(root.join(".git")).unwrap();
+        force_miss(&root);
+        listed(&root);
+        assert_eq!(cached_index(&root), None, "a removed .git kept its index path");
+    }
+
+    #[test]
+    fn a_miss_notices_git_init_in_a_subdirectory_workspace() {
+        let d = repo_on_main();
+        std::fs::create_dir_all(d.path().join("app")).unwrap();
+        std::fs::write(d.path().join("app/m.rs"), "m").unwrap();
+        let root = watched(&d.path().join("app"));
+        listed(&root);
+        assert!(cached_index(&root).is_some_and(|p| !p.starts_with(root.join(".git"))));
+        git_ok(&root, &["init", "-q"]);
+        force_miss(&root);
+        listed(&root);
+        assert!(cached_index(&root).is_some_and(|p| p.starts_with(root.join(".git"))), "the workspace's own repo was not noticed");
+    }
+
+    #[test]
+    fn list_files_handles_conflicts_and_nested_repos() {
+        let d = repo_on_main();
+        let root = d.path();
+        git_ok(root, &["checkout", "-q", "-b", "side"]);
+        std::fs::write(root.join("a.txt"), "side\n").unwrap();
+        git_ok(root, &["commit", "-qam", "side"]);
+        git_ok(root, &["checkout", "-q", "main"]);
+        std::fs::write(root.join("a.txt"), "main\n").unwrap();
+        git_ok(root, &["commit", "-qam", "main"]);
+        let _ = std::process::Command::new("git").arg("-C").arg(root).args(["merge", "-q", "side"]).output();
+        assert!(git_stdout(root, &["ls-files", "-u"]).is_some_and(|u| u.lines().count() == 3), "no conflict to list");
+        let nested = root.join("vendor/lib");
+        std::fs::create_dir_all(&nested).unwrap();
+        git_ok(&nested, &["init", "-q"]);
+        std::fs::write(nested.join("n.rs"), "n").unwrap();
+        std::fs::write(root.join("u.txt"), "u").unwrap();
+        // One row per conflicted path; a nested repo is listed through its own git.
+        assert_eq!(listed(root), ["a.txt", "u.txt", "vendor/lib/n.rs"]);
     }
 }

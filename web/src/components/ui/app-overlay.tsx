@@ -148,19 +148,19 @@ export function OverlayHeader({
         data-sheet-bar=""
         className={cn(
           'min-h-11 shrink-0 select-none border-b border-(--color-border) bg-(--bg-page) px-2 pt-1.5',
-          android ? 'flex items-center gap-2' : 'grid grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)] items-center gap-2',
+          android ? 'flex items-center gap-2' : 'flex items-center gap-1',
           className,
         )}
       >
-        <div className={cn('flex min-w-0 items-center', android ? 'shrink-0' : 'justify-start')}>
+        <div className={cn('flex items-center', android ? 'shrink-0' : 'flex-1 justify-start')}>
           {backButton}
           {leading}
         </div>
-        <div className={cn('min-w-0', android ? 'flex-1' : 'text-center')}>
+        <div className={cn('min-w-0', android ? 'flex-1' : 'shrink text-center')}>
           <h2 className="truncate text-base font-semibold text-(--color-text)">{title}</h2>
           {subtitle != null && <div className="truncate text-meta text-(--color-text-muted)">{subtitle}</div>}
         </div>
-        <div className="flex min-w-0 shrink-0 items-center justify-end gap-1">
+        <div className={cn('flex items-center justify-end gap-1', android ? 'shrink-0' : 'flex-1')}>
           {actions}
           {onClose && (
             <Button type="button" variant="ghost" size="trigger" onClick={onClose} data-sheet-done="" className={cn(SHEET_BAR_BUTTON_CLASS, 'px-1 text-xs font-semibold')}>

@@ -23,7 +23,13 @@ describe('PhoneNavBar', () => {
     fireEvent.click(back)
     expect(onBack).toHaveBeenCalledTimes(1)
     const bar = document.querySelector('[data-phone-nav-bar]') as HTMLElement
-    expect(bar.className).toContain('grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)]')
+    // Equal-share sides that never shrink below their content, and a title
+    // that truncates first: a long title can't run under ‹ Sessions.
+    const [left, title, right] = Array.from(bar.children) as HTMLElement[]
+    expect(left.className).toContain('flex-1')
+    expect(right.className).toContain('flex-1')
+    expect(title.className).toContain('text-center')
+    expect(title.className).toContain('min-w-0')
     expect(screen.getByRole('heading', { name: 'Fix the build' }).className).toContain('font-semibold')
     expect(screen.getByText('openagentd')).toBeTruthy()
   })

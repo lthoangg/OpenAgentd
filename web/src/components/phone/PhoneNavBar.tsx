@@ -3,10 +3,12 @@
  * on the left, the title, the screen's actions on the right. 44px under the
  * safe area, 17px semibold title.
  *
- * iOS centres the title between equal sides, so it stays put however long
- * the back label or the actions are (the label truncates first). Android
- * puts a ← with no label and the title beside it, left-aligned, as Material's
- * top app bar does. The back control always names where it goes.
+ * iOS centres the title: both sides grow from nothing by the same share
+ * (``flex-1``) but never below their own content, and the title, which may
+ * shrink, truncates first; so a long title never runs under ‹ Sessions or
+ * the actions, and a short one sits in the middle. Android puts a ← with no
+ * label and the title beside it, left-aligned, as Material's top app bar
+ * does. The back control always names where it goes.
  *
  * Back is in the accent (iOS's tint), regular weight, its chevron 20px as the
  * phone header's icons are (DESIGN.md → Rulebook 4).
@@ -42,7 +44,7 @@ export function PhoneNavBar({ title, subtitle, back, leading, trailing, separato
   const android = usePlatform().os === 'android'
 
   const titleBlock = (
-    <div data-phone-nav-title="" className={cn('min-w-0', android ? 'flex-1' : 'text-center')}>
+    <div data-phone-nav-title="" className={cn('min-w-0', android ? 'flex-1' : 'shrink text-center')}>
       <h1 className="truncate text-base font-semibold text-(--color-text)">{title}</h1>
       {subtitle != null && <div className="truncate text-meta text-(--color-text-muted)">{subtitle}</div>}
     </div>
@@ -79,7 +81,7 @@ export function PhoneNavBar({ title, subtitle, back, leading, trailing, separato
           : 'border-transparent transition-colors duration-(--motion-fast) in-data-[transcript-scrolled]:border-(--color-border)',
         android
           ? 'flex items-center gap-2'
-          : 'grid grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)] items-center gap-2',
+          : 'flex items-center gap-1',
         className,
       )}
     >
@@ -91,9 +93,9 @@ export function PhoneNavBar({ title, subtitle, back, leading, trailing, separato
         </>
       ) : (
         <>
-          <div className="flex min-w-0 items-center justify-start">{backButton ?? leading}</div>
+          <div className="flex flex-1 items-center justify-start">{backButton ?? leading}</div>
           {titleBlock}
-          <div className="flex min-w-0 items-center justify-end">{trailing}</div>
+          <div className="flex flex-1 items-center justify-end">{trailing}</div>
         </>
       )}
     </header>

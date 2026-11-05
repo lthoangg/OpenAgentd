@@ -423,7 +423,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             onClick={() => requestOpenPreview(previewTarget)}
             className={TOOL_CHIP_CLASS}
           >
-            <Globe size={11} aria-hidden="true" />
+            <Globe size={12} aria-hidden="true" />
             Open preview
           </button>
         )}
@@ -433,7 +433,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             onClick={() => dispatchAppEvent(APP_EVENTS.openPlan)}
             className={TOOL_CHIP_CLASS}
           >
-            <FileText size={11} aria-hidden="true" />
+            <FileText size={12} aria-hidden="true" />
             {planLink}
           </button>
         )}
@@ -447,7 +447,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                   onClick={() => requestOpenSession({ sessionId: sentSession.sessionId, workspace: sentSession.workspace })}
                   className={cn(TOOL_CHIP_CLASS, 'ml-0 max-w-full')}
                 >
-                  <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
+                  <ArrowUpRight size={12} aria-hidden="true" className="shrink-0" />
                   <span className="truncate">Open in {sentSession.workspaceName}</span>
                 </button>
               }
@@ -460,7 +460,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             className="inline-flex max-w-[60%] items-center gap-1 align-middle text-meta text-(--color-text-muted)"
             data-created-worktree=""
           >
-            <GitBranch size={11} aria-hidden="true" className="shrink-0 text-(--accent-orange-text)" />
+            <GitBranch size={12} aria-hidden="true" className="shrink-0 text-(--accent-orange-text)" />
             <span className="truncate">
               Created worktree <span className="font-mono">{sentSession.createdWorktree.name}</span>
               {sentSession.createdWorktree.branch && <> on <span className="font-mono">{sentSession.createdWorktree.branch}</span></>}

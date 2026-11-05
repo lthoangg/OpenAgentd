@@ -282,7 +282,7 @@ export function ModelCombobox({
             disabled={disabled}
             className="absolute top-1/2 right-1 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:text-(--color-text) disabled:opacity-50 md:h-7 md:w-7 pointer-coarse:size-9"
           >
-            <X size={13} aria-hidden="true" />
+            <X size={12} aria-hidden="true" />
           </button>
         )}
       </div>

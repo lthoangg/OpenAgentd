@@ -58,7 +58,7 @@ export function DesignFeedbackStrip({ items, onRemove, below = false }: { items:
                 }}
                 className="touch-hit absolute -top-2 -right-2 z-10 flex h-7 w-7 items-center justify-center rounded-sm bg-(--bg-card) text-(--color-text-muted) opacity-100 shadow-(--shadow-depth) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:-top-1.5 md:-right-1.5 md:h-6 md:w-6"
               >
-                <X size={12} className="md:h-2.5 md:w-2.5" aria-hidden="true" />
+                <X size={12} aria-hidden="true" />
               </button>
             </li>
           ))}

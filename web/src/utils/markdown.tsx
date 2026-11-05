@@ -610,9 +610,9 @@ export const MarkdownTable = memo(function MarkdownTable(
                 aria-label={copied ? 'Copied' : 'Copy table'}
               >
                 {copied ? (
-                  <Check size={11} className="text-(--accent-green-text)" />
+                  <Check size={12} className="text-(--accent-green-text)" />
                 ) : (
-                  <Copy size={11} />
+                  <Copy size={12} />
                 )}
               </button>
             }

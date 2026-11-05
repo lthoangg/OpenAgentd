@@ -104,7 +104,7 @@ function MermaidFullscreen({ source, onClose }: { source: string; onClose: () =>
           title="Close (Esc)"
           className="flex h-9 w-9 items-center justify-center rounded-md bg-(--bg-card) text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
         >
-          <X size={16} />
+          <X size={14} />
         </button>
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center px-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] sm:px-6 sm:pb-6">

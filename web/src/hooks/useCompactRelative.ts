@@ -1,5 +1,5 @@
 /**
- * useCompactRelative — a compact age (`now`, `5m`, `3h`, `2d`, `dd/MM`) that
+ * useCompactRelative — a compact age (`now`, `5m`, `3h`, `2d`, then `Oct 29`) that
  * keeps itself current.
  *
  * A label computed once at render froze: a sidebar row said `5m` for an hour,

@@ -95,7 +95,7 @@ function WebSearchResult({ result }: { result: string }) {
           <li key={i} className="group flex flex-col gap-0.5">
             {/* Title + link */}
             <div className="flex items-start gap-1.5">
-              <Globe size={11} className="mt-0.5 shrink-0 text-(--color-text-muted)" />
+              <Globe size={12} className="mt-0.5 shrink-0 text-(--color-text-muted)" />
               {link ? (
                 <a
                   href={link}
@@ -115,7 +115,7 @@ function WebSearchResult({ result }: { result: string }) {
             {/* Hostname pill */}
             {link && (
               <div className="flex items-center gap-1 pl-5">
-                <ExternalLink size={11} className="text-(--color-text-muted)" />
+                <ExternalLink size={12} className="text-(--color-text-muted)" />
                 <span className="font-mono text-xs md:text-meta text-(--color-text-muted)">
                   {hostname(link)}
                 </span>

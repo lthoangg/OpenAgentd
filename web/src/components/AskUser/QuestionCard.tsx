@@ -261,7 +261,7 @@ export function QuestionCard({
                     : 'text-(--color-text-muted) hover:bg-(--bg-key)/40 hover:text-(--color-text)',
                 )}
               >
-                {answered && <Check size={11} className="text-(--accent-green-text)" />}
+                {answered && <Check size={12} className="text-(--accent-green-text)" />}
                 {/* ``header`` is plain text by contract — never markdown. */}
                 <span>{item.header || `Question ${index + 1}`}</span>
               </button>
@@ -438,7 +438,7 @@ function OptionRow({
             checked ? 'bg-(--color-text-on-selected)/20' : 'bg-(--bg-card)',
           )}
         >
-          {checked && <Check size={11} />}
+          {checked && <Check size={12} />}
         </span>
       )}
       <span className="min-w-0 flex-1">

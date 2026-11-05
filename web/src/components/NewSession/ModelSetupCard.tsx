@@ -245,7 +245,7 @@ export function ModelSetupCard({
                   className="inline-flex items-center gap-0.5 text-(--color-text) underline decoration-(--color-border-strong) underline-offset-2 hover:decoration-current"
                 >
                   Get a key
-                  <ExternalLink size={10} aria-hidden="true" />
+                  <ExternalLink size={12} aria-hidden="true" />
                 </button>
               </>
             )}

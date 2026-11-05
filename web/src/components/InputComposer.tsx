@@ -840,7 +840,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       aria-label="Stop generation"
       className={cn(sendSlotClass, sendPillClass)}
     >
-      <Square size={11} fill="currentColor" aria-hidden="true" className={iconIn} />
+      <Square size={12} fill="currentColor" aria-hidden="true" className={iconIn} />
     </button>
   ) : splitSend ? (
     <div role="group" aria-label="Send" className="flex shrink-0 items-center">

@@ -95,7 +95,7 @@ function RemoveButton({ onRemove, label = 'Remove file' }: { onRemove: () => voi
             className="flex h-7 w-7 items-center justify-center rounded-md bg-(--bg-card) text-(--color-text-muted) shadow-(--shadow-depth) opacity-100 transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6"
             aria-label={label}
           >
-            <X size={12} className="md:h-2.5 md:w-2.5" />
+            <X size={12} />
           </button>
         }
       />

@@ -142,7 +142,7 @@ function SearchBar({
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
             )}
           >
-            <X size={11} aria-hidden="true" />
+            <X size={12} aria-hidden="true" />
           </button>
         )}
 

@@ -1,6 +1,6 @@
 import type { ScheduledTaskResponse } from '@/api/types'
 import { STATUS, type StatusView } from '@/lib/status'
-import { formatInTimezone } from '@/utils/format'
+import { formatCompactDate, formatInTimezone } from '@/utils/format'
 
 export const FIELD_CLASS = 'bg-(--bg-page) dark:bg-(--bg-page)'
 
@@ -42,7 +42,7 @@ export function formatInterval(seconds: number): string {
   return `${amount} ${short}`
 }
 
-/** The schedule in one short line: "every 3 min", "cron 0 9 * * 1-5", "once at 24/10/2026 09:00". */
+/** The schedule in one short line: "every 3 min", "cron 0 9 * * 1-5", "once at Oct 24, 09:00". */
 export function formatScheduleLabel(task: Pick<ScheduledTaskResponse, 'schedule_type' | 'at_datetime' | 'every_seconds' | 'cron_expression' | 'timezone'>): string {
   if (task.schedule_type === 'at' && task.at_datetime) {
     // Render in the task's saved timezone, not the browser's — otherwise
@@ -86,31 +86,34 @@ function minutesBetween(fromMs: number, toMs: number): number {
   return Math.round((toMs - fromMs) / 60_000)
 }
 
-/** "now", "5m", "3h", "2d". */
+const WEEK_MINUTES = 7 * 24 * 60
+
+/** "5m", "3h", "2d": the list age steps (DESIGN.md → Dates), under a week. */
 function span(minutes: number): string {
-  if (minutes < 1) return 'now'
   if (minutes < 60) return `${minutes}m`
-  const hours = Math.round(minutes / 60)
-  if (hours < 48) return `${hours}h`
-  return `${Math.round(hours / 24)}d`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  return `${Math.floor(hours / 24)}d`
 }
 
-/** "Last run 2m ago · ok", "Last run 1h ago · failed", "Not run yet". */
+/** "Last run 2m ago · ok", "Last run 1h ago · failed", "Last run Aug 22 · ok", "Not run yet". */
 export function lastRunLabel(task: Pick<ScheduledTaskResponse, 'last_run_at' | 'last_error'>, now = Date.now()): string {
   if (!task.last_run_at) return 'Not run yet'
   const t = new Date(task.last_run_at).getTime()
   if (!Number.isFinite(t)) return 'Not run yet'
   const m = Math.max(0, minutesBetween(t, now))
-  return `Last run ${m < 1 ? 'just now' : `${span(m)} ago`} · ${task.last_error ? 'failed' : 'ok'}`
+  const when = m < 1 ? 'just now' : m < WEEK_MINUTES ? `${span(m)} ago` : formatCompactDate(new Date(t), new Date(now))
+  return `Last run ${when} · ${task.last_error ? 'failed' : 'ok'}`
 }
 
-/** "Next run in 1m", "Next run due now"; null when nothing is scheduled. */
+/** "Next run in 1m", "Next run due now", "Next run Aug 22"; null when nothing is scheduled. */
 export function nextRunLabel(task: Pick<ScheduledTaskResponse, 'next_fire_at'>, now = Date.now()): string | null {
   if (!task.next_fire_at) return null
   const t = new Date(task.next_fire_at).getTime()
   if (!Number.isFinite(t)) return null
   const m = minutesBetween(now, t)
-  return m < 1 ? 'Next run due now' : `Next run in ${span(m)}`
+  if (m < 1) return 'Next run due now'
+  return m < WEEK_MINUTES ? `Next run in ${span(m)}` : `Next run ${formatCompactDate(new Date(t), new Date(now))}`
 }
 
 // ── Mode / workspace shared bits ────────────────────────────────────────────

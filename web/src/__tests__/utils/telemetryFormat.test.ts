@@ -105,11 +105,10 @@ describe('timeAgo', () => {
     expect(timeAgo(now - 3 * 86400 * 1000, now)).toBe('3d ago')
   })
 
-  it('falls back to locale date beyond a week', () => {
-    // Just assert it's no longer one of the relative buckets.
+  it('names the date beyond a week, like every list ("Oct 29")', () => {
     const past = now - 10 * 86400 * 1000
     const label = timeAgo(past, now)
-    expect(label).not.toMatch(/ago$/)
+    expect(label).toMatch(/^[A-Z][a-z]{2} \d{1,2}(, \d{4})?$/)
   })
 
   it('clamps future timestamps to 0s ago', () => {

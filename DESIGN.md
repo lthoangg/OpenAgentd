@@ -1141,6 +1141,13 @@ look:
 
 Words are sentence case. Add a state to `STATUS` before using it anywhere.
 
+**Dates** (`utils/format.ts`): one rule set, in English like the rest of the
+UI, whatever the system locale. Lists count `now · 5m · 3h · 3d`, then name
+the date (`Oct 29`). Details and tooltips read `Today 14:32`,
+`Yesterday 09:01`, `Oct 29, 14:32`. The year shows only when it is not this
+one (`Oct 29, 2024`). Never `dd/MM`: day-first and month-first readers both
+misread it.
+
 **Transcript rows** (`ui/meta-row.tsx`): tool calls, reader steps and file
 operations share one row: the content on the left and a right-aligned 96px
 meta column of tabular mono numbers (`33 ms`, `2.4 s`, `exit 1`), so values

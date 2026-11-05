@@ -32,12 +32,11 @@ export function formatTime(date: Date): string {
 }
 
 /**
- * Me format a full date+time as "dd/MM/yyyy HH:mm:ss" — used anywhere a
- * precise absolute timestamp is shown (e.g. tooltips), so it never falls
- * back to the browser locale's (often MM/DD/YYYY) rendering.
+ * A precise timestamp for tooltips and detail rows: ``formatRelativeDate``
+ * to the second ("Today 14:32:05", "Oct 29, 14:32:05").
  */
-export function formatFullDateTime(date: Date): string {
-  return format(date, 'dd/MM/yyyy HH:mm:ss')
+export function formatFullDateTime(date: Date, now: Date = new Date()): string {
+  return dayAndTime(date, now, 'HH:mm:ss')
 }
 
 /** Human-readable byte size — "523 B", "12.4 KB", "3.1 MB". */
@@ -49,21 +48,40 @@ export function formatBytes(n: number): string {
 }
 
 
-import { isToday, isYesterday, isSameDay, format } from 'date-fns'
+import { isSameDay, isSameYear, subDays, format } from 'date-fns'
 
-// Me format date+time: "Today 14:32", "Yesterday 09:01", or "DD/MM/YYYY 14:32"
-export function formatRelativeDate(dateStr: string | null): string {
+// ── Dates (DESIGN.md → Dates) ────────────────────────────────────────────────
+//
+// One rule set, in English like the rest of the UI, whatever the system
+// locale (date-fns formats in en-US unless given another locale):
+//   lists:              5m · 3h · 3d · Oct 29
+//   details, tooltips:  Today 14:32 · Yesterday 09:01 · Oct 29, 14:32
+// The year shows only when it is not this one ("Oct 29, 2024").
+
+/** "Oct 29", or "Oct 29, 2024" for another year. */
+export function formatCompactDate(date: Date, now: Date = new Date()): string {
+  return isSameYear(date, now) ? format(date, 'MMM d') : format(date, 'MMM d, yyyy')
+}
+
+function dayAndTime(date: Date, now: Date, timePattern: string): string {
+  const time = format(date, timePattern)
+  if (isSameDay(date, now)) return `Today ${time}`
+  if (isSameDay(date, subDays(now, 1))) return `Yesterday ${time}`
+  return `${formatCompactDate(date, now)}, ${time}`
+}
+
+/** "Today 14:32", "Yesterday 09:01", "Oct 29, 14:32", "Oct 29, 2024, 14:32". */
+export function formatRelativeDate(dateStr: string | null, now: Date = new Date()): string {
   if (!dateStr) return ''
   const date = new Date(dateStr)
-  const time = format(date, 'HH:mm')
-  if (isToday(date)) return `Today ${time}`
-  if (isYesterday(date)) return `Yesterday ${time}`
-  return `${format(date, 'dd/MM/yyyy')} ${time}`
+  if (Number.isNaN(date.getTime())) return ''
+  return dayAndTime(date, now, 'HH:mm')
 }
 
 /**
  * Compact age for dense list meta slots: ``now``, ``5m``, ``3h``, ``2d``,
- * then ``dd/MM`` past a week. Future timestamps (clock skew) read ``now``.
+ * then the date past a week (``Oct 29``). Future timestamps (clock skew)
+ * read ``now``.
  */
 export function formatCompactRelative(dateStr: string | null | undefined, now: Date = new Date()): string {
   if (!dateStr) return ''
@@ -77,12 +95,13 @@ export function formatCompactRelative(dateStr: string | null | undefined, now: D
   if (hours < 24) return `${hours}h`
   const days = Math.floor(hours / 24)
   if (days < 7) return `${days}d`
-  return format(date, 'dd/MM')
+  return formatCompactDate(date, now)
 }
 
 /**
  * Compact next-fire time for dense list meta slots: ``HH:mm`` later today,
- * ``EEE HH:mm`` within a week, then ``dd/MM``. Past times read ``due``.
+ * ``EEE HH:mm`` within a week, then the date (``Oct 29``). Past times read
+ * ``due``.
  */
 export function formatCompactUpcoming(dateStr: string | null | undefined, now: Date = new Date()): string {
   if (!dateStr) return ''
@@ -92,7 +111,7 @@ export function formatCompactUpcoming(dateStr: string | null | undefined, now: D
   if (ahead <= 0) return 'due'
   if (isSameDay(date, now)) return format(date, 'HH:mm')
   if (ahead < 7 * 24 * 60 * 60_000) return format(date, 'EEE HH:mm')
-  return format(date, 'dd/MM')
+  return formatCompactDate(date, now)
 }
 
 // ── IANA timezone helpers ────────────────────────────────────────────────────
@@ -121,10 +140,10 @@ const ZONE_FORMAT_OPTIONS: Record<ZoneFormatterKind, { locale: string; options: 
     },
   },
   display: {
-    locale: 'en-GB',
+    locale: 'en-US',
     options: {
       hourCycle: 'h23',
-      year: 'numeric', month: '2-digit', day: '2-digit',
+      year: 'numeric', month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit',
     },
   },
@@ -220,21 +239,26 @@ export function isoToWallClock(iso: string, timeZone: string): string {
 }
 
 /**
- * Me format a tz-aware ISO-8601 string in the supplied IANA `timeZone`
- * as "dd/MM/yyyy HH:mm". Falls back to browser-local rendering if the
- * zone is unknown.
+ * A tz-aware ISO-8601 string as the wall clock in the IANA `timeZone`:
+ * "Jul 1, 09:30", with the year when it is not this one ("Dec 31, 2023,
+ * 23:30"). Falls back to browser-local rendering if the zone is unknown.
  */
-export function formatInTimezone(iso: string | null | undefined, timeZone: string): string {
+export function formatInTimezone(iso: string | null | undefined, timeZone: string, now: Date = new Date()): string {
   if (!iso) return ''
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return ''
   try {
-    const parts = zoneFormatter('display', timeZone).formatToParts(date)
-    const map: Record<string, string> = {}
-    for (const p of parts) if (p.type !== 'literal') map[p.type] = p.value
-    return `${map.day}/${map.month}/${map.year} ${map.hour}:${map.minute}`
+    const formatter = zoneFormatter('display', timeZone)
+    const fields = (instant: Date) => {
+      const map: Record<string, string> = {}
+      for (const p of formatter.formatToParts(instant)) if (p.type !== 'literal') map[p.type] = p.value
+      return map
+    }
+    const map = fields(date)
+    const year = map.year === fields(now).year ? '' : `, ${map.year}`
+    return `${map.month} ${map.day}${year}, ${map.hour}:${map.minute}`
   } catch {
-    return format(date, 'dd/MM/yyyy HH:mm')
+    return `${formatCompactDate(date, now)}, ${format(date, 'HH:mm')}`
   }
 }
 

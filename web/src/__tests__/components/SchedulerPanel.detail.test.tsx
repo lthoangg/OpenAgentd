@@ -165,9 +165,9 @@ describe('TaskDetailView schedule', () => {
   })
 
   it('describes a one-off task as "Once" with its date', () => {
-    renderDetail({ schedule_type: 'at', every_seconds: null, at_datetime: '2026-10-24T09:00:00Z' })
+    renderDetail({ schedule_type: 'at', every_seconds: null, at_datetime: '2024-10-24T09:00:00Z' })
     expect(within(row('Type')).getByText('Once')).toBeInTheDocument()
-    expect(within(row('Date and time')).getByText('24/10/2026 09:00')).toBeInTheDocument()
+    expect(within(row('Date and time')).getByText('Oct 24, 2024, 09:00')).toBeInTheDocument()
   })
 })
 

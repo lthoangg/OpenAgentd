@@ -1,4 +1,5 @@
 import type { WorkspaceChangesResponse, WorkspaceGitDiffResponse } from '@/api/types'
+import { formatRelativeDate } from '@/utils/format'
 
 export type ChangedFileStatus = 'A' | 'M' | 'D'
 
@@ -28,15 +29,9 @@ export function safeDecodeURIComponent(val: string): string {
   }
 }
 
-let commitDateFormatter: Intl.DateTimeFormat | undefined
-let commitTimeFormatter: Intl.DateTimeFormat | undefined
-
-/** ``dd/mm/yyyy HH:mm`` for a git commit's unix timestamp (seconds). */
-export function formatCommitTime(timestamp: number): string {
-  const date = new Date(timestamp * 1000)
-  commitDateFormatter ??= new Intl.DateTimeFormat('en-GB')
-  commitTimeFormatter ??= new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
-  return `${commitDateFormatter.format(date)} ${commitTimeFormatter.format(date)}`
+/** "Today 14:32", "Oct 29, 14:32" for a git commit's unix timestamp (seconds). */
+export function formatCommitTime(timestamp: number, now: Date = new Date()): string {
+  return formatRelativeDate(new Date(timestamp * 1000).toISOString(), now)
 }
 
 export function collectChangedFiles(diff?: WorkspaceGitDiffResponse): ChangedFileInfo[] {

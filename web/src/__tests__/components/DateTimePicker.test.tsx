@@ -15,9 +15,9 @@ describe('DateTimePicker', () => {
   })
 
   it('renders trigger button with formatted date when value is set', () => {
-    render(<DateTimePicker value="2026-04-23T14:30" onChange={() => {}} />)
+    render(<DateTimePicker value="2024-04-23T14:30" onChange={() => {}} />)
     const button = screen.getByRole('button')
-    expect(button.textContent).toContain('23/04/2026 14:30')
+    expect(button.textContent).toContain('Apr 23, 2024, 14:30')
   })
 
   it('renders custom placeholder text', () => {

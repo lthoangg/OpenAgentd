@@ -168,7 +168,7 @@ function DeniedPathsHelpPopover() {
           >
             See examples
             <ChevronDown
-              size={11}
+              size={12}
               aria-hidden="true"
               className={cn(
                 'transition-transform duration-(--motion-fast)',

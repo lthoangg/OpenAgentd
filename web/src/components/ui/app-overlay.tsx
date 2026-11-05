@@ -35,17 +35,24 @@
  * </AppOverlay>
  *
  * // Wide modal (like Scheduler):
- * <AppOverlay open={open} onClose={onClose} label="Scheduled tasks" maxWidth="1100px">
+ * <AppOverlay open={open} onClose={onClose} label="Scheduled tasks" maxWidth={OVERLAY_MAX_WIDTH.split}>
  *
  * // Command palette:
  * <AppOverlay open={open} onClose={onClose} label="Command palette" variant="palette">
  * ```
  *
+ * ## One frame
+ *
+ * Every modal, Settings and Usage included, is this card: the same gap below
+ * the app header and above the status bar, the same border, radius and
+ * motion. Only the width differs, by what the overlay holds
+ * (`OVERLAY_MAX_WIDTH`). Settings and Usage mount at the app root, outside
+ * the chat shell, and say so with `appLevel`.
+ *
  * ## Header
  *
  * Modal panels open with an ``OverlayHeader``: a 44px ``bg-sidebar`` strip
  * with the title, optional icon / subtitle / actions, and the close button.
- * Settings and Telemetry (which use their own shell) share it too.
  */
 
 import { type ReactNode } from 'react'
@@ -127,6 +134,21 @@ export function OverlayHeader({
 
 type OverlayVariant = 'modal' | 'palette'
 
+/**
+ * Max width of a modal by what it holds, so two overlays of one kind are the
+ * same width. Pass one as `maxWidth`.
+ */
+export const OVERLAY_MAX_WIDTH = {
+  /** A short reference or form. */
+  narrow: '640px',
+  /** One column of content. The default. */
+  default: '860px',
+  /** A list beside its detail (Scheduled tasks). */
+  split: '1100px',
+  /** A navigated workbench: a sidebar and its pages (Settings, Usage). */
+  wide: '76rem',
+} as const
+
 interface AppOverlayProps {
   open: boolean
   onClose: () => void
@@ -139,8 +161,8 @@ interface AppOverlayProps {
 
   /**
    * Max width of the centred card on desktop (modal variant only).
-   * Accepts any CSS width value, e.g. `"860px"` or `"min(90vw,1100px)"`.
-   * Default: `"860px"`.
+   * Accepts any CSS width value; prefer an `OVERLAY_MAX_WIDTH` step.
+   * Default: `OVERLAY_MAX_WIDTH.default` (`"860px"`).
    */
   maxWidth?: string
 
@@ -160,6 +182,27 @@ interface AppOverlayProps {
    * a key the overlay's own layer owns.
    */
   toggleShortcut?: AppShortcutName
+
+  /**
+   * What Escape does, when it is not simply `onClose`: Usage steps out of a
+   * trace before it closes. A click on the backdrop and a pull on the phone
+   * sheet still `onClose`.
+   */
+  onEscape?: () => void
+
+  /**
+   * `() => false` keeps ⌘K / ⌘P / ⌘, from replacing it: Settings with
+   * unsaved changes asks first, and the prompt must not open under another
+   * overlay.
+   */
+  allowSwitch?: () => boolean
+
+  /**
+   * Mounted at the app root rather than inside the chat shell (Settings,
+   * Usage). On a phone it then fills the visible region and follows the soft
+   * keyboard itself; the shell's transform does not carry it (index.css).
+   */
+  appLevel?: boolean
 }
 
 // ─── Animation variants ───────────────────────────────────────────────────────
@@ -195,16 +238,19 @@ export function AppOverlay({
   label,
   children,
   variant = 'modal',
-  maxWidth = '860px',
+  maxWidth = OVERLAY_MAX_WIDTH.default,
   className = '',
   initialFocus,
   toggleShortcut,
+  onEscape,
+  allowSwitch,
+  appLevel = false,
 }: AppOverlayProps) {
   const reduced = useReducedMotion()
   const isMobile = useIsMobile()
   const dragControls = useDragControls()
   // An overlay: ⌘K / ⌘P / ⌘, may swap it for another one.
-  const layer = useModalFocus(open, onClose, initialFocus, { kind: 'overlay' })
+  const layer = useModalFocus(open, onEscape ?? onClose, initialFocus, { kind: 'overlay', allowSwitch })
   useShortcut(toggleShortcut ? chordOf(APP_SHORTCUTS[toggleShortcut]) : null, () => { onClose() }, { layer })
 
   const sheet = isMobile && variant === 'modal' && !reduced
@@ -252,6 +298,7 @@ export function AppOverlay({
             aria-label={label}
             data-modal-focus="true"
             data-overlay-variant={variant}
+            data-overlay-level={appLevel ? 'app' : undefined}
             style={inlineStyle}
             initial={panelVariants.hidden}
             animate={{ ...panelVariants.visible, transition: panelTransition }}

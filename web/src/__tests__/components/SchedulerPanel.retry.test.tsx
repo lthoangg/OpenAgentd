@@ -27,11 +27,11 @@ describe('SchedulerPanel — task list load failure', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
     render(<QueryClientProvider client={client}><SchedulerPanel open onClose={() => {}} /></QueryClientProvider>)
 
-    expect(await screen.findByText(/Failed to load tasks/i)).toBeInTheDocument()
+    expect(await screen.findByText("Couldn't load scheduled tasks.")).toBeInTheDocument()
     fail = false
     await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }))
 
     await waitFor(() => expect(screen.getByText(/No scheduled tasks yet/i)).toBeInTheDocument())
-    expect(screen.queryByText(/Failed to load tasks/i)).toBeNull()
+    expect(screen.queryByText("Couldn't load scheduled tasks.")).toBeNull()
   })
 })

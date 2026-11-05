@@ -221,6 +221,7 @@ describe('useOverlayState app events', () => {
     const { result } = renderOverlay()
 
     expect(result.current.dockViewRequest).toEqual({ view: 'schedule', key: 1 })
+    expect(useUIStore.getState().schedulerOpen).toBe(false)
     expect(useUIStore.getState().scheduledTaskFocus).toBe('task-7')
     expect(useUIStore.getState().schedulerOpenPending).toBe(false)
 

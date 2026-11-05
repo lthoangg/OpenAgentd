@@ -263,7 +263,7 @@ describe('McpServerDetailPage — a server from a plugin', () => {
     renderPage('changelog-tools/github')
     useSettingsStore.setState({ section: 'mcp-edit', selectedName: 'changelog-tools/github' })
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Open Plugins' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Open plugins' }))
 
     expect(useSettingsStore.getState().section).toBe('plugins')
   })

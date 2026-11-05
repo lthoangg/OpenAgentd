@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useForm, useStore } from '@tanstack/react-form'
-import { Loader2, X } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
 import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useUpdateScheduledTaskMutation } from '@/queries'
@@ -35,8 +34,7 @@ export function EditTaskForm({
   onCancel: () => void
   /**
    * The host header already shows the task name (the phone overlay): keep the
-   * "Edit task" title but drop the repeated name and the X, since the footer
-   * has Cancel.
+   * "Edit task" title but drop the repeated name.
    */
   hostTitled?: boolean
 }) {
@@ -74,33 +72,14 @@ export function EditTaskForm({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-(--bg-page)">
-      {/* Header */}
+      {/* Header: the same one as the create form's. No × of its own: the
+          overlay has one, and the footer has Cancel. */}
       <div className={headerClass}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <div>
-              <h2 className="text-base font-semibold tracking-tight text-(--color-text)">Edit task</h2>
-              {!hostTitled && <p className="text-meta leading-relaxed text-(--color-text-muted)">{task.name}</p>}
-            </div>
+        <div className="flex items-center gap-2">
+          <div>
+            <h2 className="text-base font-semibold tracking-tight text-(--color-text)">Edit task</h2>
+            {!hostTitled && <p className="text-meta leading-relaxed text-(--color-text-muted)">{task.name}</p>}
           </div>
-          {!hostTitled && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={onCancel}
-                    className="h-9 w-9 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-                    aria-label="Cancel edit"
-                  >
-                    <X size={13} />
-                  </Button>
-                }
-              />
-              <TooltipContent>Cancel</TooltipContent>
-            </Tooltip>
-          )}
         </div>
       </div>
 

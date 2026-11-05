@@ -105,7 +105,10 @@ export function SchedulerDockView({ contextWorkspace }: { contextWorkspace: stri
                 onDeleted={(id) => {
                   if (selectedTaskId === id) backToList()
                 }}
-                emptyHint="Use New task to create one."
+                onCreate={() => {
+                  setSelectedTaskId(null)
+                  setPane('create')
+                }}
                 searchKey="scheduler-dock-task-search"
               />
             </div>

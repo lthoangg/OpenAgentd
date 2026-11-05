@@ -1,6 +1,7 @@
 /**
  * Leaving a scheduler form that holds unsaved input asks first; leaving an
- * untouched form, or one just submitted, does not.
+ * untouched form, or one just submitted, does not. The prompt is a confirm:
+ * "Discard changes?", Cancel, and "Discard changes", with no ×.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -43,28 +44,31 @@ describe('scheduler overlay — unsaved task', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Close scheduled tasks' }))
 
     expect(onClose).toHaveBeenCalledTimes(1)
-    expect(screen.queryByText('Discard this task?')).toBeNull()
+    expect(screen.queryByText('Discard changes?')).toBeNull()
   })
 
-  it('asks before closing over a typed title, and Keep editing keeps it', async () => {
+  it('asks before closing over a typed title, and Cancel keeps it', async () => {
     stubApi([])
     const onClose = mock(() => {})
     wrap(<SchedulerPanel open onClose={onClose} contextWorkspace="/repo/app" />)
     fireEvent.change(await screen.findByLabelText('Task title'), { target: { value: 'Nightly report' } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Close scheduled tasks' }))
-    expect(await screen.findByText('Discard this task?')).toBeInTheDocument()
+    expect(await screen.findByText('Discard changes?')).toBeInTheDocument()
     expect(onClose).not.toHaveBeenCalled()
+    // A confirm has no × of its own; the overlay's is the only Close left.
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Keep editing' })).toBeNull()
 
     // Step the dialog's exit motion instead of waiting on real timers.
     const timers = useFakeTimers()
     try {
-      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
       act(() => timers.tick(500))
     } finally {
       timers.restore()
     }
-    expect(screen.queryByText('Discard this task?')).toBeNull()
+    expect(screen.queryByText('Discard changes?')).toBeNull()
     expect(screen.getByLabelText('Task title')).toHaveValue('Nightly report')
     expect(onClose).not.toHaveBeenCalled()
   })
@@ -76,7 +80,7 @@ describe('scheduler overlay — unsaved task', () => {
     fireEvent.change(await screen.findByLabelText('Prompt'), { target: { value: 'Summarise the day' } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Close scheduled tasks' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Discard' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }))
 
     expect(onClose).toHaveBeenCalledTimes(1)
   })
@@ -90,7 +94,7 @@ describe('scheduler overlay — unsaved task', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^Existing reminder/ }))
 
-    expect(await screen.findByText('Discard this task?')).toBeInTheDocument()
+    expect(await screen.findByText('Discard changes?')).toBeInTheDocument()
     expect(screen.getByLabelText('Task title')).toHaveValue('Nightly report')
   })
 
@@ -129,32 +133,36 @@ describe('scheduler overlay — unsaved task', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close scheduled tasks' }))
 
     expect(onClose).toHaveBeenCalledTimes(1)
-    expect(screen.queryByText('Discard this task?')).toBeNull()
+    expect(screen.queryByText('Discard changes?')).toBeNull()
   })
 })
 
 describe('scheduler dock tab — unsaved task', () => {
+  // An empty list has "New task" in its toolbar and in its empty state; the
+  // toolbar's comes first.
+  const newTask = async () => (await screen.findAllByRole('button', { name: 'New task' }))[0]
+
   it('asks before going back to the list over unsaved input', async () => {
     stubApi([])
     wrap(<SchedulerDockView contextWorkspace="/repo/app" />)
-    fireEvent.click(await screen.findByRole('button', { name: 'New task' }))
+    fireEvent.click(await newTask())
     fireEvent.change(await screen.findByLabelText('Task title'), { target: { value: 'Nightly report' } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to task list' }))
 
-    expect(await screen.findByText('Discard this task?')).toBeInTheDocument()
+    expect(await screen.findByText('Discard changes?')).toBeInTheDocument()
     expect(screen.getByLabelText('Task title')).toHaveValue('Nightly report')
   })
 
   it('goes back at once from an untouched form', async () => {
     stubApi([])
     wrap(<SchedulerDockView contextWorkspace="/repo/app" />)
-    fireEvent.click(await screen.findByRole('button', { name: 'New task' }))
+    fireEvent.click(await newTask())
     await screen.findByLabelText('Task title')
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to task list' }))
 
     await waitFor(() => expect(screen.queryByLabelText('Task title')).toBeNull())
-    expect(screen.queryByText('Discard this task?')).toBeNull()
+    expect(screen.queryByText('Discard changes?')).toBeNull()
   })
 })

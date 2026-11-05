@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useCopyFeedback } from '@/hooks/use-copy-feedback'
-import { Check, Copy, Loader2, Pause, Pencil, Play, Trash2, X, Zap } from 'lucide-react'
+import { Check, Copy, Loader2, MoreHorizontal, Pause, Pencil, Play, Zap } from 'lucide-react'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { formatRelativeDate, formatInTimezone, isoToWallClock } from '@/utils/format'
 import { formatInterval, formatScheduleLabel, lastRunLabel, nextRunLabel, taskState } from './utils'
@@ -10,9 +10,10 @@ import { EditTaskForm } from './EditTaskForm'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { useDeleteScheduledTaskMutation, usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
+import { usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
 import { SchedulerBackButton, useSchedulerFooterSafeArea, useSchedulerPaneHeaderClass } from './chrome'
+import { DeleteTaskDialog } from './DeleteTaskDialog'
+import { TaskActionsMenu, taskActionsMenuPoint } from './TaskActionsMenu'
 import { Callout } from '@/components/ui/callout'
 import { PanelSection } from '@/components/ui/panel-section'
 import { COMPACT_ROW, ICON_SIZE, ICON_SIZE_INLINE, TEXT } from '@/components/ui/panel-tokens'
@@ -28,26 +29,26 @@ export function TaskDetailView({
   task: ScheduledTaskResponse
   onClose: () => void
   /**
-   * ``back`` swaps the trailing close button for a leading back arrow, for
-   * stacked hosts (the dock) where the detail replaces the list.
+   * ``back`` shows a leading back arrow, for stacked hosts (the dock) where
+   * the detail replaces the list. The overlay has its own × and shows none.
    */
   closeMode?: 'close' | 'back'
   /**
    * The host header already shows the task name and the way back (the phone
-   * overlay), so the pane drops its own title and close button.
+   * overlay), so the pane drops its own title.
    */
   hostTitled?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const { copied: copiedPrompt, copy } = useCopyFeedback(2000)
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false)
+  const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
   const currentSessionId = useAgentStore((state) => state.sessionId)
   const headerClass = useSchedulerPaneHeaderClass()
   const footerSafeArea = useSchedulerFooterSafeArea()
   // Phones move Run now / Pause into a bottom bar, within thumb reach.
   const isMobile = useIsMobile()
 
-  const deleteMutation = useDeleteScheduledTaskMutation()
   const pauseMutation = usePauseScheduledTaskMutation()
   const resumeMutation = useResumeScheduledTaskMutation()
   const triggerMutation = useTriggerScheduledTaskMutation()
@@ -57,15 +58,6 @@ export function TaskDetailView({
     if (task.status === 'paused') resumeMutation.mutate(task.slug)
     else pauseMutation.mutate(task.slug)
   }
-  const deleteTask = () => {
-    deleteMutation.mutate(task.slug, {
-      onSuccess: () => {
-        setDeleteConfirmationOpen(false)
-        onClose()
-      },
-    })
-  }
-
   const handleCopyPrompt = () => copy(task.prompt)
 
   if (editing) {
@@ -108,11 +100,13 @@ export function TaskDetailView({
   return (
     // Keyed by task in the parents: choosing another task fades its detail in.
     <div className="oa-fade-in-fast flex flex-1 flex-col overflow-hidden bg-(--bg-page)">
-      {/* Header */}
+      {/* Header: Run now and Edit task in words; Pause / Resume and Delete
+          task… in the ⋯ menu (Delete last), which ends the row. The overlay's
+          own × closes the surface, so the pane has none. */}
       <div className={headerClass}>
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
           {closeMode === 'back' && <SchedulerBackButton onClick={onClose} />}
-          <div className="min-w-0 flex-1">
+          <div className="min-w-48 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               {!hostTitled && (
                 <h2 className="truncate text-base font-semibold tracking-tight text-(--color-text)">{task.name}</h2>
@@ -125,24 +119,36 @@ export function TaskDetailView({
             </div>
             <p className="mt-1 font-mono text-xs text-(--color-text-2)">{formatScheduleLabel(task)}</p>
           </div>
-          <div className="-mr-1.5 flex shrink-0 items-center gap-0.5">
+          <div className="flex shrink-0 items-center gap-1.5">
             {!isMobile && (
-              <>
-                <HeaderAction label="Run now" onClick={triggerTask} disabled={triggerMutation.isPending} icon={runIcon} />
-                <HeaderAction label={pauseLabel} onClick={togglePaused} disabled={pausePending} icon={pauseIcon} />
-              </>
+              <Button type="button" size="sm" onClick={triggerTask} disabled={triggerMutation.isPending}>
+                {runIcon}
+                Run now
+              </Button>
             )}
-            <HeaderAction label="Edit task" onClick={() => setEditing(true)} icon={<Pencil size={ICON_SIZE} />} />
-            <HeaderAction
-              label="Delete task…"
-              danger
-              onClick={() => setDeleteConfirmationOpen(true)}
-              disabled={deleteMutation.isPending}
-              icon={<Trash2 size={ICON_SIZE} />}
-            />
-            {closeMode === 'close' && !hostTitled && (
-              <HeaderAction label="Close detail" tooltip="Close" onClick={onClose} icon={<X size={ICON_SIZE} />} />
-            )}
+            <Button type="button" size="sm" onClick={() => setEditing(true)}>
+              <Pencil size={ICON_SIZE} aria-hidden="true" />
+              Edit task
+            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-haspopup="menu"
+                    aria-label="More actions"
+                    onClick={(event) => setActionsPoint(taskActionsMenuPoint(event.currentTarget))}
+                  >
+                    {pausePending
+                      ? <Loader2 size={ICON_SIZE} className="animate-spin" aria-hidden="true" />
+                      : <MoreHorizontal size={ICON_SIZE} aria-hidden="true" />}
+                  </Button>
+                }
+              />
+              <TooltipContent>More actions</TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -269,31 +275,23 @@ export function TaskDetailView({
         </div>
       )}
 
-      <Dialog open={deleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Delete scheduled task</DialogTitle>
-            <DialogDescription>
-              &ldquo;{task.name}&rdquo; will be permanently deleted. This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="default" onClick={() => setDeleteConfirmationOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="danger"
-              aria-label="Delete task permanently"
-              onClick={deleteTask}
-              disabled={deleteMutation.isPending}
-            >
-              {deleteMutation.isPending && <Loader2 size={13} className="animate-spin" />}
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {actionsPoint && (
+        <TaskActionsMenu
+          task={task}
+          at={actionsPoint}
+          onDismiss={() => setActionsPoint(null)}
+          // Phones keep Run now and Pause in the bottom bar.
+          onTogglePause={isMobile ? undefined : togglePaused}
+          pausePending={pausePending}
+          onDelete={() => setDeleteConfirmationOpen(true)}
+        />
+      )}
+      <DeleteTaskDialog
+        task={task}
+        open={deleteConfirmationOpen}
+        onOpenChange={setDeleteConfirmationOpen}
+        onDeleted={onClose}
+      />
     </div>
   )
 }
@@ -321,45 +319,5 @@ function StatTile({ label, title, children }: { label: string; title?: string; c
       <p className={TEXT.hint}>{label}</p>
       <div className="mt-1 text-sm font-semibold text-(--color-text)">{children}</div>
     </div>
-  )
-}
-
-function HeaderAction({
-  label,
-  tooltip = label,
-  icon,
-  onClick,
-  disabled,
-  danger = false,
-}: {
-  label: string
-  tooltip?: string
-  icon: ReactNode
-  onClick: () => void
-  disabled?: boolean
-  danger?: boolean
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onClick={onClick}
-            disabled={disabled}
-            aria-label={label}
-            className={cn(
-              'text-(--color-text-muted) pointer-coarse:size-9',
-              danger ? 'hover:bg-(--color-error-subtle) hover:text-(--color-error)' : 'hover:text-(--color-text)',
-            )}
-          >
-            {icon}
-          </Button>
-        }
-      />
-      <TooltipContent>{tooltip}</TooltipContent>
-    </Tooltip>
   )
 }

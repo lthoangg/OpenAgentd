@@ -17,18 +17,19 @@
  * (names in tooltips), so the form keeps its width on a narrow window.
  * Search finds single settings as well as sections (`settings-index.ts`),
  * on the sidebar, in a dialog from the rail, and on the phone section list.
+ *
+ * The frame is the shared `AppOverlay` (wide, app-level): the same card, gap
+ * above the status bar, border and motion as every other overlay.
  */
-import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Search } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { OverlayHeader } from '@/components/ui/app-overlay'
+import { AppOverlay, OVERLAY_MAX_WIDTH, OverlayHeader } from '@/components/ui/app-overlay'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { useModalFocus } from '@/hooks/useModalFocus'
-import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { useSettingsStore, type SettingsSection } from '@/stores/useSettingsStore'
 import {
   SETTINGS_GROUPS,
@@ -64,9 +65,6 @@ import { ContextSettingsPage } from '@/components/settings/pages/settings.contex
 import { MediaSettingsPage } from '@/components/settings/pages/settings.media'
 import { DesktopSettingsPage } from '@/components/settings/pages/settings.desktop'
 import { PluginsSettingsPage } from '@/components/settings/pages/settings.plugins'
-
-import { DURATIONS_S, EASINGS } from '@/lib/motion'
-import { useAppShortcut } from '@/lib/keyboard/hooks'
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 
@@ -302,18 +300,6 @@ function SectionContent({
 
 // ── Modal ─────────────────────────────────────────────────────────────────
 
-/** Panel enter/exit. Module scope so framer sees a stable target reference.
- *  Mirrors MODAL_VARIANTS / MODAL_VARIANTS_REDUCED in ui/app-overlay.tsx —
- *  reduced motion keeps the fade and drops the scale/translate. */
-const PANEL_VARIANTS = {
-  hidden: { opacity: 0, scale: 0.98, y: 4 },
-  visible: { opacity: 1, scale: 1, y: 0 },
-} as const
-const PANEL_VARIANTS_REDUCED = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1 },
-} as const
-
 export function SettingsModal() {
   const open = useSettingsStore((s) => s.open)
   const section = useSettingsStore((s) => s.section)
@@ -324,9 +310,6 @@ export function SettingsModal() {
   const closeSettings = useSettingsStore((s) => s.closeSettings)
   const pendingNavigation = useSettingsStore((s) => s.pendingNavigation)
   const resolveNavigation = useSettingsStore((s) => s.resolvePendingNavigation)
-
-  const prefersReducedMotion = useReducedMotion()
-  const panel = prefersReducedMotion ? PANEL_VARIANTS_REDUCED : PANEL_VARIANTS
 
   // A search result for one setting opens its section, then scrolls to the
   // setting and focuses its control once the page has rendered it.
@@ -359,15 +342,6 @@ export function SettingsModal() {
       return shown(modal?.querySelector<HTMLElement>('nav[aria-label="Settings categories"] input[type="search"]')) ?? shown(modal?.querySelector<HTMLElement>('main'))
     },
   }), [])
-  // Switching to the palette would raise the unsaved-changes prompt under it.
-  const layer = useModalFocus(open, closeSettings, initialFocus, {
-    kind: 'overlay',
-    allowSwitch: () => Object.keys(useSettingsStore.getState().dirtyDrafts).length === 0,
-  })
-  // ⌘, closes Settings even with unsaved changes (the prompt asks first);
-  // opening something else over it is what `allowSwitch` blocks.
-  useAppShortcut('settings', () => { closeSettings() }, { layer })
-
   const atIndex = mobileView === 'index'
   const sectionLabel = sectionDef(section)?.label ?? 'Settings'
   const goBack = () => {
@@ -377,112 +351,88 @@ export function SettingsModal() {
   }
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div
-            key="settings-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: DURATIONS_S.fast }}
-            className="fixed inset-0 z-50 bg-(--color-overlay)"
-            onClick={closeSettings}
-            aria-hidden="true"
-            // Full-screen on mobile — must not be readable by the outer
-            // edge-swipe drawer controller (same rationale as AppOverlay).
-            data-swipe-ignore
-          />
+    <AppOverlay
+      open={open}
+      onClose={closeSettings}
+      label="Settings"
+      maxWidth={OVERLAY_MAX_WIDTH.wide}
+      appLevel
+      initialFocus={initialFocus}
+      // ⌘, closes Settings even with unsaved changes (the prompt asks first);
+      // opening something else over it is what `allowSwitch` blocks, so the
+      // prompt never opens under the palette.
+      toggleShortcut="settings"
+      allowSwitch={() => Object.keys(useSettingsStore.getState().dirtyDrafts).length === 0}
+    >
+      {/* `group/settings`: an open editor brings its own Back, so the
+          overlay's mobile Back hides while one is shown (one Back only).
+          Settings pages scope their own shortcuts (⌘S) to this root. */}
+      <div data-settings-modal="" className="group/settings flex min-h-0 flex-1 flex-col">
+        <OverlayHeader
+          title={
+            atIndex ? 'Settings' : (
+              <>
+                <span className="md:hidden">{sectionLabel}</span>
+                <span className="max-md:hidden">Settings</span>
+              </>
+            )
+          }
+          onClose={closeSettings}
+          closeLabel="Close settings"
+          leading={
+            !atIndex && (
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className="md:hidden group-has-[[data-editor-kind]]/settings:hidden"
+                onClick={goBack}
+                aria-label={mobileBackTarget(section) === 'index' ? 'Back to settings' : 'Back to list'}
+              >
+                <ArrowLeft size={ICON_SIZE} aria-hidden="true" />
+              </Button>
+            )
+          }
+        />
 
-          <motion.div
-            key="settings-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Settings"
-            data-modal-focus="true"
-            data-settings-modal=""
-            initial={panel.hidden}
-            animate={panel.visible}
-            exit={panel.hidden}
-            transition={{ duration: prefersReducedMotion ? 0 : DURATIONS_S.fast, ease: EASINGS.out }}
-            data-swipe-ignore
+        {/* Body */}
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <ModalSidebar section={section} onSelect={(s) => setSection(s)} onOpenHit={openHit} />
+
+          {atIndex && (
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:hidden">
+              <SettingsMobileIndex onSelect={(s) => setSection(s)} onOpenHit={openHit} />
+            </div>
+          )}
+
+          <main
+            ref={mainRef}
+            // Focusable, so Settings can open with focus in the page.
+            tabIndex={-1}
             className={cn(
-              // `group/settings`: an open editor brings its own Back, so the
-              // overlay's mobile Back hides while one is shown (one Back only).
-              'group/settings settings-modal-shell z-50 flex flex-col overflow-hidden rounded-lg',
-              'border border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth)',
+              'flex min-w-0 flex-1 flex-col overflow-hidden bg-(--bg-page) outline-none',
+              atIndex && 'max-md:hidden',
             )}
           >
-            {/* Header / Title Bar */}
-            <OverlayHeader
-              title={
-                atIndex ? 'Settings' : (
-                  <>
-                    <span className="md:hidden">{sectionLabel}</span>
-                    <span className="max-md:hidden">Settings</span>
-                  </>
-                )
-              }
-              onClose={closeSettings}
-              closeLabel="Close settings"
-              leading={
-                !atIndex && (
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="ghost"
-                    className="md:hidden group-has-[[data-editor-kind]]/settings:hidden"
-                    onClick={goBack}
-                    aria-label={mobileBackTarget(section) === 'index' ? 'Back to settings' : 'Back to list'}
-                  >
-                    <ArrowLeft size={ICON_SIZE} aria-hidden="true" />
-                  </Button>
-                )
-              }
-            />
-
-            {/* Body */}
-            <div className="flex min-h-0 flex-1 overflow-hidden">
-              <ModalSidebar section={section} onSelect={(s) => setSection(s)} onOpenHit={openHit} />
-
-              {atIndex && (
-                <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:hidden">
-                  <SettingsMobileIndex onSelect={(s) => setSection(s)} onOpenHit={openHit} />
-                </div>
-              )}
-
-              <main
-                ref={mainRef}
-                // Focusable, so Settings can open with focus in the page.
-                tabIndex={-1}
-                className={cn(
-                  'flex min-w-0 flex-1 flex-col overflow-hidden bg-(--bg-page) outline-none',
-                  atIndex && 'max-md:hidden',
-                )}
-              >
-                {/* Keyed by the page, so a new section fades in (``fast``). */}
-                <div key={`${section}:${selectedName ?? ''}`} className="oa-fade-in-fast min-h-0 flex-1 overflow-hidden flex flex-col">
-                  <SectionContent
-                    section={section}
-                    selectedName={selectedName}
-                    setSection={setSection}
-                  />
-                </div>
-              </main>
+            {/* Keyed by the page, so a new section fades in (``fast``). */}
+            <div key={`${section}:${selectedName ?? ''}`} className="oa-fade-in-fast min-h-0 flex-1 overflow-hidden flex flex-col">
+              <SectionContent
+                section={section}
+                selectedName={selectedName}
+                setSection={setSection}
+              />
             </div>
-          </motion.div>
-          <Dialog open={pendingNavigation !== null} onOpenChange={(next) => { if (!next) resolveNavigation(false) }}>
-            <DialogContent>
-              <DialogTitle>Discard unsaved settings?</DialogTitle>
-              <DialogDescription>Keep editing to save your changes, or discard them to continue.</DialogDescription>
-              <DialogFooter>
-                <Button onClick={() => resolveNavigation(false)}>Keep editing</Button>
-                <Button variant="danger" onClick={() => resolveNavigation(true)}>Discard changes</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </>
-      )}
-    </AnimatePresence>
+          </main>
+        </div>
+      </div>
+      <ConfirmDialog
+        open={pendingNavigation !== null}
+        onOpenChange={(next) => { if (!next) resolveNavigation(false) }}
+        title="Discard changes?"
+        description="Your unsaved settings will be lost."
+        confirmLabel="Discard changes"
+        onConfirm={() => resolveNavigation(true)}
+      />
+    </AppOverlay>
   )
 }

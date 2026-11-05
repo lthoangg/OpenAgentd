@@ -5,6 +5,7 @@ import { describe, it, expect, afterEach, mock } from 'bun:test'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 
 import { MemorySettingsPage } from '@/components/settings/pages/settings.memory'
+import { PAGE_BODY, PAGE_BODY_WIDE } from '@/components/settings/tokens'
 import { ApiValidationError } from '@/api/client'
 import { getPlatform } from '@/hooks/use-platform'
 
@@ -66,6 +67,15 @@ mock.module('@/api/client', () => ({
 }))
 
 describe('MemorySettingsPage', () => {
+  /** `DialogFooter` as it is: none of the `flex-row` / `justify-end` / `mt-4` the page used to pass in. */
+  function expectFooterAsIs(footer: Element | null) {
+    expect(footer).not.toBeNull()
+    const tokens = (footer?.className ?? '').split(/\s+/)
+    for (const own of ['flex-row', 'justify-end', 'mt-4']) expect(tokens).not.toContain(own)
+    // Its own spacing from the body (16px), not the page's.
+    expect(tokens).toContain('mt-5')
+  }
+
   afterEach(() => {
     cleanup()
     mockSaveMutate.mockClear()
@@ -85,6 +95,21 @@ describe('MemorySettingsPage', () => {
     expect(screen.getByText('topics/db.md')).toBeDefined()
     // The list header counts the pages
     expect(screen.getByText('Pages', { selector: 'span' }).textContent).toBe('Pages · 2')
+  })
+
+  it('starts at the same left edge as the other pages, and only extends to the right', () => {
+    render(<MemorySettingsPage />)
+    // The header sits in the shared reading column; the list and editor in a
+    // body that begins at that column's left edge and takes the rest.
+    const header = screen.getByRole('heading', { level: 1, name: 'Memory' }).closest('header')?.parentElement as HTMLElement
+    expect(header.className).toContain(PAGE_BODY)
+    const pane = screen.getByText('Pages', { selector: 'span' }).closest('.rounded-sm') as HTMLElement
+    expect((pane.parentElement as HTMLElement).className).toContain(PAGE_BODY_WIDE)
+    // The wide body measures the edge from the same column width.
+    expect(PAGE_BODY).toContain('max-w-3xl')
+    expect(PAGE_BODY_WIDE).toContain('48rem')
+    // The pane takes its inset from the body, not a margin of its own.
+    expect(pane.className).not.toMatch(/(^|\s)(md:)?mx-/)
   })
 
   it('loads file content into textarea and saves with If-Match', async () => {
@@ -177,6 +202,10 @@ describe('MemorySettingsPage', () => {
       expect(screen.getByText('Delete this memory page?')).toBeDefined()
     })
 
+    // A confirm: no ×, Cancel dismisses, and the footer is the dialog's own.
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull()
+    expectFooterAsIs(screen.getByRole('button', { name: 'Cancel' }).closest('[data-slot="dialog-footer"]'))
+
     const confirmBtn = screen.getByRole('button', { name: 'Delete page' })
     fireEvent.click(confirmBtn)
 
@@ -202,6 +231,7 @@ describe('MemorySettingsPage', () => {
     fireEvent.change(input, { target: { value: 'topics/notes.md' } })
 
     const createBtn = screen.getByRole('button', { name: 'Create' })
+    expectFooterAsIs(createBtn.closest('[data-slot="dialog-footer"]'))
     fireEvent.click(createBtn)
 
     await waitFor(() => {

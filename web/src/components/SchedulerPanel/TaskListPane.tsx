@@ -4,10 +4,11 @@
  */
 import { useState } from 'react'
 import { useDebouncedCallback } from '@tanstack/react-pacer'
-import { AlertCircle, Clock, Loader2 } from 'lucide-react'
+import { AlertCircle, Clock, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SearchBar } from '@/components/ui/search-bar'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { TaskListItem } from './TaskListItem'
 import { useSchedulerChrome } from './chrome'
@@ -21,8 +22,11 @@ export interface TaskListPaneProps {
   selectedTaskId: string | null
   onSelect: (id: string) => void
   onDeleted: (id: string) => void
-  /** Second line of the empty state, telling the user how to create one. */
-  emptyHint?: string
+  /**
+   * The empty state's "New task" action: opens the create form, or, where the
+   * form is already beside the list, moves focus to it.
+   */
+  onCreate?: () => void
   /** Debounce key; distinct per host so two mounted lists never share one. */
   searchKey?: string
 }
@@ -35,7 +39,7 @@ export function TaskListPane({
   selectedTaskId,
   onSelect,
   onDeleted,
-  emptyHint,
+  onCreate,
   searchKey = 'scheduler-task-search',
 }: TaskListPaneProps) {
   const chrome = useSchedulerChrome()
@@ -73,17 +77,14 @@ export function TaskListPane({
 
       <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y">
         {isLoading ? (
-          <div role="status" className="oa-fade-in-late flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
-            <Loader2 size={20} className="animate-spin text-(--color-text-muted)" aria-hidden="true" />
-            <p className="text-xs text-(--color-text-muted)">Loading scheduled tasks…</p>
-          </div>
+          <TaskListSkeleton />
         ) : isError ? (
           <EmptyState
             fill={false}
             tone="error"
             className="px-6 py-12"
             icon={AlertCircle}
-            title="Failed to load tasks"
+            title="Couldn't load scheduled tasks."
             action={onRetry ? <Button size="sm" onClick={onRetry}>Retry</Button> : undefined}
           />
         ) : filteredTasks.length === 0 ? (
@@ -92,7 +93,14 @@ export function TaskListPane({
             className="px-6 py-12"
             icon={Clock}
             title={searchQuery ? 'No tasks match your search' : 'No scheduled tasks yet'}
-            body={!searchQuery ? emptyHint : undefined}
+            action={
+              !searchQuery && onCreate ? (
+                <Button size="sm" onClick={onCreate}>
+                  <Plus size={13} aria-hidden="true" />
+                  New task
+                </Button>
+              ) : undefined
+            }
           />
         ) : (
           <div className="divide-y divide-(--color-border-subtle) border-b border-(--color-border-subtle)">
@@ -109,5 +117,32 @@ export function TaskListPane({
         )}
       </div>
     </>
+  )
+}
+
+/**
+ * Rows shaped like a task row (name, schedule line, chips, last run), so the
+ * list does not jump when the tasks land. Fades in after `fast`, so a quick
+ * load never flashes it.
+ */
+function TaskListSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading scheduled tasks"
+      className="oa-fade-in-late divide-y divide-(--color-border-subtle) border-b border-(--color-border-subtle)"
+    >
+      {[0, 1, 2].map((row) => (
+        <div key={row} className="space-y-2 px-4 py-3">
+          <Skeleton className="h-3 w-2/5" />
+          <Skeleton className="h-3 w-1/2" />
+          <div className="flex gap-1.5">
+            <Skeleton className="h-5 w-16" />
+            <Skeleton className="h-5 w-20" />
+          </div>
+          <Skeleton className="h-3 w-3/5" />
+        </div>
+      ))}
+    </div>
   )
 }

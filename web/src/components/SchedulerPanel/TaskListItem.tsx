@@ -1,11 +1,8 @@
 import { useRef, useState } from 'react'
-import { Loader2, MoreHorizontal, Pause, Play, Trash2, Zap } from 'lucide-react'
+import { Loader2, MoreHorizontal } from 'lucide-react'
 import type { ScheduledTaskResponse } from '@/api/types'
-import { Button } from '@/components/ui/button'
-import { CONTEXT_MENU_ITEM_CLASS, CONTEXT_MENU_ITEM_DANGER_CLASS, ContextMenu } from '@/components/ui/context-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { useDeleteScheduledTaskMutation, usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
+import { usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
@@ -15,9 +12,8 @@ import { TEXT } from '@/components/ui/panel-tokens'
 import { formatScheduleLabel, lastRunLabel, nextRunLabel, taskState, TASK_LONG_PRESS_MOVE_TOLERANCE, TASK_LONG_PRESS_MS } from './utils'
 import { Chip } from '@/components/ui/chip'
 import { WorkspaceBadge } from './ModeBadge'
-
-/** Width the row's ⋯ menu is laid out for, so it opens right-aligned under the button. */
-const ACTIONS_MENU_WIDTH = 176
+import { DeleteTaskDialog } from './DeleteTaskDialog'
+import { TaskActionsMenu, taskActionsMenuPoint } from './TaskActionsMenu'
 
 export function TaskListItem({
   task,
@@ -30,7 +26,6 @@ export function TaskListItem({
   onSelect: () => void
   onDeleted: () => void
 }) {
-  const deleteMutation = useDeleteScheduledTaskMutation()
   const pauseMutation = usePauseScheduledTaskMutation()
   const resumeMutation = useResumeScheduledTaskMutation()
   const triggerMutation = useTriggerScheduledTaskMutation()
@@ -52,14 +47,6 @@ export function TaskListItem({
   const togglePaused = () => {
     if (task.status === 'paused') resumeMutation.mutate(task.slug)
     else pauseMutation.mutate(task.slug)
-  }
-  const deleteTask = () => {
-    deleteMutation.mutate(task.slug, {
-      onSuccess: () => {
-        setDeleteConfirmationOpen(false)
-        onDeleted()
-      },
-    })
   }
 
   const state = taskState(task)
@@ -114,7 +101,7 @@ export function TaskListItem({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1.5">
-            <p className={cn('truncate', TEXT.label, isSelected && 'font-semibold')}>{task.name}</p>
+            <p className={cn('truncate', TEXT.label)}>{task.name}</p>
             {task.slug !== task.name && (
               <Chip mono title="Slug: the name the agent's schedule tool uses">
                 {task.slug}
@@ -154,8 +141,7 @@ export function TaskListItem({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
-                    const rect = e.currentTarget.getBoundingClientRect()
-                    setActionsPoint({ x: rect.right - ACTIONS_MENU_WIDTH, y: rect.bottom + 2 })
+                    setActionsPoint(taskActionsMenuPoint(e.currentTarget))
                   }}
                   // Enter and Space here must not reach the row, which would open the task.
                   onKeyDown={(e) => e.stopPropagation()}
@@ -175,79 +161,23 @@ export function TaskListItem({
       </div>
     </div>
     {actionsPoint && (
-      <ContextMenu
+      <TaskActionsMenu
+        task={task}
         at={actionsPoint}
-        label={`Actions for ${task.name}`}
         onDismiss={() => setActionsPoint(null)}
-        className="min-w-44"
-      >
-          <button
-            type="button"
-            role="menuitem"
-            disabled={triggerMutation.isPending}
-            className={CONTEXT_MENU_ITEM_CLASS}
-            onClick={() => {
-              setActionsPoint(null)
-              triggerTask()
-            }}
-          >
-            <Zap size={12} aria-hidden="true" />
-            Run now
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            disabled={pauseMutation.isPending || resumeMutation.isPending}
-            className={CONTEXT_MENU_ITEM_CLASS}
-            onClick={() => {
-              setActionsPoint(null)
-              togglePaused()
-            }}
-          >
-            {task.status === 'paused' ? <Play size={12} aria-hidden="true" /> : <Pause size={12} aria-hidden="true" />}
-            {task.status === 'paused' ? 'Resume' : 'Pause'}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className={CONTEXT_MENU_ITEM_DANGER_CLASS}
-            onClick={() => {
-              setActionsPoint(null)
-              setDeleteConfirmationOpen(true)
-            }}
-          >
-            <Trash2 size={12} aria-hidden="true" />
-            Delete task…
-          </button>
-      </ContextMenu>
+        onRun={triggerTask}
+        runPending={triggerMutation.isPending}
+        onTogglePause={togglePaused}
+        pausePending={pauseMutation.isPending || resumeMutation.isPending}
+        onDelete={() => setDeleteConfirmationOpen(true)}
+      />
     )}
-    <Dialog open={deleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
-      <DialogContent showCloseButton={false}>
-        <DialogHeader>
-          <DialogTitle>Delete scheduled task</DialogTitle>
-          <DialogDescription>
-            &ldquo;{task.name}&rdquo; will be permanently deleted. This cannot be undone.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button type="button" variant="default" onClick={() => setDeleteConfirmationOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="danger"
-            aria-label="Delete task permanently"
-            onClick={deleteTask}
-            disabled={deleteMutation.isPending}
-          >
-            {deleteMutation.isPending && <Loader2 size={13} className="animate-spin" />}
-            Delete
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DeleteTaskDialog
+      task={task}
+      open={deleteConfirmationOpen}
+      onOpenChange={setDeleteConfirmationOpen}
+      onDeleted={onDeleted}
+    />
     </>
   )
 }
-
-// ── Create task form ────────────────────────────────────────────────────────

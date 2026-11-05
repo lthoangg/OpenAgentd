@@ -515,7 +515,7 @@ export function UsagePanel({
               Your current usage is {Math.round(maxUsedPercent)}%. A reset can be redeemed once usage reaches 99% or the limit is hit, so a credit is not spent early.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="justify-end pt-2">
+          <DialogFooter>
             <Button variant="primary" onClick={() => setAlertOpen(false)}>
               Got it
             </Button>
@@ -525,14 +525,14 @@ export function UsagePanel({
 
       {/* Confirmation Dialog when usage is 99-100% */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="gap-3">
+        <DialogContent className="gap-3" showCloseButton={false}>
           <DialogHeader className="gap-1.5">
             <DialogTitle>Redeem a usage reset?</DialogTitle>
             <DialogDescription className="text-xs text-(--color-text-muted)">
               Uses 1 of your {resetCredits} reset credit{resetCredits === 1 ? '' : 's'} to clear the usage limit now. This can't be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="flex-row justify-end gap-2 pt-2">
+          <DialogFooter>
             <Button variant="default" onClick={() => setConfirmOpen(false)} disabled={resetMutation.isPending}>
               Cancel
             </Button>

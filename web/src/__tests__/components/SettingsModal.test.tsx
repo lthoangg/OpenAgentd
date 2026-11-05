@@ -1,11 +1,12 @@
 /**
- * SettingsModal — mobile edge-swipe exclusion regression.
+ * SettingsModal — the shell around the section pages: the shared AppOverlay
+ * frame (wide, app-level), the unsaved-changes prompt, phone navigation, nav
+ * search and groups.
  *
- * SettingsModal is a hand-rolled full-screen overlay (not built on the
- * shared `AppOverlay` primitive), so it doesn't get `data-swipe-ignore`
- * for free. Without it, `useEdgeSwipe` (attached on the outer app shell)
- * would read a touch-drag on top of the open Settings modal as an
- * edge-swipe gesture for the sidebar/actions drawer underneath.
+ * The panel and its backdrop carry `data-swipe-ignore` (from AppOverlay).
+ * Without it, `useEdgeSwipe` (attached on the outer app shell) would read a
+ * touch-drag on top of the open Settings modal as an edge-swipe gesture for
+ * the sidebar/actions drawer underneath.
  *
  * Child route pages are stubbed — this test only cares about the modal
  * shell (backdrop + panel), not section content.
@@ -168,6 +169,48 @@ describe('SettingsModal — phone navigation', () => {
   })
 })
 
+describe('SettingsModal — one overlay frame', () => {
+  it('is the shared AppOverlay card: wide, and mounted at the app level', () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    const panel = screen.getByRole('dialog', { name: 'Settings' })
+    expect(panel.className).toContain('app-overlay-modal')
+    expect(panel.className).not.toContain('settings-modal-shell')
+    expect(panel.getAttribute('data-overlay-level')).toBe('app')
+    expect(panel.style.getPropertyValue('--overlay-max-width')).toBe('76rem')
+  })
+
+  it('keeps the root the pages scope their shortcuts to inside the panel', () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    const root = document.querySelector('[data-settings-modal]')
+    expect(root).not.toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Settings' }).contains(root)).toBe(true)
+    expect(root?.contains(screen.getByRole('navigation', { name: 'Settings categories' }))).toBe(true)
+  })
+
+  it('asks "Discard changes?" before leaving unsaved settings: Cancel and Discard changes, no ×', () => {
+    useSettingsStore.setState({ open: true, section: 'general', selectedName: null, dirtyDrafts: { general: true } })
+    renderModal()
+
+    act(() => useSettingsStore.getState().closeSettings())
+    const prompt = screen.getByRole('dialog', { name: 'Discard changes?' })
+    expect(useSettingsStore.getState().open).toBe(true)
+    expect(within(prompt).queryByRole('button', { name: 'Close' })).toBeNull()
+    expect(within(prompt).queryByRole('button', { name: 'Keep editing' })).toBeNull()
+
+    act(() => within(prompt).getByRole('button', { name: 'Cancel' }).click())
+    expect(useSettingsStore.getState().pendingNavigation).toBeNull()
+    expect(useSettingsStore.getState().open).toBe(true)
+
+    act(() => useSettingsStore.getState().closeSettings())
+    act(() => within(screen.getByRole('dialog', { name: 'Discard changes?' })).getByRole('button', { name: 'Discard changes' }).click())
+    expect(useSettingsStore.getState().open).toBe(false)
+  })
+})
+
 describe('SettingsModal — prefers-reduced-motion', () => {
   /** The panel is the motion element carrying the dialog role. */
   function findPanel() {
@@ -178,7 +221,8 @@ describe('SettingsModal — prefers-reduced-motion', () => {
     useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
     renderModal()
 
-    expect(findPanel()!.initial).toEqual({ opacity: 0, scale: 0.98, y: 4 })
+    // The shared overlay's motion: settles in from 96%, lifting 6px.
+    expect(findPanel()!.initial).toEqual({ opacity: 0, scale: 0.96, y: 6 })
   })
 
   it('fades the panel in with no scale or translate when reduced motion is set', () => {
@@ -188,9 +232,8 @@ describe('SettingsModal — prefers-reduced-motion', () => {
 
     const panel = findPanel()!
     expect(panel.initial).toEqual({ opacity: 0 })
-    expect(panel.animate).toEqual({ opacity: 1 })
-    expect(panel.exit).toEqual({ opacity: 0 })
-    expect(panel.transition).toMatchObject({ duration: 0 })
+    expect(panel.animate).toMatchObject({ opacity: 1, transition: { duration: 0 } })
+    expect(panel.exit).toMatchObject({ opacity: 0, transition: { duration: 0 } })
   })
 })
 

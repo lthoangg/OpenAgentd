@@ -37,7 +37,7 @@ function UsageRefresh({ query, label, cooling, needsSignIn }: { query: UsageQuer
       // The one request that asks the daemon to skip its short cache.
       onClick={() => void query.refresh()}
     >
-      {busy && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
+      {busy && <Loader2 size={12} className="animate-spin" aria-hidden="true" />}
       Refresh
     </Button>
   )

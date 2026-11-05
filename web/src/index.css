@@ -406,7 +406,7 @@ html[data-window-caption] .below-window-caption {
 }
 
 @media (max-width: 767px) {
-  html[data-window-caption] .settings-modal-shell {
+  html[data-window-caption] .app-overlay-modal[data-overlay-level="app"] {
     top: calc(var(--spacing-app-header) + 0.5rem);
     height: auto;
   }
@@ -438,10 +438,10 @@ html[data-window-caption] .below-window-caption {
   color: var(--color-error);
 }
 
-/* Settings is an app-level overlay, so its bounds must respect both mobile
-   cutouts/home indicators and the desktop shell header / macOS traffic-light
-   region. Keep this geometry in CSS instead of Tailwind arbitrary classes so
-   every platform gets the same safe-area contract. */
+/* Overlays are positioned by the .app-overlay-* rules below, so their bounds
+   respect both mobile cutouts/home indicators and the desktop shell header /
+   macOS traffic-light region. Keep this geometry in CSS instead of Tailwind
+   arbitrary classes so every platform gets the same safe-area contract. */
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * Header caps (AgentChatHeader, desktop): only the dock cap lines up with its
@@ -459,16 +459,18 @@ html[data-window-caption] .below-window-caption {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * AppOverlay — shared geometry for ALL app overlays except the full-width
- * Settings sheet (which uses .settings-modal-shell below).
+ * AppOverlay — the one frame for every app overlay, Settings and Usage too.
  *
  * Two layout variants are set via data attributes written by <AppOverlay>:
  *   [data-overlay-variant="modal"]  — centred card
- *   [data-overlay-variant="sheet"]  — edge drawer (side in data-overlay-side)
+ *   [data-overlay-variant="palette"] — compact top-aligned card
+ * An overlay mounted at the app root, outside the chat shell (Settings,
+ * Usage), also carries [data-overlay-level="app"]: it fills the phone screen
+ * and follows the soft keyboard through --app-vh itself.
  *
  * Mobile (both variants): edge-to-edge, safe-area insets, tracks soft keyboard.
- * Desktop (md+): modal → centred card capped by --overlay-max-width CSS var;
- *                sheet → anchored to the chosen edge.
+ * Desktop (md+): modal → centred card capped by --overlay-max-width CSS var,
+ *                the same gap below the header as above the status bar.
  * ───────────────────────────────────────────────────────────────────────────── */
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -500,7 +502,8 @@ html[data-window-caption] .below-window-caption {
  *   Rounded corners + border so it reads as a floating sheet.
  *
  * Desktop (≥ 768px):
- *   Centred card. Top below app header + 4vh breathing room, bottom 4vh.
+ *   Centred card. Top below app header + 4vh breathing room, bottom above the
+ *   status bar + 4vh: the same gap on both sides, whatever the content.
  *   Width capped by --overlay-max-width (passed as inline CSS var by AppOverlay).
  *   left:0 + right:0 + margin:auto centres a fixed element without transform.
  *
@@ -519,9 +522,8 @@ html[data-window-caption] .below-window-caption {
   bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
   left: max(0.5rem, env(safe-area-inset-left, 0px));
   height: auto;
-  /* Matches .settings-modal-shell's rounded-lg (--radius-lg) so every
-   * AppOverlay-based panel (Scheduler, Session Settings, Command Palette)
-   * reads as the same family as Settings — the documented visual reference. */
+  /* rounded-lg (--radius-lg) for every AppOverlay-based panel (Scheduler,
+   * Settings, Usage, Session Settings, Command Palette). */
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
 }
@@ -529,13 +531,13 @@ html[data-window-caption] .below-window-caption {
 @media (min-width: 768px) {
   .app-overlay-modal {
     top: calc(var(--spacing-app-header) + 4vh);
-    bottom: 4vh;
+    bottom: calc(var(--spacing-status-bar) + 4vh);
     left: 0;
     right: 0;
-    width: min(90vw, var(--overlay-max-width, 860px));
+    width: min(95vw, var(--overlay-max-width, 860px));
     margin-left: auto;
     margin-right: auto;
-    max-height: calc(100svh - var(--spacing-app-header) - 8vh);
+    max-height: calc(100svh - var(--spacing-app-header) - var(--spacing-status-bar) - 8vh);
   }
 }
 
@@ -618,54 +620,49 @@ html[data-mobile-shell][data-keyboard-open] [data-dialog-content] {
   max-height: calc(var(--app-vh, 100svh) - 2rem);
 }
 
-.settings-modal-shell {
-  position: fixed;
-  top: max(0.5rem, env(safe-area-inset-top, 0px));
-  right: max(0.5rem, env(safe-area-inset-right, 0px));
-  bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
-  left: max(0.5rem, env(safe-area-inset-left, 0px));
-  height: calc(100vh - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
-}
-
-@supports (height: 100svh) {
-  .settings-modal-shell {
-    height: calc(100svh - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
+/* ── App-level overlays (Settings, Usage) ────────────────────────────────────
+ * Mounted at the app root, so they are positioned against the window rather
+ * than the chat shell. On a phone the card fills the visible region from the
+ * top inset, and follows the soft keyboard through --app-vh itself (the
+ * shell's transform does not carry it). From 768px up it is the same centred
+ * card as every other modal.
+ *
+ * Touch tablets also carry data-mobile-shell (use-mobile-viewport) but keep
+ * the centred card, so the phone-height rules stay at phone widths: their
+ * height would outrank the card's and push its bottom off screen.
+ * ──────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 767px) {
+  .app-overlay-modal[data-overlay-level="app"] {
+    top: max(0.5rem, env(safe-area-inset-top, 0px));
+    height: calc(100vh - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
   }
 }
 
-/* Phones fill the visible region. Touch tablets also carry data-mobile-shell
- * (use-mobile-viewport) but keep the centred card below, so these stay at
- * phone widths: their height would outrank the card's and push its bottom
- * off screen. */
+@supports (height: 100svh) {
+  @media (max-width: 767px) {
+    .app-overlay-modal[data-overlay-level="app"] {
+      height: calc(100svh - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
+    }
+  }
+}
+
 @media (max-width: 767px) {
-  html[data-mobile-shell] .settings-modal-shell {
+  html[data-mobile-shell] .app-overlay-modal[data-overlay-level="app"] {
     height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
-    transform: translateY(var(--app-vt, 0px));
   }
 
   /* The home indicator is behind the keyboard: drop its inset so the Save bar
    * sits on the keyboard instead of above a dead strip. */
-  html[data-mobile-shell][data-keyboard-open] .settings-modal-shell {
+  html[data-mobile-shell][data-keyboard-open] .app-overlay-modal[data-overlay-level="app"] {
     bottom: 0.5rem;
     height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - 0.5rem);
   }
 }
 
 @media (min-width: 768px) {
-  /* The same gap below the header and above the status bar. */
-  .settings-modal-shell {
-    top: calc(var(--spacing-app-header) + 4vh);
-    right: max(2.5vw, calc((100vw - 76rem) / 2));
-    bottom: calc(var(--spacing-status-bar) + 4vh);
-    left: max(2.5vw, calc((100vw - 76rem) / 2));
-    height: auto;
-    max-height: calc(100vh - var(--spacing-app-header) - var(--spacing-status-bar) - 8vh);
-    transform: none;
-  }
-
   /* A tablet's soft keyboard covers the card's lower part: end it above the
    * keyboard so the Save bar stays reachable. */
-  html[data-mobile-shell][data-keyboard-open] .settings-modal-shell {
+  html[data-mobile-shell][data-keyboard-open] .app-overlay-modal[data-overlay-level="app"] {
     bottom: auto;
     max-height: calc(var(--app-vh, 100svh) - var(--spacing-app-header) - 4vh - 0.5rem);
   }
@@ -698,9 +695,9 @@ html[data-mobile-shell] .mobile-viewport {
  * wastes memory; any repaint inside it can also flicker on iOS. Scope it to
  * the keyboard-open / dismiss-glide windows only. */
 html[data-mobile-shell][data-keyboard-open] .mobile-viewport,
-html[data-mobile-shell][data-keyboard-open] .settings-modal-shell,
+html[data-mobile-shell][data-keyboard-open] .app-overlay-modal[data-overlay-level="app"],
 html[data-mobile-shell][data-vp-anim] .mobile-viewport,
-html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
+html[data-mobile-shell][data-vp-anim] .app-overlay-modal[data-overlay-level="app"] {
   will-change: height, transform;
 }
 
@@ -709,7 +706,7 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
  * full height optimistically, so the shell glides back with a short ease
  * instead of crawling down with iOS's slow keyboard-retract animation. */
 html[data-mobile-shell][data-vp-anim] .mobile-viewport,
-html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
+html[data-mobile-shell][data-vp-anim] .app-overlay-modal[data-overlay-level="app"] {
   transition:
     height var(--motion-base) var(--ease-sheet),
     transform var(--motion-base) var(--ease-sheet);

@@ -153,7 +153,7 @@ export function MultiSelect({
                       aria-label={`Remove ${v}`}
                       className="touch-hit relative flex h-7 w-7 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-4 md:w-4"
                     >
-                      <X size={11} />
+                      <X size={12} />
                     </button>
                   </span>
                 ))}
@@ -233,7 +233,7 @@ export function MultiSelect({
                       )}
                       aria-hidden="true"
                     >
-                      {isSel && <Check size={11} strokeWidth={3} />}
+                      {isSel && <Check size={12} strokeWidth={3} />}
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-mono text-xs text-(--color-text)">

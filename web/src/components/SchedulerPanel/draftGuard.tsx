@@ -2,14 +2,13 @@
  * Unsaved-input guard for the scheduler's Create and Edit forms. A form
  * reports whether it differs from what it opened with; the host (overlay or
  * dock tab) wraps every navigation that would unmount the form in `guard`,
- * which asks "Discard this task?" first when there is something to lose.
+ * which asks "Discard changes?" first when there is something to lose.
  * A successful submit navigates without the guard, and the form's own
  * Cancel stays an immediate, deliberate discard.
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 
-import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { TaskFormValues } from './taskForm'
 
 const SchedulerDraftContext = createContext<((dirty: boolean) => void) | null>(null)
@@ -53,16 +52,14 @@ export function useSchedulerDraftGuard() {
   const provide = (children: ReactNode) => (
     <SchedulerDraftContext.Provider value={report}>
       {children}
-      <Dialog open={pending !== null} onOpenChange={(open) => { if (!open) setPending(null) }}>
-        <DialogContent>
-          <DialogTitle>Discard this task?</DialogTitle>
-          <DialogDescription>Your changes to this task have not been saved.</DialogDescription>
-          <DialogFooter>
-            <Button onClick={() => setPending(null)}>Keep editing</Button>
-            <Button variant="danger" onClick={discard}>Discard</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={pending !== null}
+        onOpenChange={(open) => { if (!open) setPending(null) }}
+        title="Discard changes?"
+        description="Your changes to this task have not been saved."
+        confirmLabel="Discard changes"
+        onConfirm={discard}
+      />
     </SchedulerDraftContext.Provider>
   )
 

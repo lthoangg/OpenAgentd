@@ -41,8 +41,14 @@
 @custom-variant reduce-transparency (@media (prefers-reduced-transparency: reduce));
 /* A phone: narrow (or a landscape phone, short) and touch, the same test as
  * useIsMobile plus a coarse pointer, so a narrow mouse window and a tablet
- * keep the dense desktop scale (DESIGN.md → Touch density). */
-@custom-variant phone (@media (pointer: coarse) and (max-width: 767px), (pointer: coarse) and (max-height: 580px));
+ * keep the dense desktop scale (DESIGN.md → Touch density). The block form:
+ * the shorthand splits at the query's comma and reads the landscape half as
+ * a selector, which compiles to an invalid rule. */
+@custom-variant phone {
+  @media (pointer: coarse) and (max-width: 767px), (pointer: coarse) and (max-height: 580px) {
+    @slot;
+  }
+}
 
 /* ─────────────────────────────────────────────────────────────
  * Tailwind @theme — expose design tokens as utilities.

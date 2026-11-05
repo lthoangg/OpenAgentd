@@ -15,8 +15,15 @@ const css = read('../../index.css').replace(/\/\*[\s\S]*?\*\//g, '')
 
 const PHONE = '(pointer: coarse) and (max-width: 767px), (pointer: coarse) and (max-height: 580px)'
 
+// A top-level block (at a line start): the phone variant's own ``@media``
+// sits indented inside ``@custom-variant``.
+const topLevelAt = (media: string) => {
+  const at = css.indexOf(`\n@media ${media} {`)
+  return at < 0 ? -1 : at + 1
+}
+
 function block(media: string): string {
-  const at = css.indexOf(`@media ${media} {`)
+  const at = topLevelAt(media)
   if (at < 0) return ''
   let depth = 0
   for (let i = css.indexOf('{', at); i < css.length; i++) {
@@ -31,7 +38,7 @@ describe('phone scale', () => {
 
   it('has one phone query, the same one useIsMobile reads, on touch only', () => {
     expect(phone).not.toBe('')
-    expect(css).toContain(`@custom-variant phone (@media ${PHONE});`)
+    expect(css).toMatch(new RegExp(`@custom-variant phone \\{\\s*@media ${PHONE.replace(/[()]/g, '\\$&')} \\{\\s*@slot;\\s*\\}\\s*\\}`))
   })
 
   it('sets 17px for UI text and chat, 15px for second lines and code, 13px for times', () => {
@@ -94,6 +101,19 @@ describe('phone type utilities', () => {
   const base = fileURLToPath(new URL('../..', import.meta.url))
   const STEPS = ['text-meta', 'text-subhead', 'text-xs', 'text-sm', 'text-base', 'text-code', 'text-large-title']
 
+  // The variant's query has a comma (portrait or landscape phone). Written as
+  // the shorthand, Tailwind split it there and read the landscape half as a
+  // selector: `.phone\:size-11 (pointer: coarse) and …`, invalid, so a phone
+  // held sideways got none of the phone: utilities.
+  it('compiles phone: utilities into one valid rule under both phone queries', async () => {
+    const compiler = await compile(read('../../index.css'), { base, onDependency() {} })
+    const out = compiler.build(['phone:size-11'])
+    expect(out).not.toMatch(/\.phone\\:size-11\s*\(/)
+    expect(out.replace(/\s+/g, ' ')).toMatch(
+      /@media \(pointer: coarse\) and \(max-width: 767px\), \(pointer: coarse\) and \(max-height: 580px\) \{ \.phone\\:size-11 \{/,
+    )
+  })
+
   it('reads the variable the phone block overrides, not an inlined value', async () => {
     const compiler = await compile(read('../../index.css'), { base, onDependency() {} })
     const out = compiler.build(STEPS)
@@ -135,7 +155,7 @@ describe('phone sheets', () => {
   })
 
   it('comes after every card rule it overrides', () => {
-    const phoneEnd = css.indexOf(`@media ${PHONE} {`) + phone.length
+    const phoneEnd = topLevelAt(PHONE) + phone.length
     expect(css.slice(phoneEnd)).not.toContain('.app-overlay-modal')
   })
 })

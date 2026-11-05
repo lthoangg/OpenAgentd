@@ -1028,6 +1028,45 @@ run picker, the "+" menu, the palette. Type is the OS's UI font, dialog
 buttons follow the OS's order, and every system setting is followed: light or
 dark, reduced motion, increased contrast, text size.
 
+### Rulebook
+
+Each kind of element has one look, so a screen reads by pattern rather than by
+memory. The lint (`design-lint.test.ts`) holds the rules it can check.
+
+1. **Titles.** An overlay, dialog or page title is `text-base font-semibold`.
+   A heading above a card is `TEXT.title`. A group label in a dense card or the
+   sidebar is `label-caps`.
+2. **Weight.** A row has regular text and one emphasis: the open or selected
+   row is `font-medium`. Semibold is for titles only.
+3. **Meta.** `text-meta` in the muted colour. The subtle colour sits only on
+   the page or sidebar background.
+4. **Icons.** 12, 13, 14 or 16px (20 in the phone header), one size per role,
+   and one stroke width.
+5. **Buttons.** Only the primitives (`Button`, `CloseButton`), never a
+   hand-rolled icon `<button>`. Dialog footer buttons are 36px, toolbar icon
+   buttons 32px (`icon-sm`), row buttons 24px (`icon-xs`) with the touch floor
+   widening their target.
+6. **Close.** One × per surface, top right: `CloseButton`, a 14px glyph,
+   named "Close", tooltip "Close (Esc)".
+7. **Dialogs.** `DialogHeader` and `DialogFooter` as they are; never override
+   their `flex`. A confirm has no ×; its dismiss button says "Cancel"; its
+   action is a verb and a noun ("Delete task"); a destructive button is never
+   the default one.
+8. **Destructive actions.** In a detail page, a Danger row at the bottom. In a
+   list, inside the ⋯ or long-press menu. Never a bare Delete icon in a header.
+9. **Status.** Words and tones from `STATUS` (Components → Status).
+10. **Empty, loading, error.** Empty uses `EmptyState`: a sentence-case title
+    with no full stop, and a create action when the user can create. Loading
+    shows a skeleton. An error reads "Couldn't load X." with Retry.
+11. **Copy.** One name per thing: Refresh, Copy response, main agent, Rename,
+    Open in tab, Close (Esc). Sentence case. "…" when, and only when, the
+    control opens a dialog or a picker. Straight quotes.
+12. **Toolbars.** The same action keeps the same place in every view; Close
+    and ⋯ come last. On a phone, secondary actions fold into ⋯.
+
+Menus show the shortcut of every item that has one, and a tooltip with a
+shortcut reads `Name (⌘X)`. Dates follow Components → Dates.
+
 **Buttons** ship seven variants (`default`, `subtle`, `primary`, `ghost`,
 `danger`, `danger-subtle`, `link`) across nine standard sizes (`xs`, `sm`, `default`,
 `lg`, `trigger`, `icon`, `icon-sm`, `icon-dense`, `icon-xs`). No variant has a

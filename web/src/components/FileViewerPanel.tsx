@@ -13,6 +13,7 @@ import { downloadWorkspaceFile } from '@/lib/workspace-download'
 import { cn } from '@/lib/utils'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
+import { useImageReveal } from '@/hooks/useImageReveal'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { formatBytes } from '@/utils/format'
 import { highlightLines } from '@/utils/code-highlight'
@@ -539,6 +540,11 @@ function ImagePreview({ workspace, file }: { workspace: string; file: WorkspaceF
   const [open, setOpen] = useState(false)
   if (file.deleted) return <DeletedFilePreview />
   const url = codingWorkspaceFileUrl(workspace, file.path)
+  return <ImagePreviewBody file={file} url={url} open={open} setOpen={setOpen} />
+}
+
+function ImagePreviewBody({ file, url, open, setOpen }: { file: WorkspaceFileInfo; url: string; open: boolean; setOpen: (open: boolean) => void }) {
+  const { ref: revealRef, reveal, revealProps } = useImageReveal(url)
   return (
     <>
       <button
@@ -547,7 +553,16 @@ function ImagePreview({ workspace, file }: { workspace: string; file: WorkspaceF
         className="flex h-full min-h-0 w-full items-center justify-center overflow-auto overscroll-contain touch-pan-y bg-(--bg-page) p-4"
         aria-label={`Open ${file.name} preview in lightbox`}
       >
-        <img src={url} alt={file.name} decoding="async" className="block max-h-full max-w-full rounded-sm border border-(--color-border) object-contain" />
+        <img
+          ref={revealRef}
+          src={url}
+          alt={file.name}
+          decoding="async"
+          data-revealed={revealProps['data-revealed']}
+          onLoad={reveal}
+          onError={reveal}
+          className={cn(revealProps.className, 'block max-h-full max-w-full rounded-sm border border-(--color-border) object-contain')}
+        />
       </button>
       <FileLightbox
         items={[{ type: 'image', src: url, name: file.name }]}

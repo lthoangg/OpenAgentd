@@ -128,10 +128,10 @@ describe('TodosPopover', () => {
   it('strikes through completed and cancelled rows, not pending or in_progress', () => {
     render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} />)
 
-    expect(screen.getByText('Active task').className).not.toContain('line-through')
-    expect(screen.getByText('Pending task').className).not.toContain('line-through')
-    expect(screen.getByText('Completed task').className).toContain('line-through')
-    expect(screen.getByText('Cancelled task').className).toContain('line-through')
+    expect(screen.getByText('Active task').getAttribute('data-struck')).toBeNull()
+    expect(screen.getByText('Pending task').getAttribute('data-struck')).toBeNull()
+    expect(screen.getByText('Completed task').getAttribute('data-struck')).not.toBeNull()
+    expect(screen.getByText('Cancelled task').getAttribute('data-struck')).not.toBeNull()
   })
 
   it('grows from the corner under the Tasks button', () => {

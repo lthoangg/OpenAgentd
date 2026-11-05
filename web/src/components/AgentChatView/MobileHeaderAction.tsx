@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { GoalRing } from '@/components/ui/goal-ring'
+import { useBadgeBump } from '@/components/ui/swap'
 import type { GoalTone } from '@/lib/goal'
 
 export function MobileHeaderAction({
@@ -24,6 +25,7 @@ export function MobileHeaderAction({
   /** Tooltip text when it should say more than the label. */
   tooltip?: string
 }) {
+  const badgeRef = useBadgeBump<HTMLSpanElement>(badge)
   return (
     <Tooltip>
       <TooltipTrigger
@@ -41,7 +43,7 @@ export function MobileHeaderAction({
           >
             <Icon size={14} strokeWidth={1.8} aria-hidden="true" />
             {badge > 0 && (
-              <span className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-(--color-accent) px-1 text-center font-mono text-meta leading-3.5 text-(--bg-page)">
+              <span ref={badgeRef} className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-(--color-accent) px-1 text-center font-mono text-meta leading-3.5 text-(--bg-page)">
                 {badge > 9 ? '9+' : badge}
               </span>
             )}

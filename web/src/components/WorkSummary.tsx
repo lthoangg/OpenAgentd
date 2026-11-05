@@ -41,7 +41,7 @@ function GoalMark({ tone }: { tone: GoalTone }) {
   return (
     <span
       aria-hidden="true"
-      className={cn('relative size-2.5 shrink-0 rounded-full border-2 border-current', tone === 'active' && 'animate-pulse motion-reduce:animate-none')}
+      className={cn('relative size-2.5 shrink-0 rounded-full border-2 border-current', tone === 'active' && 'oa-breathe')}
     >
       {tone === 'active' && <span className="absolute inset-px rounded-full bg-current" />}
     </span>

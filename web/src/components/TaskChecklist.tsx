@@ -12,7 +12,9 @@
  * Sort order keeps the eye on what matters right now:
  *   in_progress → pending → completed → cancelled
  */
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
+import { useFlipReorder } from '@/hooks/useFlipReorder'
+import { IconSwap } from '@/components/ui/swap'
 import { Check, Circle, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -102,8 +104,12 @@ export function TaskChecklist({ todos, overflow = 'truncate', className }: TaskC
     () => [...todos].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]),
     [todos],
   )
+  // A finished task moves down the list: it slides there, and its
+  // neighbours make room, rather than the list re-sorting in one frame.
+  const listRef = useRef<HTMLUListElement>(null)
+  useFlipReorder(listRef)
   return (
-    <ul aria-label="Tasks" className={className}>
+    <ul ref={listRef} aria-label="Tasks" className={cn('relative', className)}>
       {sortedTodos.map((todo) => {
         const Icon = STATUS_ICON[todo.status]
         const isStruck = todo.status === 'completed' || todo.status === 'cancelled'
@@ -112,14 +118,20 @@ export function TaskChecklist({ todos, overflow = 'truncate', className }: TaskC
           'text-xs leading-4',
           overflow === 'truncate' ? 'truncate' : 'break-words',
           isStruck
-            ? 'text-(--color-text-subtle) line-through decoration-(--color-text-subtle)/40'
+            ? 'text-(--color-text-subtle)'
             : isInProgress
               ? 'font-medium text-(--color-text)'
               : 'text-(--color-text-2)',
         )
+        // The strike draws itself left to right when a task finishes (and
+        // across wrapped lines); a list that loads finished shows it drawn.
+        const struck = (
+          <span className="oa-strike" data-struck={isStruck ? '' : undefined}>{todo.content}</span>
+        )
         return (
           <li
             key={todo.task_id}
+            data-flip-id={todo.task_id}
             data-status={todo.status}
             className={cn(
               'flex gap-2 rounded-sm px-2 py-1.5 transition-colors',
@@ -127,24 +139,25 @@ export function TaskChecklist({ todos, overflow = 'truncate', className }: TaskC
               isInProgress ? 'bg-(--bg-key) text-(--color-text)' : 'hover:bg-(--bg-key)/50',
             )}
           >
-            <Icon
-              size={12}
-              aria-hidden="true"
-              className={cn(
-                'shrink-0',
-                overflow === 'wrap' && 'mt-0.5',
-                STATUS_ICON_COLOR[todo.status],
-                isInProgress && 'animate-spin',
-              )}
-            />
+            <IconSwap swapKey={todo.status} className={cn(overflow === 'wrap' && 'mt-0.5')}>
+              <Icon
+                size={12}
+                aria-hidden="true"
+                className={cn(
+                  'shrink-0',
+                  STATUS_ICON_COLOR[todo.status],
+                  isInProgress && 'animate-spin',
+                )}
+              />
+            </IconSwap>
             <div className="min-w-0 flex-1">
               {overflow === 'truncate' ? (
                 <Tooltip className="w-full">
-                  <TooltipTrigger render={<div className={textClass}>{todo.content}</div>} />
+                  <TooltipTrigger render={<div className={textClass}>{struck}</div>} />
                   <TooltipContent>{todo.content}</TooltipContent>
                 </Tooltip>
               ) : (
-                <p className={textClass}>{todo.content}</p>
+                <p className={textClass}>{struck}</p>
               )}
             </div>
           </li>

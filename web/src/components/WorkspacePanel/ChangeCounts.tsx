@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { RollingNumber } from '@/components/ui/swap'
 import { type ChangedFileInfo, type ChangedFileStatus, CHANGED_STATUS_LABELS } from './diff-helpers'
 
 /** Added and Deleted take their lines' colors; only Modified is orange. */
@@ -15,8 +16,9 @@ const STATUS_TONE: Record<ChangedFileStatus, string> = {
 export function ChangeCounts({ file, className }: { file: ChangedFileInfo; className?: string }) {
   return (
     <span className={cn('flex shrink-0 items-center gap-1.5 font-mono text-xs md:text-meta', className)}>
-      {file.additions > 0 && <span className="text-(--color-diff-add-text)">+{file.additions}</span>}
-      {file.deletions > 0 && <span className="text-(--color-diff-del-text)">-{file.deletions}</span>}
+      {/* The counts roll as the agent edits the file (ui/swap). */}
+      {file.additions > 0 && <span className="inline-flex text-(--color-diff-add-text)">+<RollingNumber text={String(file.additions)} value={file.additions} /></span>}
+      {file.deletions > 0 && <span className="inline-flex text-(--color-diff-del-text)">-<RollingNumber text={String(file.deletions)} value={file.deletions} /></span>}
       <span className={cn('w-2.5 text-center font-semibold', STATUS_TONE[file.status])}>
         <span aria-hidden="true">{file.status}</span>
         <span className="sr-only">{CHANGED_STATUS_LABELS[file.status]}</span>

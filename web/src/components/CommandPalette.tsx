@@ -36,6 +36,7 @@ import type { WorkspaceFileInfo } from '@/api/types'
 import { IGNORED_FILE_PENALTY } from '@/components/InputComposer.mentions'
 import { hoverIntent } from '@/hooks/use-hover-intent'
 import { useHeightGlide } from '@/hooks/useHeightGlide'
+import { useSlidingHighlight } from '@/hooks/useSlidingHighlight'
 
 /** Nested list a command opens in place of running. */
 export interface CommandPage {
@@ -306,6 +307,7 @@ export function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const listClipRef = useRef<HTMLDivElement>(null)
+  const pillRef = useRef<HTMLDivElement>(null)
   useHeightGlide(listClipRef, listRef)
   const headingId = useId()
 
@@ -453,6 +455,8 @@ export function CommandPalette({
     el?.scrollIntoView({ block: 'nearest' })
   }, [activeIdx])
 
+  const { glideNext } = useSlidingHighlight(listRef, pillRef, `[data-idx="${activeIdx}"]`, sections)
+
   const showPage = useCallback((next: Command | null) => {
     // Steps from the pages shown, not an unresolved handed-in path.
     const shown = trail.map((entry) => entry.id)
@@ -536,11 +540,13 @@ export function CommandPalette({
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
+      glideNext()
       setActiveIdx((i) => Math.min(i + 1, totalCount - 1))
       return
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault()
+      glideNext()
       setActiveIdx((i) => Math.max(i - 1, 0))
       return
     }
@@ -634,7 +640,9 @@ export function CommandPalette({
           {/* The clip glides to the list's new height as results narrow or
               grow (useHeightGlide), so the card's edge never jumps per key. */}
           <div ref={listClipRef} className="flex min-h-0 flex-col overflow-hidden">
-          <div ref={listRef} className="max-h-80 min-h-0 overflow-y-auto overscroll-contain p-1.5 md:max-h-[28rem]">
+          <div ref={listRef} className="oa-slide-list relative max-h-80 min-h-0 overflow-y-auto overscroll-contain p-1.5 md:max-h-[28rem]">
+            {/* The highlight: glides between rows on ↑↓ (useSlidingHighlight). */}
+            <div ref={pillRef} hidden aria-hidden="true" className="oa-slide-pill pointer-events-none absolute rounded-sm bg-(--color-fill-highlight)" />
             {sections.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-1 px-4 py-8 text-center" role="status">
                 <p className="text-xs text-(--color-text-muted)">{emptyLabel}</p>
@@ -751,7 +759,7 @@ function LoadingRow() {
  * keyed: a parked pointer does not light a second row (``oa-menu-item-keyed``).
  */
 const PALETTE_ROW_CLASS =
-  'oa-menu-item oa-menu-item-keyed group flex w-full min-w-0 items-center justify-between gap-3 rounded-sm px-2.5 py-1.5 text-left text-(--color-text-2) focus:outline-none focus-visible:outline-none pointer-coarse:min-h-9'
+  'oa-menu-item oa-menu-item-keyed group relative flex w-full min-w-0 items-center justify-between gap-3 rounded-sm px-2.5 py-1.5 text-left text-(--color-text-2) focus:outline-none focus-visible:outline-none pointer-coarse:min-h-9'
 
 interface FileRowProps {
   file: WorkspaceFileInfo

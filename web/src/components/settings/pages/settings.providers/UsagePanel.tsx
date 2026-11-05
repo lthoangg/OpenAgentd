@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { RollingNumber } from '@/components/ui/swap'
 import type { ProviderUsageLimit } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
@@ -141,6 +142,11 @@ function formatPercent(raw: number): string {
   return raw > 0 && raw < 1 ? '<1%' : `${Math.round(raw)}%`
 }
 
+/** The percentage, rolling when a refresh changes it. */
+function Percent({ raw, suffix }: { raw: number; suffix?: string }) {
+  return <RollingNumber text={formatPercent(raw)} value={raw} suffix={suffix} />
+}
+
 function Meta({ children }: { children: string }) {
   return <p className="text-meta text-(--color-text-subtle) tabular-nums">{children}</p>
 }
@@ -162,7 +168,7 @@ function UsageRow({
     <div className="min-w-0 space-y-1">
       <div className="flex min-w-0 items-baseline justify-between gap-2 text-xs">
         <span className="truncate font-medium text-(--color-text)">{label}</span>
-        <span className="shrink-0 text-meta text-(--color-text-muted) tabular-nums">{formatPercent(percent)} used</span>
+        <span className="shrink-0 text-meta text-(--color-text-muted) tabular-nums"><Percent raw={percent} suffix=" used" /></span>
       </div>
       <div className="relative h-1 rounded-full bg-(--bg-key)">
         {percent > 0 && (
@@ -233,7 +239,7 @@ function SpendRow({
           />
         </div>
         <div className="flex flex-wrap items-center gap-x-1.5 text-meta text-(--color-text-subtle) tabular-nums">
-          <span>{formatPercent(rawPercent)} used</span>
+          <span><Percent raw={rawPercent} suffix=" used" /></span>
           {typeof spend.remaining === 'number' && (
             <>
               <span aria-hidden="true">·</span>
@@ -257,7 +263,7 @@ function SpendRow({
       <div className="flex min-w-0 items-baseline justify-between gap-2 text-xs">
         <span className="truncate font-medium text-(--color-text)">{label}</span>
         {/* Unclamped — an overage is the whole point of this row. */}
-        <span className="shrink-0 text-meta text-(--color-text-muted) tabular-nums">{formatPercent(rawPercent)} used</span>
+        <span className="shrink-0 text-meta text-(--color-text-muted) tabular-nums"><Percent raw={rawPercent} suffix=" used" /></span>
       </div>
       <div className="relative h-1 rounded-full bg-(--bg-key)">
         {percent > 0 && <div className={cn('absolute inset-y-0 left-0 rounded-full', color)} style={{ width: `${percent}%` }} />}

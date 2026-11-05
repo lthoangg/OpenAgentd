@@ -15,6 +15,7 @@
  * goes. ``panel`` opens it in the Review panel as the call finishes;
  * ``click`` leaves it to the tool row's Open button.
  */
+import { withViewTransition } from '@/lib/view-transition'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
@@ -88,7 +89,9 @@ export const useDisplayPrefsStore = create<DisplayPrefsState>()(
       setTranscriptStyle: (style) => set({ transcriptStyle: style }),
       toggleTranscriptStyle: () => set({ transcriptStyle: get().transcriptStyle === 'reader' ? 'detailed' : 'reader' }),
       setTextSize: (size) => {
-        applyTextSize(size)
+        // Every line reflows at once: crossfade it, as the theme does.
+        if (get().textSize === size) applyTextSize(size)
+        else withViewTransition(() => applyTextSize(size))
         set({ textSize: size })
       },
       previewOpen: DEFAULT_PREVIEW_OPEN,

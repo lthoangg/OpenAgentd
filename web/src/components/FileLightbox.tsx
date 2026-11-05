@@ -29,6 +29,8 @@ import { DURATIONS_S } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { usePanZoom } from '@/hooks/use-pan-zoom'
+import { useImageReveal } from '@/hooks/useImageReveal'
+import { zoomInFrom, zoomOutTo } from '@/lib/lightbox-zoom'
 import { useKeyLayer, useShortcut } from '@/lib/keyboard/hooks'
 import { resolveApiUrl } from '@/api/client'
 import { tauriDownload } from '@/lib/tauri-download'
@@ -148,10 +150,23 @@ interface ImageProps {
   item: FileLightboxItem
   imgRef: React.RefObject<HTMLImageElement | null>
   panZoom: ReturnType<typeof usePanZoom<HTMLImageElement>>
+  /** Called once, on the frame the image first shows (after decode). */
+  onShown?: (img: HTMLImageElement) => void
 }
 
-export function FileLightboxImage({ item, imgRef, panZoom }: ImageProps) {
+export function FileLightboxImage({ item, imgRef, panZoom, onShown }: ImageProps) {
   const [error, setError] = useState(false)
+  const { ref: revealRef, reveal, revealProps } = useImageReveal(item.src)
+  const setImg = useCallback((img: HTMLImageElement | null) => {
+    imgRef.current = img
+    revealRef(img)
+  }, [imgRef, revealRef])
+  const shown = revealProps['data-revealed'] !== undefined
+  const onShownRef = useRef(onShown)
+  onShownRef.current = onShown
+  useLayoutEffect(() => {
+    if (shown && imgRef.current) onShownRef.current?.(imgRef.current)
+  }, [shown, imgRef])
 
   return (
     <div
@@ -172,14 +187,16 @@ export function FileLightboxImage({ item, imgRef, panZoom }: ImageProps) {
         )
         : (
           <img
-            ref={imgRef}
+            ref={setImg}
             key={item.src}
             src={item.src}
             alt={item.name}
             draggable={false}
             decoding="async"
+            data-revealed={revealProps['data-revealed']}
+            onLoad={reveal}
             onError={() => setError(true)}
-            className="block h-auto w-auto max-h-full max-w-full rounded-sm object-contain cursor-zoom-in transition-[cursor] duration-(--motion-instant)"
+            className={cn(revealProps.className, 'block h-auto w-auto max-h-full max-w-full rounded-sm object-contain cursor-zoom-in')}
             style={{ willChange: 'transform' }}
             onClick={(e) => e.stopPropagation()}
           />
@@ -430,6 +447,19 @@ function OpenFileLightbox({ items, index = 0, isOpen: open, closing = false, onC
     return () => cancelAnimationFrame(id)
   }, [closing])
 
+  // ── Zoom from and back to the thumbnail (lib/lightbox-zoom.ts) ────────────
+  // Only the image it opened on grows out of its thumbnail; paging slides.
+  const zoomedInRef = useRef(false)
+  const handleImageShown = useCallback((img: HTMLImageElement) => {
+    if (zoomedInRef.current) return
+    zoomedInRef.current = true
+    zoomInFrom(img, img.getAttribute('src') ?? '')
+  }, [])
+  useLayoutEffect(() => {
+    const img = imgRef.current
+    if (closing && img && activeTypeRef.current === 'image') zoomOutTo(img, img.getAttribute('src') ?? '')
+  }, [closing])
+
   // ── Index sync on (re)open ─────────────────────────────────────────────────
   useEffect(() => {
     if (isOpen) {
@@ -551,12 +581,15 @@ function OpenFileLightbox({ items, index = 0, isOpen: open, closing = false, onC
         closing && 'pointer-events-none',
       )}
       inert={closing || undefined}
+      data-lightbox=""
       // opacity starts at 0, useLayoutEffect rAF sets it to 1 — CSS transition fires
       style={{ opacity: 0, transition: 'opacity var(--motion-fast) var(--ease-out)' }}
       onClick={closeLightbox}
-      role="dialog"
-      aria-modal="true"
-      aria-label={dialogLabel}
+      // Fading out it is no longer a dialog: assistive tech leaves it at once.
+      role={closing ? undefined : 'dialog'}
+      aria-modal={closing ? undefined : 'true'}
+      aria-hidden={closing || undefined}
+      aria-label={closing ? undefined : dialogLabel}
       // The lightbox is portalled to <body> and owns its own touch
       // handling (pan/swipe-to-navigate, swipe-down-to-close). It doesn't
       // stop propagation on those touches, so without this the outer
@@ -631,6 +664,7 @@ function OpenFileLightbox({ items, index = 0, isOpen: open, closing = false, onC
                 item={active}
                 imgRef={imgRef}
                 panZoom={panZoom}
+                onShown={handleImageShown}
               />
             )}
             {active.type === 'video'  && <FileLightboxVideo   key={active.src} item={active} />}

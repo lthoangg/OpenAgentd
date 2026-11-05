@@ -42,6 +42,8 @@ function ContextRing({ progress, className }: { progress: number; className?: st
         strokeWidth="2.6"
         strokeDasharray={RING_CIRCUMFERENCE}
         strokeDashoffset={RING_CIRCUMFERENCE * (1 - clamped)}
+        // The ring fills as the context grows, rather than stepping.
+        className="transition-[stroke-dashoffset] duration-(--motion-slow) ease-(--ease-out)"
       />
     </svg>
   )

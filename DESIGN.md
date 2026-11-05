@@ -947,7 +947,11 @@ for layout (no `translateX(-50%)` centering) — center fixed elements with
   to the first visible block, and images reserve their box before they load.
   Following the stream, it writes at most one scroll per frame. A send or
   Jump to latest within two screens glides to the end (further back it
-  jumps), and no instant write cuts a glide short. When a stream ends, the
+  jumps; under reduced motion it always jumps), and no instant write cuts a
+  glide short, but the reader scrolling against it stops it where they are.
+  "Jump to latest" shows only while the view is away from the end and not
+  following it, whatever moved it there; a layout that sets the reader down
+  on the end takes it away. When a stream ends, the
   text still to show keeps flowing to the end rather than landing in one
   frame. On a phone the header's bottom line shows only once the transcript
   scrolls under it.
@@ -1118,7 +1122,9 @@ pins its header (or its collapse control) to the top of the transcript while
 open (`PINNED_HEADER` plus the surface fill), so it can close from anywhere.
 A header inside an open fold pins just below the fold's row (`--fold-top`), not
 over it. Closing leaves the header where the pressed control was, so the view
-never jumps. A tool call's details have no bottom Collapse bar: the pinned row
+never jumps; the shift goes through the transcript (`shiftTranscriptView`), so
+a fold closed at the live end keeps following it and never reads as the reader
+scrolling up. A tool call's details have no bottom Collapse bar: the pinned row
 and the section captions close them. Reasoning (`Thinking`) is not a fold and
 has no label: it streams in place and stays open, inline in small upright mono
 with semibold section headers (no quote bar). It always shows in full: no height

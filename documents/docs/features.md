@@ -2165,6 +2165,18 @@ run from the terminal (the native Rust binary since v3.0.0).
     shows at a glance. It takes half the room the two segments did, which
     goes to the model chip.
     *(The Code | Plan segmented control is deprecated; removed in v3.48.0.)*
+- **Jump to latest shows only when you have left the end** `[v3.48.0]`:
+  - Opening and closing a tool row or a reader fold at the end of the chat
+    no longer shows **Jump to latest**, and the chat keeps following new
+    output.
+  - When closing a fold leaves you at the end, the chip goes away. Scrolling
+    down there (or End, Page Down, ↓) follows new output again.
+  - Scrolling up while Jump to latest glides down stops the glide where you
+    are, instead of pulling you back to the end.
+  - Recalling an earlier prompt with ↑ always offers the chip back.
+  - From more than two screens up, and with reduced motion, Jump to latest
+    jumps instead of gliding. On touch screens the chip is 36px tall, with
+    13px text on a phone.
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
 - **Restored desktop window size** `[v1.52.0, updated v3.31.0]` — desktop windows reopen at the

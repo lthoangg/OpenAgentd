@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { cleanup, createEvent, fireEvent, render } from '@testing-library/react'
 import { useEdgeSwipe, type DrawerId } from '@/hooks/use-edge-swipe'
+import { _resetDrawerMotionsForTests, getDrawerMotion } from '@/lib/drawer-motion'
 
 let platform = { isTauri: true, os: 'ios', isMacOverlay: false }
 let mobile = true
@@ -39,6 +40,13 @@ function touchEvt(x: number, y: number) {
   return { touches: [{ clientX: x, clientY: y }] }
 }
 
+/** A touch event stamped ``t`` ms, so velocity is deterministic. */
+function fireTouchAt(type: 'touchStart' | 'touchMove' | 'touchEnd', el: Element, x: number, y: number, t: number) {
+  const event = createEvent[type](el, type === 'touchEnd' ? { touches: [] } : touchEvt(x, y))
+  Object.defineProperty(event, 'timeStamp', { value: t })
+  fireEvent(el, event)
+}
+
 describe('useEdgeSwipe', () => {
   beforeEach(() => {
     platform = { isTauri: true, os: 'ios', isMacOverlay: false }
@@ -47,6 +55,7 @@ describe('useEdgeSwipe', () => {
   })
   afterEach(() => {
     cleanup()
+    _resetDrawerMotionsForTests()
   })
 
   it('opens the left drawer on an inward swipe from the left edge', () => {
@@ -146,26 +155,210 @@ describe('useEdgeSwipe', () => {
     expect(onLeft).not.toHaveBeenCalled()
   })
 
-  it('reports a live drag offset while the finger moves', () => {
-    const offsets: number[] = []
-    function DragHarness() {
-      const { handlers, drag } = useEdgeSwipe({
+  describe('edge zone', () => {
+    it('starts an open gesture within 20px of the edge', () => {
+      const onLeft = mock(() => undefined)
+      const onRight = mock(() => undefined)
+      const { getByTestId } = render(
+        <Harness activeDrawer={null} onLeft={onLeft} onRight={onRight} onClose={() => undefined} />,
+      )
+      const el = getByTestId('surface')
+      fireEvent.touchStart(el, touchEvt(20, 200))
+      fireEvent.touchMove(el, touchEvt(140, 203))
+      fireEvent.touchEnd(el)
+      expect(onLeft).toHaveBeenCalledTimes(1)
+
+      fireEvent.touchStart(el, touchEvt(380, 200)) // 20px from the right edge of 400
+      fireEvent.touchMove(el, touchEvt(260, 203))
+      fireEvent.touchEnd(el)
+      expect(onRight).toHaveBeenCalledTimes(1)
+    })
+
+    it('ignores a start 21px or more from the edge', () => {
+      const onLeft = mock(() => undefined)
+      const onRight = mock(() => undefined)
+      const { getByTestId } = render(
+        <Harness activeDrawer={null} onLeft={onLeft} onRight={onRight} onClose={() => undefined} />,
+      )
+      const el = getByTestId('surface')
+      fireEvent.touchStart(el, touchEvt(21, 200))
+      fireEvent.touchMove(el, touchEvt(160, 203))
+      fireEvent.touchEnd(el)
+      fireEvent.touchStart(el, touchEvt(379, 200))
+      fireEvent.touchMove(el, touchEvt(240, 203))
+      fireEvent.touchEnd(el)
+      expect(onLeft).not.toHaveBeenCalled()
+      expect(onRight).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('drag-follow', () => {
+    function DragHarness({ onRender }: { onRender: () => void }) {
+      const { handlers } = useEdgeSwipe({
         activeDrawer: null,
         left: { id: 'sidebar', open: () => undefined },
         close: () => undefined,
       })
-      if (drag?.drawerId === 'sidebar') offsets.push(drag.offset)
-      return <div data-testid="surface" {...handlers}>surface</div>
+      onRender()
+      return (
+        <div data-testid="surface" {...handlers}>
+          <aside data-edge-drawer="sidebar" />
+          <div data-edge-drawer-scrim="sidebar" />
+        </div>
+      )
     }
-    const { getByTestId } = render(<DragHarness />)
-    const el = getByTestId('surface')
-    fireEvent.touchStart(el, touchEvt(8, 200))
-    // A short move (under commit distance) should not open but should drag.
-    fireEvent.touchMove(el, touchEvt(40, 202))
-    expect(offsets.length).toBeGreaterThan(0)
-    const last = offsets[offsets.length - 1]
-    expect(last).toBeLessThan(0)
-    expect(last).toBeGreaterThan(-272)
+
+    it('moves the drawer and scrim on touchmove without re-rendering', () => {
+      const onRender = mock(() => undefined)
+      const { getByTestId, container } = render(<DragHarness onRender={onRender} />)
+      const motion = getDrawerMotion('sidebar')
+      motion.configure({ hidden: -280, reduced: false })
+      const el = getByTestId('surface')
+      const drawer = container.querySelector<HTMLElement>('[data-edge-drawer]')!
+      const scrim = container.querySelector<HTMLElement>('[data-edge-drawer-scrim]')!
+      const rendersBefore = onRender.mock.calls.length
+
+      fireEvent.touchStart(el, touchEvt(8, 200))
+      // A short move (under commit distance) tracks the finger but does not open.
+      fireEvent.touchMove(el, touchEvt(40, 202))
+      expect(motion.progress).toBeGreaterThan(0)
+      expect(motion.progress).toBeLessThan(1)
+      const first = drawer.style.translate
+      expect(first).toMatch(/^-\d+(\.\d+)?px 0$/)
+      expect(Number(scrim.style.opacity)).toBeCloseTo(motion.progress, 6)
+
+      for (let x = 50; x <= 120; x += 10) fireEvent.touchMove(el, touchEvt(x, 203))
+      expect(drawer.style.translate).not.toBe(first)
+      // The gesture wrote the DOM per frame; React rendered nothing.
+      expect(onRender.mock.calls.length).toBe(rendersBefore)
+    })
+
+    it('stops at fully open however far the finger goes (hard edge)', () => {
+      const { getByTestId } = render(<DragHarness onRender={() => undefined} />)
+      const motion = getDrawerMotion('sidebar')
+      const el = getByTestId('surface')
+      fireEvent.touchStart(el, touchEvt(8, 200))
+      fireEvent.touchMove(el, touchEvt(390, 203))
+      expect(motion.progress).toBe(1)
+    })
+
+    it('stops at fully shut when a close drag runs past the closed position', () => {
+      function CloseHarness() {
+        const { handlers } = useEdgeSwipe({
+          activeDrawer: 'sidebar',
+          left: { id: 'sidebar', open: () => undefined },
+          close: () => undefined,
+        })
+        return <div data-testid="surface" {...handlers}>surface</div>
+      }
+      const { getByTestId } = render(<CloseHarness />)
+      const motion = getDrawerMotion('sidebar')
+      const el = getByTestId('surface')
+      fireEvent.touchStart(el, touchEvt(300, 200))
+      fireEvent.touchMove(el, touchEvt(5, 203))
+      expect(motion.progress).toBe(0)
+    })
+  })
+
+  describe('release', () => {
+    function spySettle() {
+      const motion = getDrawerMotion('sidebar')
+      const settle = mock(() => undefined)
+      motion.settle = settle as unknown as typeof motion.settle
+      return settle
+    }
+
+    it('springs to open carrying the finger velocity (progress/s)', () => {
+      const settle = spySettle()
+      const onLeft = mock(() => undefined)
+      const { getByTestId } = render(
+        <Harness activeDrawer={null} onLeft={onLeft} onRight={() => undefined} onClose={() => undefined} />,
+      )
+      const el = getByTestId('surface')
+      fireTouchAt('touchStart', el, 8, 200, 1000)
+      fireTouchAt('touchMove', el, 50, 201, 1020)
+      fireTouchAt('touchMove', el, 100, 202, 1040)
+      fireTouchAt('touchEnd', el, 0, 0, 1045)
+
+      expect(onLeft).toHaveBeenCalledTimes(1)
+      expect(settle).toHaveBeenCalledTimes(1)
+      const [goal, velocity] = settle.mock.calls[0] as unknown as [number, number]
+      expect(goal).toBe(1)
+      // ~1.2 px/ms of a 272px drawer is a few progress/s, toward open.
+      expect(velocity).toBeGreaterThan(3)
+      expect(velocity).toBeLessThan(8)
+    })
+
+    it('carries no velocity when the finger rested before lifting', () => {
+      const settle = spySettle()
+      const { getByTestId } = render(
+        <Harness activeDrawer={null} onLeft={() => undefined} onRight={() => undefined} onClose={() => undefined} />,
+      )
+      const el = getByTestId('surface')
+      fireTouchAt('touchStart', el, 8, 200, 1000)
+      fireTouchAt('touchMove', el, 50, 201, 1020)
+      fireTouchAt('touchMove', el, 130, 202, 1040)
+      fireTouchAt('touchEnd', el, 0, 0, 1400)
+      expect(settle).toHaveBeenCalledWith(1, 0)
+    })
+
+    it('a close fling springs shut with a falling progress', () => {
+      const settle = spySettle()
+      const onClose = mock(() => undefined)
+      const { getByTestId } = render(
+        <Harness activeDrawer="sidebar" onLeft={() => undefined} onRight={() => undefined} onClose={onClose} />,
+      )
+      const el = getByTestId('surface')
+      fireTouchAt('touchStart', el, 250, 200, 1000)
+      fireTouchAt('touchMove', el, 200, 201, 1020)
+      fireTouchAt('touchMove', el, 150, 202, 1040)
+      fireTouchAt('touchEnd', el, 0, 0, 1045)
+      expect(onClose).toHaveBeenCalledTimes(1)
+      const [goal, velocity] = settle.mock.calls[0] as unknown as [number, number]
+      expect(goal).toBe(0)
+      expect(velocity).toBeLessThan(-3)
+    })
+
+    it('an uncommitted drag springs back to where it began', () => {
+      const settle = spySettle()
+      const onLeft = mock(() => undefined)
+      const { getByTestId } = render(
+        <Harness activeDrawer={null} onLeft={onLeft} onRight={() => undefined} onClose={() => undefined} />,
+      )
+      const el = getByTestId('surface')
+      fireTouchAt('touchStart', el, 8, 200, 1000)
+      fireTouchAt('touchMove', el, 30, 201, 1100)
+      fireTouchAt('touchMove', el, 38, 202, 1200)
+      fireTouchAt('touchEnd', el, 0, 0, 1210)
+      expect(onLeft).not.toHaveBeenCalled()
+      expect(settle).toHaveBeenCalledTimes(1)
+      expect((settle.mock.calls[0] as unknown as number[])[0]).toBe(0)
+    })
+
+    it('a cancelled gesture springs back instead of freezing mid-drag', () => {
+      const settle = spySettle()
+      const { getByTestId } = render(
+        <Harness activeDrawer="sidebar" onLeft={() => undefined} onRight={() => undefined} onClose={() => undefined} />,
+      )
+      const el = getByTestId('surface')
+      fireEvent.touchStart(el, touchEvt(250, 200))
+      fireEvent.touchMove(el, touchEvt(230, 201))
+      fireEvent.touchCancel(el)
+      expect(settle).toHaveBeenCalledTimes(1)
+      expect((settle.mock.calls[0] as unknown as number[])[0]).toBe(1)
+    })
+
+    it('never settles a gesture that did not lock to horizontal', () => {
+      const settle = spySettle()
+      const { getByTestId } = render(
+        <Harness activeDrawer={null} onLeft={() => undefined} onRight={() => undefined} onClose={() => undefined} />,
+      )
+      const el = getByTestId('surface')
+      fireEvent.touchStart(el, touchEvt(10, 100))
+      fireEvent.touchMove(el, touchEvt(30, 260))
+      fireEvent.touchEnd(el)
+      expect(settle).not.toHaveBeenCalled()
+    })
   })
 
   it('ignores gestures that start on a data-swipe-ignore element', () => {

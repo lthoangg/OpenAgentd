@@ -1,11 +1,13 @@
-import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 
 afterEach(cleanup)
 
 const sheetNamed = (label: string) => document.querySelector<HTMLElement>(`[data-bottom-sheet][aria-label="${label}"]`)
+const scrimLayer = () => document.querySelector<HTMLElement>('[data-sheet-scrim]')
+const handleOf = () => document.querySelector<HTMLElement>('[data-sheet-handle]')!
 
 /**
  * Wait for focus without a failing expect per poll: bun formats the DOM
@@ -27,6 +29,15 @@ function pull(target: Element, ys: number[]): TouchEvent[] {
   })
   target.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [] }))
   return moves
+}
+
+/** A touch that begins on ``target`` and moves, without letting go. */
+function holdPull(target: Element, ys: number[]) {
+  const at = (y: number) => [{ clientX: 100, clientY: y, target } as unknown as Touch]
+  target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: at(ys[0]) }))
+  for (const y of ys.slice(1)) {
+    target.dispatchEvent(new TouchEvent('touchmove', { bubbles: true, cancelable: true, touches: at(y) }))
+  }
 }
 
 function PickerLike() {
@@ -78,14 +89,156 @@ describe('BottomSheet', () => {
       </BottomSheet>,
     )
     pull(screen.getByText('Account: Auto'), [300, 330, 340, 330])
-    // Let go short of the close distance, the sheet settles back in place.
-    expect(sheetNamed('Model and thinking')?.style.translate).toBe('')
+    expect(onClose).not.toHaveBeenCalled()
     const up = pull(screen.getByText('Account: Auto'), [300, 280, 200])
     expect(onClose).not.toHaveBeenCalled()
     expect(up.some((move) => move.defaultPrevented)).toBe(false)
   })
 
   // A native sheet never raises the on-screen keyboard as it opens: focus on
+
+  describe('one y for every pull', () => {
+    let frames: Array<(now: number) => void> = []
+    const realRaf = globalThis.requestAnimationFrame
+    const realCancel = globalThis.cancelAnimationFrame
+    const runFrames = (from = 0) => {
+      let at = from
+      while (frames.length && at < from + 5000) {
+        const queued = frames
+        frames = []
+        at += 16
+        for (const callback of queued) callback(at)
+      }
+    }
+    beforeEach(() => {
+      frames = []
+      globalThis.requestAnimationFrame = ((callback: (now: number) => void) => frames.push(callback)) as typeof requestAnimationFrame
+      globalThis.cancelAnimationFrame = (() => { frames = [] }) as typeof cancelAnimationFrame
+    })
+    afterEach(() => {
+      globalThis.requestAnimationFrame = realRaf
+      globalThis.cancelAnimationFrame = realCancel
+    })
+
+    it('fades the scrim as the content pull moves the sheet down', () => {
+      render(
+        <BottomSheet open onClose={() => {}} label="Model and thinking">
+          <PickerLike />
+        </BottomSheet>,
+      )
+      const sheet = sheetNamed('Model and thinking')!
+      expect(scrimLayer()).not.toBeNull()
+      holdPull(screen.getByText('Account: Auto'), [300, 310, 360])
+      // 60px of finger at 0.6 → 36px of sheet; the scrim is 36/300 clearer.
+      expect(sheet.style.translate).toBe('0 36px')
+      expect(Number(scrimLayer()!.style.opacity)).toBeCloseTo(1 - 36 / 300, 6)
+      holdPull(screen.getByText('Account: Auto'), [300, 400, 500, 600])
+      expect(Number(scrimLayer()!.style.opacity)).toBeLessThan(0.7)
+    })
+
+    it('springs back to rest, scrim and all, when a pull is let go short of closing', () => {
+      const onClose = mock(() => {})
+      render(
+        <BottomSheet open onClose={onClose} label="Model and thinking">
+          <PickerLike />
+        </BottomSheet>,
+      )
+      const sheet = sheetNamed('Model and thinking')!
+      pull(screen.getByText('Account: Auto'), [300, 330, 360, 350])
+      expect(onClose).not.toHaveBeenCalled()
+      // Still on its way home: a spring, not a jump.
+      expect(sheet.style.translate).not.toBe('')
+      runFrames()
+      expect(sheet.style.translate).toBe('')
+      expect(scrimLayer()!.style.opacity).toBe('')
+    })
+
+    it('never springs above its resting place, whatever speed the finger had upward', () => {
+      render(
+        <BottomSheet open onClose={() => {}} label="Model and thinking">
+          <PickerLike />
+        </BottomSheet>,
+      )
+      const sheet = sheetNamed('Model and thinking')!
+      // The last two samples are a fast flick back up.
+      pull(screen.getByText('Account: Auto'), [300, 340, 360, 330])
+      const seen: string[] = []
+      let at = 0
+      while (frames.length && at < 5000) {
+        const queued = frames
+        frames = []
+        at += 16
+        for (const callback of queued) callback(at)
+        seen.push(sheet.style.translate)
+      }
+      for (const translate of seen) {
+        const px = translate === '' ? 0 : Number(translate.replace('0 ', '').replace('px', ''))
+        expect(px).toBeGreaterThanOrEqual(0)
+      }
+    })
+
+    it('a cancelled touch springs home instead of closing', () => {
+      const onClose = mock(() => {})
+      render(
+        <BottomSheet open onClose={onClose} label="Model and thinking">
+          <PickerLike />
+        </BottomSheet>,
+      )
+      const target = screen.getByText('Account: Auto')
+      holdPull(target, [300, 330, 420, 480])
+      target.dispatchEvent(new TouchEvent('touchcancel', { bubbles: true, touches: [] }))
+      expect(onClose).not.toHaveBeenCalled()
+      runFrames()
+      expect(sheetNamed('Model and thinking')!.style.translate).toBe('')
+    })
+
+    it('closes from a drag on the handle, on the same y', () => {
+      const onClose = mock(() => {})
+      render(
+        <BottomSheet open onClose={onClose} label="Model and thinking">
+          <PickerLike />
+        </BottomSheet>,
+      )
+      const sheet = sheetNamed('Model and thinking')!
+      const handle = handleOf()
+      fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: 100 })
+      fireEvent.pointerMove(handle, { pointerId: 1, isPrimary: true, clientY: 150 })
+      expect(sheet.style.translate).toBe('0 30px')
+      expect(Number(scrimLayer()!.style.opacity)).toBeCloseTo(0.9, 6)
+      fireEvent.pointerMove(handle, { pointerId: 1, isPrimary: true, clientY: 260 })
+      fireEvent.pointerUp(handle, { pointerId: 1, isPrimary: true, clientY: 260 })
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
+    it('a short handle drag springs back and stays open', () => {
+      const onClose = mock(() => {})
+      render(
+        <BottomSheet open onClose={onClose} label="Model and thinking">
+          <PickerLike />
+        </BottomSheet>,
+      )
+      const handle = handleOf()
+      fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: 100 })
+      fireEvent.pointerMove(handle, { pointerId: 1, isPrimary: true, clientY: 130 })
+      fireEvent.pointerMove(handle, { pointerId: 1, isPrimary: true, clientY: 120 })
+      fireEvent.pointerUp(handle, { pointerId: 1, isPrimary: true, clientY: 120 })
+      expect(onClose).not.toHaveBeenCalled()
+      runFrames()
+      expect(sheetNamed('Model and thinking')!.style.translate).toBe('')
+    })
+
+    it('pulling up on the handle does not lift the sheet', () => {
+      render(
+        <BottomSheet open onClose={() => {}} label="Model and thinking">
+          <PickerLike />
+        </BottomSheet>,
+      )
+      const handle = handleOf()
+      fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: 100 })
+      fireEvent.pointerMove(handle, { pointerId: 1, isPrimary: true, clientY: 40 })
+      expect(sheetNamed('Model and thinking')!.style.translate).toBe('')
+    })
+  })
   // a search field would cover the list the user opened the sheet to see.
   it('opens with focus on the sheet, not on a text field inside it', async () => {
     render(

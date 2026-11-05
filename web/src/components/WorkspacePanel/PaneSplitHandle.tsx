@@ -6,8 +6,9 @@
  * drag area is 7px around a 1px line. The dock places it and turns pointer
  * positions into sizes (``sizesWithBarAt``).
  */
-import { useState, type CSSProperties } from 'react'
+import { useRef, useState, type CSSProperties } from 'react'
 
+import { alignmentHapticFeedback } from '@/lib/haptics'
 import { RESIZE_KEY_STEP, RESIZE_KEY_STEP_LARGE } from '@/lib/workbench-layout'
 import { cn } from '@/lib/utils'
 import type { Axis } from './dock-panes'
@@ -26,13 +27,20 @@ export function PaneSplitHandle({
   style: CSSProperties
   /** The pane before the bar: its share of the two, in percent. */
   valueNow: number
-  /** A pointer position while dragging (``done`` on release). */
-  onDrag: (clientX: number, clientY: number, done: boolean) => void
+  /**
+   * A pointer position while dragging (``done`` on release). Answers whether
+   * the bar snapped onto the even split, which ticks the trackpad once as it
+   * snaps in.
+   */
+  onDrag: (clientX: number, clientY: number, done: boolean) => boolean | void
   /** A keyboard step, in px (negative: towards the start). */
   onStep: (px: number) => void
   onReset: () => void
 }) {
   const [dragging, setDragging] = useState(false)
+  // Whether the bar was held on the even split at the last move; unknown
+  // (null) until the first move, so a drag that starts there does not tick.
+  const heldRef = useRef<boolean | null>(null)
   const row = axis === 'row'
   const back = row ? 'ArrowLeft' : 'ArrowUp'
   const forth = row ? 'ArrowRight' : 'ArrowDown'
@@ -53,9 +61,13 @@ export function PaneSplitHandle({
         event.preventDefault()
         event.currentTarget.setPointerCapture?.(event.pointerId)
         setDragging(true)
+        heldRef.current = null
       }}
       onPointerMove={(event) => {
-        if (dragging) onDrag(event.clientX, event.clientY, false)
+        if (!dragging) return
+        const snapped = onDrag(event.clientX, event.clientY, false) === true
+        if (snapped && heldRef.current === false) alignmentHapticFeedback()
+        heldRef.current = snapped
       }}
       onPointerUp={(event) => {
         if (!dragging) return

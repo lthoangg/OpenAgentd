@@ -19,11 +19,16 @@
  * are no target. Escape, a cancelled pointer or a release over nothing puts
  * it back.
  *
+ * A picked-up tab (and the floating copy) lifts: it grows to 102% and its
+ * shadow comes in over ``fast``. On release or Escape it settles back into its
+ * slot with ``ease-spring-soft`` over ``base``, from where it was let go.
+ *
  * The motion is inline styles on the tab nodes and two floating elements on
  * ``<body>``, not React state, so a drag re-renders nothing until the drop.
  */
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
+import { DURATIONS_S, EASINGS, cssEasing } from '@/lib/motion'
 import { DOCK_PANE_MIN_HEIGHT, DOCK_PANE_MIN_WIDTH } from '@/lib/workbench-layout'
 import { DOCK_DROP_CARET_CLASS, DOCK_DROP_ZONE_CLASS, DOCK_TAB_GHOST_CLASS } from './dock-tab-styles'
 import type { SplitSide } from './dock-panes'
@@ -37,6 +42,9 @@ const DETACH_PX = 12
 /** A pane's split bands: this share of the body's shorter side. */
 const SPLIT_BAND = 0.2
 const SLIDE = 'transform var(--motion-fast) var(--ease-out)'
+/** How far a lifted tab grows. */
+const LIFT_SCALE = 1.02
+const LIFT_SHADOW = 'var(--shadow-depth)'
 
 export const DOCK_TAB_ATTR = 'data-dock-tab'
 const DRAGGING_ATTR = 'data-dragging'
@@ -54,6 +62,8 @@ interface Lift {
   from: number
   to: number
   scroll0: number
+  /** The running lift (scale) on the lifted tab; cancelled when it settles. */
+  lifted: Animation | null
 }
 
 interface Carry {
@@ -168,6 +178,27 @@ function hitTest(root: ParentNode, x: number, y: number, id: string, own: string
   return null
 }
 
+function cancelAnimation(anim: Animation | null | undefined): void {
+  if (!anim) return
+  anim.finished.catch(() => {})
+  anim.cancel()
+}
+
+/**
+ * Lift ``el``: scale up (added to its inline ``transform``, which carries the
+ * drag offset) and bring the shadow in, over ``fast``. Returns the scale
+ * animation, which holds until cancelled; none under reduced motion.
+ */
+function liftUp(el: HTMLElement): Animation | null {
+  if (reducedMotion() || typeof el.animate !== 'function') return null
+  const options = { duration: DURATIONS_S.fast * 1000, easing: cssEasing(EASINGS.out) }
+  el.animate([{ boxShadow: 'none' }, { boxShadow: LIFT_SHADOW }], options)
+  return el.animate(
+    [{ transform: 'scale(1)' }, { transform: `scale(${LIFT_SCALE})` }],
+    { ...options, fill: 'forwards', composite: 'add' },
+  )
+}
+
 /** Drop every inline style a drag set, without animating back. */
 function settle(nodes: readonly HTMLElement[]): void {
   for (const node of nodes) {
@@ -196,6 +227,10 @@ export function useTabDrag({ enabled, onMove, onDrop }: {
   onDrop?: (id: string, target: TabDropTarget) => void
 }) {
   const dragRef = useRef<DragState | null>(null)
+  // A tab let go inside its strip settles from where it was dropped; the
+  // animation starts after the commit that moves it (see the layout effect).
+  const settleRef = useRef<{ node: HTMLElement; left: number } | null>(null)
+  const reorderedRef = useRef(false)
   const stripRef = useRef<HTMLElement | null>(null)
   const frameRef = useRef(0)
   const [draggingId, setDraggingId] = useState<string | null>(null)
@@ -217,15 +252,37 @@ export function useTabDrag({ enabled, onMove, onDrop }: {
     if (!drag || !lift) return
     const target = drag.carry?.target ?? null
     const carried = drag.carry !== null
+    const node = lift.nodes[lift.from]
+    if (!carried && !reducedMotion() && typeof node.animate === 'function') {
+      settleRef.current = { node, left: node.getBoundingClientRect().left }
+    }
+    cancelAnimation(lift.lifted)
+    lift.lifted = null
     dropCarry(drag)
     settle(lift.nodes)
     if (!drop) return
     if (carried) {
       if (target) onDrop?.(drag.id, target)
     } else if (lift.to !== lift.from) {
+      // The strip's tabs already slid aside: the reorder needs no FLIP.
+      reorderedRef.current = true
+      requestAnimationFrame(() => { reorderedRef.current = false })
       onMove(drag.id, lift.to)
     }
   }, [onMove, onDrop])
+  // After the commit that put the tab in its slot: settle it from where it
+  // was let go, with a soft spring.
+  useLayoutEffect(() => {
+    const pending = settleRef.current
+    if (!pending) return
+    settleRef.current = null
+    const { node, left } = pending
+    if (!node.isConnected) return
+    const delta = left - node.getBoundingClientRect().left
+    const lifted = { transform: `translateX(${delta}px) scale(${LIFT_SCALE})`, boxShadow: LIFT_SHADOW }
+    const rest = { transform: 'none', boxShadow: 'none' }
+    node.animate([lifted, rest], { duration: DURATIONS_S.base * 1000, easing: cssEasing(EASINGS.springSoft) })
+  })
   useEffect(() => () => {
     cancelAnimationFrame(frameRef.current)
     const drag = dragRef.current
@@ -289,6 +346,8 @@ export function useTabDrag({ enabled, onMove, onDrop }: {
         node.style.transform = ''
       })
       source.style.opacity = '0.4'
+      cancelAnimation(lift.lifted)
+      lift.lifted = null
       const box = source.getBoundingClientRect()
       const ghost = source.cloneNode(true) as HTMLElement
       ghost.removeAttribute(DOCK_TAB_ATTR)
@@ -299,6 +358,7 @@ export function useTabDrag({ enabled, onMove, onDrop }: {
       Object.assign(ghost.style, { position: 'fixed', margin: '0', zIndex: '9999', pointerEvents: 'none', transform: '', transition: 'none', opacity: '' })
       place(ghost, box)
       document.body.appendChild(ghost)
+      liftUp(ghost)
       drag.carry = { ghost, dx: drag.startX - box.left, dy: Math.min(box.bottom - box.top, Math.max(0, drag.startY - box.top)), marker: null, target: null }
     }
     const held = drag.carry
@@ -332,7 +392,11 @@ export function useTabDrag({ enabled, onMove, onDrop }: {
     const drag = dragRef.current
     if (!drag?.carry) return
     dropCarry(drag)
-    if (drag.lift) drag.lift.nodes[drag.lift.from].style.opacity = ''
+    if (drag.lift) {
+      const node = drag.lift.nodes[drag.lift.from]
+      node.style.opacity = ''
+      drag.lift.lifted = liftUp(node)
+    }
   }, [])
 
   // Near an edge, keep scrolling (and re-placing) while the pointer rests.
@@ -395,9 +459,11 @@ export function useTabDrag({ enabled, onMove, onDrop }: {
         from,
         to: from,
         scroll0: strip.scrollLeft,
+        lifted: null,
       }
       nodes[from].setAttribute(DRAGGING_ATTR, '')
       nodes[from].style.zIndex = '10'
+      drag.lift.lifted = liftUp(nodes[from])
       strip.style.cursor = 'grabbing'
       event.currentTarget.setPointerCapture?.(event.pointerId)
       setDraggingId(drag.id)
@@ -424,6 +490,8 @@ export function useTabDrag({ enabled, onMove, onDrop }: {
 
   return {
     draggingId,
+    /** True for the one commit that follows a drop inside the strip: the tabs already moved. */
+    reorderedByDrag: () => reorderedRef.current,
     handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel },
   }
 }

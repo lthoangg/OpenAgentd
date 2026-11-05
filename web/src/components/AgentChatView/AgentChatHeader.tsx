@@ -281,9 +281,11 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   return (
     <header
       {...dragHandlers}
-      // Phones: one bar, the middle given to the title.
+      // Phones: one bar, the middle given to the title. Its bottom line shows
+      // only once the transcript scrolls under it (``data-transcript-scrolled``
+      // on the shell, from AgentView), like an iOS navigation bar.
       className={cn(
-        'mobile-safe-header grid h-(--spacing-app-header) shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) md:dark:bg-(--bg-sidebar)',
+        'mobile-safe-header grid h-(--spacing-app-header) shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center overflow-hidden border-b border-transparent bg-(--bg-page) transition-colors duration-(--motion-fast) in-data-[transcript-scrolled]:border-(--color-border) md:dark:bg-(--bg-sidebar)',
         isMacOverlay && 'select-none pl-[70px]',
         captionInset && 'select-none pr-[138px]',
       )}

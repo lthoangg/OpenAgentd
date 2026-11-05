@@ -148,3 +148,32 @@ describe('useFlipReorder', () => {
     expect(calls.map((call) => call.id).sort()).toEqual(['a', 'b', 'j'])
   })
 })
+
+describe('useFlipReorder, a second reorder mid-slide', () => {
+  it('starts from where the row is drawn, not from its old layout spot', () => {
+    const cancelled = new Set<HTMLElement>()
+    // `a` is 10px off its layout spot (a slide in progress) until it is cancelled.
+    const drawnOffset = (el: HTMLElement) => (el.dataset.flipId === 'a' && !cancelled.has(el) ? 10 : 0)
+    proto.getAnimations = function (this: HTMLElement) {
+      return this.dataset.flipId === 'a' && !cancelled.has(this)
+        ? [{ finished: Promise.resolve(), cancel: () => { cancelled.add(this) } }]
+        : []
+    }
+    proto.getBoundingClientRect = function (this: HTMLElement) {
+      const top = this.dataset.flipId ? Array.from(this.parentElement!.children).indexOf(this) * ROW + drawnOffset(this) : 0
+      return { top, left: 0, right: 0, bottom: top, width: 0, height: 0, x: 0, y: top } as DOMRect
+    }
+    try {
+      const { rerender } = render(<List ids={['c', 'a', 'b']} />)
+      // `a` was at row 1 and is drawn 10px lower; it goes back to row 0.
+      rerender(<List ids={['a', 'b', 'c']} />)
+
+      const a = calls.filter((call) => call.id === 'a')
+      expect(a).toHaveLength(1)
+      expect(a[0].keyframes[0].transform).toBe(`translateY(${ROW + 10}px)`)
+    } finally {
+      delete proto.getAnimations
+      delete proto.getBoundingClientRect
+    }
+  })
+})

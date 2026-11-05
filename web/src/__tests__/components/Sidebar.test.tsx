@@ -1103,9 +1103,12 @@ describe('Sidebar workspace trust flow', () => {
 
     expect(drawer).toBeTruthy()
     expect(JSON.parse(drawer?.getAttribute('data-animate') ?? '{}')).toEqual({
-      x: 0,
       width: 'min(272px, calc(100vw - 2rem))',
     })
+    // Open: the drawer sits at its place (no translate), the scrim fully shown.
+    expect(drawer?.getAttribute('data-edge-drawer')).toBe('sidebar')
+    expect(drawer?.style.translate).toBe('')
+    expect(view.container.querySelector<HTMLElement>('[data-edge-drawer-scrim="sidebar"]')?.style.opacity).toBe('1')
   })
 
   it('renders a backdrop when the mobile coding sidebar is open', async () => {
@@ -1135,11 +1138,15 @@ describe('Sidebar workspace trust flow', () => {
     // Fixed to the left edge, the drawer is outside the shell's safe-area
     // padding, so it pads its own content past the cutout.
     expect(drawer?.className.split(' ')).toContain('pl-safe')
-    // Same width and closed offset, so the closed drawer stays off screen.
+    // Same width and closed offset, so the closed drawer stays off screen:
+    // 280px out (past its shadow), the scrim clear and taking no touches.
     expect(JSON.parse(drawer?.getAttribute('data-animate') ?? '{}')).toEqual({
-      x: -280,
       width: 'min(272px, calc(100vw - 2rem))',
     })
+    expect(drawer?.style.translate).toBe('-280px 0')
+    const scrim = view.container.querySelector<HTMLElement>('[data-edge-drawer-scrim="sidebar"]')
+    expect(scrim?.style.opacity).toBe('0')
+    expect(scrim?.className.split(' ')).toContain('pointer-events-none')
   })
 
   it('leaves the desktop sidebar to the shell safe-area padding', async () => {

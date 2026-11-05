@@ -38,4 +38,16 @@ describe('island.css', () => {
   it('has a reduced-motion fallback', () => {
     expect(CSS).toContain('@media (prefers-reduced-motion: reduce)')
   })
+
+  // A filter animates on a repainted layer per row; the entrances use opacity
+  // and a transform only, which the compositor runs.
+  it('animates no blur on a label swap or a list row', () => {
+    for (const name of ['island-swap-in', 'island-row-in']) {
+      const keyframes = CSS.match(new RegExp(`@keyframes ${name}\\s*\\{([\\s\\S]*?)\\n\\}`))?.[1] ?? ''
+      expect(keyframes).toContain('opacity: 0')
+      expect(keyframes).toContain('transform:')
+      expect(keyframes).not.toContain('filter')
+    }
+    expect(CSS).not.toMatch(/filter:\s*blur\(/)
+  })
 })

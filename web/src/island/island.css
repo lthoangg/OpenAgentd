@@ -211,7 +211,8 @@ button:focus-visible {
   white-space: nowrap;
 }
 
-/* A changed label (Working → Needs input → Done) blurs in. */
+/* A changed label (Working → Needs input → Done) settles in. No blur: it
+ * would repaint a filtered layer on every frame of a label this small. */
 .island-swap {
   animation: island-swap-in var(--motion-base) var(--ease-out);
 }
@@ -219,7 +220,6 @@ button:focus-visible {
 @keyframes island-swap-in {
   from {
     opacity: 0;
-    filter: blur(4px);
     transform: scale(0.92);
   }
 }
@@ -310,7 +310,6 @@ button:focus-visible {
 @keyframes island-row-in {
   from {
     opacity: 0;
-    filter: blur(3px);
     transform: translateY(-6px);
   }
 }

@@ -1,5 +1,6 @@
 import { Loader2, X } from 'lucide-react'
 import type { SessionResponse } from '@/api/types'
+import { IconSwap } from '@/components/ui/swap'
 import { sessionWorking } from '@/lib/active-sessions'
 
 export type SessionStatus = 'needs_input' | 'running' | 'unread' | 'failed' | 'idle'
@@ -65,18 +66,28 @@ export function SessionStateWord({ status, className = '' }: { status: SessionSt
   )
 }
 
-/** One fixed slot per row, so titles stay aligned whatever the state. */
+/**
+ * One fixed slot per row, so titles stay aligned whatever the state. A new
+ * state replaces the old mark the SF Symbols way (``IconSwap``): the spinner
+ * shrinks away as the dot or ✗ springs up.
+ */
 export function SessionStatusMark({ status, label }: { status: SessionStatus; label?: string }) {
-  if (status === 'idle') return <span className="size-3 shrink-0" aria-hidden="true" />
-  const name = label ?? DEFAULT_LABELS[status]
+  const idle = status === 'idle'
   return (
-    <span role="img" aria-label={name} className="flex size-3 shrink-0 items-center justify-center">
-      {status === 'needs_input' && (
-        <span className="text-meta font-bold leading-none text-(--accent-orange-text)" aria-hidden="true">!</span>
-      )}
-      {status === 'running' && <Loader2 size={11} className="animate-spin text-(--color-accent)" aria-hidden="true" />}
-      {status === 'unread' && <span className="size-1.5 rounded-full bg-(--color-accent)" aria-hidden="true" />}
-      {status === 'failed' && <X size={11} strokeWidth={2.5} className="text-(--color-error)" aria-hidden="true" />}
+    <span
+      role={idle ? undefined : 'img'}
+      aria-label={idle ? undefined : label ?? DEFAULT_LABELS[status]}
+      aria-hidden={idle || undefined}
+      className="flex size-3 shrink-0 items-center justify-center"
+    >
+      <IconSwap swapKey={status}>
+        {status === 'needs_input' && (
+          <span className="text-meta font-bold leading-none text-(--accent-orange-text)" aria-hidden="true">!</span>
+        )}
+        {status === 'running' && <Loader2 size={11} className="animate-spin text-(--color-accent)" aria-hidden="true" />}
+        {status === 'unread' && <span className="size-1.5 rounded-full bg-(--color-accent)" aria-hidden="true" />}
+        {status === 'failed' && <X size={11} strokeWidth={2.5} className="text-(--color-error)" aria-hidden="true" />}
+      </IconSwap>
     </span>
   )
 }

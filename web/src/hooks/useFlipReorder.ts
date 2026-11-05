@@ -21,39 +21,63 @@
  *   the visible ones are worth a compositor layer.
  * - The first commit only records the baseline: lists never animate in.
  * - Off under `prefers-reduced-motion`, and where `Element.animate` is missing.
+ * - A second reorder landing mid-slide starts from where the row is drawn
+ *   (transform included), not from where its layout was, so nothing jumps.
+ *
+ * Options: `axis: 'x'` slides a horizontal strip (the dock's tab bar) from
+ * `offsetLeft`; `attr` names the id attribute (default `data-flip-id`);
+ * `enter: 'rise'` brings new rows in at `fast` from 2px below instead of the
+ * `base` fade; `skip` is asked on every order change and, when true, records
+ * the new order without animating (a drag already moved the rows). A
+ * horizontal strip re-reads positions on every commit, since a tab that
+ * changes width moves its neighbours without a resize of the strip.
  */
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { DURATIONS_S, EASINGS } from '@/lib/motion'
+import { DURATIONS_S, EASINGS, cssEasing } from '@/lib/motion'
 
-const EASE = `cubic-bezier(${EASINGS.out.join(', ')})`
+const EASE = cssEasing(EASINGS.out)
 
-/** Top of `el` relative to `root`, from layout (transforms ignored). */
-function layoutTop(el: HTMLElement, root: HTMLElement): number {
-  let top = 0
+export interface FlipReorderOptions {
+  /** Slide vertically (default, lists) or horizontally (a tab strip). */
+  axis?: 'x' | 'y'
+  /** The attribute rows carry their stable id in (default `data-flip-id`). */
+  attr?: string
+  /** How a row that was not listed before arrives. */
+  enter?: 'fade' | 'rise'
+  /** True to take an order change without animating it. */
+  skip?: () => boolean
+}
+
+type Axis = 'x' | 'y'
+
+/** Start of `el` relative to `root` along `axis`, from layout (transforms ignored). */
+function layoutStart(el: HTMLElement, root: HTMLElement, axis: Axis): number {
+  const offset = (node: HTMLElement) => (axis === 'x' ? node.offsetLeft : node.offsetTop)
+  let start = 0
   let node: HTMLElement | null = el
   while (node && node !== root) {
-    top += node.offsetTop
+    start += offset(node)
     const parent = node.offsetParent as HTMLElement | null
     // An offsetParent above the root: measure both against it instead.
-    if (parent && !root.contains(parent)) return top - root.offsetTop
+    if (parent && !root.contains(parent)) return start - offset(root)
     node = parent
   }
-  return top
+  return start
 }
 
-function flipRows(root: HTMLElement): HTMLElement[] {
-  return Array.from(root.querySelectorAll<HTMLElement>('[data-flip-id]'))
+function flipRows(root: HTMLElement, attr: string): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(`[${attr}]`))
 }
 
-function rowOrder(rows: readonly HTMLElement[]): string {
-  return rows.map((row) => row.dataset.flipId).join('\n')
+function rowOrder(rows: readonly HTMLElement[], attr: string): string {
+  return rows.map((row) => row.getAttribute(attr)).join('\n')
 }
 
-function measure(rows: readonly HTMLElement[], root: HTMLElement): Map<string, number> {
-  const tops = new Map<string, number>()
-  for (const row of rows) tops.set(row.dataset.flipId!, layoutTop(row, root))
-  return tops
+function measure(rows: readonly HTMLElement[], root: HTMLElement, attr: string, axis: Axis): Map<string, number> {
+  const starts = new Map<string, number>()
+  for (const row of rows) starts.set(row.getAttribute(attr)!, layoutStart(row, root, axis))
+  return starts
 }
 
 /** Nearest scrolling ancestor, which clips the rows. */
@@ -78,9 +102,12 @@ function visibleBand(root: HTMLElement): { top: number; bottom: number } | null 
   return { top, bottom: top + scroller.clientHeight }
 }
 
-export function useFlipReorder(rootRef: RefObject<HTMLElement | null>): void {
+export function useFlipReorder(rootRef: RefObject<HTMLElement | null>, options: FlipReorderOptions = {}): void {
+  const { axis = 'y', attr = 'data-flip-id', enter = 'fade' } = options
   const reducedMotion = useReducedMotion()
   const previous = useRef<{ order: string; tops: Map<string, number> } | null>(null)
+  const skipRef = useRef(options.skip)
+  skipRef.current = options.skip
 
   // The height changed without the order changing: rows moved, so the next
   // reorder must start from where they are now.
@@ -93,42 +120,64 @@ export function useFlipReorder(rootRef: RefObject<HTMLElement | null>): void {
       if (next === height) return
       height = next
       if (!previous.current) return
-      const rows = flipRows(root)
-      previous.current = { order: rowOrder(rows), tops: measure(rows, root) }
+      const rows = flipRows(root, attr)
+      previous.current = { order: rowOrder(rows, attr), tops: measure(rows, root, attr, axis) }
     })
     observer.observe(root)
     return () => observer.disconnect()
-  }, [rootRef])
+  }, [rootRef, attr, axis])
 
   // No deps: every commit of the owner checks the order, which is cheap.
   useLayoutEffect(() => {
     const root = rootRef.current
     if (!root) return
-    const rows = flipRows(root)
-    const order = rowOrder(rows)
+    const rows = flipRows(root, attr)
+    const order = rowOrder(rows, attr)
     const before = previous.current
-    if (before?.order === order) return
-    const tops = measure(rows, root)
+    if (before?.order === order) {
+      if (axis === 'x') previous.current = { order, tops: measure(rows, root, attr, axis) }
+      return
+    }
+    const tops = measure(rows, root, attr, axis)
     previous.current = { order, tops }
     if (!before || reducedMotion) return
+    if (skipRef.current?.()) return
 
-    const band = visibleBand(root)
+    const band = axis === 'y' ? visibleBand(root) : null
     const seen = (top: number, height: number) => !band || (top + height > band.top && top < band.bottom)
     const duration = DURATIONS_S.base * 1000
+    const enterDuration = (enter === 'rise' ? DURATIONS_S.fast : DURATIONS_S.base) * 1000
+    const enterFrom: Keyframe = enter === 'rise' ? { opacity: 0, transform: 'translateY(2px)' } : { opacity: 0 }
+    const enterTo: Keyframe = enter === 'rise' ? { opacity: 1, transform: 'none' } : { opacity: 1 }
+    const move = (px: number) => (axis === 'x' ? `translateX(${px}px)` : `translateY(${px}px)`)
     for (const row of rows) {
       if (typeof row.animate !== 'function') return
-      const id = row.dataset.flipId!
+      const id = row.getAttribute(attr)!
       const from = before.tops.get(id)
       const to = tops.get(id)!
-      const delta = from === undefined ? null : from - to
+      // Slides and fades only: a colour transition on the row is not motion to follow.
+      const running = (row.getAnimations?.() ?? []).filter((anim) => !('transitionProperty' in anim))
+      // Mid-slide, the row is drawn off its layout spot: start from there.
+      // The drawn position includes the running transform, the layout one
+      // does not, so the difference of the two rects is that transform.
+      let drawn = 0
+      if (running.length > 0) {
+        const axisStart = (rect: DOMRect) => (axis === 'x' ? rect.left : rect.top)
+        const drawnAt = axisStart(row.getBoundingClientRect())
+        for (const anim of running) {
+          anim.finished.catch(() => {})
+          anim.cancel()
+        }
+        drawn = drawnAt - axisStart(row.getBoundingClientRect())
+      }
+      const delta = from === undefined ? null : from - to + drawn
       if (delta !== null && Math.abs(delta) < 1) continue
-      const height = row.offsetHeight
-      if (!seen(to, height) && (from === undefined || !seen(from, height))) continue
-      for (const running of row.getAnimations?.() ?? []) running.cancel()
+      const size = axis === 'x' ? row.offsetWidth : row.offsetHeight
+      if (!seen(to, size) && (from === undefined || !seen(from, size))) continue
       if (delta === null) {
-        row.animate([{ opacity: 0 }, { opacity: 1 }], { duration, easing: EASE })
+        row.animate([enterFrom, enterTo], { duration: enterDuration, easing: EASE })
       } else {
-        row.animate([{ transform: `translateY(${delta}px)` }, { transform: 'none' }], { duration, easing: EASE })
+        row.animate([{ transform: move(delta) }, { transform: 'none' }], { duration, easing: EASE })
       }
     }
   })

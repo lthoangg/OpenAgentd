@@ -155,6 +155,7 @@ const ActiveAgentView = memo(function ActiveAgentView({
       onRetry={onRetry}
       onSwitchModel={onSwitchModel}
       jumpToLatestInComposer={jumpToLatestInComposer}
+      marksScrollEdge
     />
   )
 })
@@ -337,8 +338,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleOpenGoal,
     handleOpenTerminal,
     edgeSwipeHandlers,
-    sidebarDragOffset,
-    workspacePanelDragOffset,
   } = useOverlayState({
     isMobile,
     workspace,
@@ -815,6 +814,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     // h-dvh handles iOS Safari's dynamic toolbar.
     <div
       className="mobile-safe-shell mobile-viewport flex h-dvh flex-col bg-(--bg-page)"
+      data-chat-shell=""
       {...edgeSwipeHandlers}
       // Files dropped anywhere in the window (header, sidebar, dock) attach
       // to the composer, so this opts the whole shell out of the stray-drop
@@ -829,7 +829,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       {isDraggingFile && (
         <div className="pointer-events-none fixed inset-0 z-50 p-4 drag-overlay-enter">
           <div className="w-full h-full rounded-lg border-2 border-dashed border-(--color-accent)/30 bg-(--bg-card)/80 backdrop-blur-xs reduce-transparency:bg-(--bg-card) reduce-transparency:backdrop-blur-none flex flex-col items-center justify-center gap-2 drag-card-enter">
-            <FileUp size={24} className="text-(--color-accent) animate-pulse" />
+            <FileUp size={24} className="text-(--color-accent) oa-breathe" />
             <span className="text-sm font-medium text-(--color-text)">
               Drop files to attach
             </span>
@@ -873,7 +873,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             drawer={sidebarDrawer}
             dockOpen={Boolean(workspace) && workspacePanel !== null}
             mobileOpen={mobileSidebarOpen}
-            mobileDragOffset={sidebarDragOffset}
             onOpenPalette={handleTogglePalette}
             onMobileClose={() => {
               setMobileSidebarOpen(false)
@@ -1061,7 +1060,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               slideIn={dockSlidesIn}
               chatWorkspace={isChatWorkspace}
               mobile={isMobile}
-              mobileDragOffset={workspacePanelDragOffset}
               centerRef={centerRef}
               selectedFilePath={fileViewer?.path ?? null}
               selectedFileOpenKey={fileOpenKey}

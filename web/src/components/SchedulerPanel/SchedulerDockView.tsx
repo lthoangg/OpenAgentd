@@ -60,7 +60,7 @@ export function SchedulerDockView({ contextWorkspace }: { contextWorkspace: stri
       {provide(
       <div className="@container flex h-full min-h-0 flex-col">
         {pane === 'detail' && selectedTask ? (
-          <TaskDetailView task={selectedTask} onClose={guardedBackToList} closeMode="back" />
+          <TaskDetailView key={selectedTask.id} task={selectedTask} onClose={guardedBackToList} closeMode="back" />
         ) : pane === 'create' ? (
           <CreateTaskForm
             key={`create-${contextWorkspace ?? ''}`}

@@ -22,6 +22,7 @@ mod badge;
 mod context_menu;
 mod app_menu;
 mod share;
+mod haptics;
 mod global_shortcuts;
 mod caption;
 
@@ -674,6 +675,7 @@ fn main() {
             caption::show_snap_layouts,
             badge::set_attention_badge,
             share::share_url,
+            haptics::haptic_alignment,
             tray_popup::get_tray_usage_summary,
             tray_popup::tray_action,
             tray_popup::tray_fit,

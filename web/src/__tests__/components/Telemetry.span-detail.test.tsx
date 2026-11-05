@@ -24,6 +24,19 @@ function span(attributes: Record<string, unknown>): SpanDetail {
 }
 
 describe('SpanDetailPanel', () => {
+  it('fades the detail in at fast and restarts the fade for another span', () => {
+    const { rerender } = render(<SpanDetailPanel span={span({})} onClose={() => {}} />)
+    const first = screen.getByRole('complementary', { name: 'Span detail' }).firstElementChild as HTMLElement
+    expect(first.className).toContain('oa-fade-in-fast')
+
+    rerender(<SpanDetailPanel span={span({})} onClose={() => {}} />)
+    expect(screen.getByRole('complementary', { name: 'Span detail' }).firstElementChild).toBe(first)
+
+    rerender(<SpanDetailPanel span={{ ...span({}), span_id: 'span-other' }} onClose={() => {}} />)
+    // A new element, so the CSS animation plays again.
+    expect(screen.getByRole('complementary', { name: 'Span detail' }).firstElementChild).not.toBe(first)
+  })
+
   it('renders estimated model-call cost as a "Spend (est.)" row, not a card', () => {
     render(
       <SpanDetailPanel

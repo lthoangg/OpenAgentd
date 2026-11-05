@@ -106,7 +106,8 @@ export function TaskDetailView({
   const pauseLabel = task.status === 'paused' ? 'Resume' : 'Pause'
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-(--bg-page)">
+    // Keyed by task in the parents: choosing another task fades its detail in.
+    <div className="oa-fade-in-fast flex flex-1 flex-col overflow-hidden bg-(--bg-page)">
       {/* Header */}
       <div className={headerClass}>
         <div className="flex items-start justify-between gap-3">

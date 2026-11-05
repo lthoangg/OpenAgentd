@@ -31,6 +31,7 @@ import { TerminalTabButton } from '../Terminal/TerminalTabButton'
 import type { OS } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
+import { useFlipReorder } from '@/hooks/useFlipReorder'
 import { cn } from '@/lib/utils'
 import type { TerminalSessionMeta } from '@/stores/useTerminalStore'
 import {
@@ -324,6 +325,15 @@ export function DockTabBar({
   )
   // The tab list shows only when the strip cannot show every tab.
   const scrollerRef = useRef<HTMLDivElement>(null)
+  // A closed tab's right-hand neighbours slide left into the gap and a new
+  // tab rises in. A tab being dragged (or just dropped inside the strip) has
+  // already moved the others, see ``useTabDrag``.
+  useFlipReorder(scrollerRef, {
+    axis: 'x',
+    attr: DOCK_TAB_ATTR,
+    enter: 'rise',
+    skip: () => drag.draggingId !== null || drag.reorderedByDrag(),
+  })
   const [overflowing, setOverflowing] = useState(false)
   useEffect(() => {
     const node = scrollerRef.current

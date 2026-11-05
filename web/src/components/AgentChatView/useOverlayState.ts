@@ -198,8 +198,6 @@ export interface UseOverlayStateResult {
   openRightDrawer: () => void
 
   edgeSwipeHandlers: EdgeSwipeHandlers
-  sidebarDragOffset: number | null
-  workspacePanelDragOffset: number | null
 }
 
 export function useOverlayState({
@@ -662,7 +660,9 @@ export function useOverlayState({
     setWorkspacePanel((value) => value ?? 'changed')
   }, [closeOtherMobileOverlays, workspacePanelOpenForSwipe])
 
-  const { handlers: edgeSwipeHandlers, drag: edgeSwipeDrag } = useEdgeSwipe({
+  // The drawers follow the finger through ``lib/drawer-motion`` (DOM writes,
+  // no state), so this view does not re-render per touchmove.
+  const { handlers: edgeSwipeHandlers } = useEdgeSwipe({
     activeDrawer,
     left: { id: 'sidebar', open: openLeftDrawer },
     right: workspacePanelOpenForSwipe ? { id: 'workspace-panel', open: openRightDrawer } : undefined,
@@ -672,11 +672,6 @@ export function useOverlayState({
   // Android Back closes an open drawer before it navigates. Drawers are not
   // keyboard layers, so they register with the Back handler directly.
   useBackHandler(isMobile && (activeDrawer !== null || fileViewer !== null), closeAllDrawers)
-
-  // Live drag offset (px) per drawer, fed to each drawer so it tracks the
-  // finger. Each drawer reads only its own id; null when not being dragged.
-  const sidebarDragOffset = edgeSwipeDrag?.drawerId === 'sidebar' ? edgeSwipeDrag.offset : null
-  const workspacePanelDragOffset = edgeSwipeDrag?.drawerId === 'workspace-panel' ? edgeSwipeDrag.offset : null
 
   return {
     mobileSidebarOpen,
@@ -743,7 +738,5 @@ export function useOverlayState({
     openRightDrawer,
 
     edgeSwipeHandlers,
-    sidebarDragOffset,
-    workspacePanelDragOffset,
   }
 }

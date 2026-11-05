@@ -5,9 +5,7 @@ import { useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
 import { queryKeys } from '@/queries/keys'
 import { getSession } from '@/api/client/agent'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
-import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { DURATIONS_S } from '@/lib/motion'
-import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
+import { Collapsible } from '@/components/ui/collapsible'
 import type { SessionResponse } from '@/api/types'
 import { sessionActivityTime } from '../Sidebar.helpers'
 import { DraftSessionRow, SessionRow, SessionRowsSkeleton, ShowMoreRow, useStableSessionHandlers, type MenuPoint } from './SessionRow'
@@ -71,21 +69,22 @@ export function WorkspaceSessionList({
   onSessionPinToggle?: (session: SessionResponse) => void
 }) {
   const multiCheckout = paths !== undefined && paths.length > 1
-  // Collapsing folds the list away (the Collapsible around it): keep the
-  // expanded rows on screen until that motion ends, or the fold would close
-  // over an already emptied list.
-  const reduced = useReducedMotion() ?? false
-  const { mounted: holdExpanded } = useDeferredUnmount(!collapsedProp, reduced ? 0 : DURATIONS_S.base * 1000)
-  const collapsed = collapsedProp && !holdExpanded
+  const collapsed = collapsedProp
   const sessions = useWorkspaceSessionsQuery(multiCheckout ? paths : path, !collapsed)
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = sessions
   // An older server ignores the multi-checkout filter and sends every
   // workspace's sessions, so keep only the listed checkouts.
   const listed = (session: SessionResponse) => !multiCheckout || paths.includes(session.workspace ?? '')
   // Collapsed, only working sessions show; pinned ones already sit in Pinned.
-  const workspaceSessions = collapsed
-    ? (runningSessions ?? []).filter((session) => !session.pinned_at)
-    : (sessions.data?.pages.flatMap((page) => page.data).filter(listed) ?? [])
+  const working = (runningSessions ?? []).filter((session) => !session.pinned_at)
+  const workingIds = new Set(working.map((session) => session.id))
+  // The loaded list stays (its cache outlives the fold), so collapsing folds
+  // the idle rows away one by one around the working ones, and expanding
+  // unfolds them, instead of holding the list and then swapping it.
+  const loaded = sessions.data?.pages.flatMap((page) => page.data).filter(listed)
+  const workspaceSessions = loaded
+    ? [...loaded, ...working.filter((session) => !loaded.some((row) => row.id === session.id))]
+    : collapsed ? working : []
 
   // The open session can sit past the loaded page (opened from the palette
   // or a link). Keep it in view: fetch it once and list it after the page.
@@ -139,8 +138,8 @@ export function WorkspaceSessionList({
         const isCurrent = session.id === currentSessionId
         const workspace = session.workspace || path
         return (
+          <Collapsible key={session.id} open={!collapsed || workingIds.has(session.id)}>
           <SessionRow
-            key={session.id}
             session={session}
             isCurrent={isCurrent}
             isEditing={session.id === editingSessionId}
@@ -151,11 +150,12 @@ export function WorkspaceSessionList({
             mobileLongPressActions={mobileLongPressActions}
             {...handlers}
           />
+          </Collapsible>
         )
       })}
-      {!collapsed && hasNextPage && (
+      <Collapsible open={!collapsed && hasNextPage === true}>
         <ShowMoreRow loading={isFetchingNextPage} onLoadMore={() => { void fetchNextPage() }} />
-      )}
+      </Collapsible>
     </div>
   )
 }

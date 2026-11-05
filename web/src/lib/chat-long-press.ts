@@ -12,6 +12,10 @@
  * the finger moves too far, lifts, is taken over by a scroll or a system
  * gesture, or a second finger lands. Text the user is selecting keeps the
  * system's own callout (Copy, Look Up): nothing opens over a selection.
+ *
+ * While the hold runs the pressed surface carries ``data-pressing`` (index.css
+ * scales it slightly), dropped with the press — cancel, move-out, lift — and
+ * when the menu opens.
  */
 import { LONG_PRESS_MOVE_TOLERANCE, LONG_PRESS_MS } from '@/hooks/use-long-press'
 import { hasTextSelection } from '@/lib/desktop-shell'
@@ -19,12 +23,18 @@ import { hasTextSelection } from '@/lib/desktop-shell'
 /** Controls inside a surface keep their own press (a tap on Copy, a link's click). */
 const CONTROL = 'button, a[href], input, textarea, select, summary, [role="button"], [role="link"]'
 
+/** Set on the pressed surface for the length of the hold. */
+const PRESSING = 'data-pressing'
+
 const surfaces = new WeakMap<Element, () => void>()
 let registered = 0
-let press: { id: number; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null = null
+let press: { id: number; x: number; y: number; surface: Element; timer: ReturnType<typeof setTimeout> } | null = null
 
 function cancel(): void {
-  if (press) clearTimeout(press.timer)
+  if (press) {
+    clearTimeout(press.timer)
+    press.surface.removeAttribute(PRESSING)
+  }
   press = null
 }
 
@@ -52,10 +62,12 @@ function onPointerDown(event: PointerEvent): void {
   if (!surface) return
   const timer = setTimeout(() => {
     press = null
+    surface.removeAttribute(PRESSING)
     if (hasTextSelection()) return
     surfaces.get(surface)?.()
   }, LONG_PRESS_MS)
-  press = { id: event.pointerId, x: event.clientX, y: event.clientY, timer }
+  press = { id: event.pointerId, x: event.clientX, y: event.clientY, surface, timer }
+  surface.setAttribute(PRESSING, '')
 }
 
 function onPointerMove(event: PointerEvent): void {
@@ -88,6 +100,7 @@ export function registerLongPressSurface(surface: Element, onLongPress: () => vo
   }
   return () => {
     surfaces.delete(surface)
+    if (press?.surface === surface) cancel()
     if (--registered === 0) {
       cancel()
       for (const [type, handler, options] of LISTENERS) document.removeEventListener(type, handler as EventListener, options)

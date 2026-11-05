@@ -55,6 +55,14 @@ function row(label: string): HTMLElement {
   return screen.getByText(label, { selector: 'span' }).parentElement as HTMLElement
 }
 
+describe('TaskDetailView entrance', () => {
+  it('fades in at fast with the token easing, so a newly chosen task does not just swap', () => {
+    const { container } = renderDetail()
+    const root = container.firstElementChild as HTMLElement
+    expect(root.className).toContain('oa-fade-in-fast')
+  })
+})
+
 describe('TaskDetailView header', () => {
   it('names the task and its schedule, with no slug chip while the slug equals the name', () => {
     renderDetail({ name: 'daily-standup' })

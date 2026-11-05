@@ -13,12 +13,18 @@ import {
 } from '@/components/ResizableAside'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { useFakeTimers } from '../fake-timers'
+import * as realHaptics from '@/lib/haptics'
+
+const alignmentTick = mock(() => {})
+// Keep every other export real: the module registry is shared across test files.
+mock.module('@/lib/haptics', () => ({ ...realHaptics, alignmentHapticFeedback: alignmentTick }))
 
 // rAF is async in browsers: queue frames and flush them explicitly.
 const frames: FrameRequestCallback[] = []
 const realRaf = globalThis.requestAnimationFrame
 
 beforeEach(() => {
+  alignmentTick.mockClear()
   frames.length = 0
   globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => frames.push(callback)) as typeof requestAnimationFrame
 })
@@ -81,6 +87,71 @@ describe('ResizableAside', () => {
   it('renders no handle outside a ResizableAside', () => {
     render(<PanelResizeHandle edge="left" />)
     expect(screen.queryByRole('separator')).toBeNull()
+  })
+
+  describe('detent', () => {
+    const snapping = (onCommit: () => void = () => {}) => (
+      <ResizableAside
+        aria-label="Panel"
+        resize={{ width: 300, min: 200, max: 600, edge: 'right', detent: 264, onCommit, label: 'Resize panel' }}
+        getMotion={(live) => ({ animate: { width: live.width }, transition: { duration: 0 } })}
+      >
+        <PanelResizeHandle edge="right" />
+      </ResizableAside>
+    )
+
+    it('lands exactly on the default within 8px, and ticks once as it snaps in', () => {
+      const onCommit = mock(() => {})
+      render(snapping(onCommit))
+      const separator = screen.getByRole('separator', { name: 'Resize panel' })
+      fireEvent.pointerDown(separator, { button: 0, clientX: 500, pointerType: 'mouse' })
+
+      moveTo(470) // 270: within 8px of 264
+      expect(separator.getAttribute('aria-valuenow')).toBe('264')
+      expect(alignmentTick).toHaveBeenCalledTimes(1)
+
+      moveTo(468) // 268: still held, no second tick
+      expect(separator.getAttribute('aria-valuenow')).toBe('264')
+      expect(alignmentTick).toHaveBeenCalledTimes(1)
+
+      moveTo(450) // 250: out of range, follows the pointer
+      expect(separator.getAttribute('aria-valuenow')).toBe('250')
+      moveTo(466) // 266: snaps in again
+      expect(separator.getAttribute('aria-valuenow')).toBe('264')
+      expect(alignmentTick).toHaveBeenCalledTimes(2)
+
+      act(() => { window.dispatchEvent(new MouseEvent('pointerup')) })
+      expect(onCommit).toHaveBeenCalledWith(264)
+    })
+
+    it('does not snap, or tick, far from the default', () => {
+      render(snapping())
+      const separator = screen.getByRole('separator', { name: 'Resize panel' })
+      fireEvent.pointerDown(separator, { button: 0, clientX: 500, pointerType: 'mouse' })
+
+      moveTo(480) // 280
+      expect(separator.getAttribute('aria-valuenow')).toBe('280')
+      moveTo(440) // 240
+      expect(separator.getAttribute('aria-valuenow')).toBe('240')
+      expect(alignmentTick).not.toHaveBeenCalled()
+    })
+
+    it('does not tick for a drag that starts on the default', () => {
+      render(
+        <ResizableAside
+          aria-label="Panel"
+          resize={{ width: 264, min: 200, max: 600, edge: 'right', detent: 264, onCommit: () => {}, label: 'Resize panel' }}
+          getMotion={(live) => ({ animate: { width: live.width }, transition: { duration: 0 } })}
+        >
+          <PanelResizeHandle edge="right" />
+        </ResizableAside>,
+      )
+      const separator = screen.getByRole('separator', { name: 'Resize panel' })
+      fireEvent.pointerDown(separator, { button: 0, clientX: 500, pointerType: 'mouse' })
+      moveTo(503)
+      expect(separator.getAttribute('aria-valuenow')).toBe('264')
+      expect(alignmentTick).not.toHaveBeenCalled()
+    })
   })
 
   // Desktop panels show and hide as a straight cut. Through an animation the

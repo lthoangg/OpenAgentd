@@ -190,6 +190,7 @@ export function SchedulerPanel({
           <div className="@container flex flex-1 flex-col overflow-hidden">
             {selectedTask && (!isMobile || mobilePane === 'detail') ? (
               <TaskDetailView
+                key={selectedTask.id}
                 task={selectedTask}
                 onClose={() => guard(handleCloseDetail)}
                 hostTitled={isMobile}

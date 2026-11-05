@@ -135,6 +135,8 @@ export function SpanDetailPanel({
       aria-label="Span detail"
       className={`flex shrink-0 flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page) ${fullWidth ? 'w-full' : 'w-96'}`}
     >
+      {/* Keyed by span: choosing another one fades its detail in. */}
+      <div key={span.span_id} className="oa-fade-in-fast flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3">
         <SpanTypeChip category={category} error={isError} />
         <Tooltip className="min-w-0 flex-1">
@@ -222,6 +224,7 @@ export function SpanDetailPanel({
             <AttrRow k="trace_id" v={span.trace_id} />
           </Group>
         </div>
+      </div>
       </div>
     </aside>
   )

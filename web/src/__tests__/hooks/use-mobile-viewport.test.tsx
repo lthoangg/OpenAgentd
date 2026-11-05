@@ -225,6 +225,40 @@ describe('useMobileViewportGuards', () => {
     input.remove()
   })
 
+  // dismissKeyboard removes the attribute itself, ahead of the viewport's own
+  // events. If the keyboard comes back while it is still retracting, the next
+  // event reports it occluded again, and the flag must return with it.
+  it('restores keyboard-open when the keyboard reopens after a dismiss', () => {
+    const vv = installVisualViewport(460, 0) // keyboard up
+    renderHook(() => useMobileViewportGuards())
+    const root = document.documentElement
+    expect(root.hasAttribute('data-keyboard-open')).toBe(true)
+
+    dismissKeyboard()
+    expect(root.hasAttribute('data-keyboard-open')).toBe(false)
+
+    // The user taps the field again before the keyboard has gone: still occluded.
+    vv.emit('resize')
+    expect(root.hasAttribute('data-keyboard-open')).toBe(true)
+    expect(root.hasAttribute('data-vp-anim')).toBe(false)
+    expect(root.style.getPropertyValue('--app-vt')).toBe('0px')
+  })
+
+  it('stays clear after a dismiss while the keyboard really goes away', () => {
+    const vv = installVisualViewport(460, 0)
+    renderHook(() => useMobileViewportGuards())
+    const root = document.documentElement
+    dismissKeyboard()
+
+    vv.height = 800
+    vv.emit('resize')
+    expect(root.hasAttribute('data-keyboard-open')).toBe(false)
+
+    vv.height = 460
+    vv.emit('resize')
+    expect(root.hasAttribute('data-keyboard-open')).toBe(true)
+  })
+
   it('opening the keyboard clears the dismiss transition flag (stays frame-locked)', () => {
     const vv = installVisualViewport(800, 0)
     renderHook(() => useMobileViewportGuards())

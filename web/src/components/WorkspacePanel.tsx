@@ -42,6 +42,7 @@ import {
   workspaceChangesQueryOptions,
 } from '@/queries/workspace-git'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { useDrawerMotion } from '@/hooks/use-drawer-motion'
 import {
   PANEL_SLIDE_MS,
   PanelResizeHandle,
@@ -59,6 +60,7 @@ import { usePlatform } from '@/hooks/use-platform'
 import { useTouchFirst } from '@/hooks/use-touch-first'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
 import {
+  DOCK_DEFAULT_RATIO,
   DOCK_MIN_WIDTH,
   DOCK_PANE_MIN_HEIGHT,
   DOCK_PANE_MIN_WIDTH,
@@ -68,6 +70,7 @@ import {
   sideDockWidth,
   type DockLayout,
 } from '@/lib/workbench-layout'
+import { SNAP_THRESHOLD_PX, snapToDetent } from '@/lib/resize-snap'
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
@@ -77,7 +80,7 @@ import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQu
 import { goalTabTitle } from '@/lib/goal'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import { type PreviewTarget, closePreview, lastPreviewUrl, previewsAvailable } from '@/api/preview'
-import { DURATIONS_S, EASINGS } from '@/lib/motion'
+import { DURATIONS_S, EASINGS, cssEasing } from '@/lib/motion'
 import {
   type ChangedFileStatus,
   type ChangedFileInfo,
@@ -184,7 +187,6 @@ export function WorkspacePanel({
   workspace,
   open,
   mobile = false,
-  mobileDragOffset = null,
   centerRef = NO_CENTER,
   centerWidth,
   selectedFilePath = null,
@@ -223,7 +225,6 @@ export function WorkspacePanel({
    */
   slideIn?: boolean
   mobile?: boolean
-  mobileDragOffset?: number | null
   /**
    * The chat + dock region. The dock measures it itself, so the shell does
    * not re-render on every width change. Without it, the viewport is used.
@@ -417,6 +418,9 @@ export function WorkspacePanel({
   // ── Geometry ───────────────────────────────────────────────────────────────
   const dockRatio = useLayoutStore((s) => s.dockRatio)
   const dockMaximized = useLayoutStore((s) => s.dockMaximized)
+  // Maximize, restore and Escape slide the width like open and close; a
+  // drag-resize never sets this, so it stays instant.
+  const maximizeSliding = useToggleTween(dockMaximized, PANEL_SLIDE_MS) && !mobile
   // The sidebar showing or hiding changes the center: re-measured in the
   // commit its slide starts, the dock slides to its new ratio alongside it,
   // on the same curve, and the chat between them moves in one motion.
@@ -436,12 +440,16 @@ export function WorkspacePanel({
     ? { mode: 'side', width: sideDockWidth(center, dockRatio, { touch }) }
     : liveLayout
   const overlay = !mobile && layout.mode === 'overlay'
+  // The default width a drag snaps onto: where a double-click puts the edge.
+  const dockDetent = sideDockWidth(center, DOCK_DEFAULT_RATIO, { touch })
   const dockResize = {
     width: layout.width,
     min: DOCK_MIN_WIDTH,
     max: dockMaxWidth(center, { touch }),
     edge: 'left' as const,
-    onCommit: (width: number) => useLayoutStore.getState().setDockRatio(ratioFromWidth(width, center)),
+    detent: dockDetent,
+    // Snapped onto the default, it is the default ratio, not a rounded one.
+    onCommit: (width: number) => useLayoutStore.getState().setDockRatio(width === dockDetent ? DOCK_DEFAULT_RATIO : ratioFromWidth(width, center)),
     onReset: () => useLayoutStore.getState().resetDockRatio(),
     disabled: mobile || overlay || !open,
     label: 'Resize Review panel',
@@ -450,20 +458,20 @@ export function WorkspacePanel({
   // hiding (never for a drag or a window resize). Closed or sliding, the
   // body keeps its open width, clipped rather than reflowed, so it rides
   // the moving edge. The phone sheet fades and follows a swipe.
+  // The phone sheet follows an edge swipe by ``translate`` (see
+  // ``lib/drawer-motion``): no re-render per frame, and a release springs on
+  // with the finger's speed. Opening and closing fade (below) as they slide.
+  useDrawerMotion('workspace-panel', { open: shownOpen, enabled: mobile, hidden: 272, reduced: prefersReducedMotion ?? false })
   const dockMotion = ({ width, isResizing }: LiveWidth) => ({
     animate: !shownOpen
       ? (mobile ? { opacity: 0 } : { width: 0 })
       : !mobile
         ? { width: overlay ? layout.width : width }
-        : prefersReducedMotion
-          ? { opacity: 1 }
-          : mobileDragOffset !== null ? { opacity: 1, x: mobileDragOffset } : { opacity: 1, x: 0 },
-    transition: mobile && mobileDragOffset !== null
-      ? { duration: 0 }
-      : { duration: !mobile || isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
-    pinWidth: !mobile && (!open || toggle.running || sliding) ? (overlay ? layout.width : width) : undefined,
+        : { opacity: 1 },
+    transition: { duration: !mobile || isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
+    pinWidth: !mobile && (!open || toggle.running || sliding || maximizeSliding) ? (overlay ? layout.width : width) : undefined,
     instantWidth: !mobile,
-    tweenWidth: sliding || besideSliding,
+    tweenWidth: sliding || maximizeSliding || besideSliding,
   })
   // The toggle is meaningless while a narrow window already forces overlay.
   const maximizeState = mobile || (overlay && !dockMaximized) ? null : dockMaximized
@@ -811,6 +819,21 @@ export function WorkspacePanel({
   // DOM (a moved iframe reloads); F6 follows the layout (``data-focus-order``).
   const paneIds = useMemo(() => Object.keys(panes.panes).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1))), [panes.panes])
   const layoutIndex = useMemo(() => new Map(paneOrder(panes.layout).map((id, index) => [id, index])), [panes.layout])
+  // A split's new pane fades in at ``base`` (opacity only: pane sizes are
+  // never animated). The panes already there at mount, and a phone, do not.
+  const knownPanes = useRef<Set<string> | null>(null)
+  useLayoutEffect(() => {
+    const known = knownPanes.current
+    knownPanes.current = new Set(paneIds)
+    if (!known || mobile || prefersReducedMotion) return
+    for (const id of paneIds) {
+      if (known.has(id)) continue
+      const node = panesRef.current?.querySelector<HTMLElement>(`[data-dock-pane="${id}"]`)
+      if (node && typeof node.animate === 'function') {
+        node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DURATIONS_S.base * 1000, easing: cssEasing(EASINGS.out) })
+      }
+    }
+  }, [paneIds, mobile, prefersReducedMotion])
   // The panel-wide Maximize sits on the top-right pane, as in an editor.
   const cornerPane = useMemo(() => {
     let best: PaneId | null = null
@@ -841,18 +864,23 @@ export function WorkspacePanel({
     const size = row ? bar.box.width * rect.width : bar.box.height * rect.height
     return size > 0 ? { start, size, min: (row ? DOCK_PANE_MIN_WIDTH : DOCK_PANE_MIN_HEIGHT) / size } : null
   }
-  const dragBar = (bar: SplitBar, clientX: number, clientY: number, done: boolean) => {
+  /** Moves a bar to a pointer position; answers whether it snapped onto the even split. */
+  const dragBar = (bar: SplitBar, clientX: number, clientY: number, done: boolean): boolean => {
     const node = splitAt(bar.path)
     const extent = barExtent(bar)
-    if (!node || !extent) return
-    const at = ((bar.axis === 'row' ? clientX : clientY) - extent.start) / extent.size
+    if (!node || !extent) return false
+    const pointer = ((bar.axis === 'row' ? clientX : clientY) - extent.start) / extent.size
+    // ``evenOut`` gives each shown pane an equal share: the bar's detent.
+    const even = (bar.shown.indexOf(bar.before) + 1) / bar.shown.length
+    const { value: at, snapped } = snapToDetent(pointer, even, SNAP_THRESHOLD_PX / extent.size)
     const sizes = sizesWithBarAt(node.sizes, bar, at, extent.min)
     if (!done) {
       setLiveSizes({ key: bar.path.join('.'), sizes })
-      return
+      return snapped
     }
     setLiveSizes(null)
     resizeSplit(bar.path, sizes)
+    return snapped
   }
   const stepBar = (bar: SplitBar, px: number) => {
     const node = splitAt(bar.path)
@@ -1054,6 +1082,7 @@ export function WorkspacePanel({
   return (
     <ResizableAside
       aria-label="Review panel"
+      data-edge-drawer={mobile ? 'workspace-panel' : undefined}
       // Desktop sets its width as a style (``instantWidth``): no tween in or out.
       initial={mobile ? { opacity: 0 } : false}
       exit={mobile ? { opacity: 0 } : undefined}

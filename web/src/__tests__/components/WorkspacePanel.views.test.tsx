@@ -127,7 +127,7 @@ describe('Review dock Tasks tab', () => {
     expect(tab.getAttribute('aria-current')).toBe('true')
     expect(await screen.findByText('1/2 done')).toBeTruthy()
     // Rows wrap in the dock instead of truncating behind a tooltip.
-    const active = screen.getByText(/Wire the endpoint/)
+    const active = screen.getByText(/Wire the endpoint/).closest('p')!
     expect(active.className).toContain('break-words')
     expect(active.className).not.toContain('truncate')
     expect(reported.at(-1)).toBe('tasks')

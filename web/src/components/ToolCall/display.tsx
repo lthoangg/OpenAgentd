@@ -403,8 +403,9 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return {
       header: label ? <Arg>{trunc(label)}</Arg> : null,
       headerTitle: label,
-      // A long location is cut in the row; the open row shows it whole.
-      fullTarget: cutFull(label),
+      // A long location is cut in the row; the open row shows the URL
+      // whole, as fetched (scheme and ``www`` included), for Copy.
+      fullTarget: cutFull(label) ? url : null,
       formattedArgs: null,
     }
   }

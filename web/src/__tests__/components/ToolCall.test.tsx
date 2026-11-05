@@ -166,6 +166,28 @@ describe("ToolCall — shell display", () => {
     }
   })
 
+  it("shows a cut web_fetch URL whole, as fetched, as the open row's first line", async () => {
+    const user = userEvent.setup()
+    const url = `https://www.example.com/docs/${"section-".repeat(12)}end?q=1`
+    render(<ToolCall name="web_fetch" args={JSON.stringify({ url })} done={false} />)
+    await user.click(screen.getByRole("button", { name: /^Expand web_fetch details$/ }))
+    const details = document.getElementById(screen.getByRole("button", { name: "Collapse arguments" }).getAttribute("aria-controls")!)!
+    // The arguments section leads the open row, with the URL as fetched and its Copy.
+    expect(details.querySelector("p")!.textContent).toBe(url)
+    expect(screen.getByRole("button", { name: "Copy arguments" })).toBeTruthy()
+  })
+
+  it("shows a cut search query and grep pattern whole in the open row", async () => {
+    const user = userEvent.setup()
+    const long = `find ${"words ".repeat(15)}here`
+    for (const [name, args] of [["web_search", { query: long }], ["grep", { pattern: long }]] as const) {
+      const { unmount } = render(<ToolCall name={name} args={JSON.stringify(args)} done={false} />)
+      await user.click(screen.getByRole("button", { name: new RegExp(`^Expand ${name} details$`) }))
+      expect(screen.getByText(long)).toBeTruthy()
+      unmount()
+    }
+  })
+
 
   it("shows command string as args instead of JSON", async () => {
     const user = userEvent.setup()
@@ -501,9 +523,9 @@ describe("ToolCall — web_fetch display", () => {
     expectPlainArg(header, "nytimes.com/2024/03/15/technology/artificial-intelligence-re…")
     expect(screen.getByText("nytimes.com/2024/03/15/technology/artificial-intelligence-re…")).toBeTruthy()
     expect(header.textContent).not.toContain("regulation-europe")
-    // …and the open row shows the location whole (www stripped).
+    // …and the open row shows the URL whole, as fetched.
     fireEvent.click(screen.getByRole("button", { name: "Expand web_fetch details" }))
-    expect(screen.getByText("nytimes.com/2024/03/15/technology/artificial-intelligence-regulation-europe.html")).toBeTruthy()
+    expect(screen.getByText(url)).toBeTruthy()
   })
 
   it("truncates a long URL carrying a fragment", () => {

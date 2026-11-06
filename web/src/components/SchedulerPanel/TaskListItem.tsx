@@ -185,7 +185,6 @@ export function TaskListItem({
     {phoneSheet ? (
       <ActionSheet
         open={actionsPoint !== null}
-        cancel={false}
         onClose={() => setActionsPoint(null)}
         title={task.name}
         items={[

@@ -1,8 +1,8 @@
 /**
  * ActionSheet — a phone's long-press (or ⋯) menu: a bottom sheet with an
- * optional title, 44px action rows, and a Cancel row in its own group, as
- * iOS's action sheet. Every phone menu uses it, so they share the row
- * height, the destructive tone, and the way out.
+ * optional title and 44px action rows, as iOS's action sheet. Every phone
+ * menu uses it, so they share the row height and the destructive tone. A tap
+ * outside or a pull down closes it; there is no Cancel row (user request).
  *
  * A row closes the sheet before it runs, so a confirm it opens is not
  * stacked under the sheet. The haptic belongs to the gesture that opened
@@ -43,11 +43,11 @@ export interface ActionSheetProps {
   title: string
   description?: string
   items: ActionSheetItem[]
-  /** The Cancel row; off where the sheet is short and a tap outside or a pull closes it. Default on. */
+  /** A Cancel row. Off by default: a tap outside or a pull down closes the sheet. */
   cancel?: boolean
 }
 
-export function ActionSheet({ open, onClose, title, description, items, cancel = true }: ActionSheetProps) {
+export function ActionSheet({ open, onClose, title, description, items, cancel = false }: ActionSheetProps) {
   return (
     <BottomSheet open={open} onClose={onClose} label={title}>
       <div data-action-sheet="" className="flex flex-col gap-2 px-2 pb-2">

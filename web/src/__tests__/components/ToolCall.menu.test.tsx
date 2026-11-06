@@ -254,7 +254,7 @@ describe('long press on a tool row (touch)', () => {
     expect(sheet.getAttribute('data-bottom-sheet')).toBe('')
     expect(screen.queryByRole('menu')).toBeNull()
     expect(haptics).toEqual(['medium'])
-    expect(Array.from(sheet.querySelectorAll('button')).map((item) => item.textContent)).toEqual(['Open web/src/a.tsx', 'Open web/src/b.ts', 'Open src/new-name.ts', 'Cancel'])
+    expect(Array.from(sheet.querySelectorAll('button')).map((item) => item.textContent)).toEqual(['Open web/src/a.tsx', 'Open web/src/b.ts', 'Open src/new-name.ts'])
 
     // The finger lifts: some touch browsers send a click after a hold.
     fireEvent.pointerUp(surface, touch())
@@ -349,6 +349,6 @@ describe('long press on a tool row (touch)', () => {
     fireEvent.pointerDown(surfaceOf(button), touch())
     await hold()
     const sheet = screen.getByRole('dialog', { name: 'Actions for patch' })
-    expect(Array.from(sheet.querySelectorAll('button')).map((item) => item.textContent)).toEqual(['Open web/src/a.tsx', 'Open web/src/b.ts', 'Open src/new-name.ts', 'Cancel'])
+    expect(Array.from(sheet.querySelectorAll('button')).map((item) => item.textContent)).toEqual(['Open web/src/a.tsx', 'Open web/src/b.ts', 'Open src/new-name.ts'])
   })
 })

@@ -28,7 +28,7 @@ describe('UserBubble on a phone', () => {
     await hold(screen.getByText('Fix the build'))
     const sheet = screen.getByRole('dialog', { name: 'Prompt' })
     const labels = Array.from(sheet.querySelectorAll('button')).map((b) => b.textContent)
-    expect(labels).toEqual(['Edit and resend', 'Copy', 'Revert to here', 'Cancel'])
+    expect(labels).toEqual(['Edit and resend', 'Copy', 'Revert to here'])
     fireEvent.click(within(sheet).getByRole('button', { name: 'Revert to here' }))
     expect(onRevert).toHaveBeenCalled()
   })

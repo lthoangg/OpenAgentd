@@ -1034,8 +1034,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             title="Session not found"
             body="It may have been deleted, or the link is wrong."
             action={
-              <Button type="button" onClick={() => navigate({ to: '/', replace: true })}>
-                New session
+              // A phone's way back is the Sessions list it came from.
+              <Button type="button" onClick={() => navigate({ to: isPhone ? '/sessions' : '/', replace: true })}>
+                {isPhone ? 'Back to Sessions' : 'New session'}
               </Button>
             }
           />

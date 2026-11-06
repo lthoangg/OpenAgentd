@@ -1913,8 +1913,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     into a chip while you type, and a half-written comment survives closing
     the sheet. Request changes and Approve stay in reach.
   - The chat re-pins to the newest message when the keyboard opens, Send and
-    Steer keep the keyboard up, and dragging or tapping the transcript puts
-    it away.
+    Steer keep the keyboard up, and tapping the transcript puts it away.
+    Since `[v3.49.0]` scrolling the transcript keeps the keyboard up, so you
+    can read while you type; a swipe down on the composer still puts it away.
   - Menus, the model list, the palette and dialogs open in the space above
     the keyboard; sheets no longer raise it on open.
   - Fields for ids, paths, URLs and keys skip autocorrect and

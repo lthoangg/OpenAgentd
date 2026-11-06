@@ -583,7 +583,14 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   return (
     <div ref={rootRef} className="flex h-full min-h-0 flex-col">
       {/* 40px (44px on touch): the address field is 32px (36px on touch), taller than the 28px tool buttons. */}
-      <div className="flex min-h-10 shrink-0 items-center gap-0.5 border-b border-(--color-border-subtle) bg-(--bg-page) px-1 py-1">
+      {/* A phone puts the bar at the bottom, in thumb reach, as Safari does (mockup J7). */}
+      <div
+        data-preview-toolbar={phone ? 'bottom' : 'top'}
+        className={cn(
+          'flex min-h-10 shrink-0 items-center gap-0.5 border-(--color-border-subtle) bg-(--bg-page) px-1 py-1',
+          phone ? 'order-last border-t pb-[max(0.25rem,env(safe-area-inset-bottom))]' : 'border-b',
+        )}
+      >
         <ToolbarButton label="Back" onClick={() => post({ type: 'history', dir: -1 })} disabled={!ready || pageDown} disabledReason={navReason('back')}>
           <ArrowLeft size={14} aria-hidden="true" />
         </ToolbarButton>
@@ -662,6 +669,11 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
             </DropdownItem>
           ))}
         </Dropdown>
+        {phone && size && (
+          <ToolbarButton label={rotated ? 'Rotate back' : 'Rotate'} onClick={() => setRotated((r) => !r)}>
+            <RotateCw size={14} aria-hidden="true" />
+          </ToolbarButton>
+        )}
         {phone ? (
           // Phones: the rarer tools share one menu, so the address keeps room.
           <Dropdown
@@ -678,7 +690,6 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
             panelClassName="w-56"
           >
             {[
-              size && <DropdownItem key="rotate" onSelect={() => setRotated((r) => !r)}>{rotated ? 'Rotate back' : 'Rotate'}</DropdownItem>,
               <DropdownItem key="console" onSelect={() => setConsoleOpen((o) => !o)}>{consoleLabel}</DropdownItem>,
               <DropdownItem key="design" disabled={designDisabled} onSelect={() => toggleDesignRef.current()}>
                 {mode === 'inspect' ? 'Stop commenting' : designDisabled ? 'Comment (unavailable on this page)' : 'Comment on an element'}

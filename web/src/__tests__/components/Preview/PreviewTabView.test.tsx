@@ -421,6 +421,14 @@ describe('PreviewTabView', () => {
     expect(screen.getByText('boom')).toBeTruthy()
   })
 
+  it('on a phone, puts the address bar at the bottom', async () => {
+    isMobile = true
+    await renderView()
+    const bar = screen.getByRole('textbox', { name: 'Preview address' }).closest('[data-preview-toolbar]')!
+    expect(bar.getAttribute('data-preview-toolbar')).toBe('bottom')
+    expect(bar.className).toContain('order-last')
+  })
+
   it('on touch, keeps the tool buttons at 28px with a 36px hit area, and the address field at 36px in a bar that grows for it', async () => {
     isMobile = true
     await renderView()

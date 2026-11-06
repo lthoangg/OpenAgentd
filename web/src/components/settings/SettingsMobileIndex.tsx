@@ -4,6 +4,10 @@
  * description. Tapping a row opens that section full-screen; the overlay's
  * Back button returns here. A query lists matching sections and single
  * settings instead.
+ *
+ * On a phone (``phone``) it reads like iOS Settings (mockup J10 10.1): a
+ * large title, a coloured icon tile per row for fast scanning, and no
+ * descriptions; those live on each section's own page.
  */
 import { ChevronRight } from 'lucide-react'
 
@@ -15,13 +19,30 @@ import { ICON_SIZE, PAGE_BODY, ROW_PAD, TEXT } from '@/components/settings/token
 import { useSettingsSectionCounts, useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
 import { cn } from '@/lib/utils'
 
+/** The icon tile's colour per section; neutral when unlisted. */
+const TILE: Partial<Record<TopLevelSection, string>> = {
+  general: 'var(--accent-orange)',
+  connection: 'var(--accent-green)',
+  agents: 'var(--accent-purple)',
+  skills: 'var(--accent-pink)',
+  mcp: 'var(--accent-orange)',
+  goals: 'var(--accent-green)',
+  providers: 'var(--color-text)',
+  media: 'var(--accent-purple)',
+  memory: 'var(--accent-pink)',
+  denied_paths: 'var(--accent-red)',
+}
+
 export function SettingsMobileIndex({
   onSelect,
   onOpenHit,
+  phone = false,
 }: {
   onSelect: (section: TopLevelSection) => void
   /** A search result: a section, or one setting inside it. Defaults to opening its section. */
   onOpenHit?: (hit: SettingsHit) => void
+  /** iOS Settings style: large title, icon tiles, no descriptions. */
+  phone?: boolean
 }) {
   const sections = useVisibleSettingsSections()
   const counts = useSettingsSectionCounts()
@@ -31,6 +52,7 @@ export function SettingsMobileIndex({
   return (
     <nav aria-label="Settings sections" className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
       <div className={cn(PAGE_BODY, 'space-y-6 pt-4 pb-12')}>
+        {phone && <h1 className="text-large-title font-bold text-(--color-text)">Settings</h1>}
         <SettingsSearchField search={search} onOpen={openHit} />
         {search.searching && <SettingsSearchResults search={search} onOpen={openHit} className="pt-0" />}
         {!search.searching && SETTINGS_GROUPS.map((group) => {
@@ -53,9 +75,19 @@ export function SettingsMobileIndex({
                       'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)',
                     )}
                   >
+                    {phone && (
+                      <span
+                        data-settings-tile=""
+                        aria-hidden="true"
+                        className="grid size-7 shrink-0 place-items-center rounded-[7px] text-(--bg-page)"
+                        style={{ background: TILE[item.id] ?? 'var(--color-text-muted)' }}
+                      >
+                        <item.icon size={16} />
+                      </span>
+                    )}
                     <span className="min-w-0 flex-1">
                       <span className={cn('block truncate', TEXT.label)}>{item.label}</span>
-                      <span className={cn('line-clamp-2', TEXT.hint)}>{item.description}</span>
+                      {!phone && <span className={cn('line-clamp-2', TEXT.hint)}>{item.description}</span>}
                     </span>
                     {count !== undefined && count !== null && (
                       <span className="shrink-0 text-meta tabular-nums text-(--color-text-muted)">

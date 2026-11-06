@@ -401,7 +401,8 @@ export function SettingsModal() {
       <div data-settings-modal="" className="group/settings flex min-h-0 flex-1 flex-col">
         <OverlayHeader
           title={
-            atIndex ? 'Settings' : phone ? sectionLabel : (
+            // A phone's index carries a large title of its own.
+            atIndex ? (phone ? '' : 'Settings') : phone ? sectionLabel : (
               <>
                 <span className="md:hidden">{sectionLabel}</span>
                 <span className="max-md:hidden">Settings</span>
@@ -423,7 +424,7 @@ export function SettingsModal() {
             <PhoneStack
               root={(
                 <div className="flex h-full min-w-0 flex-col overflow-hidden">
-                  <SettingsMobileIndex onSelect={(s) => setSection(s)} onOpenHit={openHit} />
+                  <SettingsMobileIndex phone onSelect={(s) => setSection(s)} onOpenHit={openHit} />
                 </div>
               )}
               page={page}

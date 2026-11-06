@@ -122,7 +122,7 @@ import {
 import type { CodingWorkspaceTreeRepository, SessionResponse, WorkspaceGroup, WorktreeInfo } from '@/api/types'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { WorkspaceSessionList } from './Sidebar/WorkspaceSessionList'
-import { NeedsYouSection } from './Sidebar/NeedsYouSection'
+import { NeedsYouSection, RunningSection } from './Sidebar/NeedsYouSection'
 import { ScheduledSection } from './Sidebar/ScheduledSection'
 import { SidebarConfirmDialogs } from './Sidebar/ConfirmDialogs'
 import { SidebarSectionHeader } from './Sidebar/SidebarSectionHeader'
@@ -1282,6 +1282,13 @@ export function Sidebar({
       <SidebarScroller page={isPage} onRefresh={refreshSessionList} onScroll={onListScroll}>
       {isPage && <SessionsPageHeader titleRef={titleRef} searchRef={searchButtonRef} onSearch={openSessionSearch} onOpenServers={onOpenServers} />}
       {isPage && needsYouSection}
+      {isPage && groupBy !== 'status' && (
+        <RunningSection
+          currentSessionId={currentSessionId}
+          workspaceName={workspaceDisplayName}
+          onSessionSelect={handleSessionSelect}
+        />
+      )}
       <PinnedSection
         currentSessionId={currentSessionId}
         workspaceName={workspaceDisplayName}

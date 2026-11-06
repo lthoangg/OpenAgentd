@@ -644,6 +644,34 @@ describe('Sidebar page mode: section order', () => {
     expect(screen.getAllByRole('region', { name: 'Needs you' })).toHaveLength(1)
     expect(screen.getAllByText('Approve the plan')).toHaveLength(1)
   })
+
+  // J2: the phone opens on "what needs me, what is running" before anything else.
+  const working = () => session('r-1', 'Refactor auth middleware', { running: true })
+
+  it('puts Running right under Needs you on the page', async () => {
+    activeSessionsData = [waiting(), working()]
+    pinnedSessionsData = [pin()]
+    await renderPage()
+
+    const needsYou = screen.getByRole('region', { name: 'Needs you' })
+    const running = screen.getByRole('region', { name: 'Running' })
+    expect(within(running).getByText('Refactor auth middleware')).toBeTruthy()
+    expect(before(needsYou, running)).toBe(true)
+    expect(before(running, screen.getByRole('region', { name: 'Pinned' }))).toBe(true)
+  })
+
+  it('shows no Running section when nothing runs', async () => {
+    activeSessionsData = [waiting()]
+    await renderPage()
+    expect(screen.queryByRole('region', { name: 'Running' })).toBeNull()
+  })
+
+  it('lists running sessions once in Status grouping', async () => {
+    activeSessionsData = [working()]
+    useSidebarViewStore.setState({ groupBy: 'status' })
+    await renderPage()
+    expect(screen.getAllByText('Refactor auth middleware')).toHaveLength(1)
+  })
 })
 
 describe('Sidebar page mode: deleting the chat kept under Sessions', () => {

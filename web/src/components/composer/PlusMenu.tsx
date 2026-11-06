@@ -9,17 +9,21 @@
 import { useEffect, useId, useRef } from 'react'
 import { AtSign, Hash, MessageCircleQuestion, Paperclip, Plus } from 'lucide-react'
 
-import { SessionMcpServers } from '@/components/SessionMcpServers'
 import { Button } from '@/components/ui/button'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import type { SheetDetent } from '@/components/ui/_sheet'
 import { MENU_ITEM_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { lazySurface } from '@/lib/lazy-surface'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/useUIStore'
 import { useMcpAttention } from './useMcpAttention'
+
+// The server list shows only once "+" is open: it loads while the app is idle
+// after it starts, or on first open.
+const SessionMcpServers = lazySurface(() => import('@/components/SessionMcpServers'), 'SessionMcpServers')
 
 /**
  * The phone sheet opens at medium, and a long MCP list pulls it up to large.

@@ -375,8 +375,19 @@ run from the terminal (the native Rust binary since v3.0.0).
   Since `[v3.31.0]`, pressing Install while agents are still working warns
   that restarting may interrupt their turns. You can then choose **Restart
   anyway** or **Later**.
-  Mobile leaves updates to its platform distribution channel.
+  Since `[v3.49.0]` the mobile apps check for updates too, with the same
+  card and Settings → About → Updates. Android downloads the APK, checks its
+  SHA-256 against the `latest-android` feed, and opens the system installer
+  (Android asks to allow installs from OpenAgentd once, and only accepts an
+  APK signed with the same key). iOS apps cannot install their own updates,
+  so the card opens TestFlight, or SideStore for a SideStore install.
   Earlier iterations: `[v1.18.0]`, `[v1.20.0]`, `[v1.21.0]`.
+- **Client and server versions** `[v3.49.0]` — Settings → About has a
+  **Version** section with the version of this app (desktop, iOS, Android, or
+  the web UI) and of the connected server, plus its address. When they
+  differ by a major or minor version it warns which side to update; a
+  patch-only difference gets a quiet note. The header shows the app's own
+  version (before, it showed the server's).
 - **Native app notifications** `[v1.19.0]` — finished assistant turns and
   scheduled reminders in the desktop app, plus local native
   notifications in the remote-backend mobile shell `[v1.34.0]`. Clicking a

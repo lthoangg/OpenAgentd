@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion'
 import { AlertCircle, Download, GripVertical, Loader2, Maximize2, Minus } from 'lucide-react'
-import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, installUpdate as invokeInstallUpdate, type UpdateStatus } from '@/lib/updater'
+import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, installUpdate as invokeInstallUpdate, openStoreLabel, type UpdateStatus } from '@/lib/updater'
 import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
 import { Button } from '@/components/ui/button'
 import { getPlatform } from '@/hooks/use-platform'
@@ -14,6 +14,11 @@ import { cn } from '@/lib/utils'
 import { errorMessage } from '@/utils/errors'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+
+function isMobileShell(): boolean {
+  const { isTauri, os } = getPlatform()
+  return isTauri && (os === 'ios' || os === 'android')
+}
 
 /**
  * Whether any agent is mid-turn. Restarting stops the built-in backend, which
@@ -94,6 +99,17 @@ export function UpdateCard() {
 
   const installUpdate = useCallback(async () => {
     setStatus((current) => ({ ...current, status: 'installing' }))
+    if (isMobileShell()) {
+      // Mobile hands off to the Android installer, TestFlight, or SideStore
+      // and returns; the system replaces the app if the user confirms.
+      try {
+        await invokeInstallUpdate()
+        setStatus((current) => current.channel === 'apk' ? { ...current, status: 'downloaded' } : { status: 'idle' })
+      } catch (error) {
+        setStatus((current) => ({ ...current, status: 'error', message: errorMessage(error) }))
+      }
+      return
+    }
     try {
       // The Tauri command shuts down the sidecar and then calls
       // `app.restart()`, so this promise intentionally never
@@ -122,7 +138,8 @@ export function UpdateCard() {
 
   // Install asks once while agents are working; "Restart anyway" goes on.
   const requestInstall = useCallback(() => {
-    if (agentsWorking()) {
+    // Mobile agents run on the server, so installing interrupts nothing.
+    if (!isMobileShell() && agentsWorking()) {
       setBusyWarning(true)
       setMinimized(false)
       return
@@ -151,9 +168,9 @@ export function UpdateCard() {
 
   useEffect(() => {
     const platform = getPlatform()
-    // Mobile releases are delivered by the platform distribution channel;
-    // only the desktop shell registers the custom updater commands below.
-    if (!platform.isTauri || platform.os === 'ios' || platform.os === 'android') {
+    // The desktop and mobile shells register the updater commands; the
+    // browser build has none.
+    if (!platform.isTauri) {
       setTauriReady(false)
       return
     }
@@ -270,9 +287,15 @@ export function UpdateCard() {
             </button>
 
             {status.status === 'available' && (
-              <Button type="button" variant="primary" size="xs" onClick={() => void downloadUpdate()}>
-                Download
-              </Button>
+              openStoreLabel(status) ? (
+                <Button type="button" variant="primary" size="xs" onClick={() => void installUpdate()}>
+                  {openStoreLabel(status)}
+                </Button>
+              ) : (
+                <Button type="button" variant="primary" size="xs" onClick={() => void downloadUpdate()}>
+                  Download
+                </Button>
+              )
             )}
             {status.status === 'downloaded' && (
               <Button type="button" variant="primary" size="xs" onClick={requestInstall}>
@@ -379,9 +402,15 @@ export function UpdateCard() {
                 </Button>
               ) : null}
               {status.status === 'available' ? (
-                <Button type="button" variant="primary" size="sm" onClick={() => void downloadUpdate()}>
-                  Download
-                </Button>
+                openStoreLabel(status) ? (
+                  <Button type="button" variant="primary" size="sm" onClick={() => void installUpdate()}>
+                    {openStoreLabel(status)}
+                  </Button>
+                ) : (
+                  <Button type="button" variant="primary" size="sm" onClick={() => void downloadUpdate()}>
+                    Download
+                  </Button>
+                )
               ) : null}
               {status.status === 'downloaded' ? (
                 busyWarning ? (
@@ -390,7 +419,7 @@ export function UpdateCard() {
                   </Button>
                 ) : (
                   <Button type="button" variant="primary" size="sm" onClick={requestInstall}>
-                    Install and restart
+                    {isMobileShell() ? 'Install' : 'Install and restart'}
                   </Button>
                 )
               ) : null}
@@ -438,9 +467,19 @@ function titleForStatus(status: UpdateStatus): string {
 
 function descriptionForStatus(status: UpdateStatus): string {
   if (status.message) return status.message
-  if (status.status === 'available') return `Current version: ${status.current_version}`
-  if (status.status === 'downloaded') return 'Install now to restart into the new version.'
-  if (status.status === 'installing') return 'OpenAgentd will restart when installation completes.'
+  const mobile = isMobileShell()
+  if (status.status === 'available') {
+    const how = status.channel === 'testflight'
+      ? ' Install it from TestFlight.'
+      : status.channel === 'sidestore' ? ' Install it from SideStore.' : ''
+    return `Current version: ${status.current_version}.${how}`
+  }
+  if (status.status === 'downloaded') {
+    return mobile ? 'Android asks you to confirm the install.' : 'Install now to restart into the new version.'
+  }
+  if (status.status === 'installing') {
+    return mobile ? 'Opening the installer…' : 'OpenAgentd will restart when installation completes.'
+  }
   if (status.status === 'downloading') return 'You can keep using OpenAgentd while the update downloads.'
   return ''
 }

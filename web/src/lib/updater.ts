@@ -6,6 +6,19 @@ export type UpdateStatus = {
   downloaded_bytes?: number | null
   total_bytes?: number | null
   message?: string | null
+  /**
+   * Mobile only: how the update is installed. `apk` downloads and opens the
+   * Android installer; `testflight` and `sidestore` open that app, because
+   * iOS apps cannot install their own updates. Absent on desktop.
+   */
+  channel?: 'apk' | 'testflight' | 'sidestore' | null
+}
+
+/** Button label for an available update that opens another app (iOS). */
+export function openStoreLabel(status: UpdateStatus): string | null {
+  if (status.channel === 'testflight') return 'Open TestFlight'
+  if (status.channel === 'sidestore') return 'Open SideStore'
+  return null
 }
 
 export async function checkForUpdates(silent = false): Promise<UpdateStatus> {

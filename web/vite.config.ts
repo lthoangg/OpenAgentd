@@ -1,4 +1,5 @@
 import path from "path"
+import { readFileSync } from "fs"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import svgr from "vite-plugin-svgr"
@@ -40,6 +41,12 @@ logger.warnOnce = (msg, options) => {
 // https://vite.dev/config/
 export default defineConfig({
   customLogger: logger,
+  define: {
+    // Shown as the client version in Settings → About (lib/app-version.ts).
+    __APP_VERSION__: JSON.stringify(
+      JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version,
+    ),
+  },
   plugins: [
     // Drop never-fetched woff/ttf fallbacks (KaTeX) from the bundle.
     woff2OnlyFonts(),

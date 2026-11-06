@@ -18,6 +18,7 @@ import { InlineCodeText } from '@/components/InlineCodeText'
 import { Collapsible } from '@/components/ui/collapsible'
 import { parseGoalClaim, type GoalClaim } from '@/lib/goal'
 import { cn } from '@/lib/utils'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
 
 function Evidence({ items, label, defaultOpen }: { items: string[]; label: string; defaultOpen: boolean }) {
@@ -26,6 +27,9 @@ function Evidence({ items, label, defaultOpen }: { items: string[]; label: strin
   const [toggled, setToggled] = useState<boolean | null>(null)
   const open = toggled ?? defaultOpen
   const listId = useId()
+  // A phone reads the evidence as a 44pt list, one hairline-split row per
+  // item, since that is what the user judges the claim by (mockup J6).
+  const isPhone = useIsPhone()
   return (
     <div className="min-w-0">
       <button
@@ -33,7 +37,7 @@ function Evidence({ items, label, defaultOpen }: { items: string[]; label: strin
         onClick={() => setToggled(!open)}
         aria-expanded={open}
         aria-controls={listId}
-        className="inline-flex items-center gap-1 rounded-xs py-0.5 text-meta text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9"
+        className={cn('inline-flex items-center gap-1 rounded-xs py-0.5 text-meta text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)', isPhone ? 'min-h-11' : 'pointer-coarse:min-h-9')}
       >
         <ChevronRight
           size={12}
@@ -43,9 +47,15 @@ function Evidence({ items, label, defaultOpen }: { items: string[]; label: strin
         {`${label} · ${items.length}`}
       </button>
       <Collapsible open={open}>
-        <ul id={listId} className="mt-1 list-disc space-y-0.5 pl-5 text-xs leading-relaxed text-(--color-text-2) marker:text-(--color-text-subtle) selectable-text">
-          {items.map((item, i) => <li key={i} className="break-words"><InlineCodeText text={item} /></li>)}
-        </ul>
+        {isPhone ? (
+          <ul id={listId} data-evidence-list="phone" className="divide-y divide-(--color-border) text-sm text-(--color-text-2) selectable-text">
+            {items.map((item, i) => <li key={i} className="flex min-h-11 items-center py-2 break-words"><InlineCodeText text={item} /></li>)}
+          </ul>
+        ) : (
+          <ul id={listId} className="mt-1 list-disc space-y-0.5 pl-5 text-xs leading-relaxed text-(--color-text-2) marker:text-(--color-text-subtle) selectable-text">
+            {items.map((item, i) => <li key={i} className="break-words"><InlineCodeText text={item} /></li>)}
+          </ul>
+        )}
       </Collapsible>
     </div>
   )

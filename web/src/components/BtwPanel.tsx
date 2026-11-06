@@ -28,7 +28,7 @@ import { copyText } from '@/components/ChatContextMenu'
 import { useSideQuestions, type BtwExchange } from '@/queries/useSideQuestionsQuery'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useToastStore } from '@/stores/useToastStore'
-import { MarkdownBlock } from '@/utils/markdown'
+import { ExchangeView } from './BtwExchangeView'
 
 interface BtwPanelProps {
   sessionId: string | null
@@ -204,24 +204,5 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
       onConfirm={onClear}
     />
     </>
-  )
-}
-
-/** One side question and its answer (also the dock tab's rows). */
-export function ExchangeView({ exchange, sessionId }: { exchange: BtwExchange; sessionId: string }) {
-  const streaming = exchange.status === 'streaming'
-  return (
-    <div className="flex flex-col gap-1.5">
-      <p className="whitespace-pre-wrap break-words text-(--color-text-muted)">{exchange.question}</p>
-      {exchange.answer ? (
-        <MarkdownBlock content={exchange.answer} sessionId={sessionId} isStreaming={streaming && exchange.live} />
-      ) : streaming ? (
-        <p role="status"><span className="oa-shimmer">Thinking…</span></p>
-      ) : null}
-      {exchange.status === 'error' && (
-        <p role="alert" className="text-(--color-error)">{exchange.error || 'The side question failed.'}</p>
-      )}
-      {exchange.status === 'stopped' && <p className="text-(--color-text-muted)">Stopped.</p>}
-    </div>
   )
 }

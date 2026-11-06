@@ -1,7 +1,7 @@
 name: Release Desktop
 
 # Triggered manually from the Actions tab once a version is tagged.
-# Produces signed (where keys are available) installers for:
+# Produces installers for (macOS: Developer ID signed + notarized):
 #   - macOS arm64 (.dmg, .app.tar.gz)
 #   - Windows x64 (.msi)
 #   - Linux x64  (.AppImage, .deb)
@@ -18,6 +18,11 @@ name: Release Desktop
 # to the same release; the Tauri updater endpoint (configured in
 # tauri.conf.json) points at the rolling ``latest-desktop`` release
 # which only mirrors ``latest.json``.
+#
+# Jobs: build (matrix, no secrets) → sign (environment ``release-macos``,
+# needs your approval; Developer ID + notarization + updater .sig files)
+# → publish. Build jobs must never get signing secrets or an
+# ``environment:``.
 
 on:
   workflow_dispatch:
@@ -262,21 +267,15 @@ jobs:
 
       # Platform icon assets are generated and committed under
       # desktop/src-tauri/icons; release runners consume them directly.
-      - name: Import Apple signing certificate
-        if: matrix.platform == 'macos' && env.APPLE_CERTIFICATE != ''
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o $RUNNER_TEMP/cert.p12
-          security import $RUNNER_TEMP/cert.p12 -k "$KEYCHAIN_PATH" \
-            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
+      #
+      # This job never sees the Apple certificate, the notary key or the
+      # updater (minisign) key: the build runs third-party code (build.rs,
+      # npm scripts). Tauri signs the macOS app ad hoc and makes no updater
+      # artifacts; the ``sign`` job (environment ``release-macos``) signs,
+      # notarizes and creates the updater archive and .sig files.
+      - name: Configure build (no signing secrets)
+        shell: bash
+        run: echo 'TAURI_CONFIG={"bundle":{"createUpdaterArtifacts":false}}' >> "$GITHUB_ENV"
 
       - name: Import Windows Authenticode certificate
         id: windows_signing
@@ -302,6 +301,7 @@ jobs:
           }
           $override = @{
             bundle = @{
+              createUpdaterArtifacts = $false
               windows = @{
                 certificateThumbprint = $certificate.Thumbprint
                 digestAlgorithm = "sha256"
@@ -315,66 +315,12 @@ jobs:
             -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Remove-Item $pfxPath -Force
 
-      # Tauri's signing env vars must be UNSET when there is no Apple
-      # signing identity available — passing an empty
-      # ``APPLE_SIGNING_IDENTITY`` makes Tauri try to find an identity
-      # matching the empty string and fail with 'The specified item
-      # could not be found in the keychain.'
-      #
-      # We expose the variables conditionally via a separate ``Set env``
-      # step that writes only the entries whose secrets are non-empty;
-      # ``cargo tauri build`` then sees an empty environment and falls
-      # back to the ad-hoc ``signingIdentity: "-"`` from tauri.conf.json.
-      - name: Resolve signing env
-        id: signing_env
-        shell: bash
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          # Write each non-empty secret to $GITHUB_ENV so it's available
-          # in the next step. Empty secrets are skipped entirely, so
-          # ``cargo tauri build`` doesn't see a stray empty string and
-          # try to match it against the keychain.
-          for var in APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID \
-                     TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
-            value="${!var:-}"
-            if [ -n "$value" ]; then
-              # Use the heredoc multiline form so values with newlines
-              # (PEM-formatted minisign key) round-trip correctly.
-              {
-                echo "${var}<<__OAD_EOF__"
-                printf '%s\n' "$value"
-                echo "__OAD_EOF__"
-              } >> "$GITHUB_ENV"
-              echo "  ${var}: set (${#value} chars)"
-            else
-              echo "  ${var}: empty — skipped"
-            fi
-          done
-
       - name: Build Tauri app
         working-directory: desktop/src-tauri
         shell: bash
         run: cargo tauri build ${{ matrix.tauri_args }}
 
-      # The one place the macOS app is signed: the updater archive and the
-      # DMG get the same app with the identifier-only requirement, which
-      # the updater, install.sh and the cask install unchanged. See the
-      # script header.
-      - name: Sign macOS release
-        if: matrix.platform == 'macos'
-        shell: bash
-        run: |
-          bundle_id=$(python3 -c "import json; print(json.load(open('desktop/src-tauri/tauri.conf.json'))['identifier'])")
-          desktop/scripts/sign-macos-release.sh \
-            "desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle" "$bundle_id"
-
-      - name: Verify Windows MSI and signatures
+      - name: Verify Windows MSI
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
@@ -394,55 +340,202 @@ jobs:
               throw "Authenticode verification failed for $msi"
             }
           }
-          if ($env:TAURI_SIGNING_PRIVATE_KEY) {
-            $signature = "$msi.sig"
-            if (-not (Test-Path $signature)) {
-              throw "Missing Tauri updater signature: $signature"
-            }
-          }
+
+      # macOS: hand the whole (ad hoc signed) bundle to the ``sign`` job as
+      # one tarball; upload-artifact would drop the executable bits and
+      # symlinks inside OpenAgentd.app. The artifact is prefixed
+      # ``unsigned-`` so ``publish`` never picks it up.
+      - name: Collect unsigned macOS bundle
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          mkdir -p _release
+          COPYFILE_DISABLE=1 tar --no-mac-metadata -czf _release/unsigned-macos-bundle.tar.gz \
+            -C "desktop/src-tauri/target/${{ matrix.rust_target }}/release" \
+            bundle/macos/OpenAgentd.app bundle/dmg
 
       - name: Collect artefacts
-        id: collect
+        if: matrix.platform != 'macos'
         shell: bash
         run: |
           mkdir -p _release
           cd desktop/src-tauri/target
-          # Tauri writes to ${target}/release/bundle/{dmg,msi,deb,appimage,...}
+          # Tauri writes to ${target}/release/bundle/{msi,deb,...}
           if [ -d release/bundle ]; then
             BUNDLE_DIR=release/bundle
           else
             BUNDLE_DIR=${{ matrix.rust_target }}/release/bundle
           fi
-          # Match Tauri's actual product bundles. Installers use
-          # `{productName}_{version}_{arch}{.lang}.{ext}` (e.g.
-          # `OpenAgentd_1.0.6_aarch64.dmg`), while macOS updater
-          # archives use `{productName}.app.tar.gz`.
+          # Installers use `{productName}_{version}_{arch}{.lang}.{ext}`.
+          # Updater .sig files are made by the ``sign`` job.
           find "$BUNDLE_DIR" -type f \( \
-            -name 'OpenAgentd_*.dmg' \
-            -o -name 'OpenAgentd*.app.tar.gz' -o -name 'OpenAgentd*.app.tar.gz.sig' \
-            -o -name 'OpenAgentd_*.msi' -o -name 'OpenAgentd_*.msi.sig' \
-            -o -name 'OpenAgentd_*.AppImage' -o -name 'OpenAgentd_*.AppImage.sig' \
+            -name 'OpenAgentd_*.msi' \
+            -o -name 'OpenAgentd_*.AppImage' \
             -o -name 'OpenAgentd_*.deb' \
           \) -print -exec cp {} "$GITHUB_WORKSPACE/_release/" \;
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: openagentd-desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          name: ${{ matrix.platform == 'macos' && 'unsigned' || 'openagentd' }}-desktop-${{ matrix.platform }}-${{ matrix.arch }}
           path: _release/*
           if-no-files-found: error
           retention-days: 14
 
-  publish:
+  # The only job that holds signing secrets, all from the protected
+  # ``release-macos`` environment (your approval, ``main`` / ``v*`` only).
+  # It runs short, trusted steps: no project build, no npm.
+  #   - macOS: Developer ID signature (sidecar first), notarize + staple the
+  #     app, updater archive + .sig, DMG swap, notarize + staple the DMG.
+  #   - Windows: the updater .sig for the MSI.
+  # Runbook (certificates, keys, renewal, revocation):
+  # desktop/src-tauri/AGENTS.md.
+  sign:
     needs: [prepare, build]
+    if: github.event.inputs.run_id == '' && needs.build.result == 'success' && github.event.inputs.platform != 'linux'
+    name: Sign and notarize
+    runs-on: macos-26
+    environment: release-macos
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: _in
+          pattern: "*-desktop-*"
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      # ``cargo tauri signer sign`` writes the updater .sig files.
+      - name: Restore cached tauri-cli
+        id: cache-tauri-cli
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: tauri-cli-2.12.4-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install cargo-binstall
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
+        uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
+        with:
+          tool: cargo-binstall
+
+      - name: Install tauri-cli (prebuilt)
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall --no-confirm --force --version 2.12.4 tauri-cli
+
+      - name: Import Developer ID certificate and notary key
+        id: keychain
+        if: hashFiles('_in/unsigned-desktop-macos-*/unsigned-macos-bundle.tar.gz') != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD KEYCHAIN_PASSWORD APPLE_API_KEY_P8; do
+            [ -n "${!v}" ] || { echo "::error::secret $v is not set in environment release-macos"; exit 1; }
+          done
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          umask 077
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode -o "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+          # Let codesign use the key without a UI prompt.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          # Prepend ours, keep the runner's keychains (paths have no spaces).
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$KEYCHAIN_PATH" \
+            $(security list-keychains -d user | tr -d '"')
+          printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+          echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Sign and notarize macOS release
+        if: steps.keychain.outcome == 'success'
+        env:
+          REQUIRE_DEVELOPER_ID: "1"
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/macos"
+          mkdir -p "$work"
+          tar -xzf _in/unsigned-desktop-macos-*/unsigned-macos-bundle.tar.gz -C "$work"
+          bundle_id=$(python3 -c "import json; print(json.load(open('desktop/src-tauri/tauri.conf.json'))['identifier'])")
+          desktop/scripts/sign-macos-release.sh "$work/bundle" "$bundle_id"
+          # The designated requirement must name our Team ID, so macOS keeps
+          # privacy grants across releases.
+          [ -n "$APPLE_TEAM_ID" ] || { echo "::error::APPLE_TEAM_ID is not set in environment release-macos"; exit 1; }
+          codesign -d -r - "$work/bundle/macos/OpenAgentd.app" 2>&1 \
+            | grep -E "subject\.OU\] = \"?${APPLE_TEAM_ID}\"?"
+          mkdir -p _release/macos
+          cp "$work"/bundle/dmg/OpenAgentd_*.dmg \
+             "$work"/bundle/macos/OpenAgentd.app.tar.gz \
+             "$work"/bundle/macos/OpenAgentd.app.tar.gz.sig _release/macos/
+
+      - name: Sign Windows updater artifact
+        if: hashFiles('_in/openagentd-desktop-windows-*/OpenAgentd_*.msi') != ''
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] || { echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set in environment release-macos"; exit 1; }
+          mkdir -p _release/windows
+          for msi in _in/openagentd-desktop-windows-*/OpenAgentd_*.msi; do
+            cargo tauri signer sign "$msi" >/dev/null
+            cp "$msi.sig" _release/windows/
+          done
+
+      - name: Upload signed macOS artefacts
+        if: hashFiles('_release/macos/*') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openagentd-desktop-macos-aarch64
+          path: _release/macos/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Windows updater signature
+        if: hashFiles('_release/windows/*') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openagentd-desktop-windows-sig
+          path: _release/windows/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove keychain and keys
+        if: always()
+        run: |
+          [ -n "${KEYCHAIN_PATH:-}" ] && security delete-keychain "$KEYCHAIN_PATH" || true
+          rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/cert.p12"
+
+  publish:
+    needs: [prepare, build, sign]
     name: Publish release
     runs-on: ubuntu-latest
-    if: always() && needs.prepare.result == 'success' && (github.event.inputs.platform == 'all' || github.event.inputs.run_id != '') && (github.event.inputs.run_id != '' || needs.build.result == 'success')
+    if: always() && needs.prepare.result == 'success' && (github.event.inputs.platform == 'all' || github.event.inputs.run_id != '') && (github.event.inputs.run_id != '' || (needs.build.result == 'success' && needs.sign.result == 'success'))
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: _artifacts
+          # Signed artifacts only; ``unsigned-*`` feeds the sign job.
+          pattern: openagentd-desktop-*
           run-id: ${{ github.event.inputs.run_id != '' && github.event.inputs.run_id || github.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 

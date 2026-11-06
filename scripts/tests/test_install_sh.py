@@ -23,7 +23,7 @@ exercise the **gates** in front of them:
     binary + override XDG dirs).
 
 The macOS branch is gated by ``uname -s``; its tests skip elsewhere.
-It only strips quarantine and verifies CI's signature: it must never
+It only verifies CI's signature and Gatekeeper: it must never
 re-sign the app (see ``desktop/scripts/sign-macos-release.sh``).
 """
 

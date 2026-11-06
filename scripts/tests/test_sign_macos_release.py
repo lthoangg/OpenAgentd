@@ -91,8 +91,8 @@ def bundle_dir(tmp_path: Path) -> Path:
     return bundle
 
 
-def _run(bundle: Path) -> subprocess.CompletedProcess[str]:
-    env = {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin"}  # no Tauri signing key
+def _run(bundle: Path, **extra_env: str) -> subprocess.CompletedProcess[str]:
+    env = {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", **extra_env}  # no Tauri signing key
     return subprocess.run(
         ["bash", str(SCRIPT), str(bundle), BUNDLE_ID],
         capture_output=True,
@@ -141,3 +141,31 @@ def test_a_stale_updater_signature_is_never_shipped(bundle_dir: Path):
     assert proc.returncode != 0
     assert "TAURI_SIGNING_PRIVATE_KEY" in proc.stderr
     assert not (bundle_dir / "macos" / "OpenAgentd.app.tar.gz.sig").exists()
+
+
+def test_the_updater_archive_is_created_when_tauri_did_not_make_one(bundle_dir: Path):
+    # Release CI builds with createUpdaterArtifacts=false (the build job has
+    # no signing key), so the script makes the archive itself.
+    (bundle_dir / "macos" / "OpenAgentd.app.tar.gz").unlink()
+    proc = _run(bundle_dir)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert (bundle_dir / "macos" / "OpenAgentd.app.tar.gz").is_file()
+
+
+@pytest.mark.parametrize(
+    ("extra_env", "message"),
+    [
+        ({}, "APPLE_SIGNING_IDENTITY is not set"),
+        (
+            {"APPLE_SIGNING_IDENTITY": "Developer ID Application: X (TEAM)"},
+            "APPLE_API_KEY_PATH are not all set",
+        ),
+    ],
+)
+def test_release_ci_never_falls_back_to_ad_hoc(
+    bundle_dir: Path, extra_env: dict[str, str], message: str
+):
+    proc = _run(bundle_dir, REQUIRE_DEVELOPER_ID="1", **extra_env)
+    assert proc.returncode != 0
+    assert message in proc.stderr
+    assert "cdhash" in _designated(bundle_dir / "macos" / "OpenAgentd.app"), "nothing was signed"

@@ -512,6 +512,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                 mono={!server.name}
                 note={note}
                 inUse={active}
+                onOpen={touch && !pending ? (active ? onOpenInUse : () => { void connectExternal(normalizedServerUrl, server.name ?? '', '', setListError) }) : undefined}
                 onMore={touch ? () => setRowSheet({
                   title: label,
                   items: [
@@ -767,6 +768,7 @@ function ServerRow({
   inUse,
   address,
   onMore,
+  onOpen,
   children,
 }: {
   health: Health | undefined
@@ -782,9 +784,14 @@ function ServerRow({
   address?: string
   /** Touch: open the row's action sheet, from a long press or its ⋯. */
   onMore?: () => void
+  /** Touch: a tap on the row's name opens it (Use, or Sessions when in use). */
+  onOpen?: () => void
   children: React.ReactNode
 }) {
+  // The click that ends a long press must not also open the row.
+  const heldRef = useRef(false)
   const longPress = useLongPress(Boolean(onMore), () => {
+    heldRef.current = true
     mediumHapticFeedback()
     onMore?.()
   })
@@ -799,7 +806,22 @@ function ServerRow({
         onMore && 'flex-row! items-center gap-3 [-webkit-touch-callout:none] select-none',
       )}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div
+        className={cn('flex min-w-0 flex-1 items-center gap-3', onOpen && 'cursor-pointer')}
+        {...(onOpen ? {
+          role: 'button',
+          tabIndex: 0,
+          'aria-label': `Open ${title}`,
+          'data-server-open': '',
+          onClick: () => {
+            if (heldRef.current) { heldRef.current = false; return }
+            onOpen()
+          },
+          onKeyDown: (event: React.KeyboardEvent) => {
+            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen() }
+          },
+        } : {})}
+      >
         <ServerStatusDot status={health} />
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">

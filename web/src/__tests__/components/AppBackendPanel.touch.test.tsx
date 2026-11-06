@@ -1,5 +1,5 @@
 /**
- * Touch Servers rows: one button per row, Edit and Remove in the row's
+ * Touch Servers rows: a tap on the name opens the row, one button per row, Edit and Remove in the row's
  * action sheet, opened by ⋯ or a long press (with one medium haptic).
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -7,6 +7,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import '@testing-library/jest-dom'
 
 const haptics: string[] = []
+const calls: string[] = []
 const realHaptics = await import('@/lib/haptics')
 mock.module('@/lib/haptics', () => ({ ...realHaptics, mediumHapticFeedback: () => { haptics.push('medium') } }))
 mock.module('@/hooks/use-touch-first', () => ({ useTouchFirst: () => true }))
@@ -21,6 +22,7 @@ const status = {
 }
 mock.module('@tauri-apps/api/core', () => ({
   invoke: async (command: string) => {
+    calls.push(command)
     if (command === 'app_backend_status') return status
     if (command === 'app_server_watch_states') return {}
     return null
@@ -32,8 +34,9 @@ import { AppBackendPanel } from '@/components/AppBackendPanel'
 const originalFetch = globalThis.fetch
 beforeEach(() => {
   haptics.length = 0
+  calls.length = 0
   window.__OAD_API_BASE_URL__ = 'http://127.0.0.1:5999'
-  globalThis.fetch = (() => Promise.resolve(new Response(null, { status: 503 }))) as typeof fetch
+  globalThis.fetch = ((input: RequestInfo | URL) => { calls.push(String(input)); return Promise.resolve(new Response(null, { status: 503 })) }) as typeof fetch
 })
 afterEach(() => {
   cleanup()
@@ -66,5 +69,14 @@ describe('Servers rows on touch', () => {
     await act(async () => { await new Promise((resolve) => realSetTimeout(resolve, 600)) })
     expect(screen.getByRole('dialog', { name: 'Local CLI' })).toBeInTheDocument()
     expect(haptics).toEqual(['medium'])
+  })
+
+  it('a tap on the name uses the server', async () => {
+    render(<AppBackendPanel active />)
+    const open = await screen.findByRole('button', { name: 'Open Local CLI' })
+    calls.length = 0
+    fireEvent.click(open)
+    await act(async () => { await Promise.resolve() })
+    expect(calls.some((call) => call.includes('4082'))).toBe(true)
   })
 })

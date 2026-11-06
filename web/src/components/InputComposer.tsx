@@ -853,6 +853,9 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // send as an action sheet (the gesture's own medium haptic). The release
   // after a long press must not also steer.
   const isPhone = useIsPhone()
+  // A phone's filled circle read larger than the deck's 36px controls beside
+  // it (user request): it is drawn at 32px, its touch area still 44px.
+  const sendSize = isPhone ? 'size-8!' : undefined
   const [deliverySheetOpen, setDeliverySheetOpen] = useState(false)
   const longPressedRef = useRef(false)
   const sendLongPress = useLongPress(isPhone && splitSend, () => {
@@ -871,7 +874,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       {...keepKeyboard}
       onClick={(e) => { stopClick(e); mediumHapticFeedback(); onStop?.(); refocusAfterTap() }}
       aria-label="Stop generation"
-      className={cn(sendSlotClass, sendPillClass)}
+      className={cn(sendSlotClass, sendSize, sendPillClass)}
     >
       <Square size={12} fill="currentColor" aria-hidden="true" className={iconIn} />
     </button>
@@ -897,7 +900,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
           refocusAfterTap()
         }}
         aria-label="Steer the running turn. Hold for more ways to send"
-        className={cn(sendSlotClass, sendPillClass, '[-webkit-touch-callout:none]')}
+        className={cn(sendSlotClass, sendSize, sendPillClass, '[-webkit-touch-callout:none]')}
       >
         <ArrowUp size={14} aria-hidden="true" className={iconIn} />
       </button>
@@ -940,6 +943,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       aria-label="Send message"
       className={cn(
         sendSlotClass,
+        sendSize,
         'disabled:cursor-not-allowed',
         canSend
           ? sendPillClass
@@ -1084,8 +1088,11 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
           )}
         </div>
         {deck}
+        {/* A phone keeps the context ring with the run controls, away from
+            Send, so a tap meant for one never lands on the other. */}
+        {isPhone && deckEnd}
         <div className="min-w-0 flex-1" />
-        {deckEnd}
+        {!isPhone && deckEnd}
         {sendOrStopEl}
       </div>
     </div>

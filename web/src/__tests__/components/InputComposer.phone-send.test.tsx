@@ -68,3 +68,17 @@ describe('InputComposer — Send on a phone while a turn runs', () => {
     expect(medium).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('InputComposer — the phone run deck', () => {
+  it('draws Send at 32px and keeps the context ring with the run controls, away from Send', () => {
+    render(<InputComposer onSubmit={() => {}} deck={<span data-testid="deck" />} deckEnd={<span data-testid="ring" />} />)
+    const send = screen.getByRole('button', { name: 'Send message' })
+    expect(send.className.split(/\s+/)).toContain('size-8!')
+    const deck = send.closest('[data-run-deck]')!
+    const children = Array.from(deck.children)
+    const ring = screen.getByTestId('ring')
+    const spacer = children.find((child) => child.className.includes('flex-1'))!
+    expect(ring.compareDocumentPosition(spacer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(spacer.nextElementSibling).toBe(send)
+  })
+})

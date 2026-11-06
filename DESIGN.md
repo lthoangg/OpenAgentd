@@ -1867,8 +1867,9 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   track cut into a segment per level, each level's name inside its
   segment, filled in the accent through the chosen one (the switch's "on"
   colour). A press or drag anywhere picks the segment under the finger.
-  The context ring
-  beside Send is a thin gauge, never a spinner. A new draft shows only the
+  The context ring is a thin gauge, never a spinner; it follows the run
+  controls on the left, away from Send, and Send (or Stop) is drawn at
+  32pt with a 44pt touch area. A new draft shows only the
   folder chip: no heading, no suggestions.
 - **Above the composer, in this order:** the open question (pinned, orange
   frame, 48pt options; the transcript card says "Answer below"), the plan

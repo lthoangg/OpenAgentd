@@ -1825,9 +1825,10 @@ Back at a time.
 The rules every phone screen follows. The approved before/after mockups live
 in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`.
 
-- **Status in one second.** One vocabulary everywhere: running is blue (a
-  soft pulse, still under Reduce Motion), needs-you is orange (a question,
-  a plan to approve, a sign-in), error is red, done-and-unread is green,
+- **Status in one second.** One vocabulary everywhere, the session row's
+  marks: running is the small spinner (Signal Blue stays the logo and focus
+  ring, lint `stray-blue`), needs-you is orange (a question, a plan to
+  approve, a sign-in), error is red, done-and-unread is the accent dot,
   idle is hollow. Sessions puts Needs you and Running above the
   workspaces. The connection dot is never green while the server does not
   answer.
@@ -1846,6 +1847,28 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
 - **Reading.** Wide content (code, diffs, tables) scrolls sideways inside
   its block, with a fade at the clipped edge; it never widens the page.
   Consecutive tool calls collapse into one summary row.
+  In the detailed transcript two or more finished, successful calls in a
+  row fold behind "3 commands, 1 read ›" (sans); a failed or running call
+  stays open. Tool output is code size and caps at 12 lines, then scrolls.
+  Tables pin their first column and shade the right edge only while it is
+  clipped. A diff keeps lines whole and scrolls sideways; **Wrap lines** in
+  its file bar wraps them.
+- **The composer.** It grows to six lines, then scrolls inside. One chip
+  says how a message runs, "Code · sonnet-4-6" in sans, and its sheet picks
+  Mode, Model and Thinking together; the context ring beside Send is a thin
+  gauge, never a spinner. A new draft shows the folder chip and three
+  suggestions that fill the composer, no heading.
+- **Above the composer, in this order:** the open question (pinned, orange
+  frame, 48pt options; the transcript card says "Answer below"), the plan
+  awaiting approval ("View" opens it full screen with Approve pinned), the
+  run bar ("Running · step 7 · 3:12" while the agent works), and queued
+  messages as one-line chips (tap edits, ✕ removes with Undo).
+- **Run control.** Mid-turn, Send is one pill: a tap steers, a long press
+  opens an action sheet (Steer now, Send after this turn finishes, Stop and
+  send). Stop gives a medium haptic and a "Stopped" toast whose **Resume**
+  sends "Continue".
+- **Settings.** A switch sits right of its label at every width; other
+  controls stack under the label.
 - **Notices.** A banner is one line under the bar with at most one action;
   details open in a sheet. It never covers the transcript.
 - **Offline is told, not hidden.** Health is checked whatever the network

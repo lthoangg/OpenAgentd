@@ -7,8 +7,21 @@
  */
 import { useCallback, useEffect, useRef } from 'react'
 
-/** Height cap in px. Must match the textarea's inline ``maxHeight`` style. */
+/** Height cap in px off a phone. Must match the textarea's inline ``maxHeight`` style. */
 export const MAX_TEXTAREA_HEIGHT = 120
+/** A phone grows the box to six lines, then it scrolls inside (Phone system). */
+export const PHONE_MAX_LINES = 6
+
+/** The textarea's (and its mirror's) CSS max-height. */
+export function composerMaxHeight(phone: boolean): string {
+  return phone ? `${PHONE_MAX_LINES}lh` : `${MAX_TEXTAREA_HEIGHT}px`
+}
+
+/** The cap ``resize()`` honours: the element's resolved CSS max-height. */
+function maxHeightOf(el: HTMLElement): number {
+  const value = getComputedStyle(el).maxHeight
+  return value.endsWith('px') ? parseFloat(value) : MAX_TEXTAREA_HEIGHT
+}
 
 export function useTextareaAutosize(textareaRef: React.RefObject<HTMLTextAreaElement | null>) {
   const resizeFrameRef = useRef<number | null>(null)
@@ -21,7 +34,7 @@ export function useTextareaAutosize(textareaRef: React.RefObject<HTMLTextAreaEle
     const scroller = el.closest('main')?.querySelector<HTMLElement>('.oa-chat-scroll')
     const scrollTop = scroller?.scrollTop ?? 0
     el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`
+    el.style.height = `${Math.min(el.scrollHeight, maxHeightOf(el))}px`
     if (scroller && scroller.scrollTop !== scrollTop) scroller.scrollTop = scrollTop
   }, [textareaRef])
 

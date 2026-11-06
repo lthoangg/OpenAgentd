@@ -7,7 +7,7 @@
 import { describe, it, expect, afterEach } from 'bun:test'
 import { cleanup, render } from '@testing-library/react'
 import { useRef } from 'react'
-import { useTextareaAutosize } from '@/components/InputComposer.autosize'
+import { composerMaxHeight, useTextareaAutosize } from '@/components/InputComposer.autosize'
 
 type Api = ReturnType<typeof useTextareaAutosize>
 let api: Api
@@ -87,5 +87,23 @@ describe('useTextareaAutosize keeps the transcript scroll offset', () => {
     Object.defineProperty(textarea, 'scrollHeight', { configurable: true, get: () => 60 })
     api.resize()
     expect(textarea.style.height).toBe('60px')
+  })
+
+  it('caps at the CSS max-height (six lines on a phone), else 120px', () => {
+    const view = render(<Harness transcript={false} />)
+    const textarea = view.container.querySelector('textarea') as HTMLTextAreaElement
+    Object.defineProperty(textarea, 'scrollHeight', { configurable: true, get: () => 400 })
+    api.resize()
+    expect(textarea.style.height).toBe('120px')
+    textarea.style.maxHeight = '135px'
+    api.resize()
+    expect(textarea.style.height).toBe('135px')
+  })
+})
+
+describe('composerMaxHeight', () => {
+  it('is six line-heights on a phone and 120px elsewhere', () => {
+    expect(composerMaxHeight(true)).toBe('6lh')
+    expect(composerMaxHeight(false)).toBe('120px')
   })
 })

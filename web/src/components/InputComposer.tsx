@@ -9,7 +9,7 @@ import { COMPOSER_TEXT_CLASS, MentionOverlay } from './InputComposer.overlay'
 import { findActiveSnippet } from './InputComposer.helpers'
 import { InputComposerSuggestions } from './InputComposer.suggestions'
 import { useInputComposerSuggestionEngine } from './InputComposer.suggestionEngine'
-import { MAX_TEXTAREA_HEIGHT, useTextareaAutosize } from './InputComposer.autosize'
+import { composerMaxHeight, useTextareaAutosize } from './InputComposer.autosize'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 import { buildAcceptString } from './InputComposer.files'
 import { useInputComposerAttachments } from './InputComposer.attachments'
@@ -959,7 +959,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         )}
         // Cap matches the ``resize()`` ceiling in InputComposer.autosize.ts so the
         // JS-driven height and the CSS limit stay in lockstep.
-        style={{ maxHeight: `${MAX_TEXTAREA_HEIGHT}px` }}
+        style={{ maxHeight: composerMaxHeight(isMobile) }}
         // Spellcheck disabled: the squiggle is painted by the browser under
         // the textarea's own glyphs, but the visible text comes from the
         // overlay mirror. Even with identical font/wrap/scroll the two

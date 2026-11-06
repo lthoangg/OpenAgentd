@@ -19,7 +19,8 @@
 import { memo, useEffect, useMemo, useRef } from 'react'
 
 import { buildMentionLookup, findCommittedMentions, type FileRef } from './InputComposer.mentions'
-import { MAX_TEXTAREA_HEIGHT } from './InputComposer.autosize'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { composerMaxHeight } from './InputComposer.autosize'
 
 /**
  * The message text's size and line height, worn by the textarea and the
@@ -60,6 +61,7 @@ function MentionOverlayComponent({
   mentions,
 }: MentionOverlayProps) {
   const mirrorRef = useRef<HTMLDivElement>(null)
+  const isMobile = useIsMobile()
   // Build the token-resolution sets and token-kind maps once per ``fileRefs`` change.
   const { mentionLookup, kindByToken } = useMemo(() => {
     const lookup = buildMentionLookup(fileRefs)
@@ -150,8 +152,8 @@ function MentionOverlayComponent({
       // normal foreground; the per-span color override above paints
       // mention tokens in blue (files) or orange (folders).
       className={`pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words ${COMPOSER_TEXT_CLASS} text-(--color-text)`}
-      // Mirrors the textarea's height cap (MAX_TEXTAREA_HEIGHT).
-      style={{ maxHeight: `${MAX_TEXTAREA_HEIGHT}px` }}
+      // Mirrors the textarea's height cap.
+      style={{ maxHeight: composerMaxHeight(isMobile) }}
     >
       {segments}
     </div>

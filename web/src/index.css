@@ -666,6 +666,16 @@ html[data-mobile-shell][data-keyboard-open] .app-overlay-modal {
   bottom: 0.5rem;
 }
 
+/* A bottom sheet portals to <body>, outside the shell that shrinks with the
+ * keyboard, and the iOS keyboard does not shrink the layout viewport: with a
+ * field focused (Add a server, a worktree name) the sheet would sit under
+ * the keyboard. Its bottom edge rides on top of the keyboard instead, and it
+ * is never taller than the visible region. */
+html[data-mobile-shell][data-keyboard-open] [data-bottom-sheet] {
+  bottom: max(0px, calc(100% - var(--app-vh, 100%) - var(--app-vt, 0px)));
+  max-height: calc(var(--app-vh, 100dvh) - env(safe-area-inset-top, 0px) - 0.625rem);
+}
+
 html[data-mobile-shell] .app-overlay-palette {
   display: flex;
   flex-direction: column;

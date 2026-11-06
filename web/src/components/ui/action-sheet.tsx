@@ -13,6 +13,7 @@ import type { LucideIcon } from 'lucide-react'
 
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
+import { DURATIONS_S } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 export interface ActionSheetItem {
@@ -23,6 +24,11 @@ export interface ActionSheetItem {
   danger?: boolean
   separatorBefore?: boolean
   disabled?: boolean
+  /**
+   * Opens another sheet: run once this one has slid away, so the two never
+   * cross on screen (one leaving while the next rises).
+   */
+  afterClose?: boolean
   run: () => void
 }
 
@@ -49,7 +55,7 @@ export function ActionSheet({ open, onClose, title, description, items }: Action
             {description && <p className="mt-0.5 text-xs text-(--color-text-muted)">{description}</p>}
           </div>
           <div className="flex flex-col p-1 pt-0">
-            {items.map(({ id, label, icon: Icon, danger, separatorBefore, disabled, run }) => (
+            {items.map(({ id, label, icon: Icon, danger, separatorBefore, disabled, afterClose, run }) => (
               <Fragment key={id}>
                 {separatorBefore && <div className={MENU_SEPARATOR_CLASS} role="separator" />}
                 <button
@@ -59,7 +65,8 @@ export function ActionSheet({ open, onClose, title, description, items }: Action
                   className={cn(ACTION_SHEET_ROW_CLASS, danger && 'oa-menu-item-danger text-(--color-error)')}
                   onClick={() => {
                     onClose()
-                    run()
+                    if (afterClose) window.setTimeout(run, DURATIONS_S.base * 1000)
+                    else run()
                   }}
                 >
                   {Icon && <Icon size={16} aria-hidden="true" className="shrink-0" />}

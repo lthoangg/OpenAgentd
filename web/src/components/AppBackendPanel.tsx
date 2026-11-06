@@ -130,6 +130,10 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
   const [confirm, setConfirm] = useState<{ kind: 'stop' } | { kind: 'remove'; baseUrl: string; label: string } | null>(null)
   const [form, setForm] = useState<ServerFormTarget | null>(null)
+  // The touch sheet's last form, drawn while the sheet slides away, so the
+  // exit does not first collapse it to its handle.
+  const [sheetForm, setSheetForm] = useState<ServerFormTarget | null>(null)
+  if (form !== null && form !== sheetForm) setSheetForm(form)
   // Touch: a saved server's row keeps one button; Edit and Remove move to
   // its action sheet (a long press, or ⋯).
   const touch = useTouchFirst()
@@ -520,7 +524,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                     active
                       ? { id: 'sessions', label: 'Sessions', icon: ChevronRight, run: () => onOpenInUse?.(), disabled: !onOpenInUse }
                       : { id: 'use', label: 'Use this server', icon: ArrowRightLeft, disabled: pending, run: () => { void connectExternal(normalizedServerUrl, server.name ?? '', '', setListError) } },
-                    { id: 'edit', label: 'Edit', icon: Pencil, disabled: pending, run: () => (editing ? closeForm() : openEdit(server, active)) },
+                    { id: 'edit', label: 'Edit', icon: Pencil, disabled: pending, afterClose: true, run: () => (editing ? closeForm() : openEdit(server, active)) },
                     { id: 'remove', label: 'Remove…', icon: Trash2, danger: true, separatorBefore: true, disabled: pending, run: () => setConfirm({ kind: 'remove', baseUrl: server.base_url, label }) },
                   ],
                 }) : undefined}
@@ -608,9 +612,9 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       {/* Touch: adding or editing a server is its own sheet (mockup J1),
           not a form opened inside the list. */}
       {touch && (
-        <BottomSheet open={form !== null} onClose={closeForm} label={form?.kind === 'edit' ? 'Edit server' : 'Add a server'}>
+        <BottomSheet open={form !== null} onClose={closeForm} label={(form ?? sheetForm)?.kind === 'edit' ? 'Edit server' : 'Add a server'}>
           <div data-server-sheet="">
-            {form?.kind === 'add' ? serverForm(form) : editTarget ? serverForm(editTarget) : null}
+            {form ? serverForm(form) : sheetForm ? serverForm(sheetForm) : null}
           </div>
         </BottomSheet>
       )}

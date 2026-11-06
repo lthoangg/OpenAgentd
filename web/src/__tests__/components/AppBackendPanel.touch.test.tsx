@@ -87,4 +87,13 @@ describe('Servers rows on touch', () => {
     expect(within(sheet).getByLabelText('Server URL')).toBeInTheDocument()
     expect(sheet.closest('[data-bottom-sheet]')).not.toBeNull()
   })
+
+  it('opens Edit only once the row sheet has slid away, so two sheets never cross', async () => {
+    render(<AppBackendPanel active />)
+    fireEvent.click(await screen.findByRole('button', { name: 'More actions for Local CLI' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Local CLI' })).getByRole('button', { name: 'Edit' }))
+    expect(document.querySelector('[data-server-sheet]')).toBeNull()
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)) })
+    expect(document.querySelector('[data-server-sheet]')).not.toBeNull()
+  })
 })

@@ -40,6 +40,8 @@ function renderScreen({
   composerPlaceholderHeight,
   here = [],
   everywhere = [],
+  phone = false,
+  onSuggest,
 }: {
   workspace?: string
   isChat?: boolean
@@ -48,6 +50,8 @@ function renderScreen({
   composerPlaceholderHeight?: number
   here?: SessionResponse[]
   everywhere?: SessionResponse[]
+  phone?: boolean
+  onSuggest?: (text: string) => void
 } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   client.setQueryData(queryKeys.coding.tree(), tree)
@@ -67,6 +71,8 @@ function renderScreen({
         // As AgentChatView does: the composer sits here on desktop only.
         composer={isMobile || leaving ? null : <textarea aria-label="Composer" />}
         isMobile={isMobile}
+        phone={phone}
+        onSuggest={onSuggest}
         leaving={leaving}
         composerPlaceholderHeight={composerPlaceholderHeight}
         onSelectWorkspace={onSelectWorkspace}
@@ -88,6 +94,20 @@ afterEach(() => {
 })
 
 describe('NewSessionScreen', () => {
+  it('on a phone: the folder chip, three suggestions, no heading and no Continue', async () => {
+    const onSuggest = mock((text: unknown) => { void text })
+    renderScreen({ isMobile: true, phone: true, onSuggest, here: [session('s1', 'Earlier work', REPO)] })
+
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull()
+    expect(screen.queryByText('Continue')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Folder: openagentd. Change folder' })).toBeTruthy()
+    const list = screen.getByRole('list', { name: 'Suggestions' })
+    const rows = within(list).getAllByRole('button')
+    expect(rows.map((row) => row.textContent)).toEqual(['Fix the failing test', 'Review uncommitted changes', 'Explain this repo'])
+    await userEvent.click(rows[1])
+    expect(onSuggest).toHaveBeenCalledWith('Review uncommitted changes')
+  })
+
   it('asks what to build in a repository, with the folder chip and no branch: the status bar has it', () => {
     renderScreen()
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('What should we build in openagentd?')

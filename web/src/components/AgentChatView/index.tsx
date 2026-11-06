@@ -850,7 +850,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           : composerMode === 'plan'
             // Says what Plan mode does before the first message does it.
             ? 'Plan mode: the agent reads and proposes a plan, without editing files…'
-            : 'Ask anything…'
+            : isDraft && isPhone && !isChatWorkspace ? 'Assign a task to the agent…' : 'Ask anything…'
       }
       capabilities={leadCapabilities}
       // A switch requested mid-turn is queued server-side, so the toggle
@@ -1097,6 +1097,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               />
             ) : null}
             isMobile={isMobile}
+            phone={isPhone}
+            onSuggest={(text) => {
+              inputRef.current?.setValue(text)
+              inputRef.current?.focus()
+            }}
             onSelectWorkspace={handleSelectDraftWorkspace}
             onOpenFolder={handleOpenWorkspaceDialog}
           />
@@ -1113,6 +1118,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               chatWorkspace={chatWorkspace}
               composerPlaceholderHeight={draftHandoff.snapshot?.rect.height}
               isMobile={isMobile}
+              phone={isPhone}
               onSelectWorkspace={handleSelectDraftWorkspace}
               onOpenFolder={handleOpenWorkspaceDialog}
             />

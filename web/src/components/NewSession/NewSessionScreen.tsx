@@ -31,6 +31,9 @@ import { WorkspacePicker } from './WorkspacePicker'
 
 const RECENT_SESSIONS = 3
 const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
+/** A phone's draft offers these; a tap fills the composer (mockup J3 3.2). */
+const REPO_SUGGESTIONS = ['Fix the failing test', 'Review uncommitted changes', 'Explain this repo'] as const
+const CHAT_SUGGESTIONS = ['Explain a concept', 'Draft a message', 'Summarize a link'] as const
 
 export function NewSessionScreen({
   workspace,
@@ -40,6 +43,8 @@ export function NewSessionScreen({
   composer = null,
   setup = null,
   isMobile,
+  phone = false,
+  onSuggest,
   leaving = false,
   composerPlaceholderHeight,
   onSelectWorkspace,
@@ -54,6 +59,13 @@ export function NewSessionScreen({
   /** The model setup card, while no message could run. */
   setup?: ReactNode
   isMobile: boolean
+  /**
+   * A phone: the folder chip over three suggestions, no
+   * heading and no Continue (Sessions is one level up).
+   */
+  phone?: boolean
+  /** A suggestion was tapped: fill the composer with it. */
+  onSuggest?: (text: string) => void
   /** Fade out as an inert copy (the hand-off into the chat). */
   leaving?: boolean
   /** While leaving: the height the composer had, kept as empty space. */
@@ -75,18 +87,58 @@ export function NewSessionScreen({
     .filter((session) => !session.parent_session_id)
     .slice(0, RECENT_SESSIONS)
 
+  const picker = (
+    <WorkspacePicker
+      workspace={workspace}
+      label={workspaceName}
+      isChat={isChat}
+      chat={chatWorkspace}
+      repositories={repositories}
+      onSelect={onSelectWorkspace}
+      onOpenFolder={onOpenFolder}
+    />
+  )
+
+  const motionProps = {
+    'data-testid': leaving ? 'new-session-screen-leaving' : 'new-session-screen',
+    // Leaving starts from fully shown: ``initial={false}`` would start it
+    // at the ``animate`` target and skip the fade.
+    initial: leaving ? { opacity: 1, y: 0 } : reducedMotion ? false : { opacity: 0, y: 6 },
+    animate: leaving ? { opacity: 0, y: -8 } : { opacity: 1, y: 0 },
+    transition: reducedMotion ? { duration: 0 } : leaving ? { duration: DURATIONS_S.fast, ease: EASINGS.inOut } : { duration: DURATIONS_S.fast, ease: EASINGS.out },
+    inert: leaving || undefined,
+    'aria-hidden': leaving || undefined,
+    className: `flex min-h-0 flex-1 flex-col overflow-y-auto ${leaving ? 'pointer-events-none absolute inset-0' : ''}`,
+  } as const
+
+  if (phone) {
+    const suggestions = isChat ? CHAT_SUGGESTIONS : REPO_SUGGESTIONS
+    return (
+      <motion.div {...motionProps}>
+        <div className="flex w-full flex-col gap-4 px-4 pt-4 pb-4">
+          {/* The chip reads "in <folder>" itself. */}
+          <div className="flex min-w-0 items-center">{picker}</div>
+          {setup && <div className="w-full">{setup}</div>}
+          <ul aria-label="Suggestions" className="flex flex-col">
+            {suggestions.map((text) => (
+              <li key={text}>
+                <button
+                  type="button"
+                  onClick={() => onSuggest?.(text)}
+                  className="flex min-h-11 w-full items-center rounded-sm px-1 text-left text-sm text-(--color-text-2) transition-colors duration-(--motion-instant) active:bg-(--bg-key)"
+                >
+                  {text}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </motion.div>
+    )
+  }
+
   return (
-    <motion.div
-      data-testid={leaving ? 'new-session-screen-leaving' : 'new-session-screen'}
-      // Leaving starts from fully shown: ``initial={false}`` would start it
-      // at the ``animate`` target and skip the fade.
-      initial={leaving ? { opacity: 1, y: 0 } : reducedMotion ? false : { opacity: 0, y: 6 }}
-      animate={leaving ? { opacity: 0, y: -8 } : { opacity: 1, y: 0 }}
-      transition={reducedMotion ? { duration: 0 } : leaving ? { duration: DURATIONS_S.fast, ease: EASINGS.inOut } : { duration: DURATIONS_S.fast, ease: EASINGS.out }}
-      inert={leaving || undefined}
-      aria-hidden={leaving || undefined}
-      className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${leaving ? 'pointer-events-none absolute inset-0' : ''}`}
-    >
+    <motion.div {...motionProps}>
       {/* Desktop: the hero sits a little above center (the spacer above is
           the shorter one) so the composer lands near the optical middle. */}
       <div className={`mx-auto flex w-full max-w-3xl flex-col px-4 ${isMobile ? 'pt-6 pb-4' : 'flex-1 pb-28'}`}>
@@ -98,15 +150,7 @@ export function NewSessionScreen({
             )}
           </h1>
           <div className={`flex max-w-full flex-wrap items-center gap-2 ${isMobile ? 'self-start' : 'justify-center'}`}>
-            <WorkspacePicker
-              workspace={workspace}
-              label={workspaceName}
-              isChat={isChat}
-              chat={chatWorkspace}
-              repositories={repositories}
-              onSelect={onSelectWorkspace}
-              onOpenFolder={onOpenFolder}
-            />
+            {picker}
           </div>
           {setup && <div className="mx-auto mt-2 w-full max-w-[640px]">{setup}</div>}
           {/* ``text-left``: the hero is centered, and the composer's

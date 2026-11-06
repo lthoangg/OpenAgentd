@@ -33,12 +33,12 @@ export function ServersScreen({ active, onOpenSessions }: { active: boolean; onO
         </span>
       </header>
       <div data-servers-scroller="" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-safe" onScroll={onScroll}>
-        <div className="px-3 pb-2">
+        <div className="px-4 pb-2">
           <h1 ref={titleRef} className="pb-1 pt-0.5 text-large-title font-bold text-(--color-text)">
             Servers
           </h1>
         </div>
-        <div className="px-3 pb-6">
+        <div className="px-4 pb-6">
           <AppBackendPanel active={active} sectionTitle="Your servers" onOpenInUse={onOpenSessions} />
         </div>
       </div>

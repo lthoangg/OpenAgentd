@@ -44,8 +44,10 @@ mock.module('@/queries/useSessionGoalQuery', () => ({
   useGoalActionMutation: () => ({ mutate: () => {} }),
   useGoalControls: () => undefined,
 }))
+let serverConnected = true
 mock.module('@/queries', () => ({
   useProvidersQuery: () => ({ data: { providers: [] } }),
+  useHealthQuery: () => ({ isSuccess: serverConnected }),
 }))
 mock.module('@/queries/useCommandsQuery', () => ({ useCommandsQuery: () => ({ data: { commands: [] } }) }))
 mock.module('@/queries/useSnippetsQuery', () => ({ useSnippetsQuery: () => ({ data: { snippets: [] } }) }))
@@ -263,6 +265,31 @@ describe('the Servers level under Sessions', () => {
     edgeSwipe(screen.getByTestId('sessions'))
     expect(onBackToServers).toHaveBeenCalledTimes(1)
     expect(onBack).not.toHaveBeenCalled()
+  })
+
+  const forwardSwipe = (el: Element) => {
+    fireEvent.touchStart(el, { touches: [{ clientX: 300, clientY: 300 }] })
+    fireEvent.touchMove(el, { touches: [{ clientX: 270, clientY: 302 }] })
+    fireEvent.touchMove(el, { touches: [{ clientX: 10, clientY: 305 }] })
+    fireEvent.touchEnd(el, { touches: [] })
+  }
+
+  it('swipes left from Servers up to Sessions while a server is connected', () => {
+    serverConnected = true
+    const { onOpenSessions } = levels({ atSessions: true, atServers: true })
+    forwardSwipe(screen.getByTestId('servers'))
+    expect(onOpenSessions).toHaveBeenCalledTimes(1)
+  })
+
+  it('rubber-bands the swipe from Servers when no server answers', () => {
+    serverConnected = false
+    try {
+      const { onOpenSessions } = levels({ atSessions: true, atServers: true })
+      forwardSwipe(screen.getByTestId('servers'))
+      expect(onOpenSessions).not.toHaveBeenCalled()
+    } finally {
+      serverConnected = true
+    }
   })
 
   it('swipes a pushed chat back to Sessions only, never on down to Servers', () => {

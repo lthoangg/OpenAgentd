@@ -48,7 +48,7 @@ export function MobileHeaderAction({
             className={cn('relative touch-hit', active ? 'bg-(--bg-key) text-(--color-text)' : 'phone:text-(--color-accent)')}
             aria-label={label}
           >
-            <Icon size={14} strokeWidth={1.8} aria-hidden="true" className="size-3.5 phone:size-5" />
+            <Icon size={14} strokeWidth={2} aria-hidden="true" className="size-3.5 phone:size-5" />
             {badge > 0 && (
               <span ref={badgeRef} className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-(--color-accent) px-1 text-center font-mono text-meta leading-3.5 text-(--bg-page)">
                 {badge > 9 ? '9+' : badge}

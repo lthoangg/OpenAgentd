@@ -63,7 +63,7 @@ export function PhoneBackButton({ label, onBack }: { label: string; onBack: () =
         <ArrowLeft size={20} aria-hidden="true" className="size-5" />
       ) : (
         <>
-          <ChevronLeft size={20} strokeWidth={2.25} aria-hidden="true" className="-ml-1.5 size-5" />
+          <ChevronLeft size={20} strokeWidth={2} aria-hidden="true" className="-ml-1.5 size-5" />
           <span className="truncate text-xs">{label}</span>
         </>
       )}

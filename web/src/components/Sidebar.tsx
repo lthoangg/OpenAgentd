@@ -94,6 +94,7 @@ import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
+import { ActionSheet, ACTION_SHEET_ROW_CLASS } from '@/components/ui/action-sheet'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { Chip } from '@/components/ui/chip'
 import { Collapsible } from '@/components/ui/collapsible'
@@ -103,7 +104,6 @@ import {
   ContextMenu,
   ContextMenuSeparator,
 } from '@/components/ui/context-menu'
-import { MENU_ITEM_CLASS, MENU_ITEM_DANGER, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ROW_ACTION, ROW_TEXT_ACTION, listRowClass, rowActionsReveal } from '@/components/ui/list-row'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -192,7 +192,7 @@ const NO_GROUPS: WorkspaceGroup[] = []
 /** Rows that Up/Down/Home/End move between: sessions and workspace headers. */
 const SIDEBAR_ROW = '[data-sidebar-session], [data-sidebar-workspace]'
 /** A row of a phone's long-press sheet: a menu row at the touch height (``--phone-control``). */
-const SHEET_ROW_CLASS = cn(MENU_ITEM_CLASS, 'min-h-(--phone-control) text-sm')
+const SHEET_ROW_CLASS = ACTION_SHEET_ROW_CLASS
 
 /** One entry of a session's menu (⋯, right-click, the phone's sheet). */
 interface SessionMenuAction {
@@ -615,7 +615,12 @@ export function Sidebar({
       void openWorkspaceDialog()
       return
     }
-    if (onNewSession && workspace) {
+    if (isPage) {
+      // The Sessions screen covers the chat it was popped from, so the
+      // chat's own handler (which leaves an empty draft or session as it
+      // is) would change nothing on screen: always push a fresh draft.
+      startNewSession({ navigate, workspace: target })
+    } else if (onNewSession && workspace) {
       onNewSession()
       onMobileClose?.()
     } else {
@@ -1179,7 +1184,7 @@ export function Sidebar({
       // top bar pads the top and its toolbar the bottom.
       className={
         isPage
-          ? 'flex h-full w-full min-w-0 flex-col bg-(--bg-page)'
+          ? 'relative flex h-full w-full min-w-0 flex-col bg-(--bg-page)'
           : isMobile
           ? 'mobile-safe-top pl-safe fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)'
           : drawer
@@ -1193,7 +1198,7 @@ export function Sidebar({
     >
       {!isMobile && !desktopCollapsed && <PanelResizeHandle edge="right" />}
 
-      {isPage && <SessionsPageBar barRef={barRef} onNewSession={startSessionFromSidebar} onOpenServers={onOpenServers} />}
+      {isPage && <SessionsPageBar barRef={barRef} onOpenServers={onOpenServers} />}
 
       <div
         data-focus-region="sidebar"
@@ -1622,6 +1627,8 @@ export function Sidebar({
         )}
       </div>
       )}
+      {/* Room under the last row for the floating toolbar. */}
+      {isPage && !searchOpen && <div aria-hidden="true" className="h-24 shrink-0" />}
       </SidebarScroller>
 
       {/* Pinned at the bottom, own scroll past 224px; hidden during search.
@@ -1640,6 +1647,7 @@ export function Sidebar({
         // shrinks the shell, and the toolbar would ride up on top of it.
         !searchOpen && (
           <SessionsPageToolbar
+            onNewSession={startSessionFromSidebar}
             onOpenSettings={() => openSettings()}
             onOpenScheduler={openScheduler}
             onOpenUsage={() => openTelemetry()}
@@ -1655,7 +1663,7 @@ export function Sidebar({
           type="button"
           onClick={() => { openSettings(); onMobileClose?.() }}
           aria-label="Settings"
-          className="flex size-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+          className="flex size-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
         >
           <Settings size={16} aria-hidden="true" />
         </button>
@@ -1663,7 +1671,7 @@ export function Sidebar({
           type="button"
           onClick={() => { openTelemetry(); onMobileClose?.() }}
           aria-label="Usage"
-          className="flex size-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+          className="flex size-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
         >
           <Activity size={16} aria-hidden="true" />
         </button>
@@ -1672,7 +1680,7 @@ export function Sidebar({
             type="button"
             onClick={() => { onMobileClose?.(); onOpenPalette() }}
             aria-label="Command palette"
-            className="flex size-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+            className="flex size-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
           >
             <Command size={16} aria-hidden="true" />
           </button>
@@ -1867,6 +1875,16 @@ export function Sidebar({
                 </button>
               </>
             )}
+        </div>
+        <div className="px-2 pb-2">
+          <button
+            type="button"
+            data-action-sheet-cancel=""
+            onClick={() => setMobileWorkspaceActions(null)}
+            className="oa-menu-item flex min-h-(--phone-control) w-full items-center justify-center rounded-md bg-(--bg-card) text-sm font-semibold text-(--color-text)"
+          >
+            Cancel
+          </button>
         </div>
       </BottomSheet>
 
@@ -2204,34 +2222,13 @@ export function Sidebar({
       {/* A phone's long-press menu is a sheet from the bottom edge (Android,
           and phone browsers); the iOS app shows the system action sheet
           instead (openMobileSessionActions). */}
-      <BottomSheet
+      <ActionSheet
         open={mobileSessionActions !== null}
         onClose={() => setMobileSessionActions(null)}
-        label={mobileSessionActions?.session.title || 'Untitled'}
-      >
-        <div className="px-4 pb-1">
-          <p className="text-sm font-medium text-(--color-text) [overflow-wrap:anywhere]">{mobileSessionActions?.session.title || 'Untitled'}</p>
-          <p className="text-xs text-(--color-text-muted)">Choose a session action.</p>
-        </div>
-        <div className="flex flex-col px-2 pb-3">
-          {mobileSessionActions && sessionMenuActions(mobileSessionActions.session).map(({ id, label, icon: Icon, danger, separatorBefore, run }) => (
-            <Fragment key={id}>
-              {separatorBefore && <div className={MENU_SEPARATOR_CLASS} role="separator" />}
-              <button
-                type="button"
-                className={cn(SHEET_ROW_CLASS, danger && cn(MENU_ITEM_DANGER, 'text-(--color-error)'))}
-                onClick={() => {
-                  setMobileSessionActions(null)
-                  run()
-                }}
-              >
-                <Icon size={16} aria-hidden="true" />
-                {label}
-              </button>
-            </Fragment>
-          ))}
-        </div>
-      </BottomSheet>
+        title={mobileSessionActions?.session.title || 'Untitled'}
+        description="Choose a session action."
+        items={mobileSessionActions ? sessionMenuActions(mobileSessionActions.session) : []}
+      />
 
       <Dialog
         open={worktreeEditTarget !== null}

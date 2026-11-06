@@ -32,7 +32,7 @@ import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useS
 import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { useGoalSessionState } from '@/hooks/useGoalSessionState'
 import { goalHeaderState } from '@/lib/work'
-import { useProvidersQuery } from '@/queries'
+import { useHealthQuery, useProvidersQuery } from '@/queries'
 import { modelReadiness } from '@/lib/model-readiness'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
@@ -208,6 +208,8 @@ interface ChatFrameProps {
  * while a chat is pushed, the outer one while Sessions is on top.
  */
 function ChatFrame({ phoneStack, backEnabled, header, sidebar, footer, children }: ChatFrameProps) {
+  // Swiping left on Servers opens Sessions only while a server answers.
+  const connected = useHealthQuery().isSuccess
   const body = <div className="relative flex min-h-0 flex-1 overflow-hidden">{children}</div>
   if (!phoneStack) {
     return (
@@ -244,6 +246,8 @@ function ChatFrame({ phoneStack, backEnabled, header, sidebar, footer, children 
           pushed={!atServers}
           onBack={onBackToServers}
           backEnabled={backEnabled && phoneStack.atSessions && !atServers}
+          onForward={backEnabled ? onOpenSessions : undefined}
+          forwardBlocked={!connected}
         />
       ) : sessionsStack}
     </div>

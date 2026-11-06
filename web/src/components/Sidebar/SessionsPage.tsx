@@ -19,7 +19,7 @@ import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
 
 /**
  * The top bar: ‹ Servers on the left (the server chip when there is no
- * Servers screen to go back to), ✎ New session on the right, and a small
+ * Servers screen to go back to; ✎ New session is the toolbar's), and a small
  * centred title that fades in once the large one has scrolled away
  * (``data-title-visible``, written by ``useLargeTitleCollapse``). The title
  * has its own column, like ``PhoneNavBar``'s, so a long label truncates
@@ -27,11 +27,9 @@ import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
  */
 export function SessionsPageBar({
   barRef,
-  onNewSession,
   onOpenServers,
 }: {
   barRef: Ref<HTMLElement>
-  onNewSession: () => void
   onOpenServers?: () => void
 }) {
   return (
@@ -53,11 +51,7 @@ export function SessionsPageBar({
       >
         Sessions
       </span>
-      <div className="flex min-w-0 justify-end">
-        <Button type="button" variant="ghost" size="icon" aria-label="New session" onClick={onNewSession} className="relative touch-hit">
-          <SquarePen className="size-5" aria-hidden="true" />
-        </Button>
-      </div>
+      <div aria-hidden="true" />
     </header>
   )
 }
@@ -138,65 +132,83 @@ interface ToolbarItem {
   label: string
   icon: LucideIcon
   onClick: () => void
-  /** The accessible name when it says more than the caption. */
+  /** The accessible name when it says more than the label. */
   ariaLabel?: string
 }
 
 /**
- * The bottom toolbar, an iOS toolbar's: equal buttons, a 20px icon over a
- * caption. It holds what the drawer's footer did (Settings, Usage, the
- * theme) and Scheduled, so each is one tap from the root screen. The theme
- * button shows the current choice and moves to the next on a tap (System →
- * Light → Dark), as the drawer's did. The command palette has no button: it
- * is a keyboard surface, and ⌘K still opens it from a hardware keyboard.
- *
- * Each item is its own grid, not a ``Button``: its height grows with its
- * content (a fixed px height let a Dynamic Type or textZoom label spill out
- * of the box and sit low), the icon and caption are centred as one block,
- * and a press dims it, as iOS does, rather than filling a wide key.
+ * The bottom toolbar, floating over the end of the list as iOS 26's does:
+ * a pill of icon buttons on the left (Settings, Scheduled, Usage, and the
+ * theme, which shows the current choice and moves to the next on a tap:
+ * System → Light → Dark) and the round ✎ New session on the right, under the
+ * thumb. They are actions, not tabs, so there are no captions; each button
+ * is named for assistive tech and shows its name in a tooltip on a long
+ * press. The command palette has no button: it is a keyboard surface, and
+ * ⌘K still opens it from a hardware keyboard.
  */
 export function SessionsPageToolbar({
+  onNewSession,
   onOpenSettings,
   onOpenScheduler,
   onOpenUsage,
 }: {
+  onNewSession: () => void
   onOpenSettings: () => void
   onOpenScheduler: () => void
   onOpenUsage: () => void
 }) {
   const { preference, setPreference } = useThemePreference()
   const theme = THEME_OPTIONS.find((option) => option.value === preference) ?? THEME_OPTIONS[0]
+  const nextTheme = THEME_OPTIONS.find((option) => option.value === NEXT_THEME[preference])?.label
   const items: ToolbarItem[] = [
     { label: 'Settings', icon: Settings, onClick: onOpenSettings },
     { label: 'Scheduled', icon: Clock, onClick: onOpenScheduler },
     { label: 'Usage', icon: Activity, onClick: onOpenUsage },
     {
-      label: theme.label,
+      label: `Theme: ${theme.label}`,
       icon: theme.Icon,
       onClick: () => setPreference(NEXT_THEME[preference]),
-      ariaLabel: `Theme: ${theme.label}. Tap for ${THEME_OPTIONS.find((option) => option.value === NEXT_THEME[preference])?.label}.`,
+      ariaLabel: `Theme: ${theme.label}. Tap for ${nextTheme}.`,
     },
   ]
   return (
     <div
       data-sessions-page-toolbar=""
-      className="flex shrink-0 border-t border-(--color-border) bg-(--bg-sidebar) px-1 pb-safe"
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 bg-gradient-to-t from-(--bg-page) from-40% to-transparent px-4 pt-8 pb-safe"
     >
-      {items.map(({ label, icon: Icon, onClick, ariaLabel }) => (
-        <button
-          key={label}
-          type="button"
-          onClick={onClick}
-          aria-label={ariaLabel}
-          data-sessions-toolbar-item=""
-          // One full-width column (so a long caption truncates), its rows
-          // centred as a block in the 49px band.
-          className="grid min-h-[49px] min-w-0 flex-1 grid-cols-[minmax(0,1fr)] content-center justify-items-center gap-0.5 rounded-md py-1 text-(--color-text-muted) transition-opacity select-none active:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-        >
-          <Icon className="size-5 shrink-0" aria-hidden="true" />
-          <span className="max-w-full truncate text-meta leading-tight">{label}</span>
-        </button>
-      ))}
+      <div
+        role="toolbar"
+        aria-label="Sessions"
+        className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-(--color-border) bg-(--bg-card)/90 p-1 shadow-(--shadow-depth) backdrop-blur-md"
+      >
+        {items.map(({ label, icon: Icon, onClick, ariaLabel }) => (
+          <Button
+            key={label}
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onClick}
+            aria-label={ariaLabel ?? label}
+            title={label}
+            data-sessions-toolbar-item=""
+            className="rounded-full! text-(--color-text-2)"
+          >
+            <Icon className="size-5" aria-hidden="true" />
+          </Button>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="primary"
+        size="icon"
+        onClick={onNewSession}
+        aria-label="New session"
+        data-sessions-new=""
+        // Round and 52px, as the mockup: ``!`` beats the icon size's square 36px.
+        className="pointer-events-auto size-13! min-h-13! min-w-13! rounded-full! shadow-(--shadow-depth)"
+      >
+        <SquarePen className="size-5" aria-hidden="true" />
+      </Button>
     </div>
   )
 }

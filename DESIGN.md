@@ -1760,19 +1760,27 @@ Back at a time.
   is the bottom level: a large **Servers** title over the saved servers, the
   same list as Settings → Server (`AppBackendPanel`). The row in use offers
   **Sessions ›** back up to its list; **Use** on another switches the app to
-  it and lands on that server's Sessions.
+  it and lands on that server's Sessions. While a server answers, a swipe
+  left anywhere on Servers pulls Sessions in (the reverse of Back); with
+  none connected it gives a little and springs back with an error tick. On
+  touch a saved server's row keeps one button (Use, or Sessions ›); Edit and
+  Remove are in its action sheet, from ⋯ or a long press.
 - **Sessions** (`/sessions`, the sidebar's `page` mode) is the first screen
-  the app opens on: ‹ Servers and ✎ New session in the bar, a 28px
+  the app opens on: ‹ Servers in the bar, a 28px
   **Sessions** title (`text-large-title`) that hands over to the bar's small
   title as it scrolls away, the server's dot and name under it (a tap goes
   to Servers too), a search field, then Needs you, Pinned and the
   workspaces. Pull down to refresh. Swipe a row left for Pin and Delete
-  (Delete confirms); a long press still opens its menu. A toolbar at the
-  bottom holds Settings, Scheduled, Usage and the theme (the current choice;
-  a tap moves System → Light → Dark), each an icon over its name, centred
-  in a band that grows with Dynamic Type. It steps aside while searching,
-  so it never rides up on the soft keyboard. The command palette has no
-  button on a phone; ⌘K opens it from a hardware keyboard.
+  (Pin is neutral, only Delete is red; Delete confirms); a long press
+  opens its menu, so rows have no ⋯ here. The toolbar floats over the end
+  of the list, as iOS 26's does, on a fade of the page: a pill of icon
+  buttons on the left (Settings, Scheduled, Usage, and the theme, showing
+  the current choice; a tap moves System → Light → Dark) and the round
+  primary ✎ New session on the right, under the thumb. They are actions,
+  not tabs, so there are no captions; each is named for assistive tech. It
+  steps aside while searching, so it never rides up on the soft keyboard.
+  The command palette has no button on a phone; ⌘K opens it from a
+  hardware keyboard.
 - **A chat or a draft is pushed** over it from the right; Sessions drifts a
   third of the way left under a scrim. The chat's bar is `PhoneNavBar`:
   ‹ Sessions in the accent, the title centred over its workspace, Tasks and
@@ -1797,6 +1805,11 @@ Back at a time.
   ‹ parent on the left, the title centred and **Done** on the right; a
   Settings section is pushed over the list and swipes back. Android puts a
   bare ← and a left-aligned title in the same bars.
+- **Menus are action sheets** (`ui/action-sheet`): a long press (one
+  medium haptic, from the gesture) or ⋯ opens the item's title, 44px rows
+  with a 16px icon, a destructive row last in red, and **Cancel** in its own
+  group under them. No floating menus on a phone. In the iOS app a session
+  and a workspace use the system action sheet instead.
 - **Confirms are alerts** on an iOS-style phone: a centred 270px card, Cancel
   and the action full width under a hairline, a destructive action in red
   and never the default. Android keeps Material's text buttons.

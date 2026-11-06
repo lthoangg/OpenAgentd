@@ -264,7 +264,7 @@ describe('Sidebar page mode: the Sessions screen', () => {
     expect(view.container.querySelector('[data-sidebar-new-session]')).toBeNull()
     expect(screen.queryByRole('region', { name: 'Scheduled' })).toBeNull()
     expect(view.container.querySelector('[data-sidebar-scheduled-scroller]')).toBeNull()
-    // One New session: the ✎ in the top bar.
+    // One New session: the round ✎ in the floating toolbar.
     expect(screen.getAllByRole('button', { name: 'New session' })).toHaveLength(1)
   })
 
@@ -322,13 +322,16 @@ describe('Sidebar page mode: the Sessions screen', () => {
     expect(onOpenServers).toHaveBeenCalledTimes(2)
   })
 
-  it('starts a new session from ✎ the way ⌘N does', async () => {
+  it('pushes a fresh draft from ✎, even over an empty draft kept under Sessions', async () => {
     const onNewSession = mock(() => {})
+    // No session: the chat under Sessions is an empty draft, where the
+    // chat's own handler would do nothing.
     await renderPage({ onNewSession })
 
     fireEvent.click(screen.getByRole('button', { name: 'New session' }))
 
-    expect(onNewSession).toHaveBeenCalledTimes(1)
+    expect(onNewSession).not.toHaveBeenCalled()
+    expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ to: '/', search: { workspace: '/repo/project' } }))
   })
 
   it('opens a draft in the current workspace from ✎ when the chat has no handler', async () => {
@@ -400,7 +403,7 @@ describe('Sidebar page mode: pull to refresh', () => {
 })
 
 describe('Sidebar page mode: bottom toolbar', () => {
-  it('has four labelled buttons: Settings, Scheduled, Usage and the theme', async () => {
+  it('floats a pill of four icon buttons and the round New session button', async () => {
     const openSettings = mock(() => {})
     const real = useSettingsStore.getState().openSettings
     useSettingsStore.setState({ openSettings })
@@ -408,19 +411,14 @@ describe('Sidebar page mode: bottom toolbar', () => {
     try {
       const { view } = await renderPage({ onOpenScheduler, onOpenPalette: () => {} })
       const toolbar = view.container.querySelector('[data-sessions-page-toolbar]') as HTMLElement
-      const names = within(toolbar).getAllByRole('button').map((button) => button.textContent)
-      expect(names).toEqual(['Settings', 'Scheduled', 'Usage', 'System'])
-      expect(toolbar.className).toContain('border-t')
+      const pill = within(toolbar).getByRole('toolbar', { name: 'Sessions' })
+      const names = within(pill).getAllByRole('button').map((button) => button.getAttribute('aria-label'))
+      expect(names).toEqual(['Settings', 'Scheduled', 'Usage', 'Theme: System. Tap for Light.'])
+      // Icons only: actions, not tabs, so no captions.
+      expect(pill.textContent).toBe('')
+      expect(toolbar.className).toContain('absolute')
       expect(toolbar.className).toContain('pb-safe')
-      // Icon over label, centred as one block in a band that grows with
-      // them (no fixed px height a larger text size would spill out of).
-      const settings = within(toolbar).getByRole('button', { name: 'Settings' })
-      const itemClasses = settings.className.split(/\s+/)
-      expect(itemClasses).toEqual(expect.arrayContaining(['grid', 'content-center', 'justify-items-center', 'min-h-[49px]']))
-      expect(itemClasses.some((c) => c.startsWith('h-['))).toBe(false)
-      // Not a Button: no phone floor or key fill fights the column.
-      expect(settings.hasAttribute('data-slot')).toBe(false)
-      expect(within(settings).getByText('Settings').className).toContain('text-meta')
+      expect(within(toolbar).getByRole('button', { name: 'New session' }).dataset.sessionsNew).toBe('')
 
       fireEvent.click(within(toolbar).getByRole('button', { name: 'Settings' }))
       expect(openSettings).toHaveBeenCalledTimes(1)
@@ -449,11 +447,11 @@ describe('Sidebar page mode: bottom toolbar', () => {
       const toolbar = view.container.querySelector('[data-sessions-page-toolbar]') as HTMLElement
       const themeButton = () => within(toolbar).getByRole('button', { name: /^Theme:/ })
 
-      expect(themeButton().textContent).toBe('System')
       expect(themeButton().getAttribute('aria-label')).toBe('Theme: System. Tap for Light.')
+      expect(themeButton().getAttribute('title')).toBe('Theme: System')
       for (const [next, label] of [['Light', 'Theme: Light. Tap for Dark.'], ['Dark', 'Theme: Dark. Tap for System.'], ['System', 'Theme: System. Tap for Light.']]) {
         fireEvent.click(themeButton())
-        await waitFor(() => expect(themeButton().textContent).toBe(next))
+        await waitFor(() => expect(themeButton().getAttribute('title')).toBe(`Theme: ${next}`))
         expect(themeButton().getAttribute('aria-label')).toBe(label)
       }
     } finally {
@@ -502,8 +500,8 @@ describe('Sidebar page mode: swipe actions', () => {
     expect(swipeRow).toBeTruthy()
     const actions = actionsOf(swipeRow)
     expect(actions.map((button) => button.textContent)).toEqual(['Pin', 'Delete'])
-    // Accent for Pin, destructive for Delete, as SwipeRow draws its tones.
-    expect(actions[0].className).toContain('bg-(--color-accent)')
+    // Neutral for Pin, destructive for Delete: only Delete is loud.
+    expect(actions[0].className).toContain('bg-(--bg-key)')
     expect(actions[1].className).toContain('bg-(--color-error)')
   })
 

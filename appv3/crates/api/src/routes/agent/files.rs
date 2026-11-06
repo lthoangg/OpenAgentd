@@ -1741,7 +1741,14 @@ mod tests {
         git_ok(root, &["checkout", "-q", "main"]);
         std::fs::write(root.join("a.txt"), "main\n").unwrap();
         git_ok(root, &["commit", "-qam", "main"]);
-        let _ = std::process::Command::new("git").arg("-C").arg(root).args(["merge", "-q", "side"]).output();
+        // The merge conflicts, so it fails: run it without git_ok's assert. It
+        // still needs an identity, or git stops before writing the conflict on
+        // a machine without a global user (CI).
+        let _ = std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "merge", "-q", "side"])
+            .output();
         assert!(git_stdout(root, &["ls-files", "-u"]).is_some_and(|u| u.lines().count() == 3), "no conflict to list");
         let nested = root.join("vendor/lib");
         std::fs::create_dir_all(&nested).unwrap();

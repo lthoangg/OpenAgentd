@@ -146,7 +146,7 @@ function StaleMark({ view }: { view: ProviderView }) {
           ? 'This provider is limiting usage checks; this is the last value seen'
           : 'The last refresh failed for this provider; this is the last value seen'}
       >
-        <Clock size={11} strokeWidth={2} aria-hidden="true" />
+        <Clock size={12} strokeWidth={2} aria-hidden="true" />
         Last known
         {view.updated && <span title="When these numbers were read"> · {view.updated}</span>}
       </span>

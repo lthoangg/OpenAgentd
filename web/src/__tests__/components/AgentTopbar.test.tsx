@@ -1,6 +1,8 @@
 import { describe, expect, it, mock } from 'bun:test'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
+import { ListTodo, PanelRight } from 'lucide-react'
 
 mock.module('@tanstack/react-router', () => ({
   Link: ({ children }: { children: React.ReactNode }) => children,
@@ -9,40 +11,37 @@ mock.module('@tanstack/react-router', () => ({
 import { AgentTopbar } from '@/components/AgentTopbar'
 
 describe('AgentTopbar', () => {
-  it('renders the token meter when tokens is provided with zero usage', () => {
-    render(
+  it('renders only its actions: no token meter, the context ring lives on the run deck', () => {
+    const { container } = render(
       <AgentTopbar
-        tokens={{ input: 0, output: 0, cached: 0 }}
+        todosAction={{ Icon: ListTodo, onClick: () => {}, ariaLabel: 'Tasks' }}
+        filesAction={{ Icon: PanelRight, onClick: () => {}, ariaLabel: 'Review panel' }}
       />,
     )
 
-    expect(screen.getByRole('button', { name: /Input: 0/i })).toBeInTheDocument()
-  })
-
-  it('renders the token meter when tokens has non-zero usage', () => {
-    render(
-      <AgentTopbar
-        tokens={{ input: 1200, output: 300, cached: 100 }}
-      />,
-    )
-
-    expect(screen.getByRole('button', { name: /Input: 1,200/i })).toBeInTheDocument()
-  })
-
-  it('hides the token meter when tokens is omitted', () => {
-    render(<AgentTopbar />)
-
+    expect(Array.from(container.querySelectorAll('button')).map((b) => b.getAttribute('aria-label'))).toEqual(['Tasks', 'Review panel'])
     expect(screen.queryByRole('button', { name: /Input:/i })).not.toBeInTheDocument()
   })
 
-  it('does not render the token meter when isMobile is true', () => {
+  it('renders an empty cluster without actions', () => {
+    const { container } = render(<AgentTopbar />)
+    expect(container.querySelectorAll('button')).toHaveLength(0)
+  })
+
+  it('says what an action does in a tooltip and reflects its pressed state', async () => {
+    const onClick = mock(() => {})
     render(
       <AgentTopbar
-        isMobile={true}
-        tokens={{ input: 0, output: 0 }}
+        filesAction={{ Icon: PanelRight, onClick, ariaLabel: 'Review panel', title: 'Show Review panel (Ctrl+D)', pressed: true }}
       />,
     )
 
-    expect(screen.queryByRole('button', { name: /Input:/i })).not.toBeInTheDocument()
+    const button = screen.getByRole('button', { name: 'Review panel' })
+    expect(button).toHaveAttribute('aria-pressed', 'true')
+    const user = userEvent.setup()
+    await user.hover(button)
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Show Review panel (Ctrl+D)')
+    await user.click(button)
+    expect(onClick).toHaveBeenCalledTimes(1)
   })
 })

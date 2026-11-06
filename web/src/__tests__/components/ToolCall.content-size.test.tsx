@@ -95,7 +95,8 @@ describe('tool content is at least 12px', () => {
     todo.unmount()
 
     const empty = render(<ToolResult toolName="todo" result="No todos." />)
-    expectContentSize(screen.getByText('No todos.'))
+    // An empty board is an empty state (a title), not a line of result text.
+    expect(screen.getByText('No todos')).toBeTruthy()
     empty.unmount()
 
     const lsp = render(<ToolResult toolName="lsp" operation="find_references" result={'app/main.py:12:5 | print(answer())'} />)

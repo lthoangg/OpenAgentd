@@ -418,8 +418,8 @@ impl Agent {
     }
 
     async fn run_inner(&self, history: Vec<ChatMessage>, opts: RunOptions<'_>) -> Result<RunOutcome, AgentError> {
-        let provider = opts.provider.clone().unwrap_or_else(|| self.provider.clone());
-        let active_model = opts.model_id.clone().or_else(|| self.model_id.clone());
+        let mut provider = opts.provider.clone().unwrap_or_else(|| self.provider.clone());
+        let mut active_model = opts.model_id.clone().or_else(|| self.model_id.clone());
         let hooks = opts.hooks.clone();
         let mut run_tools = self.tools.clone();
         for t in &opts.injected_tools {
@@ -468,7 +468,7 @@ impl Agent {
         }
         let sem = tokio::sync::Semaphore::new(MAX_CONCURRENT_TOOLS);
         let interrupted = || opts.interrupt.as_ref().map(|e| e.is_set()).unwrap_or(false);
-        let label = active_model.clone().unwrap_or_else(|| "primary".into());
+        let mut label = active_model.clone().unwrap_or_else(|| "primary".into());
 
         let mut iteration = 0usize;
         let mut empty_retries = 0u32;
@@ -492,6 +492,21 @@ impl Agent {
             }
             if hook_updated {
                 Self::sync(opts.checkpointer, &ctx, &mut state).await;
+            }
+            // A steer moved the turn to other settings: this call already uses them.
+            if let Some(sw) = state.model_switch.take() {
+                provider = sw.provider;
+                active_model = sw.model_id;
+                label = active_model.clone().unwrap_or_else(|| "primary".into());
+                let mut m = state.metadata.lock().unwrap();
+                match active_model.as_deref().filter(|s| !s.is_empty()) {
+                    Some(em) => m.insert("effective_model".into(), json!(em)),
+                    None => m.shift_remove("effective_model"),
+                };
+                match sw.thinking_level.as_deref().filter(|s| !s.is_empty()) {
+                    Some(t) => m.insert("thinking_level".into(), json!(t)),
+                    None => m.shift_remove("thinking_level"),
+                };
             }
             let otel_hook = hooks.iter().find_map(|h| h.as_otel());
             if state.meta_get("stop_after_before_model") == Some(Value::Bool(true)) {

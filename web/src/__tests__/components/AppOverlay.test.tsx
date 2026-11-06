@@ -13,12 +13,15 @@
  *  - Escape key calls onClose (via useModalFocus)
  *  - No sheet variant exists (regression guard)
  *  - className forwarded to panel element
+ *  - OVERLAY_MAX_WIDTH: one width per content type
+ *  - appLevel marks a root-mounted overlay (Settings, Usage) for the phone rules
+ *  - onEscape: Escape's own handler, apart from backdrop clicks
  */
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AppOverlay } from '@/components/ui/app-overlay'
+import { AppOverlay, OVERLAY_MAX_WIDTH } from '@/components/ui/app-overlay'
 
 afterEach(cleanup)
 
@@ -142,6 +145,28 @@ describe('AppOverlay — className', () => {
   })
 })
 
+// ── Width by content type ─────────────────────────────────────────────────────
+
+describe('AppOverlay — OVERLAY_MAX_WIDTH', () => {
+  it('names a width for each kind of content, and the default is the one-column step', () => {
+    expect(OVERLAY_MAX_WIDTH).toEqual({ narrow: '640px', default: '860px', split: '1100px', wide: '76rem' })
+    renderOverlay({ maxWidth: OVERLAY_MAX_WIDTH.wide })
+    expect((screen.getByRole('dialog') as HTMLElement).style.getPropertyValue('--overlay-max-width')).toBe('76rem')
+  })
+})
+
+// ── App-level overlays ────────────────────────────────────────────────────────
+
+describe('AppOverlay — appLevel', () => {
+  it('marks an overlay mounted at the app root, and only then', () => {
+    renderOverlay({ appLevel: true })
+    expect(screen.getByRole('dialog').getAttribute('data-overlay-level')).toBe('app')
+    cleanup()
+    renderOverlay()
+    expect(screen.getByRole('dialog').hasAttribute('data-overlay-level')).toBe(false)
+  })
+})
+
 // ── Interactions ──────────────────────────────────────────────────────────────
 
 describe('AppOverlay — interactions', () => {
@@ -193,5 +218,23 @@ describe('AppOverlay — interactions', () => {
     )
     await user.keyboard('{Escape}')
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('gives Escape to onEscape when set, and leaves the backdrop on onClose', async () => {
+    const user = userEvent.setup()
+    const onClose = mock(() => {})
+    const onEscape = mock(() => {})
+    const { container } = render(
+      <AppOverlay open onClose={onClose} onEscape={onEscape} label="dialog">
+        <div>content</div>
+      </AppOverlay>,
+    )
+    await user.keyboard('{Escape}')
+    expect(onEscape).toHaveBeenCalledTimes(1)
+    expect(onClose).not.toHaveBeenCalled()
+
+    await user.click(container.querySelector('[aria-hidden="true"].fixed') as HTMLElement)
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(onEscape).toHaveBeenCalledTimes(1)
   })
 })

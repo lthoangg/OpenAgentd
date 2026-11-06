@@ -1,5 +1,6 @@
 /**
- * TaskDetailView — the task's own pane: header actions, state tiles, and the
+ * TaskDetailView — the task's own pane: header actions (Run now and Edit task
+ * in words, the rest in a ⋯ menu with Delete last), state tiles, and the
  * Schedule / Delivery / History sections.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -78,35 +79,76 @@ describe('TaskDetailView header', () => {
     expect(slug?.className).toContain('font-mono')
   })
 
-  it('has Run now (not Trigger now), Pause, Edit task and Delete task… actions', async () => {
+  it('has Run now (not Trigger now) and Edit task as labelled buttons, then a ⋯ menu last', () => {
     renderDetail()
     expect(screen.queryByRole('button', { name: 'Trigger now' })).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Run now' }))
-    await waitFor(() => expect(requests).toContainEqual({ url: '/api/scheduler/tasks/daily-standup/trigger', method: 'POST' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Pause' }))
-    await waitFor(() => expect(requests).toContainEqual({ url: '/api/scheduler/tasks/daily-standup/pause', method: 'POST' }))
-    expect(screen.getByRole('button', { name: 'Edit task' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Delete task…' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull()
+    const run = screen.getByRole('button', { name: 'Run now' })
+    const edit = screen.getByRole('button', { name: 'Edit task' })
+    const more = screen.getByRole('button', { name: 'More actions' })
+    expect(run).toHaveTextContent('Run now')
+    expect(edit).toHaveTextContent('Edit task')
+    expect(more.getAttribute('aria-haspopup')).toBe('menu')
+    // 32px toolbar buttons from the Button primitive, in the order Run now,
+    // Edit task, ⋯ (the menu ends the row).
+    for (const button of [run, edit, more]) expect(button.getAttribute('data-slot')).toBe('button')
+    expect(run.className).toContain('h-8')
+    expect(more.className).toContain('size-8')
+    const follows = (a: HTMLElement, b: HTMLElement) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(follows(run, edit)).toBe(true)
+    expect(follows(edit, more)).toBe(true)
   })
 
-  it('asks before deleting, from the Delete task… action', async () => {
+  it('has no icon-only Pause or Delete, and no second × beside the overlay\'s', () => {
+    renderDetail()
+    expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Delete/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Close detail' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Close/ })).toBeNull()
+  })
+
+  it('runs the task from Run now', async () => {
+    renderDetail()
+    fireEvent.click(screen.getByRole('button', { name: 'Run now' }))
+    await waitFor(() => expect(requests).toContainEqual({ url: '/api/scheduler/tasks/daily-standup/trigger', method: 'POST' }))
+  })
+
+  it('holds Pause and Delete task… (last, destructive) in the ⋯ menu', async () => {
+    renderDetail()
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+
+    const menu = screen.getByRole('menu', { name: 'Actions for Daily standup' })
+    const items = Array.from(menu.querySelectorAll('[role="menuitem"]'))
+    // Run now is a button of its own in the header, so the menu does not repeat it.
+    expect(items.map((item) => item.textContent)).toEqual(['Pause', 'Delete task…'])
+    expect(items.at(-1)?.className).toContain('text-(--color-error)')
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pause' }))
+    await waitFor(() => expect(requests).toContainEqual({ url: '/api/scheduler/tasks/daily-standup/pause', method: 'POST' }))
+  })
+
+  it('asks before deleting, from the ⋯ menu\'s Delete task…', async () => {
     const onClose = mock(() => {})
     renderDetail({}, onClose)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete task…' }))
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete task…' }))
     expect(screen.getByRole('dialog', { name: 'Delete scheduled task' })).toBeInTheDocument()
     expect(requests).toHaveLength(0)
+    // A confirm: no ×; Cancel dismisses; the action is "Delete task".
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete task permanently' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete task' }))
     await waitFor(() => expect(requests).toEqual([{ url: '/api/scheduler/tasks/daily-standup', method: 'DELETE' }]))
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
   })
 
-  it('offers Resume for a paused task', () => {
+  it('offers Resume for a paused task, in the ⋯ menu', () => {
     renderDetail({ status: 'paused' })
-    expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Resume' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Pause' })).toBeNull()
   })
 })
 
@@ -117,7 +159,7 @@ describe('TaskDetailView tiles', () => {
     expect(labels).toEqual(['Status', 'Last run', 'Next run', 'Runs'])
     expect(screen.queryByText('Enabled')).toBeNull()
 
-    const chip = within(tile('Status')).getByText('scheduled').closest('[data-slot="chip"]')
+    const chip = within(tile('Status')).getByText('Scheduled').closest('[data-slot="chip"]')
     expect(chip?.getAttribute('data-tone')).toBe('neutral')
     expect(within(tile('Last run')).getByText('Not yet')).toBeInTheDocument()
     expect(within(tile('Next run')).getByText('None scheduled')).toBeInTheDocument()
@@ -135,13 +177,14 @@ describe('TaskDetailView tiles', () => {
     expect(within(tile('Runs')).getByText('30 of 30')).toBeInTheDocument()
     expect(within(tile('Last run')).getByText('2m ago · ok')).toBeInTheDocument()
     expect(within(tile('Next run')).getByText('in 1h')).toBeInTheDocument()
-    expect(within(tile('Status')).getByText('done').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('success')
+    expect(within(tile('Status')).getByText('Done').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('neutral')
   })
 
   it('names a failed repeating task by its last run', () => {
     renderDetail({ status: 'failed', last_error: 'Model unavailable', next_fire_at: new Date(Date.now() + 3_600_000).toISOString() })
-    expect(within(tile('Status')).getByText('last run failed').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('error')
-    expect(screen.getByText('Last run failed', { selector: 'p, div, span' })).toBeInTheDocument()
+    expect(within(tile('Status')).getByText('Last run failed').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('error')
+    // The chip and the callout both name it.
+    expect(screen.getAllByText('Last run failed')).toHaveLength(2)
     expect(screen.getByText('Model unavailable')).toBeInTheDocument()
   })
 })
@@ -164,9 +207,9 @@ describe('TaskDetailView schedule', () => {
   })
 
   it('describes a one-off task as "Once" with its date', () => {
-    renderDetail({ schedule_type: 'at', every_seconds: null, at_datetime: '2026-10-24T09:00:00Z' })
+    renderDetail({ schedule_type: 'at', every_seconds: null, at_datetime: '2024-10-24T09:00:00Z' })
     expect(within(row('Type')).getByText('Once')).toBeInTheDocument()
-    expect(within(row('Date and time')).getByText('24/10/2026 09:00')).toBeInTheDocument()
+    expect(within(row('Date and time')).getByText('Oct 24, 2024, 09:00')).toBeInTheDocument()
   })
 })
 

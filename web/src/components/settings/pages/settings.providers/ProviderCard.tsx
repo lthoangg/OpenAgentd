@@ -379,7 +379,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
               onClick={() => void handleDisconnect(!provider.is_disconnected)}
               disabled={disconnectMutation.isPending}
             >
-              {disconnectMutation.isPending && <Loader2 size={11} className="mr-1 animate-spin" aria-hidden="true" />}
+              {disconnectMutation.isPending && <Loader2 size={12} className="mr-1 animate-spin" aria-hidden="true" />}
               {provider.is_disconnected ? 'Show in pickers' : 'Hide from pickers'}
             </Button>
           )}
@@ -390,7 +390,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
               variant="ghost"
               onClick={() => void openExternalUrl(provider.docs_url)}
             >
-              Docs <ExternalLink size={11} aria-hidden="true" className="ml-1" />
+              Docs <ExternalLink size={12} aria-hidden="true" className="ml-1" />
             </Button>
           )}
         </div>

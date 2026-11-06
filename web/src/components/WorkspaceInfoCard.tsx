@@ -42,7 +42,7 @@ export function WorkspaceInfoCard({ workspace, chatWorkspace = false, currentSes
       <div className="mx-auto w-full max-w-md px-4 py-4">
         <div className="flex min-w-0 items-center gap-2">
           <MessageCircle size={16} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
-          <h2 className="truncate text-sm font-medium text-(--color-text)">Chat</h2>
+          <h2 className="truncate text-base font-semibold text-(--color-text)">Chat</h2>
         </div>
         <p className="mt-2 text-xs text-(--color-text-muted)">
           OpenAgentd runs here, in your home directory. Ask about your own files by
@@ -65,7 +65,7 @@ export function WorkspaceInfoCard({ workspace, chatWorkspace = false, currentSes
         <Tooltip className="min-w-0">
           <TooltipTrigger
             className="min-w-0"
-            render={<h2 className="truncate text-sm font-medium text-(--color-text)">{name}</h2>}
+            render={<h2 className="truncate text-base font-semibold text-(--color-text)">{name}</h2>}
           />
           <TooltipContent>{name}</TooltipContent>
         </Tooltip>

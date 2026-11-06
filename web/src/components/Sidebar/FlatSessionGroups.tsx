@@ -1,4 +1,5 @@
 import { useMemo, useRef } from 'react'
+import { MessageCircle } from 'lucide-react'
 import type { SessionResponse } from '@/api/types'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
 import { useActiveSessionsQuery, useAllSessionsQuery } from '@/queries/useSessionsQuery'
@@ -6,6 +7,7 @@ import { useSidebarViewStore, type SidebarGroupBy } from '@/stores/useSidebarVie
 import { groupSessionsByDate, groupSessionsByStatus, nestedUnderSender, type SessionGroup } from '../Sidebar.helpers'
 import { SessionGroupHeader } from './SessionGroupHeader'
 import { Collapsible } from '@/components/ui/collapsible'
+import { EmptyState } from '@/components/ui/empty-state'
 import { DraftSessionRow, SessionRow, SessionRowsSkeleton, ShowMoreRow, useStableSessionHandlers, type SessionHandlers } from './SessionRow'
 
 function uniqueById(sessions: readonly SessionResponse[]): SessionResponse[] {
@@ -99,7 +101,8 @@ export function FlatSessionGroups({
       )}
       {all.isLoading && <SessionRowsSkeleton rows={5} />}
       {groups.length === 0 && !all.isLoading && !draftWorkspace && (
-        <p className="flex h-6 items-center pl-6 text-meta text-(--color-text-subtle)">No sessions yet.</p>
+        // The icon sits in the status-mark slot, so the words line up with the titles.
+        <EmptyState compact icon={MessageCircle} title="No sessions yet" className="px-1.5 py-1" />
       )}
       {groupBy === 'none'
         ? groups[0] && <div className="space-y-px">{groups[0].sessions.map(renderRow)}</div>

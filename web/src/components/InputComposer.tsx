@@ -91,7 +91,9 @@ function deliveryForKey(e: { metaKey: boolean; ctrlKey: boolean; altKey: boolean
 const DELIVERY_TRIGGER_CLASS =
   // Same height as the Steer half on every pointer: the Dropdown's own
   // touch minimum (36px) would otherwise leave it taller than a 32px pill.
-  'flex h-8 min-h-0 w-5 shrink-0 items-center justify-center gap-0 rounded-l-none rounded-r-full border-0 border-l border-l-(--color-text-on-accent)/20 bg-(--bg-send) px-0 py-0 text-(--color-text-on-accent) hover:bg-(--bg-send) hover:opacity-90 hover:shadow-none active:bg-(--bg-send) pointer-coarse:min-h-0 md:h-7 pointer-coarse:h-9 [&>span]:hidden [&_svg]:text-(--color-text-on-accent)'
+  // ``relative``: it paints over the Steer half's grown touch area, so a tap
+  // on the chevron opens the chevron.
+  'relative flex h-8 min-h-0 w-5 shrink-0 items-center justify-center gap-0 rounded-l-none rounded-r-full border-0 border-l border-l-(--color-text-on-accent)/20 bg-(--bg-send) px-0 py-0 text-(--color-text-on-accent) hover:bg-(--bg-send) hover:opacity-90 hover:shadow-none active:bg-(--bg-send) pointer-coarse:min-h-0 md:h-7 pointer-coarse:h-9 [&>span]:hidden [&_svg]:text-(--color-text-on-accent)'
 
 export interface InputComposerProps {
   onSubmit: (message: string, files?: File[], mentionedFiles?: string[], delivery?: SendDelivery) => void
@@ -725,10 +727,11 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   ) : null
 
   // Icon controls on the action row are borderless (DESIGN.md → Buttons):
-  // ghost at rest, keycap fill on hover. 28px on desktop, 32px on a narrow
-  // screen with a mouse, 36px for a finger.
+  // ghost at rest, keycap fill on hover. The run deck's steps, as Send: 28px
+  // on desktop, 32px in a narrow mouse window, 36px on touch (a phone too,
+  // where the touch area grows to 44px).
   const actionBtnClass =
-    'flex size-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-[color,background-color,scale] duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:bg-(--color-border-subtle) dark:active:bg-(--color-border) pointer-coarse:active:scale-90 motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:size-7 pointer-coarse:size-9'
+    'relative touch-hit flex size-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-[color,background-color,scale] duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:bg-(--color-border-subtle) dark:active:bg-(--color-border) pointer-coarse:active:scale-90 motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:size-7 pointer-coarse:size-9'
 
   const stopClick = (e: React.MouseEvent) => e.stopPropagation()
 
@@ -820,8 +823,10 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // Idle with nothing to send it is a keycap, borderless like every control.
   // A press darkens it under a mouse (as a macOS control does) and gives under
   // a finger (as an iOS one does).
+  // The run deck's steps: 28px on desktop, 36px on touch. A phone keeps the
+  // composer compact at 36px and grows the touch area to 44px (``touch-hit``).
   const sendSlotClass =
-    'flex size-8 shrink-0 items-center justify-center rounded-full transition-[color,background-color,opacity,scale] duration-(--motion-instant) pointer-fine:active:opacity-80 pointer-coarse:active:scale-90 motion-reduce:active:scale-100 md:size-7 pointer-coarse:size-9'
+    'relative touch-hit flex size-8 shrink-0 items-center justify-center rounded-full transition-[color,background-color,opacity,scale] duration-(--motion-instant) pointer-fine:active:opacity-80 pointer-coarse:active:scale-90 motion-reduce:active:scale-100 md:size-7 pointer-coarse:size-9'
   const sendPillClass = 'bg-(--bg-send) text-(--color-text-on-accent) hover:opacity-90'
 
   // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.
@@ -840,7 +845,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       aria-label="Stop generation"
       className={cn(sendSlotClass, sendPillClass)}
     >
-      <Square size={11} fill="currentColor" aria-hidden="true" className={iconIn} />
+      <Square size={12} fill="currentColor" aria-hidden="true" className={iconIn} />
     </button>
   ) : splitSend ? (
     <div role="group" aria-label="Send" className="flex shrink-0 items-center">

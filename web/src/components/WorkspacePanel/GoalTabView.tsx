@@ -41,6 +41,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { planTitle } from '../ActivePlanSection'
 import { DockLoadError } from './DockLoadError'
+import { DockLinesSkeleton } from './DockSkeleton'
 
 const NOW_CLASS: Record<GoalTone, string> = {
   active: 'bg-(--bg-key) text-(--color-text)',
@@ -251,11 +252,11 @@ export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: 
         <span className="truncate text-meta text-(--color-text-subtle)">Turns run on their own until a check confirms it</span>
       </div>
       {sessionId && !data && isError ? (
-        <DockLoadError message="Failed to load the goal." onRetry={() => void refetch()} retrying={isFetching} />
+        <DockLoadError message="Couldn't load the goal." onRetry={() => void refetch()} retrying={isFetching} />
       ) : !sessionId || (!goal && !isLoading) ? (
         <EmptyState icon={Target} title="No goal" body={NO_GOAL_BODY} />
       ) : !goal ? (
-        <p className="px-4 py-3 text-xs text-(--color-text-subtle)">Loading the goal…</p>
+        <DockLinesSkeleton label="Loading the goal" className="px-4 py-4" />
       ) : (
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
           <div className="mx-auto max-w-xl px-4 py-4 pb-safe">

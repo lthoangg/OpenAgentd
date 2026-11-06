@@ -14,12 +14,14 @@ import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
 import { formatTime, formatFullDateTime } from '@/utils/format'
 import { ModelName } from '@/components/ui/model-name'
+import { Button } from '@/components/ui/button'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
 import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
 import { useImageBox } from '@/lib/image-size'
 import { DURATIONS_S, EASINGS, cssEasing } from '@/lib/motion'
 import { replyLabel, type ReplyFrom, type SentFrom } from '@/utils/workspace-messages'
+import { TurnActionButton } from './TurnActionButton'
 
 /** Matches http:// and https:// URLs (greedy, stops at whitespace or common trailing punctuation). */
 const URL_RE = /https?:\/\/[^\s<>"')\]]+/g
@@ -133,7 +135,7 @@ function SourceChip({ label, title, ariaLabel, onOpen, dataAttr }: {
       {...marker}
     >
       {label}
-      <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
+      <ArrowUpRight size={12} aria-hidden="true" className="shrink-0" />
     </button>
   )
 }
@@ -159,7 +161,7 @@ function SentFromChip({ source, onOpenSession }: { source: SentFrom; onOpenSessi
   )
 }
 
-/** "From lead" above a message the lead agent sent this subagent. */
+/** "From lead" above a message the main agent sent this subagent. */
 function FromLeadChip({ sessionId, onOpenSession }: { sessionId: string; onOpenSession?: OpenSessionHandler }) {
   return (
     <SourceChip
@@ -169,8 +171,8 @@ function FromLeadChip({ sessionId, onOpenSession }: { sessionId: string; onOpenS
           <span className="shrink-0 font-mono font-semibold text-(--color-text)">lead</span>
         </>
       }
-      title="Sent by the lead agent"
-      ariaLabel="Open the lead agent"
+      title="Sent by the main agent"
+      ariaLabel="Open the main agent"
       // The lead runs in this subagent's own workspace, so there is none to switch to.
       onOpen={onOpenSession ? () => onOpenSession(sessionId, '') : undefined}
       dataAttr="data-from-lead"
@@ -344,7 +346,7 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
 /** A prompt younger than this when it mounts was just sent. */
 const FRESH_BUBBLE_MS = 2000
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, editLocked = false, actionsAtRest = false, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, fromLeadSessionId, replyFrom, onOpenSession }: {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, editLocked = false, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, fromLeadSessionId, replyFrom, onOpenSession }: {
   content: string
   timestamp?: Date
   attachments?: MessageAttachment[]
@@ -352,11 +354,6 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   onEdit?: () => void
   /** A turn is running, so the prompt cannot be rewound yet: Edit shows disabled, with the reason. */
   editLocked?: boolean
-  /**
-   * Show Edit and Copy at rest, in the muted tone (the latest prompt). Other
-   * prompts reveal them on hover, keyboard focus and touch.
-   */
-  actionsAtRest?: boolean
   /** The model and thinking level this prompt ran with. */
   modelId?: string | null
   thinkingLevel?: string | null
@@ -365,7 +362,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   fromAgent?: string | null
   /** Another workspace's agent sent this prompt. */
   sentFrom?: SentFrom | null
-  /** The lead agent sent this prompt to a subagent: the lead's session. ``content`` arrives without its ``[Lead]:`` prefix. */
+  /** The main agent sent this prompt to a subagent: its session. ``content`` arrives without its ``[Lead]:`` prefix. */
   fromLeadSessionId?: string | null
   /** This report answers a message sent to another workspace. */
   replyFrom?: ReplyFrom | null
@@ -374,7 +371,10 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   // Just sent (a live prompt, not one loaded from history): it rises into
   // place. Decided once, on mount.
   const [fresh] = useState(() => timestamp != null && Date.now() - timestamp.getTime() < FRESH_BUBBLE_MS)
-  const [showTime, setShowTime] = useState(false)
+  // The row under the prompt (model, Edit, Copy, time) shows while the pointer
+  // is over the prompt or the row, on keyboard focus, and always on touch.
+  // Every prompt alike: the latest one hides it at rest too.
+  const [rowShown, setRowShown] = useState(false)
   const { copied, copy } = useCopyFeedback()
   // Long text, opened, keeps its collapse control in view and closes in place.
   const { open: expanded, setOpen: setExpanded, close: closeText, anchorRef: toggleRef } = useStickyFold()
@@ -443,7 +443,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
         aria-label={`Open the replying session in ${reply.workspaceName}`}
       >
         {fromAgent}
-        <ArrowUpRight size={11} aria-hidden="true" />
+        <ArrowUpRight size={12} aria-hidden="true" />
       </button>
     ) : (
       <span className="rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-meta font-semibold text-(--color-text)">
@@ -451,11 +451,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
       </span>
     )
     return (
-      <div
-        className="group mb-3 flex justify-start"
-        onMouseEnter={() => setShowTime(true)}
-        onMouseLeave={() => setShowTime(false)}
-      >
+      <div className="group mb-3 flex justify-start">
         <div className="flex max-w-full flex-col items-start gap-1.5 md:max-w-[85%]">
           {/* Opened, a long report's header pins while the report scrolls under it. */}
           <div
@@ -468,25 +464,28 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
             {timestamp && (
               <span className="text-meta text-(--color-text-subtle)">· {formatTime(timestamp)}</span>
             )}
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-xs"
               onClick={handleCopy}
-              className="ml-0.5 flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:size-9"
+              className="ml-0.5"
               title="Copy report"
               aria-label="Copy report"
             >
-              {copied ? <Check size={11} aria-hidden="true" /> : <Copy size={11} aria-hidden="true" />}
-            </button>
+              {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+            </Button>
             {reportExpanded && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
                 onClick={(event) => report.close(event.currentTarget)}
-                className="flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:size-9"
                 title="Collapse report"
                 aria-label="Collapse report"
               >
-                <ChevronUp size={12} aria-hidden="true" />
-              </button>
+                <ChevronUp size={14} aria-hidden="true" />
+              </Button>
             )}
           </div>
           <div
@@ -528,11 +527,14 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   return (
     <div
       data-user-bubble=""
-      className={cn('group mb-3 flex justify-end', fresh && 'oa-rise-in')}
-      onMouseEnter={() => setShowTime(true)}
-      onMouseLeave={() => setShowTime(false)}
+      className={cn('mb-3 flex justify-end', fresh && 'oa-rise-in')}
     >
-      <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]">
+      {/* One hover region: the prompt, what is attached to it, and its row. */}
+      <div
+        className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]"
+        onMouseEnter={() => setRowShown(true)}
+        onMouseLeave={() => setRowShown(false)}
+      >
          {sentFrom && <SentFromChip source={sentFrom} onOpenSession={onOpenSession} />}
          {fromLeadSessionId && <FromLeadChip sessionId={fromLeadSessionId} onOpenSession={onOpenSession} />}
          {/* Attachments */}
@@ -550,16 +552,19 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
            {needsCollapse && (
              <div className="pointer-events-none absolute top-1.5 right-1.5 bottom-1.5 z-10">
                <div className="pointer-events-auto sticky top-1.5">
-                 <button
+                 <Button
                    ref={toggleRef}
+                   variant="ghost"
+                   size="icon-xs"
                    onClick={(event) => toggleExpanded(event.currentTarget)}
                    aria-expanded={expanded}
                    aria-label={expanded ? 'Collapse' : 'Expand'}
                    title={expanded ? 'Collapse' : 'Expand'}
-                   className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-(--bg-card) text-(--color-text-2) pointer-coarse:size-9 transition-[color,background-color,scale] duration-(--motion-instant) ease-(--ease-in-out) hover:text-(--color-text) active:bg-(--color-border-subtle) dark:active:bg-(--color-border) pointer-coarse:active:scale-90"
+                   // On the bubble's own wash, so it lifts a step: a card fill.
+                   className="bg-(--bg-card) text-(--color-text-2) hover:bg-(--color-fill-key-hover) hover:text-(--color-text)"
                  >
-                   {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                 </button>
+                   {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                 </Button>
                </div>
              </div>
            )}
@@ -588,13 +593,14 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
            <DesignFeedbackCard key={index} feedback={feedback} onMentionFileOpen={onMentionFileOpen} />
          ))}
 
-         {/* Actions + timestamp row. Always rendered: Copy and Edit do not
-             depend on the metadata, and a pending prompt has neither yet. */}
-            {/* The latest prompt shows the row at rest. Earlier ones reveal it on
-                hover and keyboard focus; touch has no hover, so it always shows there. */}
+         {/* The prompt's row: model, Edit, Copy, time. Always rendered: Copy and
+             Edit do not depend on the metadata, and a pending prompt has neither
+             yet. Every prompt, the latest too, shows it only on hover and keyboard
+             focus; touch has no hover, so it always shows there. This row is where
+             a turn's model, time and Edit live: the answer's footer repeats none. */}
             {/* A phone draws Edit and Copy 28px and close together, as the
                 answer's footer does; ``touch-hit`` keeps each a 36px target. */}
-            <div className={cn('flex items-center gap-1 transition-opacity duration-(--motion-fast) focus-within:opacity-100 pointer-coarse:opacity-100 max-md:pointer-coarse:gap-0', actionsAtRest || showTime ? 'opacity-100' : 'opacity-0')}>
+            <div className={cn('flex items-center gap-1 transition-opacity duration-(--motion-fast) focus-within:opacity-100 pointer-coarse:opacity-100 max-md:pointer-coarse:gap-0', rowShown ? 'opacity-100' : 'opacity-0')}>
               {modelId && (
                 // One tooltip for the whole line: the model name draws none of
                 // its own here, so two never stack.
@@ -608,46 +614,31 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                 </span>
               )}
               {onEdit && editLocked && (
-                // ``aria-disabled``, not ``disabled``: it stays focusable, so the reason shows on keyboard focus too.
-                <button
-                  type="button"
-                  aria-disabled="true"
-                  onClick={(event) => event.preventDefault()}
+                <TurnActionButton
+                  locked
                   title="Available when this turn ends"
-                  className="relative touch-hit flex size-6 cursor-not-allowed items-center justify-center rounded-xs text-(--color-text-muted) opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9 max-md:pointer-coarse:size-7"
-                  aria-label="Edit message, available when this turn ends"
+                  aria-label="Edit prompt, available when this turn ends"
                 >
-                  <Pencil size={13} aria-hidden="true" />
-                </button>
+                  <Pencil size={14} aria-hidden="true" />
+                </TurnActionButton>
               )}
               {onEdit && !editLocked && (
                 // Undo, so later turns come back with Redo.
-                <button
-                  onClick={onEdit}
-                  title="Edit message"
-                  className="relative touch-hit flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-[color,background-color,scale] duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:bg-(--color-border-subtle) dark:active:bg-(--color-border) pointer-coarse:active:scale-90 pointer-coarse:size-9 max-md:pointer-coarse:size-7"
-                  aria-label="Edit message"
-                >
-                  <Pencil size={13} aria-hidden="true" />
-                </button>
+                <TurnActionButton onClick={onEdit} title="Edit prompt" aria-label="Edit prompt">
+                  <Pencil size={14} aria-hidden="true" />
+                </TurnActionButton>
               )}
-              <button
-                onClick={handleCopy}
-                title="Copy message"
-                className="relative touch-hit flex size-6 items-center justify-center rounded-xs text-(--color-text-muted) transition-[color,background-color,scale] duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) active:bg-(--color-border-subtle) dark:active:bg-(--color-border) pointer-coarse:active:scale-90 pointer-coarse:size-9 max-md:pointer-coarse:size-7"
-                aria-label="Copy message"
-              >
+              <TurnActionButton onClick={handleCopy} title="Copy prompt" aria-label="Copy prompt">
                 {copied ? (
-                  <Check size={13} aria-hidden="true" className="text-(--accent-green-text)" />
+                  <Check size={14} aria-hidden="true" className="text-(--accent-green-text)" />
                 ) : (
-                  <Copy size={13} aria-hidden="true" />
+                  <Copy size={14} aria-hidden="true" />
                 )}
-              </button>
+              </TurnActionButton>
               {timestamp && (
                 <span
-                  className="text-xs text-(--color-text-subtle)"
+                  className="text-meta text-(--color-text-subtle)"
                   title={formatFullDateTime(timestamp)}
-                  aria-hidden={!(actionsAtRest || showTime)}
                 >
                   {formatTime(timestamp)}
                 </span>

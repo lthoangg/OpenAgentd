@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { formatRelativeDate, formatCompactRelative, formatCompactUpcoming, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText, finalAnswerBlocks, getTimezoneOffsetMinutes, wallClockToISO, isoToWallClock, formatInTimezone } from "@/utils/format";
+import { formatRelativeDate, formatCompactRelative, formatCompactDate, formatCompactUpcoming, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText, finalAnswerBlocks, getTimezoneOffsetMinutes, wallClockToISO, isoToWallClock, formatInTimezone } from "@/utils/format";
 import { formatCommitTime } from "@/components/WorkspacePanel/diff-helpers";
 
 // ---------------------------------------------------------------------------
@@ -27,18 +27,19 @@ describe("timezone helpers", () => {
     expect(isoToWallClock("2024-07-01T02:30:00Z", "America/New_York")).toBe("2024-06-30T22:30");
   });
 
-  it("formats an instant in a zone as dd/MM/yyyy HH:mm", () => {
-    expect(formatInTimezone("2024-07-01T02:30:00Z", "Asia/Ho_Chi_Minh")).toBe("01/07/2024 09:30");
-    expect(formatInTimezone("2024-07-01T02:30:00Z", "UTC")).toBe("01/07/2024 02:30");
+  it("formats an instant in a zone as month, day and time, with the year when it is not this one", () => {
+    const now = new Date("2024-03-01T00:00:00Z");
+    expect(formatInTimezone("2024-07-01T02:30:00Z", "Asia/Ho_Chi_Minh", now)).toBe("Jul 1, 09:30");
+    expect(formatInTimezone("2024-07-01T02:30:00Z", "UTC", now)).toBe("Jul 1, 02:30");
+    expect(formatInTimezone("2024-07-01T02:30:00Z", "America/New_York", now)).toBe("Jun 30, 22:30");
+    expect(formatInTimezone("2023-12-31T23:30:00Z", "UTC", now)).toBe("Dec 31, 2023, 23:30");
   });
 });
 
 describe("formatCommitTime", () => {
-  it("matches the locale rendering it replaced", () => {
-    const ts = 1_719_800_000;
-    const date = new Date(ts * 1000);
-    const time = date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
-    expect(formatCommitTime(ts)).toBe(`${date.toLocaleDateString("en-GB")} ${time}`);
+  it("reads like every other date and time", () => {
+    const date = new Date(2024, 5, 30, 9, 5);
+    expect(formatCommitTime(date.getTime() / 1000, new Date(2024, 6, 2, 12, 0))).toBe("Jun 30, 09:05");
   });
 });
 
@@ -74,16 +75,20 @@ describe("formatRelativeDate", () => {
     expect(result).toMatch(/^Yesterday \d{2}:\d{2}$/);
   });
 
-  it("returns 'DD/MM/YYYY HH:mm' for older dates", () => {
-    const old = new Date(2024, 0, 15, 9, 5); // 15 Jan 2024 09:05
-    const result = formatRelativeDate(old.toISOString());
-    expect(result).toBe("15/01/2024 09:05");
+  it("names the month for older dates this year: 'Oct 29, 14:32'", () => {
+    const now = new Date(2024, 9, 31, 12, 0);
+    expect(formatRelativeDate(new Date(2024, 9, 29, 14, 32).toISOString(), now)).toBe("Oct 29, 14:32");
+    expect(formatRelativeDate(new Date(2024, 2, 5, 8, 3).toISOString(), now)).toBe("Mar 5, 08:03");
   });
 
-  it("pads single-digit day and month", () => {
-    const old = new Date(2023, 2, 5, 8, 3); // 5 Mar 2023 08:03
-    const result = formatRelativeDate(old.toISOString());
-    expect(result).toBe("05/03/2023 08:03");
+  it("adds the year only when it is not this one", () => {
+    const now = new Date(2024, 9, 31, 12, 0);
+    expect(formatRelativeDate(new Date(2023, 2, 5, 8, 3).toISOString(), now)).toBe("Mar 5, 2023, 08:03");
+  });
+
+  it("reads a future date the same way", () => {
+    const now = new Date(2024, 9, 1, 12, 0);
+    expect(formatRelativeDate(new Date(2024, 9, 29, 14, 32).toISOString(), now)).toBe("Oct 29, 14:32");
   });
 });
 
@@ -92,14 +97,11 @@ describe("formatRelativeDate", () => {
 // ---------------------------------------------------------------------------
 
 describe("formatFullDateTime", () => {
-  it("formats as DD/MM/YYYY HH:mm:ss regardless of locale", () => {
-    const date = new Date(2024, 0, 15, 9, 5, 3); // 15 Jan 2024 09:05:03
-    expect(formatFullDateTime(date)).toBe("15/01/2024 09:05:03");
-  });
-
-  it("pads single-digit day and month", () => {
-    const date = new Date(2023, 2, 5, 8, 3, 0); // 5 Mar 2023 08:03:00
-    expect(formatFullDateTime(date)).toBe("05/03/2023 08:03:00");
+  it("reads like formatRelativeDate, to the second", () => {
+    const now = new Date(2024, 0, 20, 12, 0);
+    expect(formatFullDateTime(new Date(2024, 0, 15, 9, 5, 3), now)).toBe("Jan 15, 09:05:03");
+    expect(formatFullDateTime(new Date(2023, 2, 5, 8, 3, 0), now)).toBe("Mar 5, 2023, 08:03:00");
+    expect(formatFullDateTime(new Date(2024, 0, 20, 7, 1, 9), now)).toBe("Today 07:01:09");
   });
 });
 
@@ -401,7 +403,8 @@ describe("formatCompactUpcoming", () => {
   it("shows the time for later today, the weekday within a week, then the date", () => {
     expect(formatCompactUpcoming(at(10, 18, 5), now)).toBe("18:05");
     expect(formatCompactUpcoming(at(11, 9), now)).toBe("Wed 09:00");
-    expect(formatCompactUpcoming(at(20, 9), now)).toBe("20/03");
+    expect(formatCompactUpcoming(at(20, 9), now)).toBe("Mar 20");
+    expect(formatCompactUpcoming(new Date(2027, 0, 4, 9).toISOString(), now)).toBe("Jan 4, 2027");
   });
 
   it("reads due once the time has passed, and empty for missing input", () => {
@@ -431,7 +434,26 @@ describe("formatCompactRelative", () => {
     expect(formatCompactRelative("2026-03-08T12:00:00Z", now)).toBe("2d");
   });
 
-  it("falls back to day/month past a week", () => {
-    expect(formatCompactRelative("2026-02-20T12:00:00Z", now)).toMatch(/^\d{2}\/\d{2}$/);
+  it("names the month past a week, and the year only when it is not this one", () => {
+    const local = new Date(2026, 2, 10, 12, 0);
+    expect(formatCompactRelative(new Date(2026, 1, 20, 12, 0).toISOString(), local)).toBe("Feb 20");
+    expect(formatCompactRelative(new Date(2025, 9, 29, 12, 0).toISOString(), local)).toBe("Oct 29, 2025");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// formatCompactDate
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("formatCompactDate", () => {
+  const now = new Date(2026, 2, 10, 12, 0);
+
+  it("names the month and day in English, whatever the system locale", () => {
+    expect(formatCompactDate(new Date(2026, 9, 29), now)).toBe("Oct 29");
+    expect(formatCompactDate(new Date(2026, 0, 1), now)).toBe("Jan 1");
+  });
+
+  it("adds the year for another year", () => {
+    expect(formatCompactDate(new Date(2025, 11, 31), now)).toBe("Dec 31, 2025");
   });
 });

@@ -13,8 +13,17 @@
  */
 import type { GitCommit, WorkspaceFileInfo } from '@/api/types'
 import { type PreviewTarget, previewTargetKey } from '@/api/preview'
+import type { KeyChord } from '@/lib/keyboard/chord'
 import type { FileLightboxItem } from '../FileLightbox'
 import { type ChangedFileStatus, safeDecodeURIComponent } from './diff-helpers'
+
+/**
+ * ⌥⇧← / ⌥⇧→ move the focused tab one place along its strip. The strip's key
+ * handler matches these chords and the tab menu spells them, so the menu and
+ * the key never disagree.
+ */
+export const MOVE_TAB_LEFT_CHORD: KeyChord = { key: 'ArrowLeft', alt: true, shift: true }
+export const MOVE_TAB_RIGHT_CHORD: KeyChord = { key: 'ArrowRight', alt: true, shift: true }
 
 export const REVIEW_TAB_ID = 'review'
 export const TASKS_TAB_ID = 'tasks'

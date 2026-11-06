@@ -380,6 +380,11 @@ fn run(rx: Receiver<Msg>, ctx: Arc<Ctx>, watcher: Weak<Mutex<Box<dyn Watcher + S
                     break;
                 }
             }
+            // Files written into a new directory before its watch existed
+            // sent no event: a listing cached since the directory's own event
+            // may lack them. The directories are in `paths`, so the event
+            // below makes the UI fetch the listing again, past this bump.
+            ctx.bump();
         }
         if paths.is_empty() && !git && !rescan {
             continue;
@@ -629,5 +634,32 @@ mod tests {
     #[tokio::test]
     async fn poll_backend_reports_changes() {
         exercise(Backend::Poll(Duration::from_millis(100))).await;
+    }
+
+    /// A file written into a new directory before its watch exists sends no
+    /// event, so attaching the watch must move the generation itself: a
+    /// listing cached in between would otherwise stay without that file.
+    #[tokio::test]
+    async fn per_directory_backend_moves_the_generation_once_a_new_directory_is_watched() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dunce::canonicalize(dir.path()).unwrap();
+        let mut sub = broadcaster::broadcaster().attach();
+        let (ctx, _watcher) = start(root.clone(), Backend::PerDir).unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let generation = || ctx.generation.load(Ordering::Acquire);
+        let before = generation();
+        std::fs::create_dir(root.join("fresh")).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while generation() == before {
+            assert!(Instant::now() < deadline, "no event for fresh/");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        // Inside the debounce: `fresh/` has no watch yet. A listing taken now
+        // would be cached under this generation.
+        let listed_at = generation();
+        std::fs::write(root.join("fresh/early.txt"), "x").unwrap();
+        let mut seen = vec![];
+        assert!(wait_for(&mut sub, &root, &mut seen, |s| reported(s, "fresh")).await, "no event for fresh/: {seen:?}");
+        assert_ne!(generation(), listed_at, "the listing cached before fresh/ was watched still looks current");
     }
 }

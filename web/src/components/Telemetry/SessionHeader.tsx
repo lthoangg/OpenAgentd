@@ -36,7 +36,7 @@ export function SessionHeader({
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="min-w-0">
-        <h3 className="truncate text-sm font-semibold text-(--color-text)">
+        <h3 className="truncate text-base font-semibold text-(--color-text)">
           {row ? sessionName(row) : `Session ${formatShortId(sessionId)}`}
         </h3>
         {facts.length > 0 && <p className="truncate text-xs text-(--color-text-muted)">{facts.join(', ')}</p>}

@@ -65,12 +65,12 @@ describe("tool arguments fetched on demand", () => {
     expect(fetched).toEqual(["c2"])
   })
 
-  it("copies full arguments it has not fetched yet from the row's menu", async () => {
+  it("fetches nothing for the row's menu: a shell row has none", () => {
     full.c3 = JSON.stringify({ command: "rm -rf build && make", description: "Rebuild" })
     render(<ToolCall name="shell" args='{"description":"Rebuild"}' argsBytes={60} done toolCallId="c3" result="[Succeeded]\n" />)
-    fireEvent.contextMenu(row())
-    fireEvent.click(await screen.findByText("Copy arguments"))
-    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith("rm -rf build && make"))
+    expect(fireEvent.contextMenu(row())).toBe(true)
+    expect(screen.queryByRole("menu")).toBeNull()
+    expect(fetched).toEqual([])
   })
 
   it("uses arguments that came whole without fetching", async () => {

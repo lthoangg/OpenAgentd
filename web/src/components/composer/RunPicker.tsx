@@ -10,6 +10,11 @@
  * search while rows are clicked, so the keys keep working after a mouse pick.
  * A search matches loosely and ranks the closest model first (fuzzysort, as
  * the palette and Settings' model field do), in one list.
+ *
+ * Models sit under their provider's display name ("Claude", not `anthropic`)
+ * and a row is just the model. Where no heading names the provider (Recent,
+ * ranked results) its name trails the row. A search still matches the whole
+ * ``provider:model`` id, so ``openai:`` lists that provider's models.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import fuzzysort from 'fuzzysort'
@@ -20,15 +25,15 @@ import { getAgent, getCodeAgent } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { MENU_ITEM_CLASS } from '@/components/ui/menu-styles'
-import { MODEL_LINE_CLASS, ModelPart, PROVIDER_PART_CLASS } from '@/components/ui/model-name'
+import { MODEL_LINE_CLASS, ModelPart } from '@/components/ui/model-name'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { hoverIntent } from '@/hooks/use-hover-intent'
-import { useProviderUsageQuery } from '@/queries/useProvidersQuery'
+import { useProvidersQuery, useProviderUsageQuery } from '@/queries/useProvidersQuery'
 import { useUpdateAgentMutation } from '@/queries/useAgentSettingsQueries'
 import { selectionHapticFeedback } from '@/lib/haptics'
 import {
   loadRecentModels,
-  quotaSummary,
+  quotaSegments,
   rememberRecentModel,
   setFrontmatterScalars,
   splitModelId,
@@ -47,7 +52,7 @@ const MAX_LISTED = 60
 
 interface ModelRow {
   id: string
-  /** The heading the row sits under; ``null`` in ranked search results. */
+  /** The heading the row sits under (a provider id, or "Recent"); ``null`` in ranked search results. */
   group: 'Recent' | string | null
 }
 
@@ -58,7 +63,7 @@ function rowsFor(settings: RunSettings, query: string, recent: string[]): ModelR
   if (settings.model && !ids.includes(settings.model)) ids.unshift(settings.model)
   const q = query.trim()
   if (q) {
-    // Ranked, so headings would repeat; each row names its provider anyway.
+    // Ranked, so headings would repeat; each row names its provider instead.
     return fuzzysort
       .go(q, ids, { threshold: 0.2, limit: MAX_LISTED })
       .map((result) => ({ id: result.target, group: null }))
@@ -87,6 +92,9 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
   // does not reorder under the pointer while it is open.
   const [recent] = useState(loadRecentModels)
   const rows = useMemo(() => rowsFor(settings, query, recent), [settings, query, recent])
+  // A provider's display name, from the providers list (its id until that loads).
+  const providers = useProvidersQuery().data?.providers
+  const providerLabel = (id: string) => providers?.find((p) => p.id === id)?.label ?? id
   // The list opens on the model that runs, as a native pop-up menu opens on
   // its checked item; a search, or the user moving, takes over from there. The
   // highlight follows a model, not a position, so a list that changes (the
@@ -149,7 +157,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
     void save({
       model: toAgentModel ? null : id,
       thinkingLevel: keepLevel,
-      // An account belongs to one provider; another provider starts on Auto.
+      // An account belongs to one provider; another provider starts on its own account in use.
       ...(sameProvider ? {} : { credentialId: null }),
     })
     if (!close) return
@@ -171,7 +179,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
     void save({ thinkingLevel: level })
   }
 
-  const pickAccount = (id: string | null) => {
+  const pickAccount = (id: string) => {
     selectionHapticFeedback()
     void save({ credentialId: id })
   }
@@ -266,14 +274,17 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
         {settings.modelsLoading && rows.length === 0 ? (
           <p className="px-2 py-3 text-xs text-(--color-text-muted)" role="status">Loading models…</p>
         ) : rows.length === 0 ? (
-          <p className="px-2 py-3 text-xs text-(--color-text-muted)">No model matches “{query}”.</p>
+          <p className="px-2 py-3 text-xs text-(--color-text-muted)">No model matches "{query}".</p>
         ) : rows.map((row, index) => {
           const header = row.group !== null && (index === 0 || rows[index - 1].group !== row.group)
           const { provider, model } = splitModelId(row.id)
           const selected = row.id === settings.model
+          // Under a provider's heading the row is just the model; elsewhere
+          // (Recent, ranked search results) the provider's name trails it.
+          const nameProvider = provider !== '' && (row.group === null || row.group === 'Recent')
           return (
             <div key={`${row.group}:${row.id}`}>
-              {header && <div className="px-2 pb-0.5 pt-2 text-meta font-medium text-(--color-text-muted) select-none first:pt-1">{row.group}</div>}
+              {header && <div className="px-2 pb-0.5 pt-2 text-meta font-medium text-(--color-text-muted) select-none first:pt-1">{providerLabel(row.group!)}</div>}
               <button
                 type="button"
                 role="option"
@@ -290,12 +301,10 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
                 tabIndex={-1}
                 className={rowClass}
               >
-                {/* provider:model as everywhere (ui/model-name): the provider
-                    part shows whole or drops, never as a stub like "ag…". */}
                 <span className={cn('flex flex-1', MODEL_LINE_CLASS)}>
-                  {provider && <span className={cn(PROVIDER_PART_CLASS, 'text-(--color-text-muted)')}>{provider}:</span>}
                   <ModelPart model={model} className="text-(--color-text)" />
                 </span>
+                {nameProvider && <span className="max-w-[8rem] shrink-0 truncate text-meta text-(--color-text-muted)">{providerLabel(provider)}</span>}
                 {row.id === settings.agentModel && <span className="text-meta text-(--color-text-muted)">default</span>}
                 <Check size={13} aria-hidden="true" className={selected ? 'opacity-100' : 'opacity-0'} />
               </button>
@@ -337,7 +346,8 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
           providerLabel={settings.providerInfo.label}
           accounts={settings.accounts}
           usage={settings.providerInfo.supports_credential_usage === true}
-          pinned={settings.credentialId}
+          locked={settings.pinnedAccount}
+          inUse={settings.inUseAccount}
           onPick={pickAccount}
           onPickAndClose={(id) => {
             pickAccount(id)
@@ -375,7 +385,8 @@ function AccountList({
   providerLabel,
   accounts,
   usage,
-  pinned,
+  locked,
+  inUse,
   onPick,
   onPickAndClose,
   onReconnect,
@@ -385,16 +396,24 @@ function AccountList({
   providerLabel: string
   accounts: StoredCredential[]
   usage: boolean
-  pinned: string | null
-  onPick: (id: string | null) => void
+  /** The account the session is locked to (starts on); `null` follows the provider's choice. */
+  locked: StoredCredential | null
+  /** The account the session runs on now. */
+  inUse: StoredCredential | null
+  onPick: (id: string) => void
   /** Enter on an account: pick it and close, as Enter on a model does. */
-  onPickAndClose: (id: string | null) => void
+  onPickAndClose: (id: string) => void
   /** Sign a signed-out account back in (Settings → Providers). */
   onReconnect: () => void
   rowClass: string
 }) {
   const signedOut = accounts.filter((account) => account.status === 'needs_reconnect')
-  const onKeyDown = (id: string | null) => (event: KeyboardEvent<HTMLButtonElement>) => {
+  // No Auto row: every session moves on when its account hits a limit. The
+  // check is the session's choice (its lock, or the account in use without
+  // one); "in use" marks the account it moved to when that differs.
+  const checked = locked?.id ?? inUse?.id ?? null
+  const movedTo = inUse && inUse.id !== checked ? inUse : null
+  const onKeyDown = (id: string) => (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== 'Enter') return
     event.preventDefault()
     onPickAndClose(id)
@@ -402,26 +421,29 @@ function AccountList({
   return (
     <div role="radiogroup" aria-label={`${providerLabel} account`} data-account-list="" className="mt-1 border-t border-(--color-border-subtle) px-1 pt-1.5">
       <div className="px-2 pb-0.5 text-meta font-medium text-(--color-text-muted) select-none">Account</div>
-      <button type="button" role="radio" aria-checked={pinned === null} onClick={() => onPick(null)} onKeyDown={onKeyDown(null)} className={rowClass}>
-        <span className="flex-1 text-(--color-text)">Auto</span>
-        <span className="text-meta text-(--color-text-muted)">next one with room</span>
-        <Check size={13} aria-hidden="true" className={pinned === null ? 'opacity-100' : 'opacity-0'} />
-      </button>
       {accounts.map((account) => (
         <button
           key={account.id}
           type="button"
           role="radio"
-          aria-checked={pinned === account.id}
+          aria-checked={checked === account.id}
           onClick={() => onPick(account.id)}
           onKeyDown={onKeyDown(account.id)}
           className={rowClass}
         >
           <span className="min-w-0 flex-1 truncate text-(--color-text)">{account.label}</span>
+          {movedTo?.id === account.id && (
+            <span data-in-use="" className="shrink-0 rounded-full border border-(--color-border) px-1.5 text-meta leading-4 text-(--color-text-2)">in use</span>
+          )}
           <AccountState account={account} providerId={providerId} usage={usage} />
-          <Check size={13} aria-hidden="true" className={pinned === account.id ? 'opacity-100' : 'opacity-0'} />
+          <Check size={13} aria-hidden="true" className={checked === account.id ? 'opacity-100' : 'opacity-0'} />
         </button>
       ))}
+      <p className="px-2 pt-0.5 pb-1 text-meta text-(--color-text-muted)">
+        {movedTo && locked
+          ? `Back on ${locked.label} when its limit resets.`
+          : 'Starts on the checked account and moves to the next one when it hits a limit.'}
+      </p>
       {/* Beside the radios, not inside one: a radio holds no second control. */}
       {signedOut.map((account) => (
         <Button key={account.id} type="button" size="xs" variant="ghost" className="mt-0.5 ml-1" onClick={onReconnect}>
@@ -438,23 +460,32 @@ const QUOTA_TONE_CLASS = {
   error: 'text-(--color-error)',
 } as const
 
-/** Words first: the state, then what is left of its quota (percent, spend cap or credits) when known. */
+/**
+ * Each of the account's limits, in % used as Settings → Providers shows
+ * them (`5h 12% · 7d 100%`), the one it hit in red; reset times and other
+ * models' limits are in the tooltip. A signed-out account says Reconnect; a
+ * cooling account says so until its numbers are known.
+ */
 function AccountState({ account, providerId, usage }: { account: StoredCredential; providerId: string; usage: boolean }) {
-  const query = useProviderUsageQuery(providerId, usage && account.status === 'ready', account.id)
-  if (account.status === 'cooling_down') return <Chip tone="warning">Cooling down</Chip>
+  const query = useProviderUsageQuery(providerId, usage && (account.status === 'ready' || account.status === 'cooling_down'), account.id)
   if (account.status === 'needs_reconnect') return <Chip tone="error">Reconnect</Chip>
-  const quota = quotaSummary(query.data)
-  if (quota === null) return null
-  const text = quota.kind === 'percent' ? [`${quota.left}% left`, quota.note].filter(Boolean).join(' · ') : quota.text
-  // `title` becomes the app's tooltip (TitleTooltipLayer): the balance or cap the row has no room for,
-  // and the whole phrase when it is long enough to be cut off.
-  const title = [text.length > 14 ? text : null, quota.detail].filter(Boolean).join(' · ') || undefined
+  const quota = usage ? quotaSegments(query.data) : null
+  const cooling = account.status === 'cooling_down'
+  if (quota === null) return cooling ? <Chip tone="warning">Cooling down</Chip> : null
+  // A cooling account whose numbers show no limit hit (a short rate limit) still says it is cooling.
+  const coolingNote = cooling && !quota.segments.some((s) => s.tone === 'error')
   return (
-    <span
-      title={title}
-      className={cn('max-w-[11rem] min-w-0 truncate font-mono text-meta tabular-nums', QUOTA_TONE_CLASS[quota.tone])}
-    >
-      {text}
-    </span>
+    <>
+      {coolingNote && <Chip tone="warning">Cooling down</Chip>}
+      {/* `title` becomes the app's tooltip (TitleTooltipLayer). */}
+      <span data-account-usage="" title={quota.detail} className="max-w-[15rem] min-w-0 truncate font-mono text-meta tabular-nums text-(--color-text-muted)">
+        {quota.segments.map((segment, index) => (
+          <span key={index}>
+            {index > 0 && <span aria-hidden="true" className="opacity-60"> · </span>}
+            <span className={QUOTA_TONE_CLASS[segment.tone]}>{segment.text}</span>
+          </span>
+        ))}
+      </span>
+    </>
   )
 }

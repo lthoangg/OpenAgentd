@@ -15,6 +15,9 @@ import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { APP_EVENTS } from '@/lib/app-events'
+import type { OS } from '@/hooks/use-platform'
+import { ROW_KEYS } from '@/components/Sidebar/row-keys'
+import { TREE_INDENT_PX } from '@/components/Sidebar/tree-indent'
 import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
@@ -152,6 +155,13 @@ class IntersectionObserverStub {
 
 globalThis.IntersectionObserver = IntersectionObserverStub as unknown as typeof IntersectionObserver
 
+/**
+ * A repository's worktree chip: a branch icon and the count, named "3 worktrees",
+ * which opens the checkout menu. The filter it applies is in its description.
+ */
+const WORKTREE_CHIP = { name: /^\d+ worktrees?$/ }
+const worktreeChip = () => screen.getByRole('button', WORKTREE_CHIP)
+
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
 }))
@@ -209,6 +219,7 @@ mock.module('lucide-react', () => ({
   SlidersHorizontal: Icon, Activity: Icon,
   AppWindow: Icon,
   ArrowUpRight: Icon,
+  Bot: Icon,
   Check: Icon,
   ChevronDown: Icon,
   ChevronRight: Icon,
@@ -244,6 +255,7 @@ mock.module('lucide-react', () => ({
   Pencil: Icon,
   Target: Icon,
   Trash2: Icon,
+  TriangleAlert: Icon,
   X: Icon,
 }))
 
@@ -267,10 +279,14 @@ mock.module('@/components/ui/button', () => ({
 
 mock.module('@/components/ui/dialog', () => ({
   Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) => (open ? <div>{children}</div> : null),
-  DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  // Records what the sidebar asks of the real primitives: whether the built-in
+  // × is on, and any class a footer or header overrides its layout with.
+  DialogContent: ({ children, showCloseButton = true }: { children: React.ReactNode; showCloseButton?: boolean }) => (
+    <div data-dialog-content="" data-show-close={String(showCloseButton)}>{children}</div>
+  ),
   DialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
-  DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogFooter: ({ children, className }: { children: React.ReactNode; className?: string }) => <div data-slot="dialog-footer" data-class={className ?? ''}>{children}</div>,
+  DialogHeader: ({ children, className }: { children: React.ReactNode; className?: string }) => <div data-slot="dialog-header" data-class={className ?? ''}>{children}</div>,
   DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
 }))
 
@@ -1432,7 +1448,7 @@ describe('Sidebar workspace trust flow', () => {
       await removeFromSidebar('project')
 
       await waitFor(() => expect(screen.queryByLabelText('Actions for project')).toBeNull())
-      expect(screen.queryByText('task-a')).toBeNull()
+      expect(screen.queryByRole('button', WORKTREE_CHIP)).toBeNull()
       expect([...hiddenWorkspacePaths].sort()).toEqual(['/data/worktrees/project/task-a', '/repo/project'])
     })
 
@@ -1802,17 +1818,42 @@ describe('Sidebar workspace trust flow', () => {
       )
 
       expect(screen.getByRole('status', { name: 'Loading workspaces' })).toBeTruthy()
-      expect(screen.queryByText('No workspaces yet.')).toBeNull()
+      expect(screen.queryByText('No workspaces yet')).toBeNull()
 
       await act(async () => { releaseTree() })
       const retry = await screen.findByRole('button', { name: 'Retry' })
-      expect(screen.getByText('Couldn’t load workspaces.')).toBeTruthy()
-      expect(screen.queryByText('No workspaces yet.')).toBeNull()
+      // "Couldn't load X." with a straight apostrophe, in the compact error state.
+      expect(screen.getByText("Couldn't load workspaces.")).toBeTruthy()
+      expect(screen.getByRole('alert').querySelector('[data-empty-state="compact"]')).toBeTruthy()
+      expect(screen.queryByText('No workspaces yet')).toBeNull()
 
       failTree = false
       fireEvent.click(retry)
       expect(await screen.findByRole('button', { name: 'Open workspace project' })).toBeTruthy()
       expect(treeRequests).toBe(2)
+    })
+
+    it('says "No workspaces yet" as an empty state with the way to add one, once the tree loaded empty', async () => {
+      const baseFetch = globalThis.fetch
+      globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+        if (String(input).includes('/api/agent/workspace/tree')) {
+          return new Response(JSON.stringify({ repositories: [], chat: null, groups: [] }))
+        }
+        return baseFetch(input as RequestInfo, init as RequestInit | undefined)
+      }) as typeof fetch
+      const { Sidebar } = await import('@/components/Sidebar')
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      render(
+        <QueryClientProvider client={queryClient}>
+          <Sidebar workspace={null} />
+        </QueryClientProvider>,
+      )
+
+      const title = await screen.findByText('No workspaces yet')
+      // Sentence case, no trailing period, in the compact (row-scale) form.
+      expect(title.closest('[data-empty-state="compact"]')).toBeTruthy()
+      const empty = title.closest('[data-empty-state="compact"]') as HTMLElement
+      expect(within(empty).getByRole('button', { name: 'Open workspace…' })).toBeTruthy()
     })
 
     it('scrolls the session list and pins Scheduled below it with its own scroll', async () => {
@@ -2025,7 +2066,10 @@ describe('Sidebar workspace trust flow', () => {
       workspace: '/data/worktrees/project/task-a',
     })
 
-    await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
+    // The row's tag is gone (the worktree is in its tooltip), so wait on the
+    // row itself and the repository's worktree pill.
+    await waitFor(() => expect(screen.getByText('Worktree session')).toBeTruthy())
+    expect(worktreeChip()).toBeTruthy()
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(screen.getByLabelText('Collapse workspace project')).toBeTruthy()
@@ -2033,7 +2077,13 @@ describe('Sidebar workspace trust flow', () => {
     // No nested worktree row: its sessions sit in the repository list, tagged.
     expect(screen.queryByLabelText(/(Expand|Collapse) worktree/)).toBeNull()
     const row = screen.getByText('Worktree session').closest('[data-session-row]')
-    expect(row?.querySelector('[data-checkout-tag]')?.textContent).toBe('task-a')
+    // The worktree is in the row's tooltip, not drawn on the row at rest.
+    expect(row?.querySelector('[data-checkout-tag]')).toBeNull()
+    expect(screen.getByText('Worktree session').closest('button')?.getAttribute('title')).toContain('worktree task-a')
+    // The repository's guide sits at the tree's one indent, the same constant
+    // a session's subagent rows are inset by.
+    expect(row).toBeTruthy()
+    expect((row!.closest('.border-l') as HTMLElement).style.marginLeft).toBe(`${TREE_INDENT_PX}px`)
     expect(workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
   })
 
@@ -2064,20 +2114,28 @@ describe('Sidebar workspace trust flow', () => {
     await renderSidebarWithProps({ workspace: '/repo/project' })
 
     const repoRow = await waitFor(() => screen.getByLabelText('Open workspace project'))
-    // Desktop says "folder not found"; phones show the shorter "missing".
-    expect(repoRow.querySelector('[data-sidebar-missing]')?.textContent).toBe('folder not foundmissing')
-    // So do touch tablets, whose row actions always show: the long label
-    // left one letter of the name in a 264px drawer.
-    const [long, short] = Array.from(repoRow.querySelectorAll('[data-sidebar-missing] [class*="md:"]'))
-    expect(long.className).toContain('pointer-coarse:hidden')
-    expect(short.className).toContain('pointer-coarse:inline')
+    // A missing folder is a small ⚠ in the warning tone, not a chip: the name
+    // keeps the row (muted), and the row's tooltip says where it was.
+    const mark = repoRow.querySelector('[data-sidebar-missing]') as HTMLElement
+    expect(mark.textContent).toBe('')
+    expect(mark.getAttribute('aria-label')).toBe('Folder not found')
+    expect(mark.className).toContain('text-(--accent-orange-text)')
+    expect(repoRow.querySelector('[data-slot="chip"]')).toBeNull()
+    expect(within(repoRow).getByText('project').className).toContain('text-(--color-text-muted)')
+    await user.hover(repoRow)
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Folder not found at /repo/project')
+    await user.unhover(repoRow)
     // Neither the subfolder nor the outside worktree is a repository row.
     expect(screen.queryByLabelText(/(Expand|Collapse) repository (web|project-fix)/)).toBeNull()
-    await user.click(screen.getByLabelText(/^Worktrees for project/))
+    await user.click(worktreeChip())
     const menu = await waitFor(() => screen.getByRole('menu', { name: 'Worktrees for project' }))
     const items = Array.from(menu.querySelectorAll('[role="menuitemradio"], [role="menuitemcheckbox"], [role="menuitem"]')).map((el) => el.textContent)
     expect(items).toContain('webfolder')
-    expect(items).toContain('project-fixfolder not foundmissing')
+    // A missing checkout gets the same mark (its row's title names the folder).
+    expect(items).toContain('project-fix')
+    const missingItem = within(menu).getByRole('menuitemradio', { name: /^project-fix/ })
+    expect(missingItem.querySelector('[data-sidebar-missing]')).toBeTruthy()
+    expect(missingItem.getAttribute('title')).toBe('Folder not found at /repo/project-fix')
   })
 
   it('filters a repository to one worktree and starts sessions there', async () => {
@@ -2119,14 +2177,18 @@ describe('Sidebar workspace trust flow', () => {
       agentStreams: { lead: createDefaultAgentStream() },
     })
 
-    const chip = await screen.findByRole('button', { name: /^Worktrees for project: all \(\d+\)$/ })
+    const chip = await screen.findByRole('button', { name: '1 worktree' })
     expect(screen.getByLabelText('Collapse workspace project')).toBeTruthy()
     expect(screen.queryByLabelText(/(Expand|Collapse) worktree/)).toBeNull()
     // The filter chip grows on touch like the row actions (DESIGN.md touch parity).
     expect(chip.className).toContain('pointer-coarse:h-9')
-    // ...and, like a phone's, holds only the count (and the branch mark), so
-    // the always-shown touch actions leave the name its room.
-    expect(within(chip).getByText(/worktree/).className).toContain('pointer-coarse:hidden')
+    // It is the one count pill every row uses, muted: a branch mark and the
+    // number ("⑂ 1") on every device, never the words "1 worktree", so the
+    // repository name keeps the row. The name and the filter are for assistive tech.
+    expect(chip.hasAttribute('data-count-chip')).toBe(true)
+    expect(chip.textContent).toBe('1')
+    expect(chip.className.split(' ')).toContain('text-(--color-text-muted)')
+    expect(chip.getAttribute('aria-description')).toBe('project: Showing the workspace and 1 worktree')
 
     await user.click(chip)
     const menu = screen.getByRole('menu', { name: 'Worktrees for project' })
@@ -2136,7 +2198,9 @@ describe('Sidebar workspace trust flow', () => {
     await user.click(within(menu).getByRole('menuitemradio', { name: 'task-a' }))
 
     expect(screen.queryByRole('menu')).toBeNull()
-    expect(screen.getByRole('button', { name: /^Worktrees for project: task-a \(\d+\)$/ })).toBeTruthy()
+    expect(worktreeChip().getAttribute('aria-description')).toBe('project: Showing task-a only · change worktree')
+    // A filter inks the pill.
+    expect(worktreeChip().className.split(' ')).toContain('text-(--color-text)')
     expect(workspaceQueryArgs.at(-1)).toBe('/data/worktrees/project/task-a')
     // One checkout listed: the tag would only repeat the chip.
     expect(document.querySelector('[data-checkout-tag]')).toBeNull()
@@ -2157,7 +2221,7 @@ describe('Sidebar workspace trust flow', () => {
 
     // The list names its filter and clears it in one step.
     await user.click(screen.getByRole('button', { name: 'Show all worktrees in project' }))
-    expect(screen.getByRole('button', { name: /^Worktrees for project: all \(\d+\)$/ })).toBeTruthy()
+    expect(worktreeChip().getAttribute('aria-description')).toBe('project: Showing the workspace and 1 worktree')
     expect(workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
   })
 
@@ -2192,12 +2256,22 @@ describe('Sidebar workspace trust flow', () => {
     }) as typeof fetch
 
     await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project' })
-    await user.click(await screen.findByRole('button', { name: /^Worktrees for project: all \(\d+\)$/ }))
+    await user.click(await screen.findByRole('button', WORKTREE_CHIP))
     await user.click(screen.getByRole('menuitemradio', { name: 'task-a' }))
     // Worktree actions act on the selected worktree.
-    await user.click(screen.getByRole('button', { name: /^Worktrees for project: task-a \(\d+\)$/ }))
+    await user.click(worktreeChip())
     await user.click(screen.getByRole('menuitem', { name: 'Rename task-a…' }))
+    // One name for the action: the entry, the dialog and its title say Rename.
+    expect(screen.getByRole('heading', { name: 'Rename worktree' })).toBeTruthy()
+    expect(screen.queryByText('Edit worktree title')).toBeNull()
+    // The dialog's own header and footer, not overridden: its footer keeps the
+    // layout DialogFooter gives it, and the built-in × stays on.
+    const renameDialog = screen.getByRole('heading', { name: 'Rename worktree' }).closest('[data-dialog-content]') as HTMLElement
+    expect(renameDialog.getAttribute('data-show-close')).toBe('true')
+    expect(within(renameDialog).getByRole('button', { name: 'Cancel' }).parentElement?.getAttribute('data-class')).toBe('')
     const input = screen.getByLabelText('Worktree title')
+    expect(input.className).toContain('text-xs')
+    expect(input.className).not.toContain('text-sm')
     await user.clear(input)
     await user.type(input, 'Review UI')
     await user.click(screen.getByRole('button', { name: /^save$/i }))
@@ -2241,20 +2315,19 @@ describe('Sidebar workspace trust flow', () => {
       workspace: '/repo/project',
     })
 
-    await user.click(await screen.findByRole('button', { name: /^Worktrees for project: all \(\d+\)$/ }))
+    await user.click(await screen.findByRole('button', WORKTREE_CHIP))
     // No worktree is selected yet, so there is nothing to remove.
     expect(screen.queryByRole('menuitem', { name: /^Remove / })).toBeNull()
     await user.click(screen.getByRole('menuitemradio', { name: 'task-a' }))
-    await user.click(screen.getByRole('button', { name: /^Worktrees for project: task-a \(\d+\)$/ }))
+    await user.click(worktreeChip())
     await user.click(screen.getByRole('menuitem', { name: 'Delete worktree task-a…' }))
 
     // Managed-worktree removal is destructive, so it now requires
     // confirmation before it commits (error prevention).
     await user.click(screen.getByRole('button', { name: 'Delete worktree' }))
 
-    await waitFor(() => expect(screen.queryByText('task-a')).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('button', WORKTREE_CHIP)).toBeNull())
     // Without worktrees the filter chip goes, and the list is the repository alone.
-    expect(screen.queryByRole('button', { name: /^Worktrees for project/ })).toBeNull()
     expect(workspaceQueryArgs.at(-1)).toBe('/repo/project')
     expect(screen.getByLabelText('Collapse workspace project')).toBeTruthy()
     expect(screen.queryByLabelText('Collapse workspace task-a')).toBeNull()
@@ -2293,7 +2366,8 @@ describe('Sidebar workspace trust flow', () => {
       workspace: '/data/worktrees/project/task-a',
     })
 
-    await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Worktree session')).toBeTruthy())
+    expect(worktreeChip()).toBeTruthy()
     expect(screen.getByLabelText('Collapse workspace project')).toBeTruthy()
     expect(workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
     expect(screen.getAllByText('Worktree session').length).toBeGreaterThan(0)
@@ -2336,13 +2410,13 @@ describe('Sidebar workspace trust flow', () => {
     await settleWorkspaceTree(queryClient)
 
     // Picking a worktree is deliberate, even though it hides the open session.
-    await user.click(screen.getByRole('button', { name: /^Worktrees for project: all \(\d+\)$/ }))
+    await user.click(worktreeChip())
     await user.click(screen.getByRole('menuitemradio', { name: 'task-a' }))
-    expect(screen.getByRole('button', { name: /^Worktrees for project: task-a \(\d+\)$/ })).toBeTruthy()
+    expect(worktreeChip().getAttribute('aria-description')).toContain('Showing task-a only')
 
     // Opening another main-checkout session (Needs you, search) brings it back.
     await act(async () => { view!.rerender(sidebar('main-2')) })
-    expect(screen.getByRole('button', { name: /^Worktrees for project: all \(\d+\)$/ })).toBeTruthy()
+    expect(worktreeChip().getAttribute('aria-description')).toContain('Showing the workspace and')
   })
 
   it('renames a session in place from its row', async () => {
@@ -2997,15 +3071,117 @@ describe('Sidebar workspace trust flow', () => {
       // No Share… and no Copy link: a session is opened from the app, not passed around.
       expect(items.map((item) => item.textContent)).toEqual([
         'Open in new window',
-        'Rename',
+        'RenameF2',
         'Pin',
-        'Delete session…',
+        'Delete session…⌘⌫',
       ])
       fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Pin' }))
       expect(setSessionPinnedMutate).toHaveBeenCalledWith(
         { id: 'session-1', pinned: true },
         expect.anything(),
       )
+    })
+
+    describe.each([
+      { os: 'macos', delete: '⌘⌫', deleteKey: { key: 'Backspace', metaKey: true }, aria: 'Delete Meta+Backspace' },
+      { os: 'windows', delete: 'Del', deleteKey: { key: 'Delete' }, aria: 'Delete Control+Backspace' },
+      { os: 'linux', delete: 'Del', deleteKey: { key: 'Delete' }, aria: 'Delete Control+Backspace' },
+    ])('session menu shortcuts on $os', ({ os, delete: deleteLabel, deleteKey, aria }) => {
+      const openMenu = async () => {
+        isTauri = false
+        platformOs = os
+        sessionsData = [projectSession('session-1', 'Feature')]
+        workspaceSessionsData = sessionsData
+        await renderSidebarForSessions('session-1')
+        const row = screen.getByRole('button', { name: /^Feature/ })
+        fireEvent.contextMenu(row)
+        return { row, menu: await screen.findByRole('menu') }
+      }
+
+      it('shows the key beside each action that has one, and none beside the rest', async () => {
+        const { menu } = await openMenu()
+
+        const rename = within(menu).getByRole('menuitem', { name: 'Rename' })
+        expect(rename.querySelector('kbd')?.textContent).toBe('F2')
+        expect(rename.getAttribute('aria-keyshortcuts')).toBe('F2')
+        const del = within(menu).getByRole('menuitem', { name: 'Delete session…' })
+        expect(del.querySelector('kbd')?.textContent).toBe(deleteLabel)
+        expect(del.getAttribute('aria-keyshortcuts')).toBe(aria)
+        // Decorative: the name stays "Rename"; the key is in aria-keyshortcuts.
+        expect(rename.querySelector('kbd')?.getAttribute('aria-hidden')).toBe('true')
+        // Pin has no key, so it shows none.
+        expect(within(menu).getByRole('menuitem', { name: 'Pin' }).querySelector('kbd')).toBeNull()
+        expect(within(menu).getByRole('menuitem', { name: 'Pin' }).hasAttribute('aria-keyshortcuts')).toBe(false)
+      })
+
+      it('reads the label from the table the key handlers are checked against', async () => {
+        await openMenu()
+        // The label is the table's, and the table's sample is a key the row's
+        // own handler accepts: the menu and the key cannot disagree.
+        for (const name of ['rename', 'delete'] as const) {
+          const key = ROW_KEYS[name]
+          expect(key.matches(key.sample(os as OS))).toBe(true)
+        }
+        expect(ROW_KEYS.rename.label(os as OS)).toBe('F2')
+        expect(ROW_KEYS.delete.label(os as OS)).toBe(deleteLabel)
+      })
+
+      it('renames on that key and asks to delete on that key', async () => {
+        const { row, menu } = await openMenu()
+        fireEvent.keyDown(menu, { key: 'Escape' })
+
+        fireEvent.keyDown(row, { key: 'F2' })
+        expect(await screen.findByRole('textbox', { name: 'Session title' })).toBeTruthy()
+        fireEvent.keyDown(screen.getByRole('textbox', { name: 'Session title' }), { key: 'Escape' })
+
+        fireEvent.keyDown(await screen.findByRole('button', { name: /^Feature/ }), deleteKey)
+        expect(await screen.findByRole('heading', { name: 'Delete this session?' })).toBeTruthy()
+      })
+    })
+
+    it('shows no key hints in the phone sheet, which has no keyboard to press them on', async () => {
+      isMobile = true
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
+      fireEvent.click(screen.getByRole('button', { name: 'More actions for Feature' }))
+
+      const sheet = screen.getByRole('dialog', { name: 'Feature' })
+      expect(sheet.querySelector('kbd')).toBeNull()
+      expect(within(sheet).getByRole('button', { name: 'Rename' }).textContent).toBe('Rename')
+    })
+
+    it("shows ⌘N beside New session only in the menu of the workspace on screen, and sets its groups apart", async () => {
+      isTauri = false
+      platformOs = 'macos'
+      sessionsData = [
+        projectSession('session-1', 'Feature'),
+        projectSession('session-2', 'Elsewhere', { workspace: '/repo/other' }),
+      ]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarForSessions('session-1')
+
+      fireEvent.click(screen.getByLabelText('Actions for project'))
+      let menu = screen.getByRole('menu', { name: 'Actions for project' })
+      const newSession = within(menu).getByRole('menuitem', { name: 'New session' })
+      // ⌘N starts a session in the workspace on screen, which is this one.
+      expect(newSession.querySelector('kbd')?.textContent).toBe('⌘N')
+      expect(newSession.getAttribute('aria-keyshortcuts')).toBe('Meta+N')
+      // Entries are grouped by separators: New session · Copy path, Create worktree · Groups · Hide.
+      const kinds = Array.from(menu.children).map((el) => (el.getAttribute('role') === 'separator' ? '|' : el.textContent?.replace(/⌘N$/, '')))
+      expect(kinds.slice(0, 5)).toEqual(['New session', '|', 'Copy path', 'Create worktree…', '|'])
+      expect(kinds.at(-2)).toBe('|')
+      expect(kinds.at(-1)).toBe('Hide from sidebar')
+      fireEvent.keyDown(menu, { key: 'Escape' })
+
+      // Another workspace's "New session" would not be what ⌘N does: no key shown.
+      fireEvent.click(await screen.findByLabelText('Actions for other'))
+      menu = screen.getByRole('menu', { name: 'Actions for other' })
+      const other = within(menu).getByRole('menuitem', { name: 'New session' })
+      expect(other.querySelector('kbd')).toBeNull()
+      expect(other.hasAttribute('aria-keyshortcuts')).toBe(false)
     })
 
     it('has no new-window entry outside the app', async () => {

@@ -3,6 +3,10 @@
  * (`data-mobile-shell`, see use-mobile-viewport). Rules written for phones
  * must not leak into the tablet's card layouts, and a card must stay above
  * the soft keyboard.
+ *
+ * Settings and Usage are `AppOverlay` modals mounted at the app root
+ * (`data-overlay-level="app"`): one frame with every other overlay, plus the
+ * phone and keyboard rules a root-mounted overlay needs.
  */
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
@@ -35,32 +39,50 @@ function rulesFor(selector: string): Array<{ within: string[]; body: string }> {
   return found
 }
 
-describe('settings card on a touch tablet', () => {
+const APP_LEVEL = '.app-overlay-modal[data-overlay-level="app"]'
+const PHONE_MEDIA = [
+  '@media (max-width: 767px)',
+  '@media (pointer: coarse) and (max-width: 767px), (pointer: coarse) and (max-height: 580px)',
+]
+
+describe('app-level overlay card on a touch tablet', () => {
   it('keeps the phone-height rules to phone widths', () => {
-    for (const selector of ['html[data-mobile-shell] .settings-modal-shell', 'html[data-mobile-shell][data-keyboard-open] .settings-modal-shell']) {
+    for (const selector of [`html[data-mobile-shell] ${APP_LEVEL}`, `html[data-mobile-shell][data-keyboard-open] ${APP_LEVEL}`]) {
       const rules = rulesFor(selector)
       expect(rules.length).toBeGreaterThan(0)
       for (const rule of rules) {
         if (!/(?<![-\w])height\s*:/.test(rule.body)) continue
-        expect({ selector, within: rule.within }).toEqual({ selector, within: ['@media (max-width: 767px)'] })
+        // Phone widths, or the phone test itself (touch, and narrow or a
+        // landscape phone's short height: the `phone:` variant).
+        expect({ selector, phoneOnly: PHONE_MEDIA.includes(rule.within.join(' ')) }).toEqual({ selector, phoneOnly: true })
       }
     }
   })
 
   it('bounds the card by the visible height while the keyboard is up', () => {
-    const rules = rulesFor('html[data-mobile-shell][data-keyboard-open] .settings-modal-shell')
+    const rules = rulesFor(`html[data-mobile-shell][data-keyboard-open] ${APP_LEVEL}`)
     const wide = rules.find((r) => r.within.includes('@media (min-width: 768px)'))
     expect(wide?.body).toContain('max-height: calc(var(--app-vh, 100svh)')
   })
 })
 
-describe('settings card on a desktop window', () => {
+describe('overlay card on a desktop window', () => {
+  const wide = () => rulesFor('.app-overlay-modal').find((r) => r.within.includes('@media (min-width: 768px)'))
+
   it('keeps the same gap above the status bar as below the header', () => {
-    // At 4vh from the bottom it sat flush on the 28px status bar.
-    const wide = rulesFor('.settings-modal-shell').find((r) => r.within.includes('@media (min-width: 768px)'))
-    expect(wide?.body).toContain('top: calc(var(--spacing-app-header) + 4vh)')
-    expect(wide?.body).toContain('bottom: calc(var(--spacing-status-bar) + 4vh)')
-    expect(wide?.body).toContain('max-height: calc(100vh - var(--spacing-app-header) - var(--spacing-status-bar) - 8vh)')
+    // At 4vh from the bottom it sat flush on the 28px status bar. One edge for
+    // every modal: Settings and Usage no longer have a frame of their own.
+    expect(wide()?.body).toContain('top: calc(var(--spacing-app-header) + 4vh)')
+    expect(wide()?.body).toContain('bottom: calc(var(--spacing-status-bar) + 4vh)')
+    expect(wide()?.body).toContain('max-height: calc(100svh - var(--spacing-app-header) - var(--spacing-status-bar) - 8vh)')
+  })
+
+  it('takes its width from the overlay, up to 95% of the window', () => {
+    expect(wide()?.body).toContain('width: min(95vw, var(--overlay-max-width, 860px))')
+  })
+
+  it('has no frame of its own for Settings any more', () => {
+    expect(css).not.toContain('settings-modal-shell')
   })
 })
 

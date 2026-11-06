@@ -27,6 +27,15 @@ function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>>
   return render(<AgentChatHeader {...props} />)
 }
 
+/**
+ * A 36px hit area on touch: the ``Button`` primitive carries it in CSS
+ * (``[data-slot="button"]`` in index.css, guarded by touch-targets.test), the
+ * header's own icon buttons carry a ``pointer-coarse:`` size class.
+ */
+function hasTouchFooting(el: HTMLElement): boolean {
+  return el.dataset.slot === 'button' || /pointer-coarse:(?:size-9|h-9|min-h-9)/.test(el.className)
+}
+
 describe('AgentChatHeader', () => {
   it('shows the session title with its workspace under it on mobile', () => {
     renderHeader()
@@ -103,9 +112,19 @@ describe('AgentChatHeader', () => {
     it('keeps the traffic lights in the sidebar cap, with room before the sidebar toggle', () => {
       const { container } = renderHeader({ isMobile: false, isMacOverlay: true })
       // The buttons end near 66px; the toggle's glyph starts about 20px on,
-      // as in native Mac apps, not against the zoom button.
-      expect(cap('sidebar')).toHaveClass('pl-[80px]')
-      expect(container.querySelector('header')).not.toHaveClass('pl-[80px]')
+      // as in native Mac apps, not against the zoom button. One token
+      // (--spacing-mac-traffic-inset) plus the 8px gap sets it.
+      expect(cap('sidebar')).toHaveClass('pl-[calc(var(--spacing-mac-traffic-inset)+0.5rem)]')
+      expect(container.querySelector('header')).not.toHaveClass('pl-(--spacing-mac-traffic-inset)')
+    })
+
+    it('uses the same traffic-light token on the phone bar, with the cluster padding as the gap', () => {
+      const { container } = renderHeader({ isMobile: true, isMacOverlay: true })
+      const header = container.querySelector('header') as HTMLElement
+      expect(header).toHaveClass('pl-(--spacing-mac-traffic-inset)')
+      // No second literal inset anywhere in the header.
+      expect(header.className).not.toMatch(/pl-\[\d+px\]/)
+      expect((screen.getByRole('button', { name: 'Toggle sidebar' }).closest('header > div') as HTMLElement).className.split(' ')).toContain('pl-2')
     })
 
     it('keeps one bar on phones', () => {
@@ -121,12 +140,12 @@ describe('AgentChatHeader', () => {
   })
 
   describe('the way back from a subagent to the lead', () => {
-    const LEAD = { name: 'Open the lead agent' }
+    const LEAD = { name: 'Open the main agent' }
 
     for (const isMobile of [false, true]) {
       const where = isMobile ? 'phone' : 'desktop'
 
-      it(`shows a lead button on the ${where} header only when given a way back, and it opens the lead`, async () => {
+      it(`shows a main-agent button on the ${where} header only when given a way back, and it opens the main agent`, async () => {
         const { unmount } = renderHeader({ isMobile })
         expect(screen.queryByRole('button', { name: LEAD.name })).toBeNull()
         unmount()
@@ -135,7 +154,7 @@ describe('AgentChatHeader', () => {
         renderHeader({ isMobile, onOpenLead })
         const button = screen.getByRole('button', { name: LEAD.name })
         // The same touch footing as every header control.
-        expect(button.className).toContain('pointer-coarse:size-9')
+        expect(hasTouchFooting(button)).toBe(true)
         expect(button.tabIndex).toBe(0)
         await userEvent.setup().click(button)
         expect(onOpenLead).toHaveBeenCalledTimes(1)
@@ -151,13 +170,20 @@ describe('AgentChatHeader', () => {
 
       const { container } = renderHeader({ isMobile: true, onOpenLead })
       const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
-      expect(names).toEqual(['Toggle sidebar', 'Open the lead agent', 'Tasks', 'Review panel'])
+      expect(names).toEqual(['Toggle sidebar', 'Open the main agent', 'Tasks', 'Review panel'])
     })
 
     it('says what it does in a tooltip', async () => {
       renderHeader({ isMobile: false, onOpenLead: () => undefined })
       await userEvent.setup().hover(screen.getByRole('button', { name: LEAD.name }))
-      expect(await screen.findByRole('tooltip')).toHaveTextContent('Open the lead agent')
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('Open the main agent')
+    })
+
+    it('is the Button primitive, not a hand-rolled icon button', () => {
+      renderHeader({ isMobile: false, onOpenLead: () => undefined })
+      const button = screen.getByRole('button', { name: LEAD.name })
+      expect(button.dataset.slot).toBe('button')
+      expect(button.dataset.variant).toBe('ghost')
     })
   })
 
@@ -246,9 +272,22 @@ describe('AgentChatHeader', () => {
       'Review panel',
     ])
     for (const el of buttons) {
-      expect([el.getAttribute('aria-label'), /pointer-coarse:(?:size-9|h-9|min-h-9)/.test(el.className)]).toEqual([el.getAttribute('aria-label'), true])
+      expect([el.getAttribute('aria-label'), hasTouchFooting(el)]).toEqual([el.getAttribute('aria-label'), true])
       // No ``max-md:`` gate: a touch tablet in the desktop layout needs it too.
       expect(el.className).not.toContain('max-md:pointer-coarse')
+    }
+  })
+
+  it('builds the header icon buttons from the Button primitive: 32px, ghost, no hand-rolled sizes', () => {
+    for (const isMobile of [false, true]) {
+      const { unmount } = renderHeader({ isMobile, onOpenLead: () => undefined })
+      for (const name of ['Toggle sidebar', 'Open the main agent']) {
+        const button = screen.getByRole('button', { name })
+        expect([name, button.dataset.slot, button.dataset.variant]).toEqual([name, 'button', 'ghost'])
+        expect(button.className.split(' ')).toContain('size-8')
+        expect(button.className).not.toMatch(/(?:^|\s)md:(?:h|w|size)-/)
+      }
+      unmount()
     }
   })
 
@@ -261,11 +300,26 @@ describe('AgentChatHeader', () => {
     expect(labels.filter((label) => /sidebar|review|files|panel|dock/i.test(label ?? ''))).toEqual(['Toggle sidebar', 'Review panel'])
   })
 
+  it('words every desktop tooltip with a shortcut as "Name (key)", the platform\'s own key', async () => {
+    const user = userEvent.setup()
+    renderHeader({ isMobile: false })
+    const cases: Array<[string, RegExp]> = [
+      ['Toggle sidebar', /^Toggle sidebar \((⌘B|Ctrl\+B)\)$/],
+      ['Tasks', /^Tasks \((⌘T|Ctrl\+T)\)$/],
+      ['Review panel', /^Show Review panel \((⌘D|Ctrl\+D)\)$/],
+    ]
+    for (const [name, form] of cases) {
+      await user.hover(screen.getByRole('button', { name }))
+      expect([name, (await screen.findByRole('tooltip')).textContent?.match(form) !== null]).toEqual([name, true])
+      await user.unhover(screen.getByRole('button', { name }))
+    }
+  })
+
   it('sizes every mobile header action to the full header height on touch', () => {
     renderHeader({ isMobile: true })
 
     for (const name of ['Toggle sidebar', 'Tasks', 'Review panel']) {
-      expect(screen.getByRole('button', { name }).className).toContain('pointer-coarse:size-9')
+      expect([name, hasTouchFooting(screen.getByRole('button', { name }))]).toEqual([name, true])
     }
   })
 
@@ -404,5 +458,34 @@ describe('AgentChatHeader', () => {
     renderHeader({ isMobile: true, onWorkspaceFiles })
     await userEvent.setup().click(screen.getByRole('button', { name: 'Review panel' }))
     expect(onWorkspaceFiles).toHaveBeenCalledTimes(1)
+  })
+
+  describe('on a phone stack', () => {
+    it('trades the sidebar toggle for ‹ Sessions, which goes back', async () => {
+      const onBack = mock(() => {})
+      const onSidebarToggle = mock(() => {})
+      renderHeader({ onBack, onSidebarToggle })
+      expect(screen.queryByRole('button', { name: 'Toggle sidebar' })).toBeNull()
+      const back = screen.getByRole('button', { name: 'Back to Sessions' })
+      expect(back).toHaveTextContent('Sessions')
+      await userEvent.setup().click(back)
+      expect(onBack).toHaveBeenCalledTimes(1)
+      expect(onSidebarToggle).not.toHaveBeenCalled()
+    })
+
+    it('keeps the title, its workspace, Tasks and Review panel', () => {
+      const { container } = renderHeader({ onBack: () => undefined })
+      expect(container.querySelector('[data-phone-nav-title]')).toHaveTextContent('Fix updater restart')
+      expect(container.querySelector('[data-phone-nav-title]')).toHaveTextContent('Workspace A')
+      const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
+      expect(names).toEqual(['Back to Sessions', 'Tasks', 'Review panel'])
+    })
+
+    it('draws every bar button with the Button primitive', () => {
+      const { container } = renderHeader({ onBack: () => undefined, onOpenLead: () => undefined })
+      for (const button of container.querySelectorAll<HTMLElement>('header button')) {
+        expect(button.dataset.slot).toBe('button')
+      }
+    })
   })
 })

@@ -34,7 +34,11 @@ describe('TodosPopover', () => {
   it('shows an empty-state message when there are no todos', () => {
     render(<TodosPopover open onOpenChange={() => {}} todos={[]} />)
 
-    expect(screen.getByText('No tasks yet')).toBeTruthy()
+    // The shared EmptyState, inline (it does not fill the 20rem panel).
+    const title = screen.getByText('No tasks yet')
+    expect(title.tagName).toBe('H2')
+    expect(screen.getByRole('dialog', { name: 'Tasks' }).contains(title)).toBe(true)
+    expect(title.closest('[class*="h-full"]')).toBeNull()
     expect(screen.queryByRole('list', { name: 'Tasks' })).toBeNull()
   })
 

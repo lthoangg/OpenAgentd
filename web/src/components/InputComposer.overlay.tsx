@@ -23,11 +23,14 @@ import { MAX_TEXTAREA_HEIGHT } from './InputComposer.autosize'
 
 /**
  * The message text's size and line height, worn by the textarea and the
- * mirror alike. 16px on a phone, where iOS zooms the page into any smaller
- * field. If the two ever differ, the caret (the textarea's) drifts further
- * from the painted text (the mirror's) with every letter typed.
+ * mirror alike. 15px on a phone (iOS's subheadline), a step under the rest
+ * of the phone UI so the composer stays compact. iOS zooms into a field
+ * under 16px unless the viewport caps the scale: index.html's
+ * ``maximum-scale=1.0`` does (pinch zoom still works). If the two ever
+ * differ, the caret (the textarea's) drifts further from the painted text
+ * (the mirror's) with every letter typed.
  */
-export const COMPOSER_TEXT_CLASS = 'text-sm leading-relaxed max-md:pointer-coarse:text-base'
+export const COMPOSER_TEXT_CLASS = 'text-sm leading-relaxed phone:text-subhead'
 
 interface MentionOverlayProps {
   /** Current textarea value. */

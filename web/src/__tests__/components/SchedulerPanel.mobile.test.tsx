@@ -15,8 +15,7 @@ function task(id: string, name: string): ScheduledTaskResponse {
   return { id, slug: id, name, workspace: '/repo/app', schedule_type: 'every', at_datetime: null, every_seconds: 3600, cron_expression: null, timezone: 'UTC', prompt: 'Do the thing', session_id: null, enabled: true, status: 'pending', run_count: 0, max_runs: null, last_run_at: null, last_error: null, next_fire_at: null, created_at: '2026-05-25T00:00:00Z', updated_at: '2026-05-25T00:00:00Z' }
 }
 
-function renderPanel(ui: React.ReactElement = <SchedulerPanel open onClose={() => {}} />) {
-  const tasks = [task('t1', 'Nightly build')]
+function renderPanel(ui: React.ReactElement = <SchedulerPanel open onClose={() => {}} />, tasks = [task('t1', 'Nightly build')]) {
   globalThis.fetch = mock(async () => new Response(JSON.stringify({ tasks }), { status: 200, headers: { 'Content-Type': 'application/json' } })) as unknown as typeof fetch
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
@@ -59,6 +58,30 @@ describe('scheduler overlay on phones', () => {
     expect(screen.getAllByText('Nightly build')).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'Back to task list' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Close detail' })).not.toBeInTheDocument()
+  })
+
+  it('folds Delete into a ⋯ menu; Run now and Pause stay in the bottom bar', async () => {
+    useUIStore.getState().focusScheduledTask('t1')
+    renderPanel()
+
+    expect(screen.queryByRole('button', { name: /^Delete/ })).toBeNull()
+    fireEvent.click(await screen.findByRole('button', { name: 'More actions' }))
+
+    const menu = screen.getByRole('menu', { name: 'Actions for Nightly build' })
+    expect(Array.from(menu.querySelectorAll('[role="menuitem"]')).map((item) => item.textContent)).toEqual(['Delete task…'])
+  })
+
+  it('opens the create form from the empty list\'s New task action', async () => {
+    renderPanel(undefined, [])
+
+    expect(await screen.findByText('No scheduled tasks yet')).toBeInTheDocument()
+    // The list's "+" and the empty state's action are both named for what they open.
+    const buttons = screen.getAllByRole('button', { name: 'New task' })
+    expect(buttons).toHaveLength(2)
+    fireEvent.click(buttons[1])
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Create task/ })).toBeInTheDocument())
+    expect(screen.queryByText('No scheduled tasks yet')).toBeNull()
   })
 
   it('keeps the edit form to one title and one way to cancel', async () => {

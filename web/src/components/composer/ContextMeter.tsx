@@ -2,18 +2,22 @@
  * ContextMeter — the run deck's context ring: how full the context is before
  * older messages are summarized, with the numbers and "Summarize now" behind
  * a click. The percentage drops out when the composer is narrow.
+ *
+ * It carries no cost: spend shows per turn (the answer footer) and for the
+ * last 24 hours (the status bar), and nowhere else.
  */
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Button } from '@/components/ui/button'
-import { DEFAULT_SUMMARY_TRIGGER_TOKENS } from '@/components/ui/token-meter'
-import { formatCompact, formatSpend } from '@/utils/telemetryFormat'
+import { formatCompact } from '@/utils/telemetryFormat'
 import { useAgentStore } from '@/stores/useAgentStore'
+
+/** Where the context summarizes when the model's registry entry gives no trigger. */
+export const DEFAULT_SUMMARY_TRIGGER_TOKENS = 250_000
 
 export interface ContextMeterProps {
   input: number
   output: number
   cachedPercent?: number
-  sessionCostUsd?: number
   trigger?: number
   /** "Summarize now" works on an idle session with messages. */
   canSummarize: boolean
@@ -22,7 +26,7 @@ export interface ContextMeterProps {
 const RADIUS = 7
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
-export function ContextMeter({ input, output, cachedPercent, sessionCostUsd, trigger = DEFAULT_SUMMARY_TRIGGER_TOKENS, canSummarize }: ContextMeterProps) {
+export function ContextMeter({ input, output, cachedPercent, trigger = DEFAULT_SUMMARY_TRIGGER_TOKENS, canSummarize }: ContextMeterProps) {
   const limit = Math.max(trigger, 1)
   const progress = Math.min(input / limit, 1)
   const percent = Math.round(progress * 100)
@@ -32,7 +36,7 @@ export function ContextMeter({ input, output, cachedPercent, sessionCostUsd, tri
       <PopoverTrigger
         aria-label={label}
         data-context-meter=""
-        className="h-8 shrink-0 items-center gap-1 rounded-md px-1.5 font-mono text-meta tabular-nums text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 pointer-coarse:h-9 pointer-coarse:min-w-9 pointer-coarse:justify-center"
+        className="relative touch-hit h-8 shrink-0 items-center gap-1 rounded-sm px-1.5 font-mono text-meta tabular-nums text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 pointer-coarse:h-9 pointer-coarse:min-w-9 pointer-coarse:justify-center"
       >
         <svg className="size-4 -rotate-90" viewBox="0 0 18 18" aria-hidden="true">
           {/* A full, visible track: with a faint one, a part-filled ring read
@@ -63,12 +67,6 @@ export function ContextMeter({ input, output, cachedPercent, sessionCostUsd, tri
             <>
               <dt className="text-(--color-text-muted)">Cached</dt>
               <dd className="text-right font-mono tabular-nums">{cachedPercent.toFixed(0)}%</dd>
-            </>
-          )}
-          {sessionCostUsd !== undefined && sessionCostUsd > 0 && (
-            <>
-              <dt className="text-(--color-text-muted)">Spend (est.)</dt>
-              <dd className="text-right font-mono tabular-nums">{formatSpend(sessionCostUsd)}</dd>
             </>
           )}
         </dl>

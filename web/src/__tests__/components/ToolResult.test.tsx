@@ -474,9 +474,13 @@ describe("ToolResult — todo_manage", () => {
     expect(screen.getByText(/Threads weave in tandem/)).toBeTruthy()
   })
 
-  it("renders the empty board message", () => {
+  it("renders the empty board as an inline empty state: sentence case, no trailing period", () => {
     render(<ToolResult toolName="todo_manage" result="No todos." />)
-    expect(screen.getByText("No todos.")).toBeTruthy()
+    const title = screen.getByText("No todos")
+    expect(title.tagName).toBe("H2")
+    // Inline (``fill={false}``): it does not stretch to fill the parent.
+    expect(title.closest("[class*='h-full']")).toBeNull()
+    expect(screen.queryByText("No todos.")).toBeNull()
   })
 
   it("renders claim result with outcome line and claimed task card", () => {
@@ -538,11 +542,11 @@ describe("ToolResult — team tools", () => {
       output: "Audit finished: 5 endpoints found.",
     })
     render(<ToolResult toolName="team_spawn" result={res} />)
-    // The member is a row: its handle in mono, its state in words as a success chip
+    // The member is a row: its handle in mono, its state in words as a quiet chip
     const row = screen.getByText("explorer#1").closest("[data-subagent-row]")
     expect(row).toBeTruthy()
     expect(screen.getByText("explorer#1").className).toContain("font-mono")
-    expect(screen.getByText("Done").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("success")
+    expect(screen.getByText("Done").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("neutral")
     expect(screen.queryByText("completed")).toBeNull()
     expect(screen.getByText(/Audit finished: 5 endpoints found\./)).toBeTruthy()
   })
@@ -608,7 +612,7 @@ describe("ToolResult — team tools", () => {
     expect(screen.getByText("explorer#1")).toBeTruthy()
     // Roster statuses are chips; an unknown status keeps its raw text
     expect(screen.getByText("Running").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("info")
-    expect(screen.getByText("Done").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("success")
+    expect(screen.getByText("Done").closest('[data-slot="chip"]')?.getAttribute("data-tone")).toBe("neutral")
     expect(screen.getByText("researcher#1")).toBeTruthy()
   })
 })

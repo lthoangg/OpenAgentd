@@ -1,6 +1,8 @@
 import { memo, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ArrowUpRight, ChevronDown, ChevronUp, Paperclip, Pencil, X } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, ChevronUp, Paperclip, Pencil } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { CloseButton } from '@/components/ui/close-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
@@ -23,7 +25,7 @@ function QueuedAttachmentList({ attachments }: { attachments: MessageAttachment[
           key={`${att.original_name ?? att.filename ?? 'file'}-${i}`}
           className="inline-flex max-w-full items-center gap-1 rounded-xs bg-(--bg-key) px-1.5 py-0.5 text-meta text-(--color-text-2)"
         >
-          <Paperclip size={11} aria-hidden="true" className="shrink-0" />
+          <Paperclip size={12} aria-hidden="true" className="shrink-0" />
           <Tooltip className="min-w-0">
             <TooltipTrigger
               className="min-w-0"
@@ -54,14 +56,15 @@ function QueuedMessageContent({ content: raw, attachments }: { content: string; 
         <Tooltip className="absolute top-1.5 right-1.5 z-10">
           <TooltipTrigger
             render={
-              <button
+              <Button
+                variant="subtle"
+                size="icon-xs"
                 onClick={() => setExpanded((v) => !v)}
                 aria-expanded={expanded}
                 aria-label={expanded ? 'Collapse' : 'Expand'}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-[color,background-color,scale] duration-(--motion-instant) ease-(--ease-in-out) hover:text-(--color-text) active:scale-90 pointer-coarse:size-9"
               >
                 {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </button>
+              </Button>
             }
           />
           <TooltipContent>{expanded ? 'Collapse' : 'Expand'}</TooltipContent>
@@ -102,7 +105,7 @@ function QueuedSenderChip({ sender }: { sender: QueuedSender }) {
     >
       <span className="shrink-0">From</span>
       <span className="min-w-0 truncate font-mono font-semibold text-(--color-text)">{sender.workspaceName}</span>
-      <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
+      <ArrowUpRight size={12} aria-hidden="true" className="shrink-0" />
     </button>
   )
 }
@@ -131,7 +134,7 @@ function QueuedBubble({ content, attachments, label, sender, onEdit, onRemove }:
   }
   return (
     // Queued from the composer: it rises into place like a sent prompt.
-    <div className="oa-rise-in group flex justify-end">
+    <div className="oa-rise-in flex justify-end">
       <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]">
         <div className="flex max-w-full items-start gap-2">
           <QueuedMessageContent content={content} attachments={attachments} />
@@ -139,33 +142,27 @@ function QueuedBubble({ content, attachments, label, sender, onEdit, onRemove }:
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     onClick={() => { void run(onEdit) }}
                     disabled={busy}
                     aria-label="Edit queued message"
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-(--color-text-muted) opacity-100 transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 md:opacity-70 md:group-hover:opacity-100 pointer-coarse:size-9"
                   >
-                    <Pencil size={13} aria-hidden="true"  />
-                  </button>
+                    <Pencil size={14} aria-hidden="true" />
+                  </Button>
                 }
               />
               <TooltipContent>Edit queued message</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={() => { void run(onRemove) }}
-                    disabled={busy}
-                    aria-label="Remove queued message"
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-(--color-text-muted) opacity-100 transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 md:opacity-70 md:group-hover:opacity-100 pointer-coarse:size-9"
-                  >
-                    <X size={13} aria-hidden="true" />
-                  </button>
-                }
-              />
-              <TooltipContent>Remove queued message</TooltipContent>
-            </Tooltip>
+            {/* The × removes the message rather than closing anything, so it says so. */}
+            <CloseButton
+              size="icon-xs"
+              label="Remove queued message"
+              tooltip="Remove queued message"
+              onClick={() => { void run(onRemove) }}
+              disabled={busy}
+            />
           </div>
         </div>
         {sender ? (

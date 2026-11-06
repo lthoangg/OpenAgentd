@@ -48,7 +48,7 @@ export function ProviderSetupNotice({
         title={title}
         action={
           <div className="flex items-center gap-2">
-            <Button size="sm" onClick={onOpenProviders}>Open Providers</Button>
+            <Button size="sm" onClick={onOpenProviders}>Open providers</Button>
             {named && onChooseModel && (
               <Button type="button" variant="ghost" size="sm" onClick={onChooseModel}>Choose model</Button>
             )}

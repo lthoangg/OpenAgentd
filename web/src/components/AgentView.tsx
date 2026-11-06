@@ -9,9 +9,10 @@
  *
  * Blocks are grouped into "turns" via `partitionTurns` (see `utils/turns.ts`):
  * a turn is a contiguous run of non-user blocks. Each finalized turn renders a
- * single `AssistantTurnFooter` (Copy, Edit prompt, files changed, and the
- * turn's details); only the trailing turn hides its footer while the turn is
- * open.
+ * single `AssistantTurnFooter` (Copy response, files changed, and the turn's
+ * details); only the trailing turn hides its footer while the turn is open.
+ * The prompt's own row (model, Edit, Copy, time) is `UserBubble`'s, shown on
+ * hover: a turn shows each of those once.
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react'
@@ -300,10 +301,11 @@ function PendingDots() {
 
 /**
  * The turn is waiting for a provider quota to reset (DESIGN.md → Notices):
- * one card whether the session runs on Auto or is pinned to the account that
- * ran out. Calm on purpose: it resolves itself, so no pulse and no alarm
- * words. Stop is always on the card; the pinned wait adds the ways around it.
- * The provider's own message is one "Copy details" away.
+ * one card, for one account or (a provider with several) every account at
+ * its limit. Calm on purpose: it resolves itself, so no pulse and no alarm
+ * words. Stop is always on the card. The provider's own message is one
+ * "Copy details" away. ``pinned`` cards come from older transcripts, when a
+ * locked session waited for its own account.
  */
 function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessionId?: string; persist: boolean }) {
   const [now, setNow] = useState(() => Date.now())
@@ -341,6 +343,8 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
   if (countdown === null) return persist ? <PendingDots /> : null
   const modelName = wait.model ? <ModelName id={wait.model} className="align-bottom text-(--color-text-2)" /> : null
   const accountName = wait.account ? <span className="font-semibold text-(--color-text-2)">{wait.account}</span> : null
+  // A provider with several accounts waits only once every one is limited.
+  const everyAccount = !wait.pinned && (wait.message ?? '').startsWith('Every account for ')
 
   return (
     <div className="my-2">
@@ -357,14 +361,18 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
             )}
           </>
         }
-        action={<WaitActions pinned={Boolean(wait.pinned)} details={wait.message} />}
+        action={<WaitActions details={wait.message} />}
       >
         <span className="text-(--color-text-muted)">
           {wait.pinned
             ? <>
                 {accountName ? <>Account {accountName}</> : 'The pinned account'} hit its usage limit
                 {modelName && <>{' on '}{modelName}</>}
-                . This session resumes on it when the limit resets, or continue now on Auto.
+                . This session resumes on it when the limit resets.
+              </>
+            : everyAccount
+            ? <>
+                Every account{modelName && <>{' for '}{modelName}</>} is at its usage limit. Resumes on the first one that resets.
               </>
             : <>
                 {modelName ? <>{modelName} used up its provider quota</> : 'The provider quota is used up'}
@@ -378,37 +386,13 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
 }
 
 /**
- * The ways out of a wait, on the card itself. Always Stop. A pinned wait adds
- * dropping the pin to go on now (the wait stops, and the turn continues on
- * Auto) and picking another account. Copy details hands over the provider's
- * own message.
+ * The ways out of a wait, on the card itself: Stop, and Copy details for the
+ * provider's own message. A wait means no account has room, so there is no
+ * other account to go on with.
  */
-function WaitActions({ pinned, details }: { pinned: boolean; details?: string }) {
-  const [busy, setBusy] = useState(false)
-  const useAuto = async () => {
-    setBusy(true)
-    try {
-      const store = useAgentStore.getState()
-      if (!(await store.setSessionRunSettings({ credentialId: null }))) return
-      const workspace = useAgentStore.getState()._workspace
-      await useAgentStore.getState().stopAgent({ keepGoal: true })
-      if (workspace) await useAgentStore.getState().sendMessage('Continue.', undefined, { workspace })
-    } finally {
-      setBusy(false)
-    }
-  }
+function WaitActions({ details }: { details?: string }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {pinned && (
-        <>
-          <Button type="button" size="sm" variant="primary" disabled={busy} onClick={() => void useAuto()}>
-            Use Auto for this session
-          </Button>
-          <Button type="button" size="sm" onClick={() => useUIStore.getState().openRunPicker('model')}>
-            Choose account…
-          </Button>
-        </>
-      )}
       <Button type="button" size="sm" variant="ghost" onClick={() => void useAgentStore.getState().stopAgent()}>
         Stop
       </Button>
@@ -520,7 +504,7 @@ function providerErrorTitle(title: unknown): string {
   return title
 }
 
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, leadSessionId, onEdit, editLocked, actionsAtRest, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, activeQuotaWaitBlockId, activeRetryBlockId }: {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, leadSessionId, onEdit, editLocked, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, activeQuotaWaitBlockId, activeRetryBlockId }: {
   block: ContentBlock
   isStreaming: boolean
   sessionId?: string
@@ -530,8 +514,6 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   onEdit?: (blockId: string) => void
   /** A turn is running: Edit shows, disabled, until it ends. */
   editLocked?: boolean
-  /** The prompt's Edit and Copy show at rest (the latest prompt), not only on hover or focus. */
-  actionsAtRest?: boolean
   /** The model and thinking level a prompt ran with; strings so memo holds while streaming. */
   promptModel?: string
   promptThinkingLevel?: string
@@ -555,7 +537,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       // The lead's message to this subagent: its prefix is the chip's job, and
       // Edit would rewind the subagent, which the lead directs.
       const lead = fromAgent ? null : fromLead(block.extra, block.content, leadSessionId)
-      return <UserBubble content={lead ? lead.content : block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent && !lead ? () => onEdit(block.id) : undefined} editLocked={editLocked} actionsAtRest={actionsAtRest} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} fromLeadSessionId={lead?.sessionId} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
+      return <UserBubble content={lead ? lead.content : block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent && !lead ? () => onEdit(block.id) : undefined} editLocked={editLocked} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} fromLeadSessionId={lead?.sessionId} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} durationMs={block.thinkingDurationMs} />
@@ -640,8 +622,8 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       }
       let message = 'Provider status updated.'
       if (status === 'pin_released') {
-        // The pinned account was removed or turned off: the session is on Auto.
-        message = customMsg || 'The pinned account is gone, so this session is back on Auto.'
+        // The locked account was removed or turned off: the session follows the provider's choice.
+        message = customMsg || "The account this session started on is gone, so it uses the provider's next available account."
       }
       return <p className="rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
     }
@@ -794,14 +776,6 @@ export function AgentView({
   const endingErrorId = isTurnOpen || showsLastError ? undefined : endingProviderError(trailingBlocks)?.id
   const errorRetry = canRetry ? onRetry : undefined
   const errorSwitchModel = isTurnOpen ? undefined : onSwitchModel ?? openModelPicker
-  // The newest prompt keeps its Edit and Copy at rest; older ones show them on hover or focus.
-  const latestTypedPromptId = useMemo(() => {
-    for (let i = turnItems.length - 1; i >= 0; i--) {
-      const item = turnItems[i]
-      if (item.kind === 'user' && isTypedPromptBlock(item.block)) return item.block.id
-    }
-    return undefined
-  }, [turnItems])
   const { hiddenTurnCount, visibleTurnItems } = useMemo(
     () => getVisibleTurnWindow(turnItems, renderedTurnCount),
     [renderedTurnCount, turnItems],
@@ -924,7 +898,7 @@ export function AgentView({
     attachedRef,
     syncAnchor,
     showScrollBtn,
-    scrollToBottom,
+    jumpToLatest: jumpToEnd,
   } = useAutoFollowScroll({
     totalLen,
     lastContent,
@@ -1010,11 +984,6 @@ export function AgentView({
     // A reconcile can swap the anchor's id; keep the last count then.
     publishUnseen(counted ?? unseenRef.current ?? 0)
   }, [blocks, liveTail, publishUnseen, readerTranscript, showScrollBtn])
-  useEffect(() => {
-    if (!jumpToLatestInComposer) return
-    useTranscriptFollowStore.setState({ jumpToLatest: () => scrollToBottom('smooth') })
-    return () => useTranscriptFollowStore.setState({ jumpToLatest: null, unseen: null })
-  }, [jumpToLatestInComposer, scrollToBottom])
 
   /** Hold the view while earlier turns land above it; call the release once they have. */
   const holdView = useCallback(() => {
@@ -1167,6 +1136,18 @@ export function AgentView({
     if (promptJumpRef.current) promptJumpRef.current.jump = false
   }, [])
 
+  /** Jump to latest. A prompt jump still loading would land after it and take the reader back up. */
+  const jumpToLatest = useCallback(() => {
+    cancelPromptJump()
+    pendingJumpRef.current = null
+    jumpToEnd()
+  }, [cancelPromptJump, jumpToEnd])
+  useEffect(() => {
+    if (!jumpToLatestInComposer) return
+    useTranscriptFollowStore.setState({ jumpToLatest })
+    return () => useTranscriptFollowStore.setState({ jumpToLatest: null, unseen: null })
+  }, [jumpToLatest, jumpToLatestInComposer])
+
   /** Bring a loaded prompt into view by block id, rendering down to it when it is hidden. */
   const showPrompt = useCallback((id: string) => {
     const root = scrollRef.current
@@ -1213,9 +1194,9 @@ export function AgentView({
     }
     pendingJumpRef.current = null
     // Past the newest prompt is the live end; before the oldest, earlier turns.
-    if (direction > 0) scrollToBottom('smooth')
+    if (direction > 0) jumpToEnd()
     else requestOlderPrompt()
-  }, [cancelPromptJump, requestOlderPrompt, scrollPromptIntoView, scrollRef, scrollToBottom])
+  }, [cancelPromptJump, jumpToEnd, requestOlderPrompt, scrollPromptIntoView, scrollRef])
 
   // The mobile chat actions step prompts without a keyboard.
   const jumpToPromptRef = useRef(jumpToPrompt)
@@ -1265,8 +1246,8 @@ export function AgentView({
              <EmptyState
                fill={false}
                className="py-16 select-none"
-               icon={<Seal size={24} className="text-(--color-text)" />}
-               title={'what\u2019s on your mind?'}
+               icon={<Seal size={16} className="text-(--color-text)" />}
+               title="What's on your mind?"
              />
            )
          )}
@@ -1316,7 +1297,6 @@ export function AgentView({
                          leadSessionId={leadSessionId}
                          onEdit={handleEdit}
                          editLocked={editLocked}
-                         actionsAtRest={item.block.id === latestTypedPromptId}
                          promptModel={promptModelById.get(item.block.id)?.model}
                          promptThinkingLevel={promptModelById.get(item.block.id)?.thinkingLevel}
                          latestMCPAppBlockIds={mcpAppResourceUri(item.block) ? latestMCPAppBlockIds : undefined}
@@ -1345,9 +1325,6 @@ export function AgentView({
                   // own start mark, the prompt's time survives a reload.
                   const prompt = isTrailingTurn ? turnItems[globalTurnIndex - 1] : undefined
                   const turnStartedAt = prompt?.kind === 'user' ? prompt.block.timestamp?.getTime() : isTrailingTurn ? pinnedStartedAt : undefined
-                  // The prompt this answer came from, for the footer's Edit prompt.
-                  const promptItem = turnItems[globalTurnIndex - 1]
-                  const promptId = promptItem?.kind === 'user' && isTypedPromptBlock(promptItem.block) && !isLeadMessage(promptItem.block, leadSessionId) ? promptItem.block.id : undefined
                  return (
                    <AssistantTurn
                      key={`turn-${item.blocks[0]?.id ?? item.startIndex}`}
@@ -1365,9 +1342,6 @@ export function AgentView({
                      reader={readerTranscript}
                      startedAt={turnStartedAt}
                       renderBlock={renderTurnBlock}
-                     promptId={promptId}
-                     onEditPrompt={handleEdit}
-                     editLocked={editLocked}
                    />
                  )
                 })}
@@ -1414,7 +1388,7 @@ export function AgentView({
     {/* The floating composer carries the chip when it is up; with none (a
         subagent's session) the same chip sits in the transcript's corner. */}
     {!jumpToLatestInComposer && (
-      <JumpToLatest unseen={showScrollBtn ? inlineUnseen ?? 0 : null} side="inside" fadeOut={false} onJump={() => scrollToBottom('smooth')} />
+      <JumpToLatest unseen={showScrollBtn ? inlineUnseen ?? 0 : null} side="inside" fadeOut={false} onJump={jumpToLatest} />
     )}
     </div>
     </FileRefContext.Provider>

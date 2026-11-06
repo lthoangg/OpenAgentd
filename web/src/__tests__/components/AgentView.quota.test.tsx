@@ -3,7 +3,6 @@ import { act, render, screen, cleanup, fireEvent } from "@testing-library/react"
 import "@testing-library/jest-dom"
 import { AgentView } from "@/components/AgentView"
 import { useAgentStore } from "@/stores/useAgentStore"
-import { useUIStore } from "@/stores/useUIStore"
 import type { ContentBlock } from "@/api/types"
 
 const { stopAgent: realStopAgent, sendMessage: realSendMessage, setSessionRunSettings: realSetSessionRunSettings } = useAgentStore.getState()
@@ -248,7 +247,22 @@ describe("AgentView — waiting_quota status rendering", () => {
   })
 })
 
-describe("AgentView — waiting for the pinned account", () => {
+describe("AgentView — every account at its limit", () => {
+  it("says every account is limited and resumes on the first to reset, with only Stop and Copy details", () => {
+    const message = "Every account for codex:gpt-5.4 is at its usage limit. Waiting 2h 00m for the first one to reset. Agent will automatically resume work. You can stop at any time."
+    render(<AgentView blocks={[makeQuotaBlock("all", "codex:gpt-5.4", message)]} currentBlocks={[]} isWorking={true} />)
+
+    expect(screen.getByText("Waiting for quota reset")).toBeTruthy()
+    expect(screen.getByText(/Every account.*is at its usage limit\. Resumes on the first one that resets\./)).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Copy details" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: /Use Auto/ })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Choose account…" })).toBeNull()
+  })
+})
+
+// Older transcripts: a locked session used to wait for its own account.
+describe("AgentView — an older wait for the pinned account", () => {
   const PINNED_MESSAGE =
     "Personal is pinned for this session and hit its usage limit. Waiting 2h 00m for it to reset. Use Auto to continue on another account now, or stop at any time."
 
@@ -258,45 +272,19 @@ describe("AgentView — waiting for the pinned account", () => {
     return block
   }
 
-  it("is the same card, naming the account and the model, with every way forward", () => {
+  it("still renders, naming the account and the model, without Use Auto", () => {
     render(<AgentView blocks={[makePinnedBlock("p1")]} currentBlocks={[]} isWorking={true} />)
 
     expect(screen.getByText("Waiting for the pinned account")).toBeTruthy()
     expect(screen.getByText("2h 00m")).toBeTruthy()
     expect(screen.getByText("Personal")).toBeTruthy()
     expect(screen.getByText("gpt-5.4").closest("[data-model-name]")?.className).toContain("font-mono")
-    for (const name of ["Use Auto for this session", "Choose account…", "Stop", "Copy details"]) {
+    for (const name of ["Stop", "Copy details"]) {
       expect(screen.getByRole("button", { name })).toBeTruthy()
     }
+    expect(screen.queryByRole("button", { name: /Use Auto/ })).toBeNull()
+    expect(screen.queryByText(/on Auto/)).toBeNull()
     expect(screen.queryByText("Provider status updated.")).toBeNull()
-  })
-
-  it("opens the run picker from Choose account…", () => {
-    const openRunPicker = mock((_focus?: unknown) => {})
-    const original = useUIStore.getState().openRunPicker
-    act(() => { useUIStore.setState({ openRunPicker }) })
-    try {
-      render(<AgentView blocks={[makePinnedBlock("p2")]} currentBlocks={[]} isWorking={true} />)
-      fireEvent.click(screen.getByRole("button", { name: "Choose account…" }))
-      expect(openRunPicker).toHaveBeenCalledWith("model")
-    } finally {
-      act(() => { useUIStore.setState({ openRunPicker: original }) })
-    }
-  })
-
-  it("drops the pin, stops, and continues on Auto", async () => {
-    const setSessionRunSettings = mock(async (_settings: unknown) => true)
-    const stopAgent = mock(async (_options?: unknown) => {})
-    const sendMessage = mock(async (..._args: unknown[]) => true)
-    act(() => { useAgentStore.setState({ setSessionRunSettings, stopAgent, sendMessage, _workspace: "/work" }) })
-    render(<AgentView blocks={[makePinnedBlock("p3")]} currentBlocks={[]} isWorking={true} />)
-
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Use Auto for this session" })) })
-
-    expect(setSessionRunSettings).toHaveBeenCalledWith({ credentialId: null })
-    expect(stopAgent).toHaveBeenCalledWith({ keepGoal: true })
-    expect(sendMessage).toHaveBeenCalledWith("Continue.", undefined, { workspace: "/work" })
-    act(() => { useAgentStore.setState({ _workspace: null }) })
   })
 
   it("says 'the pinned account' when the status does not name it", () => {
@@ -305,7 +293,7 @@ describe("AgentView — waiting for the pinned account", () => {
     expect(screen.getByText(/The pinned account hit its usage limit/)).toBeTruthy()
   })
 
-  it("is still the pinned card, with its ways forward, after a page refresh", () => {
+  it("is still the pinned card after a page refresh", () => {
     const first = render(<AgentView blocks={[makePinnedBlock("p5")]} currentBlocks={[]} isWorking={true} />)
     expect(screen.getByText("Waiting for the pinned account")).toBeTruthy()
     first.unmount()
@@ -314,8 +302,5 @@ describe("AgentView — waiting for the pinned account", () => {
 
     expect(screen.getByText("Waiting for the pinned account")).toBeTruthy()
     expect(screen.getByText("Personal")).toBeTruthy()
-    for (const name of ["Use Auto for this session", "Choose account…", "Stop", "Copy details"]) {
-      expect(screen.getByRole("button", { name })).toBeTruthy()
-    }
   })
 })

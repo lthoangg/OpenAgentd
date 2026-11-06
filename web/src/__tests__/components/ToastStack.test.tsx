@@ -180,6 +180,19 @@ describe('ToastStack status-message semantics (WCAG 4.1.3)', () => {
     }
   })
 
+  it('closes with the shared CloseButton at its compact size, named "Dismiss", with no Esc tooltip', () => {
+    useToastStore.getState().push({ tone: 'info', title: 'Saved' })
+    render(<ToastStack />)
+
+    const close = screen.getByRole('button', { name: 'Dismiss' })
+    expect(close.hasAttribute('data-close-button')).toBe(true)
+    expect(close.dataset.slot).toBe('button')
+    expect(close.className.split(' ')).toContain('size-6')
+    // Esc does not dismiss a toast, so the "Close (Esc)" tooltip must not appear.
+    fireEvent.mouseEnter(close.parentElement!)
+    expect(screen.queryByRole('tooltip')).toBeNull()
+  })
+
   it('runs the toast action and closes the toast', () => {
     const retry = mock(() => {})
     useToastStore.getState().push({ tone: 'error', title: 'Could not load', action: { label: 'Retry', onAction: retry } })

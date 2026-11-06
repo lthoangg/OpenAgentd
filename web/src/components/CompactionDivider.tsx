@@ -22,11 +22,12 @@
  * summary being written in real time.
  */
 import { useId } from 'react'
-import { ChevronRight, ChevronUp } from 'lucide-react'
+import { ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Collapsible } from '@/components/ui/collapsible'
 import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
 import { MarkdownBlock } from '@/utils/markdown'
+import { TranscriptDivider } from './AgentView/TranscriptDivider'
 
 interface CompactionDividerProps {
   state: 'compacting' | 'compacted'
@@ -55,47 +56,26 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
       ? 'Summarizing earlier messages…'
       : 'Earlier messages summarized'
 
-  const tone = error
-    ? 'text-(--color-error)'
-    : state === 'compacting'
-      ? 'text-(--color-text-subtle)'
-      : 'text-(--color-text-2)'
+  // The same muted words as every transcript divider; only a failure is tinted.
+  const tone = error ? 'text-(--color-error)' : undefined
 
   const trimmed = summary?.trim() ?? ''
   const showBody = trimmed.length > 0 && !error
   const content = effectiveIsStreaming ? (summary ?? '') : trimmed
   const pinned = showBody && open
 
-  const labelContent = label
-
   return (
     <div role="region" aria-label={label} className="my-4 space-y-3">
-      <div className={cn('flex items-center gap-3', pinned && cn(PINNED_HEADER, 'bg-(--bg-page)'))}>
-        <span className="h-px flex-1 bg-(--color-border)" aria-hidden />
-        {showBody ? (
-          <button
-            ref={anchorRef}
-            type="button"
-            onClick={(event) => (open ? close(event.currentTarget) : setOpen(true))}
-            aria-expanded={open}
-            aria-controls={bodyId}
-            className={cn(
-              'inline-flex items-center gap-1 rounded-xs px-1 text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
-              tone,
-            )}
-          >
-            <span>{labelContent}</span>
-            <ChevronRight
-              size={12}
-              aria-hidden
-              className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ease-(--ease-out)', open && 'rotate-90')}
-            />
-          </button>
-        ) : (
-          <span role={state === 'compacting' ? 'status' : undefined} className={`text-xs ${tone}`}>{labelContent}</span>
-        )}
-        <span className="h-px flex-1 bg-(--color-border)" aria-hidden />
-      </div>
+      <TranscriptDivider
+        className={cn(pinned && cn(PINNED_HEADER, 'bg-(--bg-page)'))}
+        label={label}
+        tone={tone}
+        labelRole={state === 'compacting' ? 'status' : undefined}
+        open={open}
+        onToggle={showBody ? (control) => (open ? close(control) : setOpen(true)) : undefined}
+        controls={bodyId}
+        toggleRef={anchorRef}
+      />
 
       <Collapsible open={pinned}>
         {/* Rendered as plain assistant-style prose (no card chrome): same look

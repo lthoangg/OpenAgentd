@@ -57,10 +57,19 @@ export function handleBackPress(canGoBack: boolean): BackAction {
     window.history.back()
     return 'history'
   }
+  moveAppToBackground()
+  return 'background'
+}
+
+/**
+ * Send the Android app to the background, as Back does on a first screen.
+ * The phone's Sessions screen is one whatever the history holds, so it
+ * registers this as its Back handler.
+ */
+export function moveAppToBackground(): void {
   void import('@tauri-apps/api/core')
     .then(({ invoke }) => invoke('app_move_to_background'))
     .catch(() => {})
-  return 'background'
 }
 
 /** Take over Back in the Android shell. Returns a stop function. */

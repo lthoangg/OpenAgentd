@@ -1,8 +1,10 @@
 import { memo, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight, MoreHorizontal } from 'lucide-react'
+import { ChevronRight, GitCompare, MoreHorizontal } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { Collapsible } from '@/components/ui/collapsible'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ROW_ACTION } from '@/components/ui/list-row'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { DiffPreview } from '../FileViewerPanel'
@@ -14,6 +16,8 @@ import type { WorkspaceChangesResponse, WorkspaceFileInfo } from '@/api/types'
 import { ChangeCounts } from './ChangeCounts'
 import { type ChangedFileInfo, fileDiffBody } from './diff-helpers'
 import { DockLoadError } from './DockLoadError'
+import { DiffSkeleton } from './DiffSkeleton'
+import { DockRowsSkeleton } from './DockSkeleton'
 
 /** Rows rendered per step; thousands of untracked files must not stall a render. */
 export const CHANGED_ROWS_PAGE = 200
@@ -58,9 +62,9 @@ const NOTICE_CLASS = 'border-b border-(--color-border-subtle) bg-(--color-warnin
 function ChangedFileDiff({ workspace, path }: { workspace: string; path: string }) {
   const diff = useQuery({ ...workspaceFileDiffQueryOptions(workspace, path), staleTime: WORKSPACE_DIFF_STALE_MS })
   const body = useMemo(() => fileDiffBody(diff.data, path), [diff.data, path])
-  if (diff.isLoading) return <p className="px-3 py-3 text-xs text-(--color-text-subtle)">Loading diff…</p>
+  if (diff.isLoading) return <DiffSkeleton />
   if (diff.isError) {
-    return <DockLoadError message="Failed to load the diff." onRetry={() => void diff.refetch()} retrying={diff.isFetching} />
+    return <DockLoadError message="Couldn't load the diff." onRetry={() => void diff.refetch()} retrying={diff.isFetching} />
   }
   if (!body) return <p className="px-3 py-3 text-xs text-(--color-text-subtle)">No diff body for this file.</p>
   return (
@@ -200,14 +204,28 @@ function GitReviewSubPanelView({
   setDesktopFileActions,
 }: GitReviewSubPanelProps) {
   const [shownRows, setShownRows] = useState(CHANGED_ROWS_PAGE)
-  if (changes.isLoading || files.isLoading) return <DockListNotice>Loading changed files…</DockListNotice>
+  if (changes.isLoading || files.isLoading) return <DockRowsSkeleton label="Loading changed files" rows={6} />
   if (changes.isError) {
     const refetch = changes.refetch
-    if (!refetch) return <DockListNotice tone="error">Failed to load changed files</DockListNotice>
-    return <DockLoadError message="Failed to load changed files." onRetry={() => void refetch()} retrying={changes.isFetching} />
+    if (!refetch) return <DockListNotice tone="error">Couldn&apos;t load changed files.</DockListNotice>
+    return <DockLoadError message="Couldn't load changed files." onRetry={() => void refetch()} retrying={changes.isFetching} />
   }
-  if (!changes.data?.is_git_repo) return <DockListNotice>Not a git repository</DockListNotice>
-  if (changedFiles.length === 0) return <DockListNotice>No changes</DockListNotice>
+  if (!changes.data?.is_git_repo) {
+    // The Git toolbar (with its Refresh) shows only inside a repository, so the
+    // empty state carries the way to look again after a ``git init``.
+    const refetch = changes.refetch
+    return (
+      <EmptyState
+        icon={GitCompare}
+        title="Not a git repository"
+        body="Run git init in this folder to review its changes here."
+        action={refetch ? <Button size="sm" onClick={() => void refetch()}>Refresh</Button> : undefined}
+      />
+    )
+  }
+  if (changedFiles.length === 0) {
+    return <EmptyState icon={GitCompare} title="No changes" body="Files that change in this workspace show up here." />
+  }
 
   const hiddenRows = changedFiles.length - shownRows
   return (

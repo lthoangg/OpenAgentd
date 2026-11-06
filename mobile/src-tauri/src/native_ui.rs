@@ -4,8 +4,9 @@
 //! Both are presented by the platform (iOS `UIActivityViewController` /
 //! `UIAlertController` action sheet, Android `ACTION_SEND` chooser /
 //! `AlertDialog`) so they look, scroll, and announce themselves like the
-//! rest of the OS. The web side (`web/src/lib/mobile-share.ts`,
-//! `native-picker.ts`) falls back to its own UI whenever a command fails.
+//! rest of the OS. The web UI currently calls neither: its menus, pickers and
+//! sheets are its own (DESIGN.md → Native first), so a caller must bring its
+//! own fallback for when a command fails.
 //!
 //! Input is validated here, once, for both platforms: the platform code
 //! only ever sees a bounded, non-empty request.

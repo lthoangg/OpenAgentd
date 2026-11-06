@@ -142,7 +142,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
             <div className="mt-4 flex items-center justify-end gap-2 text-xs text-(--color-text-muted)">
               <Button variant="danger" size="xs" className="min-h-9 md:min-h-0"
                 onClick={() => setDeleteOpen(true)} disabled={deleteMut.isPending}>
-                <Trash2 size={11} aria-hidden="true" />
+                <Trash2 size={12} aria-hidden="true" />
                 Delete skill…
               </Button>
             </div>
@@ -170,7 +170,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
       />
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent>
+        <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Delete &ldquo;{name}&rdquo;?</DialogTitle>
             <DialogDescription>Its folder is removed from your skills folder. This can&apos;t be undone.</DialogDescription>

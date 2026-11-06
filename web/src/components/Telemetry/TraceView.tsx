@@ -6,7 +6,8 @@
 import { useMemo, type ReactNode } from 'react'
 import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 import { Check, Copy } from 'lucide-react'
-import { Chip } from '@/components/ui/chip'
+import { StatusChip } from '@/components/ui/chip'
+import { STATUS } from '@/lib/status'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Term } from '@/components/ui/term'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -145,7 +146,7 @@ export function TraceView({
           </Fact>
           {/* Seventh cell: fills the last row so no empty cell shows. */}
           <Fact label="Status" className="col-span-2 @5xl:col-span-1">
-            {summary.failed ? <Chip tone="error">failed</Chip> : <Chip tone="success">ok</Chip>}
+            <StatusChip status={summary.failed ? STATUS.failed : STATUS.done} />
           </Fact>
         </dl>
 

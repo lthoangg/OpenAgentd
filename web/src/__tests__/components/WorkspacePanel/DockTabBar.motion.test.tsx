@@ -65,7 +65,6 @@ function Strip({ tabs, onMove = () => {} }: { tabs: DockTab[]; onMove?: (id: str
       onActivate={() => {}}
       onClose={() => {}}
       onMove={onMove}
-      onRefresh={() => {}}
       maximized={null}
       onToggleMaximized={() => {}}
     />

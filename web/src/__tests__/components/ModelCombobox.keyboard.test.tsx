@@ -9,10 +9,12 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 import { ModelCombobox } from '@/components/settings/AgentForm/ModelCombobox'
+import { queryKeys } from '@/queries/keys'
 
 const OPTIONS = [
   { id: 'openai:gpt-4o', provider: 'openai', model: 'gpt-4o', vision: true },
@@ -143,9 +145,73 @@ describe('ModelCombobox — option rows', () => {
     expect(options[0].getAttribute('title')).toBe('openai:o3-mini')
     expect(screen.queryAllByRole('presentation').filter((node) => node.tagName === 'LI')).toHaveLength(0)
     const chip = options[0].querySelector('[data-slot="chip"]')
+    // No providers list loaded: the id stands in for the display name.
     expect(chip?.textContent).toBe('openai')
-    expect(chip?.className).toContain('font-mono')
+    // A provider's name is a word, not an identifier: the UI font.
+    expect(chip?.className).not.toContain('font-mono')
 
     cleanupOuter()
+  })
+})
+
+describe('ModelCombobox — provider display names', () => {
+  const MIXED = [
+    { id: 'anthropic:sonnet', provider: 'anthropic', model: 'sonnet', vision: false },
+    { id: 'openai:gpt-4o', provider: 'openai', model: 'gpt-4o', vision: false },
+    { id: 'openai:o3-mini', provider: 'openai', model: 'o3-mini', vision: false },
+  ]
+
+  function renderWithProviders(options = MIXED) {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.settings.providers(), {
+      providers: [
+        { id: 'anthropic', label: 'Claude' },
+        { id: 'openai', label: 'OpenAI' },
+      ],
+      has_any_configured: true,
+    })
+    return render(
+      <QueryClientProvider client={client}>
+        <ModelCombobox value="" options={options} onChange={() => undefined} ariaLabel="Search session model" />
+      </QueryClientProvider>,
+    )
+  }
+
+  it("heads each group with the provider's display name and lists only the model in its rows", async () => {
+    renderWithProviders()
+    await userEvent.click(input())
+
+    const headings = screen.getAllByRole('presentation').filter((node) => node.tagName === 'LI')
+    expect(headings.map((h) => h.textContent)).toEqual(['Claude', 'OpenAI'])
+    // UI font: it is a name, not an id.
+    expect(headings[0].className).not.toContain('font-mono')
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['sonnet', 'gpt-4o', 'o3-mini'])
+    // The row's title still carries the whole id.
+    expect(screen.getByRole('option', { name: 'gpt-4o' }).getAttribute('title')).toBe('openai:gpt-4o')
+  })
+
+  it('names the provider on each ranked result by its display name', async () => {
+    renderWithProviders()
+    await userEvent.click(input())
+    await userEvent.keyboard('sonnet')
+
+    const [option] = screen.getAllByRole('option')
+    expect(option.querySelector('[data-slot="chip"]')?.textContent).toBe('Claude')
+  })
+
+  it('still matches a typed "openai:" to that provider\'s models', async () => {
+    renderWithProviders()
+    await userEvent.click(input())
+    await userEvent.keyboard('openai:')
+
+    expect(screen.getAllByRole('option').map((o) => o.getAttribute('title'))).toEqual(['openai:gpt-4o', 'openai:o3-mini'])
+  })
+
+  it('falls back to the id for a provider the list does not name', async () => {
+    renderWithProviders([{ id: 'zzz:model-1', provider: 'zzz', model: 'model-1', vision: false }])
+    await userEvent.click(input())
+
+    const headings = screen.getAllByRole('presentation').filter((node) => node.tagName === 'LI')
+    expect(headings.map((h) => h.textContent)).toEqual(['zzz'])
   })
 })

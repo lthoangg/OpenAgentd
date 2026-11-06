@@ -141,8 +141,9 @@ describe('splitting the Review panel', () => {
     expect(pane(4).hasAttribute('data-pane-unfocused')).toBe(false)
     expect(pane(1).hasAttribute('data-pane-unfocused')).toBe(true)
 
-    // An empty pane beside others closes from its strip; Git is untouched.
-    await act(async () => { within(pane(4)).getByRole('button', { name: /^Close pane/ }).click() })
+    // An empty pane beside others closes from its strip's ⋯ menu; Git is untouched.
+    await act(async () => { within(pane(4)).getByRole('button', { name: 'Pane actions' }).click() })
+    await act(async () => { screen.getByRole('menuitem', { name: 'Close pane' }).click() })
     expect(panes()).toHaveLength(3)
     expect(within(pane(1)).getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBe('true')
   })

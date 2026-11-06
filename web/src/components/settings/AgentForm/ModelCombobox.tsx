@@ -1,14 +1,18 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import fuzzysort from 'fuzzysort'
+import { QueryClientContext } from '@tanstack/react-query'
 
+import type { ProvidersListBody } from '@/api/client'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { MENU_ITEM_CLASS, MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
 import { cn } from '@/lib/utils'
 import { Chip } from '@/components/ui/chip'
 import { getVisibleViewport, onVisibleViewportChange, type VisibleViewport } from '@/lib/visible-viewport'
 import { hoverIntent } from '@/hooks/use-hover-intent'
+import { queryKeys } from '@/queries/keys'
 
 /** Tallest the list grows (Tailwind ``max-h-64``). */
 const LIST_MAX_HEIGHT = 256
@@ -39,11 +43,34 @@ export interface ModelOption {
 }
 
 /**
+ * A provider's display name ("Claude" for `anthropic`), from the providers
+ * list the app already holds; the id stands in until that is loaded. Reads the
+ * query cache without fetching, so the combobox also works outside a
+ * QueryClientProvider (it then shows ids).
+ */
+function useProviderLabel(): (providerId: string) => string {
+  const client = useContext(QueryClientContext)
+  const subscribe = useCallback(
+    (onChange: () => void) => client?.getQueryCache().subscribe(onChange) ?? (() => {}),
+    [client],
+  )
+  const list = useSyncExternalStore(
+    subscribe,
+    () => client?.getQueryData<ProvidersListBody>(queryKeys.settings.providers()),
+    () => undefined,
+  )
+  return useCallback((id) => list?.providers.find((p) => p.id === id)?.label ?? id, [list])
+}
+
+/**
  * Typeahead combobox for picking a registry model id (``provider:model``).
  *
  * The user types into a regular text input; matches from the registry are
- * ranked by ``fuzzysort`` and rendered in a floating list below. Picking
- * an entry (click, ↑/↓ + Enter) commits the value. Free-text values that
+ * ranked by ``fuzzysort`` and rendered in a floating list below. Rows show
+ * the model alone under its provider's display name; ranked results carry the
+ * provider as a chip instead, and a query still matches the whole id, so
+ * ``openai:`` lists that provider's models. Picking an entry (click, ↑/↓ +
+ * Enter) commits the value. Free-text values that
  * don't match a registry entry are flagged by ``validateModel`` upstream
  * — the input itself doesn't gate keystrokes so the user can edit freely.
  *
@@ -86,6 +113,7 @@ export function ModelCombobox({
 }) {
   const uid = useId()
   const listId = `model-combobox-list-${uid}`
+  const providerLabel = useProviderLabel()
   const [query, setQuery] = useState(value)
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(0)
@@ -238,8 +266,10 @@ export function ModelCombobox({
           className="min-h-9 pr-9 font-mono pointer-coarse:min-h-9 pointer-coarse:pr-11"
         />
         {query && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             tabIndex={-1}
             aria-label="Clear model"
             onMouseDown={(e) => {
@@ -253,10 +283,10 @@ export function ModelCombobox({
               setOpen(true)
             }}
             disabled={disabled}
-            className="absolute top-1/2 right-1 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:text-(--color-text) disabled:opacity-50 md:h-7 md:w-7 pointer-coarse:size-9"
+            className="absolute top-1/2 right-1 -translate-y-1/2 md:size-7"
           >
-            <X size={13} aria-hidden="true" />
-          </button>
+            <X size={12} aria-hidden="true" />
+          </Button>
         )}
       </div>
 
@@ -320,15 +350,15 @@ export function ModelCombobox({
                       <span className="min-w-0 truncate font-mono">{o.model}</span>
                       <span className="flex shrink-0 items-center gap-1">
                         {o.vision && <Chip title="Accepts image input">Vision</Chip>}
-                        {query.trim() && <Chip mono>{o.provider}</Chip>}
+                        {query.trim() && <Chip>{providerLabel(o.provider)}</Chip>}
                       </span>
                     </button>
                   </li>
                 )
                 return showHeading
                   ? [
-                      <li key={`h:${o.provider}`} role="presentation" className="px-2.5 pt-2 pb-1 font-mono text-meta text-(--color-text-subtle) select-none">
-                        {o.provider}
+                      <li key={`h:${o.provider}`} role="presentation" className="px-2.5 pt-2 pb-1 text-meta text-(--color-text-subtle) select-none">
+                        {providerLabel(o.provider)}
                       </li>,
                       row,
                     ]

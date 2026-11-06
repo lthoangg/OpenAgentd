@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react'
-import { Plus, ArrowLeft } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Plus } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   useScheduledTasksQuery,
 } from '@/queries'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { NEW_SCHEDULED_TASK, useUIStore } from '@/stores/useUIStore'
-import { AppOverlay, OverlayHeader } from '@/components/ui/app-overlay'
+import { AppOverlay, OVERLAY_MAX_WIDTH, OverlayHeader } from '@/components/ui/app-overlay'
 import { Button } from '@/components/ui/button'
 import { CreateTaskForm } from './SchedulerPanel/CreateTaskForm'
 import { TaskDetailView } from './SchedulerPanel/TaskDetailView'
@@ -36,6 +36,8 @@ export function SchedulerPanel({
   // Desktop shows a task, not an empty form: the first one until the user
   // picks another or asks for "New task".
   const [creating, setCreating] = useState(false)
+  // The detail / create pane, so an empty list's "New task" can reach its form.
+  const detailRef = useRef<HTMLDivElement>(null)
 
   const tasksQuery = useScheduledTasksQuery()
   const { refetch: refetchTasks } = tasksQuery
@@ -104,8 +106,11 @@ export function SchedulerPanel({
     <AppOverlay
       open={open}
       onClose={close}
+      // A phone's Back (Escape here) leaves a task for the list before it
+      // closes the sheet, as the ‹ does.
+      onEscape={isMobile && mobilePane !== 'list' ? () => guard(handleBackToList) : undefined}
       label="Scheduled tasks"
-      maxWidth="1100px"
+      maxWidth={OVERLAY_MAX_WIDTH.split}
     >
       {provide(<>
       <OverlayHeader
@@ -127,20 +132,9 @@ export function SchedulerPanel({
         }
         onClose={close}
         closeLabel="Close scheduled tasks"
-        leading={
-          isMobile && mobilePane !== 'list' && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button variant="ghost" size="icon-sm" className="md:size-7" onClick={handleBackToList} aria-label="Back to task list">
-                    <ArrowLeft size={14} />
-                  </Button>
-                }
-              />
-              <TooltipContent>Back to task list</TooltipContent>
-            </Tooltip>
-          )
-        }
+        back={isMobile && mobilePane !== 'list'
+          ? { label: 'Scheduled', onBack: handleBackToList, ariaLabel: 'Back to task list' }
+          : undefined}
         actions={
           <>
             {!isMobile && tasks.length > 0 && (selectedTaskId !== null || !creating) && (
@@ -178,7 +172,9 @@ export function SchedulerPanel({
               selectedTaskId={selectedTaskId}
               onSelect={handleSelectTask}
               onDeleted={handleTaskDeleted}
-              emptyHint={isMobile ? undefined : 'Use the form on the right to create one.'}
+              // Phones open the create form from the empty state. The desktop
+              // overlay already shows it beside an empty list: go to its title.
+              onCreate={isMobile ? handleOpenCreate : () => detailRef.current?.querySelector<HTMLElement>('#task-title')?.focus()}
             />
           </div>
         )}
@@ -187,7 +183,7 @@ export function SchedulerPanel({
         {showDetail && (
           // Container, not viewport, breakpoints: the same forms render in
           // the review dock's Schedule tab at a fraction of the window.
-          <div className="@container flex flex-1 flex-col overflow-hidden">
+          <div ref={detailRef} className="@container flex flex-1 flex-col overflow-hidden">
             {selectedTask && (!isMobile || mobilePane === 'detail') ? (
               <TaskDetailView
                 key={selectedTask.id}

@@ -153,7 +153,9 @@ describe('FlatSessionGroups', () => {
 
   it('says so when there are no sessions', () => {
     setup({ groupBy: 'status', all: [] })
-    expect(screen.getByText('No sessions yet.')).toBeTruthy()
+    // An empty state at row scale: sentence case, no trailing period.
+    expect(screen.getByText('No sessions yet').closest('[data-empty-state="compact"]')).toBeTruthy()
+    expect(screen.queryByText('No sessions yet.')).toBeNull()
     expect(screen.queryByRole('status', { name: 'Loading sessions' })).toBeNull()
   })
 

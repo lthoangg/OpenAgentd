@@ -82,7 +82,7 @@ export function FileCard({
                 className="touch-hit relative flex h-7 w-7 items-center justify-center rounded-sm bg-(--bg-card) text-(--color-text-muted) shadow-(--shadow-depth) opacity-100 transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6"
                 aria-label="Remove file"
               >
-                <X size={12} className="md:h-2.5 md:w-2.5" />
+                <X size={12} />
               </button>
             }
           />

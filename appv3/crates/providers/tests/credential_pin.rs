@@ -1,6 +1,6 @@
-//! A session pinned to one stored credential: requests go to that
-//! credential only, never move the provider's shared choice, and wait for
-//! it to recover instead of moving on to another key.
+//! A session locked to one stored credential: requests start on it while it
+//! is ready, never move the provider's shared choice, fall through to the
+//! other ready keys while it cools down, and go back to it once it recovers.
 
 use appv3_core::credentials as store;
 use appv3_providers::pool::{CREDENTIAL_HEADER, PIN_KWARG};
@@ -98,7 +98,7 @@ async fn build(kw: Kwargs) -> Arc<dyn LlmProvider> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_pinned_session_uses_only_its_credential_and_waits_for_it() {
+async fn a_locked_session_starts_on_its_credential_and_moves_on_when_it_is_limited() {
     let root = tempfile::tempdir().unwrap();
     setup(root.path());
     let (base, keys) = fake_server().await;
@@ -106,33 +106,49 @@ async fn a_pinned_session_uses_only_its_credential_and_waits_for_it() {
     let personal = add("Personal", "personal-key", &base);
     let limited = add("Limited", "limited", &base);
 
-    // Pinned to the second key: only that key is called, and the shared
-    // "in use" choice stays where Auto sessions left it.
+    // Locked to the second key: that key is called, and the shared "in use"
+    // choice stays where unlocked sessions left it.
     let p = build(pinned(&personal)).await;
     assert_eq!(ask(&p).await.unwrap(), "personal-key");
     assert_eq!(ask(&p).await.unwrap(), "personal-key");
     assert_eq!(p.served_credential(), Some((personal.clone(), "Personal".to_string())));
     assert_eq!(p.pinned_credential().as_deref(), Some("Personal"));
-    assert_ne!(store::current("router9").as_deref(), Some(personal.as_str()), "a pin never moves the shared choice");
+    assert_ne!(store::current("router9").as_deref(), Some(personal.as_str()), "a lock never moves the shared choice");
 
-    // While the pinned key cools down, nothing is sent and the provider
-    // reports how long to wait instead of moving on.
+    // While the locked key cools down, requests go to the next ready key
+    // instead, still without moving the shared choice.
     store::set_cooldown("router9", &personal, store::now_s() + 300.0, "quota");
-    let err = ask(&p).await.unwrap_err();
-    assert_eq!(err.status(), Some(429));
-    assert_eq!(err.header(CREDENTIAL_HEADER), Some(personal.as_str()));
-    assert_eq!(p.rotate_credential(&err, "quota", 300.0), None, "a pinned session never rotates");
-    assert!(p.credential_recovery_secs().is_some_and(|s| s > 250.0));
-    assert_eq!(*keys.lock().unwrap(), ["personal-key", "personal-key"], "no request while the pin cools");
+    assert_eq!(ask(&p).await.unwrap(), "work-key");
+    assert_eq!(p.served_credential().map(|(id, _)| id), Some(work.clone()));
+    assert_ne!(store::current("router9").as_deref(), Some(work.as_str()), "a fallback does not move the shared choice either");
+    assert_eq!(p.credential_recovery_secs(), None, "another key is ready: nothing to wait for");
 
-    // A quota error from the pinned key itself: still no rotation.
+    // Once it recovers, the session is back on the locked key.
+    store::clear_cooldown("router9", &personal);
+    assert_eq!(ask(&p).await.unwrap(), "personal-key");
+    assert_eq!(*keys.lock().unwrap(), ["personal-key", "personal-key", "work-key", "personal-key"]);
+
+    // A quota error from the locked key itself rotates to the next ready key
+    // and names it, and the next request goes there.
     let q = build(pinned(&limited)).await;
     let err = ask(&q).await.unwrap_err();
     assert_eq!(err.status(), Some(429));
-    assert_eq!(q.rotate_credential(&err, "quota", 120.0), None);
-    assert!(store::cooldown("router9", &limited).is_some(), "the cooldown is still shared");
+    assert_eq!(err.header(CREDENTIAL_HEADER), Some(limited.as_str()));
+    assert_eq!(q.rotate_credential(&err, "quota", 120.0).as_deref(), Some("Work"));
+    assert!(store::cooldown("router9", &limited).is_some(), "the cooldown is shared");
+    assert_eq!(ask(&q).await.unwrap(), "work-key");
 
-    // A pin to a credential that is gone (or turned off) falls back to Auto.
+    // Every key limited: no rotation, and the wait is the earliest recovery.
+    store::set_cooldown("router9", &work, store::now_s() + 600.0, "quota");
+    store::set_cooldown("router9", &personal, store::now_s() + 60.0, "quota");
+    let err = appv3_providers::ProviderError::Http { status: 429, body: String::new(), headers: vec![(CREDENTIAL_HEADER.to_string(), work.clone())], message: "limited".into() };
+    assert_eq!(q.rotate_credential(&err, "quota", 600.0), None);
+    assert!(q.credential_recovery_secs().is_some_and(|s| s > 30.0 && s <= 60.0), "waits for the first key to reset");
+    for id in [&work, &personal, &limited] {
+        store::clear_cooldown("router9", id);
+    }
+
+    // A lock to a credential that is gone (or turned off) is dropped.
     let auto = build(pinned("no-such-credential")).await;
     assert_eq!(auto.pinned_credential(), None);
     assert_eq!(ask(&auto).await.unwrap(), "work-key");

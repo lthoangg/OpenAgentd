@@ -16,16 +16,18 @@
  * streaming tool never unfolds (or folds) the transcript by itself.
  *
  * The per-tool header/args customisation lives in ``./display.tsx``;
- * this module owns only the chrome (collapse, copy, motion).
+ * this module owns only the chrome (collapse, copy, the row's menu, motion).
  */
 
-import { useEffect, useId, useRef, useState, useMemo, useCallback, memo } from 'react'
+import { useContext, useEffect, useId, useRef, useState, useMemo, useCallback, memo } from 'react'
 import { ArrowUpRight, ChevronRight, FileText, GitBranch, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { previewsAvailable } from '@/api/preview'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { ToolResult } from '../ToolResult'
-import { copyText, type ChatMenuItem } from '../ChatContextMenu'
+import type { ChatMenuItem } from '../ChatContextMenu'
+import { FileRefContext } from '../FileRefLink'
+import { workspaceRelativePath } from '@/utils/file-refs'
 import { AskUser, useShowsConfirmationCard } from '../AskUser'
 import { PlanReviewCard } from '../PlanReview/PlanReviewCard'
 import { PREVIEW_TOOL, isPreviewOpenSuccess, previewTargetFromArgs, requestOpenPreview } from '../Preview/preview-events'
@@ -49,7 +51,8 @@ import { teamMemberFromResult } from './subagentStatus'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 import { parseShellOutcome } from './summary'
-import { fetchToolArguments, fetchToolResult, useToolArguments, useToolResult } from './useToolResult'
+import { useToolArguments, useToolResult } from './useToolResult'
+import { toolFileTargets } from './fileTargets'
 import { formatMetaDuration } from '@/components/ui/meta-row'
 import type { ToolCallState } from './types'
 import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
@@ -208,7 +211,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // (`now`, below) doesn't re-run a full JSON.parse and, for edit/patch/
   // write, an O(oldLines*newLines) diff on every tick for the entire
   // lifetime of a running tool call just to redraw the duration label.
-  const { header, headerTitle, tooltip, language, suppressResult } =
+  const { header, headerTitle, fullTarget, language, suppressResult } =
     useMemo(() => getToolDisplay(name, args), [name, args])
   // The details show the full arguments, once here.
   const { formattedArgs } = useMemo(
@@ -297,7 +300,11 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const resultCopyButton = <CopyButton label="Copy result" text={result || ''} />
 
   const awaitingResult = onServer && !suppressResult && result === undefined
-  const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult || hasReadResult || awaitingResult || awaitingArgs)
+  // A target the header cut (a long URL, query or pattern) shows whole in the
+  // open row, as its arguments, when the tool has no other arguments to show.
+  const targetArg = formattedArgs ? null : fullTarget ?? null
+  const argsShown = Boolean(formattedArgs || targetArg)
+  const hasDetails = Boolean(argsShown || shownLiveOutput || shownResult || hasReadResult || awaitingResult || awaitingArgs)
   // Open, the header pins while long details scroll under it (inside a reader
   // fold, just below the fold's row); closing leaves it where it was pressed.
   const pinned = expanded && hasDetails
@@ -314,31 +321,25 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // collapsed rows at once: the parse + pretty-print waits for the expand.
   const displayedArgs = useMemo(() => (expanded ? formatArgsDetails(formattedArgs) : ''), [expanded, formattedArgs])
   const displayName = name || 'tool'
-  // The whole label, for tools and tests that read it; the tooltip says only
-  // what the row does not already show (see ``ToolDisplay.tooltip``).
+  // The whole label, for tools and tests that read it. The row has no
+  // tooltip: what it cuts, the open row shows (``ToolDisplay.fullTarget``).
   const label = headerTitle ? `${displayName}: ${headerTitle}` : displayName
   const elapsedMs = durationMs ?? (!done && startedAt ? now - startedAt : undefined)
 
-  // The row's right-click menu and touch long-press sheet. Like the Copy
-  // controls in the details, it copies what the details show: a tool that hides
-  // its args (a search, a glob) has none to copy, and one that hides its result
-  // (a generated image) has none either. A result only exists once the tool is done.
+  // The row's right-click menu and touch long-press sheet open files: each
+  // one a patch left in place, the file a read read (``fileTargets``), named
+  // relative to the workspace. No file, no menu: the system's stays. Copy is
+  // the open details' own (each section's Copy button).
+  const fileOpener = useContext(FileRefContext)
   const menuItems = (): ChatMenuItem[] => {
-    const argsText = isShellTerminal ? formattedArgs : formatArgsDetails(formattedArgs)
-    const resultText = done && (shownResult || hasReadResult) ? result : undefined
-    const fetchable = awaitingResult && toolCallId
-    const argsFetchable = awaitingArgs && toolCallId
-    // What the details' args section would show, from arguments fetched now.
-    const copyFetchedArgs = (text: string) => {
-      const shown = getToolDisplay(name, text).formattedArgs
-      copyText(isShell ? shown ?? '' : formatArgsDetails(shown) || text)
-    }
-    return [
-      ...(argsText ? [{ label: 'Copy arguments', run: () => copyText(argsText) }] : []),
-      ...(!argsText && argsFetchable ? [{ label: 'Copy arguments', run: () => { void fetchToolArguments(argsFetchable).then(copyFetchedArgs) } }] : []),
-      ...(resultText ? [{ label: 'Copy result', run: () => copyText(resultText) }] : []),
-      ...(!resultText && fetchable ? [{ label: 'Copy result', run: () => { void fetchToolResult(fetchable).then(copyText) } }] : []),
-    ]
+    if (!fileOpener) return []
+    // A patch still running has applied nothing yet: like a failed one.
+    return toolFileTargets(name, args, !done || isFailedResult(result))
+      .filter((ref) => fileOpener.canOpen(ref))
+      .map((ref) => ({
+        label: `Open ${workspaceRelativePath(ref.path, fileOpener.workspace ?? null) ?? ref.path}`,
+        run: () => fileOpener.open(ref),
+      }))
   }
 
   // ``ask_user`` owns its whole card — frame and label included, since
@@ -383,7 +384,6 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                 'aria-label': `${expanded ? 'Collapse' : 'Expand'} ${displayName} details`,
               }
             : { 'aria-label': `${displayName} (no details)` })}
-          title={tooltip || undefined}
           data-tool-label={label}
           className="group"
           meta={
@@ -423,7 +423,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             onClick={() => requestOpenPreview(previewTarget)}
             className={TOOL_CHIP_CLASS}
           >
-            <Globe size={11} aria-hidden="true" />
+            <Globe size={12} aria-hidden="true" />
             Open preview
           </button>
         )}
@@ -433,7 +433,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             onClick={() => dispatchAppEvent(APP_EVENTS.openPlan)}
             className={TOOL_CHIP_CLASS}
           >
-            <FileText size={11} aria-hidden="true" />
+            <FileText size={12} aria-hidden="true" />
             {planLink}
           </button>
         )}
@@ -447,7 +447,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                   onClick={() => requestOpenSession({ sessionId: sentSession.sessionId, workspace: sentSession.workspace })}
                   className={cn(TOOL_CHIP_CLASS, 'ml-0 max-w-full')}
                 >
-                  <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
+                  <ArrowUpRight size={12} aria-hidden="true" className="shrink-0" />
                   <span className="truncate">Open in {sentSession.workspaceName}</span>
                 </button>
               }
@@ -460,7 +460,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             className="inline-flex max-w-[60%] items-center gap-1 align-middle text-meta text-(--color-text-muted)"
             data-created-worktree=""
           >
-            <GitBranch size={11} aria-hidden="true" className="shrink-0 text-(--accent-orange-text)" />
+            <GitBranch size={12} aria-hidden="true" className="shrink-0 text-(--accent-orange-text)" />
             <span className="truncate">
               Created worktree <span className="font-mono">{sentSession.createdWorktree.name}</span>
               {sentSession.createdWorktree.branch && <> on <span className="font-mono">{sentSession.createdWorktree.branch}</span></>}
@@ -529,6 +529,19 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                       )}
                     </div>
                   )}
+                  {targetArg && (
+                    <div>
+                      <SectionHeader
+                        label="arguments"
+                        controls={detailsId}
+                        onCollapse={collapse}
+                        action={<CopyButton label="Copy arguments" text={targetArg} />}
+                      />
+                      <p className="whitespace-pre-wrap break-all bg-(--bg-input) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
+                        {targetArg}
+                      </p>
+                    </div>
+                  )}
 
                   {shownLiveOutput && !isShellTerminal && (
                     <div>
@@ -536,7 +549,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                         label="output"
                         controls={detailsId}
                         onCollapse={collapse}
-                        divided={Boolean(formattedArgs)}
+                        divided={argsShown}
                         action={<CopyButton label="Copy output" text={shownLiveOutput} />}
                       />
                       <pre
@@ -557,7 +570,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                         label="result"
                         controls={detailsId}
                         onCollapse={collapse}
-                        divided={Boolean(formattedArgs)}
+                        divided={argsShown}
                       />
                       <p className="bg-(--bg-input) px-3 py-2.5 text-xs text-(--color-text-muted)" role="status">
                         {remote.error ? `Could not load the result: ${remote.error}` : 'Loading result…'}
@@ -575,7 +588,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                           label="result"
                           controls={detailsId}
                           onCollapse={collapse}
-                          divided={Boolean(formattedArgs || shownLiveOutput)}
+                          divided={Boolean(argsShown || shownLiveOutput)}
                           action={resultCopyButton}
                         />
                         <div className="bg-(--bg-input) px-3 py-2.5 text-xs leading-relaxed text-(--color-text)">

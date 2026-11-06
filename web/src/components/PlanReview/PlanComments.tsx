@@ -4,8 +4,9 @@
  * highlights that keep each commented passage marked in the plan.
  */
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react'
-import { MessageSquarePlus, X } from 'lucide-react'
+import { MessageSquarePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { CloseButton } from '@/components/ui/close-button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
@@ -41,7 +42,7 @@ export function CommentButton({ selection, onComment }: { selection: PlanSelecti
       style={{ top: selection.top + 6, left: overlayLeft(selection, COMMENT_BUTTON_WIDTH) }}
       aria-label="Comment on selection"
     >
-      <MessageSquarePlus size={11} aria-hidden="true" />
+      <MessageSquarePlus size={12} aria-hidden="true" />
       Comment
     </Button>
   )
@@ -174,9 +175,7 @@ export function CommentList({
               {comment.text}
             </p>
           </div>
-          <Button type="button" variant="ghost" size="icon-xs" aria-label={`Remove comment ${index + 1}`} onClick={() => onRemove(comment)}>
-            <X size={11} aria-hidden="true" />
-          </Button>
+          <CloseButton size="icon-xs" label={`Remove comment ${index + 1}`} tooltip="Remove comment" onClick={() => onRemove(comment)} />
         </li>
       ))}
     </ul>

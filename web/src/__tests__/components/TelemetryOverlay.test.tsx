@@ -1,7 +1,8 @@
 /**
- * TelemetryOverlay — the root-mounted shell: open/close through the stores,
- * Escape steps out of a trace before closing, and "Open session" leaves the
- * overlay for the session route.
+ * TelemetryOverlay — the root-mounted shell: the shared AppOverlay frame
+ * (wide, app-level), open/close through the stores, Escape steps out of a
+ * trace before closing, and "Open session" leaves the overlay for the
+ * session route.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -83,6 +84,29 @@ function renderOverlay() {
 }
 
 describe('TelemetryOverlay', () => {
+  it('is the shared AppOverlay card Settings uses: wide, and mounted at the app level', () => {
+    renderOverlay()
+    act(() => openTelemetry())
+
+    const panel = screen.getByRole('dialog', { name: 'Usage' })
+    expect(panel.className).toContain('app-overlay-modal')
+    expect(panel.className).not.toContain('settings-modal-shell')
+    expect(panel.getAttribute('data-overlay-level')).toBe('app')
+    expect(panel.style.getPropertyValue('--overlay-max-width')).toBe('76rem')
+    expect(panel.hasAttribute('data-swipe-ignore')).toBe(true)
+  })
+
+  it('closes outright from a click on the backdrop, even inside a trace (Escape only steps back)', () => {
+    renderOverlay()
+    act(() => openTelemetry({ traceId: 'trace-9' }))
+
+    const backdrop = document.querySelector<HTMLElement>('[data-swipe-ignore][aria-hidden="true"]')
+    expect(backdrop).not.toBeNull()
+    fireEvent.click(backdrop as HTMLElement)
+
+    expect(useUIStore.getState().telemetryOpen).toBe(false)
+  })
+
   it('renders nothing until opened, then the overview', async () => {
     renderOverlay()
     expect(screen.queryByRole('dialog')).toBeNull()

@@ -261,10 +261,27 @@ describe('Coding workspace two-layer file preview', () => {
 
     expect(screen.getByText('File deleted from workspace')).toBeTruthy()
     expect(screen.getByText('Open Changes to review the removed contents.')).toBeTruthy()
-    expect(screen.queryByText(/Failed to load: HTTP 404/i)).toBeNull()
+    expect(screen.queryByText(/Couldn't load the file/i)).toBeNull()
     // A deleted file has nothing to download or copy.
     expect((screen.getByRole('button', { name: 'File deleted from workspace' }) as HTMLButtonElement).disabled).toBe(true)
     expect(screen.queryByRole('button', { name: /copy file contents/i })).toBeNull()
+  })
+
+  it('says "Couldn\'t load the file." with a Retry that reads it again', async () => {
+    const user = userEvent.setup()
+    let failing = true
+    const fetchMock = globalThis.fetch
+    globalThis.fetch = mock(async (input: unknown) => {
+      if (String(input).includes('/workspace/files/read') && failing) return new Response('nope', { status: 500 })
+      return fetchMock(input as RequestInfo)
+    }) as typeof fetch
+    await renderViewer(readme)
+
+    expect(await screen.findByText("Couldn't load the file.")).toBeTruthy()
+    failing = false
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
+    expect(screen.queryByText("Couldn't load the file.")).toBeNull()
   })
 
   it('does not render File/Diff switching in file previews', async () => {

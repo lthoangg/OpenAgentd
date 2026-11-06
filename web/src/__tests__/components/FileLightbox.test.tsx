@@ -77,6 +77,31 @@ describe("FileLightbox", () => {
     expect(closed).toBe(true)
   })
 
+  // Rulebook: the one ×, the CloseButton, with a 14px glyph; the chevrons
+  // are the lightbox's large nav arrows (16px, never the off-scale 22px).
+  it("closes with the shared CloseButton, named for what it closes, with the 14px glyph", () => {
+    render(<FileLightbox items={items} index={0} isOpen={true} onClose={() => {}} />)
+    const close = screen.getByRole("button", { name: "Close preview" })
+    expect(close.hasAttribute("data-close-button")).toBe(true)
+    expect(close.querySelector("svg")?.getAttribute("width")).toBe("14")
+    expect(screen.getAllByRole("button").filter((button) => button.hasAttribute("data-close-button"))).toHaveLength(1)
+    // Download sits beside it at the same glyph size.
+    expect(screen.getByRole("button", { name: "Download file" }).querySelector("svg")?.getAttribute("width")).toBe("14")
+  })
+
+  it("draws its previous and next arrows at 16px", () => {
+    render(<FileLightbox items={items} index={0} isOpen={true} onClose={() => {}} />)
+    for (const name of ["Previous file", "Next file"]) {
+      expect(screen.getByRole("button", { name }).querySelector("svg")?.getAttribute("width")).toBe("16")
+    }
+  })
+
+  it("shows a file it cannot preview as an empty state naming the file", () => {
+    render(<FileLightbox items={[{ type: "file", src: "/api/files/archive.zip", name: "archive.zip" }]} index={0} isOpen={true} onClose={() => {}} />)
+    expect(screen.getByRole("heading", { name: "archive.zip" })).toBeTruthy()
+    expect(screen.getByText("No preview available")).toBeTruthy()
+  })
+
   it("triggers onClose when clicking backdrop", () => {
     let closed = false
     render(<FileLightbox items={items} index={0} isOpen={true} onClose={() => { closed = true }} />)

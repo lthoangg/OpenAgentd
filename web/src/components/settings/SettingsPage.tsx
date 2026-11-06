@@ -7,7 +7,8 @@
  *
  * Two layouts: `scroll` (default) scrolls the header with the content;
  * `fill` pins the header and gives children the remaining height, for pages
- * with their own panes (Memory).
+ * with their own panes (Memory). Both start at the same left edge; `fill`
+ * only extends further to the right.
  *
  * It also owns the one save affordance in the product: a sticky action bar
  * (`SaveBar`) that appears only when the draft is dirty, with Discard…, Save,
@@ -21,7 +22,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import { PAGE_BODY, TEXT } from '@/components/settings/tokens'
+import { PAGE_BODY, PAGE_BODY_WIDE, TEXT } from '@/components/settings/tokens'
 import { Callout } from '@/components/ui/callout'
 import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
 import type { DraftControls } from '@/components/settings/useSettingsDraft'
@@ -102,8 +103,8 @@ export function SettingsPage({
     return (
       <>
         <div className="flex min-h-0 flex-1 flex-col bg-(--bg-page)">
-          <div className="w-full shrink-0 px-4 md:px-8">{header}</div>
-          <div className="flex min-h-0 flex-1 flex-col">{body}</div>
+          <div className={cn(PAGE_BODY, 'shrink-0')}>{header}</div>
+          <div className={cn(PAGE_BODY_WIDE, 'flex min-h-0 flex-1 flex-col')}>{body}</div>
         </div>
         {saveBar}
       </>

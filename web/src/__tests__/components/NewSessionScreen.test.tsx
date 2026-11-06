@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { CodingWorkspaceTreeResponse, SessionResponse } from '@/api/types'
@@ -51,6 +51,7 @@ function renderScreen({
 } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   client.setQueryData(queryKeys.coding.tree(), tree)
+  // A repository with a branch: the screen must still not show it, nor ask for it.
   client.setQueryData(queryKeys.coding.status(workspace), { is_git_repo: true, branch: 'main' })
   client.setQueryData(queryKeys.session.sessions.workspace(workspace, 'activity'), page(here))
   client.setQueryData(queryKeys.session.sessions.everywhere('activity'), page(everywhere))
@@ -87,11 +88,35 @@ afterEach(() => {
 })
 
 describe('NewSessionScreen', () => {
-  it('asks what to build in a repository and shows its branch', () => {
+  it('asks what to build in a repository, with the folder chip and no branch: the status bar has it', () => {
     renderScreen()
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('What should we build in openagentd?')
     expect(screen.getByRole('button', { name: 'Folder: openagentd. Change folder' })).toBeTruthy()
-    expect(screen.getByText('main')).toBeTruthy()
+    expect(screen.queryByText('main')).toBeNull()
+  })
+
+  it('does not fetch the git status: nothing here shows it', async () => {
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof mock>
+    // Mount with a cold cache for this workspace's status.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(queryKeys.coding.tree(), tree)
+    render(
+      <QueryClientProvider client={client}>
+        <NewSessionScreen
+          workspace={REPO}
+          workspaceName="openagentd"
+          isChat={false}
+          chatWorkspace={CHAT}
+          isMobile={false}
+          onSelectWorkspace={() => {}}
+          onOpenFolder={() => {}}
+        />
+      </QueryClientProvider>,
+    )
+    // The recent-sessions request goes out; the status one must not.
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(0))
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]))
+    expect(urls.some((url) => url.includes('/workspace/status'))).toBe(false)
   })
 
   it('asks anything in Chat, without a branch', () => {
@@ -133,10 +158,11 @@ describe('NewSessionScreen', () => {
     expect(buttons.every((text) => !/explain|review|write|fix|summari[sz]e/i.test(text))).toBe(true)
   })
 
-  it('hosts the composer when centered and shows the shortcut hints on desktop', () => {
+  it('hosts the composer when centered, with no hint line under it', () => {
     renderScreen()
     expect(screen.getByRole('textbox', { name: 'Composer' })).toBeTruthy()
-    expect(screen.getByLabelText('Shortcuts').textContent).toContain('commands')
+    expect(screen.queryByLabelText('Shortcuts')).toBeNull()
+    expect(screen.queryByText(/for commands/)).toBeNull()
     expect(screen.queryByText(/Start typing/)).toBeNull()
   })
 
@@ -148,7 +174,7 @@ describe('NewSessionScreen', () => {
     expect(slot?.className).toContain('text-left')
   })
 
-  it('leaves the composer docked and drops the hints on mobile', () => {
+  it('leaves the composer docked on mobile', () => {
     renderScreen({ isMobile: true, here: [session('s-1', 'Sidebar redesign', REPO)] })
     expect(screen.queryByRole('textbox', { name: 'Composer' })).toBeNull()
     expect(screen.queryByText(/Start typing/)).toBeNull()

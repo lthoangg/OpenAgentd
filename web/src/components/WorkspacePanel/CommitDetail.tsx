@@ -8,9 +8,17 @@ import { FileTypeIcon } from '../FileTypeIcon'
 import { cn } from '@/lib/utils'
 import { ChangeCounts } from './ChangeCounts'
 import type { ChangedFileInfo, DiffFileSection } from './diff-helpers'
+import { DockLoadError } from './DockLoadError'
+import { DockRowsSkeleton } from './DockSkeleton'
 
 export interface CommitDetailProps {
-  commitDiff: { isLoading: boolean; isError: boolean }
+  commitDiff: {
+    isLoading: boolean
+    isError: boolean
+    /** A failed load being retried (Retry waits). */
+    isFetching?: boolean
+    refetch?: () => Promise<unknown>
+  }
   commitChangedFiles: ChangedFileInfo[]
   commitDiffSections: Map<string, DiffFileSection>
   expandedCommitFiles: Set<string>
@@ -71,10 +79,14 @@ export function CommitDetail({
   }
 
   if (commitDiff.isLoading) {
-    return <p className="py-2 text-xs md:text-meta text-(--color-text-subtle)">Loading commit changes…</p>
+    // The card around it insets the content; the rows match the file rows below.
+    return <DockRowsSkeleton label="Loading commit changes" rows={3} inset="px-2" className="mt-1.5" />
   }
   if (commitDiff.isError) {
-    return <p className="py-2 text-xs md:text-meta text-(--color-error)">Failed to load commit changes</p>
+    const refetch = commitDiff.refetch
+    if (!refetch) return <p role="alert" className="py-2 text-xs md:text-meta text-(--color-error)">Couldn&apos;t load commit changes.</p>
+    // The card around it already insets the content.
+    return <DockLoadError message="Couldn't load commit changes." onRetry={() => void refetch()} retrying={commitDiff.isFetching} className="py-2" />
   }
 
   if (commitChangedFiles.length === 0) {
@@ -110,7 +122,7 @@ export function CommitDetail({
                     className="flex h-7 w-full cursor-pointer items-center gap-1.5 px-2 text-left text-xs md:h-6 md:text-meta text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
                     aria-expanded={expanded}
                   >
-                    <ChevronRight size={11} className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ease-(--ease-out)', expanded && 'rotate-90')} aria-hidden="true" />
+                    <ChevronRight size={12} className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ease-(--ease-out)', expanded && 'rotate-90')} aria-hidden="true" />
                     <FileTypeIcon name={changedFile.path} size={12} />
                     <span className="min-w-0 flex-1 truncate font-mono">{changedFile.path}</span>
                     <ChangeCounts file={changedFile} />

@@ -35,25 +35,39 @@
  * </AppOverlay>
  *
  * // Wide modal (like Scheduler):
- * <AppOverlay open={open} onClose={onClose} label="Scheduled tasks" maxWidth="1100px">
+ * <AppOverlay open={open} onClose={onClose} label="Scheduled tasks" maxWidth={OVERLAY_MAX_WIDTH.split}>
  *
  * // Command palette:
  * <AppOverlay open={open} onClose={onClose} label="Command palette" variant="palette">
  * ```
  *
+ * ## One frame
+ *
+ * Every modal, Settings and Usage included, is this card: the same gap below
+ * the app header and above the status bar, the same border, radius and
+ * motion. Only the width differs, by what the overlay holds
+ * (`OVERLAY_MAX_WIDTH`). Settings and Usage mount at the app root, outside
+ * the chat shell, and say so with `appLevel`.
+ *
  * ## Header
  *
  * Modal panels open with an ``OverlayHeader``: a 44px ``bg-sidebar`` strip
  * with the title, optional icon / subtitle / actions, and the close button.
- * Settings and Telemetry (which use their own shell) share it too.
+ * On a phone it is the sheet's navigation bar instead: ‹ and the parent's
+ * name on the left, the title centred (left-aligned after a ← on Android),
+ * the actions and Done on the right, as an iOS sheet reads.
  */
 
 import { type ReactNode } from 'react'
 import { motion, AnimatePresence, useDragControls, type PanInfo } from 'framer-motion'
-import { X } from 'lucide-react'
+import { ArrowLeft, ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { CloseButton } from '@/components/ui/close-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { SHEET_CLOSE_DISTANCE, SHEET_CLOSE_VELOCITY } from '@/components/ui/_sheet'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { usePlatform } from '@/hooks/use-platform'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { APP_SHORTCUTS, chordOf, type AppShortcutName } from '@/lib/app-shortcuts'
@@ -71,6 +85,12 @@ interface OverlayHeaderProps {
   subtitle?: ReactNode
   /** Controls before the icon/title, e.g. a Back button. */
   leading?: ReactNode
+  /**
+   * Up one level inside the overlay (a Settings section → the list). A
+   * phone shows "‹ label" in the accent; elsewhere it is a ← icon button.
+   * ``className`` places it (e.g. hidden where a sidebar lists the pages).
+   */
+  back?: { label: string; onBack: () => void; ariaLabel?: string; tooltip?: ReactNode; className?: string }
   /** Controls before the close button. */
   actions?: ReactNode
   /** Renders the close button when set. */
@@ -84,18 +104,73 @@ interface OverlayHeaderProps {
 
 /** Icon button sizing shared by header controls: 44px on touch, 28px on desktop. */
 const OVERLAY_HEADER_BUTTON_CLASS = 'md:size-7'
+/** A sheet's bar buttons are bare tint, no fill: iOS dims one when pressed. */
+const SHEET_BAR_BUTTON_CLASS = 'h-11 min-w-11 bg-transparent! text-(--color-accent)! active:opacity-50'
 
 export function OverlayHeader({
   title,
   icon,
   subtitle,
   leading,
+  back,
   actions,
   onClose,
   closeLabel = 'Close',
   closeTooltip = 'Close (Esc)',
   className,
 }: OverlayHeaderProps) {
+  const phone = useIsPhone()
+  const android = usePlatform().os === 'android'
+  if (phone) {
+    const backButton = back && (
+      <Button
+        type="button"
+        variant="ghost"
+        size="trigger"
+        onClick={back.onBack}
+        aria-label={back.ariaLabel ?? `Back to ${back.label}`}
+        data-overlay-back=""
+        className={cn(SHEET_BAR_BUTTON_CLASS, 'font-normal', android ? 'px-0' : 'max-w-full justify-start gap-0.5 pl-0 pr-2', back.className)}
+      >
+        {android ? (
+          <ArrowLeft size={20} aria-hidden="true" className="size-5" />
+        ) : (
+          <>
+            <ChevronLeft size={20} strokeWidth={2.25} aria-hidden="true" className="-ml-1.5 size-5" />
+            <span className="truncate text-xs">{back.label}</span>
+          </>
+        )}
+      </Button>
+    )
+    return (
+      <header
+        data-slot="overlay-header"
+        data-sheet-bar=""
+        className={cn(
+          'min-h-11 shrink-0 select-none border-b border-(--color-border) bg-(--bg-page) px-2 pt-1.5',
+          android ? 'flex items-center gap-2' : 'flex items-center gap-1',
+          className,
+        )}
+      >
+        <div className={cn('flex items-center', android ? 'shrink-0' : 'flex-1 justify-start')}>
+          {backButton}
+          {leading}
+        </div>
+        <div className={cn('min-w-0', android ? 'flex-1' : 'shrink text-center')}>
+          <h2 className="truncate text-base font-semibold text-(--color-text)">{title}</h2>
+          {subtitle != null && <div className="truncate text-meta text-(--color-text-muted)">{subtitle}</div>}
+        </div>
+        <div className={cn('flex items-center justify-end gap-1', android ? 'shrink-0' : 'flex-1')}>
+          {actions}
+          {onClose && (
+            <Button type="button" variant="ghost" size="trigger" onClick={onClose} data-sheet-done="" className={cn(SHEET_BAR_BUTTON_CLASS, 'px-1 text-xs font-semibold')}>
+              Done
+            </Button>
+          )}
+        </div>
+      </header>
+    )
+  }
   return (
     <header
       data-slot="overlay-header"
@@ -106,6 +181,26 @@ export function OverlayHeader({
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2">
+        {back && (
+          <Tooltip className={back.className}>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  className={OVERLAY_HEADER_BUTTON_CLASS}
+                  onClick={back.onBack}
+                  aria-label={back.ariaLabel ?? `Back to ${back.label}`}
+                  data-overlay-back=""
+                >
+                  <ArrowLeft size={14} aria-hidden="true" />
+                </Button>
+              }
+            />
+            <TooltipContent>{back.tooltip ?? back.ariaLabel ?? `Back to ${back.label}`}</TooltipContent>
+          </Tooltip>
+        )}
         {leading}
         {icon && <span className="flex shrink-0 text-(--color-text-muted)" aria-hidden="true">{icon}</span>}
         <div className="min-w-0">
@@ -117,23 +212,7 @@ export function OverlayHeader({
         <div className="flex shrink-0 items-center gap-1">
           {actions}
           {onClose && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className={OVERLAY_HEADER_BUTTON_CLASS}
-                    onClick={onClose}
-                    aria-label={closeLabel}
-                  >
-                    <X size={14} aria-hidden="true" />
-                  </Button>
-                }
-              />
-              <TooltipContent>{closeTooltip}</TooltipContent>
-            </Tooltip>
+            <CloseButton className={OVERLAY_HEADER_BUTTON_CLASS} onClick={onClose} label={closeLabel} tooltip={closeTooltip} />
           )}
         </div>
       )}
@@ -144,6 +223,21 @@ export function OverlayHeader({
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type OverlayVariant = 'modal' | 'palette'
+
+/**
+ * Max width of a modal by what it holds, so two overlays of one kind are the
+ * same width. Pass one as `maxWidth`.
+ */
+export const OVERLAY_MAX_WIDTH = {
+  /** A short reference or form. */
+  narrow: '640px',
+  /** One column of content. The default. */
+  default: '860px',
+  /** A list beside its detail (Scheduled tasks). */
+  split: '1100px',
+  /** A navigated workbench: a sidebar and its pages (Settings, Usage). */
+  wide: '76rem',
+} as const
 
 interface AppOverlayProps {
   open: boolean
@@ -157,8 +251,8 @@ interface AppOverlayProps {
 
   /**
    * Max width of the centred card on desktop (modal variant only).
-   * Accepts any CSS width value, e.g. `"860px"` or `"min(90vw,1100px)"`.
-   * Default: `"860px"`.
+   * Accepts any CSS width value; prefer an `OVERLAY_MAX_WIDTH` step.
+   * Default: `OVERLAY_MAX_WIDTH.default` (`"860px"`).
    */
   maxWidth?: string
 
@@ -178,6 +272,27 @@ interface AppOverlayProps {
    * a key the overlay's own layer owns.
    */
   toggleShortcut?: AppShortcutName
+
+  /**
+   * What Escape does, when it is not simply `onClose`: Usage steps out of a
+   * trace before it closes. A click on the backdrop and a pull on the phone
+   * sheet still `onClose`.
+   */
+  onEscape?: () => void
+
+  /**
+   * `() => false` keeps ⌘K / ⌘P / ⌘, from replacing it: Settings with
+   * unsaved changes asks first, and the prompt must not open under another
+   * overlay.
+   */
+  allowSwitch?: () => boolean
+
+  /**
+   * Mounted at the app root rather than inside the chat shell (Settings,
+   * Usage). On a phone it then fills the visible region and follows the soft
+   * keyboard itself; the shell's transform does not carry it (index.css).
+   */
+  appLevel?: boolean
 }
 
 // ─── Animation variants ───────────────────────────────────────────────────────
@@ -201,10 +316,6 @@ const MODAL_VARIANTS_REDUCED = {
   exit:    { opacity: 0 },
 }
 
-/** A pull past this, or a flick faster than SHEET_CLOSE_VELOCITY, closes the sheet. */
-const SHEET_CLOSE_DISTANCE = 120
-const SHEET_CLOSE_VELOCITY = 500
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function AppOverlay({
@@ -213,16 +324,19 @@ export function AppOverlay({
   label,
   children,
   variant = 'modal',
-  maxWidth = '860px',
+  maxWidth = OVERLAY_MAX_WIDTH.default,
   className = '',
   initialFocus,
   toggleShortcut,
+  onEscape,
+  allowSwitch,
+  appLevel = false,
 }: AppOverlayProps) {
   const reduced = useReducedMotion()
   const isMobile = useIsMobile()
   const dragControls = useDragControls()
   // An overlay: ⌘K / ⌘P / ⌘, may swap it for another one.
-  const layer = useModalFocus(open, onClose, initialFocus, { kind: 'overlay' })
+  const layer = useModalFocus(open, onEscape ?? onClose, initialFocus, { kind: 'overlay', allowSwitch })
   useShortcut(toggleShortcut ? chordOf(APP_SHORTCUTS[toggleShortcut]) : null, () => { onClose() }, { layer })
 
   const sheet = isMobile && variant === 'modal' && !reduced
@@ -270,6 +384,7 @@ export function AppOverlay({
             aria-label={label}
             data-modal-focus="true"
             data-overlay-variant={variant}
+            data-overlay-level={appLevel ? 'app' : undefined}
             style={inlineStyle}
             initial={panelVariants.hidden}
             animate={{ ...panelVariants.visible, transition: panelTransition }}

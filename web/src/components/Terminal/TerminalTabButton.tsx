@@ -6,7 +6,8 @@
  * Mobile: long-press opens the same choice as a bottom sheet — no native
  * context menu on touch, matching the LongPressButton pattern used
  * elsewhere (Sidebar sessions, changed-files, commits). The × is on every
- * platform (36px on touch), as on the dock's other tabs.
+ * platform (36px on touch), the same ``DockTabCloseButton`` as on the dock's
+ * other tabs. The menu spells the keys: F2 renames, ⌘W closes.
  * Rename edits the title in place, like a sidebar session; F2 or a
  * double-click on a desktop tab starts it too.
  * Both funnel into useTerminalStore.rename() / .clear() / .close().
@@ -26,11 +27,11 @@ import {
 import { InlineTitleInput } from '@/components/ui/inline-title-input'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import {
-  dockTabButtonClass,
-  dockTabClass,
-  dockTabCloseClass,
-} from '@/components/WorkspacePanel/dock-tab-styles'
+import { dockTabButtonClass, dockTabClass } from '@/components/WorkspacePanel/dock-tab-styles'
+import { DockTabCloseButton } from '@/components/WorkspacePanel/DockTabCloseButton'
+import { MenuKeys } from '@/components/WorkspacePanel/MenuKeys'
+import { getPlatform, type OS } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { softHapticFeedback } from '@/lib/haptics'
 import { isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/item-keys'
 import { cn } from '@/lib/utils'
@@ -49,6 +50,8 @@ interface TerminalTabButtonProps {
   onClose?: () => void
   /** The dock strip's tab id, marking the wrapper as a drag handle. */
   dockTabId?: string
+  /** Spells the keys in the menu and the × tooltip; read from the platform when omitted. */
+  os?: OS
 }
 
 export function TerminalTabButton({
@@ -61,11 +64,13 @@ export function TerminalTabButton({
   extraMenuItems,
   onClose,
   dockTabId,
+  os: osProp,
 }: TerminalTabButtonProps) {
   const [desktopMenuAt, setDesktopMenuAt] = useState<{ x: number; y: number } | null>(null)
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const close = onClose ?? (() => useTerminalStore.getState().close(meta.id))
+  const os = osProp ?? getPlatform().os
 
   const openRename = () => setRenaming(true)
   // The tab button remounts in place of the field; give it focus back so
@@ -152,18 +157,15 @@ export function TerminalTabButton({
         </Tooltip>
         )}
         {!renaming && (
-          <button
-            type="button"
-            data-dock-tab-close
+          <DockTabCloseButton
+            title={meta.title}
+            active={active}
+            os={os}
             onClick={(e) => {
               e.stopPropagation()
               close()
             }}
-            className={dockTabCloseClass(active)}
-            aria-label={`Close ${meta.title}`}
-          >
-            <X size={11} aria-hidden="true" />
-          </button>
+          />
         )}
       </div>
 
@@ -177,7 +179,8 @@ export function TerminalTabButton({
             onClick={() => { setDesktopMenuAt(null); openRename() }}
           >
             <Pencil size={12} aria-hidden="true" />
-            Rename
+            <span className="flex-1">Rename</span>
+            <MenuKeys>F2</MenuKeys>
           </button>
           <button
             type="button"
@@ -201,7 +204,8 @@ export function TerminalTabButton({
             }}
           >
             <X size={12} aria-hidden="true" />
-            Close
+            <span className="flex-1">Close</span>
+            <MenuKeys>{shortcutLabel(APP_SHORTCUTS.closeTab, os)}</MenuKeys>
           </button>
           {extraMenuItems && (
             <>
@@ -216,7 +220,7 @@ export function TerminalTabButton({
       <Dialog open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="truncate">{meta.title}</DialogTitle>
+            <DialogTitle className="truncate pr-8">{meta.title}</DialogTitle>
             <DialogDescription>Choose a terminal action.</DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">

@@ -86,7 +86,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
   it('renders the error fallback when the tasks query rejects', async () => {
     // Override the default empty-list stub with a 500 so the query
     // settles into ``isError === true`` and the panel shows its error
-    // branch (AlertCircle + 'Failed to load tasks').
+    // branch (AlertCircle + "Couldn't load scheduled tasks.").
     globalThis.fetch = mock(async (...args: unknown[]) => {
       const input = args[0] as RequestInfo | URL
       const url = typeof input === 'string' ? input : input.toString()
@@ -102,7 +102,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
-      expect(screen.getByText(/Failed to load tasks/i)).toBeInTheDocument()
+      expect(screen.getByText("Couldn't load scheduled tasks.")).toBeInTheDocument()
     })
     // The empty-state copy must NOT also be rendered — error and empty
     // are mutually exclusive branches in the component.
@@ -117,10 +117,10 @@ describe('SchedulerPanel — Edit Task Form', () => {
     await waitFor(() => {
       expect(screen.getByText(/No scheduled tasks yet/i)).toBeInTheDocument()
     })
-    expect(screen.queryByText(/Failed to load tasks/i)).toBeNull()
+    expect(screen.queryByText("Couldn't load scheduled tasks.")).toBeNull()
   })
 
-  it('has a create task button in the header', async () => {
+  it('has no create button in the header while the form is open; the empty list offers "New task"', async () => {
     renderSchedulerPanel()
 
     // Wait for panel to load
@@ -130,9 +130,14 @@ describe('SchedulerPanel — Edit Task Form', () => {
 
     // With no tasks the form is already open under a "New task" title, so the
     // header needs no button for it (and the old "Create new task" is gone).
+    // The one "New task" button left is the empty list's action: it takes
+    // focus to the open form's title instead of opening it again.
     expect(await screen.findByRole('heading', { name: 'New task' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Create new task/i })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'New task' })).toBeNull()
+    const action = await screen.findByRole('button', { name: 'New task' })
+    expect(action.closest('[data-slot="overlay-header"]')).toBeNull()
+    await userEvent.setup().click(action)
+    expect(screen.getByLabelText('Task title')).toHaveFocus()
   })
 
   it('has a close button in the header', async () => {

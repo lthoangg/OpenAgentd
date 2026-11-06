@@ -56,12 +56,21 @@ function settings(over: Partial<RunSettings> = {}): RunSettings {
     accounts: null,
     credentialId: null,
     pinnedAccount: null,
+    inUseAccount: null,
     ...over,
   }
 }
 
 function wrap(node: ReactNode) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  // The providers list is loaded, as in the app: headings use its display names.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+  client.setQueryData(queryKeys.settings.providers(), {
+    providers: [
+      { id: 'anthropic', label: 'Claude' },
+      { id: 'openai', label: 'OpenAI' },
+      { id: 'agy', label: 'Antigravity' },
+    ],
+  })
   return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>)
 }
 
@@ -87,78 +96,109 @@ function renderAccounts(usageByAccount: Record<string, ProviderUsageResponse['li
 
 describe('RunPicker', () => {
   describe('account quota', () => {
-    it('shows percent left for a window, as before', () => {
-      const row = renderAccounts({ work: [{ primary: { used_percent: 30 } }], home: [] })
-      expect(row('Work').textContent).toContain('70% left')
-      expect(row('Home').textContent).not.toContain('left')
+    it('shows every window of the main limit in % used, as Settings → Providers does', () => {
+      const row = renderAccounts({
+        work: [{ primary: { used_percent: 12, window_minutes: 300 }, secondary: { used_percent: 64, window_minutes: 10_080 } }],
+        home: [],
+      })
+      expect(row('Work').textContent).toContain('5h 12% · 7d 64%')
+      expect(row('Home').textContent).not.toContain('%')
     })
 
-    it('shows what is left of a spend cap on an Enterprise account with no windows', () => {
+    it('puts the limit that was hit in red and one close to it in orange, with reset times in the tooltip', () => {
+      const now = Date.now() / 1000
+      renderAccounts({
+        work: [{ primary: { used_percent: 100, window_minutes: 300, resets_at: now + 3 * 3600 }, secondary: { used_percent: 92, window_minutes: 10_080 } }],
+        home: [],
+      })
+      expect(screen.getByText('5h 100%').className).toContain('text-(--color-error)')
+      expect(screen.getByText('7d 92%').className).toContain('text-(--accent-orange-text)')
+      const title = screen.getByText('5h 100%').closest('[data-account-usage]')?.getAttribute('title') ?? ''
+      expect(title).toMatch(/^5-hour limit reached, resets in [23]h/)
+      expect(title).toContain('Weekly limit 92% used')
+    })
+
+    it("keeps another model's limit out of the row, in the tooltip", () => {
+      renderAccounts({
+        work: [
+          { limit_id: 'codex', primary: { used_percent: 20, window_minutes: 300 } },
+          { limit_id: 'spark', limit_name: 'GPT-5.3-Codex-Spark', primary: { used_percent: 100, window_minutes: 300 } },
+        ],
+        home: [],
+      })
+      const usage = screen.getByText('5h 20%').closest('[data-account-usage]') as HTMLElement
+      expect(usage.textContent).toBe('5h 20%')
+      expect(usage.getAttribute('title')).toContain('GPT-5.3-Codex-Spark 5-hour limit reached')
+    })
+
+    it('shows a spend cap on an Enterprise account with no windows', () => {
       const row = renderAccounts({
         work: [{ plan_type: 'enterprise', spend: { reached: false, currency: 'USD', limit: 50, used: 38, remaining: 12, used_percent: 76 } }],
         home: [{ primary: { used_percent: 10 } }],
       })
-      expect(row('Work').textContent).toContain('$12.00 of $50.00 left')
+      expect(row('Work').textContent).toContain('$38.00 of $50.00 used')
     })
 
-    it('shows a credit balance, unlimited credits and an empty account', () => {
+    it('shows credits beside the windows, and an empty account in red', () => {
       const row = renderAccounts({
-        work: [{ credits: { has_credits: true, unlimited: false, balance: '$84.50' } }],
+        work: [{ primary: { used_percent: 30, window_minutes: 300 }, credits: { has_credits: true, unlimited: false, balance: '$84.50' } }],
         home: [{ credits: { has_credits: true, unlimited: true, balance: null } }],
         spare: [{ credits: { has_credits: false, unlimited: false, balance: null } }],
       })
-      expect(row('Work').textContent).toContain('$84.50 left')
+      expect(row('Work').textContent).toContain('5h 30% · $84.50 left')
       expect(row('Home').textContent).toContain('Unlimited')
+      expect(screen.getByText('No credits left').className).toContain('text-(--color-error)')
       expect(row('Spare').textContent).toContain('No credits left')
     })
 
     it('says Limit reached in the error tone, between the label and the check', () => {
-      const row = renderAccounts({ work: [{ spend: { reached: true, limit: 700, used: 800, remaining: 0 } }], home: [] })
+      const row = renderAccounts({ work: [{ spend: { reached: true } }], home: [] })
       const state = screen.getByText('Limit reached')
       expect(state.className).toContain('text-(--color-error)')
       const parts = Array.from(row('Work').children)
       expect(parts[0].textContent).toBe('Work')
-      expect(parts[1]).toBe(state)
+      expect(parts[1].contains(state)).toBe(true)
     })
 
     // A Codex account whose credits ran out still runs on its plan's windows.
-    it('shows the room left in the windows, not Limit reached, when only the credits are spent', () => {
+    it('shows the windows and empty credits in orange, not red, when only the credits are spent', () => {
       const row = renderAccounts({
-        work: [{ primary: { used_percent: 20 }, credits: { has_credits: false, unlimited: false, balance: null }, spend: { reached: true } }],
+        work: [{ primary: { used_percent: 20, window_minutes: 300 }, credits: { has_credits: false, unlimited: false, balance: null }, spend: { reached: true } }],
         home: [],
       })
-      expect(row('Work').textContent).toContain('80% left · no credits')
+      expect(row('Work').textContent).toContain('5h 20% · No credits left')
       expect(screen.queryByText('Limit reached')).toBeNull()
-      const state = screen.getByText('80% left · no credits')
-      expect(state.className).toContain('text-(--accent-orange-text)')
-      expect(state.getAttribute('title')).toBe('80% left · no credits · Spend cap reached')
+      expect(screen.getByText('No credits left').className).toContain('text-(--accent-orange-text)')
     })
 
-    it('keeps the balance in the tooltip when a percent window leads, and truncates a long one', () => {
+    it('hides empty credits a plan without credits reports beside windows with room, and truncates a long balance', () => {
       renderAccounts({
-        work: [{ primary: { used_percent: 20 }, credits: { has_credits: true, unlimited: false, balance: '$84.50' } }],
+        work: [{ primary: { used_percent: 20, window_minutes: 300 }, credits: { has_credits: false, unlimited: false, balance: '0' } }],
         home: [{ credits: { has_credits: true, unlimited: true, balance: 'Unlimited until the end of the billing period' } }],
       })
-      expect(screen.getByText('80% left').getAttribute('title')).toBe('Balance $84.50')
-      const long = screen.getByText('Unlimited until the end of the billing period')
+      expect((screen.getByText('5h 20%').closest('[data-account-usage]') as HTMLElement).textContent).toBe('5h 20%')
+      const long = screen.getByText('Unlimited until the end of the billing period').closest('[data-account-usage]') as HTMLElement
       expect(long.className).toContain('truncate')
-      expect(long.getAttribute('title')).toBe('Unlimited until the end of the billing period')
+      expect(long.getAttribute('title')).toBe('Credits: Unlimited until the end of the billing period')
     })
   })
 
-  it('lists every model as provider:model and marks the one that runs', () => {
+  it("lists every model by its name under its provider's heading and marks the one that runs", () => {
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
     const options = screen.getAllByRole('option')
-    expect(options.map((o) => o.textContent?.replace(/default$/, ''))).toEqual(['anthropic:sonnet', 'anthropic:opus', 'openai:gpt-5'])
+    expect(options.map((o) => o.textContent?.replace(/default$/, ''))).toEqual(['sonnet', 'opus', 'gpt-5'])
     expect(options[0].getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByText('Claude')).toBeTruthy()
+    expect(screen.getByText('OpenAI')).toBeTruthy()
+    expect(screen.queryByText('anthropic')).toBeNull()
   })
 
   it('opens on the model that runs, not the first row', () => {
     wrap(<RunPicker settings={settings({ model: 'openai:gpt-5', provider: 'openai', customized: true })} focus="model" onDone={() => {}} />)
     const highlighted = screen.getAllByRole('option').filter((o) => o.hasAttribute('data-highlighted'))
-    expect(highlighted.map((o) => o.textContent)).toEqual(['openai:gpt-5'])
+    expect(highlighted.map((o) => o.textContent)).toEqual(['gpt-5'])
     const search = screen.getByRole('searchbox', { name: 'Search models' })
-    expect(document.getElementById(search.getAttribute('aria-activedescendant') ?? '')?.textContent).toBe('openai:gpt-5')
+    expect(document.getElementById(search.getAttribute('aria-activedescendant') ?? '')?.textContent).toBe('gpt-5')
   })
 
   it('picks the highlighted running model with Enter and closes', () => {
@@ -169,11 +209,13 @@ describe('RunPicker', () => {
     expect(onDone).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps the provider part whole: it never truncates to a stub like "ag…"', () => {
+  it('drops the provider: prefix from rows: the model part is all a row shows', () => {
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
-    const provider = screen.getAllByText('anthropic:')[0]
-    expect(provider.className).not.toContain('truncate')
-    expect(provider.className).toContain('whitespace-nowrap')
+    expect(screen.queryByText('anthropic:')).toBeNull()
+    expect(screen.getByRole('listbox', { name: 'Models' }).textContent).not.toContain(':')
+    const line = screen.getAllByRole('option')[0].querySelector('.font-mono') as HTMLElement
+    expect(line.textContent).toBe('sonnet')
+    expect(line.className).toContain('h-[1lh]')
   })
 
   it('saves another model on the session and keeps a level it supports', () => {
@@ -215,7 +257,8 @@ describe('RunPicker', () => {
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search models' }), { target: { value: 'gpt5' } })
 
-    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['openai:gpt-5'])
+    // Ranked results have no heading: the provider's name trails the row.
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['gpt-5OpenAI'])
   })
 
   it('ranks the closest match first, in one list without provider headings, so Enter picks it', () => {
@@ -226,9 +269,9 @@ describe('RunPicker', () => {
 
     fireEvent.change(search, { target: { value: 'opus' } })
 
-    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['anthropic:opus', 'agy:antigravity-claude-opus-4-6-thinking'])
-    expect(screen.queryByText('anthropic')).toBeNull()
-    expect(screen.queryByText('agy')).toBeNull()
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['opusClaude', 'antigravity-claude-opus-4-6-thinkingAntigravity'])
+    // No provider headings in ranked results.
+    expect(document.querySelector('[role="listbox"] .select-none')).toBeNull()
     fireEvent.keyDown(search, { key: 'Enter' })
     expect(lastPatch().model).toBe('anthropic:opus')
   })
@@ -290,19 +333,36 @@ describe('RunPicker', () => {
     expect(screen.queryByText(/model's own default/)).toBeNull()
   })
 
-  it('pins an account, says when one is cooling down, and goes back to Auto', () => {
+  it('has no Auto row: picking an account locks it, and a cooling account says so', () => {
     const accounts = [credential('work', 'Work'), credential('home', 'Home', { status: 'cooling_down' })]
     const providerInfo = { id: 'anthropic', label: 'Anthropic', stored_credentials: accounts, supports_credential_usage: false } as ProviderInfo
-    wrap(<RunPicker settings={settings({ accounts, providerInfo, credentialId: 'work', pinnedAccount: accounts[0] })} focus="model" onDone={() => {}} />)
+    wrap(<RunPicker settings={settings({ accounts, providerInfo, credentialId: 'work', pinnedAccount: accounts[0], inUseAccount: accounts[0] })} focus="model" onDone={() => {}} />)
 
     const group = screen.getByRole('radiogroup', { name: 'Anthropic account' })
     expect(screen.getByRole('radio', { name: /Work/ }).getAttribute('aria-checked')).toBe('true')
     expect(group.textContent).toContain('Cooling down')
+    expect(screen.queryByRole('radio', { name: /Auto/ })).toBeNull()
+    expect(group.querySelector('[data-in-use]')).toBeNull()
 
     fireEvent.click(screen.getByRole('radio', { name: /Home/ }))
     expect(setRun).toHaveBeenLastCalledWith({ credentialId: 'home' })
-    fireEvent.click(screen.getByRole('radio', { name: /Auto/ }))
-    expect(setRun).toHaveBeenLastCalledWith({ credentialId: null })
+  })
+
+  it('checks the account in use when nothing is locked', () => {
+    const accounts = [credential('work', 'Work'), credential('home', 'Home', { in_use: true })]
+    const providerInfo = { id: 'anthropic', label: 'Anthropic', stored_credentials: accounts, supports_credential_usage: false } as ProviderInfo
+    wrap(<RunPicker settings={settings({ accounts, providerInfo, inUseAccount: accounts[1] })} focus="model" onDone={() => {}} />)
+    expect(screen.getByRole('radio', { name: /Home/ }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('radio', { name: /Work/ }).getAttribute('aria-checked')).toBe('false')
+  })
+
+  it('marks the account a locked session moved to as in use, and says it goes back', () => {
+    const accounts = [credential('work', 'Work', { status: 'cooling_down' }), credential('home', 'Home')]
+    const providerInfo = { id: 'anthropic', label: 'Anthropic', stored_credentials: accounts, supports_credential_usage: false } as ProviderInfo
+    wrap(<RunPicker settings={settings({ accounts, providerInfo, credentialId: 'work', pinnedAccount: accounts[0], inUseAccount: accounts[1] })} focus="model" onDone={() => {}} />)
+    expect(screen.getByRole('radio', { name: /Work/ }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('radio', { name: /Home/ }).querySelector('[data-in-use]')?.textContent).toBe('in use')
+    expect(screen.getByText('Back on Work when its limit resets.')).toBeTruthy()
   })
 
   it('offers Reconnect for a signed-out account, opening Settings → Providers', () => {
@@ -335,7 +395,7 @@ describe('RunPicker', () => {
   it('lists recent models first', () => {
     window.localStorage.setItem('oa.recentModels.v1', JSON.stringify(['openai:gpt-5']))
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
-    expect(screen.getAllByRole('option')[0].textContent).toContain('openai:gpt-5')
+    expect(screen.getAllByRole('option')[0].textContent).toBe('gpt-5OpenAI')
     expect(screen.getByText('Recent')).toBeTruthy()
   })
 
@@ -374,10 +434,10 @@ describe('RunPicker', () => {
 
     fireEvent.mouseMove(screen.getByRole('option', { name: /gpt-5/ }), { clientX: 30, clientY: 30 })
     // Still the running model (its row also says "default").
-    expect(highlighted()).toEqual(['anthropic:sonnetdefault'])
+    expect(highlighted()).toEqual(['sonnetdefault'])
 
     fireEvent.mouseMove(screen.getByRole('option', { name: /gpt-5/ }), { clientX: 32, clientY: 34 })
-    expect(highlighted()).toEqual(['openai:gpt-5'])
+    expect(highlighted()).toEqual(['gpt-5'])
   })
 
   it('keeps the highlight on the same model when the list changes under it', () => {
@@ -390,7 +450,7 @@ describe('RunPicker', () => {
       </QueryClientProvider>,
     )
     const highlighted = screen.getAllByRole('option').filter((o) => o.hasAttribute('data-highlighted'))
-    expect(highlighted.map((o) => o.textContent)).toEqual(['anthropic:opus'])
+    expect(highlighted.map((o) => o.textContent)).toEqual(['opus'])
   })
 
   it('keeps the level while the model list is still loading and the new model\'s levels are unknown', () => {

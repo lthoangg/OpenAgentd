@@ -1,7 +1,7 @@
 /**
  * Most tools' output stays on the server. The row shows the call (name,
  * target, time) with no result summary or failure mark; opening it fetches
- * the output once, and Copy result fetches it too.
+ * the output once; the row's menu fetches nothing.
  */
 import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 
@@ -60,12 +60,11 @@ describe("a tool result fetched on demand", () => {
     expect(document.body.textContent).not.toMatch(/\berror\b/)
   })
 
-  it("copies a result it has not fetched yet from the row's menu", async () => {
+  it("fetches nothing for the row's menu: a shell row has none", () => {
     answer = "the whole output"
     render(<ToolCall name="shell" args='{"command":"ls"}' done toolCallId="c5" resultBytes={16} />)
-    fireEvent.contextMenu(row())
-    fireEvent.click(await screen.findByText("Copy result"))
-    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith("the whole output"))
+    expect(fireEvent.contextMenu(row())).toBe(true)
+    expect(fetched).toEqual([])
   })
 
   // An applied patch's answer stays on the server: the row's stats come from

@@ -12,7 +12,7 @@
  * rather than an overlay. Theme-aware, no hard-coded rgba.
  */
 
-import { ArrowUpRight, Check, Circle, ExternalLink, FileText, Globe, Loader2, Minus } from 'lucide-react'
+import { ArrowUpRight, Check, Circle, ExternalLink, FileText, Globe, ListTodo, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useContext, type ReactNode } from 'react'
 import { FileRefButton, FileRefContext, LinkifiedText } from './FileRefLink'
@@ -22,6 +22,7 @@ import { truncateForDisplay } from './ToolCall/displayText'
 import { canonicalToolName } from '@/utils/tool-names'
 import { Button } from '@/components/ui/button'
 import { Chip, type ChipTone } from '@/components/ui/chip'
+import { EmptyState } from '@/components/ui/empty-state'
 import type { LiveSubagent } from '@/api/types'
 import { SubagentRow, openSubagentSession, type SubagentRowProps } from './ToolCall/SubagentRow'
 import { parseStartedAt, subagentStatusView } from './ToolCall/subagentStatus'
@@ -94,7 +95,7 @@ function WebSearchResult({ result }: { result: string }) {
           <li key={i} className="group flex flex-col gap-0.5">
             {/* Title + link */}
             <div className="flex items-start gap-1.5">
-              <Globe size={11} className="mt-0.5 shrink-0 text-(--color-text-muted)" />
+              <Globe size={12} className="mt-0.5 shrink-0 text-(--color-text-muted)" />
               {link ? (
                 <a
                   href={link}
@@ -114,7 +115,7 @@ function WebSearchResult({ result }: { result: string }) {
             {/* Hostname pill */}
             {link && (
               <div className="flex items-center gap-1 pl-5">
-                <ExternalLink size={11} className="text-(--color-text-muted)" />
+                <ExternalLink size={12} className="text-(--color-text-muted)" />
                 <span className="font-mono text-xs md:text-meta text-(--color-text-muted)">
                   {hostname(link)}
                 </span>
@@ -240,9 +241,13 @@ interface BackgroundProcess {
 }
 
 function statusTone(status: string): ChipTone {
-  if (status === 'running' || status.includes('running')) return 'info'
+  if (isRunning(status)) return 'info'
   if (status.startsWith('exited') || status.startsWith('stopped') || status.startsWith('no output')) return 'neutral'
   return 'error'
+}
+
+function isRunning(status: string): boolean {
+  return status === 'running' || status.includes('running')
 }
 
 /** One header for every ``bg`` result: ``pid 4312`` · status chip · detail. */
@@ -250,7 +255,7 @@ function BgStatus({ pid, status, detail }: { pid?: string | null; status?: strin
   return (
     <>
       {pid && <span className="font-mono text-(--color-text)">pid {pid}</span>}
-      {status && <Chip tone={statusTone(status)} dot={statusTone(status) === 'info'}>{status}</Chip>}
+      {status && <Chip tone={statusTone(status)} spinner={isRunning(status)}>{status}</Chip>}
       {detail && <span className="font-sans text-(--color-text-muted)">{detail}</span>}
     </>
   )
@@ -322,7 +327,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
           {listRows.map((process) => (
             <li key={process.pid} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 border-b border-(--color-border) px-2.5 py-2 font-mono text-xs last:border-b-0 sm:grid-cols-[4rem_5.5rem_minmax(0,1fr)] sm:items-center">
               <span className="text-(--color-text)">pid {process.pid}</span>
-              <span><Chip tone={statusTone(process.status)} dot={statusTone(process.status) === 'info'}>{process.status}</Chip></span>
+              <span><Chip tone={statusTone(process.status)} spinner={isRunning(process.status)}>{process.status}</Chip></span>
               <code className="col-span-2 break-words text-(--color-text-2) sm:col-span-1">{process.command}</code>
             </li>
           ))}
@@ -612,7 +617,7 @@ function describeTodoOutcome(outcome: string, tasks: TodoResultTask[]): string {
 
 function TodoListResult({ result }: { result: string }) {
   if (result.trim() === 'No todos.') {
-    return <div className="text-xs text-(--color-text-muted)">No todos.</div>
+    return <EmptyState fill={false} icon={ListTodo} title="No todos" className="py-3" />
   }
   const parsed = parseTodoList(result)
   if (!parsed) return <GenericResult result={result} />
@@ -915,7 +920,7 @@ function TeamResult({ obj }: { obj: Record<string, unknown> }) {
       ) : (
         headerView && (
           <div className="flex flex-wrap items-center gap-1.5 font-sans">
-            <Chip tone={headerView.tone} dot={headerView.running || headerView.waiting} data-team-status={status}>
+            <Chip tone={headerView.tone} spinner={headerView.spinner} dot={headerView.waiting} data-team-status={status}>
               {headerView.label}
             </Chip>
           </div>

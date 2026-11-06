@@ -47,7 +47,7 @@ export function SidebarConfirmDialogs({
           <DialogHeader>
             <DialogTitle>Delete this session?</DialogTitle>
             <DialogDescription>
-              &ldquo;{deleteTarget?.title || 'Untitled'}&rdquo; and its messages are deleted for good. You can undo it for a few seconds.
+              &quot;{deleteTarget?.title || 'Untitled'}&quot; and its messages are deleted for good. You can undo it for a few seconds.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -65,7 +65,7 @@ export function SidebarConfirmDialogs({
           <DialogHeader>
             <DialogTitle>Delete this worktree?</DialogTitle>
             <DialogDescription>
-              &ldquo;{removeWorktreeTarget ? workspaceLabel(removeWorktreeTarget.directory) : ''}&rdquo; will be
+              &quot;{removeWorktreeTarget ? workspaceLabel(removeWorktreeTarget.directory) : ''}&quot; will be
               deleted from disk. Any uncommitted changes in this worktree will be lost. This cannot be undone.
             </DialogDescription>
           </DialogHeader>

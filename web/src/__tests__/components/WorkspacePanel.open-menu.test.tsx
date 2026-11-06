@@ -3,7 +3,8 @@
  *
  * The empty dock's launcher only shows with no tabs, so without this menu a
  * phone showing the Plan had no way to reach Git from the dock. Phones keep
- * just "+" and Refresh in the strip; desktop keeps its icons beside "+".
+ * just "+" in the strip; desktop adds Maximize and the pane's ⋯ menu beside
+ * it. Refresh lives in the toolbar of the view it reloads, not in the strip.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { gitDiffResponse } from '../git-diff-mock'
@@ -97,7 +98,8 @@ describe('Review dock "+" menu', () => {
     await screen.findByRole('button', { name: 'Session plan' })
 
     const menu = await openMenu()
-    expect(rowNames(menu)).toEqual(['Git', 'Goal', 'Plan (open)', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…', 'Split right', 'Split down'])
+    // Opening things only: the pane's splits are in its ⋯ menu.
+    expect(rowNames(menu)).toEqual(['Git', 'Goal', 'Plan (open)', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
 
     await userEvent.setup().click(within(menu).getByRole('menuitem', { name: 'Git' }))
     expect(screen.queryByRole('menu')).toBeNull()
@@ -114,7 +116,7 @@ describe('Review dock "+" menu', () => {
 
     fireEvent.doubleClick(gap, { clientX: 120, clientY: 18 })
     const menu = screen.getByRole('menu', { name: 'Open in Review panel' })
-    expect(rowNames(menu)).toContain('Split right')
+    expect(rowNames(menu)).toContain('Git')
     expect(menu.style.left).toBe('120px')
     fireEvent.keyDown(menu, { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBeNull()
@@ -133,14 +135,16 @@ describe('Review dock "+" menu', () => {
     expect(screen.getByRole('button', { name: 'Session plan' }).getAttribute('aria-current')).toBe('true')
   })
 
-  it('keeps only "Open…" in the strip on phones while the Plan shows (nothing to refresh), with Preview in the menu', async () => {
+  it('keeps only "+" in the strip on phones (no Maximize, no ⋯ menu), with Preview in the menu', async () => {
     await renderPanel({ mobile: true })
     await screen.findByRole('button', { name: 'Session plan' })
 
     expect(screen.queryByRole('button', { name: 'New terminal' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'New preview' })).toBeNull()
-    // Refresh is for Git, diff, commit and file tabs only
+    // Refresh is not in the strip on any platform: it is in the view's toolbar.
     expect(screen.queryByRole('button', { name: /^Refresh/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Pane actions' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Review panel \(/ })).toBeNull()
     expect(screen.getByRole('button', { name: 'Open in Review panel' })).toBeTruthy()
     // Icon only on phones: the + carries the name, no "Open…" text.
     expect(screen.getByRole('button', { name: 'Open in Review panel' }).textContent).toBe('')
@@ -159,13 +163,17 @@ describe('Review dock "+" menu', () => {
     expect(open.textContent).toBe('')
   })
 
-  it('shows Refresh only for the tabs it reloads: Git gets "Refresh Git status"', async () => {
+  it('keeps Refresh out of the strip: a Git tab outside a repository offers it in its empty state', async () => {
     await renderPanel()
     await screen.findByRole('button', { name: 'Session plan' })
     expect(screen.queryByRole('button', { name: /^Refresh/ })).toBeNull()
 
     await userEvent.setup().click(within(await openMenu()).getByRole('menuitem', { name: 'Git' }))
-    expect(await screen.findByRole('button', { name: 'Refresh Git status' })).toBeTruthy()
+    expect(await screen.findByText('Not a git repository')).toBeTruthy()
+    // The strip still has none; the empty state carries the way to look again.
+    const strip = document.querySelector<HTMLElement>('[data-dock-strip]')!
+    expect(within(strip).queryByRole('button', { name: /^Refresh/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy()
   })
 
   it('opens a terminal through the "Open…" menu', async () => {

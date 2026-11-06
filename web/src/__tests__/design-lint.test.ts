@@ -148,8 +148,6 @@ const RULES: Rule[] = [
     why: 'nothing appears only on hover: show an action at rest (muted) or put it in the More / right-click / long-press menu',
     pattern: /^(?=.*(?<![\w:/-])(?:md:)?opacity-0(?![\w-]))(?=.*group-hover(?:\/[\w-]+)?:opacity-100).*$/g,
     allow: {
-      // A tooltip-style caption, not an action.
-      'components/FileLightbox.tsx': 1,
       // The transcript's ambient timeline; scrolling does the same job.
       'components/AgentView/TimelineScrubber.tsx': 1,
       // The table copy button: shown on focus and always on touch, and
@@ -183,10 +181,8 @@ const RULES: Rule[] = [
     allow: {
       // Disabled controls (WCAG exempts them).
       'components/ui/calendar.tsx': 1,
-      'components/AgentView/UserBubble.tsx': 1,
       // Decorative empty-state icons.
       'components/settings/pages/settings.memory.tsx': 1,
-      'components/TodosPopover.tsx': 1,
       // A queued message, held back at 75% (ink stays above 7:1).
       'components/PendingMessageQueue.tsx': 1,
       // The tab carried under the pointer while dragging.
@@ -289,6 +285,36 @@ const RULES: Rule[] = [
     pattern: /['"`][A-Z][^'"`\n]*[a-z]\.\.\.['"`]/g,
     allow: {},
   },
+  {
+    name: 'icon-off-scale',
+    why: 'icons are 12, 13, 14 or 16px (20 in the phone header and EmptyState), one size per role (DESIGN.md → Rulebook 4)',
+    pattern: /(?<![\w-])size=\{(?:9|10|11|15|17|18|19|21|22|23|24)\}/g,
+    allow: {},
+  },
+  {
+    name: 'icon-shrink',
+    why: 'an icon keeps its size on desktop; a 10px glyph is under the scale',
+    pattern: /(?<![\w:-])md:h-2\.5 md:w-2\.5(?![\w-])/g,
+    allow: {},
+  },
+  {
+    name: 'x-glyph-size',
+    why: 'a close × is CloseButton\'s 14px glyph; a remove × inside a chip, a menu row or a status mark is 12px (DESIGN.md → Rulebook 6)',
+    pattern: /<X\b[^>]*\bsize=\{(?!1[24]\})\d+\}/g,
+    allow: {},
+  },
+  {
+    name: 'dialog-footer-flex',
+    why: 'DialogFooter lays out its buttons (stacked on a phone, in the OS order on desktop); overriding its flex breaks both (DESIGN.md → Rulebook 7)',
+    pattern: /<DialogFooter\b[^>]*className="[^"]*(?<![\w:-])(?:flex|flex-row)(?![\w-])/g,
+    allow: {},
+  },
+  {
+    name: 'day-first-date',
+    why: 'dates read "Oct 29" / "Today 14:32" from utils/format.ts, never dd/MM (DESIGN.md → Dates)',
+    pattern: /['"`]dd\/MM/g,
+    allow: {},
+  },
 ]
 
 /** Comment lines describe classes without applying them. */
@@ -321,5 +347,19 @@ describe('design lint', () => {
     const css = readFileSync(join(SRC, 'index.css'), 'utf8')
     expect(css).toMatch(/--default-transition-duration:\s*var\(--motion-instant\);/)
     expect(css).toMatch(/--default-transition-timing-function:\s*var\(--ease-in-out\);/)
+  })
+
+  // Rulebook 5: header, overlay and find-bar chrome draws its icon actions
+  // with Button / CloseButton, never a hand-rolled <button>.
+  it('primitive-chrome: headers, overlay headers and find bars use Button and CloseButton only', () => {
+    const chrome = [
+      'components/AgentChatView/AgentChatHeader.tsx',
+      'components/ui/app-overlay.tsx',
+      'components/TranscriptFind.tsx',
+      'components/Terminal/TerminalFindBar.tsx',
+      'components/SchedulerPanel/TaskDetailView.tsx',
+    ]
+    const handRolled = chrome.filter((file) => /<button\b/.test(readFileSync(join(SRC, file), 'utf8')))
+    expect(handRolled).toEqual([])
   })
 })

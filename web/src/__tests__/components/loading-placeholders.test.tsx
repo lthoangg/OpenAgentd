@@ -38,11 +38,13 @@ describe('loading placeholders wait a beat', () => {
     expect(waitsABeat(container.querySelector('[aria-label="Loading usage"]'))).toBe(true)
   })
 
-  it('scheduler task list spinner', () => {
+  it('scheduler task list skeleton', () => {
     render(<TaskListPane tasks={[]} isLoading isError={false} selectedTaskId={null} onSelect={() => {}} onDeleted={() => {}} />)
-    expect(waitsABeat(screen.getByRole('status'))).toBe(true)
-    // The loading copy is still there for screen readers from the start.
-    expect(screen.getByText('Loading scheduled tasks…')).toBeTruthy()
+    const status = screen.getByRole('status', { name: 'Loading scheduled tasks' })
+    expect(waitsABeat(status)).toBe(true)
+    // Rows, not a spinner with a sentence.
+    expect(status.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Loading scheduled tasks…')).toBeNull()
   })
 
   it('file viewer spinner', () => {

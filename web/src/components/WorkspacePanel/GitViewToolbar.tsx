@@ -2,7 +2,8 @@
  * GitViewToolbar — the single 32px toolbar under the Git review tab.
  *
  * One segmented control on every platform — Changes and History — plus the
- * Changes view's expand-all on the right. History is the commit list
+ * Changes view's expand-all and the tab's Refresh on the right (Refresh
+ * moved here from the tab strip). History is the commit list
  * (stored as ``commits``). The segments are real ARIA tabs; the caller
  * renders the matching ``tabpanel`` using ``gitViewPanelId`` /
  * ``gitViewTabId`` so the ids line up.
@@ -13,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils'
 import { CommitSyncBadge } from './CommitDetail'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
+import { DockRefreshButton } from './DockRefreshButton'
 
 export type GitSubTab = 'changes' | 'commits'
 
@@ -31,6 +33,8 @@ export interface GitViewToolbarProps {
   /** ``null`` when there is nothing to expand. */
   allExpanded: boolean | null
   onToggleExpandAll: () => void
+  /** Reloads the changes, the status and the history; omitted, no button. */
+  onRefresh?: () => void
 }
 
 export function GitViewToolbar({
@@ -44,6 +48,7 @@ export function GitViewToolbar({
   mobile,
   allExpanded,
   onToggleExpandAll,
+  onRefresh,
 }: GitViewToolbarProps) {
   const trigger = (tab: GitSubTab) => ({
     value: tab,
@@ -96,6 +101,7 @@ export function GitViewToolbar({
             <TooltipContent side="bottom">{expandLabel}</TooltipContent>
           </Tooltip>
         )}
+        {onRefresh && <DockRefreshButton label="Refresh Git status" onClick={onRefresh} />}
       </div>
     </div>
   )

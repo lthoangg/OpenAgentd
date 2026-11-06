@@ -1,9 +1,10 @@
 import { memo, useEffect, useRef } from 'react'
 import { flushSync } from 'react-dom'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, GitCommitHorizontal } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
 import { cn } from '@/lib/utils'
 import type { GitCommit } from '@/api/types'
@@ -16,6 +17,7 @@ import {
 import { CommitDetail } from './CommitDetail'
 import { DOCK_ROW_ACTION_CLASS } from './dock-tab-styles'
 import { DockLoadError } from './DockLoadError'
+import { DockRowsSkeleton } from './DockSkeleton'
 import { DockListNotice } from './GitReviewSubPanel'
 
 type CommitTarget = { sha: string; shortSha: string; subject: string }
@@ -42,7 +44,12 @@ export interface CommitHistorySubPanelProps {
   setExpandedCommitSha: (updater: string | null | ((prev: string | null) => string | null)) => void
   expandedCommitFiles: Set<string>
   setExpandedCommitFiles: React.Dispatch<React.SetStateAction<Set<string>>>
-  commitDiff: { isLoading: boolean; isError: boolean }
+  commitDiff: {
+    isLoading: boolean
+    isError: boolean
+    isFetching?: boolean
+    refetch?: () => Promise<unknown>
+  }
   commitChangedFiles: ChangedFileInfo[]
   commitDiffSections: Map<string, DiffFileSection>
   commitsScrollRef: React.RefObject<HTMLDivElement | null>
@@ -116,20 +123,24 @@ function CommitHistorySubPanelView({
     }
   }
 
-  if (gitHistory.isLoading) return <DockListNotice>Loading commits…</DockListNotice>
+  if (gitHistory.isLoading) return <DockRowsSkeleton label="Loading commits" rows={5} twoLine />
   if (gitHistory.isError) {
     const refetch = gitHistory.refetch
-    if (!refetch) return <DockListNotice tone="error">Failed to load commits. Your repository is unchanged.</DockListNotice>
+    if (!refetch) return <DockListNotice tone="error">Couldn&apos;t load commit history.</DockListNotice>
     return (
       <DockLoadError
-        message="Failed to load commits. Your repository is unchanged."
+        message="Couldn't load commit history."
         onRetry={() => void refetch()}
         retrying={gitHistory.isFetching}
       />
     )
   }
-  if (gitHistory.data?.pages[0]?.is_git_repo === false) return <DockListNotice>Not a git repository</DockListNotice>
-  if (commits.length === 0) return <DockListNotice>No commits found</DockListNotice>
+  if (gitHistory.data?.pages[0]?.is_git_repo === false) {
+    return <EmptyState icon={GitCommitHorizontal} title="Not a git repository" body="Run git init in this folder to see its history here." />
+  }
+  if (commits.length === 0) {
+    return <EmptyState icon={GitCommitHorizontal} title="No commits yet" body="Commits on this branch show up here." />
+  }
 
   return (
     <div>
@@ -196,7 +207,7 @@ function CommitHistorySubPanelView({
                       onClick={() => openCommitTab(commit)}
                       className={DOCK_ROW_ACTION_CLASS}
                       aria-label={`Open commit ${commit.short_sha} in tab`}
-                      title="Open commit in tab"
+                      title="Open in tab"
                     >
                       <ExternalLink size={12} aria-hidden="true" />
                     </button>

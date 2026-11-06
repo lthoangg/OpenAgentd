@@ -9,6 +9,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 import { GoalClaimCard } from '@/components/GoalClaimCard'
+import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
 
 afterEach(cleanup)
 
@@ -24,6 +25,9 @@ describe('GoalClaimCard', () => {
 
     const card = screen.getByRole('region', { name: /Goal check/ })
     expect(card.className).toContain('border-(--color-border-subtle)')
+    // The transcript's one card token: rounded-sm, not rounded-md.
+    for (const token of TRANSCRIPT_CARD.split(' ')) expect(card.className.split(/\s+/)).toContain(token)
+    expect(card.className).not.toContain('rounded-md')
     // Inline code in the evidence is rendered content (InlineCodeText), not card chrome.
     const inside = Array.from(card.querySelectorAll('*')).filter((el) => el.tagName !== 'CODE' && BORDER.test(el.getAttribute('class') ?? ''))
     expect(inside.map((el) => el.tagName)).toEqual([])

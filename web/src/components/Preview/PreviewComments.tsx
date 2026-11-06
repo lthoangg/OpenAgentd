@@ -3,8 +3,9 @@
  * element and the numbered list with **Send to agent**.
  */
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { Pencil, Send, X } from 'lucide-react'
+import { Pencil, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { CloseButton } from '@/components/ui/close-button'
 import { Textarea } from '@/components/ui/textarea'
 import { PREVIEW_COMMENT_MAX_CHARS, elementLabel, type PreviewComment } from './preview-comments'
 import type { ElementDescriptor } from './preview-protocol'
@@ -114,7 +115,7 @@ export function PreviewCommentList({
           Clear
         </Button>
         <Button type="button" variant="primary" size="xs" className="gap-1 pointer-coarse:h-9" onClick={onSend}>
-          <Send size={11} aria-hidden="true" />
+          <Send size={12} aria-hidden="true" />
           Send to agent ({comments.length})
         </Button>
       </div>
@@ -160,12 +161,10 @@ export function PreviewCommentList({
             </div>
             {editing?.id !== comment.id && (
               <Button type="button" variant="ghost" size="icon-xs" className="pointer-coarse:size-9" aria-label={`Edit comment ${comment.n}`} onClick={() => setEditing({ id: comment.id, text: comment.text })}>
-                <Pencil size={11} aria-hidden="true" />
+                <Pencil size={12} aria-hidden="true" />
               </Button>
             )}
-            <Button type="button" variant="ghost" size="icon-xs" className="pointer-coarse:size-9" aria-label={`Remove comment ${comment.n}`} onClick={() => onRemove(comment.id)}>
-              <X size={11} aria-hidden="true" />
-            </Button>
+            <CloseButton size="icon-xs" className="pointer-coarse:size-9" label={`Remove comment ${comment.n}`} tooltip="Remove comment" onClick={() => onRemove(comment.id)} />
           </li>
         ))}
       </ul>

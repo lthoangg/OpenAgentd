@@ -1,7 +1,7 @@
 {
   "name": "openagentd-web",
   "private": true,
-  "version": "3.47.0",
+  "version": "3.48.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -59,6 +59,7 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.4",
     "@mswjs/interceptors": "^0.45.10",
+    "@tailwindcss/node": "4.3.3",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",

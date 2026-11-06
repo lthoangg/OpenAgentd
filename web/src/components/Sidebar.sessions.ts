@@ -35,6 +35,11 @@ export function applySessionDelete(options: {
   deleteTarget: SessionResponse
   currentSessionId: string | undefined
   workspaceSessions: SessionResponse[]
+  /**
+   * Delete without leaving the screen: the session is not on display (the
+   * phone's Sessions list over a chat kept beneath it), so no fallback opens.
+   */
+  stay?: boolean
   mutateDelete: (target: string | { id: string; parent_session_id?: string | null }) => void
   navigate: (args: { to: string; params?: { sessionId: string }; replace: true }) => void
 }): void {
@@ -48,7 +53,7 @@ export function applySessionDelete(options: {
       ? { id: options.deleteTarget.id, parent_session_id: options.deleteTarget.parent_session_id }
       : options.deleteTarget.id,
   )
-  if (options.deleteTarget.id !== options.currentSessionId) return
+  if (options.stay || options.deleteTarget.id !== options.currentSessionId) return
   if (fallbackSession) {
     if (fallbackSession.workspace) saveLastWorkspace(fallbackSession.workspace)
     options.navigate({

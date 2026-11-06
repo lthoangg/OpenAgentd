@@ -20,14 +20,17 @@
 
 import {
   useCallback, useEffect, useLayoutEffect, useRef, useState,
-  type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, Download, ExternalLink, File, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, ExternalLink, File } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
 import { DURATIONS_S } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
+import { Button } from '@/components/ui/button'
+import { CloseButton } from '@/components/ui/close-button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePanZoom } from '@/hooks/use-pan-zoom'
 import { useImageReveal } from '@/hooks/useImageReveal'
 import { zoomInFrom, zoomOutTo } from '@/lib/lightbox-zoom'
@@ -114,32 +117,13 @@ export async function triggerDownload(item: FileLightboxItem): Promise<void> {
 
 // ─── Shared UI primitives ─────────────────────────────────────────────────────
 
-function IconButton({
-  onClick, icon, label, tooltip,
-}: {
-  onClick: () => void
-  icon: ReactNode
-  label: string
-  tooltip: string
-}) {
-  return (
-    <div className="group relative">
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label={label}
-        className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm bg-(--bg-card) text-(--color-text) shadow-(--shadow-depth) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none"
-      >
-        {icon}
-      </button>
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute top-full right-0 mt-2 whitespace-nowrap rounded-sm border border-(--color-border) bg-(--bg-key) px-2 py-1 text-xs text-(--color-text) opacity-0 shadow-(--shadow-depth) transition-opacity duration-(--motion-fast) group-hover:opacity-100 group-focus-within:opacity-100"
-      >
-        {tooltip}
-      </span>
-    </div>
-  )
+/**
+ * A floating control over the scrim: the shared ``Button`` / ``CloseButton`` on
+ * a card tile, so the muted ghost glyph keeps its contrast on the dark scrim in
+ * both themes.
+ */
+function ScrimTile({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-sm bg-(--bg-card) shadow-(--shadow-depth)">{children}</div>
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -363,21 +347,27 @@ export function FileLightboxText({ item }: { item: FileLightboxItem }) {
 export function FileLightboxGeneric({ item }: { item: FileLightboxItem }) {
   return (
     <div
-      className="flex flex-col items-center gap-4 rounded-sm border border-(--color-border) bg-(--bg-card) px-10 py-10"
+      className="max-w-xs rounded-sm border border-(--color-border) bg-(--bg-card) [overflow-wrap:anywhere]"
       onClick={(e) => e.stopPropagation()}
     >
-      <File size={40} className="text-(--color-text-muted)" />
-      <p className="max-w-[240px] truncate text-sm font-medium text-(--color-text)">{item.name}</p>
-      <p className="text-xs text-(--color-text-muted)">No preview available</p>
-      <a
-        href={item.src}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-1.5 text-xs text-(--color-text-muted) hover:text-(--color-text)"
-      >
-        <ExternalLink size={12} />
-        Open in new tab
-      </a>
+      <EmptyState
+        icon={File}
+        title={item.name}
+        body="No preview available"
+        fill={false}
+        className="flex justify-center px-6 py-8"
+        action={
+          <a
+            href={item.src}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-xs text-(--color-text-muted) hover:text-(--color-text)"
+          >
+            <ExternalLink size={12} aria-hidden="true" />
+            Open in new tab
+          </a>
+        }
+      />
     </div>
   )
 }
@@ -603,18 +593,21 @@ function OpenFileLightbox({ items, index = 0, isOpen: open, closing = false, onC
         className="z-10 flex w-full shrink-0 justify-end gap-2 px-[max(1rem,env(safe-area-inset-right,0px))] pt-[max(1rem,env(safe-area-inset-top,0px))] pb-2 [[data-mobile-shell='ios']_&]:pt-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
         onClick={(e) => e.stopPropagation()}
       >
-        <IconButton
-          onClick={() => void triggerDownload(active)}
-          icon={<Download size={16} />}
-          label={downloadLabel}
-          tooltip="Download"
-        />
-        <IconButton
-          onClick={closeLightbox}
-          icon={<X size={16} />}
-          label={closeLabel}
-          tooltip="Close (Esc)"
-        />
+        <ScrimTile>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button variant="ghost" size="icon-sm" aria-label={downloadLabel} onClick={() => void triggerDownload(active)}>
+                  <Download size={14} aria-hidden="true" />
+                </Button>
+              }
+            />
+            <TooltipContent>Download</TooltipContent>
+          </Tooltip>
+        </ScrimTile>
+        <ScrimTile>
+          <CloseButton label={closeLabel} onClick={closeLightbox} />
+        </ScrimTile>
       </div>
 
       {/* ── Prev / next chevrons ── desktop only; mobile uses swipe ─────────── */}
@@ -626,7 +619,7 @@ function OpenFileLightbox({ items, index = 0, isOpen: open, closing = false, onC
             onClick={(e) => { e.stopPropagation(); goPrev() }}
             className="absolute left-[max(0.75rem,env(safe-area-inset-left,0px))] top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-(--bg-card) text-(--color-text) shadow-(--shadow-depth) transition-colors hover:bg-(--bg-key) sm:flex"
           >
-            <ChevronLeft size={22} />
+            <ChevronLeft size={16} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -634,7 +627,7 @@ function OpenFileLightbox({ items, index = 0, isOpen: open, closing = false, onC
             onClick={(e) => { e.stopPropagation(); goNext() }}
             className="absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-(--bg-card) text-(--color-text) shadow-(--shadow-depth) transition-colors hover:bg-(--bg-key) sm:flex"
           >
-            <ChevronRight size={22} />
+            <ChevronRight size={16} aria-hidden="true" />
           </button>
         </>
       )}

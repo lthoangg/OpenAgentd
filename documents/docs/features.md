@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-11-05
+updated: 2026-11-06
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.47.0 · November 5, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.47.0)
+**Latest release:** v3.48.0 · November 6, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.48.0)
 
 ---
 
@@ -762,6 +762,20 @@ run from the terminal (the native Rust binary since v3.0.0).
   tray names the account a pinned session runs on (**Pinned to Work**), and
   its Provider limits name the account in use when a provider has several
   (**OpenAI Codex · Work**).
+  Since `[v3.48.0]` a locked account is where the session starts, not the
+  only account it uses. When it hits a limit (or is rejected), the turn moves
+  on to the next account with room, as every session does, says so in the
+  transcript ("Work hit its usage limit. Continuing on Home with the same
+  model."), and goes back to the locked account once it resets. A turn waits
+  only when every account is limited, for the first one to reset. The
+  **Auto** row is gone: with no lock, the picker checks the account the
+  provider uses now, and **Reset to default** removes a lock. The run chip
+  always names the account in use, and the picker tags the account a locked
+  session moved to with **in use**. Each account row shows every limit of the
+  account in % used, as Settings → Providers does (`5h 12% · 7d 64% · $84.50
+  left`). A limit that was hit is red and one at 90% or more is orange, and
+  the tooltip gives reset times and other models' own limits. The wait and
+  error cards no longer offer **Use Auto for this session**.
 - **Review panel panes, as in an editor** `[v3.40.0]`:
   - There is no bottom dock: the sidebar sits left (`⌘B`/`Ctrl+B`) and the
     Review panel right (`⌘D`/`Ctrl+D`), full window height. The header keeps
@@ -898,7 +912,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The files changed toggle lists the files the turn edited, with their line
     counts, in both transcript styles (Reader and Detailed); a file opens its
     diff.
-  - A turn that waits (a pinned account cooling down, a reconnect) or stops
+  - A turn that waits (every account at its limit, a reconnect) or stops
     shows one card: what happened, since when, what you can do, and **Copy
     details**.
   - When only the session model's provider is missing, the notice above the
@@ -927,7 +941,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - On touch, a long press on a message, a code block or a link opens its
     menu as the app's bottom sheet, the iOS app included. A tool row has
     a menu too (right-click or long-press): **Copy arguments** and **Copy
-    result**.
+    result** *(deprecated; removed in v3.48.0: the menu opens files, and
+    Copy is on each section of the open row)*.
   - The plan tool's chip reads **Open plan**, like every other way to the
     plan.
   - A question card always ends in **Send**, dimmed with its reason until
@@ -1259,7 +1274,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A shell row shows the agent's description of the command (`shell  Run
     the unit tests`), and hovering it shows the whole command; the expanded
     row still shows the command and its output. A call without a
-    description shows its command as before.
+    description shows its command as before. *(Hovering for the command
+    deprecated; removed in v3.48.0: open the row.)*
   - On a phone the Review panel button sits as far from the right edge as
     the sidebar button does from the left.
 - **Readable contrast everywhere** `[v3.46.0]`:
@@ -1994,6 +2010,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     step. Its `@` mentions arrive with it `[v3.4.0]`. A steer sent while a
     question or plan review waits replaces it and starts a new turn; a held
     message waits until the question is answered or dismissed.
+  - A steer sent with another model or thinking level switches the running
+    turn to it from the step that reads the steer `[v3.48.0]`.
   - Stop, or a turn that fails, returns what the agent has not read yet to
     the composer: unread steers, then held messages `[v3.4.0]`. A steer the
     agent read first stays in the transcript. A steer with files sent from
@@ -2078,6 +2096,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   undercounts the meter — the client adopts the server total instead of
   re-summing the truncated page, and older-page loads no longer re-add usage
   `[v2.4.2]`.
+  The ring now sits in the composer's run deck, not the header. The whole
+  session's cost moved from its popover to Usage, so cost shows per turn
+  (the answer's footer) and for the last 24 hours (the status bar)
+  `[v3.48.0]`.
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation.
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer
@@ -2089,6 +2111,88 @@ run from the terminal (the native Rust binary since v3.0.0).
   palette `[v3.0.0]`.
   Sending a message and an agent asking you a question each give a light tap
   in the phone apps `[v3.25.0]`.
+- **The phone app reads like an iOS app** `[v3.48.0]`. It is still the web
+  UI; the changes apply only on a phone (touch and narrow). Tablets and
+  narrow mouse windows keep their layout.
+  - The app opens on **Sessions**, which has a large title, a search field,
+    and *Needs you* at the top, then Pinned and the workspaces. Pull down to
+    refresh. Swipe a row left to Pin or Delete it; Delete asks first. A long
+    press still opens the row's menu.
+  - A tapped chat slides in from the right. ‹ Sessions, or a swipe from the
+    left edge that follows your finger, goes back to Sessions. Android Back
+    goes up one level, and from Sessions it leaves the app. Links,
+    notifications and widgets open the chat with Sessions underneath.
+  - Text and touch targets use Apple's sizes: 17px text, 44px rows and
+    buttons (48px on Android) and a 51×31 switch. The composer is a step
+    smaller so it stays compact: 15px text and 36px buttons that still
+    take a 44px touch. Text size
+    Compact and Large go one step down or up from there, and Dynamic Type
+    applies on top.
+  - Settings, Scheduled tasks and Usage open from a toolbar at the bottom of
+    Sessions. They are full-width sheets with a grabber and a Done button. A
+    Settings section slides in over the list, and ‹ or a swipe goes back.
+  - Review opens as its own page with ‹ Chat. Tasks, the "+" menu and the
+    model picker are sheets that open at half height and pull up to almost
+    full height.
+  - On iPhone, confirmations are iOS alerts: Cancel sits beside the action,
+    and a destructive action is red and is never the default button.
+- **One look across the app** `[v3.48.0]`:
+  - The same status looks the same everywhere. Needs you is orange and
+    Failed is red. Connected and passing checks are green. Running and Done
+    are quiet muted text.
+  - Dates follow one rule: `5m · 3h · 3d · Oct 29` in lists, and
+    `Today 14:32 · Oct 29, 14:32` in details and tooltips. The year appears
+    only when it isn't the current year.
+  - Each kind of control has one form: one close ×, one button style, empty
+    states with an action, skeletons while loading, and "Couldn't load X."
+    with Retry when loading fails.
+- **A quieter desktop** `[v3.48.0]`. The layout of sidebar, chat, Review
+  panel and status bar is unchanged.
+  - Each turn shows the model, the time and Edit once, under your message,
+    and only while you hover or focus it. The answer's footer keeps the
+    duration, the cost and Copy response.
+  - The New session screen names the workspace once and drops the hint
+    line and the branch chip.
+  - Sidebar rows show their status or age at rest. A missing folder is a
+    small ⚠ with a tooltip, and worktrees show as a count.
+  - Model pickers name the provider once, as a group header.
+  - The Review panel's tab strip keeps +, Maximize and a ⋯ menu.
+    Menus show their keys (F2, ⌫, ⌘W).
+  - Scheduled tasks open as a Review panel tab, with an overlay only when no
+    workspace is open.
+  - Settings and Usage use the same overlay frame as every other panel.
+- **Tool rows open files; a compact run deck** `[v3.48.0]`:
+  - Tool rows have no hover tooltip, so hovering a shell row no longer
+    shows its command. When a row's title is cut short (a long URL, query
+    or pattern), the whole value is the first line of the open row.
+  - Right-click or long-press on a **patch** row lists an **Open** item
+    (`Open web/src/app.tsx`) for each file the patch left in place, named
+    relative to the workspace. A deleted file isn't listed, and a renamed
+    one opens under its new name.
+    On a **read** row it opens the file at the line the read started from.
+    Files open in the Review panel. Other tool rows keep the system menu,
+    and nothing is fetched to build the menu.
+  - The run deck's controls (**+**, Code / Plan, the model chip, the
+    context ring and Send) are one height: 28px on desktop and 36px on touch
+    screens, phones included, where their touch area is 44px. All are
+    rounded 6px except Send, which stays a circle.
+  - Code / Plan is one button that names the mode in force; a tap switches
+    to the other, as Tab in the message field does. Plan is filled, so it
+    shows at a glance. It takes half the room the two segments did, which
+    goes to the model chip.
+    *(The Code | Plan segmented control is deprecated; removed in v3.48.0.)*
+- **Jump to latest shows only when you have left the end** `[v3.48.0]`:
+  - Opening and closing a tool row or a reader fold at the end of the chat
+    no longer shows **Jump to latest**, and the chat keeps following new
+    output.
+  - When closing a fold leaves you at the end, the chip goes away. Scrolling
+    down there (or End, Page Down, ↓) follows new output again.
+  - Scrolling up while Jump to latest glides down stops the glide where you
+    are, instead of pulling you back to the end.
+  - Recalling an earlier prompt with ↑ always offers the chip back.
+  - From more than two screens up, and with reduced motion, Jump to latest
+    jumps instead of gliding. On touch screens the chip is 36px tall, with
+    13px text on a phone.
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
 - **Restored desktop window size** `[v1.52.0, updated v3.31.0]` — desktop windows reopen at the

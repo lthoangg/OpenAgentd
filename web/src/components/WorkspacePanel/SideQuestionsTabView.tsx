@@ -20,6 +20,7 @@ import { ExchangeView } from '@/components/BtwPanel'
 import { useSideQuestions, type BtwExchange } from '@/queries/useSideQuestionsQuery'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useToastStore } from '@/stores/useToastStore'
+import { DockLinesSkeleton } from './DockSkeleton'
 
 export interface SideQuestionsTabViewProps {
   sessionId: string | null
@@ -70,7 +71,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
               <Button
                 size="icon-xs"
                 variant="ghost"
-                aria-label="Clear side questions"
+                aria-label="Clear side questions…"
                 disabled={exchanges.length === 0}
                 onClick={() => setConfirmClear(true)}
               >
@@ -85,13 +86,13 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
           onOpenChange={setConfirmClear}
           title="Delete all side questions?"
           description="Every side question and answer of this session is deleted. They were never part of the chat, and this cannot be undone."
-          confirmLabel="Delete all"
+          confirmLabel="Delete side questions"
           onConfirm={onClear}
         />
       </div>
       {exchanges.length === 0 ? (
         btw.isLoading ? (
-          <p className="px-4 py-3 text-xs text-(--color-text-subtle)">Loading side questions…</p>
+          <DockLinesSkeleton label="Loading side questions" className="px-4 py-4" />
         ) : (
           <EmptyState
             icon={MessageCircleQuestion}
@@ -125,7 +126,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
                           <Button
                             size="icon-xs"
                             variant="ghost"
-                            aria-label="Copy answer"
+                            aria-label="Copy response"
                             disabled={!exchange.answer}
                             onClick={() => copyText(exchange.answer)}
                           >
@@ -133,7 +134,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
                           </Button>
                         }
                       />
-                      <TooltipContent>Copy answer as Markdown</TooltipContent>
+                      <TooltipContent>Copy response</TooltipContent>
                     </Tooltip>
                   </div>
                 </article>

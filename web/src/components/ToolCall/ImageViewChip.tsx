@@ -29,7 +29,7 @@ function ListedImageChip({ opener, workspace, path }: { opener: FileRefOpener; w
   if (!listed) return null
   return (
     <button type="button" onClick={() => opener.open({ path })} title={`Open ${path} in the panel`} className={TOOL_CHIP_CLASS}>
-      <Image size={11} aria-hidden="true" />
+      <Image size={12} aria-hidden="true" />
       View image
     </button>
   )

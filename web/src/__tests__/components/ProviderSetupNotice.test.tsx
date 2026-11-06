@@ -33,7 +33,7 @@ describe('ProviderSetupNotice', () => {
 
     expect(screen.getByRole('status').textContent).toContain('Connect a model provider')
     expect(screen.queryByRole('button', { name: 'Dismiss provider setup notice' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Open Providers' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open providers' }))
     expect(onOpenProviders).toHaveBeenCalledTimes(1)
   })
 

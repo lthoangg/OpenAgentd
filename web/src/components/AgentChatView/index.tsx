@@ -85,6 +85,7 @@ import type {
 } from '@/api/types'
 import { ConnectionBanner } from '@/components/ConnectionBanner'
 import { TranscriptFind } from '@/components/TranscriptFind'
+import { PhoneStack } from '@/components/phone/PhoneStack'
 import { AgentChatHeader } from './AgentChatHeader'
 import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
@@ -166,9 +167,58 @@ interface AgentChatViewProps {
   sessionLoading?: boolean
   /** The URL names a session the server does not have. */
   sessionNotFound?: boolean
+  /**
+   * A phone: the screen is a navigation stack, Sessions (the sidebar as a
+   * page) with this chat pushed over it. ``atSessions``: the list is on top.
+   * ``onBack``: up to Sessions (‹, the edge swipe, Android Back).
+   */
+  phoneStack?: { atSessions: boolean; onBack: () => void }
 }
 
-export function AgentChatView({ sessionId, workspace = null, sessionLoading = false, sessionNotFound = false }: AgentChatViewProps) {
+interface ChatFrameProps {
+  phoneStack?: { atSessions: boolean; onBack: () => void }
+  /** The phone's edge swipe and Back may pop to Sessions. */
+  backEnabled: boolean
+  header: React.ReactNode
+  sidebar: React.ReactNode
+  footer: React.ReactNode
+  /** The chat column and the Review panel. */
+  children: React.ReactNode
+}
+
+/**
+ * The workbench around the chat. Desktop: the header, the sidebar beside
+ * the chat, the status bar. A phone: a navigation stack, the sidebar as the
+ * Sessions screen with the chat, header and all, pushed over it.
+ */
+function ChatFrame({ phoneStack, backEnabled, header, sidebar, footer, children }: ChatFrameProps) {
+  const body = <div className="relative flex min-h-0 flex-1 overflow-hidden">{children}</div>
+  if (!phoneStack) {
+    return (
+      <>
+        {header}
+        <div className="relative flex min-h-0 flex-1 overflow-hidden">
+          {sidebar}
+          {children}
+        </div>
+        {footer}
+      </>
+    )
+  }
+  return (
+    <div className="relative min-h-0 flex-1">
+      <PhoneStack
+        root={sidebar}
+        page={<div className="flex h-full flex-col">{header}{body}</div>}
+        pushed={!phoneStack.atSessions}
+        onBack={phoneStack.onBack}
+        backEnabled={backEnabled}
+      />
+    </div>
+  )
+}
+
+export function AgentChatView({ sessionId, workspace = null, sessionLoading = false, sessionNotFound = false, phoneStack }: AgentChatViewProps) {
   const navigate = useNavigate()
   const openSettings = useSettingsStore((s) => s.openSettings)
   const pushToast = useToastStore((s) => s.push)
@@ -227,10 +277,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         leadCompletionTokens: leadStream?.usage.completionTokens ?? 0,
         leadCachedTokens: leadStream?.usage.cachedTokens ?? 0,
         leadCachedPercent: leadStream?.usage.cachedPercent,
-        sessionCostUsd: Math.round(s.agentNames.reduce(
-          (total, name) => total + (s.agentStreams[name]?.usage.estimatedCostUsd ?? 0),
-          0,
-        ) * 1e8) / 1e8,
       }
     })
   )
@@ -262,7 +308,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     leadCompletionTokens,
     leadCachedTokens,
     leadCachedPercent,
-    sessionCostUsd,
   } = storeState
 
 
@@ -340,6 +385,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     edgeSwipeHandlers,
   } = useOverlayState({
     isMobile,
+    phoneStack,
     workspace,
     toggleScheduler,
     toggleRunPicker,
@@ -460,7 +506,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     cachedPercent: leadCachedPercent,
     trigger: summaryTriggerTokens,
     pulsing: isAgentWorking,
-    sessionCostUsd,
   }
 
   const {
@@ -589,7 +634,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         giveBack()
         break
       case 'attachments':
-        pushToast({ tone: 'error', title: 'Side questions can’t include attachments', description: 'Remove the files, or send them as a normal message.' })
+        pushToast({ tone: 'error', title: "Side questions can't include attachments", description: 'Remove the files, or send them as a normal message.' })
         giveBack()
         break
       case 'reopen':
@@ -762,7 +807,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           : composerMode === 'plan'
             // Says what Plan mode does before the first message does it.
             ? 'Plan mode: the agent reads and proposes a plan, without editing files…'
-            : isChatWorkspace ? 'Ask anything…' : `Ask anything in ${workspaceName}…`
+            : 'Ask anything…'
       }
       capabilities={leadCapabilities}
       // A switch requested mid-turn is queued server-side, so the toggle
@@ -789,7 +834,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           input={headerTokens.input}
           output={headerTokens.output}
           cachedPercent={headerTokens.cachedPercent}
-          sessionCostUsd={headerTokens.sessionCostUsd}
           trigger={headerTokens.trigger}
           canSummarize={leadHasVisibleBlocks && !isAgentWorking}
         />
@@ -829,17 +873,22 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       {isDraggingFile && (
         <div className="pointer-events-none fixed inset-0 z-50 p-4 drag-overlay-enter">
           <div className="w-full h-full rounded-lg border-2 border-dashed border-(--color-accent)/30 bg-(--bg-card)/80 backdrop-blur-xs reduce-transparency:bg-(--bg-card) reduce-transparency:backdrop-blur-none flex flex-col items-center justify-center gap-2 drag-card-enter">
-            <FileUp size={24} className="text-(--color-accent) oa-breathe" />
+            <FileUp size={16} className="text-(--color-accent) oa-breathe" />
             <span className="text-sm font-medium text-(--color-text)">
               Drop files to attach
             </span>
           </div>
         </div>
       )}
-      {/* 36 px header above the sidebar/content row. On macOS Tauri it
-          doubles as the window drag region via useTauriDrag, with a
-          70 px left inset reserved for the OS traffic-lights. */}
-        <AgentChatHeader
+      <ChatFrame
+        phoneStack={phoneStack}
+        // The Review panel and a file sheet cover the chat on a phone, and
+        // close by their own swipe and Back first.
+        backEnabled={workspacePanel === null && fileViewer === null}
+        // 36 px header above the sidebar/content row. On macOS Tauri it
+        // doubles as the window drag region via useTauriDrag, with a 70 px
+        // left inset reserved for the OS traffic-lights.
+        header={<AgentChatHeader
           dragHandlers={dragHandlers}
           isMacOverlay={isMacOverlay}
           isMobile={isMobile}
@@ -848,21 +897,18 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           sessionTitle={sessionTitle}
           onOpenLead={parentSessionId ? handleOpenLead : undefined}
           onSidebarToggle={handleSidebarToggle}
+          onBack={phoneStack?.onBack}
           sessionId={sessionIdState}
           todos={todos}
           onToggleTasks={handleToggleTasks}
           tasksViewActive={dockViewsEnabled ? workspacePanel !== null && dockActiveView === 'tasks' : showTodos}
           goalState={headerGoalState}
           workspacePanel={workspacePanel}
-
-        onWorkspaceFiles={handleWorkspaceFiles}
-      />
-
-      {/* Body row — sidebar + main content column. On
-          mobile the Sidebar is position:fixed (overlay drawer), so it
-          takes no space here and the main column is always full-width. */}
-      <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        <Sidebar
+          onWorkspaceFiles={handleWorkspaceFiles}
+        />}
+        // Beside the chat on desktop. A narrow window's drawer is
+        // position:fixed and takes no room; a phone's is the Sessions screen.
+        sidebar={<Sidebar
             currentSessionId={sessionIdState || undefined}
             workspace={workspace}
             draftWorkspace={sessionId ? null : workspace}
@@ -872,14 +918,23 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             desktopCollapsed={sidebarDrawer ? !sidebarDrawerOpen : sidebarCollapsed}
             drawer={sidebarDrawer}
             dockOpen={Boolean(workspace) && workspacePanel !== null}
-            mobileOpen={mobileSidebarOpen}
+            page={Boolean(phoneStack)}
+            mobileOpen={phoneStack ? phoneStack.atSessions : mobileSidebarOpen}
             onOpenPalette={handleTogglePalette}
+            onOpenScheduler={handleToggleScheduler}
             onMobileClose={() => {
               setMobileSidebarOpen(false)
               setSidebarDrawerOpen(false)
             }}
-        />
-
+        />}
+        footer={<AppFooter
+          workspace={workspace}
+          chatWorkspace={isChatWorkspace}
+          sessionId={sessionIdState}
+          sessionFastMode={storeState.sessionFastMode}
+          onOpenGitChanges={workspace && !isChatWorkspace ? handleOpenGit : undefined}
+        />}
+      >
         <div ref={centerRef} data-workbench-center="" className="relative flex min-w-0 flex-1 overflow-hidden">
         <main
           id="main"
@@ -921,7 +976,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
             <div>
-              <h2 className="text-sm font-medium text-(--color-text)">
+              <h2 className="text-base font-semibold text-(--color-text)">
                 {isChatWorkspace ? 'Opening chat…' : 'Opening session…'}
               </h2>
               <p className="mt-1 text-xs text-(--color-text-muted)">
@@ -935,7 +990,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
             <div>
-              <h2 className="text-sm font-medium text-(--color-text)">
+              <h2 className="text-base font-semibold text-(--color-text)">
                 {isChatWorkspace ? 'Opening chat…' : 'Opening workspace…'}
               </h2>
               <p className="mt-1 text-xs text-(--color-text-muted)">
@@ -1090,15 +1145,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           )}
         </AnimatePresence>
         </div>
-      </div>
-
-      <AppFooter
-        workspace={workspace}
-        chatWorkspace={isChatWorkspace}
-        sessionId={sessionIdState}
-        sessionFastMode={storeState.sessionFastMode}
-        onOpenGitChanges={workspace && !isChatWorkspace ? handleOpenGit : undefined}
-      />
+      </ChatFrame>
 
       <AgentChatPanels
         showTodos={!dockViewsEnabled && showTodos}

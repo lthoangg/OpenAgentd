@@ -116,6 +116,24 @@ describe('AgentView — prompt navigation', () => {
     unmount()
     expect(useTranscriptFollowStore.getState().jumpToPrompt).toBeNull()
   })
+
+  it('offers Jump to latest once a recall takes the view up from the end', () => {
+    const { container } = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
+    const el = container.querySelector<HTMLElement>('.oa-chat-scroll')!
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => 3000 })
+    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => 600 })
+    layOut(container, { u1: -900, u2: -300, u3: 500 })
+    // Following, at the end.
+    el.scrollTop = 2400
+    act(() => { fireEvent.scroll(el) })
+
+    act(() => useTranscriptFollowStore.getState().showPrompt?.('u1'))
+    // The browser glides there.
+    el.scrollTop = landing(-900) + 1400
+    act(() => { fireEvent.scroll(el) })
+
+    expect(container.querySelector('button[aria-label^="Jump to latest"]')).not.toBeNull()
+  })
 })
 
 /**
@@ -292,6 +310,29 @@ describe('AgentView — previous prompt that is not loaded yet', () => {
     expect(loadOlderUntilPrompt).toHaveBeenCalledTimes(1)
     expect(el.scrollTop).toBe(2_900)
     expect(scrollTo).not.toHaveBeenCalled()
+  })
+
+  it('drops a prompt jump still loading when the reader jumps to the latest', async () => {
+    TOPS = { u1: PROMPT_JUMP_MARGIN, older: -400 }
+    const view = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} jumpToLatestInComposer />)
+    const { el, scrollTo } = scroller(view.container)
+    let finish = () => {}
+    const loadOlderUntilPrompt = mock(() => new Promise<boolean>((resolve) => {
+      finish = () => {
+        view.rerender(<AgentView blocks={[...turn('older'), ...BLOCKS]} currentBlocks={[]} isWorking={false} jumpToLatestInComposer />)
+        resolve(true)
+      }
+    }))
+    useAgentStore.setState({ hasMore: true, loadOlderUntilPrompt })
+    el.scrollTop = 2_000
+
+    act(() => pressPrevious())
+    act(() => useTranscriptFollowStore.getState().jumpToLatest?.())
+    await act(async () => { finish() })
+
+    // The page landing does not take the reader back up to the prompt.
+    const tops = scrollTo.mock.calls.map(([options]) => (options as ScrollToOptions).top)
+    expect(tops.filter((top) => top !== 20_000 - 600)).toEqual([])
   })
 
   it('leaves the scroll-top load alone while the page loads', async () => {

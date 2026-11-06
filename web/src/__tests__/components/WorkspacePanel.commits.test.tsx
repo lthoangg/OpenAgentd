@@ -168,6 +168,28 @@ describe('WorkspacePanel – commit body expand/collapse', () => {
     )
   })
 
+  it('offers Retry when an expanded commit\'s changes fail to load, and Retry reloads them', async () => {
+    const user = userEvent.setup()
+    const previous = globalThis.fetch
+    let failing = true
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/workspace/git/commit-diff') && failing) {
+        return new Response('{"detail":"boom"}', { status: 500, headers: { 'Content-Type': 'application/json' } })
+      }
+      return previous(input, init)
+    }) as typeof fetch
+    await renderCommitsTab()
+    await waitFor(() => expect(screen.getByText('fix: handle null session')).toBeTruthy())
+
+    await user.click(screen.getByText('fix: handle null session'))
+    expect((await screen.findByText("Couldn't load commit changes.")).getAttribute('role')).toBe('alert')
+
+    failing = false
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(screen.queryByText("Couldn't load commit changes.") === null).toBe(true))
+    expect(screen.getByText('No files changed in this commit.')).toBeTruthy()
+  })
+
   it('hides the body again when the expanded card is collapsed', async () => {
     const user = userEvent.setup()
     await renderCommitsTab()

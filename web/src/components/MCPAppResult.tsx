@@ -416,7 +416,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
           className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-xs md:text-meta uppercase tracking-wide transition-colors hover:bg-(--color-fill-key-hover) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
           aria-label={`Open ${title} fullscreen`}
         >
-          <Maximize2 size={11} aria-hidden /> MCP App
+          <Maximize2 size={12} aria-hidden /> MCP App
         </button>
       </div>
       {error && (
@@ -440,12 +440,12 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
             className="absolute right-4 top-4 flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm bg-(--bg-card) text-(--color-text) shadow-(--shadow-depth) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none [[data-mobile-shell]_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
             aria-label="Close fullscreen MCP app"
           >
-            <X size={16} aria-hidden />
+            <X size={14} aria-hidden />
           </button>
         ) : null}
       </div>
       <p className={isFullscreen ? 'hidden' : 'flex items-center gap-1 font-mono text-xs md:text-meta text-(--color-text-muted)'}>
-        <ExternalLink size={11} aria-hidden />
+        <ExternalLink size={12} aria-hidden />
         Experimental sandbox: app can render and receive the initial tool input/result; app tool calls stay bound to this artifact and its MCP server's current advertised tools.
       </p>
     </div>

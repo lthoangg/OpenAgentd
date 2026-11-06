@@ -336,7 +336,7 @@ function ModelRow({
             savingVisibleModels && 'opacity-50 cursor-not-allowed',
           )}
         >
-          {savingVisibleModels && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
+          {savingVisibleModels && <Loader2 size={12} className="animate-spin" aria-hidden="true" />}
           {selected ? 'Shown' : 'Hidden'}
         </button>
       )}
@@ -352,7 +352,7 @@ function ModelRow({
               aria-label={`Copy ${qualifiedId}`}
               className="flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-card) hover:text-(--color-text) pointer-coarse:size-9"
             >
-              <Copy size={11} aria-hidden="true" />
+              <Copy size={12} aria-hidden="true" />
             </button>
           }
         />

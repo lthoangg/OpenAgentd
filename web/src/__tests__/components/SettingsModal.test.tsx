@@ -1,11 +1,12 @@
 /**
- * SettingsModal — mobile edge-swipe exclusion regression.
+ * SettingsModal — the shell around the section pages: the shared AppOverlay
+ * frame (wide, app-level), the unsaved-changes prompt, phone navigation, nav
+ * search and groups.
  *
- * SettingsModal is a hand-rolled full-screen overlay (not built on the
- * shared `AppOverlay` primitive), so it doesn't get `data-swipe-ignore`
- * for free. Without it, `useEdgeSwipe` (attached on the outer app shell)
- * would read a touch-drag on top of the open Settings modal as an
- * edge-swipe gesture for the sidebar/actions drawer underneath.
+ * The panel and its backdrop carry `data-swipe-ignore` (from AppOverlay).
+ * Without it, `useEdgeSwipe` (attached on the outer app shell) would read a
+ * touch-drag on top of the open Settings modal as an edge-swipe gesture for
+ * the sidebar/actions drawer underneath.
  *
  * Child route pages are stubbed — this test only cares about the modal
  * shell (backdrop + panel), not section content.
@@ -22,6 +23,10 @@ mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 // in the normal-motion environment they were written for.
 let reduceMotion = false
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => reduceMotion }))
+
+// A phone: the sheet's iOS bar and the list → section stack. Off by default.
+let phone = false
+mock.module('@/hooks/use-is-phone', () => ({ useIsPhone: () => phone }))
 
 // Prop-capturing framer stub — setup.ts's global stub strips the animation
 // props these tests need to inspect. `data-*` still reaches the DOM so the
@@ -76,6 +81,7 @@ afterEach(() => {
   useSettingsStore.setState({ open: false, section: 'about', selectedName: null, mobileView: 'index', dirtyDrafts: {}, pendingNavigation: null })
   captured.length = 0
   reduceMotion = false
+  phone = false
 })
 
 function renderModal() {
@@ -146,7 +152,7 @@ describe('SettingsModal — phone navigation', () => {
     renderModal()
 
     expect(screen.getByRole('navigation', { name: 'Settings sections' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Back to settings' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Back to Settings' })).toBeNull()
 
     act(() => useSettingsStore.getState().setSection('providers'))
     expect(screen.queryByRole('navigation', { name: 'Settings sections' })).toBeNull()
@@ -158,13 +164,55 @@ describe('SettingsModal — phone navigation', () => {
     act(() => useSettingsStore.getState().openSettings('skills-edit', 'review'))
     renderModal()
 
-    act(() => screen.getByRole('button', { name: 'Back to list' }).click())
+    act(() => screen.getByRole('button', { name: 'Back to Skills' }).click())
     expect(useSettingsStore.getState().section).toBe('skills')
     expect(useSettingsStore.getState().mobileView).toBe('section')
 
-    act(() => screen.getByRole('button', { name: 'Back to settings' }).click())
+    act(() => screen.getByRole('button', { name: 'Back to Settings' }).click())
     expect(useSettingsStore.getState().mobileView).toBe('index')
     expect(screen.getByRole('navigation', { name: 'Settings sections' })).toBeTruthy()
+  })
+})
+
+describe('SettingsModal — one overlay frame', () => {
+  it('is the shared AppOverlay card: wide, and mounted at the app level', () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    const panel = screen.getByRole('dialog', { name: 'Settings' })
+    expect(panel.className).toContain('app-overlay-modal')
+    expect(panel.className).not.toContain('settings-modal-shell')
+    expect(panel.getAttribute('data-overlay-level')).toBe('app')
+    expect(panel.style.getPropertyValue('--overlay-max-width')).toBe('76rem')
+  })
+
+  it('keeps the root the pages scope their shortcuts to inside the panel', () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    const root = document.querySelector('[data-settings-modal]')
+    expect(root).not.toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Settings' }).contains(root)).toBe(true)
+    expect(root?.contains(screen.getByRole('navigation', { name: 'Settings categories' }))).toBe(true)
+  })
+
+  it('asks "Discard changes?" before leaving unsaved settings: Cancel and Discard changes, no ×', () => {
+    useSettingsStore.setState({ open: true, section: 'general', selectedName: null, dirtyDrafts: { general: true } })
+    renderModal()
+
+    act(() => useSettingsStore.getState().closeSettings())
+    const prompt = screen.getByRole('dialog', { name: 'Discard changes?' })
+    expect(useSettingsStore.getState().open).toBe(true)
+    expect(within(prompt).queryByRole('button', { name: 'Close' })).toBeNull()
+    expect(within(prompt).queryByRole('button', { name: 'Keep editing' })).toBeNull()
+
+    act(() => within(prompt).getByRole('button', { name: 'Cancel' }).click())
+    expect(useSettingsStore.getState().pendingNavigation).toBeNull()
+    expect(useSettingsStore.getState().open).toBe(true)
+
+    act(() => useSettingsStore.getState().closeSettings())
+    act(() => within(screen.getByRole('dialog', { name: 'Discard changes?' })).getByRole('button', { name: 'Discard changes' }).click())
+    expect(useSettingsStore.getState().open).toBe(false)
   })
 })
 
@@ -178,7 +226,8 @@ describe('SettingsModal — prefers-reduced-motion', () => {
     useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
     renderModal()
 
-    expect(findPanel()!.initial).toEqual({ opacity: 0, scale: 0.98, y: 4 })
+    // The shared overlay's motion: settles in from 96%, lifting 6px.
+    expect(findPanel()!.initial).toEqual({ opacity: 0, scale: 0.96, y: 6 })
   })
 
   it('fades the panel in with no scale or translate when reduced motion is set', () => {
@@ -188,9 +237,8 @@ describe('SettingsModal — prefers-reduced-motion', () => {
 
     const panel = findPanel()!
     expect(panel.initial).toEqual({ opacity: 0 })
-    expect(panel.animate).toEqual({ opacity: 1 })
-    expect(panel.exit).toEqual({ opacity: 0 })
-    expect(panel.transition).toMatchObject({ duration: 0 })
+    expect(panel.animate).toMatchObject({ opacity: 1, transition: { duration: 0 } })
+    expect(panel.exit).toMatchObject({ opacity: 0, transition: { duration: 0 } })
   })
 })
 
@@ -336,5 +384,63 @@ describe('SettingsModal — one name for the server section', () => {
     const nav = within(screen.getByRole('navigation', { name: 'Settings categories' }))
     expect(nav.getByRole('button', { name: 'Retention' })).toBeTruthy()
     expect(nav.queryByRole('button', { name: 'Data retention' })).toBeNull()
+  })
+})
+
+describe('SettingsModal — on a phone', () => {
+  it('closes with Done, the sheet\'s own word, instead of ×', () => {
+    phone = true
+    useSettingsStore.setState({ open: false })
+    act(() => useSettingsStore.getState().openSettings())
+    renderModal()
+
+    expect(screen.queryByRole('button', { name: 'Close settings' })).toBeNull()
+    act(() => screen.getByRole('button', { name: 'Done' }).click())
+    expect(useSettingsStore.getState().open).toBe(false)
+  })
+
+  it('pushes a section over the list, which stays mounted under it', () => {
+    phone = true
+    useSettingsStore.setState({ open: false })
+    act(() => useSettingsStore.getState().openSettings())
+    renderModal()
+
+    const stack = document.querySelector('[data-settings-modal] [data-phone-stack]')
+    expect(stack).not.toBeNull()
+    expect(document.querySelector('[data-phone-stack-page]')?.hasAttribute('inert')).toBe(true)
+
+    act(() => useSettingsStore.getState().setSection('providers'))
+    expect(document.querySelector('[data-phone-stack-page]')?.hasAttribute('inert')).toBe(false)
+    expect(screen.getByRole('heading', { name: 'Providers' })).toBeTruthy()
+    // The list is still there, under the section, for the pop.
+    expect(screen.getByRole('navigation', { name: 'Settings sections', hidden: true })).toBeTruthy()
+  })
+
+  it('names the list it goes back to: ‹ Settings', () => {
+    phone = true
+    useSettingsStore.setState({ open: false })
+    act(() => useSettingsStore.getState().openSettings())
+    renderModal()
+    act(() => useSettingsStore.getState().setSection('providers'))
+
+    const back = screen.getByRole('button', { name: 'Back to Settings' })
+    expect(back.textContent).toBe('Settings')
+    act(() => back.click())
+    expect(useSettingsStore.getState().mobileView).toBe('index')
+  })
+
+  it('climbs back to the list on Escape (Android Back) before it closes', () => {
+    phone = true
+    useSettingsStore.setState({ open: false })
+    act(() => useSettingsStore.getState().openSettings())
+    renderModal()
+    act(() => useSettingsStore.getState().setSection('providers'))
+
+    act(() => { fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' }) })
+    expect(useSettingsStore.getState().open).toBe(true)
+    expect(useSettingsStore.getState().mobileView).toBe('index')
+
+    act(() => { fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' }) })
+    expect(useSettingsStore.getState().open).toBe(false)
   })
 })

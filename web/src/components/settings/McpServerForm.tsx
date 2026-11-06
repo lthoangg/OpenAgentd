@@ -367,7 +367,7 @@ function PairListField({
           disabled={disabled}
           aria-label={`Add ${label.toLowerCase()}`}
         >
-          <Plus size={11} aria-hidden="true" />
+          <Plus size={12} aria-hidden="true" />
           Add
         </Button>
       </div>

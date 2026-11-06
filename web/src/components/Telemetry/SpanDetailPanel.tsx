@@ -41,7 +41,7 @@ function CopyAttrButton({ value, label }: { value: string; label: string }) {
       onClick={() => void copy(value)}
       className="inline-flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:size-9 pointer-coarse:opacity-100"
     >
-      {done ? <Check size={11} aria-hidden="true" /> : <Copy size={11} aria-hidden="true" />}
+      {done ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
     </button>
   )
 }

@@ -9,6 +9,7 @@
  * header pins just below it instead of covering it.
  */
 import { useLayoutEffect, useRef, useState } from 'react'
+import { shiftTranscriptView } from './useAutoFollowScroll'
 
 /**
  * Classes for an open fold's header; add the fill of the surface it sits on
@@ -51,7 +52,9 @@ export function useCloseInPlace<T extends HTMLElement = HTMLButtonElement>(open:
     if (open || top === null || !anchor) return
     const transcript = scrollContainer(anchor)
     const shift = anchor.getBoundingClientRect().top - top
-    if (transcript && shift !== 0) transcript.scrollTop += shift
+    // Through the transcript's follow hook: the shift is the fold's, not the
+    // reader scrolling up, so it neither stops following nor shows the chip.
+    if (transcript && shift !== 0) shiftTranscriptView(transcript, shift)
   }, [open])
 
   return { anchorRef, markClose }

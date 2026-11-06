@@ -20,6 +20,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { formatCompactDate } from '@/utils/format'
 
 interface DateTimePickerProps {
   /** ISO-8601 local string: "2026-04-23T14:30" or empty string / undefined */
@@ -126,7 +127,7 @@ export function DateTimePicker({
     if (match) emitChange(parsed, Number(match[1]), Number(match[2]))
   }
 
-  const displayLabel = parsed ? format(parsed, 'dd/MM/yyyy HH:mm') : placeholder
+  const displayLabel = parsed ? `${formatCompactDate(parsed)}, ${format(parsed, 'HH:mm')}` : placeholder
 
   return (
     <div className={cn('flex items-center', className)}>

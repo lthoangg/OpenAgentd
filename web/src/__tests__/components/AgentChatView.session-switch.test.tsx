@@ -84,7 +84,7 @@ mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }
 // Stands in for the header: its lead button shows exactly when the view passes a handler.
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
   AgentChatHeader: ({ onOpenLead }: { onOpenLead?: () => void }) => (
-    onOpenLead ? <button type="button" aria-label="Open the lead agent" onClick={onOpenLead} /> : null
+    onOpenLead ? <button type="button" aria-label="Open the main agent" onClick={onOpenLead} /> : null
   ),
 }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
@@ -180,6 +180,20 @@ describe('AgentChatView — switching sessions', () => {
     expect(screen.queryByTestId('transcript')).toBeNull()
   })
 
+  it('sets the opening screens\' titles as page titles: text-base font-semibold', () => {
+    const expectPageTitle = (title: HTMLElement) => {
+      expect(title.className.split(' ')).toEqual(expect.arrayContaining(['text-base', 'font-semibold']))
+      expect(title.className).not.toMatch(/font-medium|text-sm/)
+    }
+    const { unmount } = render(<AgentChatView sessionId="session-b" workspace={null} sessionLoading />)
+    expectPageTitle(screen.getByText('Opening session…'))
+    unmount()
+
+    agentsLoading = true
+    render(<AgentChatView workspace="/repo/b" />)
+    expectPageTitle(screen.getByText('Opening workspace…'))
+  })
+
   it('keeps the chat while another workspace\'s agents load', () => {
     agentsLoading = true
     useAgentStore.setState({ sessionId: 'session-b', _workspace: '/repo/b' })
@@ -250,7 +264,7 @@ describe('AgentChatView — switching sessions', () => {
     useAgentStore.setState({ sessionId: 'session-sub', parentSessionId: 'session-main', _workspace: '/repo/b' })
     render(<AgentChatView sessionId="session-sub" workspace="/repo/b" />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open the lead agent' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open the main agent' }))
     expect(navigateMock).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'session-main' } })
     navigateMock.mockClear()
     fireEvent.click(screen.getByRole('button', { name: 'Return to main agent' }))
@@ -261,6 +275,6 @@ describe('AgentChatView — switching sessions', () => {
     useAgentStore.setState({ sessionId: 'session-b', _workspace: '/repo/b' })
     render(<AgentChatView sessionId="session-b" workspace="/repo/b" />)
 
-    expect(screen.queryByRole('button', { name: 'Open the lead agent' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Open the main agent' })).toBeNull()
   })
 })

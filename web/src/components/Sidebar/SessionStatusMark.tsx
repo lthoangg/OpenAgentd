@@ -51,14 +51,16 @@ export function sessionStateWord(status: SessionStatus): string | null {
 /**
  * A session's state as a word, for the row's meta slot in place of its age.
  * Decorative for assistive tech: the status mark carries the same state in
- * its label. ``className`` adds visibility rules for the row.
+ * its label. ``className`` adds visibility rules for the row. It is a status
+ * word, so ``text-subhead``: the same size as ``text-meta`` on desktop, 15px
+ * (where an age or a caption is 13px) on a phone.
  */
 export function SessionStateWord({ status, className = '' }: { status: SessionStatus; className?: string }) {
   if (status === 'idle') return null
   return (
     <span
       data-session-state={status}
-      className={`shrink-0 whitespace-nowrap px-1 text-meta ${STATE_WORD_TONES[status]} ${className}`}
+      className={`shrink-0 whitespace-nowrap px-1 text-subhead ${STATE_WORD_TONES[status]} ${className}`}
       aria-hidden="true"
     >
       {STATE_WORDS[status]}
@@ -84,9 +86,9 @@ export function SessionStatusMark({ status, label }: { status: SessionStatus; la
         {status === 'needs_input' && (
           <span className="text-meta font-bold leading-none text-(--accent-orange-text)" aria-hidden="true">!</span>
         )}
-        {status === 'running' && <Loader2 size={11} className="animate-spin text-(--color-accent)" aria-hidden="true" />}
+        {status === 'running' && <Loader2 size={12} className="animate-spin text-(--color-text-2)" aria-hidden="true" />}
         {status === 'unread' && <span className="size-1.5 rounded-full bg-(--color-accent)" aria-hidden="true" />}
-        {status === 'failed' && <X size={11} strokeWidth={2.5} className="text-(--color-error)" aria-hidden="true" />}
+        {status === 'failed' && <X size={12} strokeWidth={2.5} className="text-(--color-error)" aria-hidden="true" />}
       </IconSwap>
     </span>
   )

@@ -48,6 +48,24 @@ describe('CommitTabView — default expansion', () => {
   })
 })
 
+describe('CommitTabView — loading', () => {
+  const originalFetch = globalThis.fetch
+  afterEach(() => { globalThis.fetch = originalFetch })
+
+  // Rulebook 10: loading is a skeleton shaped like the file list, not text.
+  it('shows file rows named "Loading commit changes" under the commit header', () => {
+    globalThis.fetch = mock(() => new Promise<Response>(() => {})) as unknown as typeof fetch
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { container } = render(<QueryClientProvider client={client}><CommitTabView workspace="/w" commit={commit} /></QueryClientProvider>)
+
+    // The header is there already: it needs nothing from the diff.
+    expect(screen.getByText('Update deps')).toBeTruthy()
+    const loading = screen.getByRole('status', { name: 'Loading commit changes' })
+    expect(loading.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThanOrEqual(3)
+    expect(container.textContent).not.toContain('Loading commit changes')
+  })
+})
+
 describe('CommitTabView — load failure', () => {
   const originalFetch = globalThis.fetch
   afterEach(() => { globalThis.fetch = originalFetch })
@@ -61,12 +79,12 @@ describe('CommitTabView — load failure', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={client}><CommitTabView workspace="/w" commit={commit} /></QueryClientProvider>)
 
-    expect(await screen.findByText('Failed to load commit changes.')).toBeTruthy()
+    expect(await screen.findByText("Couldn't load commit changes.")).toBeTruthy()
     fail = false
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 
     // A boolean: a failing toBeNull pretty-prints the element on every retry.
-    await waitFor(() => expect(screen.queryByText('Failed to load commit changes.') === null).toBe(true))
+    await waitFor(() => expect(screen.queryByText("Couldn't load commit changes.") === null).toBe(true))
     expect(screen.getByRole('button', { name: /a\.ts/ })).toBeTruthy()
   })
 })

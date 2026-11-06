@@ -5,6 +5,8 @@
  */
 import type { ProviderInfo, ProviderUsageLimit, ProviderUsageResponse, StoredCredential } from '@/api/client'
 import { formatUsageAmount } from '@/lib/usage-format'
+import { windowLabel } from '@/tray/providerView'
+import { formatResetIn } from '@/tray/usage'
 
 /** `provider:model` split for display; an id without a provider keeps it all as the model. */
 export function splitModelId(id: string): { provider: string; model: string } {
@@ -78,112 +80,174 @@ export function accountChoices(provider: ProviderInfo | undefined): StoredCreden
   return enabled.length >= 2 ? enabled : null
 }
 
-export type QuotaTone = 'muted' | 'warning' | 'error'
+/** An account a request can go to now. */
+const usable = (c: StoredCredential) => c.status === 'ready'
 
 /**
- * What is left of an account's quota, in one short phrase for a picker row.
- * `detail` carries what the phrase leaves out (a balance, a spend cap) for the
- * row's tooltip.
+ * The account a session runs on, for the run chip and the picker. A locked
+ * account while it has room; else the one that last answered (`servedLabel`,
+ * the newest account a turn or a switch named) or the provider's account in
+ * use, whichever has room; else the first account with room. With every
+ * account limited, the lock or the provider's choice, as the next request
+ * waits for it.
  */
-export type QuotaSummary =
-  | { kind: 'percent'; left: number; tone: QuotaTone; detail?: string; note?: string }
-  | { kind: 'spend' | 'credits'; text: string; tone: QuotaTone; detail?: string }
+export function accountInUse(
+  accounts: StoredCredential[] | null,
+  lockedId: string | null,
+  servedLabel: string | null,
+): StoredCredential | null {
+  if (!accounts || accounts.length === 0) return null
+  const locked = lockedId ? accounts.find((c) => c.id === lockedId) ?? null : null
+  const served = servedLabel ? accounts.find((c) => c.label === servedLabel) ?? null : null
+  const shared = accounts.find((c) => c.in_use) ?? null
+  // Unlocked, the next request goes to the provider's shared choice; a lock
+  // that fell through stays on the account the session moved to.
+  const order = locked ? [locked, served, shared] : [shared, served]
+  return order.find((c): c is StoredCredential => c !== null && usable(c))
+    ?? accounts.find(usable)
+    ?? locked ?? shared ?? served ?? accounts[0]
+}
+
+export type QuotaTone = 'muted' | 'warning' | 'error'
+
+/** One limit of an account, as a picker row shows it: `5h 12%`, `$8.20 of $50 used`. */
+export interface QuotaSegment {
+  text: string
+  tone: QuotaTone
+  /** The long form for the row's tooltip, with its reset time when known. */
+  detail: string
+}
+
+/** An account's limits for a picker row, and the tooltip that spells them out. */
+export interface QuotaSegments {
+  segments: QuotaSegment[]
+  /** Every segment's long form, then the limits the row leaves out (another model's). */
+  detail: string
+}
 
 type Spend = NonNullable<ProviderUsageLimit['spend']>
 type Credits = NonNullable<ProviderUsageLimit['credits']>
+type Window = NonNullable<ProviderUsageLimit['primary']>
 
 const finite = (n: number | null | undefined): n is number => typeof n === 'number' && Number.isFinite(n)
-const percentLeft = (used: number) => Math.max(0, Math.round(100 - used))
 /** A bare amount (`$84.50`, `12`): reads as "left". Ratios and notes (`237/300`, `12.40 used`) stay as given. */
 const AMOUNT_RE = /^[^\d/\s]{0,3}\d[\d,]*(\.\d+)?$/
 
-interface SpendReading {
-  text: string
-  tone: QuotaTone
-  /** Percent of the cap left, unrounded; `null` when unknown. */
-  leftPercent: number | null
+/** At or past the limit: red. Close to it: orange. As Settings → Providers colours its bars. */
+const toneOf = (used: number): QuotaTone => (used >= 100 ? 'error' : used >= 90 ? 'warning' : 'muted')
+
+/** A real but sub-percent use reads "<1%", never a false "0%". */
+const percent = (used: number) => (used > 0 && used < 1 ? '<1%' : `${Math.round(Math.min(Math.max(used, 0), 100))}%`)
+
+/** A window as a picker row names it: `5h`, `7d`, `30m`. */
+export function shortWindowLabel(minutes?: number | null): string | null {
+  if (typeof minutes !== 'number' || minutes <= 0) return null
+  if (minutes < 60) return `${minutes}m`
+  if (minutes < 1440) return `${Math.round(minutes / 60)}h`
+  return `${Math.round(minutes / 1440)}d`
 }
 
-function readSpend(spend: Spend): SpendReading | null {
+const resetNote = (resetsAt: number | null | undefined, now: number) => {
+  const text = formatResetIn(resetsAt, now)
+  return text ? text.charAt(0).toLowerCase() + text.slice(1) : null
+}
+
+function windowSegment(window: Window, now: number, name?: string | null): QuotaSegment | null {
+  if (!finite(window.used_percent)) return null
+  const short = shortWindowLabel(window.window_minutes)
+  const long = windowLabel(window.window_minutes)
+  const used = window.used_percent
+  const reached = used >= 100
+  const head = [name, long ? `${long} limit` : 'Limit'].filter(Boolean).join(' ')
+  return {
+    text: short ? `${short} ${percent(used)}` : percent(used),
+    tone: toneOf(used),
+    detail: [reached ? `${head} reached` : `${head} ${percent(used)} used`, resetNote(window.resets_at, now)].filter(Boolean).join(', '),
+  }
+}
+
+function spendSegment(spend: Spend, now: number): QuotaSegment | null {
   const limit = finite(spend.limit) && spend.limit > 0 ? spend.limit : null
-  const remaining = finite(spend.remaining)
-    ? spend.remaining
-    : limit !== null && finite(spend.used)
-      ? Math.max(0, limit - spend.used)
+  const spent = finite(spend.used)
+    ? spend.used
+    : limit !== null && finite(spend.remaining)
+      ? Math.max(0, limit - spend.remaining)
       : null
   const used = finite(spend.used_percent)
     ? spend.used_percent
-    : limit !== null && finite(spend.used)
-      ? (spend.used / limit) * 100
-      : limit !== null && remaining !== null
-        ? (1 - remaining / limit) * 100
-        : null
+    : limit !== null && spent !== null
+      ? (spent / limit) * 100
+      : null
   const fmt = (n: number) => formatUsageAmount(n, spend.currency)
-  const text = limit !== null && remaining !== null ? `${fmt(remaining)} of ${fmt(limit)} left` : used !== null ? `${percentLeft(used)}% left` : null
+  const text = limit !== null && spent !== null ? `${fmt(spent)} of ${fmt(limit)} used` : used !== null ? `Spend ${percent(used)}` : null
   if (text === null) return null
-  const spent = (remaining !== null && remaining <= 0) || (used !== null && used >= 100)
-  return { text, tone: spent ? 'error' : used !== null && used >= 90 ? 'warning' : 'muted', leftPercent: used === null ? null : 100 - used }
+  const tone = spend.reached ? 'error' : toneOf(used ?? 0)
+  const head = spend.reached || (used ?? 0) >= 100 ? 'Spend cap reached' : `Spend cap ${text}`
+  return { text, tone, detail: [head, resetNote(spend.resets_at, now)].filter(Boolean).join(', ') }
 }
 
-function readCredits(credits: Credits): { text: string; tone: QuotaTone } {
+function creditsText(credits: Credits): { text: string; empty: boolean } {
   const balance = credits.balance?.trim() || null
-  if (credits.unlimited) return { text: balance ?? 'Unlimited', tone: 'muted' }
-  if (!credits.has_credits) return { text: 'No credits left', tone: 'error' }
-  if (balance) return { text: AMOUNT_RE.test(balance) ? `${balance} left` : balance, tone: 'muted' }
-  return { text: 'Credits available', tone: 'muted' }
+  if (credits.unlimited) return { text: balance ?? 'Unlimited', empty: false }
+  if (!credits.has_credits) return { text: 'No credits left', empty: true }
+  if (balance) return { text: AMOUNT_RE.test(balance) ? `${balance} left` : balance, empty: false }
+  return { text: 'Credits available', empty: false }
 }
 
 /**
- * The tightest thing known about an account's quota, or `null` when nothing is.
+ * Every limit of an account worth a glance, in the order Settings → Providers
+ * lists them, or `null` when nothing is known.
  *
- * A reached spend cap leads unless a percent window still has room: then the
- * plan's windows still run the account and only its credits are spent, so the
- * window leads with a "no credits" note. Next comes whichever of a spend cap
- * and the percent windows has less left, then credits. Empty credits lead only
- * when there is nothing else: plans without credits report none, beside
- * windows that still have room.
+ * - The windows of the account's main limit (the first): `5h 12% · 7d 64%`.
+ *   Other limits' windows belong to one model (Codex Spark) and go in the
+ *   tooltip, so one model's limit never makes the account look spent.
+ * - A spend cap with figures, from any limit.
+ * - Credits: a balance or unlimited credits. Empty credits only when they
+ *   say something: there are no windows, or a cap was reached (plans without
+ *   credits report none beside windows with room). While a window still has
+ *   room the account runs on, so empty credits are orange, not red.
+ * - A reached cap with no figures and no credits reads "Limit reached".
+ *
+ * A segment at its limit is red, one at 90% or more orange.
  */
-export function quotaSummary(usage: ProviderUsageResponse | undefined): QuotaSummary | null {
+export function quotaSegments(usage: ProviderUsageResponse | undefined, now = Date.now()): QuotaSegments | null {
   const limits = usage?.limits ?? []
+  if (limits.length === 0) return null
+  const [main, ...rest] = limits
 
-  let windowUsed: number | null = null
-  for (const limit of limits) {
-    for (const window of [limit.primary, limit.secondary]) {
-      if (window && Number.isFinite(window.used_percent)) windowUsed = Math.max(windowUsed ?? 0, window.used_percent)
+  const windows = [main.primary, main.secondary]
+    .map((w) => (w ? windowSegment(w, now) : null))
+    .filter((s): s is QuotaSegment => s !== null)
+  const windowRoom = windows.length > 0 && windows.every((s) => s.tone !== 'error')
+
+  const spends = limits.flatMap((l) => (l.spend ? [spendSegment(l.spend, now)] : [])).filter((s): s is QuotaSegment => s !== null)
+  const reached = limits.some((l) => l.spend?.reached)
+
+  const credits = limits.flatMap((l) => (l.credits ? [creditsText(l.credits)] : []))
+  const credit = credits.find((c) => c.empty) ?? credits.find((c) => c.text !== 'Credits available') ?? credits[0] ?? null
+  const creditSegments: QuotaSegment[] = []
+  if (credit) {
+    if (credit.empty) {
+      if (windows.length === 0 || reached) {
+        creditSegments.push({ text: 'No credits left', tone: windowRoom ? 'warning' : 'error', detail: windowRoom ? 'No credits left; the plan limits still have room' : 'No credits left' })
+      }
+    } else if (credit.text !== 'Credits available' || (windows.length === 0 && spends.length === 0)) {
+      creditSegments.push({ text: credit.text, tone: 'muted', detail: `Credits: ${credit.text}` })
     }
   }
 
-  const reached = limits.some((limit) => limit.spend?.reached)
-  let spend: SpendReading | null = null
-  for (const limit of limits) {
-    const reading = limit.spend ? readSpend(limit.spend) : null
-    if (reading && (!spend || (reading.leftPercent ?? 100) < (spend.leftPercent ?? 100))) spend = reading
+  const segments = [...windows, ...spends, ...creditSegments]
+  if (reached && spends.length === 0 && creditSegments.length === 0) {
+    segments.push({ text: 'Limit reached', tone: 'error', detail: 'Spend cap reached' })
   }
+  if (segments.length === 0) return null
 
-  const credits = limits.flatMap((limit) => (limit.credits ? [{ credits: limit.credits, ...readCredits(limit.credits) }] : []))
-  const credit = credits.find((c) => c.tone === 'error') ?? credits.find((c) => c.credits.balance || c.credits.unlimited) ?? credits[0] ?? null
-
-  // Empty credits say nothing a row beside a spend cap or a window needs.
-  const creditBalance = credit?.credits.balance?.trim()
-  const creditDetail = !credit || credit.tone === 'error' ? null : creditBalance ? `Balance ${creditBalance}` : credit.credits.unlimited ? 'Unlimited credits' : null
-  const detailOf = (...parts: (string | null | undefined)[]) => {
-    const text = parts.filter(Boolean).join(' · ')
-    return text ? { detail: text } : {}
-  }
-
-  const windowLeft = windowUsed === null ? null : 100 - windowUsed
-  if (reached && windowUsed !== null && windowUsed < 100) {
-    return { kind: 'percent', left: percentLeft(windowUsed), tone: 'warning', note: 'no credits', detail: 'Spend cap reached' }
-  }
-  if (reached) return { kind: 'spend', text: 'Limit reached', tone: 'error', ...detailOf(creditDetail) }
-  if (spend && (windowLeft === null || (spend.leftPercent !== null && spend.leftPercent < windowLeft))) {
-    return { kind: 'spend', text: spend.text, tone: spend.tone, ...detailOf(creditDetail) }
-  }
-  if (windowUsed !== null) {
-    return { kind: 'percent', left: percentLeft(windowUsed), tone: 'muted', ...detailOf(spend && `Spend cap ${spend.text}`, creditDetail) }
-  }
-  if (credit) return { kind: 'credits', text: credit.text, tone: credit.tone }
-  return null
+  // Other limits' windows (one model's own limit) only in the tooltip.
+  const others = rest.flatMap((l) => [l.primary, l.secondary]
+    .map((w) => (w ? windowSegment(w, now, l.limit_name || l.limit_id) : null))
+    .filter((s): s is QuotaSegment => s !== null)
+    .map((s) => s.detail))
+  return { segments, detail: [...segments.map((s) => s.detail), ...others].join(' · ') }
 }
 // ── Recent models ───────────────────────────────────────────────────────────
 

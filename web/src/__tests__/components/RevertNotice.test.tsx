@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { RevertNotice } from '@/components/RevertNotice'
+import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
 
 afterEach(cleanup)
 
@@ -130,6 +131,9 @@ describe('RevertNotice', () => {
 
     const frame = screen.getByText(/Undid the last 2 messages/).parentElement as HTMLElement
     expect(frame.className).toContain('border-(--color-border-subtle)')
+    // The transcript's one card token: rounded-sm, not rounded-md.
+    for (const token of TRANSCRIPT_CARD.split(' ')) expect(frame.className.split(/\s+/)).toContain(token)
+    expect(frame.className).not.toContain('rounded-md')
     const bordered = Array.from(container.querySelectorAll('*')).filter((el) => /(?<![\w-:])border(?:-[btlrxy])?(?![\w-])/.test(el.getAttribute('class') ?? ''))
     expect(bordered).toEqual([frame])
   })

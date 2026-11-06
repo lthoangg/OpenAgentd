@@ -66,7 +66,7 @@ function remoteText(load: (sessionId: string, toolCallId: string) => Promise<str
     cache.clear()
     inflight.clear()
   }
-  return { fetchText, useText, clear }
+  return { useText, clear }
 }
 
 /** Output history and ``tool_end`` left out (``toolResultBytes``). */
@@ -79,11 +79,7 @@ export function clearToolResultCache(): void {
   callArguments.clear()
 }
 
-/** The output of a call in the open session, from the cache or the server. */
-export const fetchToolResult = results.fetchText
 /** A call's output that stayed on the server, fetched while the row is open. */
 export const useToolResult = results.useText
-/** The full arguments of a call in the open session. */
-export const fetchToolArguments = callArguments.fetchText
 /** A call's full arguments when history sent them short, fetched while the row is open. */
 export const useToolArguments = callArguments.useText

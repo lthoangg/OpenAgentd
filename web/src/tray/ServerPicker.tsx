@@ -64,7 +64,7 @@ export function ServerPicker({ servers, selected, label, open, active, onOpenCha
       >
         <Server size={12} strokeWidth={2} aria-hidden="true" />
         <span className="picker-name">{label}</span>
-        {choosable && <ChevronDown size={11} strokeWidth={2.2} className="picker-chevron" aria-hidden="true" />}
+        {choosable && <ChevronDown size={12} strokeWidth={2.2} className="picker-chevron" aria-hidden="true" />}
       </button>
       {mounted && (
         <div

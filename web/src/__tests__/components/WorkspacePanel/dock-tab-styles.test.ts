@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'bun:test'
 
 import { listRowSurface } from '@/components/ui/list-row'
-import { DOCK_TAB_STRIP_CLASS, dockTabClass, dockTabCloseClass } from '@/components/WorkspacePanel/dock-tab-styles'
+import { DOCK_TAB_CLOSE_CLASS, DOCK_TAB_STRIP_CLASS, dockTabClass } from '@/components/WorkspacePanel/dock-tab-styles'
 
 describe('Review panel tab strip', () => {
   it('sits on the chrome tone: the page in light, the recessed rail in dark', () => {
@@ -42,7 +42,7 @@ describe('Review panel tab strip', () => {
   // tab's lighter wash and secondary text mark the pane without focus; the
   // words stay readable.
   it('never fades the labels of a pane without focus', () => {
-    for (const classes of [DOCK_TAB_STRIP_CLASS, dockTabClass(true), dockTabClass(false), dockTabCloseClass(true), dockTabCloseClass(false)]) {
+    for (const classes of [DOCK_TAB_STRIP_CLASS, dockTabClass(true), dockTabClass(false), DOCK_TAB_CLOSE_CLASS]) {
       expect(classes).not.toMatch(/(?:^|\s)(?:\[[^\]]*\]:)?opacity-(?:[1-9]\d?)(?:\s|$)/)
     }
   })

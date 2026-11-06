@@ -6,7 +6,8 @@
  * desktop (phones dock it at the bottom), and offers the way back to earlier work:
  * this folder's three latest sessions, under Continue. Other folders are one
  * click away in the folder picker, so there is no second folder list. No
- * starter prompts: the composer is the call to action.
+ * starter prompts, key hints or branch: the composer is the call to action,
+ * and the status bar already shows the branch.
  *
  * ``setup``: until a message could run (no model, or its provider is not
  * connected), the model setup card sits above the composer.
@@ -20,8 +21,7 @@ import type { ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useQuery } from '@tanstack/react-query'
-import { GitBranch } from 'lucide-react'
-import { getCodingWorkspaceStatus, getCodingWorkspaceTree } from '@/api/client'
+import { getCodingWorkspaceTree } from '@/api/client'
 import type { CodingWorkspaceTreeChat, CodingWorkspaceTreeRepository } from '@/api/types'
 import { queryKeys } from '@/queries/keys'
 import { useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
@@ -69,14 +69,6 @@ export function NewSessionScreen({
     staleTime: 30_000,
   })
   const repositories = tree?.repositories ?? NO_REPOSITORIES
-  // Same key and options as the status bar's git chip: no extra request.
-  const { data: status } = useQuery({
-    queryKey: queryKeys.coding.status(workspace),
-    queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace, signal),
-    enabled: !isChat,
-    staleTime: 10_000,
-  })
-  const branch = !isChat && status?.is_git_repo ? status.branch : null
   const { data: here } = useWorkspaceSessionsQuery(workspace)
 
   const recentSessions = (here?.pages.flatMap((page) => page.data) ?? [])
@@ -115,12 +107,6 @@ export function NewSessionScreen({
               onSelect={onSelectWorkspace}
               onOpenFolder={onOpenFolder}
             />
-            {branch && (
-              <span className="inline-flex min-w-0 items-center gap-1 font-mono text-meta text-(--color-text-subtle)">
-                <GitBranch size={11} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
-                <span className="truncate">{branch}</span>
-              </span>
-            )}
           </div>
           {setup && <div className="mx-auto mt-2 w-full max-w-[640px]">{setup}</div>}
           {/* ``text-left``: the hero is centered, and the composer's
@@ -128,12 +114,6 @@ export function NewSessionScreen({
           {composer && <div className="mt-2 w-full text-left">{composer}</div>}
           {leaving && composerPlaceholderHeight !== undefined && (
             <div data-composer-placeholder aria-hidden="true" className="mt-2 w-full" style={{ height: composerPlaceholderHeight }} />
-          )}
-          {!isMobile && (
-            <p className="text-meta text-(--color-text-subtle)" aria-label="Shortcuts">
-              Type <kbd className="font-mono text-(--color-text-muted)">/</kbd> for commands,{' '}
-              <kbd className="font-mono text-(--color-text-muted)">@</kbd> to mention a file
-            </p>
           )}
         </div>
 

@@ -39,6 +39,16 @@
 @custom-variant focus-key (&:focus-visible:not([data-quiet-focus]));
 /* OS "reduce transparency": frosted surfaces turn opaque and drop their blur. */
 @custom-variant reduce-transparency (@media (prefers-reduced-transparency: reduce));
+/* A phone: narrow (or a landscape phone, short) and touch, the same test as
+ * useIsMobile plus a coarse pointer, so a narrow mouse window and a tablet
+ * keep the dense desktop scale (DESIGN.md → Touch density). The block form:
+ * the shorthand splits at the query's comma and reads the landscape half as
+ * a selector, which compiles to an invalid rule. */
+@custom-variant phone {
+  @media (pointer: coarse) and (max-width: 767px), (pointer: coarse) and (max-height: 580px) {
+    @slot;
+  }
+}
 
 /* ─────────────────────────────────────────────────────────────
  * Tailwind @theme — expose design tokens as utilities.
@@ -75,13 +85,23 @@
      * slide or fade names its own duration-(--motion-*). */
     --default-transition-duration: var(--motion-instant);
     --default-transition-timing-function: var(--ease-in-out);
+}
 
-    /* Type scale (DESIGN.md → Typography). Every step is rem times
-     * --oa-text-scale, the Text size setting (Compact 1, Default 13/12,
-     * Large 14/12), so UI text is 12/13/14px and meta 11/12/13px. On iOS the
-     * root font size follows Dynamic Type on top of it. ``meta`` and ``code``
-     * set no line height of their own: they keep the line they sit in. */
+/* Type scale (DESIGN.md → Typography). Every step is rem times
+ * --oa-text-scale, the Text size setting (Compact 1, Default 13/12,
+ * Large 14/12), so UI text is 12/13/14px and meta 11/12/13px. On iOS the
+ * root font size follows Dynamic Type on top of it. ``meta`` and ``code``
+ * set no line height of their own: they keep the line they sit in.
+ *
+ * Not ``inline``: an ``@theme inline`` block writes each value into its
+ * utility (``text-xs`` → ``calc(0.75rem * …)``), so the phone block below,
+ * which redeclares these variables, would change nothing. Here a utility is
+ * ``font-size: var(--text-xs)`` and the phone scale takes effect
+ * (``phone-scale.test.ts`` compiles this file to hold it). */
+@theme {
     --text-meta: calc(0.6875rem * var(--oa-text-scale));
+    /* A row's second line and status words: meta on desktop, 15px on a phone. */
+    --text-subhead: calc(0.6875rem * var(--oa-text-scale));
     --text-xs: calc(0.75rem * var(--oa-text-scale));
     --text-xs--line-height: calc(1 / 0.75);
     --text-code: calc(0.8125rem * var(--oa-text-scale));
@@ -95,18 +115,26 @@
     --text-xl--line-height: calc(1.75 / 1.25);
     --text-2xl: calc(1.5rem * var(--oa-text-scale));
     --text-2xl--line-height: calc(2 / 1.5);
+    /* The phone's page title (Sessions): 34px bold under the navigation bar,
+     * 30px at Compact, 38px at Large. Only a phone screen uses it, so there
+     * is no desktop value. */
+    --text-large-title: calc(2.125rem * var(--oa-phone-scale));
+    --text-large-title--line-height: calc(41 / 34);
 }
 
 /* Text size (stores/useDisplayPrefsStore.ts, set before paint by
  * public/theme-init.js). Default is one step above the old density. */
 :root {
   --oa-text-scale: calc(13 / 12);
+  --oa-phone-scale: 1;
 }
 :root[data-text-size="compact"] {
   --oa-text-scale: 1;
+  --oa-phone-scale: calc(15 / 17);
 }
 :root[data-text-size="large"] {
   --oa-text-scale: calc(14 / 12);
+  --oa-phone-scale: calc(19 / 17);
 }
 
 @layer base {
@@ -397,7 +425,7 @@ html[data-window-caption] .below-window-caption {
 }
 
 @media (max-width: 767px) {
-  html[data-window-caption] .settings-modal-shell {
+  html[data-window-caption] .app-overlay-modal[data-overlay-level="app"] {
     top: calc(var(--spacing-app-header) + 0.5rem);
     height: auto;
   }
@@ -429,10 +457,10 @@ html[data-window-caption] .below-window-caption {
   color: var(--color-error);
 }
 
-/* Settings is an app-level overlay, so its bounds must respect both mobile
-   cutouts/home indicators and the desktop shell header / macOS traffic-light
-   region. Keep this geometry in CSS instead of Tailwind arbitrary classes so
-   every platform gets the same safe-area contract. */
+/* Overlays are positioned by the .app-overlay-* rules below, so their bounds
+   respect both mobile cutouts/home indicators and the desktop shell header /
+   macOS traffic-light region. Keep this geometry in CSS instead of Tailwind
+   arbitrary classes so every platform gets the same safe-area contract. */
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * Header caps (AgentChatHeader, desktop): only the dock cap lines up with its
@@ -450,16 +478,18 @@ html[data-window-caption] .below-window-caption {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * AppOverlay — shared geometry for ALL app overlays except the full-width
- * Settings sheet (which uses .settings-modal-shell below).
+ * AppOverlay — the one frame for every app overlay, Settings and Usage too.
  *
  * Two layout variants are set via data attributes written by <AppOverlay>:
  *   [data-overlay-variant="modal"]  — centred card
- *   [data-overlay-variant="sheet"]  — edge drawer (side in data-overlay-side)
+ *   [data-overlay-variant="palette"] — compact top-aligned card
+ * An overlay mounted at the app root, outside the chat shell (Settings,
+ * Usage), also carries [data-overlay-level="app"]: it fills the phone screen
+ * and follows the soft keyboard through --app-vh itself.
  *
  * Mobile (both variants): edge-to-edge, safe-area insets, tracks soft keyboard.
- * Desktop (md+): modal → centred card capped by --overlay-max-width CSS var;
- *                sheet → anchored to the chosen edge.
+ * Desktop (md+): modal → centred card capped by --overlay-max-width CSS var,
+ *                the same gap below the header as above the status bar.
  * ───────────────────────────────────────────────────────────────────────────── */
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -491,7 +521,8 @@ html[data-window-caption] .below-window-caption {
  *   Rounded corners + border so it reads as a floating sheet.
  *
  * Desktop (≥ 768px):
- *   Centred card. Top below app header + 4vh breathing room, bottom 4vh.
+ *   Centred card. Top below app header + 4vh breathing room, bottom above the
+ *   status bar + 4vh: the same gap on both sides, whatever the content.
  *   Width capped by --overlay-max-width (passed as inline CSS var by AppOverlay).
  *   left:0 + right:0 + margin:auto centres a fixed element without transform.
  *
@@ -510,9 +541,8 @@ html[data-window-caption] .below-window-caption {
   bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
   left: max(0.5rem, env(safe-area-inset-left, 0px));
   height: auto;
-  /* Matches .settings-modal-shell's rounded-lg (--radius-lg) so every
-   * AppOverlay-based panel (Scheduler, Session Settings, Command Palette)
-   * reads as the same family as Settings — the documented visual reference. */
+  /* rounded-lg (--radius-lg) for every AppOverlay-based panel (Scheduler,
+   * Settings, Usage, Session Settings, Command Palette). */
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
 }
@@ -520,13 +550,13 @@ html[data-window-caption] .below-window-caption {
 @media (min-width: 768px) {
   .app-overlay-modal {
     top: calc(var(--spacing-app-header) + 4vh);
-    bottom: 4vh;
+    bottom: calc(var(--spacing-status-bar) + 4vh);
     left: 0;
     right: 0;
-    width: min(90vw, var(--overlay-max-width, 860px));
+    width: min(95vw, var(--overlay-max-width, 860px));
     margin-left: auto;
     margin-right: auto;
-    max-height: calc(100svh - var(--spacing-app-header) - 8vh);
+    max-height: calc(100svh - var(--spacing-app-header) - var(--spacing-status-bar) - 8vh);
   }
 }
 
@@ -539,7 +569,7 @@ html[data-mobile-shell] .app-overlay-modal {
  * Always auto-height (grows with content, never full-screen).
  *
  * Mobile: edge-to-edge horizontally just below the app header + safe-area top.
- * Desktop: centred 480px card, 1.5rem below the app header.
+ * Desktop: centred 600px card, 1.5rem below the app header.
  * ──────────────────────────────────────────────────────────────────────────── */
 .app-overlay-palette {
   position: fixed;
@@ -609,54 +639,49 @@ html[data-mobile-shell][data-keyboard-open] [data-dialog-content] {
   max-height: calc(var(--app-vh, 100svh) - 2rem);
 }
 
-.settings-modal-shell {
-  position: fixed;
-  top: max(0.5rem, env(safe-area-inset-top, 0px));
-  right: max(0.5rem, env(safe-area-inset-right, 0px));
-  bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
-  left: max(0.5rem, env(safe-area-inset-left, 0px));
-  height: calc(100vh - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
-}
-
-@supports (height: 100svh) {
-  .settings-modal-shell {
-    height: calc(100svh - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
+/* ── App-level overlays (Settings, Usage) ────────────────────────────────────
+ * Mounted at the app root, so they are positioned against the window rather
+ * than the chat shell. On a phone the card fills the visible region from the
+ * top inset, and follows the soft keyboard through --app-vh itself (the
+ * shell's transform does not carry it). From 768px up it is the same centred
+ * card as every other modal.
+ *
+ * Touch tablets also carry data-mobile-shell (use-mobile-viewport) but keep
+ * the centred card, so the phone-height rules stay at phone widths: their
+ * height would outrank the card's and push its bottom off screen.
+ * ──────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 767px) {
+  .app-overlay-modal[data-overlay-level="app"] {
+    top: max(0.5rem, env(safe-area-inset-top, 0px));
+    height: calc(100vh - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
   }
 }
 
-/* Phones fill the visible region. Touch tablets also carry data-mobile-shell
- * (use-mobile-viewport) but keep the centred card below, so these stay at
- * phone widths: their height would outrank the card's and push its bottom
- * off screen. */
+@supports (height: 100svh) {
+  @media (max-width: 767px) {
+    .app-overlay-modal[data-overlay-level="app"] {
+      height: calc(100svh - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
+    }
+  }
+}
+
 @media (max-width: 767px) {
-  html[data-mobile-shell] .settings-modal-shell {
+  html[data-mobile-shell] .app-overlay-modal[data-overlay-level="app"] {
     height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
-    transform: translateY(var(--app-vt, 0px));
   }
 
   /* The home indicator is behind the keyboard: drop its inset so the Save bar
    * sits on the keyboard instead of above a dead strip. */
-  html[data-mobile-shell][data-keyboard-open] .settings-modal-shell {
+  html[data-mobile-shell][data-keyboard-open] .app-overlay-modal[data-overlay-level="app"] {
     bottom: 0.5rem;
     height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - 0.5rem);
   }
 }
 
 @media (min-width: 768px) {
-  /* The same gap below the header and above the status bar. */
-  .settings-modal-shell {
-    top: calc(var(--spacing-app-header) + 4vh);
-    right: max(2.5vw, calc((100vw - 76rem) / 2));
-    bottom: calc(var(--spacing-status-bar) + 4vh);
-    left: max(2.5vw, calc((100vw - 76rem) / 2));
-    height: auto;
-    max-height: calc(100vh - var(--spacing-app-header) - var(--spacing-status-bar) - 8vh);
-    transform: none;
-  }
-
   /* A tablet's soft keyboard covers the card's lower part: end it above the
    * keyboard so the Save bar stays reachable. */
-  html[data-mobile-shell][data-keyboard-open] .settings-modal-shell {
+  html[data-mobile-shell][data-keyboard-open] .app-overlay-modal[data-overlay-level="app"] {
     bottom: auto;
     max-height: calc(var(--app-vh, 100svh) - var(--spacing-app-header) - 4vh - 0.5rem);
   }
@@ -689,9 +714,9 @@ html[data-mobile-shell] .mobile-viewport {
  * wastes memory; any repaint inside it can also flicker on iOS. Scope it to
  * the keyboard-open / dismiss-glide windows only. */
 html[data-mobile-shell][data-keyboard-open] .mobile-viewport,
-html[data-mobile-shell][data-keyboard-open] .settings-modal-shell,
+html[data-mobile-shell][data-keyboard-open] .app-overlay-modal[data-overlay-level="app"],
 html[data-mobile-shell][data-vp-anim] .mobile-viewport,
-html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
+html[data-mobile-shell][data-vp-anim] .app-overlay-modal[data-overlay-level="app"] {
   will-change: height, transform;
 }
 
@@ -700,7 +725,7 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
  * full height optimistically, so the shell glides back with a short ease
  * instead of crawling down with iOS's slow keyboard-retract animation. */
 html[data-mobile-shell][data-vp-anim] .mobile-viewport,
-html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
+html[data-mobile-shell][data-vp-anim] .app-overlay-modal[data-overlay-level="app"] {
   transition:
     height var(--motion-base) var(--ease-sheet),
     transform var(--motion-base) var(--ease-sheet);
@@ -1502,6 +1527,90 @@ html[data-app-hidden="true"] *::after {
     content: "";
     position: absolute;
     inset: min(0px, calc((100% - 36px) / 2));
+  }
+}
+
+/* Phone (DESIGN.md → Touch density): Apple's sizes, as a phone app reads.
+   17px for row titles, buttons, menus, fields, chat and bar titles; 15px for
+   a row's second line and code; 13px for times and captions. Rows, the
+   header and every button are 44px (48px in the Android app, Material's
+   size). Text size scales it: Compact 15px, Large 19px; Dynamic Type adds
+   on top through rem. Tablets and narrow mouse windows keep the dense scale. */
+@media (pointer: coarse) and (max-width: 767px), (pointer: coarse) and (max-height: 580px) {
+  :root {
+    --text-meta: calc(0.8125rem * var(--oa-phone-scale));
+    --text-subhead: calc(0.9375rem * var(--oa-phone-scale));
+    --text-xs: calc(1.0625rem * var(--oa-phone-scale));
+    --text-xs--line-height: calc(22 / 17);
+    --text-code: calc(0.9375rem * var(--oa-phone-scale));
+    --text-sm: calc(1.0625rem * var(--oa-phone-scale));
+    --text-sm--line-height: calc(22 / 17);
+    --text-base: calc(1.0625rem * var(--oa-phone-scale));
+    --text-base--line-height: calc(22 / 17);
+    --spacing-list-row: 2.75rem;
+    --spacing-app-header: 2.75rem;
+  }
+  html[data-mobile-shell="android"] {
+    --spacing-list-row: 3rem;
+  }
+  [data-slot="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  html[data-mobile-shell="android"] [data-slot="button"] {
+    min-height: 48px;
+    min-width: 48px;
+  }
+  /* The composer's run deck stays compact on a phone: its controls are
+     36px, as on a tablet, and grow their touch area to 44px (``touch-hit``)
+     rather than their box. Its "+" (a Button) skips the 44px / 48px floor. */
+  :root [data-run-deck] [data-slot="button"] {
+    min-height: 36px;
+    min-width: 36px;
+  }
+  .touch-hit::before {
+    inset: min(0px, calc((100% - 44px) / 2));
+  }
+  .oa-prose a::before,
+  [data-file-ref]::before {
+    inset: calc((100% - 44px) / 2) 0;
+  }
+
+  /* A modal overlay is an iOS sheet: the full width, 10px under the status
+     bar so the screen behind shows above it, flush with the bottom edge (its
+     padding clears the home indicator and a landscape cutout), 12px top
+     corners, no side borders. Each selector restates an AppOverlay rule
+     above at its specificity, later in the file, so it wins. With the
+     keyboard up, an in-shell sheet ends on the keyboard (the shell is its
+     containing block and shrinks to the visible region); an app-level one
+     sizes itself from --app-vh, as the card did. */
+  .app-overlay-modal,
+  .app-overlay-modal[data-overlay-level="app"],
+  html[data-mobile-shell] .app-overlay-modal,
+  html[data-mobile-shell] .app-overlay-modal[data-overlay-level="app"] {
+    top: calc(env(safe-area-inset-top, 0px) + 0.625rem);
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    height: auto;
+    max-height: none;
+    margin: 0;
+    border-width: 1px 0 0;
+    border-radius: 0.75rem 0.75rem 0 0;
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  html[data-mobile-shell][data-keyboard-open] .app-overlay-modal {
+    bottom: 0;
+    padding-bottom: 0;
+  }
+  html[data-mobile-shell][data-keyboard-open] .app-overlay-modal[data-overlay-level="app"] {
+    bottom: auto;
+    height: calc(var(--app-vh, 100svh) - env(safe-area-inset-top, 0px) - 0.625rem);
+    max-height: none;
+    padding-bottom: 0;
   }
 }
 

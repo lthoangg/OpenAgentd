@@ -9,15 +9,27 @@
 import { useEffect, useId, useRef } from 'react'
 import { AtSign, Hash, MessageCircleQuestion, Paperclip, Plus } from 'lucide-react'
 
-import { SessionMcpServers } from '@/components/SessionMcpServers'
+import { Button } from '@/components/ui/button'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
+import type { SheetDetent } from '@/components/ui/_sheet'
 import { MENU_ITEM_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { lazySurface } from '@/lib/lazy-surface'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/useUIStore'
 import { useMcpAttention } from './useMcpAttention'
+
+// The server list shows only once "+" is open: it loads while the app is idle
+// after it starts, or on first open.
+const SessionMcpServers = lazySurface(() => import('@/components/SessionMcpServers'), 'SessionMcpServers')
+
+/**
+ * The phone sheet opens at medium, and a long MCP list pulls it up to large.
+ * With the usual few rows it is shorter than medium and just fits them.
+ */
+const SHEET_DETENTS: SheetDetent[] = ['medium', 'large']
 
 /** What the "+" menu can do to the draft; supplied by the composer. */
 export interface ComposerActions {
@@ -58,16 +70,20 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
   }
 
   const trigger = (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon-sm"
       disabled={disabled}
       aria-label="Add to message"
       aria-haspopup="dialog"
       aria-describedby={attention.summary ? attentionId : undefined}
       onClick={isMobile ? () => setOpen(!open) : undefined}
-      className="relative flex size-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:cursor-not-allowed disabled:opacity-50 md:size-7 pointer-coarse:size-9"
+      // The run deck's steps (InputComposer → Send): explicit, since the
+      // popover trigger a tablet gets carries no button touch floor.
+      className="relative touch-hit aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) md:size-7 pointer-coarse:size-9"
     >
-      <Plus size={15} aria-hidden="true" />
+      <Plus size={14} aria-hidden="true" />
       {attention.summary && (
         <>
           <span
@@ -78,7 +94,7 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
           <span id={attentionId} hidden>{attention.summary}</span>
         </>
       )}
-    </button>
+    </Button>
   )
 
   const content = (
@@ -97,7 +113,7 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
     return (
       <>
         {trigger}
-        <BottomSheet open={open} onClose={() => setOpen(false)} label="Add to message">
+        <BottomSheet open={open} onClose={() => setOpen(false)} label="Add to message" detents={SHEET_DETENTS}>
           <div className="px-2 pb-3">{content}</div>
         </BottomSheet>
       </>

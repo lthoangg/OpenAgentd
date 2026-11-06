@@ -240,7 +240,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
       )}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent>
+        <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Delete &ldquo;{name}&rdquo;?</DialogTitle>
             <DialogDescription>It is removed from mcp.json and its tools stop working. This can&apos;t be undone.</DialogDescription>
@@ -320,7 +320,7 @@ function PluginServerConfig({ server, plugin }: { server: ServerStatus; plugin: 
         </PanelRow>
       )}
       <PanelRow label="Turn on or off" description="The server goes on and off with its plugin.">
-        <Button variant="default" size="sm" onClick={() => setSection('plugins')}>Open Plugins</Button>
+        <Button variant="default" size="sm" onClick={() => setSection('plugins')}>Open plugins</Button>
       </PanelRow>
     </PanelSection>
   )

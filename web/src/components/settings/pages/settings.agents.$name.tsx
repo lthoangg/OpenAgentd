@@ -194,7 +194,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
       />
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent>
+        <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Delete subagent &ldquo;{name}&rdquo;?</DialogTitle>
             <DialogDescription>

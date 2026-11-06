@@ -1,10 +1,10 @@
 import { useId, useState } from 'react'
-import { ChevronRight } from 'lucide-react'
 import { InlineCodeText } from '@/components/InlineCodeText'
 import { Collapsible } from '@/components/ui/collapsible'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
 import { goalTurnReason, type GoalTurnInfo } from '@/lib/goal'
 import { cn } from '@/lib/utils'
+import { TranscriptDivider } from './TranscriptDivider'
 
 /**
  * Where a goal started a turn on its own. Stands in for the user bubble: the
@@ -25,26 +25,13 @@ export function GoalTurnDivider({ info }: { info: GoalTurnInfo }) {
   const [open, setOpen] = useState(false)
   const bodyId = useId()
 
-  const toggle = (
-    <button
-      type="button"
-      onClick={() => setOpen((value) => !value)}
-      aria-expanded={open}
-      aria-controls={bodyId}
-      className="inline-flex min-w-0 items-center gap-1.5 rounded-xs px-1 text-center text-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
-    >
-      <span data-goal-turn-label>
-        {'Goal · turn '}
-        <span className="font-mono tabular-nums">{`${turn}/${maxTurns}`}</span>
-        {reason.short && ` · ${reason.short}`}
-        {last && <span className="text-(--accent-orange-text)">{' · last'}</span>}
-      </span>
-      <ChevronRight
-        size={12}
-        aria-hidden="true"
-        className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ease-(--ease-out)', open && 'rotate-90')}
-      />
-    </button>
+  const label = (
+    <span data-goal-turn-label>
+      {'Goal · turn '}
+      <span className="font-mono tabular-nums">{`${turn}/${maxTurns}`}</span>
+      {reason.short && ` · ${reason.short}`}
+      {last && <span className="text-(--accent-orange-text)">{' · last'}</span>}
+    </span>
   )
 
   return (
@@ -55,25 +42,20 @@ export function GoalTurnDivider({ info }: { info: GoalTurnInfo }) {
       data-goal-turn={turn}
       data-goal-turn-why={info.why ?? 'unknown'}
     >
-      <div className="flex items-center gap-3 select-none">
-        <span aria-hidden="true" className="h-px min-w-4 flex-1 bg-(--color-border)" />
-        <Tooltip className="shrink">
-          <TooltipTrigger render={toggle} />
-          {/* Open, the same words sit under the divider. */}
-          {!open && (
-            <TooltipContent className="max-w-sm leading-relaxed">
-              {/* Plain text on the dark hint: code spans lose their backticks. */}
-              {reason.text.replaceAll('`', '')}
-            </TooltipContent>
-          )}
-        </Tooltip>
-        <span aria-hidden="true" className="h-px min-w-4 flex-1 bg-(--color-border)" />
-      </div>
+      <TranscriptDivider
+        label={label}
+        open={open}
+        onToggle={() => setOpen((value) => !value)}
+        controls={bodyId}
+        // Open, the same words sit under the divider. Plain text on the dark
+        // hint: code spans lose their backticks.
+        hint={open ? null : reason.text.replaceAll('`', '')}
+      />
       <Collapsible open={open}>
         <p
           id={bodyId}
           data-goal-turn-reason
-          className="mx-auto max-w-xl break-words rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-3 py-2 text-xs leading-relaxed text-(--color-text-2) selectable-text"
+          className={cn('mx-auto max-w-xl break-words px-3 py-2 text-xs leading-relaxed text-(--color-text-2) selectable-text', TRANSCRIPT_CARD)}
         >
           <InlineCodeText text={reason.text} />
         </p>

@@ -11,15 +11,23 @@ import { FileLightboxGeneric, triggerDownload, type FileLightboxItem } from '../
 import { FileTypeIcon } from '../FileTypeIcon'
 import { PdfDocumentViewer } from '../PdfDocumentViewer'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
-
-const FAILED = 'flex h-full items-center justify-center text-sm text-(--color-text-muted)'
+import { DockLoadError } from './DockLoadError'
+import { DockLinesSkeleton } from './DockSkeleton'
 
 function ImageView({ item }: { item: FileLightboxItem }) {
   const [error, setError] = useState(false)
-  if (error) return <div className={FAILED}>Failed to load image</div>
+  // Bumped by Retry so the browser requests the image again.
+  const [attempt, setAttempt] = useState(0)
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <DockLoadError message="Couldn't load the image." onRetry={() => { setError(false); setAttempt((n) => n + 1) }} />
+      </div>
+    )
+  }
   return (
     <div className="flex h-full items-center justify-center overflow-auto p-4">
-      <img src={item.src} alt={item.name} decoding="async" onError={() => setError(true)} className="max-h-full max-w-full rounded-sm object-contain" />
+      <img key={attempt} src={item.src} alt={item.name} decoding="async" onError={() => setError(true)} className="max-h-full max-w-full rounded-sm object-contain" />
     </div>
   )
 }
@@ -37,9 +45,11 @@ function TextView({ item }: { item: FileLightboxItem }) {
       .catch(() => { if (!cancelled) setContent('(failed to load)') })
     return () => { cancelled = true }
   }, [item.src, item.textContent])
+  // Until the file arrives: lines where its text will be.
+  if (content === null) return <DockLinesSkeleton label="Loading attachment" lines={6} className="p-4" />
   return (
     <pre ref={scrollRef} className="selectable-text h-full overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-relaxed text-(--color-text) [overflow-wrap:anywhere]">
-      {content ?? 'Loading…'}
+      {content}
     </pre>
   )
 }
@@ -101,14 +111,14 @@ export function AttachmentTabView({ item }: { item: FileLightboxItem }) {
             <TooltipTrigger
               render={
                 <a href={item.src} target="_blank" rel="noopener noreferrer" aria-label="Open in new tab" className={DOCK_ACTION_BUTTON_CLASS}>
-                  <ExternalLink size={13} aria-hidden="true" />
+                  <ExternalLink size={14} aria-hidden="true" />
                 </a>
               }
             />
             <TooltipContent side="bottom">Open in new tab</TooltipContent>
           </Tooltip>
           <ToolbarButton label="Download file" onClick={() => void triggerDownload(item)}>
-            <Download size={13} aria-hidden="true" />
+            <Download size={14} aria-hidden="true" />
           </ToolbarButton>
         </div>
       </div>

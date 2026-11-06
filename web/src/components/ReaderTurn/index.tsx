@@ -31,7 +31,7 @@ import { getToolDisplay } from '../ToolCall/display'
 import { isAgentReport } from '@/utils/turns'
 import { summarizeWork, workSummaryDetail } from './segments'
 
-/** What a running step is doing, as its tool row's tooltip names it. */
+/** What a running step is doing, as its tool row names it. */
 function stepLabel(block: ContentBlock): string {
   if (block.type === 'thinking') return 'Thinking'
   if (isAgentReport(block)) return `Report from ${String(block.extra?.from_agent)}`

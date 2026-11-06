@@ -62,3 +62,10 @@ export const COMPACT_ROW = 'flex min-h-9 items-center gap-3 px-3 py-2 md:min-h-1
  */
 export const OVERLAY_BODY =
   'relative min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y px-3 py-4 md:px-6 md:py-6'
+
+/**
+ * The one bordered card in the transcript (a question, a plan review, a goal
+ * check, the Undo notice): a hairline frame on the card fill, `rounded-sm`.
+ * Add the margin (`my-2`) and any entrance motion at the call site.
+ */
+export const TRANSCRIPT_CARD = 'overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card)'

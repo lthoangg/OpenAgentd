@@ -465,61 +465,26 @@ describe("AgentView — error card details and settings", () => {
     }
   })
 
-  describe("on a session pinned to one account", () => {
-    const pinned = (extra: Record<string, unknown>) => ended(detailed({
+  describe("on a session locked to one account", () => {
+    const failed = (extra: Record<string, unknown>) => ended(detailed({
       title: "Provider Authentication Failed",
-      message: "Work was rejected by the provider. Reconnect it in Settings → Providers, or use Auto for this session.",
+      message: "Every account was rejected by the provider.",
       ...extra,
     }))
 
-    it("offers Reconnect, Use Auto for this session and Choose account on a rejected account", () => {
-      const openSettings = mock((..._args: unknown[]) => {})
-      const openRunPicker = mock((_focus?: unknown) => {})
-      const setSessionRunSettings = mock(async (_patch: unknown) => true)
-      const onRetry = mock(() => {})
-      const originals = { openSettings: useSettingsStore.getState().openSettings, openRunPicker: useUIStore.getState().openRunPicker, set: useAgentStore.getState().setSessionRunSettings }
-      act(() => {
-        useSettingsStore.setState({ openSettings })
-        useUIStore.setState({ openRunPicker })
-        useAgentStore.setState({ sessionCredentialId: "cred-work", setSessionRunSettings })
-      })
-      try {
-        render(<AgentView blocks={pinned({ code: "provider_auth_failed" })} currentBlocks={[]} isWorking={false} onRetry={onRetry} />)
-
-        fireEvent.click(screen.getByRole("button", { name: "Reconnect…" }))
-        expect(openSettings).toHaveBeenCalledWith("providers")
-        expect(screen.queryByRole("button", { name: "Provider settings" })).toBeNull()
-
-        fireEvent.click(screen.getByRole("button", { name: "Choose account…" }))
-        expect(openRunPicker).toHaveBeenCalledWith("model")
-      } finally {
-        act(() => {
-          useSettingsStore.setState({ openSettings: originals.openSettings })
-          useUIStore.setState({ openRunPicker: originals.openRunPicker })
-          useAgentStore.setState({ sessionCredentialId: null, setSessionRunSettings: originals.set })
-        })
-      }
-    })
-
-    it("drops the pin and retries from Use Auto for this session", async () => {
-      const setSessionRunSettings = mock(async (_patch: unknown) => true)
-      const onRetry = mock(() => {})
+    it("keeps the plain actions: a locked account moves on by itself, so there is no Use Auto", () => {
       const original = useAgentStore.getState().setSessionRunSettings
-      act(() => { useAgentStore.setState({ sessionCredentialId: "cred-work", setSessionRunSettings }) })
+      act(() => { useAgentStore.setState({ sessionCredentialId: "cred-work" }) })
       try {
-        render(<AgentView blocks={pinned({ code: "provider_auth_failed" })} currentBlocks={[]} isWorking={false} onRetry={onRetry} />)
-        await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Use Auto for this session" })) })
-        expect(setSessionRunSettings).toHaveBeenCalledWith({ credentialId: null })
-        expect(onRetry).toHaveBeenCalledTimes(1)
+        render(<AgentView blocks={failed({ code: "provider_auth_failed" })} currentBlocks={[]} isWorking={false} onRetry={() => {}} onSwitchModel={() => {}} />)
+        expect(screen.getByRole("button", { name: "Provider settings" })).toBeTruthy()
+        expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy()
+        expect(screen.getByRole("button", { name: "Switch model" })).toBeTruthy()
+        expect(screen.queryByRole("button", { name: /Use Auto/ })).toBeNull()
+        expect(screen.queryByRole("button", { name: "Choose account…" })).toBeNull()
       } finally {
         act(() => { useAgentStore.setState({ sessionCredentialId: null, setSessionRunSettings: original }) })
       }
-    })
-
-    it("keeps the plain actions on a session that runs on Auto", () => {
-      render(<AgentView blocks={pinned({ code: "provider_auth_failed" })} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
-      expect(screen.getByRole("button", { name: "Provider settings" })).toBeTruthy()
-      expect(screen.queryByRole("button", { name: "Use Auto for this session" })).toBeNull()
     })
   })
 })

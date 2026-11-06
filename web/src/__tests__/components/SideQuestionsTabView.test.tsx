@@ -99,10 +99,27 @@ describe('SideQuestionsTabView', () => {
     expect(await screen.findByText('No side questions yet')).toBeTruthy()
   })
 
+  // Rulebook 10: loading is a skeleton, not text, and not "No side questions yet".
+  it('shows text lines named "Loading side questions" until the list arrives', () => {
+    globalThis.fetch = mock(() => new Promise<Response>(() => {})) as unknown as typeof fetch
+    const { container } = renderTab()
+
+    const loading = screen.getByRole('status', { name: 'Loading side questions' })
+    expect(loading.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThanOrEqual(3)
+    expect(container.textContent).not.toContain('Loading side questions')
+    expect(screen.queryByText('No side questions yet')).toBeNull()
+  })
+
+  it('swaps the skeleton for the list once it arrives', async () => {
+    renderTab()
+    expect(await screen.findByText('first answer')).toBeTruthy()
+    expect(screen.queryByRole('status', { name: 'Loading side questions' })).toBeNull()
+  })
+
   it('says why Clear is off while there is nothing to clear', async () => {
     items = []
     renderTab()
-    const clear = await screen.findByRole('button', { name: 'Clear side questions' })
+    const clear = await screen.findByRole('button', { name: 'Clear side questions…' })
     expect((clear as HTMLButtonElement).disabled).toBe(true)
     fireEvent.mouseEnter(clear.parentElement!)
     expect((await screen.findByRole('tooltip')).textContent).toBe('No side questions yet')
@@ -111,7 +128,7 @@ describe('SideQuestionsTabView', () => {
   it('keeps the plain Clear tooltip once there are side questions', async () => {
     renderTab()
     await screen.findByText('question a')
-    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Clear side questions' }).parentElement!)
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Clear side questions…' }).parentElement!)
     expect((await screen.findByRole('tooltip')).textContent).toBe('Delete all side questions of this session')
   })
 
@@ -133,18 +150,19 @@ describe('SideQuestionsTabView', () => {
     items = [row('a', '**bold** answer'), row('b', 'plain answer')]
     renderTab()
     await screen.findByText('question a')
-    fireEvent.click(screen.getAllByRole('button', { name: 'Copy answer' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Copy response' })[0])
     expect(writeText).toHaveBeenCalledWith('**bold** answer')
   })
 
   it('Clear asks in a dialog first, and deletes only when confirmed', async () => {
     renderTab()
     await screen.findByText('second answer')
-    fireEvent.click(screen.getByRole('button', { name: 'Clear side questions' }))
+    // "…": the button opens a confirmation.
+    fireEvent.click(screen.getByRole('button', { name: 'Clear side questions…' }))
 
     expect(await screen.findByText('Delete all side questions?')).toBeTruthy()
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
-    fireEvent.click(screen.getByRole('button', { name: 'Delete all' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete side questions' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'DELETE' && c.url === BASE)).toBe(true))
     expect(await screen.findByText('No side questions yet')).toBeTruthy()
   })
@@ -152,7 +170,7 @@ describe('SideQuestionsTabView', () => {
   it('keeps every side question when the dialog is cancelled', async () => {
     renderTab()
     await screen.findByText('second answer')
-    fireEvent.click(screen.getByRole('button', { name: 'Clear side questions' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear side questions…' }))
     await screen.findByText('Delete all side questions?')
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))

@@ -126,7 +126,7 @@ function DropdownItem({
       {...props}
     >
       <span className="flex-1">{children}</span>
-      {active && <Check size={11} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />}
+      {active && <Check size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />}
     </button>
   )
 }
@@ -397,7 +397,7 @@ function Dropdown({
       >
         <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">{displayLabel}</span>
         <ChevronDown
-          size={11}
+          size={12}
           className={cn('shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast)', open && 'rotate-180')}
           aria-hidden="true"
         />

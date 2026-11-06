@@ -43,14 +43,19 @@ describe("AgentView — workspace messages", () => {
     await userEvent.setup().click(chip)
     expect(onOpenSession).toHaveBeenCalledWith("app-session", "/r/app")
     // It is a prompt, not a report: it stays editable.
-    expect(screen.getByRole("button", { name: "Edit message" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Edit prompt" })).toBeTruthy()
   })
 
   it("draws the prompt's Edit and Copy 28px on a phone, like the answer's footer, keeping a 36px hit area", () => {
     render(<AgentView blocks={[request]} currentBlocks={[]} isWorking={false} />)
-    for (const name of ["Edit message", "Copy message"]) {
-      const classes = screen.getByRole("button", { name }).className.split(/\s+/)
+    for (const name of ["Edit prompt", "Copy prompt"]) {
+      const button = screen.getByRole("button", { name })
+      // The shared Button; the phone size sets its own floor so the touch floor keeps it 28px.
+      expect(button.getAttribute("data-slot")).toBe("button")
+      const classes = button.className.split(/\s+/)
       expect(classes).toContain("max-md:pointer-coarse:size-7")
+      expect(classes).toContain("max-md:pointer-coarse:min-h-7!")
+      expect(classes).toContain("max-md:pointer-coarse:min-w-7!")
       expect(classes).toContain("touch-hit")
       expect(classes).toContain("relative")
     }
@@ -110,30 +115,29 @@ describe("AgentView — the lead's messages in a subagent", () => {
     timestamp: new Date(),
   }
 
-  it("chips a tagged row, opens the lead, drops the prefix and offers no Edit", async () => {
+  it("chips a tagged row, opens the main agent, drops the prefix and offers no Edit", async () => {
     const onOpenSession = mock(() => {})
     render(<AgentView blocks={[tagged, answer]} currentBlocks={[]} isWorking={false} onOpenSession={onOpenSession} />)
 
     expect(screen.getByText("Find the flaky test.")).toBeTruthy()
     expect(screen.queryByText(/Task from Lead/)).toBeNull()
-    const chip = screen.getByRole("button", { name: "Open the lead agent" })
+    const chip = screen.getByRole("button", { name: "Open the main agent" })
     expect(chip).toHaveTextContent("From")
     expect(chip).toHaveTextContent("lead")
     expect(chip.className).toContain("pointer-coarse:min-h-9")
     await userEvent.setup().click(chip)
     expect(onOpenSession).toHaveBeenCalledWith("lead-session", "")
-    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
-    // The lead's prompt is not the user's to rewind from the answer's footer either.
+    // The main agent's prompt is not the user's to rewind, from its row or the answer's footer.
     expect(screen.queryByRole("button", { name: /Edit prompt/ })).toBeNull()
     expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull()
     // It is still copyable.
-    expect(screen.getByRole("button", { name: "Copy message" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Copy prompt" })).toBeTruthy()
   })
 
-  it("keeps Edit prompt on the answer to a user's own prompt (control for the lead case)", () => {
+  it("keeps Edit prompt on a user's own prompt, once (control for the lead case)", () => {
     const own: ContentBlock = { id: "own", type: "user", content: "Do it.", timestamp: new Date() }
     render(<AgentView blocks={[own, answer]} currentBlocks={[]} isWorking={false} onOpenSession={() => {}} />)
-    expect(screen.getByRole("button", { name: /Edit prompt/ })).toBeTruthy()
+    expect(screen.getAllByRole("button", { name: /Edit prompt/ })).toHaveLength(1)
   })
 
   it("recognises an older untagged `[Lead]: ` row while the session has a parent", async () => {
@@ -143,22 +147,22 @@ describe("AgentView — the lead's messages in a subagent", () => {
 
     expect(screen.getByText("Also check CI.")).toBeTruthy()
     expect(screen.queryByText(/\[Lead\]/)).toBeNull()
-    await userEvent.setup().click(screen.getByRole("button", { name: "Open the lead agent" }))
+    await userEvent.setup().click(screen.getByRole("button", { name: "Open the main agent" }))
     expect(onOpenSession).toHaveBeenCalledWith("parent-session", "")
-    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Edit prompt" })).toBeNull()
   })
 
   it("leaves a `[Lead]: ` prefix alone in a session with no parent", () => {
     render(<AgentView blocks={[untagged]} currentBlocks={[]} isWorking={false} onOpenSession={() => {}} />)
 
     expect(screen.getByText("[Lead]: Also check CI.")).toBeTruthy()
-    expect(screen.queryByRole("button", { name: "Open the lead agent" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Open the main agent" })).toBeNull()
   })
 
   it("renders the chip as plain text without a navigation handler", () => {
     const { container } = render(<AgentView blocks={[tagged]} currentBlocks={[]} isWorking={false} />)
 
-    expect(screen.queryByRole("button", { name: "Open the lead agent" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Open the main agent" })).toBeNull()
     const chip = container.querySelector("span[data-from-lead]")
     expect(chip).toHaveTextContent("From")
     expect(chip).toHaveTextContent("lead")

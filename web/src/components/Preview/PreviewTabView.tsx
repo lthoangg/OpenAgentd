@@ -585,13 +585,13 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
       {/* 40px (44px on touch): the address field is 32px (36px on touch), taller than the 28px tool buttons. */}
       <div className="flex min-h-10 shrink-0 items-center gap-0.5 border-b border-(--color-border-subtle) bg-(--bg-page) px-1 py-1">
         <ToolbarButton label="Back" onClick={() => post({ type: 'history', dir: -1 })} disabled={!ready || pageDown} disabledReason={navReason('back')}>
-          <ArrowLeft size={13} aria-hidden="true" />
+          <ArrowLeft size={14} aria-hidden="true" />
         </ToolbarButton>
         <ToolbarButton label="Forward" onClick={() => post({ type: 'history', dir: 1 })} disabled={!ready || pageDown} disabledReason={navReason('forward')}>
-          <ArrowRight size={13} aria-hidden="true" />
+          <ArrowRight size={14} aria-hidden="true" />
         </ToolbarButton>
-        <ToolbarButton label="Reload" onClick={() => void reload()}>
-          <RefreshCw size={13} aria-hidden="true" />
+        <ToolbarButton label="Refresh" onClick={() => void reload()}>
+          <RefreshCw size={14} aria-hidden="true" />
         </ToolbarButton>
         <form
           className="relative mx-1 min-w-0 flex-1"
@@ -635,7 +635,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
             title={`The agent is using this page (${agentAction})`}
             className="flex h-5 shrink-0 items-center gap-1 rounded-full bg-(--bg-key) px-2 text-meta font-medium text-(--color-text-2)"
           >
-            <Bot size={11} aria-hidden="true" />
+            <Bot size={12} aria-hidden="true" />
             <span className="hidden sm:inline">Agent</span>
             <span className="sr-only">is using this page: {agentAction}</span>
           </span>
@@ -689,13 +689,13 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         ) : null}
         {!phone && size && (
           <ToolbarButton label="Rotate" onClick={() => setRotated((r) => !r)} pressed={rotated}>
-            <RotateCw size={13} aria-hidden="true" />
+            <RotateCw size={14} aria-hidden="true" />
           </ToolbarButton>
         )}
         {!phone && (
         <ToolbarButton label={consoleLabel} onClick={() => setConsoleOpen((o) => !o)} pressed={consoleOpen}>
           <span className="relative">
-            <SquareTerminal size={13} aria-hidden="true" />
+            <SquareTerminal size={14} aria-hidden="true" />
             {errorCount > 0 && (
               <span className="absolute -top-1.5 -right-2 min-w-3.5 rounded-full bg-(--color-error) px-0.5 text-center text-meta leading-3.5 font-semibold text-(--color-text-on-accent)">
                 {errorCount > 99 ? '99+' : errorCount}
@@ -711,7 +711,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           disabled={designDisabled}
           pressed={mode === 'inspect'}
         >
-          <MousePointerClick size={13} aria-hidden="true" />
+          <MousePointerClick size={14} aria-hidden="true" />
         </ToolbarButton>
         )}
         {/* A relayed page lives on this app's relay, which another browser cannot use. */}
@@ -722,7 +722,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           disabled={openDisabled}
           disabledReason={reach === 'relay' ? undefined : 'No page loaded yet'}
         >
-          <ExternalLink size={13} aria-hidden="true" />
+          <ExternalLink size={14} aria-hidden="true" />
         </ToolbarButton>
         )}
       </div>
@@ -793,20 +793,23 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
               Clear
             </Button>
           </div>
-          <ol className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-2 font-mono text-meta">
-            {consoleEntries.length === 0 && <li className="text-(--color-text-subtle)">No console output yet.</li>}
-            {consoleEntries.map((entry, index) => (
-              <li
-                key={index}
-                className={cn(
-                  'border-b border-(--color-border-subtle) py-0.5 break-words whitespace-pre-wrap',
-                  entry.level === 'error' ? 'text-(--color-error)' : entry.level === 'warn' ? 'text-(--accent-orange-text)' : 'text-(--color-text-2)',
-                )}
-              >
-                {entry.message}
-              </li>
-            ))}
-          </ol>
+          {consoleEntries.length === 0 ? (
+            <EmptyState icon={SquareTerminal} title="No console output yet" fill={false} className="flex min-h-0 flex-1 justify-center overflow-y-auto py-4" />
+          ) : (
+            <ol className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-2 font-mono text-meta">
+              {consoleEntries.map((entry, index) => (
+                <li
+                  key={index}
+                  className={cn(
+                    'border-b border-(--color-border-subtle) py-0.5 break-words whitespace-pre-wrap',
+                    entry.level === 'error' ? 'text-(--color-error)' : entry.level === 'warn' ? 'text-(--accent-orange-text)' : 'text-(--color-text-2)',
+                  )}
+                >
+                  {entry.message}
+                </li>
+              ))}
+            </ol>
+          )}
         </section>
       )}
       {comments.length > 0 && (

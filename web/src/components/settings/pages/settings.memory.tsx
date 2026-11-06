@@ -203,7 +203,7 @@ export function MemorySettingsPage() {
         <Callout
           tone={lintFindings.length === 0 ? 'success' : 'warning'}
           role="status"
-          className="mx-4 mb-4 md:mx-8"
+          className="mb-4"
           title={
             <span className="flex items-center justify-between gap-2">
               <span>
@@ -238,7 +238,7 @@ export function MemorySettingsPage() {
       )}
 
       {/* Split pane: File list + Editor */}
-      <div className="mx-4 mb-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-page) md:mx-8 lg:flex-row">
+      <div className="mb-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-page) lg:flex-row">
         {/* Left pane: File list */}
         <div className="flex max-h-44 w-full shrink-0 flex-col border-b border-(--color-border) bg-(--bg-sidebar) lg:max-h-none lg:w-64 lg:border-r lg:border-b-0">
           <div className="flex h-10 shrink-0 items-center justify-between border-b border-(--color-border-subtle) pr-2 pl-3 select-none">
@@ -276,7 +276,7 @@ export function MemorySettingsPage() {
                   onClick={() => setNewFileOpen(true)}
                   className="mt-2.5"
                 >
-                  <Plus size={11} aria-hidden="true" />
+                  <Plus size={12} aria-hidden="true" />
                   Create page
                 </Button>
               </div>
@@ -354,7 +354,7 @@ export function MemorySettingsPage() {
                           onClick={handleSave}
                           disabled={!fileData || !isDirty || saveMut.isPending}
                         >
-                          <Save size={11} aria-hidden="true" />
+                          <Save size={12} aria-hidden="true" />
                           <span>{saveMut.isPending ? 'Saving…' : 'Save'}</span>
                         </Button>
                       }
@@ -395,7 +395,7 @@ export function MemorySettingsPage() {
           ) : (
             <div className="flex h-full flex-1 flex-col items-center justify-center p-6 text-center select-none">
               <Brain
-                size={28}
+                size={16}
                 className="mb-2 text-(--color-text-muted) opacity-30"
                 aria-hidden="true"
               />
@@ -418,7 +418,7 @@ export function MemorySettingsPage() {
               the latest version and discards your edits.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="mt-4 flex justify-end gap-2">
+          <DialogFooter>
             <Button onClick={() => setConflictOpen(false)}>
               Keep my draft
             </Button>
@@ -441,7 +441,7 @@ export function MemorySettingsPage() {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent size="md">
+        <DialogContent size="md" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Delete this memory page?</DialogTitle>
             <DialogDescription>
@@ -452,7 +452,7 @@ export function MemorySettingsPage() {
  and its notes. This can&apos;t be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="mt-4 flex justify-end gap-2">
+          <DialogFooter>
             <Button onClick={() => setDeleteOpen(false)}>
               Cancel
             </Button>
@@ -485,7 +485,7 @@ export function MemorySettingsPage() {
               autoFocus
             />
           </div>
-          <DialogFooter className="mt-4 flex justify-end gap-2">
+          <DialogFooter>
             <Button onClick={() => setNewFileOpen(false)}>
               Cancel
             </Button>

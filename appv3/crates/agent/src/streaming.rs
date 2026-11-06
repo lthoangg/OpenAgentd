@@ -210,6 +210,7 @@ impl<'a> RetryStream<'a> {
             error_type: Some("HTTPStatusError".into()),
             status_code: Some(status as i64),
             message: Some(msg),
+            credential_label: Some(to),
             ..Default::default()
         })
         .await;
@@ -243,7 +244,8 @@ impl<'a> RetryStream<'a> {
                     let mut reset = parse_retry_after(&err);
                     // Every credential is cooling down: wait for the first
                     // one to recover, not necessarily the one that failed.
-                    if let Some(next) = self.provider.credential_recovery_secs() {
+                    let every_account = self.provider.credential_recovery_secs();
+                    if let Some(next) = every_account {
                         let next = next.ceil().max(1.0) as i64;
                         reset = if reset > 0 { reset.min(next) } else { next };
                     }
@@ -263,27 +265,23 @@ impl<'a> RetryStream<'a> {
                         let wait = reset as f64 + CLOCK_SKEW_BUFFER_SECONDS;
                         tracing::warn!("llm_provider_quota_wait model={} status={} wait={:.0}s quota_wait={}/{}", self.label, status, wait, self.quota_waits, MAX_QUOTA_WAITS);
                         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
-                        // A session pinned to one account waits for that
-                        // account; the user can switch it to Auto instead.
-                        let (wait_status, msg) = match self.provider.pinned_credential() {
-                            Some(account) => (
-                                "waiting_credential",
-                                format!(
-                                    "{account} is pinned for this session and hit its usage limit. Waiting {} for it to reset. Use Auto to continue on another account now, or stop at any time.",
-                                    format_duration(wait)
-                                ),
-                            ),
-                            None => (
-                                "waiting_quota",
-                                format!(
-                                    "Provider quota exhausted for {}. Waiting {} for reset. Agent will automatically resume work. You can stop at any time.",
-                                    self.label,
-                                    format_duration(wait)
-                                ),
-                            ),
+                        // A provider with several accounts only waits once
+                        // every one is limited (a locked session included).
+                        let msg = if every_account.is_some() {
+                            format!(
+                                "Every account for {} is at its usage limit. Waiting {} for the first one to reset. Agent will automatically resume work. You can stop at any time.",
+                                self.label,
+                                format_duration(wait)
+                            )
+                        } else {
+                            format!(
+                                "Provider quota exhausted for {}. Waiting {} for reset. Agent will automatically resume work. You can stop at any time.",
+                                self.label,
+                                format_duration(wait)
+                            )
                         };
                         self.notify_retry(ProviderStatus {
-                            status: wait_status.into(),
+                            status: "waiting_quota".into(),
                             model: Some(self.label.clone()),
                             attempt: Some(self.attempt + 1),
                             max_attempts: Some(MAX_RETRIES),
@@ -293,6 +291,7 @@ impl<'a> RetryStream<'a> {
                             retry_after: Some(reset),
                             message: Some(msg),
                             resets_at: Some((now + reset as f64) as i64),
+                            ..Default::default()
                         })
                         .await;
                         if self.sleep(wait).await {
@@ -842,10 +841,31 @@ mod tests {
         }
     }
 
-    /// A session pinned to an account that hit its limit waits for that
-    /// account, and says it is the pin (so the user can pick Auto instead).
+    /// A locked session whose account hit its limit moves on like any other
+    /// session: the lock does not hold it on the limited account.
     #[tokio::test(start_paused = true)]
-    async fn a_pinned_account_at_its_limit_waits_for_it_and_says_so() {
+    async fn a_locked_account_at_its_limit_moves_on_to_the_next_account() {
+        let provider = Arc::new(TwoKeys { pinned: Some("Personal"), ..TwoKeys::new(true, None) });
+        let log = Arc::new(StatusLog::default());
+        let hooks: Vec<HookRef> = vec![log.clone()];
+        let ctx = ctx();
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider.clone(), "codex:gpt-5.4", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None);
+
+        let started = Instant::now();
+        assert_eq!(drain(&mut rs).await.unwrap(), "from work");
+        assert!(started.elapsed() < Duration::from_secs(1), "waited {:?}", started.elapsed());
+        assert_eq!(*provider.calls.lock().unwrap(), ["a", "b"]);
+        let statuses = log.0.lock().unwrap();
+        assert_eq!(statuses.len(), 1, "{statuses:?}");
+        assert_eq!(statuses[0].status, "switched_credential");
+        assert_eq!(statuses[0].credential_label.as_deref(), Some("Work"));
+    }
+
+    /// With every account limited, a locked session waits for the first one
+    /// to reset, and the notice says every account is limited.
+    #[tokio::test(start_paused = true)]
+    async fn a_locked_session_waits_only_when_every_account_is_limited() {
         let provider = Arc::new(TwoKeys { pinned: Some("Personal"), ..TwoKeys::new(false, Some(Duration::from_secs(600))) });
         let log = Arc::new(StatusLog::default());
         let hooks: Vec<HookRef> = vec![log.clone()];
@@ -853,12 +873,15 @@ mod tests {
         let messages = vec![ChatMessage::user("hi")];
         let mut rs = RetryStream::new(provider.clone(), "codex:gpt-5.4", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None);
 
+        let started = Instant::now();
         assert_eq!(drain(&mut rs).await.unwrap(), "from work");
+        let waited = started.elapsed().as_secs_f64();
+        assert!((600.0..620.0).contains(&waited), "waited {waited}s");
         let statuses = log.0.lock().unwrap();
-        let wait = statuses.iter().find(|s| s.status == "waiting_credential").unwrap_or_else(|| panic!("{statuses:?}"));
+        let wait = statuses.iter().find(|s| s.status == "waiting_quota").unwrap_or_else(|| panic!("{statuses:?}"));
         let msg = wait.message.as_deref().unwrap();
-        assert!(msg.starts_with("Personal is pinned for this session") && msg.contains("Use Auto"), "{msg}");
-        assert!(statuses.iter().all(|s| s.status != "switched_credential" && s.status != "waiting_quota"), "{statuses:?}");
+        assert!(msg.starts_with("Every account for codex:gpt-5.4 is at its usage limit"), "{msg}");
+        assert!(statuses.iter().all(|s| s.status != "waiting_credential" && s.status != "switched_credential"), "{statuses:?}");
     }
 
     /// Quota on one credential moves the same call to the next credential
@@ -879,6 +902,7 @@ mod tests {
         let statuses = log.0.lock().unwrap();
         assert_eq!(statuses.len(), 1, "{statuses:?}");
         assert_eq!(statuses[0].status, "switched_credential");
+        assert_eq!(statuses[0].credential_label.as_deref(), Some("Work"));
         let msg = statuses[0].message.as_deref().unwrap();
         assert!(msg.contains("usage limit") && msg.contains("Continuing on Work with the same model"), "{msg}");
     }

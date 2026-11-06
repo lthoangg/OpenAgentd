@@ -1,8 +1,9 @@
 /**
  * App menus for chat content: links and tool rows.
  *
- * A link offers Open / Copy link, a tool row its own actions. Messages (yours
- * and the agent's) and code blocks have none: they keep the system's menu and
+ * A link offers Open / Copy link, a ``patch`` or ``read`` row Open for its
+ * files (``ToolCall/fileTargets``). Messages (yours and the agent's), code
+ * blocks and other tool rows have none: they keep the system's menu and
  * text selection, on desktop and on touch alike (their Copy and Edit buttons
  * stay). The same items open three ways:
  *

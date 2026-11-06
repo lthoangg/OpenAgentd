@@ -22,7 +22,8 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Chip } from '@/components/ui/chip'
+import { StatusChip } from '@/components/ui/chip'
+import { STATUS } from '@/lib/status'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -742,7 +743,7 @@ function ServerRow({
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
             <span className={cn('truncate', TEXT.label, mono && 'font-mono')}>{title}</span>
-            {inUse ? <Chip tone="success" dot>In use</Chip> : null}
+            {inUse ? <StatusChip status={STATUS.inUse} /> : null}
           </span>
           {subtitle ? (
             <span className={cn('mt-0.5 block truncate', TEXT.hint, subtitle.includes('://') && 'font-mono')}>{subtitle}</span>

@@ -28,7 +28,11 @@
  * ── Desktop dock views ──────────────────────────────────────────────────
  *
  * On desktop with a workspace, the agent task list and the scheduler open
- * as review-dock tabs instead of the popover / overlay. The request mirrors
+ * as review-dock tabs instead of the popover / overlay. Every way in (the
+ * sidebar's Scheduled section, the command palette, the menu and ⌘ shortcut,
+ * a ``/scheduler`` or deep link) goes through the same opener, so scheduled
+ * tasks never open as an overlay while a Review panel can: the overlay is
+ * only for a window with no workspace. The request mirrors
  * the terminal pattern: a keyed request plus a parent-owned "handled" ref, so
  * a dock that mounts in response still honours it, and a later ⌘D does not
  * replay it. The dock reports its active view back so a second press of the
@@ -86,6 +90,15 @@ import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
 export type { AttachmentTabRequest, DiffTabRequest, DockLayoutRequest, DockView, DockViewRequest, PreviewTabRequest }
 
 /**
+ * How long a deep-link request for the scheduler waits for a workspace before
+ * settling for the overlay. ``/scheduler`` is a route of its own, so the chat
+ * view mounts fresh at ``/`` with no workspace until the bare route restores
+ * the last one (a fetch away); asking at once would open the overlay on a
+ * desktop that is about to have a Review panel.
+ */
+export const SCHEDULER_LINK_SETTLE_MS = 1500
+
+/**
  * The Review panel reopens as the window left it once per page load: the
  * first chat view with a workspace takes the remembered state, later mounts
  * (another route, a remount) start from what is on screen.
@@ -98,6 +111,12 @@ export function _resetDockRestoreForTests(): void {
 
 export interface UseOverlayStateArgs {
   isMobile: boolean
+  /**
+   * A phone's navigation stack (see AgentChatView): Sessions is a screen, not
+   * a drawer, so the left edge belongs to the stack's back swipe. While the
+   * list is on top (``atSessions``) the chat under it opens nothing.
+   */
+  phoneStack?: { atSessions: boolean; onBack?: () => void }
   workspace: string | null
   toggleScheduler: () => void
   toggleRunPicker: () => void
@@ -133,9 +152,12 @@ export interface UseOverlayStateResult {
   /** Dock view tab currently focused in the mounted dock, else ``null``. */
   dockActiveView: DockView | null
   setDockActiveView: Dispatch<SetStateAction<DockView | null>>
-  /** True when tasks / scheduler open as dock tabs (desktop + workspace). */
+  /** True when the agent task list opens as a dock tab (desktop + workspace). */
   dockViewsEnabled: boolean
-  /** True when the scheduler opens as a dock tab (any platform + workspace). */
+  /**
+   * True when the scheduler opens as a dock tab (any platform + workspace);
+   * false only when there is no workspace, and so no Review panel, to open.
+   */
   schedulerInDock: boolean
   sidebarCollapsed: boolean
   setSidebarCollapsed: Dispatch<SetStateAction<boolean>>
@@ -202,6 +224,7 @@ export interface UseOverlayStateResult {
 
 export function useOverlayState({
   isMobile,
+  phoneStack,
   workspace,
   toggleScheduler,
   toggleRunPicker,
@@ -230,7 +253,9 @@ export function useOverlayState({
   const handledDockLauncherFocusKeyRef = useRef(0)
   const [dockActiveView, setDockActiveView] = useState<DockView | null>(null)
   const dockViewsEnabled = !isMobile && Boolean(workspace)
-  const schedulerInDock = Boolean(workspace)
+  // A phone opens Scheduled tasks as a sheet over whatever is on screen
+  // (Sessions has it in its toolbar), never inside the chat's Review panel.
+  const schedulerInDock = Boolean(workspace) && !phoneStack
   // Desktop sidebar collapse is persisted in the layout store. Until the user
   // toggles it once, wide windows open with the sidebar expanded.
   const storedSidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed)
@@ -318,6 +343,11 @@ export function useOverlayState({
   }, [closeOtherMobileOverlays, isMobile, revealSidebar, workspace, workspacePanel])
 
   const handleSidebarToggle = useCallback(() => {
+    // A phone has no sidebar to toggle: its list is the Sessions screen.
+    if (phoneStack) {
+      phoneStack.onBack?.()
+      return
+    }
     if (isMobile) {
       setWorkspacePanel(null)
       setFileViewer(null)
@@ -333,7 +363,7 @@ export function useOverlayState({
       return
     }
     setSidebarCollapsed((value) => !value)
-  }, [closeOtherMobileOverlays, isMobile, setSidebarCollapsed, sidebarDrawer])
+  }, [closeOtherMobileOverlays, isMobile, phoneStack, setSidebarCollapsed, sidebarDrawer])
 
   const handleOpenGit = useCallback(() => {
     if (!workspace) return
@@ -498,13 +528,24 @@ export function useOverlayState({
     toggleScheduler()
   }, [closeOtherMobileOverlays, schedulerInDock, toggleScheduler])
 
-  // A deep link (the home-screen scheduled-tasks widget) asked for the
-  // scheduler, possibly before this view mounted. Taken once, so a remount
-  // does not reopen it.
+  // A deep link (``/scheduler``, the home-screen scheduled-tasks widget) asked
+  // for the scheduler, possibly before this view mounted. Taken once, so a
+  // remount does not reopen it. With a workspace it opens the Schedule tab at
+  // once; without one it waits for the workspace to be restored before the
+  // overlay, the only surface left, takes it.
   const schedulerOpenPending = useUIStore((s) => s.schedulerOpenPending)
   useEffect(() => {
-    if (schedulerOpenPending && useUIStore.getState().takeSchedulerOpenRequest()) handleOpenScheduler()
-  }, [handleOpenScheduler, schedulerOpenPending])
+    if (!schedulerOpenPending) return undefined
+    const take = () => {
+      if (useUIStore.getState().takeSchedulerOpenRequest()) handleOpenScheduler()
+    }
+    if (workspace) {
+      take()
+      return undefined
+    }
+    const timer = window.setTimeout(take, SCHEDULER_LINK_SETTLE_MS)
+    return () => window.clearTimeout(timer)
+  }, [handleOpenScheduler, schedulerOpenPending, workspace])
 
   const handleTogglePalette = useCallback(() => {
     if (!useUIStore.getState().paletteOpen) closeOtherMobileOverlays('palette')
@@ -628,7 +669,7 @@ export function useOverlayState({
   // One controller owns every mobile drawer so only ONE can be open at a
   // time. Left-edge opens the session sidebar; right-edge opens the Review
   // panel, so only with a workspace attached.
-  const workspacePanelOpenForSwipe = Boolean(workspace)
+  const workspacePanelOpenForSwipe = Boolean(workspace) && !phoneStack?.atSessions
 
   // Single source of truth for "what is open right now". Closing routes to
   // whichever drawer the id names, so swipe-to-close hits the right one.
@@ -664,7 +705,7 @@ export function useOverlayState({
   // no state), so this view does not re-render per touchmove.
   const { handlers: edgeSwipeHandlers } = useEdgeSwipe({
     activeDrawer,
-    left: { id: 'sidebar', open: openLeftDrawer },
+    left: phoneStack ? undefined : { id: 'sidebar', open: openLeftDrawer },
     right: workspacePanelOpenForSwipe ? { id: 'workspace-panel', open: openRightDrawer } : undefined,
     close: closeAllDrawers,
   })

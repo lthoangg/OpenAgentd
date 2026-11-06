@@ -56,7 +56,7 @@ export function SidebarHeading({
           {title}
           <span className="flex-1" />
           <ChevronRight
-            size={11}
+            size={12}
             aria-hidden="true"
             className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ${collapsed ? '' : 'rotate-90'}`}
           />

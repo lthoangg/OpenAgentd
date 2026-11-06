@@ -63,10 +63,10 @@ describe('formatScheduleLabel', () => {
     expect(formatScheduleLabel({ ...base, schedule_type: 'cron', cron_expression: '0 9 * * 1-5' })).toBe('cron 0 9 * * 1-5')
   })
 
-  it('says "once at dd/MM/yyyy HH:mm" in the task timezone', () => {
-    expect(formatScheduleLabel({ ...base, schedule_type: 'at', at_datetime: '2026-10-24T09:00:00Z', timezone: 'UTC' })).toBe('once at 24/10/2026 09:00')
+  it('says "once at" the date and time in the task timezone', () => {
+    expect(formatScheduleLabel({ ...base, schedule_type: 'at', at_datetime: '2024-10-24T09:00:00Z', timezone: 'UTC' })).toBe('once at Oct 24, 2024, 09:00')
     // The saved timezone wins over the browser's
-    expect(formatScheduleLabel({ ...base, schedule_type: 'at', at_datetime: '2026-10-24T09:00:00Z', timezone: 'Asia/Ho_Chi_Minh' })).toBe('once at 24/10/2026 16:00')
+    expect(formatScheduleLabel({ ...base, schedule_type: 'at', at_datetime: '2024-10-24T09:00:00Z', timezone: 'Asia/Ho_Chi_Minh' })).toBe('once at Oct 24, 2024, 16:00')
   })
 
   it('falls back when the schedule has nothing to show', () => {
@@ -79,26 +79,26 @@ describe('taskState', () => {
   const state = (status: ScheduledTaskResponse['status'], enabled = true, next_fire_at: string | null = null) =>
     taskState({ status, enabled, next_fire_at })
 
-  it('calls a waiting, enabled task "scheduled"', () => {
-    expect(state('pending')).toEqual({ label: 'scheduled', tone: 'neutral' })
+  it('calls a waiting, enabled task "Scheduled"', () => {
+    expect(state('pending')).toEqual({ label: 'Scheduled', tone: 'neutral' })
   })
 
-  it('calls a disabled or paused task "paused"', () => {
-    expect(state('pending', false)).toEqual({ label: 'paused', tone: 'warning' })
-    expect(state('paused')).toEqual({ label: 'paused', tone: 'warning' })
+  it('calls a disabled or paused task "Paused", in quiet text', () => {
+    expect(state('pending', false)).toEqual({ label: 'Paused', tone: 'neutral' })
+    expect(state('paused')).toEqual({ label: 'Paused', tone: 'neutral' })
   })
 
-  it('calls a finished one-off "done"', () => {
-    expect(state('completed')).toEqual({ label: 'done', tone: 'success' })
+  it('calls a finished one-off "Done", in quiet text', () => {
+    expect(state('completed')).toEqual({ label: 'Done', tone: 'neutral' })
   })
 
   it('says the last run failed when the task will still run again', () => {
-    expect(state('failed', true, '2026-10-25T09:00:00Z')).toEqual({ label: 'last run failed', tone: 'error' })
-    expect(state('failed')).toEqual({ label: 'failed', tone: 'error' })
+    expect(state('failed', true, '2026-10-25T09:00:00Z')).toEqual({ label: 'Last run failed', tone: 'error' })
+    expect(state('failed')).toEqual({ label: 'Failed', tone: 'error' })
   })
 
-  it('shows a running task with a live dot', () => {
-    expect(state('running')).toEqual({ label: 'running', tone: 'info', dot: true })
+  it('shows a running task with a spinner', () => {
+    expect(state('running')).toEqual({ label: 'Running', tone: 'info', spinner: true })
   })
 })
 
@@ -111,8 +111,9 @@ describe('lastRunLabel', () => {
   it('says how long ago it ran and how it went', () => {
     expect(lastRunLabel({ last_run_at: ago(2 * 60_000), last_error: null }, NOW)).toBe('Last run 2m ago · ok')
     expect(lastRunLabel({ last_run_at: ago(3 * 3_600_000), last_error: null }, NOW)).toBe('Last run 3h ago · ok')
-    // Up to two days it counts hours
-    expect(lastRunLabel({ last_run_at: ago(47 * 3_600_000), last_error: null }, NOW)).toBe('Last run 47h ago · ok')
+    // Hours under a day, then days, as every list counts (DESIGN.md → Dates)
+    expect(lastRunLabel({ last_run_at: ago(23 * 3_600_000), last_error: null }, NOW)).toBe('Last run 23h ago · ok')
+    expect(lastRunLabel({ last_run_at: ago(47 * 3_600_000), last_error: null }, NOW)).toBe('Last run 1d ago · ok')
     expect(lastRunLabel({ last_run_at: ago(60 * 60_000), last_error: 'boom' }, NOW)).toBe('Last run 1h ago · failed')
   })
 
@@ -120,8 +121,9 @@ describe('lastRunLabel', () => {
     expect(lastRunLabel({ last_run_at: ago(10_000), last_error: null }, NOW)).toBe('Last run just now · ok')
   })
 
-  it('counts days once it has been two days or more', () => {
+  it('counts days under a week, then names the date', () => {
     expect(lastRunLabel({ last_run_at: ago(5 * 86_400_000), last_error: null }, NOW)).toBe('Last run 5d ago · ok')
+    expect(lastRunLabel({ last_run_at: ago(75 * 86_400_000), last_error: null }, NOW)).toBe('Last run Aug 10 · ok')
   })
 })
 
@@ -135,6 +137,7 @@ describe('nextRunLabel', () => {
     expect(nextRunLabel({ next_fire_at: ahead(60_000) }, NOW)).toBe('Next run in 1m')
     expect(nextRunLabel({ next_fire_at: ahead(2 * 3_600_000) }, NOW)).toBe('Next run in 2h')
     expect(nextRunLabel({ next_fire_at: ahead(4 * 86_400_000) }, NOW)).toBe('Next run in 4d')
+    expect(nextRunLabel({ next_fire_at: ahead(30 * 86_400_000) }, NOW)).toBe('Next run Nov 23')
   })
 
   it('says it is due when the time has come or passed', () => {

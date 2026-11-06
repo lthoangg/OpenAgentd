@@ -27,9 +27,6 @@ function Evidence({ items, label, defaultOpen }: { items: string[]; label: strin
   const [toggled, setToggled] = useState<boolean | null>(null)
   const open = toggled ?? defaultOpen
   const listId = useId()
-  // A phone reads the evidence as a 44pt list, one hairline-split row per
-  // item, since that is what the user judges the claim by (mockup J6).
-  const isPhone = useIsPhone()
   return (
     <div className="min-w-0">
       <button
@@ -37,7 +34,7 @@ function Evidence({ items, label, defaultOpen }: { items: string[]; label: strin
         onClick={() => setToggled(!open)}
         aria-expanded={open}
         aria-controls={listId}
-        className={cn('inline-flex items-center gap-1 rounded-xs py-0.5 text-meta text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)', isPhone ? 'min-h-11' : 'pointer-coarse:min-h-9')}
+        className={cn('inline-flex items-center gap-1 rounded-xs py-0.5 text-meta text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring) pointer-coarse:min-h-9')}
       >
         <ChevronRight
           size={12}
@@ -47,15 +44,9 @@ function Evidence({ items, label, defaultOpen }: { items: string[]; label: strin
         {`${label} · ${items.length}`}
       </button>
       <Collapsible open={open}>
-        {isPhone ? (
-          <ul id={listId} data-evidence-list="phone" className="divide-y divide-(--color-border) text-sm text-(--color-text-2) selectable-text">
-            {items.map((item, i) => <li key={i} className="flex min-h-11 items-center py-2 break-words"><InlineCodeText text={item} /></li>)}
-          </ul>
-        ) : (
-          <ul id={listId} className="mt-1 list-disc space-y-0.5 pl-5 text-xs leading-relaxed text-(--color-text-2) marker:text-(--color-text-subtle) selectable-text">
-            {items.map((item, i) => <li key={i} className="break-words"><InlineCodeText text={item} /></li>)}
-          </ul>
-        )}
+        <ul id={listId} className="mt-1 list-disc space-y-0.5 pl-5 text-xs leading-relaxed text-(--color-text-2) marker:text-(--color-text-subtle) selectable-text">
+          {items.map((item, i) => <li key={i} className="break-words"><InlineCodeText text={item} /></li>)}
+        </ul>
       </Collapsible>
     </div>
   )
@@ -84,6 +75,7 @@ export const GoalClaimCard = memo(function GoalClaimCard({ args, result, done, a
   animatesIn?: boolean
 }) {
   const claim = useMemo(() => parseGoalClaim(args, result, Boolean(done)), [args, result, done])
+  const isPhone = useIsPhone()
 
   // A reply the card cannot read (no goal, bad arguments) stays a plain tool row.
   if (claim.kind === 'other') {
@@ -96,6 +88,20 @@ export const GoalClaimCard = memo(function GoalClaimCard({ args, result, done, a
 
   const outcome = OUTCOME[claim.kind]
   const outcomeLabel = claim.kind === 'rejected' && claim.paused ? 'not met' : outcome.label
+
+  if (isPhone) {
+    return (
+      <PhoneGoalRow
+        kind={claim.kind}
+        outcomeLabel={outcomeLabel}
+        tone={outcome.tone}
+        dot={outcome.dot}
+        reason={claim.kind !== 'checking' ? claim.reason : undefined}
+        evidence={claim.kind !== 'blocked' ? claim.evidence : []}
+        animatesIn={animatesIn}
+      />
+    )
+  }
 
   return (
     <section
@@ -134,3 +140,53 @@ export const GoalClaimCard = memo(function GoalClaimCard({ args, result, done, a
     </section>
   )
 })
+
+/**
+ * A phone folds the goal check into one row, "Goal · achieved ›" (mockup
+ * J4 4.2); a tap opens what the check said and the evidence as 44pt rows.
+ */
+function PhoneGoalRow({ kind, outcomeLabel, tone, dot, reason, evidence, animatesIn }: {
+  kind: CardKind
+  outcomeLabel: string
+  tone: ChipTone
+  dot?: boolean
+  reason?: string
+  evidence: string[]
+  animatesIn: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const bodyId = useId()
+  const hasBody = Boolean(reason) || evidence.length > 0
+  return (
+    <section aria-label={`Goal check: ${outcomeLabel}`} data-goal-claim={kind} data-goal-row="" className={cn('my-2', TRANSCRIPT_CARD, animatesIn && 'tool-row-enter')}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        disabled={!hasBody}
+        aria-expanded={hasBody ? open : undefined}
+        aria-controls={hasBody ? bodyId : undefined}
+        className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-sm text-(--color-text)"
+      >
+        <span className="font-medium">Goal</span>
+        <span className="text-(--color-text-muted)">·</span>
+        <Chip tone={tone} dot={dot} role={kind === 'checking' ? 'status' : undefined}>{outcomeLabel}</Chip>
+        <span className="flex-1" />
+        {hasBody && (
+          <ChevronRight size={14} aria-hidden className={cn('shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out)', open && 'rotate-90')} />
+        )}
+      </button>
+      {hasBody && (
+        <Collapsible open={open}>
+          <div id={bodyId} className="flex flex-col px-3 pb-2">
+            {reason && <p className="py-1 text-sm leading-relaxed break-words text-(--color-text) selectable-text"><InlineCodeText text={reason} /></p>}
+            {evidence.length > 0 && (
+              <ul data-evidence-list="phone" aria-label="Evidence" className="divide-y divide-(--color-border) text-sm text-(--color-text-2) selectable-text">
+                {evidence.map((item, i) => <li key={i} className="flex min-h-11 items-center py-2 break-words"><InlineCodeText text={item} /></li>)}
+              </ul>
+            )}
+          </div>
+        </Collapsible>
+      )}
+    </section>
+  )
+}

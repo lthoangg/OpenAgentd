@@ -26,6 +26,10 @@
     <key>NSAllowsLocalNetworking</key>
     <true/>
   </dict>
+  <!-- Only standard HTTPS/TLS from the OS: exempt from export documentation,
+       so App Store Connect does not ask on every TestFlight upload. -->
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
   <key>NSLocalNetworkUsageDescription</key>
   <string>OpenAgentd connects to local OpenAgentd servers on your network.</string>
   <key>NSMicrophoneUsageDescription</key>

@@ -137,7 +137,7 @@ install_macos() {
     [ -f "$helper" ] || fail "the release archive does not contain the desktop installer"
 
     step "Installing ${BOLD}OpenAgentd.app${RESET} into /Applications"
-    # The bundled installer removes quarantine, verifies CI's signature
+    # The bundled installer verifies CI's signature and Gatekeeper
     # (without re-signing), and copies the app into /Applications.
     bash "$helper" --install "$bundle"
 }

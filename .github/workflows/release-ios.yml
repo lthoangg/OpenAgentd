@@ -1,0 +1,234 @@
+name: Release iOS
+
+# Builds the iOS app in CI and ships it to TestFlight, plus the SideStore /
+# AltStore IPA on the versioned release. Run it from the release tag
+# (``v<X.Y.Z>``, created by ``release.yml``) after the release notes are in.
+#
+# Jobs:
+#   build  (no secrets): ``cargo tauri ios build --archive-only --no-sign``,
+#          the ad hoc SideStore IPA (package-ipa.sh), and the unsigned app.
+#   sign   (environment ``release-ios``, needs your approval): signs the app
+#          with the Apple Distribution certificate and the two App Store
+#          profiles (mobile/scripts/sign-ipa-appstore.sh), validates and
+#          uploads it to App Store Connect / TestFlight, then deletes the
+#          keychain and keys.
+#   sidestore: uploads the ad hoc IPA and refreshes ``source.json``
+#          (mobile/scripts/publish-ipa.sh).
+# Build jobs must never get signing secrets or an ``environment:``.
+# Runbook (certificates, profiles, keys, renewal): mobile/AGENTS.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'release-ios' to confirm"
+        required: true
+      testflight:
+        description: "Sign and upload to TestFlight"
+        type: boolean
+        default: true
+      sidestore:
+        description: "Publish the SideStore IPA and source.json"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: Build iOS archive (unsigned)
+    if: github.event.inputs.confirm == 'release-ios'
+    runs-on: macos-26
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: version
+        run: echo "version=$(scripts/release_version.sh)" >> "$GITHUB_OUTPUT"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: aarch64-apple-ios
+
+      # Keyed on Cargo.lock: hits whenever the dependency set is unchanged.
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: mobile/src-tauri
+          key: ios-aarch64
+
+      - name: Restore cached tauri-cli
+        id: cache-tauri-cli
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: tauri-cli-2.12.4-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install cargo-binstall
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
+        uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
+        with:
+          tool: cargo-binstall
+
+      - name: Install tauri-cli (prebuilt)
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall --no-confirm --force --version 2.12.4 tauri-cli
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      # src-tauri/gen/apple is generated, not committed: init + patches.
+      - name: Generate the Xcode project
+        env:
+          CI: "true"
+        run: make -C mobile ios-init
+
+      - name: Archive (unsigned)
+        working-directory: mobile/src-tauri
+        env:
+          CI: "true"
+        run: cargo tauri ios build --archive-only --no-sign --ci
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          app=mobile/src-tauri/gen/apple/build/openagentd-mobile_iOS.xcarchive/Products/Applications/OpenAgentd.app
+          if codesign -dv "$app" 2>/dev/null; then
+            echo "::error::the archived app is signed; the build job must not sign"; exit 1
+          fi
+          mkdir -p _out
+          COPYFILE_DISABLE=1 tar --no-mac-metadata -czf _out/unsigned-ios-app.tar.gz \
+            -C "$(dirname "$app")" OpenAgentd.app
+          mobile/scripts/package-ipa.sh
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-ios-app
+          path: _out/unsigned-ios-app.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sidestore-ipa
+          path: mobile/dist/OpenAgentd_*_iOS.ipa*
+          if-no-files-found: error
+          retention-days: 14
+
+  sign:
+    name: Sign and upload to TestFlight
+    needs: build
+    if: github.event.inputs.testflight == 'true'
+    runs-on: macos-26
+    environment: release-ios
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned-ios-app
+          path: _in
+
+      - name: Import distribution certificate, profiles and API key
+        env:
+          IOS_DIST_CERTIFICATE: ${{ secrets.IOS_DIST_CERTIFICATE }}
+          IOS_DIST_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DIST_CERTIFICATE_PASSWORD }}
+          IOS_PROFILE_APP: ${{ secrets.IOS_PROFILE_APP }}
+          IOS_PROFILE_WIDGET: ${{ secrets.IOS_PROFILE_WIDGET }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          for v in IOS_DIST_CERTIFICATE IOS_DIST_CERTIFICATE_PASSWORD IOS_PROFILE_APP \
+                   IOS_PROFILE_WIDGET KEYCHAIN_PASSWORD ASC_API_KEY ASC_API_KEY_P8; do
+            [ -n "${!v}" ] || { echo "::error::secret $v is not set in environment release-ios"; exit 1; }
+          done
+          umask 077
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          printf '%s' "$IOS_DIST_CERTIFICATE" | base64 --decode -o "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN_PATH" \
+            -P "$IOS_DIST_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          # Prepend ours, keep the runner's keychains (paths have no spaces).
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$KEYCHAIN_PATH" \
+            $(security list-keychains -d user | tr -d '"')
+          printf '%s' "$IOS_PROFILE_APP" | base64 --decode -o "$RUNNER_TEMP/app.mobileprovision"
+          printf '%s' "$IOS_PROFILE_WIDGET" | base64 --decode -o "$RUNNER_TEMP/widget.mobileprovision"
+          # altool looks the key up by id in this directory.
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s' "$ASC_API_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey_${ASC_API_KEY}.p8"
+          {
+            echo "KEYCHAIN_PATH=$KEYCHAIN_PATH"
+            echo "IOS_PROFILE_APP_PATH=$RUNNER_TEMP/app.mobileprovision"
+            echo "IOS_PROFILE_WIDGET_PATH=$RUNNER_TEMP/widget.mobileprovision"
+            echo "API_PRIVATE_KEYS_DIR=$RUNNER_TEMP/asc"
+          } >> "$GITHUB_ENV"
+
+      - name: Sign IPA
+        env:
+          IOS_SIGNING_IDENTITY: Apple Distribution
+          IOS_BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/app"
+          tar -xzf _in/unsigned-ios-app.tar.gz -C "$RUNNER_TEMP/app"
+          mobile/scripts/sign-ipa-appstore.sh "$RUNNER_TEMP/app/OpenAgentd.app" \
+            "$RUNNER_TEMP/OpenAgentd-appstore.ipa"
+
+      - name: Validate and upload to TestFlight
+        env:
+          ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
+          ASC_API_ISSUER: ${{ secrets.ASC_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          [ -n "$ASC_API_ISSUER" ] || { echo "::error::secret ASC_API_ISSUER is not set in environment release-ios"; exit 1; }
+          ipa="$RUNNER_TEMP/OpenAgentd-appstore.ipa"
+          xcrun altool --validate-app -f "$ipa" -t ios --apiKey "$ASC_API_KEY" --apiIssuer "$ASC_API_ISSUER"
+          xcrun altool --upload-app -f "$ipa" -t ios --apiKey "$ASC_API_KEY" --apiIssuer "$ASC_API_ISSUER"
+          echo "Uploaded build ${{ github.run_number }} of ${{ needs.build.outputs.version }} to App Store Connect." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove keychain, profiles and keys
+        if: always()
+        run: |
+          [ -n "${KEYCHAIN_PATH:-}" ] && security delete-keychain "$KEYCHAIN_PATH" || true
+          rm -rf "$RUNNER_TEMP/asc" "$RUNNER_TEMP"/*.mobileprovision "$RUNNER_TEMP/cert.p12" \
+            "$RUNNER_TEMP/OpenAgentd-appstore.ipa"
+
+  sidestore:
+    name: Publish SideStore IPA
+    needs: build
+    if: github.event.inputs.sidestore == 'true'
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sidestore-ipa
+          path: mobile/dist
+
+      # Checks that HEAD is the release tag and the IPA matches its .sha256.
+      - name: Upload IPA and source.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: mobile/scripts/publish-ipa.sh

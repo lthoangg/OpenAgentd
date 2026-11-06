@@ -115,10 +115,43 @@ bridge and all relevant Tauri config variants.
   installer); restart exactly once afterwards. Preserve the double-invoke
   quitting guard.
 - Desktop secrets (access keys, the LAN key) live in user-only files, not
-  the OS keychain: macOS ties keychain items to the app's Team ID, which the
-  unsigned app lacks, so each update would prompt again.
+  the OS keychain. Releases before Developer ID signing had no Team ID, so
+  keychain items would have prompted on every update; moving them now needs
+  a migration for those installs.
 - Review CSP, remote origins, capabilities, entitlements, updater signing, and
   secret storage changes as security-sensitive.
+
+## macOS release signing (runbook)
+
+`release-desktop.yml` builds with no secrets; only its `sign` job, in the
+`release-macos` environment (your approval; `main` and `v*` only), signs,
+notarizes and writes updater `.sig` files via
+`desktop/scripts/sign-macos-release.sh`. Build jobs must never get a signing
+secret or an `environment:` (`scripts/tests/test_release_signing_isolation.py`).
+
+Secrets in `release-macos` (set with `gh secret set <NAME> --env release-macos`):
+
+| Secret | Value |
+|---|---|
+| `APPLE_CERTIFICATE` | base64 of the Developer ID Application `.p12` (`base64 -i cert.p12`) |
+| `APPLE_CERTIFICATE_PASSWORD` | its export password |
+| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: <Name> (<TEAMID>)` |
+| `APPLE_TEAM_ID` | Team ID |
+| `APPLE_API_KEY` / `APPLE_API_ISSUER` | App Store Connect API key ID / issuer ID (role *Developer*) |
+| `APPLE_API_KEY_P8` | contents of `AuthKey_<id>.p8` |
+| `KEYCHAIN_PASSWORD` | any random string (`openssl rand -base64 24`) |
+| `TAURI_SIGNING_PRIVATE_KEY` / `_PASSWORD` | updater minisign key (`scripts/generate_updater_keys.sh`) |
+
+- Renewal: the Developer ID certificate lasts 5 years. Create the new one
+  before expiry and replace the two certificate secrets; the Team ID, and so
+  the designated requirement and users' privacy grants, stay the same.
+  Releases already shipped stay valid (secure timestamp).
+- Leak: revoke the certificate (developer.apple.com → Certificates) or the API
+  key (App Store Connect → Users and Access → Integrations), then replace the
+  secrets. Revoking a Developer ID certificate also invalidates apps signed with
+  it after the revocation date Apple sets, so ask Apple to pick the date.
+- Keep the `.p12`, `.p8` and their passwords in a password manager, never in
+  the repository or a repo-level secret.
 
 ## Checks
 

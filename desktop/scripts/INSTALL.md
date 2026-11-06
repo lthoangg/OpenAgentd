@@ -1,9 +1,9 @@
 # Installing OpenAgentd
 
-OpenAgentd is not signed with a paid Apple Developer ID or Windows
-certificate yet. There's no malware here, but the operating systems
-we ship for still treat such software with suspicion. This document
-explains the one-time steps required on each supported platform.
+The macOS app is signed with an Apple Developer ID and notarized by
+Apple, so it opens like any other downloaded app. Windows builds are
+not signed with an Authenticode certificate yet. This document covers
+installing on each supported platform.
 
 ## macOS (arm64)
 
@@ -14,25 +14,27 @@ app and does the steps below for you:
 curl -LsSf https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh
 ```
 
-From the DMG instead:
+From the DMG instead: open the downloaded
+**`OpenAgentd_x.y.z_aarch64.dmg`**, drag **OpenAgentd** into
+**Applications**, and launch it from Launchpad or Spotlight.
 
-1. Open the downloaded **`OpenAgentd_x.y.z_aarch64.dmg`** and drag
-   **OpenAgentd** into **Applications**.
-2. In Terminal, run the installer bundled inside the app:
+Or with Homebrew:
 
-   ```bash
-   /Applications/OpenAgentd.app/Contents/Resources/install.sh /Applications/OpenAgentd.app
-   ```
+```bash
+brew install --cask lthoangg/tap/openagentd
+```
 
-   It removes the `com.apple.quarantine` flag the browser added and
-   verifies the app's signature. It does not re-sign the app.
+You can check the app yourself; both should report a notarized
+Developer ID:
 
-3. Launch **OpenAgentd** from Launchpad / Spotlight.
+```bash
+spctl --assess -vv /Applications/OpenAgentd.app
+codesign --verify --deep --strict --verbose=1 /Applications/OpenAgentd.app
+```
 
-**Why is this necessary?** Without a paid Apple Developer ID, the
-release is signed ad hoc. Gatekeeper reports a downloaded ad hoc app
-as *"OpenAgentd.app is damaged and can't be opened"*, which is not
-true; removing the quarantine flag clears it.
+**Upgrading from an ad hoc signed release (before Developer ID):** macOS
+asks once more for access to folders such as Documents, because the app's
+signature changed. Releases after that keep the grant.
 
 ## Linux (x86_64, arm64)
 
@@ -97,15 +99,12 @@ Delete those directories manually if you want a clean slate.
 
 ## Troubleshooting
 
-### macOS: "the developer cannot be verified"
+### macOS: "OpenAgentd.app is damaged" or "cannot be verified"
 
-You didn't right-click → Open on first launch. Run:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/OpenAgentd.app
-```
-
-and try again.
+Releases are notarized, so this means the copy is not the one we
+published: it was modified, or it is an old ad hoc signed release.
+Download the latest release again. Do not remove the quarantine flag to
+get past it; that skips Gatekeeper's check.
 
 ### macOS: app launches but immediately quits
 

@@ -4,20 +4,29 @@
 #
 # Usage: sign-macos-release.sh <bundle dir> <bundle identifier>
 #   <bundle dir> is Tauri's ``target/<triple>/release/bundle`` with ``macos/``
-#   (OpenAgentd.app and its .app.tar.gz) and, optionally, ``dmg/``.
+#   (OpenAgentd.app and, optionally, its .app.tar.gz) and, optionally, ``dmg/``.
 #
-# Tauri signs the app ad hoc, which pins the designated requirement to the
-# build's cdhash. macOS keeps privacy grants (e.g. Documents folder access)
-# for the designated requirement, so the app is re-signed ad hoc with
-# ``designated => identifier "<id>"``, which stays the same across releases.
-# Nothing re-signs it after this: the in-app updater installs the archive
-# unchanged (since tauri-plugin-updater 2.14.0 ``install()`` verifies the
-# bytes against the .sig), and install.sh and the Homebrew cask only strip
-# the quarantine flag. Installed v3.19-v3.21 apps still re-sign an update
-# before installing it unless it already has this requirement, so it must
-# stay identifier-only.
+# Two modes:
 #
-# A bundle signed by Apple (Developer ID) is left alone. The .sig is
+# * Developer ID (release CI): ``APPLE_SIGNING_IDENTITY`` names a
+#   "Developer ID Application" identity in the keychain. Every nested Mach-O
+#   (the ``agentd`` sidecar under Resources/) is signed first, then the app,
+#   all with the hardened runtime and a secure timestamp; the designated
+#   requirement is Apple's default (anchor apple generic + identifier + Team
+#   ID), which stays the same across releases so macOS keeps privacy grants.
+#   With App Store Connect API key credentials (``APPLE_API_KEY``,
+#   ``APPLE_API_ISSUER``, ``APPLE_API_KEY_PATH``) the app is notarized and
+#   stapled before it is archived, and the DMG is signed, notarized and
+#   stapled after the swap, so both pass Gatekeeper offline.
+#   ``REQUIRE_DEVELOPER_ID=1`` makes a missing identity or missing notary
+#   credentials fatal, so CI can never ship an ad hoc release by accident.
+#
+# * Ad hoc (local builds, tests): no identity. The app is re-signed ad hoc
+#   with ``designated => identifier "<id>"`` instead of Tauri's cdhash.
+#
+# Nothing re-signs the app after this: the in-app updater installs the
+# archive unchanged (tauri-plugin-updater >= 2.14.0 verifies it against the
+# .sig), and install.sh and the Homebrew cask only verify it. The .sig is
 # regenerated with ``cargo tauri signer sign`` (TAURI_SIGNING_PRIVATE_KEY /
 # _PASSWORD from the environment); a stale .sig is never shipped.
 set -euo pipefail
@@ -35,10 +44,21 @@ apps=("$macos_dir"/*.app)
 app=${apps[0]}
 name=$(basename "$app")
 archive="$macos_dir/$name.tar.gz"
-[ -f "$archive" ] || fail "missing updater archive: $archive"
+
+identity=${APPLE_SIGNING_IDENTITY:-}
+require_devid=${REQUIRE_DEVELOPER_ID:-0}
+do_notarize=false
+if [ -n "${APPLE_API_KEY:-}" ] && [ -n "${APPLE_API_ISSUER:-}" ] && [ -n "${APPLE_API_KEY_PATH:-}" ]; then
+  do_notarize=true
+fi
+if [ "$require_devid" = "1" ]; then
+  [ -n "$identity" ] || fail "REQUIRE_DEVELOPER_ID=1 but APPLE_SIGNING_IDENTITY is not set"
+  $do_notarize || fail "REQUIRE_DEVELOPER_ID=1 but APPLE_API_KEY / APPLE_API_ISSUER / APPLE_API_KEY_PATH are not all set"
+fi
+[ -z "$identity" ] && do_notarize=false
 
 stable="designated => identifier \"$bundle_id\""
-# An implicit (ad hoc) requirement prints as "# designated => cdhash ...".
+# An implicit requirement prints as "# designated => ...".
 designated() { codesign -d -r - "$1" 2>&1 | sed -n 's/^# //; /^designated =>/{p;q;}'; }
 
 # Fail unless the app at $1 verifies strictly and has the expected requirement.
@@ -46,25 +66,67 @@ check_app() {
   codesign --verify --deep --strict "$1" || fail "signature does not verify: $1"
   local current
   current=$(designated "$1")
-  [ "$current" = "$expected" ] || fail "unexpected designated requirement for $1: $current"
+  if [ -n "$identity" ]; then
+    [[ "$current" == *"anchor apple generic"* && "$current" == *"identifier \"$bundle_id\""* ]] \
+      || fail "unexpected designated requirement for $1: $current"
+  else
+    [ "$current" = "$stable" ] || fail "unexpected designated requirement for $1: $current"
+  fi
 }
 
-current=$(designated "$app")
-if [[ "$current" == *"anchor apple"* ]]; then
-  log "$name is signed by Apple ($current); leaving it unchanged"
-  exit 0
-fi
-expected=$stable
+# Submit $1 to Apple's notary service and wait; print the log on rejection.
+notarize() {
+  local file=$1 out id status
+  log "notarizing $(basename "$file")"
+  out=$(xcrun notarytool submit "$file" --wait --output-format json \
+    --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER") \
+    || { echo "$out" >&2; fail "notarytool submit failed for $file"; }
+  id=$(plutil -extract id raw - <<<"$out" 2>/dev/null || true)
+  status=$(plutil -extract status raw - <<<"$out" 2>/dev/null || true)
+  if [ "$status" != "Accepted" ]; then
+    [ -n "$id" ] && xcrun notarytool log "$id" \
+      --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" >&2 || true
+    fail "notarization of $file returned '${status:-unknown}' (submission ${id:-?})"
+  fi
+  log "notarization Accepted ($id)"
+}
 
 # ── Sign the app ─────────────────────────────────────────────────────────────
 entitlements="$app/Contents/Resources/entitlements.plist"
 [ -f "$entitlements" ] || fail "missing $entitlements"
-if [ "$current" != "$stable" ]; then
-  log "re-signing $name ad hoc (was: ${current:-unsigned})"
-  codesign --force --deep --options runtime --sign - \
-    "-r=$stable" --entitlements "$entitlements" "$app"
+if [ -n "$identity" ]; then
+  log "signing $name with $identity"
+  main_exe="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+  # Inside-out: every nested Mach-O except the main executable, which is
+  # signed as part of the bundle below.
+  while IFS= read -r -d '' f; do
+    [ "$f" = "$main_exe" ] && continue
+    if file -b "$f" | grep -q 'Mach-O'; then
+      log "  nested: ${f#"$app"/}"
+      codesign --force --options runtime --timestamp --sign "$identity" "$f"
+    fi
+  done < <(find "$app/Contents" -type f -perm -u+x -print0)
+  codesign --force --options runtime --timestamp --sign "$identity" \
+    --entitlements "$entitlements" "$app"
+else
+  current=$(designated "$app")
+  if [ "$current" != "$stable" ]; then
+    log "re-signing $name ad hoc (was: ${current:-unsigned})"
+    codesign --force --deep --options runtime --sign - \
+      "-r=$stable" --entitlements "$entitlements" "$app"
+  fi
 fi
 check_app "$app"
+
+if $do_notarize; then
+  zip="$(mktemp -d)/$name.zip"
+  ditto -c -k --keepParent "$app" "$zip"
+  notarize "$zip"
+  rm -f "$zip"
+  xcrun stapler staple "$app"
+  xcrun stapler validate "$app"
+  spctl --assess --type execute -vv "$app"
+fi
 
 # ── Updater archive ──────────────────────────────────────────────────────────
 # Rebuilt with the bundle at its root, as Tauri does. No AppleDouble (._*)
@@ -87,8 +149,8 @@ if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ] || [ -n "${TAURI_SIGNING_PRIVATE_KEY_
   cargo tauri signer sign "$archive" >/dev/null
   [ -f "$archive.sig" ] || fail "cargo tauri signer did not write $archive.sig"
   log "signed $archive"
-elif $had_sig; then
-  fail "the archive had an updater signature but no TAURI_SIGNING_PRIVATE_KEY is set to re-sign it"
+elif $had_sig || [ "$require_devid" = "1" ]; then
+  fail "the archive needs an updater signature but no TAURI_SIGNING_PRIVATE_KEY is set"
 fi
 
 # ── DMG ──────────────────────────────────────────────────────────────────────
@@ -97,6 +159,7 @@ fi
 dmgs=()
 [ -d "$bundle_dir/dmg" ] && dmgs=("$bundle_dir"/dmg/*.dmg)
 if [ ${#dmgs[@]} -eq 0 ] || [ ! -f "${dmgs[0]}" ]; then
+  [ "$require_devid" = "1" ] && fail "no DMG in $bundle_dir/dmg"
   log "no DMG in $bundle_dir/dmg; done"
   exit 0
 fi
@@ -118,3 +181,15 @@ hdiutil detach "$work/mnt" -quiet
 rm -f "$dmg"
 hdiutil convert "$work/rw.dmg" -quiet -format UDZO -imagekey zlib-level=9 -o "$dmg"
 log "rebuilt $dmg"
+
+if [ -n "$identity" ]; then
+  codesign --force --timestamp --sign "$identity" "$dmg"
+  codesign --verify --strict "$dmg"
+  log "signed $dmg"
+fi
+if $do_notarize; then
+  notarize "$dmg"
+  xcrun stapler staple "$dmg"
+  xcrun stapler validate "$dmg"
+  spctl --assess --type open --context context:primary-signature -vv "$dmg"
+fi

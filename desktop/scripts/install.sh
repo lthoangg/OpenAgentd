@@ -10,20 +10,14 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # macOS branch
 # ──────────────────────────────────────────────────────────────────────────────
-# We don't ship a paid Apple Developer ID, so CI signs the app ad hoc
-# (with a designated requirement that stays the same across releases,
-# so macOS keeps folder-access grants on update). Gatekeeper rejects such
-# an app when it was downloaded, i.e. carries the quarantine flag:
-#
-#     "OpenAgentd.app" is damaged and can't be opened. You should
-#      move it to the Trash.
-#
-# The bundle is fine; removing the flag is enough. The app is not
-# re-signed here: it is installed exactly as CI signed it.
+# Release apps are signed with a Developer ID and notarized by Apple, so
+# Gatekeeper accepts them as downloaded; this script never touches the
+# quarantine flag (removing it would skip that check) and never re-signs.
 #
 # Steps:
-#   1. Strip ``com.apple.quarantine`` xattr (set by the browser).
-#   2. Verify the signature (a modified bundle fails here).
+#   1. Verify the signature (a modified bundle fails here).
+#   2. Ask Gatekeeper whether it accepts the app (warns for local builds,
+#      which are signed ad hoc and not notarized).
 #   3. (Optional, with ``--install``) copy to /Applications.
 #
 # ──────────────────────────────────────────────────────────────────────────────
@@ -153,20 +147,7 @@ if [ "$PLATFORM" = "macos" ]; then
   BUNDLE="$(cd -- "$BUNDLE" && pwd)"
   info "Bundle: ${BOLD}${BUNDLE}${RESET}"
 
-  # ── 1. Strip quarantine xattr ───────────────────────────────────────────────
-  # Without this, even a freshly-signed bundle will trigger
-  # Gatekeeper's first-launch translocation, which copies the app to
-  # a read-only location and silently breaks the sidecar discovery.
-  info "Stripping quarantine xattr…"
-  if xattr -p com.apple.quarantine "$BUNDLE" &>/dev/null; then
-    xattr -dr com.apple.quarantine "$BUNDLE" || warn "xattr -dr returned non-zero"
-    ok "Quarantine xattr removed"
-  else
-    ok "No quarantine xattr present"
-  fi
-  xattr -cr "$BUNDLE" 2>/dev/null || true
-
-  # ── 2. Verify ───────────────────────────────────────────────────────────────
+  # ── 1. Verify ───────────────────────────────────────────────────────────────
   # CI signed the bundle; a failure means it was modified or is incomplete.
   info "Verifying signature…"
   if ! codesign --verify --deep --strict --verbose=1 "$BUNDLE" 2>&1 | sed 's/^/  /'; then
@@ -174,6 +155,14 @@ if [ "$PLATFORM" = "macos" ]; then
     exit 3
   fi
   ok "Signature verified"
+
+  # ── 2. Gatekeeper ───────────────────────────────────────────────────────────
+  if spctl --assess --type execute "$BUNDLE" 2>/dev/null; then
+    ok "Gatekeeper accepts the app (notarized)"
+  else
+    warn "Gatekeeper does not accept this app: it is not notarized."
+    warn "Release downloads are notarized; a local build is not."
+  fi
 
   # ── 3. Optional: install to /Applications ───────────────────────────────────
   if [ "$DO_INSTALL" = "1" ]; then

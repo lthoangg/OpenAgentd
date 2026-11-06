@@ -537,7 +537,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       // The lead's message to this subagent: its prefix is the chip's job, and
       // Edit would rewind the subagent, which the lead directs.
       const lead = fromAgent ? null : fromLead(block.extra, block.content, leadSessionId)
-      return <UserBubble content={lead ? lead.content : block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent && !lead ? () => onEdit(block.id) : undefined} editLocked={editLocked} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} fromLeadSessionId={lead?.sessionId} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
+      return <UserBubble content={lead ? lead.content : block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent && !lead ? () => onEdit(block.id) : undefined} onRevert={onEdit && !fromAgent && !lead ? () => { void useAgentStore.getState().revertToMessage(block.id, { restoreDraft: false }) } : undefined} editLocked={editLocked} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} fromLeadSessionId={lead?.sessionId} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} durationMs={block.thinkingDurationMs} />

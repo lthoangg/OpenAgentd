@@ -1,6 +1,10 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from 'react'
 import { useCopyFeedback } from '@/hooks/use-copy-feedback'
-import { ArrowUpRight, Check, ChevronDown, ChevronUp, Copy, Pencil } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronDown, ChevronUp, Copy, Pencil, Undo2 } from 'lucide-react'
+import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
+import { useIsPhone } from '@/hooks/use-is-phone'
+import { useLongPress } from '@/hooks/use-long-press'
+import { mediumHapticFeedback } from '@/lib/haptics'
 import { MarkdownBlock } from '@/utils/markdown'
 
 import type { FileLightboxItem, FileLightboxItemType } from '../FileLightbox'
@@ -346,12 +350,14 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
 /** A prompt younger than this when it mounts was just sent. */
 const FRESH_BUBBLE_MS = 2000
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, editLocked = false, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, fromLeadSessionId, replyFrom, onOpenSession }: {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, onRevert, editLocked = false, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, fromLeadSessionId, replyFrom, onOpenSession }: {
   content: string
   timestamp?: Date
   attachments?: MessageAttachment[]
   /** Rewind to just before this prompt and put it back in the composer. */
   onEdit?: () => void
+  /** Rewind to just before this prompt, leaving the composer as it is (Redo brings it back). */
+  onRevert?: () => void
   /** A turn is running, so the prompt cannot be rewound yet: Edit shows disabled, with the reason. */
   editLocked?: boolean
   /** The model and thinking level this prompt ran with. */
@@ -385,6 +391,19 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   const toggleFromHeight = useRef<number | null>(null)
 
   const handleCopy = () => copy(content)
+
+  // A phone: a long press on the prompt opens its actions (mockup J5).
+  const isPhone = useIsPhone()
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const actionItems: ActionSheetItem[] = [
+    ...(onEdit ? [{ id: 'edit', label: 'Edit and resend', icon: Pencil, disabled: editLocked, run: onEdit }] : []),
+    { id: 'copy', label: 'Copy', icon: Copy, run: handleCopy },
+    ...(onRevert ? [{ id: 'revert', label: 'Revert to here', icon: Undo2, danger: true, separatorBefore: true, disabled: editLocked, run: onRevert }] : []),
+  ]
+  const longPress = useLongPress(isPhone && !fromAgent, () => {
+    mediumHapticFeedback()
+    setActionsOpen(true)
+  })
 
   // Design feedback from the Preview tab shows as cards, not raw text; the
   // collapse and mention rendering below only see the typed text.
@@ -531,9 +550,10 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
     >
       {/* One hover region: the prompt, what is attached to it, and its row. */}
       <div
-        className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]"
+        className={cn('flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]', isPhone && '[-webkit-touch-callout:none]')}
         onMouseEnter={() => setRowShown(true)}
         onMouseLeave={() => setRowShown(false)}
+        {...(isPhone ? longPress : {})}
       >
          {sentFrom && <SentFromChip source={sentFrom} onOpenSession={onOpenSession} />}
          {fromLeadSessionId && <FromLeadChip sessionId={fromLeadSessionId} onOpenSession={onOpenSession} />}
@@ -645,6 +665,15 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
               )}
             </div>
       </div>
+      {isPhone && (
+        <ActionSheet
+          open={actionsOpen}
+          onClose={() => setActionsOpen(false)}
+          title="Prompt"
+          description={editLocked ? 'Edit and Revert are available when this turn ends.' : undefined}
+          items={actionItems}
+        />
+      )}
     </div>
   )
 })

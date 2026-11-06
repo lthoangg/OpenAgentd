@@ -6,7 +6,7 @@
  * settings instead.
  *
  * On a phone (``phone``) it reads like iOS Settings (mockup J10 10.1): a
- * large title, a coloured icon tile per row for fast scanning, and no
+ * large title, a quiet icon tile per row for fast scanning, and no
  * descriptions; those live on each section's own page.
  */
 import { ChevronRight } from 'lucide-react'
@@ -18,20 +18,6 @@ import type { SettingsHit } from '@/components/settings/settings-index'
 import { ICON_SIZE, PAGE_BODY, ROW_PAD, TEXT } from '@/components/settings/tokens'
 import { useSettingsSectionCounts, useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
 import { cn } from '@/lib/utils'
-
-/** The icon tile's colour per section; neutral when unlisted. */
-const TILE: Partial<Record<TopLevelSection, string>> = {
-  general: 'var(--accent-orange)',
-  connection: 'var(--accent-green)',
-  agents: 'var(--accent-purple)',
-  skills: 'var(--accent-pink)',
-  mcp: 'var(--accent-orange)',
-  goals: 'var(--accent-green)',
-  providers: 'var(--color-text)',
-  media: 'var(--accent-purple)',
-  memory: 'var(--accent-pink)',
-  denied_paths: 'var(--accent-red)',
-}
 
 export function SettingsMobileIndex({
   onSelect,
@@ -79,8 +65,7 @@ export function SettingsMobileIndex({
                       <span
                         data-settings-tile=""
                         aria-hidden="true"
-                        className="grid size-7 shrink-0 place-items-center rounded-[7px] text-(--bg-page)"
-                        style={{ background: TILE[item.id] ?? 'var(--color-text-muted)' }}
+                        className="grid size-7 shrink-0 place-items-center rounded-[7px] bg-(--bg-key) text-(--color-text-2)"
                       >
                         <item.icon size={16} />
                       </span>

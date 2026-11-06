@@ -1867,11 +1867,12 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   opens an action sheet (Steer now, Send after this turn finishes, Stop and
   send). Stop gives a medium haptic and a "Stopped" toast whose **Resume**
   sends "Continue".
-- **Settings.** A switch sits right of its label at every width; other
-  controls stack under the label.
-  The root reads like iOS Settings: a large title, a coloured icon tile per
-  row (state-hue tokens, never Signal Blue), no descriptions; each section's
-  page carries its own.
+- **Settings.** A switch or a short number sits right of its label at every
+  width, with the description running the full row under both (iOS footer);
+  other controls stack under the label.
+  The root reads like iOS Settings: a large title, one neutral icon tile per
+  row (`--bg-key`, `--color-text-2`; per-section hues read as noise), no
+  descriptions; each section's page carries its own.
 - **The chat bar.** ‹ Sessions, the title, one ⋯. A tap on the title opens
   Session info; ⋯ holds Tasks · n/m (only while there are tasks) and
   Workspace.

@@ -162,6 +162,37 @@
   --oa-phone-control: 44px;
   --oa-phone-header: 2.75rem;
 }
+/* A narrow phone (iPhone 13 mini, SE: 375pt) shows every step one notch
+ * smaller: the same sizes read large on the small screen (on-device report). */
+@media (max-width: 389px) {
+  :root {
+    --oa-phone-body: 0.875rem;
+    --oa-phone-subhead: 0.75rem;
+    --oa-phone-meta: 0.6875rem;
+    --oa-phone-title: 1.625rem;
+    --oa-phone-row: 2.25rem;
+    --oa-phone-control: 36px;
+    --oa-phone-header: 2.5rem;
+  }
+  :root[data-text-size="compact"] {
+    --oa-phone-body: 0.8125rem;
+    --oa-phone-subhead: 0.6875rem;
+    --oa-phone-meta: 0.625rem;
+    --oa-phone-title: 1.5rem;
+    --oa-phone-row: 2.125rem;
+    --oa-phone-control: 34px;
+    --oa-phone-header: 2.5rem;
+  }
+  :root[data-text-size="large"] {
+    --oa-phone-body: 0.9375rem;
+    --oa-phone-subhead: 0.8125rem;
+    --oa-phone-meta: 0.75rem;
+    --oa-phone-title: 1.75rem;
+    --oa-phone-row: 2.5rem;
+    --oa-phone-control: 40px;
+    --oa-phone-header: 2.75rem;
+  }
+}
 
 @layer base {
   * {

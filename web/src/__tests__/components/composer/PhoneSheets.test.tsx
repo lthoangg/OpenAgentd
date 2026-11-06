@@ -95,7 +95,8 @@ describe('PlusMenu on a phone', () => {
     fireEvent.click(within(opened).getByRole('button', { name: 'MCP servers' }))
     expect(opened.querySelector('[data-plus-page="tools"]')).not.toBeNull()
     fireEvent.click(within(opened).getByRole('button', { name: 'Add to message' }))
-    expect(within(opened).getByRole('button', { name: /Attach files/ })).toBeTruthy()
+    expect(within(opened).getByRole('button', { name: 'Photos' })).toBeTruthy()
+    expect(within(opened).getByRole('button', { name: 'Files' })).toBeTruthy()
   })
 
   it('pulls up to large on a wheel step, as a sheet does with a long MCP list', () => {

@@ -7,7 +7,7 @@
  * opens this menu at its MCP section (as does ``/mcp``).
  */
 import { useEffect, useId, useRef, useState } from 'react'
-import { AtSign, ChevronLeft, ChevronRight, Hash, MessageCircleQuestion, Paperclip, Plug, Plus } from 'lucide-react'
+import { AtSign, ChevronLeft, ChevronRight, Hash, Image, MessageCircleQuestion, Paperclip, Plug, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
@@ -33,8 +33,12 @@ const SHEET_DETENTS: SheetDetent[] = ['medium', 'large']
 
 /** What the "+" menu can do to the draft; supplied by the composer. */
 export interface ComposerActions {
-  /** Open the file chooser. */
-  attach: () => void
+  /**
+   * Open a chooser: ``photos`` the photo library, ``files`` the document
+   * picker (the phone apps' native ones, straight away), or with no kind the
+   * browser's file input.
+   */
+  attach: (kind?: 'photos' | 'files') => void
   /** Type ``@`` or ``#`` at the caret and open its picker. */
   startToken: (token: '@' | '#') => void
   /** Replace the draft (``/btw `` for a side question) and focus it. */
@@ -105,7 +109,9 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
       touch={isMobile}
       workspace={workspace}
       scrollToMcp={section === 'mcp'}
-      onAttach={run(actions.attach)}
+      onAttach={run(() => actions.attach())}
+      onAttachPhotos={run(() => actions.attach('photos'))}
+      onAttachFiles={run(() => actions.attach('files'))}
       onMention={run(() => actions.startToken('@'))}
       onSnippet={hasSnippets ? run(() => actions.startToken('#')) : undefined}
       onSideQuestion={canAskSideQuestion ? run(() => actions.setDraft('/btw ')) : undefined}
@@ -138,6 +144,8 @@ function PlusMenuItems({
   workspace,
   scrollToMcp,
   onAttach,
+  onAttachPhotos,
+  onAttachFiles,
   onMention,
   onSnippet,
   onSideQuestion,
@@ -146,6 +154,9 @@ function PlusMenuItems({
   workspace: string | null
   scrollToMcp: boolean
   onAttach: () => void
+  /** Touch: the photo library and the document picker, each its own row. */
+  onAttachPhotos?: () => void
+  onAttachFiles?: () => void
   onMention: () => void
   onSnippet?: () => void
   onSideQuestion?: () => void
@@ -182,10 +193,23 @@ function PlusMenuItems({
   }
   return (
     <div className="flex flex-col">
-      <button type="button" className={row} onClick={onAttach}>
-        <Paperclip size={14} aria-hidden="true" />
-        Attach files…
-      </button>
+      {touch && onAttachPhotos && onAttachFiles ? (
+        <>
+          <button type="button" className={row} onClick={onAttachPhotos}>
+            <Image size={14} aria-hidden="true" />
+            Photos
+          </button>
+          <button type="button" className={row} onClick={onAttachFiles}>
+            <Paperclip size={14} aria-hidden="true" />
+            Files
+          </button>
+        </>
+      ) : (
+        <button type="button" className={row} onClick={onAttach}>
+          <Paperclip size={14} aria-hidden="true" />
+          Attach files…
+        </button>
+      )}
       <button type="button" className={row} onClick={onMention}>
         <AtSign size={14} aria-hidden="true" />
         Mention a file

@@ -38,6 +38,10 @@ keyring = { version = "3.6.3", default-features = false, features = ["apple-nati
 # The QR scanner for connect links (Servers → Scan QR code). Mobile only.
 [target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
 tauri-plugin-barcode-scanner = "2"
+# Photos and Files in the composer's + menu: the native media and document
+# pickers (dialog), and reading the picked copy back (fs, scoped to it).
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
 
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = "0.6"

@@ -504,6 +504,8 @@ pub fn run() {
     // Servers → Scan QR code reads `openagentd://connect` links with the camera.
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_fs::init());
     #[cfg(target_os = "ios")]
     let builder = builder.on_web_content_process_terminate(|webview| {
         let _ = webview.reload();

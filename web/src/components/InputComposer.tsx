@@ -27,6 +27,7 @@ import { useLongPress } from '@/hooks/use-long-press'
 import { ActionSheet } from '@/components/ui/action-sheet'
 import { SessionModeToggle } from './SessionModeToggle'
 import type { ComposerActions } from './composer/PlusMenu'
+import { canPickNatively, pickNatively } from '@/lib/native-pick'
 
 // Re-export the public type so callers can import ``FileRef`` from this module
 // alongside the component. (The helper ``findActiveMention`` is imported from
@@ -767,7 +768,13 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
   // What the "+" menu may do to the draft.
   const composerActions = useMemo<ComposerActions>(() => ({
-    attach: () => fileInputRef.current?.click(),
+    attach: (kind) => {
+      if (kind && canPickNatively()) {
+        void pickNatively(kind).then((picked) => { if (picked.length > 0) addAllowedFiles(picked) }).catch(() => {})
+        return
+      }
+      fileInputRef.current?.click()
+    },
     startToken: (token) => {
       const el = textareaRef.current
       const current = el?.value ?? ''
@@ -805,7 +812,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         el?.setSelectionRange(text.length, text.length)
       })
     },
-  }), [fileInputRef, onFileRefsNeeded, resetDraftState, resize, resizeAfterLayout, setMentionRange, setSnippetRange])
+  }), [addAllowedFiles, fileInputRef, onFileRefsNeeded, resetDraftState, resize, resizeAfterLayout, setMentionRange, setSnippetRange])
 
   const plusEl = renderPlus ? renderPlus(composerActions) : (
     <button

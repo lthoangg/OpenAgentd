@@ -74,6 +74,8 @@ const TURN_RENDER_STEP = 80
  * mounting 80 turns at once cost a long frame the reader saw as a stutter.
  */
 const TOUCH_TURN_RENDER_STEP = 16
+/** ms of no scrolling before a landed page shows on touch (the fling has rested). */
+const OLDER_REVEAL_IDLE_MS = 140
 const turnRenderStep = () => (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches ? TOUCH_TURN_RENDER_STEP : TURN_RENDER_STEP)
 const ENTER_EASE = `cubic-bezier(${EASINGS.out.join(', ')})`
 /** Older pages a reload may fetch on its own to reach a prompt (100 rows each). */
@@ -1026,24 +1028,56 @@ export function AgentView({
     release()
   }, [holdView, turnItems.length])
 
+  // When the reader last scrolled, so a page that lands mid-fling waits for
+  // the rest: on iOS a scrollTop write (the view hold) stops the momentum
+  // and the view jumps.
+  const lastScrollAtRef = useRef(0)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onScroll = () => { lastScrollAtRef.current = performance.now() }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [scrollRef])
+
   const handleLoadOlderTop = useCallback(() => {
     if (hiddenTurnCountRef.current > 0) {
       showEarlierTurns()
     } else if (useAgentStore.getState().hasMore && !loadingOlderRef.current) {
       loadingOlderRef.current = true
+      const touch = turnRenderStep() === TOUCH_TURN_RENDER_STEP
+      // Touch: the page's turns stay out of the window as they land, and one
+      // step of them shows once the scroll rests; mounting a whole page at
+      // once was a long frame, and its shift mid-fling a jump.
+      if (touch) setRenderedTurnCount((count) => Math.min(count, turnItemsLengthRef.current))
       const release = holdView()
       void useAgentStore.getState().loadOlderMessages().finally(() => {
         loadingOlderRef.current = false
-        release()
+        if (!touch) {
+          release()
+          return
+        }
+        const reveal = () => {
+          const idleFor = performance.now() - lastScrollAtRef.current
+          if (idleFor < OLDER_REVEAL_IDLE_MS) {
+            window.setTimeout(reveal, OLDER_REVEAL_IDLE_MS - idleFor)
+            return
+          }
+          setRenderedTurnCount((count) => count + TOUCH_TURN_RENDER_STEP)
+          release()
+        }
+        reveal()
       })
     }
   }, [holdView, showEarlierTurns])
 
   // Keep the refs in sync so callbacks/listeners always see
   // the latest values without needing to re-register listeners.
+  const turnItemsLengthRef = useRef(0)
   useEffect(() => {
     onLoadOlderTopRef.current = handleLoadOlderTop
     hiddenTurnCountRef.current = hiddenTurnCount
+    turnItemsLengthRef.current = turnItems.length
   })
 
   // ── Prompt navigation ──────────────────────────────────────────────────────
@@ -1258,6 +1292,17 @@ export function AgentView({
            )
          )}
 
+         {/* Earlier pages on their way: a pill pinned to the top of the view,
+             in a box of no height, so its coming and going never moves the
+             turns (a row here shifted them twice per page, a flicker). */}
+         {loadingOlder && (
+           <div data-loading-earlier-slot="" className="pointer-events-none sticky top-0 z-10 flex h-0 justify-center">
+             <div role="status" data-loading-earlier="" className="mt-1 flex items-center gap-2 rounded-full bg-(--bg-card) px-3 py-1 text-xs text-(--color-text-muted) shadow-(--shadow-depth) animate-in fade-in-0 animation-duration-(--motion-fast)">
+               <Loader2 size={13} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />
+               Loading earlier messages…
+             </div>
+           </div>
+         )}
          <div className="space-y-3">
               {/* Turns past the render window, and older pages, come in as the
                   reader scrolls to the top (``handleLoadOlderTop``). */}
@@ -1279,13 +1324,6 @@ export function AgentView({
                   {/* Where the rows between the prompt and the page sit, unloaded. */}
                   <div aria-hidden="true" data-history-gap="" className="border-t border-dashed border-(--color-border-strong)" />
                 </>
-              )}
-              {/* Where earlier pages come in from: the row stands in for them while they load. */}
-              {loadingOlder && (
-                <div role="status" data-loading-earlier="" className="flex items-center justify-center gap-2 py-1 text-xs text-(--color-text-muted)">
-                  <Loader2 size={13} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />
-                  Loading earlier messages…
-                </div>
               )}
               {visibleTurnItems.map((item, k) => {
                  const globalTurnIndex = hiddenTurnCount + k

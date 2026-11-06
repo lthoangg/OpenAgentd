@@ -255,6 +255,20 @@ describe("AgentView — the row for earlier messages loading", () => {
     expect(row.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  // Its coming and going must not move the turns: a pill in a box of no
+  // height, pinned to the top, outside the spaced list of turns.
+  it("takes no room in the list, so the turns never shift for it", () => {
+    storeState._loadingOlder = true
+    const { container } = render(
+      <AgentView blocks={[block("b1", "user"), block("b2")]} currentBlocks={[]} isWorking={false} />,
+    )
+    const slot = container.querySelector("[data-loading-earlier-slot]") as HTMLElement
+    expect(slot.className.split(/\s+/)).toEqual(expect.arrayContaining(["sticky", "top-0", "h-0"]))
+    const first = container.querySelector("[data-block-id]") as HTMLElement
+    expect(slot.contains(first)).toBe(false)
+    expect(first.parentElement!.contains(slot)).toBe(false)
+  })
+
   it("shows nothing when no older page is loading, even when more exist", () => {
     storeState.hasMore = true
     storeState.nextCursor = "cursor-1"
@@ -366,5 +380,37 @@ describe("AgentView — earlier turns landing above the view", () => {
     })
 
     expect(container.querySelector('[data-block-id="t1"]')).toBe(reply)
+  })
+
+  // Touch: a landed page shows one step of turns, and only once the scroll
+  // has rested, so a fling is never stopped by the view hold (iOS) and a
+  // whole page never mounts in one long frame.
+  it("on touch, shows one step of a landed page once the scroll rests", async () => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = ((query: string) => ({ matches: query.includes("coarse"), media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false })) as unknown as typeof window.matchMedia
+    try {
+      storeState.hasMore = true
+      storeState.nextCursor = "cursor-1"
+      const blocks = makeTurns(3)
+      const { container, rerender } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+      const el = getScrollEl(container)
+      mockLoadOlderMessages.mockImplementation(async () => {
+        rerender(<AgentView blocks={[...makeTurns(20, "old-"), ...blocks]} currentBlocks={[]} isWorking={false} />)
+        // The reader is still flinging as the page lands (away from the top).
+        Object.defineProperty(el, "scrollTop", { value: 1000, configurable: true, writable: true })
+        el.dispatchEvent(new Event("scroll", { bubbles: true }))
+      })
+      const count = () => container.querySelectorAll("[data-block-id]").length
+
+      await readAt(el, 150)
+      await act(async () => { await new Promise((r) => setTimeout(r, 170)) })
+      expect(mockLoadOlderMessages).toHaveBeenCalledTimes(1)
+      expect(count()).toBe(6)
+
+      await act(async () => { await new Promise((r) => setTimeout(r, 200)) })
+      expect(count()).toBe(6 + 16)
+    } finally {
+      window.matchMedia = originalMatchMedia
+    }
   })
 })

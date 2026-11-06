@@ -21,6 +21,7 @@
  */
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import { ChevronRight, ChevronUp } from 'lucide-react'
+import { useIsPhone } from '@/hooks/use-is-phone'
 
 import type { ContentBlock } from '@/api/types'
 import { cn } from '@/lib/utils'
@@ -84,8 +85,10 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
   const bodyId = useId()
   const summary = useMemo(() => summarizeWork(blocks), [blocks])
   const detail = workSummaryDetail(summary)
-  const now = useLiveNow(live)
-  const elapsed = live && startedAt !== undefined && Number.isFinite(startedAt) ? formatElapsed(now - startedAt) : null
+  // A phone counts the run in its run bar above the composer; one clock is enough.
+  const isPhone = useIsPhone()
+  const now = useLiveNow(live && !isPhone)
+  const elapsed = live && !isPhone && startedAt !== undefined && Number.isFinite(startedAt) ? formatElapsed(now - startedAt) : null
   // Memoized so the clock's tick does not re-parse the step's arguments.
   const doing = useMemo(() => (currentStep ? stepLabel(currentStep) : detail), [currentStep, detail])
 

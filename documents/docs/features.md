@@ -2129,6 +2129,7 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **The phone app reads like an iOS app** `[v3.48.0]`. It is still the web
   UI; the changes apply only on a phone (touch and narrow). Tablets and
   narrow mouse windows keep their layout.
+  - `[v3.49.0]` The composer's **+** menu has **Photos** and **Files**, which open the phone's photo library or document picker directly in the iOS and Android apps. Thinking has its own button beside the model chip; a tap blurs the screen and shows one slider across the model's levels, saved when you let go.
   - The app opens on **Sessions**, which has a large title, a search field,
     and *Needs you* at the top, then Pinned and the workspaces. Pull down to
     refresh. Swipe a row left to Pin or Delete it; Delete asks first. A long

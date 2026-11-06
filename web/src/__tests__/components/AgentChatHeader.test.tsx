@@ -467,7 +467,7 @@ describe('AgentChatHeader', () => {
       renderHeader({ onBack, onSidebarToggle })
       expect(screen.queryByRole('button', { name: 'Toggle sidebar' })).toBeNull()
       const back = screen.getByRole('button', { name: 'Back to Sessions' })
-      expect(back).toHaveTextContent('Sessions')
+      expect(back.textContent).toBe('')
       await userEvent.setup().click(back)
       expect(onBack).toHaveBeenCalledTimes(1)
       expect(onSidebarToggle).not.toHaveBeenCalled()

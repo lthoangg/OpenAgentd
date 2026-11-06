@@ -424,7 +424,7 @@ describe('SettingsModal — on a phone', () => {
     act(() => useSettingsStore.getState().setSection('providers'))
 
     const back = screen.getByRole('button', { name: 'Back to Settings' })
-    expect(back.textContent).toBe('Settings')
+    expect(back.textContent).toBe('')
     act(() => back.click())
     expect(useSettingsStore.getState().mobileView).toBe('index')
   })

@@ -133,15 +133,13 @@ export function OverlayHeader({
         onClick={back.onBack}
         aria-label={back.ariaLabel ?? `Back to ${back.label}`}
         data-overlay-back=""
-        className={cn(SHEET_BAR_BUTTON_CLASS, 'font-normal', android ? 'px-0' : 'max-w-full justify-start gap-0.5 pl-0 pr-2', back.className)}
+        className={cn(SHEET_BAR_BUTTON_CLASS, 'font-normal', android ? 'px-0' : 'justify-start pl-0', back.className)}
       >
+        {/* A bare glyph, as the phone's nav bar (user request); the name says where. */}
         {android ? (
           <ArrowLeft size={20} aria-hidden="true" className="size-5" />
         ) : (
-          <>
-            <ChevronLeft size={20} strokeWidth={2} aria-hidden="true" className="-ml-1.5 size-5" />
-            <span className="truncate text-xs">{back.label}</span>
-          </>
+          <ChevronLeft size={20} strokeWidth={2.25} aria-hidden="true" className="-ml-1 size-5" />
         )}
       </Button>
     )

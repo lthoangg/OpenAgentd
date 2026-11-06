@@ -8,7 +8,7 @@
  * shrink, truncates first; so a long title never runs under ‹ Sessions or
  * the actions, and a short one sits in the middle. Android puts a ← with no
  * label and the title beside it, left-aligned, as Material's top app bar
- * does. The back control always names where it goes.
+ * does. The back control is a bare glyph whose accessible name says where it goes.
  *
  * Back is in the accent (iOS's tint), regular weight, its chevron 20px as the
  * phone header's icons are (DESIGN.md → Rulebook 4).
@@ -44,7 +44,7 @@ export interface PhoneNavBarProps {
 const BACK_CLASS = 'relative touch-hit h-(--phone-control) min-w-(--phone-control) bg-transparent! font-normal text-(--color-accent)! active:opacity-50'
 
 /**
- * ‹ and the parent's name (iOS) or a bare ← (Android): the back control of
+ * A bare ‹ (iOS) or ← (Android), named for the parent: the back control of
  * a pushed screen's bar, and of the Sessions screen's bar (‹ Servers).
  */
 export function PhoneBackButton({ label, onBack }: { label: string; onBack: () => void }) {
@@ -57,15 +57,14 @@ export function PhoneBackButton({ label, onBack }: { label: string; onBack: () =
       onClick={onBack}
       aria-label={`Back to ${label}`}
       data-phone-back=""
-      className={cn(BACK_CLASS, android ? 'px-0' : 'max-w-full justify-start gap-0.5 pl-0 pr-2')}
+      // A bare glyph on both (user request): the bar stays clear for the
+      // title; the button's name still says where it goes.
+      className={cn(BACK_CLASS, android ? 'px-0' : 'justify-start pl-0')}
     >
       {android ? (
         <ArrowLeft size={20} aria-hidden="true" className="size-5" />
       ) : (
-        <>
-          <ChevronLeft size={20} strokeWidth={2} aria-hidden="true" className="-ml-1.5 size-5" />
-          <span className="truncate text-xs">{label}</span>
-        </>
+        <ChevronLeft size={20} strokeWidth={2.25} aria-hidden="true" className="-ml-1 size-5" />
       )}
     </Button>
   )

@@ -65,7 +65,7 @@ describe('OverlayHeader', () => {
       const { container } = render(<OverlayHeader title="Providers" back={{ label: 'Settings', onBack }} onClose={onClose} closeLabel="Close settings" />)
 
       const back = screen.getByRole('button', { name: 'Back to Settings' })
-      expect(back.textContent).toBe('Settings')
+      expect(back.textContent).toBe('')
       expect(screen.getByRole('heading', { name: 'Providers' }).parentElement?.className).toContain('text-center')
       expect(screen.queryByRole('button', { name: 'Close settings' })).toBeNull()
       fireEvent.click(screen.getByRole('button', { name: 'Done' }))

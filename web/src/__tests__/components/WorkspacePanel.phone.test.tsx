@@ -128,7 +128,7 @@ describe('Review panel on a phone — a page over the chat', () => {
     const bar = panel.querySelector<HTMLElement>('[data-phone-nav-bar]')!
 
     const back = within(bar).getByRole('button', { name: 'Back to Chat' })
-    expect(back.textContent).toBe('Chat')
+    expect(back.textContent).toBe('')
     await userEvent.setup().click(back)
     expect(onRequestClose).toHaveBeenCalledTimes(1)
 

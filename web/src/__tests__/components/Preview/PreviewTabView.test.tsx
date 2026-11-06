@@ -429,7 +429,7 @@ describe('PreviewTabView', () => {
     expect(bar.className).toContain('order-last')
   })
 
-  it('on touch, keeps the tool buttons at 28px with a 36px hit area, and the address as a 40px pill on its own line above them', async () => {
+  it('on a phone, puts the address as a 40px pill on its own line over 44px round tools', async () => {
     isMobile = true
     await renderView()
     const controls = [
@@ -437,11 +437,7 @@ describe('PreviewTabView', () => {
       screen.getByRole('button', { name: 'More preview actions' }),
       screen.getByRole('button', { name: 'Refresh' }),
     ]
-    for (const control of controls) {
-      // No 36px touch growth (h-9, min-h-9, size-9) on any of them.
-      expect(control.className).not.toMatch(/pointer-coarse:(min-)?h-9|pointer-coarse:size-9/)
-      expect(control.className).toMatch(/pointer-coarse:h-7|pointer-coarse:size-7|(^|\s)h-7(\s|$)/)
-    }
+    for (const control of controls) expect(control.className).toMatch(/(^|\s)(size|h)-11(\s|$)/)
     const address = screen.getByRole('textbox', { name: 'Preview address' })
     expect(address.className).toContain('h-10')
     expect(address.className).toContain('rounded-full')

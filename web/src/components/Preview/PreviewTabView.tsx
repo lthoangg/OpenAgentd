@@ -119,6 +119,8 @@ function ToolbarButton({
   className?: string
 }) {
   const reason = disabled ? disabledReason : undefined
+  // A phone's bottom bar: thumb-sized 44px round buttons with 20px glyphs.
+  const phone = useIsMobile()
   return (
     <Tooltip>
       {/* The trigger wraps the button in a span, so a disabled one still gets the hover. */}
@@ -131,7 +133,7 @@ function ToolbarButton({
             aria-label={label}
             aria-description={reason}
             aria-pressed={pressed}
-            className={cn(DOCK_ACTION_BUTTON_CLASS, pressed && 'bg-(--bg-key) text-(--color-text)', className)}
+            className={cn(DOCK_ACTION_BUTTON_CLASS, phone && 'size-11 rounded-full [&_svg]:size-5', pressed && 'bg-(--bg-key) text-(--color-text)', className)}
           >
             {children}
           </button>
@@ -590,7 +592,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           'flex min-h-10 shrink-0 items-center gap-0.5 border-(--color-border-subtle) bg-(--bg-page) px-1 py-1',
           // Safari's bottom bar: the address as a full-width pill on top, the
           // tools spread under it in thumb reach.
-          phone ? 'order-last flex-wrap justify-between gap-y-1 border-t px-2 pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]' : 'border-b',
+          phone ? 'order-last flex-wrap justify-around gap-y-1 border-t px-2 pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]' : 'border-b',
         )}
       >
         <ToolbarButton label="Back" onClick={() => post({ type: 'history', dir: -1 })} disabled={!ready || pageDown} disabledReason={navReason('back')}>
@@ -662,7 +664,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           dense
           // rounded-xs: the address bar's corners, not the form trigger's rounded-md.
           // dense: 28px on touch too, so it fits the 32px toolbar.
-          className="h-7 shrink-0 gap-1 rounded-xs px-1.5 text-meta"
+          className={phone ? 'h-11 shrink-0 gap-1 rounded-full px-3 text-meta [&_svg]:size-5' : 'h-7 shrink-0 gap-1 rounded-xs px-1.5 text-meta'}
           trigger={
             <span className="flex items-center gap-1">
               <Smartphone size={12} aria-hidden="true" />
@@ -693,7 +695,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
                 {errorCount > 0 && <span className="absolute -top-1 -right-1 size-1.5 rounded-full bg-(--color-error)" aria-hidden="true" />}
               </span>
             }
-            className={cn(DOCK_ACTION_BUTTON_CLASS, 'justify-center border-0 bg-transparent p-0 [&>svg]:hidden')}
+            className={cn(DOCK_ACTION_BUTTON_CLASS, 'size-11 justify-center rounded-full border-0 bg-transparent p-0 [&>svg]:hidden [&_svg]:size-5')}
             panelClassName="w-56"
           >
             {[

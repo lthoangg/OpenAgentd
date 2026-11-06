@@ -666,74 +666,79 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
           </div>
         </div>
       ) : review && (
-        <div className="shrink-0 space-y-2 border-t border-(--color-border-subtle) bg-(--bg-card) px-3 pt-2.5 pb-safe">
-          {comments.length > 0 && (!compactFooter || showComments) && (
-            <CommentList
-              comments={comments}
-              onShow={(comment) => showComment(comment.quote)}
-              onRemove={(comment) => changeDraft({ ...reviewDraft, comments: comments.filter((c) => c.id !== comment.id) })}
+        // The band runs the dock's width; its content keeps the plan's column
+        // (``oa-review-column``, index.css), so a wide or maximized dock does
+        // not stretch the feedback box and the buttons across the screen.
+        <div data-plan-review-footer="" className="shrink-0 border-t border-(--color-border-subtle) bg-(--bg-card) px-3 pt-2.5 pb-safe">
+          <div className="oa-review-column space-y-2">
+            {comments.length > 0 && (!compactFooter || showComments) && (
+              <CommentList
+                comments={comments}
+                onShow={(comment) => showComment(comment.quote)}
+                onRemove={(comment) => changeDraft({ ...reviewDraft, comments: comments.filter((c) => c.id !== comment.id) })}
+              />
+            )}
+            <Textarea
+              aria-label="Feedback on the plan"
+              placeholder={comments.length ? 'Anything else? (optional)' : 'What should change? Select plan text to comment on it.'}
+              value={overall}
+              maxLength={PLAN_FEEDBACK_MAX_CHARS}
+              onChange={(event) => changeDraft({ ...reviewDraft, overall: event.target.value })}
+              className={cn(
+                // While typing on a phone, cap the box to a share of the visible
+                // area so the plan above stays readable.
+                compactFooter ? 'max-h-[calc(var(--app-vh,100svh)*0.25)] min-h-10' : 'max-h-40',
+                !compactFooter && (comments.length ? 'min-h-10' : 'min-h-16'),
+              )}
             />
-          )}
-          <Textarea
-            aria-label="Feedback on the plan"
-            placeholder={comments.length ? 'Anything else? (optional)' : 'What should change? Select plan text to comment on it.'}
-            value={overall}
-            maxLength={PLAN_FEEDBACK_MAX_CHARS}
-            onChange={(event) => changeDraft({ ...reviewDraft, overall: event.target.value })}
-            className={cn(
-              // While typing on a phone, cap the box to a share of the visible
-              // area so the plan above stays readable.
-              compactFooter ? 'max-h-[calc(var(--app-vh,100svh)*0.25)] min-h-10' : 'max-h-40',
-              !compactFooter && (comments.length ? 'min-h-10' : 'min-h-16'),
+            {!compactFooter && <p className="text-meta text-(--color-text-muted)">Or reply in chat to redirect the agent.</p>}
+            {decision.error && (
+              <p role="alert" className="text-meta text-(--color-error)">{decision.error}</p>
             )}
-          />
-          {!compactFooter && <p className="text-meta text-(--color-text-muted)">Or reply in chat to redirect the agent.</p>}
-          {decision.error && (
-            <p role="alert" className="text-meta text-(--color-error)">{decision.error}</p>
-          )}
-          <div className="flex flex-wrap items-center justify-end gap-2 pb-2.5">
-            {showKeepGoing && <KeepGoingControl decision={decision} onTurnsFocusChange={setTurnsFocused} className="mr-auto" />}
-            {compactFooter && comments.length > 0 ? (
-              <button
+            <div className="flex flex-wrap items-center justify-end gap-2 pb-2.5">
+              {showKeepGoing && <KeepGoingControl decision={decision} onTurnsFocusChange={setTurnsFocused} className="mr-auto" />}
+              {compactFooter && comments.length > 0 ? (
+                <button
+                  type="button"
+                  aria-expanded={showComments}
+                  // Keep focus (and the keyboard) in the feedback box.
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => setShowComments((open) => !open)}
+                  className="mr-auto inline-flex items-center gap-1 rounded-full bg-(--bg-key) px-2 py-0.5 text-meta text-(--color-text-2) pointer-coarse:min-h-9 pointer-coarse:px-3"
+                >
+                  {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
+                  <ChevronRight
+                    size={12}
+                    aria-hidden="true"
+                    className={cn('motion-safe:transition-transform duration-(--motion-fast)', showComments ? '-rotate-90' : 'rotate-90')}
+                  />
+                </button>
+              ) : (
+                footerHint && (!compactFooter || tooLong || turnsFocused) && (
+                  <span className={cn('text-meta text-(--color-text-muted)', compactFooter && 'mr-auto')}>{footerHint}</span>
+                )
+              )}
+              <Button
                 type="button"
-                aria-expanded={showComments}
-                // Keep focus (and the keyboard) in the feedback box.
-                onPointerDown={(event) => event.preventDefault()}
-                onClick={() => setShowComments((open) => !open)}
-                className="mr-auto inline-flex items-center gap-1 rounded-full bg-(--bg-key) px-2 py-0.5 text-meta text-(--color-text-2) pointer-coarse:min-h-9 pointer-coarse:px-3"
+                variant="default"
+                size="sm"
+                disabled={decision.submitting || tooLong}
+                onClick={requestChanges}
               >
-                {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
-                <ChevronRight
-                  size={12}
-                  aria-hidden="true"
-                  className={cn('motion-safe:transition-transform duration-(--motion-fast)', showComments ? '-rotate-90' : 'rotate-90')}
-                />
-              </button>
-            ) : (
-              footerHint && (!compactFooter || tooLong || turnsFocused) && (
-                <span className={cn('text-meta text-(--color-text-muted)', compactFooter && 'mr-auto')}>{footerHint}</span>
-              )
-            )}
-            <Button
-              type="button"
-              variant="default"
-              size="sm"
-              disabled={decision.submitting || tooLong}
-              onClick={requestChanges}
-            >
-              {comments.length + pendingComment.length > 0
-                ? `Request changes (${comments.length + pendingComment.length})`
-                : 'Request changes'}
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              disabled={decision.submitting || approveHint !== null}
-              onClick={approve}
-            >
-              {decision.approveLabel}
-            </Button>
+                {comments.length + pendingComment.length > 0
+                  ? `Request changes (${comments.length + pendingComment.length})`
+                  : 'Request changes'}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                disabled={decision.submitting || approveHint !== null}
+                onClick={approve}
+              >
+                {decision.approveLabel}
+              </Button>
+            </div>
           </div>
         </div>
       )}

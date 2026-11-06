@@ -46,7 +46,7 @@ export function SettingsMobileIndex({
                     type="button"
                     onClick={() => onSelect(item.id)}
                     className={cn(
-                      'flex min-h-11 w-full items-center gap-3 px-3 py-2 text-left',
+                      'flex min-h-(--phone-control) w-full items-center gap-3 px-3 py-2 text-left',
                       'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/40 active:bg-(--bg-key)/60',
                       'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)',
                     )}

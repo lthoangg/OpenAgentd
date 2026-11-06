@@ -30,7 +30,7 @@ import { MAX_TEXTAREA_HEIGHT } from './InputComposer.autosize'
  * differ, the caret (the textarea's) drifts further from the painted text
  * (the mirror's) with every letter typed.
  */
-export const COMPOSER_TEXT_CLASS = 'text-sm leading-relaxed phone:text-subhead'
+export const COMPOSER_TEXT_CLASS = 'text-sm leading-relaxed phone:text-xs'
 
 interface MentionOverlayProps {
   /** Current textarea value. */

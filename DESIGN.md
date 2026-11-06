@@ -650,6 +650,10 @@ desktop-first and walk styles back down.
 - `mac-traffic-inset` (70px) — left inset that clears the macOS traffic-light
   overlay (12px origin + ~58px button group).
 - `content-max` (768px) — reading measure for transcripts and prose.
+  The Plan tab's review footer (comments, feedback, Approve and Request
+  changes) keeps the plan's text column (`oa-review-column`), not the dock's
+  width: its band and top line run full width, its content lines up with
+  the prose, 88ch in a maximized dock.
 - `overlay-max` (860px) — default modal width cap; `palette-max` (600px) for the
   command palette.
 
@@ -1094,12 +1098,12 @@ hovered; `danger` is the soft error fill.
 | `icon-dense` | **28×28px** | `p-0` | 14px | — | `rounded-sm` (6px) | Panel-header and detail-pane actions (close, back) |
 | `icon` | **36×36px** | `p-0` | 14px | — | `rounded-md` (8px) | Standard standalone icon actions |
 
-**Phone scale**: a phone (the `phone:` variant: touch, and narrow or a landscape phone, the same test as `useIsMobile`) uses Apple's sizes, as a phone app reads: **17px** for row titles, buttons, menus, fields, chat and bar titles (`text-xs`, `text-sm`, `text-base`), **15px** for a row's second line, status words and code (`text-subhead`, `text-code`), **13px** for times and captions (`text-meta`). Rows, the header and every `Button` are **44px** (48px rows and buttons in the Android app); `.touch-hit` and prose links grow to 44px; the switch is 51×31. The composer is the exception, a step smaller so it stays compact: 15px message text, 13px deck labels, 36px controls (Send a 36px circle) whose touch area still grows to 44px (Composer and run deck). Text size scales the phone too: Compact 15px, Large 19px, with Dynamic Type on top. Tablets and narrow mouse windows keep the dense scale below.
+**Phone scale**: a phone (the `phone:` variant: touch, and narrow or a landscape phone, the same test as `useIsMobile`) reads at the composer's size. At Default: **15px** for row titles, buttons, menus, fields, chat and bar titles (`text-xs`, `text-sm`, `text-base`), **13px** for a row's second line, status words and code (`text-subhead`, `text-code`), **12px** for times and captions (`text-meta`). Rows and every `Button` are **40px** (4px more in the Android app); controls drawn outside `Button` (sheet rows, a sheet's bar buttons, ‹ Back) read the same step from `--phone-control`; the header stays **44px**; the large title is 28px. Bar buttons add `touch-hit`, so they and prose links keep a **44px** touch area; the switch is 51×31. **Text size picks the step** (the `--oa-phone-*` tokens in `index.css`): Compact 14px text and 36px rows and buttons (a 40px header, a 26px title), Large Apple's own 17px and 44px (a 34px title), with Dynamic Type on top. The composer keeps its size at Default: 15px message text (`phone:text-xs`), 13px deck labels (`phone:text-subhead`), 36px controls (Send a 36px circle) whose touch area grows to 44px (Composer and run deck). Tablets and narrow mouse windows keep the dense scale below.
 
 **Mobile Touch Parity Scaling**: On touch tablets (`pointer: coarse`), standalone icon actions scale up to one compact **36×36px touch target** (`size-9`), while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`). A phone takes the 44px phone scale above instead.
 
 - `Button` gets this automatically: a coarse-pointer rule sets `min-height`/`min-width: 36px` on `[data-slot="button"]` (40px in the Android app). Prefer `Button` over a bare `<button>` for icon actions.
-- `--spacing-list-row` becomes 36px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-9`. Inline row actions add `pointer-coarse:size-9` (36px) to fill the row. Every touch target is 36px on a tablet; a phone takes 44px everywhere (Phone scale above), Send and Steer included (`phone:size-11`).
+- `--spacing-list-row` becomes 36px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-9`. Inline row actions add `pointer-coarse:size-9` (36px) to fill the row. Every touch target is 36px on a tablet; a phone takes its own step (Phone scale above), with a 44px touch area on bar buttons and Send.
 - `--spacing-tab-bar` (the review panel's tab strip) grows to 45px on coarse pointers, so each tab and its close control are 36px pills with 4px around them and a 1px hairline.
 - Line height tightens on coarse pointers: `leading-relaxed` is 1.5 (1.625 on desktop) and chat/plan prose (`.oa-prose`) is 1.6 (1.75 on desktop), so phone screens read denser. Text sizes do not change.
 - On phones the header is 40px with 36px controls (`max-md:pointer-coarse:size-9`). On wider touch screens, controls inside the 36px header stay within that height (`pointer-coarse:size-9`), because overlays are positioned from `--spacing-app-header`.
@@ -1307,7 +1311,8 @@ leads with ↰ **Open the main agent** (before the title on desktop, first
 among the bar's actions on a phone). A narrow mouse window keeps the sidebar toggle,
 the title over its workspace, Tasks and Review panel; a phone's bar is
 ‹ Sessions, the title, Tasks and Review panel (Mobile shell). Every header
-control is 36px on touch and 44px on a phone.
+control is 36px on touch and the phone's control step on a phone (40px at
+Default), with a 44px touch area.
 
 **Notices** (toasts, the update card, the LSP prompt) stack at the top right
 under the header, newest first, so the run deck and Send stay clear. Phones
@@ -1352,10 +1357,10 @@ the text sits the run deck, which says how the next message runs:
 
 Every control in the deck is one height, the same steps as Send: 28px on
 desktop, 32px in a narrow mouse window, 36px on touch. A phone keeps the
-composer compact: its controls stay 36px (the deck's "+" skips the Button
-floor of 44px, 48px on Android) and `touch-hit` grows their touch area to
-44px; the message is 15px and the deck's labels 13px, a step under the rest
-of the phone scale. All are rounded `radius-sm` (6px) but Send, a full
+composer compact: its controls stay 36px (the deck's "+" skips the phone's
+Button floor) and `touch-hit` grows their touch area to 44px; the message
+is 15px and the deck's labels 13px, the phone scale's Default steps. All
+are rounded `radius-sm` (6px) but Send, a full
 circle. The context ring stays 36px wide
 on a phone so a 320px screen leaves the chip its room. With a mouse, the
 stacked chip (below) is 36px: its two lines need it.
@@ -1746,24 +1751,45 @@ dismissed by drag.
 
 **A phone is a navigation stack** (`useIsPhone`: `useIsMobile` on a
 touch-first device; a narrow mouse window and a tablet keep the drawer
-layout). `components/phone/PhoneStack` holds two levels, both mounted:
+layout). Three levels, all mounted: `components/phone/PhoneStack` holds
+Sessions with a chat pushed over it, and that stack is the page of a second
+`PhoneStack` over Servers. Only one of the two takes the edge swipe and
+Back at a time.
 
-- **Sessions** (`/sessions`, the sidebar's `page` mode) is the first screen:
-  the server chip and ✎ New session in the bar, a 34px **Sessions** title
-  (`text-large-title`) that hands over to the bar's 17px title as it scrolls
-  away, a search field, then Needs you, Pinned and the workspaces. Pull down
-  to refresh. Swipe a row left for Pin and Delete (Delete confirms); a long
-  press still opens its menu. A toolbar at the bottom holds Settings,
-  Scheduled, Usage and Commands, each an icon over its name.
+- **Servers** (`/servers`, `components/phone/ServersScreen`, loaded lazily)
+  is the bottom level: a large **Servers** title over the saved servers, the
+  same list as Settings → Server (`AppBackendPanel`). The row in use offers
+  **Sessions ›** back up to its list; **Use** on another switches the app to
+  it and lands on that server's Sessions.
+- **Sessions** (`/sessions`, the sidebar's `page` mode) is the first screen
+  the app opens on: ‹ Servers and ✎ New session in the bar, a 28px
+  **Sessions** title (`text-large-title`) that hands over to the bar's small
+  title as it scrolls away, the server's dot and name under it (a tap goes
+  to Servers too), a search field, then Needs you, Pinned and the
+  workspaces. Pull down to refresh. Swipe a row left for Pin and Delete
+  (Delete confirms); a long press still opens its menu. A toolbar at the
+  bottom holds Settings, Scheduled, Usage and the theme (the current choice;
+  a tap moves System → Light → Dark), each an icon over its name, centred
+  in a band that grows with Dynamic Type. It steps aside while searching,
+  so it never rides up on the soft keyboard. The command palette has no
+  button on a phone; ⌘K opens it from a hardware keyboard.
 - **A chat or a draft is pushed** over it from the right; Sessions drifts a
   third of the way left under a scrim. The chat's bar is `PhoneNavBar`:
   ‹ Sessions in the accent, the title centred over its workspace, Tasks and
   Review panel on the right (20px glyphs in the accent).
 - **Back is by level, not by history**: ‹, a swipe from the left edge (it
   follows the finger and springs on with its speed) and Android Back all go
-  to the parent. A link, a notification or a widget opens the chat with
-  Sessions under it; Android Back on Sessions sends the app to the
-  background.
+  to the parent: a chat to Sessions, Sessions to Servers. A link, a
+  notification or a widget opens the chat with Sessions under it; Android
+  Back on Servers sends the app to the background.
+- **The composer takes a vertical swipe**: up on the box raises the soft
+  keyboard (focus is given on `touchend`, the gesture iOS needs), down puts
+  it away, as dragging the transcript does. A message that can still
+  scroll keeps the swipe, and the tray and suggestion menus above the box
+  are left alone. The box lets the browser pan it sideways only
+  (`touch-action: pan-x pinch-zoom`, the field too while it has nothing to
+  scroll): a vertical pan cancels the pointer, and focus without that
+  user activation raises no keyboard (measured on Android Chrome).
 - **Review** is a page pushed over the chat (‹ Chat, full screen). **Tasks**,
   the "+" menu and the model picker are sheets with two detents (half and
   nearly full height; `BottomSheet` `detents`). Settings, Scheduled tasks and
@@ -1787,7 +1813,7 @@ layout). `components/phone/PhoneStack` holds two levels, both mounted:
 | Dialog buttons | Cancel · Action | Action · Cancel | Cancel · Action | alert (phone), Cancel · Action (iPad) | text buttons |
 | Badge | Dock | taskbar overlay | launcher | — | — |
 | System text size | — | — | — | Dynamic Type | font scale |
-| Back | ⌘[ · two-finger swipe | Alt+← | Alt+← | ‹ or edge swipe, one level up | Back, one level up; leaves from Sessions |
+| Back | ⌘[ · two-finger swipe | Alt+← | Alt+← | ‹ or edge swipe, one level up | Back, one level up; leaves from Servers |
 
 ## Brand mark
 

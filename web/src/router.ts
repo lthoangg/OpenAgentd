@@ -51,6 +51,13 @@ const sessionsRoute = createRoute({
   path: '/sessions',
   component: () => null,
 })
+// /servers: the phone's bottom level, the saved servers, with Sessions (and
+// a chat over it) pushed on top. Elsewhere the layout sends it to /.
+const serversRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/servers',
+  component: () => null,
+})
 
 // Links from older builds (bookmarks, notifications, other windows) used a
 // /coding prefix; they redirect and render nothing of their own.
@@ -110,7 +117,7 @@ const settingsSectionRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   packagedIndexRoute,
-  appLayoutRoute.addChildren([newSessionRoute, sessionsRoute, sessionRoute]),
+  appLayoutRoute.addChildren([newSessionRoute, sessionsRoute, serversRoute, sessionRoute]),
   legacyCodingRoute,
   legacyCodingSessionRoute,
   telemetryRoute,

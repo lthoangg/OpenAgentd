@@ -3,7 +3,7 @@
  * The same component as the drawer, drawn as a full screen: a top bar (server
  * chip, small title, ✎), a large title and a search field that scroll with
  * the list, pull to refresh, swipe actions on session rows and a bottom
- * toolbar (Settings · Scheduled · Usage · Commands). No scrim, no drawer
+ * toolbar (Settings · Scheduled · Usage · Theme). No scrim, no drawer
  * motion, no New session row, no Scheduled section.
  */
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -12,6 +12,7 @@ import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within }
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { queryKeys } from '@/queries'
 import { APP_EVENTS } from '@/lib/app-events'
+import { themeStorageKey } from '@/lib/theme'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
 import { useToastStore } from '@/stores/useToastStore'
@@ -301,6 +302,26 @@ describe('Sidebar page mode: the Sessions screen', () => {
     expect(bar.hasAttribute('data-title-visible')).toBe(false)
   })
 
+  it('goes down to Servers from ‹ Servers, naming the server under the large title', async () => {
+    const onOpenServers = mock(() => {})
+    const { view } = await renderPage({ onOpenServers })
+    const bar = view.container.querySelector('[data-sessions-page-bar]') as HTMLElement
+
+    // ‹ Servers takes the server chip's place.
+    expect(within(bar).queryByRole('button', { name: /Change server$/ })).toBeNull()
+    fireEvent.click(within(bar).getByRole('button', { name: 'Back to Servers' }))
+    expect(onOpenServers).toHaveBeenCalledTimes(1)
+
+    // The server stays in sight under the title, and goes to Servers too.
+    const line = view.container.querySelector('[data-sessions-server]') as HTMLElement
+    expect(line.closest('[data-sessions-page-header]')).not.toBeNull()
+    expect(line.textContent).toContain('·')
+    // In a browser (no app shell status) it is "This server", the Servers screen's name.
+    await waitFor(() => expect(line.textContent).toContain('This server'))
+    fireEvent.click(line)
+    expect(onOpenServers).toHaveBeenCalledTimes(2)
+  })
+
   it('starts a new session from ✎ the way ⌘N does', async () => {
     const onNewSession = mock(() => {})
     await renderPage({ onNewSession })
@@ -379,22 +400,26 @@ describe('Sidebar page mode: pull to refresh', () => {
 })
 
 describe('Sidebar page mode: bottom toolbar', () => {
-  it('has four labelled buttons that open Settings, Scheduled, Usage and Commands', async () => {
+  it('has four labelled buttons: Settings, Scheduled, Usage and the theme', async () => {
     const openSettings = mock(() => {})
     const real = useSettingsStore.getState().openSettings
     useSettingsStore.setState({ openSettings })
     const onOpenScheduler = mock(() => {})
-    const onOpenPalette = mock(() => {})
     try {
-      const { view } = await renderPage({ onOpenScheduler, onOpenPalette })
+      const { view } = await renderPage({ onOpenScheduler, onOpenPalette: () => {} })
       const toolbar = view.container.querySelector('[data-sessions-page-toolbar]') as HTMLElement
       const names = within(toolbar).getAllByRole('button').map((button) => button.textContent)
-      expect(names).toEqual(['Settings', 'Scheduled', 'Usage', 'Commands'])
+      expect(names).toEqual(['Settings', 'Scheduled', 'Usage', 'System'])
       expect(toolbar.className).toContain('border-t')
       expect(toolbar.className).toContain('pb-safe')
-      // Icon over label, the label in the caption size.
+      // Icon over label, centred as one block in a band that grows with
+      // them (no fixed px height a larger text size would spill out of).
       const settings = within(toolbar).getByRole('button', { name: 'Settings' })
-      expect(settings.className).toContain('flex-col')
+      const itemClasses = settings.className.split(/\s+/)
+      expect(itemClasses).toEqual(expect.arrayContaining(['grid', 'content-center', 'justify-items-center', 'min-h-[49px]']))
+      expect(itemClasses.some((c) => c.startsWith('h-['))).toBe(false)
+      // Not a Button: no phone floor or key fill fights the column.
+      expect(settings.hasAttribute('data-slot')).toBe(false)
       expect(within(settings).getByText('Settings').className).toContain('text-meta')
 
       fireEvent.click(within(toolbar).getByRole('button', { name: 'Settings' }))
@@ -406,19 +431,46 @@ describe('Sidebar page mode: bottom toolbar', () => {
       expect(useUIStore.getState().telemetryOpen).toBe(false)
       fireEvent.click(within(toolbar).getByRole('button', { name: 'Usage' }))
       expect(useUIStore.getState().telemetryOpen).toBe(true)
-
-      fireEvent.click(within(toolbar).getByRole('button', { name: 'Commands' }))
-      expect(onOpenPalette).toHaveBeenCalledTimes(1)
     } finally {
       useSettingsStore.setState({ openSettings: real })
     }
   })
 
-  it('hides Commands when nothing opens the palette', async () => {
-    await renderPage({ onOpenScheduler: () => {} })
+  it('has no Commands button: the palette is a keyboard surface', async () => {
+    await renderPage({ onOpenScheduler: () => {}, onOpenPalette: () => {} })
 
     expect(screen.queryByRole('button', { name: 'Commands' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Scheduled' })).toBeTruthy()
+  })
+
+  it('cycles the theme System → Light → Dark → System, showing the current one', async () => {
+    localStorage.removeItem(themeStorageKey())
+    try {
+      const { view } = await renderPage()
+      const toolbar = view.container.querySelector('[data-sessions-page-toolbar]') as HTMLElement
+      const themeButton = () => within(toolbar).getByRole('button', { name: /^Theme:/ })
+
+      expect(themeButton().textContent).toBe('System')
+      expect(themeButton().getAttribute('aria-label')).toBe('Theme: System. Tap for Light.')
+      for (const [next, label] of [['Light', 'Theme: Light. Tap for Dark.'], ['Dark', 'Theme: Dark. Tap for System.'], ['System', 'Theme: System. Tap for Light.']]) {
+        fireEvent.click(themeButton())
+        await waitFor(() => expect(themeButton().textContent).toBe(next))
+        expect(themeButton().getAttribute('aria-label')).toBe(label)
+      }
+    } finally {
+      localStorage.removeItem(themeStorageKey())
+    }
+  })
+
+  it('steps aside while searching, so it never rides up on the soft keyboard', async () => {
+    const { view } = await renderPage()
+    const toolbar = () => view.container.querySelector('[data-sessions-page-toolbar]')
+    expect(toolbar()).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    expect(toolbar()).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(toolbar()).not.toBeNull()
   })
 
   it('opens Scheduled the way the drawer\'s section does when the caller gives no handler', async () => {

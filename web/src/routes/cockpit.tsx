@@ -21,7 +21,8 @@ import { useLayoutStore } from '@/stores/useLayoutStore'
 
 /**
  * The app layout for / (new session), /<session id> and, on a phone,
- * /sessions (the session list, with the chat pushed over it).
+ * /sessions (the session list, with the chat pushed over it) and /servers
+ * (the saved servers, with Sessions pushed over them).
  * Stays mounted across URL changes — handles navigation when a new
  * agent session_id arrives from POST /agent/chat.
  */
@@ -43,6 +44,8 @@ function AgentLayoutBase() {
   // pushing it again neither reloads nor remounts it.
   const isPhone = useIsPhone()
   const atSessions = isPhone && !routeSessionId && !routeDraftWorkspace
+  // /servers is under Sessions: Sessions and the kept chat stay mounted on it.
+  const atServers = atSessions && pathname === '/servers'
   const [kept, setKept] = useState({ sessionId: routeSessionId, draftWorkspace: routeDraftWorkspace })
   if (!atSessions && (kept.sessionId !== routeSessionId || kept.draftWorkspace !== routeDraftWorkspace)) {
     setKept({ sessionId: routeSessionId, draftWorkspace: routeDraftWorkspace })
@@ -101,7 +104,14 @@ function AgentLayoutBase() {
   // Back from a phone chat goes up a level, to Sessions, whatever the
   // history holds (a notification or a link may have opened the chat).
   const backToSessions = useCallback(() => { void navigate({ to: '/sessions', replace: true }) }, [navigate])
-  const phoneStack = useMemo(() => (isPhone ? { atSessions, onBack: backToSessions } : undefined), [atSessions, backToSessions, isPhone])
+  // And from Sessions down to Servers; Servers' "Sessions ›" comes back up.
+  const backToServers = useCallback(() => { void navigate({ to: '/servers', replace: true }) }, [navigate])
+  const phoneStack = useMemo(
+    () => (isPhone
+      ? { atSessions, atServers, onBack: backToSessions, onBackToServers: backToServers, onOpenSessions: backToSessions }
+      : undefined),
+    [atSessions, atServers, backToSessions, backToServers, isPhone],
+  )
   // A bare / on a phone is the Sessions screen: name it in the URL. Only a
   // bare one: a push from Sessions to a chat or a draft passes through a
   // render where the location is already there but the route is not.
@@ -110,14 +120,16 @@ function AgentLayoutBase() {
     if (atSessions && bare && !locationHasDraft) navigate({ to: '/sessions', replace: true })
   }, [atSessions, locationHasDraft, navigate, pathname])
   // Desktop and tablets list sessions in the sidebar: /sessions shows it.
+  // They switch servers from the server chip, so /servers is just /.
   useEffect(() => {
-    if (isPhone || pathname !== '/sessions') return
-    useLayoutStore.getState().setSidebarCollapsed(false, false)
+    if (isPhone || (pathname !== '/sessions' && pathname !== '/servers')) return
+    if (pathname === '/sessions') useLayoutStore.getState().setSidebarCollapsed(false, false)
     navigate({ to: '/', replace: true })
   }, [isPhone, navigate, pathname])
-  // Sessions is the phone's first screen: Android Back there leaves the
-  // app rather than walking back through the chats it has shown.
-  useBackHandler(atSessions, moveAppToBackground)
+  // Servers is the phone's bottom level: Android Back there leaves the app
+  // rather than walking back through the chats it has shown. On Sessions,
+  // Back goes down to Servers (the stack over Servers registers it).
+  useBackHandler(atServers, moveAppToBackground)
 
   useEffect(() => {
     if (workspace) saveLastWorkspace(workspace)
@@ -143,7 +155,7 @@ function AgentLayoutBase() {
   // phone, whose first screen is Sessions.
   const chatPath = chatWorkspace?.path ?? null
   useEffect(() => {
-    if (sessionId || draftWorkspace || atSessions || pathname === '/sessions') return
+    if (sessionId || draftWorkspace || atSessions || pathname === '/sessions' || pathname === '/servers') return
     let cancelled = false
     const openDraft = (path: string) => {
       startNewSession({ navigate: navigateRef.current, workspace: path, replace: true })

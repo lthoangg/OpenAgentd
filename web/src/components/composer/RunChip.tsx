@@ -104,7 +104,7 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
         '@max-[520px]:h-9 @max-[520px]:max-w-[11rem] @max-[520px]:pr-1.5',
         // A 320px phone (Display Zoom) leaves the chip ~50px: it drops the
         // chevron and some padding so the name keeps a few letters.
-        'phone:text-meta phone:@max-[300px]:px-1.5',
+        'phone:text-subhead phone:@max-[300px]:px-1.5',
       )}
     >
       <span className="flex min-w-0 items-baseline gap-1.5 leading-tight @max-[520px]:flex-col @max-[520px]:items-start @max-[520px]:gap-0">

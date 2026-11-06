@@ -28,7 +28,7 @@ export default function ChatMenuSheet({ open, label, items, onClose }: ChatMenuS
           <button
             key={item.label}
             type="button"
-            className={cn(MENU_ITEM_CLASS, 'min-h-11 text-sm')}
+            className={cn(MENU_ITEM_CLASS, 'min-h-(--phone-control) text-sm')}
             onClick={() => {
               onClose()
               item.run()

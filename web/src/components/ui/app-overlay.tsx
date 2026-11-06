@@ -104,8 +104,11 @@ interface OverlayHeaderProps {
 
 /** Icon button sizing shared by header controls: 44px on touch, 28px on desktop. */
 const OVERLAY_HEADER_BUTTON_CLASS = 'md:size-7'
-/** A sheet's bar buttons are bare tint, no fill: iOS dims one when pressed. */
-const SHEET_BAR_BUTTON_CLASS = 'h-11 min-w-11 bg-transparent! text-(--color-accent)! active:opacity-50'
+/**
+ * A sheet's bar buttons are bare tint, no fill: iOS dims one when pressed.
+ * Drawn at the phone's control step; ``touch-hit`` keeps a 44px target.
+ */
+const SHEET_BAR_BUTTON_CLASS = 'relative touch-hit h-(--phone-control) min-w-(--phone-control) bg-transparent! text-(--color-accent)! active:opacity-50'
 
 export function OverlayHeader({
   title,
@@ -147,7 +150,7 @@ export function OverlayHeader({
         data-slot="overlay-header"
         data-sheet-bar=""
         className={cn(
-          'min-h-11 shrink-0 select-none border-b border-(--color-border) bg-(--bg-page) px-2 pt-1.5',
+          'min-h-(--spacing-app-header) shrink-0 select-none border-b border-(--color-border) bg-(--bg-page) px-2 pt-1.5',
           android ? 'flex items-center gap-2' : 'flex items-center gap-1',
           className,
         )}

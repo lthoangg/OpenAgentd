@@ -503,6 +503,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     Since `[v3.32.0]` the plan reads **Done** once its goal is achieved or,
     without a goal, once every task is finished, and approving a plan asks
     the agent for one task per milestone, named after it.
+    Since `[v3.49.0]` the review footer (comments, feedback, Approve and
+    Request changes) lines up with the plan's text column instead of
+    stretching across a wide or maximized Review panel.
   - **Keep going until done** `[v3.32.0]` — the plan review footer has a
     **Keep going until done** checkbox and, beside it, the turns for this
     plan (prefilled from Settings). Approving with it ticked starts a goal
@@ -2136,6 +2139,21 @@ run from the terminal (the native Rust binary since v3.0.0).
     full height.
   - On iPhone, confirmations are iOS alerts: Cancel sits beside the action,
     and a destructive action is red and is never the default button.
+- **A tighter phone app, with Servers under Sessions** `[v3.49.0]`:
+  - Text and rows are the composer's size: 15px text and 40px rows and
+    buttons at Default (44px header; bar buttons keep a 44px touch). Text
+    size Compact goes down to 14px and 36px; Large is Apple's 17px and
+    44px. The composer itself is unchanged.
+  - **Servers** is a level under Sessions: ‹ Servers (or a swipe from the
+    left edge) shows the saved servers. **Sessions ›** on the one in use
+    goes back to its list; **Use** on another switches to it and opens its
+    Sessions. Sessions names the server under its title, and Android Back
+    goes Chat → Sessions → Servers, then leaves the app.
+  - Swipe up on the composer to raise the keyboard, down to put it away.
+  - The toolbar at the bottom of Sessions has Settings, Scheduled, Usage and
+    the theme (System → Light → Dark) instead of Commands; its icons and
+    captions sit centred at any text size, and it steps aside while you
+    search.
 - **One look across the app** `[v3.48.0]`:
   - The same status looks the same everywhere. Needs you is orange and
     Failed is red. Connected and passing checks are green. Running and Done

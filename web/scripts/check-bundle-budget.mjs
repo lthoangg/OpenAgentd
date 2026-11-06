@@ -40,7 +40,7 @@ export function measureBundle(directory) {
 // Surfaces kept out of the startup path (`web/src/lib/lazy-surface.tsx`):
 // each loads on first use or while the app is idle after it starts. A static
 // import from startup code would quietly put it back; this check fails then.
-export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult', 'RunPicker', 'PlanTabView', 'GoalTabView', 'TerminalFindBar', 'TerminalSubPanel', 'CommitTabView', 'AppBackendDialog', 'TodosPopover', 'SessionMcpServers']
+export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult', 'RunPicker', 'PlanTabView', 'GoalTabView', 'TerminalFindBar', 'TerminalSubPanel', 'CommitTabView', 'AppBackendDialog', 'TodosPopover', 'SessionMcpServers', 'KeyboardShortcutsSheet', 'ServersScreen']
 
 // The startup path loads everything not behind a dynamic import. History:
 // features had grown it from 2.37 MB / 705 kB gzip (early October) to
@@ -75,6 +75,9 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // The compact phone composer and the run picker's limits then reached
 // 662.3 kB; the "+" menu's MCP server list, shown only once "+" is open,
 // moved behind lazySurface (659.8 kB).
+// v3.49.0 (phone density tokens, the Servers level, the composer swipe and
+// the reading-column review footer) reached 661.5 kB; the Keyboard Shortcuts
+// sheet, opened only with ⌘/, moved behind lazySurface (655.9 kB).
 export const LIMITS = { eagerBytes: 2_070_000, eagerGzipBytes: 661_000, largestChunkBytes: 1_180_000 }
 
 /** Each lazy surface must have a chunk of its own, outside the startup path. */

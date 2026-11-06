@@ -236,7 +236,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
   }
 
   const atDefaults = !settings.customized
-  const rowClass = cn(MENU_ITEM_CLASS, touch && 'min-h-11 text-sm')
+  const rowClass = cn(MENU_ITEM_CLASS, touch && 'min-h-(--phone-control) text-sm')
 
   return (
     <div ref={rootRef} className="flex min-h-0 flex-col" data-run-picker="">
@@ -257,8 +257,9 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
           spellCheck={false}
           className={cn(
             'min-w-0 flex-1 bg-transparent text-(--color-text) placeholder-(--color-text-muted) outline-none',
-            // 16px on touch so iOS does not zoom the page.
-            touch ? 'h-11 text-base' : 'h-7 text-sm',
+            // A touch row's height; the shell's maximum-scale=1 keeps iOS
+            // from zooming on focus at the phone's 15px.
+            touch ? 'h-(--phone-control) text-base' : 'h-7 text-sm',
           )}
         />
       </div>

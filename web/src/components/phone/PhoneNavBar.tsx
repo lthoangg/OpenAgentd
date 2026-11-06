@@ -1,7 +1,7 @@
 /**
  * PhoneNavBar — a pushed screen's bar on a phone: ‹ and the parent's name
- * on the left, the title, the screen's actions on the right. 44px under the
- * safe area, 17px semibold title.
+ * on the left, the title, the screen's actions on the right. The app
+ * header's height (44px) under the safe area, a semibold ``text-base`` title.
  *
  * iOS centres the title: both sides grow from nothing by the same share
  * (``flex-1``) but never below their own content, and the title, which may
@@ -37,8 +37,39 @@ export interface PhoneNavBarProps {
   className?: string
 }
 
-/** A bare tint, no fill: iOS dims a pressed bar button instead. */
-const BACK_CLASS = 'h-11 min-w-11 bg-transparent! font-normal text-(--color-accent)! active:opacity-50'
+/**
+ * A bare tint, no fill: iOS dims a pressed bar button instead. Drawn at the
+ * phone's control step; ``touch-hit`` keeps a 44px target.
+ */
+const BACK_CLASS = 'relative touch-hit h-(--phone-control) min-w-(--phone-control) bg-transparent! font-normal text-(--color-accent)! active:opacity-50'
+
+/**
+ * ‹ and the parent's name (iOS) or a bare ← (Android): the back control of
+ * a pushed screen's bar, and of the Sessions screen's bar (‹ Servers).
+ */
+export function PhoneBackButton({ label, onBack }: { label: string; onBack: () => void }) {
+  const android = usePlatform().os === 'android'
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="trigger"
+      onClick={onBack}
+      aria-label={`Back to ${label}`}
+      data-phone-back=""
+      className={cn(BACK_CLASS, android ? 'px-0' : 'max-w-full justify-start gap-0.5 pl-0 pr-2')}
+    >
+      {android ? (
+        <ArrowLeft size={20} aria-hidden="true" className="size-5" />
+      ) : (
+        <>
+          <ChevronLeft size={20} strokeWidth={2.25} aria-hidden="true" className="-ml-1.5 size-5" />
+          <span className="truncate text-xs">{label}</span>
+        </>
+      )}
+    </Button>
+  )
+}
 
 export function PhoneNavBar({ title, subtitle, back, leading, trailing, separator = 'always', className }: PhoneNavBarProps) {
   const android = usePlatform().os === 'android'
@@ -50,26 +81,7 @@ export function PhoneNavBar({ title, subtitle, back, leading, trailing, separato
     </div>
   )
 
-  const backButton = back && (
-    <Button
-      type="button"
-      variant="ghost"
-      size="trigger"
-      onClick={back.onBack}
-      aria-label={`Back to ${back.label}`}
-      data-phone-back=""
-      className={cn(BACK_CLASS, android ? 'px-0' : 'max-w-full justify-start gap-0.5 pl-0 pr-2')}
-    >
-      {android ? (
-        <ArrowLeft size={20} aria-hidden="true" className="size-5" />
-      ) : (
-        <>
-          <ChevronLeft size={20} strokeWidth={2.25} aria-hidden="true" className="-ml-1.5 size-5" />
-          <span className="truncate text-xs">{back.label}</span>
-        </>
-      )}
-    </Button>
-  )
+  const backButton = back && <PhoneBackButton label={back.label} onBack={back.onBack} />
 
   return (
     <header

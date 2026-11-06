@@ -36,6 +36,10 @@ describe('closestRestorableRoute', () => {
     expect(closestRestorableRoute('/telemetry')).toBe('/telemetry')
   })
 
+  it('opens on Sessions rather than the phone\'s Servers screen', () => {
+    expect(closestRestorableRoute('/servers')).toBe('/')
+  })
+
   it('canonicalizes the packaged desktop entrypoint to home', () => {
     expect(closestRestorableRoute('/index.html?oa-window-id=main#ready')).toBe('/?oa-window-id=main#ready')
   })

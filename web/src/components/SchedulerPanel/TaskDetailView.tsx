@@ -303,7 +303,7 @@ function DetailRow({ label, long = false, children }: { label: string; long?: bo
       className={
         long
           ? // COMPACT_ROW geometry, stacked below md (`cn` does not merge, so not layered on it).
-            'flex min-h-11 flex-col gap-1 px-4 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3'
+            'flex min-h-(--phone-control) flex-col gap-1 px-4 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3'
           : cn(COMPACT_ROW, 'justify-between')
       }
     >

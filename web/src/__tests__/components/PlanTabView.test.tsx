@@ -204,6 +204,23 @@ describe('PlanTabView', () => {
     expect(screen.getByText('Or reply in chat to redirect the agent.')).toBeTruthy()
   })
 
+  it('keeps the review footer in the plan column while its band runs the dock width', () => {
+    useAgentStore.setState({ pendingQuestion: REVIEW })
+    const { container } = renderTab()
+    const band = container.querySelector('[data-plan-review-footer]') as HTMLElement
+    expect(band.className).toContain('border-t')
+    // index.css: `.oa-review-column` is the column's 46rem, 88ch in a maximized dock.
+    const column = band.firstElementChild as HTMLElement
+    expect(column.className).toContain('oa-review-column')
+    for (const control of [
+      screen.getByLabelText('Feedback on the plan'),
+      screen.getByRole('button', { name: 'Request changes' }),
+      screen.getByRole('button', { name: 'Approve' }),
+    ]) {
+      expect(column.contains(control)).toBe(true)
+    }
+  })
+
   it('ignores an ask_user question: only plan reviews get the footer', () => {
     useAgentStore.setState({ pendingQuestion: { ...REVIEW, kind: undefined } })
     renderTab()

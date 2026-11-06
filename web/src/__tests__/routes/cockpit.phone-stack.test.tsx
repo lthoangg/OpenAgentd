@@ -1,8 +1,10 @@
 /**
  * A phone opens on Sessions and pushes chats over it: the layout keeps the
  * chat it popped from under the list, never restores a last session over
- * it, goes back by level, and leaves the app on Android Back from the list.
- * A desktop has the list in its sidebar, so /sessions shows that instead.
+ * it, goes back by level (a chat to Sessions, Sessions to Servers), and
+ * leaves the app on Android Back from Servers, the bottom level. A desktop
+ * has the list in its sidebar, so /sessions shows that instead, and
+ * /servers is just /.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, render } from '@testing-library/react'
@@ -33,7 +35,13 @@ type ChatViewProps = {
   sessionId?: string
   workspace: string | null
   sessionLoading: boolean
-  phoneStack?: { atSessions: boolean; onBack: () => void }
+  phoneStack?: {
+    atSessions: boolean
+    atServers?: boolean
+    onBack: () => void
+    onBackToServers?: () => void
+    onOpenSessions?: () => void
+  }
 }
 const chatViewProps: ChatViewProps[] = []
 mock.module('@/components/AgentChatView', () => ({
@@ -170,12 +178,47 @@ describe('the phone stack in the app layout', () => {
     expect(navigate).toHaveBeenCalledWith({ to: '/sessions', replace: true })
   })
 
-  it('leaves the app on Android Back from Sessions', async () => {
+  it('goes down to /servers from Sessions, and back up from Servers', () => {
     pathname = '/sessions'
+    renderLayout()
+    expect(chatViewProps.at(-1)?.phoneStack).toMatchObject({ atSessions: true, atServers: false })
+
+    chatViewProps.at(-1)?.phoneStack?.onBackToServers?.()
+    expect(navigate).toHaveBeenCalledWith({ to: '/servers', replace: true })
+
+    chatViewProps.at(-1)?.phoneStack?.onOpenSessions?.()
+    expect(navigate).toHaveBeenLastCalledWith({ to: '/sessions', replace: true })
+  })
+
+  it('keeps Sessions and the chat it popped from under Servers', () => {
+    params = { sessionId: 'open-chat' }
+    pathname = '/open-chat'
+    const { rerender } = renderLayout()
+
+    params = {}
+    pathname = '/servers'
+    rerender()
+
+    expect(chatViewProps.at(-1)).toMatchObject({ sessionId: 'open-chat', phoneStack: { atSessions: true, atServers: true } })
+    // Not a bare route: nothing sends it to /sessions or restores a session.
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('leaves the app on Android Back from Servers', async () => {
+    pathname = '/servers'
     renderLayout()
     expect(handleBackPress(true)).toBe('handler')
     await settle()
     expect(invoke).toHaveBeenCalledWith('app_move_to_background')
+  })
+
+  it('leaves Android Back on Sessions to the stack over Servers, not the app', async () => {
+    pathname = '/sessions'
+    renderLayout()
+    // The chat view (and its stacks) is mocked here, so nothing is registered.
+    expect(handleBackPress(true)).toBe('history')
+    await settle()
+    expect(invoke).not.toHaveBeenCalledWith('app_move_to_background')
   })
 
   it('lets ✎ push a draft: the pending render on /?workspace= is not sent back to /sessions', async () => {
@@ -213,5 +256,13 @@ describe('the phone stack in the app layout', () => {
     expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
     expect(useLayoutStore.getState().sidebarCollapsed).toBe(false)
     expect(chatViewProps.at(-1)?.phoneStack).toBeUndefined()
+  })
+
+  it('sends /servers to / on a desktop', () => {
+    phone = false
+    pathname = '/servers'
+    renderLayout()
+    expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
+    expect(useLayoutStore.getState().sidebarCollapsed).toBe(true)
   })
 })

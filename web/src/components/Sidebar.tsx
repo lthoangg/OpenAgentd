@@ -191,8 +191,8 @@ const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
 const NO_GROUPS: WorkspaceGroup[] = []
 /** Rows that Up/Down/Home/End move between: sessions and workspace headers. */
 const SIDEBAR_ROW = '[data-sidebar-session], [data-sidebar-workspace]'
-/** A row of a phone's long-press sheet: a menu row at the 44px touch height. */
-const SHEET_ROW_CLASS = cn(MENU_ITEM_CLASS, 'min-h-11 text-sm')
+/** A row of a phone's long-press sheet: a menu row at the touch height (``--phone-control``). */
+const SHEET_ROW_CLASS = cn(MENU_ITEM_CLASS, 'min-h-(--phone-control) text-sm')
 
 /** One entry of a session's menu (⋯, right-click, the phone's sheet). */
 interface SessionMenuAction {
@@ -249,6 +249,12 @@ interface SidebarProps {
   page?: boolean
   /** The page toolbar's Scheduled button; without it the scheduler opens as the sidebar's own entries do. */
   onOpenScheduler?: () => void
+  /**
+   * Page only: down to the Servers screen (‹ Servers in the top bar, and the
+   * server line under the large title). Without it the bar shows the server
+   * chip, which opens the Server dialog.
+   */
+  onOpenServers?: () => void
 }
 
 async function pickWorkspaceDirectory(): Promise<string | null> {
@@ -314,6 +320,7 @@ export function Sidebar({
   onOpenPalette,
   page = false,
   onOpenScheduler,
+  onOpenServers,
 }: SidebarProps) {
   const isPage = page
   // The page is a phone layout whatever the window says: sheets for row
@@ -1186,7 +1193,7 @@ export function Sidebar({
     >
       {!isMobile && !desktopCollapsed && <PanelResizeHandle edge="right" />}
 
-      {isPage && <SessionsPageBar barRef={barRef} onNewSession={startSessionFromSidebar} />}
+      {isPage && <SessionsPageBar barRef={barRef} onNewSession={startSessionFromSidebar} onOpenServers={onOpenServers} />}
 
       <div
         data-focus-region="sidebar"
@@ -1268,7 +1275,7 @@ export function Sidebar({
       {/* The sessions scroller: Pinned, Needs you and the sessions (under a
           header that sticks) scroll together. Scheduled is pinned below it. */}
       <SidebarScroller page={isPage} onRefresh={refreshSessionList} onScroll={onListScroll}>
-      {isPage && <SessionsPageHeader titleRef={titleRef} searchRef={searchButtonRef} onSearch={openSessionSearch} />}
+      {isPage && <SessionsPageHeader titleRef={titleRef} searchRef={searchButtonRef} onSearch={openSessionSearch} onOpenServers={onOpenServers} />}
       {isPage && needsYouSection}
       <PinnedSection
         currentSessionId={currentSessionId}
@@ -1629,12 +1636,15 @@ export function Sidebar({
       </div>
 
       {isPage ? (
-        <SessionsPageToolbar
-          onOpenSettings={() => openSettings()}
-          onOpenScheduler={openScheduler}
-          onOpenUsage={() => openTelemetry()}
-          onOpenPalette={onOpenPalette}
-        />
+        // Hidden while searching, as an iOS toolbar is: the soft keyboard
+        // shrinks the shell, and the toolbar would ride up on top of it.
+        !searchOpen && (
+          <SessionsPageToolbar
+            onOpenSettings={() => openSettings()}
+            onOpenScheduler={openScheduler}
+            onOpenUsage={() => openTelemetry()}
+          />
+        )
       ) : (
       <>
       {/* Mobile drawer footer — on desktop this lives in AppFooter status bar */}

@@ -153,7 +153,7 @@ function PlusMenuItems({
   useEffect(() => {
     if (scrollToMcp) mcpRef.current?.scrollIntoView({ block: 'nearest' })
   }, [scrollToMcp])
-  const row = cn(MENU_ITEM_CLASS, touch && 'min-h-11 text-sm')
+  const row = cn(MENU_ITEM_CLASS, touch && 'min-h-(--phone-control) text-sm')
   const hint = 'ml-auto font-mono text-meta text-(--color-text-muted)'
   return (
     <div className="flex flex-col">

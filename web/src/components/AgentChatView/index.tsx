@@ -86,6 +86,7 @@ import type {
 import { ConnectionBanner } from '@/components/ConnectionBanner'
 import { TranscriptFind } from '@/components/TranscriptFind'
 import { PhoneStack } from '@/components/phone/PhoneStack'
+import { ServersScreen } from '@/components/phone/LazyServersScreen'
 import { AgentChatHeader } from './AgentChatHeader'
 import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
@@ -168,15 +169,27 @@ interface AgentChatViewProps {
   /** The URL names a session the server does not have. */
   sessionNotFound?: boolean
   /**
-   * A phone: the screen is a navigation stack, Sessions (the sidebar as a
-   * page) with this chat pushed over it. ``atSessions``: the list is on top.
-   * ``onBack``: up to Sessions (‹, the edge swipe, Android Back).
+   * A phone: the screen is a navigation stack, Servers under Sessions (the
+   * sidebar as a page) with this chat pushed over it. ``atSessions``: the
+   * chat is not on top (Sessions or Servers is). ``onBack``: up to Sessions
+   * (‹, the edge swipe, Android Back).
    */
-  phoneStack?: { atSessions: boolean; onBack: () => void }
+  phoneStack?: PhoneStackState
+}
+
+export interface PhoneStackState {
+  atSessions: boolean
+  onBack: () => void
+  /** Servers is on top (Sessions and the chat are pushed off it). */
+  atServers?: boolean
+  /** From Sessions down to Servers (‹ Servers, the edge swipe, Android Back). */
+  onBackToServers?: () => void
+  /** From Servers up to the Sessions of the server in use. */
+  onOpenSessions?: () => void
 }
 
 interface ChatFrameProps {
-  phoneStack?: { atSessions: boolean; onBack: () => void }
+  phoneStack?: PhoneStackState
   /** The phone's edge swipe and Back may pop to Sessions. */
   backEnabled: boolean
   header: React.ReactNode
@@ -189,7 +202,10 @@ interface ChatFrameProps {
 /**
  * The workbench around the chat. Desktop: the header, the sidebar beside
  * the chat, the status bar. A phone: a navigation stack, the sidebar as the
- * Sessions screen with the chat, header and all, pushed over it.
+ * Sessions screen with the chat, header and all, pushed over it; and that
+ * stack is itself the page of a second one, over the Servers screen. Only
+ * one of the two takes the edge swipe and Back at a time: the inner one
+ * while a chat is pushed, the outer one while Sessions is on top.
  */
 function ChatFrame({ phoneStack, backEnabled, header, sidebar, footer, children }: ChatFrameProps) {
   const body = <div className="relative flex min-h-0 flex-1 overflow-hidden">{children}</div>
@@ -205,15 +221,31 @@ function ChatFrame({ phoneStack, backEnabled, header, sidebar, footer, children 
       </>
     )
   }
+  const sessionsStack = (
+    <PhoneStack
+      root={sidebar}
+      page={<div className="flex h-full flex-col">{header}{body}</div>}
+      pushed={!phoneStack.atSessions}
+      onBack={phoneStack.onBack}
+      backEnabled={backEnabled}
+    />
+  )
+  const { onBackToServers, onOpenSessions } = phoneStack
+  const atServers = Boolean(phoneStack.atServers)
+  // Servers loads (and pings its servers) while it is on top or one swipe
+  // away under Sessions, so a swipe back reveals the real list, not the
+  // panel's placeholder rows; under a chat it rests.
   return (
     <div className="relative min-h-0 flex-1">
-      <PhoneStack
-        root={sidebar}
-        page={<div className="flex h-full flex-col">{header}{body}</div>}
-        pushed={!phoneStack.atSessions}
-        onBack={phoneStack.onBack}
-        backEnabled={backEnabled}
-      />
+      {onBackToServers && onOpenSessions ? (
+        <PhoneStack
+          root={<ServersScreen active={phoneStack.atSessions} onOpenSessions={onOpenSessions} />}
+          page={sessionsStack}
+          pushed={!atServers}
+          onBack={onBackToServers}
+          backEnabled={backEnabled && phoneStack.atSessions && !atServers}
+        />
+      ) : sessionsStack}
     </div>
   )
 }
@@ -922,6 +954,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             mobileOpen={phoneStack ? phoneStack.atSessions : mobileSidebarOpen}
             onOpenPalette={handleTogglePalette}
             onOpenScheduler={handleToggleScheduler}
+            onOpenServers={phoneStack?.onBackToServers}
             onMobileClose={() => {
               setMobileSidebarOpen(false)
               setSidebarDrawerOpen(false)

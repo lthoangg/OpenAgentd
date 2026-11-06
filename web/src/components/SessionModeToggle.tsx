@@ -47,7 +47,7 @@ export function SessionModeToggle({
       }}
       className={cn(
         'relative touch-hit inline-grid shrink-0 place-items-center rounded-sm px-2.5 text-xs font-medium whitespace-nowrap select-none',
-        'h-8 md:h-7 pointer-coarse:h-9 phone:text-meta',
+        'h-8 md:h-7 pointer-coarse:h-9 phone:text-subhead',
         'transition-colors duration-(--motion-instant) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
         mode === 'plan'
           ? 'bg-(--color-fill-selected) text-(--color-text-on-selected)'

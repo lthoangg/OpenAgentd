@@ -17,9 +17,12 @@
  * saved in place without switching; **Add a server**, at the end of the
  * list, opens the form for a new one (test, then save and use). No form
  * opens by itself, except for a scanned connect link.
+ *
+ * The phone's Servers screen is a third host: there the row in use also
+ * offers **Sessions ›** (``onOpenInUse``), back up to its session list.
  */
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { StatusChip } from '@/components/ui/chip'
@@ -103,6 +106,10 @@ interface AppBackendPanelProps {
    * its own "Access from other devices" card.
    */
   showNetworkAccess?: boolean
+  /** The list's heading (Settings and the dialog: "Servers"). */
+  sectionTitle?: string
+  /** The phone's Servers screen: the row in use opens its Sessions. */
+  onOpenInUse?: () => void
 }
 
 /**
@@ -114,7 +121,7 @@ type ServerFormTarget =
   | { kind: 'add' }
   | { kind: 'edit'; baseUrl: string; label: string; inUse: boolean }
 
-export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false }: AppBackendPanelProps) {
+export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, sectionTitle = 'Servers', onOpenInUse }: AppBackendPanelProps) {
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
   const [confirm, setConfirm] = useState<{ kind: 'stop' } | { kind: 'remove'; baseUrl: string; label: string } | null>(null)
   const [form, setForm] = useState<ServerFormTarget | null>(null)
@@ -420,6 +427,14 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     />
   )
 
+  /** Sessions ›, on the row in use when a host can go back to its list. */
+  const openInUse = (label: string) => onOpenInUse ? (
+    <Button type="button" variant="subtle" size="sm" aria-label={`Open sessions on ${label}`} onClick={onOpenInUse} data-open-in-use="">
+      Sessions
+      <ChevronRight size={ICON_SIZE_INLINE} aria-hidden="true" />
+    </Button>
+  ) : null
+
   return (
     <div className="space-y-8">
       {scanned ? (
@@ -430,7 +445,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
 
       {/* Servers: each row's Edit opens its form under it; Add a server opens one at the end. */}
       <PanelSection
-        title="Servers"
+        title={sectionTitle}
         description="Use switches the app to a server. Edit changes its address, key or name."
         flush
       >
@@ -442,6 +457,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             address={status && !status.external ? currentUrl : undefined}
             inUse={status !== null && !status.external}
           >
+            {status !== null && !status.external ? openInUse('Built-in server') : null}
             {status?.sidecar_running ? (
               <>
                 {status?.external ? (
@@ -469,7 +485,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             subtitle={status ? 'Not in your saved servers' : unlistedUrl}
             inUse
           >
-            {null}
+            {openInUse(status ? unlistedUrl : 'This server')}
           </ServerRow>
         ) : null}
         {servers.map((server) => {
@@ -500,7 +516,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                     />
                   </label>
                 ) : null}
-                {active ? null : (
+                {active ? openInUse(label) : (
                   <Button
                     type="button"
                     variant="subtle"
@@ -737,7 +753,7 @@ function ServerRow({
   children: React.ReactNode
 }) {
   return (
-    <div data-server-row="" className={cn('flex min-h-11 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 md:min-h-14', ROW_PAD)}>
+    <div data-server-row="" className={cn('flex min-h-(--phone-control) flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 md:min-h-14', ROW_PAD)}>
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <ServerStatusDot status={health} />
         <span className="min-w-0 flex-1">

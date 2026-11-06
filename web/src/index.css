@@ -1770,6 +1770,16 @@ html[data-app-hidden="true"] *::after {
   .oa-prose table {
     border-collapse: separate;
     border-spacing: 0;
+    /* On the phone's type steps, not 0.875em of them (12.25px at 14px). */
+    font-size: var(--text-subhead);
+  }
+  /* Inline code reads at the code step (12px under 14px text, not 0.85em);
+     inside a table, a step smaller (its cells are already the subhead). */
+  .oa-prose code {
+    font-size: var(--text-code);
+  }
+  .oa-prose table code {
+    font-size: var(--text-meta);
   }
   .oa-prose :is(th, td) {
     border-width: 0 1px 1px 0;

@@ -6,7 +6,7 @@ import { dismissKeyboard } from '@/lib/soft-keyboard'
 
 export { dismissKeyboard }
 
-/** Vertical travel (px) that turns a touch into a drag. */
+/** Vertical travel (px) that turns a touch into a scroll (no longer a tap). */
 const DRAG_DISMISS_PX = 12
 /** ms after a dismiss during which the retracting keyboard's frames are held off. */
 const DISMISS_SETTLE_MS = 900
@@ -14,9 +14,10 @@ const EDITABLE = 'input, textarea, select, [contenteditable="true"]'
 const INTERACTIVE = `${EDITABLE}, button, a[href], label, summary, [role="button"], [role="radio"], [role="checkbox"], [role="option"], [role="menuitem"], [role="tab"]`
 
 /**
- * Dismiss the soft keyboard from a scrolling surface, the way native chat
- * apps do: dragging it, or tapping its plain content, while the keyboard is
- * up. Touches that start in a text field keep the keyboard (an inline answer
+ * Dismiss the soft keyboard from a scrolling surface with a tap on its plain
+ * content while the keyboard is up. A drag only scrolls: the reader keeps
+ * the keyboard to read the chat while typing (user request), and a swipe
+ * down on the composer still puts it away. Touches that start in a text field keep the keyboard (an inline answer
  * box inside the transcript), and taps on controls are left to the control.
  */
 export function useDismissKeyboardOnTouch(ref: RefObject<HTMLElement | null>) {
@@ -36,12 +37,12 @@ export function useDismissKeyboardOnTouch(ref: RefObject<HTMLElement | null>) {
       startY = event.touches[0]?.clientY ?? null
       moved = false
     }
+    // Past the slop it is a scroll, not a tap: the keyboard stays.
     const onMove = (event: TouchEvent) => {
       if (startY === null || moved) return
       const y = event.touches[0]?.clientY
       if (y === undefined || Math.abs(y - startY) < DRAG_DISMISS_PX) return
       moved = true
-      dismissKeyboard()
     }
     const onEnd = (event: TouchEvent) => {
       const tapped = startY !== null && !moved

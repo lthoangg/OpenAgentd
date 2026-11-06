@@ -40,14 +40,15 @@ afterEach(() => {
 })
 
 describe('useDismissKeyboardOnTouch', () => {
-  it('dismisses the keyboard when the transcript is dragged', () => {
+  it('keeps the keyboard while the transcript is scrolled, so the reader can type', () => {
     render(<Transcript />)
     const composer = openKeyboardWithFocus()
     const text = screen.getByTestId('text')
     touch(text, 'touchstart', 300)
     touch(text, 'touchmove', 340)
+    touch(text, 'touchend', 340)
 
-    expect(document.activeElement).not.toBe(composer)
+    expect(document.activeElement).toBe(composer)
   })
 
   it('dismisses the keyboard on a tap on plain content', () => {

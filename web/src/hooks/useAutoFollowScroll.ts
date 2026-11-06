@@ -207,7 +207,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       }
       smoothScrollFinishRef.current = finish
       el.addEventListener('scrollend', finish)
-      smoothScrollTimeoutRef.current = setTimeout(finish, 1000)
+      smoothScrollTimeoutRef.current = setTimeout(finish, 600)
     } else {
       if (smoothScrollTimeoutRef.current) {
         clearTimeout(smoothScrollTimeoutRef.current)

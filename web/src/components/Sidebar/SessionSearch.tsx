@@ -4,7 +4,6 @@ import { useDebouncedValue } from '@tanstack/react-pacer'
 import { Search } from 'lucide-react'
 import type { SessionResponse } from '@/api/types'
 import { SearchBar } from '@/components/ui/search-bar'
-import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ROW_TEXT_ACTION } from '@/components/ui/list-row'
 import { useSessionSearchQuery, useSessionsQuery } from '@/queries/useSessionsQuery'
@@ -74,7 +73,13 @@ export function SessionSearch({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className={cancel ? 'flex shrink-0 items-center gap-1 px-1.5 pb-1' : 'shrink-0 px-1.5 pb-1'}>
+      <div
+        className={cancel
+          // The phone: iOS's search bar, the field easing in and Cancel
+          // sliding in beside it, on the page's own inset.
+          ? 'flex shrink-0 items-center gap-2 px-3 pt-1 pb-2 animate-in fade-in-0 slide-in-from-top-1 animation-duration-(--motion-base) ease-(--ease-out)'
+          : 'shrink-0 px-1.5 pb-1'}
+      >
         <SearchBar
           ref={inputRef}
           wrapperClassName={cancel ? 'min-w-0 flex-1' : undefined}
@@ -93,12 +98,16 @@ export function SessionSearch({
           }}
         />
         {cancel && (
-          <Button type="button" variant="ghost" onClick={onClose}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex min-h-(--phone-control) shrink-0 items-center px-1 text-sm font-medium text-(--color-accent) animate-in fade-in-0 slide-in-from-right-3 animation-duration-(--motion-base) ease-(--ease-out) active:opacity-60"
+          >
             Cancel
-          </Button>
+          </button>
         )}
       </div>
-      <div role="region" aria-label="Search results" className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
+      <div role="region" aria-label="Search results" className={cancel ? 'min-h-0 flex-1 overflow-y-auto px-3 pb-2 animate-in fade-in-0 animation-duration-(--motion-base)' : 'min-h-0 flex-1 overflow-y-auto px-1.5 pb-2'}>
         {needle && !isFetching && results.length === 0 && (
           <EmptyState
             compact

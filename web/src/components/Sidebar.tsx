@@ -130,6 +130,7 @@ import { SidebarSectionHeader } from './Sidebar/SidebarSectionHeader'
 import { PinnedSection } from './Sidebar/PinnedSection'
 import { FlatSessionGroups } from './Sidebar/FlatSessionGroups'
 import { WorkspaceGroupDots, workspaceGroupsLabel } from './Sidebar/WorkspaceGroupDots'
+import { SessionStatusMark } from './Sidebar/SessionStatusMark'
 import { WorkspaceGroupToggles } from './Sidebar/WorkspaceGroupToggles'
 import { groupColor } from './Sidebar/groupColor'
 import {
@@ -1407,6 +1408,11 @@ export function Sidebar({
             .filter(sessionWorking)
             .sort((a, b) => (sessionActivityTime(b) ?? '').localeCompare(sessionActivityTime(a) ?? ''))
           const sourceHasRunningSession = sourceRunningSessions.length > 0
+          // Touch: the row says when a session inside waits or runs, so a
+          // folded workspace still shows it (mockup J2).
+          const sourceWaitingCount = checkouts.listPaths
+            .flatMap((checkout) => sessionsByWorkspace.get(checkout) ?? [])
+            .filter((session) => session.needs_input === true).length
           const sourceMissing = Boolean(workspaceByPath.get(path)?.missing)
           const worktreeChipHint = checkouts.selected
             ? `Showing ${selectedWorktree?.name ?? 'the workspace'} only · change worktree`
@@ -1483,6 +1489,15 @@ export function Sidebar({
                         </span>
                         {sourceMissing && <MissingBadge />}
                         <WorkspaceGroupDots groups={sourceGroups} />
+                        {mobileLongPressActions && (sourceWaitingCount > 0 || sourceHasRunningSession) && (
+                          <span data-workspace-status="" className="ml-auto flex shrink-0 items-center gap-1 pl-2 text-meta tabular-nums text-(--color-text-muted)">
+                            <SessionStatusMark
+                              status={sourceWaitingCount > 0 ? 'needs_input' : 'running'}
+                              label={sourceWaitingCount > 0 ? `${sourceWaitingCount} waiting for you` : `${sourceRunningSessions.length} running`}
+                            />
+                            <span aria-hidden="true">{sourceWaitingCount > 0 ? sourceWaitingCount : sourceRunningSessions.length}</span>
+                          </span>
+                        )}
                         {sourceIsPending && (
                           <span>
                             <Loader2 size={12} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />

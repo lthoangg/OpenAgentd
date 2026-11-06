@@ -283,6 +283,17 @@ describe('Sidebar page mode: the Sessions screen', () => {
     expect(screen.queryByRole('button', { name: 'Search sessions' })).toBeNull()
   })
 
+  it('marks a workspace row when a session inside waits for you', async () => {
+    const waiting = session('w-1', 'Asks a question', { needs_input: true, running: true })
+    workspaceSessionsData = [waiting]
+    activeSessionsData = [waiting]
+    await renderPage()
+    const row = screen.getByRole('button', { name: 'Open workspace project' })
+    const mark = row.querySelector('[data-workspace-status]')
+    expect(mark).not.toBeNull()
+    expect(within(row).getByLabelText('1 waiting for you')).toBeTruthy()
+  })
+
   it('names the server in the top bar, with a small title that waits for the large one to scroll away', async () => {
     const { view } = await renderPage()
     const bar = view.container.querySelector('[data-sessions-page-bar]') as HTMLElement

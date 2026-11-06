@@ -45,7 +45,7 @@ sha2 = "0.11"
 sqlx = { version = "0.9", default-features = false, features = ["sqlite", "runtime-tokio", "chrono", "uuid", "derive"] }
 ignore = "0.4"
 dunce = "1"
-gix = { version = "0.89", default-features = false, features = ["status", "attributes", "excludes", "dirwalk", "index", "sha1", "parallel", "max-performance-safe"] }
+gix = { version = "0.90", default-features = false, features = ["status", "attributes", "excludes", "dirwalk", "index", "sha1", "parallel", "max-performance"] }
 regex = "1.11"
 glob = "0.3"
 shlex = "1.3"

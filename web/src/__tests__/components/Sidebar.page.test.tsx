@@ -62,9 +62,10 @@ mock.module('@/hooks/use-platform', () => ({
 mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => isMobile }))
 // Reduced motion makes a swipe snap, so a release reads at its resting place.
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => true }))
+const softHaptic = mock(() => undefined)
 mock.module('@/lib/haptics', () => ({
   selectionHapticFeedback: () => undefined,
-  softHapticFeedback: () => undefined,
+  softHapticFeedback: softHaptic,
   mediumHapticFeedback: () => undefined,
   alignmentHapticFeedback: () => undefined,
   outcomeHapticFeedback: () => undefined,
@@ -332,6 +333,15 @@ describe('Sidebar page mode: the Sessions screen', () => {
 
     expect(onNewSession).not.toHaveBeenCalled()
     expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ to: '/', search: { workspace: '/repo/project' } }))
+  })
+
+  it('taps a light haptic when ✎ pushes the draft', async () => {
+    await renderPage()
+    softHaptic.mockClear()
+
+    fireEvent.click(screen.getByRole('button', { name: 'New session' }))
+
+    expect(softHaptic).toHaveBeenCalledTimes(1)
   })
 
   it('opens a draft in the current workspace from ✎ when the chat has no handler', async () => {

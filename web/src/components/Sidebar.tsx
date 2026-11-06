@@ -88,6 +88,7 @@ import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceTree, listSessions, listWorktrees, setCodingWorkspaceVisibility } from '@/api/client'
 import { WORKSPACES_KEY, workspaceLabel } from '@/utils/workspace'
 import { startNewSession } from '@/lib/new-session'
+import { softHapticFeedback } from '@/lib/haptics'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
@@ -619,6 +620,8 @@ export function Sidebar({
       // The Sessions screen covers the chat it was popped from, so the
       // chat's own handler (which leaves an empty draft or session as it
       // is) would change nothing on screen: always push a fresh draft.
+      // The draft is built before the push, so the slide shows it at once.
+      softHapticFeedback()
       startNewSession({ navigate, workspace: target })
     } else if (onNewSession && workspace) {
       onNewSession()

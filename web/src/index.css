@@ -1807,3 +1807,40 @@ html[data-qr-scanning] body > :not([data-qr-scan-overlay]) {
 [data-qr-frame] > span {
   border-color: #FFFDF7;
 }
+
+/* The phone's thinking slider (ThinkingControl): an iOS-style track and a
+ * 28px knob, stepped between the model's levels. */
+.oa-thinking-slider {
+  appearance: none;
+  height: 28px;
+  background: transparent;
+  touch-action: none;
+}
+.oa-thinking-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--bg-key);
+}
+.oa-thinking-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  margin-top: -11px;
+  border-radius: 9999px;
+  background: var(--bg-card);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-depth);
+}
+.oa-thinking-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--bg-key);
+}
+.oa-thinking-slider::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: var(--bg-card);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-depth);
+}

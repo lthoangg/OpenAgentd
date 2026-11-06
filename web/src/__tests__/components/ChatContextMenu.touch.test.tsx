@@ -174,7 +174,7 @@ describe('long press on touch', () => {
     expect(haptics).toEqual(['medium'])
 
     const buttons = Array.from(sheet.querySelectorAll('button')).map((b) => b.textContent)
-    expect(buttons).toEqual(['Copy', 'Edit'])
+    expect(buttons).toEqual(['Copy', 'Edit', 'Cancel'])
     await act(async () => { screen.getByRole('button', { name: 'Edit' }).click() })
     expect(picked).toEqual(['Edit'])
     expect(screen.queryByRole('dialog')).toBeNull()

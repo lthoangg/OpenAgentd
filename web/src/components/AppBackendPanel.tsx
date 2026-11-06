@@ -22,8 +22,9 @@
  * offers **Sessions ›** (``onOpenInUse``), back up to its session list.
  */
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowRightLeft, ChevronRight, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
 
+import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
 import { Button } from '@/components/ui/button'
 import { StatusChip } from '@/components/ui/chip'
 import { STATUS } from '@/lib/status'
@@ -37,6 +38,9 @@ import { Field } from '@/components/ui/field'
 import { PanelSection } from '@/components/ui/panel-section'
 import { ICON_SIZE_INLINE, ROW_PAD, TEXT } from '@/components/settings/tokens'
 import { isDesktopShell } from '@/lib/desktop-shell'
+import { useLongPress } from '@/hooks/use-long-press'
+import { useTouchFirst } from '@/hooks/use-touch-first'
+import { mediumHapticFeedback } from '@/lib/haptics'
 import { shake } from '@/lib/shake'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
 import { cn } from '@/lib/utils'
@@ -125,6 +129,10 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
   const [confirm, setConfirm] = useState<{ kind: 'stop' } | { kind: 'remove'; baseUrl: string; label: string } | null>(null)
   const [form, setForm] = useState<ServerFormTarget | null>(null)
+  // Touch: a saved server's row keeps one button; Edit and Remove move to
+  // its action sheet (a long press, or ⋯).
+  const touch = useTouchFirst()
+  const [rowSheet, setRowSheet] = useState<{ title: string; items: ActionSheetItem[] } | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
   const [serverName, setServerName] = useState('')
   const [accessKey, setAccessKeyInput] = useState('')
@@ -504,6 +512,16 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                 mono={!server.name}
                 note={note}
                 inUse={active}
+                onMore={touch ? () => setRowSheet({
+                  title: label,
+                  items: [
+                    active
+                      ? { id: 'sessions', label: 'Sessions', icon: ChevronRight, run: () => onOpenInUse?.(), disabled: !onOpenInUse }
+                      : { id: 'use', label: 'Use this server', icon: ArrowRightLeft, disabled: pending, run: () => { void connectExternal(normalizedServerUrl, server.name ?? '', '', setListError) } },
+                    { id: 'edit', label: 'Edit', icon: Pencil, disabled: pending, run: () => (editing ? closeForm() : openEdit(server, active)) },
+                    { id: 'remove', label: 'Remove…', icon: Trash2, danger: true, separatorBefore: true, disabled: pending, run: () => setConfirm({ kind: 'remove', baseUrl: server.base_url, label }) },
+                  ],
+                }) : undefined}
               >
                 {watchable ? (
                   <label className={cn('mr-1 flex items-center gap-2', TEXT.hint)}>
@@ -528,6 +546,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                     Use
                   </Button>
                 )}
+                {touch ? null : (
+                <>
                 <Button
                   ref={(node) => {
                     if (node) editButtonRefs.current.set(normalizedServerUrl, node)
@@ -562,6 +582,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                   />
                   <TooltipContent>Remove server…</TooltipContent>
                 </Tooltip>
+                </>
+                )}
               </ServerRow>
               {editing && editTarget ? serverForm(editTarget) : null}
             </Fragment>
@@ -580,6 +602,13 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       {listError ? (
         <Callout tone="error" role="alert">{listError}</Callout>
       ) : null}
+
+      <ActionSheet
+        open={rowSheet !== null}
+        onClose={() => setRowSheet(null)}
+        title={rowSheet?.title ?? 'Server'}
+        items={rowSheet?.items ?? []}
+      />
 
       <ConfirmDialog
         open={confirm !== null}
@@ -737,6 +766,7 @@ function ServerRow({
   note = null,
   inUse,
   address,
+  onMore,
   children,
 }: {
   health: Health | undefined
@@ -750,10 +780,25 @@ function ServerRow({
   inUse: boolean
   /** Where the server answers, when the title does not already say (a mono line under the subtitle). */
   address?: string
+  /** Touch: open the row's action sheet, from a long press or its ⋯. */
+  onMore?: () => void
   children: React.ReactNode
 }) {
+  const longPress = useLongPress(Boolean(onMore), () => {
+    mediumHapticFeedback()
+    onMore?.()
+  })
   return (
-    <div data-server-row="" className={cn('flex min-h-(--phone-control) flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 md:min-h-14', ROW_PAD)}>
+    <div
+      data-server-row=""
+      {...(onMore ? longPress : {})}
+      className={cn(
+        'flex min-h-(--phone-control) flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 md:min-h-14',
+        ROW_PAD,
+        // Touch: one line, the button beside the name; no iOS callout on a hold.
+        onMore && 'flex-row! items-center gap-3 [-webkit-touch-callout:none] select-none',
+      )}
+    >
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <ServerStatusDot status={health} />
         <span className="min-w-0 flex-1">
@@ -782,7 +827,14 @@ function ServerRow({
           ) : null}
         </span>
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 pl-5 sm:pl-0">{children}</div>
+      <div className={cn('flex shrink-0 flex-wrap items-center gap-1.5', onMore ? 'pl-0' : 'pl-5 sm:pl-0')}>
+        {children}
+        {onMore ? (
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={`More actions for ${title}`} onClick={onMore} className="text-(--color-text-muted)">
+            <MoreHorizontal size={16} aria-hidden="true" />
+          </Button>
+        ) : null}
+      </div>
     </div>
   )
 }

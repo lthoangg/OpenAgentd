@@ -32,7 +32,6 @@ import { DockTabCloseButton } from '@/components/WorkspacePanel/DockTabCloseButt
 import { MenuKeys } from '@/components/WorkspacePanel/MenuKeys'
 import { getPlatform, type OS } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
-import { softHapticFeedback } from '@/lib/haptics'
 import { isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/item-keys'
 import { cn } from '@/lib/utils'
 import { useTerminalStore, type TerminalSessionMeta } from '@/stores/useTerminalStore'
@@ -118,7 +117,6 @@ export function TerminalTabButton({
                 aria-current={active ? 'true' : undefined}
                 enabled={mobile}
                 onLongPress={() => {
-                  softHapticFeedback()
                   setMobileSheetOpen(true)
                 }}
                 onContextMenu={(e) => {

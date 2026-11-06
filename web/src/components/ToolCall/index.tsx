@@ -338,6 +338,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
       .filter((ref) => fileOpener.canOpen(ref))
       .map((ref) => ({
         label: `Open ${workspaceRelativePath(ref.path, fileOpener.workspace ?? null) ?? ref.path}`,
+        icon: FileText,
         run: () => fileOpener.open(ref),
       }))
   }

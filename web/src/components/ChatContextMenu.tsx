@@ -23,6 +23,7 @@
  */
 import { Suspense, lazy, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type SyntheticEvent } from 'react'
 import { createPortal } from 'react-dom'
+import type { LucideIcon } from 'lucide-react'
 
 import { CONTEXT_MENU_ITEM_CLASS, ContextMenu } from '@/components/ui/context-menu'
 import { hasTextSelection } from '@/lib/desktop-shell'
@@ -32,6 +33,8 @@ import { mediumHapticFeedback } from '@/lib/haptics'
 
 export interface ChatMenuItem {
   label: string
+  /** Shown in the phone's sheet; the floating menu stays text-only. */
+  icon?: LucideIcon
   run: () => void
 }
 

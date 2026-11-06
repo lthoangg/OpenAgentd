@@ -6,6 +6,7 @@ import { Collapsible } from '@/components/ui/collapsible'
 import type { ModelCostInfo } from '@/api/client'
 import { SearchBar } from '@/components/ui/search-bar'
 import { CONTEXT_MENU_ITEM_CLASS, ContextMenu } from '@/components/ui/context-menu'
+import { ActionSheet } from '@/components/ui/action-sheet'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
@@ -359,8 +360,15 @@ function ModelRow({
         <TooltipContent>Copy model ID</TooltipContent>
       </Tooltip>
 
-      {/* Context menu */}
-      {actionsPoint && (
+      {/* Context menu: an action sheet in the phone app, where a long press opens it. */}
+      {isTauriMobile ? (
+        <ActionSheet
+          open={actionsPoint !== null}
+          onClose={() => setActionsPoint(null)}
+          title={qualifiedId}
+          items={[{ id: 'copy', label: 'Copy model ID', icon: Copy, run: () => void onCopy(qualifiedId) }]}
+        />
+      ) : actionsPoint && (
         <ContextMenu at={actionsPoint} label={`Actions for ${qualifiedId}`} onDismiss={() => setActionsPoint(null)}>
           <button
             type="button"

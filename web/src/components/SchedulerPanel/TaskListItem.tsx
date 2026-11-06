@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
-import { Loader2, MoreHorizontal } from 'lucide-react'
+import { Loader2, MoreHorizontal, Pause, Play, Trash2, Zap } from 'lucide-react'
+import { ActionSheet } from '@/components/ui/action-sheet'
+import { useTouchFirst } from '@/hooks/use-touch-first'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
@@ -33,6 +35,8 @@ export function TaskListItem({
   const { isTauri, os } = usePlatform()
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
   const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
+  // A phone's menu is an action sheet, from ⋯ or a long press alike.
+  const phoneSheet = useTouchFirst() && isMobile
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false)
   const longPressTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -160,7 +164,20 @@ export function TaskListItem({
         </div>
       </div>
     </div>
-    {actionsPoint && (
+    {phoneSheet ? (
+      <ActionSheet
+        open={actionsPoint !== null}
+        onClose={() => setActionsPoint(null)}
+        title={task.name}
+        items={[
+          { id: 'run', label: 'Run now', icon: Zap, disabled: triggerMutation.isPending, run: triggerTask },
+          task.status === 'paused'
+            ? { id: 'resume', label: 'Resume', icon: Play, run: togglePaused }
+            : { id: 'pause', label: 'Pause', icon: Pause, run: togglePaused },
+          { id: 'delete', label: 'Delete task…', icon: Trash2, danger: true, separatorBefore: true, run: () => setDeleteConfirmationOpen(true) },
+        ]}
+      />
+    ) : actionsPoint && (
       <TaskActionsMenu
         task={task}
         at={actionsPoint}

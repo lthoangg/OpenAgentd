@@ -1814,6 +1814,39 @@ Back at a time.
   and the action full width under a hairline, a destructive action in red
   and never the default. Android keeps Material's text buttons.
 
+### Phone system
+
+The rules every phone screen follows. The approved before/after mockups live
+in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`.
+
+- **Status in one second.** One vocabulary everywhere: running is blue (a
+  soft pulse, still under Reduce Motion), needs-you is orange (a question,
+  a plan to approve, a sign-in), error is red, done-and-unread is green,
+  idle is hollow. Sessions puts Needs you and Running above the
+  workspaces. The connection dot is never green while the server does not
+  answer.
+- **One thumb.** Touch targets are 44pt; the primary action of a screen sits
+  in its lower half; nothing depends on hover.
+- **Motion.** Screens, sheets and pushes move on `--ease-sheet` or the
+  critically damped spring of `lib/drawer-motion.ts`, carrying the finger's
+  speed and never crossing their target. The overshooting
+  `--ease-spring-*` curves are for small controls only (a switch thumb, a
+  radio dot). A pushed screen is built before it slides: content never
+  swaps mid-transition. Reduce Motion fades instead (lint
+  `overshoot-on-screen`).
+- **Type.** Body 17, secondary 15, footnote 13, caption 12, the large
+  title 28; all rem so they follow Dynamic Type. Mono is for code, paths and
+  commands only, never for model names, durations, costs or labels.
+- **Reading.** Wide content (code, diffs, tables) scrolls sideways inside
+  its block, with a fade at the clipped edge; it never widens the page.
+  Consecutive tool calls collapse into one summary row.
+- **Notices.** A banner is one line under the bar with at most one action;
+  details open in a sheet. It never covers the transcript.
+- **Feedback.** Haptics come from the gesture (`lib/haptics.ts`): soft for
+  a push or a send, medium for a long press or Stop, a tick for an arriving
+  question, the error outcome for a refused action. A destructive action
+  offers Undo or confirms.
+
 ### Native per platform
 
 | | macOS | Windows | Linux | iOS / iPadOS | Android |

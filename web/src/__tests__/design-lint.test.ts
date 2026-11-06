@@ -272,6 +272,18 @@ const RULES: Rule[] = [
     },
   },
   {
+    name: 'overshoot-on-screen',
+    why: 'screens, sheets and pushes move on --ease-sheet or the critically damped spring (no overshoot); the overshooting springs are for small controls only (DESIGN.md → Phone system)',
+    pattern: /ease-spring-(?:soft|snappy)|EASINGS\.spring(?:Soft|Snappy)/g,
+    allow: {
+      // Small controls: a switch thumb, a radio dot, a swapped icon, a dropped tab.
+      'components/ui/switch.tsx': 1,
+      'components/ui/radio-group.tsx': 1,
+      'components/ui/swap.tsx': 1,
+      'components/WorkspacePanel/useTabDrag.ts': 1,
+    },
+  },
+  {
     name: 'faded-words',
     why: 'never fade words with opacity: a secondary line uses the muted text token (it keeps AA contrast)',
     // A text span whose class fades it: `<span className="block opacity-70">Open Git</span>`.

@@ -1,7 +1,7 @@
 /**
- * A team call that started or messaged a subagent shows that subagent's row
- * under the call, without opening the details: its state in words and one
- * click to its session. The backend answers a spawn in plain text
+ * A team call that started or messaged a subagent shows that subagent in the
+ * call's own row, without opening the details: its state in words and one
+ * tap to its session (no row of its own under the call). The backend answers a spawn in plain text
  * ("Subagent 'explorer#1' dispatched…"), so the handle comes from there and
  * where the member is now comes from the live roster.
  */
@@ -37,15 +37,23 @@ afterEach(() => {
   useAgentStore.setState({ sessionId: null })
 })
 
-describe('a team call\'s subagent row', () => {
+describe('a team call\'s subagent link', () => {
   it('shows the spawned subagent under the closed call and opens its session in one click', () => {
     renderWithRoster(<ToolCall name="team" args={SPAWN_ARGS} done result={SPAWNED} />, [
       { member_id: 'explorer#1', status: 'completed', session_id: SUB, created_at: new Date().toISOString(), has_pending_question: false },
     ])
 
-    expect(screen.getByRole('button', { name: /Expand team details/ }).getAttribute('aria-expanded')).toBe('false')
+    const row = screen.getByRole('button', { name: /Expand team details/ })
+    expect(row.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(screen.getByRole('button', { name: 'Open explorer#1 session, Done' }))
     expect(opened).toEqual([{ sessionId: SUB, workspace: '' }])
+    // The chip sits in the row line; a tap on it opens the session and leaves the row shut.
+    const chip = row.querySelector('[data-row-link]') as HTMLElement
+    expect(chip.textContent).toContain('Done')
+    fireEvent.click(chip)
+    expect(opened).toHaveLength(2)
+    expect(row.getAttribute('aria-expanded')).toBe('false')
+    expect(document.querySelector('[data-subagent-row]')).toBeNull()
   })
 
   it('names the subagent a message went to', () => {
@@ -61,10 +69,10 @@ describe('a team call\'s subagent row', () => {
     expect(screen.getByRole('button', { name: 'Open explorer#1 session, Running' })).toBeTruthy()
   })
 
-  it('is a plain row until the roster knows the subagent\'s session', () => {
+  it('offers nothing to open until the roster knows the subagent\'s session', () => {
     renderWithRoster(<ToolCall name="team" args={SPAWN_ARGS} done result={SPAWNED} />, null)
     expect(screen.queryByRole('button', { name: /Open explorer#1/ })).toBeNull()
-    expect(screen.getByText('explorer#1').closest('[data-subagent-row]')?.tagName).toBe('DIV')
+    expect(document.querySelector('[data-row-link]')).toBeNull()
   })
 
   it('shows nothing for a failed call, a running call or a list', () => {
@@ -76,6 +84,6 @@ describe('a team call\'s subagent row', () => {
       </>,
       [],
     )
-    expect(document.querySelector('[data-subagent-row]')).toBeNull()
+    expect(document.querySelector('[data-row-link]')).toBeNull()
   })
 })

@@ -20,8 +20,7 @@
  */
 
 import { useContext, useEffect, useId, useRef, useState, useMemo, useCallback, memo } from 'react'
-import { ArrowUpRight, ChevronRight, FileText, GitBranch, Globe } from 'lucide-react'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { ChevronRight, FileText, GitBranch, Globe } from 'lucide-react'
 import { previewsAvailable } from '@/api/preview'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { ToolResult } from '../ToolResult'
@@ -46,7 +45,7 @@ import { CopyButton } from './CopyButton'
 import { SectionHeader } from './SectionHeader'
 import { ToolRow } from './ToolRow'
 import { subscribeLiveClock } from './liveClock'
-import { RosterSubagentRow } from './SubagentRow'
+import { RowLinkButton, RowLinkChip, TeamMemberButton, TeamMemberChip } from './RowLink'
 import { teamMemberFromResult } from './subagentStatus'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
@@ -240,10 +239,13 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     () => (canonicalToolName(name) === WORKSPACE_TOOL && done ? parseSendResult(result) : null),
     [name, done, result],
   )
+  const openSentSession = () => {
+    if (sentSession) requestOpenSession({ sessionId: sentSession.sessionId, workspace: sentSession.workspace })
+  }
   // A saved plan opens in the Plan tab.
   const planLink = name === PLAN_TOOL && done && !isFailedResult(result) ? 'Open plan' : null
-  // The subagent a team call started or messaged: its row sits under the
-  // call, so following it takes one click, not an expand and then a click.
+  // The subagent a team call started or messaged: its state sits in the
+  // call's row, and a tap on it opens the session (``RowLink``).
   const teamMember = useMemo(
     () => (canonicalToolName(name) === TEAM_TOOL && done ? teamMemberFromResult(result) : null),
     [name, done, result],
@@ -361,7 +363,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   }
 
   return (
-    <div className={animatesIn ? 'tool-row-enter my-0.5' : 'my-0.5'}>
+    <div data-tool-call="" className={animatesIn ? 'tool-row-enter my-0.5' : 'my-0.5'}>
       {/* The row: real tool name, target, result summary, and a right-aligned
           meta column (exit code, duration). A row with nothing to open is a
           plain div, so it adds no empty Tab stop. */}
@@ -415,8 +417,16 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
           {state === 'running' ? (
             <span className="oa-shimmer shrink-0">running…</span>
           ) : null}
+          {teamMember && <TeamMemberChip handle={teamMember} />}
+          {sentSession && (
+            <RowLinkChip onOpen={openSentSession} title={`Switch to the session in ${sentSession.workspace}`}>
+              Open
+            </RowLinkChip>
+          )}
         </ToolRow>
-        {(previewTarget || planLink || imageRead || sentSession) && (
+        {teamMember && <TeamMemberButton handle={teamMember} />}
+        {sentSession && <RowLinkButton label={`Open in ${sentSession.workspaceName}`} onOpen={openSentSession} />}
+        {(previewTarget || planLink || imageRead || sentSession?.createdWorktree) && (
           <div className="flex flex-wrap items-center gap-1.5 px-1.5 pb-1">
         {previewTarget && (
           <button
@@ -439,23 +449,6 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
           </button>
         )}
         {imageRead && <ImageViewChip path={imageRead.path} />}
-        {sentSession && (
-          <Tooltip className="max-w-[60%]">
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  onClick={() => requestOpenSession({ sessionId: sentSession.sessionId, workspace: sentSession.workspace })}
-                  className={cn(TOOL_CHIP_CLASS, 'ml-0 max-w-full')}
-                >
-                  <ArrowUpRight size={12} aria-hidden="true" className="shrink-0" />
-                  <span className="truncate">Open in {sentSession.workspaceName}</span>
-                </button>
-              }
-            />
-            <TooltipContent>{`Switch to the session in ${sentSession.workspace}`}</TooltipContent>
-          </Tooltip>
-        )}
         {sentSession?.createdWorktree && (
           <span
             className="inline-flex max-w-[60%] items-center gap-1 align-middle text-meta text-(--color-text-muted)"
@@ -470,7 +463,6 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         )}
           </div>
         )}
-        {teamMember && <RosterSubagentRow handle={teamMember} className="mb-0.5" />}
       </div>
 
       {/* Expandable details — divider then warm paper body per pencil LJOUY */}

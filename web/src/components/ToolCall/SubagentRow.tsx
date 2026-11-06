@@ -6,8 +6,7 @@ import { listRowClass } from '@/components/ui/list-row'
 import { cn } from '@/lib/utils'
 import { requestOpenSession } from '@/utils/workspace-messages'
 import { subscribeLiveClock } from './liveClock'
-import { formatClock, parseStartedAt, subagentStatusView } from './subagentStatus'
-import { useSubagentRoster } from './useSubagentRoster'
+import { formatClock, subagentStatusView } from './subagentStatus'
 
 /**
  * ``mm:ss`` since ``startedAt``, ticking once a second on the shared clock
@@ -92,25 +91,5 @@ export function SubagentRow({ handle, status, sessionId, startedAt = null, hasPe
     >
       {body}
     </button>
-  )
-}
-
-/**
- * ``handle``'s row as the live roster has it now: where its session is, its
- * state, when it started. Under a team call, so following a subagent is one
- * click from the transcript.
- */
-export function RosterSubagentRow({ handle, className }: { handle: string; className?: string }) {
-  const roster = useSubagentRoster(true)
-  const live = roster?.get(handle)
-  return (
-    <SubagentRow
-      handle={handle}
-      status={live?.status ?? null}
-      sessionId={live?.session_id || null}
-      startedAt={parseStartedAt(live?.created_at)}
-      hasPendingQuestion={live?.has_pending_question === true}
-      className={className}
-    />
   )
 }

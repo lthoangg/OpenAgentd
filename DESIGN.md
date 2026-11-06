@@ -1210,7 +1210,12 @@ dot before the name and a live timer in the meta column; text never
 blinks. A failed row shows its summary in error colour and an `exit 1` or
 `error` chip. Rows without details render as a `div`, not a button.
 A subagent row is a button to its session, with its state in words
-(Running, Done, Failed, Needs you, Stopped) and a live clock. A tool section
+(Running, Done, Failed, Needs you, Stopped) and a live clock. A team or
+workspace call carries its "open it" control in its own row, never on a
+row under it: a small chip after the target (the subagent's state, or
+**Open**) with ↗. The row is a button, so the chip is drawn in it and a
+visually hidden button beside the row serves keyboard and screen readers,
+its focus ringing the chip. A tool section
 header (arguments, command, output) is a `button` with `aria-expanded`; its
 Copy is a sibling, always visible, and says "Copied" for a moment.
 A tool row has no tooltip: what its title cuts short (a long URL, query or

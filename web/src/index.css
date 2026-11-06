@@ -1807,3 +1807,10 @@ html[data-qr-scanning] body > :not([data-qr-scan-overlay]) {
 [data-qr-frame] > span {
   border-color: #FFFDF7;
 }
+
+/* A tool row's open control (ToolCall/RowLink): the real button is hidden
+ * beside the row, so its keyboard focus rings the chip drawn in the row. */
+[data-tool-call]:has([data-row-link-button]:focus-visible) [data-row-link] {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}

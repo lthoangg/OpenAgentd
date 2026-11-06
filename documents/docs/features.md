@@ -946,7 +946,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A subagent row is a button that opens the subagent's session, with its
     state in words (Running, Done, Failed, Needs you, Stopped) and a running
     clock. It sits under the team call that started or messaged the
-    subagent, so following it is one click. A subagent's question lists its
+    subagent, so following it is one click. Since `[v3.49.0]` the call's own
+    row carries it instead: a small state chip with ↗ after the target opens
+    the session, with no extra row. A subagent's question lists its
     options, says the main agent answers it, and offers **Open subagent
     session**.
   - Copy buttons on code blocks, tool arguments, commands and output are
@@ -2370,7 +2372,8 @@ executes tools, manages its task list, and inspects workspace repositories.
   first and wait for your approval; an existing session keeps its mode, and a
   `mode` sent along with `session_id` is ignored instead of refused `[v3.35.0]`.
   The tool card in the sending session has an
-  **Open in <workspace>** button that switches to the session it reached. With
+  **Open in <workspace>** button that switches to the session it reached
+  (since `[v3.49.0]` a small **Open ↗** chip in the card's own row). With
   `reply: true`, the other session's final answer comes back as a **Workspace
   reply** report that starts the sender's next turn and links to the replying
   session:

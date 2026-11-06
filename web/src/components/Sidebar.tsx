@@ -2113,7 +2113,68 @@ export function Sidebar({
         </ContextMenu>
       )}
 
-      {checkoutMenu && checkoutMenuRepository && (
+      {checkoutMenu && checkoutMenuRepository && mobileLongPressActions && (
+        // Touch: a sheet (mockup J8 8.4), names in sans, each row with its
+        // session count and what runs there.
+        <BottomSheet open onClose={() => setCheckoutMenu(null)} label={`Worktrees for ${workspaceLabel(checkoutMenu.repo)}`}>
+          <div data-worktree-sheet="" className="flex flex-col px-2 pb-3">
+            {[
+              { path: null as string | null, name: 'Workspace and worktrees', counted: [...checkoutMenuRepository.worktrees.map((w) => w.path), checkoutMenu.repo] },
+              { path: checkoutMenu.repo as string | null, name: 'Main workspace', counted: [checkoutMenu.repo] },
+              ...checkoutMenuRepository.worktrees.map((w) => ({ path: w.path as string | null, name: w.name, counted: [w.path] })),
+            ].map((row) => {
+              const rowSessions = row.counted.flatMap((p) => sessionsByWorkspace.get(p) ?? [])
+              const running = rowSessions.filter(sessionWorking).length
+              const checked = checkoutMenuRepository.selected === row.path
+              return (
+                <button
+                  key={row.path ?? 'all'}
+                  type="button"
+                  role="radio"
+                  aria-checked={checked}
+                  onClick={() => { selectCheckout(checkoutMenu.repo, row.path); setCheckoutMenu(null) }}
+                  className={cn(ACTION_SHEET_ROW_CLASS, 'min-h-14 items-center')}
+                >
+                  <span className="min-w-0 flex-1 text-left">
+                    <span className="block truncate text-sm text-(--color-text)">{row.name}</span>
+                    <span className="block truncate text-meta text-(--color-text-muted)">
+                      {`${rowSessions.length} ${rowSessions.length === 1 ? 'session' : 'sessions'}${running > 0 ? ` · ${running} running` : ''}`}
+                    </span>
+                  </span>
+                  {checked && <Check size={16} aria-hidden="true" />}
+                </button>
+              )
+            })}
+            <div className="my-1 border-t border-(--color-border)" />
+            <button
+              type="button"
+              className={ACTION_SHEET_ROW_CLASS}
+              onClick={() => { const repo = checkoutMenu.repo; setCheckoutMenu(null); void openWorktreeDialog(repo) }}
+            >
+              <Plus size={16} aria-hidden="true" />
+              Create worktree…
+            </button>
+            {checkoutMenuWorktree && (
+              <button type="button" className={ACTION_SHEET_ROW_CLASS} onClick={() => { setCheckoutMenu(null); handleWorktreeEdit(checkoutMenuWorktree) }}>
+                <Pencil size={16} aria-hidden="true" />
+                {`Rename ${checkoutMenuWorktree.name}…`}
+              </button>
+            )}
+            {checkoutMenuWorktree?.managed && (
+              <button
+                type="button"
+                className={cn(ACTION_SHEET_ROW_CLASS, 'text-(--color-error)')}
+                disabled={worktreeRemoving === checkoutMenuWorktree.directory}
+                onClick={() => { setCheckoutMenu(null); setRemoveWorktreeTarget(checkoutMenuWorktree) }}
+              >
+                <Trash2 size={16} aria-hidden="true" />
+                {`Delete worktree ${checkoutMenuWorktree.name}…`}
+              </button>
+            )}
+          </div>
+        </BottomSheet>
+      )}
+      {checkoutMenu && checkoutMenuRepository && !mobileLongPressActions && (
         <ContextMenu
           at={checkoutMenu}
           label={`Worktrees for ${workspaceLabel(checkoutMenu.repo)}`}

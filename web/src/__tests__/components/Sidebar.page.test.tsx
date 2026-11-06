@@ -294,6 +294,26 @@ describe('Sidebar page mode: the Sessions screen', () => {
     expect(within(row).getByLabelText('1 waiting for you')).toBeTruthy()
   })
 
+  it('lists worktrees in a sheet with session counts, names in sans', async () => {
+    globalThis.fetch = mock(async (input: unknown) => {
+      if (String(input).includes('/api/agent/workspace/tree')) {
+        return new Response(JSON.stringify({
+          repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/wt/task-a', name: 'task-a', managed: true }], group_ids: [] }],
+          chat: null,
+          groups: [],
+        }))
+      }
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+    await renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: '1 worktree' }))
+    const sheet = document.querySelector<HTMLElement>('[data-worktree-sheet]')!
+    const row = within(sheet).getByRole('radio', { name: /task-a/ })
+    expect(row.textContent).toContain('0 sessions')
+    expect(row.innerHTML).not.toContain('font-mono')
+    expect(within(sheet).getByRole('button', { name: /Create worktree/ })).toBeTruthy()
+  })
+
   it('names the server in the top bar, with a small title that waits for the large one to scroll away', async () => {
     const { view } = await renderPage()
     const bar = view.container.querySelector('[data-sessions-page-bar]') as HTMLElement

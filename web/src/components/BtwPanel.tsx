@@ -76,7 +76,14 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
   if (!open) {
     if (btw.total <= 0) return null
     return (
-      <div className="pointer-events-auto absolute bottom-full right-3 z-10 mb-3 flex max-w-[calc(100%-1.5rem)] origin-bottom-right animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)">
+      // A phone's round jump-to-latest owns the right corner, so the chip
+      // takes the left one there.
+      <div
+        className={cn(
+          'pointer-events-auto absolute bottom-full z-10 mb-3 flex max-w-[calc(100%-5rem)] animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)',
+          isPhone ? 'left-3 origin-bottom-left' : 'right-3 max-w-[calc(100%-1.5rem)] origin-bottom-right',
+        )}
+      >
         <Tooltip className="min-w-0">
           <TooltipTrigger
             className="min-w-0"

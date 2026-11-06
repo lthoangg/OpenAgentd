@@ -12,6 +12,7 @@ import {
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { PanelRow } from '@/components/ui/panel-row'
+import { Button } from '@/components/ui/button'
 import { PanelSection } from '@/components/ui/panel-section'
 import { ModelCombobox, type ModelOption } from '@/components/settings/AgentForm'
 import { validateModel } from '@/components/settings/schema'
@@ -137,6 +138,12 @@ export function MediaSettingsPage() {
               ariaLabel="Image model"
             />
           </div>
+          {/* A quick fix for the error (mockup J10): the first model that works. */}
+          {imageModelError && imageModels.length > 0 && (
+            <Button type="button" size="xs" variant="subtle" onClick={() => setImage('model', imageModels[0].id)}>
+              {`Use ${imageModels[0].id}`}
+            </Button>
+          )}
         </PanelRow>
         <ListRow label="Aspect ratio" value={String(mm.image.aspect_ratio ?? '')} onChange={(v) => setImage('aspect_ratio', v)} options={IMAGE_ASPECT_RATIOS} />
         <ListRow label="Size (other models)" value={String(mm.image.image_size ?? '')} onChange={(v) => setImage('image_size', v)} options={IMAGE_SIZES} />
@@ -176,6 +183,12 @@ export function MediaSettingsPage() {
               ariaLabel="Video model"
             />
           </div>
+          {/* A quick fix for the error (mockup J10): the first model that works. */}
+          {videoModelError && videoModels.length > 0 && (
+            <Button type="button" size="xs" variant="subtle" onClick={() => setVideo('model', videoModels[0].id)}>
+              {`Use ${videoModels[0].id}`}
+            </Button>
+          )}
         </PanelRow>
         <ListRow label="Aspect ratio" value={String(mm.video.aspect_ratio ?? '')} onChange={(v) => setVideo('aspect_ratio', v)} options={VIDEO_ASPECT_RATIOS} />
         <ListRow label="Resolution" value={String(mm.video.resolution ?? '')} onChange={(v) => setVideo('resolution', v)} options={VIDEO_RESOLUTIONS} />

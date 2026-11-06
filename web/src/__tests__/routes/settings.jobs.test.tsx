@@ -429,4 +429,14 @@ describe('MediaSettingsPage', () => {
       expect(input.className).toContain('min-h-9')
     }
   })
+
+  it('offers the first working model as a quick fix for an unknown one', async () => {
+    server.use(...baseHandlers(null))
+    renderPage(<MediaSettingsPage />)
+    const input = await screen.findByLabelText('Image model')
+    fireEvent.change(input, { target: { value: 'nope:missing' } })
+    const fix = await screen.findByRole('button', { name: 'Use googlegenai:gemini-3.1-flash-image-preview' })
+    fireEvent.click(fix)
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^Use googlegenai/ })).toBeNull())
+  })
 })

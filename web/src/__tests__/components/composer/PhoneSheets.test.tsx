@@ -7,7 +7,7 @@
  * stubbed (800px: medium 400px).
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
@@ -86,6 +86,16 @@ describe('PlusMenu on a phone', () => {
     const opened = sheet('Add to message')!
     expect(opened.dataset.detent).toBe('fit')
     expect(opened.style.height).toBe('')
+  })
+
+  it('keeps Tools on a page of its own, with a way back', () => {
+    wrap(<PlusMenu actions={actions} workspace="/repo" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add to message' }))
+    const opened = sheet('Add to message')!
+    fireEvent.click(within(opened).getByRole('button', { name: 'Tools' }))
+    expect(opened.querySelector('[data-plus-page="tools"]')).not.toBeNull()
+    fireEvent.click(within(opened).getByRole('button', { name: 'Add to message' }))
+    expect(within(opened).getByRole('button', { name: /Attach files/ })).toBeTruthy()
   })
 
   it('pulls up to large on a wheel step, as a sheet does with a long MCP list', () => {

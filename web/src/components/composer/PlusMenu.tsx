@@ -6,8 +6,8 @@
  * that works needs no attention, and one that does puts a dot on "+" and
  * opens this menu at its MCP section (as does ``/mcp``).
  */
-import { useEffect, useId, useRef } from 'react'
-import { AtSign, Hash, MessageCircleQuestion, Paperclip, Plus } from 'lucide-react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { AtSign, ChevronLeft, ChevronRight, Hash, MessageCircleQuestion, Paperclip, Plug, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
@@ -155,6 +155,28 @@ function PlusMenuItems({
   }, [scrollToMcp])
   const row = cn(MENU_ITEM_CLASS, touch && 'min-h-(--phone-control) text-sm')
   const hint = 'ml-auto font-mono text-meta text-(--color-text-muted)'
+  // Touch: two parts (mockup J3). What to add to the message, then Tools,
+  // a page of its own inside the sheet.
+  const [page, setPage] = useState<'add' | 'tools'>(scrollToMcp ? 'tools' : 'add')
+  const mcp = (
+    <SessionMcpServers
+      variant="menu"
+      agentServers={agentServers}
+      onServersChanged={() => { void agents.refetch() }}
+    />
+  )
+  if (touch && page === 'tools') {
+    return (
+      <div className="flex flex-col" data-plus-page="tools">
+        <button type="button" className={row} onClick={() => setPage('add')}>
+          <ChevronLeft size={14} aria-hidden="true" />
+          Add to message
+        </button>
+        <div className={MENU_SEPARATOR_CLASS} role="separator" />
+        {mcp}
+      </div>
+    )
+  }
   return (
     <div className="flex flex-col">
       <button type="button" className={row} onClick={onAttach}>
@@ -181,13 +203,15 @@ function PlusMenuItems({
         </button>
       )}
       <div className={MENU_SEPARATOR_CLASS} role="separator" />
-      <div ref={mcpRef}>
-        <SessionMcpServers
-          variant="menu"
-          agentServers={agentServers}
-          onServersChanged={() => { void agents.refetch() }}
-        />
-      </div>
+      {touch ? (
+        <button type="button" className={row} onClick={() => setPage('tools')}>
+          <Plug size={14} aria-hidden="true" />
+          Tools
+          <ChevronRight size={14} aria-hidden="true" className="ml-auto text-(--color-text-muted)" />
+        </button>
+      ) : (
+        <div ref={mcpRef}>{mcp}</div>
+      )}
     </div>
   )
 }

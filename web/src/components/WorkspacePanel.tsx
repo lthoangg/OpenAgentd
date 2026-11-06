@@ -700,7 +700,7 @@ export function WorkspacePanel({
     onOpenTerminal: () => openTerminal(pane),
     onOpenPreview: canPreview ? () => openNewPreview(pane) : undefined,
     onOpenFile: openQuickOpen,
-  }, openIds)
+  }, openIds, { review: changedFiles.length })
 
   // A phone's "+" is in the page's navigation bar, for the pane in focus.
   const phoneOpenItems = phone ? openItemsFor(focused) : []
@@ -1003,7 +1003,7 @@ export function WorkspacePanel({
       case 'preview':
         return null
       default:
-        return <DockLauncher items={openItemsFor(pane)} />
+        return <DockLauncher items={openItemsFor(pane)} phone={phone} />
     }
   }
 
@@ -1119,7 +1119,7 @@ export function WorkspacePanel({
     <PhoneNavBar
       className={phoneStripShown ? 'border-transparent!' : undefined}
       back={onRequestClose ? { label: 'Chat', onBack: onRequestClose } : undefined}
-      title="Review"
+      title="Workspace"
       trailing={phoneOpenItems.length > 0 && (
         <Button
           type="button"

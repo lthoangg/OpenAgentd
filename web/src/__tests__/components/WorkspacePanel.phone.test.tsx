@@ -119,7 +119,7 @@ describe('Review panel on a phone — a page over the chat', () => {
     expect(panel.className.split(' ')).toEqual(expect.arrayContaining(['fixed', 'top-0', 'bottom-0', 'right-0', 'w-full', 'pl-safe', 'pr-safe']))
     const bar = panel.querySelector<HTMLElement>('[data-phone-nav-bar]')
     expect(bar).not.toBeNull()
-    expect(within(bar!).getByRole('heading', { name: 'Review' })).toBeTruthy()
+    expect(within(bar!).getByRole('heading', { name: 'Workspace' })).toBeTruthy()
   })
 
   it('goes back to the chat from ‹ Chat, and has no × of its own', async () => {
@@ -169,7 +169,10 @@ describe('Review panel on a phone — a page over the chat', () => {
   it('has no tab strip while it has no tabs: the launcher starts under the bar, which draws the hairline', async () => {
     const empty = await renderPanel({ onRequestClose: () => {} })
     expect(empty.querySelector('[data-dock-strip]')).toBeNull()
-    expect(within(empty).getByRole('group', { name: 'Open in Review panel' })).toBeTruthy()
+    // An iOS grouped list: Changes (Git) among the views, Files among the tools.
+    const views = within(empty).getByRole('group', { name: 'Views' })
+    expect(within(views).getByRole('button', { name: /Changes/ }).className).toContain('min-h-11')
+    expect(within(within(empty).getByRole('group', { name: 'Tools' })).getByRole('button', { name: /Files/ })).toBeTruthy()
     expect(empty.querySelector('[data-phone-nav-bar]')!.className).not.toContain('border-transparent')
     cleanup()
 

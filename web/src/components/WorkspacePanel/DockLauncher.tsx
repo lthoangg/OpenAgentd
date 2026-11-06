@@ -8,7 +8,7 @@
  * Git once the Plan is showing.
  */
 import { Fragment, type KeyboardEvent, type ReactNode } from 'react'
-import { CalendarClock, FileText, GitCompare, Globe, ListTodo, MessageCircleQuestion, Search, Target, TerminalSquare } from 'lucide-react'
+import { CalendarClock, ChevronRight, FileText, GitCompare, Globe, ListTodo, MessageCircleQuestion, Search, Target, TerminalSquare } from 'lucide-react'
 
 import type { OS } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
@@ -22,6 +22,8 @@ export interface DockOpenItem {
   group: 'view' | 'tool'
   /** A singleton tab that is already in the strip (picking it shows it). */
   open?: boolean
+  /** How many things it holds (changed files), shown on a phone's row. */
+  count?: number
   run: () => void
 }
 
@@ -40,10 +42,10 @@ export interface DockOpenActions {
 }
 
 /** The rows of the launcher and the tab strip's "+" menu, in order. */
-export function dockOpenItems(os: OS, actions: DockOpenActions, openIds: ReadonlySet<string> = new Set()): DockOpenItem[] {
+export function dockOpenItems(os: OS, actions: DockOpenActions, openIds: ReadonlySet<string> = new Set(), counts: Readonly<Record<string, number>> = {}): DockOpenItem[] {
   const rows: DockOpenItem[] = []
   const view = (id: string, label: string, icon: ReactNode, run: (() => void) | undefined, shortcut?: string) => {
-    if (run) rows.push({ id, label, icon, shortcut, group: 'view', open: openIds.has(id), run })
+    if (run) rows.push({ id, label, icon, shortcut, group: 'view', open: openIds.has(id), count: counts[id], run })
   }
   const tool = (id: string, label: string, icon: ReactNode, run: (() => void) | undefined, shortcut?: string) => {
     if (run) rows.push({ id, label, icon, shortcut, group: 'tool', run })
@@ -81,7 +83,38 @@ function moveBetweenRows(event: KeyboardEvent<HTMLDivElement>) {
  * hairline then tools, so nothing needs the menu while there is room to list it.
  * Opened empty, the panel puts focus on its first row (see ``WorkspacePanel``).
  */
-export function DockLauncher({ items }: { items: DockOpenItem[] }) {
+/** A phone names the rows by what they hold (mockup J7 7.1). */
+const PHONE_LABELS: Record<string, string> = { review: 'Changes', file: 'Files' }
+
+export function DockLauncher({ items, phone = false }: { items: DockOpenItem[]; phone?: boolean }) {
+  if (phone) {
+    // An iOS grouped list: views, then tools, each a 44pt row with a count
+    // and a chevron.
+    const groups = [items.filter((row) => row.group === 'view'), items.filter((row) => row.group === 'tool')].filter((rows) => rows.length > 0)
+    return (
+      <div data-dock-launcher="phone" className="flex h-full flex-col gap-5 overflow-y-auto px-4 pt-4 pb-4">
+        {groups.map((rows, index) => (
+          <div key={index} role="group" aria-label={index === 0 ? 'Views' : 'Tools'} className="flex flex-col divide-y divide-(--color-border) overflow-hidden rounded-md bg-(--bg-card)">
+            {rows.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                onClick={row.run}
+                className="flex min-h-11 w-full items-center gap-3 px-3 text-left text-sm text-(--color-text) transition-colors duration-(--motion-instant) active:bg-(--bg-key)"
+              >
+                <span className="text-(--color-text-2)">{row.icon}</span>
+                <span className="flex-1">{PHONE_LABELS[row.id] ?? row.label.replace(/…$/, '')}</span>
+                {row.count !== undefined && row.count > 0 && (
+                  <span className="text-sm tabular-nums text-(--color-text-muted)">{row.count}</span>
+                )}
+                <ChevronRight size={16} aria-hidden="true" className="text-(--color-text-subtle)" />
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+    )
+  }
   return (
     <div data-dock-launcher className="flex h-full flex-col overflow-y-auto px-4 pt-[12vh] pb-4 md:items-center">
       <div role="group" aria-labelledby="dock-launcher-title" onKeyDown={moveBetweenRows} className="flex w-full max-w-64 flex-col gap-0.5">

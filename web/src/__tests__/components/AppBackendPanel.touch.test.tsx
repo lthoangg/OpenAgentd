@@ -45,11 +45,11 @@ afterEach(() => {
 })
 
 describe('Servers rows on touch', () => {
-  it('keeps one button on the row and moves Edit and Remove to the sheet', async () => {
+  it('keeps no buttons on the row: a tap opens it, Edit and Remove are in the sheet', async () => {
     render(<AppBackendPanel active />)
     const more = await screen.findByRole('button', { name: 'More actions for Local CLI' })
     const row = more.closest('[data-server-row]') as HTMLElement
-    expect(within(row).getByRole('button', { name: 'Use Local CLI' })).toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: 'Use Local CLI' })).toBeNull()
     expect(within(row).queryByRole('button', { name: 'Edit Local CLI' })).toBeNull()
     expect(within(row).queryByRole('button', { name: 'Remove Local CLI…' })).toBeNull()
 

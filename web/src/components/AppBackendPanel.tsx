@@ -441,7 +441,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   )
 
   /** Sessions ›, on the row in use when a host can go back to its list. */
-  const openInUse = (label: string) => onOpenInUse ? (
+  // Touch: a tap on the row opens it (``onOpen``), so no Sessions or Use button.
+  const openInUse = (label: string) => onOpenInUse && !touch ? (
     <Button type="button" variant="subtle" size="sm" aria-label={`Open sessions on ${label}`} onClick={onOpenInUse} data-open-in-use="">
       Sessions
       <ChevronRight size={ICON_SIZE_INLINE} aria-hidden="true" />
@@ -469,11 +470,12 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             subtitle={`Runs inside this app · ${status?.sidecar_running ? 'Running' : 'Stopped'}`}
             address={status && !status.external ? currentUrl : undefined}
             inUse={status !== null && !status.external}
+            onOpen={touch && !pending && status?.sidecar_running ? (status.external ? () => { void connectBundled() } : onOpenInUse) : undefined}
           >
             {status !== null && !status.external ? openInUse('Built-in server') : null}
             {status?.sidecar_running ? (
               <>
-                {status?.external ? (
+                {status?.external && !touch ? (
                   <Button type="button" variant="subtle" size="sm" aria-label="Use built-in server" onClick={() => { void connectBundled() }} disabled={pending}>
                     Use
                   </Button>
@@ -497,6 +499,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             mono={Boolean(status)}
             subtitle={status ? 'Not in your saved servers' : unlistedUrl}
             inUse
+            onOpen={touch ? onOpenInUse : undefined}
           >
             {openInUse(status ? unlistedUrl : 'This server')}
           </ServerRow>
@@ -540,7 +543,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                     />
                   </label>
                 ) : null}
-                {active ? openInUse(label) : (
+                {active ? openInUse(label) : touch ? null : (
                   <Button
                     type="button"
                     variant="subtle"

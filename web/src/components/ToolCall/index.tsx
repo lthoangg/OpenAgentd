@@ -29,7 +29,7 @@ import type { ChatMenuItem } from '../ChatContextMenu'
 import { FileRefContext } from '../FileRefLink'
 import { workspaceRelativePath } from '@/utils/file-refs'
 import { AskUser, useShowsConfirmationCard } from '../AskUser'
-import { PlanReviewCard } from '../PlanReview/PlanReviewCard'
+import { lazySurface } from '@/lib/lazy-surface'
 import { PREVIEW_TOOL, isPreviewOpenSuccess, previewTargetFromArgs, requestOpenPreview } from '../Preview/preview-events'
 import { parseSendResult, requestOpenSession } from '@/utils/workspace-messages'
 import { tokenizeCode } from '@/utils/code-highlight'
@@ -58,6 +58,9 @@ import type { ToolCallState } from './types'
 import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
 import { GoalClaimCard } from '../GoalClaimCard'
 import { UPDATE_GOAL_TOOL } from '@/lib/goal'
+
+// Shown only for a plan-review call: kept out of the startup bundle.
+const PlanReviewCard = lazySurface(() => import('../PlanReview/PlanReviewCard'), 'PlanReviewCard')
 
 /** Matches ``app.agent.agent_loop.core.ASK_USER``. */
 const ASK_USER = 'ask_user'

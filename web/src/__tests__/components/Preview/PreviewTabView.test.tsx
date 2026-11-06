@@ -429,7 +429,7 @@ describe('PreviewTabView', () => {
     expect(bar.className).toContain('order-last')
   })
 
-  it('on touch, keeps the tool buttons at 28px with a 36px hit area, and the address field at 36px in a bar that grows for it', async () => {
+  it('on touch, keeps the tool buttons at 28px with a 36px hit area, and the address as a 40px pill on its own line above them', async () => {
     isMobile = true
     await renderView()
     const controls = [
@@ -443,8 +443,9 @@ describe('PreviewTabView', () => {
       expect(control.className).toMatch(/pointer-coarse:h-7|pointer-coarse:size-7|(^|\s)h-7(\s|$)/)
     }
     const address = screen.getByRole('textbox', { name: 'Preview address' })
-    expect(address.className).toContain('pointer-coarse:h-9')
-    // A min-height bar, so the taller field is not clipped.
+    expect(address.className).toContain('h-10')
+    expect(address.className).toContain('rounded-full')
+    expect(address.closest('form')?.className).toContain('basis-full')
     expect(address.closest('form')?.parentElement?.className).toContain('min-h-10')
   })
 

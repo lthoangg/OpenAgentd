@@ -588,7 +588,9 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         data-preview-toolbar={phone ? 'bottom' : 'top'}
         className={cn(
           'flex min-h-10 shrink-0 items-center gap-0.5 border-(--color-border-subtle) bg-(--bg-page) px-1 py-1',
-          phone ? 'order-last border-t pb-[max(0.25rem,env(safe-area-inset-bottom))]' : 'border-b',
+          // Safari's bottom bar: the address as a full-width pill on top, the
+          // tools spread under it in thumb reach.
+          phone ? 'order-last flex-wrap justify-between gap-y-1 border-t px-2 pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]' : 'border-b',
         )}
       >
         <ToolbarButton label="Back" onClick={() => post({ type: 'history', dir: -1 })} disabled={!ready || pageDown} disabledReason={navReason('back')}>
@@ -601,7 +603,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           <RefreshCw size={14} aria-hidden="true" />
         </ToolbarButton>
         <form
-          className="relative mx-1 min-w-0 flex-1"
+          className={cn('relative min-w-0', phone ? 'order-first basis-full' : 'mx-1 flex-1')}
           onSubmit={(event) => {
             event.preventDefault()
             submitUrl(urlDraft ?? displayUrl)
@@ -627,11 +629,16 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
             autoCorrect="off"
             inputMode="url"
             enterKeyHint="go"
-            className="h-8 w-full min-w-0 rounded-xs border border-(--color-border) bg-(--bg-input) px-2 font-mono text-xs text-(--color-text) outline-none transition-colors focus:border-(--color-text-subtle) pointer-coarse:h-9"
+            className={cn(
+              'w-full min-w-0 border text-(--color-text) outline-none transition-colors',
+              phone
+                ? 'h-10 rounded-full border-transparent bg-(--bg-key) px-4 text-center text-xs focus:border-(--color-text-subtle) focus:text-left'
+                : 'h-8 rounded-xs border-(--color-border) bg-(--bg-input) px-2 font-mono text-xs focus:border-(--color-text-subtle) pointer-coarse:h-9',
+            )}
           />
           {loading && !pageDown && (
             // Safari's way: a thin sweep along the field's bottom edge.
-            <div role="progressbar" aria-label="Loading page" className="pointer-events-none absolute inset-x-px bottom-px h-0.5 overflow-hidden rounded-full">
+            <div role="progressbar" aria-label="Loading page" className={cn('pointer-events-none absolute bottom-px h-0.5 overflow-hidden rounded-full', phone ? 'inset-x-4' : 'inset-x-px')}>
               <div className="oa-loading-bar h-full w-2/5 rounded-full bg-(--color-text-2)/60" />
             </div>
           )}

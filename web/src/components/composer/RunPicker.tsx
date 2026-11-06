@@ -17,6 +17,7 @@
  * ``provider:model`` id, so ``openai:`` lists that provider's models.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import type { ModelCatalogEntry } from '@/api/types'
 import fuzzysort from 'fuzzysort'
 import { Check, RotateCcw, Search } from 'lucide-react'
 
@@ -236,6 +237,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
   }
 
   const atDefaults = !settings.customized
+  const catalogue = useMemo(() => new Map(settings.models.map((entry) => [entry.id, entry])), [settings.models])
   const rowClass = cn(MENU_ITEM_CLASS, touch && 'min-h-(--phone-control) text-sm')
 
   return (
@@ -302,9 +304,22 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
                 tabIndex={-1}
                 className={rowClass}
               >
-                <span className={cn('flex flex-1', MODEL_LINE_CLASS)}>
-                  <ModelPart model={model} className="text-(--color-text)" />
-                </span>
+                {touch ? (
+                  // A touch row says what the model can do under its name
+                  // (mockup J3); the catalogue has no prose descriptions.
+                  <span className="min-w-0 flex-1">
+                    <span className={cn('flex', MODEL_LINE_CLASS)}>
+                      <ModelPart model={model} className="text-(--color-text)" />
+                    </span>
+                    {capabilityLine(catalogue.get(row.id)) && (
+                      <span data-model-capabilities="" className="block truncate text-meta text-(--color-text-muted)">{capabilityLine(catalogue.get(row.id))}</span>
+                    )}
+                  </span>
+                ) : (
+                  <span className={cn('flex flex-1', MODEL_LINE_CLASS)}>
+                    <ModelPart model={model} className="text-(--color-text)" />
+                  </span>
+                )}
                 {nameProvider && <span className="max-w-[8rem] shrink-0 truncate text-meta text-(--color-text-muted)">{providerLabel(provider)}</span>}
                 {row.id === settings.agentModel && <span className="text-meta text-(--color-text-muted)">default</span>}
                 <Check size={13} aria-hidden="true" className={selected ? 'opacity-100' : 'opacity-0'} />
@@ -489,4 +504,16 @@ function AccountState({ account, providerId, usage }: { account: StoredCredentia
       </span>
     </>
   )
+}
+
+/** "Vision · Thinking · Fast": what a model can do, for a touch row. */
+function capabilityLine(entry: ModelCatalogEntry | undefined): string {
+  if (!entry) return ''
+  return [
+    entry.vision && 'Vision',
+    entry.thinking_levels.length > 0 && 'Thinking',
+    entry.output_image && 'Images',
+    entry.output_video && 'Video',
+    entry.fast_mode && 'Fast',
+  ].filter(Boolean).join(' · ')
 }

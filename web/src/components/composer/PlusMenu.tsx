@@ -155,7 +155,7 @@ function PlusMenuItems({
   }, [scrollToMcp])
   const row = cn(MENU_ITEM_CLASS, touch && 'min-h-(--phone-control) text-sm')
   const hint = 'ml-auto font-mono text-meta text-(--color-text-muted)'
-  // Touch: two parts (mockup J3). What to add to the message, then Tools,
+  // Touch: two parts (mockup J3). What to add to the message, then MCP servers,
   // a page of its own inside the sheet.
   const [page, setPage] = useState<'add' | 'tools'>(scrollToMcp ? 'tools' : 'add')
   const mcp = (
@@ -206,7 +206,7 @@ function PlusMenuItems({
       {touch ? (
         <button type="button" className={row} onClick={() => setPage('tools')}>
           <Plug size={14} aria-hidden="true" />
-          Tools
+          MCP servers
           <ChevronRight size={14} aria-hidden="true" className="ml-auto text-(--color-text-muted)" />
         </button>
       ) : (

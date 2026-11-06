@@ -88,11 +88,11 @@ describe('PlusMenu on a phone', () => {
     expect(opened.style.height).toBe('')
   })
 
-  it('keeps Tools on a page of its own, with a way back', () => {
+  it('keeps MCP servers on a page of its own, with a way back', () => {
     wrap(<PlusMenu actions={actions} workspace="/repo" />)
     fireEvent.click(screen.getByRole('button', { name: 'Add to message' }))
     const opened = sheet('Add to message')!
-    fireEvent.click(within(opened).getByRole('button', { name: 'Tools' }))
+    fireEvent.click(within(opened).getByRole('button', { name: 'MCP servers' }))
     expect(opened.querySelector('[data-plus-page="tools"]')).not.toBeNull()
     fireEvent.click(within(opened).getByRole('button', { name: 'Add to message' }))
     expect(within(opened).getByRole('button', { name: /Attach files/ })).toBeTruthy()

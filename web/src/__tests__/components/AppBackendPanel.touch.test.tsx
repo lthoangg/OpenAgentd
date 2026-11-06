@@ -86,6 +86,8 @@ describe('Servers rows on touch', () => {
     const sheet = document.querySelector<HTMLElement>('[data-server-sheet]')!
     expect(within(sheet).getByLabelText('Server URL')).toBeInTheDocument()
     expect(sheet.closest('[data-bottom-sheet]')).not.toBeNull()
+    expect(within(sheet).queryByRole('button', { name: 'Cancel' })).toBeNull()
+    expect(within(sheet).getByRole('button', { name: 'Test' }).className).toContain('w-full')
   })
 
   it('opens Edit only once the row sheet has slid away, so two sheets never cross', async () => {

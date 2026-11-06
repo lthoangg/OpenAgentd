@@ -688,6 +688,7 @@ function ServerForm({
   onSave: () => void
   onCancel: () => void
 }) {
+  const touchForm = useTouchFirst()
   const urlRef = useRef<HTMLInputElement>(null)
   const fieldsRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -751,7 +752,7 @@ function ServerForm({
           />
         </Field>
       </div>
-      <div className="flex flex-col gap-3 px-4 pb-4 sm:flex-row sm:items-center">
+      <div className={touchForm ? 'flex flex-col gap-3 px-4 pb-4' : 'flex flex-col gap-3 px-4 pb-4 sm:flex-row sm:items-center'}>
         <div className="min-w-0 flex-1 text-xs leading-relaxed">
           {error ? (
             <p role="alert" className="text-(--color-error)">{error}</p>
@@ -761,17 +762,30 @@ function ServerForm({
             <p className="text-(--color-text-muted)">Test the server to enable saving.</p>
           ) : null}
         </div>
-        <div className="flex shrink-0 flex-wrap justify-end gap-2">
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={pending}>
-            Cancel
-          </Button>
-          <Button type="button" variant="default" size="sm" onClick={onTest} disabled={pending}>
-            {pending ? 'Testing…' : 'Test'}
-          </Button>
-          <Button type="button" variant="primary" size="sm" onClick={onSave} disabled={pending || (needsTest && !tested)}>
-            {mode === 'add' ? 'Save and use' : 'Save'}
-          </Button>
-        </div>
+        {touchForm ? (
+          // The phone's sheet: two equal full-width buttons, Test then Save;
+          // no Cancel, a pull or a tap outside closes the sheet.
+          <div className="grid grid-cols-2 gap-2">
+            <Button type="button" variant="default" onClick={onTest} disabled={pending} className="w-full">
+              {pending ? 'Testing…' : 'Test'}
+            </Button>
+            <Button type="button" variant="primary" onClick={onSave} disabled={pending || (needsTest && !tested)} className="w-full">
+              {mode === 'add' ? 'Save and use' : 'Save'}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={pending}>
+              Cancel
+            </Button>
+            <Button type="button" variant="default" size="sm" onClick={onTest} disabled={pending}>
+              {pending ? 'Testing…' : 'Test'}
+            </Button>
+            <Button type="button" variant="primary" size="sm" onClick={onSave} disabled={pending || (needsTest && !tested)}>
+              {mode === 'add' ? 'Save and use' : 'Save'}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )

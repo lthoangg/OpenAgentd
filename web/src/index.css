@@ -810,6 +810,19 @@ html[data-mobile-shell][data-vp-anim] .app-overlay-modal[data-overlay-level="app
     transform var(--motion-base) var(--ease-sheet);
 }
 
+/* iOS keyboard *open* (``data-vp-rise``, use-mobile-viewport): WKWebView
+ * reports the final height in one step as the keyboard starts up, so the
+ * shell eases to it over the keyboard's own time and curve and the composer
+ * rides up with it instead of jumping. */
+html[data-mobile-shell][data-vp-rise] .mobile-viewport,
+html[data-mobile-shell][data-vp-rise] .app-overlay-modal[data-overlay-level="app"],
+html[data-mobile-shell][data-vp-rise] [data-bottom-sheet] {
+  transition:
+    height 280ms cubic-bezier(0.38, 0.7, 0.125, 1),
+    bottom 280ms cubic-bezier(0.38, 0.7, 0.125, 1),
+    max-height 280ms cubic-bezier(0.38, 0.7, 0.125, 1);
+}
+
 /* ─────────────────────────────────────────────────────────────
  * Scrollbar — minimal, theme-aware
  * ───────────────────────────────────────────────────────────── */

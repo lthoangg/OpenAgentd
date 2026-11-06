@@ -55,6 +55,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  document.documentElement.removeAttribute('data-vp-rise')
   document.documentElement.removeAttribute('data-mobile-shell')
   document.documentElement.removeAttribute('data-keyboard-open')
   document.documentElement.removeAttribute('data-vp-anim')
@@ -273,6 +274,16 @@ describe('useMobileViewportGuards', () => {
     vv.emit('resize')
     expect(root.hasAttribute('data-keyboard-open')).toBe(true)
     expect(root.hasAttribute('data-vp-anim')).toBe(false)
+  })
+
+  it('eases the shell up as the iOS keyboard rises (one resize, not per frame)', () => {
+    const vv = installVisualViewport(800, 0)
+    renderHook(() => useMobileViewportGuards())
+    const root = document.documentElement
+    vv.height = 460
+    vv.emit('resize')
+    expect(root.hasAttribute('data-keyboard-open')).toBe(true)
+    expect(root.hasAttribute('data-vp-rise')).toBe(true)
   })
 
   it('ignores the keyboard retract frames while the shell glides back', () => {

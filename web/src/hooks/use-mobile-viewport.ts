@@ -8,6 +8,8 @@ export { dismissKeyboard }
 
 /** Vertical travel (px) that turns a touch into a scroll (no longer a tap). */
 const DRAG_DISMISS_PX = 12
+/** ms the iOS keyboard takes to rise; the shell rides up with it (index.css, data-vp-rise). */
+const KEYBOARD_RISE_MS = 280
 /** ms after a dismiss during which the retracting keyboard's frames are held off. */
 const DISMISS_SETTLE_MS = 900
 const EDITABLE = 'input, textarea, select, [contenteditable="true"]'
@@ -143,6 +145,7 @@ export function useMobileViewportGuards() {
     //              no expensive content reflow.
     //   --app-vt → visual viewport offsetTop, for the rare scrolled/zoomed case.
     const baselineLayoutHeight = window.innerHeight
+    let riseTimer: ReturnType<typeof setTimeout> | null = null
     // When the keyboard last went away (focus left a field with it up).
     let dismissedAt = -Infinity
     const applyViewport = () => {
@@ -178,9 +181,15 @@ export function useMobileViewportGuards() {
       if (nextOpen !== root.hasAttribute('data-keyboard-open')) {
         if (nextOpen) {
           root.setAttribute('data-keyboard-open', '')
-          // Opening must stay frame-locked (no transition lag on the way up) —
-          // the eased transition is only for the optimistic dismiss snap-back.
           root.removeAttribute('data-vp-anim')
+          // iOS reports the keyboard's final height in one resize as it starts
+          // to rise, so a frame-locked shell jumped there at once (a teleport,
+          // on-device report). Ride up with it instead, on its curve.
+          if (getPlatform().os === 'ios') {
+            root.setAttribute('data-vp-rise', '')
+            if (riseTimer) clearTimeout(riseTimer)
+            riseTimer = setTimeout(() => { riseTimer = null; root.removeAttribute('data-vp-rise') }, KEYBOARD_RISE_MS + 60)
+          }
         } else {
           root.removeAttribute('data-keyboard-open')
         }
@@ -272,6 +281,8 @@ export function useMobileViewportGuards() {
       document.removeEventListener('focusout', handleFocusOut)
       root.removeAttribute('data-mobile-shell')
       root.removeAttribute('data-keyboard-open')
+      if (riseTimer) clearTimeout(riseTimer)
+      root.removeAttribute('data-vp-rise')
       root.removeAttribute('data-vp-anim')
       root.style.removeProperty('--app-vh')
       root.style.removeProperty('--app-vt')

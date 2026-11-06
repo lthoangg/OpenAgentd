@@ -77,6 +77,7 @@ import { useRunSettings } from '../composer/useRunSettings'
 import { BtwPanel } from '../BtwPanel'
 import { PendingMessageQueue } from '../PendingMessageQueue'
 import { RunBar } from '../composer/RunBar'
+import { PinnedQuestion } from '../AskUser'
 import { AppFooter } from '../AppFooter'
 import { WorkspacePanel } from '../WorkspacePanel'
 import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
@@ -909,6 +910,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       aboveComposer={(
         <>
           {/* A phone's queued messages ride above the composer as chips. */}
+          {isPhone && <PinnedQuestion />}
           {isPhone && <RunBar />}
           {isPhone && <PendingMessageQueue placement="composer" />}
           {dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (

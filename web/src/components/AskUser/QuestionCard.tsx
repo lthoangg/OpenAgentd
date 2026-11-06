@@ -404,7 +404,7 @@ function OptionRow({
     <label
       onDoubleClick={onChooseAndContinue}
       className={cn(
-        'flex cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-(--focus-ring) pointer-coarse:min-h-9',
+        'flex cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-(--focus-ring) pointer-coarse:min-h-9 phone:min-h-12 phone:items-center',
         checked
           ? 'bg-(--color-fill-selected) text-(--color-text-on-selected)'
           : 'bg-(--bg-key) text-(--color-text) hover:bg-(--color-fill-key-hover)',

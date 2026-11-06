@@ -30,6 +30,7 @@ import type { ContentBlock, QuestionItem } from '@/api/types'
 import { QuestionCard } from './QuestionCard'
 import { useQuestionResolver } from './useQuestionResolver'
 import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { cn } from '@/lib/utils'
 
 /** Mirrors ``question_service.PLACEHOLDER_RESULT``. */
@@ -135,14 +136,18 @@ export function AskUser({
     toolCallId ? state.resolvedQuestions[toolCallId] : undefined,
   )
   const turnLive = useAgentStore((state) => state.isAgentWorking)
+  const isPhone = useIsPhone()
 
   const isOpen = pendingQuestion !== null && openCallId === toolCallId
-  const { submitting, error, answer } = useQuestionResolver(isOpen ? pendingQuestion : null)
+  // A phone answers it in the card pinned above the composer (PinnedQuestion).
+  const pinned = isOpen && isPhone && pendingQuestion.kind !== 'plan_review'
+  const { submitting, error, answer } = useQuestionResolver(isOpen && !pinned ? pendingQuestion : null)
 
   if (!isOpen) {
     const { waiting, body } = describeResolution(resolved, result, args, turnLive)
     return <QuestionShell waiting={waiting}>{body}</QuestionShell>
   }
+  if (pinned) return <QuestionShell waiting><QuestionNote text="Answer below" /></QuestionShell>
 
   return (
     <QuestionShell waiting open>
@@ -158,6 +163,34 @@ export function AskUser({
 }
 
 /** The card frame. Fluid width — no separate mobile presentation. */
+/**
+ * A phone's open question, pinned above the composer so it cannot scroll
+ * away (mockup J6 6.1): the orange frame of "needs you", the same form.
+ */
+export function PinnedQuestion() {
+  const isPhone = useIsPhone()
+  const pendingQuestion = useAgentStore((state) => state.pendingQuestion)
+  const openCallId = useAgentStore(selectOpenQuestionCallId)
+  const show = isPhone && pendingQuestion !== null && openCallId !== null && pendingQuestion.kind !== 'plan_review'
+  const { submitting, error, answer } = useQuestionResolver(show ? pendingQuestion : null)
+  if (!show) return null
+  return (
+    <div
+      data-question-pinned=""
+      className="mb-2 max-h-[55dvh] overflow-y-auto overscroll-contain rounded-md border border-(--accent-orange-text) bg-(--bg-card)"
+    >
+      <div className="px-3 pt-2 pb-1 label-caps text-(--accent-orange-text)">Agent is asking you</div>
+      <QuestionCard
+        key={pendingQuestion.id}
+        question={pendingQuestion}
+        submitting={submitting}
+        error={error}
+        onSubmit={answer}
+      />
+    </div>
+  )
+}
+
 function QuestionShell({
   waiting,
   open = false,

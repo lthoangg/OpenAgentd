@@ -248,7 +248,9 @@ export function PullToRefresh({ onRefresh, children, disabled = false, className
           // Named only while it is a status: during the pull it is decoration.
           role={refreshing ? 'status' : undefined}
           aria-label={refreshing ? 'Refreshing' : undefined}
-          className="flex"
+          // A small round surface, as iOS's: a bare glyph read as a stray
+          // mark over a busy list.
+          className="flex size-8 items-center justify-center rounded-full border border-(--color-border) bg-(--bg-card) shadow-(--shadow-depth)"
         >
           <Loader2
             size={16}

@@ -11,7 +11,7 @@ import { PanelSection } from '@/components/ui/panel-section'
 import { SETTINGS_GROUPS, type TopLevelSection } from '@/components/settings/sections'
 import { SettingsSearchField, SettingsSearchResults, useSettingsSearch } from '@/components/settings/SettingsSearch'
 import type { SettingsHit } from '@/components/settings/settings-index'
-import { ICON_SIZE, PAGE_BODY, TEXT } from '@/components/settings/tokens'
+import { ICON_SIZE, PAGE_BODY, ROW_PAD, TEXT } from '@/components/settings/tokens'
 import { useSettingsSectionCounts, useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
 import { cn } from '@/lib/utils'
 
@@ -46,8 +46,10 @@ export function SettingsMobileIndex({
                     type="button"
                     onClick={() => onSelect(item.id)}
                     className={cn(
-                      'flex min-h-(--phone-control) w-full items-center gap-3 px-3 py-2 text-left',
-                      'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/40 active:bg-(--bg-key)/60',
+                      'flex min-h-(--phone-control) w-full items-center gap-3 text-left',
+                      ROW_PAD,
+                      // No hover fill: on touch it sticks after the tap.
+                      'transition-colors duration-(--motion-instant) pointer-fine:hover:bg-(--bg-key)/40 active:bg-(--bg-key)/60',
                       'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)',
                     )}
                   >
@@ -56,11 +58,11 @@ export function SettingsMobileIndex({
                       <span className={cn('line-clamp-2', TEXT.hint)}>{item.description}</span>
                     </span>
                     {count !== undefined && count !== null && (
-                      <span className="shrink-0 text-meta tabular-nums text-(--color-text-subtle)">
+                      <span className="shrink-0 text-meta tabular-nums text-(--color-text-muted)">
                         {count}
                       </span>
                     )}
-                    <ChevronRight size={ICON_SIZE} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+                    <ChevronRight size={ICON_SIZE} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
                   </button>
                 )
               })}

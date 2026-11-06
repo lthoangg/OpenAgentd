@@ -96,8 +96,8 @@ function AppLoadingScreen({ switchingTo = null, unavailable, failed, retrying, o
             {switchingTo
               ? <BackendSwitchMessage target={switchingTo} />
               : <p role="status" className="text-sm font-medium text-(--color-text-muted)">Connecting to OpenAgentd…</p>}
-            <Button variant="ghost" size="sm" className="mt-1 text-xs text-(--color-text-subtle)" onClick={onChooseServer}>
-              Choose Server
+            <Button variant="subtle" size="sm" className="mt-1" onClick={onChooseServer}>
+              Choose server
             </Button>
           </div>
         ) : (

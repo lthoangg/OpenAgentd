@@ -44,6 +44,18 @@ import { getPlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, chordOf, shortcutLabel } from '@/lib/app-shortcuts'
 import { useShortcut } from '@/lib/keyboard/hooks'
 import { cn } from '@/lib/utils'
+import { createPortal } from 'react-dom'
+import { PhoneNavBar } from '@/components/phone/PhoneNavBar'
+import { useIsPhone } from '@/hooks/use-is-phone'
+
+/** The phone editor's formatting bar: text it wraps the selection in. */
+const MARKDOWN_TOOLS = [
+  { label: 'Heading', text: '#', before: '# ', after: '' },
+  { label: 'Bold', text: 'B', before: '**', after: '**' },
+  { label: 'List item', text: '–', before: '- ', after: '' },
+  { label: 'Code', text: '`', before: '`', after: '`' },
+  { label: 'Link', text: '[ ]', before: '[', after: ']()' },
+] as const
 
 export function MemorySettingsPage() {
   const push = useToastStore((s) => s.push)
@@ -54,6 +66,10 @@ export function MemorySettingsPage() {
   const [newFileName, setNewFileName] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [conflictOpen, setConflictOpen] = useState(false)
+  // A phone edits a page full screen, Save in its bar (mockup J10 10.5).
+  const isPhone = useIsPhone()
+  const [phoneEditing, setPhoneEditing] = useState(false)
+  const editorRef = useRef<HTMLTextAreaElement>(null)
 
   const [isLinting, setIsLinting] = useState(false)
   const [lintFindings, setLintFindings] = useState<MemoryFindingItem[] | null>(null)
@@ -287,7 +303,7 @@ export function MemorySettingsPage() {
                   <button
                     key={p.path}
                     type="button"
-                    onClick={() => setSelectedPath(p.path)}
+                    onClick={() => { setSelectedPath(p.path); if (isPhone) setPhoneEditing(true) }}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
                       'group flex h-8 w-full items-center gap-2 rounded-sm px-2.5 text-left text-xs transition-colors pointer-coarse:h-9 pointer-coarse:text-sm',
@@ -313,8 +329,8 @@ export function MemorySettingsPage() {
           </div>
         </div>
 
-        {/* Right pane: Editor */}
-        <div className="flex min-h-0 flex-1 flex-col bg-(--bg-card)">
+        {/* Right pane: Editor (a phone opens it full screen instead) */}
+        <div className={cn('flex min-h-0 flex-1 flex-col bg-(--bg-card)', isPhone && 'hidden')}>
           {selectedPath ? (
             <>
               <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-(--color-border-subtle) pr-2 pl-4 select-none">
@@ -407,6 +423,63 @@ export function MemorySettingsPage() {
           )}
         </div>
       </div>
+
+      {isPhone && phoneEditing && selectedPath && createPortal(
+        <div data-memory-editor="phone" className="fixed inset-0 z-60 flex flex-col bg-(--bg-page) pt-safe pb-safe">
+          <PhoneNavBar
+            back={{ label: 'Memory', onBack: () => setPhoneEditing(false) }}
+            title={<span className="font-mono">{selectedPath}</span>}
+            trailing={(
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleSave}
+                disabled={!fileData || !isDirty || saveMut.isPending}
+                className="font-semibold text-(--color-accent)!"
+              >
+                {saveMut.isPending ? 'Saving…' : 'Save'}
+              </Button>
+            )}
+          />
+          <textarea
+            ref={editorRef}
+            aria-label={`Edit ${selectedPath}`}
+            value={draftContent}
+            onChange={(e) => setDraftContent(e.target.value)}
+            disabled={!fileData}
+            placeholder={fileLoading ? 'Loading…' : 'Markdown content…'}
+            spellCheck={false}
+            className="min-h-0 flex-1 resize-none border-0 bg-transparent px-4 py-3 font-mono text-code leading-relaxed text-(--color-text) outline-none"
+          />
+          {/* The formatting bar, just above the keyboard. */}
+          <div role="toolbar" aria-label="Formatting" className="flex shrink-0 items-center gap-1 border-t border-(--color-border) px-2 py-1">
+            {MARKDOWN_TOOLS.map((tool) => (
+              <Button
+                key={tool.label}
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={tool.label}
+                // Keep the keyboard up: the tap must not blur the editor.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  const el = editorRef.current
+                  if (!el) return
+                  const { selectionStart: a, selectionEnd: b } = el
+                  const next = draftContent.slice(0, a) + tool.before + draftContent.slice(a, b) + tool.after + draftContent.slice(b)
+                  setDraftContent(next)
+                  requestAnimationFrame(() => { el.focus(); el.setSelectionRange(a + tool.before.length, b + tool.before.length) })
+                }}
+                className="font-mono"
+              >
+                {tool.text}
+              </Button>
+            ))}
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {/* Conflict Dialog (412 Precondition Failed) */}
       <Dialog open={conflictOpen} onOpenChange={setConflictOpen}>

@@ -354,7 +354,9 @@ export function Sidebar({
   const updateSessionTitle = useUpdateSessionTitleMutation()
   const setSessionPinned = useSetSessionPinnedMutation()
   const groupBy = useSidebarViewStore((s) => s.groupBy)
-  const showDetails = useSidebarViewStore((s) => s.showDetails)
+  // The phone has no "Show details" switch: its rows always carry them.
+  const storedShowDetails = useSidebarViewStore((s) => s.showDetails)
+  const showDetails = isMobile || storedShowDetails
   const groupFilter = useSidebarViewStore((s) => s.groupFilter)
   const setGroupFilter = useSidebarViewStore((s) => s.setGroupFilter)
 

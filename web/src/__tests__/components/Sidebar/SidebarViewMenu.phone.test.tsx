@@ -1,6 +1,6 @@
 /**
- * On a phone View options is a sheet: Group by as a segmented control and
- * Show details as a switch (mockup J8).
+ * On a phone View options is a sheet: Group by as a segmented control and no
+ * Show details switch, since a phone always shows them (mockup J8).
  */
 import '@testing-library/jest-dom'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
@@ -17,17 +17,14 @@ afterEach(() => {
 })
 
 describe('SidebarViewMenu on a phone', () => {
-  it('groups with a segmented control and shows details with a switch', () => {
+  it('groups with a segmented control and has no Show details switch', () => {
     render(<SidebarViewMenu at={{ x: 0, y: 0 }} onDismiss={() => {}} />)
     const sheet = document.querySelector<HTMLElement>('[data-view-options-sheet]')!
     const group = within(sheet).getByRole('radiogroup', { name: 'Group by' })
     fireEvent.click(within(group).getByRole('radio', { name: 'Date' }))
     expect(useSidebarViewStore.getState().groupBy).toBe('date')
 
-    const details = within(sheet).getByRole('switch', { name: 'Show details' })
-    const before = useSidebarViewStore.getState().showDetails
-    fireEvent.click(details)
-    expect(useSidebarViewStore.getState().showDetails).toBe(!before)
+    expect(within(sheet).queryByRole('switch', { name: 'Show details' })).toBeNull()
   })
 
   it('resets and closes from its action row', () => {

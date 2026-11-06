@@ -10,8 +10,6 @@ import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { SegmentedControl } from '@/components/ui/segmented-control'
-import { Switch } from '@/components/ui/switch'
-import { PanelRow } from '@/components/ui/panel-row'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { groupColor } from './groupColor'
 import { MenuShortcut } from './MenuShortcut'
@@ -92,7 +90,7 @@ export function SidebarViewMenu({
 }) {
   const groupBy = useSidebarViewStore((s) => s.groupBy)
   const { os } = usePlatform()
-  const showDetails = useSidebarViewStore((s) => s.showDetails)
+  const storedShowDetails = useSidebarViewStore((s) => s.showDetails)
   const groupFilter = useSidebarViewStore((s) => s.groupFilter)
   const setGroupBy = useSidebarViewStore((s) => s.setGroupBy)
   const setShowDetails = useSidebarViewStore((s) => s.setShowDetails)
@@ -101,8 +99,8 @@ export function SidebarViewMenu({
   const activeFilter = groups.some((g) => g.id === groupFilter) ? groupFilter : null
   const isPhone = useIsPhone()
 
-  // A phone gets a sheet (mockup J8): Group by as a segmented control and
-  // Show details as a switch, the actions as full-width rows under them.
+  // A phone gets a sheet (mockup J8): Group by as a segmented control, the
+  // actions as full-width rows under it. Details are always shown there.
   if (isPhone) {
     const sheetAction = 'flex min-h-11 w-full items-center px-4 text-left text-sm text-(--color-text) active:bg-(--bg-key)'
     return (
@@ -135,9 +133,6 @@ export function SidebarViewMenu({
               ))}
             </div>
           )}
-          <PanelRow label="Show details" labelId="view-options-details">
-            <Switch checked={showDetails} onCheckedChange={setShowDetails} aria-labelledby="view-options-details" />
-          </PanelRow>
           <div className="flex flex-col border-t border-(--color-border)">
             {onCollapseAll && <button type="button" className={sheetAction} onClick={() => { onCollapseAll(); onDismiss() }}>Collapse all workspaces</button>}
             {onOpenFolder && <button type="button" className={sheetAction} onClick={() => { onDismiss(); onOpenFolder() }}>Open workspace…</button>}
@@ -174,7 +169,7 @@ export function SidebarViewMenu({
           <ContextMenuSeparator />
         </>
       )}
-      <CheckItem role="menuitemcheckbox" checked={showDetails} onSelect={() => setShowDetails(!showDetails)}>
+      <CheckItem role="menuitemcheckbox" checked={storedShowDetails} onSelect={() => setShowDetails(!storedShowDetails)}>
         Show details
       </CheckItem>
       <ContextMenuSeparator />

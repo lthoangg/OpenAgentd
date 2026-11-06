@@ -95,6 +95,7 @@ export function TitlesSettingsPage() {
             <PanelRow
               label="Wait for title (seconds)"
               htmlFor="titles-wait"
+              inline
               description="How long the first reply waits for its title. 0 doesn't wait."
             >
               <Input

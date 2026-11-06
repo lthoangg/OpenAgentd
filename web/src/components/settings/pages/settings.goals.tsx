@@ -95,6 +95,7 @@ export function GoalsSettingsPage() {
         <PanelRow
           label="Turns per goal"
           htmlFor="goals-max-turns"
+          inline
           description={`A turn is one full agent reply, often with many tool calls. The goal pauses when it runs out; Resume grants another batch. Default ${defaultTurns}. The plan review starts with this number.`}
           error={maxTurnsError}
         >
@@ -108,10 +109,12 @@ export function GoalsSettingsPage() {
             onChange={(e) => draft.patch({ max_turns: parseInt(e.target.value, 10) })}
             className="h-9 w-24 font-mono"
           />
+          <span className="text-xs text-(--color-text-2)">turns</span>
         </PanelRow>
         <PanelRow
           label="Token budget per goal"
           htmlFor="goals-token-budget"
+          inline
           description={`Example: 2,000,000. Counts input (not cached) and output tokens across the goal. The goal pauses at the budget; Resume grants another. Applies to new goals.${budget !== null && !tokenBudgetError ? ` Now ≈ ${formatGoalTokens(budget)} tokens.` : ''}`}
           error={tokenBudgetError}
         >
@@ -126,6 +129,7 @@ export function GoalsSettingsPage() {
             onChange={(e) => draft.patch({ token_budget: e.target.value.trim() === '' ? null : parseInt(e.target.value, 10) })}
             className="h-9 w-32 font-mono"
           />
+          <span className="text-xs text-(--color-text-2)">tokens</span>
         </PanelRow>
       </PanelSection>
 

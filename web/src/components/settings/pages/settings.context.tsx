@@ -87,6 +87,7 @@ export function ContextSettingsPage() {
         <PanelRow
           label="Token threshold"
           htmlFor="context-threshold"
+          inline
           description={`Summarize earlier messages once a prompt reaches this many tokens. Empty uses 90% of the model's context window.${threshold !== null && Number.isFinite(threshold) && threshold > 0 ? ` Now ${threshold.toLocaleString('en-US')} tokens.` : ''}`}
           error={thresholdError}
         >
@@ -101,6 +102,7 @@ export function ContextSettingsPage() {
             onChange={(e) => draft.patch({ prompt_token_threshold: parseOptionalInt(e.target.value) })}
             className="h-9 w-36 font-mono"
           />
+          <span className="text-xs text-(--color-text-2)">tokens</span>
         </PanelRow>
       </PanelSection>
 
@@ -119,6 +121,7 @@ export function ContextSettingsPage() {
         <PanelRow
           label="Idle trigger"
           htmlFor="context-idle-percent"
+          inline
           description={
             idleCompaction
               ? 'The percent of the token threshold a session must reach first. Empty uses 70%.'

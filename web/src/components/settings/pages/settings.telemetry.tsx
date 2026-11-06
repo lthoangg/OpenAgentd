@@ -85,6 +85,7 @@ export function TelemetrySettingsPage() {
         <PanelRow
           label="Keep traces for"
           htmlFor="telemetry-retention-days"
+          inline
           description={
             keepForever
               ? 'Everything is kept. Turn off Keep forever to set a number of days.'

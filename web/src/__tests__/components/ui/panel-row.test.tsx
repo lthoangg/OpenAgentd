@@ -29,4 +29,14 @@ describe('PanelRow', () => {
     )
     expect((container.firstElementChild as HTMLElement).className.split(/\s+/)).toContain('flex-col')
   })
+
+  it('keeps an inline number and its unit on the label line at every width', () => {
+    const { container } = render(
+      <PanelRow label="Turns per goal" htmlFor="t" inline><input id="t" type="number" /><span>turns</span></PanelRow>,
+    )
+    const row = container.firstElementChild as HTMLElement
+    expect(row.className.split(/\s+/)).toContain('flex-row')
+    expect(row.className).not.toContain('flex-col')
+    expect(row.textContent).toContain('turns')
+  })
 })

@@ -27,6 +27,8 @@ interface PanelRowProps {
   labelId?: string
   /** Put the control under the text at every width. */
   stack?: boolean
+  /** Keep a small control (a number and its unit) right of the label at every width, as a switch does. */
+  inline?: boolean
   /** Validation message shown under the description. */
   error?: string | null
   /** The control(s). Omit for a text-only row. */
@@ -40,12 +42,13 @@ export function PanelRow({
   htmlFor,
   labelId,
   stack = false,
+  inline = false,
   error,
   children,
   className,
 }: PanelRowProps) {
   const labelClass = cn('block', TEXT.label)
-  const switchRow = !stack && isValidElement(children) && children.type === Switch
+  const switchRow = !stack && (inline || (isValidElement(children) && children.type === Switch))
   return (
     <div
       className={cn(

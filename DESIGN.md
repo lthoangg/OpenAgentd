@@ -1869,6 +1869,19 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   sends "Continue".
 - **Settings.** A switch sits right of its label at every width; other
   controls stack under the label.
+  The root reads like iOS Settings: a large title, a coloured icon tile per
+  row (state-hue tokens, never Signal Blue), no descriptions; each section's
+  page carries its own.
+- **The chat bar.** ‹ Sessions, the title, one ⋯. A tap on the title opens
+  Session info; ⋯ holds Tasks · n/m (only while there are tasks) and
+  Workspace.
+- **Long press is the context menu.** A prompt, a session row, a server row
+  and a workspace row open an action sheet on a hold, with one medium
+  haptic. Destructive items sit last, in red, behind a separator.
+- **Sheets over menus.** View options and other choice menus open as
+  sheets: a segmented control for one-of-few, a switch for on/off.
+- **Folded cards.** A goal check is one 44pt row, "Goal · achieved ›";
+  evidence opens as 44pt rows.
 - **Notices.** A banner is one line under the bar with at most one action;
   details open in a sheet. It never covers the transcript.
 - **Offline is told, not hidden.** Health is checked whatever the network

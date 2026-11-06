@@ -13,6 +13,7 @@ import { ROW_ACTION, listRowSurface } from '@/components/ui/list-row'
 import { TEXT } from '@/components/ui/panel-tokens'
 import { formatScheduleLabel, lastRunLabel, nextRunLabel, taskState, TASK_LONG_PRESS_MOVE_TOLERANCE, TASK_LONG_PRESS_MS } from './utils'
 import { Chip } from '@/components/ui/chip'
+import { Switch } from '@/components/ui/switch'
 import { WorkspaceBadge } from './ModeBadge'
 import { DeleteTaskDialog } from './DeleteTaskDialog'
 import { TaskActionsMenu, taskActionsMenuPoint } from './TaskActionsMenu'
@@ -113,7 +114,13 @@ export function TaskListItem({
             )}
           </div>
 
-          <p className="mt-1 truncate font-mono text-meta text-(--color-text-2)">{formatScheduleLabel(task)}</p>
+          {phoneSheet && task.schedule_type !== 'cron' ? (
+            // A phone reads the schedule as a sentence (mockup J9); cron
+            // stays mono, it is an expression.
+            <p data-schedule-label="" className="mt-1 truncate text-sm text-(--color-text-2)">{sentenceCase(formatScheduleLabel(task))}</p>
+          ) : (
+            <p className="mt-1 truncate font-mono text-meta text-(--color-text-2)">{formatScheduleLabel(task)}</p>
+          )}
 
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <WorkspaceBadge task={task} />
@@ -137,7 +144,18 @@ export function TaskListItem({
         {/* One ⋯ on every platform (24px, 36px on touch) opens the menu with
             Run now, Pause / Resume and Delete in words: the same menu as a
             right-click or a long press. It shows a spinner while one runs. */}
-        <div className="-mr-1.5 flex shrink-0 items-center">
+        <div className="-mr-1.5 flex shrink-0 items-center gap-2">
+          {phoneSheet && (
+            // On / off in one tap; the row's tap still opens the task.
+            <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} className="flex">
+              <Switch
+                checked={task.status !== 'paused'}
+                onCheckedChange={togglePaused}
+                disabled={pauseMutation.isPending || resumeMutation.isPending}
+                aria-label={`${task.name} on`}
+              />
+            </span>
+          )}
           <Tooltip>
             <TooltipTrigger
               render={
@@ -197,4 +215,8 @@ export function TaskListItem({
     />
     </>
   )
+}
+
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }

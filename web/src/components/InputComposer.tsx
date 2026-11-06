@@ -21,7 +21,10 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 import { focusQuietly } from '@/lib/focus/quiet'
-import { selectionHapticFeedback, softHapticFeedback } from '@/lib/haptics'
+import { mediumHapticFeedback, selectionHapticFeedback, softHapticFeedback } from '@/lib/haptics'
+import { useIsPhone } from '@/hooks/use-is-phone'
+import { useLongPress } from '@/hooks/use-long-press'
+import { ActionSheet } from '@/components/ui/action-sheet'
 import { SessionModeToggle } from './SessionModeToggle'
 import type { ComposerActions } from './composer/PlusMenu'
 
@@ -835,6 +838,17 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.
   const mac = isPrimaryModifierOS(os)
   const splitSend = isStreaming && hasMessage && !disabled
+  // A phone keeps one pill: a tap steers, a long press opens the ways to
+  // send as an action sheet (the gesture's own medium haptic). The release
+  // after a long press must not also steer.
+  const isPhone = useIsPhone()
+  const [deliverySheetOpen, setDeliverySheetOpen] = useState(false)
+  const longPressedRef = useRef(false)
+  const sendLongPress = useLongPress(isPhone && splitSend, () => {
+    longPressedRef.current = true
+    mediumHapticFeedback()
+    setDeliverySheetOpen(true)
+  })
 
   // Send ↔ Stop: the new icon springs up in the slot (not on first render).
   const sendState = canStop && !hasMessage ? 'stop' : splitSend ? 'steer' : disabled ? 'busy' : 'send'
@@ -844,12 +858,49 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     <button
       type="button"
       {...keepKeyboard}
-      onClick={(e) => { stopClick(e); softHapticFeedback(); onStop?.(); refocusAfterTap() }}
+      onClick={(e) => { stopClick(e); mediumHapticFeedback(); onStop?.(); refocusAfterTap() }}
       aria-label="Stop generation"
       className={cn(sendSlotClass, sendPillClass)}
     >
       <Square size={12} fill="currentColor" aria-hidden="true" className={iconIn} />
     </button>
+  ) : splitSend && isPhone ? (
+    <>
+      <button
+        type="button"
+        onPointerDown={(e) => { keepKeyboard.onPointerDown?.(e); sendLongPress.onPointerDown(e) }}
+        onMouseDown={keepKeyboard.onMouseDown}
+        onPointerMove={sendLongPress.onPointerMove}
+        onPointerUp={sendLongPress.onPointerUp}
+        onPointerCancel={sendLongPress.onPointerCancel}
+        onPointerLeave={sendLongPress.onPointerLeave}
+        onContextMenu={sendLongPress.onContextMenu}
+        onClick={(e) => {
+          stopClick(e)
+          if (longPressedRef.current) {
+            longPressedRef.current = false
+            return
+          }
+          softHapticFeedback()
+          submit('steer')
+          refocusAfterTap()
+        }}
+        aria-label="Steer the running turn. Hold for more ways to send"
+        className={cn(sendSlotClass, sendPillClass, '[-webkit-touch-callout:none]')}
+      >
+        <ArrowUp size={14} aria-hidden="true" className={iconIn} />
+      </button>
+      <ActionSheet
+        open={deliverySheetOpen}
+        onClose={() => setDeliverySheetOpen(false)}
+        title="Agent is running. How should this message be sent?"
+        items={[
+          { id: 'steer', label: 'Steer now', run: () => submit('steer') },
+          { id: 'after-turn', label: 'Send after this turn finishes', run: () => submit('after-turn') },
+          { id: 'interrupt', label: 'Stop and send', danger: true, run: () => submit('interrupt') },
+        ]}
+      />
+    </>
   ) : splitSend ? (
     <div role="group" aria-label="Send" className="flex shrink-0 items-center">
       <button

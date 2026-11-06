@@ -9,6 +9,7 @@ import { haptic, outcomeHapticFeedback } from '@/lib/haptics'
 import { pauseSessionGoal } from '@/api/client'
 import { useAgentStore, type PendingMessage } from '@/stores/useAgentStore'
 import { useHeldMessagesStore, type HeldMessage } from '@/stores/useHeldMessagesStore'
+import { useToastStore } from '@/stores/useToastStore'
 import type { InputComposerHandle, SendDelivery } from '../InputComposer'
 
 /** Send with the session's current model settings, as the composer does. */
@@ -76,6 +77,18 @@ export async function stopTurn(composer: InputComposerHandle | null): Promise<vo
   const steers = await callOffSteers(sessionId)
   returnToComposer(composer, [...steers, ...held])
   return stopAgent()
+}
+
+/**
+ * After a Stop on a phone: a "Stopped" toast whose Resume sends "Continue",
+ * so a stop by mistake costs one tap (mockup J5 5.2).
+ */
+export function pushStoppedToast(workspace: string, composer: () => InputComposerHandle | null): string {
+  return useToastStore.getState().push({
+    tone: 'info',
+    title: 'Stopped',
+    action: { label: 'Resume', onAction: () => { void deliverFromComposer(workspace, composer(), { content: 'Continue' }) } },
+  })
 }
 
 /** Send a composer message the way the user chose; an idle agent just starts a turn. */

@@ -13,7 +13,8 @@ mock.module('@/lib/haptics', () => ({ haptic, outcomeHapticFeedback }))
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
-import { deliverFromComposer, stopTurn, useReleaseHeldMessages } from '@/components/AgentChatView/heldMessages'
+import { deliverFromComposer, pushStoppedToast, stopTurn, useReleaseHeldMessages } from '@/components/AgentChatView/heldMessages'
+import { useToastStore } from '@/stores/useToastStore'
 import type { InputComposerHandle } from '@/components/InputComposer'
 
 const INITIAL_AGENT_STATE = useAgentStore.getState()
@@ -322,6 +323,20 @@ describe('stopTurn', () => {
 })
 
 describe('deliverFromComposer', () => {
+  it('offers Resume after a Stop, which sends "Continue"', async () => {
+    const sendMessage = sendThatStartsATurn()
+    useAgentStore.setState({ sendMessage, isAgentWorking: false })
+    useToastStore.setState({ toasts: [] })
+    pushStoppedToast('/repo', () => fakeComposer().ref.current)
+
+    const toast = useToastStore.getState().toasts[0]
+    expect(toast.title).toBe('Stopped')
+    expect(toast.action?.label).toBe('Resume')
+    toast.action?.onAction()
+    await Promise.resolve()
+    expect(sendMessage.mock.calls[0][0]).toBe('Continue')
+  })
+
   it('holds a message for the end of the running turn', async () => {
     const sendMessage = sendThatStartsATurn()
     useAgentStore.setState({ sendMessage })

@@ -101,7 +101,7 @@ import { useDraftHandoff } from './useDraftHandoff'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
 import { btwSubmit, composerHistoryPrompts, newestUserBlockId, parseBuiltInSlashCommand } from './helpers'
-import { deliverFromComposer, stopTurn, useReleaseHeldMessages } from './heldMessages'
+import { deliverFromComposer, pushStoppedToast, stopTurn, useReleaseHeldMessages } from './heldMessages'
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
@@ -830,7 +830,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         const expanded = await expandUserCommand(content)
         await deliverFromComposer(workspace, inputRef.current, { content: expanded, files, mentions }, delivery)
       }}
-      onStop={() => { void stopTurn(inputRef.current) }}
+      onStop={() => {
+        void stopTurn(inputRef.current)
+        if (isPhone && workspace) pushStoppedToast(workspace, () => inputRef.current)
+      }}
       onSlashCommand={handleSlashCommand}
       onSnippetCommand={handleSnippetCommand}
       slashCommands={slashCommands}

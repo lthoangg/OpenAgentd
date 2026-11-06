@@ -1850,7 +1850,7 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   In the detailed transcript two or more finished, successful calls in a
   row fold behind "3 commands, 1 read ›" (sans); a failed or running call
   stays open. Tool output is code size and caps at 12 lines, then scrolls.
-  Tables pin their first column and shade the right edge only while it is
+  Tables scroll sideways as a whole (no pinned column) and shade the right edge only while it is
   clipped. A diff keeps lines whole and scrolls sideways; **Wrap lines** in
   its file bar wraps them.
 - **The composer.** It grows to six lines, then scrolls inside. The

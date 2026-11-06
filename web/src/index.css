@@ -1754,8 +1754,9 @@ html[data-app-hidden="true"] *::after {
   --composer-h: 0px;
 }
 
-/* Phone (mockup J4 4.3): the first column stays put while the rest scrolls,
-   and a shade at the right edge says there is more. The shade is the
+/* Phone (mockup J4 4.3): a wide table scrolls sideways as a whole, and a
+   shade at the right edge says there is more. No pinned first column: on a
+   375pt screen it ate the room the scroll needs (on-device report). The shade is the
    scrolling-shadow trick (a ``local`` cover over a ``scroll`` shade), so it
    shows only while content is clipped there, with no script. */
 @media (pointer: coarse) and (max-width: 767px), (pointer: coarse) and (max-height: 580px) {
@@ -1764,12 +1765,7 @@ html[data-app-hidden="true"] *::after {
       linear-gradient(to left, var(--bg-page) 40%, transparent) right center / 32px 100% no-repeat local,
       linear-gradient(to left, color-mix(in srgb, var(--color-text) 14%, transparent), transparent) right center / 16px 100% no-repeat scroll;
   }
-  /* Separate borders: collapsed ones belong to the table and scroll away from
-     the pinned cell. Each cell draws its right and bottom edge; the first
-     column and the first row add the outer ones. */
   .oa-prose table {
-    border-collapse: separate;
-    border-spacing: 0;
     /* On the phone's type steps, not 0.875em of them (12.25px at 14px). */
     font-size: var(--text-subhead);
   }
@@ -1780,23 +1776,5 @@ html[data-app-hidden="true"] *::after {
   }
   .oa-prose table code {
     font-size: var(--text-meta);
-  }
-  .oa-prose :is(th, td) {
-    border-width: 0 1px 1px 0;
-  }
-  .oa-prose :is(th, td):first-child {
-    border-left-width: 1px;
-  }
-  .oa-prose tr:first-child > :is(th, td) {
-    border-top-width: 1px;
-  }
-  .oa-prose :is(th, td):first-child {
-    position: sticky;
-    left: 0;
-    z-index: 1;
-    background: var(--bg-page);
-  }
-  .oa-prose th:first-child {
-    background: var(--bg-key);
   }
 }

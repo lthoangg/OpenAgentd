@@ -1789,3 +1789,8 @@ html[data-qr-scanning] body {
 html[data-qr-scanning] body > :not([data-qr-scan-overlay]) {
   visibility: hidden;
 }
+/* The viewfinder's corner marks sit on the live camera picture (real
+ * content), so they are paper-white in either theme. */
+[data-qr-frame] > span {
+  border-color: #FFFDF7;
+}

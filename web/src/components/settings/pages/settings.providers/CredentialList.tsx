@@ -1,7 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { MoreHorizontal } from 'lucide-react'
+import { ArrowDown, ArrowUpToLine, BarChart3, CircleCheck, Eye, EyeOff, LogIn, LogOut, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 
 import type { ProviderInfo, StoredCredential } from '@/api/client'
+import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
+import { useTouchFirst } from '@/hooks/use-touch-first'
 import { Button } from '@/components/ui/button'
 import { Chip, StatusChip } from '@/components/ui/chip'
 import { STATUS } from '@/lib/status'
@@ -238,6 +240,41 @@ function ManageMenu({ c, index, ctx }: { c: StoredCredential; index: number; ctx
   const isOauth = ctx.noun === 'account'
   const canTest = !c.disabled && c.status !== 'needs_reconnect' && ctx.testingId === null
   const canShowUsage = !isOauth && supportsCredentialUsage(provider) && count > 1 && c.status !== 'needs_reconnect' && !c.disabled
+  const touch = useTouchFirst()
+  const [sheetOpen, setSheetOpen] = useState(false)
+  if (touch) {
+    // Touch: one sheet in iOS's order: check it, then where it sits in the
+    // order, then hide, then the way out, each group apart.
+    const sheetItems: ActionSheetItem[] = [
+      { id: 'test', label: 'Test', icon: CircleCheck, disabled: !canTest, run: () => ctx.test(c) },
+      ...(onReconnect ? [{ id: 'reconnect', label: 'Reconnect', icon: LogIn, run: () => onReconnect(c.id) }] : []),
+      ...(canShowUsage ? [{ id: 'usage', label: ctx.usageOpen === c.id ? 'Close usage' : 'Show usage', icon: BarChart3, run: () => ctx.toggleUsage(c) }] : []),
+      { id: 'rename', label: 'Rename', icon: Pencil, separatorBefore: true, run: () => ctx.startRename(c) },
+      ...(count > 1
+        ? [
+            { id: 'first', label: 'Use first', icon: ArrowUpToLine, disabled: index === 0 || busy, run: () => ctx.move(index, 'first') },
+            { id: 'down', label: 'Move down', icon: ArrowDown, disabled: index === count - 1 || busy, run: () => ctx.move(index, 'down') },
+          ]
+        : []),
+      { id: 'toggle', label: c.disabled ? 'Show' : 'Hide', icon: c.disabled ? Eye : EyeOff, separatorBefore: true, run: () => ctx.toggle(c) },
+      { id: 'remove', label: isOauth ? 'Sign out…' : 'Remove…', icon: isOauth ? LogOut : Trash2, danger: true, separatorBefore: true, run: () => ctx.askRemove(c.id) },
+    ]
+    return (
+      <>
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          aria-label={`More actions for ${c.label || c.id}`}
+          className="touch-hit relative text-(--color-text-muted)"
+          onClick={() => setSheetOpen(true)}
+        >
+          <MoreHorizontal size={16} aria-hidden="true" />
+        </Button>
+        <ActionSheet open={sheetOpen} onClose={() => setSheetOpen(false)} title={c.label || c.id} description={kindLabel(c)} items={sheetItems} />
+      </>
+    )
+  }
   const items: ReactNode[] = [
     <DropdownItem key="rename" onSelect={() => ctx.startRename(c)}>Rename</DropdownItem>,
     count > 1 ? (

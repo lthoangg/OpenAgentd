@@ -238,6 +238,8 @@ describe('useMobileViewportGuards', () => {
     expect(root.hasAttribute('data-keyboard-open')).toBe(false)
 
     // The user taps the field again before the keyboard has gone: still occluded.
+    const field = document.body.appendChild(document.createElement('textarea'))
+    field.focus()
     vv.emit('resize')
     expect(root.hasAttribute('data-keyboard-open')).toBe(true)
     expect(root.hasAttribute('data-vp-anim')).toBe(false)
@@ -254,6 +256,7 @@ describe('useMobileViewportGuards', () => {
     vv.emit('resize')
     expect(root.hasAttribute('data-keyboard-open')).toBe(false)
 
+    document.body.appendChild(document.createElement('textarea')).focus()
     vv.height = 460
     vv.emit('resize')
     expect(root.hasAttribute('data-keyboard-open')).toBe(true)
@@ -264,11 +267,26 @@ describe('useMobileViewportGuards', () => {
     renderHook(() => useMobileViewportGuards())
     const root = document.documentElement
     root.setAttribute('data-vp-anim', '') // leftover from a prior dismiss
+    document.body.appendChild(document.createElement('textarea')).focus()
 
     vv.height = 460 // keyboard opens
     vv.emit('resize')
     expect(root.hasAttribute('data-keyboard-open')).toBe(true)
     expect(root.hasAttribute('data-vp-anim')).toBe(false)
+  })
+
+  it('ignores the keyboard retract frames while the shell glides back', () => {
+    const vv = installVisualViewport(460, 0)
+    renderHook(() => useMobileViewportGuards())
+    const root = document.documentElement
+    dismissKeyboard()
+    const full = root.style.getPropertyValue('--app-vh')
+
+    vv.height = 600
+    vv.offsetTop = 40
+    vv.emit('resize')
+    expect(root.style.getPropertyValue('--app-vh')).toBe(full)
+    expect(root.style.getPropertyValue('--app-vt')).toBe('0px')
   })
 
   it('does nothing on a non-touch desktop platform', () => {
@@ -294,6 +312,7 @@ describe('useMobileViewportGuards', () => {
       })) as typeof window.matchMedia
     }
     afterEach(() => {
+  document.querySelectorAll('body > textarea').forEach((el) => el.remove())
       window.matchMedia = realMatchMedia
     })
 

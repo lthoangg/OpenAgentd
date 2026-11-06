@@ -143,6 +143,14 @@ export function useMobileViewportGuards() {
     const applyViewport = () => {
       const height = vv ? vv.height : window.innerHeight
       const top = vv ? vv.offsetTop : 0
+      // Mid-dismiss (``data-vp-anim``): the shell is already gliding to full
+      // height. The keyboard's retract frames report shorter heights and a
+      // passing offsetTop; following them would yank the eased shell back
+      // and slide the whole screen (on-device report). A focused field (the
+      // keyboard coming back) ends the glide.
+      const focused = document.activeElement
+      const typing = focused instanceof HTMLElement && focused.matches('input, textarea, [contenteditable="true"]')
+      if (root.hasAttribute('data-vp-anim') && !typing) return
       // Detect keyboard occlusion relative to the shell's baseline layout
       // height captured before the keyboard opens. On some mobile WebViews,
       // `window.innerHeight` also shrinks with the keyboard, so comparing the
@@ -214,11 +222,33 @@ export function useMobileViewportGuards() {
     const handleFocusIn = (e: FocusEvent) => {
       const target = e.target
       if (!(target instanceof HTMLElement) || !target.matches('input, textarea, [contenteditable="true"]')) return
+      if (root.hasAttribute('data-vp-anim')) {
+        root.removeAttribute('data-vp-anim')
+        applyViewport()
+      }
       // Wait for the keyboard's viewport update, then move only genuinely
       // obscured controls. This keeps nested overlay scrollers stable.
       setTimeout(() => scrollFocusedControlIntoView(target), 120)
     }
     document.addEventListener('focusin', handleFocusIn)
+
+    // The keyboard also leaves when focus does by itself: a tap elsewhere, a
+    // swipe that scrolls. Take the same eased path as ``dismissKeyboard``
+    // instead of chasing the retract frame by frame.
+    const handleFocusOut = (e: FocusEvent) => {
+      if (!root.hasAttribute('data-keyboard-open')) return
+      const next = e.relatedTarget
+      if (next instanceof HTMLElement && next.matches('input, textarea, [contenteditable="true"]')) return
+      root.setAttribute('data-vp-anim', '')
+      root.removeAttribute('data-keyboard-open')
+      root.style.setProperty('--app-vh', `${Math.round(baselineLayoutHeight)}px`)
+      root.style.setProperty('--app-vt', '0px')
+      window.setTimeout(() => {
+        root.removeAttribute('data-vp-anim')
+        applyViewport()
+      }, 320)
+    }
+    document.addEventListener('focusout', handleFocusOut)
 
     document.addEventListener('gesturestart', preventGestureZoom)
     document.addEventListener('gesturechange', preventGestureZoom)
@@ -229,6 +259,7 @@ export function useMobileViewportGuards() {
 
     return () => {
       document.removeEventListener('focusin', handleFocusIn)
+      document.removeEventListener('focusout', handleFocusOut)
       root.removeAttribute('data-mobile-shell')
       root.removeAttribute('data-keyboard-open')
       root.removeAttribute('data-vp-anim')

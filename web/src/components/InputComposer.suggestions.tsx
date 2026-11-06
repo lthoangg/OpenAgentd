@@ -3,6 +3,7 @@ import { File, Folder } from 'lucide-react'
 import type { SlashCommand } from './InputComposer'
 import type { SuggestionMenu, SuggestionRow } from './InputComposer.suggestionEngine'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
 
 /**
@@ -28,6 +29,7 @@ export function InputComposerSuggestions({
   suggestionsBelow: boolean
 }) {
   const isMobile = useIsMobile()
+  const isPhone = useIsPhone()
   const containerRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const lastDesktopDirectionRef = useRef<boolean | null>(null)
@@ -229,8 +231,9 @@ export function InputComposerSuggestions({
   const menuAriaLabel =
     menu.kind === 'slash' ? 'Slash commands' : menu.kind === 'snippet' ? 'Snippets' : 'Reference workspace file'
 
+  // A phone: 44pt rows in body size, a name over a two-line description (mockup J3).
   const optionClass = (active: boolean) =>
-    `flex w-full items-center rounded-xs px-2 py-1.5 text-left text-xs transition-colors ${
+    `flex w-full items-center rounded-xs px-2 text-left transition-colors ${isPhone ? 'min-h-11 py-2 text-sm' : 'py-1.5 text-xs'} ${
       active ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:bg-(--bg-key)/60 hover:text-(--color-text-2)'
     }`
 
@@ -276,15 +279,28 @@ export function InputComposerSuggestions({
               onMouseDown={(e) => { e.preventDefault(); onSelect(cmd) }}
               className={`${optionClass(active)} gap-3`}
             >
-              <span className="shrink-0 font-mono text-xs text-(--color-accent)">
-                /
-                {prefix && <span className="text-(--color-text-muted)">{prefix}</span>}
-                <span>{suffix}</span>
-              </span>
-              <span className="min-w-0 flex-1 truncate text-(--color-text-2)">
-                {cmd.description}
-              </span>
-              {categoryBadge(cmd.category)}
+              {isPhone ? (
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-mono text-code text-(--color-accent)">
+                    /
+                    {prefix && <span className="text-(--color-text-muted)">{prefix}</span>}
+                    <span>{suffix}</span>
+                  </span>
+                  {cmd.description && <span className="line-clamp-2 text-xs text-(--color-text-2)">{cmd.description}</span>}
+                </span>
+              ) : (
+                <>
+                  <span className="shrink-0 font-mono text-xs text-(--color-accent)">
+                    /
+                    {prefix && <span className="text-(--color-text-muted)">{prefix}</span>}
+                    <span>{suffix}</span>
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-(--color-text-2)">
+                    {cmd.description}
+                  </span>
+                  {categoryBadge(cmd.category)}
+                </>
+              )}
             </button>
           )
         })}
@@ -310,11 +326,21 @@ export function InputComposerSuggestions({
               ) : (
                 <File className="size-4 shrink-0 text-(--color-text-subtle)" aria-hidden />
               )}
-              <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                {parent && <span className="text-(--color-text-muted)">{parent}</span>}
-                <span className={ref.ignored ? 'text-(--color-text-muted)' : 'text-(--color-text)'}>{basename}</span>
-                {isDir && <span className="text-(--color-text-muted)">/</span>}
-              </span>
+              {isPhone ? (
+                // The name first, its folder under it.
+                <span className="min-w-0 flex-1">
+                  <span className={`block truncate font-mono text-code ${ref.ignored ? 'text-(--color-text-muted)' : 'text-(--color-text)'}`}>
+                    {basename}{isDir && '/'}
+                  </span>
+                  {parent && <span className="block truncate font-mono text-meta text-(--color-text-muted)">{parent}</span>}
+                </span>
+              ) : (
+                <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                  {parent && <span className="text-(--color-text-muted)">{parent}</span>}
+                  <span className={ref.ignored ? 'text-(--color-text-muted)' : 'text-(--color-text)'}>{basename}</span>
+                  {isDir && <span className="text-(--color-text-muted)">/</span>}
+                </span>
+              )}
             </button>
           )
         })}

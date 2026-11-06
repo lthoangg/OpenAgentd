@@ -22,7 +22,9 @@
  * offers **Sessions ›** (``onOpenInUse``), back up to its session list.
  */
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { ChevronRight, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, Pencil, Plus, ScanQrCode, Trash2 } from 'lucide-react'
+import { canScanQr, deliverScannedLink, scanQrCode } from '@/lib/qr-scan'
+import { parseConnectLink } from '@/lib/connect-link'
 
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
@@ -238,6 +240,18 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       const opener = target?.kind === 'edit' ? editButtonRefs.current.get(target.baseUrl) : addButtonRef.current
       opener?.focus()
     })
+  }
+
+  /** Servers → Scan QR code: the camera reads the desktop's connect code. */
+  async function scanConnectCode() {
+    setListError(null)
+    const outcome = await scanQrCode()
+    if (outcome.kind === 'denied') {
+      setListError('Camera access is off. Turn it on for OpenAgentd in Settings to scan a code.')
+    } else if (outcome.kind === 'scanned') {
+      if (parseConnectLink(outcome.text)) deliverScannedLink(outcome.text)
+      else setListError('That QR code is not an OpenAgentd connect code. Scan the one under Network access on your computer.')
+    }
   }
 
   async function connectExternal(nextBaseUrl: string, nextName: string, typedKey: string, onError: (error: string) => void) {
@@ -597,11 +611,17 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
           )
         })}
         {form?.kind === 'add' && !touch ? serverForm(form) : (
-          <div className={ROW_PAD}>
+          <div className={cn(ROW_PAD, 'flex flex-wrap items-center gap-1')}>
             <Button ref={addButtonRef} type="button" variant="ghost" size="sm" onClick={openAdd} disabled={pending}>
               <Plus size={ICON_SIZE_INLINE} aria-hidden="true" />
               Add a server
             </Button>
+            {canScanQr() && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => { void scanConnectCode() }} disabled={pending}>
+                <ScanQrCode size={ICON_SIZE_INLINE} aria-hidden="true" />
+                Scan QR code
+              </Button>
+            )}
           </div>
         )}
       </PanelSection>

@@ -30,6 +30,8 @@
        so App Store Connect does not ask on every TestFlight upload. -->
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>
+  <key>NSCameraUsageDescription</key>
+  <string>OpenAgentd uses the camera to scan the QR code that connects this phone to your server.</string>
   <key>NSLocalNetworkUsageDescription</key>
   <string>OpenAgentd connects to local OpenAgentd servers on your network.</string>
   <key>NSMicrophoneUsageDescription</key>

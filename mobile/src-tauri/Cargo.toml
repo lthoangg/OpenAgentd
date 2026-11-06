@@ -35,6 +35,10 @@ base64 = "0.23"
 sha2 = "0.10"
 keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
 
+# The QR scanner for connect links (Servers → Scan QR code). Mobile only.
+[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+tauri-plugin-barcode-scanner = "2"
+
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = "0.6"
 # block2: the `UIAlertAction` handler of the native picker is an ObjC block.

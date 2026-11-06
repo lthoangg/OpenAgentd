@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Mobile-only plugins: the camera QR scanner for openagentd://connect links. App origin only, as the default set.",
+  "windows": ["main"],
+  "local": true,
+  "platforms": ["iOS", "android"],
+  "permissions": ["barcode-scanner:default"]
+}

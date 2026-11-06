@@ -20,6 +20,7 @@ import { getStoredAccessKey } from '@/api/auth'
 import type { AppBackendPrefill } from '@/components/AppBackendDialog'
 import { getAppBackendStatus } from '@/lib/app-backend'
 import { type ConnectLink, parseConnectLink } from '@/lib/connect-link'
+import { SCANNED_LINK_EVENT } from '@/lib/qr-scan'
 import { pingServer } from '@/lib/server-probe'
 
 const DELIVERED_STORAGE_KEY = 'openagentd.connectLink.delivered'
@@ -108,9 +109,17 @@ export function useConnectLink(): { request: AppBackendPrefill | null; clear: ()
       else unlisten = stop
     }).catch(() => {})
 
+    // The in-app scanner (Servers → Scan QR code): a fresh scan, as a live link.
+    const onScanned = (event: Event) => {
+      const raw = (event as CustomEvent<unknown>).detail
+      if (typeof raw === 'string') void handle(raw, false)
+    }
+    window.addEventListener(SCANNED_LINK_EVENT, onScanned)
+
     return () => {
       disposed = true
       unlisten?.()
+      window.removeEventListener(SCANNED_LINK_EVENT, onScanned)
     }
   }, [])
 

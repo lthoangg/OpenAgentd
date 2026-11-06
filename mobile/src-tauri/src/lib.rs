@@ -501,6 +501,9 @@ pub fn run() {
     // while the app is in the background), which leaves a blank page until
     // the app is force-quit. Reload instead: drafts and the last route are
     // restored from storage, and the event stream reconnects on load.
+    // Servers → Scan QR code reads `openagentd://connect` links with the camera.
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
     #[cfg(target_os = "ios")]
     let builder = builder.on_web_content_process_terminate(|webview| {
         let _ = webview.reload();

@@ -14,10 +14,6 @@ import { composerHistoryPrompts } from '@/components/AgentChatView/helpers'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import type { ContentBlock } from '@/api/types'
-import { prefetchSurfaces } from '@/lib/lazy-surface'
-
-// The goal card loads on demand; load it up front so renders are direct.
-await prefetchSurfaces()
 
 beforeEach(() => {
   useAgentStore.setState({ sessionId: 'session-1' })

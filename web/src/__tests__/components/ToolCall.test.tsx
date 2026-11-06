@@ -987,11 +987,10 @@ describe("ToolCall — plan display", () => {
     expect(screen.queryByRole("button", { name: "Open plan" })).toBeNull()
   })
 
-  it("shows a plan call with submit as the review card, like the former submit_plan", async () => {
+  it("shows a plan call with submit as the review card, like the former submit_plan", () => {
     const args = JSON.stringify({ action: "write", content: "# Ship it", submit: true, summary: "First draft." })
     const { rerender } = render(<ToolCall name="plan" args={args} done result="The user approved plan revision 1." />)
-    // The card is lazy: it loads on first use.
-    expect(await screen.findByText("Plan review")).toBeTruthy()
+    expect(screen.getByText("Plan review")).toBeTruthy()
     expect(screen.getByText("Approved")).toBeTruthy()
     expect(screen.getByText("First draft.")).toBeTruthy()
 

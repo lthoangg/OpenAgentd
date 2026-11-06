@@ -4,6 +4,8 @@ import { DURATIONS_S, prefersReducedMotion } from '@/lib/motion'
 const SCROLL_THRESHOLD = 40
 /** Sending from up to this many screens above the end glides there; further jumps. */
 const SMOOTH_SEND_SCREENS = 2
+/** ms of scroll silence on touch before earlier turns are revealed (see onScroll). */
+const OLDER_IDLE_MS = 140
 const USER_SCROLL_INTENT_MS = 250
 /** Quiet time after the last visual-viewport resize before the keyboard counts as settled. */
 export const KEYBOARD_SETTLE_MS = 120
@@ -252,6 +254,8 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       lastContentHeightRef.current = contentRef.current.getBoundingClientRect().height
     }
 
+    const touchScroll = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
+    let olderIdleTimer: ReturnType<typeof setTimeout> | null = null
     const onScroll = () => {
       const currentScrollTop = el.scrollTop
       const prevScrollTop = lastScrollTopRef.current
@@ -313,8 +317,19 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
         setChip(true)
       }
 
+      // Near the top earlier turns load. On touch they land only
+      // once the scroll has come to rest: holding the view sets scrollTop,
+      // and doing that mid-fling stops the momentum and jumps the view (a
+      // flicker on iOS, on-device report).
       if (currentScrollTop <= 300) {
-        onLoadOlderTopRef.current?.()
+        if (!touchScroll) onLoadOlderTopRef.current?.()
+        else {
+          if (olderIdleTimer) clearTimeout(olderIdleTimer)
+          olderIdleTimer = setTimeout(() => {
+            olderIdleTimer = null
+            if (el.scrollTop <= 300) onLoadOlderTopRef.current?.()
+          }, OLDER_IDLE_MS)
+        }
       }
       scheduleSave()
     }
@@ -446,6 +461,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     document.addEventListener('keydown', onKeyDown)
 
     return () => {
+      if (olderIdleTimer) clearTimeout(olderIdleTimer)
       el.removeEventListener('scroll', onScroll)
       el.removeEventListener('wheel', onWheel)
       el.removeEventListener('touchstart', onTouchStart)

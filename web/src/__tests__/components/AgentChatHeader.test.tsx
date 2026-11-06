@@ -2,7 +2,7 @@ import type { ComponentProps } from 'react'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import userEvent from '@testing-library/user-event'
 
@@ -473,12 +473,12 @@ describe('AgentChatHeader', () => {
       expect(onSidebarToggle).not.toHaveBeenCalled()
     })
 
-    it('keeps the title, its workspace, Tasks and Review panel', () => {
+    it('keeps the title (a tap opens Session info), its workspace, and one ⋯', () => {
       const { container } = renderHeader({ onBack: () => undefined })
       expect(container.querySelector('[data-phone-nav-title]')).toHaveTextContent('Fix updater restart')
       expect(container.querySelector('[data-phone-nav-title]')).toHaveTextContent('Workspace A')
       const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
-      expect(names).toEqual(['Back to Sessions', 'Tasks', 'Review panel'])
+      expect(names).toEqual(['Back to Sessions', 'Session info', 'Session actions'])
     })
 
     it('draws every bar button with the Button primitive', () => {
@@ -486,6 +486,20 @@ describe('AgentChatHeader', () => {
       for (const button of container.querySelectorAll<HTMLElement>('header button')) {
         expect(button.dataset.slot).toBe('button')
       }
+    })
+
+    it('opens Workspace from ⋯, and the session info from the title', async () => {
+      const onWorkspaceFiles = mock(() => {})
+      renderHeader({ onBack: () => undefined, onWorkspaceFiles })
+      const user = userEvent.setup()
+      await user.click(screen.getByRole('button', { name: 'Session actions' }))
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Workspace' }))
+      expect(onWorkspaceFiles).toHaveBeenCalledTimes(1)
+
+      await user.click(screen.getByRole('button', { name: 'Session info' }))
+      const info = document.querySelector('[data-session-info]')!
+      expect(info).toHaveTextContent('Fix updater restart')
+      expect(info).toHaveTextContent('Workspace A')
     })
   })
 })

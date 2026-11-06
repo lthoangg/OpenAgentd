@@ -2,7 +2,10 @@ import { memo, useCallback, useEffect, useRef, useState, type HTMLAttributes } f
 import { AnimatedTitle } from '@/components/ui/animated-title'
 import { isFreshAutoTitle } from '@/lib/auto-title'
 import { cn } from '@/lib/utils'
-import { CornerUpLeft, ListTodo, Menu, PanelLeft, PanelRight } from 'lucide-react'
+import { Copy, CornerUpLeft, ListTodo, Menu, MoreHorizontal, PanelLeft, PanelRight } from 'lucide-react'
+import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
+import { BottomSheet } from '@/components/ui/bottom-sheet'
+import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 
 import { AgentTopbar } from '@/components/AgentTopbar'
 import { usePanelWidthSink } from '@/components/ResizableAside'
@@ -319,20 +322,16 @@ export const AgentChatHeader = memo(function AgentChatHeader({
 
   if (onBack) {
     return (
-      <PhoneNavBar
-        separator="scrolled"
-        back={{ label: 'Sessions', onBack }}
-        title={!workspace
-          ? 'Choose a workspace'
-          : sessionTitle ? <AnimatedTitle text={sessionTitle} sessionId={sessionId} /> : sessionId ? 'Untitled session' : 'New session'}
-        subtitle={workspace ? workspaceName : undefined}
-        trailing={(
-          <div data-header-cluster="end" className="flex items-center">
-            {onOpenLead && <OpenLeadButton onOpen={onOpenLead} />}
-            {tasksAction}
-            {reviewAction}
-          </div>
-        )}
+      <PhoneChatNavBar
+        onBack={onBack}
+        workspace={workspace}
+        workspaceName={workspaceName}
+        sessionId={sessionId}
+        sessionTitle={sessionTitle}
+        onOpenLead={onOpenLead}
+        todoProgress={todos.length > 0 ? todoSummary.progressLabel ?? `${todos.length - activeTodoCount}/${todos.length}` : null}
+        onToggleTasks={sessionId ? onToggleTasks : undefined}
+        onWorkspaceFiles={workspace ? onWorkspaceFiles : undefined}
       />
     )
   }
@@ -385,4 +384,90 @@ export const AgentChatHeader = memo(function AgentChatHeader({
 function TitleSeparator({ sessionId, title }: { sessionId: string | null | undefined; title: string }) {
   const [landing] = useState(() => isFreshAutoTitle(sessionId, title))
   return <span className={cn('shrink-0 text-(--color-text-muted)', landing && 'oa-fade-in')}>·</span>
+}
+
+/**
+ * The phone stack's chat bar (mockup J4 4.4): ‹ Sessions, the title (a tap
+ * opens the session's info), and one ⋯ that holds Tasks (with its progress)
+ * and Workspace, so the bar never crowds the title.
+ */
+function PhoneChatNavBar({ onBack, workspace, workspaceName, sessionId, sessionTitle, onOpenLead, todoProgress, onToggleTasks, onWorkspaceFiles }: {
+  onBack: () => void
+  workspace: string | null
+  workspaceName: string
+  sessionId: string | null | undefined
+  sessionTitle: string | null
+  onOpenLead?: () => void
+  /** "3/5" while the session has tasks; null hides Tasks from ⋯. */
+  todoProgress: string | null
+  onToggleTasks?: () => void
+  onWorkspaceFiles?: () => void
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [infoOpen, setInfoOpen] = useState(false)
+  const { copied, copy } = useCopyFeedback()
+  const titleText = !workspace
+    ? 'Choose a workspace'
+    : sessionTitle ? <AnimatedTitle text={sessionTitle} sessionId={sessionId} /> : sessionId ? 'Untitled session' : 'New session'
+  const items: ActionSheetItem[] = [
+    ...(todoProgress && onToggleTasks ? [{ id: 'tasks', label: `Tasks · ${todoProgress}`, icon: ListTodo, run: onToggleTasks }] : []),
+    ...(onWorkspaceFiles ? [{ id: 'workspace', label: 'Workspace', icon: PanelRight, run: onWorkspaceFiles }] : []),
+  ]
+  return (
+    <>
+      <PhoneNavBar
+        separator="scrolled"
+        back={{ label: 'Sessions', onBack }}
+        title={sessionId ? (
+          <Button
+            type="button"
+            variant="ghost"
+            data-session-info-trigger=""
+            onClick={() => setInfoOpen(true)}
+            aria-label="Session info"
+            // The bar's own title type: the button only adds the tap.
+            className="h-auto max-w-full justify-start truncate px-0 font-[inherit] text-[length:inherit] hover:bg-transparent active:bg-transparent"
+          >
+            <span className="truncate">{titleText}</span>
+          </Button>
+        ) : titleText}
+        subtitle={workspace ? workspaceName : undefined}
+        trailing={(
+          <div data-header-cluster="end" className="flex items-center">
+            {onOpenLead && <OpenLeadButton onOpen={onOpenLead} />}
+            {items.length > 0 && (
+              <MobileHeaderAction Icon={MoreHorizontal} label="Session actions" onClick={() => setMenuOpen(true)} />
+            )}
+          </div>
+        )}
+      />
+      <ActionSheet open={menuOpen} onClose={() => setMenuOpen(false)} title={sessionTitle || 'Session'} items={items} />
+      <BottomSheet open={infoOpen} onClose={() => setInfoOpen(false)} label="Session info">
+        <dl data-session-info="" className="flex flex-col px-4 pb-4 text-sm">
+          <div className="flex min-h-11 items-center justify-between gap-4 border-b border-(--color-border)">
+            <dt className="text-(--color-text-muted)">Title</dt>
+            <dd className="min-w-0 truncate text-(--color-text)">{sessionTitle || 'Untitled session'}</dd>
+          </div>
+          {workspace && (
+            <div className="flex min-h-11 items-center justify-between gap-4 border-b border-(--color-border)">
+              <dt className="text-(--color-text-muted)">Workspace</dt>
+              <dd className="min-w-0 truncate text-(--color-text)" title={workspace}>{workspaceName}</dd>
+            </div>
+          )}
+          {sessionId && (
+            <div className="flex min-h-11 items-center justify-between gap-4">
+              <dt className="text-(--color-text-muted)">Session ID</dt>
+              <dd className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-mono text-code text-(--color-text-2)">{sessionId}</span>
+                <Button type="button" size="xs" variant="ghost" onClick={() => void copy(sessionId)} aria-label="Copy session ID">
+                  <Copy size={14} aria-hidden="true" />
+                  {copied ? 'Copied' : 'Copy'}
+                </Button>
+              </dd>
+            </div>
+          )}
+        </dl>
+      </BottomSheet>
+    </>
+  )
 }

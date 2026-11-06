@@ -69,6 +69,12 @@ const MCPAppResult = lazySurface(() => import('./MCPAppResult'), 'MCPAppResult')
 
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
+/**
+ * On touch the reveal is smaller: each one lands after a fling rests, and
+ * mounting 80 turns at once cost a long frame the reader saw as a stutter.
+ */
+const TOUCH_TURN_RENDER_STEP = 16
+const turnRenderStep = () => (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches ? TOUCH_TURN_RENDER_STEP : TURN_RENDER_STEP)
 const ENTER_EASE = `cubic-bezier(${EASINGS.out.join(', ')})`
 /** Older pages a reload may fetch on its own to reach a prompt (100 rows each). */
 const AUTO_PROMPT_SEEK_PAGES = 2
@@ -1016,7 +1022,7 @@ export function AgentView({
 
   const showEarlierTurns = useCallback(() => {
     const release = holdView()
-    setRenderedTurnCount((count) => Math.min(turnItems.length, count + TURN_RENDER_STEP))
+    setRenderedTurnCount((count) => Math.min(turnItems.length, count + turnRenderStep()))
     release()
   }, [holdView, turnItems.length])
 

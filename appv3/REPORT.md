@@ -211,17 +211,20 @@ names all six fields. `POST /api/agent/chat` (form field) and
 `POST /api/agent/sessions/resolve` (new sessions only) accept
 `credential_id`, saved before the first turn starts.
 
-A pinned session's requests go to that credential only: the pool never
-rotates past it and never moves the provider's shared "in use" choice, and
-its members (subagents) follow the lead's pin, as do goal checks, side
-questions and titles generated on the session's provider (also by a
-configured title model on that provider). Cooldowns stay
-shared. While the pin cools down the turn waits instead of calling the
-provider: `provider_status` reports the new status value
-`waiting_credential` (same fields as `waiting_quota`; no new event name).
-A rejected or spend-capped pin fails the turn with a message offering Auto.
-A pin whose credential was removed or turned off is cleared at the next
-turn, with a `provider_status` `pin_released` note.
+A pinned session's requests start on that credential while it is ready,
+and never move the provider's shared "in use" choice. Its members
+(subagents) follow the lead's pin, as do goal checks, side questions and
+titles generated on the session's provider (also by a configured title model
+on that provider). Cooldowns stay shared. While the pin cools down (a quota,
+rate limit, rejection or spend cap), its requests fall through to the other
+ready credentials in priority order, like an unpinned session's, and return to
+the pin once it recovers. The turn waits (`waiting_quota`) only when every
+credential is cooling, for the first to recover. Older transcripts may hold
+a `waiting_credential` status (same fields as `waiting_quota`), which v3 no
+longer emits. A `switched_credential` `provider_status` also carries
+`credential_label`, the account the turn moved to. A pin whose credential was
+removed or turned off is cleared at the next turn, with a `provider_status`
+`pin_released` note.
 
 Assistant rows' `extra` gains `credential_id` and `credential_label`, the
 stored credential that answered (pooled providers only). `GET

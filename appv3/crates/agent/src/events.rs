@@ -229,10 +229,12 @@ pub struct ProviderStatus {
     pub retry_after: Option<i64>,
     pub message: Option<String>,
     pub resets_at: Option<i64>,
+    /// The account a `switched_credential` status moved to (its label).
+    pub credential_label: Option<String>,
 }
 
 pub fn provider_status(agent: &str, p: &ProviderStatus) -> Envelope {
-    Envelope::typed(json!({
+    let mut v = json!({
         "type": "provider_status",
         "agent": agent,
         "status": p.status,
@@ -246,7 +248,11 @@ pub fn provider_status(agent: &str, p: &ProviderStatus) -> Envelope {
         "message": p.message,
         "resets_at": p.resets_at,
         "metadata": {},
-    }))
+    });
+    if let Some(label) = &p.credential_label {
+        v["credential_label"] = json!(label);
+    }
+    Envelope::typed(v)
 }
 
 pub fn agent_not_configured(agent: &str, message: &str) -> Envelope {

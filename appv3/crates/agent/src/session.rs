@@ -342,8 +342,8 @@ impl AgentSession {
         }
     }
 
-    /// A lead whose pinned credential was removed or turned off goes back
-    /// to Auto, and the transcript says so.
+    /// A lead whose locked credential was removed or turned off loses the
+    /// lock, and the transcript says so.
     async fn release_stale_pin(&self, sid: &str, row: &db::ChatSession) {
         let Some(id) = row.credential_id.as_deref() else { return };
         if self.parent_session_id.is_some() {
@@ -359,7 +359,7 @@ impl AgentSession {
         }
         tracing::info!("session_pin_released session_id={} credential={}", sid, id);
         let mut extra = Map::new();
-        extra.insert("message".into(), json!("The account this session was pinned to was removed or turned off, so it is back on Auto."));
+        extra.insert("message".into(), json!("The account this session started on was removed or turned off, so it uses the provider's next available account."));
         self.emit("provider_status", Some("pin_released"), Some(extra));
     }
 

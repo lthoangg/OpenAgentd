@@ -28,7 +28,7 @@ import { ToolResult } from '../ToolResult'
 import type { ChatMenuItem } from '../ChatContextMenu'
 import { FileRefContext } from '../FileRefLink'
 import { workspaceRelativePath } from '@/utils/file-refs'
-import { AskUser, useShowsConfirmationCard } from '../AskUser'
+import { useShowsConfirmationCard } from '../AskUser/state'
 import { lazySurface } from '@/lib/lazy-surface'
 import { PREVIEW_TOOL, isPreviewOpenSuccess, previewTargetFromArgs, requestOpenPreview } from '../Preview/preview-events'
 import { parseSendResult, requestOpenSession } from '@/utils/workspace-messages'
@@ -56,11 +56,14 @@ import { toolFileTargets } from './fileTargets'
 import { formatMetaDuration } from '@/components/ui/meta-row'
 import type { ToolCallState } from './types'
 import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
-import { GoalClaimCard } from '../GoalClaimCard'
 import { UPDATE_GOAL_TOOL } from '@/lib/goal'
 
 // Shown only for a plan-review call: kept out of the startup bundle.
 const PlanReviewCard = lazySurface(() => import('../PlanReview/PlanReviewCard'), 'PlanReviewCard')
+// Shown only for a question call.
+const AskUser = lazySurface(() => import('../AskUser'), 'AskUser')
+// Shown only for an update_goal call.
+const GoalClaimCard = lazySurface(() => import('../GoalClaimCard'), 'GoalClaimCard')
 
 /** Matches ``app.agent.agent_loop.core.ASK_USER``. */
 const ASK_USER = 'ask_user'

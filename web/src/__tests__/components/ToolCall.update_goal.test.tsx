@@ -6,6 +6,10 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { ToolCall } from '@/components/ToolCall'
+import { prefetchSurfaces } from '@/lib/lazy-surface'
+
+// The goal card loads on demand; load it up front so renders are direct.
+await prefetchSurfaces()
 
 afterEach(cleanup)
 

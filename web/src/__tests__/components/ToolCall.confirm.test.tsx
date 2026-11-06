@@ -17,6 +17,10 @@ import { ToolCall } from '@/components/ToolCall'
 import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { PendingQuestion } from '@/api/types'
+import { prefetchSurfaces } from '@/lib/lazy-surface'
+
+// The question card loads on demand; load it up front so renders are direct.
+await prefetchSurfaces()
 
 const PLACEHOLDER = 'Waiting for the user to answer. Do not continue until their reply arrives.'
 const SAVE_ARGS = JSON.stringify({ action: 'save', server: 'excalidraw', config: { transport: 'http', url: 'https://mcp.excalidraw.com', enabled: true } })

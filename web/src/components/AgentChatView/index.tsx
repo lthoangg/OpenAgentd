@@ -77,7 +77,6 @@ import { useRunSettings } from '../composer/useRunSettings'
 import { BtwPanel } from '../BtwPanel'
 import { PendingMessageQueue } from '../PendingMessageQueue'
 import { RunBar } from '../composer/RunBar'
-import { PinnedQuestion } from '../AskUser'
 import { lazySurface } from '@/lib/lazy-surface'
 import { AppFooter } from '../AppFooter'
 import { WorkspacePanel } from '../WorkspacePanel'
@@ -108,6 +107,7 @@ import { btwSubmit, composerHistoryPrompts, newestUserBlockId, parseBuiltInSlash
 import { deliverFromComposer, pushStoppedToast, stopTurn, useReleaseHeldMessages } from './heldMessages'
 
 const PinnedPlanReview = lazySurface(() => import('../PlanReview/PlanReviewCard'), 'PinnedPlanReview')
+const PinnedQuestion = lazySurface(() => import('../AskUser'), 'PinnedQuestion')
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []

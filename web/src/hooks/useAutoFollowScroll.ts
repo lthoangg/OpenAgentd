@@ -207,7 +207,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       }
       smoothScrollFinishRef.current = finish
       el.addEventListener('scrollend', finish)
-      smoothScrollTimeoutRef.current = setTimeout(finish, 600)
+      smoothScrollTimeoutRef.current = setTimeout(finish, 1000)
     } else {
       if (smoothScrollTimeoutRef.current) {
         clearTimeout(smoothScrollTimeoutRef.current)
@@ -223,16 +223,24 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
   }, [endQuiet, setChip, syncAnchor])
 
   /**
-   * Jump to latest: a glide from up to two screens away, as a send makes; a
-   * jump from further back, where a glide only paints the turns in between,
-   * and under reduced motion.
+   * Jump to latest: a glide from up to two screens away, as a send makes.
+   * From further back the view first cuts to a screen above the end (a
+   * glide there only paints the turns in between) and glides the rest, so
+   * it never lands with a bare snap. Reduced motion jumps.
    */
   const jumpToLatest = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
     const distance = el.scrollHeight - el.clientHeight - el.scrollTop
-    const glide = !prefersReducedMotion() && distance <= el.clientHeight * SMOOTH_SEND_SCREENS
-    scrollToBottom(glide ? 'smooth' : 'auto')
+    if (prefersReducedMotion()) {
+      scrollToBottom('auto')
+      return
+    }
+    if (distance > el.clientHeight * SMOOTH_SEND_SCREENS) {
+      el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight * 2)
+      lastScrollTopRef.current = el.scrollTop
+    }
+    scrollToBottom('smooth')
   }, [scrollToBottom])
 
   useEffect(() => {

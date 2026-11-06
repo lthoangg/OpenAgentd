@@ -12,6 +12,7 @@ mock.module('@tauri-apps/plugin-barcode-scanner', () => ({
   Format: { QRCode: 'QR_CODE' },
   checkPermissions: async () => permission,
   requestPermissions: async () => { requested.push('camera'); return granted },
+  cancel: async () => {},
   scan: async () => (content === null ? Promise.reject(new Error('cancelled')) : { content }),
 }))
 

@@ -22,19 +22,35 @@ export type ScanOutcome =
   | { kind: 'denied' }
   | { kind: 'cancelled' }
 
-/** Ask for the camera (once), scan one QR code, and return its text. */
+/**
+ * Ask for the camera (once), scan one QR code, and return its text.
+ *
+ * ``windowed``: the camera runs behind the webview instead of over the app,
+ * so the app draws the viewfinder (``QrScanOverlay``: one square in an
+ * opaque page, with Cancel). While it runs, ``html[data-qr-scanning]``
+ * clears the page's background so the camera shows through the square.
+ */
 export async function scanQrCode(): Promise<ScanOutcome> {
   const scanner = await import('@tauri-apps/plugin-barcode-scanner')
   let permission = await scanner.checkPermissions()
   if (permission !== 'granted') permission = await scanner.requestPermissions()
   if (permission !== 'granted') return { kind: 'denied' }
+  const root = document.documentElement
+  root.setAttribute('data-qr-scanning', '')
   try {
-    // windowed: false: the plugin's own full-screen camera view, over the app.
-    const result = await scanner.scan({ windowed: false, formats: [scanner.Format.QRCode] })
+    const result = await scanner.scan({ windowed: true, formats: [scanner.Format.QRCode] })
     return result?.content ? { kind: 'scanned', text: result.content } : { kind: 'cancelled' }
   } catch {
     return { kind: 'cancelled' }
+  } finally {
+    root.removeAttribute('data-qr-scanning')
   }
+}
+
+/** Stop a scan in progress (the viewfinder's Cancel); ``scanQrCode`` resolves cancelled. */
+export async function cancelQrScan(): Promise<void> {
+  const scanner = await import('@tauri-apps/plugin-barcode-scanner')
+  await scanner.cancel().catch(() => {})
 }
 
 /** Hand a scanned code to the connect-link flow (``useConnectLink``). */

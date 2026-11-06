@@ -23,7 +23,8 @@
  */
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { ChevronRight, MoreHorizontal, Pencil, Plus, ScanQrCode, Trash2 } from 'lucide-react'
-import { canScanQr, deliverScannedLink, scanQrCode } from '@/lib/qr-scan'
+import { cancelQrScan, canScanQr, deliverScannedLink, scanQrCode } from '@/lib/qr-scan'
+import { QrScanOverlay } from '@/components/phone/QrScanOverlay'
 import { parseConnectLink } from '@/lib/connect-link'
 
 import { BottomSheet } from '@/components/ui/bottom-sheet'
@@ -153,6 +154,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   /** Test or Save in the open form failed. */
   const [formError, setFormError] = useState<string | null>(null)
   const [scanned, setScanned] = useState(false)
+  // The camera viewfinder is up (Scan QR code).
+  const [qrScanning, setQrScanning] = useState(false)
   const [watchStates, setWatchStates] = useState<Record<string, ServerWatchState>>({})
   const watchable = isDesktopShell() && status?.supports_bundled !== false
   // Where focus goes back to when a form closes.
@@ -245,7 +248,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   /** Servers → Scan QR code: the camera reads the desktop's connect code. */
   async function scanConnectCode() {
     setListError(null)
-    const outcome = await scanQrCode()
+    setQrScanning(true)
+    const outcome = await scanQrCode().finally(() => setQrScanning(false))
     if (outcome.kind === 'denied') {
       setListError('Camera access is off. Turn it on for OpenAgentd in Settings to scan a code.')
     } else if (outcome.kind === 'scanned') {
@@ -629,6 +633,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       {listError ? (
         <Callout tone="error" role="alert">{listError}</Callout>
       ) : null}
+
+      {qrScanning && <QrScanOverlay onCancel={() => { void cancelQrScan() }} />}
 
       {/* Touch: adding or editing a server is its own sheet (mockup J1),
           not a form opened inside the list. */}

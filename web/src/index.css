@@ -1778,3 +1778,14 @@ html[data-app-hidden="true"] *::after {
     font-size: var(--text-meta);
   }
 }
+
+/* The in-app QR viewfinder (lib/qr-scan, QrScanOverlay): the camera runs
+ * behind the webview, so while it scans the page is see-through and only
+ * the viewfinder is drawn; its square is the one place the camera shows. */
+html[data-qr-scanning],
+html[data-qr-scanning] body {
+  background: transparent !important;
+}
+html[data-qr-scanning] body > :not([data-qr-scan-overlay]) {
+  visibility: hidden;
+}

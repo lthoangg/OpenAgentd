@@ -173,9 +173,41 @@ jobs:
             echo "RUSTFLAGS=-C link-arg=/FASTLINK" >> "$GITHUB_ENV"
           fi
 
-      # No Rust build cache: releases are infrequent and each one bumps
-      # Cargo.lock/versions, so the cache never hit while eating ~1.7 GB of
-      # the repo's shared 10 GB GitHub cache budget.
+      # ``Swatinem/rust-cache`` cleans the target/ tree (drops examples,
+      # tests, incremental artifacts) before saving, then keys on
+      # ``rustc -Vv``, ``Cargo.lock``, and target triple so a Rust
+      # toolchain bump or dependency change invalidates correctly.
+      #
+      # These blobs still measure ~0.5-1.5 GB each. The repo-wide GitHub
+      # cache budget is a hard 10 GB shared by every workflow, so keep an
+      # eye on ``gh api /repos/{owner}/{repo}/actions/cache/usage`` when
+      # adding cached paths — at the cap, GitHub evicts by LRU and every
+      # cache silently degrades to partial restores.
+      #
+      # Measured hit rate: about half of releases (the key survives version
+      # bumps and misses only when the dependency set in Cargo.lock changes).
+      # On a hit, Linux "Build Tauri app" drops from ~300s to ~80s and
+      # Windows saves 1-2 min; macOS showed no clear gain (352-497s hit vs
+      # 395-637s miss), so macOS skips the cache and its ~530 MB entry.
+      - name: Cache cargo registry + target
+        if: matrix.platform != 'macos'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          # The sidecar comes prebuilt from the CLI release, so appv3 is
+          # never compiled here.
+          workspaces: desktop/src-tauri
+          key: ${{ matrix.platform }}-${{ matrix.arch }}
+          # Keep every downloaded ``.crate`` archive, not just the crates that
+          # are dependencies of the current lockfile. The default (``false``)
+          # prunes "anything that is not a dependency", so build-dependencies
+          # and proc-macro crates (tauri-build, tauri-codegen, tauri-macros,
+          # thiserror-impl, windows-interface, …) get re-downloaded whenever a
+          # lock change shifts the dependency set. Costs cache size; saves the
+          # ``Downloading crates ...`` phase of ``cargo build``.
+          cache-all-crates: true
+          # Save on every run including PR re-pushes — without this,
+          # only the default branch warms the cache.
+          save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
 
       # ``tauri-cli`` is a single 30 MB prebuilt binary
       # (``~/.cargo/bin/cargo-tauri``).
@@ -219,9 +251,13 @@ jobs:
           # the anonymous 60/hr. Without this, binstall reliably
           # stalls on 120s rate-limit retries on macOS-26 runners.
           GITHUB_TOKEN: ${{ github.token }}
-        # ``--force``: guards against stale ``~/.cargo/.crates2.json``
-        # metadata claiming ``tauri-cli`` is installed while the binary is
-        # missing, which would make binstall no-op.
+        # ``--force``: Swatinem/rust-cache restores ``~/.cargo/.crates2.json``
+        # which tracks cargo-installed binaries.  It does NOT restore
+        # ``~/.cargo/bin/`` itself, so on a fresh runner the metadata
+        # says ``tauri-cli`` is installed while the binary is missing.
+        # Without ``--force``, binstall sees the stale metadata, no-ops,
+        # and the next step (``cargo tauri icon``) fails with
+        # ``no such command: tauri``.
         run: cargo binstall --no-confirm --force --version 2.12.4 tauri-cli
 
       # Platform icon assets are generated and committed under

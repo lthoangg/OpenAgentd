@@ -38,4 +38,23 @@ describe('ThinkingControl', () => {
     const { container } = render(<ThinkingControl settings={settings(null, [])} />)
     expect(container.firstChild).toBeNull()
   })
+
+  it('draws a gauge whose needle sweeps with the level, and fills the track up to the knob', () => {
+    render(<ThinkingControl settings={settings('medium')} />)
+    const chip = screen.getByRole('button', { name: 'Thinking Medium. Change' })
+    const needle = () => chip.querySelector('[data-thinking-gauge] g') as SVGGElement
+    expect(needle().style.transform).toBe('rotate(0deg)')
+    fireEvent.click(chip)
+    const fill = document.querySelector('[data-thinking-fill]') as HTMLElement
+    expect(fill.style.transform).toBe('scaleX(0.5)')
+    fireEvent.change(screen.getByRole('slider', { name: 'Thinking level' }), { target: { value: '2' } })
+    expect(fill.style.transform).toBe('scaleX(1)')
+  })
+
+  it('saves a level tapped by its label', () => {
+    render(<ThinkingControl settings={settings('low')} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Thinking Low. Change' }))
+    fireEvent.click(screen.getByText('High'))
+    expect(saved).toEqual([{ thinkingLevel: 'high' }])
+  })
 })

@@ -1808,39 +1808,42 @@ html[data-qr-scanning] body > :not([data-qr-scan-overlay]) {
   border-color: #FFFDF7;
 }
 
-/* The phone's thinking slider (ThinkingControl): an iOS-style track and a
- * 28px knob, stepped between the model's levels. */
+/* The phone's thinking slider (ThinkingControl): the track, fill and step
+ * dots are drawn under the range, so its own track is transparent and only
+ * the 32px knob shows; the drawn track is inset by the knob's radius. */
 .oa-thinking-slider {
   appearance: none;
-  height: 28px;
+  height: 32px;
+  margin: 0;
   background: transparent;
   touch-action: none;
 }
 .oa-thinking-slider::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 9999px;
-  background: var(--bg-key);
+  height: 32px;
+  background: transparent;
 }
 .oa-thinking-slider::-webkit-slider-thumb {
   appearance: none;
-  width: 28px;
-  height: 28px;
-  margin-top: -11px;
+  width: 32px;
+  height: 32px;
   border-radius: 9999px;
   background: var(--bg-card);
-  border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-depth);
+  border: 0.5px solid var(--color-border);
+  box-shadow: var(--shadow-depth), 0 0 0 4px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  transition: transform var(--motion-instant) var(--ease-out);
+}
+.oa-thinking-slider:active::-webkit-slider-thumb {
+  transform: scale(1.08);
 }
 .oa-thinking-slider::-moz-range-track {
-  height: 6px;
-  border-radius: 9999px;
-  background: var(--bg-key);
+  height: 32px;
+  background: transparent;
 }
 .oa-thinking-slider::-moz-range-thumb {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 9999px;
   background: var(--bg-card);
-  border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-depth);
+  border: 0.5px solid var(--color-border);
+  box-shadow: var(--shadow-depth), 0 0 0 4px color-mix(in srgb, var(--color-accent) 12%, transparent);
 }

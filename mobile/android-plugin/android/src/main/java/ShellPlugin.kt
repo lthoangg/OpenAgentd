@@ -11,7 +11,10 @@ import android.content.res.Configuration
 import android.webkit.MimeTypeMap
 import android.webkit.WebView
 import androidx.core.content.FileProvider
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -123,11 +126,40 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
         this.webView = webView
         webViewLoaded = true
         applyFontScale(activity.resources.configuration.fontScale)
+        fitAboveKeyboard(webView)
         // Tauri applies the config's single (light) backgroundColor right
         // after this hook. Repaint once it has, in the theme the page will
         // paint, so a dark launch shows dark paper until the page does.
         val dark = isDark(themePrefs.getString("preference", null))
         webView.post { webView.setBackgroundColor(paper(dark)) }
+    }
+
+    /**
+     * Keep the WebView above the soft keyboard. The activity draws edge to
+     * edge (`enableEdgeToEdge`, target SDK 35+), so Android no longer resizes
+     * the window for the keyboard (`adjustResize` stops applying), and a
+     * WebView that does not inset itself for it (System WebView 124 does not)
+     * left the keyboard over the composer: the page's visual viewport never
+     * shrank, so the web never saw the keyboard (`data-keyboard-open`, the
+     * composer's swipe down to put it away).
+     *
+     * The WebView's parent takes the keyboard's height as bottom padding, so
+     * the page is laid out above it and its viewport shrinks as on iOS. The
+     * WebView then gets the insets without the keyboard, so a WebView that
+     * does handle it never counts it twice.
+     */
+    private fun fitAboveKeyboard(webView: WebView) {
+        val parent = webView.parent as? android.view.View ?: return
+        ViewCompat.setOnApplyWindowInsetsListener(parent) { view, insets ->
+            val keyboard = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            if (view.paddingBottom != keyboard) {
+                view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, keyboard)
+            }
+            WindowInsetsCompat.Builder(insets)
+                .setInsets(WindowInsetsCompat.Type.ime(), Insets.NONE)
+                .build()
+        }
+        ViewCompat.requestApplyInsets(parent)
     }
 
     /**

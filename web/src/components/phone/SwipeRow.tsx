@@ -47,7 +47,7 @@ import { SpringValue } from '@/lib/drawer-motion'
 import { selectionHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 
-export type SwipeActionTone = 'neutral' | 'accent' | 'destructive'
+export type SwipeActionTone = 'neutral' | 'accent' | 'pin' | 'destructive'
 
 export interface SwipeAction {
   id: string
@@ -89,6 +89,8 @@ const VELOCITY_STALE_MS = 80
 const TONE: Record<SwipeActionTone, string> = {
   neutral: 'bg-(--bg-key) text-(--color-text) active:bg-(--color-fill-key-hover)',
   accent: ['bg-(--color-accent)', 'text-(--color-text-on-accent)', 'active:bg-(--color-accent)/80'].join(' '),
+  // Pin: iOS's orange swipe, so it reads as its own action beside Delete.
+  pin: ['bg-(--accent-orange)', 'text-(--color-text-on-accent)', 'active:bg-(--accent-orange)/80'].join(' '),
   destructive: ['bg-(--color-error)', 'text-(--color-text-on-accent)', 'active:bg-(--color-error)/80'].join(' '),
 }
 
@@ -334,7 +336,7 @@ export function SwipeRow({ actions, disabled = false, children, className }: Swi
         ref={actionsRef}
         // Behind the content, clipped to what the content has uncovered. Inert
         // while shut so a tap on the row's right edge can never land on one.
-        className={cn('absolute inset-y-0 right-0 flex', !open && 'pointer-events-none')}
+        className={cn('absolute inset-y-0 right-0 flex gap-1 py-0.5 pl-1', !open && 'pointer-events-none')}
       >
         {actions.map(({ id, label, icon: Icon, tone, onAction }) => (
           <button
@@ -347,7 +349,7 @@ export function SwipeRow({ actions, disabled = false, children, className }: Swi
               rest(false)
             }}
             className={cn(
-              'flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 text-meta font-medium select-none',
+              'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-meta font-semibold select-none',
               'focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none focus-visible:ring-inset',
               TONE[tone],
             )}

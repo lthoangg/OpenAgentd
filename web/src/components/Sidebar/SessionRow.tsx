@@ -214,8 +214,7 @@ function SessionRowView({
               id: 'pin',
               label: pinned ? 'Unpin' : 'Pin',
               icon: pinned ? PinOff : Pin,
-              // Neutral: only Delete is loud, as Mail's Flag beside Trash is not.
-              tone: 'neutral' as const,
+              tone: 'pin' as const,
               onAction: () => onSessionPinToggle?.(session),
             }]
           : []),

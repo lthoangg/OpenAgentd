@@ -6,7 +6,8 @@
 # * an `OpenAgentdWidgets` app-extension target built from
 #   ios-widget/Extension + ios-widget/Shared, embedded in the app;
 # * ios-widget/App + ios-widget/Shared compiled into the app target (the
-#   Swift bridge the Rust shell calls to store the widget snapshot);
+#   Swift bridge the Rust shell calls to store the widget snapshot), and
+#   ios-app (the app's other native Swift, e.g. the photo sheet);
 # * an App Group, `group.<app bundle id>`, on both, so they share storage.
 #
 # `cargo tauri ios init` regenerates `src-tauri/gen/apple/` from a template,
@@ -83,6 +84,7 @@ inserts = [
     (find("sources") + 1, [
         f"      - path: ../../../ios-widget/App {MARK}\n",
         f"      - path: ../../../ios-widget/Shared {MARK}\n",
+        f"      - path: ../../../ios-app {MARK}\n",
     ]),
     (find("dependencies") + 1, [
         f"      - target: {EXT_TARGET} {MARK}\n",
@@ -149,7 +151,14 @@ pbxproj="src-tauri/gen/apple/openagentd-mobile.xcodeproj/project.pbxproj"
 if [ "$status" -ne 0 ] && [ "$status" -ne 10 ]; then
   exit "$status"
 fi
-if [ "$status" -eq 10 ] || ! grep -q "OpenAgentdWidgets" "$pbxproj" 2>/dev/null; then
+# A Swift file added under ios-app or ios-widget/App since the last
+# generation is missing from it too.
+missing_source=0
+for source in ios-app/*.swift ios-widget/App/*.swift; do
+  [ -e "$source" ] || continue
+  grep -q "$(basename "$source")" "$pbxproj" 2>/dev/null || missing_source=1
+done
+if [ "$status" -eq 10 ] || [ "$missing_source" -eq 1 ] || ! grep -q "OpenAgentdWidgets" "$pbxproj" 2>/dev/null; then
   command -v xcodegen >/dev/null 2>&1 || { echo "patch-ios-widget: xcodegen is required (brew install xcodegen)" >&2; exit 1; }
   (cd src-tauri/gen/apple && xcodegen generate --spec project.yml --quiet)
   echo "patch-ios-widget: regenerated the Xcode project"

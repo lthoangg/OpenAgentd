@@ -428,7 +428,7 @@ export function MemorySettingsPage() {
         // Portaled out of the shell, so it follows the visual viewport itself
         // (``--app-vh``/``--app-vt``, as the shell does): with the keyboard up
         // the editor and its formatting bar end on top of it, not under it.
-        <div data-memory-editor="phone" className="fixed inset-x-0 top-0 z-60 flex h-[var(--app-vh,100svh)] translate-y-[var(--app-vt,0px)] flex-col bg-(--bg-page) pt-safe pb-safe">
+        <div data-memory-editor="phone" className="fixed inset-x-0 top-0 z-60 flex h-(--app-vh,100svh) translate-y-(--app-vt,0px) flex-col bg-(--bg-page) pt-safe pb-safe">
           <PhoneNavBar
             back={{ label: 'Memory', onBack: () => setPhoneEditing(false) }}
             title={<span className="font-mono">{selectedPath}</span>}

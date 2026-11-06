@@ -542,7 +542,7 @@ describe('Sidebar page mode: swipe actions', () => {
     const actions = actionsOf(swipeRow)
     expect(actions.map((button) => button.textContent)).toEqual(['Pin', 'Delete'])
     // Neutral for Pin, destructive for Delete: only Delete is loud.
-    expect(actions[0].className).toContain('bg-(--accent-orange)')
+    expect(actions[0].className).toContain('bg-(--accent-orange-text)')
     expect(actions[1].className).toContain('bg-(--color-error)')
   })
 

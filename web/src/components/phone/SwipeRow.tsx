@@ -90,7 +90,7 @@ const TONE: Record<SwipeActionTone, string> = {
   neutral: 'bg-(--bg-key) text-(--color-text) active:bg-(--color-fill-key-hover)',
   accent: ['bg-(--color-accent)', 'text-(--color-text-on-accent)', 'active:bg-(--color-accent)/80'].join(' '),
   // Pin: iOS's orange swipe, so it reads as its own action beside Delete.
-  pin: ['bg-(--accent-orange)', 'text-(--color-text-on-accent)', 'active:bg-(--accent-orange)/80'].join(' '),
+  pin: ['bg-(--accent-orange-text)', 'text-(--bg-page)', 'active:bg-(--accent-orange-text)/80'].join(' '),
   destructive: ['bg-(--color-error)', 'text-(--color-text-on-accent)', 'active:bg-(--color-error)/80'].join(' '),
 }
 

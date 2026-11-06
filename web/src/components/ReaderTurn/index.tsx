@@ -65,7 +65,7 @@ function useLiveNow(active: boolean): number {
 }
 
 /** Both of the fold's controls; each adds its own text tone. */
-const ROW_CLASS = 'group inline-flex max-w-full items-center gap-1.5 py-1 text-left font-mono text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)'
+const ROW_CLASS = 'group inline-flex max-w-full items-center gap-1.5 py-1 text-left font-mono phone:font-sans text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)'
 /** The row's height (``ROW_CLASS``: one ``text-xs`` line plus ``py-1``, or ``min-h-9`` on touch), so an opened step pins below it. */
 const BELOW_ROW = '[--fold-top:1.5rem] pointer-coarse:[--fold-top:2.25rem]'
 

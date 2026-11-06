@@ -22,7 +22,8 @@ import { turnAccount, turnModel } from '@/utils/turns'
 import type { ContentBlock } from '@/api/types'
 import { useQuestionAwaitsUser } from '@/components/AskUser'
 import { WorkSummaryRow } from '@/components/ReaderTurn'
-import { readerSegments, turnChangedFiles } from '@/components/ReaderTurn/segments'
+import { readerSegments, toolRunSegments, turnChangedFiles } from '@/components/ReaderTurn/segments'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import type { ChangedFileInfo } from '@/components/WorkspacePanel/diff-helpers'
 import { TurnFileList } from '@/components/AgentView/TurnFileList'
 import { TurnActionButton } from '@/components/AgentView/TurnActionButton'
@@ -317,7 +318,12 @@ export const AssistantTurn = memo(function AssistantTurn({
   // Narrower: an open turn waiting on ``ask_user`` is not being worked on.
   const turnIsWorking = isWorking && isTrailingTurn
   const awaitsUser = useQuestionAwaitsUser()
-  const segments = useMemo(() => (reader ? readerSegments(blocks, awaitsUser) : null), [reader, blocks, awaitsUser])
+  // A phone's detailed transcript folds runs of finished tool calls too.
+  const isPhone = useIsPhone()
+  const segments = useMemo(
+    () => (reader ? readerSegments(blocks, awaitsUser) : isPhone ? toolRunSegments(blocks, awaitsUser) : null),
+    [reader, isPhone, blocks, awaitsUser],
+  )
   // Both transcript styles list the files a finished turn edited.
   const changedFiles = useMemo(() => (turnIsOpen ? NO_FILES : turnChangedFiles(blocks)), [turnIsOpen, blocks])
   // A compaction divider ends the fold before it (see ``readerSegments``), so
@@ -359,7 +365,8 @@ export const AssistantTurn = memo(function AssistantTurn({
             if (segment.kind === 'block') return renderAt(segment.index)
             const work = segment.indices.map((j) => blocks[j])
             const lastIndex = segment.indices[segment.indices.length - 1]
-            const live = turnIsWorking && segment.indices[0] > lastCompaction
+            // A phone's tool-run fold holds finished calls only: never live.
+            const live = reader && turnIsWorking && segment.indices[0] > lastCompaction
             return (
               <WorkSummaryRow
                 // Keyed by its first block so the toggle survives new steps.

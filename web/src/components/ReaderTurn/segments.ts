@@ -52,6 +52,34 @@ function isWork(block: ContentBlock, awaitsUser: AwaitsUser): boolean {
   return !(block.extra as { mcp_app?: unknown } | null | undefined)?.mcp_app
 }
 
+/**
+ * The detailed transcript on a phone: two or more consecutive tool calls
+ * that finished without an error fold behind one summary row ("3
+ * commands"); a failed or running call, and anything the user must act
+ * on, stays on its own (mockup C7).
+ */
+export function toolRunSegments(blocks: readonly ContentBlock[], awaitsUser: AwaitsUser): ReaderSegment[] {
+  const groupable = (block: ContentBlock) =>
+    block.type === 'tool' && block.toolDone === true && !isFailedResult(block.toolResult) && isWork(block, awaitsUser)
+  const segments: ReaderSegment[] = []
+  let run: number[] = []
+  const flush = () => {
+    if (run.length >= 2) segments.push({ kind: 'work', indices: run })
+    else for (const index of run) segments.push({ kind: 'block', index })
+    run = []
+  }
+  blocks.forEach((block, index) => {
+    if (groupable(block)) {
+      run.push(index)
+      return
+    }
+    flush()
+    segments.push({ kind: 'block', index })
+  })
+  flush()
+  return segments
+}
+
 /** A turn's blocks as reader mode shows them: work folds (one per compaction span), the rest in order. */
 export function readerSegments(blocks: readonly ContentBlock[], awaitsUser: AwaitsUser): ReaderSegment[] {
   let lastWork = -1

@@ -2,10 +2,9 @@ import { memo, useCallback, useEffect, useRef, useState, type HTMLAttributes } f
 import { AnimatedTitle } from '@/components/ui/animated-title'
 import { isFreshAutoTitle } from '@/lib/auto-title'
 import { cn } from '@/lib/utils'
-import { Copy, CornerUpLeft, ListTodo, Menu, MoreHorizontal, PanelLeft, PanelRight } from 'lucide-react'
+import { CornerUpLeft, ListTodo, Menu, MoreHorizontal, PanelLeft, PanelRight } from 'lucide-react'
 import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
-import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 
 import { AgentTopbar } from '@/components/AgentTopbar'
 import { usePanelWidthSink } from '@/components/ResizableAside'
@@ -405,7 +404,6 @@ function PhoneChatNavBar({ onBack, workspace, workspaceName, sessionId, sessionT
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
-  const { copied, copy } = useCopyFeedback()
   const titleText = !workspace
     ? 'Choose a workspace'
     : sessionTitle ? <AnimatedTitle text={sessionTitle} sessionId={sessionId} /> : sessionId ? 'Untitled session' : 'New session'
@@ -444,26 +442,14 @@ function PhoneChatNavBar({ onBack, workspace, workspaceName, sessionId, sessionT
       <ActionSheet open={menuOpen} onClose={() => setMenuOpen(false)} title={sessionTitle || 'Session'} items={items} />
       <BottomSheet open={infoOpen} onClose={() => setInfoOpen(false)} label="Session info">
         <dl data-session-info="" className="flex flex-col px-4 pb-4 text-sm">
-          <div className="flex min-h-11 items-center justify-between gap-4 border-b border-(--color-border)">
+          <div className="flex min-h-11 items-center justify-between gap-4 border-b border-(--color-border) last:border-b-0">
             <dt className="text-(--color-text-muted)">Title</dt>
             <dd className="min-w-0 truncate text-(--color-text)">{sessionTitle || 'Untitled session'}</dd>
           </div>
           {workspace && (
-            <div className="flex min-h-11 items-center justify-between gap-4 border-b border-(--color-border)">
+            <div className="flex min-h-11 items-center justify-between gap-4 border-b border-(--color-border) last:border-b-0">
               <dt className="text-(--color-text-muted)">Workspace</dt>
               <dd className="min-w-0 truncate text-(--color-text)" title={workspace}>{workspaceName}</dd>
-            </div>
-          )}
-          {sessionId && (
-            <div className="flex min-h-11 items-center justify-between gap-4">
-              <dt className="text-(--color-text-muted)">Session ID</dt>
-              <dd className="flex min-w-0 items-center gap-2">
-                <span className="truncate font-mono text-code text-(--color-text-2)">{sessionId}</span>
-                <Button type="button" size="xs" variant="ghost" onClick={() => void copy(sessionId)} aria-label="Copy session ID">
-                  <Copy size={14} aria-hidden="true" />
-                  {copied ? 'Copied' : 'Copy'}
-                </Button>
-              </dd>
             </div>
           )}
         </dl>

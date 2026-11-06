@@ -18,7 +18,7 @@ mock.module('lucide-react', () => ({
   ChevronDownIcon: Icon, ChevronLeftIcon: Icon, ChevronRightIcon: Icon,
   Check: Icon, ChevronDown: Icon, ChevronLeft: Icon, ChevronRight: Icon,
   ChevronsDownUp: Icon, ChevronsUpDown: Icon,
-  Copy: Icon, Download: Icon, ExternalLink: Icon, FileDiff: Icon,
+  Copy: Icon, Download: Icon, ExternalLink: Icon, WrapText: Icon, FileDiff: Icon,
   File: Icon, FileHeadphone: Icon, FileText: Icon, FileType: Icon,
   Folder: Icon, FolderOpen: Icon,
   GitBranch: Icon, GitCommitHorizontal: Icon, GitCompare: Icon,

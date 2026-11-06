@@ -231,7 +231,7 @@ mock.module('lucide-react', () => ({
   CornerLeftUp: Icon,
   Copy: Icon,
   Download: Icon,
-  ExternalLink: Icon,
+  ExternalLink: Icon, WrapText: Icon,
   FileText: Icon,
   CircleHelp: Icon,
   Folder: Icon,

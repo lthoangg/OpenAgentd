@@ -8,11 +8,12 @@
  * whole dock" view. Its toolbar ends with Refresh (it moved here from the tab
  * strip), which reloads this diff and the changed-paths list.
  */
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ExternalLink, FileDiff } from 'lucide-react'
+import { ExternalLink, FileDiff, WrapText } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { DiffPreview } from '../FileViewerPanel'
 import { FileTypeIcon } from '../FileTypeIcon'
@@ -40,6 +41,10 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
   )
   const fileDiff = useMemo(() => fileDiffBody(diff.data, path), [diff.data, path])
   const canOpen = onOpenFile && changed?.status !== 'D'
+  // A phone keeps lines whole and scrolls sideways; the toggle wraps them.
+  const isPhone = useIsPhone()
+  const [wrapLines, setWrapLines] = useState(false)
+  const wrap = !isPhone || wrapLines
   const refresh = () => {
     void diff.refetch()
     void changes.refetch()
@@ -57,6 +62,17 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
           <TooltipContent side="bottom">{path}</TooltipContent>
         </Tooltip>
         {changed && <ChangeCounts file={changed} />}
+        {isPhone && (
+          <button
+            type="button"
+            aria-label="Wrap lines"
+            aria-pressed={wrapLines}
+            onClick={() => setWrapLines((value) => !value)}
+            className={DOCK_ACTION_BUTTON_CLASS}
+          >
+            <WrapText size={14} aria-hidden="true" className={wrapLines ? 'text-(--color-text)' : undefined} />
+          </button>
+        )}
         {canOpen && (
           <Tooltip>
             <TooltipTrigger
@@ -88,7 +104,7 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
                 This diff is too large to show in full.
               </p>
             )}
-            <DiffPreview diff={fileDiff} />
+            <DiffPreview diff={fileDiff} wrap={wrap} />
           </>
         ) : (
           <EmptyState

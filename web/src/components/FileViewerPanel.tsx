@@ -722,7 +722,15 @@ function centerInScrollContainer(el: HTMLElement, last: HTMLElement = el) {
  * single-file view, wrong for inline peeks in a list (each would move the
  * list), so those pass ``autoScroll={false}``.
  */
-export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScroll?: boolean }) {
+export function DiffPreview({ diff, autoScroll = true, wrap = true }: {
+  diff: string
+  autoScroll?: boolean
+  /**
+   * Wrap long lines (the default). Off, each line keeps its width and the
+   * diff scrolls sideways as one block (a phone's default; mockup J7).
+   */
+  wrap?: boolean
+}) {
   const firstChangeRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -858,22 +866,23 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
         key={index}
         ref={p.isFirstChange ? firstChangeRef : undefined}
         className={cn(
-          'flex min-w-0 items-stretch whitespace-pre-wrap break-words text-(--color-text) [overflow-wrap:anywhere]',
+          'flex min-w-0 items-stretch text-(--color-text)',
+          wrap ? 'whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'whitespace-pre',
           isAdded   && 'bg-(--color-diff-add-bg) text-(--color-diff-add-text)',
           isRemoved && 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)',
         )}
       >
-        <div className="flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-meta text-(--color-text-subtle)">
+        <div className="flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-meta phone:text-meta text-(--color-text-subtle)">
           <span className="w-9 py-0.5 pr-1.5">{p.lineNo}</span>
         </div>
-        <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{p.text}</pre>
+        <pre className={cn('m-0 flex-1 px-2 py-0.5', wrap ? 'min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'whitespace-pre')}>{p.text}</pre>
       </div>,
     )
   })
 
   return (
-    <div className="bg-(--bg-card) font-mono text-meta leading-relaxed">
-      <div className="min-w-0">
+    <div data-diff-wrap={wrap ? 'on' : 'off'} className={cn('bg-(--bg-card) font-mono text-meta leading-relaxed', !wrap && 'overflow-x-auto touch-pan-x')}>
+      <div className={wrap ? 'min-w-0' : 'w-max min-w-full'}>
         {blockStarts(rows.length).map((start) => (
           // 11px text at leading-relaxed plus the row's 4px padding.
           <LineBlock key={start} lines={Math.min(LINES_PER_BLOCK, rows.length - start)} lineHeightPx={22}>

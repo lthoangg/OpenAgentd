@@ -307,10 +307,10 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
         })}
       </div>
 
-      {settings.thinkingLevels.length > 0 && (
+      {/* The phone deck has its own thinking button (ThinkingControl), so the sheet picks only the model. */}
+      {!touch && settings.thinkingLevels.length > 0 && (
         <div ref={thinkingRef} className="mt-1 border-t border-(--color-border-subtle) px-2 pt-2.5">
-          {/* The phone sheet stacks the label: six levels need its whole width on an iPhone mini. */}
-          <div className={touch ? 'flex flex-col items-stretch gap-1.5' : 'flex items-center gap-3'}>
+          <div className="flex items-center gap-3">
             <span className="shrink-0 text-xs text-(--color-text-muted)">Thinking</span>
             <SegmentedControl
               label="Thinking level"
@@ -321,7 +321,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
                 const full = thinkingLevelLabel(level)
                 return { value: level, label: short, ariaLabel: short === full ? undefined : full, tooltip: short === full ? undefined : full }
               })}
-              size={touch ? 'default' : 'sm'}
+              size="sm"
               fill
               className="min-w-0 flex-1"
             />

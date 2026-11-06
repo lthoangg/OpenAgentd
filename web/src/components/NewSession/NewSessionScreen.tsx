@@ -97,7 +97,9 @@ export function NewSessionScreen({
     'data-testid': leaving ? 'new-session-screen-leaving' : 'new-session-screen',
     // Leaving starts from fully shown: ``initial={false}`` would start it
     // at the ``animate`` target and skip the fade.
-    initial: leaving ? { opacity: 1, y: 0 } : reducedMotion ? false : { opacity: 0, y: 6 },
+    // A phone's stack push already slides the screen in: a second fade and
+    // lift on top of it reads as a jolt (on-device report).
+    initial: leaving ? { opacity: 1, y: 0 } : reducedMotion || phone ? false : { opacity: 0, y: 6 },
     animate: leaving ? { opacity: 0, y: -8 } : { opacity: 1, y: 0 },
     transition: reducedMotion ? { duration: 0 } : leaving ? { duration: DURATIONS_S.fast, ease: EASINGS.inOut } : { duration: DURATIONS_S.fast, ease: EASINGS.out },
     inert: leaving || undefined,

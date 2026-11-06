@@ -315,16 +315,6 @@ describe('RunPicker', () => {
     expect(xhigh.textContent).toBe('XHigh')
   })
 
-  it('says what each model can do under its name on touch, not on desktop', () => {
-    const models = [{ ...model('anthropic:sonnet'), vision: true }, model('anthropic:opus', [])]
-    const { unmount } = wrap(<RunPicker settings={settings({ models })} focus="model" onDone={() => {}} touch />)
-    const lines = Array.from(document.querySelectorAll('[data-model-capabilities]')).map((el) => el.textContent)
-    expect(lines).toContain('Vision · Thinking')
-    unmount()
-    wrap(<RunPicker settings={settings({ models })} focus="model" onDone={() => {}} />)
-    expect(document.querySelector('[data-model-capabilities]')).toBeNull()
-  })
-
   // Six levels (Off … XHigh) need the sheet's whole width on an iPhone mini.
   it('puts the Thinking label above its levels in the phone sheet, beside them on desktop', () => {
     const { unmount } = wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} touch />)

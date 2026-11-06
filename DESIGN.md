@@ -1769,8 +1769,9 @@ Back at a time.
   the app opens on: ‹ Servers in the bar, a 28px
   **Sessions** title (`text-large-title`) that hands over to the bar's small
   title as it scrolls away, the server's dot and name under it (a tap goes
-  to Servers too), a search field, then Needs you, Pinned and the
-  workspaces. Pull down to refresh. Swipe a row left for Pin and Delete
+  to Servers too), a search field, then Needs you, Running, Pinned and the
+  workspaces (Running is the phone page's own section; the desktop sidebar
+  keeps only Needs you). Pull down to refresh. Swipe a row left for Pin and Delete
   (Pin is neutral, only Delete is red; Delete confirms); a long press
   opens its menu, so rows have no ⋯ here. The toolbar floats over the end
   of the list, as iOS 26's does, on a fade of the page: a pill of icon
@@ -1779,6 +1780,11 @@ Back at a time.
   primary ✎ New session on the right, under the thumb. They are actions,
   not tabs, so there are no captions; each is named for assistive tech. It
   steps aside while searching, so it never rides up on the soft keyboard.
+  ✎ taps a soft haptic and pushes a draft that is already built.
+  **Search** happens in place: the field moves under the bar with a
+  **Cancel** beside it, and the list gives way to results under the field.
+  Before anything is typed it shows **Recently opened** (the latest eight
+  sessions), never an empty pane.
   The command palette has no button on a phone; ⌘K opens it from a
   hardware keyboard.
 - **A chat or a draft is pushed** over it from the right; Sessions drifts a
@@ -1842,6 +1848,13 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   Consecutive tool calls collapse into one summary row.
 - **Notices.** A banner is one line under the bar with at most one action;
   details open in a sheet. It never covers the transcript.
+- **Offline is told, not hidden.** Health is checked whatever the network
+  state (React Query `networkMode: 'always'`), again on `offline` and on
+  return to the foreground, so the dot turns red and the banner reads
+  "Server unreachable · Retrying…" (or "Can't reach {host} · Retrying…")
+  within seconds, in sans, truncated to one line. The composer keeps its
+  draft. With no server and nothing on screen, the chat shows "Can't reach
+  the server" with **Retry**, not a spinner.
 - **Feedback.** Haptics come from the gesture (`lib/haptics.ts`): soft for
   a push or a send, medium for a long press or Stop, a tick for an arriving
   question, the error outcome for a refused action. A destructive action

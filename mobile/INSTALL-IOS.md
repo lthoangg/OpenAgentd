@@ -15,6 +15,9 @@ keeps it updated, and needs no computer, VPN or weekly refresh.
    [latest release notes](https://github.com/lthoangg/openagentd/releases/latest)
    on your iPhone or iPad, and tap **Accept**, then **Install**.
 3. New versions appear in TestFlight; turn on **Automatic Updates** there.
+   From v3.49.0 the app also tells you about a new version (card, or
+   **Settings → About OpenAgentd → Updates**) and **Open TestFlight** takes you
+   there; a SideStore copy gets **Open SideStore** instead.
 
 **Moving from SideStore:** the TestFlight app is a different install. Delete
 the SideStore copy, install from TestFlight, and add your server again; your

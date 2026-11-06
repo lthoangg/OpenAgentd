@@ -8,6 +8,9 @@ import android.app.AlertDialog
 import android.content.ClipData
 import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.webkit.MimeTypeMap
 import android.webkit.WebView
 import androidx.core.content.FileProvider
@@ -423,6 +426,56 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
             }
             webView?.setBackgroundColor(paper(dark))
             invoke.resolve()
+        }
+    }
+
+    /**
+     * Open the system installer for an update APK the shell downloaded into
+     * the cache directory (and checked against the feed's SHA-256). Android
+     * itself refuses it unless it is signed with the installed app's key.
+     * Until the user allows installs from OpenAgentd, this opens that
+     * setting and rejects, so the UI can ask them to try again.
+     */
+    @Command
+    fun installApk(invoke: Invoke) {
+        try {
+            val args = invoke.parseArgs(ShareArgs::class.java)
+            val file = File(args.path).canonicalFile
+            val cacheDir = activity.cacheDir.canonicalFile
+            if (!file.path.startsWith(cacheDir.path + File.separator) || !file.isFile || file.extension != "apk") {
+                invoke.reject("Only a downloaded update in the app cache can be installed")
+                return
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                !activity.packageManager.canRequestPackageInstalls()
+            ) {
+                val settings = Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${activity.packageName}"),
+                )
+                activity.runOnUiThread { activity.startActivity(settings) }
+                invoke.reject("Allow OpenAgentd to install apps, then tap Install again")
+                return
+            }
+            val uri = FileProvider.getUriForFile(
+                activity,
+                "${activity.packageName}.openagentd.fileprovider",
+                file,
+            )
+            val install = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            activity.runOnUiThread {
+                try {
+                    activity.startActivity(install)
+                    invoke.resolve()
+                } catch (ex: Exception) {
+                    invoke.reject(ex.message ?: "Could not open the installer")
+                }
+            }
+        } catch (ex: Exception) {
+            invoke.reject(ex.message ?: "Could not install the update")
         }
     }
 }

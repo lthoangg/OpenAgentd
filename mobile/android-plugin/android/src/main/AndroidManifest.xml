@@ -17,8 +17,13 @@
   The receivers are the home-screen widgets (Widgets.kt). They only draw the
   snapshot the app saved and open the app's own deep links, through
   WidgetLinkActivity (see there for why a link needs it).
+
+  REQUEST_INSTALL_PACKAGES: the in-app updater (ShellPlugin.installApk)
+  hands a downloaded, checksum-verified update APK to the system installer.
+  Android still asks the user to allow it and to confirm every install.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application android:networkSecurityConfig="@xml/openagentd_network_security_config">
         <provider
             android:name="app.openagentd.shell.ShellFileProvider"

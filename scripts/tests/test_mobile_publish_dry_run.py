@@ -81,6 +81,7 @@ def sandbox(tmp_path: Path) -> dict:
     for name in ("publish-ipa.sh", "publish-apk.sh"):
         shutil.copy(REPO_ROOT / "mobile" / "scripts" / name, root / "mobile" / "scripts" / name)
     shutil.copy(REPO_ROOT / "scripts" / "make_sidestore_source.py", root / "scripts")
+    shutil.copy(REPO_ROOT / "scripts" / "make_android_update_manifest.py", root / "scripts")
     version_script = root / "scripts" / "release_version.sh"
     version_script.write_text(f"#!/bin/sh\necho {VERSION}\n")
     version_script.chmod(0o755)
@@ -149,6 +150,16 @@ def test_ipa_dry_run_before_the_tag_still_writes_the_source_feed(sandbox: dict):
 
     assert result.returncode == 0, result.stderr
     assert (sandbox["root"] / "mobile" / "dist" / "source.json").is_file()
+
+
+def test_apk_dry_run_writes_the_update_feed(sandbox: dict):
+    result = _publish(sandbox, "publish-apk.sh", dry_run=True)
+
+    assert result.returncode == 0, result.stderr
+    feed = sandbox["root"] / "mobile" / "dist" / "latest.json"
+    assert feed.is_file()
+    assert f'"version": "{VERSION}"' in feed.read_text()
+    assert "latest-android" in result.stdout
 
 
 @pytest.mark.parametrize("script", ["publish-ipa.sh", "publish-apk.sh"])

@@ -14,6 +14,7 @@ use tauri::{AppHandle, Manager};
 
 mod native_ui;
 mod theme;
+mod updater;
 mod widgets;
 
 /// Total budget for one workspace download. Mobile talks to a remote
@@ -507,6 +508,7 @@ pub fn run() {
     builder
         .manage(MobileBackendState::default())
         .manage(PreviewRelays::default())
+        .manage(updater::UpdaterState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_haptics::init())
@@ -532,6 +534,10 @@ pub fn run() {
             theme::set_app_theme,
             native_ui::share_text,
             native_ui::pick_one,
+            updater::updater_check,
+            updater::updater_download,
+            updater::updater_install,
+            updater::updater_release_notes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenAgentd mobile");

@@ -184,7 +184,9 @@ git checkout main
 ```
 
 - `android-release` uploads `OpenAgentd_<version>_Android.apk` and its
-  `.sha256` to `v<version>`. It refuses to start without `ANDROID_KEYSTORE`.
+  `.sha256` to `v<version>`, then the in-app update feed `latest.json` to the
+  rolling `latest-android` pre-release (installed apps offer the update once
+  it is there). It refuses to start without `ANDROID_KEYSTORE`.
   `publish-apk.sh` refuses a debug-signed APK, a dirty tree, a HEAD other than
   the tag, or a missing release. Re-running is safe (`--clobber`).
 - If the Android build cannot run, say so in the release report; the rest of

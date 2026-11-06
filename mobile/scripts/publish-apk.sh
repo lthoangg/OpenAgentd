@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Upload the signed APK to the versioned GitHub release.
+# Upload the signed APK to the versioned GitHub release, and the in-app
+# update feed (latest.json) to the rolling `latest-android` release.
 #
 # Run after `release.yml` has created `v<version>` (see the oad/release
 # skill). HEAD must be the tagged commit so the APK matches the published
@@ -20,9 +21,11 @@ cd "$(dirname "$0")/.."
 REPO="lthoangg/openagentd"
 VERSION="$(../scripts/release_version.sh)"
 TAG="v$VERSION"
+ROLLING_TAG="latest-android"
 DIST_DIR="dist"
 APK_NAME="OpenAgentd_${VERSION}_Android.apk"
 APK="$DIST_DIR/$APK_NAME"
+MANIFEST="$DIST_DIR/latest.json"
 DRY_RUN="${DRY_RUN:-0}"
 
 die() {
@@ -41,9 +44,9 @@ run() {
 }
 
 upload() {
-  local file="$1"
+  local tag="$1" file="$2"
   for attempt in 1 2 3 4 5; do
-    if run gh release upload "$TAG" "$file" --repo "$REPO" --clobber; then
+    if run gh release upload "$tag" "$file" --repo "$REPO" --clobber; then
       return 0
     fi
     echo "publish-apk: upload of $file failed (attempt $attempt), retrying in 5s..." >&2
@@ -59,8 +62,10 @@ git fetch --tags --quiet origin
 if tag_commit="$(git rev-parse --verify --quiet "$TAG^{commit}")"; then
   [ "$(git rev-parse HEAD)" = "$tag_commit" ] || die "HEAD is not $TAG; check out the tagged commit and rebuild"
   gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 || die "GitHub release $TAG does not exist"
+  released=1
 elif [ "$DRY_RUN" = "1" ]; then
   echo "publish-apk: warning: tag $TAG does not exist yet; skipping the tag and release checks" >&2
+  released=0
 else
   die "tag $TAG does not exist (run release.yml first)"
 fi
@@ -78,11 +83,40 @@ if printf '%s\n' "$signer" | grep -q 'CN=Android Debug'; then
   fi
 fi
 
-upload "$APK"
-upload "$APK.sha256"
+upload "$TAG" "$APK"
+upload "$TAG" "$APK.sha256"
+
+# The in-app update feed. Written after the APK upload so the app never sees
+# a version whose APK is not downloadable yet.
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+if [ "$released" = "1" ]; then
+  gh release view "$TAG" --repo "$REPO" --json body -q .body > "$work/notes.md"
+else
+  echo "Release notes for $TAG (not released yet)." > "$work/notes.md"
+fi
+python3 ../scripts/make_android_update_manifest.py \
+  --apk "$APK" \
+  --version "$VERSION" \
+  --download-url "https://github.com/$REPO/releases/download/$TAG/$APK_NAME" \
+  --notes-file "$work/notes.md" \
+  --out "$MANIFEST"
+
+# The rolling release stays a pre-release so it never becomes
+# `releases/latest`, which the desktop and CLI installers resolve.
+NOTES="In-app update feed for OpenAgentd Android $VERSION. Download the APK from the versioned release, not from here."
+TITLE="Android update feed (rolling)"
+if gh release view "$ROLLING_TAG" --repo "$REPO" >/dev/null 2>&1; then
+  upload "$ROLLING_TAG" "$MANIFEST"
+  run gh release edit "$ROLLING_TAG" --repo "$REPO" \
+    --title "$TITLE" --notes "$NOTES" --prerelease --draft=false
+else
+  run gh release create "$ROLLING_TAG" "$MANIFEST" --repo "$REPO" \
+    --title "$TITLE" --notes "$NOTES" --prerelease --latest=false --target main
+fi
 
 if [ "$DRY_RUN" = "1" ]; then
-  echo "publish-apk: dry run complete"
+  echo "publish-apk: dry run complete; review mobile/$MANIFEST"
 else
-  echo "publish-apk: published $APK_NAME to $TAG"
+  echo "publish-apk: published $APK_NAME to $TAG and latest.json to $ROLLING_TAG"
 fi

@@ -695,7 +695,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
                 {errorCount > 0 && <span className="absolute -top-1 -right-1 size-1.5 rounded-full bg-(--color-error)" aria-hidden="true" />}
               </span>
             }
-            className={cn(DOCK_ACTION_BUTTON_CLASS, 'size-11! justify-center! rounded-full! border-0 bg-transparent p-0 [&>svg]:hidden [&_svg]:size-5')}
+            className={cn(DOCK_ACTION_BUTTON_CLASS, 'size-11! justify-center! rounded-full! border-0 bg-transparent p-0! [&>span]:justify-center [&>svg]:hidden [&_svg]:size-5')}
             panelClassName="w-56"
           >
             {[

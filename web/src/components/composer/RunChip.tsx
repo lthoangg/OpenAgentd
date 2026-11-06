@@ -10,12 +10,10 @@
 import { useLayoutEffect, useRef } from 'react'
 import { ChevronDown } from 'lucide-react'
 
-import type { SessionInteractionMode } from '@/api/types'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import type { SheetDetent } from '@/components/ui/_sheet'
 import { MODEL_LINE_CLASS, ModelPart, PROVIDER_PART_CLASS, splitModelTail } from '@/components/ui/model-name'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
@@ -44,26 +42,12 @@ function composerInput(): HTMLElement | null {
   return null
 }
 
-/**
- * Code / Plan, folded into the chip on a phone: the deck shows one chip
- * ("Code · sonnet-4-5") and the sheet picks the mode with the model.
- */
-export interface RunChipMode {
-  mode: SessionInteractionMode
-  pending?: boolean
-  disabled?: boolean
-  onChange: (mode: SessionInteractionMode) => void
-}
-
-const MODE_LABEL: Record<SessionInteractionMode, string> = { code: 'Code', plan: 'Plan' }
-
-export function RunChip({ settings, disabled = false, mode }: { settings: RunSettings; disabled?: boolean; mode?: RunChipMode }) {
+export function RunChip({ settings, disabled = false }: { settings: RunSettings; disabled?: boolean }) {
   const isMobile = useIsMobile()
   // A phone's deck has room for the model's name only: its distinguishing end
   // (``sonnet-4-6``), at 15px, truncating last. The picker and the label have
   // the whole ID.
   const isPhone = useIsPhone()
-  const phoneMode = isPhone ? mode : undefined
   const { os } = usePlatform()
   const open = useUIStore((s) => s.runPickerOpen)
   const focus = useUIStore((s) => s.runPickerFocus)
@@ -96,8 +80,7 @@ export function RunChip({ settings, disabled = false, mode }: { settings: RunSet
   const meta = [settings.thinkingLevel ? thinkingLevelShortLabel(settings.thinkingLevel) : null, account].filter(Boolean).join(' · ')
   const shortcut = shortcutLabel(APP_SHORTCUTS.sessionSettings, os)
   const label = [
-    phoneMode ? `${MODE_LABEL[phoneMode.mode]} mode${phoneMode.pending ? ' (applies after the current turn)' : ''}` : null,
-    `${phoneMode ? 'model' : 'Model'} ${settings.model ?? 'not set'}`,
+    `Model ${settings.model ?? 'not set'}`,
     level ? `thinking ${level}` : null,
     account ? `account ${account}` : null,
   ].filter(Boolean).join(', ')
@@ -128,7 +111,6 @@ export function RunChip({ settings, disabled = false, mode }: { settings: RunSet
         {isPhone ? (
           // Sans on a phone: mono is for code, paths and commands (Phone system).
           <span data-run-chip-model="" className="min-w-0 max-w-full truncate">
-            {phoneMode && <span className={phoneMode.pending ? 'italic' : undefined}>{MODE_LABEL[phoneMode.mode]} · </span>}
             {splitModelTail(model).tail || model}
           </span>
         ) : (
@@ -156,18 +138,6 @@ export function RunChip({ settings, disabled = false, mode }: { settings: RunSet
         {chip}
         <BottomSheet open={open} onClose={() => setOpen(false)} label="Model and thinking" detents={SHEET_DETENTS}>
           <div className="px-3 pb-3">
-            {phoneMode && (
-              <div className="pb-3">
-                <SegmentedControl
-                  label="Mode"
-                  fill
-                  disabled={phoneMode.disabled}
-                  value={phoneMode.mode}
-                  onChange={(next) => { if (next !== phoneMode.mode) phoneMode.onChange(next) }}
-                  options={[{ value: 'code', label: 'Code' }, { value: 'plan', label: 'Plan' }]}
-                />
-              </div>
-            )}
             <RunPicker settings={settings} focus={focus} onDone={() => setOpen(false)} touch />
           </div>
         </BottomSheet>

@@ -1853,11 +1853,11 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   Tables pin their first column and shade the right edge only while it is
   clipped. A diff keeps lines whole and scrolls sideways; **Wrap lines** in
   its file bar wraps them.
-- **The composer.** It grows to six lines, then scrolls inside. One chip
-  says how a message runs, "Code · sonnet-4-6" in sans, and its sheet picks
-  Mode, Model and Thinking together; the context ring beside Send is a thin
-  gauge, never a spinner. A new draft shows the folder chip and three
-  suggestions that fill the composer, no heading.
+- **The composer.** It grows to six lines, then scrolls inside. The
+  Code/Plan toggle and the model chip are separate controls, so mode is one
+  tap; the model chip's sheet picks Model and Thinking. The context ring
+  beside Send is a thin gauge, never a spinner. A new draft shows only the
+  folder chip: no heading, no suggestions.
 - **Above the composer, in this order:** the open question (pinned, orange
   frame, 48pt options; the transcript card says "Answer below"), the plan
   awaiting approval ("View" opens it full screen with Approve pinned), the

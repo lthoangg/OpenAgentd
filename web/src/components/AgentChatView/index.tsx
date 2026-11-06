@@ -882,20 +882,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         <RunChip
           settings={runSettings}
           disabled={isSessionLoading}
-          mode={isPhone ? {
-            mode: composerMode,
-            pending: sessionPendingInteractionMode !== null,
-            disabled: isSwitchingInteractionMode || (!sessionIdState && !isDraft),
-            onChange: (mode) => {
-              setIsSwitchingInteractionMode(true)
-              void useAgentStore.getState().setSessionInteractionMode(mode).finally(() => {
-                setIsSwitchingInteractionMode(false)
-              })
-            },
-          } : undefined}
         />
       )}
-      modeInDeck={isPhone}
       deckEnd={sessionIdState ? (
         <ContextMeter
           input={headerTokens.input}

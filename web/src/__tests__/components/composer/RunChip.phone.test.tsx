@@ -1,7 +1,6 @@
 /**
- * On a phone the run deck has one chip for how a message runs: the mode and
- * the model on one line ("Code · sonnet-4-5", sans), and one sheet that
- * picks Mode, Model and Thinking (Phone system; mockup C6 / J3 3.5).
+ * On a phone the run deck has one chip for how a message runs: the model in
+ * sans, its sheet picks Model and Thinking; Code / Plan stays a separate toggle (Phone system; mockup C6 / J3 3.5).
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
@@ -39,31 +38,28 @@ function settings(): RunSettings {
   }
 }
 
-function renderChip(onChange = mock((mode: unknown) => { void mode })) {
+function renderChip() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } })
   render(
     <QueryClientProvider client={client}>
-      <RunChip settings={settings()} mode={{ mode: 'code', onChange }} />
+      <RunChip settings={settings()} />
     </QueryClientProvider>,
   )
-  return onChange
 }
 
-describe('RunChip on a phone with a mode', () => {
-  it('names the mode and the model on one line, the model in sans', () => {
+describe('RunChip on a phone', () => {
+  it('names only the model, in sans: Code / Plan is its own toggle', () => {
     renderChip()
-    const chip = screen.getByRole('button', { name: /^Code mode, model/ })
-    expect(chip.textContent).toContain('Code')
+    const chip = screen.getByRole('button', { name: /^Model / })
+    expect(chip.textContent).not.toContain('Code')
     const model = chip.querySelector('[data-run-chip-model]') as HTMLElement
     expect(model.className).not.toContain('font-mono')
   })
 
-  it('picks the mode in the sheet', () => {
-    const onChange = renderChip()
-    fireEvent.click(screen.getByRole('button', { name: /^Code mode, model/ }))
+  it('has no Mode control in the sheet', () => {
+    renderChip()
+    fireEvent.click(screen.getByRole('button', { name: /^Model / }))
     const sheet = document.querySelector<HTMLElement>('[data-bottom-sheet]')!
-    const group = within(sheet).getByRole('radiogroup', { name: 'Mode' })
-    fireEvent.click(within(group).getByRole('radio', { name: 'Plan' }))
-    expect(onChange).toHaveBeenCalledWith('plan')
+    expect(within(sheet).queryByRole('radiogroup', { name: 'Mode' })).toBeNull()
   })
 })

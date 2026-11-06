@@ -65,8 +65,11 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
   }
   const run = (fn: () => void) => () => {
     setOpen(false)
-    // After the menu has handed focus back, so the action keeps it.
-    requestAnimationFrame(fn)
+    // Touch: now, inside the tap, so iOS raises the keyboard for the focus
+    // the action gives (/btw, @, #) and opens the picker. Elsewhere after
+    // the menu has handed focus back, so the action keeps it.
+    if (isMobile) fn()
+    else requestAnimationFrame(fn)
   }
 
   const trigger = (

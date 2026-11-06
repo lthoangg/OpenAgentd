@@ -780,8 +780,10 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       const caret = start + inserted.length
       setValue(next)
       setHistoryIndex(-1)
+      // Now, inside the tap (the keyboard on iOS), then again with the caret.
+      el?.focus({ preventScroll: true })
       requestAnimationFrame(() => {
-        el?.focus()
+        el?.focus({ preventScroll: true })
         el?.setSelectionRange(caret, caret)
         const mention = findActiveMention(next, caret)
         if (mention) onFileRefsNeeded?.()
@@ -794,9 +796,12 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       setValue(text)
       setDesignFeedback([])
       resetDraftState()
+      // Focus now, inside the gesture that asked (iOS raises the keyboard
+      // only then); the caret moves to the end once the text has laid out.
+      textareaRef.current?.focus({ preventScroll: true })
       resizeAfterLayout(() => {
         const el = textareaRef.current
-        el?.focus()
+        el?.focus({ preventScroll: true })
         el?.setSelectionRange(text.length, text.length)
       })
     },

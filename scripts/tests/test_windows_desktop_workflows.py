@@ -37,7 +37,9 @@ def test_release_dispatch_and_matrix_include_windows_x64_msi():
 def test_release_verifies_windows_installer_and_updater_signature():
     workflow = _load("release-desktop.yml")
     build = workflow["jobs"]["build"]
-    verify_script = _step(build, "Verify Windows MSI and signatures")["run"]
+    verify_script = _step(build, "Verify Windows MSI")["run"]
+    # The updater .sig is made by the sign job, which holds the key.
+    sig_script = _step(workflow["jobs"]["sign"], "Sign Windows updater artifact")["run"]
     manifest_script = _step(
         workflow["jobs"]["publish"],
         "Generate latest.json (Tauri updater manifest)",
@@ -45,7 +47,8 @@ def test_release_verifies_windows_installer_and_updater_signature():
 
     assert "Expected exactly one OpenAgentd MSI" in verify_script
     assert "signtool verify /pa /all" in verify_script
-    assert "Missing Tauri updater signature" in verify_script
+    assert "cargo tauri signer sign" in sig_script
+    assert "TAURI_SIGNING_PRIVATE_KEY is not set" in sig_script
     assert "--require-platform windows-x86_64" in manifest_script
 
 

@@ -4,9 +4,28 @@ The iOS app connects to an OpenAgentd server running on another computer. The
 server holds your agents, sessions, and keys; the app does not run a backend of
 its own.
 
-OpenAgentd is not on the App Store. Each release includes an `.ipa` you can
-sideload. The recommended tool is [SideStore](https://sidestore.io), which
-signs the app with your own Apple Account.
+The recommended way is **TestFlight**: Apple's beta app installs OpenAgentd,
+keeps it updated, and needs no computer, VPN or weekly refresh.
+
+## Recommended: TestFlight
+
+1. Install [TestFlight](https://apps.apple.com/app/testflight/id899247664)
+   from the App Store (iOS/iPadOS 15.0 or later).
+2. Open the OpenAgentd TestFlight link from the
+   [latest release notes](https://github.com/lthoangg/openagentd/releases/latest)
+   on your iPhone or iPad, and tap **Accept**, then **Install**.
+3. New versions appear in TestFlight; turn on **Automatic Updates** there.
+
+**Moving from SideStore:** the TestFlight app is a different install. Delete
+the SideStore copy, install from TestFlight, and add your server again; your
+agents, sessions and keys live on the server, so nothing is lost. The
+SideStore IPA below is still published for a few releases.
+
+## Alternative: sideload the IPA
+
+Each release also includes an ad hoc `.ipa` you can sideload. The tool we
+suggest is [SideStore](https://sidestore.io), which signs the app with your own
+Apple Account.
 
 ## Requirements
 

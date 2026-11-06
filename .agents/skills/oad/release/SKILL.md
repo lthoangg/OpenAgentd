@@ -77,7 +77,7 @@ gh pr create --base main --title "<title>" --body "<bullets>"
   `gh pr create`, on the PR branch, in the background:
 
   ```bash
-  DRY_RUN=1 make -C mobile ios-release                 # archive + package IPA, no upload
+  DRY_RUN=1 make -C mobile ios-release                 # archive + package IPA, no upload (or dispatch release-ios.yml on the branch with -f testflight=false -f sidestore=false)
   source ~/.android/openagentd-release-env.sh          # JAVA_HOME, keystore, Keychain password
   DRY_RUN=1 make -C mobile android-release             # build + sign APK, no upload
   ```
@@ -128,6 +128,10 @@ gh release edit v<version> --repo lthoangg/openagentd --notes-file /tmp/release-
 gh workflow run release-desktop.yml -f confirm=release-desktop -f channel=stable   # ~25 min
 ```
 
+- `release-desktop.yml` stops at the `sign` job until you approve the
+  `release-macos` environment (Actions → the run → Review deployments). It signs with
+  the Developer ID, notarizes and staples the app and DMG, and writes the updater
+  `.sig` files. A notarization failure prints `notarytool log` in that job.
 - `release-desktop.yml` also takes `platform` (`all`, `windows`, `macos`, `linux`) and
   `run_id` (republish artifacts of an earlier run). It bundles the CLI archive
   `release.yml` published, so run it second.
@@ -137,30 +141,28 @@ gh workflow run release-desktop.yml -f confirm=release-desktop -f channel=stable
 - If the push-triggered `tauri.yml` fails after the bump, the usual cause is a
   stale desktop or mobile `Cargo.lock`: fix it on `main` before rerunning.
 
-Build and upload the iOS sideload IPA locally while `release-desktop.yml` runs.
-CI does not build iOS; this step needs a Mac with Xcode and the signing team from
-`mobile/src-tauri/tauri.conf.json`:
+Ship iOS from CI while `release-desktop.yml` runs. Dispatch it **on the tag**,
+because the SideStore job checks that HEAD is the tagged commit:
 
 ```bash
-git fetch --tags && git checkout v<version>   # HEAD must be the tagged commit
-DRY_RUN=1 make -C mobile ios-release      # optional preview: checks + mobile/dist/source.json
-make -C mobile ios-release                # build, package, upload IPA + .sha256 and source.json
-git checkout main
+gh workflow run release-ios.yml --ref v<version> -f confirm=release-ios
 ```
 
-- `ios-release` uploads `OpenAgentd_<version>_iOS.ipa` and its `.sha256` to
-  `v<version>`. It also refreshes `source.json` on the rolling `latest-ios`
-  pre-release that SideStore reads; the feed's What's New text is the release body.
-  Apply the notes first.
-- The script refuses a dirty tree, a HEAD other than the tag, or a missing
-  release. Re-running is safe (`--clobber`; the feed replaces the same version).
-- If the iOS build cannot run, say so in the release report; the rest of the
-  release does not depend on it.
-- If the build broke only after tagging, fix it on `main` and ship the IPA with
+- `build` archives the app unsigned (no secrets) and packages the ad hoc SideStore
+  IPA. `sign` waits for your approval of the `release-ios` environment, signs with the
+  Apple Distribution certificate and App Store profiles, and uploads to TestFlight
+  (build number = the run number). `sidestore` uploads `OpenAgentd_<version>_iOS.ipa`
+  + `.sha256` to `v<version>` and refreshes `source.json` on `latest-ios`; apply the
+  notes first, since the feed's What's New text is the release body.
+- `-f testflight=false` or `-f sidestore=false` skips one channel.
+- After the upload, App Store Connect processes the build (10-30 min). The first
+  build of a version needs Beta App Review before the public TestFlight link offers it.
+- If the build broke only after tagging, fix it on `main` and ship the IPA locally with
   `ALLOW_AFTER_TAG=1 make -C mobile ios-release` from that commit. Leave the tag
   alone: the CLI, desktop and Homebrew assets are already published from it, so moving
-  it breaks them. The IPA descends from the tag plus the fix; add one line to the
-  release notes saying the iOS build includes `<short-sha>`.
+  it breaks them. Add one line to the release notes saying the iOS build includes
+  `<short-sha>`.
+- `make -C mobile ios-release` still works locally (ad hoc IPA only) as a fallback.
 
 Afterwards, confirm the notes survived and the IPA is attached
 (`gh release view v<version> --repo lthoangg/openagentd`), and that

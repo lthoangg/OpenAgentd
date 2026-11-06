@@ -2247,6 +2247,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   versions as updates. See [Install the iOS app](../../mobile/INSTALL-IOS.md).
   The launch screen follows the system appearance: dark paper in dark mode,
   where it used to be light paper in both `[v3.25.0]`.
+- **iOS app on TestFlight** `[v3.49.0]` — releases are built, signed and
+  uploaded to TestFlight by CI. Install from the public TestFlight link in the
+  release notes: no computer, VPN or 7-day refresh, automatic updates, and the
+  home-screen widgets share data through the real App Group. The SideStore IPA
+  is still published for a few releases. See
+  [Install the iOS app](../../mobile/INSTALL-IOS.md).
 - **Android app (APK)** `[v3.15.0]` — releases include a sideloadable
   `OpenAgentd_<version>_Android.apk` with a checksum. Access keys are
   encrypted with an Android Keystore key, downloads open the system share
@@ -4015,6 +4021,12 @@ Desktop is primary. CLI / server is the developer path.
   download quarantine flag. In-app updates install the archive exactly as
   published, check its signature before stopping the backend, log a failed
   install and keep the running version working.
+  Since v3.49.0 the app, the DMG and the updater archive are signed with
+  the OpenAgentd Developer ID and notarized by Apple, so a downloaded DMG
+  opens without the "damaged" dialog or any Terminal step, and `install.sh`
+  and the cask no longer touch the quarantine flag. The first update to
+  v3.49.0 asks once more for folder access (the signature changed); later
+  updates keep it.
 - **Linux desktop** `[since v1.0]` — AppImage (`chmod +x`) or `.deb` for
   Debian/Ubuntu.
 - **Windows desktop** `[v1.106.0]` — native x64 `.msi` installer with the

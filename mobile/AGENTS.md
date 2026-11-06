@@ -16,7 +16,7 @@ make ios-dev                     # simulator/device development
 make ios-dev-device <name>       # named physical device
 make ios-build                   # production iOS build
 make ios-ipa                     # release archive -> sideloadable dist/*.ipa
-make ios-release                 # ios-ipa + upload IPA and SideStore source (DRY_RUN=1 to preview)
+make ios-release                 # local fallback: ios-ipa + upload IPA and SideStore source (DRY_RUN=1 to preview)
 make android-init                # generate the local Gradle project
 make android-dev [device]        # device/emulator development against Vite
 make android-apk                 # release APK -> signed dist/*.apk (ANDROID_KEYSTORE* env)
@@ -48,6 +48,38 @@ AppWidget providers in `android-plugin/` (`Widgets.kt`). iOS uses the WidgetKit
 extension in `ios-widget/`, which `scripts/patch-ios-widget.sh` adds to the
 generated Xcode project (with xcodegen) before every iOS build, together with
 the App Group the app and the extension share.
+
+## iOS release (TestFlight) runbook
+
+Releases ship from `.github/workflows/release-ios.yml`, not a local Mac. Its
+`build` job has no secrets and archives with `cargo tauri ios build
+--archive-only --no-sign`; only `sign`, in the `release-ios` environment (your
+approval; `main` and `v*` only), signs with `scripts/sign-ipa-appstore.sh` and
+uploads to TestFlight. Never give the build job a secret or an `environment:`
+(`scripts/tests/test_release_signing_isolation.py`).
+
+Apple setup: App IDs `com.openagentd.mobile` and `com.openagentd.mobile.widgets`,
+both with the App Group `group.com.openagentd.mobile`; one *App Store* profile
+for each; an App Store Connect record for `com.openagentd.mobile` with an
+External Testing group and public link.
+
+Secrets in `release-ios` (`gh secret set <NAME> --env release-ios`):
+
+| Secret | Value |
+|---|---|
+| `IOS_DIST_CERTIFICATE` / `_PASSWORD` | base64 of the Apple Distribution `.p12` / its password |
+| `IOS_PROFILE_APP` / `IOS_PROFILE_WIDGET` | base64 of the two App Store `.mobileprovision` files |
+| `ASC_API_KEY` / `ASC_API_ISSUER` | App Store Connect API key ID / issuer ID (role *App Manager*) |
+| `ASC_API_KEY_P8` | contents of `AuthKey_<id>.p8` |
+| `KEYCHAIN_PASSWORD` | any random string |
+
+- Renewal: profiles expire after a year and the Distribution certificate after
+  one; regenerate the profiles (they must name the current certificate) and
+  replace the secrets. A build already on TestFlight keeps its 90 days.
+- Leak: revoke the certificate or API key in the Apple portals, then replace
+  the secrets. Revoking a Distribution certificate does not remove apps users
+  already installed from the App Store or TestFlight.
+- The build number is the workflow run number, so every upload is unique.
 
 ## Constraints
 

@@ -68,7 +68,7 @@ export interface SwipeRowProps {
   className?: string
 }
 
-/** Each revealed action: 72px wide, the row's full height. */
+/** Each revealed action: a 72px slot holding a 36px round button (the row is 36-44px tall). */
 const ACTION_WIDTH = 72
 /** px of travel before the gesture decides what it is. */
 const SLOP = 8
@@ -336,12 +336,13 @@ export function SwipeRow({ actions, disabled = false, children, className }: Swi
         ref={actionsRef}
         // Behind the content, clipped to what the content has uncovered. Inert
         // while shut so a tap on the row's right edge can never land on one.
-        className={cn('absolute inset-y-0 right-0 flex gap-1 py-0.5 pl-1', !open && 'pointer-events-none')}
+        className={cn('absolute inset-y-0 right-0 flex items-center', !open && 'pointer-events-none')}
       >
         {actions.map(({ id, label, icon: Icon, tone, onAction }) => (
           <button
             key={id}
             type="button"
+            aria-label={label}
             aria-hidden={open ? undefined : true}
             tabIndex={open ? undefined : -1}
             onClick={() => {
@@ -349,13 +350,20 @@ export function SwipeRow({ actions, disabled = false, children, className }: Swi
               rest(false)
             }}
             className={cn(
-              'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-meta font-semibold select-none',
-              'focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none focus-visible:ring-inset',
-              TONE[tone],
+              'group/swipe flex h-full min-w-0 flex-1 items-center justify-center select-none focus-visible:outline-none',
             )}
           >
-            <Icon size={16} aria-hidden="true" className="shrink-0" />
-            <span className="max-w-full truncate">{label}</span>
+            {/* A round glyph button in its slot, as iOS's newer swipe actions;
+                the label is the button's name. */}
+            <span
+              aria-hidden="true"
+              className={cn(
+                'flex size-9 items-center justify-center rounded-full transition-transform duration-(--motion-instant) group-active/swipe:scale-90 group-focus-visible/swipe:ring-2 group-focus-visible/swipe:ring-(--focus-ring) motion-reduce:group-active/swipe:scale-100',
+                TONE[tone],
+              )}
+            >
+              <Icon size={16} className="shrink-0" />
+            </span>
           </button>
         ))}
       </div>

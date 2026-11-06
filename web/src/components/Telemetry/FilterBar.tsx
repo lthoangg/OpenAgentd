@@ -8,7 +8,10 @@
  * still show it. Sessions are too many for a picker: one is chosen from the
  * Sessions card or the palette and shows here as a removable chip.
  */
+import { useState } from 'react'
 import { Loader2, X } from 'lucide-react'
+import { BottomSheet } from '@/components/ui/bottom-sheet'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { TELEMETRY_RANGES, type TelemetryRange } from '@/stores/useTelemetryStore'
@@ -69,6 +72,9 @@ export function FilterBar({
   const workspaces = facets ? withSelection(facets.workspaces, workspace) : []
   const models = facets ? withSelection(facets.models, model) : []
   const filtered = workspace !== null || model !== null || session !== null || errorsOnly
+  const activeCount = [workspace, model, session].filter((value) => value !== null).length + (errorsOnly ? 1 : 0)
+  const isPhone = useIsPhone()
+  const [sheetOpen, setSheetOpen] = useState(false)
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-(--color-border) px-3 py-2 sm:px-4">
@@ -87,6 +93,19 @@ export function FilterBar({
         }))}
       />
 
+      {isPhone ? (
+        // A phone keeps the range in the bar and gathers the rest in a sheet (mockup J9).
+        <>
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            aria-haspopup="dialog"
+            className={cn('h-9 shrink-0 rounded-sm px-3 text-xs transition-colors', filtered ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted)')}
+          >
+            {activeCount > 0 ? `Filters · ${activeCount}` : 'Filters'}
+          </button>
+          <BottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)} label="Usage filters">
+            <div data-usage-filters="" className="flex flex-col items-start gap-3 px-4 pb-4">
       {facets === null ? (
         <span className="text-meta text-(--color-text-subtle)">Update the server to filter by workspace or model.</span>
       ) : null}
@@ -177,6 +196,106 @@ export function FilterBar({
         >
           Clear filters
         </button>
+      )}
+
+            </div>
+          </BottomSheet>
+        </>
+      ) : (
+        <>
+      {facets === null ? (
+        <span className="text-meta text-(--color-text-subtle)">Update the server to filter by workspace or model.</span>
+      ) : null}
+
+      {workspaces.length > 0 && (
+        <Dropdown
+          aria-label="Workspace"
+          value={workspace ?? ALL}
+          onValueChange={(value) => onWorkspaceChange(value === ALL ? null : value)}
+          renderValue={(value, label) => (
+            <>
+              <span className="text-(--color-text-muted)">Workspace:</span>
+              <span className="min-w-0 truncate">{value === ALL ? 'All' : label}</span>
+            </>
+          )}
+          trigger="All workspaces"
+          className="h-7 max-w-60 shrink-0 text-xs pointer-coarse:min-h-9"
+        >
+          <DropdownItem value={ALL}>All workspaces</DropdownItem>
+          {workspaces.map((path) => (
+            <DropdownItem key={path} value={path} title={path}>
+              {workspaceName(path)}
+            </DropdownItem>
+          ))}
+        </Dropdown>
+      )}
+
+      {models.length > 0 && (
+        <Dropdown
+          aria-label="Model"
+          value={model ?? ALL}
+          onValueChange={(value) => onModelChange(value === ALL ? null : value)}
+          renderValue={(value, label) => (
+            <>
+              <span className="text-(--color-text-muted)">Model:</span>
+              <span className="min-w-0 truncate">{value === ALL ? 'All' : label}</span>
+            </>
+          )}
+          trigger="All models"
+          className="h-7 max-w-64 shrink-0 text-xs pointer-coarse:min-h-9"
+        >
+          <DropdownItem value={ALL}>All models</DropdownItem>
+          {models.map((pm) => (
+            <DropdownItem key={pm} value={pm} title={pm}>
+              <ModelName id={pm} />
+            </DropdownItem>
+          ))}
+        </Dropdown>
+      )}
+
+      {session !== null && (
+        <span className="flex h-7 max-w-64 shrink-0 items-center gap-1 rounded-sm bg-(--bg-key) pr-0.5 pl-2 text-xs text-(--color-text)">
+          <span className="text-(--color-text-muted)">Session</span>
+          <span className="min-w-0 truncate font-medium">{sessionLabel ?? 'Loading…'}</span>
+          <button
+            type="button"
+            onClick={() => onSessionChange(null)}
+            aria-label="Remove session filter"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--color-fill-key-hover) hover:text-(--color-text) pointer-coarse:size-9"
+          >
+            <X size={12} aria-hidden="true" />
+          </button>
+        </span>
+      )}
+
+      {onErrorsOnlyChange && (
+        <button
+          type="button"
+          aria-pressed={errorsOnly}
+          onClick={() => onErrorsOnlyChange(!errorsOnly)}
+          className={cn(
+            'h-7 shrink-0 rounded-sm px-2.5 text-xs transition-colors pointer-coarse:min-h-9',
+            'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--focus-ring)',
+            errorsOnly
+              ? 'bg-(--color-error-subtle) text-(--color-error)'
+              : 'bg-(--bg-key) text-(--color-text-muted) hover:bg-(--color-fill-key-hover) hover:text-(--color-text)',
+          )}
+        >
+          Failed only
+        </button>
+      )}
+
+      {filtered && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="h-7 shrink-0 rounded-sm px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:min-h-9"
+        >
+          Clear filters
+        </button>
+      )}
+
+        </>
       )}
 
       <div className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center" aria-live="polite">

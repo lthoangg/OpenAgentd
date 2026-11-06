@@ -56,7 +56,7 @@ describe('Servers rows on touch', () => {
     fireEvent.click(more)
     const sheet = screen.getByRole('dialog', { name: 'Local CLI' })
     const labels = Array.from(sheet.querySelectorAll('button')).map((b) => b.textContent)
-    expect(labels).toEqual(['Use this server', 'Edit', 'Remove…'])
+    expect(labels).toEqual(['Edit', 'Remove…'])
     expect(within(sheet).getByRole('button', { name: 'Remove…' }).className).toContain('text-(--color-error)')
   })
 

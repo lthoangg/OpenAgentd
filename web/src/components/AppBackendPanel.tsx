@@ -22,7 +22,7 @@
  * offers **Sessions ›** (``onOpenInUse``), back up to its session list.
  */
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { ArrowRightLeft, ChevronRight, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
@@ -523,10 +523,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                 onOpen={touch && !pending ? (active ? onOpenInUse : () => { void connectExternal(normalizedServerUrl, server.name ?? '', '', setListError) }) : undefined}
                 onMore={touch ? () => setRowSheet({
                   title: label,
+                  // No Open or Use here: a tap on the row already does it.
                   items: [
-                    active
-                      ? { id: 'sessions', label: 'Sessions', icon: ChevronRight, run: () => onOpenInUse?.(), disabled: !onOpenInUse }
-                      : { id: 'use', label: 'Use this server', icon: ArrowRightLeft, disabled: pending, run: () => { void connectExternal(normalizedServerUrl, server.name ?? '', '', setListError) } },
                     { id: 'edit', label: 'Edit', icon: Pencil, disabled: pending, afterClose: true, run: () => (editing ? closeForm() : openEdit(server, active)) },
                     { id: 'remove', label: 'Remove…', icon: Trash2, danger: true, separatorBefore: true, disabled: pending, run: () => setConfirm({ kind: 'remove', baseUrl: server.base_url, label }) },
                   ],

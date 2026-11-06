@@ -664,7 +664,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           dense
           // rounded-xs: the address bar's corners, not the form trigger's rounded-md.
           // dense: 28px on touch too, so it fits the 32px toolbar.
-          className={phone ? 'h-11 shrink-0 gap-1 rounded-full px-3 text-meta [&_svg]:size-5' : 'h-7 shrink-0 gap-1 rounded-xs px-1.5 text-meta'}
+          className={phone ? 'h-11! shrink-0 gap-1 rounded-full! px-3 text-meta [&_svg]:size-5' : 'h-7 shrink-0 gap-1 rounded-xs px-1.5 text-meta'}
           trigger={
             <span className="flex items-center gap-1">
               <Smartphone size={12} aria-hidden="true" />
@@ -695,7 +695,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
                 {errorCount > 0 && <span className="absolute -top-1 -right-1 size-1.5 rounded-full bg-(--color-error)" aria-hidden="true" />}
               </span>
             }
-            className={cn(DOCK_ACTION_BUTTON_CLASS, 'size-11 justify-center rounded-full border-0 bg-transparent p-0 [&>svg]:hidden [&_svg]:size-5')}
+            className={cn(DOCK_ACTION_BUTTON_CLASS, 'size-11! justify-center rounded-full! border-0 bg-transparent p-0 [&>svg]:hidden [&_svg]:size-5')}
             panelClassName="w-56"
           >
             {[

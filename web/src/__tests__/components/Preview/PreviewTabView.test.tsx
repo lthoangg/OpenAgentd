@@ -437,7 +437,7 @@ describe('PreviewTabView', () => {
       screen.getByRole('button', { name: 'More preview actions' }),
       screen.getByRole('button', { name: 'Refresh' }),
     ]
-    for (const control of controls) expect(control.className).toMatch(/(^|\s)(size|h)-11(\s|$)/)
+    for (const control of controls) expect(control.className).toMatch(/(^|\s)(size|h)-11!?(\s|$)/)
     const address = screen.getByRole('textbox', { name: 'Preview address' })
     expect(address.className).toContain('h-10')
     expect(address.className).toContain('rounded-full')

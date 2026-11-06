@@ -79,8 +79,22 @@ def find(key):
     sys.exit(f"patch-ios-widget: {APP_TARGET}.{key} not found in {path}")
 
 
+def find_source(source):
+    for i in range(start + 1, end):
+        if lines[i] == f"      - path: {source}\n":
+            return i
+    sys.exit(f"patch-ios-widget: {APP_TARGET} source {source} not found in {path}")
+
+
 # Insert bottom-up so earlier indexes stay valid.
 inserts = [
+    # Externals holds Rust's libapp.a per arch and configuration. Generated
+    # once both a debug and a release build exist, the folder would copy
+    # every libapp.a into the app as a resource, and two copies of one name
+    # fail the build. It is linked through the `libapp.a` dependency alone.
+    (find_source("Externals") + 1, [
+        f"        excludes: [\"**/*.a\"] {MARK}\n",
+    ]),
     (find("sources") + 1, [
         f"      - path: ../../../ios-widget/App {MARK}\n",
         f"      - path: ../../../ios-widget/Shared {MARK}\n",

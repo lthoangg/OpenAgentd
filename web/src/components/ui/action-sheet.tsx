@@ -43,9 +43,11 @@ export interface ActionSheetProps {
   title: string
   description?: string
   items: ActionSheetItem[]
+  /** The Cancel row; off where the sheet is short and a tap outside or a pull closes it. Default on. */
+  cancel?: boolean
 }
 
-export function ActionSheet({ open, onClose, title, description, items }: ActionSheetProps) {
+export function ActionSheet({ open, onClose, title, description, items, cancel = true }: ActionSheetProps) {
   return (
     <BottomSheet open={open} onClose={onClose} label={title}>
       <div data-action-sheet="" className="flex flex-col gap-2 px-2 pb-2">
@@ -76,14 +78,16 @@ export function ActionSheet({ open, onClose, title, description, items }: Action
             ))}
           </div>
         </div>
-        <button
-          type="button"
-          data-action-sheet-cancel=""
+        {cancel && (
+          <button
+            type="button"
+            data-action-sheet-cancel=""
           onClick={onClose}
           className="oa-menu-item flex min-h-(--phone-control) w-full items-center justify-center rounded-md bg-(--bg-card) text-sm font-semibold text-(--color-text)"
         >
           Cancel
         </button>
+        )}
       </div>
     </BottomSheet>
   )

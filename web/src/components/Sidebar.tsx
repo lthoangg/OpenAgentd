@@ -1903,16 +1903,6 @@ export function Sidebar({
               </>
             )}
         </div>
-        <div className="px-2 pb-2">
-          <button
-            type="button"
-            data-action-sheet-cancel=""
-            onClick={() => setMobileWorkspaceActions(null)}
-            className="oa-menu-item flex min-h-(--phone-control) w-full items-center justify-center rounded-md bg-(--bg-card) text-sm font-semibold text-(--color-text)"
-          >
-            Cancel
-          </button>
-        </div>
       </BottomSheet>
 
       <Dialog

@@ -585,7 +585,11 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       if (pointerDownRef.current) return
       // A glide to the end is under way; it settles on the new end itself.
       if (smoothScrollFinishRef.current) return
-      if (document.documentElement.hasAttribute('data-keyboard-open') && viewportChanged && !contentGrew && !contentChanged) return
+      // Only the keyboard's own rise is left to the settle below: once it is
+      // up, a smaller view is the composer growing (a queued steer, the run
+      // line), and the end of the reply must not slide under it.
+      const root = document.documentElement
+      if (root.hasAttribute('data-keyboard-open') && root.hasAttribute('data-vp-rise') && viewportChanged && !contentGrew && !contentChanged) return
       const target = Math.max(0, el.scrollHeight - el.clientHeight)
       if (Math.abs(el.scrollTop - target) > 0.5) {
         el.scrollTop = target

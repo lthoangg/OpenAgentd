@@ -75,15 +75,24 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
 
   if (!open) {
     if (btw.total <= 0) return null
+    // A phone: a small "btw" pill in the status line above the composer, in
+    // the flow, so it never covers the transcript (user request).
+    if (isPhone) {
+      return (
+        <button
+          type="button"
+          onClick={() => (onReopen ? onReopen() : store.reopen(sessionId))}
+          aria-label={`Show side questions (${btw.total})`}
+          data-btw-pill=""
+          className="relative touch-hit ml-auto flex h-6 shrink-0 items-center gap-1 rounded-full bg-(--bg-key) px-2 text-meta font-medium text-(--color-text-2) transition-transform duration-(--motion-instant) active:scale-95 motion-reduce:active:scale-100 animate-in fade-in-0 animation-duration-(--motion-base)"
+        >
+          btw
+          <span className="tabular-nums text-(--color-text-muted)">{btw.total}</span>
+        </button>
+      )
+    }
     return (
-      // A phone's round jump-to-latest owns the right corner, so the chip
-      // takes the left one there.
-      <div
-        className={cn(
-          'pointer-events-auto absolute bottom-full z-10 mb-3 flex max-w-[calc(100%-5rem)] animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)',
-          isPhone ? 'left-3 origin-bottom-left' : 'right-3 max-w-[calc(100%-1.5rem)] origin-bottom-right',
-        )}
-      >
+      <div className="pointer-events-auto absolute right-3 bottom-full z-10 mb-3 flex max-w-[calc(100%-1.5rem)] origin-bottom-right animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)">
         <Tooltip className="min-w-0">
           <TooltipTrigger
             className="min-w-0"

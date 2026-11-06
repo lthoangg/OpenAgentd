@@ -77,7 +77,7 @@ import { ContextMeter } from '../composer/ContextMeter'
 import { useRunSettings } from '../composer/useRunSettings'
 import { BtwPanel } from '../BtwPanel'
 import { PendingMessageQueue } from '../PendingMessageQueue'
-import { RunBar } from '../composer/RunBar'
+import { PhoneStatusLine, RunBar } from '../composer/RunBar'
 import { PinnedQuestion } from '../AskUser'
 import { PinnedPlanReview } from '../PlanReview/PlanReviewCard'
 import { AppFooter } from '../AppFooter'
@@ -816,6 +816,17 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // centered, else docked at the bottom of the chat column. While a switch
   // looks up the next session's workspace, the composer stays (disabled)
   // instead of unmounting; sending needs `workspace` itself.
+  // Desktop with a workspace: the dock's BTW tab shows side questions, and
+  // here only the chip reopens it while that tab is not on screen. A phone
+  // shows it as the "btw" pill in the status line above the composer.
+  const btwPanel = dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (
+    <BtwPanel
+      sessionId={sessionIdState || null}
+      countEnabled={leadHasVisibleBlocks}
+      chipOnly={dockViewsEnabled}
+      onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
+    />
+  )
   const composerElement = workspace || (isSessionLoading && chatOnScreen && storeWorkspace) ? (
     <Composer
       ref={inputRef}
@@ -899,24 +910,20 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           canSummarize={leadHasVisibleBlocks && !isAgentWorking}
         />
       ) : null}
-      // Desktop with a workspace: the dock's BTW tab shows side
-      // questions, and here only the chip reopens it while that tab is
-      // not on screen.
       aboveComposer={(
         <>
           {/* A phone's queued messages ride above the composer as chips. */}
           {isPhone && <PinnedQuestion />}
           {isPhone && <PinnedPlanReview />}
-          {isPhone && <RunBar />}
+          {isPhone ? (
+            // One status line: the run on the left, the "btw" pill on the right.
+            <PhoneStatusLine>
+              <RunBar />
+              {btwPanel}
+            </PhoneStatusLine>
+          ) : null}
           {isPhone && <PendingMessageQueue placement="composer" />}
-          {dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (
-            <BtwPanel
-              sessionId={sessionIdState || null}
-              countEnabled={leadHasVisibleBlocks}
-              chipOnly={dockViewsEnabled}
-              onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
-            />
-          )}
+          {!isPhone && btwPanel}
         </>
       )}
     />

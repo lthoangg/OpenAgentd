@@ -191,13 +191,13 @@ function QueuedChip({ content, label, onEdit, onRemove }: {
 }) {
   const text = designFeedbackPlainText(content).replace(/\s+/g, ' ').trim()
   return (
-    <div className="oa-rise-in flex min-h-9 max-w-full items-center rounded-full bg-(--bg-key) text-meta text-(--color-text-2)">
+    <div className="oa-rise-in flex min-h-8 max-w-full items-center rounded-full bg-(--bg-key) text-meta text-(--color-text-2)">
       <button
         type="button"
         title={label}
         aria-label={`Edit queued message: ${text}`}
         onClick={() => { void onEdit() }}
-        className="flex min-h-9 min-w-0 flex-1 items-center gap-1 pl-3 text-left"
+        className="flex min-h-8 min-w-0 flex-1 items-center gap-1 pl-3 text-left"
       >
         <span className="shrink-0 text-(--color-text-muted)">Queued:</span>
         <span className="min-w-0 truncate">“{text}”</span>
@@ -206,7 +206,7 @@ function QueuedChip({ content, label, onEdit, onRemove }: {
         type="button"
         aria-label="Remove queued message"
         onClick={() => { void onRemove() }}
-        className="relative touch-hit flex size-9 shrink-0 items-center justify-center text-(--color-text-muted)"
+        className="relative touch-hit flex size-8 shrink-0 items-center justify-center text-(--color-text-muted)"
       >
         <X size={14} aria-hidden="true" />
       </button>
@@ -278,7 +278,7 @@ export const PendingMessageQueue = memo(function PendingMessageQueue({ placement
   const Item = isPhone ? QueuedChip : QueuedBubble
 
   return (
-    <div className={isPhone ? 'flex flex-col gap-1.5 pb-1.5' : 'flex flex-col gap-3'}>
+    <div className={isPhone ? 'flex flex-col gap-1 pb-1.5' : 'flex flex-col gap-3'}>
       {messages.map((msg) => (
         <Item
           key={msg.id}

@@ -1,7 +1,8 @@
 /**
- * RunBar — a phone's one line above the composer while the agent works:
- * the running mark Sessions uses, the step it is on and the time the turn has taken
- * (mockup J4 4.1). Stop is the Send slot's ■ under it. Steps count the
+ * RunBar — the left of a phone's status line above the composer while the
+ * agent works: the running mark Sessions uses, the step it is on and the time
+ * the turn has taken (mockup J4 4.1). The line itself (``PhoneStatusLine``)
+ * also holds the side questions' "btw" pill. Stop is the Send slot's ■ under it. Steps count the
  * turn's tool calls. Hidden off a phone and while the agent is not working
  * (a question waiting on the user is not "running").
  */
@@ -33,9 +34,22 @@ export function RunBar() {
 
   if (!visible) return null
   return (
-    <div data-run-bar="" className="oa-fade-in flex min-h-8 items-center gap-2 px-3 pb-1.5 text-meta text-(--color-text-muted) tabular-nums">
+    <div data-run-bar="" className="oa-fade-in flex min-w-0 flex-1 items-center gap-2 text-meta text-(--color-text-muted) tabular-nums">
       <SessionStatusMark status="running" label="Running" />
       <span className="min-w-0 truncate">{runBarLabel(steps, startedAt ? now - startedAt : 0)}</span>
+    </div>
+  )
+}
+
+/**
+ * A phone's one status line above the composer: the run on the left, the
+ * side questions' pill on the right. It takes no room when both are absent
+ * (``empty:hidden``; a portalled sheet adds nothing here).
+ */
+export function PhoneStatusLine({ children }: { children: React.ReactNode }) {
+  return (
+    <div data-phone-status-line="" className="flex min-h-7 items-center gap-2 px-3 pb-1 empty:hidden">
+      {children}
     </div>
   )
 }

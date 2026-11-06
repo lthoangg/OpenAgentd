@@ -34,4 +34,14 @@ describe('BtwPanel on a phone', () => {
     expect(sheet.querySelector('[data-btw-sheet]')).not.toBeNull()
     expect(sheet.getAttribute('data-bottom-sheet')).not.toBeNull()
   })
+
+  it('reopens from a small in-flow "btw" pill, never a chip floating over the chat', async () => {
+    globalThis.fetch = mock(async () => Response.json({ items: [], total: 3 })) as unknown as typeof fetch
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><BtwPanel sessionId="s1" countEnabled /></QueryClientProvider>)
+    const pill = await screen.findByRole('button', { name: 'Show side questions (3)' })
+    expect(pill.textContent).toBe('btw3')
+    expect(pill.className).toContain('h-6')
+    expect(pill.closest('.absolute')).toBeNull()
+  })
 })

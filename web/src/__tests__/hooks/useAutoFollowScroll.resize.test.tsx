@@ -39,6 +39,8 @@ afterEach(() => {
   hook = null
   _resetScrollMemoryForTests()
   globalThis.ResizeObserver = originalResizeObserver
+  document.documentElement.removeAttribute('data-keyboard-open')
+  document.documentElement.removeAttribute('data-vp-rise')
 })
 
 /** A scroller whose view the browser clamps to its end, as a real one does. */
@@ -108,5 +110,38 @@ describe('useAutoFollowScroll and layout changes', () => {
 
     expect(hook!.attachedRef.current).toBe(false)
     expect(hook!.showScrollBtn).toBe(true)
+  })
+
+  // With the keyboard up, a queued steer or the run line grows the composer:
+  // the end of the reply must stay above it, not slide under (on-device report).
+  it('keeps the end in view when the composer grows while the keyboard is up', async () => {
+    render(<Harness />)
+    const el = hook!.scrollRef.current!
+    const layout = fakeLayout(el, el.firstElementChild as HTMLDivElement)
+    layout.relayout(1500, 400)
+    layout.box.scrollTop = 1100
+    await observe()
+    await scrollEvent(el)
+    document.documentElement.setAttribute('data-keyboard-open', '')
+
+    layout.relayout(1500, 360)
+    await observe()
+    expect(layout.box.scrollTop).toBe(1500 - 360)
+  })
+
+  it('leaves the keyboard\'s own rise to the settle that follows it', async () => {
+    render(<Harness />)
+    const el = hook!.scrollRef.current!
+    const layout = fakeLayout(el, el.firstElementChild as HTMLDivElement)
+    layout.relayout(1500, 700)
+    layout.box.scrollTop = 800
+    await observe()
+    await scrollEvent(el)
+    document.documentElement.setAttribute('data-keyboard-open', '')
+    document.documentElement.setAttribute('data-vp-rise', '')
+
+    layout.relayout(1500, 400)
+    await observe()
+    expect(layout.box.scrollTop).toBe(800)
   })
 })

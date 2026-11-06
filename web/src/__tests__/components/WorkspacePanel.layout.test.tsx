@@ -38,6 +38,8 @@ mock.module('@/hooks/use-platform', () => ({
 // sets (desktop widths are a straight cut, not a tween), its ref and the
 // width target a neighbour sizes itself by.
 mock.module('framer-motion', () => ({
+  // The phone's row sheets (ActionSheet → BottomSheet) import it.
+  AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
   motion: {
     aside: ({ children, className, 'aria-label': ariaLabel, style, ref, 'data-panel-target-width': target }: {
       children: React.ReactNode

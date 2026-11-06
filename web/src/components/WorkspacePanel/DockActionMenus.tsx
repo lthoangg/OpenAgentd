@@ -1,8 +1,8 @@
 /**
  * DockActionMenus — the review dock's per-row action surfaces.
  *
- * Desktop: right-click menus anchored at the pointer. Mobile: long-press
- * action sheets with the same choices. Both route into the panel's
+ * Desktop: right-click menus anchored at the pointer. Phone: long-press (or
+ * ⋯) opens the app's ActionSheet with the same choices. Both route into the panel's
  * handlers; this module only renders. The discard confirmation lives here
  * too because both surfaces open it: a confirm dialog has no ×, Cancel
  * dismisses it, and the destructive action is never the default.
@@ -19,13 +19,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
 import {
   CONTEXT_MENU_ITEM_CLASS as MENU_ITEM_CLASS,
   CONTEXT_MENU_ITEM_DANGER_CLASS as MENU_ITEM_DANGER_CLASS,
   ContextMenu,
   ContextMenuSeparator,
 } from '@/components/ui/context-menu'
-import { softHapticFeedback } from '@/lib/haptics'
 import type { ChangedFileInfo } from './diff-helpers'
 
 export interface CommitActionTarget {
@@ -89,128 +89,60 @@ export function DockActionMenus({
   onConfirmDiscard,
 }: DockActionMenusProps) {
   const [commitConfirm, setCommitConfirm] = useState<{ kind: 'undo' } | { kind: 'revert'; sha: string; shortSha: string } | null>(null)
+  // The phone's sheets: the same choices as the right-click menus, as the
+  // app's ActionSheet (destructive last). A row closes the sheet first.
+  const file = mobileFileActions
+  const fileSheetItems: ActionSheetItem[] = file
+    ? [
+        ...(hasWorkingDiff(file.path) ? [{ id: 'diff', label: 'Open diff in tab', icon: FileDiff, run: () => onOpenDiffTab(file) }] : []),
+        ...(file.status !== 'D' ? [{ id: 'open', label: 'Open file', icon: FolderOpen, run: () => onOpenFile(file.path) }] : []),
+        { id: 'copy-path', label: 'Copy file path', icon: Copy, run: () => copy(file.path) },
+        { id: 'discard', label: 'Discard changes…', icon: Undo2, danger: true, separatorBefore: true, run: () => setDiscardTarget(file) },
+      ]
+    : []
+  const commit = mobileCommitActions
+  const commitSheetItems: ActionSheetItem[] = commit
+    ? [
+        { id: 'open', label: 'Open in tab', icon: ExternalLink, disabled: gitActionPending, run: () => onOpenCommitTab(commit.sha) },
+        {
+          id: 'revert',
+          label: gitActionPending ? 'Reverting…' : 'Revert commit…',
+          icon: RotateCcw,
+          disabled: gitActionPending,
+          run: () => setCommitConfirm({ kind: 'revert', sha: commit.sha, shortSha: commit.shortSha }),
+        },
+        { id: 'copy-short', label: 'Copy short SHA', icon: Copy, separatorBefore: true, run: () => copy(commit.shortSha) },
+        { id: 'copy-full', label: 'Copy full SHA', icon: Copy, run: () => copy(commit.sha) },
+        { id: 'copy-message', label: 'Copy commit message', icon: Copy, run: () => copy(commit.subject) },
+        ...(isLatestCommit
+          ? [{
+              id: 'undo',
+              label: gitActionPending ? 'Undoing…' : 'Undo commit…',
+              icon: Undo2,
+              danger: true,
+              separatorBefore: true,
+              disabled: gitActionPending,
+              run: () => setCommitConfirm({ kind: 'undo' }),
+            }]
+          : []),
+      ]
+    : []
   return (
     <>
-      <Dialog open={mobileFileActions !== null} onOpenChange={(open) => { if (!open) setMobileFileActions(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="truncate pr-8 font-mono text-sm">{mobileFileActions?.path ?? ''}</DialogTitle>
-            <DialogDescription>Choose an action for this file.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
-            {mobileFileActions && hasWorkingDiff(mobileFileActions.path) && (
-              <Button type="button" variant="ghost" className="justify-start" onClick={() => {
-                const f = mobileFileActions; setMobileFileActions(null)
-                softHapticFeedback()
-                onOpenDiffTab(f)
-              }}>
-                <FileDiff size={14} aria-hidden="true" />
-                Open diff in tab
-              </Button>
-            )}
-            {mobileFileActions?.status !== 'D' && (
-              <Button type="button" variant="ghost" className="justify-start" onClick={() => {
-                const f = mobileFileActions; setMobileFileActions(null)
-                if (!f) return
-                softHapticFeedback()
-                onOpenFile(f.path)
-              }}>
-                <FolderOpen size={14} aria-hidden="true" />
-                Open file
-              </Button>
-            )}
-            <Button type="button" variant="ghost" className="justify-start" onClick={() => {
-              const f = mobileFileActions; setMobileFileActions(null)
-              if (!f) return
-              softHapticFeedback()
-              copy(f.path)
-            }}>
-              <Copy size={14} aria-hidden="true" />
-              Copy file path
-            </Button>
-            <Button type="button" variant="danger-subtle" className="justify-start" onClick={() => {
-              const f = mobileFileActions
-              setMobileFileActions(null)
-              if (f) setDiscardTarget(f)
-            }}>
-              <Undo2 size={14} aria-hidden="true" />
-              Discard changes…
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ActionSheet
+        open={mobileFileActions !== null}
+        onClose={() => setMobileFileActions(null)}
+        title={mobileFileActions?.path ?? ''}
+        items={fileSheetItems}
+      />
 
-      <Dialog open={mobileCommitActions !== null} onOpenChange={(open) => { if (!open && !gitActionPending) setMobileCommitActions(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="truncate pr-8 font-mono text-sm">{mobileCommitActions?.subject ?? ''}</DialogTitle>
-            <DialogDescription>SHA: {mobileCommitActions?.shortSha}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
-            <Button type="button" variant="ghost" className="justify-start" disabled={gitActionPending} onClick={() => {
-              const c = mobileCommitActions; setMobileCommitActions(null)
-              if (!c) return
-              softHapticFeedback()
-              onOpenCommitTab(c.sha)
-            }}>
-              <ExternalLink size={14} aria-hidden="true" />
-              Open in tab
-            </Button>
-            {isLatestCommit && (
-              <Button
-                type="button"
-                variant="danger-subtle"
-                className="justify-start"
-                disabled={gitActionPending}
-                onClick={() => { if (mobileCommitActions) { setMobileCommitActions(null); setCommitConfirm({ kind: 'undo' }) } }}
-              >
-                <Undo2 size={14} aria-hidden="true" />
-                {gitActionPending ? 'Undoing…' : 'Undo commit…'}
-              </Button>
-            )}
-            <Button
-              type="button"
-              variant="ghost"
-              className="justify-start"
-              disabled={gitActionPending}
-              onClick={() => {
-                const c = mobileCommitActions
-                if (c) { setMobileCommitActions(null); setCommitConfirm({ kind: 'revert', sha: c.sha, shortSha: c.shortSha }) }
-              }}
-            >
-              <RotateCcw size={14} aria-hidden="true" />
-              {gitActionPending ? 'Reverting…' : 'Revert commit…'}
-            </Button>
-            <Button type="button" variant="ghost" className="justify-start" disabled={gitActionPending} onClick={() => {
-              const c = mobileCommitActions; setMobileCommitActions(null)
-              if (!c) return
-              softHapticFeedback()
-              copy(c.shortSha)
-            }}>
-              <Copy size={14} aria-hidden="true" />
-              Copy short SHA
-            </Button>
-            <Button type="button" variant="ghost" className="justify-start" disabled={gitActionPending} onClick={() => {
-              const c = mobileCommitActions; setMobileCommitActions(null)
-              if (!c) return
-              softHapticFeedback()
-              copy(c.sha)
-            }}>
-              <Copy size={14} aria-hidden="true" />
-              Copy full SHA
-            </Button>
-            <Button type="button" variant="ghost" className="justify-start" disabled={gitActionPending} onClick={() => {
-              const c = mobileCommitActions; setMobileCommitActions(null)
-              if (!c) return
-              softHapticFeedback()
-              copy(c.subject)
-            }}>
-              <Copy size={14} aria-hidden="true" />
-              Copy commit message
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ActionSheet
+        open={mobileCommitActions !== null}
+        onClose={() => { if (!gitActionPending) setMobileCommitActions(null) }}
+        title={mobileCommitActions?.subject ?? ''}
+        description={mobileCommitActions?.shortSha}
+        items={commitSheetItems}
+      />
 
       {desktopCommitActions && (
         <ContextMenu

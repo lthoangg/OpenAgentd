@@ -41,6 +41,8 @@ mock.module('@/hooks/use-platform', () => ({
   getPlatform: () => ({ isTauri: false, os: 'linux', isMacOverlay: false }),
 }))
 mock.module('framer-motion', () => ({
+  // The phone's row sheets (ActionSheet → BottomSheet) import it.
+  AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
   motion: {
     aside: ({ children, className, 'aria-label': ariaLabel }: { children: React.ReactNode; className?: string; 'aria-label'?: string }) => (
       <aside className={className} aria-label={ariaLabel}>{children}</aside>

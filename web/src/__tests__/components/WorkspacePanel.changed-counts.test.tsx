@@ -53,6 +53,8 @@ mock.module('lucide-react', () => ({
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
 mock.module('framer-motion', () => ({
+  // The phone's row sheets (ActionSheet → BottomSheet) import it.
+  AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
   motion: {
     aside: ({ children, className }: { children: React.ReactNode; className?: string }) => (
       <aside className={className}>{children}</aside>

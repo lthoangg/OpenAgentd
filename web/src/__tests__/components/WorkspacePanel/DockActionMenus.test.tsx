@@ -14,6 +14,8 @@ import type { ChangedFileInfo } from '@/components/WorkspacePanel/diff-helpers'
 
 afterEach(cleanup)
 
+const rows = () => Array.from(document.querySelectorAll<HTMLElement>('[data-action-sheet-item]'))
+
 const file: ChangedFileInfo = { path: 'src/app.ts', status: 'M', additions: 1, deletions: 1 } as ChangedFileInfo
 
 function renderMenus(overrides: Partial<DockActionMenusProps> = {}) {
@@ -97,11 +99,41 @@ describe('file actions', () => {
     expect(screen.getByRole('menuitem', { name: 'Discard changes…' })).toBeTruthy()
   })
 
-  it('keeps one × on the phone sheet (the shared CloseButton) and clears the title of it', () => {
-    renderMenus({ mobileFileActions: file })
-    const sheet = screen.getByRole('dialog')
-    expect(sheet.querySelectorAll('[data-close-button]')).toHaveLength(1)
-    expect(within(sheet).getByRole('button', { name: 'Close' })).toBeTruthy()
-    expect(sheet.querySelector('h2')?.className).toContain('pr-8')
+  it('is the app\'s action sheet on a phone: the path as its title, no ×, Discard last in red', () => {
+    const setMobileFileActions = mock((..._args: unknown[]) => {})
+    const onOpenFile = mock((..._args: unknown[]) => {})
+    renderMenus({ mobileFileActions: file, setMobileFileActions, onOpenFile })
+    const sheet = screen.getByRole('dialog', { name: 'src/app.ts' })
+    expect(sheet.querySelector('[data-action-sheet]')).toBeTruthy()
+    expect(sheet.querySelector('[data-close-button]')).toBeNull()
+    expect(rows().map((row) => row.textContent)).toEqual(['Open diff in tab', 'Open file', 'Copy file path', 'Discard changes…'])
+    expect(rows().at(-1)!.className).toContain('text-(--color-error)')
+    fireEvent.click(rows()[1]!)
+    expect(setMobileFileActions).toHaveBeenCalledWith(null)
+    expect(onOpenFile).toHaveBeenCalledWith('src/app.ts')
+  })
+
+  it('leaves out Open file for a deleted file and Open diff when there is no working diff', () => {
+    renderMenus({ mobileFileActions: { ...file, status: 'D' }, hasWorkingDiff: () => false })
+    expect(rows().map((row) => row.textContent)).toEqual(['Copy file path', 'Discard changes…'])
+  })
+})
+
+describe('commit actions', () => {
+  const commit = { sha: 'abcdef1234567890', shortSha: 'abcdef1', subject: 'Fix the parser' }
+
+  it('names a commit by its subject and short SHA on a phone, with Undo last only on the latest commit', () => {
+    const onOpenCommitTab = mock((..._args: unknown[]) => {})
+    const first = renderMenus({ mobileCommitActions: commit, isLatestCommit: true, onOpenCommitTab })
+    const sheet = screen.getByRole('dialog', { name: 'Fix the parser' })
+    expect(within(sheet).getByText('abcdef1')).toBeTruthy()
+    expect(rows().map((row) => row.textContent)).toEqual([
+      'Open in tab', 'Revert commit…', 'Copy short SHA', 'Copy full SHA', 'Copy commit message', 'Undo commit…',
+    ])
+    fireEvent.click(rows()[0]!)
+    expect(onOpenCommitTab).toHaveBeenCalledWith('abcdef1234567890')
+    first.unmount()
+    renderMenus({ mobileCommitActions: commit, isLatestCommit: false })
+    expect(rows().map((row) => row.textContent)).not.toContain('Undo commit…')
   })
 })

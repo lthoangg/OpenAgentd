@@ -1114,10 +1114,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             ) : null}
             isMobile={isMobile}
             phone={isPhone}
-            onSuggest={(text) => {
-              inputRef.current?.setValue(text)
-              inputRef.current?.focus()
-            }}
             onSelectWorkspace={handleSelectDraftWorkspace}
             onOpenFolder={handleOpenWorkspaceDialog}
           />

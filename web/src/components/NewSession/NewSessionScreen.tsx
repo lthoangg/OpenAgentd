@@ -31,9 +31,6 @@ import { WorkspacePicker } from './WorkspacePicker'
 
 const RECENT_SESSIONS = 3
 const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
-/** A phone's draft offers these; a tap fills the composer (mockup J3 3.2). */
-const REPO_SUGGESTIONS = ['Fix the failing test', 'Review uncommitted changes', 'Explain this repo'] as const
-const CHAT_SUGGESTIONS = ['Explain a concept', 'Draft a message', 'Summarize a link'] as const
 
 export function NewSessionScreen({
   workspace,
@@ -44,7 +41,6 @@ export function NewSessionScreen({
   setup = null,
   isMobile,
   phone = false,
-  onSuggest,
   leaving = false,
   composerPlaceholderHeight,
   onSelectWorkspace,
@@ -60,12 +56,10 @@ export function NewSessionScreen({
   setup?: ReactNode
   isMobile: boolean
   /**
-   * A phone: the folder chip over three suggestions, no
-   * heading and no Continue (Sessions is one level up).
+   * A phone: just the folder chip, no heading and no Continue
+   * (Sessions is one level up).
    */
   phone?: boolean
-  /** A suggestion was tapped: fill the composer with it. */
-  onSuggest?: (text: string) => void
   /** Fade out as an inert copy (the hand-off into the chat). */
   leaving?: boolean
   /** While leaving: the height the composer had, kept as empty space. */
@@ -112,26 +106,12 @@ export function NewSessionScreen({
   } as const
 
   if (phone) {
-    const suggestions = isChat ? CHAT_SUGGESTIONS : REPO_SUGGESTIONS
     return (
       <motion.div {...motionProps}>
         <div className="flex w-full flex-col gap-4 px-4 pt-4 pb-4">
           {/* The chip reads "in <folder>" itself. */}
           <div className="flex min-w-0 items-center">{picker}</div>
           {setup && <div className="w-full">{setup}</div>}
-          <ul aria-label="Suggestions" className="flex flex-col">
-            {suggestions.map((text) => (
-              <li key={text}>
-                <button
-                  type="button"
-                  onClick={() => onSuggest?.(text)}
-                  className="flex min-h-11 w-full items-center rounded-sm px-1 text-left text-sm text-(--color-text-2) transition-colors duration-(--motion-instant) active:bg-(--bg-key)"
-                >
-                  {text}
-                </button>
-              </li>
-            ))}
-          </ul>
         </div>
       </motion.div>
     )

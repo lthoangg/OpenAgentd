@@ -1336,7 +1336,8 @@ global focus ring, 36px on touch. They take the place of the row's meta (age,
 tags) on hover or keyboard focus and hold no room at rest, so titles and
 folder names keep the row; touch shows them always, except Pin, which stays
 in More on touch so the title keeps the room; the pin mark itself stays on
-touch. Session rows offer **Pin**
+touch, except on the phone's Sessions screen, where Pinned and the swipe's
+Unpin already say it. Session rows offer **Pin**
 and **More**, subagent rows **More**, folder rows **+** and **More**. More
 opens the same menu as right-click, so destructive actions are never one
 click from a row. Text actions in rows ("Show all") use `ROW_TEXT_ACTION`
@@ -1855,7 +1856,11 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   its file bar wraps them.
 - **The composer.** It grows to six lines, then scrolls inside. The
   Code/Plan toggle and the model chip are separate controls, so mode is one
-  tap; the model chip's sheet picks Model and Thinking. The context ring
+  tap; the model chip's sheet picks only the model. Thinking is its own
+  chip with a dial glyph (an arc and a needle that sweeps with the level);
+  a tap blurs the screen over one slider: a drawn track filled up to a 32px
+  knob, a dot per level, and the level names under the dots, each tappable.
+  The context ring
   beside Send is a thin gauge, never a spinner. A new draft shows only the
   folder chip: no heading, no suggestions.
 - **Above the composer, in this order:** the open question (pinned, orange

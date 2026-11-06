@@ -552,6 +552,8 @@ describe('Sidebar page mode: swipe actions', () => {
     await renderPage()
 
     expect(actionsOf(swipeRowOf('Release notes')).map((button) => button.textContent)).toEqual(['Unpin', 'Delete'])
+    // Under Pinned the row needs no pin mark of its own.
+    expect(swipeRowOf('Release notes').querySelector('[data-pin-mark]')).toBeNull()
   })
 
   it('pins through the same handler as the row menu', async () => {

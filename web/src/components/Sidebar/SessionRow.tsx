@@ -470,7 +470,9 @@ function SessionRowView({
             <span className="truncate">{sentFromName}</span>
           </button>
         )}
-        {pinned && !isEditing && (
+        {/* The phone's Sessions screen drops the mark: a pinned row already
+            sits under Pinned, and the swipe says Unpin. */}
+        {pinned && !isEditing && !page && (
           <span data-pin-mark="" className={`ml-1 flex shrink-0 items-center text-(--color-text-muted) ${pinMarkVisibility}`} aria-hidden="true">
             <Pin size={12} />
           </span>

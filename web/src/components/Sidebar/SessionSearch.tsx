@@ -7,10 +7,13 @@ import { SearchBar } from '@/components/ui/search-bar'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ROW_TEXT_ACTION } from '@/components/ui/list-row'
-import { useSessionSearchQuery } from '@/queries/useSessionsQuery'
+import { useSessionSearchQuery, useSessionsQuery } from '@/queries/useSessionsQuery'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { CompactSessionRow } from './CompactSessionRow'
 import { sessionStatus } from './SessionStatusMark'
+
+/** Rows in the phone's "Recently opened" list before anything is typed. */
+const RECENT_LIMIT = 8
 
 /** Session title search across every workspace; shown in place of the tree. */
 export function SessionSearch({
@@ -51,6 +54,23 @@ export function SessionSearch({
       )
     : []
   const hasMore = data?.pages.at(-1)?.has_more === true
+  // The phone opens search as its own screen: before a query it offers the
+  // latest sessions (activity order) rather than an empty pane.
+  const { data: recentData } = useSessionsQuery()
+  const recent = cancel && !text.trim()
+    ? (recentData?.pages.flatMap((page) => page.data) ?? []).filter((session) => session.workspace).slice(0, RECENT_LIMIT)
+    : []
+  const renderRow = (session: SessionResponse) => (
+    <li key={session.id}>
+      <CompactSessionRow
+        session={session}
+        status={sessionStatus(session, unreadIds.includes(session.id))}
+        isCurrent={session.id === currentSessionId}
+        workspaceName={workspaceName(session.workspace ?? '')}
+        onSelect={(event) => onSessionSelect(session, session.workspace ?? '', event)}
+      />
+    </li>
+  )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -99,19 +119,13 @@ export function SessionSearch({
             )}
           />
         )}
-        <ul className="space-y-px">
-          {results.map((session) => (
-            <li key={session.id}>
-              <CompactSessionRow
-                session={session}
-                status={sessionStatus(session, unreadIds.includes(session.id))}
-                isCurrent={session.id === currentSessionId}
-                workspaceName={workspaceName(session.workspace ?? '')}
-                onSelect={(event) => onSessionSelect(session, session.workspace ?? '', event)}
-              />
-            </li>
-          ))}
-        </ul>
+        {recent.length > 0 && (
+          <>
+            <h3 id="session-search-recent" className="px-1.5 pt-2 pb-1 text-meta font-medium text-(--color-text-subtle)">Recently opened</h3>
+            <ul aria-labelledby="session-search-recent" className="space-y-px">{recent.map(renderRow)}</ul>
+          </>
+        )}
+        <ul className="space-y-px">{results.map(renderRow)}</ul>
         {hasMore && (
           <p className="px-1.5 py-1 text-meta text-(--color-text-subtle)">Showing the newest matches; type more to narrow.</p>
         )}

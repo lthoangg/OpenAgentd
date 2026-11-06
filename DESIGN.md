@@ -1858,8 +1858,10 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   Code/Plan toggle and the model chip are separate controls, so mode is one
   tap; the model chip's sheet picks only the model. Thinking is its own
   chip with a dial glyph (an arc and a needle that sweeps with the level);
-  a tap blurs the screen over one slider: a drawn track filled up to a 32px
-  knob, a dot per level, and the level names under the dots, each tappable.
+  a tap blurs the screen over one Control Center slider: a 56pt card-tone
+  track cut into a segment per level, each level's name inside its
+  segment, filled in the accent through the chosen one (the switch's "on"
+  colour). A press or drag anywhere picks the segment under the finger.
   The context ring
   beside Send is a thin gauge, never a spinner. A new draft shows only the
   folder chip: no heading, no suggestions.

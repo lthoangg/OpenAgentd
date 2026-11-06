@@ -5,7 +5,7 @@
  * levels (a tick of haptics on each), letting go saves, a tap outside
  * closes. The model chip then names only the model and account.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -25,6 +25,92 @@ export function ThinkingGauge({ fraction, px = 14, className }: { fraction: numb
       </g>
       <circle cx={8} cy={9} r={1.25} fill="currentColor" />
     </svg>
+  )
+}
+
+/**
+ * A Control Center slider: one thick track cut into a segment per level,
+ * filled in the accent up to and including the chosen one, each level's
+ * name inside its segment. A press or drag anywhere picks the segment
+ * under the finger; letting go (or an arrow key) calls `onCommit`.
+ */
+function ThinkingSlider({ levels, value, onChange, onCommit }: {
+  levels: string[]
+  value: number
+  onChange: (index: number) => void
+  onCommit: (index: number) => void
+}) {
+  const latest = useRef(value)
+  latest.current = value
+  const count = levels.length
+  const pick = (index: number) => {
+    const next = Math.min(count - 1, Math.max(0, index))
+    if (next !== latest.current) {
+      selectionHapticFeedback()
+      latest.current = next
+      onChange(next)
+    }
+    return next
+  }
+  const indexAt = (element: HTMLElement, clientX: number) => {
+    const rect = element.getBoundingClientRect()
+    return rect.width > 0 ? Math.floor(((clientX - rect.left) / rect.width) * count) : latest.current
+  }
+  const filled = ((value + 1) / count) * 100
+
+  return (
+    <div
+      role="slider"
+      tabIndex={0}
+      aria-label="Thinking level"
+      aria-valuemin={0}
+      aria-valuemax={count - 1}
+      aria-valuenow={value}
+      aria-valuetext={thinkingLevelLabel(levels[value] ?? '')}
+      data-thinking-slider=""
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture?.(event.pointerId)
+        pick(indexAt(event.currentTarget, event.clientX))
+      }}
+      onPointerMove={(event) => {
+        if (event.currentTarget.hasPointerCapture?.(event.pointerId)) pick(indexAt(event.currentTarget, event.clientX))
+      }}
+      onPointerUp={() => onCommit(latest.current)}
+      onKeyDown={(event) => {
+        const step = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[event.key]
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? count - 1 : step === undefined ? null : latest.current + step
+        if (next === null) return
+        event.preventDefault()
+        const before = latest.current
+        if (pick(next) !== before) onCommit(latest.current)
+      }}
+      className="relative h-14 w-full cursor-pointer touch-none overflow-hidden rounded-2xl border border-(--color-border) bg-(--bg-card) shadow-(--shadow-depth) select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring)"
+    >
+      <div
+        aria-hidden="true"
+        data-thinking-fill=""
+        style={{ transform: `translateX(${filled - 100}%)` }}
+        className="absolute inset-0 bg-(--color-accent) transition-transform duration-(--motion-base) ease-(--ease-out)"
+      />
+      <div aria-hidden="true" className="relative flex h-full">
+        {levels.map((level, index) => (
+          <span
+            key={level}
+            className={cn(
+              'relative flex min-w-0 flex-1 items-center justify-center px-1 text-meta transition-colors duration-(--motion-base)',
+              index <= value ? 'text-(--color-text-on-accent)' : 'text-(--color-text-2)',
+              index === value && 'font-semibold',
+            )}
+          >
+            {/* A hairline between segments; the edge of the fill is the one at the choice. */}
+            {index > 0 && index !== value + 1 && (
+              <span className={cn('absolute inset-y-4 left-0 w-px', index <= value ? 'bg-(--color-text-on-accent) opacity-25' : 'bg-(--color-border)')} />
+            )}
+            <span className="truncate">{thinkingLevelShortLabel(level)}</span>
+          </span>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -51,7 +137,6 @@ export function ThinkingControl({ settings, disabled = false }: { settings: RunS
   const label = current ? thinkingLevelLabel(current) : 'Off'
   const steps = Math.max(1, levels.length - 1)
   const currentIndex = Math.max(0, levels.indexOf(current ?? ''))
-  const draftFraction = draft / steps
 
   return (
     <>
@@ -73,73 +158,19 @@ export function ThinkingControl({ settings, disabled = false }: { settings: RunS
           aria-modal="true"
           aria-label="Thinking level"
           data-thinking-overlay=""
-          className="fixed inset-0 z-70 flex items-center justify-center bg-(--color-overlay) px-8 backdrop-blur-md animate-in fade-in-0 animation-duration-(--motion-base)"
+          className="fixed inset-0 z-70 flex items-center justify-center bg-(--color-overlay) px-6 backdrop-blur-md animate-in fade-in-0 animation-duration-(--motion-base)"
           onClick={(event) => { if (event.target === event.currentTarget) setOpen(false) }}
         >
           <div className="w-full max-w-sm animate-in zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)">
-            <ThinkingGauge fraction={draftFraction} px={48} className="mx-auto text-(--color-text)" />
-            <p className="mt-3 text-center text-meta font-medium text-(--color-text-2)">Thinking</p>
-            <p aria-live="polite" className="mt-0.5 text-center text-large-title font-bold text-(--color-text)">
+            <div className="flex items-center justify-center gap-1.5 text-(--color-text-2)">
+              <ThinkingGauge fraction={draft / steps} px={16} />
+              <p className="text-meta font-medium">Thinking</p>
+            </div>
+            <p aria-live="polite" className="mt-1 text-center text-large-title font-bold text-(--color-text)">
               {thinkingLevelLabel(levels[draft] ?? '')}
             </p>
-            {/* The track, its fill and the step dots are drawn here; the
-                native range sits on top (transparent track, real knob) so
-                drag, VoiceOver and keys keep working. The drawn track is
-                inset by the knob's radius, where the knob's centre travels. */}
-            <div className="relative mt-6 h-8">
-              <div aria-hidden="true" className="absolute inset-x-4 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-(--bg-key)">
-                <div
-                  data-thinking-fill=""
-                  style={{ transform: `scaleX(${draftFraction})` }}
-                  className="h-full w-full origin-left rounded-full bg-(--color-accent) transition-transform duration-(--motion-instant)"
-                />
-              </div>
-              <div aria-hidden="true" className="absolute inset-x-4 top-1/2">
-                {levels.map((level, index) => (
-                  <span
-                    key={level}
-                    style={{ left: `${(index / steps) * 100}%` }}
-                    className={cn(
-                      'absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors duration-(--motion-instant)',
-                      index <= draft ? 'bg-(--color-text-on-accent)' : 'bg-(--color-text-muted)',
-                    )}
-                  />
-                ))}
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={levels.length - 1}
-                step={1}
-                value={draft}
-                aria-label="Thinking level"
-                aria-valuetext={thinkingLevelLabel(levels[draft] ?? '')}
-                onChange={(event) => {
-                  const next = Number(event.target.value)
-                  if (next !== draft) selectionHapticFeedback()
-                  setDraft(next)
-                }}
-                onPointerUp={() => commit(draft)}
-                onKeyUp={() => commit(draft)}
-                className="oa-thinking-slider absolute inset-0 w-full"
-              />
-            </div>
-            <div aria-hidden="true" className="relative mx-4 mt-2 h-5">
-              {levels.map((level, index) => (
-                <button
-                  key={level}
-                  type="button"
-                  tabIndex={-1}
-                  onClick={() => { if (index !== draft) selectionHapticFeedback(); setDraft(index); commit(index) }}
-                  style={{ left: `${(index / steps) * 100}%` }}
-                  className={cn(
-                    'absolute -translate-x-1/2 whitespace-nowrap text-meta transition-colors duration-(--motion-instant)',
-                    index === draft ? 'font-semibold text-(--color-text)' : 'text-(--color-text-muted)',
-                  )}
-                >
-                  {thinkingLevelShortLabel(level)}
-                </button>
-              ))}
+            <div className="mt-5">
+              <ThinkingSlider levels={levels} value={draft} onChange={setDraft} onCommit={commit} />
             </div>
           </div>
         </div>,

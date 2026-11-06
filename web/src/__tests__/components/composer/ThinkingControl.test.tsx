@@ -17,14 +17,34 @@ afterEach(() => {
 const settings = (level: string | null, levels = ['low', 'medium', 'high']) =>
   ({ thinkingLevel: level, thinkingLevels: levels }) as unknown as Parameters<typeof ThinkingControl>[0]['settings']
 
+// The slider reads the finger against its box; happy-dom lays nothing out.
+const sized = (slider: HTMLElement, width = 300) => {
+  slider.getBoundingClientRect = () => ({ left: 0, top: 0, right: width, bottom: 56, width, height: 56, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+  return slider
+}
+
 describe('ThinkingControl', () => {
-  it('opens a centred slider and saves the level it is let go on', () => {
+  it('opens a centred slider and saves the segment it is let go on', () => {
     render(<ThinkingControl settings={settings('low')} />)
     fireEvent.click(screen.getByRole('button', { name: 'Thinking Low. Change' }))
-    const slider = screen.getByRole('slider', { name: 'Thinking level' })
-    fireEvent.change(slider, { target: { value: '2' } })
-    fireEvent.pointerUp(slider)
+    const slider = sized(screen.getByRole('slider', { name: 'Thinking level' }))
+    fireEvent.pointerDown(slider, { clientX: 150, pointerId: 1 })
+    expect(slider.getAttribute('aria-valuetext')).toBe('Medium')
+    expect(saved).toEqual([])
+    fireEvent.pointerDown(slider, { clientX: 290, pointerId: 1 })
+    fireEvent.pointerUp(slider, { pointerId: 1 })
     expect(saved).toEqual([{ thinkingLevel: 'high' }])
+  })
+
+  it('steps with the arrow keys and saves each step', () => {
+    render(<ThinkingControl settings={settings('medium')} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Thinking Medium. Change' }))
+    const slider = screen.getByRole('slider', { name: 'Thinking level' })
+    fireEvent.keyDown(slider, { key: 'ArrowRight' })
+    fireEvent.keyDown(slider, { key: 'ArrowRight' })
+    expect(slider.getAttribute('aria-valuenow')).toBe('2')
+    fireEvent.keyDown(slider, { key: 'Home' })
+    expect(saved).toEqual([{ thinkingLevel: 'high' }, { thinkingLevel: 'low' }])
   })
 
   it('closes on a tap outside the slider', () => {
@@ -39,22 +59,15 @@ describe('ThinkingControl', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('draws a gauge whose needle sweeps with the level, and fills the track up to the knob', () => {
-    render(<ThinkingControl settings={settings('medium')} />)
+  it('points the chip\'s gauge at the level and fills the track through the chosen segment', () => {
+    render(<ThinkingControl settings={settings('medium', ['low', 'medium', 'high', 'max'])} />)
     const chip = screen.getByRole('button', { name: 'Thinking Medium. Change' })
-    const needle = () => chip.querySelector('[data-thinking-gauge] g') as SVGGElement
-    expect(needle().style.transform).toBe('rotate(0deg)')
+    const needle = chip.querySelector('[data-thinking-gauge] g') as SVGGElement
+    expect(needle.style.transform).toBe('rotate(-45deg)')
     fireEvent.click(chip)
     const fill = document.querySelector('[data-thinking-fill]') as HTMLElement
-    expect(fill.style.transform).toBe('scaleX(0.5)')
-    fireEvent.change(screen.getByRole('slider', { name: 'Thinking level' }), { target: { value: '2' } })
-    expect(fill.style.transform).toBe('scaleX(1)')
-  })
-
-  it('saves a level tapped by its label', () => {
-    render(<ThinkingControl settings={settings('low')} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Thinking Low. Change' }))
-    fireEvent.click(screen.getByText('High'))
-    expect(saved).toEqual([{ thinkingLevel: 'high' }])
+    expect(fill.style.transform).toBe('translateX(-50%)')
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Thinking level' }), { key: 'End' })
+    expect(fill.style.transform).toBe('translateX(0%)')
   })
 })

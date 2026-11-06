@@ -19,7 +19,7 @@ describe('PanelRow', () => {
       </PanelRow>,
     )
     const row = container.firstElementChild as HTMLElement
-    expect(row.className.split(/\s+/)).toContain('flex-row')
+    expect(row.className.split(/\s+/)).toContain('grid-cols-[minmax(0,1fr)_auto]')
     expect(row.className).not.toContain('flex-col')
   })
 
@@ -35,8 +35,19 @@ describe('PanelRow', () => {
       <PanelRow label="Turns per goal" htmlFor="t" inline><input id="t" type="number" /><span>turns</span></PanelRow>,
     )
     const row = container.firstElementChild as HTMLElement
-    expect(row.className.split(/\s+/)).toContain('flex-row')
+    expect(row.className.split(/\s+/)).toContain('grid-cols-[minmax(0,1fr)_auto]')
     expect(row.className).not.toContain('flex-col')
     expect(row.textContent).toContain('turns')
+  })
+})
+
+describe('PanelRow footer', () => {
+  it('runs the description under the label and the control, the full row wide', () => {
+    const { container } = render(
+      <PanelRow label="Turns per goal" htmlFor="t" inline description="What it does."><input id="t" type="number" /></PanelRow>,
+    )
+    const notes = (container.firstElementChild as HTMLElement).lastElementChild as HTMLElement
+    expect(notes.textContent).toBe('What it does.')
+    expect(notes.className.split(/\s+/)).toContain('col-span-2')
   })
 })

@@ -100,7 +100,7 @@ export function ContextSettingsPage() {
             aria-label="Token threshold"
             value={threshold === null ? '' : String(threshold)}
             onChange={(e) => draft.patch({ prompt_token_threshold: parseOptionalInt(e.target.value) })}
-            className="h-9 w-36 font-mono"
+            className="h-9 w-32! no-spin text-right font-mono tabular-nums"
           />
           <span className="text-xs text-(--color-text-2)">tokens</span>
         </PanelRow>
@@ -141,7 +141,7 @@ export function ContextSettingsPage() {
               aria-label="Idle trigger percent"
               value={idlePercent === null ? '' : String(idlePercent)}
               onChange={(e) => draft.patch({ idle_compaction_percent: parseOptionalInt(e.target.value) })}
-              className="h-9 w-24 font-mono"
+              className="h-9 w-20! md:w-24! no-spin text-right font-mono tabular-nums"
             />
             <span className="text-xs text-(--color-text-muted)" aria-hidden="true">%</span>
           </div>

@@ -49,25 +49,50 @@ export function PanelRow({
 }: PanelRowProps) {
   const labelClass = cn('block', TEXT.label)
   const switchRow = !stack && (inline || (isValidElement(children) && children.type === Switch))
+  const labelEl = htmlFor ? (
+    <label id={labelId} htmlFor={htmlFor} className={labelClass}>{label}</label>
+  ) : (
+    <p id={labelId} className={labelClass}>{label}</p>
+  )
+  const notes = (
+    <>
+      {description && <div className={cn('mt-1 max-w-prose', TEXT.hint)}>{description}</div>}
+      {error && <p className="mt-1 text-meta leading-relaxed text-(--color-error)">{error}</p>}
+    </>
+  )
+  // A switch, or a number and its unit: on a phone the label and the
+  // control share the top line and the description runs the full width
+  // under both (iOS's footer), so the control never squeezes the copy into
+  // a narrow column. From md up the control spans both lines beside the
+  // text, as the flex row draws it.
+  if (switchRow && children !== undefined) {
+    return (
+      <div
+        className={cn(
+          'grid min-h-(--phone-control) grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 sm:gap-x-8 md:min-h-14 md:gap-x-3',
+          ROW_PAD,
+          className,
+        )}
+      >
+        <div className="min-w-0">{labelEl}</div>
+        <div className="flex shrink-0 items-center justify-end gap-2 md:row-span-2">{children}</div>
+        {(description || error) && <div className="col-span-2 min-w-0 md:col-span-1">{notes}</div>}
+      </div>
+    )
+  }
   return (
     <div
       className={cn(
         'flex min-h-(--phone-control) md:min-h-14',
         ROW_PAD,
-        switchRow
-          ? 'flex-row items-center justify-between gap-4 sm:gap-8 md:gap-3'
-          : cn('flex-col gap-2 md:gap-3', !stack && 'sm:flex-row sm:items-center sm:justify-between sm:gap-8'),
+        'flex-col gap-2 md:gap-3',
+        !stack && 'sm:flex-row sm:items-center sm:justify-between sm:gap-8',
         className,
       )}
     >
       <div className="min-w-0 flex-1">
-        {htmlFor ? (
-          <label id={labelId} htmlFor={htmlFor} className={labelClass}>{label}</label>
-        ) : (
-          <p id={labelId} className={labelClass}>{label}</p>
-        )}
-        {description && <div className={cn('mt-1 max-w-prose', TEXT.hint)}>{description}</div>}
-        {error && <p className="mt-1 text-meta leading-relaxed text-(--color-error)">{error}</p>}
+        {labelEl}
+        {notes}
       </div>
       {children !== undefined && (
         <div className={cn('min-w-0', stack ? 'w-full' : 'flex shrink-0 flex-wrap items-center gap-2 sm:justify-end')}>

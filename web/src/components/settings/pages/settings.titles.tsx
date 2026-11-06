@@ -105,7 +105,7 @@ export function TitlesSettingsPage() {
                 aria-label="Wait for title (seconds)"
                 value={draft.value.wait_timeout_seconds}
                 onChange={(e) => draft.patch({ wait_timeout_seconds: parseInt(e.target.value, 10) || 0 })}
-                className="h-9 w-24 font-mono"
+                className="h-9 w-20! md:w-24! no-spin text-right font-mono tabular-nums"
               />
             </PanelRow>
             <PanelRow

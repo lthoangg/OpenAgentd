@@ -836,6 +836,17 @@ html[data-mobile-shell][data-vp-anim] .app-overlay-modal[data-overlay-level="app
   }
 }
 
+/* no-spin: a right-aligned number field without the stepper arrows, which
+ * crowd a short field's value (settings number rows). */
+@utility no-spin {
+  appearance: textfield;
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+}
+
 /* label-caps (DESIGN.md → Typography): section-card headers and group labels,
  * the only uppercase style. Type only — callers pick the colour
  * (text-muted on card headers, text-subtle on nav/group labels). */

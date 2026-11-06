@@ -107,7 +107,7 @@ export function GoalsSettingsPage() {
             aria-label="Turns per goal"
             value={Number.isFinite(maxTurns) ? String(maxTurns) : ''}
             onChange={(e) => draft.patch({ max_turns: parseInt(e.target.value, 10) })}
-            className="h-9 w-24 font-mono"
+            className="h-9 w-20! md:w-24! no-spin text-right font-mono tabular-nums"
           />
           <span className="text-xs text-(--color-text-2)">turns</span>
         </PanelRow>
@@ -127,7 +127,7 @@ export function GoalsSettingsPage() {
             placeholder="No limit"
             value={budget === null ? '' : Number.isFinite(budget) ? String(budget) : ''}
             onChange={(e) => draft.patch({ token_budget: e.target.value.trim() === '' ? null : parseInt(e.target.value, 10) })}
-            className="h-9 w-32 font-mono"
+            className="h-9 w-28! md:w-32! no-spin text-right font-mono tabular-nums"
           />
           <span className="text-xs text-(--color-text-2)">tokens</span>
         </PanelRow>

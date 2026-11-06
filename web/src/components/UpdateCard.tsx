@@ -49,7 +49,8 @@ async function listenUpdaterEvents(callbacks: {
 export function UpdateCard() {
   const [status, setStatus] = useState<UpdateStatus>({ status: 'idle' })
   const [tauriReady, setTauriReady] = useState(false)
-  const [minimized, setMinimized] = useState(false)
+  // A phone starts with the one-line banner (mockup J11): the card opens on a tap.
+  const [minimized, setMinimized] = useState(isMobileShell)
   const [busyWarning, setBusyWarning] = useState(false)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const dragControls = useDragControls()
@@ -265,7 +266,7 @@ export function UpdateCard() {
       >
         {minimized ? (
           <div className="flex items-center gap-2">
-            <button
+            {!isMobileShell() && <button
               type="button"
               aria-label="Drag update notification (double-click to reset position)"
               title="Drag to move · Double-click to reset"
@@ -274,7 +275,7 @@ export function UpdateCard() {
               className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
             >
               <GripVertical className="size-3.5" />
-            </button>
+            </button>}
 
             <button
               type="button"

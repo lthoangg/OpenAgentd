@@ -176,6 +176,9 @@ describe('UpdateCard — platform lifecycle', () => {
     render(<UpdateCard />)
 
     const open = await screen.findByRole('button', { name: /open testflight/i })
+    // A phone starts with the one-line banner, without a drag grip.
+    expect(screen.getByRole('button', { name: 'Expand' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Drag update notification/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /^download$/i })).toBeNull()
     fireEvent.click(open)
     await waitFor(() => expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(true))
@@ -192,6 +195,8 @@ describe('UpdateCard — platform lifecycle', () => {
     expect(screen.queryByText(/install and restart/i)).toBeNull()
     fireEvent.click(install)
     await waitFor(() => expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(true))
+    // A phone shows the one-line banner first; the card opens on a tap.
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
     expect(await screen.findByText(/android asks you to confirm/i)).toBeInTheDocument()
     expect(screen.queryByText(/restart timed out/i)).toBeNull()
   })

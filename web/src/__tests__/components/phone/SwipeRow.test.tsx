@@ -74,7 +74,7 @@ const rowButton = (name = 'Session') => screen.getByRole('button', { name })
  * node an empty accessible name, so find it by its text instead.
  */
 const hiddenAction = (label: string) =>
-  screen.getAllByRole('button', { hidden: true }).find((button) => button.getAttribute('aria-label') === label)!
+  screen.getAllByRole('button', { hidden: true }).find((button) => button.textContent === label)!
 /** The row's root and its sliding content, found from the button inside it. */
 function parts(name = 'Session') {
   const root = rowButton(name).closest<HTMLElement>('[data-swipe-row]')!
@@ -246,17 +246,14 @@ describe('SwipeRow', () => {
       expect(screen.getByRole('button', { name: 'Hide' })).toBeTruthy()
     })
 
-    it('renders each action as a round glyph in a 72px slot behind the content', () => {
+    it('renders each action 72px wide behind the content, a word on its tone', () => {
       render(row())
       const { root } = parts()
       const pin = hiddenAction('Pin')
-      expect(pin.querySelector('svg')?.getAttribute('width')).toBe('16')
-      const glyph = pin.querySelector('span') as HTMLElement
-      expect(glyph.className).toContain('rounded-full')
-      expect(glyph.className).toContain('bg-(--color-accent)')
-      expect(glyph.className).toContain('text-(--color-text-on-accent)')
+      expect(pin.className).toContain('bg-(--color-accent)')
+      expect(pin.className).toContain('text-(--color-text-on-accent)')
       const hide = hiddenAction('Hide')
-      expect(hide.querySelector('span')?.className).toContain('bg-(--color-error)')
+      expect(hide.className).toContain('bg-(--color-error)')
       // Shut, the actions are fully clipped; their strip is the actions' total width.
       const strip = pin.parentElement as HTMLElement
       expect(strip.style.width).toBe(`${WIDTH}px`)
@@ -270,7 +267,7 @@ describe('SwipeRow', () => {
           <button type="button">Session</button>
         </SwipeRow>,
       )
-      expect(hiddenAction('Mute').querySelector('span')?.className).toContain('bg-(--bg-key)')
+      expect(hiddenAction('Mute').className).toContain('bg-(--bg-key)')
     })
   })
 

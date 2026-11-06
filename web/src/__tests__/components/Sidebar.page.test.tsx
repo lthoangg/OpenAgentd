@@ -540,10 +540,10 @@ describe('Sidebar page mode: swipe actions', () => {
     const swipeRow = swipeRowOf('Fix login redirect loop')
     expect(swipeRow).toBeTruthy()
     const actions = actionsOf(swipeRow)
-    expect(actions.map((button) => button.getAttribute('aria-label'))).toEqual(['Pin', 'Delete'])
+    expect(actions.map((button) => button.textContent)).toEqual(['Pin', 'Delete'])
     // Neutral for Pin, destructive for Delete: only Delete is loud.
-    expect(actions[0].querySelector('span')?.className).toContain('bg-(--accent-orange-text)')
-    expect(actions[1].querySelector('span')?.className).toContain('bg-(--color-error)')
+    expect(actions[0].className).toContain('bg-(--bg-key)')
+    expect(actions[1].className).toContain('bg-(--color-error)')
   })
 
   it('offers Unpin on a pinned session', async () => {
@@ -551,7 +551,7 @@ describe('Sidebar page mode: swipe actions', () => {
     workspaceSessionsData = []
     await renderPage()
 
-    expect(actionsOf(swipeRowOf('Release notes')).map((button) => button.getAttribute('aria-label'))).toEqual(['Unpin', 'Delete'])
+    expect(actionsOf(swipeRowOf('Release notes')).map((button) => button.textContent)).toEqual(['Unpin', 'Delete'])
   })
 
   it('pins through the same handler as the row menu', async () => {

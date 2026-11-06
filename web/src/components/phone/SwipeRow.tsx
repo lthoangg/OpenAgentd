@@ -47,7 +47,7 @@ import { SpringValue } from '@/lib/drawer-motion'
 import { selectionHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 
-export type SwipeActionTone = 'neutral' | 'accent' | 'pin' | 'destructive'
+export type SwipeActionTone = 'neutral' | 'accent' | 'destructive'
 
 export interface SwipeAction {
   id: string
@@ -68,7 +68,7 @@ export interface SwipeRowProps {
   className?: string
 }
 
-/** Each revealed action: a 72px slot holding a 36px round button (the row is 36-44px tall). */
+/** Each revealed action: 72px wide, the row's full height. */
 const ACTION_WIDTH = 72
 /** px of travel before the gesture decides what it is. */
 const SLOP = 8
@@ -89,8 +89,6 @@ const VELOCITY_STALE_MS = 80
 const TONE: Record<SwipeActionTone, string> = {
   neutral: 'bg-(--bg-key) text-(--color-text) active:bg-(--color-fill-key-hover)',
   accent: ['bg-(--color-accent)', 'text-(--color-text-on-accent)', 'active:bg-(--color-accent)/80'].join(' '),
-  // Pin: iOS's orange swipe, so it reads as its own action beside Delete.
-  pin: ['bg-(--accent-orange-text)', 'text-(--bg-page)', 'active:bg-(--accent-orange-text)/80'].join(' '),
   destructive: ['bg-(--color-error)', 'text-(--color-text-on-accent)', 'active:bg-(--color-error)/80'].join(' '),
 }
 
@@ -336,13 +334,12 @@ export function SwipeRow({ actions, disabled = false, children, className }: Swi
         ref={actionsRef}
         // Behind the content, clipped to what the content has uncovered. Inert
         // while shut so a tap on the row's right edge can never land on one.
-        className={cn('absolute inset-y-0 right-0 flex items-center', !open && 'pointer-events-none')}
+        className={cn('absolute inset-y-0 right-0 flex overflow-hidden rounded-r-sm', !open && 'pointer-events-none')}
       >
-        {actions.map(({ id, label, icon: Icon, tone, onAction }) => (
+        {actions.map(({ id, label, tone, onAction }) => (
           <button
             key={id}
             type="button"
-            aria-label={label}
             aria-hidden={open ? undefined : true}
             tabIndex={open ? undefined : -1}
             onClick={() => {
@@ -350,20 +347,14 @@ export function SwipeRow({ actions, disabled = false, children, className }: Swi
               rest(false)
             }}
             className={cn(
-              'group/swipe flex h-full min-w-0 flex-1 items-center justify-center select-none focus-visible:outline-none',
+              'flex h-full min-w-0 flex-1 items-center justify-center px-1 text-xs font-medium select-none transition-opacity duration-(--motion-instant) active:opacity-70',
+              'focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none focus-visible:ring-inset',
+              TONE[tone],
             )}
           >
-            {/* A round glyph button in its slot, as iOS's newer swipe actions;
-                the label is the button's name. */}
-            <span
-              aria-hidden="true"
-              className={cn(
-                'flex size-9 items-center justify-center rounded-full transition-transform duration-(--motion-instant) group-active/swipe:scale-90 group-focus-visible/swipe:ring-2 group-focus-visible/swipe:ring-(--focus-ring) motion-reduce:group-active/swipe:scale-100',
-                TONE[tone],
-              )}
-            >
-              <Icon size={16} className="shrink-0" />
-            </span>
+            {/* Flush, full-height segments with a word, as Mail's swipe:
+                a glyph alone read as floating dots on a 36-40px row. */}
+            <span className="truncate">{label}</span>
           </button>
         ))}
       </div>

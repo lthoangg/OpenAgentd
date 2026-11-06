@@ -16,6 +16,7 @@
  */
 import { Button } from '@/components/ui/button'
 import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { cn } from '@/lib/utils'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -185,6 +186,23 @@ function selectOpenReview(state: AgentStoreState): PendingQuestion | null {
   return question !== null && question.kind === 'plan_review' && state.sessionId !== null && question.sessionId === state.sessionId
     ? question
     : null
+}
+
+/**
+ * A phone's plan under review: one bar pinned above the composer that opens
+ * the plan full screen, where Approve and Request changes are pinned.
+ */
+export function PinnedPlanReview() {
+  const isPhone = useIsPhone()
+  const openReview = useAgentStore(selectOpenReview)
+  if (!isPhone || openReview === null) return null
+  return (
+    <div data-plan-pinned="" className="mb-2 flex min-h-11 items-center gap-2 rounded-md border border-(--accent-orange-text) bg-(--bg-card) pl-3 pr-1">
+      <span className="min-w-0 flex-1 truncate text-subhead text-(--accent-orange-text)">Plan awaiting approval</span>
+      {openReview.planRevision != null && <span className="shrink-0 text-meta text-(--color-text-muted) tabular-nums">rev {openReview.planRevision}</span>}
+      <Button type="button" size="sm" aria-label="View plan" onClick={() => dispatchAppEvent(APP_EVENTS.openPlan)}>View</Button>
+    </div>
+  )
 }
 
 export function PlanReviewCard({

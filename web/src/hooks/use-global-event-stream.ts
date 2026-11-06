@@ -487,9 +487,17 @@ export function useGlobalEventStream(): void {
       connect()
     }
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') resume()
+      if (document.visibilityState !== 'visible') return
+      // A stream that died while the app slept may still look open; one
+      // health request tells the dot the truth without tearing it down.
+      recheckHealth()
+      resume()
     }
+    // The OS knows the network is gone long before a half-open stream fails,
+    // so the dot and the banner stop saying "connected" at once.
+    const onOffline = () => recheckHealth()
     window.addEventListener('online', resume)
+    window.addEventListener('offline', onOffline)
     window.addEventListener('pageshow', resume)
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
@@ -500,6 +508,7 @@ export function useGlobalEventStream(): void {
       clearSettleTimer()
       unsubscribeApiBaseUrl()
       window.removeEventListener('online', resume)
+      window.removeEventListener('offline', onOffline)
       window.removeEventListener('pageshow', resume)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }

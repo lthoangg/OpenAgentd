@@ -15,6 +15,10 @@ export function useHealthQuery() {
     queryFn: health,
     retry: 3,
     retryDelay: 1000,
+    // React Query pauses queries while the device is offline, and a paused
+    // check never fails: the dot stayed green and the banner never came.
+    // This is the one query whose job is to fail then.
+    networkMode: 'always',
     refetchInterval: HEALTH_FALLBACK_POLL_MS,
     refetchIntervalInBackground: false,
   })

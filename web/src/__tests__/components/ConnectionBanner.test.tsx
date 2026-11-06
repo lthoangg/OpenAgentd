@@ -45,14 +45,23 @@ describe('ConnectionBanner', () => {
   it('names the built-in server once the health check has failed', () => {
     health = { isSuccess: false, isError: true, isPending: false }
     render(<ConnectionBanner />)
-    expect(screen.getByRole('alert').textContent).toContain("Can't reach the built-in server. Retrying…")
+    expect(screen.getByRole('alert').textContent).toContain("Server unreachable · Retrying…")
+  })
+
+  // A phone is 390pt wide: the banner stays one line and never pushes the
+  // transcript down by two (DESIGN.md → Phone system, Notices).
+  it('keeps the message on one line', () => {
+    health = { isSuccess: false, isError: true, isPending: false }
+    render(<ConnectionBanner />)
+    const message = screen.getByRole('alert').querySelector('p')
+    expect(message?.className.split(' ')).toContain('truncate')
   })
 
   it('names the remote server by its host', () => {
     health = { isSuccess: false, isError: true, isPending: false }
     external = true
     render(<ConnectionBanner />)
-    expect(screen.getByRole('alert').textContent).toContain("Can't reach 192.168.1.20. Retrying…")
+    expect(screen.getByRole('alert').textContent).toContain("Can't reach 192.168.1.20 · Retrying…")
   })
 
   it('opens the backend connection dialog from Change server', async () => {

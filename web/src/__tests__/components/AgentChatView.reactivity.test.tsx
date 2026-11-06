@@ -24,7 +24,7 @@ mock.module('@/queries/useSessionPlanQuery', () => ({
   useSessionPlanQuery: () => ({ data: { plan: null } }),
   useClearSessionPlanMutation: () => ({ mutate: () => {} }),
 }))
-mock.module('@/queries', () => ({ queryKeys, useProvidersQuery: () => ({ data: { providers: [] } }) }))
+mock.module('@/queries', () => ({ queryKeys, useProvidersQuery: () => ({ data: { providers: [] } }), useHealthQuery: () => ({ isSuccess: true, isError: false }) }))
 mock.module('@/queries/useAgentsQuery', () => ({
   useAgentsQuery: () => ({ data: { agents: [{ name: 'code' }] }, isLoading: false }),
 }))

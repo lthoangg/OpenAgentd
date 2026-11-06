@@ -19,6 +19,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { AgentView } from '../AgentView'
 import type { OpenSessionHandler } from '../AgentView/UserBubble'
 import type { FileRefOpener } from '../FileRefLink'
@@ -59,7 +60,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { FolderCode, FileUp } from 'lucide-react'
+import { FolderCode, FileUp, WifiOff } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useFocusRegions } from '@/hooks/use-focus-regions'
 import { usePlatform } from '@/hooks/use-platform'
@@ -256,6 +257,10 @@ function ChatFrame({ phoneStack, backEnabled, header, sidebar, footer, children 
 
 export function AgentChatView({ sessionId, workspace = null, sessionLoading = false, sessionNotFound = false, phoneStack }: AgentChatViewProps) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  // Opened while the server is down, nothing loaded, so no workspace is known:
+  // say so instead of asking for a workspace.
+  const serverDown = useHealthQuery().isError
   const openSettings = useSettingsStore((s) => s.openSettings)
   const pushToast = useToastStore((s) => s.push)
   const isMobile = useIsMobile()
@@ -1035,6 +1040,17 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               </p>
             </div>
           </div>
+        ) : !effectiveWorkspace && !isSessionLoading && serverDown ? (
+          <EmptyState
+            icon={WifiOff}
+            title="Can't reach the server"
+            body="This session opens once the server answers again."
+            action={
+              <Button type="button" onClick={() => void queryClient.invalidateQueries()}>
+                Retry
+              </Button>
+            }
+          />
         ) : !effectiveWorkspace && !isSessionLoading ? (
           <EmptyState
             icon={FolderCode}

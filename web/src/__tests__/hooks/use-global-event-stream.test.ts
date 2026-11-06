@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createElement } from 'react'
-import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, QueryObserver, onlineManager } from '@tanstack/react-query'
 import { cleanup, render, waitFor } from '@testing-library/react'
 import { setApiBaseUrl } from '@/api/base-url'
 
@@ -182,6 +182,28 @@ describe('health follows the global connection', () => {
     ;(globalCallbacks as Callbacks).onOpen?.()
     await new Promise((r) => setTimeout(r, 20))
     expect(health.requests()).toBe(0)
+    health.unsubscribe()
+  })
+
+  // A phone that loses its network keeps a half-open stream that may not
+  // fail for minutes, so the dot stayed green. The OS says so at once.
+  it('rechecks health the moment the device goes offline', async () => {
+    const health = await mount(true)
+    ;(globalCallbacks as Callbacks).onOpen?.()
+    window.dispatchEvent(new Event('offline'))
+    await waitFor(() => expect(health.requests()).toBe(1))
+    health.unsubscribe()
+    // React Query's online manager heard the event too; it is global.
+    onlineManager.setOnline(true)
+  })
+
+  // An app back from the background may hold a stream that died while asleep.
+  it('rechecks health when the app comes back to the foreground', async () => {
+    const health = await mount(true)
+    ;(globalCallbacks as Callbacks).onOpen?.()
+    document.dispatchEvent(new Event('visibilitychange'))
+    await waitFor(() => expect(health.requests()).toBe(1))
+    expect(globalEventStream).toHaveBeenCalledTimes(1)
     health.unsubscribe()
   })
 })

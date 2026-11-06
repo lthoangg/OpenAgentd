@@ -4,6 +4,7 @@ import { forwardRef, useImperativeHandle } from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 
 let agentsLoading = false
+let healthError = false
 let workspaceTree: unknown = undefined
 const setValueMock = mock(() => {})
 const setFilesMock = mock(() => {})
@@ -35,6 +36,7 @@ mock.module('@/queries/useSessionGoalQuery', () => ({
 }))
 mock.module('@/queries', () => ({
   useProvidersQuery: () => ({ data: { providers: [] } }),
+  useHealthQuery: () => ({ isSuccess: !healthError, isError: healthError }),
 }))
 mock.module('@/queries/useCommandsQuery', () => ({ useCommandsQuery: () => ({ data: { commands: [] } }) }))
 mock.module('@/queries/useSnippetsQuery', () => ({ useSnippetsQuery: () => ({ data: { snippets: [] } }) }))
@@ -158,6 +160,7 @@ afterEach(cleanup)
 
 beforeEach(() => {
   agentsLoading = false
+  healthError = false
   workspaceTree = undefined
   navigateMock.mockClear()
   useAgentStore.setState({ sessionId: null, parentSessionId: null, _workspace: null })
@@ -216,6 +219,17 @@ describe('AgentChatView — switching sessions', () => {
 
     expect(screen.getByText('Session not found')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'New session' })).toBeTruthy()
+    expect(screen.queryByText('No workspace attached')).toBeNull()
+  })
+
+  // Opened with the server down, nothing could load, so the view knows no
+  // workspace. Asking for one sends the user the wrong way.
+  it('says the server is unreachable instead of asking for a workspace', () => {
+    healthError = true
+    render(<AgentChatView sessionId="session-x" workspace={null} />)
+
+    expect(screen.getByText("Can't reach the server")).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
     expect(screen.queryByText('No workspace attached')).toBeNull()
   })
 

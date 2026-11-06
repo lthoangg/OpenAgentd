@@ -1886,6 +1886,11 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   Preview) and the worktree sheet are grouped 44pt rows with counts; a
   scheduled task has an on/off switch and its schedule as a sentence;
   filters that pin over a list fit in one line (three segments at most).
+- **Thumb reach and full screens.** Jump to latest is a round ↓ at the
+  right corner; Preview's address bar sits at the bottom. A memory page
+  edits full screen with Save in the bar and a formatting bar above the
+  keyboard. Side questions, turn details, Usage filters and the + menu's
+  Tools open as sheets; the update notice starts as a one-line banner.
 - **Notices.** A banner is one line under the bar with at most one action;
   details open in a sheet. It never covers the transcript.
 - **Offline is told, not hidden.** Health is checked whatever the network

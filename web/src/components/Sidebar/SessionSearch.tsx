@@ -82,6 +82,7 @@ export function SessionSearch({
       >
         <SearchBar
           ref={inputRef}
+          filled={cancel}
           wrapperClassName={cancel ? 'min-w-0 flex-1' : undefined}
           value={text}
           onChange={(event) => setText(event.target.value)}
@@ -130,7 +131,7 @@ export function SessionSearch({
         )}
         {recent.length > 0 && (
           <>
-            <h3 id="session-search-recent" className="px-1.5 pt-2 pb-1 text-meta font-medium text-(--color-text-subtle)">Recently opened</h3>
+            <h3 id="session-search-recent" className="pl-6 pr-1.5 pt-2 pb-1 text-meta font-medium text-(--color-text-subtle)">Recently opened</h3>
             <ul aria-labelledby="session-search-recent" className="space-y-px">{recent.map(renderRow)}</ul>
           </>
         )}

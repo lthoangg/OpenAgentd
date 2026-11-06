@@ -474,7 +474,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       {/* Servers: each row's Edit opens its form under it; Add a server opens one at the end. */}
       <PanelSection
         title={sectionTitle}
-        description="Use switches the app to a server. Edit changes its address, key or name."
+        description={touch ? 'Tap a server to use it; ⋯ edits or removes it.' : 'Use switches the app to a server. Edit changes its address, key or name.'}
         flush
       >
         {status?.supports_bundled !== false ? (

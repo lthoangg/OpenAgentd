@@ -32,6 +32,8 @@ export interface SearchBarProps
   wrapperClassName?: string
   /** Called with the trimmed query string whenever the value changes. */
   onSearch?: (query: string) => void
+  /** The phone's filled search field (the Sessions screen's Search pill, as iOS): key wash, no edge. */
+  filled?: boolean
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -42,6 +44,7 @@ function SearchBar({
   label,
   wrapperClassName,
   onSearch,
+  filled = false,
   className,
   id: externalId,
   value,
@@ -89,9 +92,9 @@ function SearchBar({
       <div
         className={cn(
           // Shape
-          'flex min-h-10 items-center gap-1.5 rounded-sm border md:min-h-8',
-          // Surface
-          'border-(--color-border) bg-(--bg-input)',
+          filled
+            ? 'flex h-9 items-center gap-1.5 rounded-md border border-transparent bg-(--bg-key)'
+            : 'flex min-h-10 items-center gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-input) md:min-h-8',
           // Focus strengthens the edge, as on the Input primitive
           'transition-colors',
           'focus-within:border-(--color-text-subtle)',
@@ -99,7 +102,7 @@ function SearchBar({
       >
         {/* Search icon — non-interactive, purely decorative */}
         <Search
-          size={12}
+          size={filled ? 16 : 12}
           aria-hidden="true"
           className="ml-2.5 shrink-0 text-(--color-text-muted)"
         />

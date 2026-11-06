@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ArrowUpRight, ChevronDown, ChevronUp, Paperclip, Pencil } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, ChevronUp, Paperclip, Pencil, X } from 'lucide-react'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { Button } from '@/components/ui/button'
 import { CloseButton } from '@/components/ui/close-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -178,6 +179,41 @@ function QueuedBubble({ content, attachments, label, sender, onEdit, onRemove }:
   )
 }
 
+/**
+ * A phone's queued message: one line above the composer. A tap moves it
+ * back into the composer to edit, ✕ throws it away (with Undo).
+ */
+function QueuedChip({ content, label, onEdit, onRemove }: {
+  content: string
+  label: string
+  onEdit: () => void | Promise<void>
+  onRemove: () => void | Promise<void>
+}) {
+  const text = designFeedbackPlainText(content).replace(/\s+/g, ' ').trim()
+  return (
+    <div className="oa-rise-in flex min-h-9 max-w-full items-center rounded-full bg-(--bg-key) text-meta text-(--color-text-2)">
+      <button
+        type="button"
+        title={label}
+        aria-label={`Edit queued message: ${text}`}
+        onClick={() => { void onEdit() }}
+        className="flex min-h-9 min-w-0 flex-1 items-center gap-1 pl-3 text-left"
+      >
+        <span className="shrink-0 text-(--color-text-muted)">Queued:</span>
+        <span className="min-w-0 truncate">“{text}”</span>
+      </button>
+      <button
+        type="button"
+        aria-label="Remove queued message"
+        onClick={() => { void onRemove() }}
+        className="relative touch-hit flex size-9 shrink-0 items-center justify-center text-(--color-text-muted)"
+      >
+        <X size={14} aria-hidden="true" />
+      </button>
+    </div>
+  )
+}
+
 /** Move a queued message back into the composer (see ``useSessionBootstrap``). */
 function restoreDraft(content: string, files?: File[]) {
   // Files ride along because cancelling a server-queued message deletes its
@@ -196,7 +232,14 @@ function offerUndo(content: string, files?: File[]) {
   })
 }
 
-export const PendingMessageQueue = memo(function PendingMessageQueue() {
+/**
+ * ``placement``: the transcript (the default; under the turn they wait
+ * behind) or the composer (a phone's chips above it). Each shows on its own
+ * kind of screen only, so a phone shows the queue once.
+ */
+export const PendingMessageQueue = memo(function PendingMessageQueue({ placement = 'transcript' }: { placement?: 'transcript' | 'composer' } = {}) {
+  const isPhone = useIsPhone()
+  const shown = (placement === 'composer') === isPhone
   const allMessages = useAgentStore((s) => s._pendingMessages)
   const sessionId = useAgentStore((s) => s.sessionId)
   // `agentStreams` is replaced on every SSE flush, so select only which
@@ -231,12 +274,13 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
   const allHeld = useHeldMessagesStore((s) => s.messages)
   const held = useMemo(() => allHeld.filter((msg) => msg.sessionId === sessionId), [allHeld, sessionId])
 
-  if (messages.length === 0 && held.length === 0) return null
+  if (!shown || (messages.length === 0 && held.length === 0)) return null
+  const Item = isPhone ? QueuedChip : QueuedBubble
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className={isPhone ? 'flex flex-col gap-1.5 pb-1.5' : 'flex flex-col gap-3'}>
       {messages.map((msg) => (
-        <QueuedBubble
+        <Item
           key={msg.id}
           content={msg.content}
           attachments={msg.attachments}
@@ -269,7 +313,7 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
         />
       ))}
       {held.map((msg) => (
-        <QueuedBubble
+        <Item
           key={msg.id}
           content={msg.content}
           attachments={msg.attachments}

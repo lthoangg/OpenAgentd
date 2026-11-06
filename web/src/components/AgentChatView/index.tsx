@@ -75,6 +75,7 @@ import { PlusMenu, type ComposerActions } from '../composer/PlusMenu'
 import { ContextMeter } from '../composer/ContextMeter'
 import { useRunSettings } from '../composer/useRunSettings'
 import { BtwPanel } from '../BtwPanel'
+import { PendingMessageQueue } from '../PendingMessageQueue'
 import { AppFooter } from '../AppFooter'
 import { WorkspacePanel } from '../WorkspacePanel'
 import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
@@ -904,13 +905,19 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       // Desktop with a workspace: the dock's BTW tab shows side
       // questions, and here only the chip reopens it while that tab is
       // not on screen.
-      aboveComposer={dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (
-        <BtwPanel
-          sessionId={sessionIdState || null}
-          countEnabled={leadHasVisibleBlocks}
-          chipOnly={dockViewsEnabled}
-          onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
-        />
+      aboveComposer={(
+        <>
+          {/* A phone's queued messages ride above the composer as chips. */}
+          {isPhone && <PendingMessageQueue placement="composer" />}
+          {dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (
+            <BtwPanel
+              sessionId={sessionIdState || null}
+              countEnabled={leadHasVisibleBlocks}
+              chipOnly={dockViewsEnabled}
+              onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
+            />
+          )}
+        </>
       )}
     />
   ) : null

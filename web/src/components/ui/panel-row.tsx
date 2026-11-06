@@ -1,7 +1,8 @@
 /**
  * PanelRow — one setting: label and description on the left, its control
  * on the right. Stacks on phones, or always with `stack` for controls too wide
- * to sit beside the text (a full-width input, a list).
+ * to sit beside the text (a full-width input, a list). A lone `Switch` never
+ * stacks: it sits right of its label at every width, as in iOS Settings.
  *
  *   <PanelRow label="Theme" description="…">
  *     <SegmentedControl … />
@@ -10,7 +11,8 @@
  * Meant for the flush body of a `PanelSection`, which draws the hairlines
  * between rows.
  */
-import { type ReactNode } from 'react'
+import { isValidElement, type ReactNode } from 'react'
+import { Switch } from '@/components/ui/switch'
 import { ROW_PAD, TEXT } from '@/components/ui/panel-tokens'
 import { cn } from '@/lib/utils'
 
@@ -43,12 +45,15 @@ export function PanelRow({
   className,
 }: PanelRowProps) {
   const labelClass = cn('block', TEXT.label)
+  const switchRow = !stack && isValidElement(children) && children.type === Switch
   return (
     <div
       className={cn(
-        'flex min-h-(--phone-control) flex-col gap-2 md:min-h-14 md:gap-3',
+        'flex min-h-(--phone-control) md:min-h-14',
         ROW_PAD,
-        !stack && 'sm:flex-row sm:items-center sm:justify-between sm:gap-8',
+        switchRow
+          ? 'flex-row items-center justify-between gap-4 sm:gap-8 md:gap-3'
+          : cn('flex-col gap-2 md:gap-3', !stack && 'sm:flex-row sm:items-center sm:justify-between sm:gap-8'),
         className,
       )}
     >

@@ -25,7 +25,7 @@ export function QrScanOverlay({ onCancel }: { onCancel: () => void }) {
       <p className="relative text-center text-xs text-(--color-text-2)">
         Scan the QR code under Network access on your computer.
       </p>
-      <Button type="button" variant="default" className="relative min-h-11 px-6" onClick={onCancel}>
+      <Button type="button" variant="default" className="relative h-11 px-6" onClick={onCancel}>
         Cancel
       </Button>
     </div>,

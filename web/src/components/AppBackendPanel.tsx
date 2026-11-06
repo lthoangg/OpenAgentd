@@ -790,10 +790,10 @@ function ServerForm({
           // The phone's sheet: two equal full-width buttons, Test then Save;
           // no Cancel, a pull or a tap outside closes the sheet.
           <div className="grid grid-cols-2 gap-2">
-            <Button type="button" variant="default" onClick={onTest} disabled={pending} className="min-h-11 w-full">
+            <Button type="button" variant="default" onClick={onTest} disabled={pending} className="h-11 w-full">
               {pending ? 'Testing…' : 'Test'}
             </Button>
-            <Button type="button" variant="primary" onClick={onSave} disabled={pending || (needsTest && !tested)} className="min-h-11 w-full">
+            <Button type="button" variant="primary" onClick={onSave} disabled={pending || (needsTest && !tested)} className="h-11 w-full">
               {mode === 'add' ? 'Save and use' : 'Save'}
             </Button>
           </div>

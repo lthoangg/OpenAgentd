@@ -74,14 +74,15 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
 
   const { provider, model } = settings.model ? splitModelId(settings.model) : { provider: '', model: 'No model' }
   const level = settings.thinkingLevel ? thinkingLevelLabel(settings.thinkingLevel) : null
-  const account = settings.pinnedAccount?.label ?? null
+  // With several accounts the chip always names the one in use.
+  const account = settings.inUseAccount?.label ?? null
   // The chip is narrow on a phone: it shows the short level name; its label says it whole.
   const meta = [settings.thinkingLevel ? thinkingLevelShortLabel(settings.thinkingLevel) : null, account].filter(Boolean).join(' · ')
   const shortcut = shortcutLabel(APP_SHORTCUTS.sessionSettings, os)
   const label = [
     `Model ${settings.model ?? 'not set'}`,
     level ? `thinking ${level}` : null,
-    account ? `account ${account}` : settings.accounts ? 'account Auto' : null,
+    account ? `account ${account}` : null,
   ].filter(Boolean).join(', ')
 
   const chip = (

@@ -301,10 +301,11 @@ function PendingDots() {
 
 /**
  * The turn is waiting for a provider quota to reset (DESIGN.md → Notices):
- * one card whether the session runs on Auto or is pinned to the account that
- * ran out. Calm on purpose: it resolves itself, so no pulse and no alarm
- * words. Stop is always on the card; the pinned wait adds the ways around it.
- * The provider's own message is one "Copy details" away.
+ * one card, for one account or (a provider with several) every account at
+ * its limit. Calm on purpose: it resolves itself, so no pulse and no alarm
+ * words. Stop is always on the card. The provider's own message is one
+ * "Copy details" away. ``pinned`` cards come from older transcripts, when a
+ * locked session waited for its own account.
  */
 function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessionId?: string; persist: boolean }) {
   const [now, setNow] = useState(() => Date.now())
@@ -342,6 +343,8 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
   if (countdown === null) return persist ? <PendingDots /> : null
   const modelName = wait.model ? <ModelName id={wait.model} className="align-bottom text-(--color-text-2)" /> : null
   const accountName = wait.account ? <span className="font-semibold text-(--color-text-2)">{wait.account}</span> : null
+  // A provider with several accounts waits only once every one is limited.
+  const everyAccount = !wait.pinned && (wait.message ?? '').startsWith('Every account for ')
 
   return (
     <div className="my-2">
@@ -358,14 +361,18 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
             )}
           </>
         }
-        action={<WaitActions pinned={Boolean(wait.pinned)} details={wait.message} />}
+        action={<WaitActions details={wait.message} />}
       >
         <span className="text-(--color-text-muted)">
           {wait.pinned
             ? <>
                 {accountName ? <>Account {accountName}</> : 'The pinned account'} hit its usage limit
                 {modelName && <>{' on '}{modelName}</>}
-                . This session resumes on it when the limit resets, or continue now on Auto.
+                . This session resumes on it when the limit resets.
+              </>
+            : everyAccount
+            ? <>
+                Every account{modelName && <>{' for '}{modelName}</>} is at its usage limit. Resumes on the first one that resets.
               </>
             : <>
                 {modelName ? <>{modelName} used up its provider quota</> : 'The provider quota is used up'}
@@ -379,37 +386,13 @@ function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessio
 }
 
 /**
- * The ways out of a wait, on the card itself. Always Stop. A pinned wait adds
- * dropping the pin to go on now (the wait stops, and the turn continues on
- * Auto) and picking another account. Copy details hands over the provider's
- * own message.
+ * The ways out of a wait, on the card itself: Stop, and Copy details for the
+ * provider's own message. A wait means no account has room, so there is no
+ * other account to go on with.
  */
-function WaitActions({ pinned, details }: { pinned: boolean; details?: string }) {
-  const [busy, setBusy] = useState(false)
-  const useAuto = async () => {
-    setBusy(true)
-    try {
-      const store = useAgentStore.getState()
-      if (!(await store.setSessionRunSettings({ credentialId: null }))) return
-      const workspace = useAgentStore.getState()._workspace
-      await useAgentStore.getState().stopAgent({ keepGoal: true })
-      if (workspace) await useAgentStore.getState().sendMessage('Continue.', undefined, { workspace })
-    } finally {
-      setBusy(false)
-    }
-  }
+function WaitActions({ details }: { details?: string }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {pinned && (
-        <>
-          <Button type="button" size="sm" variant="primary" disabled={busy} onClick={() => void useAuto()}>
-            Use Auto for this session
-          </Button>
-          <Button type="button" size="sm" onClick={() => useUIStore.getState().openRunPicker('model')}>
-            Choose account…
-          </Button>
-        </>
-      )}
       <Button type="button" size="sm" variant="ghost" onClick={() => void useAgentStore.getState().stopAgent()}>
         Stop
       </Button>
@@ -639,8 +622,8 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       }
       let message = 'Provider status updated.'
       if (status === 'pin_released') {
-        // The pinned account was removed or turned off: the session is on Auto.
-        message = customMsg || 'The pinned account is gone, so this session is back on Auto.'
+        // The locked account was removed or turned off: the session follows the provider's choice.
+        message = customMsg || "The account this session started on is gone, so it uses the provider's next available account."
       }
       return <p className="rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
     }

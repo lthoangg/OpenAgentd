@@ -762,6 +762,20 @@ run from the terminal (the native Rust binary since v3.0.0).
   tray names the account a pinned session runs on (**Pinned to Work**), and
   its Provider limits name the account in use when a provider has several
   (**OpenAI Codex · Work**).
+  Since `[v3.48.0]` a locked account is where the session starts, not the
+  only account it uses. When it hits a limit (or is rejected), the turn moves
+  on to the next account with room, as every session does, says so in the
+  transcript ("Work hit its usage limit. Continuing on Home with the same
+  model."), and goes back to the locked account once it resets. A turn waits
+  only when every account is limited, for the first one to reset. The
+  **Auto** row is gone: with no lock, the picker checks the account the
+  provider uses now, and **Reset to default** removes a lock. The run chip
+  always names the account in use, and the picker tags the account a locked
+  session moved to with **in use**. Each account row shows every limit of the
+  account in % used, as Settings → Providers does (`5h 12% · 7d 64% · $84.50
+  left`). A limit that was hit is red and one at 90% or more is orange, and
+  the tooltip gives reset times and other models' own limits. The wait and
+  error cards no longer offer **Use Auto for this session**.
 - **Review panel panes, as in an editor** `[v3.40.0]`:
   - There is no bottom dock: the sidebar sits left (`⌘B`/`Ctrl+B`) and the
     Review panel right (`⌘D`/`Ctrl+D`), full window height. The header keeps
@@ -898,7 +912,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The files changed toggle lists the files the turn edited, with their line
     counts, in both transcript styles (Reader and Detailed); a file opens its
     diff.
-  - A turn that waits (a pinned account cooling down, a reconnect) or stops
+  - A turn that waits (every account at its limit, a reconnect) or stops
     shows one card: what happened, since when, what you can do, and **Copy
     details**.
   - When only the session model's provider is missing, the notice above the

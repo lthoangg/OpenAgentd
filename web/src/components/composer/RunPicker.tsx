@@ -33,7 +33,7 @@ import { useUpdateAgentMutation } from '@/queries/useAgentSettingsQueries'
 import { selectionHapticFeedback } from '@/lib/haptics'
 import {
   loadRecentModels,
-  quotaSummary,
+  quotaSegments,
   rememberRecentModel,
   setFrontmatterScalars,
   splitModelId,
@@ -157,7 +157,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
     void save({
       model: toAgentModel ? null : id,
       thinkingLevel: keepLevel,
-      // An account belongs to one provider; another provider starts on Auto.
+      // An account belongs to one provider; another provider starts on its own account in use.
       ...(sameProvider ? {} : { credentialId: null }),
     })
     if (!close) return
@@ -179,7 +179,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
     void save({ thinkingLevel: level })
   }
 
-  const pickAccount = (id: string | null) => {
+  const pickAccount = (id: string) => {
     selectionHapticFeedback()
     void save({ credentialId: id })
   }
@@ -346,7 +346,8 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
           providerLabel={settings.providerInfo.label}
           accounts={settings.accounts}
           usage={settings.providerInfo.supports_credential_usage === true}
-          pinned={settings.credentialId}
+          locked={settings.pinnedAccount}
+          inUse={settings.inUseAccount}
           onPick={pickAccount}
           onPickAndClose={(id) => {
             pickAccount(id)
@@ -384,7 +385,8 @@ function AccountList({
   providerLabel,
   accounts,
   usage,
-  pinned,
+  locked,
+  inUse,
   onPick,
   onPickAndClose,
   onReconnect,
@@ -394,16 +396,24 @@ function AccountList({
   providerLabel: string
   accounts: StoredCredential[]
   usage: boolean
-  pinned: string | null
-  onPick: (id: string | null) => void
+  /** The account the session is locked to (starts on); `null` follows the provider's choice. */
+  locked: StoredCredential | null
+  /** The account the session runs on now. */
+  inUse: StoredCredential | null
+  onPick: (id: string) => void
   /** Enter on an account: pick it and close, as Enter on a model does. */
-  onPickAndClose: (id: string | null) => void
+  onPickAndClose: (id: string) => void
   /** Sign a signed-out account back in (Settings → Providers). */
   onReconnect: () => void
   rowClass: string
 }) {
   const signedOut = accounts.filter((account) => account.status === 'needs_reconnect')
-  const onKeyDown = (id: string | null) => (event: KeyboardEvent<HTMLButtonElement>) => {
+  // No Auto row: every session moves on when its account hits a limit. The
+  // check is the session's choice (its lock, or the account in use without
+  // one); "in use" marks the account it moved to when that differs.
+  const checked = locked?.id ?? inUse?.id ?? null
+  const movedTo = inUse && inUse.id !== checked ? inUse : null
+  const onKeyDown = (id: string) => (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== 'Enter') return
     event.preventDefault()
     onPickAndClose(id)
@@ -411,26 +421,29 @@ function AccountList({
   return (
     <div role="radiogroup" aria-label={`${providerLabel} account`} data-account-list="" className="mt-1 border-t border-(--color-border-subtle) px-1 pt-1.5">
       <div className="px-2 pb-0.5 text-meta font-medium text-(--color-text-muted) select-none">Account</div>
-      <button type="button" role="radio" aria-checked={pinned === null} onClick={() => onPick(null)} onKeyDown={onKeyDown(null)} className={rowClass}>
-        <span className="flex-1 text-(--color-text)">Auto</span>
-        <span className="text-meta text-(--color-text-muted)">next one with room</span>
-        <Check size={13} aria-hidden="true" className={pinned === null ? 'opacity-100' : 'opacity-0'} />
-      </button>
       {accounts.map((account) => (
         <button
           key={account.id}
           type="button"
           role="radio"
-          aria-checked={pinned === account.id}
+          aria-checked={checked === account.id}
           onClick={() => onPick(account.id)}
           onKeyDown={onKeyDown(account.id)}
           className={rowClass}
         >
           <span className="min-w-0 flex-1 truncate text-(--color-text)">{account.label}</span>
+          {movedTo?.id === account.id && (
+            <span data-in-use="" className="shrink-0 rounded-full border border-(--color-border) px-1.5 text-meta leading-4 text-(--color-text-2)">in use</span>
+          )}
           <AccountState account={account} providerId={providerId} usage={usage} />
-          <Check size={13} aria-hidden="true" className={pinned === account.id ? 'opacity-100' : 'opacity-0'} />
+          <Check size={13} aria-hidden="true" className={checked === account.id ? 'opacity-100' : 'opacity-0'} />
         </button>
       ))}
+      <p className="px-2 pt-0.5 pb-1 text-meta text-(--color-text-muted)">
+        {movedTo && locked
+          ? `Back on ${locked.label} when its limit resets.`
+          : 'Starts on the checked account and moves to the next one when it hits a limit.'}
+      </p>
       {/* Beside the radios, not inside one: a radio holds no second control. */}
       {signedOut.map((account) => (
         <Button key={account.id} type="button" size="xs" variant="ghost" className="mt-0.5 ml-1" onClick={onReconnect}>
@@ -447,23 +460,32 @@ const QUOTA_TONE_CLASS = {
   error: 'text-(--color-error)',
 } as const
 
-/** Words first: the state, then what is left of its quota (percent, spend cap or credits) when known. */
+/**
+ * Each of the account's limits, in % used as Settings → Providers shows
+ * them (`5h 12% · 7d 100%`), the one it hit in red; reset times and other
+ * models' limits are in the tooltip. A signed-out account says Reconnect; a
+ * cooling account says so until its numbers are known.
+ */
 function AccountState({ account, providerId, usage }: { account: StoredCredential; providerId: string; usage: boolean }) {
-  const query = useProviderUsageQuery(providerId, usage && account.status === 'ready', account.id)
-  if (account.status === 'cooling_down') return <Chip tone="warning">Cooling down</Chip>
+  const query = useProviderUsageQuery(providerId, usage && (account.status === 'ready' || account.status === 'cooling_down'), account.id)
   if (account.status === 'needs_reconnect') return <Chip tone="error">Reconnect</Chip>
-  const quota = quotaSummary(query.data)
-  if (quota === null) return null
-  const text = quota.kind === 'percent' ? [`${quota.left}% left`, quota.note].filter(Boolean).join(' · ') : quota.text
-  // `title` becomes the app's tooltip (TitleTooltipLayer): the balance or cap the row has no room for,
-  // and the whole phrase when it is long enough to be cut off.
-  const title = [text.length > 14 ? text : null, quota.detail].filter(Boolean).join(' · ') || undefined
+  const quota = usage ? quotaSegments(query.data) : null
+  const cooling = account.status === 'cooling_down'
+  if (quota === null) return cooling ? <Chip tone="warning">Cooling down</Chip> : null
+  // A cooling account whose numbers show no limit hit (a short rate limit) still says it is cooling.
+  const coolingNote = cooling && !quota.segments.some((s) => s.tone === 'error')
   return (
-    <span
-      title={title}
-      className={cn('max-w-[11rem] min-w-0 truncate font-mono text-meta tabular-nums', QUOTA_TONE_CLASS[quota.tone])}
-    >
-      {text}
-    </span>
+    <>
+      {coolingNote && <Chip tone="warning">Cooling down</Chip>}
+      {/* `title` becomes the app's tooltip (TitleTooltipLayer). */}
+      <span data-account-usage="" title={quota.detail} className="max-w-[15rem] min-w-0 truncate font-mono text-meta tabular-nums text-(--color-text-muted)">
+        {quota.segments.map((segment, index) => (
+          <span key={index}>
+            {index > 0 && <span aria-hidden="true" className="opacity-60"> · </span>}
+            <span className={QUOTA_TONE_CLASS[segment.tone]}>{segment.text}</span>
+          </span>
+        ))}
+      </span>
+    </>
   )
 }

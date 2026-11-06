@@ -3,17 +3,19 @@
  * the next message runs: the model, its thinking level, the account, and the
  * choices for each. One place, so the chip and the picker can never disagree.
  */
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 
 import type { ModelCatalogEntry } from '@/api/types'
 import type { ProviderInfo, StoredCredential } from '@/api/client'
-import { useProvidersQuery } from '@/queries'
+import { queryKeys, useProvidersQuery } from '@/queries'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
-import { accountChoices, effectiveRun, splitModelId } from '@/lib/run-settings'
+import { accountChoices, accountInUse, effectiveRun, splitModelId } from '@/lib/run-settings'
 import { pickableThinkingLevels } from '@/lib/thinking-levels'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { turnAccount } from '@/utils/turns'
 
 export interface RunSettings {
   /** The lead agent's file name (`code` unless the workspace overrides it). */
@@ -35,9 +37,21 @@ export interface RunSettings {
   providerInfo: ProviderInfo | undefined
   /** The accounts to choose from, or `null` when the provider has one. */
   accounts: StoredCredential[] | null
-  /** The pinned account; `null` is Auto. */
+  /** The account the session is locked to (it starts there); `null` when it has none. */
   credentialId: string | null
   pinnedAccount: StoredCredential | null
+  /**
+   * The account the session runs on (see `accountInUse`): the lock while it
+   * has room, else the one it moved to. `null` when there is no choice.
+   */
+  inUseAccount: StoredCredential | null
+}
+
+/** The newest account the lead's transcript names: an answer's, or a switch's. */
+function selectServedLabel(s: ReturnType<typeof useAgentStore.getState>): string | null {
+  const stream = s.leadName ? s.agentStreams[s.leadName] : undefined
+  if (!stream) return null
+  return turnAccount(stream.currentBlocks ?? []) ?? turnAccount(stream.blocks ?? []) ?? null
 }
 
 export function useRunSettings(workspace: string | null): RunSettings {
@@ -46,6 +60,16 @@ export function useRunSettings(workspace: string | null): RunSettings {
     thinkingLevel: s.sessionThinkingLevel,
     credentialId: s.sessionCredentialId,
   })))
+  const servedLabel = useAgentStore(selectServedLabel)
+  // A switch (or an answer on another account) changes which accounts are
+  // cooling and which one is in use: read the accounts again.
+  const queryClient = useQueryClient()
+  const lastServed = useRef(servedLabel)
+  useEffect(() => {
+    if (lastServed.current === servedLabel) return
+    lastServed.current = servedLabel
+    void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+  }, [queryClient, servedLabel])
   const agents = useAgentsQuery(workspace, Boolean(workspace))
   const agent = agents.data?.agents?.[0]
   const registry = useRegistryQuery()
@@ -64,6 +88,7 @@ export function useRunSettings(workspace: string | null): RunSettings {
     const pinnedAccount = session.credentialId
       ? (providerInfo?.stored_credentials ?? []).find((c) => c.id === session.credentialId) ?? null
       : null
+    const inUseAccount = accountInUse(accounts, session.credentialId, servedLabel)
     return {
       agentName: agent?.name ?? null,
       agentModel,
@@ -79,6 +104,7 @@ export function useRunSettings(workspace: string | null): RunSettings {
       accounts,
       credentialId: session.credentialId,
       pinnedAccount,
+      inUseAccount,
     }
-  }, [agent, session, registry.data, modelsLoading, providers.data])
+  }, [agent, session, servedLabel, registry.data, modelsLoading, providers.data])
 }

@@ -78,7 +78,8 @@ describe('RunPicker — accounts follow the model', () => {
     expect(accountList().getAttribute('aria-label')).toBe('Codex account')
     expect(accountNames().join('|')).toContain('Codex Team')
     expect(accountNames().join('|')).not.toContain('Claude')
-    // The new provider starts on Auto, and an account can be picked right away.
+    // The new provider starts on its account in use, and an account can be picked right away.
+    expect(within(accountList()).getByRole('radio', { name: /Codex Team/ }).getAttribute('aria-checked')).toBe('true')
     fireEvent.click(within(accountList()).getByRole('radio', { name: /Codex Personal/ }))
     expect(useAgentStore.getState().sessionCredentialId).toBe('x2')
   })
@@ -93,7 +94,7 @@ describe('RunPicker — accounts follow the model', () => {
     expect(onDone).not.toHaveBeenCalled()
     expect(useAgentStore.getState().sessionModel).toBe('codex:gpt-5')
     await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
-    expect(document.activeElement).toBe(within(accountList()).getByRole('radio', { name: /Auto/ }))
+    expect(document.activeElement).toBe(within(accountList()).getByRole('radio', { name: /Codex Team/ }))
 
     // Enter on an account picks it and closes, as Enter on a model does.
     const personal = within(accountList()).getByRole('radio', { name: /Codex Personal/ })

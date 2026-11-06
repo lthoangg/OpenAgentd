@@ -43,7 +43,7 @@ function runSettings(over: Partial<RunSettings> = {}): RunSettings {
     agentName: 'code', agentModel: 'anthropic:claude-sonnet-4-5', agentThinkingLevel: null,
     model: 'anthropic:claude-sonnet-4-5', provider: 'anthropic', thinkingLevel: 'high', customized: false,
     thinkingLevels: ['low', 'high'], models: [], modelsLoading: false, providerInfo: undefined,
-    accounts: null, credentialId: null, pinnedAccount: null,
+    accounts: null, credentialId: null, pinnedAccount: null, inUseAccount: null,
     ...over,
   }
 }
@@ -74,13 +74,22 @@ describe('Composer (docked)', () => {
 })
 
 describe('RunChip', () => {
-  it('reads provider:model in mono, then the level and the pinned account', () => {
+  it('reads provider:model in mono, then the level and the account in use', () => {
     const account = { id: 'w', label: 'Work', disabled: false, kind: 'oauth' as const, hint: null, settings: {}, status: 'ready' as const, in_use: false, cooldown_until: null, cooldown_reason: null }
-    wrap(<RunChip settings={runSettings({ pinnedAccount: account, credentialId: 'w', accounts: [account, { ...account, id: 'h', label: 'Home' }] })} />)
+    wrap(<RunChip settings={runSettings({ inUseAccount: account, accounts: [account, { ...account, id: 'h', label: 'Home' }] })} />)
     const chip = document.querySelector('[data-run-chip]') as HTMLElement
     expect(chip.textContent).toBe('anthropic:claude-sonnet-4-5·High · Work')
     expect(chip.getAttribute('aria-label')).toMatch(/^Model anthropic:claude-sonnet-4-5, thinking High, account Work\. Change/)
     expect(chip.querySelector('.font-mono')?.textContent).toBe('anthropic:claude-sonnet-4-5')
+  })
+
+  it('names the account a locked session moved to, never Auto', () => {
+    const account = { id: 'w', label: 'Work', disabled: false, kind: 'oauth' as const, hint: null, settings: {}, status: 'cooling_down' as const, in_use: false, cooldown_until: null, cooldown_reason: null }
+    const home = { ...account, id: 'h', label: 'Home', status: 'ready' as const }
+    wrap(<RunChip settings={runSettings({ pinnedAccount: account, credentialId: 'w', inUseAccount: home, accounts: [account, home] })} />)
+    const chip = document.querySelector('[data-run-chip]') as HTMLElement
+    expect(chip.textContent).toContain('Home')
+    expect(chip.getAttribute('aria-label')).not.toContain('Auto')
   })
 
   it('lets the provider part give way first, and stacks under 520px', () => {

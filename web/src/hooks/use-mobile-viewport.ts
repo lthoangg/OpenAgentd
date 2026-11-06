@@ -8,6 +8,8 @@ export { dismissKeyboard }
 
 /** Vertical travel (px) that turns a touch into a drag. */
 const DRAG_DISMISS_PX = 12
+/** ms after a dismiss during which the retracting keyboard's frames are held off. */
+const DISMISS_SETTLE_MS = 900
 const EDITABLE = 'input, textarea, select, [contenteditable="true"]'
 const INTERACTIVE = `${EDITABLE}, button, a[href], label, summary, [role="button"], [role="radio"], [role="checkbox"], [role="option"], [role="menuitem"], [role="tab"]`
 
@@ -140,6 +142,8 @@ export function useMobileViewportGuards() {
     //              no expensive content reflow.
     //   --app-vt → visual viewport offsetTop, for the rare scrolled/zoomed case.
     const baselineLayoutHeight = window.innerHeight
+    // When the keyboard last went away (focus left a field with it up).
+    let dismissedAt = -Infinity
     const applyViewport = () => {
       const height = vv ? vv.height : window.innerHeight
       const top = vv ? vv.offsetTop : 0
@@ -151,6 +155,10 @@ export function useMobileViewportGuards() {
       const focused = document.activeElement
       const typing = focused instanceof HTMLElement && focused.matches('input, textarea, [contenteditable="true"]')
       if (root.hasAttribute('data-vp-anim') && !typing) return
+      // Past the glide the keyboard may still be retracting (it is slower than
+      // the glide). Its frames would shrink the shell back and then let it go
+      // again, a flicker: until it is gone, or a field takes focus, hold.
+      if (!typing && performance.now() - dismissedAt < DISMISS_SETTLE_MS && baselineLayoutHeight - (height + top) > 80) return
       // Detect keyboard occlusion relative to the shell's baseline layout
       // height captured before the keyboard opens. On some mobile WebViews,
       // `window.innerHeight` also shrinks with the keyboard, so comparing the
@@ -239,6 +247,7 @@ export function useMobileViewportGuards() {
       if (!root.hasAttribute('data-keyboard-open')) return
       const next = e.relatedTarget
       if (next instanceof HTMLElement && next.matches('input, textarea, [contenteditable="true"]')) return
+      dismissedAt = performance.now()
       root.setAttribute('data-vp-anim', '')
       root.removeAttribute('data-keyboard-open')
       root.style.setProperty('--app-vh', `${Math.round(baselineLayoutHeight)}px`)

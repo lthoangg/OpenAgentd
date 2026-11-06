@@ -422,7 +422,9 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       // but a script focus() on a fresh page counts as :focus-visible. Focus
       // quietly then: Tab still continues from here.
       if (options?.expand === false) focusQuietly(el, {})
-      else el.focus()
+      // No scroll: the docked composer is on screen, and iOS scrolling the
+      // page to it as the keyboard rises shoved the whole shell up.
+      else el.focus({ preventScroll: true })
     },
     setValue: (text: string) => {
       // A restored message's design feedback blocks come back as chips.

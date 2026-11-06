@@ -62,6 +62,7 @@ import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
 import { FolderCode, FileUp, WifiOff } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { useFocusRegions } from '@/hooks/use-focus-regions'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
@@ -264,6 +265,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const openSettings = useSettingsStore((s) => s.openSettings)
   const pushToast = useToastStore((s) => s.push)
   const isMobile = useIsMobile()
+  const isPhone = useIsPhone()
   const { isMacOverlay } = usePlatform()
   const storeWorkspace = useAgentStore((s) => s._workspace)
   const effectiveWorkspace = workspace || storeWorkspace
@@ -869,7 +871,24 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       onRedo={() => { void handleSlashCommand('redo') }}
       onRedoAll={() => { void handleSlashCommand('redo-all') }}
       renderPlus={renderPlus}
-      deck={<RunChip settings={runSettings} disabled={isSessionLoading} />}
+      deck={(
+        <RunChip
+          settings={runSettings}
+          disabled={isSessionLoading}
+          mode={isPhone ? {
+            mode: composerMode,
+            pending: sessionPendingInteractionMode !== null,
+            disabled: isSwitchingInteractionMode || (!sessionIdState && !isDraft),
+            onChange: (mode) => {
+              setIsSwitchingInteractionMode(true)
+              void useAgentStore.getState().setSessionInteractionMode(mode).finally(() => {
+                setIsSwitchingInteractionMode(false)
+              })
+            },
+          } : undefined}
+        />
+      )}
+      modeInDeck={isPhone}
       deckEnd={sessionIdState ? (
         <ContextMeter
           input={headerTokens.input}

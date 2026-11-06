@@ -41,7 +41,9 @@ export function ContextMeter({ input, output, cachedPercent, trigger = DEFAULT_S
         <svg className="size-4 -rotate-90" viewBox="0 0 18 18" aria-hidden="true">
           {/* A full, visible track: with a faint one, a part-filled ring read
               as a loading spinner rather than a gauge. */}
-          <circle cx="9" cy="9" r={RADIUS} fill="none" stroke="var(--color-border-strong)" strokeWidth="2" />
+          {/* Thinner on a phone, with square ends: a gauge at rest, not a
+              spinner beside Send (Phone system, mockup C6). */}
+          <circle cx="9" cy="9" r={RADIUS} fill="none" stroke="var(--color-border-strong)" strokeWidth="2" className="phone:stroke-[1.5]" />
           <circle
             cx="9"
             cy="9"
@@ -50,6 +52,7 @@ export function ContextMeter({ input, output, cachedPercent, trigger = DEFAULT_S
             stroke="var(--color-accent)"
             strokeLinecap="round"
             strokeWidth="2.6"
+            className="phone:stroke-[1.5] phone:[stroke-linecap:butt]"
             strokeDasharray={CIRCUMFERENCE}
             strokeDashoffset={CIRCUMFERENCE * (1 - progress)}
           />

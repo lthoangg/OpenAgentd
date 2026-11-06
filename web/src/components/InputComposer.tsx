@@ -138,6 +138,8 @@ export interface InputComposerProps {
   renderPlus?: (actions: ComposerActions) => ReactNode
   /** Run deck controls after the mode toggle (the run chip, the MCP chip). */
   deck?: ReactNode
+  /** The deck's run chip carries Code / Plan (a phone): no separate toggle. Tab still switches. */
+  modeInDeck?: boolean
   /** Run deck controls just before Send (the context ring). */
   deckEnd?: ReactNode
   /** Forwarded to the textarea. */
@@ -218,6 +220,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   suggestionsBelow,
   renderPlus,
   deck,
+  modeInDeck = false,
   deckEnd,
   onFocus,
   onBlur,
@@ -1009,7 +1012,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
           onClick={isMobile ? refocusAfterTap : undefined}
         >
           {plusEl}
-          {onInteractionModeChange && (
+          {onInteractionModeChange && !modeInDeck && (
             <SessionModeToggle
               mode={interactionMode}
               pending={interactionModePending}

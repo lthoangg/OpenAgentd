@@ -70,6 +70,8 @@ export interface ComposerProps {
   renderPlus?: (actions: ComposerActions) => ReactNode
   /** Run deck controls after Code/Plan, and before Send. */
   deck?: ReactNode
+  /** The run chip carries Code / Plan (a phone). */
+  modeInDeck?: boolean
   deckEnd?: ReactNode
   /** In the tray above the box: the side-question panel or its chip. */
   aboveComposer?: ReactNode

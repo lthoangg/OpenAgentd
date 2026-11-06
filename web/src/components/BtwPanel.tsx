@@ -18,6 +18,9 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Copy, MessageCircleQuestion, Square, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { BottomSheet } from '@/components/ui/bottom-sheet'
+import { useIsPhone } from '@/hooks/use-is-phone'
+import { cn } from '@/lib/utils'
 import { CloseButton } from '@/components/ui/close-button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -64,6 +67,8 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
   const [confirmClear, setConfirmClear] = useState(false)
   const { exchanges, view } = btw
   const open = btw.open && !chipOnly
+  // A phone asks aside in a half-height sheet (mockup J5), not a card over the composer.
+  const isPhone = useIsPhone()
 
   if (!sessionId) return null
   const store = useBtwStore.getState()
@@ -116,8 +121,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
     else if (current.id) void store.stopStored(sessionId, current.id)
   }
 
-  return (
-    <>
+  const panel = (
     <section
       aria-label="Side questions"
       data-swipe-ignore
@@ -132,7 +136,9 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
         }
       }}
       // Rises out of the composer it sits on (DESIGN.md → Motion: ``base``).
-      className="pointer-events-auto mb-2 flex flex-col overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card) text-xs shadow-(--shadow-depth) animate-in fade-in-0 slide-in-from-bottom-1 animation-duration-(--motion-base) ease-(--ease-out)"
+      className={isPhone
+        ? 'flex flex-col text-sm'
+        : 'pointer-events-auto mb-2 flex flex-col overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card) text-xs shadow-(--shadow-depth) animate-in fade-in-0 slide-in-from-bottom-1 animation-duration-(--motion-base) ease-(--ease-out)'}
     >
       <header className="flex h-8 shrink-0 items-center gap-0.5 pl-2.5 pr-1">
         <span className="font-medium text-(--color-text)">Side questions</span>
@@ -160,7 +166,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
         </HeaderAction>
         <CloseButton size="icon-xs" label="Close side questions" onClick={() => store.dismiss(sessionId)} />
       </header>
-      <div className="max-h-[calc(var(--app-vh,100vh)*0.4)] min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-3 py-2">
+      <div className={cn('min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-3 py-2', !isPhone && 'max-h-[calc(var(--app-vh,100vh)*0.4)]')}>
         {current ? (
           <ExchangeView exchange={current} sessionId={sessionId} />
         ) : btw.isLoading ? (
@@ -180,6 +186,15 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
         </footer>
       )}
     </section>
+  )
+
+  return (
+    <>
+    {isPhone ? (
+      <BottomSheet open onClose={() => store.dismiss(sessionId)} label="Side questions" detents={['medium', 'large']}>
+        <div data-btw-sheet="">{panel}</div>
+      </BottomSheet>
+    ) : panel}
     <ConfirmDialog
       open={confirmClear}
       onOpenChange={setConfirmClear}

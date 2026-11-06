@@ -198,7 +198,7 @@ function PlusMenuItems({
       {onSideQuestion && (
         <button type="button" className={row} onClick={onSideQuestion}>
           <MessageCircleQuestion size={14} aria-hidden="true" />
-          Ask a side question
+          {touch ? 'Ask aside' : 'Ask a side question'}
           <span className={hint}>/btw</span>
         </button>
       )}

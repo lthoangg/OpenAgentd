@@ -79,4 +79,12 @@ describe('Servers rows on touch', () => {
     await act(async () => { await Promise.resolve() })
     expect(calls.some((call) => call.includes('4082'))).toBe(true)
   })
+
+  it('adds a server in its own sheet', async () => {
+    render(<AppBackendPanel active />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a server' }))
+    const sheet = document.querySelector<HTMLElement>('[data-server-sheet]')!
+    expect(within(sheet).getByLabelText('Server URL')).toBeInTheDocument()
+    expect(sheet.closest('[data-bottom-sheet]')).not.toBeNull()
+  })
 })

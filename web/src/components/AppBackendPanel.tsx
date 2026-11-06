@@ -24,6 +24,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { ArrowRightLeft, ChevronRight, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
 
+import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
 import { Button } from '@/components/ui/button'
 import { StatusChip } from '@/components/ui/chip'
@@ -586,11 +587,11 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                 </>
                 )}
               </ServerRow>
-              {editing && editTarget ? serverForm(editTarget) : null}
+              {editing && editTarget && !touch ? serverForm(editTarget) : null}
             </Fragment>
           )
         })}
-        {form?.kind === 'add' ? serverForm(form) : (
+        {form?.kind === 'add' && !touch ? serverForm(form) : (
           <div className={ROW_PAD}>
             <Button ref={addButtonRef} type="button" variant="ghost" size="sm" onClick={openAdd} disabled={pending}>
               <Plus size={ICON_SIZE_INLINE} aria-hidden="true" />
@@ -603,6 +604,16 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       {listError ? (
         <Callout tone="error" role="alert">{listError}</Callout>
       ) : null}
+
+      {/* Touch: adding or editing a server is its own sheet (mockup J1),
+          not a form opened inside the list. */}
+      {touch && (
+        <BottomSheet open={form !== null} onClose={closeForm} label={form?.kind === 'edit' ? 'Edit server' : 'Add a server'}>
+          <div data-server-sheet="">
+            {form?.kind === 'add' ? serverForm(form) : editTarget ? serverForm(editTarget) : null}
+          </div>
+        </BottomSheet>
+      )}
 
       <ActionSheet
         open={rowSheet !== null}

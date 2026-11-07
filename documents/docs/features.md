@@ -2275,6 +2275,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     them, name first (**Undid the last message and its changes to 3
     files**), so Undo never edits the workspace without saying where. Redo
     still brings them back.
+  - An MCP call the agent could not make because its server needs sign-in
+    offers **Sign in to {server}** right under the call (or **Open in
+    Settings** for a server the app cannot sign in to), and reads **Signed
+    in to {server}** once it is connected, so you no longer have to find
+    Settings → MCP from the agent's reply.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

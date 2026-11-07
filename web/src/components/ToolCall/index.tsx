@@ -47,6 +47,8 @@ import { ToolRow } from './ToolRow'
 import { subscribeLiveClock } from './liveClock'
 import { RowLinkButton, RowLinkChip, TeamMemberButton, TeamMemberChip } from './RowLink'
 import { teamMemberFromResult } from './subagentStatus'
+import { mcpSignInServer } from './mcpSignIn'
+import { McpSignInChips } from './McpSignInChips'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 import { parseShellOutcome } from './summary'
@@ -252,6 +254,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   )
   // An image the agent read opens in the dock.
   const imageRead = useMemo(() => (name === 'read' && done ? parseImageRead(result) : null), [name, done, result])
+  // A call refused because its MCP server waits on sign-in offers Sign in here.
+  const signInServer = useMemo(() => (canonicalToolName(name) === 'mcp' && done ? mcpSignInServer(result) : null), [name, done, result])
   // Pending-state header comes from getToolDisplay's no-args branch
   // (e.g. ``recall`` → "Checking memory…"). Tools without a custom pending header return
   // ``header: null`` from that branch and fall back to the raw tool name
@@ -426,7 +430,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         </ToolRow>
         {teamMember && <TeamMemberButton handle={teamMember} />}
         {sentSession && <RowLinkButton label={`Open in ${sentSession.workspaceName}`} onOpen={openSentSession} />}
-        {(previewTarget || planLink || imageRead || sentSession?.createdWorktree) && (
+        {(previewTarget || planLink || imageRead || sentSession?.createdWorktree || signInServer) && (
           <div className="flex flex-wrap items-center gap-1.5 px-1.5 pb-1">
         {previewTarget && (
           <button
@@ -449,6 +453,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
           </button>
         )}
         {imageRead && <ImageViewChip path={imageRead.path} />}
+        {signInServer && <McpSignInChips server={signInServer} />}
         {sentSession?.createdWorktree && (
           <span
             className="inline-flex max-w-[60%] items-center gap-1 align-middle text-meta text-(--color-text-muted)"

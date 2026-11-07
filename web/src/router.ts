@@ -5,6 +5,7 @@ import { AppLayout } from './routes/cockpit'
 import { SchedulerPage } from './routes/scheduler'
 import { SettingsPage } from './routes/settings'
 import { TelemetryPage } from './routes/telemetry'
+import { RouteErrorPage } from './components/RouteErrorPage'
 
 const rootRoute = createRootRoute({
   component: Root,
@@ -126,7 +127,8 @@ const routeTree = rootRoute.addChildren([
   settingsSectionRoute,
 ])
 
-export const router = createRouter({ routeTree, defaultPreload: 'intent' })
+// A crash in a route shows the app's own error page, not the router's box.
+export const router = createRouter({ routeTree, defaultPreload: 'intent', defaultErrorComponent: RouteErrorPage })
 
 declare module '@tanstack/react-router' {
   interface Register {

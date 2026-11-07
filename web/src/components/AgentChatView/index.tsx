@@ -80,6 +80,7 @@ import { DeckRunStatus, PhoneStatusLine, RunBar } from '../composer/RunBar'
 import { PinnedQuestion } from '../AskUser'
 import { PinnedPlanReview } from '../PlanReview/PlanReviewCard'
 import { AppFooter } from '../AppFooter'
+import { ViewErrorBoundary } from '../ViewErrorBoundary'
 import { WorkspacePanel } from '../WorkspacePanel'
 import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
 import { OPEN_SESSION_EVENT, isOpenSessionRequest } from '@/utils/workspace-messages'
@@ -1019,6 +1020,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           onOpenGitChanges={workspace && !isChatWorkspace ? handleOpenGit : undefined}
         />}
       >
+        {/* A crash in the chat or the Review panel shows in their place; the
+            header, sidebar and status bar keep working. */}
+        <ViewErrorBoundary resetKey={sessionIdState}>
         <div ref={centerRef} data-workbench-center="" className="relative flex min-w-0 flex-1 overflow-hidden">
         <main
           id="main"
@@ -1251,6 +1255,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           )}
         </AnimatePresence>
         </div>
+        </ViewErrorBoundary>
       </ChatFrame>
 
       <AgentChatPanels

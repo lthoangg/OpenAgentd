@@ -2284,6 +2284,12 @@ run from the terminal (the native Rust binary since v3.0.0).
     changed into view: hover or focus it for **Show turn**, then click or
     press Enter. Tasks last touched in turns that are not loaded yet stay
     plain.
+  - A view that fails to render (a session's transcript, the Review panel)
+    shows **Couldn't show this view** with **Try again** and **Copy error
+    details** in its place, while the header, sidebar and status bar keep
+    working; opening another session clears it. Any other screen's error
+    shows the app's own page (**Try again**, **Reload**) instead of the
+    router's plain one.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

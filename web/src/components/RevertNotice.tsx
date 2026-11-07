@@ -5,7 +5,9 @@
  * One word pair for the whole feature — Undo and Redo. The caption says what
  * is undone and what happens next (Redo brings it back; a new message
  * discards it), so nothing here lives in a tooltip alone. The undone messages
- * can be opened under the row.
+ * can be opened under the row. When the store knows which files the undos
+ * changed back, the caption counts them and they are listed name first, so
+ * Undo never changes files without saying which.
  */
 import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
@@ -19,11 +21,24 @@ import { cn } from '@/lib/utils'
 interface RevertNoticeProps {
   count: number
   messages?: Array<{ role: string; content: string }>
+  /** Workspace paths the undos changed back (added, edited or removed). */
+  files?: readonly string[]
   onRedo?: () => void
   onRedoAll?: () => void
 }
 
-export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: RevertNoticeProps) {
+function undoCaption(count: number, fileCount: number): string {
+  const changes = fileCount > 0
+    ? ` and ${count === 1 ? 'its' : 'their'} changes to ${fileCount} ${fileCount === 1 ? 'file' : 'files'}`
+    : ''
+  if (count === 1 && !changes) return 'Undid the last message. Redo brings it back; sending a new message discards it.'
+  const what = count === 1 ? 'the last message' : `the last ${count} messages`
+  return `Undid ${what}${changes}. Redo brings them back; sending a new message discards them.`
+}
+
+const NO_FILES: readonly string[] = []
+
+export function RevertNotice({ count, messages = [], files = NO_FILES, onRedo, onRedoAll }: RevertNoticeProps) {
   const [expanded, setExpanded] = useState(false)
   // Collapse whenever the undone count resets to 0 (redo or new session),
   // so the next undo doesn't open already-expanded.
@@ -31,16 +46,27 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
     if (count === 0) setExpanded(false)
   }, [count])
   if (count <= 0) return null
-  const caption =
-    count === 1
-      ? 'Undid the last message. Redo brings it back; sending a new message discards it.'
-      : `Undid the last ${count} messages. Redo brings them back; sending a new message discards them.`
+  const caption = undoCaption(count, files.length)
   const canShow = messages.length > 0
 
   return (
     <div className="my-2 flex justify-center">
       <div className={cn('flex w-full max-w-xl flex-col gap-2 px-3 py-2.5 text-xs text-(--color-text-muted)', TRANSCRIPT_CARD)}>
         <p className="leading-relaxed">{caption}</p>
+        {files.length > 0 && (
+          <ul aria-label="Files Undo changed back" className="flex max-h-28 flex-col gap-0.5 overflow-y-auto overscroll-contain font-mono text-meta">
+            {files.map((path) => {
+              const slash = path.lastIndexOf('/')
+              const folder = slash > 0 ? path.slice(0, slash) : ''
+              return (
+                <li key={path} title={path} className="flex min-w-0 gap-2">
+                  <span className="shrink-0 text-(--color-text)">{path.slice(slash + 1)}</span>
+                  {folder && <span className="min-w-0 truncate">{folder}</span>}
+                </li>
+              )
+            })}
+          </ul>
+        )}
         <div className="flex flex-wrap items-center gap-1.5">
           <Tooltip>
             <TooltipTrigger

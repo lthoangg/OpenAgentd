@@ -110,6 +110,7 @@ import { deliverFromComposer, stopFromComposer, useReleaseHeldMessages } from '.
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
 const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
+const EMPTY_UNDONE_FILES: readonly string[] = []
 
 const isInReviewDock = (element: Element) => element.closest('[data-review-dock]') !== null
 /** Stable selector: the shell only needs to know when the split stops fitting. */
@@ -317,6 +318,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
         leadRevertedCount: leadStream?.revertedCount ?? 0,
         leadRevertedMessages: leadStream?.revertedMessages ?? EMPTY_REVERTED_MESSAGES,
+        // Only this session's, and only while its undone messages are held.
+        undoneFilePaths: s.undoneFiles && s.undoneFiles.sessionId === s.sessionId ? s.undoneFiles.paths : EMPTY_UNDONE_FILES,
         leadHasVisibleBlocks: (leadStream?.blocks.length ?? 0) > 0,
         leadHasLiveBlocks: (leadStream?.currentBlocks.length ?? 0) > 0,
 
@@ -349,6 +352,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
     leadRevertedCount,
     leadRevertedMessages,
+    undoneFilePaths,
     leadHasVisibleBlocks,
     leadHasLiveBlocks,
     leadPromptTokens,
@@ -889,6 +893,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       interactionModeDisabled={isSwitchingInteractionMode || (!sessionIdState && !isDraft)}
       revertedCount={leadRevertedCount}
       revertedMessages={leadRevertedMessages}
+      revertedFiles={undoneFilePaths}
       onRedo={() => { void handleSlashCommand('redo') }}
       onRedoAll={() => { void handleSlashCommand('redo-all') }}
       renderPlus={renderPlus}

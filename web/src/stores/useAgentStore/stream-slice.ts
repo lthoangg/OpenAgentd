@@ -69,6 +69,11 @@ function mergeChangedPaths(
   return [...seen]
 }
 
+/** The undo notice's files: what earlier undos still held, plus this one. */
+function undoneFilesAfter(held: readonly string[], changed: string[] | undefined): string[] {
+  return [...new Set([...held, ...(changed ?? [])])].sort()
+}
+
 function enqueueWorkspaceInvalidation(
   set: (fn: (draft: AgentStore) => void) => void,
   workspace: string | null,
@@ -117,6 +122,7 @@ export type StreamSlice = Pick<
   | 'redoAgent'
   | 'redoAllAgent'
   | 'pendingDraft'
+  | 'undoneFiles'
   | 'consumePendingDraft'
   | 'setPendingDraft'
   | 'stopAgent'
@@ -145,6 +151,7 @@ export const createStreamSlice: StateCreator<
   error: null,
   setupRequired: null,
   pendingDraft: null,
+  undoneFiles: null,
   _abortController: null,
   _reconnectTimer: null,
   _reconnectAttempts: 0,
@@ -173,6 +180,7 @@ export const createStreamSlice: StateCreator<
       if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       set((draft) => {
         draft._leadRevertTime = null
+        draft.undoneFiles = null
         Object.values(draft.agentStreams).forEach((stream) => {
           stream._revertedSuffix = []
           stream.revertedCount = 0
@@ -206,15 +214,23 @@ export const createStreamSlice: StateCreator<
       return
     }
 
+    // Files earlier undos changed back, while their messages are still held
+    // (a sent message discards them, and the next undo starts over).
+    const { leadName, agentStreams, undoneFiles } = get()
+    const holding = (leadName ? agentStreams[leadName]?.revertedCount ?? 0 : 0) > 0
+    const held = holding && undoneFiles?.sessionId === sessionId ? undoneFiles.paths : []
+
     try {
       set((draft) => { draft.error = null })
       const response = await postAgentCommand('undo', sessionId)
-      enqueueWorkspaceInvalidation(set, workspace, sessionId, mergeChangedPaths(response.changed_paths))
+      const changed = mergeChangedPaths(response.changed_paths)
+      enqueueWorkspaceInvalidation(set, workspace, sessionId, changed)
       if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       const boundaryIso = response.message?.created_at
       const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
       set((draft) => {
         draft._leadRevertTime = boundaryTime
+        draft.undoneFiles = { sessionId, paths: undoneFilesAfter(held, changed) }
         Object.values(draft.agentStreams).forEach((stream) => {
           stream._unsyncedBlockIds = []
           applyRevertBoundary(stream, boundaryTime, {
@@ -308,6 +324,9 @@ export const createStreamSlice: StateCreator<
       const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
       set((draft) => {
         draft._leadRevertTime = boundaryTime
+        // Redo brings files back, so the held list no longer says which ones
+        // the remaining undone messages changed.
+        draft.undoneFiles = null
         Object.values(draft.agentStreams).forEach((stream) => {
           stream._unsyncedBlockIds = []
           applyRevertBoundary(stream, boundaryTime, {
@@ -323,6 +342,7 @@ export const createStreamSlice: StateCreator<
       if (message.includes('No undone message to redo')) {
         set((draft) => {
           draft._leadRevertTime = null
+          draft.undoneFiles = null
           Object.values(draft.agentStreams).forEach((stream) => {
             stream._unsyncedBlockIds = []
             applyRevertBoundary(stream, null)
@@ -357,6 +377,7 @@ export const createStreamSlice: StateCreator<
       if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       set((draft) => {
         draft._leadRevertTime = null
+        draft.undoneFiles = null
         Object.values(draft.agentStreams).forEach((stream) => {
           stream._unsyncedBlockIds = []
           applyRevertBoundary(stream, null)
@@ -369,6 +390,7 @@ export const createStreamSlice: StateCreator<
       if (message.includes('No undone message to redo')) {
         set((draft) => {
           draft._leadRevertTime = null
+          draft.undoneFiles = null
           Object.values(draft.agentStreams).forEach((stream) => {
             stream._unsyncedBlockIds = []
             applyRevertBoundary(stream, null)

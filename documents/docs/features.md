@@ -2245,6 +2245,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     picker still lists models by provider.
   - A long draft grows the message box to six lines, then scrolls inside
     it, and a thin thumb beside the text shows how much more there is.
+  - The **/** and **@** menus end with the keys that drive them (**↑↓**
+    navigate, **↵** run or insert, **Esc** close). **/new** and **/model**
+    show their shortcuts (⌘N, ⌘.), and a file reads name first, then its
+    folder, so a deep folder no longer cuts the file name off.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

@@ -25,9 +25,9 @@ export const BASE_SLASH_COMMANDS: SlashCommand[] = [
   { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
   { id: 'redo', label: 'Redo', description: 'Redo the last message you undid' },
   { id: 'redo-all', label: 'Redo All', description: 'Redo every message you undid, up to the latest' },
-  { id: 'new', label: 'New session', description: 'Start a fresh agent conversation' },
+  { id: 'new', label: 'New session', description: 'Start a fresh agent conversation', shortcut: 'newSession' },
   { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
-  { id: 'model', label: 'Model', description: 'Choose the model, thinking level and account' },
+  { id: 'model', label: 'Model', description: 'Choose the model, thinking level and account', shortcut: 'sessionSettings' },
   { id: 'think', label: 'Think', description: 'Change the thinking level' },
   { id: 'mcp', label: 'MCP', description: 'MCP servers for this session' },
 ]

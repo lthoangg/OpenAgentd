@@ -382,7 +382,8 @@ describe("InputComposer — @-mention picker", () => {
 
     const options = screen.getAllByRole("option")
     expect(options).toHaveLength(1)
-    expect(options[0].textContent).toContain("docs/intro.md")
+    // Drawn name first ("intro.md", then "docs/"); named by the whole path.
+    expect(options[0].getAttribute("aria-label")).toBe("docs/intro.md")
   })
 
   it("does not open when @ is preceded by a non-whitespace char", async () => {

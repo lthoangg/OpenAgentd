@@ -10,6 +10,7 @@ import { findActiveSnippet } from './InputComposer.helpers'
 import { InputComposerSuggestions } from './InputComposer.suggestions'
 import { useInputComposerSuggestionEngine } from './InputComposer.suggestionEngine'
 import { composerMaxHeight, useComposerScrollThumb, useTextareaAutosize } from './InputComposer.autosize'
+import type { AppShortcutName } from '@/lib/app-shortcuts'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 import { buildAcceptString } from './InputComposer.files'
 import { useInputComposerAttachments } from './InputComposer.attachments'
@@ -63,6 +64,8 @@ export interface SlashCommand {
   displayName?: string
   /** Text inserted after the leading slash when ``keepInputOpen`` is true. Defaults to ``id``. */
   insertText?: string
+  /** The app shortcut that does the same, shown beside the command on desktop. */
+  shortcut?: AppShortcutName
   /**
    * When ``true`` this entry is rendered as a non-interactive section header
    * (a label row). Set ``id`` to something unique but non-actionable and

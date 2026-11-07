@@ -15,7 +15,7 @@ mock.module('@/queries/useHealthQuery', () => ({
   useBackendStatusQuery: () => ({ data: status }),
 }))
 const connectBundledBackend = mock(async () => ({ ok: true, status: null, reload: false }))
-mock.module('@/lib/backend-switch', () => ({ connectBundledBackend }))
+mock.module('@/lib/backend-switch', () => ({ connectBundledBackend, reloadForBackendSwitch: () => {} }))
 mock.module('@/components/AppBackendDialog', () => ({ AppBackendDialog: () => null }))
 
 const { ConnectionBanner } = await import('@/components/ConnectionBanner')

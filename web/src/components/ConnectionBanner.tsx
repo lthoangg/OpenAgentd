@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { apiBaseUrl } from '@/api/base-url'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { formatBackendConnectionLabel, type AppBackendStatus } from '@/lib/app-backend'
+import { connectBundledBackend, reloadForBackendSwitch } from '@/lib/backend-switch'
 import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
 
 // Loaded on first open: the dialog pulls in the backend-switching machinery
@@ -49,9 +50,6 @@ export function ConnectionBanner({ retry = true }: {
 
   const switchToBuiltin = async () => {
     setStarting(true)
-    // On demand, like the dialog: the switching machinery stays out of the
-    // chat view's chunk.
-    const { connectBundledBackend, reloadForBackendSwitch } = await import('@/lib/backend-switch')
     const result = await connectBundledBackend(apiBaseUrl())
     setStarting(false)
     if (result.ok && result.reload) reloadForBackendSwitch()

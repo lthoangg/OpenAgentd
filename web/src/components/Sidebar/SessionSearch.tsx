@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { useDebouncedValue } from '@tanstack/react-pacer'
 import { Search } from 'lucide-react'
@@ -6,6 +6,7 @@ import type { SessionResponse } from '@/api/types'
 import { SearchBar } from '@/components/ui/search-bar'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ROW_TEXT_ACTION } from '@/components/ui/list-row'
+import { MatchMarks } from '@/components/ui/match-marks'
 import { useCompactRelative } from '@/hooks/useCompactRelative'
 import { useSessionSearchQuery, useSessionsQuery } from '@/queries/useSessionsQuery'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -15,26 +16,6 @@ import { sessionStatus } from './SessionStatusMark'
 
 /** Rows in the phone's "Recently opened" list before anything is typed. */
 const RECENT_LIMIT = 8
-
-/** ``title`` with every case-insensitive ``needle`` (already lower-case) in a mark. */
-function markMatches(title: string, needle: string): ReactNode {
-  const lower = title.toLowerCase()
-  // A case fold that changes the length (rare scripts) would misplace marks.
-  if (!needle || lower.length !== title.length) return title
-  const parts: ReactNode[] = []
-  let from = 0
-  for (let at = lower.indexOf(needle); at !== -1; at = lower.indexOf(needle, at + needle.length)) {
-    if (at > from) parts.push(title.slice(from, at))
-    parts.push(
-      <mark key={at} className="rounded-xs bg-(--accent-orange-soft) px-px font-semibold text-inherit">
-        {title.slice(at, at + needle.length)}
-      </mark>,
-    )
-    from = at + needle.length
-  }
-  if (from < title.length) parts.push(title.slice(from))
-  return parts
-}
 
 /** When a result was last used, where the tree shows a row's age. */
 function SessionAge({ session }: { session: SessionResponse }) {
@@ -123,14 +104,7 @@ export function SessionSearch({
         status={sessionStatus(session, unreadIds.includes(session.id))}
         isCurrent={session.id === currentSessionId}
         workspaceName={workspaceName(session.workspace ?? '')}
-        // The marked title is drawn; the row is named by the plain one, so
-        // no reader hears a word split at its mark.
-        title={(
-          <>
-            <span data-search-title="" aria-hidden="true">{markMatches(session.title || 'Untitled', needle)}</span>
-            <span className="sr-only">{session.title || 'Untitled'}</span>
-          </>
-        )}
+        title={<span data-search-title=""><MatchMarks text={session.title || 'Untitled'} words={[needle]} /></span>}
         meta={<SessionAge session={session} />}
         walkable
         onSelect={(event) => onSessionSelect(session, session.workspace ?? '', event)}

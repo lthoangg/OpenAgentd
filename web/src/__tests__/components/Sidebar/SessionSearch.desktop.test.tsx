@@ -42,7 +42,8 @@ describe('SessionSearch on desktop', () => {
     expect(within(results).getByText('3 results · 2 workspaces')).toBeTruthy()
     const groups = within(results).getAllByRole('list')
     expect(groups.map((list) => list.getAttribute('aria-label'))).toEqual(['openagentd, 2 sessions', 'FitYourCV, 1 session'])
-    expect(within(groups[0]).getAllByRole('button').map((row) => row.querySelector('[data-search-title]')?.textContent))
+    // Each title as read: the plain copy beside the marked one (ui/match-marks).
+    expect(within(groups[0]).getAllByRole('button').map((row) => row.querySelector('[data-search-title] .sr-only')?.textContent))
       .toEqual(['Fix flaky auth test', 'Rotate auth tokens'])
   })
 

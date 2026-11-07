@@ -2243,6 +2243,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     (`claude-sonnet-4-6 · High`) rather than `provider:model` in code type;
     hovering it shows the full `provider:model` and its shortcut, and the
     picker still lists models by provider.
+  - A long draft grows the message box to six lines, then scrolls inside
+    it, and a thin thumb beside the text shows how much more there is.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

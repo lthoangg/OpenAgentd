@@ -89,7 +89,7 @@ describe('useTextareaAutosize keeps the transcript scroll offset', () => {
     expect(textarea.style.height).toBe('60px')
   })
 
-  it('caps at the CSS max-height (six lines on a phone), else 120px', () => {
+  it('caps at the CSS max-height (six lines), else 120px', () => {
     const view = render(<Harness transcript={false} />)
     const textarea = view.container.querySelector('textarea') as HTMLTextAreaElement
     Object.defineProperty(textarea, 'scrollHeight', { configurable: true, get: () => 400 })
@@ -102,8 +102,7 @@ describe('useTextareaAutosize keeps the transcript scroll offset', () => {
 })
 
 describe('composerMaxHeight', () => {
-  it('is six line-heights on a phone and 120px elsewhere', () => {
-    expect(composerMaxHeight(true)).toBe('6lh')
-    expect(composerMaxHeight(false)).toBe('120px')
+  it('is six line-heights', () => {
+    expect(composerMaxHeight()).toBe('6lh')
   })
 })

@@ -9,7 +9,7 @@ import { COMPOSER_TEXT_CLASS, MentionOverlay } from './InputComposer.overlay'
 import { findActiveSnippet } from './InputComposer.helpers'
 import { InputComposerSuggestions } from './InputComposer.suggestions'
 import { useInputComposerSuggestionEngine } from './InputComposer.suggestionEngine'
-import { composerMaxHeight, useTextareaAutosize } from './InputComposer.autosize'
+import { composerMaxHeight, useComposerScrollThumb, useTextareaAutosize } from './InputComposer.autosize'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 import { buildAcceptString } from './InputComposer.files'
 import { useInputComposerAttachments } from './InputComposer.attachments'
@@ -308,6 +308,8 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     resizeAfterLayout,
     resetHeightNow,
   } = useTextareaAutosize(textareaRef)
+  // Desktop only: a phone's box keeps its own scroll indicator.
+  const scrollThumb = useComposerScrollThumb(textareaRef, !isMobile, value)
 
   const {
     mentionRange,
@@ -1058,7 +1060,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         )}
         // Cap matches the ``resize()`` ceiling in InputComposer.autosize.ts so the
         // JS-driven height and the CSS limit stay in lockstep.
-        style={{ maxHeight: composerMaxHeight(isMobile) }}
+        style={{ maxHeight: composerMaxHeight() }}
         // Spellcheck disabled: the squiggle is painted by the browser under
         // the textarea's own glyphs, but the visible text comes from the
         // overlay mirror. Even with identical font/wrap/scroll the two
@@ -1076,6 +1078,16 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         aria-controls={activePopupId}
         aria-activedescendant={activeOptionId}
       />
+      {scrollThumb && (
+        // The box's hidden scrollbar, drawn just past the text's right edge
+        // so it never narrows the text (``useComposerScrollThumb``).
+        <span
+          aria-hidden="true"
+          data-composer-scroll-thumb=""
+          className="pointer-events-none absolute -right-1.5 w-[3px] rounded-full bg-(--color-border-strong)"
+          style={{ top: `${Math.round(scrollThumb.top * 10_000) / 100}%`, height: `${Math.round(scrollThumb.height * 10_000) / 100}%` }}
+        />
+      )}
       </div>
     </div>
   )

@@ -1358,8 +1358,12 @@ must never take the width of its longest line.
 the foot of the chat column on every screen, in the column's flow (never
 floating over the transcript), up to the 768px prose measure, always open:
 no drag, no collapse, no saved position. It is one framed field (one
-`border-subtle` hairline, no shadow); nothing inside it has a border. Under
-the text sits the run deck, which says how the next message runs:
+`border-subtle` hairline, no shadow); nothing inside it has a border. The
+message box grows to six lines, then scrolls inside. Its own scrollbar stays
+hidden (it would narrow the text under the highlight mirror), so from a
+pointer a 3px thumb just past the text's right edge shows the scroll; a
+phone keeps the system's indicator. Under the text sits the run deck, which
+says how the next message runs:
 
 ```
 [+•] [Code] [model · Level · Account ▾]   (ring 42%) [Send]

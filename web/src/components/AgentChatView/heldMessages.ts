@@ -80,8 +80,8 @@ export async function stopTurn(composer: InputComposerHandle | null): Promise<vo
 }
 
 /**
- * After a Stop on a phone: a "Stopped" toast whose Resume sends "Continue",
- * so a stop by mistake costs one tap (mockup J5 5.2).
+ * After a Stop: a "Stopped" toast whose Resume sends "Continue", so a stop by
+ * mistake costs one tap or click (phone mockup J5 5.2, desktop 5.5).
  */
 export function pushStoppedToast(workspace: string, composer: () => InputComposerHandle | null): string {
   return useToastStore.getState().push({
@@ -89,6 +89,13 @@ export function pushStoppedToast(workspace: string, composer: () => InputCompose
     title: 'Stopped',
     action: { label: 'Resume', onAction: () => { void deliverFromComposer(workspace, composer(), { content: 'Continue' }) } },
   })
+}
+
+/** The composer's Stop (its ■, or Esc on desktop): stop the turn, then offer Resume. */
+export async function stopFromComposer(workspace: string | null, composer: () => InputComposerHandle | null): Promise<void> {
+  const stopped = stopTurn(composer())
+  if (workspace) pushStoppedToast(workspace, composer)
+  await stopped
 }
 
 /** Send a composer message the way the user chose; an idle agent just starts a turn. */

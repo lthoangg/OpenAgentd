@@ -378,6 +378,43 @@ async fn approving_with_keep_going_runs_the_plan_as_a_goal() {
     assert!(reminder.contains("Next task on the board: Test"), "{reminder}");
 }
 
+/// A goal ends (here: out of turns), then a new plan is approved with keep
+/// going. The old goal's `<goal_ended>` note must not read as "stop": it
+/// comes before the new `<session_goal>` and says a newer goal replaced it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_new_keep_going_plan_after_an_ended_goal_starts_work() {
+    let a = "# A\n\n## Approach\n1. a\n\n**Done when:** a works.";
+    let b = "# B\n\n## Approach\n1. b\n\n**Done when:** b works.";
+    let h = harness(
+        "keep_going_twice",
+        "plan",
+        None,
+        vec![
+            MockProvider::tool_call("c1", "plan", &json!({"action": "write", "content": a, "submit": true}).to_string()),
+            MockProvider::text("Did a."),
+            MockProvider::tool_call("c2", "plan", &json!({"action": "new", "content": b, "submit": true}).to_string()),
+            MockProvider::text("Doing b."),
+        ],
+    )
+    .await;
+    h.send("Plan A.").await;
+    h.approve_and_keep_going(1).await;
+    h.send("Plan B.").await;
+    assert_eq!(h.session.state(), "waiting_input");
+    h.approve_and_keep_going(1).await;
+
+    let resumed = h.request(3);
+    let approval = resumed.iter().position(|m| matches!(m, ChatMessage::Tool { tool_call_id, .. } if tool_call_id == "c2")).expect("B's approval");
+    let _rules = resumed.iter().rposition(|m| m.content().is_some_and(|c| c.contains("<objective>\nb works.\n</objective>"))).expect("B's rules reach the model");
+    for (i, m) in resumed.iter().enumerate() {
+        let Some(c) = m.content().filter(|c| c.contains("<goal_ended")) else { continue };
+
+        if i > approval {
+            assert!(!c.contains("Do not continue"), "a stale stop note after the approval: {c}");
+        }
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn change_request_in_code_mode_resumes_in_code_mode_with_feedback() {
     let h = harness(

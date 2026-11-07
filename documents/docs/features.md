@@ -523,7 +523,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     whose objective is the plan's **Done when**, and the agent keeps working
     turn after turn without a "continue" from you. The checkbox is disabled
     while the plan has no Done when. Each goal turn names the plan file and
-    the next unfinished task. It stops when a separate completion check
+    the next unfinished task. Since `[v3.49.0]`, approving a new plan this way after an earlier
+    goal ended starts the new goal straight away: the earlier goal's end
+    note says a newer goal replaced it, not "do not continue". It stops
+    when a separate completion check
     confirms the agent's `update_goal` claim from evidence shown in the
     conversation, when the agent reports a blocker, or at a limit: 50 turns by
     default, two turns in a row without tool calls, three rejected claims in a

@@ -177,7 +177,15 @@ pub fn reminder_text(goal: &SessionGoal, turn: i64, resumed: bool, work: &PlanWo
     crate::prompts::s("goal_reminder").replace("{attrs}", &attrs).replace("{extra}", &extra)
 }
 
-fn ended_text(status: &str) -> String {
+/// Whether two goal ids name the same goal, whatever their hyphenation.
+fn same_id(a: &str, b: &str) -> bool {
+    a.replace('-', "").eq_ignore_ascii_case(&b.replace('-', ""))
+}
+
+fn ended_text(status: &str, replaced: bool) -> String {
+    if replaced {
+        return crate::prompts::s("goal_replaced").replace("{status}", status);
+    }
     let why = if status == GOAL_ACHIEVED { "achieved" } else { "cleared by the user" };
     crate::prompts::s("goal_ended").replace("{status}", status).replace("{why}", why)
 }
@@ -698,6 +706,7 @@ pub async fn release_ended_notes(pool: &DbPool, session_id: &str) -> Result<usiz
         return Ok(0);
     }
     let mut released = 0;
+    let latest = db::latest_session_goal(pool, session_id).await?.map(|g| g.id);
     for (id, extra) in db::unreleased_goal_notes(pool, session_id).await? {
         let Some(Value::Object(mut extra)) = json_col(extra.as_deref()) else { continue };
         let Some(goal_id) = extra.get("goal_id").and_then(Value::as_str).map(String::from) else { continue };
@@ -706,12 +715,15 @@ pub async fn release_ended_notes(pool: &DbPool, session_id: &str) -> Result<usiz
             continue;
         }
         extra.shift_remove("hidden_from_summary");
+        // A newer goal (from a newly approved plan) replaced this one: its
+        // end must not read as "stop working".
+        let replaced = latest.as_deref().is_some_and(|l| !same_id(l, &goal_id));
         let status = goal.map(|g| g.status).unwrap_or_else(|| GOAL_CLEARED.into());
         let mut e = Map::new();
         e.insert("hidden_from_user".into(), json!(true));
         e.insert(GOAL_ENDED_KEY.into(), json!(status));
         e.insert("goal_id".into(), json!(goal_id));
-        let ended = NewMessage { kind: Some("note".into()), extra: Some(e), ..NewMessage::user(ended_text(&status)) };
+        let ended = NewMessage { kind: Some("note".into()), extra: Some(e), ..NewMessage::user(ended_text(&status, replaced)) };
         db::release_goal_note(pool, session_id, &id, &Value::Object(extra), ended).await?;
         released += 1;
     }

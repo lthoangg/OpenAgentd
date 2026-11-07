@@ -30,7 +30,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Check, ChevronRight, Copy, ExternalLink, FileText, MessageSquarePlus, MoreHorizontal, Pencil, Unlink } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, ChevronUp, Copy, ExternalLink, FileText, MessageSquare, MessageSquarePlus, MoreHorizontal, Pencil, Unlink } from 'lucide-react'
 import type { SessionPlan, TodoItem } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
@@ -208,6 +208,17 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
     setComposer(restoredComposer(snapshotPlanReviewDraft(reviewId)))
   }
   const previousReview = useRef(reviewId)
+  // Phones: the review footer rests as one slim bar so the plan gets the
+  // screen; Feedback opens the full panel. A review that already holds
+  // feedback or comments opens expanded, so none of it is hidden.
+  const draftHasContent = (d: PlanReviewDraft) => d.comments.length > 0 || d.overall.trim().length > 0
+  const [footerOpen, setFooterOpen] = useState(() => draftHasContent(snapshotPlanReviewDraft(reviewId)))
+  const [footerFor, setFooterFor] = useState(reviewId)
+  if (reviewId !== footerFor) {
+    setFooterFor(reviewId)
+    setFooterOpen(draftHasContent(snapshotPlanReviewDraft(reviewId)))
+  }
+  const feedbackInputRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
     const previous = previousReview.current
     if (previous && previous !== reviewId) forgetPlanReviewDraft(previous)
@@ -419,7 +430,18 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
     const id = `${commentIdPrefix}${Date.now().toString(36)}${comments.length}`
     const next = { ...reviewDraft, comments: [...comments, { id, quote: composer.quote, text: composer.text.trim() }] }
     setComposer(null)
+    setFooterOpen(true)
     persist(next, null)
+  }
+
+  const openFeedback = () => {
+    // Focus inside the tap so iOS raises the keyboard.
+    flushSync(() => setFooterOpen(true))
+    feedbackInputRef.current?.focus()
+  }
+  const closeFeedback = () => {
+    dismissKeyboard()
+    setFooterOpen(false)
   }
 
   const requestChanges = () => {
@@ -665,12 +687,60 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
             </Button>
           </div>
         </div>
+      ) : review && mobile && !footerOpen ? (
+        // Mobile at rest: one slim bar, so the plan keeps the screen.
+        <div data-plan-review-footer="" className="shrink-0 border-t border-(--color-border-subtle) bg-(--bg-card) px-3 pt-2 pb-safe">
+          {decision.error && (
+            <p role="alert" className="pb-1.5 text-meta text-(--color-error)">{decision.error}</p>
+          )}
+          <div className="flex items-center gap-2 pb-2">
+            <Button type="button" variant="ghost" size="sm" className="gap-1.5 px-2" aria-expanded={false} onClick={openFeedback}>
+              <MessageSquare size={12} aria-hidden="true" />
+              Feedback
+              {comments.length > 0 && (
+                <span className="rounded-full bg-(--bg-key) px-1.5 text-meta tabular-nums">{comments.length}</span>
+              )}
+              <ChevronUp size={12} aria-hidden="true" />
+            </Button>
+            <span className="min-w-0 flex-1" aria-hidden="true" />
+            <Button type="button" variant="default" size="sm" disabled={decision.submitting || tooLong} onClick={requestChanges}>
+              {comments.length > 0 ? `Request changes (${comments.length})` : 'Request changes'}
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              aria-label={decision.approveLabel}
+              title={approveHint ?? undefined}
+              disabled={decision.submitting || approveHint !== null}
+              onClick={approve}
+            >
+              {decision.keepGoing ? `Approve · ${decision.turnsText}↻` : 'Approve'}
+            </Button>
+          </div>
+        </div>
       ) : review && (
         // The band runs the dock's width; its content keeps the plan's column
         // (``oa-review-column``, index.css), so a wide or maximized dock does
         // not stretch the feedback box and the buttons across the screen.
         <div data-plan-review-footer="" className="shrink-0 border-t border-(--color-border-subtle) bg-(--bg-card) px-3 pt-2.5 pb-safe">
           <div className="oa-review-column space-y-2">
+            {mobile && (
+              <div className="flex items-center">
+                <span className="text-xs font-medium text-(--color-text)">Feedback</span>
+                <span className="min-w-0 flex-1" aria-hidden="true" />
+                <button
+                  type="button"
+                  aria-label="Collapse feedback"
+                  aria-expanded
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={closeFeedback}
+                  className={cn(DOCK_ACTION_BUTTON_CLASS, 'justify-center')}
+                >
+                  <ChevronDown size={14} aria-hidden="true" />
+                </button>
+              </div>
+            )}
             {comments.length > 0 && (!compactFooter || showComments) && (
               <CommentList
                 comments={comments}
@@ -679,6 +749,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
               />
             )}
             <Textarea
+              ref={feedbackInputRef}
               aria-label="Feedback on the plan"
               placeholder={comments.length ? 'Anything else? (optional)' : 'What should change? Select plan text to comment on it.'}
               value={overall}

@@ -1922,6 +1922,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     in the footer, the comment box docks on the keyboard, saved comments fold
     into a chip while you type, and a half-written comment survives closing
     the sheet. Request changes and Approve stay in reach.
+  - The plan review footer rests as one slim bar (**Feedback**, **Request
+    changes**, **Approve**) so the plan keeps the screen; Feedback opens the
+    comments, feedback box and Keep going. It opens expanded when the review
+    already holds feedback. `[v3.49.0]`
   - The chat re-pins to the newest message when the keyboard opens, Send and
     Steer keep the keyboard up, and tapping the transcript puts it away.
     Since `[v3.49.0]` scrolling the transcript keeps the keyboard up, so you

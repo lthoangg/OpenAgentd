@@ -229,6 +229,7 @@ describe('PlanTabView on a phone', () => {
 
   it('keeps the turns field mounted and focused when the keyboard opens for it', async () => {
     renderTab()
+    fireEvent.click(screen.getByRole('button', { name: /Feedback/ }))
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Keep going until done' }))
     const turns = screen.getByLabelText('Turns for this goal') as HTMLInputElement
     turns.focus()
@@ -240,5 +241,41 @@ describe('PlanTabView on a phone', () => {
     // Leaving the field folds the row away again while the keyboard is up.
     act(() => { turns.blur() })
     await waitFor(() => expect(screen.queryByLabelText('Turns for this goal')).toBeNull())
+  })
+
+  it('rests as one slim bar so the plan keeps the screen', () => {
+    renderTab()
+    expect(screen.queryByLabelText('Feedback on the plan')).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: 'Keep going until done' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Request changes' })).toBeTruthy()
+  })
+
+  it('approves in one tap from the slim bar', async () => {
+    renderTab()
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    await waitFor(() => expect(answers).toHaveLength(1))
+  })
+
+  it('opens the feedback panel focused, and collapses it again', () => {
+    renderTab()
+    fireEvent.click(screen.getByRole('button', { name: /Feedback/ }))
+    expect(document.activeElement).toBe(screen.getByLabelText('Feedback on the plan'))
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse feedback' }))
+    expect(screen.queryByLabelText('Feedback on the plan')).toBeNull()
+  })
+
+  it('shows the comment count on the slim bar and opens expanded when feedback exists', () => {
+    const first = renderTab()
+    selectText(planItem(first.container, 'Write the migration'))
+    fireEvent.click(screen.getByRole('button', { name: 'Comment on selection' }))
+    fireEvent.change(screen.getByLabelText('Comment'), { target: { value: 'Make it reversible.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse feedback' }))
+    expect(screen.getByRole('button', { name: /Feedback\s*1/ })).toBeTruthy()
+    first.unmount()
+
+    renderTab()
+    expect(screen.getByLabelText('Feedback on the plan')).toBeTruthy()
   })
 })

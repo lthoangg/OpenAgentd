@@ -79,6 +79,8 @@ jobs:
         with:
           workspaces: mobile/src-tauri
           key: ios-aarch64
+          # Save even when a later step fails, so a fix-and-retry run is not cold.
+          cache-on-failure: true
 
       - name: Restore cached tauri-cli
         id: cache-tauri-cli

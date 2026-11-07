@@ -145,7 +145,7 @@ and `tsc` for `web/src`.
 Repository workflows live in `.agents/skills/oad/`: `oad/testing`
 (test-first and per-surface commands), `oad/debug` (including logs and
 telemetry), `oad/review`, `oad/commit` (including the documentation pass),
-and `oad/release`.
+`oad/release`, and `oad/ios-store` (TestFlight and App Store).
 
 ## Documentation
 

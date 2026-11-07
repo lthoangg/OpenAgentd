@@ -2293,6 +2293,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A sidebar list with more sessions to load says how many the next click
     adds (**Show 5 more**, or **Show 2 more** when that is all that is
     left) instead of a plain **Show more**.
+  - A terminal tab whose shell is running a command (a build, a dev server,
+    `sleep`) shows the running spinner in place of its icon, and its
+    tooltip reads **Terminal 1 · Running**, so you can see which tab is busy
+    before you close it.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

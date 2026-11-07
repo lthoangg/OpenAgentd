@@ -10,7 +10,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { getTerminalRuntime, useTerminalStore, _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
 
 const Icon = () => null
-mock.module('lucide-react', () => ({ MoreHorizontal: Icon, SlidersHorizontal: Icon, TerminalSquare: Icon, X: Icon, Pencil: Icon, Eraser: Icon }))
+const Spinner = () => <span data-icon="spinner" />
+mock.module('lucide-react', () => ({ MoreHorizontal: Icon, SlidersHorizontal: Icon, TerminalSquare: Icon, X: Icon, Pencil: Icon, Eraser: Icon, Loader2: Spinner }))
 mock.module('@/api/terminal', () => ({ connectTerminal: mock(() => new Promise(() => {})) }))
 
 beforeEach(() => {
@@ -39,6 +40,30 @@ describe('TerminalTabButton', () => {
     const { onActivate } = await setup()
     fireEvent.click(screen.getByRole('button', { name: 'Terminal 1' }))
     expect(onActivate).toHaveBeenCalled()
+  })
+
+  it('marks a desktop tab whose shell is running a command with the spinner and the word', async () => {
+    const { TerminalTabButton } = await import('@/components/Terminal/TerminalTabButton')
+    const id = useTerminalStore.getState().open({ workspace: '/tmp/ws' }, '/tmp/ws')
+    const meta = useTerminalStore.getState().sessions[id]
+    const tab = (busy: boolean, mobile: boolean) => (
+      <TerminalTabButton meta={{ ...meta, busy }} active mobile={mobile} os="linux" onActivate={() => {}} />
+    )
+    const { rerender } = render(tab(false, false))
+    const button = screen.getByRole('button', { name: 'Terminal 1' })
+    expect(button.querySelector('[data-icon="spinner"]')).toBeNull()
+    expect(button.getAttribute('aria-description')).toBeNull()
+
+    rerender(tab(true, false))
+    expect(button.querySelector('[data-icon="spinner"]')).not.toBeNull()
+    expect(button.getAttribute('aria-description')).toBe('Running')
+    // The name stays the terminal's.
+    expect(screen.getByRole('button', { name: 'Terminal 1' })).toBe(button)
+
+    // The phone's tab is unchanged.
+    cleanup()
+    render(tab(true, true))
+    expect(screen.getByRole('button', { name: 'Terminal 1' }).querySelector('[data-icon="spinner"]')).toBeNull()
   })
 
   it('the inline close button closes the session immediately (no confirmation)', async () => {

@@ -14,7 +14,7 @@
  */
 
 import { useState, type ReactNode } from 'react'
-import { Eraser, Pencil, TerminalSquare, X } from 'lucide-react'
+import { Eraser, Loader2, Pencil, TerminalSquare, X } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/context-menu'
 import { InlineTitleInput } from '@/components/ui/inline-title-input'
 import { LongPressButton } from '@/components/ui/long-press-button'
+import { IconSwap } from '@/components/ui/swap'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { dockTabButtonClass, dockTabClass } from '@/components/WorkspacePanel/dock-tab-styles'
 import { DockTabCloseButton } from '@/components/WorkspacePanel/DockTabCloseButton'
@@ -70,6 +71,9 @@ export function TerminalTabButton({
   const [renaming, setRenaming] = useState(false)
   const close = onClose ?? (() => useTerminalStore.getState().close(meta.id))
   const os = osProp ?? getPlatform().os
+  // A command is running (not just the prompt): the spinner takes the icon's
+  // slot and the tab says so to assistive tech. Desktop only for now.
+  const running = !mobile && meta.busy === true
 
   const openRename = () => setRenaming(true)
   // The tab button remounts in place of the field; give it focus back so
@@ -115,6 +119,7 @@ export function TerminalTabButton({
                 type="button"
                 data-terminal-tab={meta.id}
                 aria-current={active ? 'true' : undefined}
+                aria-description={running ? 'Running' : undefined}
                 enabled={mobile}
                 onLongPress={() => {
                   setMobileSheetOpen(true)
@@ -146,12 +151,16 @@ export function TerminalTabButton({
                 }}
                 className={cn(dockTabButtonClass(true), 'flex-1')}
               >
-                <TerminalSquare size={12} className="shrink-0" aria-hidden="true" />
+                <IconSwap swapKey={running ? 'running' : 'idle'}>
+                  {running
+                    ? <Loader2 size={12} className="animate-spin text-(--color-text-2)" aria-hidden="true" />
+                    : <TerminalSquare size={12} aria-hidden="true" />}
+                </IconSwap>
                 <span className="truncate font-mono">{meta.title}</span>
               </LongPressButton>
             }
           />
-          <TooltipContent>{meta.title}</TooltipContent>
+          <TooltipContent>{running ? `${meta.title} · Running` : meta.title}</TooltipContent>
         </Tooltip>
         )}
         {!renaming && (

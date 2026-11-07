@@ -355,7 +355,7 @@ export function SessionsPageToolbar({
           // overshoots a little) while ✕ springs into its place.
           data-pressed={!menuOpen && newSlide.active === 'new' ? '' : undefined}
           // Round and 52px, as the mockup: ``!`` beats the icon size's square 36px.
-          className="size-13! min-h-13! min-w-13! rounded-full! shadow-(--shadow-depth) transition-[scale,background-color,color] duration-(--motion-base) ease-(--ease-spring-snappy) data-active:scale-105 data-pressed:scale-[0.88] data-pressed:duration-(--motion-fast) data-pressed:ease-out"
+          className="size-13! min-h-13! min-w-13! rounded-full! shadow-(--shadow-depth) transition-[scale,background-color,color] duration-(--motion-base) ease-(--ease-spring-snappy) data-active:scale-105 data-pressed:scale-[0.88] data-pressed:duration-(--motion-fast) data-pressed:ease-(--ease-out)"
         >
           {menuOpen ? <X key="x" className="oa-icon-in size-5" aria-hidden="true" /> : <SquarePen key="new" className="size-5" aria-hidden="true" />}
         </Button>

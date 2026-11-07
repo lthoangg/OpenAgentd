@@ -98,8 +98,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: cargo binstall --no-confirm --force --version 2.12.4 tauri-cli
 
-      - name: Install xcodegen
-        run: brew install xcodegen
+      # Installed here, natively: `tauri ios init` otherwise installs
+      # CocoaPods and libimobiledevice itself, from a process Homebrew sees
+      # as Rosetta, and stops ("Cannot install under Rosetta 2").
+      - name: Install xcodegen, CocoaPods and libimobiledevice
+        run: brew install xcodegen cocoapods libimobiledevice
 
       # src-tauri/gen/apple is generated, not committed: init + patches.
       - name: Generate the Xcode project

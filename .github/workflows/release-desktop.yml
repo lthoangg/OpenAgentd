@@ -318,7 +318,9 @@ jobs:
       - name: Build Tauri app
         working-directory: desktop/src-tauri
         shell: bash
-        run: cargo tauri build ${{ matrix.tauri_args }}
+        # The tauri CLI does not read TAURI_CONFIG from the environment; pass
+        # it with --config or the build looks for the updater private key.
+        run: cargo tauri build --config "$TAURI_CONFIG" ${{ matrix.tauri_args }}
 
       - name: Verify Windows MSI
         if: matrix.platform == 'windows'

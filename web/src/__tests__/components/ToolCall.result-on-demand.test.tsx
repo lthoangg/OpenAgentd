@@ -6,14 +6,21 @@
 import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 
 const fetched: Array<[string, string]> = []
+const argsFetched: string[] = []
+let missesLeft = 0
 let answer = "[1-2/2]\nfirst line\nsecond line"
 mock.module("@/api/client/tool-results", () => ({
   toolResult: mock(async (...args: unknown[]) => {
     const [sessionId, toolCallId] = args as [string, string]
     fetched.push([sessionId, toolCallId])
+    if (missesLeft > 0) { missesLeft -= 1; throw new Error("Tool result not found.") }
     return { tool_call_id: toolCallId, name: "read", content: answer }
   }),
-  toolCallArguments: mock(async () => ({ tool_call_id: "", name: "", arguments: "{}" })),
+  toolCallArguments: mock(async (...args: unknown[]) => {
+    const [, toolCallId] = args as [string, string]
+    argsFetched.push(toolCallId)
+    return { tool_call_id: toolCallId, name: "shell", arguments: JSON.stringify({ command: "bun test --all", description: "run tests" }) }
+  }),
 }))
 
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react"
@@ -24,6 +31,8 @@ import { useAgentStore } from "@/stores/useAgentStore"
 afterEach(cleanup)
 beforeEach(() => {
   fetched.length = 0
+  argsFetched.length = 0
+  missesLeft = 0
   answer = "[1-2/2]\nfirst line\nsecond line"
   clearToolResultCache()
   useAgentStore.setState({ sessionId: "s1" })
@@ -65,6 +74,26 @@ describe("a tool result fetched on demand", () => {
     render(<ToolCall name="shell" args='{"command":"ls"}' done toolCallId="c5" resultBytes={16} />)
     expect(fireEvent.contextMenu(row())).toBe(true)
     expect(fetched).toEqual([])
+  })
+
+  it("loads a described shell call's command when opened: the live event carried only the description", async () => {
+    answer = "[Succeeded]\n\nall green"
+    render(<ToolCall name="shell" args='{"description":"run tests"}' done toolCallId="c7" resultBytes={20} />)
+    fireEvent.click(row())
+    await waitFor(() => expect(screen.getByText(/all green/)).toBeTruthy())
+    await waitFor(() => expect(document.body.textContent).toContain("bun test --all"))
+    expect(argsFetched).toEqual(["c7"])
+    expect(document.body.textContent).toContain("terminal")
+  })
+
+  it("retries a result not written yet, inside the terminal, instead of showing an error", async () => {
+    missesLeft = 1
+    answer = "[Succeeded]\n\nlate output"
+    render(<ToolCall name="shell" args='{"command":"ls"}' done toolCallId="c8" resultBytes={20} />)
+    fireEvent.click(row())
+    await waitFor(() => expect(screen.getByText(/late output/)).toBeTruthy(), { timeout: 3000 })
+    expect(document.body.textContent).not.toContain("Could not load")
+    expect(document.body.textContent).not.toContain("result")
   })
 
   // An applied patch's answer stays on the server: the row's stats come from

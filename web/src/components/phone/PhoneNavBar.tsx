@@ -34,6 +34,8 @@ export interface PhoneNavBarProps {
    * the chat's transcript scrolls under the bar, as an iOS bar does).
    */
   separator?: 'always' | 'scrolled'
+  /** ``start`` left-aligns the title on iOS too (the chat bar). */
+  titleAlign?: 'center' | 'start'
   className?: string
 }
 
@@ -70,11 +72,12 @@ export function PhoneBackButton({ label, onBack }: { label: string; onBack: () =
   )
 }
 
-export function PhoneNavBar({ title, subtitle, back, leading, trailing, separator = 'always', className }: PhoneNavBarProps) {
+export function PhoneNavBar({ title, subtitle, back, leading, trailing, separator = 'always', titleAlign = 'center', className }: PhoneNavBarProps) {
   const android = usePlatform().os === 'android'
+  const start = android || titleAlign === 'start'
 
   const titleBlock = (
-    <div data-phone-nav-title="" className={cn('min-w-0', android ? 'flex-1' : 'shrink text-center')}>
+    <div data-phone-nav-title="" className={cn('min-w-0', start ? 'flex-1 text-left' : 'shrink text-center')}>
       <h1 className="truncate text-base font-semibold text-(--color-text)">{title}</h1>
       {subtitle != null && <div className="truncate text-meta text-(--color-text-muted)">{subtitle}</div>}
     </div>
@@ -96,7 +99,7 @@ export function PhoneNavBar({ title, subtitle, back, leading, trailing, separato
         className,
       )}
     >
-      {android ? (
+      {start ? (
         <>
           {backButton ?? leading}
           {titleBlock}

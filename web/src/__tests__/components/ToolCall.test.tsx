@@ -132,7 +132,7 @@ describe("ToolCall — shell display", () => {
   it("shows the description as the target, with the command only in the details", () => {
     const args = JSON.stringify({ command: "npm test", description: "Run unit tests" })
     render(<ToolCall name="shell" args={args} done={false} />)
-    const header = getHeader("shell: Run unit tests\nnpm test")
+    const header = getHeader("shell: Run unit tests")
     expectPlainArg(header, "Run unit tests")
     expect(screen.getByText("shell").className).toContain("font-mono")
     // The collapsed row shows only the description: no command, no tooltip.

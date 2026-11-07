@@ -194,7 +194,10 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const remote = useToolResult(toolCallId, onServer, fetchWanted)
   const result = inlineResult ?? remote.text
   // Short arguments: the row reads them; the open details need the full ones.
-  const argsOnServer = argsBytes !== undefined && Boolean(toolCallId)
+  // A described shell call's live event carries only its description
+  // (`publisher::stream_arguments`): its command comes from history.
+  const shellArgsOmitted = name === 'shell' && Boolean(done) && typeof args === 'string' && !/"command"\s*:/.test(args)
+  const argsOnServer = (argsBytes !== undefined || shellArgsOmitted) && Boolean(toolCallId)
   const remoteArgs = useToolArguments(toolCallId, argsOnServer, fetchWanted)
   const fullArgs = argsOnServer ? remoteArgs.text : args
   const awaitingArgs = argsOnServer && fullArgs === undefined
@@ -268,7 +271,9 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const isBackgroundProcess = name === 'bg'
   const isScheduleTaskList = canonicalToolName(name) === 'schedule' && shownResult?.startsWith('Scheduled tasks (')
   const isShell = language === 'bash'
-  const isShellTerminal = isShell && Boolean(formattedArgs)
+  // The terminal block holds a shell call's command, output and result
+  // state, even while the command or the result is still loading.
+  const isShellTerminal = isShell && Boolean(formattedArgs || awaitingArgs || shellArgsOmitted || done)
   // The `[Succeeded]` / `[Failed — exit code 1]` status line is protocol, not
   // output: the row's exit chip carries it.
   const shellParsed = isShell ? parseShellOutcome(shownResult) : null
@@ -502,7 +507,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
               ) : (
                 <>
                   {/* Args section — caption (closes the row) and Copy sit above the content. */}
-                  {formattedArgs && (
+                  {(formattedArgs || isShellTerminal) && (
                     <div>
                       <SectionHeader
                         label={isShellTerminal ? 'terminal' : 'arguments'}
@@ -517,14 +522,26 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                             onScroll={handleScroll}
                             className="max-h-40 sm:max-h-64 phone:max-h-[12lh] phone:text-code overflow-auto touch-pan-y whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)"
                           >
-                            <span className="block"><span className="select-none text-(--color-text-muted)">$ </span><ShellCommand command={formattedArgs} />{shellOutput ? `\n${shellOutput}` : ''}</span>
+                            <span className="block">
+                              {formattedArgs ? (
+                                <><span className="select-none text-(--color-text-muted)">$ </span><ShellCommand command={formattedArgs} /></>
+                              ) : (
+                                <span className="text-(--color-text-muted)">{remoteArgs.error ? `$ (could not load the command: ${remoteArgs.error})` : '$ …'}</span>
+                              )}
+                              {shellOutput ? `\n${shellOutput}` : ''}
+                            </span>
+                            {awaitingResult && !shellOutput && (
+                              <span className="block text-(--color-text-muted)" role="status">
+                                {remote.error ? `Could not load the output: ${remote.error}` : 'Loading output…'}
+                              </span>
+                            )}
                           </pre>
                         </div>
-                      ) : (
+                      ) : formattedArgs ? (
                         <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-all bg-(--bg-input) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
                           {displayedArgs}
                         </pre>
-                      )}
+                      ) : null}
                     </div>
                   )}
                   {targetArg && (
@@ -562,7 +579,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
 
                   {/* Background-process output owns its PID/status header, so it
                       replaces the generic Result caption rather than nesting below it. */}
-                  {awaitingResult && !shownLiveOutput && (
+                  {awaitingResult && !shownLiveOutput && !isShellTerminal && (
                     <div>
                       <SectionHeader
                         label="result"

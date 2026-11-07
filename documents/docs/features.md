@@ -2183,7 +2183,16 @@ run from the terminal (the native Rust binary since v3.0.0).
   - In Settings, the filter of Providers, Agents, Skills and MCP servers
     stays pinned at the top while the list scrolls.
   - The chat's ⋯ always lists Tasks: **Tasks · 3/5** with progress, or
-    **No tasks** before the agent makes any.
+    **No tasks** before the agent makes any. *(Deprecated; replaced in
+    v3.49.0 by direct Tasks and Review panel buttons.)*
+- **Phone chat bar, lighter shell rows** `[v3.49.0]`:
+  - The phone chat bar's title and workspace sit on the left, with **Tasks**
+    (open-task badge) and **Review panel** as one-tap buttons instead of ⋯.
+  - Tapping the title shows the session's info with the current git branch.
+  - A described shell call streams only its description; the command loads
+    from history when the row is opened.
+  - Opening a shell row whose output isn't saved yet retries quietly, and
+    its loading or error state shows inside the terminal block.
 - **One look across the app** `[v3.48.0]`:
   - The same status looks the same everywhere. Needs you is orange and
     Failed is red. Connected and passing checks are green. Running and Done

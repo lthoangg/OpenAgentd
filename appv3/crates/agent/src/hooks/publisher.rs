@@ -222,7 +222,8 @@ impl Hook for StreamPublisherHook {
         let ui_id = self.resolver.lock().unwrap().resolve_start(&name, &tc.id);
         scope.ui_id = ui_id.clone();
         scope.started = Instant::now();
-        self.push(events::tool_start(&self.agent, Some(&ui_id), &name, Some(&tc.function.arguments)));
+        let streamed = stream_arguments(&name, &tc.function.arguments);
+        self.push(events::tool_start(&self.agent, Some(&ui_id), &name, Some(&streamed)));
         let seq = Arc::new(AtomicI64::new(0));
         let sid = self.session_id.clone();
         let agent = self.agent.clone();
@@ -285,5 +286,38 @@ impl Hook for StreamPublisherHook {
                 json!({"turn_total": true, "agent": self.agent, "models": models}),
             ));
         }
+    }
+}
+
+/// The arguments the live feed carries. A described shell call sends only its
+/// description: the UI shows just that, and the command (often long) stays
+/// in history, loaded when the transcript reloads.
+fn stream_arguments(name: &str, arguments: &str) -> String {
+    if name == "shell" {
+        if let Ok(v) = serde_json::from_str::<Value>(arguments) {
+            if let Some(d) = v.get("description").and_then(Value::as_str).map(str::trim).filter(|d| !d.is_empty()) {
+                return json!({ "description": d }).to_string();
+            }
+        }
+    }
+    arguments.to_string()
+}
+
+#[cfg(test)]
+mod stream_arguments_tests {
+    use super::stream_arguments;
+
+    #[test]
+    fn described_shell_drops_the_command() {
+        let out = stream_arguments("shell", r#"{"command":"bun test --all","description":"run tests"}"#);
+        assert_eq!(out, r#"{"description":"run tests"}"#);
+    }
+
+    #[test]
+    fn undescribed_shell_and_other_tools_keep_their_args() {
+        let a = r#"{"command":"ls","description":"  "}"#;
+        assert_eq!(stream_arguments("shell", a), a);
+        let b = r#"{"path":"x","description":"d"}"#;
+        assert_eq!(stream_arguments("read", b), b);
     }
 }

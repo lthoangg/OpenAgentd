@@ -2,11 +2,13 @@ import type { ComponentProps } from 'react'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { AgentChatHeader } from '@/components/AgentChatView/AgentChatHeader'
+import { queryKeys } from '@/queries/keys'
 
 function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>> = {}) {
   const props: ComponentProps<typeof AgentChatHeader> = {
@@ -24,7 +26,9 @@ function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>>
     onWorkspaceFiles: () => undefined,
     ...overrides,
   }
-  return render(<AgentChatHeader {...props} />)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+  client.setQueryData(queryKeys.coding.status(props.workspace ?? ''), { is_git_repo: true, branch: 'feat/phone-bar' })
+  return render(<QueryClientProvider client={client}><AgentChatHeader {...props} /></QueryClientProvider>)
 }
 
 /**
@@ -473,12 +477,15 @@ describe('AgentChatHeader', () => {
       expect(onSidebarToggle).not.toHaveBeenCalled()
     })
 
-    it('keeps the title (a tap opens Session info), its workspace, and one ⋯', () => {
+    it('left-aligns the title (a tap opens Session info) and its workspace, then Tasks and Review panel', () => {
       const { container } = renderHeader({ onBack: () => undefined })
-      expect(container.querySelector('[data-phone-nav-title]')).toHaveTextContent('Fix updater restart')
-      expect(container.querySelector('[data-phone-nav-title]')).toHaveTextContent('Workspace A')
+      const title = container.querySelector('[data-phone-nav-title]')!
+      expect(title).toHaveTextContent('Fix updater restart')
+      expect(title).toHaveTextContent('Workspace A')
+      expect(title.className).toContain('text-left')
+      expect(title.className).not.toContain('text-center')
       const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
-      expect(names).toEqual(['Back to Sessions', 'Session info', 'Session actions'])
+      expect(names).toEqual(['Back to Sessions', 'Session info', 'Tasks', 'Review panel'])
     })
 
     it('draws every bar button with the Button primitive', () => {
@@ -488,26 +495,24 @@ describe('AgentChatHeader', () => {
       }
     })
 
-    it('opens Workspace from ⋯, and the session info from the title', async () => {
+    it('opens the Review panel in one tap, and the session info (with the branch) from the title', async () => {
       const onWorkspaceFiles = mock(() => {})
       renderHeader({ onBack: () => undefined, onWorkspaceFiles })
       const user = userEvent.setup()
-      await user.click(screen.getByRole('button', { name: 'Session actions' }))
-      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Workspace' }))
+      await user.click(screen.getByRole('button', { name: 'Review panel' }))
       expect(onWorkspaceFiles).toHaveBeenCalledTimes(1)
 
       await user.click(screen.getByRole('button', { name: 'Session info' }))
       const info = document.querySelector('[data-session-info]')!
       expect(info).toHaveTextContent('Fix updater restart')
       expect(info).toHaveTextContent('Workspace A')
+      expect(info.querySelector('[data-session-branch]')).toHaveTextContent('feat/phone-bar')
     })
 
-    it('always lists Tasks in ⋯, reading "No tasks" before the agent makes any', async () => {
+    it('opens Tasks in one tap, even before the agent makes any', async () => {
       const onToggleTasks = mock(() => {})
       renderHeader({ onBack: () => undefined, onToggleTasks, todos: [] })
-      const user = userEvent.setup()
-      await user.click(screen.getByRole('button', { name: 'Session actions' }))
-      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'No tasks' }))
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Tasks' }))
       expect(onToggleTasks).toHaveBeenCalledTimes(1)
     })
   })

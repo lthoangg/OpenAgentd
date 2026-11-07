@@ -1,9 +1,11 @@
-import { memo, useCallback, useEffect, useRef, useState, type HTMLAttributes } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/queries/keys'
+import { getCodingWorkspaceStatus } from '@/api/client'
 import { AnimatedTitle } from '@/components/ui/animated-title'
 import { isFreshAutoTitle } from '@/lib/auto-title'
 import { cn } from '@/lib/utils'
-import { CornerUpLeft, ListTodo, Menu, MoreHorizontal, PanelLeft, PanelRight } from 'lucide-react'
-import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
+import { CornerUpLeft, ListTodo, Menu, PanelLeft, PanelRight } from 'lucide-react'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 
 import { AgentTopbar } from '@/components/AgentTopbar'
@@ -336,9 +338,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
         sessionId={sessionId}
         sessionTitle={sessionTitle}
         onOpenLead={onOpenLead}
-        todoProgress={todos.length > 0 ? todoSummary.progressLabel ?? `${todos.length - activeTodoCount}/${todos.length}` : null}
-        onToggleTasks={sessionId ? onToggleTasks : undefined}
-        onWorkspaceFiles={workspace ? onWorkspaceFiles : undefined}
+        actions={<>{tasksAction}{reviewAction}</>}
       />
     )
   }
@@ -394,36 +394,34 @@ function TitleSeparator({ sessionId, title }: { sessionId: string | null | undef
 }
 
 /**
- * The phone stack's chat bar (mockup J4 4.4): ‹ Sessions, the title (a tap
- * opens the session's info), and one ⋯ that holds Tasks (with its progress)
- * and Workspace, so the bar never crowds the title.
+ * The phone stack's chat bar: ‹ Sessions, the title left-aligned (a tap
+ * opens the session's info, with its branch), then Tasks and Workspace as
+ * direct buttons.
  */
-function PhoneChatNavBar({ onBack, workspace, workspaceName, sessionId, sessionTitle, onOpenLead, todoProgress, onToggleTasks, onWorkspaceFiles }: {
+function PhoneChatNavBar({ onBack, workspace, workspaceName, sessionId, sessionTitle, onOpenLead, actions }: {
   onBack: () => void
   workspace: string | null
   workspaceName: string
   sessionId: string | null | undefined
   sessionTitle: string | null
   onOpenLead?: () => void
-  /** "3/5" while the session has tasks; null reads "No tasks" in ⋯. */
-  todoProgress: string | null
-  onToggleTasks?: () => void
-  onWorkspaceFiles?: () => void
+  actions: ReactNode
 }) {
-  const [menuOpen, setMenuOpen] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
+  const { data: status } = useQuery({
+    queryKey: queryKeys.coding.status(workspace ?? ''),
+    queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace!, signal),
+    enabled: !!workspace && infoOpen,
+  })
+  const branch = status?.is_git_repo ? status.branch : null
   const titleText = !workspace
     ? 'Choose a workspace'
     : sessionTitle ? <AnimatedTitle text={sessionTitle} sessionId={sessionId} /> : sessionId ? 'Untitled session' : 'New session'
-  const items: ActionSheetItem[] = [
-    // Always listed, so the task list is findable before the agent makes one.
-    ...(onToggleTasks ? [{ id: 'tasks', label: todoProgress ? `Tasks · ${todoProgress}` : 'No tasks', icon: ListTodo, run: onToggleTasks }] : []),
-    ...(onWorkspaceFiles ? [{ id: 'workspace', label: 'Workspace', icon: PanelRight, run: onWorkspaceFiles }] : []),
-  ]
   return (
     <>
       <PhoneNavBar
         separator="scrolled"
+        titleAlign="start"
         back={{ label: 'Sessions', onBack }}
         title={sessionId ? (
           <Button
@@ -442,13 +440,10 @@ function PhoneChatNavBar({ onBack, workspace, workspaceName, sessionId, sessionT
         trailing={(
           <div data-header-cluster="end" className="flex items-center">
             {onOpenLead && <OpenLeadButton onOpen={onOpenLead} />}
-            {items.length > 0 && (
-              <MobileHeaderAction Icon={MoreHorizontal} label="Session actions" onClick={() => setMenuOpen(true)} />
-            )}
+            {actions}
           </div>
         )}
       />
-      <ActionSheet open={menuOpen} onClose={() => setMenuOpen(false)} title={sessionTitle || 'Session'} items={items} />
       <BottomSheet open={infoOpen} onClose={() => setInfoOpen(false)} label="Session info">
         <dl data-session-info="" className="flex flex-col px-4 pb-4 text-sm">
           <div className="flex min-h-11 items-center justify-between gap-4 border-b border-(--color-border) last:border-b-0">
@@ -459,6 +454,12 @@ function PhoneChatNavBar({ onBack, workspace, workspaceName, sessionId, sessionT
             <div className="flex min-h-11 items-center justify-between gap-4 border-b border-(--color-border) last:border-b-0">
               <dt className="text-(--color-text-muted)">Workspace</dt>
               <dd className="min-w-0 truncate text-(--color-text)" title={workspace}>{workspaceName}</dd>
+            </div>
+          )}
+          {branch && (
+            <div className="flex min-h-11 items-center justify-between gap-4 border-b border-(--color-border) last:border-b-0">
+              <dt className="text-(--color-text-muted)">Branch</dt>
+              <dd data-session-branch="" className="min-w-0 truncate font-mono text-(--color-text)" title={branch}>{branch}</dd>
             </div>
           )}
         </dl>

@@ -1907,7 +1907,8 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
 - **Lists read like iOS.** The Workspace page (Changes, Files, Terminal,
   Preview) and the worktree sheet are grouped 44pt rows with counts; a
   scheduled task has an on/off switch and its schedule as a sentence;
-  filters that pin over a list fit in one line (three segments at most).
+  filters that pin over a list fit in one line (three segments at most),
+  and every Settings list (Providers, Agents, Skills, MCP) pins its filter.
 - **Thumb reach and full screens.** Jump to latest is a round ↓ at the
   right corner; Preview's address bar sits at the bottom. A memory page
   edits full screen with Save in the bar and a formatting bar above the

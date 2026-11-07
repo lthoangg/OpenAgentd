@@ -2177,6 +2177,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A changed file's and a commit's actions in the Review panel (long press
     or ⋯) open as the same bottom action sheet as every other phone menu,
     destructive action last; so does the Review panel's **+**.
+  - In Settings, the filter of Providers, Agents, Skills and MCP servers
+    stays pinned at the top while the list scrolls.
 - **One look across the app** `[v3.48.0]`:
   - The same status looks the same everywhere. Needs you is orange and
     Failed is red. Connected and passing checks are green. Running and Done

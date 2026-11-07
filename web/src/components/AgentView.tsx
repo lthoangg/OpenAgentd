@@ -1360,8 +1360,10 @@ export function AgentView({
       onWheel={cancelPromptJump}
       onTouchMove={cancelPromptJump}
       // F6 stops here; focused itself, so the arrow and page keys scroll it.
+      // Its ring is inset: it fills a column that clips overflow.
       data-focus-region="transcript"
       data-region-self=""
+      data-focus-ring="inset"
       aria-label="Transcript"
       className="oa-chat-scroll flex-1 overflow-x-hidden overflow-y-auto"
     >

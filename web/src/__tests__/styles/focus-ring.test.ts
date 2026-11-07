@@ -50,6 +50,10 @@ describe('keyboard focus ring', () => {
     expect(css).toMatch(/\.skip-link:focus-visible\s*\{\s*translate: 8px 48px;\s*\}/)
   })
 
+  it('rings the transcript inside its column when F6 lands on it', () => {
+    expect(read('components/AgentView.tsx')).toMatch(/data-focus-region="transcript"\s+data-region-self=""\s+data-focus-ring="inset"/)
+  })
+
   it('insets the 32px buttons that lead the 36px header, which clips overflow', () => {
     const header = read('components/AgentChatView/AgentChatHeader.tsx')
     expect(header).toMatch(/const HEADER_LEAD_FOCUS = 'focus-visible:ring-inset'/)

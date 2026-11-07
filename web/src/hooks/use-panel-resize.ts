@@ -138,6 +138,9 @@ export function usePanelResize({ width, min, max, edge, onCommit, onReset, deten
       'aria-valuemax': Math.round(upper),
       'aria-valuenow': current,
       tabIndex: disabled ? -1 : 0,
+      // Focus lights the 2px line (panelResizeHandleClass); the panel clips
+      // overflow, so the app-wide outline would show only as a stray bar.
+      'data-focus-ring': 'off',
       title: 'Drag to resize · double-click to reset',
       onPointerDown: startResize,
       onDoubleClick: () => { if (!disabled) onReset?.() },

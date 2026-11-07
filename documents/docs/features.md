@@ -2267,6 +2267,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The command palette (⌘K) opens on a **Recent** group, the last five
     commands and sessions you ran from it, and a search marks the words you
     typed in each row's name.
+  - The keyboard focus ring shows whole on segmented controls, tabs, menu
+    and palette rows, settings lists, the status bar and the header's
+    sidebar button, instead of being cut to a bar on one side, and **Tab**
+    no longer walks out of Settings into the window behind it.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

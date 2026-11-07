@@ -993,8 +993,9 @@ html[data-mobile-shell][data-vp-rise] [data-bottom-sheet] {
   translate: 0 0;
   transition: translate var(--motion-fast) var(--ease-out);
 }
+/* In from the window corner, so the outline shows on every side. */
 .skip-link:focus-visible {
-  translate: 0 40px;
+  translate: 8px 48px;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -1556,6 +1557,21 @@ html[data-app-hidden="true"] *::after {
 :where(button, select, a[href], [tabindex]):focus-visible {
   outline: 2px solid var(--focus-outline);
   outline-offset: 2px;
+}
+/* Controls drawn with an inset ring (a segment in its track, a tab in its
+ * strip, a row flush in a scroller, a menu or palette row, a confirm's footer
+ * button) inset the outline with it: outset, the track or the scroller clips
+ * it to a stray bar on one side. The rule above overrides any offset a
+ * component sets, so the utilities those controls already carry are matched
+ * here to keep meaning what they say. */
+:where(button, select, a[href], [tabindex]):focus-visible:is(
+  [data-focus-ring="inset"],
+  .oa-menu-item,
+  [class~="focus-visible:ring-inset"],
+  [class~="focus-visible:-outline-offset-2"],
+  [class~="[&>[data-slot=button]]:focus-visible:ring-inset"] > *
+) {
+  outline-offset: -2px;
 }
 /* Focus given by a click or a tab switch, not steered by keyboard; see
  * focusQuietly in lib/focus/quiet.ts. Clears on blur. */

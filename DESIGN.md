@@ -845,7 +845,13 @@ closed this way.
 
 Keyboard focus uses a solid 2px outline (`#174A73` in light mode, `#9DD0F5`
 in dark mode), with a 2px offset. Translucent `focus-ring` effects remain
-decorative supplements, not the only focus indicator. In the desktop app the
+decorative supplements, not the only focus indicator. A control drawn flush
+in a parent that clips (a segment in its track, a tab in its strip, a menu,
+palette or list row in a scroller, a status-bar item, the header's 32px
+buttons) insets the outline 2px instead, so it is never cut to a stray bar:
+`focus-visible:ring-inset` (or `data-focus-ring="inset"`) does both, and
+`styles/focus-ring.test.ts` holds the rule. Tab in a modal stays in it,
+wrapping at the last control Tab reaches. In the desktop app the
 ring follows keyboard navigation only (Tab, F6; `lib/desktop-shell.ts`):
 Escape, shortcuts and typing never draw it. Text fields mark focus with
 their edge stepping to `on-surface-subtle` (3:1 or more), never a blue glow

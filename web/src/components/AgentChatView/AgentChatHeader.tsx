@@ -63,6 +63,12 @@ interface AgentChatHeaderProps {
 const MAC_TOGGLE_INSET_CLASS = 'pl-[calc(var(--spacing-mac-traffic-inset)+0.5rem)]'
 
 /**
+ * The 32px buttons that lead the header ring inside their box: the header is
+ * 36px and clips overflow, so the outline 2px out lost its top and bottom.
+ */
+const HEADER_LEAD_FOCUS = 'focus-visible:ring-inset'
+
+/**
  * ☰: the application menu where the OS menu bar is hidden (Windows, Linux),
  * opened at the button's bottom-left. A bare Alt tap opens it there too, the
  * way those platforms open a menu bar. A narrow window uses the phone layout,
@@ -106,6 +112,7 @@ function AppMenuButton({ hidden }: { hidden: boolean }) {
             onClick={open}
             aria-label="Application menu"
             aria-haspopup="menu"
+            className={HEADER_LEAD_FOCUS}
           >
             <Menu size={14} strokeWidth={1.8} aria-hidden="true" />
           </Button>
@@ -129,7 +136,7 @@ function OpenLeadButton({ onOpen, className }: { onOpen: () => void; className?:
             onClick={onOpen}
             aria-label="Open the main agent"
             data-open-lead=""
-            className={className}
+            className={cn(HEADER_LEAD_FOCUS, className)}
           >
             <CornerUpLeft size={14} strokeWidth={1.8} aria-hidden="true" />
           </Button>
@@ -194,6 +201,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                 onSidebarToggle()
               }}
               aria-label="Toggle sidebar"
+              className={HEADER_LEAD_FOCUS}
             >
               {/* Phones open a drawer (menu); desktop folds a rail (panel). */}
               {isMobile ? (

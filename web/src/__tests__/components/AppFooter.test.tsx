@@ -118,6 +118,18 @@ describe('AppFooter', () => {
     expect(screen.getByRole('button', { name: /Server not reachable\. Change server/ })).toBeTruthy()
   })
 
+  // Desktop mockup 12.1: the dot alone was the only sign, and easy to miss.
+  it("says Can't reach beside the server's name while it does not answer", () => {
+    healthError = true
+    renderWithQueryClient(<AppFooter />)
+    expect(screen.getByRole('button', { name: /Server not reachable/ }).textContent).toBe("built-inCan't reach")
+  })
+
+  it('adds no word while the server answers', () => {
+    renderWithQueryClient(<AppFooter />)
+    expect(screen.queryByText("Can't reach")).toBeNull()
+  })
+
   it('shows the git branch for a coding workspace', async () => {
     renderWithQueryClient(<AppFooter workspace="/path/to/project" />, undefined, {})
 

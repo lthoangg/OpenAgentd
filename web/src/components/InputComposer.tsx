@@ -117,6 +117,12 @@ export interface InputComposerProps {
   onFileRefsNeeded?: () => void
   isStreaming?: boolean
   disabled?: boolean
+  /**
+   * Why a message cannot go out now (the server does not answer). Send is
+   * disabled with this as its description and Enter sends nothing, but the
+   * box stays editable and keeps the draft.
+   */
+  sendBlockedReason?: string | null
   placeholder?: string
   autoFocus?: boolean
   capabilities?: AgentCapabilities
@@ -212,6 +218,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   onFileRefsNeeded,
   isStreaming = false,
   disabled,
+  sendBlockedReason = null,
   placeholder = 'Message OpenAgentd…',
   autoFocus,
   capabilities,
@@ -514,7 +521,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   }, [])
 
   const submit = useCallback((delivery: SendDelivery = 'steer') => {
-    if (disabled) return
+    if (disabled || sendBlockedReason) return
     const trimmed = value.trim()
     const hasFeedback = designFeedback.length > 0
     if (trimmed.length === 0 && files.length === 0 && !hasFeedback) return
@@ -548,7 +555,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     // Reset the visible height synchronously — see ``resetHeightNow`` for
     // why this can't wait for the next animation frame.
     resetHeightNow()
-  }, [disabled, value, files, isStreaming, onSubmit, mentions, designFeedback, resetDraftState, resetHeightNow, setFiles, setMenuIndex])
+  }, [disabled, sendBlockedReason, value, files, isStreaming, onSubmit, mentions, designFeedback, resetDraftState, resetHeightNow, setFiles, setMenuIndex])
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items
@@ -688,7 +695,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     onValueChange?.(designFeedback.length > 0 ? composeWithDesignFeedback(value, designFeedback) : value)
   }, [onValueChange, value, designFeedback])
 
-  const canSend = hasMessage && !disabled
+  const canSend = hasMessage && !disabled && !sendBlockedReason
   const canStop = isStreaming && !disabled && onStop != null
 
   // Surface "has uncommitted content" to the parent so a minimized bar
@@ -859,7 +866,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
   // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.
   const mac = isPrimaryModifierOS(os)
-  const splitSend = isStreaming && hasMessage && !disabled
+  const splitSend = isStreaming && hasMessage && !disabled && !sendBlockedReason
   // A phone keeps one pill: a tap steers, a long press opens the ways to
   // send as an action sheet (the gesture's own medium haptic). The release
   // after a long press must not also steer.
@@ -963,6 +970,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       }}
       disabled={!canSend}
       aria-label="Send message"
+      aria-description={sendBlockedReason ?? undefined}
       className={cn(
         sendSlotClass,
         sendSize,

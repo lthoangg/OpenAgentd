@@ -859,6 +859,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       onFileRefsNeeded={() => setFileRefsEnabled(true)}
       isStreaming={isAgentWorking}
       disabled={isSessionLoading}
+      // Desktop: Send says the server is gone instead of looking ready; the
+      // draft stays (desktop mockup 12.1). A phone keeps its send-and-restore.
+      sendBlockedReason={serverDown && !isPhone ? "Can't reach the server. Your message stays here until it is back." : null}
       placeholder={
         // While a turn runs the composer shows its own queue/stop hint.
         isDraft && needsModelSetup
@@ -1018,7 +1021,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           // drop zone so it is never mistaken for a stray drop target.
           data-file-drop-zone
         >
-        <ConnectionBanner />
+        <ConnectionBanner retry={!(!effectiveWorkspace && !isSessionLoading && serverDown)} />
         {findOpen && !isMobile && <TranscriptFind onClose={closeFind} />}
         {/* The draft screen carries its own setup card instead. */}
         {!isDraft && (

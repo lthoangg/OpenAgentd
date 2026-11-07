@@ -73,6 +73,11 @@ export function HealthDot({
             >
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${bgColor}`} aria-hidden="true" />
               {labeled ? <span className="min-w-0 truncate">{connectionLabel}</span> : null}
+              {/* The status bar says it in words too: a red dot alone was easy
+                  to miss (desktop mockup 12.1). The companions' word. */}
+              {labeled && !chip && health.isError ? (
+                <span className="shrink-0 font-sans text-(--color-error)">Can't reach</span>
+              ) : null}
             </button>
           }
         />

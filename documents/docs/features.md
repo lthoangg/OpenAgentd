@@ -2223,6 +2223,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     (an open menu or dialog takes Esc first; Stop's tooltip names the key).
     After a Stop, a **Stopped** toast offers **Resume**, which sends
     "Continue".
+  - When the server stops answering, the status bar says **Can't reach**
+    beside its name, the banner adds **Retry** and, in the desktop app,
+    **Start built-in server** (or **Use built-in server** when a remote one
+    is down), and Send is disabled with the reason while your draft stays in
+    the box.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

@@ -6,12 +6,18 @@
  * stream drop never flashes it, and it goes the moment health succeeds; no
  * "reconnected" message, the banner leaving is the confirmation. The global
  * event stream rechecks health on every reconnect attempt.
+ *
+ * A phone keeps one action, Change server (Phone system → Notices). Desktop
+ * also offers the way back in place (desktop mockup 12.2): Retry checks at
+ * once, and the desktop app starts its built-in server when that is the one
+ * down and not running, or offers it when a remote server is down.
  */
 import { lazy, Suspense, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { apiBaseUrl } from '@/api/base-url'
-import { formatBackendConnectionLabel } from '@/lib/app-backend'
+import { useIsPhone } from '@/hooks/use-is-phone'
+import { formatBackendConnectionLabel, type AppBackendStatus } from '@/lib/app-backend'
 import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
 
 // Loaded on first open: the dialog pulls in the backend-switching machinery
@@ -21,12 +27,36 @@ const AppBackendDialog = lazy(() =>
   import('@/components/AppBackendDialog').then((m) => ({ default: m.AppBackendDialog })),
 )
 
-export function ConnectionBanner() {
+/** The built-in server action the banner offers, if any. */
+function builtinAction(status: AppBackendStatus | null): string | null {
+  if (!status?.supports_bundled) return null
+  if (status.external) return 'Use built-in server'
+  return status.sidecar_running || status.backend_starting ? null : 'Start built-in server'
+}
+
+export function ConnectionBanner({ retry = true }: {
+  /** Off while the view below has its own Retry (nothing could load). */
+  retry?: boolean
+} = {}) {
   const health = useHealthQuery()
   const backendStatus = useBackendStatusQuery()
+  const isPhone = useIsPhone()
   // The dialog outlives the banner, so reconnecting mid-edit does not close it.
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [starting, setStarting] = useState(false)
   const label = formatBackendConnectionLabel(backendStatus.data ?? null, apiBaseUrl())
+  const builtin = isPhone ? null : builtinAction(backendStatus.data ?? null)
+
+  const switchToBuiltin = async () => {
+    setStarting(true)
+    // On demand, like the dialog: the switching machinery stays out of the
+    // chat view's chunk.
+    const { connectBundledBackend, reloadForBackendSwitch } = await import('@/lib/backend-switch')
+    const result = await connectBundledBackend(apiBaseUrl())
+    setStarting(false)
+    if (result.ok && result.reload) reloadForBackendSwitch()
+    else if (!result.ok) setDialogOpen(true)
+  }
 
   return (
     <>
@@ -39,6 +69,16 @@ export function ConnectionBanner() {
           <p className="min-w-0 flex-1 truncate">
             {label === 'built-in' ? 'Server unreachable' : `Can't reach ${label}`} · Retrying…
           </p>
+          {!isPhone && retry && (
+            <Button type="button" size="xs" variant="ghost" onClick={() => { void health.refetch() }}>
+              Retry
+            </Button>
+          )}
+          {builtin && (
+            <Button type="button" size="xs" disabled={starting} onClick={() => { void switchToBuiltin() }}>
+              {builtin}
+            </Button>
+          )}
           <Button type="button" size="xs" onClick={() => setDialogOpen(true)}>
             Change server
           </Button>

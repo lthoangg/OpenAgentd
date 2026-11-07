@@ -51,6 +51,8 @@ export interface ComposerProps {
   onFileRefsNeeded?: () => void
   isStreaming?: boolean
   disabled?: boolean
+  /** Send is off for this reason (the server does not answer); the draft stays. */
+  sendBlockedReason?: string | null
   placeholder?: string
   autoFocus?: boolean
   capabilities?: AgentCapabilities

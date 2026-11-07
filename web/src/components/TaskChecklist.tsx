@@ -181,7 +181,7 @@ export function TaskChecklist({ todos, overflow = 'truncate', className, turns, 
                 className={cn(row, 'group/task w-full text-left focus-visible:ring-inset')}
               >
                 {content}
-                <span className="shrink-0 text-meta text-(--color-text-muted) opacity-0 transition-opacity duration-(--motion-instant) group-hover/task:opacity-100 group-focus-visible/task:opacity-100">
+                <span className="shrink-0 text-meta text-(--color-text-muted) opacity-0 transition-opacity duration-(--motion-instant) group-hover/task:opacity-100 group-focus-visible/task:opacity-100 pointer-coarse:opacity-100">
                   Show turn
                 </span>
               </button>

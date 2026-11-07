@@ -153,6 +153,9 @@ const RULES: Rule[] = [
       // The table copy button: shown on focus and always on touch, and
       // text in a table can still be selected and copied by hand.
       'utils/markdown.tsx': 1,
+      // A task's "Show turn": the row itself is the button at rest; the
+      // words only name it, on hover, on focus and always on touch.
+      'components/TaskChecklist.tsx': 1,
     },
   },
   // ── Contrast with the existing palette (DESIGN.md → Colors) ─────────────

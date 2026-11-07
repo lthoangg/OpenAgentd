@@ -51,7 +51,7 @@ fi
 APP=$(find src-tauri/gen/apple/build -path '*sim*' -name 'OpenAgentd.app' -type d -print0 2>/dev/null \
   | xargs -0 ls -dt 2>/dev/null | head -1)
 [ -n "$APP" ] || die "no simulator build of OpenAgentd.app under src-tauri/gen/apple/build"
-curl -fsS -m 5 "$SERVER_URL/api/health" >/dev/null || die "no OpenAgentd server at $SERVER_URL (start one: agentd server start)"
+curl -fsS -m 5 "$SERVER_URL/api/health/live" >/dev/null || die "no OpenAgentd server at $SERVER_URL (start one: agentd server start)"
 
 device_udid() {  # name, type -> udid (created once, reused)
   local name="OpenAgentd $1" udid

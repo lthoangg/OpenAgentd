@@ -15,8 +15,6 @@ make ios-init                    # generate the local Xcode project
 make ios-dev                     # simulator/device development
 make ios-dev-device <name>       # named physical device
 make ios-build                   # production iOS build
-make ios-ipa                     # release archive -> sideloadable dist/*.ipa
-make ios-release                 # local fallback: ios-ipa + upload IPA and SideStore source (DRY_RUN=1 to preview)
 make android-init                # generate the local Gradle project
 make android-dev [device]        # device/emulator development against Vite
 make android-apk                 # release APK -> signed dist/*.apk (ANDROID_KEYSTORE* env)
@@ -49,21 +47,38 @@ extension in `ios-widget/`, which `scripts/patch-ios-widget.sh` adds to the
 generated Xcode project (with xcodegen) before every iOS build, together with
 the App Group the app and the extension share.
 
-## iOS release (TestFlight) runbook
+## iOS release (TestFlight / App Store) runbook
 
-Releases ship from `.github/workflows/release-ios.yml`, not a local Mac. Its
-`build` job has no secrets and archives with `cargo tauri ios build
---archive-only --no-sign`; only `sign`, in the `release-ios` environment (your
-approval; `main` and `v*` only), signs with `scripts/sign-ipa-appstore.sh` and
-uploads to TestFlight. Never give the build job a secret or an `environment:`
+iOS ships only through App Store Connect, from
+`.github/workflows/release-ios.yml`, never a local Mac. Its `build` job has no
+secrets and archives with `cargo tauri ios build --archive-only --no-sign`;
+only `sign` signs with `scripts/sign-ipa-appstore.sh` and uploads. Never give
+the build job a secret or an `environment:`
 (`scripts/tests/test_release_signing_isolation.py`).
+
+Channels (one binary; the app reads its channel at run time, see
+`src-tauri/src/updater.rs` `ios_channel`):
+
+| Channel | How | Environment |
+|---|---|---|
+| Dev | `make ios-install-device <name>` on your own device | none |
+| Internal | `gh workflow run release-ios.yml --ref <branch> -f channel=internal` from any branch; the TestFlight Internal group gets it (turn on its automatic distribution) | `testflight-internal` (no reviewers, all branches) |
+| Public Beta | the same with `-f channel=public -f confirm=release-ios` from the tag `v<X.Y.Z>`; `scripts/asc-public-beta.py` adds the build to the "Public Beta" group and submits it for Beta App Review | `release-ios` (your approval; `main` and `v*`) |
+| App Store | in App Store Connect, pick the tested Public Beta build for version X.Y.Z and Submit for Review | none |
+
+Working away from the Mac: ask the agent (through the OpenAgentd app) to run
+the Internal command above for the branch; the build reaches TestFlight in
+15–25 minutes. Once Apple approves X.Y.Z its version train closes and the
+upload fails with "bump the version": run `scripts/bump_version.sh` first.
 
 Apple setup: App IDs `com.openagentd.mobile` and `com.openagentd.mobile.widgets`,
 both with the App Group `group.com.openagentd.mobile`; one *App Store* profile
-for each; an App Store Connect record for `com.openagentd.mobile` with an
-External Testing group and public link.
+for each; an App Store Connect record for `com.openagentd.mobile` with an Internal
+group (automatic distribution on) and an external group named `Public Beta`
+with a public link (linked from openagentd.dev/download/ios).
 
-Secrets in `release-ios` (`gh secret set <NAME> --env release-ios`):
+The same secrets in both `testflight-internal` and `release-ios`
+(`gh secret set <NAME> --env <environment>`):
 
 | Secret | Value |
 |---|---|

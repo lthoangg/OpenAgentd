@@ -37,7 +37,7 @@ All of it is built by `scripts/brand/brand.ts` from the font in
   `openagentd-icon-windows.png` (full-bleed tile), the Android adaptive
   foreground, the macOS menu bar template (the open A and the dot), and
   `mobile-icons.json` (the `cargo tauri icon` manifest for iOS and Android).
-- `openagentd-app-icon.png`: the opaque 1024 px app icon (iOS, SideStore,
+- `openagentd-app-icon.png`: the opaque 1024 px app icon (iOS and
   Android legacy icons). Its path is a published URL; keep it.
 - `openagentd-banner-light.webp`, `openagentd-banner-dark.webp`: README banner
   (1600x640 at 2x).

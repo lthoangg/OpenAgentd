@@ -101,7 +101,7 @@ export function UpdateCard() {
   const installUpdate = useCallback(async () => {
     setStatus((current) => ({ ...current, status: 'installing' }))
     if (isMobileShell()) {
-      // Mobile hands off to the Android installer, TestFlight, or SideStore
+      // Mobile hands off to the Android installer or TestFlight
       // and returns; the system replaces the app if the user confirms.
       try {
         await invokeInstallUpdate()

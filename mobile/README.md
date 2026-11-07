@@ -103,17 +103,9 @@ make ios-build
 
 `ios-dev-device` uses Vite/dev servers. Use `ios-install-device` when you need to verify the built-in production UI from `../web/dist`.
 
-### Release IPA
+### Release
 
-Each release ships a sideloadable IPA and a SideStore/AltStore source feed. The user guide is [INSTALL-IOS.md](INSTALL-IOS.md). Build and package locally on a Mac with Xcode and the signing team from `tauri.conf.json`:
-
-```bash
-make ios-ipa       # release archive -> dist/OpenAgentd_<version>_iOS.ipa + .sha256
-DRY_RUN=1 make ios-release   # all checks + dist/source.json, prints the uploads
-make ios-release   # upload the IPA to v<version> and source.json to latest-ios
-```
-
-`scripts/package-ipa.sh` removes the developer provisioning profile (it lists the maintainer's device UDIDs), the development signature, and the never-loaded `libapp.a` static library, then ad-hoc signs the app with no entitlements. SideStore and other sideloading tools re-sign it with the installing user's identity. `scripts/publish-ipa.sh` requires a clean tree with HEAD at the `v<version>` tag and an existing GitHub release. It generates the feed with `../scripts/make_sidestore_source.py` from the IPA's own `Info.plist` and keeps it on the rolling `latest-ios` pre-release, so the feed URL never changes and the release never becomes `releases/latest`.
+iOS ships through TestFlight and the App Store only, from CI. The user guide is [INSTALL-IOS.md](INSTALL-IOS.md); the channels and the signing runbook are in [AGENTS.md](AGENTS.md#ios-release-testflight--app-store-runbook).
 
 If iOS blocks the first launch, trust the developer profile on the phone in **Settings → General → VPN & Device Management**.
 

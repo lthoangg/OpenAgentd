@@ -1,5 +1,5 @@
 """mobile/scripts/patch-ios-widget.sh adds the home-screen widget extension to
-the generated Xcode project, and the IPA packaging keeps its App Group."""
+the generated Xcode project and the app names its App Group."""
 
 from __future__ import annotations
 
@@ -13,8 +13,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 MOBILE = REPO_ROOT / "mobile"
 SCRIPT = MOBILE / "scripts" / "patch-ios-widget.sh"
 MAKEFILE = MOBILE / "Makefile"
-PACKAGE_IPA = MOBILE / "scripts" / "package-ipa.sh"
-PUBLISH_IPA = MOBILE / "scripts" / "publish-ipa.sh"
 INFO_IOS_PLIST = MOBILE / "src-tauri" / "Info.ios.plist"
 
 # The shape `cargo tauri ios init` writes (trimmed), ending without a newline.
@@ -28,6 +26,7 @@ targets:
     sources:
       - path: Sources
       - path: Assets.xcassets
+      - path: Externals
     info:
       path: openagentd-mobile_iOS/Info.plist
     entitlements:
@@ -177,7 +176,7 @@ def _recipe(target: str) -> list[str]:
 
 
 def test_every_ios_build_adds_the_widget_before_the_xcode_patch():
-    for target in ("ios-init", "ios-dev", "ios-dev-device", "ios-install-device", "ios-install-device-fast", "ios-ipa", "ios-build"):
+    for target in ("ios-init", "ios-dev", "ios-dev-device", "ios-install-device", "ios-install-device-fast", "ios-build"):
         recipe = _recipe(target)
         widget = next(i for i, line in enumerate(recipe) if "patch-ios-widget.sh" in line)
         xcode = next(i for i, line in enumerate(recipe) if "patch-xcode-project.sh" in line)
@@ -191,15 +190,3 @@ def test_dev_device_builds_use_the_dev_bundle_id():
 def test_app_names_its_app_group_for_the_widget_storage():
     plist = INFO_IOS_PLIST.read_text()
     assert "<key>OAWidgetAppGroup</key>\n  <string>group.$(PRODUCT_BUNDLE_IDENTIFIER)</string>" in plist
-
-
-def test_ipa_keeps_only_the_app_group_entitlement():
-    script = PACKAGE_IPA.read_text()
-    assert "com.apple.security.application-groups" in script
-    assert '--entitlements "$group_entitlements" "$appex"' in script
-    assert '--entitlements "$group_entitlements" "$app"' in script
-    assert 'app_group="group.$bundle_id"' in script
-
-
-def test_sidestore_source_lists_the_app_group_entitlement():
-    assert "--entitlement com.apple.security.application-groups" in PUBLISH_IPA.read_text()

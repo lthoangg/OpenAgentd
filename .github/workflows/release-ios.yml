@@ -1,36 +1,39 @@
 name: Release iOS
 
-# Builds the iOS app in CI and ships it to TestFlight, plus the SideStore /
-# AltStore IPA on the versioned release. Run it from the release tag
-# (``v<X.Y.Z>``, created by ``release.yml``) after the release notes are in.
+# Builds the iOS app in CI and uploads it to App Store Connect / TestFlight.
+# One binary goes to TestFlight and, once tested, is submitted unchanged to
+# the App Store from App Store Connect; the app reads its channel at run time.
+#
+# Channels (input ``channel``):
+#   internal  any branch or commit, no confirmation and no approval. The build
+#             reaches the TestFlight Internal group (turn on its automatic
+#             distribution in App Store Connect). Start it from anywhere:
+#             ``gh workflow run release-ios.yml --ref <branch> -f channel=internal``.
+#   public    a release tag ``v<X.Y.Z>`` only, typed confirmation and the
+#             ``release-ios`` environment approval. After upload the build is
+#             added to the "Public Beta" TestFlight group and sent to Beta App
+#             Review (mobile/scripts/asc-public-beta.py).
 #
 # Jobs:
-#   build  (no secrets): ``cargo tauri ios build --archive-only --no-sign``,
-#          the ad hoc SideStore IPA (package-ipa.sh), and the unsigned app.
-#   sign   (environment ``release-ios``, needs your approval): signs the app
-#          with the Apple Distribution certificate and the two App Store
+#   build  (no secrets): ``cargo tauri ios build --archive-only --no-sign``.
+#   sign   (environment ``testflight-internal`` or ``release-ios``): signs the
+#          app with the Apple Distribution certificate and the two App Store
 #          profiles (mobile/scripts/sign-ipa-appstore.sh), validates and
-#          uploads it to App Store Connect / TestFlight, then deletes the
-#          keychain and keys.
-#   sidestore: uploads the ad hoc IPA and refreshes ``source.json``
-#          (mobile/scripts/publish-ipa.sh).
+#          uploads it, then deletes the keychain and keys.
 # Build jobs must never get signing secrets or an ``environment:``.
-# Runbook (certificates, profiles, keys, renewal): mobile/AGENTS.md.
+# Runbook (certificates, profiles, keys, renewal, channels): mobile/AGENTS.md.
 
 on:
   workflow_dispatch:
     inputs:
+      channel:
+        description: "internal (any branch, TestFlight Internal) or public (release tag, Public Beta)"
+        type: choice
+        options: [internal, public]
+        default: internal
       confirm:
-        description: "Type 'release-ios' to confirm"
-        required: true
-      testflight:
-        description: "Sign and upload to TestFlight"
-        type: boolean
-        default: true
-      sidestore:
-        description: "Publish the SideStore IPA and source.json"
-        type: boolean
-        default: true
+        description: "public only: type 'release-ios' to confirm"
+        required: false
 
 permissions:
   contents: read
@@ -41,12 +44,24 @@ env:
 jobs:
   build:
     name: Build iOS archive (unsigned)
-    if: github.event.inputs.confirm == 'release-ios'
+    if: >-
+      inputs.channel == 'internal' ||
+      (inputs.confirm == 'release-ios' && startsWith(github.ref, 'refs/tags/v'))
     runs-on: macos-26
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check the ref for this channel
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$CHANNEL" = public ] && [ "$REF" != "refs/tags/v$(scripts/release_version.sh)" ]; then
+            echo "::error::public builds run from the release tag v$(scripts/release_version.sh), not $REF"; exit 1
+          fi
 
       - id: version
         run: echo "version=$(scripts/release_version.sh)" >> "$GITHUB_OUTPUT"
@@ -108,7 +123,6 @@ jobs:
           mkdir -p _out
           COPYFILE_DISABLE=1 tar --no-mac-metadata -czf _out/unsigned-ios-app.tar.gz \
             -C "$(dirname "$app")" OpenAgentd.app
-          mobile/scripts/package-ipa.sh
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -117,19 +131,13 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: sidestore-ipa
-          path: mobile/dist/OpenAgentd_*_iOS.ipa*
-          if-no-files-found: error
-          retention-days: 14
 
   sign:
-    name: Sign and upload to TestFlight
+    name: Sign and upload to TestFlight (${{ inputs.channel }})
     needs: build
-    if: github.event.inputs.testflight == 'true'
     runs-on: macos-26
-    environment: release-ios
+    # internal: no reviewers, any branch. public: approval, main and v* only.
+    environment: ${{ inputs.channel == 'public' && 'release-ios' || 'testflight-internal' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -151,7 +159,7 @@ jobs:
           set -euo pipefail
           for v in IOS_DIST_CERTIFICATE IOS_DIST_CERTIFICATE_PASSWORD IOS_PROFILE_APP \
                    IOS_PROFILE_WIDGET KEYCHAIN_PASSWORD ASC_API_KEY ASC_API_KEY_P8; do
-            [ -n "${!v}" ] || { echo "::error::secret $v is not set in environment release-ios"; exit 1; }
+            [ -n "${!v}" ] || { echo "::error::secret $v is not set in this environment (testflight-internal or release-ios; see mobile/AGENTS.md)"; exit 1; }
           done
           umask 077
           KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
@@ -197,11 +205,32 @@ jobs:
           ASC_API_ISSUER: ${{ secrets.ASC_API_ISSUER }}
         run: |
           set -euo pipefail
-          [ -n "$ASC_API_ISSUER" ] || { echo "::error::secret ASC_API_ISSUER is not set in environment release-ios"; exit 1; }
+          [ -n "$ASC_API_ISSUER" ] || { echo "::error::secret ASC_API_ISSUER is not set in this environment"; exit 1; }
           ipa="$RUNNER_TEMP/OpenAgentd-appstore.ipa"
-          xcrun altool --validate-app -f "$ipa" -t ios --apiKey "$ASC_API_KEY" --apiIssuer "$ASC_API_ISSUER"
+          if ! xcrun altool --validate-app -f "$ipa" -t ios --apiKey "$ASC_API_KEY" --apiIssuer "$ASC_API_ISSUER" \
+              > "$RUNNER_TEMP/validate.log" 2>&1; then
+            cat "$RUNNER_TEMP/validate.log"
+            # Once Apple approves X.Y.Z its train closes; say what to do.
+            if grep -qiE "train.*(closed|is not open)|closed for new build" "$RUNNER_TEMP/validate.log"; then
+              echo "::error::version ${{ needs.build.outputs.version }} is already released on the App Store. Bump the version (scripts/bump_version.sh) and build again."
+            fi
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/validate.log"
           xcrun altool --upload-app -f "$ipa" -t ios --apiKey "$ASC_API_KEY" --apiIssuer "$ASC_API_ISSUER"
-          echo "Uploaded build ${{ github.run_number }} of ${{ needs.build.outputs.version }} to App Store Connect." >> "$GITHUB_STEP_SUMMARY"
+          echo "Uploaded build ${{ github.run_number }} of ${{ needs.build.outputs.version }} to App Store Connect (${{ inputs.channel }})." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Add to the Public Beta group and submit for Beta App Review
+        if: inputs.channel == 'public'
+        env:
+          ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
+          ASC_API_ISSUER: ${{ secrets.ASC_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --disable-pip-version-check 'pyjwt[crypto]==2.10.1'
+          python3 mobile/scripts/asc-public-beta.py \
+            --key-file "$API_PRIVATE_KEYS_DIR/AuthKey_${ASC_API_KEY}.p8" \
+            --version "${{ needs.build.outputs.version }}" --build "${{ github.run_number }}"
 
       - name: Remove keychain, profiles and keys
         if: always()
@@ -209,26 +238,3 @@ jobs:
           [ -n "${KEYCHAIN_PATH:-}" ] && security delete-keychain "$KEYCHAIN_PATH" || true
           rm -rf "$RUNNER_TEMP/asc" "$RUNNER_TEMP"/*.mobileprovision "$RUNNER_TEMP/cert.p12" \
             "$RUNNER_TEMP/OpenAgentd-appstore.ipa"
-
-  sidestore:
-    name: Publish SideStore IPA
-    needs: build
-    if: github.event.inputs.sidestore == 'true'
-    runs-on: macos-26
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: sidestore-ipa
-          path: mobile/dist
-
-      # Checks that HEAD is the release tag and the IPA matches its .sha256.
-      - name: Upload IPA and source.json
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: mobile/scripts/publish-ipa.sh

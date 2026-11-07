@@ -1,11 +1,11 @@
-"""Tests for ``mobile/scripts/publish-ipa.sh`` and ``publish-apk.sh`` dry runs.
+"""Tests for ``mobile/scripts/publish-apk.sh`` dry runs.
 
-The release skill builds both mobile apps with ``DRY_RUN=1`` while the version
+The release skill builds the Android app with ``DRY_RUN=1`` while the version
 PR's CI runs, before ``release.yml`` has created the tag. v3.32.0's dry runs
-built the apps and then stopped on "tag does not exist", so a dry run could
+built the app and then stopped on "tag does not exist", so a dry run could
 not pass before tagging. Real runs must still refuse a missing tag.
 
-Each test runs the script in a throw-away git repository with a fake ``gh``
+Each test runs it in a throw-away git repository with a fake ``gh``
 that knows no release, at version 9.9.9, which has no tag.
 """
 
@@ -13,10 +13,8 @@ from __future__ import annotations
 
 import hashlib
 import os
-import plistlib
 import shutil
 import subprocess
-import zipfile
 from pathlib import Path
 
 import pytest
@@ -54,22 +52,6 @@ def _write_artifact(dist: Path, name: str, data: bytes) -> None:
     (dist / f"{name}.sha256").write_text(f"{digest}  {name}\n")
 
 
-def _ipa_bytes(tmp_path: Path) -> bytes:
-    ipa = tmp_path / "app.ipa"
-    with zipfile.ZipFile(ipa, "w") as archive:
-        archive.writestr(
-            "Payload/OpenAgentd.app/Info.plist",
-            plistlib.dumps(
-                {
-                    "CFBundleIdentifier": "com.openagentd.mobile",
-                    "CFBundleShortVersionString": VERSION,
-                    "CFBundleVersion": VERSION,
-                }
-            ),
-        )
-    return ipa.read_bytes()
-
-
 @pytest.fixture
 def sandbox(tmp_path: Path) -> dict:
     """A repo laid out like this one, its origin, and an environment for the scripts."""
@@ -78,9 +60,7 @@ def sandbox(tmp_path: Path) -> dict:
     (root / "mobile" / "scripts").mkdir(parents=True)
     dist = root / "mobile" / "dist"
     dist.mkdir()
-    for name in ("publish-ipa.sh", "publish-apk.sh"):
-        shutil.copy(REPO_ROOT / "mobile" / "scripts" / name, root / "mobile" / "scripts" / name)
-    shutil.copy(REPO_ROOT / "scripts" / "make_sidestore_source.py", root / "scripts")
+    shutil.copy(REPO_ROOT / "mobile" / "scripts" / "publish-apk.sh", root / "mobile" / "scripts")
     shutil.copy(REPO_ROOT / "scripts" / "make_android_update_manifest.py", root / "scripts")
     version_script = root / "scripts" / "release_version.sh"
     version_script.write_text(f"#!/bin/sh\necho {VERSION}\n")
@@ -94,7 +74,6 @@ def sandbox(tmp_path: Path) -> dict:
     _git(root, "remote", "add", "origin", str(tmp_path / "origin.git"))
     _git(root, "push", "-q", "origin", "HEAD")
 
-    _write_artifact(dist, f"OpenAgentd_{VERSION}_iOS.ipa", _ipa_bytes(tmp_path))
     _write_artifact(dist, f"OpenAgentd_{VERSION}_Android.apk", b"apk")
 
     bin_dir = tmp_path / "bin"
@@ -135,7 +114,7 @@ def _gh_calls(sandbox: dict) -> str:
     return log.read_text() if log.exists() else ""
 
 
-@pytest.mark.parametrize("script", ["publish-ipa.sh", "publish-apk.sh"])
+@pytest.mark.parametrize("script", ["publish-apk.sh"])
 def test_dry_run_passes_before_the_tag_exists(sandbox: dict, script: str):
     result = _publish(sandbox, script, dry_run=True)
 
@@ -143,13 +122,6 @@ def test_dry_run_passes_before_the_tag_exists(sandbox: dict, script: str):
     assert "dry run complete" in result.stdout
     assert f"tag v{VERSION} does not exist yet" in result.stderr
     assert "release upload" not in _gh_calls(sandbox)
-
-
-def test_ipa_dry_run_before_the_tag_still_writes_the_source_feed(sandbox: dict):
-    result = _publish(sandbox, "publish-ipa.sh", dry_run=True)
-
-    assert result.returncode == 0, result.stderr
-    assert (sandbox["root"] / "mobile" / "dist" / "source.json").is_file()
 
 
 def test_apk_dry_run_writes_the_update_feed(sandbox: dict):
@@ -162,7 +134,7 @@ def test_apk_dry_run_writes_the_update_feed(sandbox: dict):
     assert "latest-android" in result.stdout
 
 
-@pytest.mark.parametrize("script", ["publish-ipa.sh", "publish-apk.sh"])
+@pytest.mark.parametrize("script", ["publish-apk.sh"])
 def test_real_run_refuses_a_missing_tag(sandbox: dict, script: str):
     result = _publish(sandbox, script, dry_run=False)
 
@@ -170,7 +142,7 @@ def test_real_run_refuses_a_missing_tag(sandbox: dict, script: str):
     assert f"tag v{VERSION} does not exist (run release.yml first)" in result.stderr
 
 
-@pytest.mark.parametrize("script", ["publish-ipa.sh", "publish-apk.sh"])
+@pytest.mark.parametrize("script", ["publish-apk.sh"])
 def test_dry_run_still_refuses_a_head_that_is_not_the_tag(sandbox: dict, script: str):
     root = sandbox["root"]
     _git(root, "tag", f"v{VERSION}")

@@ -543,6 +543,7 @@ pub fn run() {
             updater::updater_download,
             updater::updater_install,
             updater::updater_release_notes,
+            updater::updater_channel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenAgentd mobile");

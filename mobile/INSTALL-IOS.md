@@ -4,112 +4,29 @@ The iOS app connects to an OpenAgentd server running on another computer. The
 server holds your agents, sessions, and keys; the app does not run a backend of
 its own.
 
-The recommended way is **TestFlight**: Apple's beta app installs OpenAgentd,
-keeps it updated, and needs no computer, VPN or weekly refresh.
+Install it with **TestFlight**, Apple's beta app, which installs OpenAgentd
+and keeps it updated.
 
-## Recommended: TestFlight
+## Install from TestFlight
 
 1. Install [TestFlight](https://apps.apple.com/app/testflight/id899247664)
    from the App Store (iOS/iPadOS 15.0 or later).
-2. Open the OpenAgentd TestFlight link from the
-   [latest release notes](https://github.com/lthoangg/openagentd/releases/latest)
-   on your iPhone or iPad, and tap **Accept**, then **Install**.
+2. On your iPhone or iPad, open the OpenAgentd TestFlight link on
+   [openagentd.dev/download/ios](https://openagentd.dev/download/ios/), and
+   tap **Accept**, then **Install**.
 3. New versions appear in TestFlight; turn on **Automatic Updates** there.
-   From v3.49.0 the app also tells you about a new version (card, or
-   **Settings → About OpenAgentd → Updates**) and **Open TestFlight** takes you
-   there; a SideStore copy gets **Open SideStore** instead.
+   When your server is newer than the app, the app also says so (card, or
+   **Settings → About OpenAgentd → Updates**), and **Open TestFlight** takes
+   you there.
 
-**Moving from SideStore:** the TestFlight app is a different install. Delete
-the SideStore copy, install from TestFlight, and add your server again; your
-agents, sessions and keys live on the server, so nothing is lost. The
-SideStore IPA below is still published for a few releases.
-
-## Alternative: sideload the IPA
-
-Each release also includes an ad hoc `.ipa` you can sideload. The tool we
-suggest is [SideStore](https://sidestore.io), which signs the app with your own
-Apple Account.
+Once OpenAgentd is on the App Store, install it from there instead; the App
+Store keeps it up to date, and TestFlight stays the beta.
 
 ## Requirements
 
-- An iPhone or iPad with a passcode, running iOS/iPadOS 15.0 or later.
-- A computer running macOS, Windows, Linux, or ChromeOS. You need it once, to
-  install SideStore.
-- An Apple Account. A free account works (see [Free Apple Account limits](#free-apple-account-limits)).
-- Wi-Fi.
-- An OpenAgentd server the phone can reach (see [Connect to your server](#connect-to-your-server)).
-
-## Option A: SideStore with the OpenAgentd source (recommended)
-
-Adding the source lets SideStore show new OpenAgentd versions as updates.
-
-1. Set up SideStore by following its official guide:
-   [prerequisites](https://docs.sidestore.io/docs/installation/prerequisites),
-   then [install](https://docs.sidestore.io/docs/installation/install). In short:
-   - install **LocalDevVPN** from the App Store;
-   - install **iloader** on your computer and use it to install SideStore over USB;
-   - trust your Apple Account under **Settings → General → VPN & Device Management**;
-   - on iOS 16 and later, turn on **Settings → Privacy & Security → Developer Mode**.
-2. Open LocalDevVPN and tap **Connect**. SideStore needs this VPN whenever it
-   installs, updates, or refreshes an app.
-3. In SideStore, open **Sources**, tap **+**, and add:
-
-   ```text
-   https://github.com/lthoangg/openagentd/releases/download/latest-ios/source.json
-   ```
-
-4. Open the OpenAgentd source and tap **Get** (or **Free**) on OpenAgentd.
-5. Open OpenAgentd from the Home Screen.
-
-When a new version is released, it shows up under **My Apps** in SideStore.
-Tap **Update** with LocalDevVPN connected.
-
-## Option B: install the IPA manually
-
-1. Download `OpenAgentd_<version>_iOS.ipa` from the
-   [latest release](https://github.com/lthoangg/openagentd/releases/latest).
-   You can also download `OpenAgentd_<version>_iOS.ipa.sha256` and check the
-   file on a computer:
-
-   ```bash
-   shasum -a 256 -c OpenAgentd_<version>_iOS.ipa.sha256
-   ```
-
-2. Save the IPA to the Files app on your device.
-3. With LocalDevVPN connected, open SideStore → **My Apps**, tap **+**, and
-   choose the IPA.
-
-To update, repeat these steps with the newer IPA. SideStore installs it over the
-existing app and keeps your data.
-
-## Other sideloading tools
-
-The IPA is ad-hoc signed. Its only entitlement is the App Group the app shares
-with its home-screen widgets, so any tool that re-signs apps can install it:
-
-- **AltStore Classic**: add the same source URL as in Option A.
-- **Sideloadly**: install from a computer over USB or Wi-Fi.
-- **TrollStore**: installs it permanently, but only on the iOS versions
-  TrollStore supports.
-
-## Free Apple Account limits
-
-Apple sets these limits for apps signed with a free Apple Account. Every
-sideloading tool is subject to them:
-
-- **Apps expire after 7 days.** SideStore refreshes them in the background
-  while LocalDevVPN is connected. If an app is about to expire, open SideStore
-  and tap the days counter next to it under **My Apps**. An expired app does
-  not open until you refresh it; its data is kept.
-- **At most 3 sideloaded apps at once**, SideStore included.
-- **At most 10 App IDs per 7 days.** Installing and removing apps repeatedly
-  can use them up. OpenAgentd uses two: one for the app and one for its
-  home-screen widgets.
-- SideStore may add a suffix to the app's bundle identifier for your account.
-  This is expected and does not affect the app.
-
-A paid Apple Developer account extends expiry to one year and removes the app
-limit.
+- An iPhone or iPad running iOS/iPadOS 15.0 or later.
+- An OpenAgentd server the phone can reach (see
+  [Connect to your server](#connect-to-your-server)).
 
 ## Connect to your server
 
@@ -158,20 +75,10 @@ time. Open the app to refresh them. After 30 minutes, "Needs you" and
 "Working" turn into plain ages, because the session may have moved on. The
 widgets never store the server address or access key.
 
-If SideStore asks whether to keep the app's extensions when you install,
-keep them: the widgets are an app extension.
-
 ## Troubleshooting
 
 | Problem | Fix |
 |---|---|
-| "Untrusted Developer" when opening an app | Trust your Apple Account under **Settings → General → VPN & Device Management**. |
-| The app will not open after about a week | It expired. Connect LocalDevVPN and refresh it in SideStore → **My Apps**. |
-| SideStore cannot install or refresh | Connect LocalDevVPN and use Wi-Fi. For pairing-file errors, follow SideStore's [pairing file guide](https://docs.sidestore.io/docs/advanced/pairing-file). |
-| SideStore says the app's permissions do not match | Remove the source, add it again, and retry. If it still fails, [open an issue](https://github.com/lthoangg/openagentd/issues). |
-| The widgets say "Open OpenAgentd to load your sessions" | Open the app once while it is connected to a server. If they still show nothing, the sideloading tool removed the App Group; reinstall with SideStore and keep the app's extensions. |
+| The widgets say "Open OpenAgentd to load your sessions" | Open the app once while it is connected to a server. |
 | The app cannot reach the server | Check that the phone and the computer are on the same network and the server was started with `--host 0.0.0.0 --key`. Make sure **Settings → Privacy & Security → Local Network → OpenAgentd** is on. |
 | "Unauthorized" when connecting | The access key does not match. Re-enter the key you chose, or set a new one with `agentd server restart --public --key`. |
-
-For SideStore-specific problems, see the
-[SideStore documentation](https://docs.sidestore.io) and its community channels.

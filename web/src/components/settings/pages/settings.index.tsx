@@ -17,7 +17,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Seal, Wordmark } from '@/components/brand/Logo'
 import { getPlatform } from '@/hooks/use-platform'
 import { clientLabel, clientVersion, versionSkew, WEB_BUILD_VERSION } from '@/lib/app-version'
-import { checkForUpdates, downloadUpdate, installUpdate, openStoreLabel, type UpdateStatus } from '@/lib/updater'
+import { appChannel, channelLabel, checkForUpdates, downloadUpdate, installUpdate, openStoreLabel, type AppChannel, type UpdateStatus } from '@/lib/updater'
 import { apiBaseUrl } from '@/api/base-url'
 import { openExternalUrl } from '@/lib/open-external'
 import { cn } from '@/lib/utils'
@@ -58,6 +58,18 @@ function useClientVersion(): string | undefined {
   return version
 }
 
+/** iOS install channel (TestFlight, App Store, development); null elsewhere. */
+function useAppChannel(): AppChannel | null {
+  const [channel, setChannel] = useState<AppChannel | null>(null)
+  useEffect(() => {
+    if (!isMobileShell()) return
+    let cancelled = false
+    void appChannel().then((c) => { if (!cancelled) setChannel(c) })
+    return () => { cancelled = true }
+  }, [])
+  return channel
+}
+
 function skewMessage(client: string, server: string): { warn: boolean; text: string } | null {
   const skew = versionSkew(client, server)
   if (skew.kind === 'major-minor') {
@@ -80,10 +92,11 @@ function skewMessage(client: string, server: string): { warn: boolean; text: str
 function VersionSection({ client, server }: { client?: string; server?: string }) {
   const address = useBackendStatusQuery().data?.base_url || apiBaseUrl()
   const skew = client && server ? skewMessage(client, server) : null
+  const channel = channelLabel(useAppChannel())
 
   return (
     <PanelSection title="Version" flush>
-      <PanelRow label={clientLabel()} description="The app on this device.">
+      <PanelRow label={clientLabel()} description={channel ? `The app on this device, from ${channel === 'Development build' ? 'a development build' : channel}.` : 'The app on this device.'}>
         <span className="font-mono text-sm text-(--color-text)">{client ? `v${client}` : 'unknown'}</span>
       </PanelRow>
       <PanelRow label="Server" description={<span className="font-mono break-all">{address}</span>}>
@@ -141,7 +154,7 @@ function UpdatesSection() {
     setPending(true)
     setStatus((current) => current ? { ...current, status: 'installing' } : { status: 'installing' })
     if (mobile) {
-      // Mobile hands off to the Android installer, TestFlight, or SideStore
+      // Mobile hands off to the Android installer or TestFlight
       // and returns; the system replaces the app if the user confirms.
       try {
         await installUpdate()

@@ -2281,10 +2281,6 @@ run from the terminal (the native Rust binary since v3.0.0).
     Settings** for a server the app cannot sign in to), and reads **Signed
     in to {server}** once it is connected, so you no longer have to find
     Settings → MCP from the agent's reply.
-  - A task in the **Tasks** tab (⌘T) brings the turn where it was last
-    changed into view: hover or focus it for **Show turn**, then click or
-    press Enter. Tasks last touched in turns that are not loaded yet stay
-    plain.
   - A view that fails to render (a session's transcript, the Review panel)
     shows **Couldn't show this view** with **Try again** and **Copy error
     details** in its place, while the header, sidebar and status bar keep

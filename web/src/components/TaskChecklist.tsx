@@ -11,10 +11,6 @@
  *
  * Sort order keeps the eye on what matters right now:
  *   in_progress → pending → completed → cancelled
- *
- * Given ``turns`` and ``onShowTurn`` (the desktop Tasks tab), a task whose
- * turn is loaded is a button that brings that turn into view, its "Show
- * turn" swapping in on hover and focus.
  */
 import { useMemo, useRef } from 'react'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
@@ -101,13 +97,9 @@ export interface TaskChecklistProps {
    */
   overflow?: 'truncate' | 'wrap'
   className?: string
-  /** Task id → the prompt of the turn that last changed it (`lib/task-turns`). */
-  turns?: ReadonlyMap<string, string>
-  /** Bring a turn into view by its prompt's block id. */
-  onShowTurn?: (promptId: string) => void
 }
 
-export function TaskChecklist({ todos, overflow = 'truncate', className, turns, onShowTurn }: TaskChecklistProps) {
+export function TaskChecklist({ todos, overflow = 'truncate', className }: TaskChecklistProps) {
   const sortedTodos = useMemo(
     () => [...todos].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]),
     [todos],
@@ -136,14 +128,17 @@ export function TaskChecklist({ todos, overflow = 'truncate', className, turns, 
         const struck = (
           <span className="oa-strike" data-struck={isStruck ? '' : undefined}>{todo.content}</span>
         )
-        const turn = onShowTurn ? turns?.get(todo.task_id) : undefined
-        const row = cn(
-          'flex gap-2 rounded-sm px-2 py-1.5 transition-colors',
-          overflow === 'truncate' ? 'items-center' : 'items-start',
-          isInProgress ? 'bg-(--bg-key) text-(--color-text)' : 'hover:bg-(--bg-key)/50',
-        )
-        const content = (
-          <>
+        return (
+          <li
+            key={todo.task_id}
+            data-flip-id={todo.task_id}
+            data-status={todo.status}
+            className={cn(
+              'flex gap-2 rounded-sm px-2 py-1.5 transition-colors',
+              overflow === 'truncate' ? 'items-center' : 'items-start',
+              isInProgress ? 'bg-(--bg-key) text-(--color-text)' : 'hover:bg-(--bg-key)/50',
+            )}
+          >
             <IconSwap swapKey={todo.status} className={cn(overflow === 'wrap' && 'mt-0.5')}>
               <Icon
                 size={12}
@@ -165,27 +160,6 @@ export function TaskChecklist({ todos, overflow = 'truncate', className, turns, 
                 <p className={textClass}>{struck}</p>
               )}
             </div>
-          </>
-        )
-        return (
-          <li
-            key={todo.task_id}
-            data-flip-id={todo.task_id}
-            data-status={todo.status}
-            className={turn ? undefined : row}
-          >
-            {turn ? (
-              <button
-                type="button"
-                onClick={() => onShowTurn?.(turn)}
-                className={cn(row, 'group/task w-full text-left focus-visible:ring-inset')}
-              >
-                {content}
-                <span className="shrink-0 text-meta text-(--color-text-muted) opacity-0 transition-opacity duration-(--motion-instant) group-hover/task:opacity-100 group-focus-visible/task:opacity-100">
-                  Show turn
-                </span>
-              </button>
-            ) : content}
           </li>
         )
       })}

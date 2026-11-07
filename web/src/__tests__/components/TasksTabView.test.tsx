@@ -2,18 +2,12 @@
  * TasksTabView — the task list with the plan's Done when as its last row, so a
  * finished list that is not yet a finished goal explains itself.
  */
-import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import type { ContentBlock, SessionGoal, SessionPlan, TodoItem } from '@/api/types'
+import { afterEach, describe, expect, it } from 'bun:test'
+import { cleanup, render } from '@testing-library/react'
+import type { SessionGoal, SessionPlan, TodoItem } from '@/api/types'
 import { TasksTabView } from '@/components/WorkspacePanel/TasksTabView'
-import { useAgentStore } from '@/stores/useAgentStore'
-import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 
-afterEach(() => {
-  cleanup()
-  useAgentStore.setState({ leadName: null, agentStreams: {} })
-  useTranscriptFollowStore.setState({ showPrompt: null })
-})
+afterEach(cleanup)
 
 const PLAN: SessionPlan = {
   content: '# Ship it\n\n## Done when\n\nAll tests pass.',
@@ -36,35 +30,6 @@ const OPEN: TodoItem[] = [
 const DONE: TodoItem[] = OPEN.map((t) => ({ ...t, status: 'completed' as const }))
 
 const row = () => document.querySelector<HTMLElement>('[data-done-when]')
-
-describe('TasksTabView — a task shows its turn', () => {
-  it('brings the prompt of the turn that last changed the task into view, the live turn included', () => {
-    const showPrompt = mock((..._args: unknown[]) => {})
-    useTranscriptFollowStore.setState({ showPrompt })
-    const todoCall = (id: string, actions: unknown[]): ContentBlock => ({ id, type: 'tool', content: '', toolName: 'todo', toolDone: true, toolArgs: JSON.stringify({ actions }) })
-    useAgentStore.setState({
-      leadName: 'lead',
-      agentStreams: {
-        lead: {
-          blocks: [
-            { id: 'p1', type: 'user', content: 'Ship it' },
-            todoCall('c1', [{ action: 'create', content: 'Write it' }, { action: 'create', content: 'Test it' }]),
-            { id: 'p2', type: 'user', content: 'Now test it' },
-          ],
-          currentBlocks: [todoCall('c2', [{ action: 'update', task_id: 't2', status: 'in_progress' }])],
-          status: 'working', usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 },
-          model: null, lastError: null, currentText: '', currentThinking: '',
-        },
-      },
-    })
-    render(<TasksTabView todos={OPEN} sessionId="s1" />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Write it Show turn' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Test it Show turn' }))
-
-    expect(showPrompt.mock.calls).toEqual([['p1'], ['p2']])
-  })
-})
 
 describe('TasksTabView — Done when', () => {
   it('ends the checklist with the finish line, after every task', () => {

@@ -2,20 +2,13 @@
  * TasksTabView — the agent's task list as a review-dock tab (desktop ⌘T).
  *
  * Same checklist as the mobile popover, but rows wrap instead of truncating
- * since the dock's width varies and there is room for the full text. A task
- * whose turn is loaded brings it into view (`lib/task-turns`), the live turn
- * included.
+ * since the dock's width varies and there is room for the full text.
  */
-import { useMemo } from 'react'
 import { ListTodo } from 'lucide-react'
-import { useShallow } from 'zustand/react/shallow'
 import type { SessionGoal, SessionPlan, TodoItem } from '@/api/types'
 import type { GoalAction } from '@/lib/goal'
-import { taskTurnPrompts } from '@/lib/task-turns'
 import { cn } from '@/lib/utils'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
-import { useAgentStore } from '@/stores/useAgentStore'
-import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { TaskChecklist, TaskProgressBar, summarizeTodos } from '../TaskChecklist'
 import { DoneWhenRow } from '../DoneWhenRow'
 import { doneWhen as readDoneWhen } from '@/lib/work'
@@ -37,19 +30,10 @@ export interface TasksTabViewProps {
   onGoalAction?: (action: Extract<GoalAction, 'pause' | 'resume'>) => void
 }
 
-const NO_BLOCKS: never[] = []
-
-const showTurn = (promptId: string) => useTranscriptFollowStore.getState().showPrompt?.(promptId)
-
 export function TasksTabView({ todos, sessionId, plan = null, onClearPlan, onOpenPlan, goal = null, onOpenGoal, onGoalAction }: TasksTabViewProps) {
   const scrollRef = useScrollMemory(sessionId ? `tasks:${sessionId}` : null)
   const summary = summarizeTodos(todos)
   const doneWhen = readDoneWhen(plan, { todos, goal })
-  const [blocks, liveBlocks] = useAgentStore(useShallow((s) => {
-    const lead = s.leadName ? s.agentStreams[s.leadName] : undefined
-    return [lead?.blocks ?? NO_BLOCKS, lead?.currentBlocks ?? NO_BLOCKS] as const
-  }))
-  const turns = useMemo(() => taskTurnPrompts([...blocks, ...liveBlocks], todos), [blocks, liveBlocks, todos])
   const planRow = (
     <WorkSummary
       goal={goal}
@@ -97,7 +81,7 @@ export function TasksTabView({ todos, sessionId, plan = null, onClearPlan, onOpe
       </div>
       <TaskProgressBar summary={summary} />
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
-        <TaskChecklist todos={todos} overflow="wrap" className="space-y-px p-1.5" turns={turns} onShowTurn={showTurn} />
+        <TaskChecklist todos={todos} overflow="wrap" className="space-y-px p-1.5" />
         {doneWhen && <DoneWhenRow doneWhen={doneWhen} />}
       </div>
     </div>

@@ -2263,7 +2263,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     after the current one.
   - **Keyboard shortcuts** (⌘/) opens with a search field in focus that
     filters by name, key (`F6`) or area (`terminal`), and lays the areas out
-    in two columns on a wide window.
+    in two columns on a wide window. Its intro spells the overlay keys for
+    the platform (Ctrl+K, Ctrl+P and Ctrl+, on Windows and Linux).
   - The command palette (⌘K) opens on a **Recent** group, the last five
     commands and sessions you ran from it, and a search marks the words you
     typed in each row's name.

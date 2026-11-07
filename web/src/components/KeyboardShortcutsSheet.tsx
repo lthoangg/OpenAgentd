@@ -15,6 +15,7 @@ import { COMPACT_ROW, OVERLAY_BODY, TEXT } from '@/components/ui/panel-tokens'
 import { SearchBar } from '@/components/ui/search-bar'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { usePlatform } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { shortcutHelp, type ShortcutHelpGroup } from '@/lib/keyboard/help'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/useUIStore'
@@ -44,6 +45,8 @@ export function KeyboardShortcutsSheet() {
   const [query, setQuery] = useState('')
   const fieldRef = useRef<HTMLInputElement>(null)
   const groups = filterGroups(shortcutHelp(os, { desktopApp: isTauri }), isPhone ? '' : query)
+  // The overlay switchers, spelled for this platform (Ctrl+K off a Mac).
+  const switchers = [APP_SHORTCUTS.commandPalette, APP_SHORTCUTS.quickOpen, APP_SHORTCUTS.settings].map((s) => shortcutLabel(s, os))
   const onClose = () => {
     setQuery('')
     close()
@@ -65,7 +68,7 @@ export function KeyboardShortcutsSheet() {
       />
       <div className={cn(OVERLAY_BODY, 'space-y-6 md:space-y-8')}>
         <p className={cn('max-w-prose', TEXT.body)}>
-          Escape closes whatever is on top. While a dialog is open, app shortcuts wait; ⌘K, ⌘P and ⌘, can still switch to another overlay.
+          Escape closes whatever is on top. While a dialog is open, app shortcuts wait; {switchers[0]}, {switchers[1]} and {switchers[2]} can still switch to another overlay.
         </p>
         {!isPhone && (
           <SearchBar

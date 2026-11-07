@@ -330,6 +330,25 @@ const RULES: Rule[] = [
     pattern: /['"`]dd\/MM/g,
     allow: {},
   },
+  // ── Desktop system (DESIGN.md → Desktop system) ──────────────────────────
+  {
+    name: 'mac-glyph-in-copy',
+    why: 'keys are spelled for the platform (shortcutLabel, chord labels), so Windows and Linux read Ctrl+K; a literal ⌘ belongs only in the helpers that switch on the OS',
+    pattern: /⌘/g,
+    allow: {
+      // OS-aware label helpers: each returns ⌘ only on a Mac.
+      'lib/keyboard-shortcut.ts': 1,
+      'lib/keyboard/chord.ts': 1,
+      'tray/shortcuts.ts': 1,
+      'components/Sidebar/row-keys.ts': 1,
+      'components/Terminal/terminal-keys.ts': 1,
+      'components/InputComposer.deliveryMenu.tsx': 1,
+      // The second line of a JSX comment (the comment filter sees only the first).
+      'components/AgentChatView/AgentChatHeader.tsx': 1,
+      'components/WorkspacePanel/CloseTerminalDialog.tsx': 1,
+      'components/SettingsModal.tsx': 1,
+    },
+  },
 ]
 
 /** Comment lines describe classes without applying them. */

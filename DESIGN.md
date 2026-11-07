@@ -1942,6 +1942,75 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   question, the error outcome for a refused action. A destructive action
   offers Undo or confirms.
 
+### Desktop system
+
+The rules every desktop screen follows (macOS, Windows and Linux, any window
+from 1024 px wide). The before/after mockups live in
+`.agents/plans/desktop-ux-sweep-before-after-mockups-for-the-wh-a0dfe956/mockups/`;
+where a mockup disagrees with this file (a 40px title bar, a 720px column, a
+blue running dot, 10/14px radii, a Review panel that overlays below 1100px),
+this file wins.
+
+- **The phone's pieces, at pointer density.** A piece the phone already has
+  (the pinned question, the plan bar, the run status, the Stopped toast, the
+  diff's Wrap toggle, the one-line folder banner, the task switch) is the
+  same component on desktop with its gate widened, never a second copy. It
+  takes desktop sizes: 28px list rows, 24px row actions, 36px header, the
+  768px reading column; nothing grows to 44pt. Each widened gate has a
+  desktop test beside the phone's, and the phone's tests do not change.
+- **Status in one second.** The session states are the same words on every
+  surface: Needs you, Running, Done, Failed, Can't reach, in the sidebar,
+  the ⌘L switcher, notifications, the tray, the notch island, the status bar
+  and the banner. Running is the small spinner (a terminal tab running a
+  command shows it in place of its icon); Signal Blue stays the logo and the
+  focus ring (lint `stray-blue`). Needs you is the one sidebar section above
+  the workspaces; there is no Running section, and a workspace with a
+  running or waiting session stays unfolded, so its marks are in sight.
+- **Above the composer, in the flow.** The open question is pinned there
+  (orange frame; 1–9 pick an option and ⌘↵ sends once focus is in it; the
+  transcript card says "Answer below"), then a plan awaiting approval as one
+  bar, "Plan awaiting approval · View", where View brings the Plan tab
+  forward. While the agent works the composer's bottom row reads "Running ·
+  step 7 · 3:12" beside Stop. Nothing floats over the transcript.
+- **Run control.** **Esc** stops the run only when the composer has focus,
+  its draft is empty and no menu or dialog is open (those take Esc first);
+  Stop's tooltip and the shortcuts sheet name the key. A stop leaves a
+  "Stopped" toast whose **Resume** sends "Continue".
+- **Trouble is told where it happens.** When the server stops answering
+  the status bar says **Can't reach** beside a red dot, the banner offers
+  **Retry** and, in the desktop app, **Start built-in server**, and Send is
+  disabled with the reason while the draft stays (nothing is queued
+  offline). A moved folder is one line under the header with one way out
+  each (**Open workspace…**, **Hide from sidebar**). An MCP call refused for
+  sign-in offers **Sign in to {server}** under the call. A view that fails
+  to render says so in its own place (**Try again**, **Copy error details**)
+  while the header, sidebar and status bar keep working.
+- **Reading.** The model chip names the model in sans; the `provider:model`
+  ID stays mono in its tooltip and the picker. The detailed transcript keeps
+  one row per tool call (folding is the Reader style's job), and a failed
+  call stays a closed row like the others, since nothing opens on its own.
+  The timeline marks name their prompt on hover. A diff wraps by default
+  (**Wrap lines** keeps lines whole); **Side by side** lays the old file
+  beside the new one when the panel is at least 640px wide and stays
+  unified below that, saying so on the toggle. A wide table fades at its
+  clipped edge. The composer grows to six lines, then scrolls with a thin
+  visible thumb.
+- **The keyboard reaches everything.** Every control shows the whole focus
+  ring (inside its edge where a container clips: `data-focus-ring="inset"`),
+  Tab never leaves an open modal, and F6 walks the regions. Keys are spelled
+  for the platform through `shortcutLabel` and the chord labels, so Windows
+  and Linux read Ctrl+K (lint `mac-glyph-in-copy`), and every native menu
+  accelerator is the same chord as its in-app shortcut (test
+  `menu-accelerators`). Search sessions (⌘⇧F) groups results by workspace
+  and marks the match; the palette (⌘K) opens on its last five; the
+  shortcuts sheet (⌘/) is searchable and two columns wide.
+- **Lists say what they hold.** "Show 5 more" counts what the next click
+  adds. A scheduled task switches on and off from its row, and its form
+  says when a new schedule first runs. Adding a folder says "Added
+  {folder}". A task in the Tasks tab offers **Show turn**. The Undo notice
+  names the files it changed back; Undo asks nothing first, since Redo
+  brings them back.
+
 ### Native per platform
 
 | | macOS | Windows | Linux | iOS / iPadOS | Android |

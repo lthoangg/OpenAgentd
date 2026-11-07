@@ -191,7 +191,7 @@ describe('Review dock diff tabs', () => {
     const strip = document.querySelector<HTMLElement>('[data-dock-strip]')!
     expect(strip.contains(refresh)).toBe(false)
     const toolbar = refresh.closest('[class*="spacing-toolbar"]') as HTMLElement
-    expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Wrap lines', 'Open src/app.ts', 'Refresh diff'])
+    expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Side by side', 'Wrap lines', 'Open src/app.ts', 'Refresh diff'])
 
     const diffRequests = () => requestedUrls.filter((url) => url.includes('/workspace/git-diff')).length
     const before = diffRequests()

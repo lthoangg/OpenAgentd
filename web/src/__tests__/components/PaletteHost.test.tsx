@@ -95,7 +95,13 @@ describe('PaletteHost — Sessions group', () => {
 
     // The title that starts with the word first; a subagent, the open session
     // and an untitled one are left out.
-    expect(within(group).getAllByRole('button').map((row) => row.textContent)).toEqual([
+    // (A marked title is drawn once and read once: drop the screen-reader copy.)
+    const shown = (row: HTMLElement) => {
+      const copy = row.cloneNode(true) as HTMLElement
+      copy.querySelectorAll('.sr-only').forEach((node) => node.remove())
+      return copy.textContent
+    }
+    expect(within(group).getAllByRole('button').map(shown)).toEqual([
       'Login pagedocs · 2d',
       'Fix login bugapp · 3h',
     ])

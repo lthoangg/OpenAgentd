@@ -67,7 +67,7 @@ export function useModalFocus(
       }
       const target = Array.from(dialog?.querySelectorAll<HTMLElement>(
         'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? []).find(isVisible)
+      ) ?? []).find((el) => el.tabIndex >= 0 && isVisible(el))
       target?.focus({ preventScroll: true })
     }
     const id = requestAnimationFrame(focusFirst)
@@ -75,9 +75,12 @@ export function useModalFocus(
     // Escape is routed by the keyboard dispatcher to the top layer.
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Tab' || event.defaultPrevented || !dialog || !isTopLayer(layerId.current)) return
+      // Only what Tab reaches: a roving group (segmented control, radio list)
+      // keeps its other options at tabindex="-1", and wrapping at one of
+      // those let focus walk out of the modal into the page behind.
       const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
         'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      )).filter((el) => !el.hasAttribute('disabled') && isVisible(el))
+      )).filter((el) => !el.hasAttribute('disabled') && el.tabIndex >= 0 && isVisible(el))
       if (focusable.length === 0) return
       const first = focusable[0]
       const last = focusable[focusable.length - 1]

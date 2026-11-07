@@ -105,7 +105,7 @@ import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
-import { DockOpenMenu, menuPointBelow } from './WorkspacePanel/DockOpenMenu'
+import { DockOpenSheet } from './WorkspacePanel/DockOpenMenu'
 import { usePhonePageWidth } from './WorkspacePanel/usePhonePageWidth'
 import { PaneSplitHandle } from './WorkspacePanel/PaneSplitHandle'
 import { lazySurface } from '@/lib/lazy-surface'
@@ -398,7 +398,7 @@ export function WorkspacePanel({
   })
   const [mobileFileActions, setMobileFileActions] = useState<ChangedFileInfo | null>(null)
   // Where the phone bar's "+" menu is open, if it is.
-  const [phoneOpenMenuAt, setPhoneOpenMenuAt] = useState<{ x: number; y: number } | null>(null)
+  const [phoneOpenMenu, setPhoneOpenMenu] = useState(false)
   const [mobileCommitActions, setMobileCommitActions] = useState<CommitActionTarget | null>(null)
   const [desktopCommitActions, setDesktopCommitActions] = useState<(CommitActionTarget & { x: number; y: number }) | null>(null)
   const [desktopFileActions, setDesktopFileActions] = useState<{ file: ChangedFileInfo; x: number; y: number } | null>(null)
@@ -1126,10 +1126,10 @@ export function WorkspacePanel({
           variant="ghost"
           size="icon-sm"
           aria-label="Open in Review panel"
-          aria-haspopup="menu"
-          aria-expanded={phoneOpenMenuAt !== null}
+          aria-haspopup="dialog"
+          aria-expanded={phoneOpenMenu}
           className="text-(--color-accent)!"
-          onClick={(event) => setPhoneOpenMenuAt(menuPointBelow(event.currentTarget))}
+          onClick={() => setPhoneOpenMenu(true)}
         >
           <Plus size={20} aria-hidden="true" className="size-5" />
         </Button>
@@ -1247,9 +1247,7 @@ export function WorkspacePanel({
           onConfirm={confirmCloseTab}
           onCancel={cancelCloseTab}
         />
-        {phoneOpenMenuAt && (
-          <DockOpenMenu at={phoneOpenMenuAt} items={phoneOpenItems} onDismiss={() => setPhoneOpenMenuAt(null)} />
-        )}
+        <DockOpenSheet open={phoneOpenMenu} items={phoneOpenItems} onClose={() => setPhoneOpenMenu(false)} />
         <DockActionMenus
           mobileFileActions={mobileFileActions}
           setMobileFileActions={setMobileFileActions}

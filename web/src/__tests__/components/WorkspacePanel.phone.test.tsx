@@ -9,7 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
@@ -36,6 +36,10 @@ mock.module('framer-motion', () => ({
   motion: {
     aside: ({ children, initial: _initial, animate: _animate, exit: _exit, transition: _transition, ...props }: Record<string, unknown> & { children: React.ReactNode }) => (
       <aside {...props}>{children}</aside>
+    ),
+    // The "+" action sheet (BottomSheet).
+    div: ({ children, initial: _initial, animate: _animate, exit: _exit, transition: _transition, ref, ...props }: Record<string, unknown> & { children: React.ReactNode; ref?: React.Ref<HTMLDivElement> }) => (
+      <div ref={ref} {...props}>{children}</div>
     ),
   },
   AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
@@ -153,16 +157,18 @@ describe('Review panel on a phone — a page over the chat', () => {
 
     const user = userEvent.setup()
     await user.click(plus)
-    const menu = screen.getByRole('menu', { name: 'Open in Review panel' })
-    const rows = within(menu).getAllByRole('menuitem').map((item) => item.getAttribute('aria-label'))
-    // The open Git tab is checked in the list, as in the strip's menu.
-    expect(rows).toEqual(expect.arrayContaining(['Git (open)', 'Terminal', 'Find file…']))
+    // The app's action sheet, as every phone menu.
+    const sheet = screen.getByRole('dialog', { name: 'Open in Review panel' })
+    expect(sheet.querySelector('[data-action-sheet]')).not.toBeNull()
+    const rows = within(sheet).getAllByRole('button').map((item) => item.textContent)
+    // The open Git tab ("Changes" on a phone) is checked, as in the strip's menu.
+    expect(rows).toEqual(expect.arrayContaining(['Changes (open)', 'Terminal', 'Files']))
     // Tasks and side questions open above the chat on a phone, not in the dock.
     expect(rows).not.toContain('Tasks')
     expect(rows).not.toContain('Side questions')
 
-    await user.click(within(menu).getByRole('menuitem', { name: 'Terminal' }))
-    expect(screen.queryByRole('menu')).toBeNull()
+    await user.click(within(sheet).getByRole('button', { name: 'Terminal' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Open in Review panel' })).toBeNull())
     expect(screen.getByRole('button', { name: /^Close Terminal 1/ })).toBeTruthy()
   })
 

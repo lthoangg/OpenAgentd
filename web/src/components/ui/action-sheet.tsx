@@ -8,8 +8,8 @@
  * stacked under the sheet. The haptic belongs to the gesture that opened
  * it (``LongPressButton`` and friends), not to the sheet.
  */
-import { Fragment } from 'react'
-import type { LucideIcon } from 'lucide-react'
+import { Fragment, type ReactNode } from 'react'
+import { Check, type LucideIcon } from 'lucide-react'
 
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
@@ -20,6 +20,12 @@ export interface ActionSheetItem {
   id: string
   label: string
   icon?: LucideIcon
+  /** An icon already drawn (a shared menu's row), shown at 16px; ``icon`` wins. */
+  iconNode?: ReactNode
+  /** Muted text at the row's end, e.g. a count. */
+  detail?: string
+  /** A check at the row's end: the choice is already on (an open tab). */
+  checked?: boolean
   /** Destructive: red, and kept last by the caller. */
   danger?: boolean
   separatorBefore?: boolean
@@ -57,7 +63,7 @@ export function ActionSheet({ open, onClose, title, description, items, cancel =
             {description && <p className="mt-0.5 text-xs text-(--color-text-muted)">{description}</p>}
           </div>
           <div className="flex flex-col p-1 pt-0">
-            {items.map(({ id, label, icon: Icon, danger, separatorBefore, disabled, afterClose, run }) => (
+            {items.map(({ id, label, icon: Icon, iconNode, detail, checked, danger, separatorBefore, disabled, afterClose, run }) => (
               <Fragment key={id}>
                 {separatorBefore && <div className={MENU_SEPARATOR_CLASS} role="separator" />}
                 <button
@@ -71,8 +77,16 @@ export function ActionSheet({ open, onClose, title, description, items, cancel =
                     else run()
                   }}
                 >
-                  {Icon && <Icon size={16} aria-hidden="true" className="shrink-0" />}
+                  {Icon ? <Icon size={16} aria-hidden="true" className="shrink-0" />
+                    : iconNode ? <span aria-hidden="true" className="flex shrink-0 [&>svg]:size-4">{iconNode}</span> : null}
                   <span className="min-w-0 flex-1 truncate">{label}</span>
+                  {detail && <span className="shrink-0 tabular-nums text-(--color-text-muted)">{detail}</span>}
+                  {checked && (
+                    <>
+                      <Check size={16} aria-hidden="true" className="shrink-0 text-(--color-text-muted)" />
+                      <span className="sr-only"> (open)</span>
+                    </>
+                  )}
                 </button>
               </Fragment>
             ))}

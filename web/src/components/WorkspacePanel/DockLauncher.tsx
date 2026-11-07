@@ -84,7 +84,7 @@ function moveBetweenRows(event: KeyboardEvent<HTMLDivElement>) {
  * Opened empty, the panel puts focus on its first row (see ``WorkspacePanel``).
  */
 /** A phone names the rows by what they hold (mockup J7 7.1). */
-const PHONE_LABELS: Record<string, string> = { review: 'Changes', file: 'Files' }
+export const PHONE_LABELS: Record<string, string> = { review: 'Changes', file: 'Files' }
 
 export function DockLauncher({ items, phone = false }: { items: DockOpenItem[]; phone?: boolean }) {
   if (phone) {

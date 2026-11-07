@@ -101,8 +101,11 @@ jobs:
       # Installed here, natively: `tauri ios init` otherwise installs
       # CocoaPods and libimobiledevice itself, from a process Homebrew sees
       # as Rosetta, and stops ("Cannot install under Rosetta 2").
-      - name: Install xcodegen, CocoaPods and libimobiledevice
-        run: brew install xcodegen cocoapods libimobiledevice
+      - name: Install xcodegen, CocoaPods, libimobiledevice and Pillow
+        run: |
+          brew install xcodegen cocoapods libimobiledevice
+          # scripts/generate_icons.py renders the app icons with Pillow.
+          python3 -m pip install --quiet --user --break-system-packages pillow
 
       # src-tauri/gen/apple is generated, not committed: init + patches.
       - name: Generate the Xcode project

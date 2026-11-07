@@ -46,11 +46,12 @@ DEVICES=(
 
 if [ "${SKIP_BUILD:-0}" != 1 ]; then
   log "building the simulator app"
+  # Tauri renames the archived app into place and fails on a leftover one.
+  rm -rf src-tauri/gen/apple/build/arm64-sim src-tauri/gen/apple/build/openagentd-mobile_iOS.xcarchive
   (cd src-tauri && cargo tauri ios build --target aarch64-sim --debug)
 fi
-APP=$(find src-tauri/gen/apple/build -path '*sim*' -name 'OpenAgentd.app' -type d -print0 2>/dev/null \
-  | xargs -0 ls -dt 2>/dev/null | head -1)
-[ -n "$APP" ] || die "no simulator build of OpenAgentd.app under src-tauri/gen/apple/build"
+APP=src-tauri/gen/apple/build/arm64-sim/OpenAgentd.app
+[ -d "$APP" ] || die "no simulator build of OpenAgentd.app under src-tauri/gen/apple/build"
 curl -fsS -m 5 "$SERVER_URL/api/health/live" >/dev/null || die "no OpenAgentd server at $SERVER_URL (start one: agentd server start)"
 
 device_udid() {  # name, type -> udid (created once, reused)
@@ -73,7 +74,9 @@ for entry in "${DEVICES[@]}"; do
   out="screenshots/$label"
   mkdir -p "$out"
   log "$title ($udid)"
-  xcrun simctl boot "$udid" 2>/dev/null || true
+  # A fresh boot: no system alert left over from an earlier session.
+  xcrun simctl shutdown "$udid" 2>/dev/null || true
+  xcrun simctl boot "$udid"
   xcrun simctl bootstatus "$udid" -b >/dev/null
   xcrun simctl status_bar "$udid" override --time 9:41 --dataNetwork wifi --wifiMode active \
     --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
@@ -90,13 +93,15 @@ for entry in "${DEVICES[@]}"; do
   for appearance in $APPEARANCES; do
     xcrun simctl ui "$udid" appearance "$appearance"
     xcrun simctl terminate "$udid" "$BUNDLE_ID" 2>/dev/null || true
+    rm -f "$config/screenshot-link.txt"
     SIMCTL_CHILD_OAD_SCREENSHOT_MODE=1 xcrun simctl launch "$udid" "$BUNDLE_ID" >/dev/null
     sleep 8  # launch, skip the consent (screenshot mode reloads once), load
     n=0
     for shot in $SHOTS; do
       name=${shot%%=*} path=${shot#*=}
       n=$((n + 1))
-      xcrun simctl openurl "$udid" "openagentd://$path"
+      # The app opens it like a tapped link (screenshot mode, debug builds).
+      printf 'openagentd://%s\n' "$path" > "$config/screenshot-link.txt"
       sleep 4
       file="$out/$appearance-$n-$name.png"
       xcrun simctl io "$udid" screenshot --type=png "$file" >/dev/null

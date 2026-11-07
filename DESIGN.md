@@ -749,8 +749,10 @@ drawer and full-screen sheet.
   (height and opacity, `base`); rows leaving stay on screen until the fold
   has closed over them. A segmented control's fill slides to the new choice
   (`useSegmentIndicator`), and a switch's thumb ends on `ease-spring-soft`.
-- **Focus mode** (`Mod+Shift+F`) hides the sidebar and the Review panel and
-  puts both back on the second press; showing either one ends it as is.
+- **Search sessions** (`Mod+Shift+F`) focuses the sidebar's search field,
+  showing the sidebar first if it was hidden; a focused terminal keeps the
+  chord for its shell. (Focus mode, which held this key, went in v3.46.0:
+  `Mod+B` and `Mod+D` hide the two sides.)
 - **Find in session** (`Mod+F`, while focus is in the chat) searches the loaded
   turns and paints matches with the CSS Custom Highlight API.
 - **F6 areas.** F6 / Shift+F6 move focus sidebar → transcript → composer →

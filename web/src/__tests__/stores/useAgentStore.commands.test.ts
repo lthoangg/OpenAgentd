@@ -171,64 +171,6 @@ describe('compactAgent', () => {
   })
 })
 
-describe('the files an undo changed', () => {
-  function undoneSession(revertedCount: number) {
-    useAgentStore.setState({
-      sessionId: 'session-1',
-      leadName: 'lead',
-      agentNames: ['lead'],
-      agentStreams: { lead: makeStream({ revertedCount }) },
-    })
-  }
-  function undoChanges(changed: { added?: string[]; modified?: string[]; removed?: string[] }) {
-    postAgentCommand.mockImplementation(async () => ({
-      status: 'accepted', session_id: 'session-1', command: 'undo',
-      changed_paths: { added: changed.added ?? [], modified: changed.modified ?? [], removed: changed.removed ?? [] },
-    }))
-  }
-
-  it('records every path the undo put back, added, changed or removed', async () => {
-    undoneSession(0)
-    undoChanges({ added: ['b.ts'], modified: ['a.ts'], removed: ['c.ts'] })
-
-    await useAgentStore.getState().undoAgent()
-
-    expect(useAgentStore.getState().undoneFiles).toEqual({ sessionId: 'session-1', paths: ['a.ts', 'b.ts', 'c.ts'] })
-  })
-
-  it('adds the next undo to them while earlier undone messages are still held', async () => {
-    undoneSession(1)
-    useAgentStore.setState({ undoneFiles: { sessionId: 'session-1', paths: ['a.ts'] } })
-    undoChanges({ modified: ['a.ts', 'd.ts'] })
-
-    await useAgentStore.getState().undoAgent()
-
-    expect(useAgentStore.getState().undoneFiles?.paths).toEqual(['a.ts', 'd.ts'])
-  })
-
-  it('starts over once the undone messages were discarded', async () => {
-    undoneSession(0)
-    useAgentStore.setState({ undoneFiles: { sessionId: 'session-1', paths: ['old.ts'] } })
-    undoChanges({ modified: ['new.ts'] })
-
-    await useAgentStore.getState().undoAgent()
-
-    expect(useAgentStore.getState().undoneFiles?.paths).toEqual(['new.ts'])
-  })
-
-  it('forgets them on Redo and Redo all, which bring the files back', async () => {
-    for (const command of ['redoAgent', 'redoAllAgent'] as const) {
-      undoneSession(1)
-      useAgentStore.setState({ undoneFiles: { sessionId: 'session-1', paths: ['a.ts'] } })
-      postAgentCommand.mockImplementation(async () => ({ status: 'accepted', session_id: 'session-1', command: 'redo' }))
-
-      await useAgentStore.getState()[command]()
-
-      expect(useAgentStore.getState().undoneFiles).toBeNull()
-    }
-  })
-})
-
 describe('commands completing after session navigation', () => {
   const commands = ['compactAgent', 'undoAgent', 'redoAgent', 'redoAllAgent'] as const
   for (const command of commands) {

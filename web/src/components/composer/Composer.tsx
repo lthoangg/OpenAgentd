@@ -62,8 +62,6 @@ export interface ComposerProps {
   interactionModeDisabled?: boolean
   revertedCount?: number
   revertedMessages?: Array<{ role: string; content: string }>
-  /** Paths the undos changed back; listed in the Undo notice on desktop. */
-  revertedFiles?: readonly string[]
   onRedo?: () => void
   onRedoAll?: () => void
   historyPrompts?: string[]
@@ -209,13 +207,7 @@ export const Composer = memo(forwardRef<InputComposerHandle, ComposerProps>(func
     <div data-composer-tray="" className="contents">
       <JumpToLatestChip />
       {aboveComposer}
-      <RevertNotice
-        count={inputProps.revertedCount ?? 0}
-        messages={inputProps.revertedMessages ?? []}
-        files={isMobile ? undefined : inputProps.revertedFiles}
-        onRedo={inputProps.onRedo}
-        onRedoAll={inputProps.onRedoAll}
-      />
+      <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} onRedoAll={inputProps.onRedoAll} />
     </div>
   )
 

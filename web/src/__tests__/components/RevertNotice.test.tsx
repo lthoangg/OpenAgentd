@@ -26,21 +26,6 @@ describe('RevertNotice', () => {
     expect(screen.getByText('Undid the last message. Redo brings it back; sending a new message discards it.')).toBeTruthy()
   })
 
-  it('says how many files the undo changed back and lists them, name before folder', () => {
-    render(<RevertNotice count={1} files={['web/src/app.tsx', 'README.md']} onRedo={() => {}} />)
-
-    expect(screen.getByText('Undid the last message and its changes to 2 files. Redo brings them back; sending a new message discards them.')).toBeTruthy()
-    const rows = screen.getAllByRole('listitem').map((row) => row.textContent)
-    expect(screen.getByRole('list', { name: 'Files Undo changed back' })).toBeTruthy()
-    expect(rows).toEqual(['app.tsxweb/src', 'README.md'])
-  })
-
-  it('counts files for several undone messages, one file in the singular', () => {
-    render(<RevertNotice count={2} files={['a.ts']} onRedo={() => {}} />)
-
-    expect(screen.getByText('Undid the last 2 messages and their changes to 1 file. Redo brings them back; sending a new message discards them.')).toBeTruthy()
-  })
-
   it('words the caption with Undo and Redo, not "undone"', () => {
     render(<RevertNotice count={2} onRedo={() => {}} />)
 

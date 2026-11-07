@@ -194,12 +194,6 @@ export interface AgentStoreState {
   error: AgentError | string | null
   setupRequired: SetupRequiredNotice | null
   pendingDraft: { content: string; attachments?: MessageAttachment[] } | null
-  /**
-   * Every path the undos since the last Redo changed back (from the
-   * command's ``changed_paths``), for the Undo notice. Held in memory only:
-   * a reload still shows the notice, without its file list.
-   */
-  undoneFiles: { sessionId: string; paths: string[] } | null
   _pendingMessages: PendingMessage[]
   _sessionGeneration: number
   /**

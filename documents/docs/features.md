@@ -2272,10 +2272,6 @@ run from the terminal (the native Rust binary since v3.0.0).
     and palette rows, settings lists, the status bar and the header's
     sidebar button, instead of being cut to a bar on one side, and **Tab**
     no longer walks out of Settings into the window behind it.
-  - The **Undo** notice says how many files the undo changed back and lists
-    them, name first (**Undid the last message and its changes to 3
-    files**), so Undo never edits the workspace without saying where. Redo
-    still brings them back.
   - An MCP call the agent could not make because its server needs sign-in
     offers **Sign in to {server}** right under the call (or **Open in
     Settings** for a server the app cannot sign in to), and reads **Signed

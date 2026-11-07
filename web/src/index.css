@@ -1729,6 +1729,13 @@ html[data-app-hidden="true"] *::after {
     min-height: 36px;
     min-width: 36px;
   }
+  /* The plan review's deck (PlanReview/ReviewPill) takes the same step, its
+     Approve included: the 44px primary floor read oversized beside the 36px
+     controls in the box. */
+  :root [data-review-deck] [data-slot="button"] {
+    min-height: 36px;
+    min-width: 36px;
+  }
   .touch-hit::before {
     inset: min(0px, calc((100% - 44px) / 2));
   }

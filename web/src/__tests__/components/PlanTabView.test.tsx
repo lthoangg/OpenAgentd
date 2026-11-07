@@ -208,13 +208,15 @@ describe('PlanTabView', () => {
     useAgentStore.setState({ pendingQuestion: REVIEW })
     const { container } = renderTab()
     const band = container.querySelector('[data-plan-review-footer]') as HTMLElement
-    expect(band.className).toContain('border-t')
     // index.css: `.oa-review-column` is the column's 46rem, 88ch in a maximized dock.
     const column = band.firstElementChild as HTMLElement
     expect(column.className).toContain('oa-review-column')
+    // The chat composer's shape: the feedback and the actions share one framed box.
+    const box = screen.getByLabelText('Feedback on the plan').parentElement as HTMLElement
+    expect(box.className).toContain('rounded-lg')
+    expect(box.contains(screen.getByRole('button', { name: 'Approve' }))).toBe(true)
     for (const control of [
       screen.getByLabelText('Feedback on the plan'),
-      screen.getByRole('button', { name: 'Request changes' }),
       screen.getByRole('button', { name: 'Approve' }),
     ]) {
       expect(column.contains(control)).toBe(true)
@@ -248,13 +250,15 @@ describe('PlanTabView', () => {
     expect(answerCalls()[0]?.body).toEqual({ answers: [['Split step 2.']] })
   })
 
-  it('sends Request changes without feedback as the bare option', async () => {
+  it('enables Request changes only once there is a comment or feedback to send', () => {
     useAgentStore.setState({ pendingQuestion: REVIEW })
     renderTab()
-    fireEvent.click(screen.getByRole('button', { name: 'Request changes' }))
-
-    await waitFor(() => expect(answerCalls()).toHaveLength(1))
-    expect(answerCalls()[0]?.body).toEqual({ answers: [['Request changes']] })
+    const request = () => screen.getByRole('button', { name: 'Request changes' }) as HTMLButtonElement
+    expect(request().disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('Feedback on the plan'), { target: { value: '   ' } })
+    expect(request().disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('Feedback on the plan'), { target: { value: 'Split step 2.' } })
+    expect(request().disabled).toBe(false)
   })
 
   it('disables Approve while there is feedback', () => {

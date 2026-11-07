@@ -1924,10 +1924,15 @@ run from the terminal (the native Rust binary since v3.0.0).
     in the footer, the comment box docks on the keyboard, saved comments fold
     into a chip while you type, and a half-written comment survives closing
     the sheet. Request changes and Approve stay in reach.
-  - The plan review footer rests as one slim bar (**Feedback**, **Request
-    changes**, **Approve**) so the plan keeps the screen; Feedback opens the
-    comments, feedback box and Keep going. It opens expanded when the review
-    already holds feedback. `[v3.49.0]`
+  - The plan review footer is shaped like the chat composer: one framed box
+    holding the feedback (one line at rest, growing as you type) and its
+    actions, with comments above it. On a phone Keep going is a toggle in the
+    box and its turns show above it, so **Request changes** and **Approve**
+    always fit the screen, even on an iPhone mini. The comment box docks in
+    the same shape, and both take the composer's swipe (up for the keyboard,
+    down to put it away); the header and tabs stay put while the keyboard
+    rises. Request changes is off until there is a comment or feedback to
+    send. `[v3.49.0]`
   - The chat re-pins to the newest message when the keyboard opens, Send and
     Steer keep the keyboard up, and tapping the transcript puts it away.
     Since `[v3.49.0]` scrolling the transcript keeps the keyboard up, so you

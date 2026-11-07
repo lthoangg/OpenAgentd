@@ -4,7 +4,7 @@
  * that collapses it, the footer compacts while the keyboard is up, and a
  * half-written comment survives the tab remounting.
  */
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -204,7 +204,7 @@ describe('PlanTabView on a phone', () => {
 
     await setKeyboardOpen(true)
     expect(screen.queryByRole('list', { name: 'Comments on the plan' })).toBeNull()
-    expect(screen.queryByText('Or reply in chat to redirect the agent.')).toBeNull()
+    expect(screen.queryByText('Your comments go with Request changes')).toBeNull()
     const chip = screen.getByRole('button', { name: /1 comment/ })
     fireEvent.click(chip)
     expect(screen.getByRole('list', { name: 'Comments on the plan' })).toBeTruthy()
@@ -212,7 +212,7 @@ describe('PlanTabView on a phone', () => {
     expect(screen.getByRole('button', { name: 'Request changes (1)' })).toBeTruthy()
 
     await setKeyboardOpen(false)
-    expect(screen.getByText('Or reply in chat to redirect the agent.')).toBeTruthy()
+    expect(screen.getByText('Your comments go with Request changes')).toBeTruthy()
   })
 
   it('sends Request changes with the comments', async () => {
@@ -229,8 +229,9 @@ describe('PlanTabView on a phone', () => {
 
   it('keeps the turns field mounted and focused when the keyboard opens for it', async () => {
     renderTab()
-    fireEvent.click(screen.getByRole('button', { name: /Feedback/ }))
-    fireEvent.click(await screen.findByRole('checkbox', { name: 'Keep going until done' }))
+    const toggle = screen.getByRole('button', { name: 'Keep going until done' })
+    await waitFor(() => expect((toggle as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(toggle)
     const turns = screen.getByLabelText('Turns for this goal') as HTMLInputElement
     turns.focus()
     await setKeyboardOpen(true)
@@ -243,39 +244,47 @@ describe('PlanTabView on a phone', () => {
     await waitFor(() => expect(screen.queryByLabelText('Turns for this goal')).toBeNull())
   })
 
-  it('rests as one slim bar so the plan keeps the screen', () => {
+  it('rests as the chat composer: one line of feedback with the actions in the box', () => {
     renderTab()
-    expect(screen.queryByLabelText('Feedback on the plan')).toBeNull()
+    const feedback = screen.getByLabelText('Feedback on the plan') as HTMLTextAreaElement
+    expect(feedback.getAttribute('rows')).toBe('1')
+    const box = feedback.parentElement as HTMLElement
+    expect(box.contains(screen.getByRole('button', { name: 'Approve' }))).toBe(true)
+    // Nothing to send yet, so Request changes is off.
+    expect((screen.getByRole('button', { name: 'Request changes' }) as HTMLButtonElement).disabled).toBe(true)
+    // The phone deck carries a toggle, not the worded checkbox that pushed Approve off screen.
     expect(screen.queryByRole('checkbox', { name: 'Keep going until done' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Request changes' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Keep going until done' })).toBeTruthy()
   })
 
-  it('approves in one tap from the slim bar', async () => {
+  it('approves in one tap', async () => {
     renderTab()
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
     await waitFor(() => expect(answers).toHaveLength(1))
   })
 
-  it('opens the feedback panel focused, and collapses it again', () => {
+  it('keeps Approve short while Keep going is on; its name still says so', async () => {
     renderTab()
-    fireEvent.click(screen.getByRole('button', { name: /Feedback/ }))
-    expect(document.activeElement).toBe(screen.getByLabelText('Feedback on the plan'))
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse feedback' }))
-    expect(screen.queryByLabelText('Feedback on the plan')).toBeNull()
+    const toggle = screen.getByRole('button', { name: 'Keep going until done' }) as HTMLButtonElement
+    await waitFor(() => expect(toggle.disabled).toBe(false))
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    const approve = screen.getByRole('button', { name: /^Approve and keep going/ })
+    expect(approve.textContent).toBe('Approve')
   })
 
-  it('shows the comment count on the slim bar and opens expanded when feedback exists', () => {
-    const first = renderTab()
-    selectText(planItem(first.container, 'Write the migration'))
-    fireEvent.click(screen.getByRole('button', { name: 'Comment on selection' }))
-    fireEvent.change(screen.getByLabelText('Comment'), { target: { value: 'Make it reversible.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse feedback' }))
-    expect(screen.getByRole('button', { name: /Feedback\s*1/ })).toBeTruthy()
-    first.unmount()
-
+  it('takes the composer swipe: up on the box raises the keyboard for the feedback', () => {
     renderTab()
-    expect(screen.getByLabelText('Feedback on the plan')).toBeTruthy()
+    const feedback = screen.getByLabelText('Feedback on the plan')
+    const box = feedback.parentElement as HTMLElement
+    expect(box.hasAttribute('data-keyboard-swipe')).toBe(true)
+    const focus = spyOn(feedback, 'focus')
+    const touch = (y: number) => ({ clientX: 100, clientY: y })
+    fireEvent.touchStart(box, { touches: [touch(300)] })
+    fireEvent.touchMove(box, { touches: [touch(260)] })
+    fireEvent.touchEnd(box, { changedTouches: [touch(240)] })
+    expect(document.activeElement).toBe(feedback)
+    // No page scroll to the box: iOS would shove the header and tabs up with it.
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true })
   })
 })

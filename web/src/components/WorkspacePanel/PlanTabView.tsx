@@ -30,7 +30,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Check, ChevronDown, ChevronRight, ChevronUp, Copy, ExternalLink, FileText, MessageSquare, MessageSquarePlus, MoreHorizontal, Pencil, Unlink } from 'lucide-react'
+import { Check, ChevronRight, Copy, ExternalLink, FileText, MessageSquarePlus, MoreHorizontal, Pencil, Unlink } from 'lucide-react'
 import type { SessionPlan, TodoItem } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
@@ -55,8 +55,9 @@ import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
 import { workspaceRelativePath } from '@/utils/file-refs'
 import { MarkdownBlock } from '@/utils/markdown'
 import { FileRefContext, type FileRefOpener } from '../FileRefLink'
-import { KeepGoingControl } from '../PlanReview/KeepGoingControl'
+import { KeepGoingControl, KeepGoingToggle } from '../PlanReview/KeepGoingControl'
 import { CommentButton, CommentComposer, CommentList, showPassage, useCommentHighlights } from '../PlanReview/PlanComments'
+import { REVIEW_DECK_BUTTON_CLASS, ReviewDeck, ReviewPill, ReviewTextarea } from '../PlanReview/ReviewPill'
 import { readAppendixOpen, splitPlanAppendix, writeAppendixOpen } from '../PlanReview/plan-appendix'
 import {
   findTextRange,
@@ -87,6 +88,10 @@ const STATUS_CHIP_CLASS: Record<PlanStatus, string> = {
 }
 
 const HTML_FILE = /\.html?$/i
+
+/** The review footer's band, as the chat composer's: the page under a framed box. */
+const FOOTER_BAND_MOBILE = 'shrink-0 bg-(--bg-page) px-2 pt-1.5 pb-safe'
+const FOOTER_BAND_DESKTOP = 'shrink-0 bg-(--bg-page) px-3 pt-1 pb-3'
 
 /**
  * How long a touch selection is remembered after iOS collapses it, so a tap
@@ -208,17 +213,6 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
     setComposer(restoredComposer(snapshotPlanReviewDraft(reviewId)))
   }
   const previousReview = useRef(reviewId)
-  // Phones: the review footer rests as one slim bar so the plan gets the
-  // screen; Feedback opens the full panel. A review that already holds
-  // feedback or comments opens expanded, so none of it is hidden.
-  const draftHasContent = (d: PlanReviewDraft) => d.comments.length > 0 || d.overall.trim().length > 0
-  const [footerOpen, setFooterOpen] = useState(() => draftHasContent(snapshotPlanReviewDraft(reviewId)))
-  const [footerFor, setFooterFor] = useState(reviewId)
-  if (reviewId !== footerFor) {
-    setFooterFor(reviewId)
-    setFooterOpen(draftHasContent(snapshotPlanReviewDraft(reviewId)))
-  }
-  const feedbackInputRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
     const previous = previousReview.current
     if (previous && previous !== reviewId) forgetPlanReviewDraft(previous)
@@ -356,6 +350,8 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const { comments, overall } = reviewDraft
   const pendingComment = composer?.text.trim() ? [{ quote: composer.quote, text: composer.text }] : []
   const answerText = formatPlanReview([...comments, ...pendingComment], overall)
+  // Request changes needs something to send: a comment or some feedback.
+  const hasFeedback = comments.length + pendingComment.length > 0 || overall.trim().length > 0
   const tooLong = answerText.length > PLAN_FEEDBACK_MAX_CHARS
   const approveHint = unsavedEdits
     ? 'Save or cancel your edits first'
@@ -413,7 +409,9 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
       // Focus last: WebKit keeps the box's caret in the page selection, so
       // clearing the selection after focusing would drop focus again.
       flushSync(() => changeComposer(next))
-      commentInputRef.current?.focus()
+      // No scroll: iOS scrolling the page to the box as the keyboard rises
+      // shoved the whole shell (header and tabs) up.
+      commentInputRef.current?.focus({ preventScroll: true })
     } else {
       changeComposer(next)
     }
@@ -430,18 +428,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
     const id = `${commentIdPrefix}${Date.now().toString(36)}${comments.length}`
     const next = { ...reviewDraft, comments: [...comments, { id, quote: composer.quote, text: composer.text.trim() }] }
     setComposer(null)
-    setFooterOpen(true)
     persist(next, null)
-  }
-
-  const openFeedback = () => {
-    // Focus inside the tap so iOS raises the keyboard.
-    flushSync(() => setFooterOpen(true))
-    feedbackInputRef.current?.focus()
-  }
-  const closeFeedback = () => {
-    dismissKeyboard()
-    setFooterOpen(false)
   }
 
   const requestChanges = () => {
@@ -642,26 +629,24 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
 
       {review && mobile && composer ? (
         // Mobile: the comment being written docks here, on the keyboard.
-        <div className="shrink-0 border-t border-(--color-border-subtle) bg-(--bg-card) px-3 pt-2.5 pb-safe">
-          <div className="pb-2.5">
-            <CommentComposer
-              docked
-              anchor={null}
-              quote={composer.quote}
-              text={composer.text}
-              onChange={(text) => changeComposer({ ...composer, text })}
-              onAdd={addComment}
-              onCancel={() => changeComposer(null)}
-              scrollRef={scrollRef}
-              textareaRef={commentInputRef}
-            />
-          </div>
+        <div className={FOOTER_BAND_MOBILE}>
+          <CommentComposer
+            docked
+            anchor={null}
+            quote={composer.quote}
+            text={composer.text}
+            onChange={(text) => changeComposer({ ...composer, text })}
+            onAdd={addComment}
+            onCancel={() => changeComposer(null)}
+            scrollRef={scrollRef}
+            textareaRef={commentInputRef}
+          />
         </div>
       ) : review && mobile && !editing && heldSelection ? (
         // Mobile: selected plan text offers Comment here, clear of the
         // selection handles and the system menu iOS draws over the text.
-        <div className="flex shrink-0 items-center gap-2 border-t border-(--color-border-subtle) bg-(--bg-card) px-3 pt-2.5 pb-safe">
-          <div className="flex w-full items-center gap-2 pb-2.5">
+        <div className={FOOTER_BAND_MOBILE}>
+          <div className="flex w-full items-center gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={clearMobileSelection}>
               Clear
             </Button>
@@ -687,60 +672,15 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
             </Button>
           </div>
         </div>
-      ) : review && mobile && !footerOpen ? (
-        // Mobile at rest: one slim bar, so the plan keeps the screen.
-        <div data-plan-review-footer="" className="shrink-0 border-t border-(--color-border-subtle) bg-(--bg-card) px-3 pt-2 pb-safe">
-          {decision.error && (
-            <p role="alert" className="pb-1.5 text-meta text-(--color-error)">{decision.error}</p>
-          )}
-          <div className="flex items-center gap-2 pb-2">
-            <Button type="button" variant="ghost" size="sm" className="gap-1.5 px-2" aria-expanded={false} onClick={openFeedback}>
-              <MessageSquare size={12} aria-hidden="true" />
-              Feedback
-              {comments.length > 0 && (
-                <span className="rounded-full bg-(--bg-key) px-1.5 text-meta tabular-nums">{comments.length}</span>
-              )}
-              <ChevronUp size={12} aria-hidden="true" />
-            </Button>
-            <span className="min-w-0 flex-1" aria-hidden="true" />
-            <Button type="button" variant="default" size="sm" disabled={decision.submitting || tooLong} onClick={requestChanges}>
-              {comments.length > 0 ? `Request changes (${comments.length})` : 'Request changes'}
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              aria-label={decision.approveLabel}
-              title={approveHint ?? undefined}
-              disabled={decision.submitting || approveHint !== null}
-              onClick={approve}
-            >
-              {decision.keepGoing ? `Approve · ${decision.turnsText}↻` : 'Approve'}
-            </Button>
-          </div>
-        </div>
       ) : review && (
-        // The band runs the dock's width; its content keeps the plan's column
-        // (``oa-review-column``, index.css), so a wide or maximized dock does
-        // not stretch the feedback box and the buttons across the screen.
-        <div data-plan-review-footer="" className="shrink-0 border-t border-(--color-border-subtle) bg-(--bg-card) px-3 pt-2.5 pb-safe">
-          <div className="oa-review-column space-y-2">
-            {mobile && (
-              <div className="flex items-center">
-                <span className="text-xs font-medium text-(--color-text)">Feedback</span>
-                <span className="min-w-0 flex-1" aria-hidden="true" />
-                <button
-                  type="button"
-                  aria-label="Collapse feedback"
-                  aria-expanded
-                  onPointerDown={(event) => event.preventDefault()}
-                  onClick={closeFeedback}
-                  className={cn(DOCK_ACTION_BUTTON_CLASS, 'justify-center')}
-                >
-                  <ChevronDown size={14} aria-hidden="true" />
-                </button>
-              </div>
-            )}
+        // The chat composer's shape: what waits on the review sits above the
+        // box (comments, the turns, a hint), the box holds the feedback and
+        // the actions. Always open; on a phone the deck keeps to one row that
+        // fits a 320pt screen. The band runs the dock's width; its content
+        // keeps the plan's column (``oa-review-column``, index.css), so a wide
+        // or maximized dock does not stretch the box across the screen.
+        <div data-plan-review-footer="" className={mobile ? FOOTER_BAND_MOBILE : FOOTER_BAND_DESKTOP}>
+          <div className="oa-review-column space-y-1.5">
             {comments.length > 0 && (!compactFooter || showComments) && (
               <CommentList
                 comments={comments}
@@ -748,68 +688,91 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
                 onRemove={(comment) => changeDraft({ ...reviewDraft, comments: comments.filter((c) => c.id !== comment.id) })}
               />
             )}
-            <Textarea
-              ref={feedbackInputRef}
-              aria-label="Feedback on the plan"
-              placeholder={comments.length ? 'Anything else? (optional)' : 'What should change? Select plan text to comment on it.'}
-              value={overall}
-              maxLength={PLAN_FEEDBACK_MAX_CHARS}
-              onChange={(event) => changeDraft({ ...reviewDraft, overall: event.target.value })}
-              className={cn(
-                // While typing on a phone, cap the box to a share of the visible
-                // area so the plan above stays readable.
-                compactFooter ? 'max-h-[calc(var(--app-vh,100svh)*0.25)] min-h-10' : 'max-h-40',
-                !compactFooter && (comments.length ? 'min-h-10' : 'min-h-16'),
-              )}
-            />
-            {!compactFooter && <p className="text-meta text-(--color-text-muted)">Or reply in chat to redirect the agent.</p>}
+            {compactFooter && comments.length > 0 && (
+              <button
+                type="button"
+                aria-expanded={showComments}
+                // Keep focus (and the keyboard) in the feedback box.
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => setShowComments((open) => !open)}
+                className="inline-flex items-center gap-1 rounded-full bg-(--bg-key) px-3 py-0.5 text-meta text-(--color-text-2) pointer-coarse:min-h-9"
+              >
+                {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
+                <ChevronRight
+                  size={12}
+                  aria-hidden="true"
+                  className={cn('motion-safe:transition-transform duration-(--motion-fast)', showComments ? '-rotate-90' : 'rotate-90')}
+                />
+              </button>
+            )}
+            {mobile && decision.keepGoing && showKeepGoing && (
+              <KeepGoingControl turnsOnly decision={decision} onTurnsFocusChange={setTurnsFocused} />
+            )}
+            {mobile && footerHint && (!compactFooter || tooLong || turnsFocused) && (
+              <p className="text-meta text-(--color-text-muted)">{footerHint}</p>
+            )}
             {decision.error && (
               <p role="alert" className="text-meta text-(--color-error)">{decision.error}</p>
             )}
-            <div className="flex flex-wrap items-center justify-end gap-2 pb-2.5">
-              {showKeepGoing && <KeepGoingControl decision={decision} onTurnsFocusChange={setTurnsFocused} className="mr-auto" />}
-              {compactFooter && comments.length > 0 ? (
-                <button
+            <ReviewPill>
+              <ReviewTextarea
+                aria-label="Feedback on the plan"
+                placeholder={
+                  comments.length
+                    ? 'Anything else? (optional)'
+                    : mobile
+                      ? 'What should change?'
+                      : 'What should change? Select plan text to comment on it.'
+                }
+                value={overall}
+                maxLength={PLAN_FEEDBACK_MAX_CHARS}
+                onChange={(event) => changeDraft({ ...reviewDraft, overall: event.target.value })}
+                // While typing on a phone, cap the box to a share of the
+                // visible area so the plan above stays readable.
+                className={compactFooter ? 'max-h-[min(6lh,calc(var(--app-vh,100svh)*0.25))]' : undefined}
+              />
+              <ReviewDeck className={mobile ? undefined : 'flex-wrap'}>
+                {mobile ? (
+                  <KeepGoingToggle decision={decision} />
+                ) : (
+                  <KeepGoingControl decision={decision} onTurnsFocusChange={setTurnsFocused} />
+                )}
+                <span className="min-w-0 flex-1" aria-hidden="true" />
+                {!mobile && footerHint && (
+                  <span className="min-w-0 truncate text-meta text-(--color-text-muted)" title={footerHint}>{footerHint}</span>
+                )}
+                <Button
                   type="button"
-                  aria-expanded={showComments}
-                  // Keep focus (and the keyboard) in the feedback box.
-                  onPointerDown={(event) => event.preventDefault()}
-                  onClick={() => setShowComments((open) => !open)}
-                  className="mr-auto inline-flex items-center gap-1 rounded-full bg-(--bg-key) px-2 py-0.5 text-meta text-(--color-text-2) pointer-coarse:min-h-9 pointer-coarse:px-3"
+                  variant="default"
+                  size="sm"
+                  className={cn('min-w-0', REVIEW_DECK_BUTTON_CLASS)}
+                  title={hasFeedback ? undefined : 'Add a comment or feedback first'}
+                  disabled={decision.submitting || tooLong || !hasFeedback}
+                  onClick={requestChanges}
                 >
-                  {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
-                  <ChevronRight
-                    size={12}
-                    aria-hidden="true"
-                    className={cn('motion-safe:transition-transform duration-(--motion-fast)', showComments ? '-rotate-90' : 'rotate-90')}
-                  />
-                </button>
-              ) : (
-                footerHint && (!compactFooter || tooLong || turnsFocused) && (
-                  <span className={cn('text-meta text-(--color-text-muted)', compactFooter && 'mr-auto')}>{footerHint}</span>
-                )
-              )}
-              <Button
-                type="button"
-                variant="default"
-                size="sm"
-                disabled={decision.submitting || tooLong}
-                onClick={requestChanges}
-              >
-                {comments.length + pendingComment.length > 0
-                  ? `Request changes (${comments.length + pendingComment.length})`
-                  : 'Request changes'}
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                disabled={decision.submitting || approveHint !== null}
-                onClick={approve}
-              >
-                {decision.approveLabel}
-              </Button>
-            </div>
+                  <span className="truncate">
+                    {comments.length + pendingComment.length > 0
+                      ? `Request changes (${comments.length + pendingComment.length})`
+                      : 'Request changes'}
+                  </span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  className={cn('shrink-0', REVIEW_DECK_BUTTON_CLASS)}
+                  // A phone's deck has no room for "and keep going (N turns)":
+                  // the toggle beside it says so, the name still does.
+                  aria-label={decision.approveLabel}
+                  title={approveHint ?? undefined}
+                  disabled={decision.submitting || approveHint !== null}
+                  onClick={approve}
+                >
+                  {mobile ? 'Approve' : decision.approveLabel}
+                </Button>
+              </ReviewDeck>
+            </ReviewPill>
+            {!mobile && <p className="text-meta text-(--color-text-muted)">Or reply in chat to redirect the agent.</p>}
           </div>
         </div>
       )}

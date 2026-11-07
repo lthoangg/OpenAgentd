@@ -42,7 +42,7 @@ function composerInput(): HTMLElement | null {
   return null
 }
 
-export function RunChip({ settings, disabled = false, hideThinking = false }: { settings: RunSettings; disabled?: boolean; /** A phone: thinking has its own button (ThinkingControl). */ hideThinking?: boolean }) {
+export function RunChip({ settings, disabled = false }: { settings: RunSettings; disabled?: boolean }) {
   const isMobile = useIsMobile()
   // A phone's deck has room for the model's name only: its distinguishing end
   // (``sonnet-4-6``), at 15px, truncating last. The picker and the label have
@@ -77,7 +77,7 @@ export function RunChip({ settings, disabled = false, hideThinking = false }: { 
   // With several accounts the chip always names the one in use.
   const account = settings.inUseAccount?.label ?? null
   // The chip is narrow on a phone: it shows the short level name; its label says it whole.
-  const meta = [settings.thinkingLevel && !hideThinking ? thinkingLevelShortLabel(settings.thinkingLevel) : null, account].filter(Boolean).join(' · ')
+  const meta = [settings.thinkingLevel ? thinkingLevelShortLabel(settings.thinkingLevel) : null, account].filter(Boolean).join(' · ')
   const shortcut = shortcutLabel(APP_SHORTCUTS.sessionSettings, os)
   const label = [
     `Model ${settings.model ?? 'not set'}`,

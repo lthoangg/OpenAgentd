@@ -1861,12 +1861,8 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   its file bar wraps them.
 - **The composer.** It grows to six lines, then scrolls inside. The
   Code/Plan toggle and the model chip are separate controls, so mode is one
-  tap; the model chip's sheet picks only the model. Thinking is its own
-  chip with a dial glyph (an arc and a needle that sweeps with the level);
-  a tap blurs the screen over one Control Center slider: a 56pt card-tone
-  track cut into a segment per level, each level's name inside its
-  segment, filled in the accent through the chosen one (the switch's "on"
-  colour). A press or drag anywhere picks the segment under the finger.
+  tap; the model chip's sheet picks the model and, under it, the thinking
+  level (the label stacked above the levels so six fit an iPhone mini).
   The context ring is a thin gauge, never a spinner; it follows the run
   controls on the left, away from Send, and Send (or Stop) is drawn at
   32pt with a 44pt touch area. A new draft shows only the

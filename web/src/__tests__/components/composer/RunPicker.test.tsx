@@ -315,13 +315,14 @@ describe('RunPicker', () => {
     expect(xhigh.textContent).toBe('XHigh')
   })
 
-  // The phone deck has its own thinking button, so its model sheet only picks the model.
-  it('leaves thinking out of the phone sheet and keeps it on desktop', () => {
+  // Six levels (Off … XHigh) need the sheet's whole width on an iPhone mini.
+  it('puts the Thinking label above its levels in the phone sheet, beside them on desktop', () => {
     const { unmount } = wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} touch />)
-    expect(screen.queryByRole('radiogroup', { name: 'Thinking level' })).toBeNull()
+    const row = () => screen.getByRole('radiogroup', { name: 'Thinking level' }).parentElement!
+    expect(row().className.split(/\s+/)).toContain('flex-col')
     unmount()
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
-    expect(screen.getByRole('radiogroup', { name: 'Thinking level' })).toBeTruthy()
+    expect(row().className.split(/\s+/)).not.toContain('flex-col')
   })
 
   it('says the model decides when no thinking level is set, so an empty control is not a mystery', () => {

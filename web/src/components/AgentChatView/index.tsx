@@ -71,7 +71,6 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { type InputComposerHandle } from '../InputComposer'
 import { Composer } from '../composer/Composer'
 import { RunChip } from '../composer/RunChip'
-import { ThinkingControl } from '@/components/composer/ThinkingControl'
 import { PlusMenu, type ComposerActions } from '../composer/PlusMenu'
 import { ContextMeter } from '../composer/ContextMeter'
 import { useRunSettings } from '../composer/useRunSettings'
@@ -891,15 +890,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       onRedoAll={() => { void handleSlashCommand('redo-all') }}
       renderPlus={renderPlus}
       deck={(
-        <>
-          <RunChip
-            settings={runSettings}
-            disabled={isSessionLoading}
-            hideThinking={isPhone}
-          />
-          {/* A phone: thinking is its own button, a slider over the blurred screen. */}
-          {isPhone && <ThinkingControl settings={runSettings} disabled={isSessionLoading} />}
-        </>
+        <RunChip
+          settings={runSettings}
+          disabled={isSessionLoading}
+        />
       )}
       deckEnd={sessionIdState ? (
         <ContextMeter

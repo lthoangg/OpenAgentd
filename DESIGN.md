@@ -1952,8 +1952,8 @@ blue running dot, 10/14px radii, a Review panel that overlays below 1100px),
 this file wins.
 
 - **The phone's pieces, at pointer density.** A piece the phone already has
-  (the pinned question, the plan bar, the run status, the Stopped toast, the
-  diff's Wrap toggle, the one-line folder banner, the task switch) is the
+  (the pinned question, the plan bar, the diff's Wrap toggle, the one-line
+  folder banner, the task switch) is the
   same component on desktop with its gate widened, never a second copy. It
   takes desktop sizes: 28px list rows, 24px row actions, 36px header, the
   768px reading column; nothing grows to 44pt. Each widened gate has a
@@ -1970,12 +1970,11 @@ this file wins.
   (orange frame; 1–9 pick an option and ⌘↵ sends once focus is in it; the
   transcript card says "Answer below"), then a plan awaiting approval as one
   bar, "Plan awaiting approval · View", where View brings the Plan tab
-  forward. While the agent works the composer's bottom row reads "Running ·
-  step 7 · 3:12" beside Stop. Nothing floats over the transcript.
-- **Run control.** **Esc** stops the run only when the composer has focus,
-  its draft is empty and no menu or dialog is open (those take Esc first);
-  Stop's tooltip and the shortcuts sheet name the key. A stop leaves a
-  "Stopped" toast whose **Resume** sends "Continue".
+  forward. Nothing floats over the transcript.
+- **Run control stays quiet.** Stop is the ■ in the Send slot; there is no
+  run status line, no Esc-to-stop and no Stopped toast on desktop. Queued
+  and steer messages wait in the chat, under the turn they follow, never
+  above the composer.
 - **Trouble is told where it happens.** When the server stops answering
   the status bar says **Can't reach** beside a red dot, the banner offers
   **Retry** and, in the desktop app, **Start built-in server**, and Send is
@@ -1989,7 +1988,7 @@ this file wins.
   ID stays mono in its tooltip and the picker. The detailed transcript keeps
   one row per tool call (folding is the Reader style's job), and a failed
   call stays a closed row like the others, since nothing opens on its own.
-  The timeline marks name their prompt on hover. A diff wraps by default
+  A diff wraps by default
   (**Wrap lines** keeps lines whole); **Side by side** lays the old file
   beside the new one when the panel is at least 640px wide and stays
   unified below that, saying so on the toggle. A wide table fades at its
@@ -2007,9 +2006,7 @@ this file wins.
 - **Lists say what they hold.** "Show 5 more" counts what the next click
   adds. A scheduled task switches on and off from its row, and its form
   says when a new schedule first runs. Adding a folder says "Added
-  {folder}". A task in the Tasks tab offers **Show turn**. The Undo notice
-  names the files it changed back; Undo asks nothing first, since Redo
-  brings them back.
+  {folder}".
 
 ### Native per platform
 

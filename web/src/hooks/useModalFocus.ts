@@ -18,6 +18,10 @@ export interface ModalLayerOptions {
  * the close button — technically correct, practically useless, since the user
  * then has to Tab past it to reach the content they opened the panel for.
  *
+ * Focus moves with ``preventScroll``: on iOS, focusing a fixed sheet while the
+ * keyboard is up (a ``/btw`` sent from the composer) otherwise scrolls the
+ * whole page up to bring it above the keyboard, and the chat jumps.
+ *
  * The modal is a layer on the keyboard stack (``lib/keyboard``): Escape goes
  * to whichever layer opened last, and app shortcuts behind it are blocked.
  */
@@ -58,13 +62,13 @@ export function useModalFocus(
     const focusFirst = () => {
       const preferred = initialFocusRef.current?.current
       if (preferred && preferred.isConnected && isVisible(preferred)) {
-        preferred.focus()
+        preferred.focus({ preventScroll: true })
         return
       }
       const target = Array.from(dialog?.querySelectorAll<HTMLElement>(
         'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
       ) ?? []).find(isVisible)
-      target?.focus()
+      target?.focus({ preventScroll: true })
     }
     const id = requestAnimationFrame(focusFirst)
 
@@ -91,7 +95,7 @@ export function useModalFocus(
       cancelAnimationFrame(id)
       document.removeEventListener('keydown', handleKeyDown)
       if (dialogRef.current === dialog) dialogRef.current = null
-      if (previousActive?.isConnected) previousActive.focus()
+      if (previousActive?.isConnected) previousActive.focus({ preventScroll: true })
     }
   }, [open, layerId]) // onClose intentionally omitted — read via ref above
 

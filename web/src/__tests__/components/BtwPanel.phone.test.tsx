@@ -44,4 +44,15 @@ describe('BtwPanel on a phone', () => {
     expect(pill.className).toContain('h-6')
     expect(pill.closest('.absolute')).toBeNull()
   })
+
+  // The status line keeps its height, so the chat behind the sheet does not move.
+  it('keeps the pill, pressed, while the sheet is open', async () => {
+    globalThis.fetch = mock(async () => Response.json({ items: [], total: 3 })) as unknown as typeof fetch
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><BtwPanel sessionId="s1" countEnabled /></QueryClientProvider>)
+    await screen.findByRole('button', { name: 'Show side questions (3)' })
+    act(() => useBtwStore.getState().reopen('s1'))
+    await screen.findByRole('dialog', { name: 'Side questions' })
+    expect(screen.getByRole('button', { name: 'Hide side questions' }).getAttribute('aria-expanded')).toBe('true')
+  })
 })

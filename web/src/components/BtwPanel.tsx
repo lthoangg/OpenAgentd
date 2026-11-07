@@ -73,24 +73,30 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
   if (!sessionId) return null
   const store = useBtwStore.getState()
 
+  // A phone: a small "btw" pill in the status line above the composer, in
+  // the flow, so it never covers the transcript (user request). It stays
+  // while the sheet is open, pressed, so the line keeps its height and the
+  // chat behind the sheet does not move.
+  const pill = isPhone && btw.total > 0 ? (
+    <button
+      type="button"
+      onClick={() => (open ? store.dismiss(sessionId) : onReopen ? onReopen() : store.reopen(sessionId))}
+      aria-label={open ? 'Hide side questions' : `Show side questions (${btw.total})`}
+      aria-expanded={open}
+      data-btw-pill=""
+      className={cn(
+        'relative touch-hit ml-auto flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-meta font-medium transition-transform duration-(--motion-instant) active:scale-95 motion-reduce:active:scale-100 animate-in fade-in-0 animation-duration-(--motion-base)',
+        open ? 'bg-(--color-fill-key-hover) text-(--color-text)' : 'bg-(--bg-key) text-(--color-text-2)',
+      )}
+    >
+      btw
+      <span className="tabular-nums text-(--color-text-muted)">{btw.total}</span>
+    </button>
+  ) : null
+
   if (!open) {
     if (btw.total <= 0) return null
-    // A phone: a small "btw" pill in the status line above the composer, in
-    // the flow, so it never covers the transcript (user request).
-    if (isPhone) {
-      return (
-        <button
-          type="button"
-          onClick={() => (onReopen ? onReopen() : store.reopen(sessionId))}
-          aria-label={`Show side questions (${btw.total})`}
-          data-btw-pill=""
-          className="relative touch-hit ml-auto flex h-6 shrink-0 items-center gap-1 rounded-full bg-(--bg-key) px-2 text-meta font-medium text-(--color-text-2) transition-transform duration-(--motion-instant) active:scale-95 motion-reduce:active:scale-100 animate-in fade-in-0 animation-duration-(--motion-base)"
-        >
-          btw
-          <span className="tabular-nums text-(--color-text-muted)">{btw.total}</span>
-        </button>
-      )
-    }
+    if (isPhone) return pill
     return (
       <div className="pointer-events-auto absolute right-3 bottom-full z-10 mb-3 flex max-w-[calc(100%-1.5rem)] origin-bottom-right animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)">
         <Tooltip className="min-w-0">
@@ -206,6 +212,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
 
   return (
     <>
+    {pill}
     {isPhone ? (
       <BottomSheet open onClose={() => store.dismiss(sessionId)} label="Side questions" detents={['medium', 'large']}>
         <div data-btw-sheet="">{panel}</div>

@@ -2183,6 +2183,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     the theme (System → Light → Dark) instead of Commands; its icons and
     captions sit centred at any text size, and it steps aside while you
     search.
+  - Hold **✎** on Sessions to pick where the new session starts: Chat, the
+    recently active workspaces and the current one open above it, and ✎
+    turns into ✕. Slide to one and lift to start there; lift on ✕ or
+    outside to cancel. A finger on the toolbar's icons slides across them
+    too, with a bubble naming the one under it; lifting runs that one.
   - A changed file's and a commit's actions in the Review panel (long press
     or ⋯) open as the same bottom action sheet as every other phone menu,
     destructive action last; so does the Review panel's **+**.

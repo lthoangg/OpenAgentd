@@ -137,6 +137,7 @@ import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
   groupSessionsByWorkspace,
+  newSessionChoicePaths,
   orderWorkspacePaths,
   repositoryCheckouts,
   sessionActivityTime,
@@ -618,6 +619,16 @@ export function Sidebar({
     onMobileClose?.()
   }
 
+  // The Sessions screen covers the chat it was popped from, so the chat's
+  // own handler (which leaves an empty draft or session as it is) would
+  // change nothing on screen: always push a fresh draft. The draft is built
+  // before the push, so the slide shows it at once.
+  const pushPageDraft = (path: string) => {
+    softHapticFeedback()
+    startNewSession({ navigate, workspace: path })
+    requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('focus-chat-input')))
+  }
+
   // "New session" atop the sidebar does what ⌘N does: the chat's handler
   // when there is one, else a draft in the current workspace (or Chat).
   // An empty draft already on screen stays; its composer takes focus.
@@ -628,13 +639,10 @@ export function Sidebar({
       return
     }
     if (isPage) {
-      // The Sessions screen covers the chat it was popped from, so the
-      // chat's own handler (which leaves an empty draft or session as it
-      // is) would change nothing on screen: always push a fresh draft.
-      // The draft is built before the push, so the slide shows it at once.
-      softHapticFeedback()
-      startNewSession({ navigate, workspace: target })
-    } else if (onNewSession && workspace) {
+      pushPageDraft(target)
+      return
+    }
+    if (onNewSession && workspace) {
       onNewSession()
       onMobileClose?.()
     } else {
@@ -847,6 +855,24 @@ export function Sidebar({
     ),
   ]
   const activeWorktreeSource = activeWorkspace ? worktreeSourceByDirectory.get(activeWorkspace) : null
+  // ✎'s hold menu on the Sessions screen: where a tap would start, Chat, and
+  // the most recently active repositories.
+  const newSessionChoices = isPage
+    ? newSessionChoicePaths(
+        workspace ?? chatWorkspace?.path ?? null,
+        chatWorkspace?.path ?? null,
+        orderWorkspacePaths(
+          sourceWorkspacePaths(workspaceTree, deletedWorktreeSet).filter((path) => !isChatPath(path)),
+          workspaceByPath,
+          [],
+          sessionsByWorkspace,
+        ),
+      ).map((path) => ({
+        path,
+        label: workspaceLabel(path, chatWorkspace),
+        current: path === (workspace ?? chatWorkspace?.path),
+      }))
+    : []
 
   // Width is persisted in the layout store and clamped against the window so
   // the chat and a side-by-side dock always keep their minimums. A drawer
@@ -1684,6 +1710,8 @@ export function Sidebar({
         !searchOpen && (
           <SessionsPageToolbar
             onNewSession={startSessionFromSidebar}
+            onNewSessionIn={pushPageDraft}
+            newSessionChoices={newSessionChoices}
             onOpenSettings={() => openSettings()}
             onOpenScheduler={openScheduler}
             onOpenUsage={() => openTelemetry()}

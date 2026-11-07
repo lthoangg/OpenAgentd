@@ -80,6 +80,24 @@ export function orderWorkspacePaths(
   return keyed.map((item) => item.path)
 }
 
+/**
+ * The workspaces ✎'s hold menu offers on the phone, top to bottom: Chat,
+ * then the others most recently active last (nearest the thumb), then the
+ * current one at the bottom, right above ✎. ``recent`` is newest first; at
+ * most ``limit`` rows in all.
+ */
+export function newSessionChoicePaths(
+  current: string | null,
+  chatPath: string | null,
+  recent: readonly string[],
+  limit = 6,
+): string[] {
+  const chat = chatPath && chatPath !== current ? [chatPath] : []
+  const room = Math.max(0, limit - chat.length - (current ? 1 : 0))
+  const others = recent.filter((path) => path !== current && path !== chatPath).slice(0, room).reverse()
+  return [...chat, ...others, ...(current ? [current] : [])]
+}
+
 export function groupSessionsByWorkspace(
   sessions: SessionResponse[],
 ): Map<string, SessionResponse[]> {

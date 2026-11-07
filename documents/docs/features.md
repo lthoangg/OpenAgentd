@@ -2308,6 +2308,12 @@ run from the terminal (the native Rust binary since v3.0.0).
     is one interval after you save", and a one-time task reads **Runs in
     3h (Asia/Ho_Chi_Minh)** under its date, or warns in orange that a time
     already gone **runs as soon as you save**.
+  - A diff tab's **Side by side** toggle lays the old file beside the new
+    one: each removed line sits next to the line that replaced it, context
+    on both sides, each column wrapping on its own. The choice is kept for
+    every diff tab. While the Review panel is too narrow for two columns
+    the diff stays unified and the toggle says so; maximizing or widening
+    the panel brings the columns back.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

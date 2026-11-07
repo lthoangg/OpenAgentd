@@ -127,7 +127,7 @@ describe('Review dock diff tabs', () => {
     const diffTab = await screen.findByRole('button', { name: 'app.ts diff' })
     expect(diffTab.getAttribute('aria-current')).toBe('true')
     expect(screen.getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBeNull()
-    expect(screen.getByText('const before = 2')).toBeTruthy()
+    expect(await screen.findByText('const before = 2')).toBeTruthy()
     expect(screen.getByText('const after = 3')).toBeTruthy()
     // The list never loads a body; the tab fetches only its own file.
     expect(requestedUrls.filter((url) => url.includes('/workspace/git-diff/files'))).toHaveLength(1)

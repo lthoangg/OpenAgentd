@@ -97,10 +97,10 @@ import {
   collectChangedFiles,
   collectDiffSections,
 } from './WorkspacePanel/diff-helpers'
+
 import { GitReviewSubPanel } from './WorkspacePanel/GitReviewSubPanel'
 import { CommitHistorySubPanel } from './WorkspacePanel/CommitHistorySubPanel'
 import { FilePreviewSubPanel } from './WorkspacePanel/FilePreviewSubPanel'
-import { DiffTabView } from './WorkspacePanel/DiffTabView'
 import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
@@ -158,6 +158,7 @@ const PlanTabView = lazySurface(() => import('./WorkspacePanel/PlanTabView'), 'P
 const GoalTabView = lazySurface(() => import('./WorkspacePanel/GoalTabView'), 'GoalTabView')
 const TerminalSubPanel = lazySurface(() => import('./WorkspacePanel/TerminalSubPanel'), 'TerminalSubPanel')
 const CommitTabView = lazySurface(() => import('./WorkspacePanel/CommitTabView'), 'CommitTabView')
+const DiffTabView = lazySurface(() => import('./WorkspacePanel/DiffTabView'), 'DiffTabView')
 
 export type { ChangedFileStatus, ChangedFileInfo, DiffFileSection }
 

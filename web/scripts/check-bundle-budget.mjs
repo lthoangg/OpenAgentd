@@ -40,7 +40,7 @@ export function measureBundle(directory) {
 // Surfaces kept out of the startup path (`web/src/lib/lazy-surface.tsx`):
 // each loads on first use or while the app is idle after it starts. A static
 // import from startup code would quietly put it back; this check fails then.
-export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult', 'RunPicker', 'PlanTabView', 'GoalTabView', 'TerminalFindBar', 'TerminalSubPanel', 'CommitTabView', 'AppBackendDialog', 'TodosPopover', 'SessionMcpServers', 'KeyboardShortcutsSheet', 'ServersScreen']
+export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult', 'RunPicker', 'PlanTabView', 'GoalTabView', 'TerminalFindBar', 'TerminalSubPanel', 'CommitTabView', 'AppBackendDialog', 'TodosPopover', 'SessionMcpServers', 'KeyboardShortcutsSheet', 'ServersScreen', 'DiffTabView']
 
 // The startup path loads everything not behind a dynamic import. History:
 // features had grown it from 2.37 MB / 705 kB gzip (early October) to
@@ -81,7 +81,13 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // The P1 phone work then reached 667.6 kB. On-demand cards (plan review,
 // goal check, questions) render blank for a moment on first use, so they stay
 // eager and the budget rose instead: the experience wins over a few kB.
-export const LIMITS = { eagerBytes: 2_110_000, eagerGzipBytes: 676_000, largestChunkBytes: 1_180_000 }
+// The desktop UX pass (pinned question and plan, run bar, offline send gate,
+// grouped search, revert file list, MCP sign-in chips, side-by-side diff)
+// reached 680.4 kB; the Diff tab, shown only once opened, moved behind
+// lazySurface (679.5 kB). Making the Git and file views lazy again cost more
+// than it saved (681.1 kB), and the rest sits in the composer, sidebar and
+// transcript, so the gzip limit rose.
+export const LIMITS = { eagerBytes: 2_110_000, eagerGzipBytes: 682_000, largestChunkBytes: 1_180_000 }
 
 /** Each lazy surface must have a chunk of its own, outside the startup path. */
 export function lazySurfaceFailures(directory, names = LAZY_SURFACES) {

@@ -78,8 +78,10 @@ export function PhoneNavBar({ title, subtitle, back, leading, trailing, separato
 
   const titleBlock = (
     <div data-phone-nav-title="" className={cn('min-w-0', start ? 'flex-1 text-left' : 'shrink text-center')}>
-      <h1 className="truncate text-base font-semibold text-(--color-text)">{title}</h1>
-      {subtitle != null && <div className="truncate text-meta text-(--color-text-muted)">{subtitle}</div>}
+      {/* With a second line, both sit tight as an iOS two-line title: the
+          pair centres in the bar instead of crowding its edges. */}
+      <h1 className={cn('truncate text-base font-semibold text-(--color-text)', subtitle != null && 'leading-tight')}>{title}</h1>
+      {subtitle != null && <div className="truncate text-meta leading-tight text-(--color-text-muted)">{subtitle}</div>}
     </div>
   )
 

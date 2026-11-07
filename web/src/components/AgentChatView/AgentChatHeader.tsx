@@ -430,10 +430,15 @@ function PhoneChatNavBar({ onBack, workspace, workspaceName, sessionId, sessionT
             data-session-info-trigger=""
             onClick={() => setInfoOpen(true)}
             aria-label="Session info"
-            // The bar's own title type: the button only adds the tap.
-            className="h-auto max-w-full justify-start truncate px-0 font-[inherit] text-[length:inherit] hover:bg-transparent active:bg-transparent"
+            // The bar's own title type: the button only adds the tap. No
+            // phone button floor (``min-h-0!``): its 40px box under the
+            // workspace line pushed the title up and the bar taller, and the
+            // ghost's muted medium text read as a second subtitle. ``!``
+            // throughout: ``cn`` does not merge, so these must beat the
+            // ghost/size classes they repeat.
+            className="block! h-auto! min-h-0! min-w-0! max-w-full truncate rounded-none! p-0! text-left font-semibold! text-[length:inherit]! leading-[inherit]! text-(--color-text)! hover:bg-transparent! active:bg-transparent! active:opacity-60"
           >
-            <span className="truncate">{titleText}</span>
+            {titleText}
           </Button>
         ) : titleText}
         subtitle={workspace ? workspaceName : undefined}

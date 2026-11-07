@@ -488,6 +488,16 @@ describe('AgentChatHeader', () => {
       expect(names).toEqual(['Back to Sessions', 'Session info', 'Tasks', 'Review panel'])
     })
 
+    it('draws the tappable title as the bar title, not as a 40px muted button', () => {
+      renderHeader({ onBack: () => undefined })
+      const trigger = screen.getByRole('button', { name: 'Session info' })
+      // The phone button floor would stand the title over its workspace line.
+      expect(trigger.className).toContain('min-h-0!')
+      // ``cn`` does not merge: the bar's type has to win over the ghost's.
+      expect(trigger.className).toContain('font-semibold!')
+      expect(trigger.className).toContain('text-(--color-text)!')
+    })
+
     it('draws every bar button with the Button primitive', () => {
       const { container } = renderHeader({ onBack: () => undefined, onOpenLead: () => undefined })
       for (const button of container.querySelectorAll<HTMLElement>('header button')) {

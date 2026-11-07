@@ -76,7 +76,6 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         // Named as in the Send menu while a turn runs.
         keys('Stop & send', { key: 'Enter', mod: true }),
         keys('Queue until done', { key: 'Enter', alt: true }),
-        keys('Stop the agent (from an empty message input)', { key: 'Escape' }),
         keys('Switch Plan and Code mode', { key: 'Tab' }),
         keys('Earlier and later sent messages', { key: 'ArrowUp' }, { key: 'ArrowDown' }),
         app('findInSession', 'Find in session (from the chat)'),

@@ -76,7 +76,7 @@ import { PlusMenu, type ComposerActions } from '../composer/PlusMenu'
 import { ContextMeter } from '../composer/ContextMeter'
 import { useRunSettings } from '../composer/useRunSettings'
 import { BtwPanel } from '../BtwPanel'
-import { DeckRunStatus, PhoneStatusLine, RunBar } from '../composer/RunBar'
+import { PhoneStatusLine, RunBar } from '../composer/RunBar'
 import { PinnedQuestion } from '../AskUser'
 import { PinnedPlanReview } from '../PlanReview/PlanReviewCard'
 import { AppFooter } from '../AppFooter'
@@ -106,7 +106,7 @@ import { useDraftHandoff } from './useDraftHandoff'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
 import { btwSubmit, composerHistoryPrompts, newestUserBlockId, parseBuiltInSlashCommand } from './helpers'
-import { deliverFromComposer, stopFromComposer, useReleaseHeldMessages } from './heldMessages'
+import { deliverFromComposer, pushStoppedToast, stopTurn, useReleaseHeldMessages } from './heldMessages'
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
@@ -848,7 +848,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         await deliverFromComposer(workspace, inputRef.current, { content: expanded, files, mentions }, delivery)
       }}
       onStop={() => {
-        void stopFromComposer(workspace, () => inputRef.current)
+        void stopTurn(inputRef.current)
+        if (isPhone && workspace) pushStoppedToast(workspace, () => inputRef.current)
       }}
       onSlashCommand={handleSlashCommand}
       onSnippetCommand={handleSnippetCommand}
@@ -900,17 +901,13 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         />
       )}
       deckEnd={sessionIdState ? (
-        <>
-          {/* Desktop: the run's step and time beside Stop (phones use the line above). */}
-          <DeckRunStatus />
-          <ContextMeter
-            input={headerTokens.input}
-            output={headerTokens.output}
-            cachedPercent={headerTokens.cachedPercent}
-            trigger={headerTokens.trigger}
-            canSummarize={leadHasVisibleBlocks && !isAgentWorking}
-          />
-        </>
+        <ContextMeter
+          input={headerTokens.input}
+          output={headerTokens.output}
+          cachedPercent={headerTokens.cachedPercent}
+          trigger={headerTokens.trigger}
+          canSummarize={leadHasVisibleBlocks && !isAgentWorking}
+        />
       ) : null}
       aboveComposer={(
         <>

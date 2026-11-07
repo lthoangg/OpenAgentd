@@ -29,8 +29,6 @@ import { ActionSheet } from '@/components/ui/action-sheet'
 import { SessionModeToggle } from './SessionModeToggle'
 import type { ComposerActions } from './composer/PlusMenu'
 import { canPickNatively, pickNatively } from '@/lib/native-pick'
-import { useShortcut } from '@/lib/keyboard/hooks'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 // Re-export the public type so callers can import ``FileRef`` from this module
 // alongside the component. (The helper ``findActiveMention`` is imported from
@@ -708,15 +706,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // Edge-triggered on the boolean — not on the underlying length values —
   // so we only re-render the parent when crossing 0↔1.
   const hasContent = hasMessage || files.length > 0
-
-  // Desktop: Esc in an empty composer stops the run, as in agent CLIs
-  // (desktop mockup 5.1). A region key (lib/keyboard/dispatcher): an open
-  // menu, popover or dialog takes Escape first, and the picker's own Escape
-  // is handled on the textarea before this. A draft keeps Esc harmless.
-  useShortcut({ key: 'Escape' }, () => {
-    if (hasContent) return false
-    onStop?.()
-  }, { enabled: !isMobile && canStop, within: () => textareaRef.current })
   const lastHasContentRef = useRef(hasContent)
   useEffect(() => {
     if (lastHasContentRef.current !== hasContent) {
@@ -891,27 +880,16 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const sendState = canStop && !hasMessage ? 'stop' : splitSend ? 'steer' : disabled ? 'busy' : 'send'
   const iconIn = useHasSwapped(sendState) ? 'oa-icon-in' : undefined
 
-  const stopButton = (
+  const sendOrStopEl = canStop && !hasMessage ? (
     <button
       type="button"
       {...keepKeyboard}
       onClick={(e) => { stopClick(e); mediumHapticFeedback(); onStop?.(); refocusAfterTap() }}
       aria-label="Stop generation"
-      // Esc stops from an empty composer on desktop (see the shortcut above).
-      aria-keyshortcuts={isMobile ? undefined : 'Escape'}
       className={cn(sendSlotClass, sendSize, sendPillClass)}
     >
       <Square size={12} fill="currentColor" aria-hidden="true" className={iconIn} />
     </button>
-  )
-
-  const sendOrStopEl = canStop && !hasMessage ? (
-    isMobile ? stopButton : (
-      <Tooltip>
-        <TooltipTrigger render={stopButton} />
-        <TooltipContent>Stop (Esc)</TooltipContent>
-      </Tooltip>
-    )
   ) : splitSend && isPhone ? (
     <>
       <button

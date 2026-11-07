@@ -2218,11 +2218,6 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A plan waiting for review keeps a **Plan awaiting approval** bar above
     the composer, with its revision and **View**, which brings the Plan tab
     forward.
-  - While the agent works, the composer's bottom row says **Running · step
-    7 · 3:12** beside Stop, and **Esc** in an empty composer stops the run
-    (an open menu or dialog takes Esc first; Stop's tooltip names the key).
-    After a Stop, a **Stopped** toast offers **Resume**, which sends
-    "Continue".
   - When the server stops answering, the status bar says **Can't reach**
     beside its name, the banner adds **Retry** and, in the desktop app,
     **Start built-in server** (or **Use built-in server** when a remote one

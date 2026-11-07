@@ -20,6 +20,7 @@ import { useIsPhone } from '@/hooks/use-is-phone'
 import { formatBackendConnectionLabel, type AppBackendStatus } from '@/lib/app-backend'
 import { connectBundledBackend, reloadForBackendSwitch } from '@/lib/backend-switch'
 import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
+import { openServersScreen } from '@/stores/useServersScreenStore'
 
 // Loaded on first open: the dialog pulls in the backend-switching machinery
 // (query client, auth), which the chat view does not otherwise import. It is
@@ -77,7 +78,7 @@ export function ConnectionBanner({ retry = true }: {
               {builtin}
             </Button>
           )}
-          <Button type="button" size="xs" onClick={() => setDialogOpen(true)}>
+          <Button type="button" size="xs" onClick={() => (isPhone ? openServersScreen() : setDialogOpen(true))}>
             Change server
           </Button>
         </div>

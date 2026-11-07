@@ -5,14 +5,20 @@ import type { AppBackendPrefill } from '@/components/AppBackendDialog'
 import { AppBackendDialog } from '@/components/LazyAppBackendDialog'
 import { BackendSwitchMessage, BackendSwitchScreen } from '@/components/BackendSwitchScreen'
 import { PreviewKeepAlive } from '@/components/Preview/PreviewKeepAlive'
+import { ServersScreen } from '@/components/phone/LazyServersScreen'
 import { Button } from '@/components/ui/button'
 import { useConnectLink } from '@/hooks/useConnectLink'
 import { useDynamicType } from '@/hooks/use-dynamic-type'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { getBundledBackendLogPath } from '@/lib/app-backend'
 import { clearBackendSwitchHandoff, pendingBackendSwitch, type BackendSwitchTarget } from '@/stores/useBackendSwitchStore'
+import { openServersScreen } from '@/stores/useServersScreenStore'
 import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
 import { router } from './router'
+
+/** A phone still not connected after this long shows Servers instead of the logo. */
+const PHONE_SERVERS_AFTER_MS = 2000
 
 function App() {
   // Mounted here, not in the root route, so the loading screen and the
@@ -22,6 +28,15 @@ function App() {
   useDynamicType()
   const { ready, unavailable, failed, retrying, retry } = useAppBackendBootstrap()
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
+  const isPhone = useIsPhone()
+  // A phone has one server picker, its Servers screen: shown in place of the
+  // loading logo once connecting takes a moment, or at once for a link.
+  const [phoneServers, setPhoneServers] = useState(false)
+  useEffect(() => {
+    if (!isPhone || ready) return
+    const timer = setTimeout(() => setPhoneServers(true), PHONE_SERVERS_AFTER_MS)
+    return () => clearTimeout(timer)
+  }, [isPhone, ready])
   // A server switch reloaded the window: the startup screen keeps saying
   // where it is going, and forgets once the new server is up.
   const [switchingTo] = useState(pendingBackendSwitch)
@@ -35,8 +50,30 @@ function App() {
     setBackendDialogOpen(open)
     if (!open) clearConnectRequest()
   }
+  useEffect(() => {
+    if (!isPhone || !connectRequest) return
+    openServersScreen(connectRequest)
+    clearConnectRequest()
+    if (!ready) setPhoneServers(true)
+  }, [isPhone, connectRequest, clearConnectRequest, ready])
 
   if (!ready) {
+    if (isPhone) {
+      return (
+        <>
+          {phoneServers ? (
+            <div className="mobile-safe-shell mobile-viewport h-dvh">
+              <ServersScreen active onOpenSessions={() => {}} />
+            </div>
+          ) : (
+            <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="status" aria-label="Loading OpenAgentd">
+              <Seal size={88} pulse title="OpenAgentd" className="text-(--color-text)" />
+            </div>
+          )}
+          <BackendSwitchScreen />
+        </>
+      )
+    }
     return (
       <>
         <AppLoadingScreen switchingTo={switchingTo} unavailable={unavailable} failed={failed} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen || connectRequest !== null} onBackendDialogOpenChange={onBackendDialogOpenChange} backendPrefill={connectRequest} />
@@ -50,7 +87,7 @@ function App() {
       <Suspense fallback={<AppLoadingScreen switchingTo={switchingTo} unavailable={false} failed={false} retrying={false} onRetry={() => {}} onChooseServer={() => {}} backendDialogOpen={false} onBackendDialogOpenChange={() => {}} />}>
         <RouterProvider router={router} />
       </Suspense>
-      <AppBackendDialog open={connectRequest !== null} onOpenChange={onBackendDialogOpenChange} prefill={connectRequest} />
+      {!isPhone && <AppBackendDialog open={connectRequest !== null} onOpenChange={onBackendDialogOpenChange} prefill={connectRequest} />}
       {/* Keeps pages the agent opened driveable while no Preview tab shows them. */}
       <PreviewKeepAlive />
       <BackendSwitchScreen />

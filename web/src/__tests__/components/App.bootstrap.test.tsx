@@ -138,8 +138,14 @@ mock.module('@/components/LazyAppBackendDialog', () => ({
 mock.module('@/hooks/use-platform', () => ({
   getPlatform: () => ({ isTauri: true, os: 'macos', isMacOverlay: true }),
 }))
+let isPhone = false
+mock.module('@/hooks/use-is-phone', () => ({ useIsPhone: () => isPhone }))
+mock.module('@/components/phone/LazyServersScreen', () => ({
+  ServersScreen: () => <div data-testid="servers-screen">Servers</div>,
+}))
 
 beforeEach(() => {
+  isPhone = false
   delete window.__OAD_API_BASE_URL__
   delete window.__OAD_TOKEN__
   window.localStorage.clear()
@@ -392,6 +398,21 @@ describe('App backend bootstrap', () => {
     expect(screen.getByText('OpenAgentd is taking longer than usual to start.')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Choose server' })).toBeTruthy()
+    timers.restore()
+  })
+
+  it('shows a phone only the logo, then its Servers screen if nothing connects', async () => {
+    isPhone = true
+    const timers = useFakeTimers()
+    statusPayload = { base_url: '', sidecar_running: false, external: true }
+    render(<App />)
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByRole('status', { name: 'Loading OpenAgentd' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Choose server' })).toBeNull()
+    expect(screen.queryByTestId('servers-screen')).toBeNull()
+    await act(async () => { timers.tick(2_000) })
+    expect(screen.getByTestId('servers-screen')).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBeNull()
     timers.restore()
   })
 

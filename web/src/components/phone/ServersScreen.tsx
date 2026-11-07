@@ -13,16 +13,27 @@
  * swipe back reveals the real list with fresh states.
  *
  * Pulling the list down reloads it and pings every server again.
+ *
+ * It is the phone's only server picker: the connection banner, the server
+ * chip and a scanned connect link open it (``useServersScreenStore``), and
+ * before any server answers the app shows it in place of the loading screen.
  */
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-import { AppBackendPanel, type AppBackendPanelControl } from '@/components/AppBackendPanel'
+import { AppBackendPanel, type AppBackendPanelControl, type AppBackendPrefill } from '@/components/AppBackendPanel'
 import { PullToRefresh } from '@/components/phone/PullToRefresh'
 import { useLargeTitleCollapse } from '@/components/Sidebar/useLargeTitleCollapse'
+import { takeServersPrefill, useServersScreenStore } from '@/stores/useServersScreenStore'
 
 export function ServersScreen({ active, onOpenSessions }: { active: boolean; onOpenSessions: () => void }) {
   const { barRef, titleRef, onScroll } = useLargeTitleCollapse(false)
   const panel = useRef<AppBackendPanelControl>(null)
+  // A connect link's address and key, kept while the screen is up.
+  const pending = useServersScreenStore((state) => state.prefill)
+  const [prefill, setPrefill] = useState<AppBackendPrefill | null>(null)
+  useEffect(() => {
+    if (pending) setPrefill(takeServersPrefill())
+  }, [pending])
   return (
     <div data-servers-screen="" className="flex h-full w-full min-w-0 flex-col bg-(--bg-page)">
       <header
@@ -50,7 +61,7 @@ export function ServersScreen({ active, onOpenSessions }: { active: boolean; onO
           </h1>
         </div>
         <div className="px-4 pb-6">
-          <AppBackendPanel active={active} sectionTitle="Your servers" onOpenInUse={onOpenSessions} controlRef={panel} />
+          <AppBackendPanel active={active} prefill={prefill} sectionTitle="Your servers" onOpenInUse={onOpenSessions} controlRef={panel} />
         </div>
       </PullToRefresh>
     </div>

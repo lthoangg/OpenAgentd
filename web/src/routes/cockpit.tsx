@@ -18,6 +18,7 @@ import { clearFreshDesktopWindow, isFreshDesktopWindow } from '@/lib/fresh-windo
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { moveAppToBackground, useBackHandler } from '@/lib/back-button'
 import { useLayoutStore } from '@/stores/useLayoutStore'
+import { useServersScreenStore } from '@/stores/useServersScreenStore'
 
 /**
  * The app layout for / (new session), /<session id> and, on a phone,
@@ -130,6 +131,11 @@ function AgentLayoutBase() {
   // rather than walking back through the chats it has shown. On Sessions,
   // Back goes down to Servers (the stack over Servers registers it).
   useBackHandler(atServers, moveAppToBackground)
+  // The banner, the server chip or a scanned link asked for Servers.
+  const serversRequest = useServersScreenStore((state) => state.request)
+  useEffect(() => {
+    if (serversRequest && isPhone) void navigate({ to: '/servers' })
+  }, [serversRequest, isPhone, navigate])
 
   useEffect(() => {
     if (workspace) saveLastWorkspace(workspace)

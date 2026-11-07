@@ -19,6 +19,7 @@ mock.module('@/lib/backend-switch', () => ({ connectBundledBackend, reloadForBac
 mock.module('@/components/AppBackendDialog', () => ({ AppBackendDialog: () => null }))
 
 const { ConnectionBanner } = await import('@/components/ConnectionBanner')
+const { useServersScreenStore } = await import('@/stores/useServersScreenStore')
 
 const BUNDLED = { mode: 'bundled', base_url: 'http://127.0.0.1:4082', sidecar_running: false, external: false, supports_bundled: true, servers: [] }
 
@@ -66,5 +67,14 @@ describe('ConnectionBanner on desktop', () => {
     isPhone = true
     render(<ConnectionBanner />)
     expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Change server'])
+  })
+
+  it('sends a phone to its Servers screen, not a dialog', () => {
+    isPhone = true
+    const before = useServersScreenStore.getState().request
+    render(<ConnectionBanner />)
+    fireEvent.click(screen.getByRole('button', { name: 'Change server' }))
+    expect(useServersScreenStore.getState().request).toBe(before + 1)
+    expect(useServersScreenStore.getState().prefill).toBeNull()
   })
 })

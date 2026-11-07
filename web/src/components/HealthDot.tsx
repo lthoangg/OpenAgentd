@@ -6,6 +6,8 @@ import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
 import { formatBackendConnectionLabel } from '@/lib/app-backend'
 import { apiBaseUrl } from '@/api/base-url'
 import { cn } from '@/lib/utils'
+import { useIsPhone } from '@/hooks/use-is-phone'
+import { openServersScreen } from '@/stores/useServersScreenStore'
 
 /**
  * The connected server, as a dot plus its name (`built-in`, a saved server's
@@ -31,6 +33,7 @@ export function HealthDot({
 } = {}) {
   const health = useHealthQuery()
   const backendStatus = useBackendStatusQuery()
+  const isPhone = useIsPhone()
   const [dialogOpen, setDialogOpen] = useState(false)
   const connectionLabel = formatBackendConnectionLabel(backendStatus.data ?? null, apiBaseUrl())
 
@@ -67,7 +70,7 @@ export function HealthDot({
           render={
             <button
               type="button"
-              onClick={() => setDialogOpen(true)}
+              onClick={() => (isPhone ? openServersScreen() : setDialogOpen(true))}
               className={cn(defaultClasses, className)}
               aria-label={label}
             >
@@ -86,7 +89,7 @@ export function HealthDot({
           <span className="block font-mono text-(--color-text-muted)">{version ? `${address} · v${version}` : address}</span>
         </TooltipContent>
       </Tooltip>
-      <AppBackendDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      {!isPhone && <AppBackendDialog open={dialogOpen} onOpenChange={setDialogOpen} />}
     </>
   )
 }

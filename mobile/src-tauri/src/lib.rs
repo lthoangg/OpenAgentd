@@ -322,7 +322,19 @@ fn config_path(app: &AppHandle) -> Result<PathBuf> {
 }
 
 fn load_backend_config(app: &AppHandle) -> Result<AppBackendConfig> {
-    load_backend_config_from(&config_path(app)?)
+    load_backend_config_from(&config_path(app)?).map(without_loopback_default)
+}
+
+/// Drop the shared config's seeded "Local CLI server" (127.0.0.1:4082): on a
+/// phone the loopback address is the phone itself, never a server, so an
+/// empty list stays empty instead of offering an entry that cannot work.
+fn without_loopback_default(mut config: AppBackendConfig) -> AppBackendConfig {
+    config.servers.retain(|server| {
+        !(server.base_url == openagentd_shell_core::backend_config::DEFAULT_LOCAL_BASE_URL
+            && server.name.as_deref() == Some(openagentd_shell_core::backend_config::DEFAULT_LOCAL_NAME)
+            && !server.enabled)
+    });
+    config
 }
 
 fn save_backend_config(
@@ -586,7 +598,16 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_backend_reachable, relay_base_url, resolve_active_base_url};
+    use super::{ensure_backend_reachable, relay_base_url, resolve_active_base_url, without_loopback_default};
+    use openagentd_shell_core::{AppBackendConfig, SavedAppServer};
+
+    #[test]
+    fn the_seeded_loopback_server_is_not_listed_on_a_phone() {
+        assert!(without_loopback_default(AppBackendConfig::default()).servers.is_empty());
+        let mine = SavedAppServer { base_url: "http://10.0.0.2:4082".into(), name: None, enabled: false };
+        let config = AppBackendConfig { active_base_url: None, servers: vec![mine.clone()] };
+        assert_eq!(without_loopback_default(config).servers, vec![mine]);
+    }
 
     // Everything about config files, URL normalisation, access keys, and
     // download limits is tested once in `openagentd-shell-core`; only the

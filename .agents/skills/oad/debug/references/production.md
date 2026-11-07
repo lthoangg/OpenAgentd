@@ -19,8 +19,12 @@ Inside `logs/` and `otel/` (written by `appv3/crates/cli/src/logging.rs` and the
 
 - `logs/app/app.log`: loguru-format JSON, DEBUG+, rotated at 10 MB, 7 days.
 - `logs/app/app-error.log`: ERROR+, 14 days. Rotated files: `app.<timestamp>.log`.
-- `logs/sessions/<session_id>/session.log`: per-session records.
 - `otel/spans/YYYY-MM-DD-HH.jsonl` (hourly spans; metrics are no longer written).
+- Tool output and model reasoning are only in the database: `session_messages`
+  (`role='tool'` rows hold results; the next `role='assistant'` row by `seq` holds
+  `reasoning_content` and the follow-up `tool_calls`).
+- `execute_tool` spans carry `openagentd.tool.exit_code` / `openagentd.tool.timed_out`
+  for shell results; the span status stays OK for a non-zero exit.
 
 Record `name` is the Rust module path (`appv3_tools`, `appv3_agent.session`, …);
 messages are `event key=value …` (`tool_start agent= tool= id= args=`,
@@ -35,6 +39,7 @@ both the production and dev state roots.
 python3 .agents/skills/oad/debug/scripts/analyze_logs.py --days 7   # WARNING+ grouped by message shape (--level, --log-dir)
 python3 .agents/skills/oad/debug/scripts/query_otel.py --days 7     # span, turn, chat, and tool totals; error spans
 python3 .agents/skills/oad/debug/scripts/tool_usage.py --days 7     # per-tool volume, latency, errors, shell intent
+python3 .agents/skills/oad/debug/scripts/tool_followups.py --days 7 # bad results by class + the reasoning/next call after each
 ```
 
 `tool_usage.py` joins spans to `tool_start` / `tool_error` log records by call id.

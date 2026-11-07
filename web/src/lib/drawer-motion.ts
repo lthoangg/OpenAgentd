@@ -29,6 +29,8 @@ const OMEGA = Math.sqrt(DRAWER_SPRING.stiffness)
 /** Default rest thresholds, in progress units (0.001 ≈ 0.3px of a 272px drawer). */
 const REST_DISTANCE = 0.001
 const REST_SPEED = 0.02
+/** ms: the most spring time one animation frame may advance (one 30fps frame). */
+const MAX_FRAME_MS = 34
 
 /** Position and velocity of the critically damped spring ``t`` seconds after release. */
 export function springState(from: number, to: number, velocity: number, t: number): { x: number; v: number } {
@@ -114,11 +116,16 @@ export class SpringValue {
     const from = this.value
     const v0 = releaseVelocity(velocity, from, target)
     this.target = target
-    let start: number | undefined
+    // Spring time advances by at most one 30fps frame per tick: when a push
+    // mounts a heavy page, the long frame it costs slows the slide for a
+    // moment instead of skipping a chunk of it (the "jump" on a phone).
+    let last: number | undefined
+    let elapsed = 0
     const tick = (now: number | undefined) => {
       const time = now ?? performance.now()
-      start ??= time
-      const { x, v } = springState(from, target, v0, (time - start) / 1000)
+      elapsed += last === undefined ? 0 : Math.min(time - last, MAX_FRAME_MS)
+      last = time
+      const { x, v } = springState(from, target, v0, elapsed / 1000)
       if (Math.abs(x - target) < this.restDistance && Math.abs(v) < this.restSpeed) {
         this.value = target
         this.target = null

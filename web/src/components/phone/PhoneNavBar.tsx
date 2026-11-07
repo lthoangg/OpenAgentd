@@ -1,14 +1,14 @@
 /**
  * PhoneNavBar — a pushed screen's bar on a phone: ‹ and the parent's name
- * on the left, the title, the screen's actions on the right. 44px under the
- * safe area, 17px semibold title.
+ * on the left, the title, the screen's actions on the right. The app
+ * header's height (44px) under the safe area, a semibold ``text-base`` title.
  *
  * iOS centres the title: both sides grow from nothing by the same share
  * (``flex-1``) but never below their own content, and the title, which may
  * shrink, truncates first; so a long title never runs under ‹ Sessions or
  * the actions, and a short one sits in the middle. Android puts a ← with no
  * label and the title beside it, left-aligned, as Material's top app bar
- * does. The back control always names where it goes.
+ * does. The back control is a bare glyph whose accessible name says where it goes.
  *
  * Back is in the accent (iOS's tint), regular weight, its chevron 20px as the
  * phone header's icons are (DESIGN.md → Rulebook 4).
@@ -34,42 +34,58 @@ export interface PhoneNavBarProps {
    * the chat's transcript scrolls under the bar, as an iOS bar does).
    */
   separator?: 'always' | 'scrolled'
+  /** ``start`` left-aligns the title on iOS too (the chat bar). */
+  titleAlign?: 'center' | 'start'
   className?: string
 }
 
-/** A bare tint, no fill: iOS dims a pressed bar button instead. */
-const BACK_CLASS = 'h-11 min-w-11 bg-transparent! font-normal text-(--color-accent)! active:opacity-50'
+/**
+ * A bare tint, no fill: iOS dims a pressed bar button instead. Drawn at the
+ * phone's control step; ``touch-hit`` keeps a 44px target.
+ */
+const BACK_CLASS = 'relative touch-hit h-(--phone-control) min-w-(--phone-control) bg-transparent! font-normal text-(--color-accent)! active:opacity-50'
 
-export function PhoneNavBar({ title, subtitle, back, leading, trailing, separator = 'always', className }: PhoneNavBarProps) {
+/**
+ * A bare ‹ (iOS) or ← (Android), named for the parent: the back control of
+ * a pushed screen's bar, and of the Sessions screen's bar (‹ Servers).
+ */
+export function PhoneBackButton({ label, onBack }: { label: string; onBack: () => void }) {
   const android = usePlatform().os === 'android'
-
-  const titleBlock = (
-    <div data-phone-nav-title="" className={cn('min-w-0', android ? 'flex-1' : 'shrink text-center')}>
-      <h1 className="truncate text-base font-semibold text-(--color-text)">{title}</h1>
-      {subtitle != null && <div className="truncate text-meta text-(--color-text-muted)">{subtitle}</div>}
-    </div>
-  )
-
-  const backButton = back && (
+  return (
     <Button
       type="button"
       variant="ghost"
       size="trigger"
-      onClick={back.onBack}
-      aria-label={`Back to ${back.label}`}
+      onClick={onBack}
+      aria-label={`Back to ${label}`}
       data-phone-back=""
-      className={cn(BACK_CLASS, android ? 'px-0' : 'max-w-full justify-start gap-0.5 pl-0 pr-2')}
+      // A bare glyph on both (user request): the bar stays clear for the
+      // title; the button's name still says where it goes.
+      className={cn(BACK_CLASS, android ? 'px-0' : 'justify-start pl-0')}
     >
       {android ? (
         <ArrowLeft size={20} aria-hidden="true" className="size-5" />
       ) : (
-        <>
-          <ChevronLeft size={20} strokeWidth={2.25} aria-hidden="true" className="-ml-1.5 size-5" />
-          <span className="truncate text-xs">{back.label}</span>
-        </>
+        <ChevronLeft size={20} strokeWidth={2.25} aria-hidden="true" className="-ml-1 size-5" />
       )}
     </Button>
   )
+}
+
+export function PhoneNavBar({ title, subtitle, back, leading, trailing, separator = 'always', titleAlign = 'center', className }: PhoneNavBarProps) {
+  const android = usePlatform().os === 'android'
+  const start = android || titleAlign === 'start'
+
+  const titleBlock = (
+    <div data-phone-nav-title="" className={cn('min-w-0', start ? 'flex-1 text-left' : 'shrink text-center')}>
+      {/* With a second line, both sit tight as an iOS two-line title: the
+          pair centres in the bar instead of crowding its edges. */}
+      <h1 className={cn('truncate text-base font-semibold text-(--color-text)', subtitle != null && 'leading-tight')}>{title}</h1>
+      {subtitle != null && <div className="truncate text-meta leading-tight text-(--color-text-muted)">{subtitle}</div>}
+    </div>
+  )
+
+  const backButton = back && <PhoneBackButton label={back.label} onBack={back.onBack} />
 
   return (
     <header
@@ -85,7 +101,7 @@ export function PhoneNavBar({ title, subtitle, back, leading, trailing, separato
         className,
       )}
     >
-      {android ? (
+      {start ? (
         <>
           {backButton ?? leading}
           {titleBlock}

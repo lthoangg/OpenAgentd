@@ -18,6 +18,9 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Copy, MessageCircleQuestion, Square, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { BottomSheet } from '@/components/ui/bottom-sheet'
+import { useIsPhone } from '@/hooks/use-is-phone'
+import { cn } from '@/lib/utils'
 import { CloseButton } from '@/components/ui/close-button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -25,7 +28,7 @@ import { copyText } from '@/components/ChatContextMenu'
 import { useSideQuestions, type BtwExchange } from '@/queries/useSideQuestionsQuery'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useToastStore } from '@/stores/useToastStore'
-import { MarkdownBlock } from '@/utils/markdown'
+import { ExchangeView } from './BtwExchangeView'
 
 interface BtwPanelProps {
   sessionId: string | null
@@ -64,14 +67,38 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
   const [confirmClear, setConfirmClear] = useState(false)
   const { exchanges, view } = btw
   const open = btw.open && !chipOnly
+  // A phone asks aside in a half-height sheet (mockup J5), not a card over the composer.
+  const isPhone = useIsPhone()
 
   if (!sessionId) return null
   const store = useBtwStore.getState()
 
+  // A phone: a small "btw" pill in the status line above the composer, in
+  // the flow, so it never covers the transcript (user request). It stays
+  // while the sheet is open, pressed, so the line keeps its height and the
+  // chat behind the sheet does not move.
+  const pill = isPhone && btw.total > 0 ? (
+    <button
+      type="button"
+      onClick={() => (open ? store.dismiss(sessionId) : onReopen ? onReopen() : store.reopen(sessionId))}
+      aria-label={open ? 'Hide side questions' : `Show side questions (${btw.total})`}
+      aria-expanded={open}
+      data-btw-pill=""
+      className={cn(
+        'relative touch-hit ml-auto flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-meta font-medium transition-transform duration-(--motion-instant) active:scale-95 motion-reduce:active:scale-100 animate-in fade-in-0 animation-duration-(--motion-base)',
+        open ? 'bg-(--color-fill-key-hover) text-(--color-text)' : 'bg-(--bg-key) text-(--color-text-2)',
+      )}
+    >
+      btw
+      <span className="tabular-nums text-(--color-text-muted)">{btw.total}</span>
+    </button>
+  ) : null
+
   if (!open) {
     if (btw.total <= 0) return null
+    if (isPhone) return pill
     return (
-      <div className="pointer-events-auto absolute bottom-full right-3 z-10 mb-3 flex max-w-[calc(100%-1.5rem)] origin-bottom-right animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)">
+      <div className="pointer-events-auto absolute right-3 bottom-full z-10 mb-3 flex max-w-[calc(100%-1.5rem)] origin-bottom-right animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base) ease-(--ease-out)">
         <Tooltip className="min-w-0">
           <TooltipTrigger
             className="min-w-0"
@@ -116,8 +143,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
     else if (current.id) void store.stopStored(sessionId, current.id)
   }
 
-  return (
-    <>
+  const panel = (
     <section
       aria-label="Side questions"
       data-swipe-ignore
@@ -132,7 +158,9 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
         }
       }}
       // Rises out of the composer it sits on (DESIGN.md → Motion: ``base``).
-      className="pointer-events-auto mb-2 flex flex-col overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card) text-xs shadow-(--shadow-depth) animate-in fade-in-0 slide-in-from-bottom-1 animation-duration-(--motion-base) ease-(--ease-out)"
+      className={isPhone
+        ? 'flex flex-col text-sm'
+        : 'pointer-events-auto mb-2 flex flex-col overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card) text-xs shadow-(--shadow-depth) animate-in fade-in-0 slide-in-from-bottom-1 animation-duration-(--motion-base) ease-(--ease-out)'}
     >
       <header className="flex h-8 shrink-0 items-center gap-0.5 pl-2.5 pr-1">
         <span className="font-medium text-(--color-text)">Side questions</span>
@@ -160,7 +188,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
         </HeaderAction>
         <CloseButton size="icon-xs" label="Close side questions" onClick={() => store.dismiss(sessionId)} />
       </header>
-      <div className="max-h-[calc(var(--app-vh,100vh)*0.4)] min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-3 py-2">
+      <div className={cn('min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-3 py-2', !isPhone && 'max-h-[calc(var(--app-vh,100vh)*0.4)]')}>
         {current ? (
           <ExchangeView exchange={current} sessionId={sessionId} />
         ) : btw.isLoading ? (
@@ -180,6 +208,16 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
         </footer>
       )}
     </section>
+  )
+
+  return (
+    <>
+    {pill}
+    {isPhone ? (
+      <BottomSheet open onClose={() => store.dismiss(sessionId)} label="Side questions" detents={['medium', 'large']}>
+        <div data-btw-sheet="">{panel}</div>
+      </BottomSheet>
+    ) : panel}
     <ConfirmDialog
       open={confirmClear}
       onOpenChange={setConfirmClear}
@@ -189,24 +227,5 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
       onConfirm={onClear}
     />
     </>
-  )
-}
-
-/** One side question and its answer (also the dock tab's rows). */
-export function ExchangeView({ exchange, sessionId }: { exchange: BtwExchange; sessionId: string }) {
-  const streaming = exchange.status === 'streaming'
-  return (
-    <div className="flex flex-col gap-1.5">
-      <p className="whitespace-pre-wrap break-words text-(--color-text-muted)">{exchange.question}</p>
-      {exchange.answer ? (
-        <MarkdownBlock content={exchange.answer} sessionId={sessionId} isStreaming={streaming && exchange.live} />
-      ) : streaming ? (
-        <p role="status"><span className="oa-shimmer">Thinking…</span></p>
-      ) : null}
-      {exchange.status === 'error' && (
-        <p role="alert" className="text-(--color-error)">{exchange.error || 'The side question failed.'}</p>
-      )}
-      {exchange.status === 'stopped' && <p className="text-(--color-text-muted)">Stopped.</p>}
-    </div>
   )
 }

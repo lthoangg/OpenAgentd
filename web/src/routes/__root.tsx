@@ -7,7 +7,6 @@ import { RunStatusAnnouncer } from '@/components/RunStatusAnnouncer'
 import { Seal } from '@/components/brand/Logo'
 import { Home } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
-import { KeyboardShortcutsSheet } from '@/components/KeyboardShortcutsSheet'
 import { lazySurface, prefetchSurfacesWhenIdle, useSurfaceMounted } from '@/lib/lazy-surface'
 import { SkipLink } from '@/components/motion'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -27,6 +26,7 @@ import { GlobalEventStream } from '@/hooks/use-global-event-stream'
 import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
 import { getPlatform } from '@/hooks/use-platform'
 import { FloatingNotices } from '@/components/FloatingNotices'
+import { AiDataConsent } from '@/components/AiDataConsent'
 import { CAPABILITY, useServerCapability } from '@/queries'
 
 // Home-screen widgets exist only in the phone apps; keep their sync out of
@@ -40,6 +40,9 @@ const WidgetSnapshotSync = lazy(() =>
 const SettingsModal = lazySurface(() => import('@/components/SettingsModal'), 'SettingsModal')
 const TelemetryOverlay = lazySurface(() => import('@/components/Telemetry/TelemetryOverlay'), 'TelemetryOverlay')
 const PluginNotice = lazySurface(() => import('@/components/settings/pages/settings.plugins'), 'PluginNotice')
+// Keyboard shortcuts (⌘/), with the help text for every shortcut: opened on
+// demand, never on the first screen.
+const KeyboardShortcutsSheet = lazySurface(() => import('@/components/KeyboardShortcutsSheet'), 'KeyboardShortcutsSheet')
 
 function widgetsSupported(): boolean {
   const { isTauri, os } = getPlatform()
@@ -58,6 +61,11 @@ function PluginNoticeGate() {
 function SettingsSurface() {
   const open = useSettingsStore((s) => s.open)
   return useSurfaceMounted(open) ? <SettingsModal /> : null
+}
+
+function ShortcutsSurface() {
+  const open = useUIStore((s) => s.shortcutsHelpOpen)
+  return useSurfaceMounted(open) ? <KeyboardShortcutsSheet /> : null
 }
 
 function TelemetrySurface() {
@@ -141,8 +149,9 @@ export function Root() {
       </Suspense>
       <SettingsSurface />
       <TelemetrySurface />
-      <KeyboardShortcutsSheet />
+      <ShortcutsSurface />
       <FloatingNotices />
+      <AiDataConsent />
       <TitleTooltipLayer />
       <RunStatusAnnouncer />
     </QueryClientProvider>

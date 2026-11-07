@@ -9,7 +9,6 @@ import {
   useTitleGenerationSettingsQuery,
   useUpdateTitleGenerationSettingsMutation,
 } from '@/queries'
-import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { PanelRow } from '@/components/ui/panel-row'
@@ -17,27 +16,25 @@ import { PanelSection } from '@/components/ui/panel-section'
 import { ModelCombobox } from '@/components/settings/AgentForm'
 import { validateModel } from '@/components/settings/schema'
 import { useSettingsDraft } from '@/components/settings/useSettingsDraft'
-import type { TitleGenerationSettings } from '@/api/client'
+import type { TitleGenerationUpdate } from '@/api/client'
 
-const TITLES_DEFAULT: TitleGenerationSettings = {
+const TITLES_DEFAULT: TitleGenerationUpdate = {
   enabled: true,
   model: '',
-  wait_timeout_seconds: 3,
   update_after_compaction: false,
 }
 
-function normalizeTitles(form: TitleGenerationSettings): TitleGenerationSettings {
+function normalizeTitles(form: TitleGenerationUpdate): TitleGenerationUpdate {
   return {
     enabled: form.enabled,
     model: form.model.trim(),
-    wait_timeout_seconds: Math.max(0, form.wait_timeout_seconds),
     update_after_compaction: form.update_after_compaction,
   }
 }
 
 /** Older backends omit `update_after_compaction`. */
-function hydrateTitles(data: TitleGenerationSettings): TitleGenerationSettings {
-  return { ...data, update_after_compaction: data.update_after_compaction ?? false }
+function hydrateTitles(data: TitleGenerationUpdate): TitleGenerationUpdate {
+  return { enabled: data.enabled, model: data.model, update_after_compaction: data.update_after_compaction ?? false }
 }
 
 export function TitlesSettingsPage() {
@@ -91,21 +88,6 @@ export function TitlesSettingsPage() {
                   invalid={!!modelError}
                 />
               </div>
-            </PanelRow>
-            <PanelRow
-              label="Wait for title (seconds)"
-              htmlFor="titles-wait"
-              description="How long the first reply waits for its title. 0 doesn't wait."
-            >
-              <Input
-                id="titles-wait"
-                type="number"
-                min={0}
-                aria-label="Wait for title (seconds)"
-                value={draft.value.wait_timeout_seconds}
-                onChange={(e) => draft.patch({ wait_timeout_seconds: parseInt(e.target.value, 10) || 0 })}
-                className="h-9 w-24 font-mono"
-              />
             </PanelRow>
             <PanelRow
               label="Update title after summarizing"

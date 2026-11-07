@@ -14,6 +14,7 @@ use tauri::{AppHandle, Manager};
 
 mod native_ui;
 mod theme;
+mod updater;
 mod widgets;
 
 /// Total budget for one workspace download. Mobile talks to a remote
@@ -321,7 +322,19 @@ fn config_path(app: &AppHandle) -> Result<PathBuf> {
 }
 
 fn load_backend_config(app: &AppHandle) -> Result<AppBackendConfig> {
-    load_backend_config_from(&config_path(app)?)
+    load_backend_config_from(&config_path(app)?).map(without_loopback_default)
+}
+
+/// Drop the shared config's seeded "Local CLI server" (127.0.0.1:4082): on a
+/// phone the loopback address is the phone itself, never a server, so an
+/// empty list stays empty instead of offering an entry that cannot work.
+fn without_loopback_default(mut config: AppBackendConfig) -> AppBackendConfig {
+    config.servers.retain(|server| {
+        !(server.base_url == openagentd_shell_core::backend_config::DEFAULT_LOCAL_BASE_URL
+            && server.name.as_deref() == Some(openagentd_shell_core::backend_config::DEFAULT_LOCAL_NAME)
+            && !server.enabled)
+    });
+    config
 }
 
 fn save_backend_config(
@@ -489,6 +502,40 @@ fn share_file_ios(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// `mobile/scripts/ios-screenshots.sh` launches a debug simulator build with
+/// `OAD_SCREENSHOT_MODE=1`: it skips the one-time AI-data consent so the
+/// store screenshots show the app, and opens each `openagentd://` link the
+/// script writes to `screenshot-link.txt` in the config directory, as the
+/// deep-link plugin would (`simctl openurl` stops on an "Open in" prompt).
+/// Debug builds only; release builds never read the variable.
+#[cfg(all(target_os = "ios", debug_assertions))]
+fn screenshot_mode(app: &AppHandle) {
+    if std::env::var("OAD_SCREENSHOT_MODE").as_deref() != Ok("1") {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(3));
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.eval(
+                "if (localStorage.getItem('oad.ai-data-consent.v1') !== 'agreed') { localStorage.setItem('oad.ai-data-consent.v1', 'agreed'); location.reload() }",
+            );
+        }
+        let Ok(dir) = app.path().app_config_dir() else { return };
+        let file = dir.join("screenshot-link.txt");
+        let mut last = String::new();
+        loop {
+            std::thread::sleep(Duration::from_millis(500));
+            let link = std::fs::read_to_string(&file).unwrap_or_default().trim().to_string();
+            if !link.is_empty() && link != last {
+                use tauri::Emitter;
+                let _ = app.emit("deep-link://new-url", vec![link.clone()]);
+                last = link;
+            }
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
@@ -500,6 +547,11 @@ pub fn run() {
     // while the app is in the background), which leaves a blank page until
     // the app is force-quit. Reload instead: drafts and the last route are
     // restored from storage, and the event stream reconnects on load.
+    // Servers → Scan QR code reads `openagentd://connect` links with the camera.
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_fs::init());
     #[cfg(target_os = "ios")]
     let builder = builder.on_web_content_process_terminate(|webview| {
         let _ = webview.reload();
@@ -507,6 +559,7 @@ pub fn run() {
     builder
         .manage(MobileBackendState::default())
         .manage(PreviewRelays::default())
+        .manage(updater::UpdaterState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_haptics::init())
@@ -514,6 +567,8 @@ pub fn run() {
         .setup(|_app| {
             #[cfg(target_os = "ios")]
             theme::paint_launch_background(_app.handle());
+            #[cfg(all(target_os = "ios", debug_assertions))]
+            screenshot_mode(_app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -532,6 +587,10 @@ pub fn run() {
             theme::set_app_theme,
             native_ui::share_text,
             native_ui::pick_one,
+            updater::updater_check,
+            updater::updater_download,
+            updater::updater_install,
+            updater::updater_release_notes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenAgentd mobile");
@@ -539,7 +598,16 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_backend_reachable, relay_base_url, resolve_active_base_url};
+    use super::{ensure_backend_reachable, relay_base_url, resolve_active_base_url, without_loopback_default};
+    use openagentd_shell_core::{AppBackendConfig, SavedAppServer};
+
+    #[test]
+    fn the_seeded_loopback_server_is_not_listed_on_a_phone() {
+        assert!(without_loopback_default(AppBackendConfig::default()).servers.is_empty());
+        let mine = SavedAppServer { base_url: "http://10.0.0.2:4082".into(), name: None, enabled: false };
+        let config = AppBackendConfig { active_base_url: None, servers: vec![mine.clone()] };
+        assert_eq!(without_loopback_default(config).servers, vec![mine]);
+    }
 
     // Everything about config files, URL normalisation, access keys, and
     // download limits is tested once in `openagentd-shell-core`; only the

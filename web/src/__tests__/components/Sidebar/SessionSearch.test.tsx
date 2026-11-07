@@ -9,6 +9,18 @@ mock.module('@/queries/useSessionsQuery', () => ({
     data: query ? { pages: [{ data: [], has_more: false }] } : undefined,
     isFetching: false,
   }),
+  useSessionsQuery: () => ({
+    data: {
+      pages: [{
+        data: [
+          { id: 'a', title: 'Fix login', workspace: '/repo' },
+          { id: 'b', title: 'Loose chat', workspace: null },
+          { id: 'c', title: 'Ship docs', workspace: '/repo' },
+        ],
+        has_more: false,
+      }],
+    },
+  }),
 }))
 
 import { SessionSearch } from '@/components/Sidebar/SessionSearch'
@@ -45,5 +57,26 @@ describe('SessionSearch — no matches', () => {
     fireEvent.keyDown(input, { key: 'Escape' })
 
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('SessionSearch — before typing', () => {
+  it('lists recently opened sessions on the phone (with Cancel), not an empty pane', () => {
+    const onSelect = mock(() => {})
+    render(<SessionSearch cancel focusKey={0} workspaceName={(path) => path} onSessionSelect={onSelect} onClose={() => {}} />)
+
+    const recent = screen.getByRole('list', { name: 'Recently opened' })
+    expect(within(recent).getAllByRole('button').map((row) => row.textContent)).toEqual(['Fix login/repo', 'Ship docs/repo'])
+    fireEvent.click(within(recent).getByText('Ship docs'))
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'c' }), '/repo', expect.anything())
+  })
+
+  it('hides the recent list once there is a query, and on desktop', () => {
+    render(<SessionSearch cancel focusKey={0} workspaceName={(path) => path} onSessionSelect={() => {}} onClose={() => {}} />)
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'x' } })
+    expect(screen.queryByRole('list', { name: 'Recently opened' })).toBeNull()
+    cleanup()
+    renderSearch()
+    expect(screen.queryByRole('list', { name: 'Recently opened' })).toBeNull()
   })
 })

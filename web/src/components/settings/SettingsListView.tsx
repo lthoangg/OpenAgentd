@@ -8,6 +8,7 @@ import { FolderOpen, Plus, type LucideIcon } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { Callout } from '@/components/ui/callout'
 import { Chip, type ChipTone } from '@/components/ui/chip'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -101,6 +102,7 @@ export function SettingsListView({
   emptyIcon = FolderOpen,
 }: SettingsListViewProps) {
   const [query, setQuery] = useState('')
+  const isPhone = useIsPhone()
 
   const filtered = useMemo(() => {
     const t = query.trim().toLowerCase()
@@ -124,17 +126,22 @@ export function SettingsListView({
   return (
     <SettingsPage title={title} description={description} actions={newAction ?? newButton}>
       <div className="space-y-4">
-        {tabs}
-
-        {(isLoading || rows.length > 0) && (
-          <SearchBar
-            placeholder={filterPlaceholder}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            count={total}
-            loading={isLoading}
-          />
-        )}
+        {/* A phone pins the filter while the list scrolls, as Providers does. */}
+        <div
+          data-list-filter=""
+          className={cn('space-y-4 empty:hidden', isPhone && 'sticky top-0 z-10 -mx-1 bg-(--bg-page) px-1 py-1')}
+        >
+          {tabs}
+          {(isLoading || rows.length > 0) && (
+            <SearchBar
+              placeholder={filterPlaceholder}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              count={total}
+              loading={isLoading}
+            />
+          )}
+        </div>
 
         {isLoading && (
           <SectionCard role="status" aria-label={`Loading ${title.toLowerCase()}`}>

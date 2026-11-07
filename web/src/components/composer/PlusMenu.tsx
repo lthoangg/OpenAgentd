@@ -6,8 +6,8 @@
  * that works needs no attention, and one that does puts a dot on "+" and
  * opens this menu at its MCP section (as does ``/mcp``).
  */
-import { useEffect, useId, useRef } from 'react'
-import { AtSign, Hash, MessageCircleQuestion, Paperclip, Plus } from 'lucide-react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { AtSign, ChevronLeft, ChevronRight, Hash, Image, MessageCircleQuestion, Paperclip, Plug, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
@@ -33,8 +33,12 @@ const SHEET_DETENTS: SheetDetent[] = ['medium', 'large']
 
 /** What the "+" menu can do to the draft; supplied by the composer. */
 export interface ComposerActions {
-  /** Open the file chooser. */
-  attach: () => void
+  /**
+   * Open a chooser: ``photos`` the photo library, ``files`` the document
+   * picker (the phone apps' native ones, straight away), or with no kind the
+   * browser's file input.
+   */
+  attach: (kind?: 'photos' | 'files') => void
   /** Type ``@`` or ``#`` at the caret and open its picker. */
   startToken: (token: '@' | '#') => void
   /** Replace the draft (``/btw `` for a side question) and focus it. */
@@ -65,8 +69,11 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
   }
   const run = (fn: () => void) => () => {
     setOpen(false)
-    // After the menu has handed focus back, so the action keeps it.
-    requestAnimationFrame(fn)
+    // Touch: now, inside the tap, so iOS raises the keyboard for the focus
+    // the action gives (/btw, @, #) and opens the picker. Elsewhere after
+    // the menu has handed focus back, so the action keeps it.
+    if (isMobile) fn()
+    else requestAnimationFrame(fn)
   }
 
   const trigger = (
@@ -102,7 +109,9 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
       touch={isMobile}
       workspace={workspace}
       scrollToMcp={section === 'mcp'}
-      onAttach={run(actions.attach)}
+      onAttach={run(() => actions.attach())}
+      onAttachPhotos={run(() => actions.attach('photos'))}
+      onAttachFiles={run(() => actions.attach('files'))}
       onMention={run(() => actions.startToken('@'))}
       onSnippet={hasSnippets ? run(() => actions.startToken('#')) : undefined}
       onSideQuestion={canAskSideQuestion ? run(() => actions.setDraft('/btw ')) : undefined}
@@ -135,6 +144,8 @@ function PlusMenuItems({
   workspace,
   scrollToMcp,
   onAttach,
+  onAttachPhotos,
+  onAttachFiles,
   onMention,
   onSnippet,
   onSideQuestion,
@@ -143,6 +154,9 @@ function PlusMenuItems({
   workspace: string | null
   scrollToMcp: boolean
   onAttach: () => void
+  /** Touch: the photo library and the document picker, each its own row. */
+  onAttachPhotos?: () => void
+  onAttachFiles?: () => void
   onMention: () => void
   onSnippet?: () => void
   onSideQuestion?: () => void
@@ -153,14 +167,49 @@ function PlusMenuItems({
   useEffect(() => {
     if (scrollToMcp) mcpRef.current?.scrollIntoView({ block: 'nearest' })
   }, [scrollToMcp])
-  const row = cn(MENU_ITEM_CLASS, touch && 'min-h-11 text-sm')
+  const row = cn(MENU_ITEM_CLASS, touch && 'min-h-(--phone-control) text-sm')
   const hint = 'ml-auto font-mono text-meta text-(--color-text-muted)'
+  // Touch: two parts (mockup J3). What to add to the message, then MCP servers,
+  // a page of its own inside the sheet.
+  const [page, setPage] = useState<'add' | 'tools'>(scrollToMcp ? 'tools' : 'add')
+  const mcp = (
+    <SessionMcpServers
+      variant="menu"
+      agentServers={agentServers}
+      onServersChanged={() => { void agents.refetch() }}
+    />
+  )
+  if (touch && page === 'tools') {
+    return (
+      <div className="flex flex-col" data-plus-page="tools">
+        <button type="button" className={row} onClick={() => setPage('add')}>
+          <ChevronLeft size={14} aria-hidden="true" />
+          Add to message
+        </button>
+        <div className={MENU_SEPARATOR_CLASS} role="separator" />
+        {mcp}
+      </div>
+    )
+  }
   return (
     <div className="flex flex-col">
-      <button type="button" className={row} onClick={onAttach}>
-        <Paperclip size={14} aria-hidden="true" />
-        Attach files…
-      </button>
+      {touch && onAttachPhotos && onAttachFiles ? (
+        <>
+          <button type="button" className={row} onClick={onAttachPhotos}>
+            <Image size={14} aria-hidden="true" />
+            Photos
+          </button>
+          <button type="button" className={row} onClick={onAttachFiles}>
+            <Paperclip size={14} aria-hidden="true" />
+            Files
+          </button>
+        </>
+      ) : (
+        <button type="button" className={row} onClick={onAttach}>
+          <Paperclip size={14} aria-hidden="true" />
+          Attach files…
+        </button>
+      )}
       <button type="button" className={row} onClick={onMention}>
         <AtSign size={14} aria-hidden="true" />
         Mention a file
@@ -176,18 +225,20 @@ function PlusMenuItems({
       {onSideQuestion && (
         <button type="button" className={row} onClick={onSideQuestion}>
           <MessageCircleQuestion size={14} aria-hidden="true" />
-          Ask a side question
+          {touch ? 'Ask aside' : 'Ask a side question'}
           <span className={hint}>/btw</span>
         </button>
       )}
       <div className={MENU_SEPARATOR_CLASS} role="separator" />
-      <div ref={mcpRef}>
-        <SessionMcpServers
-          variant="menu"
-          agentServers={agentServers}
-          onServersChanged={() => { void agents.refetch() }}
-        />
-      </div>
+      {touch ? (
+        <button type="button" className={row} onClick={() => setPage('tools')}>
+          <Plug size={14} aria-hidden="true" />
+          MCP servers
+          <ChevronRight size={14} aria-hidden="true" className="ml-auto text-(--color-text-muted)" />
+        </button>
+      ) : (
+        <div ref={mcpRef}>{mcp}</div>
+      )}
     </div>
   )
 }

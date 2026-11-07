@@ -1,10 +1,12 @@
 /**
- * Settings → About OpenAgentd — app identity and version, desktop updates,
- * and community links. Appearance lives in General and the backend in
- * Connection.
+ * Settings → About OpenAgentd — app identity, client and server versions,
+ * app updates (desktop and mobile shells), and community links. Appearance
+ * lives in General and the backend in Connection.
  */
-import { useState } from 'react'
-import { ExternalLink, Globe, MessageSquare, Users, type LucideIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { AlertTriangle, ExternalLink, Globe, MessageSquare, Shield, Users, type LucideIcon } from 'lucide-react'
+
+import { PRIVACY_URL } from '@/components/AiDataConsent'
 
 import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
 import { SettingsPage } from '@/components/settings/SettingsPage'
@@ -15,11 +17,13 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SectionCard } from '@/components/ui/section-card'
 import { Seal, Wordmark } from '@/components/brand/Logo'
-import { checkForUpdates, downloadUpdate, installUpdate, type UpdateStatus } from '@/lib/updater'
-import { isDesktopShell } from '@/lib/desktop-shell'
+import { getPlatform } from '@/hooks/use-platform'
+import { clientLabel, clientVersion, versionSkew, WEB_BUILD_VERSION } from '@/lib/app-version'
+import { checkForUpdates, downloadUpdate, hasInAppUpdates, installUpdate, type UpdateStatus } from '@/lib/updater'
+import { apiBaseUrl } from '@/api/base-url'
 import { openExternalUrl } from '@/lib/open-external'
 import { cn } from '@/lib/utils'
-import { useHealthQuery } from '@/queries'
+import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
 import { errorMessage } from '@/utils/errors'
 
 // ── Identity ──────────────────────────────────────────────────────────────
@@ -44,12 +48,73 @@ function IdentityCard({ version }: { version?: string }) {
   )
 }
 
+// ── Version ───────────────────────────────────────────────────────────────
+
+function useClientVersion(): string | undefined {
+  const [version, setVersion] = useState<string | undefined>(WEB_BUILD_VERSION)
+  useEffect(() => {
+    let cancelled = false
+    void clientVersion().then((v) => { if (!cancelled && v) setVersion(v) })
+    return () => { cancelled = true }
+  }, [])
+  return version
+}
+
+function skewMessage(client: string, server: string): { warn: boolean; text: string } | null {
+  const skew = versionSkew(client, server)
+  if (skew.kind === 'major-minor') {
+    return {
+      warn: true,
+      text: skew.newer === 'client'
+        ? 'The server is older than this app. Update the server to use every feature.'
+        : 'This app is older than the server. Update the app to use every feature.',
+    }
+  }
+  if (skew.kind === 'patch') {
+    return {
+      warn: false,
+      text: `Patch versions differ (the ${skew.newer} is newer); they work together.`,
+    }
+  }
+  return null
+}
+
+function VersionSection({ client, server }: { client?: string; server?: string }) {
+  const address = useBackendStatusQuery().data?.base_url || apiBaseUrl()
+  const skew = client && server ? skewMessage(client, server) : null
+
+  return (
+    <PanelSection title="Version" flush>
+      <PanelRow label={clientLabel()} description="The app on this device.">
+        <span className="font-mono text-sm text-(--color-text)">{client ? `v${client}` : 'unknown'}</span>
+      </PanelRow>
+      <PanelRow label="Server" description={<span className="font-mono break-all">{address}</span>}>
+        <span className="font-mono text-sm text-(--color-text)">{server ? `v${server}` : 'not connected'}</span>
+      </PanelRow>
+      {skew ? (
+        <p
+          role={skew.warn ? 'alert' : 'status'}
+          className={cn(
+            'flex items-start gap-2 px-4 py-3 sm:px-5',
+            TEXT.hint,
+            skew.warn && 'text-(--accent-orange-text)',
+          )}
+        >
+          {skew.warn && <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />}
+          <span>{skew.text}</span>
+        </p>
+      ) : null}
+    </PanelSection>
+  )
+}
+
 // ── Updates ───────────────────────────────────────────────────────────────
 
 function UpdatesSection() {
   const [status, setStatus] = useState<UpdateStatus | null>(null)
   const [pending, setPending] = useState(false)
   const [confirmRestart, setConfirmRestart] = useState(false)
+  const mobile = isMobileShell()
 
   async function onCheck() {
     setPending(true)
@@ -77,6 +142,19 @@ function UpdatesSection() {
   async function onInstall() {
     setPending(true)
     setStatus((current) => current ? { ...current, status: 'installing' } : { status: 'installing' })
+    if (mobile) {
+      // Android hands off to the system installer and returns; the system
+      // replaces the app if the user confirms.
+      try {
+        await installUpdate()
+        setStatus((current) => current ? { ...current, status: 'downloaded' } : null)
+      } catch (error) {
+        setStatus({ status: 'error', message: errorMessage(error) })
+      } finally {
+        setPending(false)
+      }
+      return
+    }
     try {
       const RESTART_TIMEOUT_MS = 60_000
       await Promise.race([
@@ -101,7 +179,7 @@ function UpdatesSection() {
       <PanelRow
         label={
           <span className="flex items-center gap-2">
-            Desktop app
+            {clientLabel()}
             <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-meta font-semibold text-(--color-text-muted) select-none">
               {statusTitle(status)}
             </span>
@@ -109,7 +187,7 @@ function UpdatesSection() {
         }
         description={
           <>
-            <span role="status">{statusDescription(status)}</span>
+            <span role="status">{statusDescription(status, mobile)}</span>
             {showNotes ? (
               <ReleaseNotesButton className="mt-1.5 block" version={status.version!} fallbackNotes={status.notes} />
             ) : null}
@@ -126,7 +204,7 @@ function UpdatesSection() {
         ) : null}
         {status?.status === 'downloaded' ? (
           <Button size="sm" variant="primary" disabled={pending} onClick={() => setConfirmRestart(true)}>
-            Install and restart…
+            {mobile ? 'Install…' : 'Install and restart…'}
           </Button>
         ) : null}
       </PanelRow>
@@ -134,13 +212,20 @@ function UpdatesSection() {
         open={confirmRestart}
         onOpenChange={setConfirmRestart}
         tone="default"
-        title="Install and restart OpenAgentd?"
-        description="OpenAgentd restarts to finish the update. Running agents stop."
-        confirmLabel="Install and restart"
+        title={mobile ? 'Install the update?' : 'Install and restart OpenAgentd?'}
+        description={mobile
+          ? 'Android asks you to confirm. OpenAgentd closes while it updates; agents keep running on the server.'
+          : 'OpenAgentd restarts to finish the update. Running agents stop.'}
+        confirmLabel={mobile ? 'Install' : 'Install and restart'}
         onConfirm={() => { void onInstall() }}
       />
     </PanelSection>
   )
+}
+
+function isMobileShell(): boolean {
+  const { isTauri, os } = getPlatform()
+  return isTauri && (os === 'ios' || os === 'android')
 }
 
 function statusTitle(status: UpdateStatus | null): string {
@@ -154,16 +239,20 @@ function statusTitle(status: UpdateStatus | null): string {
   return 'not checked'
 }
 
-function statusDescription(status: UpdateStatus | null): string {
-  if (!status) return 'Check for desktop app updates from here. Automatic checks also run in the background.'
+function statusDescription(status: UpdateStatus | null, mobile = false): string {
+  if (!status) return 'Check for app updates from here. Automatic checks also run in the background.'
   if (status.message) return status.message
   if (status.status === 'checking') return 'Checking for updates…'
-  if (status.status === 'available') return `OpenAgentd ${status.version} is available. Current version: ${status.current_version}.`
+  if (status.status === 'available') {
+    return `OpenAgentd ${status.version} is available. Current version: ${status.current_version}.`
+  }
   if (status.status === 'downloaded') return `OpenAgentd ${status.version} has been downloaded and is ready to install.`
-  if (status.status === 'installing') return 'Installing the update. OpenAgentd will restart when installation completes.'
+  if (status.status === 'installing') {
+    return mobile ? 'Opening the installer…' : 'Installing the update. OpenAgentd will restart when installation completes.'
+  }
   if (status.status === 'up_to_date') return `OpenAgentd ${status.current_version} is the latest version.`
   if (status.status === 'error') return 'Could not check for updates.'
-  return 'Check for desktop app updates from here.'
+  return 'Check for app updates from here.'
 }
 
 // ── Community ─────────────────────────────────────────────────────────────
@@ -203,14 +292,17 @@ function CommunityLink({ href, icon: Icon, tint, title, body }: {
 // ── Page ──────────────────────────────────────────────────────────────────
 
 export function AboutSettingsPage() {
-  const version = useHealthQuery().data?.version
+  const serverVersion = useHealthQuery().data?.version
+  const client = useClientVersion()
 
   return (
     <SettingsPage title="About OpenAgentd">
-      <IdentityCard version={version} />
+      <IdentityCard version={client ?? serverVersion} />
 
-      {/* Updates come from the desktop shell; the browser build has none. */}
-      {isDesktopShell() && <UpdatesSection />}
+      <VersionSection client={client} server={serverVersion} />
+
+      {/* Updates come from the desktop and mobile shells; the browser build has none. */}
+      {hasInAppUpdates() && <UpdatesSection />}
 
       <section aria-labelledby="settings-community-heading" className="space-y-3">
         <div className="select-none">
@@ -238,6 +330,13 @@ export function AboutSettingsPage() {
             tint="bg-(--bg-key) text-(--color-text-2)"
             title="Facebook group"
             body="Connect with other OpenAgentd users and maintainers on Facebook."
+          />
+          <CommunityLink
+            href={PRIVACY_URL}
+            icon={Shield}
+            tint="bg-(--bg-key) text-(--color-text-2)"
+            title="Privacy policy"
+            body="What the apps send to your server and the AI providers it uses."
           />
         </div>
       </section>

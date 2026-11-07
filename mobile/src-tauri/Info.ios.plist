@@ -30,14 +30,14 @@
        so App Store Connect does not ask on every TestFlight upload. -->
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>
+  <key>NSCameraUsageDescription</key>
+  <string>OpenAgentd uses the camera to scan the QR code that connects this phone to your server.</string>
   <key>NSLocalNetworkUsageDescription</key>
   <string>OpenAgentd connects to local OpenAgentd servers on your network.</string>
   <key>NSMicrophoneUsageDescription</key>
-  <string>OpenAgentd uses the microphone for voice input.</string>
+  <string>OpenAgentd uses the microphone to record sound when you take a video to attach to a message.</string>
   <key>OAWidgetAppGroup</key>
   <string>group.$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-  <key>NSSpeechRecognitionUsageDescription</key>
-  <string>OpenAgentd uses speech recognition to convert your voice input into text.</string>
   <key>UISupportedInterfaceOrientations</key>
   <array>
     <string>UIInterfaceOrientationPortrait</string>
@@ -45,6 +45,9 @@
   <key>UISupportedInterfaceOrientations~ipad</key>
   <array>
     <string>UIInterfaceOrientationPortrait</string>
+    <string>UIInterfaceOrientationPortraitUpsideDown</string>
+    <string>UIInterfaceOrientationLandscapeLeft</string>
+    <string>UIInterfaceOrientationLandscapeRight</string>
   </array>
   <key>UIApplicationSceneManifest</key>
   <dict>

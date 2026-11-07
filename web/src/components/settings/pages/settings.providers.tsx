@@ -11,6 +11,7 @@ import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SettingsPage } from '@/components/settings/SettingsPage'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { providerKindLabel } from './settings.providers/providerUtils'
 import { ProviderCard } from './settings.providers/ProviderCard'
 
@@ -42,6 +43,7 @@ export function ProvidersSettingsPage() {
 
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const isPhone = useIsPhone()
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
 
   const providers = useMemo(() => providersQ.data?.providers ?? [], [providersQ.data?.providers])
@@ -137,7 +139,24 @@ export function ProvidersSettingsPage() {
           )}
 
           {/* ── Filter bar: one status control, one type picker ──────── */}
-          {showFilterBar && (
+          {showFilterBar && isPhone && (
+            // A phone (mockup J10 10.2): three segments that fit, pinned while
+            // the list scrolls; Hidden moves to the footer, the type picker goes.
+            <div data-provider-filter="phone" className="sticky top-0 z-10 -mx-1 bg-(--bg-page) px-1 py-1">
+              <SegmentedControl
+                label="Filter by status"
+                value={statusFilter}
+                onChange={setStatusFilter}
+                fill
+                options={[
+                  { value: 'all', label: 'All' },
+                  { value: 'connected', label: `Connected · ${statusCounts.connected}` },
+                  { value: 'not-connected', label: 'Not connected' },
+                ]}
+              />
+            </div>
+          )}
+          {showFilterBar && !isPhone && (
             <div className="flex flex-wrap items-center gap-2">
               {/* Phones wrap the segments: a sideways scroll with no visible
                   bar hid "Not connected" and "Hidden" off-screen. */}
@@ -223,6 +242,14 @@ export function ProvidersSettingsPage() {
               </div>
               <p className="text-xs text-(--color-text-subtle)">
                 Open a provider to manage keys, hide it from pickers, or choose which models show.
+                {isPhone && statusCounts.hidden > 0 && statusFilter !== 'hidden' && (
+                  <>
+                    {' '}
+                    <button type="button" onClick={() => setStatusFilter('hidden')} className="font-medium text-(--color-text) underline-offset-2 hover:underline">
+                      {`${statusCounts.hidden} hidden`}
+                    </button>
+                  </>
+                )}
               </p>
             </>
           )}

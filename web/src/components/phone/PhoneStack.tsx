@@ -21,6 +21,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Touc
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useBackHandler } from '@/lib/back-button'
 import { SpringValue } from '@/lib/drawer-motion'
+import { haptic, outcomeHapticFeedback } from '@/lib/haptics'
 
 /** px from the left screen edge where a back swipe may start (iOS: ~20). */
 export const EDGE_ZONE = 24
@@ -38,6 +39,8 @@ const FLING_MIN_DISTANCE = 32
 const PARALLAX = 0.3
 /** Scrim strength over the root at full push. */
 const SCRIM = 0.12
+/** How far (fraction of the finger's travel) a blocked forward swipe gives. */
+const RUBBER_BAND = 0.12
 
 export interface PhoneStackProps {
   root: ReactNode
@@ -48,6 +51,13 @@ export interface PhoneStackProps {
   onBack: () => void
   /** Edge swipe and Android Back may pop; off while a sheet or overlay is up. */
   backEnabled?: boolean
+  /**
+   * Swiping left on the root pushes the page (Servers → Sessions). Off when
+   * absent. ``forwardBlocked`` makes the swipe rubber-band back with an
+   * error tick instead (no server to open).
+   */
+  onForward?: () => void
+  forwardBlocked?: boolean
 }
 
 interface Drag {
@@ -61,7 +71,7 @@ interface Drag {
   velocity: number
 }
 
-export function PhoneStack({ root, page, pushed, onBack, backEnabled = true }: PhoneStackProps) {
+export function PhoneStack({ root, page, pushed, onBack, backEnabled = true, onForward, forwardBlocked = false }: PhoneStackProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
   const scrimRef = useRef<HTMLDivElement>(null)
@@ -71,6 +81,9 @@ export function PhoneStack({ root, page, pushed, onBack, backEnabled = true }: P
   const [settled, setSettled] = useState<0 | 1>(pushed ? 1 : 0)
   const settledRef = useRef(settled)
   const drag = useRef<Drag | null>(null)
+  const forwardDrag = useRef<Drag | null>(null)
+  // A forward swipe is pulling the page in: show it before it settles.
+  const [peeking, setPeeking] = useState(false)
 
   // Created once; ``pushed`` only seeds where it starts.
   const [spring] = useState(
@@ -144,6 +157,7 @@ export function PhoneStack({ root, page, pushed, onBack, backEnabled = true }: P
     const velocity = (-state.velocity * 1000) / state.width
     const flung = state.velocity > FLING_VELOCITY && state.dx > FLING_MIN_DISTANCE
     if (flung || state.dx > state.width * COMMIT_FRACTION) {
+      haptic('tick')
       spring.settle(0, velocity)
       onBack()
     } else {
@@ -151,10 +165,66 @@ export function PhoneStack({ root, page, pushed, onBack, backEnabled = true }: P
     }
   }
 
-  const atRoot = settled === 0 && !pushed
+  // Forward: a leftward swipe anywhere on the root pulls the page in.
+  const onRootTouchStart = (event: TouchEvent<HTMLDivElement>) => {
+    if (pushed || !onForward || event.touches.length !== 1) return
+    const touch = event.touches[0]
+    const width = rootRef.current?.getBoundingClientRect().width || window.innerWidth
+    forwardDrag.current = { startX: touch.clientX, startY: touch.clientY, width, axis: 'pending', dx: 0, lastX: touch.clientX, lastT: event.timeStamp, velocity: 0 }
+  }
+
+  const onRootTouchMove = (event: TouchEvent<HTMLDivElement>) => {
+    const state = forwardDrag.current
+    if (!state || state.axis === 'y') return
+    const touch = event.touches[0]
+    const dx = state.startX - touch.clientX
+    const dy = touch.clientY - state.startY
+    if (state.axis === 'pending') {
+      if (Math.hypot(dx, dy) < AXIS_LOCK_SLOP) return
+      state.axis = dx > 0 && Math.abs(dx) > HORIZONTAL_DOMINANCE * Math.abs(dy) ? 'x' : 'y'
+      if (state.axis === 'y') return
+      setPeeking(true)
+    }
+    const dt = event.timeStamp - state.lastT
+    if (dt > 0) state.velocity = (state.lastX - touch.clientX) / dt
+    state.lastX = touch.clientX
+    state.lastT = event.timeStamp
+    state.dx = Math.max(0, dx)
+    spring.set((forwardBlocked ? state.dx * RUBBER_BAND : state.dx) / state.width)
+  }
+
+  const onRootTouchEnd = () => {
+    const state = forwardDrag.current
+    forwardDrag.current = null
+    if (!state || state.axis !== 'x') return
+    setPeeking(false)
+    const velocity = (state.velocity * 1000) / state.width
+    const flung = state.velocity > FLING_VELOCITY && state.dx > FLING_MIN_DISTANCE
+    const commit = flung || state.dx > state.width * COMMIT_FRACTION
+    if (forwardBlocked) {
+      if (commit) void outcomeHapticFeedback('error')
+      spring.settle(0)
+      return
+    }
+    if (commit) {
+      haptic('tick')
+      spring.settle(1, velocity)
+      onForward?.()
+    } else {
+      spring.settle(0, velocity)
+    }
+  }
+
+  const atRoot = settled === 0 && !pushed && !peeking
   return (
     <div data-phone-stack="" className="relative h-full w-full overflow-hidden">
-      <div ref={rootRef} data-phone-stack-root="" inert={pushed && settled === 1} aria-hidden={pushed && settled === 1 ? true : undefined} className="absolute inset-0">
+      <div ref={rootRef} data-phone-stack-root="" inert={pushed && settled === 1} aria-hidden={pushed && settled === 1 ? true : undefined}
+        className="absolute inset-0"
+        onTouchStart={onRootTouchStart}
+        onTouchMove={onRootTouchMove}
+        onTouchEnd={onRootTouchEnd}
+        onTouchCancel={onRootTouchEnd}
+      >
         {root}
         <div ref={scrimRef} aria-hidden="true" className="pointer-events-none absolute inset-0 bg-(--color-overlay) opacity-0" />
       </div>

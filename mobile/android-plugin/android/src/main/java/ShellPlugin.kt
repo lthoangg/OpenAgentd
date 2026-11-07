@@ -8,10 +8,16 @@ import android.app.AlertDialog
 import android.content.ClipData
 import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.webkit.MimeTypeMap
 import android.webkit.WebView
 import androidx.core.content.FileProvider
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -123,11 +129,40 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
         this.webView = webView
         webViewLoaded = true
         applyFontScale(activity.resources.configuration.fontScale)
+        fitAboveKeyboard(webView)
         // Tauri applies the config's single (light) backgroundColor right
         // after this hook. Repaint once it has, in the theme the page will
         // paint, so a dark launch shows dark paper until the page does.
         val dark = isDark(themePrefs.getString("preference", null))
         webView.post { webView.setBackgroundColor(paper(dark)) }
+    }
+
+    /**
+     * Keep the WebView above the soft keyboard. The activity draws edge to
+     * edge (`enableEdgeToEdge`, target SDK 35+), so Android no longer resizes
+     * the window for the keyboard (`adjustResize` stops applying), and a
+     * WebView that does not inset itself for it (System WebView 124 does not)
+     * left the keyboard over the composer: the page's visual viewport never
+     * shrank, so the web never saw the keyboard (`data-keyboard-open`, the
+     * composer's swipe down to put it away).
+     *
+     * The WebView's parent takes the keyboard's height as bottom padding, so
+     * the page is laid out above it and its viewport shrinks as on iOS. The
+     * WebView then gets the insets without the keyboard, so a WebView that
+     * does handle it never counts it twice.
+     */
+    private fun fitAboveKeyboard(webView: WebView) {
+        val parent = webView.parent as? android.view.View ?: return
+        ViewCompat.setOnApplyWindowInsetsListener(parent) { view, insets ->
+            val keyboard = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            if (view.paddingBottom != keyboard) {
+                view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, keyboard)
+            }
+            WindowInsetsCompat.Builder(insets)
+                .setInsets(WindowInsetsCompat.Type.ime(), Insets.NONE)
+                .build()
+        }
+        ViewCompat.requestApplyInsets(parent)
     }
 
     /**
@@ -391,6 +426,56 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
             }
             webView?.setBackgroundColor(paper(dark))
             invoke.resolve()
+        }
+    }
+
+    /**
+     * Open the system installer for an update APK the shell downloaded into
+     * the cache directory (and checked against the feed's SHA-256). Android
+     * itself refuses it unless it is signed with the installed app's key.
+     * Until the user allows installs from OpenAgentd, this opens that
+     * setting and rejects, so the UI can ask them to try again.
+     */
+    @Command
+    fun installApk(invoke: Invoke) {
+        try {
+            val args = invoke.parseArgs(ShareArgs::class.java)
+            val file = File(args.path).canonicalFile
+            val cacheDir = activity.cacheDir.canonicalFile
+            if (!file.path.startsWith(cacheDir.path + File.separator) || !file.isFile || file.extension != "apk") {
+                invoke.reject("Only a downloaded update in the app cache can be installed")
+                return
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                !activity.packageManager.canRequestPackageInstalls()
+            ) {
+                val settings = Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${activity.packageName}"),
+                )
+                activity.runOnUiThread { activity.startActivity(settings) }
+                invoke.reject("Allow OpenAgentd to install apps, then tap Install again")
+                return
+            }
+            val uri = FileProvider.getUriForFile(
+                activity,
+                "${activity.packageName}.openagentd.fileprovider",
+                file,
+            )
+            val install = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            activity.runOnUiThread {
+                try {
+                    activity.startActivity(install)
+                    invoke.resolve()
+                } catch (ex: Exception) {
+                    invoke.reject(ex.message ?: "Could not open the installer")
+                }
+            }
+        } catch (ex: Exception) {
+            invoke.reject(ex.message ?: "Could not install the update")
         }
     }
 }

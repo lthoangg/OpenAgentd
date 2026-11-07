@@ -1,6 +1,6 @@
 import type { ScheduledTaskResponse } from '@/api/types'
 import { STATUS, type StatusView } from '@/lib/status'
-import { formatCompactDate, formatInTimezone } from '@/utils/format'
+import { formatCompactDate, formatInTimezone, wallClockToISO } from '@/utils/format'
 
 export const FIELD_CLASS = 'bg-(--bg-page) dark:bg-(--bg-page)'
 
@@ -114,6 +114,22 @@ export function nextRunLabel(task: Pick<ScheduledTaskResponse, 'next_fire_at'>, 
   const m = minutesBetween(now, t)
   if (m < 1) return 'Next run due now'
   return m < WEEK_MINUTES ? `Next run in ${span(m)}` : `Next run ${formatCompactDate(new Date(t), new Date(now))}`
+}
+
+/**
+ * The one-time form's preview of a picked wall-clock time in ``timeZone``:
+ * "Runs in 3h (Asia/Ho_Chi_Minh)", "Runs Nov 14 (UTC)", or, for a time
+ * already gone (which the scheduler fires at once), the warning. Null with
+ * nothing picked.
+ */
+export function atRunHint(wallClock: string, timeZone: string, now = Date.now()): { past: boolean; text: string } | null {
+  if (!wallClock) return null
+  const t = new Date(wallClockToISO(wallClock, timeZone)).getTime()
+  if (!Number.isFinite(t)) return null
+  const m = minutesBetween(now, t)
+  if (m < 0) return { past: true, text: 'That time has passed: it runs as soon as you save.' }
+  const when = m < 1 ? 'now' : m < WEEK_MINUTES ? `in ${span(m)}` : formatCompactDate(new Date(t), new Date(now))
+  return { past: false, text: `Runs ${when} (${timeZone})` }
 }
 
 // ── Mode / workspace shared bits ────────────────────────────────────────────

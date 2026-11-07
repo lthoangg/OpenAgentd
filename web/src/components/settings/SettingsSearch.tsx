@@ -10,6 +10,7 @@ import type { KeyboardEvent } from 'react'
 import { useState } from 'react'
 
 import { SearchBar } from '@/components/ui/search-bar'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { cn } from '@/lib/utils'
 import type { SettingsSectionDef } from '@/components/settings/sections'
 import { searchSettings, type SettingsHit } from '@/components/settings/settings-index'
@@ -38,6 +39,7 @@ export function SettingsSearchField({
   autoFocus?: boolean
   wrapperClassName?: string
 }) {
+  const phone = useIsPhone()
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     // Enter opens the first result, so typing a word then Enter jumps there.
     if (event.key === 'Enter' && search.hits[0]) {
@@ -47,6 +49,8 @@ export function SettingsSearchField({
   }
   return (
     <SearchBar
+      // A phone: the same filled field as the Sessions search.
+      filled={phone}
       value={search.query}
       onChange={(event) => search.setQuery(event.target.value)}
       placeholder="Search settings"

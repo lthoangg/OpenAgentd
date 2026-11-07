@@ -38,7 +38,7 @@ mock.module('lucide-react', () => ({
   ChevronsUpDown: Icon,
   Copy: Icon,
   Download: Icon,
-  ExternalLink: Icon,
+  ExternalLink: Icon, WrapText: Icon,
   File: Icon,
   FileDiff: Icon,
   FileHeadphone: Icon,
@@ -78,6 +78,8 @@ mock.module('@/lib/pdfjs-loader', () => ({
   }),
 }))
 mock.module('framer-motion', () => ({
+  // The phone's row sheets (ActionSheet → BottomSheet) import it.
+  AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
   motion: {
     aside: ({ children, className, 'aria-label': ariaLabel }: { children: React.ReactNode; className?: string; 'aria-label'?: string }) => (
       <aside className={className} aria-label={ariaLabel}>{children}</aside>

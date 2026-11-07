@@ -138,8 +138,14 @@ mock.module('@/components/LazyAppBackendDialog', () => ({
 mock.module('@/hooks/use-platform', () => ({
   getPlatform: () => ({ isTauri: true, os: 'macos', isMacOverlay: true }),
 }))
+let isPhone = false
+mock.module('@/hooks/use-is-phone', () => ({ useIsPhone: () => isPhone }))
+mock.module('@/components/phone/LazyServersScreen', () => ({
+  ServersScreen: () => <div data-testid="servers-screen">Servers</div>,
+}))
 
 beforeEach(() => {
+  isPhone = false
   delete window.__OAD_API_BASE_URL__
   delete window.__OAD_TOKEN__
   window.localStorage.clear()
@@ -393,6 +399,32 @@ describe('App backend bootstrap', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Choose server' })).toBeTruthy()
     timers.restore()
+  })
+
+  it('shows a phone with no server its Servers screen at once, with no dialog', async () => {
+    isPhone = true
+    statusPayload = { base_url: '', sidecar_running: false, external: true }
+    render(<App />)
+    expect(await screen.findByTestId('servers-screen')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Choose server' })).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('keeps a phone on the logo while its saved server connects, Servers only after a long wait', async () => {
+    isPhone = true
+    const timers = useFakeTimers()
+    try {
+      statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: false, external: false, backend_starting: true }
+      render(<App />)
+      await act(async () => { await Promise.resolve() })
+      expect(screen.getByRole('status', { name: 'Loading OpenAgentd' })).toBeTruthy()
+      await act(async () => { timers.tick(5_000) })
+      expect(screen.queryByTestId('servers-screen')).toBeNull()
+      await act(async () => { timers.tick(5_000) })
+      expect(screen.getByTestId('servers-screen')).toBeTruthy()
+    } finally {
+      timers.restore()
+    }
   })
 
   it('copies the backend log path while the sidecar is still unavailable', async () => {

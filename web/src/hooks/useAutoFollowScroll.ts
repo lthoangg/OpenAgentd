@@ -4,6 +4,20 @@ import { DURATIONS_S, prefersReducedMotion } from '@/lib/motion'
 const SCROLL_THRESHOLD = 40
 /** Sending from up to this many screens above the end glides there; further jumps. */
 const SMOOTH_SEND_SCREENS = 2
+/** ms with no scroll event and no finger down before a touch scroll counts as at rest. */
+const SCROLL_REST_MS = 140
+/** On touch, earlier turns start coming in this many screens above the first one. */
+const OLDER_PREFETCH_SCREENS = 2
+const OLDER_ZONE_MIN_PX = 300
+
+/**
+ * How close (px) the first turn may come to the top of the view before
+ * earlier ones are asked for. With a mouse, near the very top; on touch,
+ * two screens ahead, so they are in before a fling gets there.
+ */
+export function olderZonePx(clientHeight: number, touch: boolean): number {
+  return touch ? Math.max(OLDER_ZONE_MIN_PX, clientHeight * OLDER_PREFETCH_SCREENS) : OLDER_ZONE_MIN_PX
+}
 const USER_SCROLL_INTENT_MS = 250
 /** Quiet time after the last visual-viewport resize before the keyboard counts as settled. */
 export const KEYBOARD_SETTLE_MS = 120
@@ -97,11 +111,16 @@ export interface UseAutoFollowScrollOptions {
   sessionId?: string
   isUserMessage?: boolean
   isEmpty?: boolean
-  onLoadOlderTop?: () => void
+  /** Earlier turns are wanted: the first one is near the top. ``moving`` while a touch scroll is under way. */
+  onLoadOlderTop?: (moving: boolean) => void
+  /** Empty room above the first turn (the touch runway), left out of "near the top". */
+  topInset?: () => number
+  /** A touch scroll has come to rest: nothing moving, no finger down. */
+  onScrollRest?: () => void
 }
 
 export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
-  const { totalLen, lastContent, sessionId, isUserMessage, isEmpty, onLoadOlderTop } = options
+  const { totalLen, lastContent, sessionId, isUserMessage, isEmpty, onLoadOlderTop, topInset, onScrollRest } = options
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -128,9 +147,22 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
   const saveFrameRef = useRef(0)
 
   const onLoadOlderTopRef = useRef(onLoadOlderTop)
+  const topInsetRef = useRef(topInset)
+  const onScrollRestRef = useRef(onScrollRest)
   useEffect(() => {
     onLoadOlderTopRef.current = onLoadOlderTop
-  }, [onLoadOlderTop])
+    topInsetRef.current = topInset
+    onScrollRestRef.current = onScrollRest
+  }, [onLoadOlderTop, onScrollRest, topInset])
+  // Touch scroll state, for ``isScrollAtRest``.
+  const touchDownRef = useRef(false)
+  const lastScrollAtRef = useRef(0)
+
+  /** No finger on the transcript and no scroll event for a moment: a scrollTop write now stops nothing. */
+  const isScrollAtRest = useCallback(
+    () => !touchDownRef.current && performance.now() - lastScrollAtRef.current >= SCROLL_REST_MS,
+    [],
+  )
 
   // Two anchoring modes, keyed on ``data-follow`` (index.css):
   // - ``live``: the scroller opts out of native anchoring and this hook keeps
@@ -223,16 +255,24 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
   }, [endQuiet, setChip, syncAnchor])
 
   /**
-   * Jump to latest: a glide from up to two screens away, as a send makes; a
-   * jump from further back, where a glide only paints the turns in between,
-   * and under reduced motion.
+   * Jump to latest: a glide from up to two screens away, as a send makes.
+   * From further back the view first cuts to a screen above the end (a
+   * glide there only paints the turns in between) and glides the rest, so
+   * it never lands with a bare snap. Reduced motion jumps.
    */
   const jumpToLatest = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
     const distance = el.scrollHeight - el.clientHeight - el.scrollTop
-    const glide = !prefersReducedMotion() && distance <= el.clientHeight * SMOOTH_SEND_SCREENS
-    scrollToBottom(glide ? 'smooth' : 'auto')
+    if (prefersReducedMotion()) {
+      scrollToBottom('auto')
+      return
+    }
+    if (distance > el.clientHeight * SMOOTH_SEND_SCREENS) {
+      el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight * 2)
+      lastScrollTopRef.current = el.scrollTop
+    }
+    scrollToBottom('smooth')
   }, [scrollToBottom])
 
   useEffect(() => {
@@ -244,10 +284,22 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       lastContentHeightRef.current = contentRef.current.getBoundingClientRect().height
     }
 
+    const touchScroll = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
+    let restTimer: ReturnType<typeof setTimeout> | null = null
+    const scheduleRest = () => {
+      if (!touchScroll) return
+      if (restTimer) clearTimeout(restTimer)
+      restTimer = setTimeout(() => {
+        restTimer = null
+        // The finger is still down: its lift schedules this again.
+        if (!touchDownRef.current) onScrollRestRef.current?.()
+      }, SCROLL_REST_MS)
+    }
     const onScroll = () => {
       const currentScrollTop = el.scrollTop
       const prevScrollTop = lastScrollTopRef.current
       lastScrollTopRef.current = currentScrollTop
+      lastScrollAtRef.current = performance.now()
 
       const currentScrollHeight = el.scrollHeight
       const prevScrollHeight = lastScrollHeightRef.current
@@ -305,9 +357,13 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
         setChip(true)
       }
 
-      if (currentScrollTop <= 300) {
-        onLoadOlderTopRef.current?.()
-      }
+      // Near the first turn earlier ones are asked for. On touch that is
+      // two screens ahead and mid-fling too: AgentView lands them in the
+      // runway above, so the turns in view never move and nothing writes
+      // scrollTop, which would stop the fling (an iOS flicker, on-device).
+      const firstTurnTop = currentScrollTop - (topInsetRef.current?.() ?? 0)
+      if (firstTurnTop <= olderZonePx(el.clientHeight, touchScroll)) onLoadOlderTopRef.current?.(touchScroll)
+      scheduleRest()
       scheduleSave()
     }
 
@@ -371,8 +427,14 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     let lastTouchY: number | null = null
     let lastTouchTarget: EventTarget | null = null
     const onTouchStart = (e: TouchEvent) => {
+      touchDownRef.current = true
       lastTouchY = e.touches[0]?.clientY ?? null
       lastTouchTarget = e.target
+    }
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length > 0) return
+      touchDownRef.current = false
+      scheduleRest()
     }
     const onTouchMove = (e: TouchEvent) => {
       const y = e.touches[0]?.clientY
@@ -432,16 +494,21 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     el.addEventListener('wheel', onWheel, { passive: true })
     el.addEventListener('touchstart', onTouchStart, { passive: true })
     el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true })
     el.addEventListener('pointerdown', onPointerDown, { passive: true })
     window.addEventListener('pointerup', onPointerUp, { passive: true })
     window.addEventListener('pointercancel', onPointerUp, { passive: true })
     document.addEventListener('keydown', onKeyDown)
 
     return () => {
+      if (restTimer) clearTimeout(restTimer)
       el.removeEventListener('scroll', onScroll)
       el.removeEventListener('wheel', onWheel)
       el.removeEventListener('touchstart', onTouchStart)
       el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
       el.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerUp)
@@ -533,17 +600,8 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     const el = scrollRef.current
     const content = contentRef.current
     if (!el || !content || typeof ResizeObserver === 'undefined') return
-    let lastContentHeight = content.getBoundingClientRect().height
-    let lastClientHeight = el.clientHeight
-    const ro = new ResizeObserver((entries) => {
+    const ro = new ResizeObserver(() => {
       const nextContentHeight = content.getBoundingClientRect().height
-      const nextClientHeight = el.clientHeight
-      const contentGrew = nextContentHeight > lastContentHeight
-      const viewportChanged = nextClientHeight !== lastClientHeight
-      const contentChanged = entries.some((entry) => entry.target === content)
-
-      lastContentHeight = nextContentHeight
-      lastClientHeight = nextClientHeight
       // Recorded while reading too, so a later shrink is measured against
       // the content as it was, not as it was at the last scroll event. The
       // view too: a shrink clamps it to the new end, and when the layout
@@ -561,7 +619,11 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       if (pointerDownRef.current) return
       // A glide to the end is under way; it settles on the new end itself.
       if (smoothScrollFinishRef.current) return
-      if (document.documentElement.hasAttribute('data-keyboard-open') && viewportChanged && !contentGrew && !contentChanged) return
+      // A smaller view keeps the end in view every frame, the keyboard's
+      // rise included: the shell eases its height on the keyboard's curve
+      // (index.css, data-vp-rise), and the end rides up with the composer.
+      // Left to the settle below, it slid under the composer and snapped
+      // back once the keyboard stopped (a hitch, on-device report).
       const target = Math.max(0, el.scrollHeight - el.clientHeight)
       if (Math.abs(el.scrollTop - target) > 0.5) {
         el.scrollTop = target
@@ -574,11 +636,10 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     return () => ro.disconnect()
   }, [hasContent, setChip])
 
-  // The soft keyboard shrinks the scrollport from the bottom while scrollTop
-  // stays put, so the end of the latest reply slides under the composer. The
-  // observer above deliberately ignores those per-frame shrinks (chasing the
-  // keyboard animation is janky); instead re-pin once, after the keyboard has
-  // settled, if the reader was following the bottom.
+  // A backstop for the soft keyboard: the observer above keeps the end in
+  // view as the scrollport shrinks, and this re-pins once more after the
+  // keyboard has settled, for a WebView that resizes without a layout the
+  // observer sees.
   useEffect(() => {
     if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return
     const root = document.documentElement
@@ -619,5 +680,6 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     showScrollBtn,
     scrollToBottom,
     jumpToLatest,
+    isScrollAtRest,
   }
 }

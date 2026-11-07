@@ -18,6 +18,7 @@ import { sessionPrefetchProps } from '@/lib/session-prefetch-row'
 import { SessionStateWord, SessionStatusMark, sessionStateWord, sessionStatus } from './SessionStatusMark'
 import { LIST_ROW_GEOMETRY, ROW_ACTION, listRowSurface, listRowText, rowActionsReveal } from '@/components/ui/list-row'
 import { SwipeRow, type SwipeAction } from '@/components/phone/SwipeRow'
+import { cn } from '@/lib/utils'
 import { CountChip } from './CountChip'
 import { TREE_INDENT_PX } from './tree-indent'
 import { useSidebarPage } from './SidebarPageContext'
@@ -213,7 +214,8 @@ function SessionRowView({
               id: 'pin',
               label: pinned ? 'Unpin' : 'Pin',
               icon: pinned ? PinOff : Pin,
-              tone: 'accent' as const,
+              // Neutral: only Delete is loud, as Mail's Flag beside Trash is not.
+              tone: 'neutral' as const,
               onAction: () => onSessionPinToggle?.(session),
             }]
           : []),
@@ -432,7 +434,7 @@ function SessionRowView({
             long-press sheets has no tooltip and no hover, so there the place
             stays on the row, after the title, giving way first when narrow. */}
         {mobileLongPressActions && checkoutName && !isEditing && (
-          <span className={`ml-1 inline-flex min-w-12 max-w-24 shrink-2 items-center gap-0.5 font-mono text-meta text-(--color-text-muted) ${ageVisibility}`} aria-hidden="true">
+          <span className={`ml-1 inline-flex min-w-12 max-w-24 shrink-2 items-center gap-0.5 text-meta text-(--color-text-muted) ${ageVisibility}`} aria-hidden="true">
             <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
             <span data-checkout-tag className="truncate">{checkoutName}</span>
           </span>
@@ -440,7 +442,7 @@ function SessionRowView({
         {mobileLongPressActions && contextLabel && !isEditing && (
           <span
             data-context-label
-            className={`ml-1 min-w-8 max-w-24 shrink-2 truncate font-mono text-meta text-(--color-text-muted) ${ageVisibility}`}
+            className={`ml-1 min-w-8 max-w-24 shrink-2 truncate text-meta text-(--color-text-muted) ${ageVisibility}`}
             aria-hidden="true"
           >
             {contextLabel}
@@ -468,7 +470,9 @@ function SessionRowView({
             <span className="truncate">{sentFromName}</span>
           </button>
         )}
-        {pinned && !isEditing && (
+        {/* The phone's Sessions screen drops the mark: a pinned row already
+            sits under Pinned, and the swipe says Unpin. */}
+        {pinned && !isEditing && !page && (
           <span data-pin-mark="" className={`ml-1 flex shrink-0 items-center text-(--color-text-muted) ${pinMarkVisibility}`} aria-hidden="true">
             <Pin size={12} />
           </span>
@@ -505,7 +509,9 @@ function SessionRowView({
               e.stopPropagation()
               onSessionContextActions(session, menuBelow(e.currentTarget))
             }}
-            className={ROW_ACTION}
+            // The Sessions screen has a hold and a swipe for this; the
+            // title keeps the room.
+            className={cn(ROW_ACTION, page && 'hidden')}
             aria-haspopup="menu"
             aria-label={`More actions for ${sessionTitle}`}
             title="More"
@@ -653,9 +659,10 @@ export function useStableSessionHandlers(latest: SessionHandlers): SessionHandle
 /**
  * Paging is an explicit row rather than an IntersectionObserver inside a
  * nested scroll box: the sidebar keeps a single scroller and every session
- * page is one deliberate click (or Enter) away.
+ * page is one deliberate click (or Enter) away. `count` is how many rows the
+ * click adds, when the server says.
  */
-export function ShowMoreRow({ loading, onLoadMore }: { loading: boolean; onLoadMore: () => void }) {
+export function ShowMoreRow({ loading, count = null, onLoadMore }: { loading: boolean; count?: number | null; onLoadMore: () => void }) {
   return (
     <button
       type="button"
@@ -668,7 +675,7 @@ export function ShowMoreRow({ loading, onLoadMore }: { loading: boolean; onLoadM
       <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
         {loading && <Loader2 size={12} className="animate-spin" />}
       </span>
-      {loading ? 'Loading…' : 'Show more'}
+      {loading ? 'Loading…' : count ? `Show ${count} more` : 'Show more'}
     </button>
   )
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 
 import type { ContentBlock } from '@/api/types'
-import { readerSegments, summarizeWork, turnChangedFiles, workSummaryDetail } from '@/components/ReaderTurn/segments'
+import { readerSegments, summarizeWork, toolRunSegments, turnChangedFiles, workSummaryDetail } from '@/components/ReaderTurn/segments'
 
 const text = (id: string, content = 'prose'): ContentBlock => ({ id, type: 'text', content })
 const thinking = (id: string): ContentBlock => ({ id, type: 'thinking', content: 'hmm' })
@@ -208,5 +208,23 @@ describe('turnChangedFiles — what the turn edited', () => {
     ]
 
     expect(turnChangedFiles(blocks)).toEqual([])
+  })
+})
+
+describe('toolRunSegments — a phone groups runs of finished tool calls', () => {
+  it('folds two or more consecutive finished calls; text and a single call stay as they are', () => {
+    const blocks = [text('n0'), tool('s1', 'shell'), tool('s2', 'shell'), tool('s3', 'shell'), text('n1'), tool('r1', 'read'), text('a1')]
+    expect(toolRunSegments(blocks, settled)).toEqual([
+      { kind: 'block', index: 0 },
+      { kind: 'work', indices: [1, 2, 3] },
+      { kind: 'block', index: 4 },
+      { kind: 'block', index: 5 },
+      { kind: 'block', index: 6 },
+    ])
+  })
+
+  it('keeps a failed or running call out of the group, so an error stays open', () => {
+    const blocks = [tool('s1', 'shell'), tool('s2', 'shell', {}, { toolResult: 'Error: exit 1' }), tool('s3', 'shell'), tool('s4', 'shell', {}, { toolDone: false })]
+    expect(toolRunSegments(blocks, settled).map((s) => s.kind)).toEqual(['block', 'block', 'block', 'block'])
   })
 })

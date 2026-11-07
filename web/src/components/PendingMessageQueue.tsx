@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { ArrowUpRight, ChevronDown, ChevronUp, Paperclip, Pencil } from 'lucide-react'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { Button } from '@/components/ui/button'
 import { CloseButton } from '@/components/ui/close-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -178,6 +179,49 @@ function QueuedBubble({ content, attachments, label, sender, onEdit, onRemove }:
   )
 }
 
+/**
+ * A phone's queued message: a faded bubble at the end of the transcript,
+ * where it will land (user request: below the chat, not above the composer).
+ * Its one action is a tap, which takes it back into the composer: to edit,
+ * or to clear from there (user request: no ✕, nothing to undo). Long text
+ * shows four lines.
+ */
+function QueuedPhoneBubble({ content, label, onEdit }: {
+  content: string
+  attachments?: MessageAttachment[]
+  label: string
+  sender?: QueuedSender
+  onEdit: () => void | Promise<void>
+  onRemove: () => void | Promise<void>
+}) {
+  // A steer waits for the server's cancel; a second tap would cancel it twice.
+  const [busy, setBusy] = useState(false)
+  const text = designFeedbackPlainText(content).trim()
+  const edit = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await onEdit()
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div data-queued-bubble="" className="oa-rise-in flex flex-col items-end gap-1 opacity-60">
+      <button
+        type="button"
+        aria-label={`Edit queued message: ${text.replace(/\s+/g, ' ')}`}
+        onClick={() => { void edit() }}
+        disabled={busy}
+        className="min-w-0 max-w-[85%] rounded-sm bg-(--bg-key) px-3 py-2.5 text-left text-sm leading-relaxed text-(--color-text) transition-transform duration-(--motion-instant) active:scale-[0.98] motion-reduce:active:scale-100"
+      >
+        <span className="line-clamp-4 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{text}</span>
+      </button>
+      <span className="text-meta text-(--color-text-muted)">{label} · Tap to edit</span>
+    </div>
+  )
+}
+
 /** Move a queued message back into the composer (see ``useSessionBootstrap``). */
 function restoreDraft(content: string, files?: File[]) {
   // Files ride along because cancelling a server-queued message deletes its
@@ -196,7 +240,12 @@ function offerUndo(content: string, files?: File[]) {
   })
 }
 
+/**
+ * Queued messages at the end of the transcript, under the turn they wait
+ * behind: bubbles with Edit and Remove on desktop, faded bubbles on a phone.
+ */
 export const PendingMessageQueue = memo(function PendingMessageQueue() {
+  const isPhone = useIsPhone()
   const allMessages = useAgentStore((s) => s._pendingMessages)
   const sessionId = useAgentStore((s) => s.sessionId)
   // `agentStreams` is replaced on every SSE flush, so select only which
@@ -232,11 +281,12 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
   const held = useMemo(() => allHeld.filter((msg) => msg.sessionId === sessionId), [allHeld, sessionId])
 
   if (messages.length === 0 && held.length === 0) return null
+  const Item = isPhone ? QueuedPhoneBubble : QueuedBubble
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className={isPhone ? 'flex flex-col gap-2.5' : 'flex flex-col gap-3'}>
       {messages.map((msg) => (
-        <QueuedBubble
+        <Item
           key={msg.id}
           content={msg.content}
           attachments={msg.attachments}
@@ -269,7 +319,7 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
         />
       ))}
       {held.map((msg) => (
-        <QueuedBubble
+        <Item
           key={msg.id}
           content={msg.content}
           attachments={msg.attachments}

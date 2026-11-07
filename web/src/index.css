@@ -115,26 +115,83 @@
     --text-xl--line-height: calc(1.75 / 1.25);
     --text-2xl: calc(1.5rem * var(--oa-text-scale));
     --text-2xl--line-height: calc(2 / 1.5);
-    /* The phone's page title (Sessions): 34px bold under the navigation bar,
-     * 30px at Compact, 38px at Large. Only a phone screen uses it, so there
-     * is no desktop value. */
-    --text-large-title: calc(2.125rem * var(--oa-phone-scale));
+    /* The phone's page title (Sessions, Servers): 28px bold under the
+     * navigation bar, 26px at Compact, 34px at Large. Only a phone screen
+     * uses it, so there is no desktop value. */
+    --text-large-title: var(--oa-phone-title);
     --text-large-title--line-height: calc(41 / 34);
 }
 
 /* Text size (stores/useDisplayPrefsStore.ts, set before paint by
- * public/theme-init.js). Default is one step above the old density. */
+ * public/theme-init.js). Default is one step above the old density.
+ *
+ * The phone's own steps (read only by the phone block below): Default is
+ * the composer's size, 15px text and 40px rows and buttons; Compact a step
+ * under it (14px, 36px); Large is Apple's (17px, 44px). Rem, so iOS Dynamic
+ * Type still scales the text and rows; the button floor is px, as before. */
 :root {
   --oa-text-scale: calc(13 / 12);
-  --oa-phone-scale: 1;
+  /* A touch control sized outside Button (a sheet row, a bar button): 44px,
+   * and the phone's step on a phone (below). */
+  --phone-control: 44px;
+  --oa-phone-body: 0.9375rem;
+  --oa-phone-subhead: 0.8125rem;
+  --oa-phone-meta: 0.75rem;
+  --oa-phone-title: 1.75rem;
+  --oa-phone-row: 2.5rem;
+  --oa-phone-control: 40px;
+  --oa-phone-header: 2.75rem;
 }
 :root[data-text-size="compact"] {
   --oa-text-scale: 1;
-  --oa-phone-scale: calc(15 / 17);
+  --oa-phone-body: 0.875rem;
+  --oa-phone-subhead: 0.75rem;
+  --oa-phone-meta: 0.6875rem;
+  --oa-phone-title: 1.625rem;
+  --oa-phone-row: 2.25rem;
+  --oa-phone-control: 36px;
+  --oa-phone-header: 2.5rem;
 }
 :root[data-text-size="large"] {
   --oa-text-scale: calc(14 / 12);
-  --oa-phone-scale: calc(19 / 17);
+  --oa-phone-body: 1.0625rem;
+  --oa-phone-subhead: 0.9375rem;
+  --oa-phone-meta: 0.8125rem;
+  --oa-phone-title: 2.125rem;
+  --oa-phone-row: 2.75rem;
+  --oa-phone-control: 44px;
+  --oa-phone-header: 2.75rem;
+}
+/* A narrow phone (iPhone 13 mini, SE: 375pt) shows every step one notch
+ * smaller: the same sizes read large on the small screen (on-device report). */
+@media (max-width: 389px) {
+  :root {
+    --oa-phone-body: 0.875rem;
+    --oa-phone-subhead: 0.75rem;
+    --oa-phone-meta: 0.6875rem;
+    --oa-phone-title: 1.625rem;
+    --oa-phone-row: 2.25rem;
+    --oa-phone-control: 36px;
+    --oa-phone-header: 2.5rem;
+  }
+  :root[data-text-size="compact"] {
+    --oa-phone-body: 0.8125rem;
+    --oa-phone-subhead: 0.6875rem;
+    --oa-phone-meta: 0.625rem;
+    --oa-phone-title: 1.5rem;
+    --oa-phone-row: 2.125rem;
+    --oa-phone-control: 34px;
+    --oa-phone-header: 2.5rem;
+  }
+  :root[data-text-size="large"] {
+    --oa-phone-body: 0.9375rem;
+    --oa-phone-subhead: 0.8125rem;
+    --oa-phone-meta: 0.75rem;
+    --oa-phone-title: 1.75rem;
+    --oa-phone-row: 2.5rem;
+    --oa-phone-control: 40px;
+    --oa-phone-header: 2.75rem;
+  }
 }
 
 @layer base {
@@ -203,6 +260,18 @@ html[data-mobile-shell] body {
 html[data-mobile-shell] {
   -webkit-text-size-adjust: 100%;
   touch-action: pan-x pan-y;
+}
+
+/* The phone composer's keyboard swipe (``useComposerKeyboardSwipe``): the
+ * browser may pan the box sideways only, so a vertical swipe stays a gesture
+ * and its touchend can raise the keyboard (a pan cancels the pointer and
+ * drops the user activation the focus needs). The message field is a
+ * scroller of its own; it keeps its vertical pan while it has lines to
+ * scroll. Scrollers inside the box (the suggestion lists) are not affected:
+ * touch-action does not reach past a scroll container. */
+[data-keyboard-swipe],
+[data-keyboard-swipe] textarea:not([data-swipe-scrolls]) {
+  touch-action: pan-x pinch-zoom;
 }
 
 @keyframes blink_input_opacity_to_prevent_scrolling_when_focus {
@@ -628,6 +697,16 @@ html[data-mobile-shell][data-keyboard-open] .app-overlay-modal {
   bottom: 0.5rem;
 }
 
+/* A bottom sheet portals to <body>, outside the shell that shrinks with the
+ * keyboard, and the iOS keyboard does not shrink the layout viewport: with a
+ * field focused (Add a server, a worktree name) the sheet would sit under
+ * the keyboard. Its bottom edge rides on top of the keyboard instead, and it
+ * is never taller than the visible region. */
+html[data-mobile-shell][data-keyboard-open] [data-bottom-sheet] {
+  bottom: max(0px, calc(100% - var(--app-vh, 100%) - var(--app-vt, 0px)));
+  max-height: calc(var(--app-vh, 100dvh) - env(safe-area-inset-top, 0px) - 0.625rem);
+}
+
 html[data-mobile-shell] .app-overlay-palette {
   display: flex;
   flex-direction: column;
@@ -731,6 +810,19 @@ html[data-mobile-shell][data-vp-anim] .app-overlay-modal[data-overlay-level="app
     transform var(--motion-base) var(--ease-sheet);
 }
 
+/* iOS keyboard *open* (``data-vp-rise``, use-mobile-viewport): WKWebView
+ * reports the final height in one step as the keyboard starts up, so the
+ * shell eases to it over the keyboard's own time and curve and the composer
+ * rides up with it instead of jumping. */
+html[data-mobile-shell][data-vp-rise] .mobile-viewport,
+html[data-mobile-shell][data-vp-rise] .app-overlay-modal[data-overlay-level="app"],
+html[data-mobile-shell][data-vp-rise] [data-bottom-sheet] {
+  transition:
+    height 280ms cubic-bezier(0.38, 0.7, 0.125, 1),
+    bottom 280ms cubic-bezier(0.38, 0.7, 0.125, 1),
+    max-height 280ms cubic-bezier(0.38, 0.7, 0.125, 1);
+}
+
 /* ─────────────────────────────────────────────────────────────
  * Scrollbar — minimal, theme-aware
  * ───────────────────────────────────────────────────────────── */
@@ -795,6 +887,17 @@ html[data-mobile-shell][data-vp-anim] .app-overlay-modal[data-overlay-level="app
 
   .scrollbar-none::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* no-spin: a right-aligned number field without the stepper arrows, which
+ * crowd a short field's value (settings number rows). */
+@utility no-spin {
+  appearance: textfield;
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
   }
 }
 
@@ -874,6 +977,11 @@ html[data-mobile-shell][data-vp-anim] .app-overlay-modal[data-overlay-level="app
   :focus:not(:focus-visible) {
     outline: none;
   }
+  /* Tab scrolls a control in a scroller only to the nearest edge, which
+   * left its ring (2px out, 2px wide) under the clip. */
+  :where(button, select, a[href], [tabindex]) {
+    scroll-margin-block: 6px;
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -890,8 +998,9 @@ html[data-mobile-shell][data-vp-anim] .app-overlay-modal[data-overlay-level="app
   translate: 0 0;
   transition: translate var(--motion-fast) var(--ease-out);
 }
+/* In from the window corner, so the outline shows on every side. */
 .skip-link:focus-visible {
-  translate: 0 40px;
+  translate: 8px 48px;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -1201,6 +1310,15 @@ html[data-app-hidden="true"] *::after {
 .oa-prose .oa-table-container .oa-table-wrap {
   margin: 0;
 }
+/* A wide table that runs past the right edge fades out there, so it reads
+   as more to scroll to (desktop mockup 7.7). A mask, not a painted cover:
+   prose sits on the page, bubbles, cards and dialogs alike. The table sets
+   ``data-clipped-end`` while clipped (MarkdownTable); the phone draws its
+   own shade below. */
+.oa-prose .oa-table-wrap[data-clipped-end] {
+  -webkit-mask-image: linear-gradient(to left, transparent, #000 32px);
+  mask-image: linear-gradient(to left, transparent, #000 32px);
+}
 .oa-prose table {
   border-collapse: collapse;
   font-size: 0.875em;
@@ -1293,6 +1411,15 @@ html[data-app-hidden="true"] *::after {
 }
 .oa-icon-in {
   animation: oa-icon-in var(--motion-base) var(--ease-spring-soft) backwards;
+}
+/* A hold menu blooms out of the control that opened it, as iOS's context
+ * menus do: from a smaller, faded copy anchored at that corner (the caller
+ * sets ``transform-origin``), settling with a soft spring. */
+@keyframes oa-menu-bloom {
+  from { opacity: 0; scale: 0.6; }
+}
+.oa-menu-bloom {
+  animation: oa-menu-bloom var(--motion-base) var(--ease-spring-soft) backwards;
 }
 /* Work in progress said in words ("running…", "Thinking…"): a light passes
  * over the label, as Apple Intelligence marks it. The words stay the muted
@@ -1395,6 +1522,20 @@ html[data-app-hidden="true"] *::after {
   width: 100cqi;
   margin-inline: calc((100% - 100cqi) / 2);
 }
+/*
+ * The Plan tab's review footer (comments, feedback, Approve) keeps the
+ * plan's text column rather than the dock's width: the column's max-w-3xl
+ * less its px-4 (46rem), and in a maximized dock the prose's 88ch measure
+ * (measured at text-sm, as the prose is; every child sets its own size).
+ */
+.oa-review-column {
+  max-width: 46rem;
+  margin-inline: auto;
+}
+[data-dock-maximized] .oa-review-column {
+  font-size: var(--text-sm);
+  max-width: min(88ch, calc(960px - 2rem));
+}
 
 /* ─────────────────────────────────────────────────────────────
  * Tool description — compact prose inside the settings panel.
@@ -1430,6 +1571,21 @@ html[data-app-hidden="true"] *::after {
 :where(button, select, a[href], [tabindex]):focus-visible {
   outline: 2px solid var(--focus-outline);
   outline-offset: 2px;
+}
+/* Controls drawn with an inset ring (a segment in its track, a tab in its
+ * strip, a row flush in a scroller, a menu or palette row, a confirm's footer
+ * button) inset the outline with it: outset, the track or the scroller clips
+ * it to a stray bar on one side. The rule above overrides any offset a
+ * component sets, so the utilities those controls already carry are matched
+ * here to keep meaning what they say. */
+:where(button, select, a[href], [tabindex]):focus-visible:is(
+  [data-focus-ring="inset"],
+  .oa-menu-item,
+  [class~="focus-visible:ring-inset"],
+  [class~="focus-visible:-outline-offset-2"],
+  [class~="[&>[data-slot=button]]:focus-visible:ring-inset"] > *
+) {
+  outline-offset: -2px;
 }
 /* Focus given by a click or a tab switch, not steered by keyboard; see
  * focusQuietly in lib/focus/quiet.ts. Clears on blur. */
@@ -1530,41 +1686,53 @@ html[data-app-hidden="true"] *::after {
   }
 }
 
-/* Phone (DESIGN.md → Touch density): Apple's sizes, as a phone app reads.
-   17px for row titles, buttons, menus, fields, chat and bar titles; 15px for
-   a row's second line and code; 13px for times and captions. Rows, the
-   header and every button are 44px (48px in the Android app, Material's
-   size). Text size scales it: Compact 15px, Large 19px; Dynamic Type adds
-   on top through rem. Tablets and narrow mouse windows keep the dense scale. */
+/* Phone (DESIGN.md → Touch density): the composer's size. At Default 15px
+   for row titles, buttons, menus, fields, chat and bar titles; 13px for a
+   row's second line and code; 12px for times and captions. Rows and every
+   button are 40px (4px more in the Android app, Material's size); the
+   header stays 44px. Text size picks the step (the --oa-phone-* tokens
+   above): Compact 14px / 36px, Large Apple's 17px / 44px; Dynamic Type adds
+   on top through rem. Bar buttons keep a 44px touch area (``touch-hit``).
+   Tablets and narrow mouse windows keep the dense scale. */
 @media (pointer: coarse) and (max-width: 767px), (pointer: coarse) and (max-height: 580px) {
   :root {
-    --text-meta: calc(0.8125rem * var(--oa-phone-scale));
-    --text-subhead: calc(0.9375rem * var(--oa-phone-scale));
-    --text-xs: calc(1.0625rem * var(--oa-phone-scale));
+    --text-meta: var(--oa-phone-meta);
+    --text-subhead: var(--oa-phone-subhead);
+    --text-xs: var(--oa-phone-body);
     --text-xs--line-height: calc(22 / 17);
-    --text-code: calc(0.9375rem * var(--oa-phone-scale));
-    --text-sm: calc(1.0625rem * var(--oa-phone-scale));
+    --text-code: var(--oa-phone-subhead);
+    --text-sm: var(--oa-phone-body);
     --text-sm--line-height: calc(22 / 17);
-    --text-base: calc(1.0625rem * var(--oa-phone-scale));
+    --text-base: var(--oa-phone-body);
     --text-base--line-height: calc(22 / 17);
-    --spacing-list-row: 2.75rem;
-    --spacing-app-header: 2.75rem;
+    --spacing-list-row: var(--oa-phone-row);
+    --spacing-app-header: var(--oa-phone-header);
+    /* Controls sized outside Button (sheet rows, bar buttons). */
+    --phone-control: var(--oa-phone-control);
   }
   html[data-mobile-shell="android"] {
-    --spacing-list-row: 3rem;
+    --spacing-list-row: calc(var(--oa-phone-row) + 0.25rem);
+    --phone-control: calc(var(--oa-phone-control) + 4px);
   }
   [data-slot="button"] {
-    min-height: 44px;
-    min-width: 44px;
+    min-height: var(--oa-phone-control);
+    min-width: var(--oa-phone-control);
   }
   html[data-mobile-shell="android"] [data-slot="button"] {
-    min-height: 48px;
-    min-width: 48px;
+    min-height: calc(var(--oa-phone-control) + 4px);
+    min-width: calc(var(--oa-phone-control) + 4px);
   }
   /* The composer's run deck stays compact on a phone: its controls are
      36px, as on a tablet, and grow their touch area to 44px (``touch-hit``)
      rather than their box. Its "+" (a Button) skips the 44px / 48px floor. */
   :root [data-run-deck] [data-slot="button"] {
+    min-height: 36px;
+    min-width: 36px;
+  }
+  /* The plan review's deck (PlanReview/ReviewPill) takes the same step, its
+     Approve included: the 44px primary floor read oversized beside the 36px
+     controls in the box. */
+  :root [data-review-deck] [data-slot="button"] {
     min-height: 36px;
     min-width: 36px;
   }
@@ -1620,27 +1788,62 @@ html[data-app-hidden="true"] *::after {
   }
 }
 
-/* Plan review: passages with a comment, and the one just jumped to
- * (CSS Custom Highlight API; see PlanReview/PlanComments.tsx). A soft orange
- * wash, deeper on the active one. */
-::highlight(plan-comment) {
-  background-color: var(--accent-orange-soft);
-}
-::highlight(plan-comment-active) {
-  background-color: color-mix(in srgb, var(--accent-orange) 42%, var(--accent-orange-soft));
-}
-
-/* Find in session (TranscriptFind): every match on the same soft orange as
- * plan comments, the current one deeper. */
-::highlight(oa-find) {
-  background-color: var(--accent-orange-soft);
-}
-::highlight(oa-find-current) {
-  background-color: color-mix(in srgb, var(--accent-orange) 42%, var(--accent-orange-soft));
-}
+/* ::highlight() rules live in highlights.css. */
 
 /* The docked composer's height (set by Composer); a narrow window's Review
  * panel overlay stops there. Zero while no composer is docked. */
 [data-workbench-center] {
   --composer-h: 0px;
+}
+
+/* Phone (mockup J4 4.3): a wide table scrolls sideways as a whole, and a
+   shade at the right edge says there is more. No pinned first column: on a
+   375pt screen it ate the room the scroll needs (on-device report). The shade is the
+   scrolling-shadow trick (a ``local`` cover over a ``scroll`` shade), so it
+   shows only while content is clipped there, with no script. */
+@media (pointer: coarse) and (max-width: 767px), (pointer: coarse) and (max-height: 580px) {
+  .oa-prose .oa-table-wrap {
+    background:
+      linear-gradient(to left, var(--bg-page) 40%, transparent) right center / 32px 100% no-repeat local,
+      linear-gradient(to left, color-mix(in srgb, var(--color-text) 14%, transparent), transparent) right center / 16px 100% no-repeat scroll;
+  }
+  .oa-prose .oa-table-wrap[data-clipped-end] {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .oa-prose table {
+    /* On the phone's type steps, not 0.875em of them (12.25px at 14px). */
+    font-size: var(--text-subhead);
+  }
+  /* Inline code reads at the code step (12px under 14px text, not 0.85em);
+     inside a table, a step smaller (its cells are already the subhead). */
+  .oa-prose code {
+    font-size: var(--text-code);
+  }
+  .oa-prose table code {
+    font-size: var(--text-meta);
+  }
+}
+
+/* The in-app QR viewfinder (lib/qr-scan, QrScanOverlay): the camera runs
+ * behind the webview, so while it scans the page is see-through and only
+ * the viewfinder is drawn; its square is the one place the camera shows. */
+html[data-qr-scanning],
+html[data-qr-scanning] body {
+  background: transparent !important;
+}
+html[data-qr-scanning] body > :not([data-qr-scan-overlay]) {
+  visibility: hidden;
+}
+/* The viewfinder's corner marks sit on the live camera picture (real
+ * content), so they are paper-white in either theme. */
+[data-qr-frame] > span {
+  border-color: #FFFDF7;
+}
+
+/* A tool row's open control (ToolCall/RowLink): the real button is hidden
+ * beside the row, so its keyboard focus rings the chip drawn in the row. */
+[data-tool-call]:has([data-row-link-button]:focus-visible) [data-row-link] {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }

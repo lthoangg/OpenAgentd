@@ -38,6 +38,9 @@ import { IGNORED_FILE_PENALTY } from '@/components/InputComposer.mentions'
 import { hoverIntent } from '@/hooks/use-hover-intent'
 import { useHeightGlide } from '@/hooks/useHeightGlide'
 import { useSlidingHighlight } from '@/hooks/useSlidingHighlight'
+import { SessionStatusMark, type SessionStatus } from '@/components/Sidebar/SessionStatusMark'
+import { MatchMarks } from '@/components/ui/match-marks'
+import { loadPaletteRecents, rememberPaletteRun } from '@/lib/palette-recents'
 
 /** Nested list a command opens in place of running. */
 export interface CommandPage {
@@ -62,6 +65,11 @@ export interface Command {
   onOpenPage?: () => void
   /** Listed only while the query is empty, e.g. New Session atop a session list. */
   browseOnly?: boolean
+  /**
+   * A session's (or a workspace's most urgent session's) state: its mark
+   * leads the row, as in the sidebar. Idle keeps the slot so titles align.
+   */
+  status?: SessionStatus
   action: () => void
 }
 
@@ -155,6 +163,13 @@ export function rankSessions(sessions: PaletteSession[], query: string): Palette
 // Rows per group while every group shares the list (⌘K with a query).
 const MAX_COMMAND_ROWS = 8
 const MAX_SESSION_ROWS = 8
+/** Rows in the Recent group atop an empty query. */
+const MAX_RECENT_ROWS = 5
+
+/** A session as a palette row (the Sessions group, and Recent). */
+function sessionCommand(session: PaletteSession): Command {
+  return { id: `session:${session.id}`, label: session.title, description: session.description, action: session.open }
+}
 const MAX_GROUPED_FILE_ROWS = 20
 // Rows in the Files scope, where files have the list to themselves. Matches
 // the old inline file-search dialog cap to keep the list snappy with large
@@ -305,6 +320,8 @@ export function CommandPalette({
   }
 
   const [activeIdx, setActiveIdx] = useState(0)
+  // What ran last, read once as the palette opens (``lib/palette-recents``).
+  const [recentIds] = useState(loadPaletteRecents)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const listClipRef = useRef<HTMLDivElement>(null)
@@ -381,6 +398,18 @@ export function CommandPalette({
 
     if (mode === 'page' || mode === 'commands' || (mode === 'all' && !text)) {
       const list = page ? page.page.commands : commands
+      // An empty query at the top starts with what ran last, resolved
+      // against what is listed now (a command that is gone is skipped).
+      if (mode === 'all' && !text) {
+        const recent = recentIds
+          .map((id) => id.startsWith('session:')
+            ? sessionItems?.find((s) => `session:${s.id}` === id)
+            : commands.find((cmd) => cmd.id === id && !cmd.page))
+          .filter((entry): entry is Command | PaletteSession => entry !== undefined)
+          .slice(0, MAX_RECENT_ROWS)
+          .map((entry) => ('open' in entry ? sessionCommand(entry) : entry))
+        if (recent.length > 0) out.push({ key: 'recent', heading: 'Recent', rows: cmdRows(recent) })
+      }
       if (text) {
         // A ranked search result is one list.
         out.push({ key: 'commands', rows: cmdRows(rankCommands(list.filter((cmd) => !cmd.browseOnly), text)) })
@@ -409,12 +438,7 @@ export function CommandPalette({
       out.push({ key: 'commands', heading: 'Commands', rows: cmdRows(found) })
       if (sessionItems) {
         const ranked = rankSessions(sessionItems, text).slice(0, MAX_SESSION_ROWS)
-        const rows = cmdRows(ranked.map((s): Command => ({
-          id: `session:${s.id}`,
-          label: s.title,
-          description: s.description,
-          action: s.open,
-        })))
+        const rows = cmdRows(ranked.map(sessionCommand))
         out.push({ key: 'sessions', heading: 'Sessions', rows, loading: rows.length === 0 && sessionsLoading })
       }
       if (hasFiles && fileText) {
@@ -429,7 +453,9 @@ export function CommandPalette({
     const byIdx = new Map<number, PaletteRow>()
     for (const section of shown) for (const row of section.rows) byIdx.set(row.idx, row)
     return { sections: shown, totalCount: idx, byIdx }
-  }, [commands, page, mode, workspaceFiles, hasFiles, filesLoading, sessionItems, sessionsLoading, query, debouncedQuery])
+  }, [commands, page, mode, workspaceFiles, hasFiles, filesLoading, sessionItems, sessionsLoading, query, debouncedQuery, recentIds])
+  // The words a search marks in each row it lists (not the files' fuzzy matches).
+  const searchWords = mode === 'files' ? [] : (mode === 'commands' ? query.slice(1) : query).trim().split(/\s+/).filter(Boolean)
 
   // Reset active index whenever query changes.
   const [prevQuery, setPrevQuery] = useState(query)
@@ -488,6 +514,7 @@ export function CommandPalette({
         showPage(cmd)
         return
       }
+      rememberPaletteRun(cmd.id)
       onClose()
       cmd.action()
     },
@@ -681,6 +708,7 @@ export function CommandPalette({
                         isActive={row.idx === activeIdx}
                         onRun={runCmd}
                         onActivate={setActiveIdx}
+                        words={searchWords}
                       />
                     ),
                   )}
@@ -801,9 +829,11 @@ interface CommandRowProps {
   isActive: boolean
   onRun: (cmd: Command) => void
   onActivate: (idx: number) => void
+  /** The query's words, marked in the label. */
+  words?: readonly string[]
 }
 
-function CommandRow({ cmd, idx, isActive, onRun, onActivate }: CommandRowProps) {
+function CommandRow({ cmd, idx, isActive, onRun, onActivate, words = [] }: CommandRowProps) {
   return (
     <button
       data-idx={idx}
@@ -813,8 +843,15 @@ function CommandRow({ cmd, idx, isActive, onRun, onActivate }: CommandRowProps) 
       data-highlighted={isActive ? '' : undefined}
       className={PALETTE_ROW_CLASS}
     >
+      {cmd.status !== undefined && (
+        <span data-session-status-mark="" className="flex shrink-0 -mr-1">
+          <SessionStatusMark status={cmd.status} />
+        </span>
+      )}
       <div className="min-w-0 flex-1 overflow-hidden">
-        <span className="block truncate text-xs font-medium text-(--color-text)">{cmd.label}</span>
+        <span className="block truncate text-xs font-medium text-(--color-text)">
+          <MatchMarks text={cmd.label} words={words} />
+        </span>
         {cmd.description && (
           <span className="block truncate text-meta text-(--color-text-muted)">
             {cmd.description}

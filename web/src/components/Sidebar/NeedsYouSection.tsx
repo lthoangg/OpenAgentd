@@ -1,6 +1,6 @@
 import type React from 'react'
 import type { SessionResponse } from '@/api/types'
-import { needsYouSessions } from '@/lib/active-sessions'
+import { needsYouSessions, runningSessions } from '@/lib/active-sessions'
 import { useActiveSessionsQuery } from '@/queries/useSessionsQuery'
 import { CompactSessionRow } from './CompactSessionRow'
 import { SidebarHeading } from './SidebarHeading'
@@ -9,15 +9,13 @@ import { SidebarHeading } from './SidebarHeading'
  * Sessions stopped on a question, from every workspace, above the tree. Part
  * of the sidebar's one scroller: no scroll area of its own.
  */
-export function NeedsYouSection({
-  currentSessionId,
-  workspaceName,
-  onSessionSelect,
-}: {
+interface SectionProps {
   currentSessionId?: string
   workspaceName: (path: string) => string
   onSessionSelect: (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => void
-}) {
+}
+
+export function NeedsYouSection({ currentSessionId, workspaceName, onSessionSelect }: SectionProps) {
   const { data } = useActiveSessionsQuery()
   const sessions = needsYouSessions(data)
   if (sessions.length === 0) return null
@@ -31,6 +29,35 @@ export function NeedsYouSection({
             <CompactSessionRow
               session={session}
               status="needs_input"
+              isCurrent={session.id === currentSessionId}
+              workspaceName={workspaceName(session.workspace ?? '')}
+              onSelect={(event) => onSessionSelect(session, session.workspace ?? '', event)}
+            />
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/**
+ * Sessions at work, from every workspace, under Needs you on the phone's
+ * Sessions page: what an agent is doing is the first thing asked of it there.
+ */
+export function RunningSection({ currentSessionId, workspaceName, onSessionSelect }: SectionProps) {
+  const { data } = useActiveSessionsQuery()
+  const sessions = runningSessions(data)
+  if (sessions.length === 0) return null
+
+  return (
+    <section aria-label="Running" className="shrink-0 pb-1.5">
+      <SidebarHeading label="Running" count={sessions.length} countLabel={`${sessions.length} running`} />
+      <ul className="space-y-px px-1.5">
+        {sessions.map((session) => (
+          <li key={session.id}>
+            <CompactSessionRow
+              session={session}
+              status="running"
               isCurrent={session.id === currentSessionId}
               workspaceName={workspaceName(session.workspace ?? '')}
               onSelect={(event) => onSessionSelect(session, session.workspace ?? '', event)}

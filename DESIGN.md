@@ -650,6 +650,10 @@ desktop-first and walk styles back down.
 - `mac-traffic-inset` (70px) — left inset that clears the macOS traffic-light
   overlay (12px origin + ~58px button group).
 - `content-max` (768px) — reading measure for transcripts and prose.
+  The Plan tab's review footer (comments, feedback, Approve and Request
+  changes) keeps the plan's text column (`oa-review-column`), not the dock's
+  width: its band and top line run full width, its content lines up with
+  the prose, 88ch in a maximized dock.
 - `overlay-max` (860px) — default modal width cap; `palette-max` (600px) for the
   command palette.
 
@@ -745,8 +749,10 @@ drawer and full-screen sheet.
   (height and opacity, `base`); rows leaving stay on screen until the fold
   has closed over them. A segmented control's fill slides to the new choice
   (`useSegmentIndicator`), and a switch's thumb ends on `ease-spring-soft`.
-- **Focus mode** (`Mod+Shift+F`) hides the sidebar and the Review panel and
-  puts both back on the second press; showing either one ends it as is.
+- **Search sessions** (`Mod+Shift+F`) focuses the sidebar's search field,
+  showing the sidebar first if it was hidden; a focused terminal keeps the
+  chord for its shell. (Focus mode, which held this key, went in v3.46.0:
+  `Mod+B` and `Mod+D` hide the two sides.)
 - **Find in session** (`Mod+F`, while focus is in the chat) searches the loaded
   turns and paints matches with the CSS Custom Highlight API.
 - **F6 areas.** F6 / Shift+F6 move focus sidebar → transcript → composer →
@@ -841,7 +847,13 @@ closed this way.
 
 Keyboard focus uses a solid 2px outline (`#174A73` in light mode, `#9DD0F5`
 in dark mode), with a 2px offset. Translucent `focus-ring` effects remain
-decorative supplements, not the only focus indicator. In the desktop app the
+decorative supplements, not the only focus indicator. A control drawn flush
+in a parent that clips (a segment in its track, a tab in its strip, a menu,
+palette or list row in a scroller, a status-bar item, the header's 32px
+buttons) insets the outline 2px instead, so it is never cut to a stray bar:
+`focus-visible:ring-inset` (or `data-focus-ring="inset"`) does both, and
+`styles/focus-ring.test.ts` holds the rule. Tab in a modal stays in it,
+wrapping at the last control Tab reaches. In the desktop app the
 ring follows keyboard navigation only (Tab, F6; `lib/desktop-shell.ts`):
 Escape, shortcuts and typing never draw it. Text fields mark focus with
 their edge stepping to `on-surface-subtle` (3:1 or more), never a blue glow
@@ -954,7 +966,11 @@ for layout (no `translateX(-50%)` centering) — center fixed elements with
   on the end takes it away. When a stream ends, the
   text still to show keeps flowing to the end rather than landing in one
   frame. On a phone the header's bottom line shows only once the transcript
-  scrolls under it.
+  scrolls under it. Earlier turns never move what is on screen: new turns
+  at the end never hide one at the top (the hidden count holds while the
+  first turn is the same), and on touch earlier turns land in a runway of
+  empty room kept above the first turn (three screens, sized only while
+  the scroll rests), so a fling is never stopped by a scroll write.
 - **Loading placeholders wait a beat.** Skeletons match the geometry of what
   replaces them, and fade in after `fast` (`oa-fade-in-late`), so a fast load
   never flashes one. A saved session shows a transcript skeleton, not the
@@ -1094,12 +1110,12 @@ hovered; `danger` is the soft error fill.
 | `icon-dense` | **28×28px** | `p-0` | 14px | — | `rounded-sm` (6px) | Panel-header and detail-pane actions (close, back) |
 | `icon` | **36×36px** | `p-0` | 14px | — | `rounded-md` (8px) | Standard standalone icon actions |
 
-**Phone scale**: a phone (the `phone:` variant: touch, and narrow or a landscape phone, the same test as `useIsMobile`) uses Apple's sizes, as a phone app reads: **17px** for row titles, buttons, menus, fields, chat and bar titles (`text-xs`, `text-sm`, `text-base`), **15px** for a row's second line, status words and code (`text-subhead`, `text-code`), **13px** for times and captions (`text-meta`). Rows, the header and every `Button` are **44px** (48px rows and buttons in the Android app); `.touch-hit` and prose links grow to 44px; the switch is 51×31. The composer is the exception, a step smaller so it stays compact: 15px message text, 13px deck labels, 36px controls (Send a 36px circle) whose touch area still grows to 44px (Composer and run deck). Text size scales the phone too: Compact 15px, Large 19px, with Dynamic Type on top. Tablets and narrow mouse windows keep the dense scale below.
+**Phone scale**: a phone (the `phone:` variant: touch, and narrow or a landscape phone, the same test as `useIsMobile`) reads at the composer's size. At Default: **15px** for row titles, buttons, menus, fields, chat and bar titles (`text-xs`, `text-sm`, `text-base`), **13px** for a row's second line, status words and code (`text-subhead`, `text-code`), **12px** for times and captions (`text-meta`). Rows and every `Button` are **40px** (4px more in the Android app); controls drawn outside `Button` (sheet rows, a sheet's bar buttons, ‹ Back) read the same step from `--phone-control`; the header stays **44px**; the large title is 28px. Bar buttons add `touch-hit`, so they and prose links keep a **44px** touch area; the switch is 51×31. **Text size picks the step** (the `--oa-phone-*` tokens in `index.css`): Compact 14px text and 36px rows and buttons (a 40px header, a 26px title), Large Apple's own 17px and 44px (a 34px title), with Dynamic Type on top. A narrow phone (under 390pt: iPhone 13 mini, SE) drops every step one notch: Default reads as Compact, Compact 13px and 34px, Large 15px and 40px. The composer keeps its size at Default: 15px message text (`phone:text-xs`), 13px deck labels (`phone:text-subhead`), 36px controls (Send a 36px circle) whose touch area grows to 44px (Composer and run deck). Tablets and narrow mouse windows keep the dense scale below.
 
 **Mobile Touch Parity Scaling**: On touch tablets (`pointer: coarse`), standalone icon actions scale up to one compact **36×36px touch target** (`size-9`), while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`). A phone takes the 44px phone scale above instead.
 
 - `Button` gets this automatically: a coarse-pointer rule sets `min-height`/`min-width: 36px` on `[data-slot="button"]` (40px in the Android app). Prefer `Button` over a bare `<button>` for icon actions.
-- `--spacing-list-row` becomes 36px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-9`. Inline row actions add `pointer-coarse:size-9` (36px) to fill the row. Every touch target is 36px on a tablet; a phone takes 44px everywhere (Phone scale above), Send and Steer included (`phone:size-11`).
+- `--spacing-list-row` becomes 36px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-9`. Inline row actions add `pointer-coarse:size-9` (36px) to fill the row. Every touch target is 36px on a tablet; a phone takes its own step (Phone scale above), with a 44px touch area on bar buttons and Send.
 - `--spacing-tab-bar` (the review panel's tab strip) grows to 45px on coarse pointers, so each tab and its close control are 36px pills with 4px around them and a 1px hairline.
 - Line height tightens on coarse pointers: `leading-relaxed` is 1.5 (1.625 on desktop) and chat/plan prose (`.oa-prose`) is 1.6 (1.75 on desktop), so phone screens read denser. Text sizes do not change.
 - On phones the header is 40px with 36px controls (`max-md:pointer-coarse:size-9`). On wider touch screens, controls inside the 36px header stay within that height (`pointer-coarse:size-9`), because overlays are positioned from `--spacing-app-header`.
@@ -1206,7 +1222,12 @@ dot before the name and a live timer in the meta column; text never
 blinks. A failed row shows its summary in error colour and an `exit 1` or
 `error` chip. Rows without details render as a `div`, not a button.
 A subagent row is a button to its session, with its state in words
-(Running, Done, Failed, Needs you, Stopped) and a live clock. A tool section
+(Running, Done, Failed, Needs you, Stopped) and a live clock. A team or
+workspace call carries its "open it" control in its own row, never on a
+row under it: a small chip after the target (the subagent's state, or
+**Open**) with ↗. The row is a button, so the chip is drawn in it and a
+visually hidden button beside the row serves keyboard and screen readers,
+its focus ringing the chip. A tool section
 header (arguments, command, output) is a `button` with `aria-expanded`; its
 Copy is a sibling, always visible, and says "Copied" for a moment.
 A tool row has no tooltip: what its title cuts short (a long URL, query or
@@ -1307,7 +1328,8 @@ leads with ↰ **Open the main agent** (before the title on desktop, first
 among the bar's actions on a phone). A narrow mouse window keeps the sidebar toggle,
 the title over its workspace, Tasks and Review panel; a phone's bar is
 ‹ Sessions, the title, Tasks and Review panel (Mobile shell). Every header
-control is 36px on touch and 44px on a phone.
+control is 36px on touch and the phone's control step on a phone (40px at
+Default), with a 44px touch area.
 
 **Notices** (toasts, the update card, the LSP prompt) stack at the top right
 under the header, newest first, so the run deck and Send stay clear. Phones
@@ -1331,7 +1353,8 @@ global focus ring, 36px on touch. They take the place of the row's meta (age,
 tags) on hover or keyboard focus and hold no room at rest, so titles and
 folder names keep the row; touch shows them always, except Pin, which stays
 in More on touch so the title keeps the room; the pin mark itself stays on
-touch. Session rows offer **Pin**
+touch, except on the phone's Sessions screen, where Pinned and the swipe's
+Unpin already say it. Session rows offer **Pin**
 and **More**, subagent rows **More**, folder rows **+** and **More**. More
 opens the same menu as right-click, so destructive actions are never one
 click from a row. Text actions in rows ("Show all") use `ROW_TEXT_ACTION`
@@ -1343,19 +1366,23 @@ must never take the width of its longest line.
 the foot of the chat column on every screen, in the column's flow (never
 floating over the transcript), up to the 768px prose measure, always open:
 no drag, no collapse, no saved position. It is one framed field (one
-`border-subtle` hairline, no shadow); nothing inside it has a border. Under
-the text sits the run deck, which says how the next message runs:
+`border-subtle` hairline, no shadow); nothing inside it has a border. The
+message box grows to six lines, then scrolls inside. Its own scrollbar stays
+hidden (it would narrow the text under the highlight mirror), so from a
+pointer a 3px thumb just past the text's right edge shows the scroll; a
+phone keeps the system's indicator. Under the text sits the run deck, which
+says how the next message runs:
 
 ```
-[+•] [Code] [provider:model · Level · Account ▾]   (ring 42%) [Send]
+[+•] [Code] [model · Level · Account ▾]   (ring 42%) [Send]
 ```
 
 Every control in the deck is one height, the same steps as Send: 28px on
 desktop, 32px in a narrow mouse window, 36px on touch. A phone keeps the
-composer compact: its controls stay 36px (the deck's "+" skips the Button
-floor of 44px, 48px on Android) and `touch-hit` grows their touch area to
-44px; the message is 15px and the deck's labels 13px, a step under the rest
-of the phone scale. All are rounded `radius-sm` (6px) but Send, a full
+composer compact: its controls stay 36px (the deck's "+" skips the phone's
+Button floor) and `touch-hit` grows their touch area to 44px; the message
+is 15px and the deck's labels 13px, the phone scale's Default steps. All
+are rounded `radius-sm` (6px) but Send, a full
 circle. The context ring stays 36px wide
 on a phone so a 320px screen leaves the chip its room. With a mouse, the
 stacked chip (below) is 36px: its two lines need it.
@@ -1371,14 +1398,15 @@ stacked chip (below) is 36px: its two lines need it.
   words hold the slot, so a switch moves nothing beside it. A switch queued
   behind a running turn is italic until it applies. Plan mode changes the
   placeholder to say the agent reads and proposes without editing.
-- **The run chip** reads `provider:model` in mono, then the thinking level and
-  a pinned account in words. The `provider:` part gives way first; a long
-  model name then gives up its middle (`antigravit…sonnet-4-6`, then
-  `sonnet-4-6` alone), since models differ at the end, everywhere a model is
-  named. Under 520px
+- **The run chip** names the model in sans (`claude-sonnet-4-6`), a label
+  rather than an ID to copy, then the thinking level and a pinned account in
+  words. The `provider:model` ID is in mono in its tooltip
+  (`anthropic:claude-sonnet-4-6 · Change (⌘.)`, hidden while the picker is
+  open), in its accessible name with the shortcut, and in the picker. A long
+  model name gives up its start (`…sonnet-4-6`), since models differ at the
+  end, everywhere a model is named; a phone shows that end alone. Under 520px
   of composer width (container query) the chip stacks into two lines and the
-  context ring drops its percentage. The chip has no tooltip: its accessible
-  name carries the shortcut.
+  context ring drops its percentage.
 - **The run picker** (⌘., `/model`, `/think`, the palette's "Model and
   Thinking…") is one surface for all three: a model search with Recent first,
   thinking as a segmented control (←/→ step it from the empty search; Extra
@@ -1498,7 +1526,8 @@ primitives in `components/ui/`:
   gives way first (it ellipsizes), and the full ID is in the tooltip. In a
   list grouped by provider (the model pickers) the group header names the
   provider and each row shows only the model; typing `openai:` still finds
-  them.
+  them. The run chip is the one label: it names the model alone, in sans,
+  with the ID in its tooltip (Composer → the run chip).
 - **One name per thing.** Workspace (not project or repo), Worktree,
   Rename, Tasks, Scheduled tasks, Review panel, Side questions, Find file,
   Session, Built-in server, Main agent / Subagent, Run now, Usage (the
@@ -1746,24 +1775,59 @@ dismissed by drag.
 
 **A phone is a navigation stack** (`useIsPhone`: `useIsMobile` on a
 touch-first device; a narrow mouse window and a tablet keep the drawer
-layout). `components/phone/PhoneStack` holds two levels, both mounted:
+layout). Three levels, all mounted: `components/phone/PhoneStack` holds
+Sessions with a chat pushed over it, and that stack is the page of a second
+`PhoneStack` over Servers. Only one of the two takes the edge swipe and
+Back at a time.
 
-- **Sessions** (`/sessions`, the sidebar's `page` mode) is the first screen:
-  the server chip and ✎ New session in the bar, a 34px **Sessions** title
-  (`text-large-title`) that hands over to the bar's 17px title as it scrolls
-  away, a search field, then Needs you, Pinned and the workspaces. Pull down
-  to refresh. Swipe a row left for Pin and Delete (Delete confirms); a long
-  press still opens its menu. A toolbar at the bottom holds Settings,
-  Scheduled, Usage and Commands, each an icon over its name.
+- **Servers** (`/servers`, `components/phone/ServersScreen`, loaded lazily)
+  is the bottom level: a large **Servers** title over the saved servers, the
+  same list as Settings → Server (`AppBackendPanel`). The row in use offers
+  **Sessions ›** back up to its list; **Use** on another switches the app to
+  it and lands on that server's Sessions. While a server answers, a swipe
+  left anywhere on Servers pulls Sessions in (the reverse of Back); with
+  none connected it gives a little and springs back with an error tick. On
+  touch a saved server's row keeps one button (Use, or Sessions ›); Edit and
+  Remove are in its action sheet, from ⋯ or a long press.
+- **Sessions** (`/sessions`, the sidebar's `page` mode) is the first screen
+  the app opens on: ‹ Servers in the bar, a 28px
+  **Sessions** title (`text-large-title`) that hands over to the bar's small
+  title as it scrolls away, the server's dot and name under it (a tap goes
+  to Servers too), a search field, then Needs you, Running, Pinned and the
+  workspaces (Running is the phone page's own section; the desktop sidebar
+  keeps only Needs you). Pull down to refresh. Swipe a row left for Pin and Delete
+  (Pin is neutral, only Delete is red; Delete confirms); a long press
+  opens its menu, so rows have no ⋯ here. The toolbar floats over the end
+  of the list, as iOS 26's does, on a fade of the page: a pill of icon
+  buttons on the left (Settings, Scheduled, Usage, and the theme, showing
+  the current choice; a tap moves System → Light → Dark) and the round
+  primary ✎ New session on the right, under the thumb. They are actions,
+  not tabs, so there are no captions; each is named for assistive tech. It
+  steps aside while searching, so it never rides up on the soft keyboard.
+  ✎ taps a soft haptic and pushes a draft that is already built.
+  **Search** happens in place: the field moves under the bar with a
+  **Cancel** beside it, and the list gives way to results under the field.
+  Before anything is typed it shows **Recently opened** (the latest eight
+  sessions), never an empty pane.
+  The command palette has no button on a phone; ⌘K opens it from a
+  hardware keyboard.
 - **A chat or a draft is pushed** over it from the right; Sessions drifts a
   third of the way left under a scrim. The chat's bar is `PhoneNavBar`:
   ‹ Sessions in the accent, the title centred over its workspace, Tasks and
   Review panel on the right (20px glyphs in the accent).
 - **Back is by level, not by history**: ‹, a swipe from the left edge (it
   follows the finger and springs on with its speed) and Android Back all go
-  to the parent. A link, a notification or a widget opens the chat with
-  Sessions under it; Android Back on Sessions sends the app to the
-  background.
+  to the parent: a chat to Sessions, Sessions to Servers. A link, a
+  notification or a widget opens the chat with Sessions under it; Android
+  Back on Servers sends the app to the background.
+- **The composer takes a vertical swipe**: up on the box raises the soft
+  keyboard (focus is given on `touchend`, the gesture iOS needs), down puts
+  it away, as dragging the transcript does. A message that can still
+  scroll keeps the swipe, and the tray and suggestion menus above the box
+  are left alone. The box lets the browser pan it sideways only
+  (`touch-action: pan-x pinch-zoom`, the field too while it has nothing to
+  scroll): a vertical pan cancels the pointer, and focus without that
+  user activation raises no keyboard (measured on Android Chrome).
 - **Review** is a page pushed over the chat (‹ Chat, full screen). **Tasks**,
   the "+" menu and the model picker are sheets with two detents (half and
   nearly full height; `BottomSheet` `detents`). Settings, Scheduled tasks and
@@ -1771,9 +1835,178 @@ layout). `components/phone/PhoneStack` holds two levels, both mounted:
   ‹ parent on the left, the title centred and **Done** on the right; a
   Settings section is pushed over the list and swipes back. Android puts a
   bare ← and a left-aligned title in the same bars.
+- **Menus are action sheets** (`ui/action-sheet`): a long press (one
+  medium haptic, from the gesture) or ⋯ opens the item's title, 44px rows
+  with a 16px icon, a destructive row last in red, and **Cancel** in its own
+  group under them. No floating menus on a phone. In the iOS app a session
+  and a workspace use the system action sheet instead.
 - **Confirms are alerts** on an iOS-style phone: a centred 270px card, Cancel
   and the action full width under a hairline, a destructive action in red
   and never the default. Android keeps Material's text buttons.
+
+### Phone system
+
+The rules every phone screen follows. The approved before/after mockups live
+in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`.
+
+- **Status in one second.** One vocabulary everywhere, the session row's
+  marks: running is the small spinner (Signal Blue stays the logo and focus
+  ring, lint `stray-blue`), needs-you is orange (a question, a plan to
+  approve, a sign-in), error is red, done-and-unread is the accent dot,
+  idle is hollow. Sessions puts Needs you and Running above the
+  workspaces. The connection dot is never green while the server does not
+  answer.
+- **One thumb.** Touch targets are 44pt; the primary action of a screen sits
+  in its lower half; nothing depends on hover.
+- **Motion.** Screens, sheets and pushes move on `--ease-sheet` or the
+  critically damped spring of `lib/drawer-motion.ts`, carrying the finger's
+  speed and never crossing their target. The overshooting
+  `--ease-spring-*` curves are for small controls only (a switch thumb, a
+  radio dot). A pushed screen is built before it slides: content never
+  swaps mid-transition. Reduce Motion fades instead (lint
+  `overshoot-on-screen`).
+- **Type.** Body 17, secondary 15, footnote 13, caption 12, the large
+  title 28; all rem so they follow Dynamic Type. Mono is for code, paths and
+  commands only, never for model names, durations, costs or labels.
+- **Reading.** Wide content (code, diffs, tables) scrolls sideways inside
+  its block, with a fade at the clipped edge; it never widens the page.
+  Consecutive tool calls collapse into one summary row.
+  In the detailed transcript two or more finished, successful calls in a
+  row fold behind "3 commands, 1 read ›" (sans); a failed or running call
+  stays open. Tool output is code size and caps at 12 lines, then scrolls.
+  Tables scroll sideways as a whole (no pinned column) and shade the right edge only while it is
+  clipped. A diff keeps lines whole and scrolls sideways; **Wrap lines** in
+  its file bar wraps them.
+- **The composer.** It grows to six lines, then scrolls inside. The
+  Code/Plan toggle and the model chip are separate controls, so mode is one
+  tap; the model chip's sheet picks the model and, under it, the thinking
+  level (the label stacked above the levels so six fit an iPhone mini).
+  The context ring is a thin gauge, never a spinner; it follows the run
+  controls on the left, away from Send, and Send (or Stop) is drawn at
+  32pt with a 44pt touch area. A new draft shows only the
+  folder chip: no heading, no suggestions.
+- **Above the composer, in this order:** the open question (pinned, orange
+  frame, 48pt options; the transcript card says "Answer below"), the plan
+  awaiting approval ("View" opens it full screen with Approve pinned), one
+  28pt status line (the run on the left, "Running · step 7 · 3:12" while the
+  agent works; a 24pt **btw** pill with the count on the right, which opens
+  side questions in a sheet and stays, pressed, while the sheet is open so
+  nothing behind it moves). All of it is in the flow, never floating over
+  the transcript, and a reader at the end stays at the end as it grows, with
+  the keyboard up too; as the keyboard rises the end rides up with the
+  composer every frame. Queued and steer messages wait at the end of the
+  transcript instead, as faded user bubbles (four lines at most) with their
+  delivery state under them. A tap takes one back into the composer, to
+  edit or clear there; there is no ✕.
+- **Run control.** Mid-turn, Send is one pill: a tap steers, a long press
+  opens an action sheet (Steer now, Send after this turn finishes, Stop and
+  send). Stop gives a medium haptic and a "Stopped" toast whose **Resume**
+  sends "Continue".
+- **Settings.** A switch or a short number sits right of its label at every
+  width, with the description running the full row under both (iOS footer);
+  other controls stack under the label.
+  The root reads like iOS Settings: a large title, one neutral icon tile per
+  row (`--bg-key`, `--color-text-2`; per-section hues read as noise), no
+  descriptions; each section's page carries its own.
+- **The chat bar.** ‹ Sessions, the title, one ⋯. A tap on the title opens
+  Session info; ⋯ holds Tasks · n/m (or "No tasks", so the list is always
+  findable) and Workspace.
+- **Long press is the context menu.** A prompt, a session row, a server row
+  and a workspace row open an action sheet on a hold, with one medium
+  haptic. Destructive items sit last, in red, behind a separator.
+- **Sheets over menus.** View options and other choice menus open as
+  sheets: a segmented control for one-of-few, a switch for on/off.
+- **Folded cards.** A goal check is one 44pt row, "Goal · achieved ›";
+  evidence opens as 44pt rows.
+- **Lists read like iOS.** The Workspace page (Changes, Files, Terminal,
+  Preview) and the worktree sheet are grouped 44pt rows with counts; a
+  scheduled task has an on/off switch and its schedule as a sentence;
+  filters that pin over a list fit in one line (three segments at most),
+  and every Settings list (Providers, Agents, Skills, MCP) pins its filter.
+- **Thumb reach and full screens.** Jump to latest is a round ↓ at the
+  right corner; Preview's address bar sits at the bottom. A memory page
+  edits full screen with Save in the bar and a formatting bar above the
+  keyboard. Side questions, turn details, Usage filters and the + menu's
+  Tools open as sheets; the update notice starts as a one-line banner.
+- **Notices.** A banner is one line under the bar with at most one action;
+  details open in a sheet. It never covers the transcript.
+- **Offline is told, not hidden.** Health is checked whatever the network
+  state (React Query `networkMode: 'always'`), again on `offline` and on
+  return to the foreground, so the dot turns red and the banner reads
+  "Server unreachable · Retrying…" (or "Can't reach {host} · Retrying…")
+  within seconds, in sans, truncated to one line. The composer keeps its
+  draft. With no server and nothing on screen, the chat shows "Can't reach
+  the server" with **Retry**, not a spinner.
+- **Feedback.** Haptics come from the gesture (`lib/haptics.ts`): soft for
+  a push or a send, medium for a long press or Stop, a tick for an arriving
+  question, the error outcome for a refused action. A destructive action
+  offers Undo or confirms.
+
+### Desktop system
+
+The rules every desktop screen follows (macOS, Windows and Linux, any window
+from 1024 px wide). The before/after mockups live in
+`.agents/plans/desktop-ux-sweep-before-after-mockups-for-the-wh-a0dfe956/mockups/`;
+where a mockup disagrees with this file (a 40px title bar, a 720px column, a
+blue running dot, 10/14px radii, a Review panel that overlays below 1100px),
+this file wins.
+
+- **The phone's pieces, at pointer density.** A piece the phone already has
+  (the pinned question, the plan bar, the diff's Wrap toggle, the one-line
+  folder banner, the task switch) is the
+  same component on desktop with its gate widened, never a second copy. It
+  takes desktop sizes: 28px list rows, 24px row actions, 36px header, the
+  768px reading column; nothing grows to 44pt. Each widened gate has a
+  desktop test beside the phone's, and the phone's tests do not change.
+- **Status in one second.** The session states are the same words on every
+  surface: Needs you, Running, Done, Failed, Can't reach, in the sidebar,
+  the ⌘L switcher, notifications, the tray, the notch island, the status bar
+  and the banner. Running is the small spinner (a terminal tab running a
+  command shows it in place of its icon); Signal Blue stays the logo and the
+  focus ring (lint `stray-blue`). Needs you is the one sidebar section above
+  the workspaces; there is no Running section, and a workspace with a
+  running or waiting session stays unfolded, so its marks are in sight.
+- **Above the composer, in the flow.** The open question is pinned there
+  (orange frame; 1–9 pick an option and ⌘↵ sends once focus is in it; the
+  transcript card says "Answer below"), then a plan awaiting approval as one
+  bar, "Plan awaiting approval · View", where View brings the Plan tab
+  forward. Nothing floats over the transcript.
+- **Run control stays quiet.** Stop is the ■ in the Send slot; there is no
+  run status line, no Esc-to-stop and no Stopped toast on desktop. Queued
+  and steer messages wait in the chat, under the turn they follow, never
+  above the composer.
+- **Trouble is told where it happens.** When the server stops answering
+  the status bar says **Can't reach** beside a red dot, the banner offers
+  **Retry** and, in the desktop app, **Start built-in server**, and Send is
+  disabled with the reason while the draft stays (nothing is queued
+  offline). A moved folder is one line under the header with one way out
+  each (**Open workspace…**, **Hide from sidebar**). An MCP call refused for
+  sign-in offers **Sign in to {server}** under the call. A view that fails
+  to render says so in its own place (**Try again**, **Copy error details**)
+  while the header, sidebar and status bar keep working.
+- **Reading.** The model chip names the model in sans; the `provider:model`
+  ID stays mono in its tooltip and the picker. The detailed transcript keeps
+  one row per tool call (folding is the Reader style's job), and a failed
+  call stays a closed row like the others, since nothing opens on its own.
+  A diff wraps by default
+  (**Wrap lines** keeps lines whole); **Side by side** lays the old file
+  beside the new one when the panel is at least 640px wide and stays
+  unified below that, saying so on the toggle. A wide table fades at its
+  clipped edge. The composer grows to six lines, then scrolls with a thin
+  visible thumb.
+- **The keyboard reaches everything.** Every control shows the whole focus
+  ring (inside its edge where a container clips: `data-focus-ring="inset"`),
+  Tab never leaves an open modal, and F6 walks the regions. Keys are spelled
+  for the platform through `shortcutLabel` and the chord labels, so Windows
+  and Linux read Ctrl+K (lint `mac-glyph-in-copy`), and every native menu
+  accelerator is the same chord as its in-app shortcut (test
+  `menu-accelerators`). Search sessions (⌘⇧F) groups results by workspace
+  and marks the match; the palette (⌘K) opens on its last five; the
+  shortcuts sheet (⌘/) is searchable and two columns wide.
+- **Lists say what they hold.** "Show 5 more" counts what the next click
+  adds. A scheduled task switches on and off from its row, and its form
+  says when a new schedule first runs. Adding a folder says "Added
+  {folder}".
 
 ### Native per platform
 
@@ -1787,7 +2020,7 @@ layout). `components/phone/PhoneStack` holds two levels, both mounted:
 | Dialog buttons | Cancel · Action | Action · Cancel | Cancel · Action | alert (phone), Cancel · Action (iPad) | text buttons |
 | Badge | Dock | taskbar overlay | launcher | — | — |
 | System text size | — | — | — | Dynamic Type | font scale |
-| Back | ⌘[ · two-finger swipe | Alt+← | Alt+← | ‹ or edge swipe, one level up | Back, one level up; leaves from Sessions |
+| Back | ⌘[ · two-finger swipe | Alt+← | Alt+← | ‹ or edge swipe, one level up | Back, one level up; leaves from Servers |
 
 ## Brand mark
 

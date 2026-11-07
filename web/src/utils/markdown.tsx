@@ -570,12 +570,33 @@ export const MarkdownTable = memo(function MarkdownTable(
   props: React.HTMLAttributes<HTMLTableElement>,
 ) {
   const tableRef = useRef<HTMLTableElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
+
+  // While the table runs past the wrap's right edge, ``data-clipped-end``
+  // lets the CSS fade that edge (index.css). An attribute, not state: a
+  // scroll never re-renders the table.
+  useEffect(() => {
+    const wrap = wrapRef.current
+    if (!wrap) return
+    const sync = () => {
+      wrap.toggleAttribute('data-clipped-end', wrap.scrollWidth - wrap.scrollLeft - wrap.clientWidth > 1)
+    }
+    sync()
+    wrap.addEventListener('scroll', sync, { passive: true })
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(sync)
+    observer?.observe(wrap)
+    if (tableRef.current) observer?.observe(tableRef.current)
+    return () => {
+      wrap.removeEventListener('scroll', sync)
+      observer?.disconnect()
     }
   }, [])
 
@@ -620,7 +641,7 @@ export const MarkdownTable = memo(function MarkdownTable(
           <TooltipContent>{copied ? 'Copied' : 'Copy table'}</TooltipContent>
         </Tooltip>
       </div>
-      <div className="oa-table-wrap">
+      <div ref={wrapRef} className="oa-table-wrap">
         <table ref={tableRef} {...props} />
       </div>
     </div>
@@ -651,6 +672,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   isStreaming = false,
   resolveMediaSrc,
   allowHtml = false,
+  linksAsText = false,
 }: {
   content: string
   sessionId?: string
@@ -668,7 +690,14 @@ export const MarkdownBlock = memo(function MarkdownBlock({
    * tags are text the model is talking about.
    */
   allowHtml?: boolean
+  /**
+   * Show links and images as their Markdown source instead of anchors and
+   * fetched media: for text a user acts on (an ``ask_user`` question), where
+   * a disguised link could phish.
+   */
+  linksAsText?: boolean
 }) {
+  const components = linksAsText ? MARKDOWN_COMPONENTS_NO_LINKS : MARKDOWN_COMPONENTS
   const smoothedContent = useSmoothStream(content, isStreaming)
   // Live until the reveal catches up: the end of an answer keeps flowing
   // after the stream closes (useSmoothStream), and so do its caret and its
@@ -701,7 +730,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
           <div className="oa-prose text-sm" data-streaming={live ? '' : undefined}>
             {chunks ? (
               chunks.map((c, index) => (
-                <MarkdownChunkView key={index} doc={c.doc} live={live && index === chunks.length - 1} />
+                <MarkdownChunkView key={index} doc={c.doc} live={live && index === chunks.length - 1} components={components} />
               ))
             ) : (
               <Markdown
@@ -709,7 +738,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
                 allowHtml={allowHtml}
                 frontmatter={false}
                 headingIds={false}
-                components={MARKDOWN_COMPONENTS}
+                components={components}
               >
                 {fixedContent}
               </Markdown>
@@ -727,12 +756,20 @@ export const MarkdownBlock = memo(function MarkdownBlock({
  * finished (highlighted code, drawn diagrams) the moment it settles, rather
  * than every block waiting for the stream to end and landing in one commit.
  */
-const MarkdownChunkView = memo(function MarkdownChunkView({ doc, live }: { doc: ReturnType<typeof parseMarkdown>; live: boolean }) {
+const MarkdownChunkView = memo(function MarkdownChunkView({
+  doc,
+  live,
+  components,
+}: {
+  doc: ReturnType<typeof parseMarkdown>
+  live: boolean
+  components: typeof MARKDOWN_COMPONENTS
+}) {
   // Extensions only act while parsing; rendering a parsed document needs
   // just the component map.
   return (
     <MarkdownStreamingContext.Provider value={live}>
-      <Markdown components={MARKDOWN_COMPONENTS}>{doc}</Markdown>
+      <Markdown components={components}>{doc}</Markdown>
     </MarkdownStreamingContext.Provider>
   )
 })
@@ -892,4 +929,26 @@ const _HTML_EXTENSIONS = [..._SETTLED_EXTENSIONS, safeHtmlMarkdownExtension()]
 // eslint-disable-next-line react-refresh/only-export-components
 export function parseMarkdownText(text: string, live: boolean) {
   return parseMarkdown(text, { extensions: live ? _EXTENSIONS : _SETTLED_EXTENSIONS, frontmatter: false, headingIds: false })
+}
+
+/** A link as its Markdown source: ``[text](href)``, or the bare URL. */
+function LinkAsText({ href, children }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const text = typeof children === 'string' ? children : undefined
+  if (!href || text === href) return <>{children}</>
+  return (
+    <>
+      [{children}]({href})
+    </>
+  )
+}
+
+/** An image as its Markdown source, never fetched. */
+function ImageAsText({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) {
+  return <>{`![${alt ?? ''}](${typeof src === 'string' ? src : ''})`}</>
+}
+
+const MARKDOWN_COMPONENTS_NO_LINKS: typeof MARKDOWN_COMPONENTS = {
+  ...MARKDOWN_COMPONENTS,
+  a: LinkAsText as typeof MarkdownLink,
+  img: ImageAsText as typeof MarkdownImg,
 }

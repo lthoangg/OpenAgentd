@@ -77,14 +77,14 @@ gh pr create --base main --title "<title>" --body "<bullets>"
   `gh pr create`, on the PR branch, in the background:
 
   ```bash
-  DRY_RUN=1 make -C mobile ios-release                 # archive + package IPA, no upload (or dispatch release-ios.yml on the branch with -f testflight=false -f sidestore=false)
+  gh workflow run release-ios.yml --ref <branch> -f channel=internal   # iOS: CI build + TestFlight Internal
   source ~/.android/openagentd-release-env.sh          # JAVA_HOME, keystore, Keychain password
   DRY_RUN=1 make -C mobile android-release             # build + sign APK, no upload
   ```
 
-  `DRY_RUN=1` runs the whole build and the checks, but uploads nothing. Before the tag
-  exists it skips the tag and release checks with a warning. Run them one after the
-  other (both touch `mobile/src-tauri`).
+  The iOS run links the real binary in CI and puts it on your phone through
+  TestFlight Internal. `DRY_RUN=1` builds and signs the APK but uploads nothing;
+  before the tag exists it skips the tag and release checks with a warning.
   If either fails, fix it on the PR branch before merging. Do not merge on a build
   that only CI has checked.
 - Read review comments (`gh pr view <n> --comments`), fix valid ones on the branch,
@@ -141,32 +141,26 @@ gh workflow run release-desktop.yml -f confirm=release-desktop -f channel=stable
 - If the push-triggered `tauri.yml` fails after the bump, the usual cause is a
   stale desktop or mobile `Cargo.lock`: fix it on `main` before rerunning.
 
-Ship iOS from CI while `release-desktop.yml` runs. Dispatch it **on the tag**,
-because the SideStore job checks that HEAD is the tagged commit:
+Ship iOS from CI while `release-desktop.yml` runs. Dispatch the Public Beta
+**on the tag**:
 
 ```bash
-gh workflow run release-ios.yml --ref v<version> -f confirm=release-ios
+gh workflow run release-ios.yml --ref v<version> -f channel=public -f confirm=release-ios
 ```
 
-- `build` archives the app unsigned (no secrets) and packages the ad hoc SideStore
-  IPA. `sign` waits for your approval of the `release-ios` environment, signs with the
-  Apple Distribution certificate and App Store profiles, and uploads to TestFlight
-  (build number = the run number). `sidestore` uploads `OpenAgentd_<version>_iOS.ipa`
-  + `.sha256` to `v<version>` and refreshes `source.json` on `latest-ios`; apply the
-  notes first, since the feed's What's New text is the release body.
-- `-f testflight=false` or `-f sidestore=false` skips one channel.
-- After the upload, App Store Connect processes the build (10-30 min). The first
-  build of a version needs Beta App Review before the public TestFlight link offers it.
-- If the build broke only after tagging, fix it on `main` and ship the IPA locally with
-  `ALLOW_AFTER_TAG=1 make -C mobile ios-release` from that commit. Leave the tag
-  alone: the CLI, desktop and Homebrew assets are already published from it, so moving
-  it breaks them. Add one line to the release notes saying the iOS build includes
-  `<short-sha>`.
-- `make -C mobile ios-release` still works locally (ad hoc IPA only) as a fallback.
-
-Afterwards, confirm the notes survived and the IPA is attached
-(`gh release view v<version> --repo lthoangg/openagentd`), and that
-`gh release view latest-ios --repo lthoangg/openagentd` lists `source.json`.
+- `build` archives the app unsigned (no secrets). `sign` waits for your approval of
+  the `release-ios` environment, signs with the Apple Distribution certificate and App
+  Store profiles, uploads (build number = the run number), then adds the build to the
+  "Public Beta" TestFlight group and submits it for Beta App Review.
+- App Store Connect processes the build (10-30 min) before it is added. The first
+  build of a version waits for Beta App Review before the public link offers it.
+- To ship to the App Store, submit that same tested build for review in App Store
+  Connect. After Apple approves a version its train closes: the next upload needs a
+  version bump.
+- If the build broke only after tagging, fix it on `main` and dispatch the public run
+  from that commit's tag after a patch bump. Leave the tag alone: the CLI, desktop and
+  Homebrew assets are already published from it, so moving it breaks them.
+- Failed runs, App Store Connect setup and App Review: `oad/ios-store`.
 
 Build and upload the Android APK locally the same way. CI does not build
 Android. You need JDK 17+, the Android SDK and NDK (see `mobile/README.md`),
@@ -184,7 +178,9 @@ git checkout main
 ```
 
 - `android-release` uploads `OpenAgentd_<version>_Android.apk` and its
-  `.sha256` to `v<version>`. It refuses to start without `ANDROID_KEYSTORE`.
+  `.sha256` to `v<version>`, then the in-app update feed `latest.json` to the
+  rolling `latest-android` pre-release (installed apps offer the update once
+  it is there). It refuses to start without `ANDROID_KEYSTORE`.
   `publish-apk.sh` refuses a debug-signed APK, a dirty tree, a HEAD other than
   the tag, or a missing release. Re-running is safe (`--clobber`).
 - If the Android build cannot run, say so in the release report; the rest of

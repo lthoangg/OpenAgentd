@@ -218,10 +218,12 @@ const Icon = () => null
 mock.module('lucide-react', () => ({
   SlidersHorizontal: Icon, Activity: Icon,
   AppWindow: Icon,
+  ArrowLeft: Icon,
   ArrowUpRight: Icon,
   Bot: Icon,
   Check: Icon,
   ChevronDown: Icon,
+  ChevronLeft: Icon,
   ChevronRight: Icon,
   ChevronsDownUp: Icon,
   Clock: Icon,
@@ -229,7 +231,7 @@ mock.module('lucide-react', () => ({
   CornerLeftUp: Icon,
   Copy: Icon,
   Download: Icon,
-  ExternalLink: Icon,
+  ExternalLink: Icon, WrapText: Icon,
   FileText: Icon,
   CircleHelp: Icon,
   Folder: Icon,
@@ -243,6 +245,8 @@ mock.module('lucide-react', () => ({
   ListFilter: Icon,
   Loader2: Icon,
   MessageCircle: Icon,
+  Monitor: Icon,
+  Moon: Icon,
   MoreHorizontal: Icon,
   Pin: Icon,
   PinOff: Icon,
@@ -250,6 +254,7 @@ mock.module('lucide-react', () => ({
   Search: Icon,
   Share: Icon,
   SquarePen: Icon,
+  Sun: Icon,
   Settings: Icon,
   Settings2: Icon,
   Pencil: Icon,
@@ -1004,6 +1009,27 @@ describe('Sidebar workspace trust flow', () => {
     expect(loadLastWorkspace()?.path).toBe('/repo/project')
   })
 
+  it('says Added {folder} once Open workspace… puts a new folder in the sidebar (desktop)', async () => {
+    useToastStore.setState({ toasts: [] })
+    const user = userEvent.setup()
+    await renderSidebar()
+    await user.click(screen.getByRole('button', { name: /trust and open/i }))
+
+    await waitFor(() => expect(useToastStore.getState().toasts.map((toast) => toast.title)).toEqual(['Added project']))
+    expect(useToastStore.getState().toasts[0].tone).toBe('info')
+  })
+
+  it('says nothing when the folder was already in the sidebar', async () => {
+    useToastStore.setState({ toasts: [] })
+    sessionsData = [{ id: 'session-1', title: 'Old', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' }]
+    const user = userEvent.setup()
+    await renderSidebar()
+    await user.click(screen.getByRole('button', { name: /trust and open/i }))
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/project' }, replace: false }))
+    expect(useToastStore.getState().toasts).toEqual([])
+  })
+
   it('uses the native desktop folder picker on Linux desktop too', async () => {
     platformOs = 'linux'
 
@@ -1665,6 +1691,13 @@ describe('Sidebar workspace trust flow', () => {
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('searchbox')).toBeNull()
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Search sessions' })))
+  })
+
+  it('opens session search, focused, when the app asks for it (⌘⇧F)', async () => {
+    await renderSidebarWithProps({ workspace: '/repo/project', searchSessionsKey: 1 })
+
+    const input = await screen.findByRole('searchbox', { name: 'Search sessions' })
+    await waitFor(() => expect(document.activeElement).toBe(input))
   })
 
   it('lists upcoming scheduled tasks soonest first and opens the scheduler on one', async () => {

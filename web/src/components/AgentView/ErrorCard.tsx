@@ -16,8 +16,8 @@ export function CopyDetailsButton({ text, size = 'xs' }: { text: string; size?: 
 /**
  * A failure in the transcript, as an error Notice (DESIGN.md → Notices):
  * a sentence-case title and one line of body. Only the failure a finished
- * turn ended with carries a way forward (Retry, Switch model, Provider
- * settings); the caller decides which one that is. Every failure can copy
+ * turn ended with carries a way forward (Retry, Switch model, Open
+ * Providers); the caller decides which one that is. Every failure can copy
  * its details, for a bug report.
  */
 export function ErrorCard({ title, message, details, onRetry, onSwitchModel }: {
@@ -38,7 +38,7 @@ export function ErrorCard({ title, message, details, onRetry, onSwitchModel }: {
   const copyable = details ?? [title, message].filter((part, i, all) => part && all.indexOf(part) === i).join('\n')
   const hasWayForward = Boolean(onRetry || onSwitchModel)
   // A locked account moves on to the next one by itself, so an error here
-  // means no account could take the call: Provider settings is the way on.
+  // means no account could take the call: Open Providers is the way on.
   return (
     <div className="my-2">
       <Callout
@@ -50,8 +50,8 @@ export function ErrorCard({ title, message, details, onRetry, onSwitchModel }: {
             {onRetry && <Button size="xs" onClick={onRetry}>Retry</Button>}
             {onSwitchModel && <Button size="xs" variant="subtle" onClick={onSwitchModel}>Switch model</Button>}
             {hasWayForward && (
-              <Button type="button" size="xs" variant="ghost" onClick={() => useSettingsStore.getState().openSettings('providers')}>
-                Provider settings
+              <Button type="button" size="xs" variant="subtle" onClick={() => useSettingsStore.getState().openSettings('providers')}>
+                Open Providers
               </Button>
             )}
             <CopyDetailsButton text={copyable} />

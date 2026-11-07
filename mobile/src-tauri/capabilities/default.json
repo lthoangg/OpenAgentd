@@ -31,6 +31,10 @@
     "allow-app-move-to-background",
     "allow-set-app-theme",
     "allow-share-text",
-    "allow-pick-one"
+    "allow-pick-one",
+    "allow-updater-check",
+    "allow-updater-download",
+    "allow-updater-install",
+    "allow-updater-release-notes"
   ]
 }

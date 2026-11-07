@@ -246,12 +246,10 @@ describe('SwipeRow', () => {
       expect(screen.getByRole('button', { name: 'Hide' })).toBeTruthy()
     })
 
-    it('renders each action 72px wide behind the content, with its icon over its label', () => {
+    it('renders each action 72px wide behind the content, a word on its tone', () => {
       render(row())
       const { root } = parts()
       const pin = hiddenAction('Pin')
-      expect(pin.querySelector('svg')?.getAttribute('width')).toBe('16')
-      expect(pin.querySelector('span')?.textContent).toBe('Pin')
       expect(pin.className).toContain('bg-(--color-accent)')
       expect(pin.className).toContain('text-(--color-text-on-accent)')
       const hide = hiddenAction('Hide')

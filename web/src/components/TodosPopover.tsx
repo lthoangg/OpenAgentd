@@ -79,8 +79,8 @@ function TodosSheet({ open, onOpenChange, todos, goal = null, plan = null, onCle
           goal={goal}
           plan={plan}
           todos={todos}
-          // Rows are 44px to a finger; the plan and goal rows grow with them.
-          className="min-h-11 [&_button]:min-h-11"
+          // Rows are a touch row (``--phone-control``); the plan and goal rows grow with them.
+          className="min-h-(--phone-control) [&_button]:min-h-(--phone-control)"
           onClearPlan={onClearPlan}
           onOpenPlan={onOpenPlan ? () => { onOpenChange(false); onOpenPlan() } : undefined}
           onOpenGoal={onOpenGoal ? () => { onOpenChange(false); onOpenGoal() } : undefined}

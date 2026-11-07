@@ -8,8 +8,9 @@ import { cn } from '@/lib/utils'
 
 /**
  * An action in the narrow layout's header (Tasks, Review panel). On a phone
- * it is a bar button: a 20px glyph in the accent tint, 44px to touch
- * (DESIGN.md → Rulebook 4, 5); a narrow mouse window keeps the 14px glyph.
+ * it is a bar button: a 20px glyph in the accent tint, drawn at the phone's
+ * control step and 44px to touch (``touch-hit``; DESIGN.md → Rulebook 4, 5);
+ * a narrow mouse window keeps the 14px glyph.
  */
 export function MobileHeaderAction({
   Icon,
@@ -44,10 +45,10 @@ export function MobileHeaderAction({
             onClick={onClick}
             disabled={disabled || !onClick}
             aria-pressed={active}
-            className={cn('relative', active ? 'bg-(--bg-key) text-(--color-text)' : 'phone:text-(--color-accent)')}
+            className={cn('relative touch-hit', active ? 'bg-(--bg-key) text-(--color-text)' : 'phone:text-(--color-accent)')}
             aria-label={label}
           >
-            <Icon size={14} strokeWidth={1.8} aria-hidden="true" className="size-3.5 phone:size-5" />
+            <Icon size={14} strokeWidth={2} aria-hidden="true" className="size-3.5 phone:size-5" />
             {badge > 0 && (
               <span ref={badgeRef} className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-(--color-accent) px-1 text-center font-mono text-meta leading-3.5 text-(--bg-page)">
                 {badge > 9 ? '9+' : badge}

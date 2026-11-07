@@ -105,7 +105,7 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(noPlan.result.current.find((c) => c.id === "open-plan")).toBeUndefined()
 
     const handleOpenPlan = mock(() => {})
-    const withPlan = renderHook(() => useAgentCommands(makeArgs({ handleOpenPlan })))
+    const withPlan = renderHook(() => useAgentCommands(makeArgs({ handleOpenPlan, hasPlan: true })))
     const cmd = byId(withPlan.result.current, "open-plan")
     expect(cmd.label).toBe("Open Plan")
     expect(cmd.description).toBe("View or edit this session's plan")
@@ -113,8 +113,18 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(handleOpenPlan).toHaveBeenCalledTimes(1)
   })
 
+  it("lists Open Plan before there is a plan, saying how one starts", () => {
+    const handleOpenPlan = mock(() => {})
+    const { result } = renderHook(() => useAgentCommands(makeArgs({ handleOpenPlan, hasPlan: false })))
+    const cmd = byId(result.current, "open-plan")
+    expect(cmd.label).toBe("Open Plan")
+    expect(cmd.description).toBe("No plan yet · in Plan mode the agent writes one here")
+    cmd.action()
+    expect(handleOpenPlan).toHaveBeenCalledTimes(1)
+  })
+
   it("says when the plan is waiting for review", () => {
-    const { result } = renderHook(() => useAgentCommands(makeArgs({ handleOpenPlan: () => {}, planAwaitingReview: true })))
+    const { result } = renderHook(() => useAgentCommands(makeArgs({ handleOpenPlan: () => {}, hasPlan: true, planAwaitingReview: true })))
     expect(byId(result.current, "open-plan").description).toMatch(/^Waiting for your review/)
   })
 
@@ -135,14 +145,24 @@ describe("useAgentCommands — shortcut labels", () => {
 
   it("lists one Goal entry that opens the Goal tab, and none without a goal", () => {
     const onShow = mock(() => {})
-    const goalEntries = (goal?: { onShow: () => void }) =>
+    const goalEntries = (goal?: { onShow: () => void; active: boolean }) =>
       renderHook(() => useAgentCommands(makeArgs({ goal }))).result.current.filter((c) => c.id.startsWith("goal-"))
 
     expect(goalEntries(undefined)).toEqual([])
 
-    const [entry, ...rest] = goalEntries({ onShow })
+    const [entry, ...rest] = goalEntries({ onShow, active: true })
     expect(rest).toEqual([])
     expect([entry.id, entry.label]).toEqual(["goal-open", "Goal"])
+    expect(entry.description).toBe("Progress, limits, and the last completion check")
+    entry.action()
+    expect(onShow).toHaveBeenCalledTimes(1)
+  })
+
+  it("lists Goal before there is a goal, saying how one starts", () => {
+    const onShow = mock(() => {})
+    const { result } = renderHook(() => useAgentCommands(makeArgs({ goal: { onShow, active: false } })))
+    const entry = byId(result.current, "goal-open")
+    expect(entry.description).toBe("No goal yet · approve a plan with Keep going until done")
     entry.action()
     expect(onShow).toHaveBeenCalledTimes(1)
   })

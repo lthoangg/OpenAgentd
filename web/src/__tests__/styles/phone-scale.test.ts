@@ -1,9 +1,11 @@
 /**
- * Phone scale (DESIGN.md → Touch density): on a phone, Apple's sizes: 17px
- * text in rows, buttons, menus, fields and chat, 15px second lines, 13px
- * times, 44px rows and targets (48px in the Android app). Desktop, tablets
- * and narrow mouse windows keep their dense scale. happy-dom does not
- * evaluate media queries, so this guards the rules themselves.
+ * Phone scale (DESIGN.md → Touch density): on a phone, the composer's size
+ * at Default: 15px text in rows, buttons, menus, fields and chat, 13px
+ * second lines and code, 12px times, 40px rows and buttons (4px more in the
+ * Android app), a 44px header; Compact a step under it, Large Apple's
+ * 17px / 44px. Desktop, tablets and narrow mouse windows keep their dense
+ * scale. happy-dom does not evaluate media queries, so this guards the
+ * rules themselves.
  */
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
@@ -41,32 +43,45 @@ describe('phone scale', () => {
     expect(css).toMatch(new RegExp(`@custom-variant phone \\{\\s*@media ${PHONE.replace(/[()]/g, '\\$&')} \\{\\s*@slot;\\s*\\}\\s*\\}`))
   })
 
-  it('sets 17px for UI text and chat, 15px for second lines and code, 13px for times', () => {
-    expect(phone).toMatch(/--text-xs:\s*calc\(1\.0625rem \* var\(--oa-phone-scale\)\);/)
-    expect(phone).toMatch(/--text-sm:\s*calc\(1\.0625rem \* var\(--oa-phone-scale\)\);/)
-    expect(phone).toMatch(/--text-base:\s*calc\(1\.0625rem \* var\(--oa-phone-scale\)\);/)
-    expect(phone).toMatch(/--text-subhead:\s*calc\(0\.9375rem \* var\(--oa-phone-scale\)\);/)
-    expect(phone).toMatch(/--text-code:\s*calc\(0\.9375rem \* var\(--oa-phone-scale\)\);/)
-    expect(phone).toMatch(/--text-meta:\s*calc\(0\.8125rem \* var\(--oa-phone-scale\)\);/)
+  it('reads the phone steps for UI text and chat, second lines and code, and times', () => {
+    expect(phone).toMatch(/--text-xs:\s*var\(--oa-phone-body\);/)
+    expect(phone).toMatch(/--text-sm:\s*var\(--oa-phone-body\);/)
+    expect(phone).toMatch(/--text-base:\s*var\(--oa-phone-body\);/)
+    expect(phone).toMatch(/--text-subhead:\s*var\(--oa-phone-subhead\);/)
+    expect(phone).toMatch(/--text-code:\s*var\(--oa-phone-subhead\);/)
+    expect(phone).toMatch(/--text-meta:\s*var\(--oa-phone-meta\);/)
   })
 
-  it('makes rows, the header and every button 44px, and 48px in the Android app', () => {
-    expect(phone).toMatch(/--spacing-list-row:\s*2\.75rem;/)
-    expect(phone).toMatch(/--spacing-app-header:\s*2\.75rem;/)
-    expect(phone).toMatch(/\[data-slot="button"\]\s*\{\s*min-height:\s*44px;\s*min-width:\s*44px;/)
-    expect(phone).toMatch(/html\[data-mobile-shell="android"\]\s*\{\s*--spacing-list-row:\s*3rem;/)
-    expect(phone).toMatch(/html\[data-mobile-shell="android"\] \[data-slot="button"\]\s*\{\s*min-height:\s*48px;\s*min-width:\s*48px;/)
+  it('sizes rows, the header, every button and sheet rows from the phone steps, 4px more in the Android app', () => {
+    expect(phone).toMatch(/--spacing-list-row:\s*var\(--oa-phone-row\);/)
+    expect(phone).toMatch(/--spacing-app-header:\s*var\(--oa-phone-header\);/)
+    expect(phone).toMatch(/--phone-control:\s*var\(--oa-phone-control\);/)
+    expect(phone).toMatch(/\[data-slot="button"\]\s*\{\s*min-height:\s*var\(--oa-phone-control\);\s*min-width:\s*var\(--oa-phone-control\);/)
+    expect(phone).toMatch(/html\[data-mobile-shell="android"\]\s*\{\s*--spacing-list-row:\s*calc\(var\(--oa-phone-row\) \+ 0\.25rem\);\s*--phone-control:\s*calc\(var\(--oa-phone-control\) \+ 4px\);/)
+    expect(phone).toMatch(/html\[data-mobile-shell="android"\] \[data-slot="button"\]\s*\{\s*min-height:\s*calc\(var\(--oa-phone-control\) \+ 4px\);\s*min-width:\s*calc\(var\(--oa-phone-control\) \+ 4px\);/)
   })
 
-  it('grows small icons and inline links to a 44px hit area', () => {
+  it('keeps a 44px hit area for small icons, bar buttons and inline links', () => {
     expect(phone).toMatch(/\.touch-hit::before\s*\{\s*inset:\s*min\(0px, calc\(\(100% - 44px\) \/ 2\)\);/)
     expect(phone).toMatch(/\[data-file-ref\]::before\s*\{\s*inset:\s*calc\(\(100% - 44px\) \/ 2\) 0;/)
   })
 
-  it('keeps Text size: Compact one step down (15px), Large one step up (19px)', () => {
-    expect(css).toMatch(/:root\s*\{\s*--oa-text-scale:\s*calc\(13 \/ 12\);\s*--oa-phone-scale:\s*1;/)
-    expect(css).toMatch(/:root\[data-text-size="compact"\]\s*\{\s*--oa-text-scale:\s*1;\s*--oa-phone-scale:\s*calc\(15 \/ 17\);/)
-    expect(css).toMatch(/:root\[data-text-size="large"\]\s*\{\s*--oa-text-scale:\s*calc\(14 \/ 12\);\s*--oa-phone-scale:\s*calc\(19 \/ 17\);/)
+  it('steps with Text size: Default the composer\'s 15px / 40px, Compact 14px / 36px, Large Apple\'s 17px / 44px', () => {
+    const steps = (selector: string) => {
+      const body = new RegExp(`${selector.replace(/[[\]()]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? ''
+      const value = (name: string) => new RegExp(`--oa-phone-${name}:\\s*([^;]+);`).exec(body)?.[1]
+      return {
+        body: value('body'), subhead: value('subhead'), meta: value('meta'), title: value('title'),
+        row: value('row'), control: value('control'), header: value('header'),
+      }
+    }
+    expect(steps(':root')).toEqual({ body: '0.9375rem', subhead: '0.8125rem', meta: '0.75rem', title: '1.75rem', row: '2.5rem', control: '40px', header: '2.75rem' })
+    expect(steps(':root[data-text-size="compact"]')).toEqual({ body: '0.875rem', subhead: '0.75rem', meta: '0.6875rem', title: '1.625rem', row: '2.25rem', control: '36px', header: '2.5rem' })
+    expect(steps(':root[data-text-size="large"]')).toEqual({ body: '1.0625rem', subhead: '0.9375rem', meta: '0.8125rem', title: '2.125rem', row: '2.75rem', control: '44px', header: '2.75rem' })
+  })
+
+  it('sizes a touch control outside Button at 44px off a phone', () => {
+    expect(css).toMatch(/:root\s*\{\s*--oa-text-scale:\s*calc\(13 \/ 12\);\s*--phone-control:\s*44px;/)
   })
 
   it('leaves the desktop scale as it was', () => {
@@ -134,8 +149,8 @@ describe('phone type utilities', () => {
     expect(inline).not.toMatch(/--text-/)
   })
 
-  it('has a 34px large title that follows Text size', () => {
-    expect(css).toMatch(/--text-large-title:\s*calc\(2\.125rem \* var\(--oa-phone-scale\)\);/)
+  it('has a large title that follows Text size (28px at Default)', () => {
+    expect(css).toMatch(/--text-large-title:\s*var\(--oa-phone-title\);/)
   })
 })
 

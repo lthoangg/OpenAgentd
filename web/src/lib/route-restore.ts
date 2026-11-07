@@ -20,6 +20,8 @@ export function closestRestorableRoute(route: string): string {
     return `/${pathOnly.slice('/coding/'.length)}${suffix}`
   }
   if (pathOnly.startsWith('/settings')) return '/'
+  // The phone's Servers screen: a launch opens on Sessions, as it always has.
+  if (pathOnly === '/servers') return '/'
   return trimmed
 }
 

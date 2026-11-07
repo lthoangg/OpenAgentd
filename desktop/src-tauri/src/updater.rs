@@ -448,7 +448,7 @@ async fn recover_from_failed_install(app: &AppHandle, had_sidecar: bool) {
         }
         Err(e) => {
             log::error!("bundled backend restart after a failed update failed: {e}");
-            update_tray_status(app, "Status: Error");
+            update_tray_status(app, crate::menu::TRAY_STATUS_FAILED);
         }
     }
 }

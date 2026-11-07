@@ -85,6 +85,7 @@ export function TelemetrySettingsPage() {
         <PanelRow
           label="Keep traces for"
           htmlFor="telemetry-retention-days"
+          inline
           description={
             keepForever
               ? 'Everything is kept. Turn off Keep forever to set a number of days.'
@@ -102,7 +103,7 @@ export function TelemetrySettingsPage() {
               disabled={keepForever}
               value={Number.isFinite(days) ? String(days) : ''}
               onChange={(e) => draft.patch({ retention_days: parseInt(e.target.value, 10) })}
-              className="h-9 w-24 font-mono"
+              className="h-9 w-20! md:w-24! no-spin text-right font-mono tabular-nums"
             />
             <span className="text-xs text-(--color-text-2)">days</span>
           </div>

@@ -7,7 +7,8 @@
  * view. Each view passes its own `renderBlock` so the per-view block visuals
  * (e.g. compact vs roomy `UserBubble`) stay independent.
  */
-import { memo, useCallback, useId, useMemo, type ReactNode } from 'react'
+import { memo, useCallback, useId, useMemo, useState, type ReactNode } from 'react'
+import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 import { Check, Copy, FileDiff, type LucideIcon } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -22,7 +23,8 @@ import { turnAccount, turnModel } from '@/utils/turns'
 import type { ContentBlock } from '@/api/types'
 import { useQuestionAwaitsUser } from '@/components/AskUser'
 import { WorkSummaryRow } from '@/components/ReaderTurn'
-import { readerSegments, turnChangedFiles } from '@/components/ReaderTurn/segments'
+import { readerSegments, toolRunSegments, turnChangedFiles } from '@/components/ReaderTurn/segments'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import type { ChangedFileInfo } from '@/components/WorkspacePanel/diff-helpers'
 import { TurnFileList } from '@/components/AgentView/TurnFileList'
 import { TurnActionButton } from '@/components/AgentView/TurnActionButton'
@@ -86,6 +88,8 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   const { copied, copy } = useCopyFeedback()
   const filesFold = useStickyFold()
   const filesId = useId()
+  const isPhone = useIsPhone()
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const footerData = useMemo(() => {
     // Me lastTurnText walks back to the previous user block; pass the turn directly
     const textContent = lastTurnText(turnBlocks)
@@ -206,7 +210,51 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
           )}
         </div>
       )}
-      {parts.length > 0 && (
+      {parts.length > 0 && isPhone && (
+        // A phone opens the details as a sheet (mockup J4), not a popover.
+        <>
+          <button
+            type="button"
+            aria-label={`Turn details: ${summary}`}
+            aria-haspopup="dialog"
+            onClick={() => setDetailsOpen(true)}
+            className="relative inline-flex min-h-11 min-w-0 max-w-full items-center gap-1 whitespace-nowrap rounded-sm px-1 font-mono text-meta tabular-nums text-(--color-text-muted)"
+          >
+            {parts.flatMap((part, i) => (i === 0 ? [part] : [<span key={`sep-${i}`} aria-hidden className="shrink-0 opacity-60">·</span>, part]))}
+          </button>
+          <BottomSheet open={detailsOpen} onClose={() => setDetailsOpen(false)} label="Turn details">
+            <div data-turn-details-sheet="" className="flex flex-col gap-3 px-4 pb-4">
+            <dl className="flex flex-col gap-1.5">
+              {timestamp && <DetailRow label="Finished">{formatFullDateTime(timestamp)}</DetailRow>}
+              {model && <DetailRow label="Model"><span title={model}>{model}</span></DetailRow>}
+              {thinkingLevel && <DetailRow label="Thinking">{thinkingLevel}</DetailRow>}
+              {account && <DetailRow label="Account">{account}</DetailRow>}
+              {responseDurationMs !== undefined && (
+                <DetailRow label={<Term definition="turnDuration">Duration</Term>}>{formatMetaDuration(responseDurationMs)}</DetailRow>
+              )}
+              {inputTokens !== undefined && <DetailRow label="Input tokens">{formatInt(inputTokens)}</DetailRow>}
+              {cachedTokens !== undefined && (
+                <DetailRow label={<Term definition="cacheHit">Cached input</Term>}>
+                  {formatInt(cachedTokens)}{cachePercent !== undefined ? ` (${cachePercent}%)` : ''}
+                </DetailRow>
+              )}
+              {hasUsage && <DetailRow label="Output tokens">{formatInt(outputTokens)}</DetailRow>}
+              {costUsd > 0 && (
+                <DetailRow label={<Term definition="spendEstimate">Estimated cost</Term>}>${costUsd.toFixed(4)}</DetailRow>
+              )}
+            </dl>
+            <button
+              type="button"
+              onClick={openInUsage}
+              className="self-start rounded-sm text-xs font-medium text-(--color-text) underline decoration-(--color-border-strong) underline-offset-2 hover:decoration-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) pointer-coarse:min-h-9"
+            >
+              Open session in Usage
+            </button>
+            </div>
+          </BottomSheet>
+        </>
+      )}
+      {parts.length > 0 && !isPhone && (
         <Popover>
           <PopoverTrigger
             aria-label={`Turn details: ${summary}`}
@@ -317,7 +365,12 @@ export const AssistantTurn = memo(function AssistantTurn({
   // Narrower: an open turn waiting on ``ask_user`` is not being worked on.
   const turnIsWorking = isWorking && isTrailingTurn
   const awaitsUser = useQuestionAwaitsUser()
-  const segments = useMemo(() => (reader ? readerSegments(blocks, awaitsUser) : null), [reader, blocks, awaitsUser])
+  // A phone's detailed transcript folds runs of finished tool calls too.
+  const isPhone = useIsPhone()
+  const segments = useMemo(
+    () => (reader ? readerSegments(blocks, awaitsUser) : isPhone ? toolRunSegments(blocks, awaitsUser) : null),
+    [reader, isPhone, blocks, awaitsUser],
+  )
   // Both transcript styles list the files a finished turn edited.
   const changedFiles = useMemo(() => (turnIsOpen ? NO_FILES : turnChangedFiles(blocks)), [turnIsOpen, blocks])
   // A compaction divider ends the fold before it (see ``readerSegments``), so
@@ -359,7 +412,8 @@ export const AssistantTurn = memo(function AssistantTurn({
             if (segment.kind === 'block') return renderAt(segment.index)
             const work = segment.indices.map((j) => blocks[j])
             const lastIndex = segment.indices[segment.indices.length - 1]
-            const live = turnIsWorking && segment.indices[0] > lastCompaction
+            // A phone's tool-run fold holds finished calls only: never live.
+            const live = reader && turnIsWorking && segment.indices[0] > lastCompaction
             return (
               <WorkSummaryRow
                 // Keyed by its first block so the toggle survives new steps.

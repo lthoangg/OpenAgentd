@@ -66,6 +66,12 @@ describe('send_to_workspace result', () => {
         cleanup()
       }
       expect(requests).toEqual([{ sessionId: SID, workspace: '/r/infra' }, { sessionId: SID, workspace: '/r/infra' }])
+      // In the row line, not on a line of its own: a tap on the chip opens it, the row stays shut.
+      render(<ToolCall name="workspace" args={ARGS} done result={`Sent to 'infra' (/r/infra) — new session ${SID} started.`} />)
+      const row = screen.getByRole('button', { name: /Expand workspace details/ })
+      fireEvent.click(row.querySelector('[data-row-link]') as HTMLElement)
+      expect(requests).toHaveLength(3)
+      expect(row.getAttribute('aria-expanded')).toBe('false')
     } finally {
       window.removeEventListener(OPEN_SESSION_EVENT, listener)
     }

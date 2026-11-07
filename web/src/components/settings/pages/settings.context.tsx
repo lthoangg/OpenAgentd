@@ -87,6 +87,7 @@ export function ContextSettingsPage() {
         <PanelRow
           label="Token threshold"
           htmlFor="context-threshold"
+          inline
           description={`Summarize earlier messages once a prompt reaches this many tokens. Empty uses 90% of the model's context window.${threshold !== null && Number.isFinite(threshold) && threshold > 0 ? ` Now ${threshold.toLocaleString('en-US')} tokens.` : ''}`}
           error={thresholdError}
         >
@@ -99,8 +100,9 @@ export function ContextSettingsPage() {
             aria-label="Token threshold"
             value={threshold === null ? '' : String(threshold)}
             onChange={(e) => draft.patch({ prompt_token_threshold: parseOptionalInt(e.target.value) })}
-            className="h-9 w-36 font-mono"
+            className="h-9 w-32! no-spin text-right font-mono tabular-nums"
           />
+          <span className="text-xs text-(--color-text-2)">tokens</span>
         </PanelRow>
       </PanelSection>
 
@@ -119,6 +121,7 @@ export function ContextSettingsPage() {
         <PanelRow
           label="Idle trigger"
           htmlFor="context-idle-percent"
+          inline
           description={
             idleCompaction
               ? 'The percent of the token threshold a session must reach first. Empty uses 70%.'
@@ -138,7 +141,7 @@ export function ContextSettingsPage() {
               aria-label="Idle trigger percent"
               value={idlePercent === null ? '' : String(idlePercent)}
               onChange={(e) => draft.patch({ idle_compaction_percent: parseOptionalInt(e.target.value) })}
-              className="h-9 w-24 font-mono"
+              className="h-9 w-20! md:w-24! no-spin text-right font-mono tabular-nums"
             />
             <span className="text-xs text-(--color-text-muted)" aria-hidden="true">%</span>
           </div>

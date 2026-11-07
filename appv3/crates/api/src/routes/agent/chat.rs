@@ -761,6 +761,9 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     // work it started (`background_work`), in one page, however old — the
     // sidebar's "Needs you" list, the badge counts and the notch island. v2
     // ignores the parameter and returns a normal page.
+    // v3 addition: `remaining` counts the sessions past this page (the
+    // sidebar's "Show N more"). Only a paged list with more to show has it.
+    let mut remaining: Option<i64> = None;
     let (sessions, next_cursor, has_more) = if q.opt("active").as_deref() == Some("true") {
         let ids: Vec<String> = running.iter().chain(awaiting.iter()).chain(pending.iter()).cloned().collect();
         let mut rows = db::get_sessions_by_ids(&st.pool, &ids).await?;
@@ -773,7 +776,11 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
         // `q` is a v3 addition too (sidebar search); v2 ignores it.
         let title_query = q.opt("q");
         let filter = db::SessionListFilter { workspaces: &workspaces, title_query: title_query.as_deref().map(str::trim), sort, pinned };
-        db::list_sessions_page(&st.pool, before.as_deref(), limit, &filter).await.map_err(|_| ApiError::unprocessable("Invalid 'before' cursor."))?
+        let page = db::list_sessions_page(&st.pool, before.as_deref(), limit, &filter).await.map_err(|_| ApiError::unprocessable("Invalid 'before' cursor."))?;
+        if let Some(cursor) = page.1.as_deref() {
+            remaining = Some(db::count_sessions_before(&st.pool, cursor, &filter).await?);
+        }
+        page
     };
     let ids: Vec<String> = sessions.iter().map(|s| s.id.clone()).collect();
     let children = db::list_child_sessions(&st.pool, &ids).await?;
@@ -801,7 +808,11 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
             Value::Object(session_json(s, &o))
         })
         .collect();
-    Ok(json(json!({"data": data, "next_cursor": next_cursor, "has_more": has_more})))
+    let mut body = json!({"data": data, "next_cursor": next_cursor, "has_more": has_more});
+    if let Some(n) = remaining {
+        body["remaining"] = json!(n);
+    }
+    Ok(json(body))
 }
 
 /// `sent_from` values for the senders of `sessions`, by sender id (stored

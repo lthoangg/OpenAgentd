@@ -153,6 +153,18 @@ impl<R: Runtime> AndroidShell<R> {
             .map(|_| ())
             .map_err(|e| format!("Set app theme: {e}"))
     }
+
+    /// Hand a downloaded APK (inside the app cache directory) to the system
+    /// installer. The first time, Android asks the user to allow installs
+    /// from OpenAgentd; this opens that setting and returns an error asking
+    /// them to try again. Blocks on the JNI call; call it off the async
+    /// runtime.
+    pub fn install_apk(&self, path: &str) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin::<serde::de::IgnoredAny>("installApk", SharePayload { path })
+            .map(|_| ())
+            .map_err(|e| format!("{e}"))
+    }
 }
 
 #[derive(Serialize)]

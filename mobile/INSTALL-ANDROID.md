@@ -36,9 +36,15 @@ With a computer and USB debugging on, you can also run
 
 ## Update
 
-Download the newer APK and open it. Android installs it over the existing app
-and keeps your saved servers and access keys. Every release is signed with the
-same key; Android refuses an update signed with a different one.
+From v3.49.0 the app checks for updates itself. When a new version is out, a
+card offers **Download** and then **Install**; you can also check from
+**Settings → About OpenAgentd → Updates**. The first time, Android asks you to
+allow installs from OpenAgentd: turn it on, go back, and tap **Install** again.
+
+You can still update by hand: download the newer APK and open it. Either way
+Android installs it over the existing app and keeps your saved servers and
+access keys. Every release is signed with the same key; Android refuses an
+update signed with a different one.
 
 ## Connect to your server
 

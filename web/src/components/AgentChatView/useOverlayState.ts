@@ -170,6 +170,8 @@ export interface UseOverlayStateResult {
   /** ⌘⇧\: split it down. */
   handleSplitDockDown: () => void
   openWorkspaceDialogKey: number
+  /** Bumped by ⌘⇧F: the sidebar opens its session search. */
+  searchSessionsKey: number
   showTodos: boolean
 
   closeOtherMobileOverlays: (keep: MobileOverlay) => void
@@ -287,6 +289,7 @@ export function useOverlayState({
     else setSidebarCollapsed(false)
   }, [setSidebarCollapsed, sidebarDrawer])
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
+  const [searchSessionsKey, setSearchSessionsKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
 
   useEffect(() => {
@@ -377,6 +380,12 @@ export function useOverlayState({
     revealSidebar()
     setOpenWorkspaceDialogKey((value) => value + 1)
   }, [revealSidebar])
+  // Desktop: a phone searches from its Sessions screen.
+  const handleSearchSessions = useCallback(() => {
+    if (isMobile) return
+    revealSidebar()
+    setSearchSessionsKey((value) => value + 1)
+  }, [isMobile, revealSidebar])
 
   const handleFileSelect = useCallback((file: WorkspaceFileInfo | null) => {
     setFileViewer(file)
@@ -652,6 +661,7 @@ export function useOverlayState({
       [APP_EVENTS.toggleScheduler, handleToggleScheduler],
       [APP_EVENTS.openScheduler, handleOpenScheduler],
       [APP_EVENTS.openWorkspace, handleOpenWorkspaceDialog],
+      [APP_EVENTS.searchSessions, handleSearchSessions],
       [APP_EVENTS.openTerminal, handleOpenTerminal],
       [APP_EVENTS.openPlan, handleOpenPlan],
       [APP_EVENTS.splitReviewPanel, handleSplitDock],
@@ -662,7 +672,7 @@ export function useOverlayState({
     return () => {
       for (const [event, handler] of routes) window.removeEventListener(event, handler)
     }
-  }, [handleOpenPlan, handleOpenScheduler, handleOpenTerminal, handleOpenWorkspaceDialog, handleSplitDock, handleSplitDockDown, handleToggleScheduler])
+  }, [handleOpenPlan, handleOpenScheduler, handleOpenTerminal, handleOpenWorkspaceDialog, handleSearchSessions, handleSplitDock, handleSplitDockDown, handleToggleScheduler])
 
   // ── Mobile edge-swipe drawers ──────────────────────────────────────────────
   //
@@ -749,6 +759,7 @@ export function useOverlayState({
     handleSplitDock,
     handleSplitDockDown,
     openWorkspaceDialogKey,
+    searchSessionsKey,
     showTodos,
 
     closeOtherMobileOverlays,

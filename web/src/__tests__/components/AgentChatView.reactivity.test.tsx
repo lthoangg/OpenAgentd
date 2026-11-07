@@ -13,6 +13,7 @@ import { queryKeys } from '@/queries/keys'
 // failure. The real icons render fine and cost nothing measurable.
 mock.module('@tanstack/react-router', () => ({ useNavigate: () => () => Promise.resolve() }))
 mock.module('@tanstack/react-query', () => ({
+  QueryClient: class {},
   useQueryClient: () => ({}),
   useQuery: () => ({ data: undefined, isLoading: false }),
   useInfiniteQuery: () => ({ data: undefined, isLoading: false }),
@@ -24,7 +25,7 @@ mock.module('@/queries/useSessionPlanQuery', () => ({
   useSessionPlanQuery: () => ({ data: { plan: null } }),
   useClearSessionPlanMutation: () => ({ mutate: () => {} }),
 }))
-mock.module('@/queries', () => ({ queryKeys, useProvidersQuery: () => ({ data: { providers: [] } }) }))
+mock.module('@/queries', () => ({ queryKeys, useProvidersQuery: () => ({ data: { providers: [] } }), useHealthQuery: () => ({ isSuccess: true, isError: false }) }))
 mock.module('@/queries/useAgentsQuery', () => ({
   useAgentsQuery: () => ({ data: { agents: [{ name: 'code' }] }, isLoading: false }),
 }))

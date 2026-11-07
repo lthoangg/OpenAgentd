@@ -19,6 +19,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { AgentView } from '../AgentView'
 import type { OpenSessionHandler } from '../AgentView/UserBubble'
 import type { FileRefOpener } from '../FileRefLink'
@@ -32,7 +33,7 @@ import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useS
 import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { useGoalSessionState } from '@/hooks/useGoalSessionState'
 import { goalHeaderState } from '@/lib/work'
-import { useProvidersQuery } from '@/queries'
+import { useHealthQuery, useProvidersQuery } from '@/queries'
 import { modelReadiness } from '@/lib/model-readiness'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
@@ -59,10 +60,12 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { FolderCode, FileUp } from 'lucide-react'
+import { FolderCode, FileUp, WifiOff } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { useFocusRegions } from '@/hooks/use-focus-regions'
 import { usePlatform } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, dispatchAppShortcut, shortcutLabel } from '@/lib/app-shortcuts'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -73,7 +76,11 @@ import { PlusMenu, type ComposerActions } from '../composer/PlusMenu'
 import { ContextMeter } from '../composer/ContextMeter'
 import { useRunSettings } from '../composer/useRunSettings'
 import { BtwPanel } from '../BtwPanel'
+import { PhoneStatusLine, RunBar } from '../composer/RunBar'
+import { PinnedQuestion } from '../AskUser'
+import { PinnedPlanReview } from '../PlanReview/PlanReviewCard'
 import { AppFooter } from '../AppFooter'
+import { ViewErrorBoundary } from '../ViewErrorBoundary'
 import { WorkspacePanel } from '../WorkspacePanel'
 import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
 import { OPEN_SESSION_EVENT, isOpenSessionRequest } from '@/utils/workspace-messages'
@@ -86,6 +93,7 @@ import type {
 import { ConnectionBanner } from '@/components/ConnectionBanner'
 import { TranscriptFind } from '@/components/TranscriptFind'
 import { PhoneStack } from '@/components/phone/PhoneStack'
+import { ServersScreen } from '@/components/phone/LazyServersScreen'
 import { AgentChatHeader } from './AgentChatHeader'
 import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
@@ -98,7 +106,7 @@ import { useDraftHandoff } from './useDraftHandoff'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
 import { btwSubmit, composerHistoryPrompts, newestUserBlockId, parseBuiltInSlashCommand } from './helpers'
-import { deliverFromComposer, stopTurn, useReleaseHeldMessages } from './heldMessages'
+import { deliverFromComposer, pushStoppedToast, stopTurn, useReleaseHeldMessages } from './heldMessages'
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
@@ -168,15 +176,27 @@ interface AgentChatViewProps {
   /** The URL names a session the server does not have. */
   sessionNotFound?: boolean
   /**
-   * A phone: the screen is a navigation stack, Sessions (the sidebar as a
-   * page) with this chat pushed over it. ``atSessions``: the list is on top.
-   * ``onBack``: up to Sessions (‹, the edge swipe, Android Back).
+   * A phone: the screen is a navigation stack, Servers under Sessions (the
+   * sidebar as a page) with this chat pushed over it. ``atSessions``: the
+   * chat is not on top (Sessions or Servers is). ``onBack``: up to Sessions
+   * (‹, the edge swipe, Android Back).
    */
-  phoneStack?: { atSessions: boolean; onBack: () => void }
+  phoneStack?: PhoneStackState
+}
+
+export interface PhoneStackState {
+  atSessions: boolean
+  onBack: () => void
+  /** Servers is on top (Sessions and the chat are pushed off it). */
+  atServers?: boolean
+  /** From Sessions down to Servers (‹ Servers, the edge swipe, Android Back). */
+  onBackToServers?: () => void
+  /** From Servers up to the Sessions of the server in use. */
+  onOpenSessions?: () => void
 }
 
 interface ChatFrameProps {
-  phoneStack?: { atSessions: boolean; onBack: () => void }
+  phoneStack?: PhoneStackState
   /** The phone's edge swipe and Back may pop to Sessions. */
   backEnabled: boolean
   header: React.ReactNode
@@ -189,9 +209,14 @@ interface ChatFrameProps {
 /**
  * The workbench around the chat. Desktop: the header, the sidebar beside
  * the chat, the status bar. A phone: a navigation stack, the sidebar as the
- * Sessions screen with the chat, header and all, pushed over it.
+ * Sessions screen with the chat, header and all, pushed over it; and that
+ * stack is itself the page of a second one, over the Servers screen. Only
+ * one of the two takes the edge swipe and Back at a time: the inner one
+ * while a chat is pushed, the outer one while Sessions is on top.
  */
 function ChatFrame({ phoneStack, backEnabled, header, sidebar, footer, children }: ChatFrameProps) {
+  // Swiping left on Servers opens Sessions only while a server answers.
+  const connected = useHealthQuery().isSuccess
   const body = <div className="relative flex min-h-0 flex-1 overflow-hidden">{children}</div>
   if (!phoneStack) {
     return (
@@ -205,25 +230,48 @@ function ChatFrame({ phoneStack, backEnabled, header, sidebar, footer, children 
       </>
     )
   }
+  const sessionsStack = (
+    <PhoneStack
+      root={sidebar}
+      page={<div className="flex h-full flex-col">{header}{body}</div>}
+      pushed={!phoneStack.atSessions}
+      onBack={phoneStack.onBack}
+      backEnabled={backEnabled}
+    />
+  )
+  const { onBackToServers, onOpenSessions } = phoneStack
+  const atServers = Boolean(phoneStack.atServers)
+  // Servers loads (and pings its servers) while it is on top or one swipe
+  // away under Sessions, so a swipe back reveals the real list, not the
+  // panel's placeholder rows; under a chat it rests.
   return (
     <div className="relative min-h-0 flex-1">
-      <PhoneStack
-        root={sidebar}
-        page={<div className="flex h-full flex-col">{header}{body}</div>}
-        pushed={!phoneStack.atSessions}
-        onBack={phoneStack.onBack}
-        backEnabled={backEnabled}
-      />
+      {onBackToServers && onOpenSessions ? (
+        <PhoneStack
+          root={<ServersScreen active={phoneStack.atSessions} onOpenSessions={onOpenSessions} />}
+          page={sessionsStack}
+          pushed={!atServers}
+          onBack={onBackToServers}
+          backEnabled={backEnabled && phoneStack.atSessions && !atServers}
+          onForward={backEnabled ? onOpenSessions : undefined}
+          forwardBlocked={!connected}
+        />
+      ) : sessionsStack}
     </div>
   )
 }
 
 export function AgentChatView({ sessionId, workspace = null, sessionLoading = false, sessionNotFound = false, phoneStack }: AgentChatViewProps) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  // Opened while the server is down, nothing loaded, so no workspace is known:
+  // say so instead of asking for a workspace.
+  const serverDown = useHealthQuery().isError
   const openSettings = useSettingsStore((s) => s.openSettings)
   const pushToast = useToastStore((s) => s.push)
   const isMobile = useIsMobile()
-  const { isMacOverlay } = usePlatform()
+  const isPhone = useIsPhone()
+  const { isMacOverlay, os } = usePlatform()
   const storeWorkspace = useAgentStore((s) => s._workspace)
   const effectiveWorkspace = workspace || storeWorkspace
   // Chat sessions run on the same screen as project workspaces but the root is
@@ -362,6 +410,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleSplitDock,
     handleSplitDockDown,
     openWorkspaceDialogKey,
+    searchSessionsKey,
     showTodos,
     handleWorkspaceFiles,
     handleOpenGit,
@@ -453,9 +502,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const { data: goalData } = useSessionGoalQuery(sessionIdState)
   const goal = goalData?.goal ?? null
   // The goal lives in the dock's Goal tab (its actions too): the palette
-  // lists one entry that opens it, and only while the session has a goal.
+  // lists one entry that opens it, even before there is a goal, so it can be
+  // found; the tab's empty state says how a goal starts.
   const paletteGoal = useMemo(
-    () => (workspace && goal && goal.status !== 'cleared' ? { onShow: handleOpenGoal } : undefined),
+    () => (workspace ? { onShow: handleOpenGoal, active: Boolean(goal && goal.status !== 'cleared') } : undefined),
     [workspace, goal, handleOpenGoal],
   )
   // The header's Task list button shows the live goal as a ring and tooltip.
@@ -674,7 +724,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleSplitDock,
     handleSplitDockDown,
     handleFindInSession: sessionIdState ? handleFindInSession : undefined,
-    handleOpenPlan: plan || planAwaitingReview ? handleOpenPlan : undefined,
+    handleOpenPlan,
+    hasPlan: Boolean(plan),
     planAwaitingReview,
     handleOpenPreview: workspace && previewsAvailable() ? handleOpenNewPreview : undefined,
     handleOpenSideQuestions,
@@ -768,6 +819,17 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // centered, else docked at the bottom of the chat column. While a switch
   // looks up the next session's workspace, the composer stays (disabled)
   // instead of unmounting; sending needs `workspace` itself.
+  // Desktop with a workspace: the dock's BTW tab shows side questions, and
+  // here only the chip reopens it while that tab is not on screen. A phone
+  // shows it as the "btw" pill in the status line above the composer.
+  const btwPanel = dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (
+    <BtwPanel
+      sessionId={sessionIdState || null}
+      countEnabled={leadHasVisibleBlocks}
+      chipOnly={dockViewsEnabled}
+      onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
+    />
+  )
   const composerElement = workspace || (isSessionLoading && chatOnScreen && storeWorkspace) ? (
     <Composer
       ref={inputRef}
@@ -787,7 +849,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         const expanded = await expandUserCommand(content)
         await deliverFromComposer(workspace, inputRef.current, { content: expanded, files, mentions }, delivery)
       }}
-      onStop={() => { void stopTurn(inputRef.current) }}
+      onStop={() => {
+        void stopTurn(inputRef.current)
+        if (isPhone && workspace) pushStoppedToast(workspace, () => inputRef.current)
+      }}
       onSlashCommand={handleSlashCommand}
       onSnippetCommand={handleSnippetCommand}
       slashCommands={slashCommands}
@@ -800,6 +865,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       onFileRefsNeeded={() => setFileRefsEnabled(true)}
       isStreaming={isAgentWorking}
       disabled={isSessionLoading}
+      // Desktop: Send says the server is gone instead of looking ready; the
+      // draft stays (desktop mockup 12.1). A phone keeps its send-and-restore.
+      sendBlockedReason={serverDown && !isPhone ? "Can't reach the server. Your message stays here until it is back." : null}
       placeholder={
         // While a turn runs the composer shows its own queue/stop hint.
         isDraft && needsModelSetup
@@ -807,7 +875,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           : composerMode === 'plan'
             // Says what Plan mode does before the first message does it.
             ? 'Plan mode: the agent reads and proposes a plan, without editing files…'
-            : 'Ask anything…'
+            : isDraft && isPhone && !isChatWorkspace ? 'Assign a task to the agent…' : 'Ask anything…'
       }
       capabilities={leadCapabilities}
       // A switch requested mid-turn is queued server-side, so the toggle
@@ -828,7 +896,12 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       onRedo={() => { void handleSlashCommand('redo') }}
       onRedoAll={() => { void handleSlashCommand('redo-all') }}
       renderPlus={renderPlus}
-      deck={<RunChip settings={runSettings} disabled={isSessionLoading} />}
+      deck={(
+        <RunChip
+          settings={runSettings}
+          disabled={isSessionLoading}
+        />
+      )}
       deckEnd={sessionIdState ? (
         <ContextMeter
           input={headerTokens.input}
@@ -838,16 +911,20 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           canSummarize={leadHasVisibleBlocks && !isAgentWorking}
         />
       ) : null}
-      // Desktop with a workspace: the dock's BTW tab shows side
-      // questions, and here only the chip reopens it while that tab is
-      // not on screen.
-      aboveComposer={dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (
-        <BtwPanel
-          sessionId={sessionIdState || null}
-          countEnabled={leadHasVisibleBlocks}
-          chipOnly={dockViewsEnabled}
-          onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
-        />
+      aboveComposer={(
+        <>
+          {/* What the run waits on, pinned so it cannot scroll away. */}
+          <PinnedQuestion />
+          <PinnedPlanReview />
+          {isPhone ? (
+            // One status line: the run on the left, the "btw" pill on the right.
+            <PhoneStatusLine>
+              <RunBar />
+              {btwPanel}
+            </PhoneStatusLine>
+          ) : null}
+          {!isPhone && btwPanel}
+        </>
       )}
     />
   ) : null
@@ -915,6 +992,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             onNewSession={handleNewSession}
             onCollapse={() => (sidebarDrawer ? setSidebarDrawerOpen(false) : setSidebarCollapsed(true))}
             openWorkspaceDialogKey={openWorkspaceDialogKey}
+            searchSessionsKey={searchSessionsKey}
             desktopCollapsed={sidebarDrawer ? !sidebarDrawerOpen : sidebarCollapsed}
             drawer={sidebarDrawer}
             dockOpen={Boolean(workspace) && workspacePanel !== null}
@@ -922,6 +1000,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             mobileOpen={phoneStack ? phoneStack.atSessions : mobileSidebarOpen}
             onOpenPalette={handleTogglePalette}
             onOpenScheduler={handleToggleScheduler}
+            onOpenServers={phoneStack?.onBackToServers}
             onMobileClose={() => {
               setMobileSidebarOpen(false)
               setSidebarDrawerOpen(false)
@@ -935,6 +1014,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           onOpenGitChanges={workspace && !isChatWorkspace ? handleOpenGit : undefined}
         />}
       >
+        {/* A crash in the chat or the Review panel shows in their place; the
+            header, sidebar and status bar keep working. */}
+        <ViewErrorBoundary resetKey={sessionIdState}>
         <div ref={centerRef} data-workbench-center="" className="relative flex min-w-0 flex-1 overflow-hidden">
         <main
           id="main"
@@ -945,7 +1027,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           // drop zone so it is never mistaken for a stray drop target.
           data-file-drop-zone
         >
-        <ConnectionBanner />
+        <ConnectionBanner retry={!(!effectiveWorkspace && !isSessionLoading && serverDown)} />
         {findOpen && !isMobile && <TranscriptFind onClose={closeFind} />}
         {/* The draft screen carries its own setup card instead. */}
         {!isDraft && (
@@ -967,9 +1049,18 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             title="Session not found"
             body="It may have been deleted, or the link is wrong."
             action={
-              <Button type="button" onClick={() => navigate({ to: '/', replace: true })}>
-                New session
-              </Button>
+              // A phone's way back is the Sessions list it came from. Desktop
+              // can also look for the session it meant (desktop mockup 12.5).
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button type="button" onClick={() => navigate({ to: isPhone ? '/sessions' : '/', replace: true })}>
+                  {isPhone ? 'Back to Sessions' : 'New session'}
+                </Button>
+                {!isMobile && (
+                  <Button type="button" variant="subtle" onClick={() => dispatchAppShortcut(APP_SHORTCUTS.switchWorkspace, os)}>
+                    Find a session <span className="text-(--color-text-muted)">{shortcutLabel(APP_SHORTCUTS.switchWorkspace, os)}</span>
+                  </Button>
+                )}
+              </div>
             }
           />
         ) : isSessionLoading && !chatOnScreen ? (
@@ -998,6 +1089,17 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               </p>
             </div>
           </div>
+        ) : !effectiveWorkspace && !isSessionLoading && serverDown ? (
+          <EmptyState
+            icon={WifiOff}
+            title="Can't reach the server"
+            body="This session opens once the server answers again."
+            action={
+              <Button type="button" onClick={() => void queryClient.invalidateQueries()}>
+                Retry
+              </Button>
+            }
+          />
         ) : !effectiveWorkspace && !isSessionLoading ? (
           <EmptyState
             icon={FolderCode}
@@ -1025,6 +1127,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               />
             ) : null}
             isMobile={isMobile}
+            phone={isPhone}
             onSelectWorkspace={handleSelectDraftWorkspace}
             onOpenFolder={handleOpenWorkspaceDialog}
           />
@@ -1041,6 +1144,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               chatWorkspace={chatWorkspace}
               composerPlaceholderHeight={draftHandoff.snapshot?.rect.height}
               isMobile={isMobile}
+              phone={isPhone}
               onSelectWorkspace={handleSelectDraftWorkspace}
               onOpenFolder={handleOpenWorkspaceDialog}
             />
@@ -1145,6 +1249,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           )}
         </AnimatePresence>
         </div>
+        </ViewErrorBoundary>
       </ChatFrame>
 
       <AgentChatPanels

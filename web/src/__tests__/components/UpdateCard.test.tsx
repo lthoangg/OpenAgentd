@@ -51,13 +51,14 @@ const invokeCalls: InvokeCall[] = []
 // Configurable per-test: what does `updater_install` do?
 let installBehaviour: 'hang' | 'resolve-ok' | 'reject' = 'hang'
 let installRejectMessage = 'install failed'
+let checkResponse: Record<string, unknown> = { status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }
 
 const invokeMock = mock(async (...args: unknown[]) => {
   const command = String(args[0])
   invokeCalls.push({ command, args: args[1] })
 
   if (command === 'updater_check') {
-    return { status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }
+    return checkResponse
   }
 
   if (command === 'updater_install') {
@@ -128,6 +129,7 @@ beforeEach(() => {
   capturedStatusListener = null
   installBehaviour = 'hang'
   installRejectMessage = 'install failed'
+  checkResponse = { status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }
   unlistenStatusMock.mockClear()
   unlistenCheckMock.mockClear()
   invokeMock.mockClear()
@@ -157,14 +159,41 @@ function seedActiveSessions(sessions: Array<{ running: boolean; needs_input?: bo
 // ---------------------------------------------------------------------------
 
 describe('UpdateCard — platform lifecycle', () => {
-  it('does not initialize desktop updater commands on mobile', async () => {
-    platform = { isTauri: true, os: 'ios', isMacOverlay: false }
+  it('does not initialize updater commands in the browser build', async () => {
+    platform = { isTauri: false, os: 'macos', isMacOverlay: false }
     render(<UpdateCard />)
 
     await act(async () => {})
 
     expect(listenMock).not.toHaveBeenCalled()
     expect(invokeCalls).toHaveLength(0)
+  })
+
+  it('never checks for updates on iOS', async () => {
+    platform = { isTauri: true, os: 'ios', isMacOverlay: false }
+    checkResponse = { status: 'available', version: '1.71.0', current_version: '1.70.0' }
+    render(<UpdateCard />)
+
+    await act(async () => {})
+
+    expect(listenMock).not.toHaveBeenCalled()
+    expect(invokeCalls).toHaveLength(0)
+  })
+
+  it('installs an Android APK without a restart and stays ready to retry', async () => {
+    platform = { isTauri: true, os: 'android', isMacOverlay: false }
+    installBehaviour = 'resolve-ok'
+    checkResponse = { status: 'downloaded', version: '1.71.0', current_version: '1.70.0', channel: 'apk' }
+    render(<UpdateCard />)
+
+    const install = await screen.findByRole('button', { name: /^install$/i })
+    expect(screen.queryByText(/install and restart/i)).toBeNull()
+    fireEvent.click(install)
+    await waitFor(() => expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(true))
+    // A phone shows the one-line banner first; the card opens on a tap.
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
+    expect(await screen.findByText(/android asks you to confirm/i)).toBeInTheDocument()
+    expect(screen.queryByText(/restart timed out/i)).toBeNull()
   })
 
   it('waits six hours after Later before showing the automatic update reminder again', async () => {

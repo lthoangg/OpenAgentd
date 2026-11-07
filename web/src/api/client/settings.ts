@@ -95,8 +95,11 @@ export async function getTitleGenerationSettings(): Promise<TitleGenerationSetti
   return res.json()
 }
 
+/** The UI does not edit the title wait; the server keeps it when omitted. */
+export type TitleGenerationUpdate = Omit<TitleGenerationSettings, 'wait_timeout_seconds'>
+
 export async function updateTitleGenerationSettings(
-  body: TitleGenerationSettings,
+  body: TitleGenerationUpdate,
 ): Promise<TitleGenerationSettings> {
   const res = await fetch(`${apiBaseUrl()}/settings/title-generation`, {
     method: 'PUT',

@@ -31,17 +31,19 @@ function setup({
   all,
   active = [],
   hasMore = false,
+  remaining,
   draftWorkspace = null,
 }: {
   groupBy: Exclude<SidebarGroupBy, 'project'>
   all: SessionResponse[]
   active?: SessionResponse[]
   hasMore?: boolean
+  remaining?: number
   draftWorkspace?: string | null
 }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   queryClient.setQueryData(queryKeys.session.sessions.everywhere('activity'), {
-    pages: [{ data: all, has_more: hasMore, next_cursor: hasMore ? 'cursor-2' : null }],
+    pages: [{ data: all, has_more: hasMore, next_cursor: hasMore ? 'cursor-2' : null, ...(remaining === undefined ? {} : { remaining }) }],
     pageParams: [null],
   })
   queryClient.setQueryData(queryKeys.session.sessions.active(), {
@@ -149,6 +151,14 @@ describe('FlatSessionGroups', () => {
     expect(showMore[0].hasAttribute('aria-label')).toBe(false)
     expect(showMore[0].hasAttribute('aria-busy')).toBe(false)
     expect(screen.queryByRole('button', { name: 'Show more sessions' })).toBeNull()
+  })
+
+  it('says how many sessions Show more adds, at most one page', () => {
+    setup({ groupBy: 'none', all: [session('s-1', 'First', '/repo/web', 0)], hasMore: true, remaining: 7 })
+    expect(screen.getByRole('button', { name: 'Show 7 more' })).toBeTruthy()
+    cleanup()
+    setup({ groupBy: 'none', all: [session('s-1', 'First', '/repo/web', 0)], hasMore: true, remaining: 140 })
+    expect(screen.getByRole('button', { name: 'Show 20 more' })).toBeTruthy()
   })
 
   it('says so when there are no sessions', () => {

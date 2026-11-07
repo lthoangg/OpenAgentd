@@ -1,0 +1,22 @@
+/* CSS Custom Highlight API rules. Kept out of index.css because Tailwind's
+ * optimizer (lightningcss) does not know ::highlight() and warns on every
+ * build, though it keeps the rules. */
+
+/* Plan review: passages with a comment, and the one just jumped to
+ * (see PlanReview/PlanComments.tsx). A soft orange wash, deeper on the
+ * active one. */
+::highlight(plan-comment) {
+  background-color: var(--accent-orange-soft);
+}
+::highlight(plan-comment-active) {
+  background-color: color-mix(in srgb, var(--accent-orange) 42%, var(--accent-orange-soft));
+}
+
+/* Find in session (TranscriptFind): every match on the same soft orange as
+ * plan comments, the current one deeper. */
+::highlight(oa-find) {
+  background-color: var(--accent-orange-soft);
+}
+::highlight(oa-find-current) {
+  background-color: color-mix(in srgb, var(--accent-orange) 42%, var(--accent-orange-soft));
+}

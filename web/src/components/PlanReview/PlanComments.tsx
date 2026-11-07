@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { CloseButton } from '@/components/ui/close-button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { REVIEW_DECK_BUTTON_CLASS, ReviewDeck, ReviewPill, ReviewTextarea } from './ReviewPill'
 import {
   PLAN_COMMENT_ACTIVE_HIGHLIGHT,
   PLAN_COMMENT_HIGHLIGHT,
@@ -102,32 +103,57 @@ export function CommentComposer({
     }
   }
 
+  if (docked) {
+    // The chat composer's shape: the passage, the text, its actions inside.
+    return (
+      <ReviewPill {...overlay} role="group" aria-label="New comment">
+        <p className="mb-1.5 line-clamp-2 border-l-2 border-(--color-border-strong) pl-2 text-xs leading-relaxed text-(--color-text-muted) phone:text-subhead">
+          {quote}
+        </p>
+        <ReviewTextarea
+          ref={textareaRef}
+          aria-label="Comment"
+          placeholder="What should change here?"
+          value={text}
+          maxLength={PLAN_COMMENT_MAX_CHARS}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={onKeyDown}
+          className="max-h-[min(6lh,calc(var(--app-vh,100svh)*0.25))]"
+        />
+        <ReviewDeck>
+          <Button type="button" variant="ghost" size="sm" className={REVIEW_DECK_BUTTON_CLASS} onClick={onCancel}>
+            Cancel
+          </Button>
+          <span className="min-w-0 flex-1" aria-hidden="true" />
+          <Button type="button" variant="primary" size="sm" className={REVIEW_DECK_BUTTON_CLASS} onClick={onAdd} disabled={!text.trim()}>
+            Add comment
+          </Button>
+        </ReviewDeck>
+      </ReviewPill>
+    )
+  }
+
   return (
     <div
       {...overlay}
       ref={ref}
       role="group"
       aria-label="New comment"
-      className={
-        docked
-          ? 'w-full'
-          : 'shadow-(--shadow-depth) absolute z-20 rounded-sm border border-(--color-border) bg-(--bg-card) p-2'
-      }
-      style={docked || !anchor ? undefined : { top: anchor.top + 6, left: overlayLeft(anchor, width), width }}
+      className="shadow-(--shadow-depth) absolute z-20 rounded-sm border border-(--color-border) bg-(--bg-card) p-2"
+      style={!anchor ? undefined : { top: anchor.top + 6, left: overlayLeft(anchor, width), width }}
     >
       <p className="mb-1.5 line-clamp-2 border-l-2 border-(--color-border-strong) pl-2 text-xs leading-relaxed text-(--color-text-muted)">
         {quote}
       </p>
       <Textarea
-        ref={textareaRef}
-        autoFocus={!docked}
+        autoFocus
         aria-label="Comment"
         placeholder="What should change here?"
         value={text}
         maxLength={PLAN_COMMENT_MAX_CHARS}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={onKeyDown}
-        className={docked ? 'max-h-[calc(var(--app-vh,100svh)*0.25)] min-h-12 text-xs' : 'max-h-40 min-h-16 text-xs'}
+        className="max-h-40 min-h-16 text-xs"
       />
       <div className="mt-1.5 flex items-center justify-end gap-1.5">
         <Button type="button" variant="ghost" size="xs" onClick={onCancel}>

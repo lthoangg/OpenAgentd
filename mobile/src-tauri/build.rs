@@ -17,6 +17,10 @@ fn main() {
                 "set_app_theme",
                 "share_text",
                 "pick_one",
+                "updater_check",
+                "updater_download",
+                "updater_install",
+                "updater_release_notes",
             ]),
         ),
     )

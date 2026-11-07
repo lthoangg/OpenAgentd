@@ -21,6 +21,7 @@
  */
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import { ChevronRight, ChevronUp } from 'lucide-react'
+import { useIsPhone } from '@/hooks/use-is-phone'
 
 import type { ContentBlock } from '@/api/types'
 import { cn } from '@/lib/utils'
@@ -65,7 +66,7 @@ function useLiveNow(active: boolean): number {
 }
 
 /** Both of the fold's controls; each adds its own text tone. */
-const ROW_CLASS = 'group inline-flex max-w-full items-center gap-1.5 py-1 text-left font-mono text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)'
+const ROW_CLASS = 'group inline-flex max-w-full items-center gap-1.5 py-1 text-left font-mono phone:font-sans text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)'
 /** The row's height (``ROW_CLASS``: one ``text-xs`` line plus ``py-1``, or ``min-h-9`` on touch), so an opened step pins below it. */
 const BELOW_ROW = '[--fold-top:1.5rem] pointer-coarse:[--fold-top:2.25rem]'
 
@@ -84,8 +85,10 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children 
   const bodyId = useId()
   const summary = useMemo(() => summarizeWork(blocks), [blocks])
   const detail = workSummaryDetail(summary)
-  const now = useLiveNow(live)
-  const elapsed = live && startedAt !== undefined && Number.isFinite(startedAt) ? formatElapsed(now - startedAt) : null
+  // A phone counts the run in its run bar above the composer; one clock is enough.
+  const isPhone = useIsPhone()
+  const now = useLiveNow(live && !isPhone)
+  const elapsed = live && !isPhone && startedAt !== undefined && Number.isFinite(startedAt) ? formatElapsed(now - startedAt) : null
   // Memoized so the clock's tick does not re-parse the step's arguments.
   const doing = useMemo(() => (currentStep ? stepLabel(currentStep) : detail), [currentStep, detail])
 

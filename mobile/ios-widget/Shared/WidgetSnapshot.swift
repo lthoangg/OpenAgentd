@@ -37,17 +37,11 @@ struct WidgetSnapshot: Codable, Hashable {
 enum WidgetStorage {
     private static let fileName = "widget-snapshot.json"
 
-    /// The App Group the app and the extension share. A sideloading tool
-    /// that re-signs the app (SideStore, AltStore) renames the group and
-    /// lists the new name under `ALTAppGroups`; a build from source names it
-    /// in `OAWidgetAppGroup`. Nil when neither is usable: the widgets then
-    /// show only what needs no data.
+    /// The App Group the app and the extension share, named in
+    /// `OAWidgetAppGroup`. Nil when it is unusable: the widgets then show
+    /// only what needs no data.
     static var appGroup: String? {
         let info = Bundle.main.infoDictionary ?? [:]
-        if let groups = info["ALTAppGroups"] as? [String],
-           let group = groups.first(where: { !$0.isEmpty }) {
-            return group
-        }
         if let group = info["OAWidgetAppGroup"] as? String, !group.isEmpty, !group.contains("$(") {
             return group
         }

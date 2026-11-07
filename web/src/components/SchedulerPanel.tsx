@@ -5,6 +5,7 @@ import {
   useScheduledTasksQuery,
 } from '@/queries'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { NEW_SCHEDULED_TASK, useUIStore } from '@/stores/useUIStore'
 import { AppOverlay, OVERLAY_MAX_WIDTH, OverlayHeader } from '@/components/ui/app-overlay'
 import { Button } from '@/components/ui/button'
@@ -100,6 +101,8 @@ export function SchedulerPanel({
   })
 
   const showList = !isMobile || mobilePane === 'list'
+  // A phone's list carries a large title, as Sessions and Settings do (mockup J9).
+  const largeTitle = useIsPhone() && mobilePane === 'list'
   const showDetail = !isMobile || mobilePane === 'detail' || mobilePane === 'create'
 
   return (
@@ -121,12 +124,12 @@ export function SchedulerPanel({
                 ? 'New task'
                 : isMobile && mobilePane === 'detail'
                   ? (selectedTask?.name ?? 'Task')
-                  : 'Scheduled tasks'}
+                  : largeTitle ? '' : 'Scheduled tasks'}
             </span>
           </span>
         }
         subtitle={
-          (!isMobile || mobilePane === 'list') && !tasksQuery.isLoading
+          !largeTitle && (!isMobile || mobilePane === 'list') && !tasksQuery.isLoading
             ? `${tasks.length} task${tasks.length === 1 ? '' : 's'}`
             : undefined
         }
@@ -164,6 +167,12 @@ export function SchedulerPanel({
         {/* List panel */}
         {showList && (
           <div className={`flex flex-col bg-(--bg-sidebar) ${isMobile ? 'w-full' : 'w-96 shrink-0 border-r border-(--color-border)'}`}>
+            {largeTitle && (
+              <div className="px-4 pt-2 pb-2">
+                <h1 className="text-large-title font-bold text-(--color-text)">Scheduled</h1>
+                {!tasksQuery.isLoading && <p className="text-xs text-(--color-text-muted)">{`${tasks.length} task${tasks.length === 1 ? '' : 's'}`}</p>}
+              </div>
+            )}
             <TaskListPane
               tasks={tasks}
               isLoading={tasksQuery.isLoading}

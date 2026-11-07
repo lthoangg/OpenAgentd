@@ -4,6 +4,7 @@ import { forwardRef, useImperativeHandle } from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 
 let agentsLoading = false
+let healthError = false
 let workspaceTree: unknown = undefined
 const setValueMock = mock(() => {})
 const setFilesMock = mock(() => {})
@@ -14,6 +15,7 @@ mock.module('@tanstack/react-router', () => ({
 }))
 
 mock.module('@tanstack/react-query', () => ({
+  QueryClient: class {},
   useQueryClient: () => ({}),
   useQuery: (options: { queryKey?: readonly unknown[] }) => ({
     data: options?.queryKey?.[0] === 'coding-workspace-tree' ? workspaceTree : undefined,
@@ -35,6 +37,7 @@ mock.module('@/queries/useSessionGoalQuery', () => ({
 }))
 mock.module('@/queries', () => ({
   useProvidersQuery: () => ({ data: { providers: [] } }),
+  useHealthQuery: () => ({ isSuccess: !healthError, isError: healthError }),
 }))
 mock.module('@/queries/useCommandsQuery', () => ({ useCommandsQuery: () => ({ data: { commands: [] } }) }))
 mock.module('@/queries/useSnippetsQuery', () => ({ useSnippetsQuery: () => ({ data: { snippets: [] } }) }))
@@ -158,6 +161,7 @@ afterEach(cleanup)
 
 beforeEach(() => {
   agentsLoading = false
+  healthError = false
   workspaceTree = undefined
   navigateMock.mockClear()
   useAgentStore.setState({ sessionId: null, parentSessionId: null, _workspace: null })
@@ -219,13 +223,31 @@ describe('AgentChatView — switching sessions', () => {
     expect(screen.queryByText('No workspace attached')).toBeNull()
   })
 
+  // Desktop mockup 12.5: a dead link offered only a fresh start.
+  it('also offers to find the session that was meant', () => {
+    render(<AgentChatView sessionId="gone" workspace={null} sessionNotFound />)
+
+    expect(screen.getByRole('button', { name: /^Find a session/ })).toBeTruthy()
+  })
+
+  // Opened with the server down, nothing could load, so the view knows no
+  // workspace. Asking for one sends the user the wrong way.
+  it('says the server is unreachable instead of asking for a workspace', () => {
+    healthError = true
+    render(<AgentChatView sessionId="session-x" workspace={null} />)
+
+    expect(screen.getByText("Can't reach the server")).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+    expect(screen.queryByText('No workspace attached')).toBeNull()
+  })
+
   it('keeps the transcript of a session whose folder is gone, under a banner', () => {
     workspaceTree = { repositories: [{ path: '/repo/gone', name: 'gone', worktrees: [], missing: true }], groups: [] }
     useAgentStore.setState({ sessionId: 'session-g', _workspace: '/repo/gone' })
     render(<AgentChatView sessionId="session-g" workspace="/repo/gone" />)
 
     expect(screen.getByTestId('transcript')).toBeTruthy()
-    expect(screen.getByText("This session's folder was moved or deleted.")).toBeTruthy()
+    expect(screen.getByText(/was moved or deleted/).textContent).toContain('gone was moved or deleted')
     expect(screen.getByRole('button', { name: 'Open workspace…' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Hide from sidebar' })).toBeTruthy()
   })
@@ -235,7 +257,7 @@ describe('AgentChatView — switching sessions', () => {
     useAgentStore.setState({ sessionId: 'session-b', _workspace: '/repo/b' })
     render(<AgentChatView sessionId="session-b" workspace="/repo/b" />)
 
-    expect(screen.queryByText("This session's folder was moved or deleted.")).toBeNull()
+    expect(screen.queryByText(/was moved or deleted/)).toBeNull()
   })
 
   it("does not hand a main session's message queue to the composer's tray", () => {

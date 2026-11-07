@@ -135,7 +135,7 @@ fn rank(query: &str, server: Option<&str>, tools: &[Found], limit: usize) -> Vec
 fn state_note(st: &ServerStatus) -> String {
     match st.state.as_str() {
         "stopped" if !st.enabled => "disabled".into(),
-        "auth_required" => "needs sign-in: connect it in Settings → MCP".into(),
+        "auth_required" => appv3_core::MCP_SIGN_IN_NOTE.into(),
         "error" => "failed to start".into(),
         s => s.into(),
     }
@@ -575,6 +575,22 @@ mod tests {
     /// The hub over `manager`, with test-kit's tools as the plugins' tools.
     fn hub_with_test_kit(manager: Arc<McpManager>) -> McpHubTool {
         McpHubTool { manager, plugin_tools: test_kit }
+    }
+
+    /// A call or search refused because the server waits on sign-in names it
+    /// in the words the transcript recognizes, and that answer (as a failed
+    /// call is stored, `Error: …`) rides with the call, so Sign in shows there.
+    #[tokio::test]
+    async fn a_call_refused_for_sign_in_rides_with_the_call() {
+        let m = Arc::new(McpManager::default());
+        let cfg = config::parse_config(&json!({"servers": {"s": {"command": "x"}}})).unwrap();
+        m.runners.write().unwrap().insert("excalidraw".into(), Runner::new("excalidraw", &cfg.servers["s"], "auth_required", None));
+        let hub = hub_with_test_kit(m);
+        for args in [json!({"action": "call", "server": "excalidraw", "tool": "create_view"}), json!({"action": "search", "server": "excalidraw"})] {
+            let answer = format!("Error: {}", run(&hub, false, args).await.unwrap_err());
+            assert!(answer.starts_with("Error: MCP server 'excalidraw' is not ready (") && answer.contains(appv3_core::MCP_SIGN_IN_NOTE), "{answer}");
+            assert!(appv3_db::api::result_rides_inline("mcp", &answer), "{answer}");
+        }
     }
 
     #[tokio::test]

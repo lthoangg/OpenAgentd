@@ -41,6 +41,22 @@ pub const GOAL_ID_ATTR: &str = "openagentd.goal.id";
 /// `agent_run` span attribute (v3 addition): which of its goal's turns the
 /// run is, from 1.
 pub const GOAL_TURN_ATTR: &str = "openagentd.goal.turn";
+/// Exit code of a shell command, read from its `[Succeeded]` / `[Failed — exit code N]`
+/// header. The span stays OK: `grep` finding nothing exits 1.
+pub const TOOL_EXIT_CODE_ATTR: &str = "openagentd.tool.exit_code";
+/// Set when a shell command hit its timeout (`[Timed out after Ns]`).
+pub const TOOL_TIMED_OUT_ATTR: &str = "openagentd.tool.timed_out";
+
+fn shell_outcome_attr(result: &str) -> Option<(&'static str, Value)> {
+    if result.starts_with("[Succeeded]") {
+        return Some((TOOL_EXIT_CODE_ATTR, json!(0)));
+    }
+    if result.starts_with("[Timed out after ") {
+        return Some((TOOL_TIMED_OUT_ATTR, json!(true)));
+    }
+    let code = result.strip_prefix("[Failed — exit code ")?.split(']').next()?.trim().parse::<i64>().ok()?;
+    Some((TOOL_EXIT_CODE_ATTR, json!(code)))
+}
 
 fn short_sha(bytes: &[u8]) -> String {
     Sha256::digest(bytes).iter().take(6).map(|b| format!("{b:02x}")).collect()
@@ -310,6 +326,9 @@ impl OtelHook {
             }
             ToolOutcome::Ok(result) => {
                 span.set_attr("tool.result.length", result.chars().count());
+                if let Some((k, v)) = shell_outcome_attr(result) {
+                    span.set_attr(k, v);
+                }
                 span.set_ok();
                 span.end();
             }
@@ -507,6 +526,22 @@ mod tests {
         ctx.workspace = None;
         assert!(!hook.start_model_span(&ctx, &req).has_attr(WORKSPACE_ATTR));
         assert!(!hook.start_tool_span(&ctx, &tc).has_attr(WORKSPACE_ATTR));
+    }
+
+    #[test]
+    fn tool_span_records_shell_exit_code_and_timeout() {
+        let hook = OtelHook::new("lead", Some("mock:mock"));
+        let ctx = RunContext { session_id: Some("s-1".into()), run_id: "r".into(), agent_name: "lead".into(), workspace: None };
+        let tc = ToolCall::new("c1", "shell", "{}");
+        let end = |result: &str| {
+            let s = hook.start_tool_span(&ctx, &tc);
+            hook.end_tool_span(&s, ToolOutcome::Ok(result));
+            (s.attr(TOOL_EXIT_CODE_ATTR), s.attr(TOOL_TIMED_OUT_ATTR))
+        };
+        assert_eq!(end("[Failed — exit code 2]\n\nboom"), (Some(json!(2)), None));
+        assert_eq!(end("[Succeeded]\n\nok"), (Some(json!(0)), None));
+        assert_eq!(end("[Timed out after 60s]\n\n…"), (None, Some(json!(true))));
+        assert_eq!(end("file contents"), (None, None));
     }
 
     fn answer(output_tokens: i64) -> AssistantMessage {

@@ -334,9 +334,9 @@ export function SwipeRow({ actions, disabled = false, children, className }: Swi
         ref={actionsRef}
         // Behind the content, clipped to what the content has uncovered. Inert
         // while shut so a tap on the row's right edge can never land on one.
-        className={cn('absolute inset-y-0 right-0 flex', !open && 'pointer-events-none')}
+        className={cn('absolute inset-y-0 right-0 flex overflow-hidden rounded-r-sm', !open && 'pointer-events-none')}
       >
-        {actions.map(({ id, label, icon: Icon, tone, onAction }) => (
+        {actions.map(({ id, label, tone, onAction }) => (
           <button
             key={id}
             type="button"
@@ -347,13 +347,14 @@ export function SwipeRow({ actions, disabled = false, children, className }: Swi
               rest(false)
             }}
             className={cn(
-              'flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 text-meta font-medium select-none',
+              'flex h-full min-w-0 flex-1 items-center justify-center px-1 text-xs font-medium select-none transition-opacity duration-(--motion-instant) active:opacity-70',
               'focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none focus-visible:ring-inset',
               TONE[tone],
             )}
           >
-            <Icon size={16} aria-hidden="true" className="shrink-0" />
-            <span className="max-w-full truncate">{label}</span>
+            {/* Flush, full-height segments with a word, as Mail's swipe:
+                a glyph alone read as floating dots on a 36-40px row. */}
+            <span className="truncate">{label}</span>
           </button>
         ))}
       </div>

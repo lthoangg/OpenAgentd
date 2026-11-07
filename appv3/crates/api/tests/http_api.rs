@@ -194,6 +194,13 @@ async fn http_api_end_to_end() {
     assert_eq!(v["update_after_compaction"], json!(true));
     let (st, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 0, "update_after_compaction": false}))).await;
     assert_eq!((st, v["update_after_compaction"].clone()), (StatusCode::OK, json!(false)));
+    // The UI no longer sends the title wait: a hand-set value is kept.
+    let (_, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 7}))).await;
+    assert_eq!(v["wait_timeout_seconds"], json!(7.0));
+    let (st, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1"}))).await;
+    assert_eq!((st, v["wait_timeout_seconds"].clone()), (StatusCode::OK, json!(7.0)));
+    let (_, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 0}))).await;
+    assert_eq!(v["wait_timeout_seconds"], json!(0.0));
 
     // ── workspace messages switch (v3 only) ──────────────────────────────
     let (st, v) = c.json("GET", "/api/settings/workspace-messages", None).await;
@@ -381,6 +388,11 @@ async fn http_api_end_to_end() {
     assert_eq!((ids(&v), v["has_more"].clone()), (vec![sid.clone()], json!(false)), "{v}");
     let (_, v) = c.json("GET", "/api/agent/sessions?workspaces=%2Fnowhere", None).await;
     assert_eq!(v["data"], json!([]), "{v}");
+    // `remaining` (v3 addition) counts what is past a page with more to show.
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}&workspaces={}&limit=1", enc(&sid_ws), enc(tree)), None).await;
+    assert_eq!((v["has_more"].clone(), v["remaining"].clone()), (json!(true), json!(1)), "{v}");
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}&limit=1", enc(tree)), None).await;
+    assert!(v.get("remaining").is_none(), "a last page has no count: {v}");
     // ...and narrows the active list the same way.
     let (_, v) = c.json("GET", &format!("/api/agent/sessions?active=true&workspaces={}&workspaces={}", enc(tree), enc(&sid_ws)), None).await;
     assert_eq!(ids(&v), vec![sid.clone()], "{v}");

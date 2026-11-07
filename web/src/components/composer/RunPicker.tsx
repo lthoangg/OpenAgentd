@@ -12,8 +12,8 @@
  * the palette and Settings' model field do), in one list.
  *
  * Models sit under their provider's display name ("Claude", not `anthropic`)
- * and a row is just the model. Where no heading names the provider (Recent,
- * ranked results) its name trails the row. A search still matches the whole
+ * and a row is just the model. Where no heading names the provider
+ * (ranked results) its name trails the row. A search still matches the whole
  * ``provider:model`` id, so ``openai:`` lists that provider's models.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
@@ -32,9 +32,7 @@ import { useProvidersQuery, useProviderUsageQuery } from '@/queries/useProviders
 import { useUpdateAgentMutation } from '@/queries/useAgentSettingsQueries'
 import { selectionHapticFeedback } from '@/lib/haptics'
 import {
-  loadRecentModels,
   quotaSegments,
-  rememberRecentModel,
   setFrontmatterScalars,
   splitModelId,
   stepThinkingLevel,
@@ -52,11 +50,11 @@ const MAX_LISTED = 60
 
 interface ModelRow {
   id: string
-  /** The heading the row sits under (a provider id, or "Recent"); ``null`` in ranked search results. */
-  group: 'Recent' | string | null
+  /** The heading the row sits under (a provider id); ``null`` in ranked search results. */
+  group: string | null
 }
 
-function rowsFor(settings: RunSettings, query: string, recent: string[]): ModelRow[] {
+function rowsFor(settings: RunSettings, query: string): ModelRow[] {
   const ids = settings.models.map((m) => m.id)
   // A saved model the registry no longer lists still shows, so the list
   // never misreports what is running.
@@ -68,11 +66,8 @@ function rowsFor(settings: RunSettings, query: string, recent: string[]): ModelR
       .go(q, ids, { threshold: 0.2, limit: MAX_LISTED })
       .map((result) => ({ id: result.target, group: null }))
   }
-  const recentRows = recent.filter((id) => ids.includes(id)).map((id) => ({ id, group: 'Recent' }))
-  const rest = ids
-    .filter((id) => !recent.includes(id))
-    .map((id) => ({ id, group: splitModelId(id).provider || 'Models' }))
-  return [...recentRows, ...rest]
+  // Grouped by provider only: no Recent group on top (user request).
+  return ids.map((id) => ({ id, group: splitModelId(id).provider || 'Models' }))
 }
 
 export interface RunPickerProps {
@@ -90,8 +85,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
   const [query, setQuery] = useState('')
   // Read once per opening: a pick is remembered for next time, but the list
   // does not reorder under the pointer while it is open.
-  const [recent] = useState(loadRecentModels)
-  const rows = useMemo(() => rowsFor(settings, query, recent), [settings, query, recent])
+  const rows = useMemo(() => rowsFor(settings, query), [settings, query])
   // A provider's display name, from the providers list (its id until that loads).
   const providers = useProvidersQuery().data?.providers
   const providerLabel = (id: string) => providers?.find((p) => p.id === id)?.label ?? id
@@ -142,7 +136,6 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
 
   const pickModel = (id: string, close: boolean) => {
     selectionHapticFeedback()
-    rememberRecentModel(id)
     const next = settings.models.find((m) => m.id === id)
     const levels = next?.thinking_levels.filter((l) => l !== '__none__') ?? []
     // While the list is the placeholder its rows carry no levels, so the
@@ -236,7 +229,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
   }
 
   const atDefaults = !settings.customized
-  const rowClass = cn(MENU_ITEM_CLASS, touch && 'min-h-11 text-sm')
+  const rowClass = cn(MENU_ITEM_CLASS, touch && 'min-h-(--phone-control) text-sm')
 
   return (
     <div ref={rootRef} className="flex min-h-0 flex-col" data-run-picker="">
@@ -257,8 +250,9 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
           spellCheck={false}
           className={cn(
             'min-w-0 flex-1 bg-transparent text-(--color-text) placeholder-(--color-text-muted) outline-none',
-            // 16px on touch so iOS does not zoom the page.
-            touch ? 'h-11 text-base' : 'h-7 text-sm',
+            // A touch row's height; the shell's maximum-scale=1 keeps iOS
+            // from zooming on focus at the phone's 15px.
+            touch ? 'h-(--phone-control) text-base' : 'h-7 text-sm',
           )}
         />
       </div>
@@ -280,8 +274,8 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
           const { provider, model } = splitModelId(row.id)
           const selected = row.id === settings.model
           // Under a provider's heading the row is just the model; elsewhere
-          // (Recent, ranked search results) the provider's name trails it.
-          const nameProvider = provider !== '' && (row.group === null || row.group === 'Recent')
+          // (ranked search results) the provider's name trails it.
+          const nameProvider = provider !== '' && row.group === null
           return (
             <div key={`${row.group}:${row.id}`}>
               {header && <div className="px-2 pb-0.5 pt-2 text-meta font-medium text-(--color-text-muted) select-none first:pt-1">{providerLabel(row.group!)}</div>}

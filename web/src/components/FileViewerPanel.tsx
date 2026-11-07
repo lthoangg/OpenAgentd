@@ -721,8 +721,22 @@ function centerInScrollContainer(el: HTMLElement, last: HTMLElement = el) {
  * first change in the nearest scroll container on mount — right for a
  * single-file view, wrong for inline peeks in a list (each would move the
  * list), so those pass ``autoScroll={false}``.
+ *
+ * ``layout="split"`` lays the old file beside the new one instead: each row
+ * pairs a removed line with the added line that took its place (a blank half
+ * when a side has none) and context sits on both sides. Split rows always
+ * wrap, in their half.
  */
-export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScroll?: boolean }) {
+export function DiffPreview({ diff, autoScroll = true, wrap = true, layout = 'unified' }: {
+  diff: string
+  autoScroll?: boolean
+  /**
+   * Wrap long lines (the default). Off, each line keeps its width and the
+   * diff scrolls sideways as one block (a phone's default; mockup J7).
+   */
+  wrap?: boolean
+  layout?: 'unified' | 'split'
+}) {
   const firstChangeRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -738,7 +752,7 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
     | { kind: 'meta' }
     | { kind: 'note'; text: string }
     | { kind: 'hunk'; skipped: number }
-    | { kind: 'add' | 'del' | 'ctx'; lineNo: number; text: string; isFirstChange: boolean }
+    | { kind: 'add' | 'del' | 'ctx'; lineNo: number; oldNo: number; newNo: number; text: string; isFirstChange: boolean }
 
   const parsed = useMemo<ParsedLine[]>(() => {
     const result: ParsedLine[] = []
@@ -792,11 +806,15 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
       const isFirstChange = !firstChangeSeen && (isAdded || isRemoved)
       if (isFirstChange) firstChangeSeen = true
       const lineNo = isRemoved ? oldLine : newLine
+      const oldNo = oldLine
+      const newNo = newLine
       if (!isAdded)   oldLine += 1
       if (!isRemoved) newLine += 1
       result.push({
         kind: isAdded ? 'add' : isRemoved ? 'del' : 'ctx',
         lineNo,
+        oldNo,
+        newNo,
         // Strip exactly the one-column diff marker ('+', '-', or the context
         // space) so context lines align with add/del lines.
         text: line.slice(1) || ' ',
@@ -806,10 +824,47 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
     return result
   }, [diff])
 
+  const split = layout === 'split'
+
   // Rows wrap, so nothing scrolls sideways and the gutter needs no
   // ``sticky``: a sticky cell on every row made scrolling ~6x costlier.
   const rows: React.ReactNode[] = []
+  // Split: removed and added lines wait here until the run ends, then pair up.
+  type ChangeLine = Extract<ParsedLine, { lineNo: number }>
+  let dels: ChangeLine[] = []
+  let adds: ChangeLine[] = []
+  const flushPairs = () => {
+    for (let i = 0; i < Math.max(dels.length, adds.length); i += 1) {
+      const left = dels[i]
+      const right = adds[i]
+      const first = Boolean(left?.isFirstChange || right?.isFirstChange)
+      rows.push(
+        <div key={`pair-${rows.length}`} data-split-row="" ref={first ? firstChangeRef : undefined} className="grid min-w-0 grid-cols-2 items-stretch">
+          <SplitHalf kind={left ? 'del' : 'empty'} lineNo={left?.oldNo} text={left?.text} />
+          <SplitHalf kind={right ? 'add' : 'empty'} lineNo={right?.newNo} text={right?.text} divider />
+        </div>,
+      )
+    }
+    dels = []
+    adds = []
+  }
   parsed.forEach((p, index) => {
+    if (split) {
+      if (p.kind === 'del') {
+        // A removal after additions starts a new run.
+        if (adds.length > 0) flushPairs()
+        dels.push(p)
+        return
+      }
+      if (p.kind === 'add') {
+        adds.push(p)
+        return
+      }
+      // "\ No newline at end of file" sits between a removal and its
+      // replacement: it must not split the pair.
+      if (p.kind === 'meta') return
+      flushPairs()
+    }
     if (p.kind === 'meta') return
 
     if (p.kind === 'note') {
@@ -853,27 +908,38 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
 
     const isAdded   = p.kind === 'add'
     const isRemoved = p.kind === 'del'
+    if (split) {
+      rows.push(
+        <div key={index} data-split-row="" className="grid min-w-0 grid-cols-2 items-stretch">
+          <SplitHalf kind="ctx" lineNo={p.oldNo} text={p.text} />
+          <SplitHalf kind="ctx" lineNo={p.newNo} text={p.text} divider />
+        </div>,
+      )
+      return
+    }
     rows.push(
       <div
         key={index}
         ref={p.isFirstChange ? firstChangeRef : undefined}
         className={cn(
-          'flex min-w-0 items-stretch whitespace-pre-wrap break-words text-(--color-text) [overflow-wrap:anywhere]',
+          'flex min-w-0 items-stretch text-(--color-text)',
+          wrap ? 'whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'whitespace-pre',
           isAdded   && 'bg-(--color-diff-add-bg) text-(--color-diff-add-text)',
           isRemoved && 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)',
         )}
       >
-        <div className="flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-meta text-(--color-text-subtle)">
+        <div className="flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-meta phone:text-meta text-(--color-text-subtle)">
           <span className="w-9 py-0.5 pr-1.5">{p.lineNo}</span>
         </div>
-        <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{p.text}</pre>
+        <pre className={cn('m-0 flex-1 px-2 py-0.5', wrap ? 'min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'whitespace-pre')}>{p.text}</pre>
       </div>,
     )
   })
+  if (split) flushPairs()
 
   return (
-    <div className="bg-(--bg-card) font-mono text-meta leading-relaxed">
-      <div className="min-w-0">
+    <div data-diff-wrap={wrap || split ? 'on' : 'off'} data-diff-layout={layout} className={cn('bg-(--bg-card) font-mono text-meta leading-relaxed', !wrap && !split && 'overflow-x-auto touch-pan-x')}>
+      <div className={wrap || split ? 'min-w-0' : 'w-max min-w-full'}>
         {blockStarts(rows.length).map((start) => (
           // 11px text at leading-relaxed plus the row's 4px padding.
           <LineBlock key={start} lines={Math.min(LINES_PER_BLOCK, rows.length - start)} lineHeightPx={22}>
@@ -881,6 +947,31 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
           </LineBlock>
         ))}
       </div>
+    </div>
+  )
+}
+
+/**
+ * One side of a split diff row: its line number and text, tinted like the
+ * unified row (``empty`` is the blank half beside a one-sided change).
+ * ``divider`` draws the rule between the old and the new column.
+ */
+function SplitHalf({ kind, lineNo, text, divider = false }: { kind: 'add' | 'del' | 'ctx' | 'empty'; lineNo?: number; text?: string; divider?: boolean }) {
+  return (
+    <div
+      data-split-side={kind}
+      className={cn(
+        'flex min-w-0 items-stretch text-(--color-text)',
+        divider && 'border-l border-(--color-border)/40',
+        kind === 'add' && 'bg-(--color-diff-add-bg) text-(--color-diff-add-text)',
+        kind === 'del' && 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)',
+        kind === 'empty' && 'bg-(--bg-page)',
+      )}
+    >
+      <div className="flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-meta text-(--color-text-subtle)">
+        <span className="w-9 py-0.5 pr-1.5">{lineNo}</span>
+      </div>
+      <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{text}</pre>
     </div>
   )
 }

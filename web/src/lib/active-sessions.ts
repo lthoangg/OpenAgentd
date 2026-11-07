@@ -10,6 +10,14 @@ export function needsYouSessions(data: InfiniteData<SessionPageResponse> | undef
   return topLevelSessions(data).filter((session) => session.needs_input === true)
 }
 
+/**
+ * Sessions at work, from ``useActiveSessionsQuery`` data: a turn running, or
+ * a lead whose subagents still work. One waiting on the user is in Needs you.
+ */
+export function runningSessions(data: InfiniteData<SessionPageResponse> | undefined): SessionResponse[] {
+  return topLevelSessions(data).filter((session) => session.needs_input !== true && sessionWorking(session))
+}
+
 function topLevelSessions(data: InfiniteData<SessionPageResponse> | undefined): SessionResponse[] {
   return (data?.pages.flatMap((page) => page.data) ?? []).filter(
     (session) => !session.parent_session_id && Boolean(session.workspace),

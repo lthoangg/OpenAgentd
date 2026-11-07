@@ -19,7 +19,7 @@ describe('PhoneNavBar', () => {
     const onBack = mock(() => {})
     render(<PhoneNavBar title="Fix the build" subtitle="openagentd" back={{ label: 'Sessions', onBack }} trailing={<button type="button">Review</button>} />)
     const back = screen.getByRole('button', { name: 'Back to Sessions' })
-    expect(back.textContent).toBe('Sessions')
+    expect(back.textContent).toBe('')
     fireEvent.click(back)
     expect(onBack).toHaveBeenCalledTimes(1)
     const bar = document.querySelector('[data-phone-nav-bar]') as HTMLElement

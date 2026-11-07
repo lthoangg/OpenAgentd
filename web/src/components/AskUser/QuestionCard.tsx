@@ -34,6 +34,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { hasFinePointer } from '@/lib/pointer'
 import { cn } from '@/lib/utils'
 import { InlineMarkdown } from '@/utils/inline-markdown'
+import { MarkdownBlock } from '@/utils/markdown'
 import type { PendingQuestion, QuestionItem } from '@/api/types'
 import {
   readQuestionDraft,
@@ -271,10 +272,15 @@ export function QuestionCard({
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-1 pb-3">
-        <fieldset className="min-w-0 border-0 p-0">
-          <legend className="selectable-text mb-2.5 block text-code leading-relaxed text-(--color-text) [overflow-wrap:anywhere]">
-            <InlineMarkdown text={current.question} />
-          </legend>
+        <fieldset className="min-w-0 border-0 p-0" aria-labelledby={`${question.id}-q${step}`}>
+          {/* Full markdown (tables, lists, code): a div, since a legend only
+              takes phrasing content. */}
+          <div
+            id={`${question.id}-q${step}`}
+            className="selectable-text mb-2.5 min-w-0 text-code leading-relaxed text-(--color-text) [overflow-wrap:anywhere]"
+          >
+            <MarkdownBlock content={current.question} linksAsText />
+          </div>
 
           <div
             className="flex flex-col gap-1.5"
@@ -404,7 +410,7 @@ function OptionRow({
     <label
       onDoubleClick={onChooseAndContinue}
       className={cn(
-        'flex cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-(--focus-ring) pointer-coarse:min-h-9',
+        'flex cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-(--focus-ring) pointer-coarse:min-h-9 phone:min-h-12 phone:items-center',
         checked
           ? 'bg-(--color-fill-selected) text-(--color-text-on-selected)'
           : 'bg-(--bg-key) text-(--color-text) hover:bg-(--color-fill-key-hover)',

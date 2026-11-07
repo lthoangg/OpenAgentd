@@ -18,6 +18,10 @@ export interface ModalLayerOptions {
  * the close button — technically correct, practically useless, since the user
  * then has to Tab past it to reach the content they opened the panel for.
  *
+ * Focus moves with ``preventScroll``: on iOS, focusing a fixed sheet while the
+ * keyboard is up (a ``/btw`` sent from the composer) otherwise scrolls the
+ * whole page up to bring it above the keyboard, and the chat jumps.
+ *
  * The modal is a layer on the keyboard stack (``lib/keyboard``): Escape goes
  * to whichever layer opened last, and app shortcuts behind it are blocked.
  */
@@ -58,22 +62,25 @@ export function useModalFocus(
     const focusFirst = () => {
       const preferred = initialFocusRef.current?.current
       if (preferred && preferred.isConnected && isVisible(preferred)) {
-        preferred.focus()
+        preferred.focus({ preventScroll: true })
         return
       }
       const target = Array.from(dialog?.querySelectorAll<HTMLElement>(
         'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? []).find(isVisible)
-      target?.focus()
+      ) ?? []).find((el) => el.tabIndex >= 0 && isVisible(el))
+      target?.focus({ preventScroll: true })
     }
     const id = requestAnimationFrame(focusFirst)
 
     // Escape is routed by the keyboard dispatcher to the top layer.
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Tab' || event.defaultPrevented || !dialog || !isTopLayer(layerId.current)) return
+      // Only what Tab reaches: a roving group (segmented control, radio list)
+      // keeps its other options at tabindex="-1", and wrapping at one of
+      // those let focus walk out of the modal into the page behind.
       const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
         'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      )).filter((el) => !el.hasAttribute('disabled') && isVisible(el))
+      )).filter((el) => !el.hasAttribute('disabled') && el.tabIndex >= 0 && isVisible(el))
       if (focusable.length === 0) return
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
@@ -91,7 +98,7 @@ export function useModalFocus(
       cancelAnimationFrame(id)
       document.removeEventListener('keydown', handleKeyDown)
       if (dialogRef.current === dialog) dialogRef.current = null
-      if (previousActive?.isConnected) previousActive.focus()
+      if (previousActive?.isConnected) previousActive.focus({ preventScroll: true })
     }
   }, [open, layerId]) // onClose intentionally omitted — read via ref above
 

@@ -1,15 +1,16 @@
 /**
- * The touch form of a transcript surface's menu: the same items as a bottom
- * sheet. Its own module, loaded when the first long press asks for it
+ * The touch form of a transcript surface's menu: the same items as a phone
+ * action sheet. Its own module, loaded when the first long press asks for it
  * (``ChatContextMenu``), so every code block and message in the transcript
  * does not carry the sheet and its motion code with it.
  */
-import { BottomSheet } from '@/components/ui/bottom-sheet'
-import { MENU_ITEM_CLASS } from '@/components/ui/menu-styles'
-import { cn } from '@/lib/utils'
+import type { LucideIcon } from 'lucide-react'
+
+import { ActionSheet } from '@/components/ui/action-sheet'
 
 export interface ChatMenuSheetItem {
   label: string
+  icon?: LucideIcon
   run: () => void
 }
 
@@ -22,22 +23,11 @@ interface ChatMenuSheetProps {
 
 export default function ChatMenuSheet({ open, label, items, onClose }: ChatMenuSheetProps) {
   return (
-    <BottomSheet open={open} onClose={onClose} label={label}>
-      <div className="flex flex-col px-2 pb-3">
-        {items.map((item) => (
-          <button
-            key={item.label}
-            type="button"
-            className={cn(MENU_ITEM_CLASS, 'min-h-11 text-sm')}
-            onClick={() => {
-              onClose()
-              item.run()
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-    </BottomSheet>
+    <ActionSheet
+      open={open}
+      onClose={onClose}
+      title={label}
+      items={items.map((item) => ({ id: item.label, label: item.label, icon: item.icon, run: item.run }))}
+    />
   )
 }

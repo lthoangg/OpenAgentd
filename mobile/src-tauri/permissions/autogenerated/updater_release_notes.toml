@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-updater-release-notes"
+description = "Enables the updater_release_notes command without any pre-configured scope."
+commands.allow = ["updater_release_notes"]
+
+[[permission]]
+identifier = "deny-updater-release-notes"
+description = "Denies the updater_release_notes command without any pre-configured scope."
+commands.deny = ["updater_release_notes"]

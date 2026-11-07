@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ScheduledTaskResponse } from '@/api/types'
@@ -95,6 +95,39 @@ describe('scheduler TanStack Form mutations', () => {
     expect(screen.getByText('= 3,600 s')).toBeInTheDocument()
     expect(screen.getByText('The first run is one interval after you save.')).toBeInTheDocument()
     expect(screen.queryByLabelText('Interval (seconds)')).toBeNull()
+  })
+
+  describe('when the task runs next', () => {
+    let now: ReturnType<typeof spyOn> | null = null
+    const clock = (iso: string) => { now = spyOn(Date, 'now').mockReturnValue(new Date(iso).getTime()) }
+    afterEach(() => { now?.mockRestore(); now = null })
+
+    it('says when a repeating task first runs if saved now, in the local clock', () => {
+      clock('2026-11-07T10:00:00Z')
+      renderWithQuery(<CreateTaskForm contextWorkspace="/repo/app" onSuccess={() => {}} />)
+      const hint = screen.getByText('The first run is one interval after you save.').closest('p') as HTMLElement
+      const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      const at = new Date('2026-11-07T11:00:00Z').toLocaleString('en-US', { timeZone: localTz, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      expect(hint.textContent).toBe(`The first run is one interval after you save. If you save now: ${at.replace(' at ', ', ')}.`)
+      // The field reads it too.
+      expect(screen.getByLabelText('Every').getAttribute('aria-describedby')).toBe(hint.id)
+    })
+
+    it('says how soon a one-time task runs, in its timezone', () => {
+      clock('2026-11-07T10:00:00Z')
+      renderWithQuery(
+        <EditTaskForm task={task({ schedule_type: 'at', every_seconds: null, at_datetime: '2026-11-07T13:00:00Z', timezone: 'Asia/Ho_Chi_Minh' })} onSuccess={() => {}} onCancel={() => {}} />,
+      )
+      expect(screen.getByText('Runs in 3h (Asia/Ho_Chi_Minh)')).toBeInTheDocument()
+    })
+
+    it('warns that a one-time task set in the past runs as soon as it is saved', () => {
+      clock('2026-11-07T10:00:00Z')
+      renderWithQuery(
+        <EditTaskForm task={task({ schedule_type: 'at', every_seconds: null, at_datetime: '2026-11-07T08:00:00Z' })} onSuccess={() => {}} onCancel={() => {}} />,
+      )
+      expect(screen.getByText('That time has passed: it runs as soon as you save.')).toBeInTheDocument()
+    })
   })
 
   it('offers days, hours, minutes and seconds, and changes what the typed number counts', async () => {

@@ -304,8 +304,9 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const oneLine = command ? command.replace(/\s*\n\s*/g, ' ') : null
     return {
       header: description ? <Arg>{description}</Arg> : oneLine ? <Arg>{trunc(oneLine, 80)}</Arg> : null,
-      headerTitle: description && oneLine ? `${description}\n${oneLine}` : description ?? oneLine,
-      // The details show the command whole, described or not.
+      headerTitle: description ?? oneLine,
+      // The details show the command whole once known: a described call's
+      // live event carries only the description, history has the command.
       formattedArgs: command,
       language: 'bash',
     }

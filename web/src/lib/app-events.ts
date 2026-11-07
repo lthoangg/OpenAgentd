@@ -10,6 +10,8 @@ export const APP_EVENTS = {
   // Opens without toggling, e.g. on the task ``useUIStore.focusScheduledTask`` named.
   openScheduler: 'oa:open-scheduler',
   openWorkspace: 'oa:open-workspace',
+  // ⌘⇧F and the sidebar's search: reveal the sidebar and focus its search.
+  searchSessions: 'oa:search-sessions',
   // Open Terminal (no key): the last terminal, or a new shell.
   openTerminal: 'oa:open-terminal',
   // A transcript plan-review card or ``plan`` row asks for the session plan.

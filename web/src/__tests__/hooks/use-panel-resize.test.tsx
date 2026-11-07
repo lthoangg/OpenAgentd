@@ -25,6 +25,13 @@ describe('usePanelResize', () => {
     expect(handle.getAttribute('aria-valuemax')).toBe('400')
   })
 
+  // Its 2px line lights up for keyboard focus; the panel clips overflow, so
+  // the app-wide outline would show only as a stray bar beside it.
+  it('shows keyboard focus with its line, not the outline', () => {
+    render(<Harness edge="right" width={260} onCommit={() => {}} onReset={() => {}} />)
+    expect(screen.getByRole('separator').getAttribute('data-focus-ring')).toBe('off')
+  })
+
   it('grows toward the handle edge with arrow keys and clamps with Home/End', () => {
     const commits: number[] = []
     const onCommit = (width: number) => { commits.push(width) }

@@ -4,8 +4,8 @@
  * in a narrow mouse window). "+", Code/Plan, the model chip, the context ring
  * and Send all take the same steps, and all but Send (a full pill) share the
  * 6px radius. On a phone the controls stay 36px (the composer is compact)
- * and their touch area grows to 44px; the text is a step down too: 15px for
- * the message, 13px on the deck.
+ * and their touch area grows to 44px; the text is the phone's Default:
+ * 15px for the message (``text-xs``), 13px on the deck (``text-subhead``).
  *
  * happy-dom has no layout or media queries: the size classes are the
  * contract, and the compiled stylesheet shows which step wins where.
@@ -121,19 +121,19 @@ describe('the run deck is one height per device', () => {
   })
 })
 
-describe('the phone composer\'s text, a step down', () => {
+describe('the phone composer\'s text, the phone\'s Default steps', () => {
   it('writes the message at 15px on a phone', () => {
     render(<InputComposer onSubmit={() => {}} />)
     const field = classes(screen.getByLabelText('Message input'))
-    expect(field).toContain('phone:text-subhead')
+    expect(field).toContain('phone:text-xs')
     expect(field).not.toContain('max-md:pointer-coarse:text-base')
   })
 
-  it('labels Code/Plan and the model chip at 13px on a phone', () => {
-    const { mode, chip } = deck()
-    for (const el of [mode, chip]) {
-      expect(classes(el)).toContain('phone:text-meta')
-      expect(classes(el)).not.toContain('phone:text-subhead')
+  it('labels Code/Plan, the model chip and the context ring at 13px on a phone', () => {
+    const { mode, chip, context } = deck()
+    for (const el of [mode, chip, context]) {
+      expect(classes(el)).toContain('phone:text-subhead')
+      expect(classes(el)).not.toContain('phone:text-meta')
     }
   })
 })
@@ -150,7 +150,7 @@ describe('which step wins', () => {
     expect(at('pointer-coarse:h-9')).toBeGreaterThan(at('md:h-7'))
   })
 
-  it('holds the deck\'s "+" at 36px on a phone, where other buttons are 44px (48px on Android)', () => {
+  it('holds the deck\'s "+" at 36px on a phone, under the phone\'s button floor', () => {
     const css = read('../../../index.css').replace(/\/\*[\s\S]*?\*\//g, '')
     expect(css).toMatch(/:root \[data-run-deck\] \[data-slot="button"\]\s*\{\s*min-height:\s*36px;\s*min-width:\s*36px;/)
     expect(css).not.toMatch(/\[data-run-deck\] \[data-slot="button"\]\s*\{\s*min-height:\s*44px/)

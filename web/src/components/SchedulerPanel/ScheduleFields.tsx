@@ -1,16 +1,17 @@
 /**
  * Schedule inputs shared by the create and edit forms. The interval is
  * entered as an amount and a unit ("Every 1 hours") with the raw seconds the
- * backend stores shown beside it; the cron field previews what the
- * expression means and when it fires next, in the task's timezone.
+ * backend stores shown beside it, and says when it would first run if saved
+ * now; the cron field previews what the expression means and when it fires
+ * next, in the task's timezone; a one-time task says how soon it runs.
  */
 import { useState } from 'react'
 
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { Input } from '@/components/ui/input'
-import { isoToWallClock } from '@/utils/format'
+import { formatInTimezone, isoToWallClock } from '@/utils/format'
 import { previewCron } from './cron'
-import { FIELD_CLASS, FIELD_ERROR, FIELD_HINT, FIELD_LABEL, INTERVAL_UNITS, splitInterval, type IntervalUnit } from './utils'
+import { FIELD_CLASS, FIELD_ERROR, FIELD_HINT, FIELD_LABEL, INTERVAL_UNITS, atRunHint, splitInterval, type IntervalUnit } from './utils'
 
 export function IntervalField({
   id,
@@ -29,6 +30,9 @@ export function IntervalField({
   const amount = seconds > 0 ? seconds / unitSeconds : 0
   const helpId = `${id}-help`
   const errorId = `${id}-error`
+  // The scheduler counts the first interval from the save (create or edit).
+  const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const firstRun = seconds > 0 ? formatInTimezone(new Date(Date.now() + seconds * 1000).toISOString(), localTz) : null
 
   return (
     <div>
@@ -80,10 +84,25 @@ export function IntervalField({
         </p>
       ) : (
         <p id={helpId} className={FIELD_HINT}>
-          The first run is one interval after you save.
+          <span>The first run is one interval after you save.</span>
+          {firstRun && <>{' '}<span>If you save now: <span className="text-(--color-text-2)">{firstRun}</span>.</span></>}
         </p>
       )}
     </div>
+  )
+}
+
+/**
+ * Under a one-time task's date picker: how soon it runs, in the task's
+ * timezone, or that a past time runs as soon as the task is saved.
+ */
+export function AtRunHint({ id, value, timezone }: { id: string; value: string; timezone: string }) {
+  const hint = atRunHint(value, timezone)
+  if (!hint) return null
+  return (
+    <p id={id} className={hint.past ? 'mt-2 text-meta leading-relaxed text-(--accent-orange-text)' : FIELD_HINT}>
+      {hint.text}
+    </p>
   )
 }
 

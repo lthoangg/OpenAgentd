@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion'
 import { AlertCircle, Download, GripVertical, Loader2, Maximize2, Minus } from 'lucide-react'
-import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, installUpdate as invokeInstallUpdate, type UpdateStatus } from '@/lib/updater'
+import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, hasInAppUpdates, installUpdate as invokeInstallUpdate, type UpdateStatus } from '@/lib/updater'
 import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
 import { Button } from '@/components/ui/button'
 import { getPlatform } from '@/hooks/use-platform'
@@ -14,6 +14,11 @@ import { cn } from '@/lib/utils'
 import { errorMessage } from '@/utils/errors'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+
+function isMobileShell(): boolean {
+  const { isTauri, os } = getPlatform()
+  return isTauri && (os === 'ios' || os === 'android')
+}
 
 /**
  * Whether any agent is mid-turn. Restarting stops the built-in backend, which
@@ -44,7 +49,8 @@ async function listenUpdaterEvents(callbacks: {
 export function UpdateCard() {
   const [status, setStatus] = useState<UpdateStatus>({ status: 'idle' })
   const [tauriReady, setTauriReady] = useState(false)
-  const [minimized, setMinimized] = useState(false)
+  // A phone starts with the one-line banner (mockup J11): the card opens on a tap.
+  const [minimized, setMinimized] = useState(isMobileShell)
   const [busyWarning, setBusyWarning] = useState(false)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const dragControls = useDragControls()
@@ -94,6 +100,17 @@ export function UpdateCard() {
 
   const installUpdate = useCallback(async () => {
     setStatus((current) => ({ ...current, status: 'installing' }))
+    if (isMobileShell()) {
+      // Android hands off to the system installer and returns; the system
+      // replaces the app if the user confirms.
+      try {
+        await invokeInstallUpdate()
+        setStatus((current) => current.channel === 'apk' ? { ...current, status: 'downloaded' } : { status: 'idle' })
+      } catch (error) {
+        setStatus((current) => ({ ...current, status: 'error', message: errorMessage(error) }))
+      }
+      return
+    }
     try {
       // The Tauri command shuts down the sidecar and then calls
       // `app.restart()`, so this promise intentionally never
@@ -122,7 +139,8 @@ export function UpdateCard() {
 
   // Install asks once while agents are working; "Restart anyway" goes on.
   const requestInstall = useCallback(() => {
-    if (agentsWorking()) {
+    // Mobile agents run on the server, so installing interrupts nothing.
+    if (!isMobileShell() && agentsWorking()) {
       setBusyWarning(true)
       setMinimized(false)
       return
@@ -150,10 +168,9 @@ export function UpdateCard() {
   }, [])
 
   useEffect(() => {
-    const platform = getPlatform()
-    // Mobile releases are delivered by the platform distribution channel;
-    // only the desktop shell registers the custom updater commands below.
-    if (!platform.isTauri || platform.os === 'ios' || platform.os === 'android') {
+    // Desktop and Android update themselves; the browser build has no
+    // updater, and iOS gets updates from TestFlight or the App Store.
+    if (!hasInAppUpdates()) {
       setTauriReady(false)
       return
     }
@@ -248,7 +265,7 @@ export function UpdateCard() {
       >
         {minimized ? (
           <div className="flex items-center gap-2">
-            <button
+            {!isMobileShell() && <button
               type="button"
               aria-label="Drag update notification (double-click to reset position)"
               title="Drag to move · Double-click to reset"
@@ -257,7 +274,7 @@ export function UpdateCard() {
               className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
             >
               <GripVertical className="size-3.5" />
-            </button>
+            </button>}
 
             <button
               type="button"
@@ -390,7 +407,7 @@ export function UpdateCard() {
                   </Button>
                 ) : (
                   <Button type="button" variant="primary" size="sm" onClick={requestInstall}>
-                    Install and restart
+                    {isMobileShell() ? 'Install' : 'Install and restart'}
                   </Button>
                 )
               ) : null}
@@ -438,9 +455,16 @@ function titleForStatus(status: UpdateStatus): string {
 
 function descriptionForStatus(status: UpdateStatus): string {
   if (status.message) return status.message
-  if (status.status === 'available') return `Current version: ${status.current_version}`
-  if (status.status === 'downloaded') return 'Install now to restart into the new version.'
-  if (status.status === 'installing') return 'OpenAgentd will restart when installation completes.'
+  const mobile = isMobileShell()
+  if (status.status === 'available') {
+    return `Current version: ${status.current_version}.`
+  }
+  if (status.status === 'downloaded') {
+    return mobile ? 'Android asks you to confirm the install.' : 'Install now to restart into the new version.'
+  }
+  if (status.status === 'installing') {
+    return mobile ? 'Opening the installer…' : 'OpenAgentd will restart when installation completes.'
+  }
   if (status.status === 'downloading') return 'You can keep using OpenAgentd while the update downloads.'
   return ''
 }

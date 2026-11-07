@@ -109,6 +109,25 @@ describe('Switch Workspace/Session…', () => {
     ])
   })
 
+  it('marks a workspace whose sessions need you or run, and lists it right after the current one', () => {
+    const { commands } = build({
+      sessions: [
+        session('fresh', { workspace: '/repo/app-wt', updated_at: '2026-05-01T11:50:00Z' }),
+        session('busy', { workspace: '/home/me', running: true, updated_at: '2026-05-01T08:00:00Z' }),
+        session('asking', { workspace: '/repo/docs', running: true, needs_input: true, updated_at: '2026-05-01T07:00:00Z' }),
+        // The session on screen says its own state.
+        session('current', { running: true }),
+      ],
+    })
+
+    expect(workspaces(commands).map((c) => [c.label, c.description, c.status])).toEqual([
+      ['app', 'Current workspace · /repo/app', 'idle'],
+      ['docs', 'Needs you · /repo/docs', 'needs_input'],
+      ['Chat', 'Running · Chat workspace', 'running'],
+      ['app-wt', 'Worktree of app', 'idle'],
+    ])
+  })
+
   it('opens each workspace as a page that loads its sessions', () => {
     const { commands, handlers } = build()
     const docs = byId(workspaces(commands), 'workspace:/repo/docs')
@@ -141,7 +160,7 @@ describe('a workspace session page', () => {
     expect(handlers.newSession).toHaveBeenCalledWith('/repo/docs')
   })
 
-  it('lists the workspace’s other top-level sessions, newest first, with status', () => {
+  it('lists the workspace’s other top-level sessions, what needs you first, then running, then newest', () => {
     const { commands, handlers } = build({
       sessions: [
         session('current'),
@@ -155,12 +174,19 @@ describe('a workspace session page', () => {
     const page = byId(workspaces(commands), 'workspace:/repo/app').page!
 
     expect(page.commands.slice(1).map((c) => [c.label, c.description])).toEqual([
-      ['Fix login', 'Running'],
       ['Plan release', 'Needs you'],
+      ['Fix login', 'Running'],
       ['Untitled session', '3h'],
     ])
-    page.commands[1].action()
+    expect(page.commands.slice(1).map((c) => c.status)).toEqual(['needs_input', 'running', 'idle'])
+    page.commands[2].action()
     expect(handlers.openSession).toHaveBeenCalledWith(expect.objectContaining({ id: 'busy' }))
+  })
+
+  it('counts a lead whose subagents still work as running', () => {
+    const { commands } = build({ sessions: [session('lead', { title: 'Lead', running: false, subagents: [session('sub', { running: true, parent_session_id: 'lead' })] })] })
+    const [, lead] = byId(workspaces(commands), 'workspace:/repo/app').page!.commands
+    expect([lead.description, lead.status]).toEqual(['Running', 'running'])
   })
 
   it('uses the sessions loaded for that workspace over the recent list', () => {

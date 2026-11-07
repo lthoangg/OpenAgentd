@@ -3,6 +3,8 @@ import { ListFilter, Search } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { WorkspaceGroup } from '@/api/types'
 import type { SidebarGroupBy } from '@/stores/useSidebarViewStore'
+import { usePlatform } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { SidebarViewMenu } from './SidebarViewMenu'
 import { SidebarHeading } from './SidebarHeading'
 import { cn } from '@/lib/utils'
@@ -85,6 +87,7 @@ export function SidebarSectionHeader({
 }) {
   const [viewMenuAt, setViewMenuAt] = useState<{ x: number; y: number } | null>(null)
   const project = groupBy === 'project'
+  const { os } = usePlatform()
 
   return (
     <div className={cn('sticky top-0 z-10 shrink-0 bg-(--bg-page)', !page && 'dark:bg-(--bg-sidebar)')}>
@@ -95,6 +98,7 @@ export function SidebarSectionHeader({
           {!page && (
             <HeaderAction
               label="Search sessions"
+              tooltip={`Search sessions (${shortcutLabel(APP_SHORTCUTS.searchSessions, os)})`}
               active={searchOpen}
               pressed={searchOpen}
               buttonRef={searchButtonRef}

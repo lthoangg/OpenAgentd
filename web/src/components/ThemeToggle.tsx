@@ -7,27 +7,12 @@
  * `system -> light -> dark -> system`.
  */
 import { cn } from '@/lib/utils'
-import { Monitor, Moon, Sun } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useThemePreference } from '@/hooks/useThemePreference'
-import type { ThemePreference } from '@/lib/theme'
+import { NEXT_THEME, THEME_OPTIONS } from '@/components/theme-options'
 
-export const THEME_OPTIONS: ReadonlyArray<{
-  value: ThemePreference
-  label: string
-  Icon: typeof Monitor
-}> = [
-  { value: 'system', label: 'System', Icon: Monitor },
-  { value: 'light', label: 'Light', Icon: Sun },
-  { value: 'dark', label: 'Dark', Icon: Moon },
-]
-
-const NEXT: Record<ThemePreference, ThemePreference> = {
-  system: 'light',
-  light: 'dark',
-  dark: 'system',
-}
+export { NEXT_THEME, THEME_OPTIONS }
 
 export function ThemeToggle({
   collapsed = false,
@@ -49,7 +34,7 @@ export function ThemeToggle({
           render={
             <button
               type="button"
-              onClick={() => setPreference(NEXT[preference])}
+              onClick={() => setPreference(NEXT_THEME[preference])}
               aria-label={`Theme: ${current.label}. Click to cycle.`}
               className={cn(
                 'interactive-weight flex text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',

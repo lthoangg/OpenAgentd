@@ -338,25 +338,59 @@ impl DeniedPaths {
         format!(" `{raw}` is an absolute path. Did you mean `{rel}` (workspace-relative)?")
     }
 
-    /// Shell-tokenise and look for denied path tokens.
+    /// Shell-tokenise and look for denied path tokens, from the workspace root.
     pub fn check_command(&self, command_line: &str) -> Option<String> {
+        self.check_command_at(command_line, &self.workspace_root.clone()).map(|h| h.root)
+    }
+
+    /// [`Self::check_command`] with relative tokens resolved from `cwd`, following
+    /// plain `cd <dir>` words as the command goes (`cd web && ls ..` reads `web/..`).
+    /// The `cd` target is itself checked, so `cd ..` out of the workspace into a
+    /// denied root is still caught.
+    pub fn check_command_at(&self, command_line: &str, cwd: &Path) -> Option<CommandDenial> {
         let tokens = split_command(command_line)?;
+        let mut base = cwd.to_path_buf();
+        let mut after_cd = false;
         for raw in tokens {
-            let token = raw.trim_matches(|c| c == '"' || c == '\'');
-            if !looks_path_like(token) {
+            let mut token = raw.trim_matches(|c| c == '"' || c == '\'');
+            let was_cd = std::mem::replace(&mut after_cd, token == "cd");
+            if was_cd {
+                // shlex keeps `;` glued on: `cd web; ls`.
+                token = token.strip_suffix(';').unwrap_or(token);
+            }
+            let is_cd_target = was_cd && !token.is_empty() && !token.starts_with('-') && !token.contains(['$', '`', '*', '?', '&', '|', ';', '(', ')']);
+            if !is_cd_target && !looks_path_like(token) {
                 continue;
             }
             let p = Path::new(token);
-            let candidate = if p.is_absolute() { p.to_path_buf() } else { self.workspace_root.join(p) };
+            let candidate = if p.is_absolute() {
+                p.to_path_buf()
+            } else if let Some(rest) = token.strip_prefix("~/") {
+                appv3_core::home::home_dir_opt().map(|h| h.join(rest)).unwrap_or_else(|| base.join(p))
+            } else {
+                base.join(p)
+            };
             let resolved = resolve(&candidate);
-            let hit = self.is_denied(&resolved).or_else(|| self.is_shell_denied(&resolved));
-            if hit.is_some() {
+            if let Some(root) = self.is_denied(&resolved).or_else(|| self.is_shell_denied(&resolved)) {
                 tracing::warn!("path_command_denied token={} resolved={}", token, resolved.display());
-                return hit;
+                return Some(CommandDenial { root, token: token.to_string(), resolved });
+            }
+            if is_cd_target {
+                base = resolved;
             }
         }
         None
     }
+}
+
+/// A shell token that resolves into a denied root.
+#[derive(Debug, Clone)]
+pub struct CommandDenial {
+    /// The denied root or pattern it hit.
+    pub root: String,
+    /// The token as the model wrote it.
+    pub token: String,
+    pub resolved: PathBuf,
 }
 
 /// Split a command line into words. POSIX shells: `shlex` rules, as v2.
@@ -477,6 +511,26 @@ mod tests {
         assert!(d.validate_read_path(cache.join("other.bin").to_str().unwrap()).is_err(), "only the read-only root is exempt");
         assert!(d.validate_read_path(skills.join(".env").to_str().unwrap()).is_err(), "denied patterns still apply");
         assert!(d.validate_read_path("~/x").is_err());
+    }
+
+    #[test]
+    fn relative_tokens_follow_cd_and_workdir() {
+        // Prod: worktrees live under the denied data dir, and `cd mobile && ls ../node_modules`
+        // was resolved against the workspace root, so it hit the data dir and was blocked.
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let ws = data.join("worktrees/repo/feature");
+        std::fs::create_dir_all(ws.join("mobile/android")).unwrap();
+        let d = DeniedPaths::with(&ws, None, Some(vec![data.clone()]), Some(vec![]));
+        assert!(d.check_command("cd mobile/android && ls ../node_modules").is_none());
+        assert!(d.check_command("cd mobile; cat ../README.md").is_none());
+        assert!(d.check_command_at("ls ../x.ts", &ws.join("mobile")).is_none(), "workdir is the base");
+        // Leaving the workspace into the denied root is still blocked, cd or not.
+        assert!(d.check_command("ls ../x").is_some());
+        assert!(d.check_command("cd mobile && cat ../../openagentd.db").is_some());
+        assert!(d.check_command("cd .. && ls").is_some());
+        let hit = d.check_command_at("cd mobile && cat ../../../x.db", &ws).unwrap();
+        assert_eq!(hit.token, "../../../x.db");
     }
 
     #[test]

@@ -2,13 +2,15 @@
  * DockOpenMenu — the Review panel's "+" menu: every view and tool the dock
  * can open (``dockOpenItems``), as a context menu where the pointer or the
  * button is. The tab strip's "+" opens it, and on a phone the page's
- * navigation bar does, so the two never drift apart.
+ * navigation bar does, so the two never drift apart. The phone's is the
+ * app's ActionSheet (``DockOpenSheet``), as every phone menu.
  */
 import { Fragment } from 'react'
 import { Check } from 'lucide-react'
+import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
 import { CONTEXT_MENU_ITEM_CLASS, ContextMenu, ContextMenuSeparator } from '@/components/ui/context-menu'
 import { cn } from '@/lib/utils'
-import type { DockOpenItem } from './DockLauncher'
+import { PHONE_LABELS, type DockOpenItem } from './DockLauncher'
 import { MenuKeys } from './MenuKeys'
 
 /** Width the menu is laid out for, so it opens right-aligned under its button. */
@@ -46,4 +48,24 @@ export function DockOpenMenu({ at, items, onDismiss }: {
       ))}
     </ContextMenu>
   )
+}
+
+/** The phone's "+": the same rows as an action sheet, named as the phone names them. */
+export function DockOpenSheet({ open, items, onClose }: {
+  open: boolean
+  items: DockOpenItem[]
+  onClose: () => void
+}) {
+  const rows: ActionSheetItem[] = items.map((item, index) => ({
+    id: item.id,
+    label: PHONE_LABELS[item.id] ?? item.label,
+    iconNode: item.icon,
+    detail: item.count ? String(item.count) : undefined,
+    checked: item.open,
+    separatorBefore: index > 0 && items[index - 1].group !== item.group,
+    // Find file opens the palette, another overlay: once this sheet has gone.
+    afterClose: item.id === 'file',
+    run: item.run,
+  }))
+  return <ActionSheet open={open} onClose={onClose} title="Open in Review panel" items={rows} />
 }

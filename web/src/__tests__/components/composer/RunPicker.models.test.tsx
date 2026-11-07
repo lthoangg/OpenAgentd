@@ -12,7 +12,6 @@ import type { ModelCatalogEntry } from '@/api/types'
 import { RunPicker } from '@/components/composer/RunPicker'
 import { useRunSettings } from '@/components/composer/useRunSettings'
 import { resetHoverIntent } from '@/hooks/use-hover-intent'
-import { rememberRecentModel } from '@/lib/run-settings'
 import { queryKeys } from '@/queries'
 import { agentRegistryQueryOptions } from '@/queries/agent-registry'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -95,14 +94,6 @@ describe('RunPicker — provider names', () => {
     fireEvent.change(search(), { target: { value: 'gpt-5' } })
 
     expect(optionTexts().sort()).toEqual(['gpt-5Codex', 'gpt-5OpenAI'])
-  })
-
-  it('names the provider on a Recent row, which sits under no provider heading', () => {
-    rememberRecentModel('openai:gpt-5')
-    mountPicker()
-
-    expect(headings()).toEqual(['Recent', 'Claude', 'Codex'])
-    expect(optionTexts()).toEqual(['gpt-5OpenAI', 'sonnetdefault', 'haiku', 'gpt-5'])
   })
 
   it('says "No model matches" with straight quotes', () => {

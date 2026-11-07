@@ -76,7 +76,7 @@ pub async fn run(app: AppHandle) {
         if !recovered {
             let state = app.state::<AppState>();
             state.backend_failed.store(true, Ordering::SeqCst);
-            update_tray_status(&app, "Status: Error");
+            update_tray_status(&app, crate::menu::TRAY_STATUS_FAILED);
             let external = state.window_backend_base_urls.lock().unwrap().clone();
             app.emit_filter(
                 "backend-error",

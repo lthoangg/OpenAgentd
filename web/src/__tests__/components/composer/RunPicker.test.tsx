@@ -392,11 +392,10 @@ describe('RunPicker', () => {
     expect(setRun).toHaveBeenCalledWith({ model: null, thinkingLevel: null, credentialId: null })
   })
 
-  it('lists recent models first', () => {
+  it('has no Recent group, even after models were used', () => {
     window.localStorage.setItem('oa.recentModels.v1', JSON.stringify(['openai:gpt-5']))
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
-    expect(screen.getAllByRole('option')[0].textContent).toBe('gpt-5OpenAI')
-    expect(screen.getByText('Recent')).toBeTruthy()
+    expect(screen.queryByText('Recent')).toBeNull()
   })
 
   it('keeps the list in place when a model is clicked: the row under the pointer stays the one picked', () => {
@@ -405,8 +404,6 @@ describe('RunPicker', () => {
     fireEvent.click(screen.getByRole('option', { name: /opus/ }))
     expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(before)
     expect(screen.queryByText('Recent')).toBeNull()
-    // Remembered for the next time the picker opens.
-    expect(JSON.parse(window.localStorage.getItem('oa.recentModels.v1') ?? '[]')).toEqual(['anthropic:opus'])
   })
 
   it('keeps the keyboard in the search after a mouse pick, so Enter and the arrows still work', () => {

@@ -40,6 +40,7 @@ function renderScreen({
   composerPlaceholderHeight,
   here = [],
   everywhere = [],
+  phone = false,
 }: {
   workspace?: string
   isChat?: boolean
@@ -48,6 +49,7 @@ function renderScreen({
   composerPlaceholderHeight?: number
   here?: SessionResponse[]
   everywhere?: SessionResponse[]
+  phone?: boolean
 } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   client.setQueryData(queryKeys.coding.tree(), tree)
@@ -67,6 +69,7 @@ function renderScreen({
         // As AgentChatView does: the composer sits here on desktop only.
         composer={isMobile || leaving ? null : <textarea aria-label="Composer" />}
         isMobile={isMobile}
+        phone={phone}
         leaving={leaving}
         composerPlaceholderHeight={composerPlaceholderHeight}
         onSelectWorkspace={onSelectWorkspace}
@@ -88,6 +91,15 @@ afterEach(() => {
 })
 
 describe('NewSessionScreen', () => {
+  it('on a phone: only the folder chip, no suggestions, heading or Continue', () => {
+    renderScreen({ isMobile: true, phone: true, here: [session('s1', 'Earlier work', REPO)] })
+
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull()
+    expect(screen.queryByText('Continue')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Folder: openagentd. Change folder' })).toBeTruthy()
+    expect(screen.queryByRole('list', { name: 'Suggestions' })).toBeNull()
+  })
+
   it('asks what to build in a repository, with the folder chip and no branch: the status bar has it', () => {
     renderScreen()
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('What should we build in openagentd?')

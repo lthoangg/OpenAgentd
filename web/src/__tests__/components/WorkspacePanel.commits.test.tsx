@@ -18,7 +18,7 @@ mock.module('lucide-react', () => ({
   ChevronDownIcon: Icon, ChevronLeftIcon: Icon, ChevronRightIcon: Icon,
   Check: Icon, ChevronDown: Icon, ChevronLeft: Icon, ChevronRight: Icon,
   ChevronsDownUp: Icon, ChevronsUpDown: Icon,
-  Copy: Icon, Download: Icon, ExternalLink: Icon, FileDiff: Icon,
+  Copy: Icon, Download: Icon, ExternalLink: Icon, WrapText: Icon, FileDiff: Icon,
   File: Icon, FileHeadphone: Icon, FileText: Icon, FileType: Icon,
   Folder: Icon, FolderOpen: Icon,
   GitBranch: Icon, GitCommitHorizontal: Icon, GitCompare: Icon,
@@ -31,9 +31,14 @@ mock.module('@/hooks/use-platform', () => ({
   getPlatform: () => ({ isTauri: false, os: 'linux', isMacOverlay: false }),
 }))
 mock.module('framer-motion', () => ({
+  // The phone's row sheets (ActionSheet → BottomSheet) import it.
+  AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
   motion: {
     aside: ({ children, className }: { children: React.ReactNode; className?: string }) => (
       <aside className={className}>{children}</aside>
+    ),
+    div: ({ children, initial: _initial, animate: _animate, exit: _exit, transition: _transition, ...rest }: Record<string, unknown> & { children?: React.ReactNode }) => (
+      <div {...rest}>{children}</div>
     ),
   },
 }))

@@ -109,4 +109,10 @@ describe('groupSessionsByStatus', () => {
     const groups = groupSessionsByStatus([lead], [lead])
     expect(groups.map((g) => [g.label, g.sessions.map((s) => s.id)])).toEqual([['Running', ['lead']]])
   })
+
+  it('shows a pinned session only in Pinned, even when it needs you', () => {
+    const pinned = session('pinned', { running: true, needs_input: true, pinned_at: '2026-10-01T00:00:00Z' })
+    const busy = session('busy', { running: true, pinned_at: '2026-10-01T00:00:00Z' })
+    expect(groupSessionsByStatus([pinned, busy], [pinned, busy])).toEqual([])
+  })
 })

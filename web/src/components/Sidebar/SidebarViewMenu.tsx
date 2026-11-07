@@ -8,6 +8,9 @@ import {
 import type { WorkspaceGroup } from '@/api/types'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { BottomSheet } from '@/components/ui/bottom-sheet'
+import { SegmentedControl } from '@/components/ui/segmented-control'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { groupColor } from './groupColor'
 import { MenuShortcut } from './MenuShortcut'
 
@@ -87,13 +90,58 @@ export function SidebarViewMenu({
 }) {
   const groupBy = useSidebarViewStore((s) => s.groupBy)
   const { os } = usePlatform()
-  const showDetails = useSidebarViewStore((s) => s.showDetails)
+  const storedShowDetails = useSidebarViewStore((s) => s.showDetails)
   const groupFilter = useSidebarViewStore((s) => s.groupFilter)
   const setGroupBy = useSidebarViewStore((s) => s.setGroupBy)
   const setShowDetails = useSidebarViewStore((s) => s.setShowDetails)
   const setGroupFilter = useSidebarViewStore((s) => s.setGroupFilter)
   const reset = useSidebarViewStore((s) => s.reset)
   const activeFilter = groups.some((g) => g.id === groupFilter) ? groupFilter : null
+  const isPhone = useIsPhone()
+
+  // A phone gets a sheet (mockup J8): Group by as a segmented control, the
+  // actions as full-width rows under it. Details are always shown there.
+  if (isPhone) {
+    const sheetAction = 'flex min-h-11 w-full items-center px-4 text-left text-sm text-(--color-text) active:bg-(--bg-key)'
+    return (
+      <BottomSheet open onClose={onDismiss} label="View options">
+        <div className="flex flex-col gap-3 px-3 pb-4" data-view-options-sheet="">
+          <SegmentedControl
+            label="Group by"
+            fill
+            value={groupBy}
+            onChange={setGroupBy}
+            options={SIDEBAR_GROUP_BY.map((option) => ({ value: option.value, label: option.label }))}
+          />
+          {groupBy === 'project' && groups.length > 0 && (
+            <div role="group" aria-label="Workspace group" className="flex flex-col">
+              {[{ id: null, name: 'All workspaces' } as const, ...groups].map((group) => (
+                <button
+                  key={group.id ?? 'all'}
+                  type="button"
+                  role="radio"
+                  aria-checked={activeFilter === group.id}
+                  onClick={() => setGroupFilter(group.id)}
+                  className={sheetAction + ' gap-2'}
+                >
+                  {group.id !== null && (
+                    <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: groupColor(group as WorkspaceGroup) }} aria-hidden="true" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate">{group.name}</span>
+                  {activeFilter === group.id && <Check size={16} aria-hidden="true" />}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-col border-t border-(--color-border)">
+            {onCollapseAll && <button type="button" className={sheetAction} onClick={() => { onCollapseAll(); onDismiss() }}>Collapse all workspaces</button>}
+            {onOpenFolder && <button type="button" className={sheetAction} onClick={() => { onDismiss(); onOpenFolder() }}>Open workspace…</button>}
+            <button type="button" className={sheetAction} onClick={() => { reset(); onDismiss() }}>Reset to defaults</button>
+          </div>
+        </div>
+      </BottomSheet>
+    )
+  }
 
   return (
     <ContextMenu at={at} label="View options" onDismiss={onDismiss} className="min-w-48">
@@ -121,7 +169,7 @@ export function SidebarViewMenu({
           <ContextMenuSeparator />
         </>
       )}
-      <CheckItem role="menuitemcheckbox" checked={showDetails} onSelect={() => setShowDetails(!showDetails)}>
+      <CheckItem role="menuitemcheckbox" checked={storedShowDetails} onSelect={() => setShowDetails(!storedShowDetails)}>
         Show details
       </CheckItem>
       <ContextMenuSeparator />

@@ -316,6 +316,40 @@ describe("fixNestedFences", () => {
 // ---------------------------------------------------------------------------
 
 describe("MarkdownBlock tables", () => {
+  // A wide table scrolls sideways; while its right edge cuts content off,
+  // the wrap says so (the CSS fades that edge off a phone; desktop mockup 7.7).
+  it("marks the scroll container while the table runs past its right edge", () => {
+    render(
+      <MarkdownBlock
+        content={["| A | B | C |", "|---|---|---|", "| 1 | 2 | 3 |"].join("\n")}
+      />,
+    );
+    const wrap = document.querySelector<HTMLElement>(".oa-table-wrap")!;
+    Object.defineProperty(wrap, "scrollWidth", { configurable: true, get: () => 900 });
+    Object.defineProperty(wrap, "clientWidth", { configurable: true, get: () => 600 });
+
+    fireEvent.scroll(wrap);
+    expect(wrap.hasAttribute("data-clipped-end")).toBe(true);
+
+    wrap.scrollLeft = 300;
+    fireEvent.scroll(wrap);
+    expect(wrap.hasAttribute("data-clipped-end")).toBe(false);
+  });
+
+  it("leaves a table that fits unmarked", () => {
+    render(
+      <MarkdownBlock
+        content={["| A | B |", "|---|---|", "| 1 | 2 |"].join("\n")}
+      />,
+    );
+    const wrap = document.querySelector<HTMLElement>(".oa-table-wrap")!;
+    Object.defineProperty(wrap, "scrollWidth", { configurable: true, get: () => 400 });
+    Object.defineProperty(wrap, "clientWidth", { configurable: true, get: () => 600 });
+
+    fireEvent.scroll(wrap);
+    expect(wrap.hasAttribute("data-clipped-end")).toBe(false);
+  });
+
   it("wraps table in a scroll container with oa-table-wrap class", () => {
     render(
       <MarkdownBlock

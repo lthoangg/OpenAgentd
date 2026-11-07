@@ -1,12 +1,15 @@
-import { describe, it, expect, afterEach, mock } from "bun:test"
+import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { CommandPalette, QuickOpen } from "@/components/CommandPalette"
 import type { Command, PaletteSession, PaletteSessions } from "@/components/CommandPalette"
 import type { WorkspaceFileInfo } from "@/api/types"
 import { resetHoverIntent } from "@/hooks/use-hover-intent"
+import { PALETTE_RECENTS_KEY } from "@/lib/palette-recents"
 
 afterEach(cleanup)
+// A run is remembered for the Recent group; each test starts with none.
+beforeEach(() => localStorage.removeItem(PALETTE_RECENTS_KEY))
 
 // Me factory for quick commands
 function makeCommands(overrides: Partial<Command>[] = []): Command[] {
@@ -39,6 +42,25 @@ describe("CommandPalette", () => {
   it("renders command descriptions", () => {
     render(<CommandPalette commands={makeCommands()} onClose={() => {}} />)
     expect(screen.getByText("Start a new session")).toBeTruthy()
+  })
+
+  it("draws a session's status mark at the start of its row", () => {
+    render(
+      <CommandPalette
+        commands={[
+          { id: "a", label: "Plan release", description: "Needs you", status: "needs_input", action: () => {} },
+          { id: "b", label: "Old notes", description: "3h", status: "idle", action: () => {} },
+          { id: "c", label: "Toggle Sidebar", action: () => {} },
+        ]}
+        onClose={() => {}}
+      />,
+    )
+    const row = (label: string) => screen.getByText(label).closest("button")!
+
+    expect(within(row("Plan release")).getByRole("img", { name: "Session needs your input" })).toBeTruthy()
+    // An idle session keeps the slot, so titles line up; a command has none.
+    expect(row("Old notes").querySelector("[data-session-status-mark]")).toBeTruthy()
+    expect(row("Toggle Sidebar").querySelector("[data-session-status-mark]")).toBeNull()
   })
 
   it("renders keyboard shortcut hints", () => {
@@ -1189,7 +1211,8 @@ describe("CommandPalette — grouped results", () => {
     )
     // The title starting with the word beats the two with it later; those
     // tie, so the newer one is first. The non-match is not listed.
-    expect(groupRows("Sessions").map((row) => row.textContent?.replace(/app · 3h$/, ""))).toEqual([
+    // Each title as read: a search draws it marked beside a plain copy (ui/match-marks).
+    expect(groupRows("Sessions").map((row) => row.querySelector(".sr-only")?.textContent)).toEqual([
       "Login page redesign",
       "Debug the login flow",
       "Fix login bug",

@@ -1,14 +1,81 @@
 /**
  * Textarea autosize state for InputComposer — height-to-content resizing capped at
- * ``MAX_TEXTAREA_HEIGHT``.
+ * six lines (``composerMaxHeight``), and the desktop scroll thumb past that.
  *
  * Kept in a separate module (not `.tsx`) so InputComposer.tsx stays HMR-friendly
  * under react-refresh and its render tree stays focused on layout/markup.
  */
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
-/** Height cap in px. Must match the textarea's inline ``maxHeight`` style. */
+/** Fallback cap in px, where the CSS max-height does not resolve to px. */
 export const MAX_TEXTAREA_HEIGHT = 120
+/** The box grows to six lines, then it scrolls inside. */
+export const COMPOSER_MAX_LINES = 6
+
+/** The textarea's (and its mirror's) CSS max-height. */
+export function composerMaxHeight(): string {
+  return `${COMPOSER_MAX_LINES}lh`
+}
+
+/** The cap ``resize()`` honours: the element's resolved CSS max-height. */
+function maxHeightOf(el: HTMLElement): number {
+  const value = getComputedStyle(el).maxHeight
+  return value.endsWith('px') ? parseFloat(value) : MAX_TEXTAREA_HEIGHT
+}
+
+/** The view of a draft taller than its box, as fractions of the draft's height. */
+export interface ComposerScrollThumb {
+  top: number
+  height: number
+}
+
+function sameThumb(a: ComposerScrollThumb | null, b: ComposerScrollThumb | null): boolean {
+  if (a === null || b === null) return a === b
+  return Math.abs(a.top - b.top) < 1e-4 && Math.abs(a.height - b.height) < 1e-4
+}
+
+/**
+ * Where the box's own scroll stands while the draft is taller than the box;
+ * null while it fits, or when ``enabled`` is off. The box hides its
+ * scrollbar (it would narrow the text under the overlay mirror), so the
+ * desktop composer draws this beside the text instead.
+ */
+export function useComposerScrollThumb(
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>,
+  enabled: boolean,
+  value: string,
+): ComposerScrollThumb | null {
+  const [thumb, setThumb] = useState<ComposerScrollThumb | null>(null)
+  const measure = useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const { scrollHeight, clientHeight, scrollTop } = el
+    const next = scrollHeight > clientHeight + 1 ? { top: scrollTop / scrollHeight, height: clientHeight / scrollHeight } : null
+    setThumb((current) => (sameThumb(current, next) ? current : next))
+  }, [textareaRef])
+
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el || !enabled) return
+    el.addEventListener('scroll', measure, { passive: true })
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(el)
+    return () => {
+      el.removeEventListener('scroll', measure)
+      observer?.disconnect()
+    }
+  }, [enabled, measure, textareaRef])
+
+  // A keystroke changes the draft's height in the autosize frame: measure
+  // the frame after (requested later, so it runs after the resize).
+  useEffect(() => {
+    if (!enabled) return
+    const id = requestAnimationFrame(measure)
+    return () => cancelAnimationFrame(id)
+  }, [enabled, measure, value])
+
+  return enabled ? thumb : null
+}
 
 export function useTextareaAutosize(textareaRef: React.RefObject<HTMLTextAreaElement | null>) {
   const resizeFrameRef = useRef<number | null>(null)
@@ -21,7 +88,7 @@ export function useTextareaAutosize(textareaRef: React.RefObject<HTMLTextAreaEle
     const scroller = el.closest('main')?.querySelector<HTMLElement>('.oa-chat-scroll')
     const scrollTop = scroller?.scrollTop ?? 0
     el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`
+    el.style.height = `${Math.min(el.scrollHeight, maxHeightOf(el))}px`
     if (scroller && scroller.scrollTop !== scrollTop) scroller.scrollTop = scrollTop
   }, [textareaRef])
 

@@ -11,6 +11,7 @@ import { createContext, useContext, useMemo, type AnchorHTMLAttributes, type HTM
 import { findFileRefs, parseFileHref, parseFileRef, type FileRef } from '@/utils/file-refs'
 import { isLoopbackHost, type PreviewTarget } from '@/api/preview'
 import { openExternalUrl } from '@/lib/open-external'
+import { Copy, ExternalLink } from 'lucide-react'
 import { copyText, useChatMenu } from './ChatContextMenu'
 import type { FileLightboxItem } from './FileLightbox'
 import type { ChangedFileStatus } from './WorkspacePanel/diff-helpers'
@@ -101,8 +102,8 @@ export function MarkdownLink({ children, ...props }: AnchorHTMLAttributes<HTMLAn
       : null
   const chatMenu = useChatMenu(`Actions for link ${href}`, () => href
     ? [
-        { label: 'Open link', run: () => (openInDock ? openInDock() : void openExternalUrl(href)) },
-        { label: 'Copy link', run: () => copyText(href) },
+        { label: 'Open link', icon: ExternalLink, run: () => (openInDock ? openInDock() : void openExternalUrl(href)) },
+        { label: 'Copy link', icon: Copy, run: () => copyText(href) },
       ]
     : [])
   // The link is the control; a file-named code span inside it stays text.

@@ -70,7 +70,7 @@ describe('coarse-pointer touch targets', () => {
       // Review panel views (audit R10-R12): scheduler ⋯, preview address, model list controls.
       // ROW_ACTION is 24px and pointer-coarse:size-9 (see list-row.ts).
       ['SchedulerPanel/TaskListItem.tsx', /className=\{ROW_ACTION\}\s*aria-haspopup="menu"\s*aria-label=\{`More actions for/],
-      ['Preview/PreviewTabView.tsx', /aria-label="Preview address"[\s\S]{0,900}className="[^"]*pointer-coarse:h-9/],
+      ['Preview/PreviewTabView.tsx', /aria-label="Preview address"[\s\S]{0,1400}pointer-coarse:h-9/],
       ['settings/pages/settings.providers/ModelsPanel.tsx', /aria-pressed=\{selected\}[\s\S]{0,500}pointer-coarse:h-9/],
       ['settings/pages/settings.providers/ModelsPanel.tsx', /aria-label=\{`Copy \$\{qualifiedId\}`\}\s*className="[^"]*pointer-coarse:size-9/],
     ]

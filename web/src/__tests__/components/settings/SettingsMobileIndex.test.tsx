@@ -19,6 +19,7 @@ function renderIndex(
   capabilities: string[] = [],
   onSelect: (section: TopLevelSection) => void = () => {},
   onOpenHit?: (hit: SettingsHit) => void,
+  phone = false,
 ) {
   globalThis.fetch = (() => Promise.reject(new Error('network disabled in test'))) as unknown as typeof fetch
   const queryClient = new QueryClient({
@@ -27,7 +28,7 @@ function renderIndex(
   queryClient.setQueryData(queryKeys.health(), { status: 'ok', version: '3.0.0', capabilities })
   return render(
     <QueryClientProvider client={queryClient}>
-      <SettingsMobileIndex onSelect={onSelect} onOpenHit={onOpenHit} />
+      <SettingsMobileIndex onSelect={onSelect} onOpenHit={onOpenHit} phone={phone} />
     </QueryClientProvider>,
   )
 }
@@ -114,5 +115,13 @@ describe('SettingsMobileIndex', () => {
       await userEvent.clear(search)
       expect(screen.getByRole('heading', { name: 'Models and media' })).toBeInTheDocument()
     })
+  })
+
+  it('on a phone: a large title, an icon tile per row, and no descriptions', () => {
+    renderIndex(['api.plugins'], () => {}, undefined, true)
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
+    const plugins = screen.getByRole('button', { name: /^Plugins/ })
+    expect(plugins.querySelector('[data-settings-tile]')).not.toBeNull()
+    expect(plugins).not.toHaveTextContent('Skills, MCP servers and tools from plugins')
   })
 })

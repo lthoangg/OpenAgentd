@@ -27,6 +27,7 @@ import { JumpToLatestChip } from '../JumpToLatestChip'
 import { RevertNotice } from '../RevertNotice'
 import type { ComposerActions } from './PlusMenu'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useComposerKeyboardSwipe } from '@/hooks/use-composer-keyboard-swipe'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
@@ -50,6 +51,8 @@ export interface ComposerProps {
   onFileRefsNeeded?: () => void
   isStreaming?: boolean
   disabled?: boolean
+  /** Send is off for this reason (the server does not answer); the draft stays. */
+  sendBlockedReason?: string | null
   placeholder?: string
   autoFocus?: boolean
   capabilities?: AgentCapabilities
@@ -193,12 +196,19 @@ export const Composer = memo(forwardRef<InputComposerHandle, ComposerProps>(func
     }
   }, [docked])
 
+  // Phones: swipe up on the box for the keyboard, down to put it away.
+  useComposerKeyboardSwipe(dockedRef, {
+    enabled: isMobile && docked && !inputProps.disabled,
+    focus: () => innerRef.current?.focus(),
+  })
+
   const tray = (
-    <>
+    // ``contents``: no box of its own; it only marks where the swipe stops.
+    <div data-composer-tray="" className="contents">
       <JumpToLatestChip />
       {aboveComposer}
       <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} onRedoAll={inputProps.onRedoAll} />
-    </>
+    </div>
   )
 
   const composer = (

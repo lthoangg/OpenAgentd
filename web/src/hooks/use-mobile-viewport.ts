@@ -2,49 +2,24 @@ import { useEffect, type RefObject } from 'react'
 
 import { getPlatform } from '@/hooks/use-platform'
 import { MOBILE_QUERY } from '@/hooks/use-mobile'
+import { dismissKeyboard } from '@/lib/soft-keyboard'
 
-/**
- * Dismiss the soft keyboard and snap the app shell back to full height *now*.
- *
- * When the user blurs an input, iOS slides the keyboard down over ~250-300ms
- * and fires `visualViewport` events the whole way. If the shell just tracks
- * those frames it crawls back up with the keyboard, which reads as "slow".
- * Instead we:
- *   1. blur the active editable element (starts the dismiss),
- *   2. enable a one-shot eased transition on the shell (`data-vp-anim`),
- *   3. optimistically write the full layout height so the shell glides back
- *      immediately rather than chasing the keyboard down frame-by-frame.
- * The live `visualViewport` binding stays authoritative; this just front-runs
- * it for the dismiss case. The transition flag clears on the next interaction
- * (handled by the hook) so opening the keyboard stays frame-locked and snappy.
- */
-export function dismissKeyboard(): void {
-  const active = document.activeElement
-  if (active instanceof HTMLElement && active.matches('input, textarea, [contenteditable="true"]')) {
-    active.blur()
-  }
-  const root = document.documentElement
-  if (!root.hasAttribute('data-mobile-shell')) return
-  root.setAttribute('data-vp-anim', '')
-  root.removeAttribute('data-keyboard-open')
-  // Optimistically expand to the full layout viewport; the live binding will
-  // reconcile to the exact value as the keyboard finishes retracting.
-  root.style.setProperty('--app-vh', `${Math.round(window.innerHeight)}px`)
-  root.style.setProperty('--app-vt', '0px')
-  // Drop the transition flag once the glide is done so a subsequent keyboard
-  // open stays frame-locked. (Opening also clears it eagerly in the hook.)
-  window.setTimeout(() => root.removeAttribute('data-vp-anim'), 320)
-}
+export { dismissKeyboard }
 
-/** Vertical travel (px) that turns a touch into a drag. */
+/** Vertical travel (px) that turns a touch into a scroll (no longer a tap). */
 const DRAG_DISMISS_PX = 12
+/** ms the iOS keyboard takes to rise; the shell rides up with it (index.css, data-vp-rise). */
+const KEYBOARD_RISE_MS = 280
+/** ms after a dismiss during which the retracting keyboard's frames are held off. */
+const DISMISS_SETTLE_MS = 900
 const EDITABLE = 'input, textarea, select, [contenteditable="true"]'
 const INTERACTIVE = `${EDITABLE}, button, a[href], label, summary, [role="button"], [role="radio"], [role="checkbox"], [role="option"], [role="menuitem"], [role="tab"]`
 
 /**
- * Dismiss the soft keyboard from a scrolling surface, the way native chat
- * apps do: dragging it, or tapping its plain content, while the keyboard is
- * up. Touches that start in a text field keep the keyboard (an inline answer
+ * Dismiss the soft keyboard from a scrolling surface with a tap on its plain
+ * content while the keyboard is up. A drag only scrolls: the reader keeps
+ * the keyboard to read the chat while typing (user request), and a swipe
+ * down on the composer still puts it away. Touches that start in a text field keep the keyboard (an inline answer
  * box inside the transcript), and taps on controls are left to the control.
  */
 export function useDismissKeyboardOnTouch(ref: RefObject<HTMLElement | null>) {
@@ -64,12 +39,12 @@ export function useDismissKeyboardOnTouch(ref: RefObject<HTMLElement | null>) {
       startY = event.touches[0]?.clientY ?? null
       moved = false
     }
+    // Past the slop it is a scroll, not a tap: the keyboard stays.
     const onMove = (event: TouchEvent) => {
       if (startY === null || moved) return
       const y = event.touches[0]?.clientY
       if (y === undefined || Math.abs(y - startY) < DRAG_DISMISS_PX) return
       moved = true
-      dismissKeyboard()
     }
     const onEnd = (event: TouchEvent) => {
       const tapped = startY !== null && !moved
@@ -170,9 +145,24 @@ export function useMobileViewportGuards() {
     //              no expensive content reflow.
     //   --app-vt → visual viewport offsetTop, for the rare scrolled/zoomed case.
     const baselineLayoutHeight = window.innerHeight
+    let riseTimer: ReturnType<typeof setTimeout> | null = null
+    // When the keyboard last went away (focus left a field with it up).
+    let dismissedAt = -Infinity
     const applyViewport = () => {
       const height = vv ? vv.height : window.innerHeight
       const top = vv ? vv.offsetTop : 0
+      // Mid-dismiss (``data-vp-anim``): the shell is already gliding to full
+      // height. The keyboard's retract frames report shorter heights and a
+      // passing offsetTop; following them would yank the eased shell back
+      // and slide the whole screen (on-device report). A focused field (the
+      // keyboard coming back) ends the glide.
+      const focused = document.activeElement
+      const typing = focused instanceof HTMLElement && focused.matches('input, textarea, [contenteditable="true"]')
+      if (root.hasAttribute('data-vp-anim') && !typing) return
+      // Past the glide the keyboard may still be retracting (it is slower than
+      // the glide). Its frames would shrink the shell back and then let it go
+      // again, a flicker: until it is gone, or a field takes focus, hold.
+      if (!typing && performance.now() - dismissedAt < DISMISS_SETTLE_MS && baselineLayoutHeight - (height + top) > 80) return
       // Detect keyboard occlusion relative to the shell's baseline layout
       // height captured before the keyboard opens. On some mobile WebViews,
       // `window.innerHeight` also shrinks with the keyboard, so comparing the
@@ -191,9 +181,15 @@ export function useMobileViewportGuards() {
       if (nextOpen !== root.hasAttribute('data-keyboard-open')) {
         if (nextOpen) {
           root.setAttribute('data-keyboard-open', '')
-          // Opening must stay frame-locked (no transition lag on the way up) —
-          // the eased transition is only for the optimistic dismiss snap-back.
           root.removeAttribute('data-vp-anim')
+          // iOS reports the keyboard's final height in one resize as it starts
+          // to rise, so a frame-locked shell jumped there at once (a teleport,
+          // on-device report). Ride up with it instead, on its curve.
+          if (getPlatform().os === 'ios') {
+            root.setAttribute('data-vp-rise', '')
+            if (riseTimer) clearTimeout(riseTimer)
+            riseTimer = setTimeout(() => { riseTimer = null; root.removeAttribute('data-vp-rise') }, KEYBOARD_RISE_MS + 60)
+          }
         } else {
           root.removeAttribute('data-keyboard-open')
         }
@@ -244,11 +240,34 @@ export function useMobileViewportGuards() {
     const handleFocusIn = (e: FocusEvent) => {
       const target = e.target
       if (!(target instanceof HTMLElement) || !target.matches('input, textarea, [contenteditable="true"]')) return
+      if (root.hasAttribute('data-vp-anim')) {
+        root.removeAttribute('data-vp-anim')
+        applyViewport()
+      }
       // Wait for the keyboard's viewport update, then move only genuinely
       // obscured controls. This keeps nested overlay scrollers stable.
       setTimeout(() => scrollFocusedControlIntoView(target), 120)
     }
     document.addEventListener('focusin', handleFocusIn)
+
+    // The keyboard also leaves when focus does by itself: a tap elsewhere, a
+    // swipe that scrolls. Take the same eased path as ``dismissKeyboard``
+    // instead of chasing the retract frame by frame.
+    const handleFocusOut = (e: FocusEvent) => {
+      if (!root.hasAttribute('data-keyboard-open')) return
+      const next = e.relatedTarget
+      if (next instanceof HTMLElement && next.matches('input, textarea, [contenteditable="true"]')) return
+      dismissedAt = performance.now()
+      root.setAttribute('data-vp-anim', '')
+      root.removeAttribute('data-keyboard-open')
+      root.style.setProperty('--app-vh', `${Math.round(baselineLayoutHeight)}px`)
+      root.style.setProperty('--app-vt', '0px')
+      window.setTimeout(() => {
+        root.removeAttribute('data-vp-anim')
+        applyViewport()
+      }, 320)
+    }
+    document.addEventListener('focusout', handleFocusOut)
 
     document.addEventListener('gesturestart', preventGestureZoom)
     document.addEventListener('gesturechange', preventGestureZoom)
@@ -259,8 +278,11 @@ export function useMobileViewportGuards() {
 
     return () => {
       document.removeEventListener('focusin', handleFocusIn)
+      document.removeEventListener('focusout', handleFocusOut)
       root.removeAttribute('data-mobile-shell')
       root.removeAttribute('data-keyboard-open')
+      if (riseTimer) clearTimeout(riseTimer)
+      root.removeAttribute('data-vp-rise')
       root.removeAttribute('data-vp-anim')
       root.style.removeProperty('--app-vh')
       root.style.removeProperty('--app-vt')

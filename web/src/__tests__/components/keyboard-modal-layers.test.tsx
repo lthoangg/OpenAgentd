@@ -110,6 +110,44 @@ describe('modal layers', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Upper first' }))
   })
 
+  // A roving group (segmented control, radio list) keeps its other options
+  // out of the Tab order with tabindex="-1"; the trap must wrap at the last
+  // control Tab reaches, not at a button Tab skips.
+  function RovingOverlay() {
+    useModalFocus(true, () => {}, undefined, { kind: 'overlay' })
+    return (
+      <div data-modal-focus="true" role="dialog" aria-label="Settings">
+        <div role="radiogroup" aria-label="Density">
+          <button type="button" role="radio" aria-checked="false" tabIndex={-1}>Compact</button>
+          <button type="button" role="radio" aria-checked="true" tabIndex={0}>Default</button>
+        </div>
+        <button type="button">Close</button>
+        <div role="radiogroup" aria-label="Theme">
+          <button type="button" role="radio" aria-checked="true" tabIndex={0}>System</button>
+          <button type="button" role="radio" aria-checked="false" tabIndex={-1}>Dark</button>
+        </div>
+      </div>
+    )
+  }
+
+  it('wraps Tab from the last control Tab reaches when a roving group ends the modal', () => {
+    render(<RovingOverlay />)
+    const system = screen.getByRole('radio', { name: 'System' })
+    system.focus()
+    const event = press({ key: 'Tab' }, system)
+    expect(event.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Default' }))
+  })
+
+  it('wraps Shift+Tab from the first control Tab reaches when a roving group starts the modal', () => {
+    render(<RovingOverlay />)
+    const density = screen.getByRole('radio', { name: 'Default' })
+    density.focus()
+    const event = press({ key: 'Tab', shiftKey: true }, density)
+    expect(event.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'System' }))
+  })
+
   it('closes a popover inside a dialog without closing the dialog', () => {
     const closeDialog = mock(() => {})
     const closePopover = mock(() => {})

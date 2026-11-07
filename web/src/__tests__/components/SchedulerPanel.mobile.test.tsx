@@ -44,6 +44,12 @@ afterEach(() => {
 })
 
 describe('scheduler overlay on phones', () => {
+  it('lists the tasks under a large title', async () => {
+    renderPanel()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Scheduled' })).toBeInTheDocument()
+    expect(await screen.findByText('1 task')).toBeInTheDocument()
+  })
+
   it('shows the task once and moves Run now / Pause to a bottom bar', async () => {
     useUIStore.getState().focusScheduledTask('t1')
     renderPanel()

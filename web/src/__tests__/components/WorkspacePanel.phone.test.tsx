@@ -9,7 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
@@ -36,6 +36,10 @@ mock.module('framer-motion', () => ({
   motion: {
     aside: ({ children, initial: _initial, animate: _animate, exit: _exit, transition: _transition, ...props }: Record<string, unknown> & { children: React.ReactNode }) => (
       <aside {...props}>{children}</aside>
+    ),
+    // The "+" action sheet (BottomSheet).
+    div: ({ children, initial: _initial, animate: _animate, exit: _exit, transition: _transition, ref, ...props }: Record<string, unknown> & { children: React.ReactNode; ref?: React.Ref<HTMLDivElement> }) => (
+      <div ref={ref} {...props}>{children}</div>
     ),
   },
   AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
@@ -119,7 +123,7 @@ describe('Review panel on a phone — a page over the chat', () => {
     expect(panel.className.split(' ')).toEqual(expect.arrayContaining(['fixed', 'top-0', 'bottom-0', 'right-0', 'w-full', 'pl-safe', 'pr-safe']))
     const bar = panel.querySelector<HTMLElement>('[data-phone-nav-bar]')
     expect(bar).not.toBeNull()
-    expect(within(bar!).getByRole('heading', { name: 'Review' })).toBeTruthy()
+    expect(within(bar!).getByRole('heading', { name: 'Workspace' })).toBeTruthy()
   })
 
   it('goes back to the chat from ‹ Chat, and has no × of its own', async () => {
@@ -128,7 +132,7 @@ describe('Review panel on a phone — a page over the chat', () => {
     const bar = panel.querySelector<HTMLElement>('[data-phone-nav-bar]')!
 
     const back = within(bar).getByRole('button', { name: 'Back to Chat' })
-    expect(back.textContent).toBe('Chat')
+    expect(back.textContent).toBe('')
     await userEvent.setup().click(back)
     expect(onRequestClose).toHaveBeenCalledTimes(1)
 
@@ -153,23 +157,28 @@ describe('Review panel on a phone — a page over the chat', () => {
 
     const user = userEvent.setup()
     await user.click(plus)
-    const menu = screen.getByRole('menu', { name: 'Open in Review panel' })
-    const rows = within(menu).getAllByRole('menuitem').map((item) => item.getAttribute('aria-label'))
-    // The open Git tab is checked in the list, as in the strip's menu.
-    expect(rows).toEqual(expect.arrayContaining(['Git (open)', 'Terminal', 'Find file…']))
+    // The app's action sheet, as every phone menu.
+    const sheet = screen.getByRole('dialog', { name: 'Open in Review panel' })
+    expect(sheet.querySelector('[data-action-sheet]')).not.toBeNull()
+    const rows = within(sheet).getAllByRole('button').map((item) => item.textContent)
+    // The open Git tab ("Changes" on a phone) is checked, as in the strip's menu.
+    expect(rows).toEqual(expect.arrayContaining(['Changes (open)', 'Terminal', 'Files']))
     // Tasks and side questions open above the chat on a phone, not in the dock.
     expect(rows).not.toContain('Tasks')
     expect(rows).not.toContain('Side questions')
 
-    await user.click(within(menu).getByRole('menuitem', { name: 'Terminal' }))
-    expect(screen.queryByRole('menu')).toBeNull()
+    await user.click(within(sheet).getByRole('button', { name: 'Terminal' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Open in Review panel' })).toBeNull())
     expect(screen.getByRole('button', { name: /^Close Terminal 1/ })).toBeTruthy()
   })
 
   it('has no tab strip while it has no tabs: the launcher starts under the bar, which draws the hairline', async () => {
     const empty = await renderPanel({ onRequestClose: () => {} })
     expect(empty.querySelector('[data-dock-strip]')).toBeNull()
-    expect(within(empty).getByRole('group', { name: 'Open in Review panel' })).toBeTruthy()
+    // An iOS grouped list: Changes (Git) among the views, Files among the tools.
+    const views = within(empty).getByRole('group', { name: 'Views' })
+    expect(within(views).getByRole('button', { name: /Changes/ }).className).toContain('min-h-11')
+    expect(within(within(empty).getByRole('group', { name: 'Tools' })).getByRole('button', { name: /Files/ })).toBeTruthy()
     expect(empty.querySelector('[data-phone-nav-bar]')!.className).not.toContain('border-transparent')
     cleanup()
 

@@ -22,7 +22,7 @@
  * breakpoint rather than switching to a separate mobile presentation. It is
  * one thin frame with nothing bordered inside, and no icon before the label.
  */
-import { useCallback, type ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useSyncExternalStore, type ReactNode } from 'react'
 
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { AgentStoreState, ResolvedQuestion } from '@/stores/useAgentStore'
@@ -30,10 +30,38 @@ import type { ContentBlock, QuestionItem } from '@/api/types'
 import { QuestionCard } from './QuestionCard'
 import { useQuestionResolver } from './useQuestionResolver'
 import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
+import { useIsPhone } from '@/hooks/use-is-phone'
 import { cn } from '@/lib/utils'
 
 /** Mirrors ``question_service.PLACEHOLDER_RESULT``. */
 const PLACEHOLDER_PREFIX = 'Waiting for the user to answer'
+
+/**
+ * How many ``PinnedQuestion`` hosts are mounted. A lead session's composer
+ * always holds one (only a lead may ask the user); the transcript card hands
+ * its form over only while one is there, so a view without a composer still
+ * answers in place. Registered in a layout effect: a card that mounts in the
+ * same commit swaps to its note before paint.
+ */
+let pinHosts = 0
+const pinHostListeners = new Set<() => void>()
+function subscribePinHosts(listener: () => void): () => void {
+  pinHostListeners.add(listener)
+  return () => { pinHostListeners.delete(listener) }
+}
+function usePinHostMounted(): boolean {
+  return useSyncExternalStore(subscribePinHosts, () => pinHosts > 0, () => false)
+}
+function useRegisterPinHost(): void {
+  useLayoutEffect(() => {
+    pinHosts += 1
+    pinHostListeners.forEach((listener) => listener())
+    return () => {
+      pinHosts -= 1
+      pinHostListeners.forEach((listener) => listener())
+    }
+  }, [])
+}
 
 /** The ``tool_call_id`` of the question open in this session, or ``null``. */
 function selectOpenQuestionCallId(state: AgentStoreState): string | null {
@@ -135,14 +163,20 @@ export function AskUser({
     toolCallId ? state.resolvedQuestions[toolCallId] : undefined,
   )
   const turnLive = useAgentStore((state) => state.isAgentWorking)
+  const hostMounted = usePinHostMounted()
+  const isPhone = useIsPhone()
 
   const isOpen = pendingQuestion !== null && openCallId === toolCallId
-  const { submitting, error, answer } = useQuestionResolver(isOpen ? pendingQuestion : null)
+  // It is answered in the card pinned above the composer (PinnedQuestion).
+  // A phone's chat always has one; on desktop it waits for the host.
+  const pinned = isOpen && (isPhone || hostMounted) && pendingQuestion.kind !== 'plan_review'
+  const { submitting, error, answer } = useQuestionResolver(isOpen && !pinned ? pendingQuestion : null)
 
   if (!isOpen) {
     const { waiting, body } = describeResolution(resolved, result, args, turnLive)
     return <QuestionShell waiting={waiting}>{body}</QuestionShell>
   }
+  if (pinned) return <QuestionShell waiting><QuestionNote text="Answer below" /></QuestionShell>
 
   return (
     <QuestionShell waiting open>
@@ -154,6 +188,41 @@ export function AskUser({
         onSubmit={answer}
       />
     </QuestionShell>
+  )
+}
+
+/**
+ * The open question, pinned above the composer so it cannot scroll away
+ * while the run waits on it (phone mockup J6 6.1, desktop 6.1): the orange
+ * frame of "needs you", the same form. Its number keys and ⌘↵ answer it
+ * once focus is in it.
+ */
+export function PinnedQuestion() {
+  useRegisterPinHost()
+  const isPhone = useIsPhone()
+  const pendingQuestion = useAgentStore((state) => state.pendingQuestion)
+  const openCallId = useAgentStore(selectOpenQuestionCallId)
+  const show = pendingQuestion !== null && openCallId !== null && pendingQuestion.kind !== 'plan_review'
+  const { submitting, error, answer } = useQuestionResolver(show ? pendingQuestion : null)
+  if (!show) return null
+  return (
+    <div
+      data-question-pinned=""
+      // A desktop window keeps more of the transcript above it.
+      className={cn(
+        'mb-2 overflow-y-auto overscroll-contain rounded-md border border-(--accent-orange-text) bg-(--bg-card)',
+        isPhone ? 'max-h-[55dvh]' : 'max-h-[45vh]',
+      )}
+    >
+      <div className="px-3 pt-2 pb-1 label-caps text-(--accent-orange-text)">Agent is asking you</div>
+      <QuestionCard
+        key={pendingQuestion.id}
+        question={pendingQuestion}
+        submitting={submitting}
+        error={error}
+        onSubmit={answer}
+      />
+    </div>
   )
 }
 

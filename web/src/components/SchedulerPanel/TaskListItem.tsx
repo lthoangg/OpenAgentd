@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
-import { Loader2, MoreHorizontal } from 'lucide-react'
+import { Loader2, MoreHorizontal, Pause, Play, Trash2, Zap } from 'lucide-react'
+import { ActionSheet } from '@/components/ui/action-sheet'
+import { useTouchFirst } from '@/hooks/use-touch-first'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
@@ -11,6 +13,7 @@ import { ROW_ACTION, listRowSurface } from '@/components/ui/list-row'
 import { TEXT } from '@/components/ui/panel-tokens'
 import { formatScheduleLabel, lastRunLabel, nextRunLabel, taskState, TASK_LONG_PRESS_MOVE_TOLERANCE, TASK_LONG_PRESS_MS } from './utils'
 import { Chip } from '@/components/ui/chip'
+import { Switch } from '@/components/ui/switch'
 import { WorkspaceBadge } from './ModeBadge'
 import { DeleteTaskDialog } from './DeleteTaskDialog'
 import { TaskActionsMenu, taskActionsMenuPoint } from './TaskActionsMenu'
@@ -33,6 +36,8 @@ export function TaskListItem({
   const { isTauri, os } = usePlatform()
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
   const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
+  // A phone's menu is an action sheet, from ⋯ or a long press alike.
+  const phoneSheet = useTouchFirst() && isMobile
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false)
   const longPressTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -109,7 +114,13 @@ export function TaskListItem({
             )}
           </div>
 
-          <p className="mt-1 truncate font-mono text-meta text-(--color-text-2)">{formatScheduleLabel(task)}</p>
+          {phoneSheet && task.schedule_type !== 'cron' ? (
+            // A phone reads the schedule as a sentence (mockup J9); cron
+            // stays mono, it is an expression.
+            <p data-schedule-label="" className="mt-1 truncate text-sm text-(--color-text-2)">{sentenceCase(formatScheduleLabel(task))}</p>
+          ) : (
+            <p className="mt-1 truncate font-mono text-meta text-(--color-text-2)">{formatScheduleLabel(task)}</p>
+          )}
 
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <WorkspaceBadge task={task} />
@@ -130,10 +141,20 @@ export function TaskListItem({
           )}
         </div>
 
-        {/* One ⋯ on every platform (24px, 36px on touch) opens the menu with
-            Run now, Pause / Resume and Delete in words: the same menu as a
-            right-click or a long press. It shows a spinner while one runs. */}
-        <div className="-mr-1.5 flex shrink-0 items-center">
+        {/* On / off in one click or tap, then one ⋯ on every platform (24px,
+            36px on touch) for Run now, Pause / Resume and Delete in words:
+            the same menu as a right-click or a long press. It shows a
+            spinner while one runs. */}
+        <div className="-mr-1.5 flex shrink-0 items-center gap-2">
+          {/* The row's click still opens the task; the switch's does not. */}
+          <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} className="flex">
+            <Switch
+              checked={task.status !== 'paused'}
+              onCheckedChange={togglePaused}
+              disabled={pauseMutation.isPending || resumeMutation.isPending}
+              aria-label={`${task.name} on`}
+            />
+          </span>
           <Tooltip>
             <TooltipTrigger
               render={
@@ -160,7 +181,20 @@ export function TaskListItem({
         </div>
       </div>
     </div>
-    {actionsPoint && (
+    {phoneSheet ? (
+      <ActionSheet
+        open={actionsPoint !== null}
+        onClose={() => setActionsPoint(null)}
+        title={task.name}
+        items={[
+          { id: 'run', label: 'Run now', icon: Zap, disabled: triggerMutation.isPending, run: triggerTask },
+          task.status === 'paused'
+            ? { id: 'resume', label: 'Resume', icon: Play, run: togglePaused }
+            : { id: 'pause', label: 'Pause', icon: Pause, run: togglePaused },
+          { id: 'delete', label: 'Delete task…', icon: Trash2, danger: true, separatorBefore: true, run: () => setDeleteConfirmationOpen(true) },
+        ]}
+      />
+    ) : actionsPoint && (
       <TaskActionsMenu
         task={task}
         at={actionsPoint}
@@ -180,4 +214,8 @@ export function TaskListItem({
     />
     </>
   )
+}
+
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }

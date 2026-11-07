@@ -103,6 +103,18 @@ fn push_session_filters(sql: &mut String, binds: &mut Vec<String>, workspaces: &
     }
 }
 
+/// Appends the `before` cursor clause: rows strictly older than the
+/// `"<iso sort key>|<uuid>"` cursor in `col` order. Errors on a malformed one.
+fn push_before_cursor(sql: &mut String, binds: &mut Vec<String>, col: &str, cursor: &str) -> Result<()> {
+    let (raw_dt, raw_id) = cursor.split_once('|').ok_or_else(|| anyhow!("invalid before cursor"))?;
+    let dt = parse_dt(raw_dt).ok_or_else(|| anyhow!("invalid before cursor"))?;
+    let id = parse_uuid(raw_id).ok_or_else(|| anyhow!("invalid before cursor"))?;
+    sql.push_str(&format!(" AND ({col}, id) < (?, ?)"));
+    binds.push(dt_db(&dt));
+    binds.push(uuid_db(&id));
+    Ok(())
+}
+
 /// Cursor page of top-level sessions, newest first.
 ///
 /// `before` is the `"<iso sort key>|<uuid>"` cursor this returns; the key is
@@ -114,12 +126,7 @@ pub async fn list_sessions_page(pool: &DbPool, before: Option<&str>, limit: i64,
     let mut binds: Vec<String> = Vec::new();
     push_session_filters(&mut sql, &mut binds, filter.workspaces, filter.title_query, filter.pinned);
     if let Some(cursor) = before.filter(|c| !c.is_empty()) {
-        let (raw_dt, raw_id) = cursor.split_once('|').ok_or_else(|| anyhow!("invalid before cursor"))?;
-        let dt = parse_dt(raw_dt).ok_or_else(|| anyhow!("invalid before cursor"))?;
-        let id = parse_uuid(raw_id).ok_or_else(|| anyhow!("invalid before cursor"))?;
-        sql.push_str(&format!(" AND ({col}, id) < (?, ?)"));
-        binds.push(dt_db(&dt));
-        binds.push(uuid_db(&id));
+        push_before_cursor(&mut sql, &mut binds, col, cursor)?;
     }
     sql.push_str(&format!(" ORDER BY {col} DESC, id DESC LIMIT ?"));
     let mut q = sqlx::query_as::<_, ChatSession>(sqlx::AssertSqlSafe(&*sql));
@@ -141,6 +148,20 @@ pub async fn list_sessions_page(pool: &DbPool, before: Option<&str>, limit: i64,
         None
     };
     Ok((rows, next_cursor, has_more))
+}
+
+/// How many top-level sessions [`list_sessions_page`] would still return past
+/// `cursor` (a `next_cursor` it handed out) under the same `filter`.
+pub async fn count_sessions_before(pool: &DbPool, cursor: &str, filter: &SessionListFilter<'_>) -> Result<i64> {
+    let mut sql = String::from("SELECT COUNT(*) FROM chat_sessions WHERE parent_session_id IS NULL");
+    let mut binds: Vec<String> = Vec::new();
+    push_session_filters(&mut sql, &mut binds, filter.workspaces, filter.title_query, filter.pinned);
+    push_before_cursor(&mut sql, &mut binds, filter.sort.column(), cursor)?;
+    let mut q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(&*sql));
+    for b in &binds {
+        q = q.bind(b);
+    }
+    Ok(q.fetch_one(pool).await?)
 }
 
 /// Every pinned top-level session, most recently pinned first. `workspaces`

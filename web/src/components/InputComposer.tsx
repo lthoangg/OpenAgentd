@@ -9,7 +9,8 @@ import { COMPOSER_TEXT_CLASS, MentionOverlay } from './InputComposer.overlay'
 import { findActiveSnippet } from './InputComposer.helpers'
 import { InputComposerSuggestions } from './InputComposer.suggestions'
 import { useInputComposerSuggestionEngine } from './InputComposer.suggestionEngine'
-import { MAX_TEXTAREA_HEIGHT, useTextareaAutosize } from './InputComposer.autosize'
+import { composerMaxHeight, useComposerScrollThumb, useTextareaAutosize } from './InputComposer.autosize'
+import type { AppShortcutName } from '@/lib/app-shortcuts'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 import { buildAcceptString } from './InputComposer.files'
 import { useInputComposerAttachments } from './InputComposer.attachments'
@@ -21,9 +22,13 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 import { focusQuietly } from '@/lib/focus/quiet'
-import { selectionHapticFeedback, softHapticFeedback } from '@/lib/haptics'
+import { mediumHapticFeedback, selectionHapticFeedback, softHapticFeedback } from '@/lib/haptics'
+import { useIsPhone } from '@/hooks/use-is-phone'
+import { useLongPress } from '@/hooks/use-long-press'
+import { ActionSheet } from '@/components/ui/action-sheet'
 import { SessionModeToggle } from './SessionModeToggle'
 import type { ComposerActions } from './composer/PlusMenu'
+import { canPickNatively, pickNatively } from '@/lib/native-pick'
 
 // Re-export the public type so callers can import ``FileRef`` from this module
 // alongside the component. (The helper ``findActiveMention`` is imported from
@@ -57,6 +62,8 @@ export interface SlashCommand {
   displayName?: string
   /** Text inserted after the leading slash when ``keepInputOpen`` is true. Defaults to ``id``. */
   insertText?: string
+  /** The app shortcut that does the same, shown beside the command on desktop. */
+  shortcut?: AppShortcutName
   /**
    * When ``true`` this entry is rendered as a non-interactive section header
    * (a label row). Set ``id`` to something unique but non-actionable and
@@ -111,6 +118,12 @@ export interface InputComposerProps {
   onFileRefsNeeded?: () => void
   isStreaming?: boolean
   disabled?: boolean
+  /**
+   * Why a message cannot go out now (the server does not answer). Send is
+   * disabled with this as its description and Enter sends nothing, but the
+   * box stays editable and keeps the draft.
+   */
+  sendBlockedReason?: string | null
   placeholder?: string
   autoFocus?: boolean
   capabilities?: AgentCapabilities
@@ -206,6 +219,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   onFileRefsNeeded,
   isStreaming = false,
   disabled,
+  sendBlockedReason = null,
   placeholder = 'Message OpenAgentd…',
   autoFocus,
   capabilities,
@@ -295,6 +309,8 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     resizeAfterLayout,
     resetHeightNow,
   } = useTextareaAutosize(textareaRef)
+  // Desktop only: a phone's box keeps its own scroll indicator.
+  const scrollThumb = useComposerScrollThumb(textareaRef, !isMobile, value)
 
   const {
     mentionRange,
@@ -419,7 +435,9 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       // but a script focus() on a fresh page counts as :focus-visible. Focus
       // quietly then: Tab still continues from here.
       if (options?.expand === false) focusQuietly(el, {})
-      else el.focus()
+      // No scroll: the docked composer is on screen, and iOS scrolling the
+      // page to it as the keyboard rises shoved the whole shell up.
+      else el.focus({ preventScroll: true })
     },
     setValue: (text: string) => {
       // A restored message's design feedback blocks come back as chips.
@@ -506,7 +524,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   }, [])
 
   const submit = useCallback((delivery: SendDelivery = 'steer') => {
-    if (disabled) return
+    if (disabled || sendBlockedReason) return
     const trimmed = value.trim()
     const hasFeedback = designFeedback.length > 0
     if (trimmed.length === 0 && files.length === 0 && !hasFeedback) return
@@ -540,7 +558,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     // Reset the visible height synchronously — see ``resetHeightNow`` for
     // why this can't wait for the next animation frame.
     resetHeightNow()
-  }, [disabled, value, files, isStreaming, onSubmit, mentions, designFeedback, resetDraftState, resetHeightNow, setFiles, setMenuIndex])
+  }, [disabled, sendBlockedReason, value, files, isStreaming, onSubmit, mentions, designFeedback, resetDraftState, resetHeightNow, setFiles, setMenuIndex])
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items
@@ -680,7 +698,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     onValueChange?.(designFeedback.length > 0 ? composeWithDesignFeedback(value, designFeedback) : value)
   }, [onValueChange, value, designFeedback])
 
-  const canSend = hasMessage && !disabled
+  const canSend = hasMessage && !disabled && !sendBlockedReason
   const canStop = isStreaming && !disabled && onStop != null
 
   // Surface "has uncommitted content" to the parent so a minimized bar
@@ -762,7 +780,13 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
   // What the "+" menu may do to the draft.
   const composerActions = useMemo<ComposerActions>(() => ({
-    attach: () => fileInputRef.current?.click(),
+    attach: (kind) => {
+      if (kind && canPickNatively()) {
+        void pickNatively(kind).then((picked) => { if (picked.length > 0) addAllowedFiles(picked) }).catch(() => {})
+        return
+      }
+      fileInputRef.current?.click()
+    },
     startToken: (token) => {
       const el = textareaRef.current
       const current = el?.value ?? ''
@@ -775,8 +799,10 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       const caret = start + inserted.length
       setValue(next)
       setHistoryIndex(-1)
+      // Now, inside the tap (the keyboard on iOS), then again with the caret.
+      el?.focus({ preventScroll: true })
       requestAnimationFrame(() => {
-        el?.focus()
+        el?.focus({ preventScroll: true })
         el?.setSelectionRange(caret, caret)
         const mention = findActiveMention(next, caret)
         if (mention) onFileRefsNeeded?.()
@@ -789,13 +815,16 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       setValue(text)
       setDesignFeedback([])
       resetDraftState()
+      // Focus now, inside the gesture that asked (iOS raises the keyboard
+      // only then); the caret moves to the end once the text has laid out.
+      textareaRef.current?.focus({ preventScroll: true })
       resizeAfterLayout(() => {
         const el = textareaRef.current
-        el?.focus()
+        el?.focus({ preventScroll: true })
         el?.setSelectionRange(text.length, text.length)
       })
     },
-  }), [fileInputRef, onFileRefsNeeded, resetDraftState, resize, resizeAfterLayout, setMentionRange, setSnippetRange])
+  }), [addAllowedFiles, fileInputRef, onFileRefsNeeded, resetDraftState, resize, resizeAfterLayout, setMentionRange, setSnippetRange])
 
   const plusEl = renderPlus ? renderPlus(composerActions) : (
     <button
@@ -831,7 +860,21 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
   // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.
   const mac = isPrimaryModifierOS(os)
-  const splitSend = isStreaming && hasMessage && !disabled
+  const splitSend = isStreaming && hasMessage && !disabled && !sendBlockedReason
+  // A phone keeps one pill: a tap steers, a long press opens the ways to
+  // send as an action sheet (the gesture's own medium haptic). The release
+  // after a long press must not also steer.
+  const isPhone = useIsPhone()
+  // A phone's filled circle read larger than the deck's 36px controls beside
+  // it (user request): it is drawn at 32px, its touch area still 44px.
+  const sendSize = isPhone ? 'size-8!' : undefined
+  const [deliverySheetOpen, setDeliverySheetOpen] = useState(false)
+  const longPressedRef = useRef(false)
+  const sendLongPress = useLongPress(isPhone && splitSend, () => {
+    longPressedRef.current = true
+    mediumHapticFeedback()
+    setDeliverySheetOpen(true)
+  })
 
   // Send ↔ Stop: the new icon springs up in the slot (not on first render).
   const sendState = canStop && !hasMessage ? 'stop' : splitSend ? 'steer' : disabled ? 'busy' : 'send'
@@ -841,12 +884,49 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     <button
       type="button"
       {...keepKeyboard}
-      onClick={(e) => { stopClick(e); softHapticFeedback(); onStop?.(); refocusAfterTap() }}
+      onClick={(e) => { stopClick(e); mediumHapticFeedback(); onStop?.(); refocusAfterTap() }}
       aria-label="Stop generation"
-      className={cn(sendSlotClass, sendPillClass)}
+      className={cn(sendSlotClass, sendSize, sendPillClass)}
     >
       <Square size={12} fill="currentColor" aria-hidden="true" className={iconIn} />
     </button>
+  ) : splitSend && isPhone ? (
+    <>
+      <button
+        type="button"
+        onPointerDown={(e) => { keepKeyboard.onPointerDown?.(e); sendLongPress.onPointerDown(e) }}
+        onMouseDown={keepKeyboard.onMouseDown}
+        onPointerMove={sendLongPress.onPointerMove}
+        onPointerUp={sendLongPress.onPointerUp}
+        onPointerCancel={sendLongPress.onPointerCancel}
+        onPointerLeave={sendLongPress.onPointerLeave}
+        onContextMenu={sendLongPress.onContextMenu}
+        onClick={(e) => {
+          stopClick(e)
+          if (longPressedRef.current) {
+            longPressedRef.current = false
+            return
+          }
+          softHapticFeedback()
+          submit('steer')
+          refocusAfterTap()
+        }}
+        aria-label="Steer the running turn. Hold for more ways to send"
+        className={cn(sendSlotClass, sendSize, sendPillClass, '[-webkit-touch-callout:none]')}
+      >
+        <ArrowUp size={14} aria-hidden="true" className={iconIn} />
+      </button>
+      <ActionSheet
+        open={deliverySheetOpen}
+        onClose={() => setDeliverySheetOpen(false)}
+        title="Agent is running. How should this message be sent?"
+        items={[
+          { id: 'steer', label: 'Steer now', run: () => submit('steer') },
+          { id: 'after-turn', label: 'Send after this turn finishes', run: () => submit('after-turn') },
+          { id: 'interrupt', label: 'Stop and send', danger: true, run: () => submit('interrupt') },
+        ]}
+      />
+    </>
   ) : splitSend ? (
     <div role="group" aria-label="Send" className="flex shrink-0 items-center">
       <button
@@ -873,8 +953,10 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       }}
       disabled={!canSend}
       aria-label="Send message"
+      aria-description={sendBlockedReason ?? undefined}
       className={cn(
         sendSlotClass,
+        sendSize,
         'disabled:cursor-not-allowed',
         canSend
           ? sendPillClass
@@ -959,7 +1041,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         )}
         // Cap matches the ``resize()`` ceiling in InputComposer.autosize.ts so the
         // JS-driven height and the CSS limit stay in lockstep.
-        style={{ maxHeight: `${MAX_TEXTAREA_HEIGHT}px` }}
+        style={{ maxHeight: composerMaxHeight() }}
         // Spellcheck disabled: the squiggle is painted by the browser under
         // the textarea's own glyphs, but the visible text comes from the
         // overlay mirror. Even with identical font/wrap/scroll the two
@@ -977,6 +1059,16 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         aria-controls={activePopupId}
         aria-activedescendant={activeOptionId}
       />
+      {scrollThumb && (
+        // The box's hidden scrollbar, drawn just past the text's right edge
+        // so it never narrows the text (``useComposerScrollThumb``).
+        <span
+          aria-hidden="true"
+          data-composer-scroll-thumb=""
+          className="pointer-events-none absolute -right-1.5 w-[3px] rounded-full bg-(--color-border-strong)"
+          style={{ top: `${Math.round(scrollThumb.top * 10_000) / 100}%`, height: `${Math.round(scrollThumb.height * 10_000) / 100}%` }}
+        />
+      )}
       </div>
     </div>
   )
@@ -1019,8 +1111,11 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
           )}
         </div>
         {deck}
+        {/* A phone keeps the context ring with the run controls, away from
+            Send, so a tap meant for one never lands on the other. */}
+        {isPhone && deckEnd}
         <div className="min-w-0 flex-1" />
-        {deckEnd}
+        {!isPhone && deckEnd}
         {sendOrStopEl}
       </div>
     </div>

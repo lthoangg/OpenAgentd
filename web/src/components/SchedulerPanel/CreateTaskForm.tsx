@@ -13,7 +13,7 @@ import { createTaskDefaults, toCreatePayload } from './taskForm'
 import { useTaskFieldErrors } from './useTaskFieldErrors'
 import { taskValuesChanged, useReportSchedulerDraft } from './draftGuard'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
-import { CronField, IntervalField } from './ScheduleFields'
+import { AtRunHint, CronField, IntervalField } from './ScheduleFields'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
@@ -170,9 +170,11 @@ export function CreateTaskForm({
                         onChange={(v) => form.setFieldValue('at_datetime', v)}
                         triggerClassName="h-9 rounded-sm text-xs bg-(--bg-page)"
                         aria-invalid={!!fieldErrors.at_datetime}
-                        aria-describedby={fieldErrors.at_datetime ? 'task-at-datetime-error' : undefined}
+                        aria-describedby={fieldErrors.at_datetime ? 'task-at-datetime-error' : values.at_datetime ? 'task-at-datetime-hint' : undefined}
                       />
-                      {fieldErrors.at_datetime && <p id="task-at-datetime-error" className={FIELD_ERROR}>{fieldErrors.at_datetime}</p>}
+                      {fieldErrors.at_datetime
+                        ? <p id="task-at-datetime-error" className={FIELD_ERROR}>{fieldErrors.at_datetime}</p>
+                        : <AtRunHint id="task-at-datetime-hint" value={values.at_datetime ?? ''} timezone={values.timezone || localTz} />}
                     </div>
                     <div>
                       <label htmlFor="task-timezone" className={FIELD_LABEL}>Timezone</label>

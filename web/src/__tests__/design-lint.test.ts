@@ -272,6 +272,19 @@ const RULES: Rule[] = [
     },
   },
   {
+    name: 'overshoot-on-screen',
+    why: 'screens, sheets and pushes move on --ease-sheet or the critically damped spring (no overshoot); the overshooting springs are for small controls only (DESIGN.md → Phone system)',
+    pattern: /ease-spring-(?:soft|snappy)|EASINGS\.spring(?:Soft|Snappy)/g,
+    allow: {
+      // Small controls: a switch thumb, a radio dot, a swapped icon, a dropped tab, the Sessions ✎ press.
+      'components/Sidebar/SessionsPage.tsx': 1,
+      'components/ui/switch.tsx': 1,
+      'components/ui/radio-group.tsx': 1,
+      'components/ui/swap.tsx': 1,
+      'components/WorkspacePanel/useTabDrag.ts': 1,
+    },
+  },
+  {
     name: 'faded-words',
     why: 'never fade words with opacity: a secondary line uses the muted text token (it keeps AA contrast)',
     // A text span whose class fades it: `<span className="block opacity-70">Open Git</span>`.
@@ -314,6 +327,25 @@ const RULES: Rule[] = [
     why: 'dates read "Oct 29" / "Today 14:32" from utils/format.ts, never dd/MM (DESIGN.md → Dates)',
     pattern: /['"`]dd\/MM/g,
     allow: {},
+  },
+  // ── Desktop system (DESIGN.md → Desktop system) ──────────────────────────
+  {
+    name: 'mac-glyph-in-copy',
+    why: 'keys are spelled for the platform (shortcutLabel, chord labels), so Windows and Linux read Ctrl+K; a literal ⌘ belongs only in the helpers that switch on the OS',
+    pattern: /⌘/g,
+    allow: {
+      // OS-aware label helpers: each returns ⌘ only on a Mac.
+      'lib/keyboard-shortcut.ts': 1,
+      'lib/keyboard/chord.ts': 1,
+      'tray/shortcuts.ts': 1,
+      'components/Sidebar/row-keys.ts': 1,
+      'components/Terminal/terminal-keys.ts': 1,
+      'components/InputComposer.deliveryMenu.tsx': 1,
+      // The second line of a JSX comment (the comment filter sees only the first).
+      'components/AgentChatView/AgentChatHeader.tsx': 1,
+      'components/WorkspacePanel/CloseTerminalDialog.tsx': 1,
+      'components/SettingsModal.tsx': 1,
+    },
   },
 ]
 

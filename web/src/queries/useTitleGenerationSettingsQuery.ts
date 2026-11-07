@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getTitleGenerationSettings,
   updateTitleGenerationSettings,
-  type TitleGenerationSettings,
+  type TitleGenerationUpdate,
 } from '@/api/client'
 import { queryKeys } from './keys'
 
@@ -17,7 +17,7 @@ export function useTitleGenerationSettingsQuery() {
 export function useUpdateTitleGenerationSettingsMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: TitleGenerationSettings) => updateTitleGenerationSettings(body),
+    mutationFn: (body: TitleGenerationUpdate) => updateTitleGenerationSettings(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.settings.titleGeneration() })
     },

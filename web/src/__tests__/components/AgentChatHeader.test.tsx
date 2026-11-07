@@ -5,8 +5,10 @@ import { describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { AgentChatHeader } from '@/components/AgentChatView/AgentChatHeader'
+import { queryKeys } from '@/queries/keys'
 
 function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>> = {}) {
   const props: ComponentProps<typeof AgentChatHeader> = {
@@ -24,7 +26,9 @@ function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>>
     onWorkspaceFiles: () => undefined,
     ...overrides,
   }
-  return render(<AgentChatHeader {...props} />)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+  client.setQueryData(queryKeys.coding.status(props.workspace ?? ''), { is_git_repo: true, branch: 'feat/phone-bar' })
+  return render(<QueryClientProvider client={client}><AgentChatHeader {...props} /></QueryClientProvider>)
 }
 
 /**
@@ -467,18 +471,31 @@ describe('AgentChatHeader', () => {
       renderHeader({ onBack, onSidebarToggle })
       expect(screen.queryByRole('button', { name: 'Toggle sidebar' })).toBeNull()
       const back = screen.getByRole('button', { name: 'Back to Sessions' })
-      expect(back).toHaveTextContent('Sessions')
+      expect(back.textContent).toBe('')
       await userEvent.setup().click(back)
       expect(onBack).toHaveBeenCalledTimes(1)
       expect(onSidebarToggle).not.toHaveBeenCalled()
     })
 
-    it('keeps the title, its workspace, Tasks and Review panel', () => {
+    it('left-aligns the title (a tap opens Session info) and its workspace, then Tasks and Review panel', () => {
       const { container } = renderHeader({ onBack: () => undefined })
-      expect(container.querySelector('[data-phone-nav-title]')).toHaveTextContent('Fix updater restart')
-      expect(container.querySelector('[data-phone-nav-title]')).toHaveTextContent('Workspace A')
+      const title = container.querySelector('[data-phone-nav-title]')!
+      expect(title).toHaveTextContent('Fix updater restart')
+      expect(title).toHaveTextContent('Workspace A')
+      expect(title.className).toContain('text-left')
+      expect(title.className).not.toContain('text-center')
       const names = Array.from(container.querySelectorAll<HTMLElement>('header button')).map((el) => el.getAttribute('aria-label'))
-      expect(names).toEqual(['Back to Sessions', 'Tasks', 'Review panel'])
+      expect(names).toEqual(['Back to Sessions', 'Session info', 'Tasks', 'Review panel'])
+    })
+
+    it('draws the tappable title as the bar title, not as a 40px muted button', () => {
+      renderHeader({ onBack: () => undefined })
+      const trigger = screen.getByRole('button', { name: 'Session info' })
+      // The phone button floor would stand the title over its workspace line.
+      expect(trigger.className).toContain('min-h-0!')
+      // ``cn`` does not merge: the bar's type has to win over the ghost's.
+      expect(trigger.className).toContain('font-semibold!')
+      expect(trigger.className).toContain('text-(--color-text)!')
     })
 
     it('draws every bar button with the Button primitive', () => {
@@ -486,6 +503,27 @@ describe('AgentChatHeader', () => {
       for (const button of container.querySelectorAll<HTMLElement>('header button')) {
         expect(button.dataset.slot).toBe('button')
       }
+    })
+
+    it('opens the Review panel in one tap, and the session info (with the branch) from the title', async () => {
+      const onWorkspaceFiles = mock(() => {})
+      renderHeader({ onBack: () => undefined, onWorkspaceFiles })
+      const user = userEvent.setup()
+      await user.click(screen.getByRole('button', { name: 'Review panel' }))
+      expect(onWorkspaceFiles).toHaveBeenCalledTimes(1)
+
+      await user.click(screen.getByRole('button', { name: 'Session info' }))
+      const info = document.querySelector('[data-session-info]')!
+      expect(info).toHaveTextContent('Fix updater restart')
+      expect(info).toHaveTextContent('Workspace A')
+      expect(info.querySelector('[data-session-branch]')).toHaveTextContent('feat/phone-bar')
+    })
+
+    it('opens Tasks in one tap, even before the agent makes any', async () => {
+      const onToggleTasks = mock(() => {})
+      renderHeader({ onBack: () => undefined, onToggleTasks, todos: [] })
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Tasks' }))
+      expect(onToggleTasks).toHaveBeenCalledTimes(1)
     })
   })
 })

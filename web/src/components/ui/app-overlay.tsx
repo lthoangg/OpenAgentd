@@ -104,8 +104,11 @@ interface OverlayHeaderProps {
 
 /** Icon button sizing shared by header controls: 44px on touch, 28px on desktop. */
 const OVERLAY_HEADER_BUTTON_CLASS = 'md:size-7'
-/** A sheet's bar buttons are bare tint, no fill: iOS dims one when pressed. */
-const SHEET_BAR_BUTTON_CLASS = 'h-11 min-w-11 bg-transparent! text-(--color-accent)! active:opacity-50'
+/**
+ * A sheet's bar buttons are bare tint, no fill: iOS dims one when pressed.
+ * Drawn at the phone's control step; ``touch-hit`` keeps a 44px target.
+ */
+const SHEET_BAR_BUTTON_CLASS = 'relative touch-hit h-(--phone-control) min-w-(--phone-control) bg-transparent! text-(--color-accent)! active:opacity-50'
 
 export function OverlayHeader({
   title,
@@ -130,15 +133,13 @@ export function OverlayHeader({
         onClick={back.onBack}
         aria-label={back.ariaLabel ?? `Back to ${back.label}`}
         data-overlay-back=""
-        className={cn(SHEET_BAR_BUTTON_CLASS, 'font-normal', android ? 'px-0' : 'max-w-full justify-start gap-0.5 pl-0 pr-2', back.className)}
+        className={cn(SHEET_BAR_BUTTON_CLASS, 'font-normal', android ? 'px-0' : 'justify-start pl-0', back.className)}
       >
+        {/* A bare glyph, as the phone's nav bar (user request); the name says where. */}
         {android ? (
           <ArrowLeft size={20} aria-hidden="true" className="size-5" />
         ) : (
-          <>
-            <ChevronLeft size={20} strokeWidth={2.25} aria-hidden="true" className="-ml-1.5 size-5" />
-            <span className="truncate text-xs">{back.label}</span>
-          </>
+          <ChevronLeft size={20} strokeWidth={2.25} aria-hidden="true" className="-ml-1 size-5" />
         )}
       </Button>
     )
@@ -147,7 +148,7 @@ export function OverlayHeader({
         data-slot="overlay-header"
         data-sheet-bar=""
         className={cn(
-          'min-h-11 shrink-0 select-none border-b border-(--color-border) bg-(--bg-page) px-2 pt-1.5',
+          'min-h-(--spacing-app-header) shrink-0 select-none border-b border-(--color-border) bg-(--bg-page) px-2 pt-1.5',
           android ? 'flex items-center gap-2' : 'flex items-center gap-1',
           className,
         )}

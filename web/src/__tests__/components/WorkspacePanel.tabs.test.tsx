@@ -55,7 +55,7 @@ mock.module('lucide-react', () => ({
   ChevronDownIcon: Icon, ChevronLeftIcon: Icon, ChevronRightIcon: Icon,
   Check: Icon, ChevronDown: Icon, ChevronLeft: Icon, ChevronRight: Icon,
   ChevronsDownUp: Icon, ChevronsUpDown: Icon,
-  Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileDiff: Icon, FileHeadphone: Icon, FileText: Icon,
+  Copy: Icon, Download: Icon, ExternalLink: Icon, WrapText: Icon, File: Icon, FileDiff: Icon, FileHeadphone: Icon, FileText: Icon,
   Folder: Icon, FolderOpen: Icon, GitCommitHorizontal: Icon, GitCompare: Icon, Loader2: Icon,
   Maximize2: Icon, Columns2: Icon, Rows2: Icon, Minimize2: Icon, Plus: Icon,
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon, TerminalSquare: Icon, Eraser: Icon, Undo2: Icon, X: Icon,
@@ -66,6 +66,8 @@ mock.module('@/hooks/use-platform', () => ({
   getPlatform: () => ({ isTauri: false, os: 'linux', isMacOverlay: false }),
 }))
 mock.module('framer-motion', () => ({
+  // The phone's row sheets (ActionSheet → BottomSheet) import it.
+  AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
   motion: {
     aside: ({ children, className, 'aria-label': ariaLabel }: { children: React.ReactNode; className?: string; 'aria-label'?: string }) => (
       <aside className={className} aria-label={ariaLabel}>{children}</aside>
@@ -125,7 +127,7 @@ describe('Review dock diff tabs', () => {
     const diffTab = await screen.findByRole('button', { name: 'app.ts diff' })
     expect(diffTab.getAttribute('aria-current')).toBe('true')
     expect(screen.getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBeNull()
-    expect(screen.getByText('const before = 2')).toBeTruthy()
+    expect(await screen.findByText('const before = 2')).toBeTruthy()
     expect(screen.getByText('const after = 3')).toBeTruthy()
     // The list never loads a body; the tab fetches only its own file.
     expect(requestedUrls.filter((url) => url.includes('/workspace/git-diff/files'))).toHaveLength(1)
@@ -189,7 +191,7 @@ describe('Review dock diff tabs', () => {
     const strip = document.querySelector<HTMLElement>('[data-dock-strip]')!
     expect(strip.contains(refresh)).toBe(false)
     const toolbar = refresh.closest('[class*="spacing-toolbar"]') as HTMLElement
-    expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Open src/app.ts', 'Refresh diff'])
+    expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Side by side', 'Wrap lines', 'Open src/app.ts', 'Refresh diff'])
 
     const diffRequests = () => requestedUrls.filter((url) => url.includes('/workspace/git-diff')).length
     const before = diffRequests()

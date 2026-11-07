@@ -17,10 +17,18 @@
  * saved in place without switching; **Add a server**, at the end of the
  * list, opens the form for a new one (test, then save and use). No form
  * opens by itself, except for a scanned connect link.
+ *
+ * The phone's Servers screen is a third host: there the row in use also
+ * offers **Sessions ›** (``onOpenInUse``), back up to its session list.
  */
-import { Fragment, useEffect, useRef, useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Fragment, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
+import { ChevronRight, MoreHorizontal, Pencil, Plus, ScanQrCode, Trash2 } from 'lucide-react'
+import { cancelQrScan, canScanQr, scanQrCode } from '@/lib/qr-scan'
+import { QrScanOverlay } from '@/components/phone/QrScanOverlay'
+import { parseConnectLink } from '@/lib/connect-link'
+import { pickReachableUrl } from '@/hooks/useConnectLink'
 
+import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
 import { Button } from '@/components/ui/button'
 import { StatusChip } from '@/components/ui/chip'
 import { STATUS } from '@/lib/status'
@@ -34,6 +42,9 @@ import { Field } from '@/components/ui/field'
 import { PanelSection } from '@/components/ui/panel-section'
 import { ICON_SIZE_INLINE, ROW_PAD, TEXT } from '@/components/settings/tokens'
 import { isDesktopShell } from '@/lib/desktop-shell'
+import { useLongPress } from '@/hooks/use-long-press'
+import { useTouchFirst } from '@/hooks/use-touch-first'
+import { mediumHapticFeedback } from '@/lib/haptics'
 import { shake } from '@/lib/shake'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
 import { cn } from '@/lib/utils'
@@ -103,6 +114,17 @@ interface AppBackendPanelProps {
    * its own "Access from other devices" card.
    */
   showNetworkAccess?: boolean
+  /** The list's heading (Settings and the dialog: "Servers"). */
+  sectionTitle?: string
+  /** The phone's Servers screen: the row in use opens its Sessions. */
+  onOpenInUse?: () => void
+  /** Lets a host reload the list (the phone's pull to refresh). */
+  controlRef?: Ref<AppBackendPanelControl>
+}
+
+export interface AppBackendPanelControl {
+  /** Reload the servers and ping each one; settles when every ping has. */
+  refresh: () => Promise<void>
 }
 
 /**
@@ -114,10 +136,17 @@ type ServerFormTarget =
   | { kind: 'add' }
   | { kind: 'edit'; baseUrl: string; label: string; inUse: boolean }
 
-export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false }: AppBackendPanelProps) {
+export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, sectionTitle = 'Servers', onOpenInUse, controlRef }: AppBackendPanelProps) {
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
+  // Nothing is listed until the shell has answered once: before that a
+  // phone with no server would flash the browser build's placeholder rows.
+  const [loaded, setLoaded] = useState(false)
   const [confirm, setConfirm] = useState<{ kind: 'stop' } | { kind: 'remove'; baseUrl: string; label: string } | null>(null)
   const [form, setForm] = useState<ServerFormTarget | null>(null)
+  // Touch: a saved server's row keeps one button; Edit and Remove move to
+  // its action sheet (a long press, or ⋯).
+  const touch = useTouchFirst()
+  const [rowSheet, setRowSheet] = useState<{ title: string; items: ActionSheetItem[] } | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
   const [serverName, setServerName] = useState('')
   const [accessKey, setAccessKeyInput] = useState('')
@@ -131,6 +160,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   /** Test or Save in the open form failed. */
   const [formError, setFormError] = useState<string | null>(null)
   const [scanned, setScanned] = useState(false)
+  // The camera viewfinder is up (Scan QR code).
+  const [qrScanning, setQrScanning] = useState(false)
   const [watchStates, setWatchStates] = useState<Record<string, ServerWatchState>>({})
   const watchable = isDesktopShell() && status?.supports_bundled !== false
   // Where focus goes back to when a form closes.
@@ -160,6 +191,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     void getAppBackendStatus().then((next) => {
       if (cancelled) return
       setStatus(next)
+      setLoaded(true)
       setListError(null)
       setScanned(Boolean(prefill))
       // A scanned link opens the add form, filled in and tested; otherwise no form is open.
@@ -180,6 +212,22 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     })
     return () => { cancelled = true }
   }, [active, prefill])
+
+  useImperativeHandle(controlRef, () => ({
+    async refresh() {
+      const next = await getAppBackendStatus()
+      setStatus(next)
+      setListError(null)
+      const servers = next?.servers ?? DEFAULT_SERVERS
+      const unlisted = unlistedConnectedUrl(next, servers)
+      const toCheck = [...servers.map((server) => normalizeServerBaseUrl(server.base_url)), ...(unlisted ? [unlisted] : [])]
+      setServerHealth(Object.fromEntries(toCheck.map((url) => [url, 'checking'])))
+      await Promise.all(toCheck.map(async (normalized) => {
+        const online = await pingServer(normalized)
+        setServerHealth((prev) => ({ ...prev, [normalized]: online ? 'online' : 'offline' }))
+      }))
+    },
+  }), [])
 
   function fillForm(target: ServerFormTarget, nextBaseUrl: string, nextName: string, nextKey: string) {
     setForm(target)
@@ -218,6 +266,31 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       const opener = target?.kind === 'edit' ? editButtonRefs.current.get(target.baseUrl) : addButtonRef.current
       opener?.focus()
     })
+  }
+
+  /**
+   * Servers → Scan QR code: the camera reads the desktop's connect code and
+   * this list's own add form opens, filled in and tested, as "Add a server"
+   * does. Nothing connects until Save and use.
+   */
+  async function scanConnectCode() {
+    setListError(null)
+    setQrScanning(true)
+    const outcome = await scanQrCode().finally(() => setQrScanning(false))
+    if (outcome.kind === 'denied') {
+      setListError('Camera access is off. Turn it on for OpenAgentd in Settings to scan a code.')
+    } else if (outcome.kind === 'scanned') {
+      const link = parseConnectLink(outcome.text)
+      if (!link) {
+        setListError('That QR code is not an OpenAgentd connect code. Scan the one under Network access on your computer.')
+        return
+      }
+      const url = await pickReachableUrl(link.urls)
+      setOriginal(null)
+      setScanned(true)
+      fillForm({ kind: 'add' }, url, hostnameOf(url), link.key)
+      void testConnection(url, link.key)
+    }
   }
 
   async function connectExternal(nextBaseUrl: string, nextName: string, typedKey: string, onError: (error: string) => void) {
@@ -385,13 +458,13 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     }
   }
 
-  const servers = status?.servers ?? DEFAULT_SERVERS
+  const servers = loaded ? status?.servers ?? DEFAULT_SERVERS : []
   // Browser builds have no shell status and a relative `/api` base: show the page origin.
   const currentUrl = status?.base_url || apiBaseUrl().replace(/\/api$/, '') || window.location.origin
   const onExternal = status?.mode === 'external' || Boolean(status?.external)
   // A connected server that is not in the saved list still gets a row. Without
   // shell status (a browser) the one server is the page's own.
-  const unlistedUrl = status ? unlistedConnectedUrl(status, servers) : normalizeServerBaseUrl(currentUrl)
+  const unlistedUrl = !loaded ? null : status ? unlistedConnectedUrl(status, servers) : normalizeServerBaseUrl(currentUrl)
   const tested = testedBaseUrl !== null && testedBaseUrl === normalizeServerBaseUrl(baseUrl)
   const editTarget = form?.kind === 'edit' ? form : null
   // A rename saves at once; a new address or key waits for Test.
@@ -420,6 +493,15 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     />
   )
 
+  /** Sessions ›, on the row in use when a host can go back to its list. */
+  // Touch: a tap on the row opens it (``onOpen``), so no Sessions or Use button.
+  const openInUse = (label: string) => onOpenInUse && !touch ? (
+    <Button type="button" variant="subtle" size="sm" aria-label={`Open sessions on ${label}`} onClick={onOpenInUse} data-open-in-use="">
+      Sessions
+      <ChevronRight size={ICON_SIZE_INLINE} aria-hidden="true" />
+    </Button>
+  ) : null
+
   return (
     <div className="space-y-8">
       {scanned ? (
@@ -430,21 +512,23 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
 
       {/* Servers: each row's Edit opens its form under it; Add a server opens one at the end. */}
       <PanelSection
-        title="Servers"
-        description="Use switches the app to a server. Edit changes its address, key or name."
+        title={sectionTitle}
+        description={touch ? 'Tap a server to use it; ⋯ edits or removes it.' : 'Use switches the app to a server. Edit changes its address, key or name.'}
         flush
       >
-        {status?.supports_bundled !== false ? (
+        {loaded && status?.supports_bundled !== false ? (
           <ServerRow
             health={status?.sidecar_running ? 'online' : undefined}
             title="Built-in server"
             subtitle={`Runs inside this app · ${status?.sidecar_running ? 'Running' : 'Stopped'}`}
             address={status && !status.external ? currentUrl : undefined}
             inUse={status !== null && !status.external}
+            onOpen={touch && !pending && status?.sidecar_running ? (status.external ? () => { void connectBundled() } : onOpenInUse) : undefined}
           >
+            {status !== null && !status.external ? openInUse('Built-in server') : null}
             {status?.sidecar_running ? (
               <>
-                {status?.external ? (
+                {status?.external && !touch ? (
                   <Button type="button" variant="subtle" size="sm" aria-label="Use built-in server" onClick={() => { void connectBundled() }} disabled={pending}>
                     Use
                   </Button>
@@ -468,8 +552,9 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             mono={Boolean(status)}
             subtitle={status ? 'Not in your saved servers' : unlistedUrl}
             inUse
+            onOpen={touch ? onOpenInUse : undefined}
           >
-            {null}
+            {openInUse(status ? unlistedUrl : 'This server')}
           </ServerRow>
         ) : null}
         {servers.map((server) => {
@@ -488,6 +573,15 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                 mono={!server.name}
                 note={note}
                 inUse={active}
+                onOpen={touch && !pending ? (active ? onOpenInUse : () => { void connectExternal(normalizedServerUrl, server.name ?? '', '', setListError) }) : undefined}
+                onMore={touch ? () => setRowSheet({
+                  title: label,
+                  // No Open or Use here: a tap on the row already does it.
+                  items: [
+                    { id: 'edit', label: 'Edit', icon: Pencil, disabled: pending, afterClose: true, run: () => (editing ? closeForm() : openEdit(server, active)) },
+                    { id: 'remove', label: 'Remove…', icon: Trash2, danger: true, separatorBefore: true, disabled: pending, run: () => setConfirm({ kind: 'remove', baseUrl: server.base_url, label }) },
+                  ],
+                }) : undefined}
               >
                 {watchable ? (
                   <label className={cn('mr-1 flex items-center gap-2', TEXT.hint)}>
@@ -500,7 +594,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                     />
                   </label>
                 ) : null}
-                {active ? null : (
+                {active ? openInUse(label) : touch ? null : (
                   <Button
                     type="button"
                     variant="subtle"
@@ -512,6 +606,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                     Use
                   </Button>
                 )}
+                {touch ? null : (
+                <>
                 <Button
                   ref={(node) => {
                     if (node) editButtonRefs.current.set(normalizedServerUrl, node)
@@ -546,17 +642,25 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                   />
                   <TooltipContent>Remove server…</TooltipContent>
                 </Tooltip>
+                </>
+                )}
               </ServerRow>
               {editing && editTarget ? serverForm(editTarget) : null}
             </Fragment>
           )
         })}
         {form?.kind === 'add' ? serverForm(form) : (
-          <div className={ROW_PAD}>
+          <div className={cn(ROW_PAD, 'flex flex-wrap items-center gap-1')}>
             <Button ref={addButtonRef} type="button" variant="ghost" size="sm" onClick={openAdd} disabled={pending}>
               <Plus size={ICON_SIZE_INLINE} aria-hidden="true" />
               Add a server
             </Button>
+            {canScanQr() && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => { void scanConnectCode() }} disabled={pending}>
+                <ScanQrCode size={ICON_SIZE_INLINE} aria-hidden="true" />
+                Scan QR code
+              </Button>
+            )}
           </div>
         )}
       </PanelSection>
@@ -564,6 +668,15 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       {listError ? (
         <Callout tone="error" role="alert">{listError}</Callout>
       ) : null}
+
+      {qrScanning && <QrScanOverlay onCancel={() => { void cancelQrScan() }} />}
+
+      <ActionSheet
+        open={rowSheet !== null}
+        onClose={() => setRowSheet(null)}
+        title={rowSheet?.title ?? 'Server'}
+        items={rowSheet?.items ?? []}
+      />
 
       <ConfirmDialog
         open={confirm !== null}
@@ -624,6 +737,7 @@ function ServerForm({
   onSave: () => void
   onCancel: () => void
 }) {
+  const touchForm = useTouchFirst()
   const urlRef = useRef<HTMLInputElement>(null)
   const fieldsRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -687,8 +801,8 @@ function ServerForm({
           />
         </Field>
       </div>
-      <div className="flex flex-col gap-3 px-4 pb-4 sm:flex-row sm:items-center">
-        <div className="min-w-0 flex-1 text-xs leading-relaxed">
+      <div className={touchForm ? 'flex flex-col gap-3 px-4 pb-4' : 'flex flex-col gap-3 px-4 pb-4 sm:flex-row sm:items-center'}>
+        <div className={cn('min-w-0 flex-1 leading-relaxed', touchForm ? 'text-meta' : 'text-xs')}>
           {error ? (
             <p role="alert" className="text-(--color-error)">{error}</p>
           ) : tested ? (
@@ -697,17 +811,32 @@ function ServerForm({
             <p className="text-(--color-text-muted)">Test the server to enable saving.</p>
           ) : null}
         </div>
-        <div className="flex shrink-0 flex-wrap justify-end gap-2">
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={pending}>
-            Cancel
-          </Button>
-          <Button type="button" variant="default" size="sm" onClick={onTest} disabled={pending}>
-            {pending ? 'Testing…' : 'Test'}
-          </Button>
-          <Button type="button" variant="primary" size="sm" onClick={onSave} disabled={pending || (needsTest && !tested)}>
-            {mode === 'add' ? 'Save and use' : 'Save'}
-          </Button>
-        </div>
+        {touchForm ? (
+          // Touch: large equal buttons, Test then Save, with Cancel under them.
+          <div className="grid grid-cols-2 gap-2">
+            <Button type="button" variant="default" onClick={onTest} disabled={pending} className="h-11 w-full">
+              {pending ? 'Testing…' : 'Test'}
+            </Button>
+            <Button type="button" variant="primary" onClick={onSave} disabled={pending || (needsTest && !tested)} className="h-11 w-full">
+              {mode === 'add' ? 'Save and use' : 'Save'}
+            </Button>
+            <Button type="button" variant="ghost" onClick={onCancel} disabled={pending} className="col-span-2 h-11 w-full">
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={pending}>
+              Cancel
+            </Button>
+            <Button type="button" variant="default" size="sm" onClick={onTest} disabled={pending}>
+              {pending ? 'Testing…' : 'Test'}
+            </Button>
+            <Button type="button" variant="primary" size="sm" onClick={onSave} disabled={pending || (needsTest && !tested)}>
+              {mode === 'add' ? 'Save and use' : 'Save'}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -721,6 +850,8 @@ function ServerRow({
   note = null,
   inUse,
   address,
+  onMore,
+  onOpen,
   children,
 }: {
   health: Health | undefined
@@ -734,11 +865,46 @@ function ServerRow({
   inUse: boolean
   /** Where the server answers, when the title does not already say (a mono line under the subtitle). */
   address?: string
+  /** Touch: open the row's action sheet, from a long press or its ⋯. */
+  onMore?: () => void
+  /** Touch: a tap on the row's name opens it (Use, or Sessions when in use). */
+  onOpen?: () => void
   children: React.ReactNode
 }) {
+  // The click that ends a long press must not also open the row.
+  const heldRef = useRef(false)
+  const longPress = useLongPress(Boolean(onMore), () => {
+    heldRef.current = true
+    mediumHapticFeedback()
+    onMore?.()
+  })
   return (
-    <div data-server-row="" className={cn('flex min-h-11 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 md:min-h-14', ROW_PAD)}>
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+    <div
+      data-server-row=""
+      {...(onMore ? longPress : {})}
+      className={cn(
+        'flex min-h-(--phone-control) flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 md:min-h-14',
+        ROW_PAD,
+        // Touch: one line, the button beside the name; no iOS callout on a hold.
+        onMore && 'flex-row! items-center gap-3 [-webkit-touch-callout:none] select-none',
+      )}
+    >
+      <div
+        className={cn('flex min-w-0 flex-1 items-center gap-3', onOpen && 'cursor-pointer')}
+        {...(onOpen ? {
+          role: 'button',
+          tabIndex: 0,
+          'aria-label': `Open ${title}`,
+          'data-server-open': '',
+          onClick: () => {
+            if (heldRef.current) { heldRef.current = false; return }
+            onOpen()
+          },
+          onKeyDown: (event: React.KeyboardEvent) => {
+            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen() }
+          },
+        } : {})}
+      >
         <ServerStatusDot status={health} />
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
@@ -766,7 +932,14 @@ function ServerRow({
           ) : null}
         </span>
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 pl-5 sm:pl-0">{children}</div>
+      <div className={cn('flex shrink-0 flex-wrap items-center gap-1.5', onMore ? 'pl-0' : 'pl-5 sm:pl-0')}>
+        {children}
+        {onMore ? (
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={`More actions for ${title}`} onClick={onMore} className="text-(--color-text-muted)">
+            <MoreHorizontal size={16} aria-hidden="true" />
+          </Button>
+        ) : null}
+      </div>
     </div>
   )
 }

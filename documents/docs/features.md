@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.48.0 · November 6, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.48.0)
+**Latest release:** v3.49.0 · November 7, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.49.0)
 
 ---
 
@@ -375,8 +375,19 @@ run from the terminal (the native Rust binary since v3.0.0).
   Since `[v3.31.0]`, pressing Install while agents are still working warns
   that restarting may interrupt their turns. You can then choose **Restart
   anyway** or **Later**.
-  Mobile leaves updates to its platform distribution channel.
+  Since `[v3.49.0]` the mobile apps check for updates too, with the same
+  card and Settings → About → Updates. Android downloads the APK, checks its
+  SHA-256 against the `latest-android` feed, and opens the system installer
+  (Android asks to allow installs from OpenAgentd once, and only accepts an
+  APK signed with the same key). iOS apps cannot install their own updates,
+  so the card opens TestFlight, or SideStore for a SideStore install.
   Earlier iterations: `[v1.18.0]`, `[v1.20.0]`, `[v1.21.0]`.
+- **Client and server versions** `[v3.49.0]` — Settings → About has a
+  **Version** section with the version of this app (desktop, iOS, Android, or
+  the web UI) and of the connected server, plus its address. When they
+  differ by a major or minor version it warns which side to update; a
+  patch-only difference gets a quiet note. The header shows the app's own
+  version (before, it showed the server's).
 - **Native app notifications** `[v1.19.0]` — finished assistant turns and
   scheduled reminders in the desktop app, plus local native
   notifications in the remote-backend mobile shell `[v1.34.0]`. Clicking a
@@ -503,13 +514,19 @@ run from the terminal (the native Rust binary since v3.0.0).
     Since `[v3.32.0]` the plan reads **Done** once its goal is achieved or,
     without a goal, once every task is finished, and approving a plan asks
     the agent for one task per milestone, named after it.
+    Since `[v3.49.0]` the review footer (comments, feedback, Approve and
+    Request changes) lines up with the plan's text column instead of
+    stretching across a wide or maximized Review panel.
   - **Keep going until done** `[v3.32.0]` — the plan review footer has a
     **Keep going until done** checkbox and, beside it, the turns for this
     plan (prefilled from Settings). Approving with it ticked starts a goal
     whose objective is the plan's **Done when**, and the agent keeps working
     turn after turn without a "continue" from you. The checkbox is disabled
     while the plan has no Done when. Each goal turn names the plan file and
-    the next unfinished task. It stops when a separate completion check
+    the next unfinished task. Since `[v3.49.0]`, approving a new plan this way after an earlier
+    goal ended starts the new goal straight away: the earlier goal's end
+    note says a newer goal replaced it, not "do not continue". It stops
+    when a separate completion check
     confirms the agent's `update_goal` claim from evidence shown in the
     conversation, when the agent reports a blocker, or at a limit: 50 turns by
     default, two turns in a row without tool calls, three rejected claims in a
@@ -880,6 +897,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     none); the chevron beside it folds the list.
   - Pinned, Needs you, the sessions and Scheduled scroll together in one
     list, under one style of section header with an always-visible chevron.
+    A session shows in one place only: a pinned one stays in Pinned even
+    when it needs you or is running. `[v3.49.0]`
     Needs you counts in words ("2 waiting"). Scheduled is always there, with
     **+** for a new task. A row whose session is busy, waiting, finished
     unseen or failed says so in words in place of its time: **Running**,
@@ -927,12 +946,19 @@ run from the terminal (the native Rust binary since v3.0.0).
     show as one paragraph break.
   - Scrolling up shows a **Loading earlier messages…** row while older
     turns load, and one **Jump to latest** chip counts what arrived since
-    (`3 new`). Closing the sidebar while the Review panel is open no longer
+    (`3 new`). Since `[v3.49.0]` it is a pill at the top of the view that
+    never moves the messages. On a phone, earlier messages start loading two
+    screens before the top and come in a few turns at a time while you keep
+    scrolling, so a fling is never stopped and the chat does not jump. Long
+    and running sessions no longer jump while you read them as new turns
+    arrive. Closing the sidebar while the Review panel is open no longer
     leaves the chat scrolled up a little with the chip showing.
   - A subagent row is a button that opens the subagent's session, with its
     state in words (Running, Done, Failed, Needs you, Stopped) and a running
     clock. It sits under the team call that started or messaged the
-    subagent, so following it is one click. A subagent's question lists its
+    subagent, so following it is one click. Since `[v3.49.0]` the call's own
+    row carries it instead: a small state chip with ↗ after the target opens
+    the session, with no extra row. A subagent's question lists its
     options, says the main agent answers it, and offers **Open subagent
     session**.
   - Copy buttons on code blocks, tool arguments, commands and output are
@@ -1898,9 +1924,19 @@ run from the terminal (the native Rust binary since v3.0.0).
     in the footer, the comment box docks on the keyboard, saved comments fold
     into a chip while you type, and a half-written comment survives closing
     the sheet. Request changes and Approve stay in reach.
+  - The plan review footer is shaped like the chat composer: one framed box
+    holding the feedback (one line at rest, growing as you type) and its
+    actions, with comments above it. On a phone Keep going is a toggle in the
+    box and its turns show above it, so **Request changes** and **Approve**
+    always fit the screen, even on an iPhone mini. The comment box docks in
+    the same shape, and both take the composer's swipe (up for the keyboard,
+    down to put it away); the header and tabs stay put while the keyboard
+    rises. Request changes is off until there is a comment or feedback to
+    send. `[v3.49.0]`
   - The chat re-pins to the newest message when the keyboard opens, Send and
-    Steer keep the keyboard up, and dragging or tapping the transcript puts
-    it away.
+    Steer keep the keyboard up, and tapping the transcript puts it away.
+    Since `[v3.49.0]` scrolling the transcript keeps the keyboard up, so you
+    can read while you type; a swipe down on the composer still puts it away.
   - Menus, the model list, the palette and dialogs open in the space above
     the keyboard; sheets no longer raise it on open.
   - Fields for ids, paths, URLs and keys skip autocorrect and
@@ -2114,6 +2150,7 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **The phone app reads like an iOS app** `[v3.48.0]`. It is still the web
   UI; the changes apply only on a phone (touch and narrow). Tablets and
   narrow mouse windows keep their layout.
+  - `[v3.49.0]` The composer's **+** menu has **Photos** and **Files**, which open the phone's photo library or document picker directly in the iOS and Android apps. Send and Stop are a little smaller, and the context ring sits with the run controls instead of beside Send. Above the composer, the running line and side questions share one slim line (side questions is a small **btw** pill, no longer floating over the chat, and opening it no longer moves the chat), and the end of the chat stays in view as it changes, even with the keyboard up; as the keyboard opens, the chat rises smoothly with the composer. Queued and steer messages wait, faded, at the end of the chat instead of above the composer; tap one to take it back into the composer. Rows under Pinned on the Sessions screen no longer show a pin mark.
   - The app opens on **Sessions**, which has a large title, a search field,
     and *Needs you* at the top, then Pinned and the workspaces. Pull down to
     refresh. Swipe a row left to Pin or Delete it; Delete asks first. A long
@@ -2136,6 +2173,43 @@ run from the terminal (the native Rust binary since v3.0.0).
     full height.
   - On iPhone, confirmations are iOS alerts: Cancel sits beside the action,
     and a destructive action is red and is never the default button.
+- **A tighter phone app, with Servers under Sessions** `[v3.49.0]`:
+  - Text and rows are the composer's size: 15px text and 40px rows and
+    buttons at Default (44px header; bar buttons keep a 44px touch). Text
+    size Compact goes down to 14px and 36px; Large is Apple's 17px and
+    44px. The composer itself is unchanged.
+  - **Servers** is a level under Sessions: ‹ Servers (or a swipe from the
+    left edge) shows the saved servers. **Sessions ›** on the one in use
+    goes back to its list; **Use** on another switches to it and opens its
+    Sessions. Sessions names the server under its title, and Android Back
+    goes Chat → Sessions → Servers, then leaves the app.
+  - Swipe up on the composer to raise the keyboard, down to put it away.
+  - The toolbar at the bottom of Sessions has Settings, Scheduled, Usage and
+    the theme (System → Light → Dark) instead of Commands; its icons and
+    captions sit centred at any text size, and it steps aside while you
+    search.
+  - Hold **✎** on Sessions to pick where the new session starts: Chat, the
+    recently active workspaces and the current one open above it, and ✎
+    turns into ✕. Slide to one and lift to start there; lift on ✕ or
+    outside to cancel. ✎ presses in under the finger and springs back as the
+    menu blooms out of it. A finger on the toolbar's icons slides across them
+    too, with a bubble naming the one under it; lifting runs that one.
+  - A changed file's and a commit's actions in the Review panel (long press
+    or ⋯) open as the same bottom action sheet as every other phone menu,
+    destructive action last; so does the Review panel's **+**.
+  - In Settings, the filter of Providers, Agents, Skills and MCP servers
+    stays pinned at the top while the list scrolls.
+  - The chat's ⋯ always lists Tasks: **Tasks · 3/5** with progress, or
+    **No tasks** before the agent makes any. *(Deprecated; replaced in
+    v3.49.0 by direct Tasks and Review panel buttons.)*
+- **Phone chat bar, lighter shell rows** `[v3.49.0]`:
+  - The phone chat bar's title and workspace sit on the left, with **Tasks**
+    (open-task badge) and **Review panel** as one-tap buttons instead of ⋯.
+  - Tapping the title shows the session's info with the current git branch.
+  - A described shell call streams only its description; the command loads
+    from history when the row is opened.
+  - Opening a shell row whose output isn't saved yet retries quietly, and
+    its loading or error state shows inside the terminal block.
 - **One look across the app** `[v3.48.0]`:
   - The same status looks the same everywhere. Needs you is orange and
     Failed is red. Connected and passing checks are green. Running and Done
@@ -2161,6 +2235,100 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Scheduled tasks open as a Review panel tab, with an overlay only when no
     workspace is open.
   - Settings and Usage use the same overlay frame as every other panel.
+- **A desktop app that keeps what needs you in sight** `[v3.49.0]`. The
+  phone's run and status pieces now work on desktop too, at desktop size.
+  - A question from the agent is pinned above the composer until you answer
+    it, with the orange frame of *Needs you*; the transcript says **Answer
+    below** where it was asked. Its number keys and ⌘↵ answer it once focus
+    is in it.
+  - A plan waiting for review keeps a **Plan awaiting approval** bar above
+    the composer, with its revision and **View**, which brings the Plan tab
+    forward.
+  - When the server stops answering, the status bar says **Can't reach**
+    beside its name, the banner adds **Retry** and, in the desktop app,
+    **Start built-in server** (or **Use built-in server** when a remote one
+    is down), and Send is disabled with the reason while your draft stays in
+    the box.
+  - A session whose folder was moved or deleted shows one line under the
+    header, **{folder} was moved or deleted**, with **Open workspace…** and
+    **Hide from sidebar**, instead of a card over the transcript.
+  - **Session not found** also offers **Find a session ⌘L** beside **New
+    session**.
+  - A diff tab's **Wrap lines** toggle is on desktop too: diffs still wrap
+    by default, and the toggle keeps long lines whole so they scroll
+    sideways.
+  - The composer's model chip names the model in the interface font
+    (`claude-sonnet-4-6 · High`) rather than `provider:model` in code type;
+    hovering it shows the full `provider:model` and its shortcut, and the
+    picker still lists models by provider.
+  - A long draft grows the message box to six lines, then scrolls inside
+    it, and a thin thumb beside the text shows how much more there is.
+  - The **/** and **@** menus end with the keys that drive them (**↑↓**
+    navigate, **↵** run or insert, **Esc** close). **/new** and **/model**
+    show their shortcuts (⌘N, ⌘.), and a file reads name first, then its
+    folder, so a deep folder no longer cuts the file name off.
+  - A table wider than the chat fades out at its right edge while there is
+    more to scroll to, as on the phone.
+  - **Search sessions** in the sidebar opens with **⌘⇧F** (Ctrl+Shift+F),
+    showing the sidebar first if it was hidden. Matches sit under their
+    workspace with a count (**openagentd · 3**) below a summary (**6
+    results · 3 workspaces**), the matched text is marked in each title,
+    rows show their age, and **↓** moves from the field into the results.
+  - **Switch Workspace/Session** (⌘L, ⌘⇧L) leads each row with the
+    sidebar's status mark. A session that needs you lists first, then the
+    running ones, then the rest by recency; a workspace with a session
+    waiting or running says **Needs you** or **Running** and lists right
+    after the current one.
+  - **Keyboard shortcuts** (⌘/) opens with a search field in focus that
+    filters by name, key (`F6`) or area (`terminal`), and lays the areas out
+    in two columns on a wide window. Its intro spells the overlay keys for
+    the platform (Ctrl+K, Ctrl+P and Ctrl+, on Windows and Linux).
+  - The command palette (⌘K) opens on a **Recent** group, the last five
+    commands and sessions you ran from it, and a search marks the words you
+    typed in each row's name.
+  - The palette always lists **Open Plan** and, in a workspace, **Goal**,
+    even before the session has a plan or a goal; their descriptions then
+    say how one starts (Plan mode; approving a plan with **Keep going until
+    done**).
+  - The keyboard focus ring shows whole on segmented controls, tabs, menu
+    and palette rows, settings lists, the status bar and the header's
+    sidebar button, instead of being cut to a bar on one side, and **Tab**
+    no longer walks out of Settings into the window behind it.
+  - An MCP call the agent could not make because its server needs sign-in
+    offers **Sign in to {server}** right under the call (or **Open in
+    Settings** for a server the app cannot sign in to), and reads **Signed
+    in to {server}** once it is connected, so you no longer have to find
+    Settings → MCP from the agent's reply.
+  - A view that fails to render (a session's transcript, the Review panel)
+    shows **Couldn't show this view** with **Try again** and **Copy error
+    details** in its place, while the header, sidebar and status bar keep
+    working; opening another session clears it. Any other screen's error
+    shows the app's own page (**Try again**, **Reload**) instead of the
+    router's plain one.
+  - A sidebar list with more sessions to load says how many the next click
+    adds (**Show 5 more**, or **Show 2 more** when that is all that is
+    left) instead of a plain **Show more**.
+  - A terminal tab whose shell is running a command (a build, a dev server,
+    `sleep`) shows the running spinner in place of its icon, and its
+    tooltip reads **Terminal 1 · Running**, so you can see which tab is busy
+    before you close it.
+  - Each scheduled task's row has an on/off switch beside its **⋯**, as on
+    the phone, so pausing or resuming a task is one click that does not
+    open it. **Pause** and **Resume** stay in the menu too.
+  - Opening a folder the sidebar did not list yet (**Open workspace…**)
+    says **Added {folder}** as it opens the new session there; a folder
+    that was already listed just opens.
+  - The task form says when a new schedule runs, not only for cron: a
+    repeating task adds **If you save now: Nov 7, 14:50** to "The first run
+    is one interval after you save", and a one-time task reads **Runs in
+    3h (Asia/Ho_Chi_Minh)** under its date, or warns in orange that a time
+    already gone **runs as soon as you save**.
+  - A diff tab's **Side by side** toggle lays the old file beside the new
+    one: each removed line sits next to the line that replaced it, context
+    on both sides, each column wrapping on its own. The choice is kept for
+    every diff tab. While the Review panel is too narrow for two columns
+    the diff stays unified and the toggle says so; maximizing or widening
+    the panel brings the columns back.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query
@@ -2241,7 +2409,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - List rows darken while your finger is on them.
   - On an Android phone turned sideways, the drawers and the review dock
     stay usable and keep clear of the camera cutout.
-- **Sideloadable iOS app** `[v3.7.0]` — each release includes an ad-hoc-signed
+- **Sideloadable iOS app** `[v3.7.0]` *(deprecated in v3.49.0: no longer
+  published; install from TestFlight)* — each release included an ad-hoc-signed
   `OpenAgentd_<version>_iOS.ipa` with a checksum. A SideStore/AltStore source at
   `releases/download/latest-ios/source.json` installs the app and offers new
   versions as updates. See [Install the iOS app](../../mobile/INSTALL-IOS.md).
@@ -2250,9 +2419,18 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **iOS app on TestFlight** `[v3.49.0]` — releases are built, signed and
   uploaded to TestFlight by CI. Install from the public TestFlight link in the
   release notes: no computer, VPN or 7-day refresh, automatic updates, and the
-  home-screen widgets share data through the real App Group. The SideStore IPA
-  is still published for a few releases. See
+  home-screen widgets share data through the real App Group. See
   [Install the iOS app](../../mobile/INSTALL-IOS.md).
+- **iOS channels: TestFlight beta and App Store** `[v3.49.0]` — the iOS app
+  ships only through App Store Connect; the SideStore IPA and source feed are
+  no longer published. One build goes to TestFlight and then, unchanged, to
+  the App Store. The iOS app no longer checks for updates itself:
+  TestFlight and the App Store deliver and announce new versions.
+  Maintainers can send any branch to TestFlight Internal from CI, for example
+  from the phone through the agent.
+  Before anything is sent, the iOS app asks once for consent to share what you
+  write with the AI providers your server uses, with a link to the privacy
+  policy, which is also in **Settings → About OpenAgentd** `[v3.49.0]`.
 - **Android app (APK)** `[v3.15.0]` — releases include a sideloadable
   `OpenAgentd_<version>_Android.apk` with a checksum. Access keys are
   encrypted with an Android Keystore key, downloads open the system share
@@ -2266,6 +2444,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
 - **Desktop network access** `[v3.15.0]` — a **Network access** switch in desktop **Settings → Server → Access from other devices** (and the **Server** dialog) lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in a file only your user can read (`network-access-key` in its app config folder; before v3.22.0 it was in the OS credential store, so devices paired earlier need the new key), and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. `[v3.16.0]` While network access is on, **Show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Server** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save and use**. The code hides when the key changes or network access turns off.
   `[v3.46.0]` The code carries the OpenAgentd seal in its centre and uses a higher error-correction level, so it still scans.
+  `[v3.49.0]` The iOS and Android apps scan it themselves: **Scan QR code** under Settings → Server (beside **Add a server**) opens the camera (asked once) and fills in the same form; a code that is not a connect code, or a camera that is off, says so.
 
 ---
 
@@ -2335,7 +2514,8 @@ executes tools, manages its task list, and inspects workspace repositories.
   first and wait for your approval; an existing session keeps its mode, and a
   `mode` sent along with `session_id` is ignored instead of refused `[v3.35.0]`.
   The tool card in the sending session has an
-  **Open in <workspace>** button that switches to the session it reached. With
+  **Open in <workspace>** button that switches to the session it reached
+  (since `[v3.49.0]` a small **Open ↗** chip in the card's own row). With
   `reply: true`, the other session's final answer comes back as a **Workspace
   reply** report that starts the sender's next turn and links to the replying
   session:

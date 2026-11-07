@@ -435,7 +435,7 @@ describe("AgentView — error card details and settings", () => {
     render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} onRetry={() => {}} onSwitchModel={() => {}} />)
 
     expect(screen.getByRole("button", { name: "Copy details" })).toBeTruthy()
-    expect(screen.queryByRole("button", { name: "Provider settings" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Open Providers" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Switch model" })).toBeNull()
   })
 
@@ -445,7 +445,7 @@ describe("AgentView — error card details and settings", () => {
     act(() => { useSettingsStore.setState({ openSettings }) })
     try {
       render(<AgentView blocks={ended(detailed({}))} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
-      fireEvent.click(screen.getByRole("button", { name: "Provider settings" }))
+      fireEvent.click(screen.getByRole("button", { name: "Open Providers" }))
       expect(openSettings).toHaveBeenCalledWith("providers")
     } finally {
       act(() => { useSettingsStore.setState({ openSettings: original }) })
@@ -477,7 +477,7 @@ describe("AgentView — error card details and settings", () => {
       act(() => { useAgentStore.setState({ sessionCredentialId: "cred-work" }) })
       try {
         render(<AgentView blocks={failed({ code: "provider_auth_failed" })} currentBlocks={[]} isWorking={false} onRetry={() => {}} onSwitchModel={() => {}} />)
-        expect(screen.getByRole("button", { name: "Provider settings" })).toBeTruthy()
+        expect(screen.getByRole("button", { name: "Open Providers" })).toBeTruthy()
         expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy()
         expect(screen.getByRole("button", { name: "Switch model" })).toBeTruthy()
         expect(screen.queryByRole("button", { name: /Use Auto/ })).toBeNull()

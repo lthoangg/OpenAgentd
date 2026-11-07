@@ -14,6 +14,9 @@
  * ``previewOpen``: where a page the agent opens with its ``preview`` tool
  * goes. ``panel`` opens it in the Review panel as the call finishes;
  * ``click`` leaves it to the tool row's Open button.
+ *
+ * ``diffLayout``: a diff tab's layout on desktop, ``unified`` or ``split``
+ * (side by side, which falls back to unified in a narrow panel).
  */
 import { withViewTransition } from '@/lib/view-transition'
 import { create } from 'zustand'
@@ -24,10 +27,12 @@ export const DISPLAY_PREFS_STORAGE_KEY = 'oa.display.v1'
 export type TranscriptStyle = 'detailed' | 'reader'
 export type TextSize = 'compact' | 'default' | 'large'
 export type PreviewOpen = 'panel' | 'click'
+export type DiffLayout = 'unified' | 'split'
 
 const DEFAULT_TRANSCRIPT_STYLE: TranscriptStyle = 'detailed'
 const DEFAULT_TEXT_SIZE: TextSize = 'default'
 const DEFAULT_PREVIEW_OPEN: PreviewOpen = 'panel'
+const DEFAULT_DIFF_LAYOUT: DiffLayout = 'unified'
 
 export const TRANSCRIPT_STYLES: readonly { value: TranscriptStyle; label: string }[] = [
   { value: 'detailed', label: 'Detailed' },
@@ -67,6 +72,8 @@ interface DisplayPrefsState {
   setTextSize: (size: TextSize) => void
   previewOpen: PreviewOpen
   setPreviewOpen: (where: PreviewOpen) => void
+  diffLayout: DiffLayout
+  setDiffLayout: (layout: DiffLayout) => void
 }
 
 function isTranscriptStyle(value: unknown): value is TranscriptStyle {
@@ -79,6 +86,10 @@ function isTextSize(value: unknown): value is TextSize {
 
 function isPreviewOpen(value: unknown): value is PreviewOpen {
   return PREVIEW_OPENS.some((where) => where.value === value)
+}
+
+function isDiffLayout(value: unknown): value is DiffLayout {
+  return value === 'unified' || value === 'split'
 }
 
 export const useDisplayPrefsStore = create<DisplayPrefsState>()(
@@ -96,16 +107,18 @@ export const useDisplayPrefsStore = create<DisplayPrefsState>()(
       },
       previewOpen: DEFAULT_PREVIEW_OPEN,
       setPreviewOpen: (where) => set({ previewOpen: where }),
+      diffLayout: DEFAULT_DIFF_LAYOUT,
+      setDiffLayout: (layout) => set({ diffLayout: layout }),
     }),
     {
       name: DISPLAY_PREFS_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      partialize: ({ transcriptStyle, textSize, previewOpen }) => ({ transcriptStyle, textSize, previewOpen }),
+      partialize: ({ transcriptStyle, textSize, previewOpen, diffLayout }) => ({ transcriptStyle, textSize, previewOpen, diffLayout }),
       // Stored without a schema: an unknown value from another build reads
       // as the default rather than as a transcript that renders nothing.
       // Only known keys are kept, which drops v3.18.0's `newSessionComposer`.
       merge: (persisted, current) => {
-        const stored = persisted as { transcriptStyle?: unknown; textSize?: unknown; previewOpen?: unknown } | undefined
+        const stored = persisted as { transcriptStyle?: unknown; textSize?: unknown; previewOpen?: unknown; diffLayout?: unknown } | undefined
         const style = stored?.transcriptStyle
         const size = stored?.textSize
         return {
@@ -113,6 +126,7 @@ export const useDisplayPrefsStore = create<DisplayPrefsState>()(
           transcriptStyle: isTranscriptStyle(style) ? style : DEFAULT_TRANSCRIPT_STYLE,
           textSize: isTextSize(size) ? size : DEFAULT_TEXT_SIZE,
           previewOpen: isPreviewOpen(stored?.previewOpen) ? stored.previewOpen : DEFAULT_PREVIEW_OPEN,
+          diffLayout: isDiffLayout(stored?.diffLayout) ? stored.diffLayout : DEFAULT_DIFF_LAYOUT,
         }
       },
     },

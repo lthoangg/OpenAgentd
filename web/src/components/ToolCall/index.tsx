@@ -20,8 +20,7 @@
  */
 
 import { useContext, useEffect, useId, useRef, useState, useMemo, useCallback, memo } from 'react'
-import { ArrowUpRight, ChevronRight, FileText, GitBranch, Globe } from 'lucide-react'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { ChevronRight, FileText, GitBranch, Globe } from 'lucide-react'
 import { previewsAvailable } from '@/api/preview'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { ToolResult } from '../ToolResult'
@@ -46,8 +45,10 @@ import { CopyButton } from './CopyButton'
 import { SectionHeader } from './SectionHeader'
 import { ToolRow } from './ToolRow'
 import { subscribeLiveClock } from './liveClock'
-import { RosterSubagentRow } from './SubagentRow'
+import { RowLinkButton, RowLinkChip, TeamMemberButton, TeamMemberChip } from './RowLink'
 import { teamMemberFromResult } from './subagentStatus'
+import { mcpSignInServer } from './mcpSignIn'
+import { McpSignInChips } from './McpSignInChips'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 import { parseShellOutcome } from './summary'
@@ -193,7 +194,10 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const remote = useToolResult(toolCallId, onServer, fetchWanted)
   const result = inlineResult ?? remote.text
   // Short arguments: the row reads them; the open details need the full ones.
-  const argsOnServer = argsBytes !== undefined && Boolean(toolCallId)
+  // A described shell call's live event carries only its description
+  // (`publisher::stream_arguments`): its command comes from history.
+  const shellArgsOmitted = name === 'shell' && Boolean(done) && typeof args === 'string' && !/"command"\s*:/.test(args)
+  const argsOnServer = (argsBytes !== undefined || shellArgsOmitted) && Boolean(toolCallId)
   const remoteArgs = useToolArguments(toolCallId, argsOnServer, fetchWanted)
   const fullArgs = argsOnServer ? remoteArgs.text : args
   const awaitingArgs = argsOnServer && fullArgs === undefined
@@ -240,16 +244,21 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     () => (canonicalToolName(name) === WORKSPACE_TOOL && done ? parseSendResult(result) : null),
     [name, done, result],
   )
+  const openSentSession = () => {
+    if (sentSession) requestOpenSession({ sessionId: sentSession.sessionId, workspace: sentSession.workspace })
+  }
   // A saved plan opens in the Plan tab.
   const planLink = name === PLAN_TOOL && done && !isFailedResult(result) ? 'Open plan' : null
-  // The subagent a team call started or messaged: its row sits under the
-  // call, so following it takes one click, not an expand and then a click.
+  // The subagent a team call started or messaged: its state sits in the
+  // call's row, and a tap on it opens the session (``RowLink``).
   const teamMember = useMemo(
     () => (canonicalToolName(name) === TEAM_TOOL && done ? teamMemberFromResult(result) : null),
     [name, done, result],
   )
   // An image the agent read opens in the dock.
   const imageRead = useMemo(() => (name === 'read' && done ? parseImageRead(result) : null), [name, done, result])
+  // A call refused because its MCP server waits on sign-in offers Sign in here.
+  const signInServer = useMemo(() => (canonicalToolName(name) === 'mcp' && done ? mcpSignInServer(result) : null), [name, done, result])
   // Pending-state header comes from getToolDisplay's no-args branch
   // (e.g. ``recall`` → "Checking memory…"). Tools without a custom pending header return
   // ``header: null`` from that branch and fall back to the raw tool name
@@ -262,7 +271,9 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const isBackgroundProcess = name === 'bg'
   const isScheduleTaskList = canonicalToolName(name) === 'schedule' && shownResult?.startsWith('Scheduled tasks (')
   const isShell = language === 'bash'
-  const isShellTerminal = isShell && Boolean(formattedArgs)
+  // The terminal block holds a shell call's command, output and result
+  // state, even while the command or the result is still loading.
+  const isShellTerminal = isShell && Boolean(formattedArgs || awaitingArgs || shellArgsOmitted || done)
   // The `[Succeeded]` / `[Failed — exit code 1]` status line is protocol, not
   // output: the row's exit chip carries it.
   const shellParsed = isShell ? parseShellOutcome(shownResult) : null
@@ -338,6 +349,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
       .filter((ref) => fileOpener.canOpen(ref))
       .map((ref) => ({
         label: `Open ${workspaceRelativePath(ref.path, fileOpener.workspace ?? null) ?? ref.path}`,
+        icon: FileText,
         run: () => fileOpener.open(ref),
       }))
   }
@@ -360,7 +372,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   }
 
   return (
-    <div className={animatesIn ? 'tool-row-enter my-0.5' : 'my-0.5'}>
+    <div data-tool-call="" className={animatesIn ? 'tool-row-enter my-0.5' : 'my-0.5'}>
       {/* The row: real tool name, target, result summary, and a right-aligned
           meta column (exit code, duration). A row with nothing to open is a
           plain div, so it adds no empty Tab stop. */}
@@ -414,8 +426,16 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
           {state === 'running' ? (
             <span className="oa-shimmer shrink-0">running…</span>
           ) : null}
+          {teamMember && <TeamMemberChip handle={teamMember} />}
+          {sentSession && (
+            <RowLinkChip onOpen={openSentSession} title={`Switch to the session in ${sentSession.workspace}`}>
+              Open
+            </RowLinkChip>
+          )}
         </ToolRow>
-        {(previewTarget || planLink || imageRead || sentSession) && (
+        {teamMember && <TeamMemberButton handle={teamMember} />}
+        {sentSession && <RowLinkButton label={`Open in ${sentSession.workspaceName}`} onOpen={openSentSession} />}
+        {(previewTarget || planLink || imageRead || sentSession?.createdWorktree || signInServer) && (
           <div className="flex flex-wrap items-center gap-1.5 px-1.5 pb-1">
         {previewTarget && (
           <button
@@ -438,23 +458,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
           </button>
         )}
         {imageRead && <ImageViewChip path={imageRead.path} />}
-        {sentSession && (
-          <Tooltip className="max-w-[60%]">
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  onClick={() => requestOpenSession({ sessionId: sentSession.sessionId, workspace: sentSession.workspace })}
-                  className={cn(TOOL_CHIP_CLASS, 'ml-0 max-w-full')}
-                >
-                  <ArrowUpRight size={12} aria-hidden="true" className="shrink-0" />
-                  <span className="truncate">Open in {sentSession.workspaceName}</span>
-                </button>
-              }
-            />
-            <TooltipContent>{`Switch to the session in ${sentSession.workspace}`}</TooltipContent>
-          </Tooltip>
-        )}
+        {signInServer && <McpSignInChips server={signInServer} />}
         {sentSession?.createdWorktree && (
           <span
             className="inline-flex max-w-[60%] items-center gap-1 align-middle text-meta text-(--color-text-muted)"
@@ -469,7 +473,6 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         )}
           </div>
         )}
-        {teamMember && <RosterSubagentRow handle={teamMember} className="mb-0.5" />}
       </div>
 
       {/* Expandable details — divider then warm paper body per pencil LJOUY */}
@@ -504,7 +507,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
               ) : (
                 <>
                   {/* Args section — caption (closes the row) and Copy sit above the content. */}
-                  {formattedArgs && (
+                  {(formattedArgs || isShellTerminal) && (
                     <div>
                       <SectionHeader
                         label={isShellTerminal ? 'terminal' : 'arguments'}
@@ -517,16 +520,28 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                           <pre
                             ref={liveOutputRef}
                             onScroll={handleScroll}
-                            className="max-h-40 sm:max-h-64 overflow-auto touch-pan-y whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)"
+                            className="max-h-40 sm:max-h-64 phone:max-h-[12lh] phone:text-code overflow-auto touch-pan-y whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)"
                           >
-                            <span className="block"><span className="select-none text-(--color-text-muted)">$ </span><ShellCommand command={formattedArgs} />{shellOutput ? `\n${shellOutput}` : ''}</span>
+                            <span className="block">
+                              {formattedArgs ? (
+                                <><span className="select-none text-(--color-text-muted)">$ </span><ShellCommand command={formattedArgs} /></>
+                              ) : (
+                                <span className="text-(--color-text-muted)">{remoteArgs.error ? `$ (could not load the command: ${remoteArgs.error})` : '$ …'}</span>
+                              )}
+                              {shellOutput ? `\n${shellOutput}` : ''}
+                            </span>
+                            {awaitingResult && !shellOutput && (
+                              <span className="block text-(--color-text-muted)" role="status">
+                                {remote.error ? `Could not load the output: ${remote.error}` : 'Loading output…'}
+                              </span>
+                            )}
                           </pre>
                         </div>
-                      ) : (
+                      ) : formattedArgs ? (
                         <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-all bg-(--bg-input) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
                           {displayedArgs}
                         </pre>
-                      )}
+                      ) : null}
                     </div>
                   )}
                   {targetArg && (
@@ -555,7 +570,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                       <pre
                         ref={liveOutputRef}
                         onScroll={handleScroll}
-                        className="max-h-40 overflow-auto touch-pan-y sm:max-h-64 whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)"
+                        className="max-h-40 overflow-auto touch-pan-y sm:max-h-64 phone:max-h-[12lh] phone:text-code whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)"
                       >
                         {shownLiveOutput}
                       </pre>
@@ -564,7 +579,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
 
                   {/* Background-process output owns its PID/status header, so it
                       replaces the generic Result caption rather than nesting below it. */}
-                  {awaitingResult && !shownLiveOutput && (
+                  {awaitingResult && !shownLiveOutput && !isShellTerminal && (
                     <div>
                       <SectionHeader
                         label="result"

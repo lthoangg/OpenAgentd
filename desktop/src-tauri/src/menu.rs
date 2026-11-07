@@ -615,6 +615,11 @@ fn macos_tray_icon() -> tauri::Result<tauri::image::Image<'static>> {
 /// only while something else is going on (starting, an error, an update).
 const TRAY_STATUS_RUNNING: &str = "Status: Running";
 
+/// The built-in server would not start or stopped for good. Named the way
+/// the app's other surfaces name a failure ("Failed"), with what failed, not
+/// a bare "Error".
+pub const TRAY_STATUS_FAILED: &str = "Status: Built-in server failed";
+
 /// Whether the tray's status row shows ``text``: not for the healthy state.
 fn tray_status_shows(text: &str) -> bool {
     text != TRAY_STATUS_RUNNING
@@ -1154,15 +1159,20 @@ mod tests {
         external_usage_access_key, macos_tray_icon, MENU_MAXIMIZE_REVIEW_PANEL,
         MENU_NEW_SESSION, MENU_NEW_WINDOW, MENU_OPEN_WORKSPACE, MENU_RESET_LAYOUT,
         MENU_REVIEW_PANEL, MENU_SPLIT_REVIEW_PANEL, MENU_SPLIT_REVIEW_PANEL_DOWN, MENU_TERMINAL,
-        MENU_TOGGLE_SIDEBAR, tray_status_shows,
+        MENU_TOGGLE_SIDEBAR, TRAY_STATUS_FAILED, tray_status_shows,
     };
 
     #[test]
     fn the_tray_status_row_says_nothing_while_running() {
         assert!(!tray_status_shows("Status: Running"));
-        for text in ["Status: Starting", "Status: Error", "Status: Restarting…", "Status: Downloading update…"] {
+        for text in ["Status: Starting", TRAY_STATUS_FAILED, "Status: Restarting…", "Status: Downloading update…"] {
             assert!(tray_status_shows(text), "{text}");
         }
+    }
+
+    #[test]
+    fn a_failed_built_in_server_says_what_failed() {
+        assert_eq!(TRAY_STATUS_FAILED, "Status: Built-in server failed");
     }
 
     #[test]

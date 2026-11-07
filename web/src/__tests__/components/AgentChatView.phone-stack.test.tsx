@@ -1,8 +1,11 @@
 /**
  * A phone's chat view is a navigation stack: the sidebar is the Sessions
  * screen underneath, the chat (header and all) is pushed over it, and the
- * header's ‹ goes back up to Sessions. Desktop keeps the sidebar beside the
- * chat. The route decides which is on top (routes/cockpit.tsx).
+ * header's ‹ goes back up to Sessions. Under Sessions is the Servers screen
+ * (a second stack, Sessions and the chat its page): ‹ Servers and a swipe
+ * from the left edge on Sessions go down to it, while a swipe on a pushed
+ * chat still only goes back to Sessions. Desktop keeps the sidebar beside
+ * the chat. The route decides which is on top (routes/cockpit.tsx).
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, fireEvent, screen } from '@testing-library/react'
@@ -25,6 +28,7 @@ mock.module('@tanstack/react-router', () => ({
 }))
 
 mock.module('@tanstack/react-query', () => ({
+  QueryClient: class {},
   useQueryClient: () => ({}),
   useQuery: () => ({ data: undefined, isLoading: false }),
   useInfiniteQuery: () => ({ data: undefined, isLoading: false }),
@@ -41,8 +45,10 @@ mock.module('@/queries/useSessionGoalQuery', () => ({
   useGoalActionMutation: () => ({ mutate: () => {} }),
   useGoalControls: () => undefined,
 }))
+let serverConnected = true
 mock.module('@/queries', () => ({
   useProvidersQuery: () => ({ data: { providers: [] } }),
+  useHealthQuery: () => ({ isSuccess: serverConnected }),
 }))
 mock.module('@/queries/useCommandsQuery', () => ({ useCommandsQuery: () => ({ data: { commands: [] } }) }))
 mock.module('@/queries/useSnippetsQuery', () => ({ useSnippetsQuery: () => ({ data: { snippets: [] } }) }))
@@ -84,8 +90,17 @@ mock.module('@/components/AgentView', () => ({ AgentView: () => <button type="bu
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null }))
 // The sidebar is the Sessions screen on a phone: record how it is asked to render.
 mock.module('@/components/Sidebar', () => ({
-  Sidebar: ({ page, mobileOpen }: { page?: boolean; mobileOpen?: boolean }) => (
-    <nav data-testid="sessions" data-page={String(Boolean(page))} data-open={String(Boolean(mobileOpen))} />
+  Sidebar: ({ page, mobileOpen, onOpenServers }: { page?: boolean; mobileOpen?: boolean; onOpenServers?: () => void }) => (
+    <nav data-testid="sessions" data-page={String(Boolean(page))} data-open={String(Boolean(mobileOpen))}>
+      {onOpenServers && <button type="button" onClick={onOpenServers}>Back to Servers</button>}
+    </nav>
+  ),
+}))
+mock.module('@/components/phone/LazyServersScreen', () => ({
+  ServersScreen: ({ active, onOpenSessions }: { active: boolean; onOpenSessions: () => void }) => (
+    <section data-testid="servers" data-active={String(active)}>
+      <button type="button" onClick={onOpenSessions}>Open sessions</button>
+    </section>
   ),
 }))
 mock.module('@/components/WorkspacePanel', () => ({
@@ -200,5 +215,90 @@ describe('the phone navigation stack', () => {
     expect(stack()).toBeNull()
     expect(screen.getByTestId('sessions').dataset.page).toBe('false')
     expect(screen.queryByRole('button', { name: 'Back to Sessions' })).toBeNull()
+  })
+})
+
+describe('the Servers level under Sessions', () => {
+  const stacks = () => Array.from(document.querySelectorAll('[data-phone-stack]')) as HTMLElement[]
+  /** A layer of a stack, not of the one nested in it. */
+  const layerOf = (stackEl: HTMLElement, kind: 'root' | 'page') =>
+    Array.from(stackEl.children).find((child) => child.hasAttribute(`data-phone-stack-${kind}`)) as HTMLElement
+  const edgeSwipe = (el: Element) => {
+    fireEvent.touchStart(el, { touches: [{ clientX: 5, clientY: 300 }] })
+    fireEvent.touchMove(el, { touches: [{ clientX: 40, clientY: 302 }] })
+    fireEvent.touchMove(el, { touches: [{ clientX: 700, clientY: 305 }] })
+    fireEvent.touchEnd(el, { touches: [] })
+  }
+  const levels = (props: { atSessions: boolean; atServers: boolean }) => {
+    const handlers = { onBack: mock(() => {}), onBackToServers: mock(() => {}), onOpenSessions: mock(() => {}) }
+    render(<AgentChatView sessionId="test-session" workspace="/repo/project" phoneStack={{ ...props, ...handlers }} />)
+    return handlers
+  }
+
+  it('puts Servers under Sessions, Sessions and the chat its page', () => {
+    levels({ atSessions: true, atServers: true })
+    const [outer, inner] = stacks()
+    expect(stacks()).toHaveLength(2)
+    expect(layerOf(outer, 'root').contains(screen.getByTestId('servers'))).toBe(true)
+    expect(layerOf(outer, 'page').contains(inner)).toBe(true)
+    expect(screen.getByTestId('servers').dataset.active).toBe('true')
+    // Servers on top: Sessions and the chat are closed to touch.
+    expect(layerOf(outer, 'page').hasAttribute('inert')).toBe(true)
+  })
+
+  it('goes up to Sessions from Servers, and down again with ‹ Servers', () => {
+    const { onOpenSessions } = levels({ atSessions: true, atServers: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Open sessions' }))
+    expect(onOpenSessions).toHaveBeenCalledTimes(1)
+    cleanup()
+
+    const next = levels({ atSessions: true, atServers: false })
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Servers' }))
+    expect(next.onBackToServers).toHaveBeenCalledTimes(1)
+  })
+
+  it('swipes from Sessions down to Servers', () => {
+    const { onBack, onBackToServers } = levels({ atSessions: true, atServers: false })
+    const [outer] = stacks()
+    expect(layerOf(outer, 'root').hasAttribute('inert')).toBe(true)
+    // One swipe away, Servers has its list loaded, so the swipe reveals it.
+    expect(screen.getByTestId('servers').dataset.active).toBe('true')
+    edgeSwipe(screen.getByTestId('sessions'))
+    expect(onBackToServers).toHaveBeenCalledTimes(1)
+    expect(onBack).not.toHaveBeenCalled()
+  })
+
+  const forwardSwipe = (el: Element) => {
+    fireEvent.touchStart(el, { touches: [{ clientX: 300, clientY: 300 }] })
+    fireEvent.touchMove(el, { touches: [{ clientX: 270, clientY: 302 }] })
+    fireEvent.touchMove(el, { touches: [{ clientX: 10, clientY: 305 }] })
+    fireEvent.touchEnd(el, { touches: [] })
+  }
+
+  it('swipes left from Servers up to Sessions while a server is connected', () => {
+    serverConnected = true
+    const { onOpenSessions } = levels({ atSessions: true, atServers: true })
+    forwardSwipe(screen.getByTestId('servers'))
+    expect(onOpenSessions).toHaveBeenCalledTimes(1)
+  })
+
+  it('rubber-bands the swipe from Servers when no server answers', () => {
+    serverConnected = false
+    try {
+      const { onOpenSessions } = levels({ atSessions: true, atServers: true })
+      forwardSwipe(screen.getByTestId('servers'))
+      expect(onOpenSessions).not.toHaveBeenCalled()
+    } finally {
+      serverConnected = true
+    }
+  })
+
+  it('swipes a pushed chat back to Sessions only, never on down to Servers', () => {
+    const { onBack, onBackToServers } = levels({ atSessions: false, atServers: false })
+    // Two levels down under a chat, Servers rests.
+    expect(screen.getByTestId('servers').dataset.active).toBe('false')
+    edgeSwipe(screen.getByRole('textbox', { name: 'Message input' }))
+    expect(onBack).toHaveBeenCalledTimes(1)
+    expect(onBackToServers).not.toHaveBeenCalled()
   })
 })

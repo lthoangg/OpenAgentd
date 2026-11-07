@@ -5,6 +5,7 @@ import { AppLayout } from './routes/cockpit'
 import { SchedulerPage } from './routes/scheduler'
 import { SettingsPage } from './routes/settings'
 import { TelemetryPage } from './routes/telemetry'
+import { RouteErrorPage } from './components/RouteErrorPage'
 
 const rootRoute = createRootRoute({
   component: Root,
@@ -49,6 +50,13 @@ const sessionRoute = createRoute({
 const sessionsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/sessions',
+  component: () => null,
+})
+// /servers: the phone's bottom level, the saved servers, with Sessions (and
+// a chat over it) pushed on top. Elsewhere the layout sends it to /.
+const serversRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/servers',
   component: () => null,
 })
 
@@ -110,7 +118,7 @@ const settingsSectionRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   packagedIndexRoute,
-  appLayoutRoute.addChildren([newSessionRoute, sessionsRoute, sessionRoute]),
+  appLayoutRoute.addChildren([newSessionRoute, sessionsRoute, serversRoute, sessionRoute]),
   legacyCodingRoute,
   legacyCodingSessionRoute,
   telemetryRoute,
@@ -119,7 +127,8 @@ const routeTree = rootRoute.addChildren([
   settingsSectionRoute,
 ])
 
-export const router = createRouter({ routeTree, defaultPreload: 'intent' })
+// A crash in a route shows the app's own error page, not the router's box.
+export const router = createRouter({ routeTree, defaultPreload: 'intent', defaultErrorComponent: RouteErrorPage })
 
 declare module '@tanstack/react-router' {
   interface Register {

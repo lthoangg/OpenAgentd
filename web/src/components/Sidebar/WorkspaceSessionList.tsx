@@ -3,6 +3,7 @@ import { useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { MessageCircle, TriangleAlert } from 'lucide-react'
 import { useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
+import { WORKSPACE_SESSION_PAGE_SIZE, nextPageCount } from '@/lib/session-pages'
 import { queryKeys } from '@/queries/keys'
 import { getSession } from '@/api/client/agent'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
@@ -162,7 +163,7 @@ export function WorkspaceSessionList({
         )
       })}
       <Collapsible open={!collapsed && hasNextPage === true}>
-        <ShowMoreRow loading={isFetchingNextPage} onLoadMore={() => { void fetchNextPage() }} />
+        <ShowMoreRow loading={isFetchingNextPage} count={nextPageCount(sessions.data, WORKSPACE_SESSION_PAGE_SIZE)} onLoadMore={() => { void fetchNextPage() }} />
       </Collapsible>
     </div>
   )

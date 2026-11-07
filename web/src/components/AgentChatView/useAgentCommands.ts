@@ -28,10 +28,12 @@ import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { openNextNeedsYou } from '@/lib/desktop-commands'
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 
-/** The session's goal as the palette needs it: given only while it has one. */
+/** The session's Goal tab as the palette needs it: given whenever it can open. */
 export interface UseAgentCommandsGoal {
   /** Opens the dock's Goal tab. */
   onShow: () => void
+  /** The session has a live goal; otherwise the entry says how one starts. */
+  active: boolean
 }
 
 interface UseAgentCommandsArgs {
@@ -57,8 +59,10 @@ interface UseAgentCommandsArgs {
   handleSplitDockDown?: () => void
   /** Desktop: find in this session's transcript (⌘F). */
   handleFindInSession?: () => void
-  /** Only while the session has a plan: opens it (dock Plan tab, or the task popover without a workspace). */
+  /** Opens the plan (dock Plan tab, or the task popover without a workspace), even before there is one. */
   handleOpenPlan?: () => void
+  /** The session has a plan; otherwise the entry says how one starts. */
+  hasPlan?: boolean
   /** The plan is waiting for the user's review. */
   planAwaitingReview?: boolean
   /** Opens a web preview tab in the review dock (workspace + local backend). */
@@ -69,14 +73,18 @@ interface UseAgentCommandsArgs {
   goal?: UseAgentCommandsGoal
 }
 
-/** The palette's one goal entry: it opens the Goal tab, where the goal's actions are. */
+/**
+ * The palette's one goal entry: it opens the Goal tab, where the goal's
+ * actions are. Listed before a goal exists too, so it can be found; the tab's
+ * empty state then says how a goal starts.
+ */
 function goalCommands(goal: UseAgentCommandsArgs['goal']): Command[] {
   if (!goal) return []
   return [{
     id: 'goal-open',
     group: 'View',
     label: 'Goal',
-    description: 'Progress, limits, and the last completion check',
+    description: goal.active ? 'Progress, limits, and the last completion check' : 'No goal yet · approve a plan with Keep going until done',
     keywords: 'goal objective loop continue autonomous pause resume clear',
     action: goal.onShow,
   }]
@@ -96,6 +104,7 @@ export function useAgentCommands({
   handleSplitDockDown,
   handleFindInSession,
   handleOpenPlan,
+  hasPlan = false,
   planAwaitingReview = false,
   handleOpenPreview,
   handleOpenSideQuestions,
@@ -119,7 +128,9 @@ export function useAgentCommands({
           id: 'open-plan',
           group: 'View' as const,
           label: 'Open Plan',
-          description: planAwaitingReview ? 'Waiting for your review · approve or request changes' : "View or edit this session's plan",
+          description: planAwaitingReview
+            ? 'Waiting for your review · approve or request changes'
+            : hasPlan ? "View or edit this session's plan" : 'No plan yet · in Plan mode the agent writes one here',
           keywords: 'plan review approve request changes comment',
           action: handleOpenPlan,
         }]
@@ -218,5 +229,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, router, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleSplitDock, handleSplitDockDown, handleFindInSession, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode, textSize, setTextSize])
+  ], [os, isTauri, router, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleSplitDock, handleSplitDockDown, handleFindInSession, handleOpenPlan, hasPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode, textSize, setTextSize])
 }

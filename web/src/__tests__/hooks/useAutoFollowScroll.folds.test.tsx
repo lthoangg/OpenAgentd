@@ -253,15 +253,15 @@ describe('useAutoFollowScroll — Jump to latest', () => {
     expect(glides).toEqual([{ top: 2400, behavior: 'smooth' }])
   })
 
-  it('jumps from further back, as a send does', () => {
+  it('from further back cuts to a screen above the end, then glides', () => {
     const { el, box, glides } = setup()
     box.scrollTop = 0
     scrollEvent(el)
 
     act(() => hook!.jumpToLatest())
 
-    expect(glides).toEqual([])
-    expect(box.scrollTop).toBe(2400)
+    expect(glides).toEqual([{ top: 2400, behavior: 'smooth' }])
+    expect(box.scrollTop).toBeGreaterThan(0)
     expect(chip()).toBe(false)
   })
 

@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, RefreshCw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useTouchFirst } from '@/hooks/use-touch-first'
 import { ProviderUsageError, formatRetryIn, isSnapshotExpired, snapshotUpdatedAtMs } from '@/lib/provider-usage'
 import { useProviderUsageQuery } from '@/queries'
 import { UsagePanel, usagePlan } from './UsagePanel'
@@ -26,6 +27,24 @@ function UsageRefresh({ query, label, cooling, needsSignIn }: { query: UsageQuer
   const busy = query.isFetching
   const paused = cooling || needsSignIn
   const reason = needsSignIn ? 'Paused until you sign in again' : cooling ? 'Paused until the provider allows another request' : null
+  // Touch: a glyph beside the ⋯, a pair of quiet icons, rather than one word
+  // standing in for every action the ⋯ sheet holds.
+  const touch = useTouchFirst()
+  if (touch) {
+    return (
+      <Button
+        type="button"
+        size="icon-xs"
+        variant="ghost"
+        aria-label={`Refresh usage for ${label}`}
+        disabled={busy || paused}
+        className="touch-hit relative text-(--color-text-muted)"
+        onClick={() => void query.refresh()}
+      >
+        <RefreshCw size={16} className={busy ? 'animate-spin' : undefined} aria-hidden="true" />
+      </Button>
+    )
+  }
   const button = (
     <Button
       type="button"

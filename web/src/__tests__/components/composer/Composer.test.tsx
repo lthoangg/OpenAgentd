@@ -1,6 +1,7 @@
 /**
  * The docked composer and its run deck: always open in the column's flow,
- * the run chip reading ``provider:model · Level · Account``, and the "+" menu.
+ * the run chip reading ``model · Level · Account`` (``provider:model`` in its
+ * tooltip), and the "+" menu.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -74,13 +75,25 @@ describe('Composer (docked)', () => {
 })
 
 describe('RunChip', () => {
-  it('reads provider:model in mono, then the level and the account in use', () => {
+  it('names the model in sans, then the level and the account in use', () => {
     const account = { id: 'w', label: 'Work', disabled: false, kind: 'oauth' as const, hint: null, settings: {}, status: 'ready' as const, in_use: false, cooldown_until: null, cooldown_reason: null }
     wrap(<RunChip settings={runSettings({ inUseAccount: account, accounts: [account, { ...account, id: 'h', label: 'Home' }] })} />)
     const chip = document.querySelector('[data-run-chip]') as HTMLElement
-    expect(chip.textContent).toBe('anthropic:claude-sonnet-4-5·High · Work')
+    expect(chip.textContent).toBe('claude-sonnet-4-5·High · Work')
     expect(chip.getAttribute('aria-label')).toMatch(/^Model anthropic:claude-sonnet-4-5, thinking High, account Work\. Change/)
-    expect(chip.querySelector('.font-mono')?.textContent).toBe('anthropic:claude-sonnet-4-5')
+    expect(chip.querySelector('.font-mono')).toBeNull()
+    expect(chip.querySelector('[data-run-chip-model]')?.textContent).toBe('claude-sonnet-4-5')
+  })
+
+  it('names provider:model in mono in its tooltip, with the shortcut', async () => {
+    wrap(<RunChip settings={runSettings()} />)
+    const chip = document.querySelector('[data-run-chip]') as HTMLElement
+
+    fireEvent.mouseEnter(chip.parentElement!)
+    // The hover hint waits 500ms (ui/tooltip); a loaded runner needs the slack.
+    const tip = await screen.findByRole('tooltip', undefined, { timeout: 3000 })
+    expect(tip.querySelector('.font-mono')?.textContent).toBe('anthropic:claude-sonnet-4-5')
+    expect(tip.textContent).toMatch(/^anthropic:claude-sonnet-4-5 · Change \((⌘|Ctrl\+)\.\)$/)
   })
 
   it('names the account a locked session moved to, never Auto', () => {
@@ -92,21 +105,17 @@ describe('RunChip', () => {
     expect(chip.getAttribute('aria-label')).not.toContain('Auto')
   })
 
-  it('lets the provider part give way first, and stacks under 520px', () => {
+  it('keeps the end of a long model name when it truncates, and stacks under 520px', () => {
     wrap(<RunChip settings={runSettings()} />)
     const chip = document.querySelector('[data-run-chip]') as HTMLElement
-    const line = chip.querySelector('.font-mono') as HTMLElement
-    const [provider, model] = Array.from(line.children)
-    // Whole or not at all: never a clipped sliver of a letter (see
-    // ui/model-name).
-    expect(provider.className).toContain('whitespace-nowrap')
-    expect(provider.className).not.toContain('truncate')
+    const line = chip.querySelector('[data-run-chip-model]') as HTMLElement
     expect(line.className).toContain('h-[1lh]')
-    expect(line.className).toContain('flex-wrap')
-    // The model never shrinks; capped at the chip's width it truncates only
-    // once the provider part is gone.
-    expect(model.className).toContain('shrink-0')
-    expect(model.className).toContain('max-w-full')
+    // ui/model-name's ModelPart: the start gives way, the end (`sonnet-4-5`) stays whole.
+    const [head, tail] = Array.from(line.firstElementChild!.children)
+    expect(head.textContent).toBe('claude-')
+    expect(head.className).toContain('truncate')
+    expect(tail.textContent).toBe('sonnet-4-5')
+    expect(tail.className).toContain('whitespace-nowrap')
     expect(chip.innerHTML).toContain('@max-[520px]:flex-col')
   })
 

@@ -1,8 +1,12 @@
-import { memo, useCallback, useEffect, useRef, useState, type HTMLAttributes } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/queries/keys'
+import { getCodingWorkspaceStatus } from '@/api/client'
 import { AnimatedTitle } from '@/components/ui/animated-title'
 import { isFreshAutoTitle } from '@/lib/auto-title'
 import { cn } from '@/lib/utils'
 import { CornerUpLeft, ListTodo, Menu, PanelLeft, PanelRight } from 'lucide-react'
+import { BottomSheet } from '@/components/ui/bottom-sheet'
 
 import { AgentTopbar } from '@/components/AgentTopbar'
 import { usePanelWidthSink } from '@/components/ResizableAside'
@@ -61,6 +65,12 @@ interface AgentChatHeaderProps {
 const MAC_TOGGLE_INSET_CLASS = 'pl-[calc(var(--spacing-mac-traffic-inset)+0.5rem)]'
 
 /**
+ * The 32px buttons that lead the header ring inside their box: the header is
+ * 36px and clips overflow, so the outline 2px out lost its top and bottom.
+ */
+const HEADER_LEAD_FOCUS = 'focus-visible:ring-inset'
+
+/**
  * ☰: the application menu where the OS menu bar is hidden (Windows, Linux),
  * opened at the button's bottom-left. A bare Alt tap opens it there too, the
  * way those platforms open a menu bar. A narrow window uses the phone layout,
@@ -104,6 +114,7 @@ function AppMenuButton({ hidden }: { hidden: boolean }) {
             onClick={open}
             aria-label="Application menu"
             aria-haspopup="menu"
+            className={HEADER_LEAD_FOCUS}
           >
             <Menu size={14} strokeWidth={1.8} aria-hidden="true" />
           </Button>
@@ -127,7 +138,7 @@ function OpenLeadButton({ onOpen, className }: { onOpen: () => void; className?:
             onClick={onOpen}
             aria-label="Open the main agent"
             data-open-lead=""
-            className={className}
+            className={cn(HEADER_LEAD_FOCUS, className)}
           >
             <CornerUpLeft size={14} strokeWidth={1.8} aria-hidden="true" />
           </Button>
@@ -192,6 +203,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                 onSidebarToggle()
               }}
               aria-label="Toggle sidebar"
+              className={HEADER_LEAD_FOCUS}
             >
               {/* Phones open a drawer (menu); desktop folds a rail (panel). */}
               {isMobile ? (
@@ -319,20 +331,14 @@ export const AgentChatHeader = memo(function AgentChatHeader({
 
   if (onBack) {
     return (
-      <PhoneNavBar
-        separator="scrolled"
-        back={{ label: 'Sessions', onBack }}
-        title={!workspace
-          ? 'Choose a workspace'
-          : sessionTitle ? <AnimatedTitle text={sessionTitle} sessionId={sessionId} /> : sessionId ? 'Untitled session' : 'New session'}
-        subtitle={workspace ? workspaceName : undefined}
-        trailing={(
-          <div data-header-cluster="end" className="flex items-center">
-            {onOpenLead && <OpenLeadButton onOpen={onOpenLead} />}
-            {tasksAction}
-            {reviewAction}
-          </div>
-        )}
+      <PhoneChatNavBar
+        onBack={onBack}
+        workspace={workspace}
+        workspaceName={workspaceName}
+        sessionId={sessionId}
+        sessionTitle={sessionTitle}
+        onOpenLead={onOpenLead}
+        actions={<>{tasksAction}{reviewAction}</>}
       />
     )
   }
@@ -385,4 +391,84 @@ export const AgentChatHeader = memo(function AgentChatHeader({
 function TitleSeparator({ sessionId, title }: { sessionId: string | null | undefined; title: string }) {
   const [landing] = useState(() => isFreshAutoTitle(sessionId, title))
   return <span className={cn('shrink-0 text-(--color-text-muted)', landing && 'oa-fade-in')}>·</span>
+}
+
+/**
+ * The phone stack's chat bar: ‹ Sessions, the title left-aligned (a tap
+ * opens the session's info, with its branch), then Tasks and Workspace as
+ * direct buttons.
+ */
+function PhoneChatNavBar({ onBack, workspace, workspaceName, sessionId, sessionTitle, onOpenLead, actions }: {
+  onBack: () => void
+  workspace: string | null
+  workspaceName: string
+  sessionId: string | null | undefined
+  sessionTitle: string | null
+  onOpenLead?: () => void
+  actions: ReactNode
+}) {
+  const [infoOpen, setInfoOpen] = useState(false)
+  const { data: status } = useQuery({
+    queryKey: queryKeys.coding.status(workspace ?? ''),
+    queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace!, signal),
+    enabled: !!workspace && infoOpen,
+  })
+  const branch = status?.is_git_repo ? status.branch : null
+  const titleText = !workspace
+    ? 'Choose a workspace'
+    : sessionTitle ? <AnimatedTitle text={sessionTitle} sessionId={sessionId} /> : sessionId ? 'Untitled session' : 'New session'
+  return (
+    <>
+      <PhoneNavBar
+        separator="scrolled"
+        titleAlign="start"
+        back={{ label: 'Sessions', onBack }}
+        title={sessionId ? (
+          <Button
+            type="button"
+            variant="ghost"
+            data-session-info-trigger=""
+            onClick={() => setInfoOpen(true)}
+            aria-label="Session info"
+            // The bar's own title type: the button only adds the tap. No
+            // phone button floor (``min-h-0!``): its 40px box under the
+            // workspace line pushed the title up and the bar taller, and the
+            // ghost's muted medium text read as a second subtitle. ``!``
+            // throughout: ``cn`` does not merge, so these must beat the
+            // ghost/size classes they repeat.
+            className="block! h-auto! min-h-0! min-w-0! max-w-full truncate rounded-none! p-0! text-left font-semibold! text-[length:inherit]! leading-[inherit]! text-(--color-text)! hover:bg-transparent! active:bg-transparent! active:opacity-60"
+          >
+            {titleText}
+          </Button>
+        ) : titleText}
+        subtitle={workspace ? workspaceName : undefined}
+        trailing={(
+          <div data-header-cluster="end" className="flex items-center">
+            {onOpenLead && <OpenLeadButton onOpen={onOpenLead} />}
+            {actions}
+          </div>
+        )}
+      />
+      <BottomSheet open={infoOpen} onClose={() => setInfoOpen(false)} label="Session info">
+        <dl data-session-info="" className="flex flex-col px-4 pb-4 text-sm">
+          <div className="flex min-h-11 items-center justify-between gap-4 border-b border-(--color-border) last:border-b-0">
+            <dt className="text-(--color-text-muted)">Title</dt>
+            <dd className="min-w-0 truncate text-(--color-text)">{sessionTitle || 'Untitled session'}</dd>
+          </div>
+          {workspace && (
+            <div className="flex min-h-11 items-center justify-between gap-4 border-b border-(--color-border) last:border-b-0">
+              <dt className="text-(--color-text-muted)">Workspace</dt>
+              <dd className="min-w-0 truncate text-(--color-text)" title={workspace}>{workspaceName}</dd>
+            </div>
+          )}
+          {branch && (
+            <div className="flex min-h-11 items-center justify-between gap-4 border-b border-(--color-border) last:border-b-0">
+              <dt className="text-(--color-text-muted)">Branch</dt>
+              <dd data-session-branch="" className="min-w-0 truncate font-mono text-(--color-text)" title={branch}>{branch}</dd>
+            </div>
+          )}
+        </dl>
+      </BottomSheet>
+    </>
+  )
 }

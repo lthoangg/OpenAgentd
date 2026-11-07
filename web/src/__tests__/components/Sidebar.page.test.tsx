@@ -3,7 +3,7 @@
  * The same component as the drawer, drawn as a full screen: a top bar (server
  * chip, small title, ✎), a large title and a search field that scroll with
  * the list, pull to refresh, swipe actions on session rows and a bottom
- * toolbar (Settings · Scheduled · Usage · Commands). No scrim, no drawer
+ * toolbar (Settings · Scheduled · Usage · Theme). No scrim, no drawer
  * motion, no New session row, no Scheduled section.
  */
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -12,6 +12,7 @@ import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within }
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { queryKeys } from '@/queries'
 import { APP_EVENTS } from '@/lib/app-events'
+import { themeStorageKey } from '@/lib/theme'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
 import { useToastStore } from '@/stores/useToastStore'
@@ -61,9 +62,10 @@ mock.module('@/hooks/use-platform', () => ({
 mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => isMobile }))
 // Reduced motion makes a swipe snap, so a release reads at its resting place.
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => true }))
+const softHaptic = mock(() => undefined)
 mock.module('@/lib/haptics', () => ({
   selectionHapticFeedback: () => undefined,
-  softHapticFeedback: () => undefined,
+  softHapticFeedback: softHaptic,
   mediumHapticFeedback: () => undefined,
   alignmentHapticFeedback: () => undefined,
   outcomeHapticFeedback: () => undefined,
@@ -263,7 +265,7 @@ describe('Sidebar page mode: the Sessions screen', () => {
     expect(view.container.querySelector('[data-sidebar-new-session]')).toBeNull()
     expect(screen.queryByRole('region', { name: 'Scheduled' })).toBeNull()
     expect(view.container.querySelector('[data-sidebar-scheduled-scroller]')).toBeNull()
-    // One New session: the ✎ in the top bar.
+    // One New session: the round ✎ in the floating toolbar.
     expect(screen.getAllByRole('button', { name: 'New session' })).toHaveLength(1)
   })
 
@@ -279,6 +281,37 @@ describe('Sidebar page mode: the Sessions screen', () => {
     expect(screen.getByRole('button', { name: 'View options' })).toBeTruthy()
     // The search field replaces the header's own Search icon.
     expect(screen.queryByRole('button', { name: 'Search sessions' })).toBeNull()
+  })
+
+  it('marks a workspace row when a session inside waits for you', async () => {
+    const waiting = session('w-1', 'Asks a question', { needs_input: true, running: true })
+    workspaceSessionsData = [waiting]
+    activeSessionsData = [waiting]
+    await renderPage()
+    const row = screen.getByRole('button', { name: 'Open workspace project' })
+    const mark = row.querySelector('[data-workspace-status]')
+    expect(mark).not.toBeNull()
+    expect(within(row).getByLabelText('1 waiting for you')).toBeTruthy()
+  })
+
+  it('lists worktrees in a sheet with session counts, names in sans', async () => {
+    globalThis.fetch = mock(async (input: unknown) => {
+      if (String(input).includes('/api/agent/workspace/tree')) {
+        return new Response(JSON.stringify({
+          repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/wt/task-a', name: 'task-a', managed: true }], group_ids: [] }],
+          chat: null,
+          groups: [],
+        }))
+      }
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+    await renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: '1 worktree' }))
+    const sheet = document.querySelector<HTMLElement>('[data-worktree-sheet]')!
+    const row = within(sheet).getByRole('radio', { name: /task-a/ })
+    expect(row.textContent).toContain('0 sessions')
+    expect(row.innerHTML).not.toContain('font-mono')
+    expect(within(sheet).getByRole('button', { name: /Create worktree/ })).toBeTruthy()
   })
 
   it('names the server in the top bar, with a small title that waits for the large one to scroll away', async () => {
@@ -301,13 +334,45 @@ describe('Sidebar page mode: the Sessions screen', () => {
     expect(bar.hasAttribute('data-title-visible')).toBe(false)
   })
 
-  it('starts a new session from ✎ the way ⌘N does', async () => {
+  it('goes down to Servers from ‹ Servers, naming the server under the large title', async () => {
+    const onOpenServers = mock(() => {})
+    const { view } = await renderPage({ onOpenServers })
+    const bar = view.container.querySelector('[data-sessions-page-bar]') as HTMLElement
+
+    // ‹ Servers takes the server chip's place.
+    expect(within(bar).queryByRole('button', { name: /Change server$/ })).toBeNull()
+    fireEvent.click(within(bar).getByRole('button', { name: 'Back to Servers' }))
+    expect(onOpenServers).toHaveBeenCalledTimes(1)
+
+    // The server stays in sight under the title, and goes to Servers too.
+    const line = view.container.querySelector('[data-sessions-server]') as HTMLElement
+    expect(line.closest('[data-sessions-page-header]')).not.toBeNull()
+    expect(line.textContent).toContain('·')
+    // In a browser (no app shell status) it is "This server", the Servers screen's name.
+    await waitFor(() => expect(line.textContent).toContain('This server'))
+    fireEvent.click(line)
+    expect(onOpenServers).toHaveBeenCalledTimes(2)
+  })
+
+  it('pushes a fresh draft from ✎, even over an empty draft kept under Sessions', async () => {
     const onNewSession = mock(() => {})
+    // No session: the chat under Sessions is an empty draft, where the
+    // chat's own handler would do nothing.
     await renderPage({ onNewSession })
 
     fireEvent.click(screen.getByRole('button', { name: 'New session' }))
 
-    expect(onNewSession).toHaveBeenCalledTimes(1)
+    expect(onNewSession).not.toHaveBeenCalled()
+    expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ to: '/', search: { workspace: '/repo/project' } }))
+  })
+
+  it('taps a light haptic when ✎ pushes the draft', async () => {
+    await renderPage()
+    softHaptic.mockClear()
+
+    fireEvent.click(screen.getByRole('button', { name: 'New session' }))
+
+    expect(softHaptic).toHaveBeenCalledTimes(1)
   })
 
   it('opens a draft in the current workspace from ✎ when the chat has no handler', async () => {
@@ -379,23 +444,22 @@ describe('Sidebar page mode: pull to refresh', () => {
 })
 
 describe('Sidebar page mode: bottom toolbar', () => {
-  it('has four labelled buttons that open Settings, Scheduled, Usage and Commands', async () => {
+  it('floats a pill of four icon buttons and the round New session button', async () => {
     const openSettings = mock(() => {})
     const real = useSettingsStore.getState().openSettings
     useSettingsStore.setState({ openSettings })
     const onOpenScheduler = mock(() => {})
-    const onOpenPalette = mock(() => {})
     try {
-      const { view } = await renderPage({ onOpenScheduler, onOpenPalette })
+      const { view } = await renderPage({ onOpenScheduler, onOpenPalette: () => {} })
       const toolbar = view.container.querySelector('[data-sessions-page-toolbar]') as HTMLElement
-      const names = within(toolbar).getAllByRole('button').map((button) => button.textContent)
-      expect(names).toEqual(['Settings', 'Scheduled', 'Usage', 'Commands'])
-      expect(toolbar.className).toContain('border-t')
+      const pill = within(toolbar).getByRole('toolbar', { name: 'Sessions' })
+      const names = within(pill).getAllByRole('button').map((button) => button.getAttribute('aria-label'))
+      expect(names).toEqual(['Settings', 'Scheduled', 'Usage', 'Theme: System. Tap for Light.'])
+      // Icons only: actions, not tabs, so no captions.
+      expect(pill.textContent).toBe('')
+      expect(toolbar.className).toContain('absolute')
       expect(toolbar.className).toContain('pb-safe')
-      // Icon over label, the label in the caption size.
-      const settings = within(toolbar).getByRole('button', { name: 'Settings' })
-      expect(settings.className).toContain('flex-col')
-      expect(within(settings).getByText('Settings').className).toContain('text-meta')
+      expect(within(toolbar).getByRole('button', { name: 'New session' }).dataset.sessionsNew).toBe('')
 
       fireEvent.click(within(toolbar).getByRole('button', { name: 'Settings' }))
       expect(openSettings).toHaveBeenCalledTimes(1)
@@ -406,19 +470,46 @@ describe('Sidebar page mode: bottom toolbar', () => {
       expect(useUIStore.getState().telemetryOpen).toBe(false)
       fireEvent.click(within(toolbar).getByRole('button', { name: 'Usage' }))
       expect(useUIStore.getState().telemetryOpen).toBe(true)
-
-      fireEvent.click(within(toolbar).getByRole('button', { name: 'Commands' }))
-      expect(onOpenPalette).toHaveBeenCalledTimes(1)
     } finally {
       useSettingsStore.setState({ openSettings: real })
     }
   })
 
-  it('hides Commands when nothing opens the palette', async () => {
-    await renderPage({ onOpenScheduler: () => {} })
+  it('has no Commands button: the palette is a keyboard surface', async () => {
+    await renderPage({ onOpenScheduler: () => {}, onOpenPalette: () => {} })
 
     expect(screen.queryByRole('button', { name: 'Commands' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Scheduled' })).toBeTruthy()
+  })
+
+  it('cycles the theme System → Light → Dark → System, showing the current one', async () => {
+    localStorage.removeItem(themeStorageKey())
+    try {
+      const { view } = await renderPage()
+      const toolbar = view.container.querySelector('[data-sessions-page-toolbar]') as HTMLElement
+      const themeButton = () => within(toolbar).getByRole('button', { name: /^Theme:/ })
+
+      expect(themeButton().getAttribute('aria-label')).toBe('Theme: System. Tap for Light.')
+      expect(themeButton().getAttribute('title')).toBe('Theme: System')
+      for (const [next, label] of [['Light', 'Theme: Light. Tap for Dark.'], ['Dark', 'Theme: Dark. Tap for System.'], ['System', 'Theme: System. Tap for Light.']]) {
+        fireEvent.click(themeButton())
+        await waitFor(() => expect(themeButton().getAttribute('title')).toBe(`Theme: ${next}`))
+        expect(themeButton().getAttribute('aria-label')).toBe(label)
+      }
+    } finally {
+      localStorage.removeItem(themeStorageKey())
+    }
+  })
+
+  it('steps aside while searching, so it never rides up on the soft keyboard', async () => {
+    const { view } = await renderPage()
+    const toolbar = () => view.container.querySelector('[data-sessions-page-toolbar]')
+    expect(toolbar()).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    expect(toolbar()).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(toolbar()).not.toBeNull()
   })
 
   it('opens Scheduled the way the drawer\'s section does when the caller gives no handler', async () => {
@@ -450,8 +541,8 @@ describe('Sidebar page mode: swipe actions', () => {
     expect(swipeRow).toBeTruthy()
     const actions = actionsOf(swipeRow)
     expect(actions.map((button) => button.textContent)).toEqual(['Pin', 'Delete'])
-    // Accent for Pin, destructive for Delete, as SwipeRow draws its tones.
-    expect(actions[0].className).toContain('bg-(--color-accent)')
+    // Neutral for Pin, destructive for Delete: only Delete is loud.
+    expect(actions[0].className).toContain('bg-(--bg-key)')
     expect(actions[1].className).toContain('bg-(--color-error)')
   })
 
@@ -461,6 +552,8 @@ describe('Sidebar page mode: swipe actions', () => {
     await renderPage()
 
     expect(actionsOf(swipeRowOf('Release notes')).map((button) => button.textContent)).toEqual(['Unpin', 'Delete'])
+    // Under Pinned the row needs no pin mark of its own.
+    expect(swipeRowOf('Release notes').querySelector('[data-pin-mark]')).toBeNull()
   })
 
   it('pins through the same handler as the row menu', async () => {
@@ -594,6 +687,34 @@ describe('Sidebar page mode: section order', () => {
     expect(screen.getAllByRole('region', { name: 'Needs you' })).toHaveLength(1)
     expect(screen.getAllByText('Approve the plan')).toHaveLength(1)
   })
+
+  // J2: the phone opens on "what needs me, what is running" before anything else.
+  const working = () => session('r-1', 'Refactor auth middleware', { running: true })
+
+  it('puts Running right under Needs you on the page', async () => {
+    activeSessionsData = [waiting(), working()]
+    pinnedSessionsData = [pin()]
+    await renderPage()
+
+    const needsYou = screen.getByRole('region', { name: 'Needs you' })
+    const running = screen.getByRole('region', { name: 'Running' })
+    expect(within(running).getByText('Refactor auth middleware')).toBeTruthy()
+    expect(before(needsYou, running)).toBe(true)
+    expect(before(running, screen.getByRole('region', { name: 'Pinned' }))).toBe(true)
+  })
+
+  it('shows no Running section when nothing runs', async () => {
+    activeSessionsData = [waiting()]
+    await renderPage()
+    expect(screen.queryByRole('region', { name: 'Running' })).toBeNull()
+  })
+
+  it('lists running sessions once in Status grouping', async () => {
+    activeSessionsData = [working()]
+    useSidebarViewStore.setState({ groupBy: 'status' })
+    await renderPage()
+    expect(screen.getAllByText('Refactor auth middleware')).toHaveLength(1)
+  })
 })
 
 describe('Sidebar page mode: deleting the chat kept under Sessions', () => {
@@ -669,6 +790,210 @@ describe('Sidebar page mode: deleting the chat kept under Sessions', () => {
 
     applySessionDelete({ deleteTarget: target, currentSessionId: 's-1', workspaceSessions: others, mutateDelete: mutate, navigate: stayNav })
     expect(stayNav).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 's-2' }, replace: true })
+  })
+})
+
+describe('Sidebar page mode: press and slide on the toolbar', () => {
+  // jsdom lays nothing out: place the slide targets as the phone would.
+  // ✎ at the bottom right, its menu rows stacked above it, the pill's four
+  // 40px buttons along the bottom left.
+  const realRect = HTMLElement.prototype.getBoundingClientRect
+  const box = (left: number, top: number, width: number, height: number) =>
+    ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect
+  beforeEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const id = this.dataset.slideId
+      if (id === 'new') return box(300, 600, 52, 52)
+      if (id?.startsWith('ws:')) {
+        const rows = [...document.querySelectorAll('[data-slide-id^="ws:"]')]
+        return box(120, 400 + rows.indexOf(this) * 44, 240, 44)
+      }
+      if (id !== undefined) {
+        const items = [...document.querySelectorAll('[data-sessions-toolbar-item]')]
+        return box(16 + items.indexOf(this) * 44, 604, 40, 40)
+      }
+      return realRect.call(this)
+    }
+    workspaceSessionsData = [
+      session('s-1', 'Fix login redirect loop'),
+      session('s-web', 'Web work', { workspace: '/repo/web', updated_at: '2026-05-14T00:00:00Z' }),
+      session('s-api', 'Api work', { workspace: '/repo/api', updated_at: '2026-05-12T00:00:00Z' }),
+    ]
+    globalThis.fetch = mock(async (input: unknown) => {
+      if (String(input).includes('/api/agent/workspace/tree')) {
+        return new Response(JSON.stringify({
+          repositories: ['/repo/project', '/repo/api', '/repo/web'].map((path) => ({
+            path, name: path.split('/').pop(), worktrees: [], group_ids: [],
+          })),
+          chat: { path: '/home/me', name: 'Chat' },
+          groups: [],
+        }))
+      }
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+  })
+  afterEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = realRect
+  })
+
+  const at = (x: number, y: number) => ({ pointerType: 'touch', pointerId: 7, clientX: x, clientY: y })
+  const newButton = () => document.querySelector('[data-sessions-new]') as HTMLElement
+  const menu = () => document.querySelector('[data-sessions-new-menu]') as HTMLElement | null
+  const draftsIn = () => navigate.mock.calls.map((call) => ((call as unknown[])[0] as { search?: { workspace?: string } }).search?.workspace)
+  async function holdNew() {
+    fireEvent.pointerDown(newButton(), at(320, 620))
+    await waitFor(() => { if (!menu()) throw new Error('no menu yet') }, { timeout: 1500 })
+  }
+
+  it('holds ✎ to list Chat, the recent workspaces and the current one last, and turns ✎ into Cancel', async () => {
+    await renderPage()
+    await holdNew()
+
+    const rows = within(menu() as HTMLElement).getAllByRole('menuitem').map((row) => row.textContent)
+    expect(rows).toEqual(['Chat', 'api', 'web', 'projectcurrent'])
+    expect(newButton().getAttribute('aria-label')).toBe('Cancel')
+    expect(newButton().getAttribute('aria-expanded')).toBe('true')
+    fireEvent.pointerUp(newButton(), at(320, 620))
+  })
+
+  it('presses ✎ in under the finger, lets it spring back when the hold opens the menu, and blooms the menu', async () => {
+    await renderPage()
+    fireEvent.pointerDown(newButton(), at(320, 620))
+    expect(newButton().hasAttribute('data-pressed')).toBe(true)
+    await waitFor(() => { if (!menu()) throw new Error('no menu yet') }, { timeout: 1500 })
+    expect(newButton().hasAttribute('data-pressed')).toBe(false)
+    expect(menu()?.className).toContain('oa-menu-bloom')
+    fireEvent.pointerUp(newButton(), at(320, 620))
+  })
+
+  it('slides from ✎ to a workspace and lifts there to open a draft in it', async () => {
+    await renderPage()
+    await holdNew()
+    navigate.mockClear()
+
+    fireEvent.pointerMove(newButton(), at(200, 500))
+    // The third row (web) is under the finger, and only it is highlighted.
+    const web = screen.getByRole('menuitem', { name: 'web' })
+    expect(web.hasAttribute('data-active')).toBe(true)
+    expect(screen.getByRole('menuitem', { name: 'api' }).hasAttribute('data-active')).toBe(false)
+    fireEvent.pointerUp(newButton(), at(200, 500))
+    fireEvent.click(newButton())
+
+    expect(draftsIn()).toEqual(['/repo/web'])
+    expect(menu()).toBeNull()
+    expect(newButton().getAttribute('aria-label')).toBe('New session')
+  })
+
+  it('cancels when the slide comes back to ✕ or ends outside the menu', async () => {
+    await renderPage()
+
+    await holdNew()
+    fireEvent.pointerMove(newButton(), at(200, 500))
+    fireEvent.pointerMove(newButton(), at(320, 620))
+    fireEvent.pointerUp(newButton(), at(320, 620))
+    expect(menu()).toBeNull()
+
+    await holdNew()
+    fireEvent.pointerMove(newButton(), at(20, 200))
+    fireEvent.pointerUp(newButton(), at(20, 200))
+    expect(menu()).toBeNull()
+
+    expect(navigate).not.toHaveBeenCalled()
+    expect(newButton().getAttribute('aria-label')).toBe('New session')
+  })
+
+  it('keeps the menu open when the hold lifts where it began, for a tap', async () => {
+    await renderPage()
+    await holdNew()
+    fireEvent.pointerUp(newButton(), at(320, 620))
+
+    expect(menu()).not.toBeNull()
+    // A fresh tap on the first row (Chat).
+    const chat = screen.getByRole('menuitem', { name: 'Chat' })
+    fireEvent.pointerDown(chat, at(200, 420))
+    fireEvent.pointerUp(chat, at(200, 420))
+    fireEvent.click(chat)
+    expect(draftsIn()).toEqual(['/home/me'])
+    expect(menu()).toBeNull()
+  })
+
+  it('closes the open menu from ✕ or a tap outside, starting nothing', async () => {
+    const { view } = await renderPage()
+    await holdNew()
+    fireEvent.pointerUp(newButton(), at(320, 620))
+    // A fresh tap on ✕.
+    fireEvent.pointerDown(newButton(), at(320, 620))
+    fireEvent.pointerUp(newButton(), at(320, 620))
+    fireEvent.click(newButton())
+    expect(menu()).toBeNull()
+
+    await holdNew()
+    fireEvent.pointerUp(newButton(), at(320, 620))
+    fireEvent.click(view.container.querySelector('[data-sessions-new-scrim]') as HTMLElement)
+    expect(menu()).toBeNull()
+
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('starts one draft in the current workspace on a short touch tap of ✎', async () => {
+    await renderPage()
+
+    fireEvent.pointerDown(newButton(), at(320, 620))
+    fireEvent.pointerUp(newButton(), at(320, 620))
+    // The click the tap raises after the release must not start a second.
+    fireEvent.click(newButton())
+
+    expect(draftsIn()).toEqual(['/repo/project'])
+    expect(menu()).toBeNull()
+  })
+
+  it('slides across the pill with a highlight and a name bubble, and runs only the button it lifts on', async () => {
+    const openSettings = mock(() => {})
+    const real = useSettingsStore.getState().openSettings
+    useSettingsStore.setState({ openSettings })
+    try {
+      const { view } = await renderPage()
+      const settings = screen.getByRole('button', { name: 'Settings' })
+      const bubble = () => view.container.querySelector('[data-sessions-toolbar-bubble]')?.textContent
+
+      fireEvent.pointerDown(settings, at(30, 620))
+      expect(settings.hasAttribute('data-active')).toBe(true)
+      expect(bubble()).toBe('Settings')
+      fireEvent.pointerMove(settings, at(80, 620))
+      expect(bubble()).toBe('Scheduled')
+      fireEvent.pointerMove(settings, at(120, 620))
+      const usage = screen.getByRole('button', { name: 'Usage' })
+      expect(usage.hasAttribute('data-active')).toBe(true)
+      expect(settings.hasAttribute('data-active')).toBe(false)
+      expect(bubble()).toBe('Usage')
+      fireEvent.pointerUp(settings, at(120, 620))
+      fireEvent.click(settings)
+
+      expect(useUIStore.getState().telemetryOpen).toBe(true)
+      expect(openSettings).not.toHaveBeenCalled()
+      expect(bubble()).toBeUndefined()
+    } finally {
+      useSettingsStore.setState({ openSettings: real })
+    }
+  })
+
+  it('runs nothing when the pill slide lifts off every button', async () => {
+    const openSettings = mock(() => {})
+    const real = useSettingsStore.getState().openSettings
+    useSettingsStore.setState({ openSettings })
+    try {
+      await renderPage()
+      const settings = screen.getByRole('button', { name: 'Settings' })
+
+      fireEvent.pointerDown(settings, at(30, 620))
+      fireEvent.pointerMove(settings, at(30, 300))
+      fireEvent.pointerUp(settings, at(30, 300))
+      fireEvent.click(settings)
+
+      expect(openSettings).not.toHaveBeenCalled()
+    } finally {
+      useSettingsStore.setState({ openSettings: real })
+    }
   })
 })
 

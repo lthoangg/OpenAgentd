@@ -95,7 +95,9 @@ pub fn build_argv(shell_bin: &str, command: &str) -> Vec<String> {
         "zsh" => vec![
             "-l".into(),
             "-c".into(),
-            "[[ -f ~/.zshenv ]] && source ~/.zshenv >/dev/null 2>&1 || true; [[ -f \"${ZDOTDIR:-$HOME}/.zshrc\" ]] && source \"${ZDOTDIR:-$HOME}/.zshrc\" >/dev/null 2>&1 || true; unset HISTFILE; HISTSIZE=0; SAVEHIST=0; unsetopt appendhistory incappendhistory sharehistory 2>/dev/null; eval \"$1\"".into(),
+            // `nonomatch` after the rc files: an unmatched glob (`--include=*.ts`) is passed
+            // through like bash does instead of aborting the whole command.
+            "[[ -f ~/.zshenv ]] && source ~/.zshenv >/dev/null 2>&1 || true; [[ -f \"${ZDOTDIR:-$HOME}/.zshrc\" ]] && source \"${ZDOTDIR:-$HOME}/.zshrc\" >/dev/null 2>&1 || true; unset HISTFILE; HISTSIZE=0; SAVEHIST=0; unsetopt appendhistory incappendhistory sharehistory 2>/dev/null; setopt nonomatch 2>/dev/null; eval \"$1\"".into(),
             "openagentd".into(),
             command.into(),
         ],
@@ -522,9 +524,6 @@ impl Tool for ShellTool {
         let timeout_s = a.opt_int(&["timeout_seconds"], Some(1), None).map(|n| n as u64).unwrap_or(DEFAULT_TIMEOUT_SECONDS).min(MAX_TIMEOUT_SECONDS);
         let background = a.bool_or(&["background"], false);
         a.finish()?;
-        if let Some(hit) = ctx.denied.check_command(&command) {
-            return Err(ToolError::Execution(format!("Sandbox blocked 'shell': command would touch denied path or pattern '{hit}'.")));
-        }
         let cwd = match &workdir {
             None => ctx.denied.workspace_root.clone(),
             Some(w) => {
@@ -533,6 +532,14 @@ impl Tool for ShellTool {
                 ctx.denied.validate_path(&expanded)?
             }
         };
+        if let Some(hit) = ctx.denied.check_command_at(&command, &cwd) {
+            return Err(ToolError::Execution(format!(
+                "Sandbox blocked 'shell': '{}' resolves to {}, inside the denied path or pattern '{}'. Relative paths resolve from the working directory (after any `cd`); set `workdir` instead of `cd ..` and keep paths inside the workspace.",
+                hit.token,
+                hit.resolved.display(),
+                hit.root
+            )));
+        }
         let shell_bin = acceptable();
         let desc_tag = if description.is_empty() { String::new() } else { format!(" ({description})") };
         tracing::info!(
@@ -844,6 +851,40 @@ mod tests {
         let out = ShellTool.run(&c, serde_json::json!({"command": sleep, "timeout_seconds": 1})).await.unwrap();
         let ToolOutput::Text(t) = out else { panic!() };
         assert!(t.starts_with("[Timed out after 1s]\n\n(No output before timeout)\n\n<shell_metadata>"), "{t}");
+    }
+
+    #[tokio::test]
+    async fn zsh_passes_unmatched_globs_through_like_bash() {
+        // Prod: 566 calls/week died on `grep … --include=*.ts` (zsh NOMATCH).
+        if shell_name_of(&acceptable()) != "zsh" {
+            return;
+        }
+        let d = tempfile::tempdir().unwrap();
+        let out = ShellTool.run(&ctx(d.path()), serde_json::json!({"command": "echo --include=*.nomatchxyz"})).await.unwrap();
+        assert_eq!(out, ToolOutput::text("[Succeeded]\n\n--include=*.nomatchxyz\n"));
+    }
+
+    #[test]
+    fn zsh_argv_turns_off_nomatch_after_the_rc_files() {
+        let a = build_argv("/bin/zsh", "x");
+        assert!(a[2].ends_with("setopt nonomatch 2>/dev/null; eval \"$1\""), "{}", a[2]);
+        let s = crate::shell_snapshot::argv(crate::shell_snapshot::Kind::Zsh, Path::new("/tmp/s"), "x");
+        assert!(s.iter().any(|x| x.contains("setopt nonomatch 2>/dev/null; eval \"$1\"")), "{s:?}");
+    }
+
+    #[tokio::test]
+    async fn sandbox_error_names_the_token_and_suggests_workdir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let ws = data.join("worktrees/repo/feature");
+        std::fs::create_dir_all(ws.join("web")).unwrap();
+        let mut c = ctx(&ws);
+        c.denied = Arc::new(crate::DeniedPaths::with(&ws, None, Some(vec![data.clone()]), Some(vec![])));
+        let err = ShellTool.run(&c, serde_json::json!({"command": "ls ../../x"})).await.unwrap_err().to_string();
+        assert!(err.contains("'../../x'") && err.contains("workdir"), "{err}");
+        // `cd web && ls ..` stays inside the worktree: not blocked.
+        let ok = ShellTool.run(&c, serde_json::json!({"command": "cd web && ls .."})).await;
+        assert!(ok.is_ok(), "{ok:?}");
     }
 
     #[test]

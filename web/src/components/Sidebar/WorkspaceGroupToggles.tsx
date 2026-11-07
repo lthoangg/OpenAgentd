@@ -6,8 +6,8 @@ import { cn } from '@/lib/utils'
 import { useSetWorkspaceGroupsMutation, useWorkspaceGroups } from '@/queries/useWorkspaceGroups'
 import { groupColor } from './groupColor'
 
-/** A row of the phone's workspace actions sheet (44px, like its other rows). */
-const SHEET_ITEM_CLASS = cn(MENU_ITEM_CLASS, 'min-h-11 text-sm')
+/** A row of the phone's workspace actions sheet (``--phone-control``, like its other rows). */
+const SHEET_ITEM_CLASS = cn(MENU_ITEM_CLASS, 'min-h-(--phone-control) text-sm')
 
 /**
  * A repository's workspace groups as toggles in its actions menu, plus a way

@@ -48,6 +48,8 @@ describe('phone layout contracts', () => {
   it('lets phone action-sheet titles wrap instead of running under a close button', () => {
     const sidebar = src('Sidebar.tsx')
     expect(sidebar).not.toContain('<DialogHeader className="pr-8">')
-    expect(sidebar.match(/<p className="text-sm font-medium text-\(--color-text\) \[overflow-wrap:anywhere\]">/g)?.length).toBe(2)
+    // The workspace sheet's own title, and the shared ActionSheet's.
+    expect(sidebar.match(/<p className="text-sm font-medium text-\(--color-text\) \[overflow-wrap:anywhere\]">/g)?.length).toBe(1)
+    expect(src('ui/action-sheet.tsx')).toContain('[overflow-wrap:anywhere]')
   })
 })

@@ -119,7 +119,8 @@ pub fn result_rides_inline(tool: &str, content: &str) -> bool {
         "preview" => content.starts_with("Opening "),
         // `parseSendResult`: the link to the session a send reached.
         "workspace" | "send_to_workspace" => text.starts_with("Sent to '") || awaits_answer,
-        "mcp" => awaits_answer,
+        // A call refused because its server needs sign-in: Sign in at the call.
+        "mcp" => awaits_answer || (text.starts_with("Error: MCP server '") && first.contains(appv3_core::MCP_SIGN_IN_NOTE)),
         // `teamMemberFromResult`: the subagent row under the call.
         "team" | "delegate" => names_subagent(first),
         t if t.starts_with("team_") => names_subagent(first),
@@ -578,6 +579,9 @@ mod tests {
             ("send_to_workspace", "Sent to 'web' (/r/web) \u{2014} delivered to session 01a00000-0000-7000-8000-000000000001."),
             ("workspace", crate::queries::questions::PLACEHOLDER_RESULT),
             ("mcp", crate::queries::questions::PLACEHOLDER_RESULT),
+            // The transcript offers Sign in at a call refused for it.
+            ("mcp", "Error: MCP server 'excalidraw' is not ready (needs sign-in: connect it in Settings \u{2192} MCP)"),
+            ("mcp", "Error: MCP server 'slack' is not ready (needs sign-in: connect it in Settings \u{2192} MCP): token expired"),
             ("team", "Subagent 'explorer#1' dispatched. Its deliverable arrives as a message."),
             ("team_send", "Message delivered to subagent 'worker#4'. It is working."),
             ("delegate", "Subagent 'researcher#2' dispatched with task: Research X"),
@@ -593,6 +597,8 @@ mod tests {
             ("workspace", "The user applied the change. 'openagentd' is now in group x."),
             ("mcp", "1 tool (run one with action='call', server, tool and arguments):"),
             ("mcp", "The user applied the change. MCP server 'atlassian' saved."),
+            ("mcp", "Error: MCP server 'docs' is not ready (failed to start): exit 1"),
+            ("mcp", "2 tools (run one with action='call', server, tool and arguments):\n{}\nNot ready: slack (needs sign-in: connect it in Settings \u{2192} MCP)."),
             ("team", "- explorer#1: done (report delivered)\n- explorer#2: working"),
             ("team", "Error delegating to subagent: Member 'worker#8' not found"),
             ("patch", "@@ openagentd-diff-meta {\"files\":[]}\nPatch applied successfully. Updated paths:\na.rs"),

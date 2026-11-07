@@ -130,6 +130,28 @@ describe('TaskListItem', () => {
     expect(screen.queryByRole('menuitem', { name: 'Pause' })).toBeNull()
   })
 
+  it('switches a task off and on from its row, without opening it', async () => {
+    const requests = recordRequests()
+    const onSelect = mock(() => {})
+    const { rerender } = renderItem(scheduledTask, { onSelect })
+    const on = screen.getByRole('switch', { name: 'Daily standup on' })
+    expect(on).toBeChecked()
+    fireEvent.click(on)
+    await waitFor(() => expect(requests).toEqual([{ url: '/api/scheduler/tasks/daily-standup/pause', method: 'POST' }]))
+    expect(onSelect).not.toHaveBeenCalled()
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <TaskListItem task={{ ...scheduledTask, status: 'paused' }} isSelected={false} onSelect={onSelect} onDeleted={() => {}} />
+      </QueryClientProvider>,
+    )
+    const off = screen.getByRole('switch', { name: 'Daily standup on' })
+    expect(off).not.toBeChecked()
+    fireEvent.click(off)
+    await waitFor(() => expect(requests.at(-1)).toEqual({ url: '/api/scheduler/tasks/daily-standup/resume', method: 'POST' }))
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
   it('keeps the ⋯ on touch (24px, 36px coarse) instead of hiding the actions there', () => {
     renderItem()
     const more = screen.getByRole('button', { name: 'More actions for Daily standup' })

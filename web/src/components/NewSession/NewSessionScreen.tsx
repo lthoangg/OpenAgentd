@@ -40,6 +40,7 @@ export function NewSessionScreen({
   composer = null,
   setup = null,
   isMobile,
+  phone = false,
   leaving = false,
   composerPlaceholderHeight,
   onSelectWorkspace,
@@ -54,6 +55,11 @@ export function NewSessionScreen({
   /** The model setup card, while no message could run. */
   setup?: ReactNode
   isMobile: boolean
+  /**
+   * A phone: just the folder chip, no heading and no Continue
+   * (Sessions is one level up).
+   */
+  phone?: boolean
   /** Fade out as an inert copy (the hand-off into the chat). */
   leaving?: boolean
   /** While leaving: the height the composer had, kept as empty space. */
@@ -75,18 +81,46 @@ export function NewSessionScreen({
     .filter((session) => !session.parent_session_id)
     .slice(0, RECENT_SESSIONS)
 
+  const picker = (
+    <WorkspacePicker
+      workspace={workspace}
+      label={workspaceName}
+      isChat={isChat}
+      chat={chatWorkspace}
+      repositories={repositories}
+      onSelect={onSelectWorkspace}
+      onOpenFolder={onOpenFolder}
+    />
+  )
+
+  const motionProps = {
+    'data-testid': leaving ? 'new-session-screen-leaving' : 'new-session-screen',
+    // Leaving starts from fully shown: ``initial={false}`` would start it
+    // at the ``animate`` target and skip the fade.
+    // A phone's stack push already slides the screen in: a second fade and
+    // lift on top of it reads as a jolt (on-device report).
+    initial: leaving ? { opacity: 1, y: 0 } : reducedMotion || phone ? false : { opacity: 0, y: 6 },
+    animate: leaving ? { opacity: 0, y: -8 } : { opacity: 1, y: 0 },
+    transition: reducedMotion ? { duration: 0 } : leaving ? { duration: DURATIONS_S.fast, ease: EASINGS.inOut } : { duration: DURATIONS_S.fast, ease: EASINGS.out },
+    inert: leaving || undefined,
+    'aria-hidden': leaving || undefined,
+    className: `flex min-h-0 flex-1 flex-col overflow-y-auto ${leaving ? 'pointer-events-none absolute inset-0' : ''}`,
+  } as const
+
+  if (phone) {
+    return (
+      <motion.div {...motionProps}>
+        <div className="flex w-full flex-col gap-4 px-4 pt-4 pb-4">
+          {/* The chip reads "in <folder>" itself. */}
+          <div className="flex min-w-0 items-center">{picker}</div>
+          {setup && <div className="w-full">{setup}</div>}
+        </div>
+      </motion.div>
+    )
+  }
+
   return (
-    <motion.div
-      data-testid={leaving ? 'new-session-screen-leaving' : 'new-session-screen'}
-      // Leaving starts from fully shown: ``initial={false}`` would start it
-      // at the ``animate`` target and skip the fade.
-      initial={leaving ? { opacity: 1, y: 0 } : reducedMotion ? false : { opacity: 0, y: 6 }}
-      animate={leaving ? { opacity: 0, y: -8 } : { opacity: 1, y: 0 }}
-      transition={reducedMotion ? { duration: 0 } : leaving ? { duration: DURATIONS_S.fast, ease: EASINGS.inOut } : { duration: DURATIONS_S.fast, ease: EASINGS.out }}
-      inert={leaving || undefined}
-      aria-hidden={leaving || undefined}
-      className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${leaving ? 'pointer-events-none absolute inset-0' : ''}`}
-    >
+    <motion.div {...motionProps}>
       {/* Desktop: the hero sits a little above center (the spacer above is
           the shorter one) so the composer lands near the optical middle. */}
       <div className={`mx-auto flex w-full max-w-3xl flex-col px-4 ${isMobile ? 'pt-6 pb-4' : 'flex-1 pb-28'}`}>
@@ -98,15 +132,7 @@ export function NewSessionScreen({
             )}
           </h1>
           <div className={`flex max-w-full flex-wrap items-center gap-2 ${isMobile ? 'self-start' : 'justify-center'}`}>
-            <WorkspacePicker
-              workspace={workspace}
-              label={workspaceName}
-              isChat={isChat}
-              chat={chatWorkspace}
-              repositories={repositories}
-              onSelect={onSelectWorkspace}
-              onOpenFolder={onOpenFolder}
-            />
+            {picker}
           </div>
           {setup && <div className="mx-auto mt-2 w-full max-w-[640px]">{setup}</div>}
           {/* ``text-left``: the hero is centered, and the composer's

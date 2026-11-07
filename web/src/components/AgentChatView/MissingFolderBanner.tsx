@@ -97,7 +97,10 @@ export function MissingFolderBanner({ workspace, onOpenFolder }: MissingFolderBa
             </p>
           )}
         />
-        <TooltipContent>{`${workspace} is not on disk. You can read this session.`}</TooltipContent>
+        {/* A long path breaks anywhere rather than run out of the tooltip. */}
+        <TooltipContent>
+          <span className="font-mono [overflow-wrap:anywhere]">{workspace}</span> is not on disk. You can read this session.
+        </TooltipContent>
       </Tooltip>
       <Button size="xs" onClick={onOpenFolder}>Open workspace…</Button>
       <Button size="xs" variant="ghost" onClick={() => { void hideWorkspace() }}>Hide from sidebar</Button>

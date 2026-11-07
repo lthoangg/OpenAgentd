@@ -2290,6 +2290,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     working; opening another session clears it. Any other screen's error
     shows the app's own page (**Try again**, **Reload**) instead of the
     router's plain one.
+  - A sidebar list with more sessions to load says how many the next click
+    adds (**Show 5 more**, or **Show 2 more** when that is all that is
+    left) instead of a plain **Show more**.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

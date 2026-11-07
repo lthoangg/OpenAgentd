@@ -388,6 +388,11 @@ async fn http_api_end_to_end() {
     assert_eq!((ids(&v), v["has_more"].clone()), (vec![sid.clone()], json!(false)), "{v}");
     let (_, v) = c.json("GET", "/api/agent/sessions?workspaces=%2Fnowhere", None).await;
     assert_eq!(v["data"], json!([]), "{v}");
+    // `remaining` (v3 addition) counts what is past a page with more to show.
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}&workspaces={}&limit=1", enc(&sid_ws), enc(tree)), None).await;
+    assert_eq!((v["has_more"].clone(), v["remaining"].clone()), (json!(true), json!(1)), "{v}");
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}&limit=1", enc(tree)), None).await;
+    assert!(v.get("remaining").is_none(), "a last page has no count: {v}");
     // ...and narrows the active list the same way.
     let (_, v) = c.json("GET", &format!("/api/agent/sessions?active=true&workspaces={}&workspaces={}", enc(tree), enc(&sid_ws)), None).await;
     assert_eq!(ids(&v), vec![sid.clone()], "{v}");

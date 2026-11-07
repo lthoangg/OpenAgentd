@@ -5,9 +5,8 @@ import { queryKeys } from './keys'
 import { applyOptimisticTitle, applySessionRename } from './session-rename'
 import { removeSubagent } from '@/stores/cache-invalidation-bridge'
 import { broadcastMessage } from '@/lib/broadcast-channel'
+import { SESSION_PAGE_SIZE, WORKSPACE_SESSION_PAGE_SIZE } from '@/lib/session-pages'
 
-const PAGE_SIZE = 20
-const CODING_WORKSPACE_PAGE_SIZE = 5
 const CODING_WORKSPACE_SMOOTHING_MS = 5000
 
 type SessionPages = InfiniteData<SessionPageResponse, string | null>
@@ -28,7 +27,7 @@ export function useSessionsQuery() {
   return useInfiniteQuery({
     queryKey: queryKeys.session.sessions.workspace('__all_coding__', SORT),
     queryFn: ({ pageParam, signal }) =>
-      listSessions(pageParam, PAGE_SIZE, { sort: SORT }, signal),
+      listSessions(pageParam, SESSION_PAGE_SIZE, { sort: SORT }, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: SessionPageResponse) =>
       lastPage.has_more ? lastPage.next_cursor : undefined,
@@ -58,7 +57,7 @@ export function useWorkspaceSessionsQuery(
     queryFn: ({ pageParam, signal }) =>
       listSessions(
         pageParam,
-        CODING_WORKSPACE_PAGE_SIZE,
+        WORKSPACE_SESSION_PAGE_SIZE,
         single !== null ? { workspace: single, sort, pinned: false } : { workspaces: paths, sort, pinned: false },
         signal,
       ),
@@ -83,7 +82,7 @@ export function useAllSessionsQuery(enabled = true) {
   const sort = SORT
   return useInfiniteQuery({
     queryKey: queryKeys.session.sessions.everywhere(sort),
-    queryFn: ({ pageParam, signal }) => listSessions(pageParam, PAGE_SIZE, { sort, pinned: false }, signal),
+    queryFn: ({ pageParam, signal }) => listSessions(pageParam, SESSION_PAGE_SIZE, { sort, pinned: false }, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: SessionPageResponse) =>
       lastPage.has_more ? lastPage.next_cursor : undefined,
@@ -178,7 +177,7 @@ function findCachedSession(queryClient: ReturnType<typeof useQueryClient>, id: s
 export function useActiveSessionsQuery() {
   return useInfiniteQuery({
     queryKey: queryKeys.session.sessions.active(),
-    queryFn: ({ signal }) => listSessions(null, PAGE_SIZE, { active: true }, signal),
+    queryFn: ({ signal }) => listSessions(null, SESSION_PAGE_SIZE, { active: true }, signal),
     initialPageParam: null as string | null,
     getNextPageParam: () => undefined,
   })

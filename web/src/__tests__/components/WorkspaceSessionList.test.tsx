@@ -58,6 +58,31 @@ describe('WorkspaceSessionList — first load', () => {
     expect(empty.className).toContain('px-1.5')
     expect(screen.queryByText('No sessions yet.')).toBeNull()
   })
+
+  it('says how many sessions Show more adds: the next page, or fewer when that is all', () => {
+    const row = (id: string): SessionResponse => ({ id, title: id, workspace: '/paged/workspace', agent_name: 'code', created_at: new Date().toISOString(), updated_at: null })
+    const show = (remaining: number | undefined) => {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+      queryClient.setQueryData(queryKeys.session.sessions.workspace('/paged/workspace', 'activity'), {
+        pages: [{ data: [row('a'), row('b')], has_more: true, next_cursor: 'c', ...(remaining === undefined ? {} : { remaining }) }],
+        pageParams: [null],
+      })
+      render(
+        <QueryClientProvider client={queryClient}>
+          <WorkspaceSessionList path="/paged/workspace" onSessionSelect={() => {}} onSessionDelete={() => {}} onSessionEdit={() => {}} onSessionLongPress={() => {}} onSessionContextActions={() => {}} />
+        </QueryClientProvider>,
+      )
+    }
+    show(12)
+    expect(screen.getByRole('button', { name: 'Show 5 more' })).toBeTruthy()
+    cleanup()
+    show(3)
+    expect(screen.getByRole('button', { name: 'Show 3 more' })).toBeTruthy()
+    cleanup()
+    // An older server sends no count.
+    show(undefined)
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeTruthy()
+  })
 })
 
 describe('WorkspaceSessionList — subagent sessions', () => {

@@ -3,6 +3,7 @@ import { MessageCircle } from 'lucide-react'
 import type { SessionResponse } from '@/api/types'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
 import { useActiveSessionsQuery, useAllSessionsQuery } from '@/queries/useSessionsQuery'
+import { SESSION_PAGE_SIZE, nextPageCount } from '@/lib/session-pages'
 import { useSidebarViewStore, type SidebarGroupBy } from '@/stores/useSidebarViewStore'
 import { groupSessionsByDate, groupSessionsByStatus, nestedUnderSender, type SessionGroup } from '../Sidebar.helpers'
 import { SessionGroupHeader } from './SessionGroupHeader'
@@ -129,7 +130,7 @@ export function FlatSessionGroups({
           )
         })}
       {all.hasNextPage && (
-        <ShowMoreRow loading={all.isFetchingNextPage} onLoadMore={() => { void all.fetchNextPage() }} />
+        <ShowMoreRow loading={all.isFetchingNextPage} count={nextPageCount(all.data, SESSION_PAGE_SIZE)} onLoadMore={() => { void all.fetchNextPage() }} />
       )}
     </div>
   )

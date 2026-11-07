@@ -200,6 +200,25 @@ async fn session_pages_follow_their_cursor() {
     assert!(list_sessions_page(&pool, Some(bare), 2, &all).await.is_err());
 }
 
+// The sidebar's "Show N more" counts what lies past the page it has.
+#[tokio::test]
+async fn sessions_past_a_cursor_are_counted_with_the_same_filters() {
+    let (_d, pool) = fresh().await;
+    for i in 0..5 {
+        create_session(&pool, NewSession { workspace: "/tmp/ws".into(), title: Some(format!("s{i}")), ..Default::default() }).await.unwrap();
+    }
+    create_session(&pool, NewSession { workspace: "/tmp/other".into(), ..Default::default() }).await.unwrap();
+    let ws = vec!["/tmp/ws".to_string()];
+    let filter = SessionListFilter { workspaces: &ws, sort: SessionSort::Activity, ..Default::default() };
+    let (_, cursor, _) = list_sessions_page(&pool, None, 2, &filter).await.unwrap();
+    let cursor = cursor.expect("next cursor");
+    assert_eq!(count_sessions_before(&pool, &cursor, &filter).await.unwrap(), 3);
+    let (_, cursor, more) = list_sessions_page(&pool, Some(&cursor), 2, &filter).await.unwrap();
+    assert!(more);
+    assert_eq!(count_sessions_before(&pool, &cursor.expect("next cursor"), &filter).await.unwrap(), 1);
+    assert!(count_sessions_before(&pool, "not-a-cursor", &filter).await.is_err());
+}
+
 #[tokio::test]
 async fn activity_sort_pages_by_last_message() {
     let (_d, pool) = fresh().await;

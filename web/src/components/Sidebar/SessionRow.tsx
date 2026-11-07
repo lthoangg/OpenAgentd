@@ -659,9 +659,10 @@ export function useStableSessionHandlers(latest: SessionHandlers): SessionHandle
 /**
  * Paging is an explicit row rather than an IntersectionObserver inside a
  * nested scroll box: the sidebar keeps a single scroller and every session
- * page is one deliberate click (or Enter) away.
+ * page is one deliberate click (or Enter) away. `count` is how many rows the
+ * click adds, when the server says.
  */
-export function ShowMoreRow({ loading, onLoadMore }: { loading: boolean; onLoadMore: () => void }) {
+export function ShowMoreRow({ loading, count = null, onLoadMore }: { loading: boolean; count?: number | null; onLoadMore: () => void }) {
   return (
     <button
       type="button"
@@ -674,7 +675,7 @@ export function ShowMoreRow({ loading, onLoadMore }: { loading: boolean; onLoadM
       <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
         {loading && <Loader2 size={12} className="animate-spin" />}
       </span>
-      {loading ? 'Loading…' : 'Show more'}
+      {loading ? 'Loading…' : count ? `Show ${count} more` : 'Show more'}
     </button>
   )
 }

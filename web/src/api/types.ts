@@ -325,6 +325,8 @@ export interface SessionPageResponse {
   /** ISO 8601 created_at of the last item; pass as `before` to fetch next page. */
   next_cursor: string | null
   has_more: boolean
+  /** Sessions past this page (v3; only on a page with more to show). */
+  remaining?: number
 }
 
 

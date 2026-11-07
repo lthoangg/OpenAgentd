@@ -54,7 +54,7 @@ import { fromLead, isLeadMessage } from '@/utils/lead-messages'
 import { CopyDetailsButton, ErrorCard } from './AgentView/ErrorCard'
 import { providerErrorDetails, switchedAccount, waitAccount } from './AgentView/provider-status'
 import { TranscriptSkeleton } from './AgentView/TranscriptSkeleton'
-import { PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, promptMarkLabel, turnIndexOfBlock } from './AgentView/prompt-nav'
+import { PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './AgentView/prompt-nav'
 import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -1412,7 +1412,7 @@ export function AgentView({
                   {/* The run's prompt, above its newest rows. No ``data-block-id``:
                       a view hold anchors on loaded rows, so the gap fills
                       below this without moving the view. */}
-                  <div data-prompt-id={pinnedPrompt.id} data-prompt-label={promptMarkLabel(pinnedPrompt.content)} data-pinned-prompt="">
+                  <div data-prompt-id={pinnedPrompt.id} data-pinned-prompt="">
                     <BlockRenderer
                       block={pinnedPrompt}
                       isStreaming={false}
@@ -1434,7 +1434,6 @@ export function AgentView({
                        key={item.block.id}
                        data-block-id={item.block.id}
                       data-prompt-id={isTypedPromptBlock(item.block) ? item.block.id : undefined}
-                      data-prompt-label={isTypedPromptBlock(item.block) ? promptMarkLabel(item.block.content) : undefined}
                      >
                        <BlockRenderer
                          block={item.block}

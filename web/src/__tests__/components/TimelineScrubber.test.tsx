@@ -3,7 +3,6 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { useRef } from 'react'
 
 import { TimelineScrubber } from '@/components/AgentView/TimelineScrubber'
-import { promptMarkLabel } from '@/components/AgentView/prompt-nav'
 
 // happy-dom has no layout: the scroller is 250px tall over 1000px of content,
 // the rail 500px tall, and each marked element sits at a fixed content offset.
@@ -65,8 +64,8 @@ function Harness({ question = false, scrollTop = 0 }: {
         data-testid="scroller"
       >
         <div ref={contentRef}>
-          <div data-prompt-id="p1" data-prompt-label="Add rate limiting to login" />
-          <div data-prompt-id="p2" data-prompt-label="Make the limit configurable" />
+          <div data-prompt-id="p1" />
+          <div data-prompt-id="p2" />
           {question && <div data-question-waiting="" />}
         </div>
       </div>
@@ -197,50 +196,5 @@ describe('TimelineScrubber', () => {
     fireEvent.wheel(container.querySelector('[data-transcript-scrubber]')!, { deltaY: -120 })
 
     expect(scroller(container).scrollTop).toBe(380)
-  })
-
-  it('names the prompt whose mark is under the pointer, and clears on leave', () => {
-    const { container } = render(<Harness />)
-    const rail = container.querySelector<HTMLElement>('[data-transcript-scrubber]')!
-    const label = () => container.querySelector<HTMLElement>('[data-scrubber-label]')?.textContent ?? null
-
-    // p2 sits 30% down the 500px rail.
-    fireEvent.pointerMove(rail, { clientY: 152, pointerId: 1 })
-    expect(label()).toBe('Make the limit configurable')
-
-    fireEvent.pointerMove(rail, { clientY: 220, pointerId: 1 })
-    expect(label()).toBeNull()
-
-    fireEvent.pointerMove(rail, { clientY: 2, pointerId: 1 })
-    expect(label()).toBe('Add rate limiting to login')
-    fireEvent.pointerLeave(rail)
-    expect(label()).toBeNull()
-  })
-
-  it('names a waiting question by what it is', () => {
-    const { container } = render(<Harness question />)
-
-    fireEvent.pointerMove(container.querySelector('[data-transcript-scrubber]')!, { clientY: 450, pointerId: 1 })
-
-    expect(container.querySelector('[data-scrubber-label]')?.textContent).toBe('Question waiting')
-  })
-
-  it('lands a prompt just below the top when its mark is pressed', () => {
-    const { container } = render(<Harness />)
-
-    fireEvent.pointerDown(container.querySelector('[data-transcript-scrubber]')!, { button: 0, clientY: 150, pointerId: 1 })
-
-    // p2 sits at 300px; a jump leaves the 12px prompt margin above it.
-    expect(scroller(container).scrollTop).toBe(288)
-  })
-})
-
-describe('promptMarkLabel', () => {
-  it('is the first line with text, whitespace folded', () => {
-    expect(promptMarkLabel('\n  Make   the limit\nconfigurable per env')).toBe('Make the limit')
-  })
-
-  it('cuts a long line to 80 characters', () => {
-    expect(promptMarkLabel('x'.repeat(120))).toBe(`${'x'.repeat(79)}…`)
   })
 })

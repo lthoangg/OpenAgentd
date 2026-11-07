@@ -2236,9 +2236,6 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A diff tab's **Wrap lines** toggle is on desktop too: diffs still wrap
     by default, and the toggle keeps long lines whole so they scroll
     sideways.
-  - The marks on the transcript's timeline rail name what they mark: hover
-    one to see the first line of its prompt (or **Question waiting**), and
-    click it to bring that prompt to the top.
   - The composer's model chip names the model in the interface font
     (`claude-sonnet-4-6 · High`) rather than `provider:model` in code type;
     hovering it shows the full `provider:model` and its shortcut, and the

@@ -36,15 +36,6 @@ export function promptElements(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>('[data-prompt-id]'))
 }
 
-/** Longest prompt label the timeline names a mark with. */
-const PROMPT_MARK_LABEL_MAX = 80
-
-/** A prompt as its timeline mark names it: its first line with text, whitespace folded. */
-export function promptMarkLabel(content: string): string {
-  const line = content.split('\n').map((part) => part.replace(/\s+/g, ' ').trim()).find(Boolean) ?? ''
-  return line.length > PROMPT_MARK_LABEL_MAX ? `${line.slice(0, PROMPT_MARK_LABEL_MAX - 1)}…` : line
-}
-
 /** The nearest prompt strictly above (``-1``) or below (``1``) ``line``; -1 when there is none. */
 export function promptJumpTarget(tops: readonly number[], line: number, direction: -1 | 1): number {
   if (direction < 0) {

@@ -1,6 +1,5 @@
 /**
- * The camera QR scanner: asks for the camera once, returns the code's text,
- * and hands a code to the connect-link flow on a window event.
+ * The camera QR scanner: asks for the camera once and returns the code's text.
  */
 import { describe, expect, it, mock } from 'bun:test'
 
@@ -16,7 +15,7 @@ mock.module('@tauri-apps/plugin-barcode-scanner', () => ({
   scan: async () => (content === null ? Promise.reject(new Error('cancelled')) : { content }),
 }))
 
-const { scanQrCode, deliverScannedLink, SCANNED_LINK_EVENT } = await import('@/lib/qr-scan')
+const { scanQrCode } = await import('@/lib/qr-scan')
 
 describe('scanQrCode', () => {
   it('asks for the camera, then returns the scanned text', async () => {
@@ -34,16 +33,5 @@ describe('scanQrCode', () => {
     permission = 'granted'
     content = null
     expect(await scanQrCode()).toEqual({ kind: 'cancelled' })
-  })
-})
-
-describe('deliverScannedLink', () => {
-  it('sends the text on the scanned-link event', () => {
-    const seen: unknown[] = []
-    const listener = (event: Event) => seen.push((event as CustomEvent).detail)
-    window.addEventListener(SCANNED_LINK_EVENT, listener)
-    deliverScannedLink('openagentd://connect?x')
-    window.removeEventListener(SCANNED_LINK_EVENT, listener)
-    expect(seen).toEqual(['openagentd://connect?x'])
   })
 })

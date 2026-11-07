@@ -11,12 +11,18 @@
  * ``active``: the screen is on top, or one swipe away under Sessions. The
  * panel loads the servers and pings them each time it turns true, so a
  * swipe back reveals the real list with fresh states.
+ *
+ * Pulling the list down reloads it and pings every server again.
  */
-import { AppBackendPanel } from '@/components/AppBackendPanel'
+import { useRef } from 'react'
+
+import { AppBackendPanel, type AppBackendPanelControl } from '@/components/AppBackendPanel'
+import { PullToRefresh } from '@/components/phone/PullToRefresh'
 import { useLargeTitleCollapse } from '@/components/Sidebar/useLargeTitleCollapse'
 
 export function ServersScreen({ active, onOpenSessions }: { active: boolean; onOpenSessions: () => void }) {
   const { barRef, titleRef, onScroll } = useLargeTitleCollapse(false)
+  const panel = useRef<AppBackendPanelControl>(null)
   return (
     <div data-servers-screen="" className="flex h-full w-full min-w-0 flex-col bg-(--bg-page)">
       <header
@@ -32,16 +38,21 @@ export function ServersScreen({ active, onOpenSessions }: { active: boolean; onO
           Servers
         </span>
       </header>
-      <div data-servers-scroller="" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-safe" onScroll={onScroll}>
+      <PullToRefresh
+        data-servers-scroller=""
+        className="min-h-0 flex-1 overflow-x-hidden pb-safe"
+        onScroll={onScroll}
+        onRefresh={() => panel.current?.refresh() ?? Promise.resolve()}
+      >
         <div className="px-4 pb-2">
           <h1 ref={titleRef} className="pb-1 pt-0.5 text-large-title font-bold text-(--color-text)">
             Servers
           </h1>
         </div>
         <div className="px-4 pb-6">
-          <AppBackendPanel active={active} sectionTitle="Your servers" onOpenInUse={onOpenSessions} />
+          <AppBackendPanel active={active} sectionTitle="Your servers" onOpenInUse={onOpenSessions} controlRef={panel} />
         </div>
-      </div>
+      </PullToRefresh>
     </div>
   )
 }

@@ -21,13 +21,13 @@
  * The phone's Servers screen is a third host: there the row in use also
  * offers **Sessions ›** (``onOpenInUse``), back up to its session list.
  */
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { ChevronRight, MoreHorizontal, Pencil, Plus, ScanQrCode, Trash2 } from 'lucide-react'
-import { cancelQrScan, canScanQr, deliverScannedLink, scanQrCode } from '@/lib/qr-scan'
+import { cancelQrScan, canScanQr, scanQrCode } from '@/lib/qr-scan'
 import { QrScanOverlay } from '@/components/phone/QrScanOverlay'
 import { parseConnectLink } from '@/lib/connect-link'
+import { pickReachableUrl } from '@/hooks/useConnectLink'
 
-import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
 import { Button } from '@/components/ui/button'
 import { StatusChip } from '@/components/ui/chip'
@@ -118,6 +118,13 @@ interface AppBackendPanelProps {
   sectionTitle?: string
   /** The phone's Servers screen: the row in use opens its Sessions. */
   onOpenInUse?: () => void
+  /** Lets a host reload the list (the phone's pull to refresh). */
+  controlRef?: Ref<AppBackendPanelControl>
+}
+
+export interface AppBackendPanelControl {
+  /** Reload the servers and ping each one; settles when every ping has. */
+  refresh: () => Promise<void>
 }
 
 /**
@@ -129,14 +136,10 @@ type ServerFormTarget =
   | { kind: 'add' }
   | { kind: 'edit'; baseUrl: string; label: string; inUse: boolean }
 
-export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, sectionTitle = 'Servers', onOpenInUse }: AppBackendPanelProps) {
+export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, sectionTitle = 'Servers', onOpenInUse, controlRef }: AppBackendPanelProps) {
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
   const [confirm, setConfirm] = useState<{ kind: 'stop' } | { kind: 'remove'; baseUrl: string; label: string } | null>(null)
   const [form, setForm] = useState<ServerFormTarget | null>(null)
-  // The touch sheet's last form, drawn while the sheet slides away, so the
-  // exit does not first collapse it to its handle.
-  const [sheetForm, setSheetForm] = useState<ServerFormTarget | null>(null)
-  if (form !== null && form !== sheetForm) setSheetForm(form)
   // Touch: a saved server's row keeps one button; Edit and Remove move to
   // its action sheet (a long press, or ⋯).
   const touch = useTouchFirst()
@@ -206,6 +209,22 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     return () => { cancelled = true }
   }, [active, prefill])
 
+  useImperativeHandle(controlRef, () => ({
+    async refresh() {
+      const next = await getAppBackendStatus()
+      setStatus(next)
+      setListError(null)
+      const servers = next?.servers ?? DEFAULT_SERVERS
+      const unlisted = unlistedConnectedUrl(next, servers)
+      const toCheck = [...servers.map((server) => normalizeServerBaseUrl(server.base_url)), ...(unlisted ? [unlisted] : [])]
+      setServerHealth(Object.fromEntries(toCheck.map((url) => [url, 'checking'])))
+      await Promise.all(toCheck.map(async (normalized) => {
+        const online = await pingServer(normalized)
+        setServerHealth((prev) => ({ ...prev, [normalized]: online ? 'online' : 'offline' }))
+      }))
+    },
+  }), [])
+
   function fillForm(target: ServerFormTarget, nextBaseUrl: string, nextName: string, nextKey: string) {
     setForm(target)
     setBaseUrl(nextBaseUrl)
@@ -245,7 +264,11 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     })
   }
 
-  /** Servers → Scan QR code: the camera reads the desktop's connect code. */
+  /**
+   * Servers → Scan QR code: the camera reads the desktop's connect code and
+   * this list's own add form opens, filled in and tested, as "Add a server"
+   * does. Nothing connects until Save and use.
+   */
   async function scanConnectCode() {
     setListError(null)
     setQrScanning(true)
@@ -253,8 +276,16 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     if (outcome.kind === 'denied') {
       setListError('Camera access is off. Turn it on for OpenAgentd in Settings to scan a code.')
     } else if (outcome.kind === 'scanned') {
-      if (parseConnectLink(outcome.text)) deliverScannedLink(outcome.text)
-      else setListError('That QR code is not an OpenAgentd connect code. Scan the one under Network access on your computer.')
+      const link = parseConnectLink(outcome.text)
+      if (!link) {
+        setListError('That QR code is not an OpenAgentd connect code. Scan the one under Network access on your computer.')
+        return
+      }
+      const url = await pickReachableUrl(link.urls)
+      setOriginal(null)
+      setScanned(true)
+      fillForm({ kind: 'add' }, url, hostnameOf(url), link.key)
+      void testConnection(url, link.key)
     }
   }
 
@@ -610,11 +641,11 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                 </>
                 )}
               </ServerRow>
-              {editing && editTarget && !touch ? serverForm(editTarget) : null}
+              {editing && editTarget ? serverForm(editTarget) : null}
             </Fragment>
           )
         })}
-        {form?.kind === 'add' && !touch ? serverForm(form) : (
+        {form?.kind === 'add' ? serverForm(form) : (
           <div className={cn(ROW_PAD, 'flex flex-wrap items-center gap-1')}>
             <Button ref={addButtonRef} type="button" variant="ghost" size="sm" onClick={openAdd} disabled={pending}>
               <Plus size={ICON_SIZE_INLINE} aria-hidden="true" />
@@ -635,16 +666,6 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       ) : null}
 
       {qrScanning && <QrScanOverlay onCancel={() => { void cancelQrScan() }} />}
-
-      {/* Touch: adding or editing a server is its own sheet (mockup J1),
-          not a form opened inside the list. */}
-      {touch && (
-        <BottomSheet open={form !== null} onClose={closeForm} label={(form ?? sheetForm)?.kind === 'edit' ? 'Edit server' : 'Add a server'}>
-          <div data-server-sheet="">
-            {form ? serverForm(form) : sheetForm ? serverForm(sheetForm) : null}
-          </div>
-        </BottomSheet>
-      )}
 
       <ActionSheet
         open={rowSheet !== null}
@@ -787,14 +808,16 @@ function ServerForm({
           ) : null}
         </div>
         {touchForm ? (
-          // The phone's sheet: two equal full-width buttons, Test then Save;
-          // no Cancel, a pull or a tap outside closes the sheet.
+          // Touch: large equal buttons, Test then Save, with Cancel under them.
           <div className="grid grid-cols-2 gap-2">
             <Button type="button" variant="default" onClick={onTest} disabled={pending} className="h-11 w-full">
               {pending ? 'Testing…' : 'Test'}
             </Button>
             <Button type="button" variant="primary" onClick={onSave} disabled={pending || (needsTest && !tested)} className="h-11 w-full">
               {mode === 'add' ? 'Save and use' : 'Save'}
+            </Button>
+            <Button type="button" variant="ghost" onClick={onCancel} disabled={pending} className="col-span-2 h-11 w-full">
+              Cancel
             </Button>
           </div>
         ) : (

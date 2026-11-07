@@ -11,6 +11,12 @@ const calls: string[] = []
 const realHaptics = await import('@/lib/haptics')
 mock.module('@/lib/haptics', () => ({ ...realHaptics, mediumHapticFeedback: () => { haptics.push('medium') } }))
 mock.module('@/hooks/use-touch-first', () => ({ useTouchFirst: () => true }))
+let scanned = 'openagentd://connect?url=http%3A%2F%2F10.0.0.2%3A4082&key=k'
+mock.module('@/lib/qr-scan', () => ({
+  canScanQr: () => true,
+  scanQrCode: async () => ({ kind: 'scanned', text: scanned }),
+  cancelQrScan: async () => {},
+}))
 
 const status = {
   base_url: 'http://127.0.0.1:5999',
@@ -80,22 +86,41 @@ describe('Servers rows on touch', () => {
     expect(calls.some((call) => call.includes('4082'))).toBe(true)
   })
 
-  it('adds a server in its own sheet', async () => {
+  it('adds a server in a form inside the list, not a sheet', async () => {
     render(<AppBackendPanel active />)
     fireEvent.click(await screen.findByRole('button', { name: 'Add a server' }))
-    const sheet = document.querySelector<HTMLElement>('[data-server-sheet]')!
-    expect(within(sheet).getByLabelText('Server URL')).toBeInTheDocument()
-    expect(sheet.closest('[data-bottom-sheet]')).not.toBeNull()
-    expect(within(sheet).queryByRole('button', { name: 'Cancel' })).toBeNull()
-    expect(within(sheet).getByRole('button', { name: 'Test' }).className).toContain('w-full')
+    const form = document.querySelector<HTMLElement>('[data-server-form="add"]')!
+    expect(within(form).getByLabelText('Server URL')).toBeInTheDocument()
+    expect(form.closest('[data-bottom-sheet]')).toBeNull()
+    expect(within(form).getByRole('button', { name: 'Test' }).className).toContain('w-full')
+    fireEvent.click(within(form).getByRole('button', { name: 'Cancel' }))
+    expect(document.querySelector('[data-server-form]')).toBeNull()
   })
 
-  it('opens Edit only once the row sheet has slid away, so two sheets never cross', async () => {
+  it('fills its own add form from a scanned QR code, with no sheet or dialog', async () => {
+    render(<AppBackendPanel active />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Scan QR code' }))
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    const form = document.querySelector<HTMLElement>('[data-server-form="add"]')!
+    expect(form).not.toBeNull()
+    expect(within(form).getByLabelText('Server URL')).toHaveValue('http://10.0.0.2:4082')
+    expect(document.querySelector('[data-bottom-sheet]')).toBeNull()
+  })
+
+  it('says so when the code is not a connect code', async () => {
+    scanned = 'https://example.com'
+    render(<AppBackendPanel active />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Scan QR code' }))
+    expect(await screen.findByText(/not an OpenAgentd connect code/)).toBeInTheDocument()
+    expect(document.querySelector('[data-server-form]')).toBeNull()
+  })
+
+  it('opens Edit under the row once its action sheet has slid away', async () => {
     render(<AppBackendPanel active />)
     fireEvent.click(await screen.findByRole('button', { name: 'More actions for Local CLI' }))
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Local CLI' })).getByRole('button', { name: 'Edit' }))
-    expect(document.querySelector('[data-server-sheet]')).toBeNull()
+    expect(document.querySelector('[data-server-form="edit"]')).toBeNull()
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)) })
-    expect(document.querySelector('[data-server-sheet]')).not.toBeNull()
+    expect(document.querySelector('[data-server-form="edit"]')).not.toBeNull()
   })
 })

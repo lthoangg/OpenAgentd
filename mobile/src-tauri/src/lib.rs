@@ -521,17 +521,6 @@ pub fn run() {
         .setup(|_app| {
             #[cfg(target_os = "ios")]
             theme::paint_launch_background(_app.handle());
-            #[cfg(target_os = "ios")]
-            {
-                extern "C" {
-                    /// `mobile/ios-app/PhotoSheet.swift`: present the photo
-                    /// library as a lower-screen sheet, not full screen.
-                    fn openagentd_photo_sheet_install();
-                }
-                // SAFETY: takes no arguments and only swaps one UIKit method
-                // implementation, once.
-                unsafe { openagentd_photo_sheet_install() };
-            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

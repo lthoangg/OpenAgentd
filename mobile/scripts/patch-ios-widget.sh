@@ -6,8 +6,7 @@
 # * an `OpenAgentdWidgets` app-extension target built from
 #   ios-widget/Extension + ios-widget/Shared, embedded in the app;
 # * ios-widget/App + ios-widget/Shared compiled into the app target (the
-#   Swift bridge the Rust shell calls to store the widget snapshot), and
-#   ios-app (the app's other native Swift, e.g. the photo sheet);
+#   Swift bridge the Rust shell calls to store the widget snapshot);
 # * an App Group, `group.<app bundle id>`, on both, so they share storage.
 #
 # `cargo tauri ios init` regenerates `src-tauri/gen/apple/` from a template,
@@ -98,7 +97,6 @@ inserts = [
     (find("sources") + 1, [
         f"      - path: ../../../ios-widget/App {MARK}\n",
         f"      - path: ../../../ios-widget/Shared {MARK}\n",
-        f"      - path: ../../../ios-app {MARK}\n",
     ]),
     (find("dependencies") + 1, [
         f"      - target: {EXT_TARGET} {MARK}\n",
@@ -165,10 +163,10 @@ pbxproj="src-tauri/gen/apple/openagentd-mobile.xcodeproj/project.pbxproj"
 if [ "$status" -ne 0 ] && [ "$status" -ne 10 ]; then
   exit "$status"
 fi
-# A Swift file added under ios-app or ios-widget/App since the last
+# A Swift file added under ios-widget/App since the last
 # generation is missing from it too.
 missing_source=0
-for source in ios-app/*.swift ios-widget/App/*.swift; do
+for source in ios-widget/App/*.swift; do
   [ -e "$source" ] || continue
   grep -q "$(basename "$source")" "$pbxproj" 2>/dev/null || missing_source=1
 done

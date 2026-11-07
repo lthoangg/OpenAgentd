@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ArrowUpRight, ChevronDown, ChevronUp, Paperclip, Pencil, X } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, ChevronUp, Paperclip, Pencil } from 'lucide-react'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { Button } from '@/components/ui/button'
 import { CloseButton } from '@/components/ui/close-button'
@@ -182,10 +182,11 @@ function QueuedBubble({ content, attachments, label, sender, onEdit, onRemove }:
 /**
  * A phone's queued message: a faded bubble at the end of the transcript,
  * where it will land (user request: below the chat, not above the composer).
- * A tap on the bubble moves it back into the composer to edit; ✕ throws it
- * away (with Undo). Long text shows four lines.
+ * Its one action is a tap, which takes it back into the composer: to edit,
+ * or to clear from there (user request: no ✕, nothing to undo). Long text
+ * shows four lines.
  */
-function QueuedPhoneBubble({ content, label, onEdit, onRemove }: {
+function QueuedPhoneBubble({ content, label, onEdit }: {
   content: string
   attachments?: MessageAttachment[]
   label: string
@@ -193,28 +194,30 @@ function QueuedPhoneBubble({ content, label, onEdit, onRemove }: {
   onEdit: () => void | Promise<void>
   onRemove: () => void | Promise<void>
 }) {
+  // A steer waits for the server's cancel; a second tap would cancel it twice.
+  const [busy, setBusy] = useState(false)
   const text = designFeedbackPlainText(content).trim()
+  const edit = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await onEdit()
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
     <div data-queued-bubble="" className="oa-rise-in flex flex-col items-end gap-1 opacity-60">
-      <div className="flex max-w-full items-center gap-1">
-        <button
-          type="button"
-          aria-label={`Edit queued message: ${text.replace(/\s+/g, ' ')}`}
-          onClick={() => { void onEdit() }}
-          className="min-w-0 max-w-[85%] rounded-sm bg-(--bg-key) px-3 py-2.5 text-left text-sm leading-relaxed text-(--color-text) transition-transform duration-(--motion-instant) active:scale-[0.98] motion-reduce:active:scale-100"
-        >
-          <span className="line-clamp-4 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{text}</span>
-        </button>
-        <button
-          type="button"
-          aria-label="Remove queued message"
-          onClick={() => { void onRemove() }}
-          className="relative touch-hit flex size-7 shrink-0 items-center justify-center rounded-full text-(--color-text-muted)"
-        >
-          <X size={14} aria-hidden="true" />
-        </button>
-      </div>
-      <span className="pr-9 text-meta text-(--color-text-muted)">{label}</span>
+      <button
+        type="button"
+        aria-label={`Edit queued message: ${text.replace(/\s+/g, ' ')}`}
+        onClick={() => { void edit() }}
+        disabled={busy}
+        className="min-w-0 max-w-[85%] rounded-sm bg-(--bg-key) px-3 py-2.5 text-left text-sm leading-relaxed text-(--color-text) transition-transform duration-(--motion-instant) active:scale-[0.98] motion-reduce:active:scale-100"
+      >
+        <span className="line-clamp-4 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{text}</span>
+      </button>
+      <span className="text-meta text-(--color-text-muted)">{label} · Tap to edit</span>
     </div>
   )
 }

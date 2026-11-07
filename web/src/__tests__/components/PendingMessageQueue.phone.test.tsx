@@ -1,6 +1,7 @@
 /**
  * On a phone, queued messages wait at the end of the transcript as faded
- * bubbles (user request): tap the bubble edits, ✕ removes with Undo.
+ * bubbles (user request): a tap takes one back into the composer; there is
+ * no ✕ and nothing to undo.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -32,22 +33,19 @@ describe('PendingMessageQueue on a phone', () => {
     expect(bubble.textContent).toContain('Sends when this turn ends')
   })
 
-  it('tap edits, ✕ removes with Undo', () => {
+  it('a tap takes it back into the composer, with no remove button', () => {
     hold()
     const restored: string[] = []
     const onRestore = (event: Event) => restored.push((event as CustomEvent).detail.content)
     window.addEventListener('queue:restore-draft', onRestore)
     render(<PendingMessageQueue />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove queued message' }))
-    expect(useHeldMessagesStore.getState().messages).toEqual([])
-    expect(useToastStore.getState().toasts[0]?.action?.label).toBe('Undo')
-
-    cleanup()
-    hold()
-    render(<PendingMessageQueue />)
+    expect(screen.queryByRole('button', { name: 'Remove queued message' })).toBeNull()
+    expect(screen.getByText('Sends when this turn ends · Tap to edit')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Edit queued message: Then run lint' }))
     expect(restored).toEqual(['Then run lint'])
+    expect(useHeldMessagesStore.getState().messages).toEqual([])
+    expect(useToastStore.getState().toasts).toEqual([])
     window.removeEventListener('queue:restore-draft', onRestore)
   })
 })

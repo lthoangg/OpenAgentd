@@ -409,6 +409,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleSplitDock,
     handleSplitDockDown,
     openWorkspaceDialogKey,
+    searchSessionsKey,
     showTodos,
     handleWorkspaceFiles,
     handleOpenGit,
@@ -991,6 +992,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             onNewSession={handleNewSession}
             onCollapse={() => (sidebarDrawer ? setSidebarDrawerOpen(false) : setSidebarCollapsed(true))}
             openWorkspaceDialogKey={openWorkspaceDialogKey}
+            searchSessionsKey={searchSessionsKey}
             desktopCollapsed={sidebarDrawer ? !sidebarDrawerOpen : sidebarCollapsed}
             drawer={sidebarDrawer}
             dockOpen={Boolean(workspace) && workspacePanel !== null}

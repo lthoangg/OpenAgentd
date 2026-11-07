@@ -203,6 +203,7 @@ export function useCommandPalette({
     appShortcut('switchWorkspace', () => { useUIStore.getState().openPaletteAt(switchPagePath(switchCommands, 'workspaces')) }, { enabled: !isMobile }),
     appShortcut('workspaceSessions', () => { useUIStore.getState().openPaletteAt(switchPagePath(switchCommands, 'sessions')) }, { enabled: !isMobile }),
     appShortcut('sidebar', () => { handleSidebarToggle() }),
+    appShortcut('searchSessions', () => { dispatchAppEvent(APP_EVENTS.searchSessions) }, { enabled: !isMobile }),
     appShortcut('focusChat', () => {
       // The composer is inert under a maximized dock; restore it first.
       useLayoutStore.getState().setDockMaximized(false)

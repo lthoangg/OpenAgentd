@@ -54,6 +54,8 @@ export const APP_SHORTCUTS = {
   switchWorkspace: { key: 'L', switcher: true },
   workspaceSessions: { key: 'L', shift: true, switcher: true },
   sidebar: { key: 'B' },
+  // Search session titles in the sidebar (shown first if it was hidden).
+  searchSessions: { key: 'F', shift: true },
   focusChat: { key: 'I' },
   closeTab: { key: 'W' },
   settings: { key: ',', switcher: true },

@@ -56,6 +56,11 @@ describe('shortcutHelp', () => {
     expect(new Set(labels).size).toBe(labels.length)
   })
 
+  it('lists Search sessions on ⌘⇧F', () => {
+    expect(find('macos', 'Search sessions')?.keys).toEqual(['⌘⇧F'])
+    expect(find('windows', 'Search sessions')?.keys).toEqual(['Ctrl+Shift+F'])
+  })
+
   it('lists the layout keys: splits, terminals, find, areas', () => {
     expect(find('macos', 'Split Review panel right')?.keys).toEqual(['⌘\\'])
     expect(find('macos', 'Split Review panel down')?.keys).toEqual(['⌘⇧\\'])

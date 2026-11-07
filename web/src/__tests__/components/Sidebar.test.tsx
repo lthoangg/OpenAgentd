@@ -1672,6 +1672,13 @@ describe('Sidebar workspace trust flow', () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Search sessions' })))
   })
 
+  it('opens session search, focused, when the app asks for it (⌘⇧F)', async () => {
+    await renderSidebarWithProps({ workspace: '/repo/project', searchSessionsKey: 1 })
+
+    const input = await screen.findByRole('searchbox', { name: 'Search sessions' })
+    await waitFor(() => expect(document.activeElement).toBe(input))
+  })
+
   it('lists upcoming scheduled tasks soonest first and opens the scheduler on one', async () => {
     const user = userEvent.setup()
     const inMinutes = (minutes: number) => new Date(Date.now() + minutes * 60_000).toISOString()

@@ -226,6 +226,8 @@ interface SidebarProps {
   /** Bump this counter to programmatically open the workspace dialog
    *  (e.g. from a "no workspace attached" CTA). */
   openWorkspaceDialogKey?: number
+  /** Bump to open the session search, focused (⌘⇧F). */
+  searchSessionsKey?: number
   /** Desktop only: when true, the inline panel collapses to width=0. */
   desktopCollapsed?: boolean
   /**
@@ -314,6 +316,7 @@ export function Sidebar({
   onNewSession,
   onCollapse,
   openWorkspaceDialogKey = 0,
+  searchSessionsKey = 0,
   desktopCollapsed = false,
   drawer = false,
   dockOpen = false,
@@ -582,6 +585,11 @@ export function Sidebar({
     setSearchOpen(true)
     setSearchFocusKey((key) => key + 1)
   }
+  useEffect(() => {
+    if (searchSessionsKey === 0) return
+    setSearchOpen(true)
+    setSearchFocusKey((key) => key + 1)
+  }, [searchSessionsKey])
   // The header with the Search button moves from above the results back
   // into the scroller, so focus returns to it once it has re-rendered.
   const refocusSearchButton = useRef(false)

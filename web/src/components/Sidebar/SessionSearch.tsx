@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type React from 'react'
 import { useDebouncedValue } from '@tanstack/react-pacer'
 import { Search } from 'lucide-react'
@@ -6,13 +6,45 @@ import type { SessionResponse } from '@/api/types'
 import { SearchBar } from '@/components/ui/search-bar'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ROW_TEXT_ACTION } from '@/components/ui/list-row'
+import { useCompactRelative } from '@/hooks/useCompactRelative'
 import { useSessionSearchQuery, useSessionsQuery } from '@/queries/useSessionsQuery'
 import { useUnreadStore } from '@/stores/useUnreadStore'
+import { sessionActivityTime } from '../Sidebar.helpers'
 import { CompactSessionRow } from './CompactSessionRow'
 import { sessionStatus } from './SessionStatusMark'
 
 /** Rows in the phone's "Recently opened" list before anything is typed. */
 const RECENT_LIMIT = 8
+
+/** ``title`` with every case-insensitive ``needle`` (already lower-case) in a mark. */
+function markMatches(title: string, needle: string): ReactNode {
+  const lower = title.toLowerCase()
+  // A case fold that changes the length (rare scripts) would misplace marks.
+  if (!needle || lower.length !== title.length) return title
+  const parts: ReactNode[] = []
+  let from = 0
+  for (let at = lower.indexOf(needle); at !== -1; at = lower.indexOf(needle, at + needle.length)) {
+    if (at > from) parts.push(title.slice(from, at))
+    parts.push(
+      <mark key={at} className="rounded-xs bg-(--accent-orange-soft) px-px font-semibold text-inherit">
+        {title.slice(at, at + needle.length)}
+      </mark>,
+    )
+    from = at + needle.length
+  }
+  if (from < title.length) parts.push(title.slice(from))
+  return parts
+}
+
+/** When a result was last used, where the tree shows a row's age. */
+function SessionAge({ session }: { session: SessionResponse }) {
+  const age = useCompactRelative(sessionActivityTime(session))
+  return age ? <span className="shrink-0 pl-1 text-meta tabular-nums text-(--color-text-muted)">{age}</span> : null
+}
+
+function plural(count: number, word: string): string {
+  return `${count} ${word}${count === 1 ? '' : 's'}`
+}
 
 /** Session title search across every workspace; shown in place of the tree. */
 export function SessionSearch({
@@ -40,6 +72,7 @@ export function SessionSearch({
   const { data, isFetching } = useSessionSearchQuery(query)
   const unreadIds = useUnreadStore((state) => state.ids)
   const inputRef = useRef<HTMLInputElement>(null)
+  const resultsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -70,6 +103,41 @@ export function SessionSearch({
       />
     </li>
   )
+  // Off the phone, matches sit under their workspace (in the order their
+  // newest match arrived), with the match marked: titles alike across
+  // workspaces read apart, and the rows show their age instead.
+  const grouped = !cancel
+  const groups: { path: string; sessions: SessionResponse[] }[] = []
+  if (grouped) {
+    for (const session of results) {
+      const path = session.workspace ?? ''
+      const group = groups.find((entry) => entry.path === path)
+      if (group) group.sessions.push(session)
+      else groups.push({ path, sessions: [session] })
+    }
+  }
+  const renderGroupedRow = (session: SessionResponse) => (
+    <li key={session.id}>
+      <CompactSessionRow
+        session={session}
+        status={sessionStatus(session, unreadIds.includes(session.id))}
+        isCurrent={session.id === currentSessionId}
+        workspaceName={workspaceName(session.workspace ?? '')}
+        // The marked title is drawn; the row is named by the plain one, so
+        // no reader hears a word split at its mark.
+        title={(
+          <>
+            <span data-search-title="" aria-hidden="true">{markMatches(session.title || 'Untitled', needle)}</span>
+            <span className="sr-only">{session.title || 'Untitled'}</span>
+          </>
+        )}
+        meta={<SessionAge session={session} />}
+        walkable
+        onSelect={(event) => onSessionSelect(session, session.workspace ?? '', event)}
+      />
+    </li>
+  )
+  const firstResult = () => resultsRef.current?.querySelector<HTMLElement>('[data-sidebar-session]') ?? null
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -95,6 +163,9 @@ export function SessionSearch({
             } else if (event.key === 'Enter' && results[0]) {
               event.preventDefault()
               onSessionSelect(results[0], results[0].workspace ?? '')
+            } else if (event.key === 'ArrowDown' && grouped && firstResult()) {
+              event.preventDefault()
+              firstResult()?.focus()
             }
           }}
         />
@@ -108,7 +179,19 @@ export function SessionSearch({
           </button>
         )}
       </div>
-      <div role="region" aria-label="Search results" className={cancel ? 'min-h-0 flex-1 overflow-y-auto px-3 pb-2 animate-in fade-in-0 animation-duration-(--motion-base)' : 'min-h-0 flex-1 overflow-y-auto px-1.5 pb-2'}>
+      <div
+        ref={resultsRef}
+        role="region"
+        aria-label="Search results"
+        className={cancel ? 'min-h-0 flex-1 overflow-y-auto px-3 pb-2 animate-in fade-in-0 animation-duration-(--motion-base)' : 'min-h-0 flex-1 overflow-y-auto px-1.5 pb-2'}
+        onKeyDown={(event) => {
+          // ↑ from the first result goes back to the field; the sidebar walks the rest.
+          if (event.key === 'ArrowUp' && event.target === firstResult()) {
+            event.preventDefault()
+            inputRef.current?.focus()
+          }
+        }}
+      >
         {needle && !isFetching && results.length === 0 && (
           <EmptyState
             compact
@@ -135,7 +218,30 @@ export function SessionSearch({
             <ul aria-labelledby="session-search-recent" className="space-y-px">{recent.map(renderRow)}</ul>
           </>
         )}
-        <ul className="space-y-px">{results.map(renderRow)}</ul>
+        {grouped ? (
+          results.length > 0 && (
+            <>
+              <p className="pl-6 pr-1.5 pt-1 pb-1 text-meta text-(--color-text-muted)">
+                {plural(results.length, 'result')} · {plural(groups.length, 'workspace')}
+              </p>
+              {groups.map((group) => {
+                const name = workspaceName(group.path)
+                return (
+                  <section key={group.path}>
+                    <h3 className="truncate pl-6 pr-1.5 pt-2 pb-1 text-meta font-medium text-(--color-text-subtle)">
+                      {name} · {group.sessions.length}
+                    </h3>
+                    <ul aria-label={`${name}, ${plural(group.sessions.length, 'session')}`} className="space-y-px">
+                      {group.sessions.map(renderGroupedRow)}
+                    </ul>
+                  </section>
+                )
+              })}
+            </>
+          )
+        ) : (
+          <ul className="space-y-px">{results.map(renderRow)}</ul>
+        )}
         {hasMore && (
           <p className="px-1.5 py-1 text-meta text-(--color-text-subtle)">Showing the newest matches; type more to narrow.</p>
         )}

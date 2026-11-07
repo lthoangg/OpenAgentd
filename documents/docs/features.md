@@ -2251,6 +2251,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     folder, so a deep folder no longer cuts the file name off.
   - A table wider than the chat fades out at its right edge while there is
     more to scroll to, as on the phone.
+  - **Search sessions** in the sidebar opens with **⌘⇧F** (Ctrl+Shift+F),
+    showing the sidebar first if it was hidden. Matches sit under their
+    workspace with a count (**openagentd · 3**) below a summary (**6
+    results · 3 workspaces**), the matched text is marked in each title,
+    rows show their age, and **↓** moves from the field into the results.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

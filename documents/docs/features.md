@@ -2409,7 +2409,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - List rows darken while your finger is on them.
   - On an Android phone turned sideways, the drawers and the review dock
     stay usable and keep clear of the camera cutout.
-- **Sideloadable iOS app** `[v3.7.0]` — each release includes an ad-hoc-signed
+- **Sideloadable iOS app** `[v3.7.0]` *(deprecated in v3.49.0: no longer
+  published; install from TestFlight)* — each release included an ad-hoc-signed
   `OpenAgentd_<version>_iOS.ipa` with a checksum. A SideStore/AltStore source at
   `releases/download/latest-ios/source.json` installs the app and offers new
   versions as updates. See [Install the iOS app](../../mobile/INSTALL-IOS.md).
@@ -2418,13 +2419,9 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **iOS app on TestFlight** `[v3.49.0]` — releases are built, signed and
   uploaded to TestFlight by CI. Install from the public TestFlight link in the
   release notes: no computer, VPN or 7-day refresh, automatic updates, and the
-  home-screen widgets share data through the real App Group. The SideStore IPA
-  is still published for a few releases. See
+  home-screen widgets share data through the real App Group. See
   [Install the iOS app](../../mobile/INSTALL-IOS.md).
-  A copy installed with SideStore now says, on every update check, that the
-  app has moved to TestFlight, and **Get it on TestFlight** opens the iOS
-  download page `[v3.49.0]`.
-- **iOS channels: TestFlight beta and App Store** `[v3.50.0]` — the iOS app
+- **iOS channels: TestFlight beta and App Store** `[v3.49.0]` — the iOS app
   ships only through App Store Connect; the SideStore IPA and source feed are
   no longer published. One build goes to TestFlight and then, unchanged, to
   the App Store. The iOS app no longer checks for updates itself:
@@ -2433,7 +2430,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   from the phone through the agent.
   Before anything is sent, the iOS app asks once for consent to share what you
   write with the AI providers your server uses, with a link to the privacy
-  policy, which is also in **Settings → About OpenAgentd** `[v3.50.0]`.
+  policy, which is also in **Settings → About OpenAgentd** `[v3.49.0]`.
 - **Android app (APK)** `[v3.15.0]` — releases include a sideloadable
   `OpenAgentd_<version>_Android.apk` with a checksum. Access keys are
   encrypted with an Android Keystore key, downloads open the system share

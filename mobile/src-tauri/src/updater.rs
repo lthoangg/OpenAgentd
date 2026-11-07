@@ -99,13 +99,14 @@ pub fn is_newer(candidate: &str, current: &str) -> bool {
     }
 }
 
-/// How this iOS copy was installed, from its bundle: TestFlight leaves a
-/// `StoreKit/sandboxReceipt`, a development install embeds its provisioning
+/// How this iOS copy was installed. TestFlight names its receipt
+/// `sandboxReceipt` (the receipt file itself may not exist yet, so only the
+/// URL's name counts), a development install embeds its provisioning
 /// profile, and an App Store copy has neither (Apple strips the profile).
 /// Unknown shapes count as the App Store, which shows no update notice.
 #[cfg_attr(target_os = "android", allow(dead_code))]
-pub fn ios_channel(app_dir: &std::path::Path) -> &'static str {
-    if app_dir.join("StoreKit").join("sandboxReceipt").is_file() {
+pub fn ios_channel(receipt_name: Option<&str>, app_dir: &std::path::Path) -> &'static str {
+    if receipt_name == Some("sandboxReceipt") {
         "testflight"
     } else if app_dir.join("embedded.mobileprovision").is_file() {
         "dev"
@@ -229,11 +230,24 @@ pub fn updater_channel() -> &'static str {
     }
     #[cfg(not(target_os = "android"))]
     {
+        #[cfg(target_os = "ios")]
+        let receipt = ios_receipt_name();
+        #[cfg(not(target_os = "ios"))]
+        let receipt: Option<String> = None;
         std::env::current_exe()
             .ok()
-            .and_then(|exe| exe.parent().map(ios_channel))
+            .and_then(|exe| exe.parent().map(|dir| ios_channel(receipt.as_deref(), dir)))
             .unwrap_or("appstore")
     }
+}
+
+/// The last path component of the bundle's App Store receipt URL.
+#[cfg(target_os = "ios")]
+#[allow(deprecated)] // appStoreReceiptURL: deprecated for StoreKit 2 but still answers.
+fn ios_receipt_name() -> Option<String> {
+    use objc2_foundation::NSBundle;
+    let url = NSBundle::mainBundle().appStoreReceiptURL()?;
+    Some(url.lastPathComponent()?.to_string())
 }
 
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
@@ -426,17 +440,14 @@ mod tests {
     fn ios_channel_reads_the_bundle() {
         let dir = std::env::temp_dir().join(format!("oad-channel-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("StoreKit")).unwrap();
-        assert_eq!(ios_channel(&dir), "appstore");
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(ios_channel(None, &dir), "appstore");
+        assert_eq!(ios_channel(Some("receipt"), &dir), "appstore");
         std::fs::write(dir.join("embedded.mobileprovision"), b"x").unwrap();
-        assert_eq!(ios_channel(&dir), "dev");
-        std::fs::write(dir.join("StoreKit/sandboxReceipt"), b"x").unwrap();
-        assert_eq!(ios_channel(&dir), "testflight");
+        assert_eq!(ios_channel(Some("receipt"), &dir), "dev");
+        assert_eq!(ios_channel(Some("sandboxReceipt"), &dir), "testflight");
         std::fs::remove_file(dir.join("embedded.mobileprovision")).unwrap();
-        assert_eq!(ios_channel(&dir), "testflight");
-        std::fs::remove_file(dir.join("StoreKit/sandboxReceipt")).unwrap();
-        std::fs::write(dir.join("StoreKit/receipt"), b"x").unwrap();
-        assert_eq!(ios_channel(&dir), "appstore");
+        assert_eq!(ios_channel(Some("sandboxReceipt"), &dir), "testflight");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

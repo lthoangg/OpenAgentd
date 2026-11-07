@@ -47,7 +47,7 @@ tauri-plugin-fs = "2"
 objc2 = "0.6"
 # block2: the `UIAlertAction` handler of the native picker is an ObjC block.
 block2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSString", "NSURL", "NSArray"] }
+objc2-foundation = { version = "0.3", features = ["NSString", "NSURL", "NSArray", "NSBundle"] }
 objc2-ui-kit = { version = "0.3", features = ["UIActivityViewController", "UIAlertController", "UIApplication", "UIInterface", "UIPopoverPresentationController", "UITraitCollection", "UIViewController", "UIView", "UIWindow", "UIWindowScene"] }
 objc2-core-foundation = { version = "0.3", features = ["CFCGTypes"] }
 dispatch2 = "0.3"

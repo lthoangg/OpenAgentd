@@ -2209,6 +2209,15 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Scheduled tasks open as a Review panel tab, with an overlay only when no
     workspace is open.
   - Settings and Usage use the same overlay frame as every other panel.
+- **A desktop app that keeps what needs you in sight** `[v3.49.0]`. The
+  phone's run and status pieces now work on desktop too, at desktop size.
+  - A question from the agent is pinned above the composer until you answer
+    it, with the orange frame of *Needs you*; the transcript says **Answer
+    below** where it was asked. Its number keys and ⌘↵ answer it once focus
+    is in it.
+  - A plan waiting for review keeps a **Plan awaiting approval** bar above
+    the composer, with its revision and **View**, which brings the Plan tab
+    forward.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

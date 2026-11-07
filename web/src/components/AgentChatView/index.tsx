@@ -905,9 +905,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       ) : null}
       aboveComposer={(
         <>
-          {/* A phone's queued messages ride above the composer as chips. */}
-          {isPhone && <PinnedQuestion />}
-          {isPhone && <PinnedPlanReview />}
+          {/* What the run waits on, pinned so it cannot scroll away. */}
+          <PinnedQuestion />
+          <PinnedPlanReview />
           {isPhone ? (
             // One status line: the run on the left, the "btw" pill on the right.
             <PhoneStatusLine>

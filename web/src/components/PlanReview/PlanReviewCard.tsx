@@ -189,18 +189,27 @@ function selectOpenReview(state: AgentStoreState): PendingQuestion | null {
 }
 
 /**
- * A phone's plan under review: one bar pinned above the composer that opens
- * the plan full screen, where Approve and Request changes are pinned.
+ * The plan under review: one bar pinned above the composer, so the run's wait
+ * stays in sight (phone mockup J6, desktop 6.3). View opens the plan: full
+ * screen on a phone, the Plan tab on desktop (which a new review already
+ * brought forward once, but may since be closed or covered). Approve and
+ * Request changes stay in the plan itself.
  */
 export function PinnedPlanReview() {
   const isPhone = useIsPhone()
   const openReview = useAgentStore(selectOpenReview)
-  if (!isPhone || openReview === null) return null
+  if (openReview === null) return null
   return (
-    <div data-plan-pinned="" className="mb-2 flex min-h-11 items-center gap-2 rounded-md border border-(--accent-orange-text) bg-(--bg-card) pl-3 pr-1">
-      <span className="min-w-0 flex-1 truncate text-subhead text-(--accent-orange-text)">Plan awaiting approval</span>
+    <div
+      data-plan-pinned=""
+      className={cn(
+        'mb-2 flex items-center gap-2 rounded-md border border-(--accent-orange-text) bg-(--bg-card) pl-3 pr-1',
+        isPhone ? 'min-h-11' : 'min-h-9',
+      )}
+    >
+      <span className={cn('min-w-0 flex-1 truncate text-(--accent-orange-text)', isPhone ? 'text-subhead' : 'text-xs font-medium')}>Plan awaiting approval</span>
       {openReview.planRevision != null && <span className="shrink-0 text-meta text-(--color-text-muted) tabular-nums">rev {openReview.planRevision}</span>}
-      <Button type="button" size="sm" aria-label="View plan" onClick={() => dispatchAppEvent(APP_EVENTS.openPlan)}>View</Button>
+      <Button type="button" size={isPhone ? 'sm' : 'xs'} aria-label="View plan" onClick={() => dispatchAppEvent(APP_EVENTS.openPlan)}>View</Button>
     </div>
   )
 }

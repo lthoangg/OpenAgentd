@@ -23,6 +23,7 @@ import { Loader2 } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { lazySurface } from '@/lib/lazy-surface'
+import { touchScrollAnchoring } from '@/lib/scroll-anchoring'
 import { TimelineScrubber } from './AgentView/TimelineScrubber'
 import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn, type AssistantTurnProps } from './AssistantTurnFooter'
@@ -74,8 +75,6 @@ const TURN_RENDER_STEP = 80
  * mounting 80 turns at once cost a long frame the reader saw as a stutter.
  */
 const TOUCH_TURN_RENDER_STEP = 16
-/** ms of no scrolling before a landed page shows on touch (the fling has rested). */
-const OLDER_REVEAL_IDLE_MS = 140
 const turnRenderStep = () => (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches ? TOUCH_TURN_RENDER_STEP : TURN_RENDER_STEP)
 const ENTER_EASE = `cubic-bezier(${EASINGS.out.join(', ')})`
 /** Older pages a reload may fetch on its own to reach a prompt (100 rows each). */
@@ -1028,48 +1027,52 @@ export function AgentView({
     release()
   }, [holdView, turnItems.length])
 
-  // When the reader last scrolled, so a page that lands mid-fling waits for
-  // the rest: on iOS a scrollTop write (the view hold) stops the momentum
-  // and the view jumps.
-  const lastScrollAtRef = useRef(0)
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-    const onScroll = () => { lastScrollAtRef.current = performance.now() }
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [scrollRef])
+  // A reveal on its way to the screen: the scroll events of one frame ask once.
+  const revealBusyRef = useRef(false)
+
+  /**
+   * Touch with the browser's scroll anchoring (``touchScrollAnchoring``):
+   * earlier turns come in a step (16) at a time while the reader is still
+   * a screen or two below the top, and the browser keeps the view, so a
+   * fling is never stopped by a scrollTop write. Only at the very top, where
+   * the browser does not anchor, is the view held by hand.
+   */
+  const loadOlderAnchored = useCallback(() => {
+    if (revealBusyRef.current) return
+    const holdAtTop = () => ((scrollRef.current?.scrollTop ?? 1) < 1 ? holdView() : null)
+    if (hiddenTurnCountRef.current > 0) {
+      revealBusyRef.current = true
+      const release = holdAtTop()
+      setRenderedTurnCount((count) => Math.min(turnItemsLengthRef.current, count + TOUCH_TURN_RENDER_STEP))
+      release?.()
+      requestAnimationFrame(() => { revealBusyRef.current = false })
+    } else if (useAgentStore.getState().hasMore && !loadingOlderRef.current) {
+      loadingOlderRef.current = true
+      // The page's turns land outside the render window; one step shows.
+      setRenderedTurnCount((count) => Math.min(count, turnItemsLengthRef.current))
+      void useAgentStore.getState().loadOlderMessages().finally(() => {
+        loadingOlderRef.current = false
+        const release = holdAtTop()
+        setRenderedTurnCount((count) => count + TOUCH_TURN_RENDER_STEP)
+        release?.()
+      })
+    }
+  }, [holdView, scrollRef])
 
   const handleLoadOlderTop = useCallback(() => {
-    if (hiddenTurnCountRef.current > 0) {
+    if (touchScrollAnchoring()) {
+      loadOlderAnchored()
+    } else if (hiddenTurnCountRef.current > 0) {
       showEarlierTurns()
     } else if (useAgentStore.getState().hasMore && !loadingOlderRef.current) {
       loadingOlderRef.current = true
-      const touch = turnRenderStep() === TOUCH_TURN_RENDER_STEP
-      // Touch: the page's turns stay out of the window as they land, and one
-      // step of them shows once the scroll rests; mounting a whole page at
-      // once was a long frame, and its shift mid-fling a jump.
-      if (touch) setRenderedTurnCount((count) => Math.min(count, turnItemsLengthRef.current))
       const release = holdView()
       void useAgentStore.getState().loadOlderMessages().finally(() => {
         loadingOlderRef.current = false
-        if (!touch) {
-          release()
-          return
-        }
-        const reveal = () => {
-          const idleFor = performance.now() - lastScrollAtRef.current
-          if (idleFor < OLDER_REVEAL_IDLE_MS) {
-            window.setTimeout(reveal, OLDER_REVEAL_IDLE_MS - idleFor)
-            return
-          }
-          setRenderedTurnCount((count) => count + TOUCH_TURN_RENDER_STEP)
-          release()
-        }
-        reveal()
+        release()
       })
     }
-  }, [holdView, showEarlierTurns])
+  }, [holdView, loadOlderAnchored, showEarlierTurns])
 
   // Keep the refs in sync so callbacks/listeners always see
   // the latest values without needing to re-register listeners.

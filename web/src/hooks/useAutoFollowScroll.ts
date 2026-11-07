@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { DURATIONS_S, prefersReducedMotion } from '@/lib/motion'
+import { touchScrollAnchoring } from '@/lib/scroll-anchoring'
 
 const SCROLL_THRESHOLD = 40
 /** Sending from up to this many screens above the end glides there; further jumps. */
 const SMOOTH_SEND_SCREENS = 2
 /** ms of scroll silence on touch before earlier turns are revealed (see onScroll). */
 const OLDER_IDLE_MS = 140
+/**
+ * With the browser's scroll anchoring on touch, earlier turns start coming in
+ * this many screens above the top, so they land before the reader gets there.
+ */
+const OLDER_PREFETCH_SCREENS = 2
 const USER_SCROLL_INTENT_MS = 250
 /** Quiet time after the last visual-viewport resize before the keyboard counts as settled. */
 export const KEYBOARD_SETTLE_MS = 120
@@ -255,6 +261,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     }
 
     const touchScroll = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
+    const nativeAnchor = touchScrollAnchoring()
     let olderIdleTimer: ReturnType<typeof setTimeout> | null = null
     const onScroll = () => {
       const currentScrollTop = el.scrollTop
@@ -317,12 +324,14 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
         setChip(true)
       }
 
-      // Near the top earlier turns load. On touch they land only
-      // once the scroll has come to rest: holding the view sets scrollTop,
-      // and doing that mid-fling stops the momentum and jumps the view (a
-      // flicker on iOS, on-device report).
-      if (currentScrollTop <= 300) {
-        if (!touchScroll) onLoadOlderTopRef.current?.()
+      // Near the top earlier turns load. On touch with the browser's scroll
+      // anchoring they come in early, mid-fling, and the browser keeps the
+      // view. Without it they land only once the scroll has come to rest:
+      // holding the view sets scrollTop, and doing that mid-fling stops the
+      // momentum and jumps the view (a flicker on iOS, on-device report).
+      const olderZone = nativeAnchor ? Math.max(300, el.clientHeight * OLDER_PREFETCH_SCREENS) : 300
+      if (currentScrollTop <= olderZone) {
+        if (!touchScroll || nativeAnchor) onLoadOlderTopRef.current?.()
         else {
           if (olderIdleTimer) clearTimeout(olderIdleTimer)
           olderIdleTimer = setTimeout(() => {

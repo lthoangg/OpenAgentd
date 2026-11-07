@@ -382,35 +382,53 @@ describe("AgentView — earlier turns landing above the view", () => {
     expect(container.querySelector('[data-block-id="t1"]')).toBe(reply)
   })
 
-  // Touch: a landed page shows one step of turns, and only once the scroll
-  // has rested, so a fling is never stopped by the view hold (iOS) and a
-  // whole page never mounts in one long frame.
-  it("on touch, shows one step of a landed page once the scroll rests", async () => {
+  // Touch with the browser's scroll anchoring (iOS 27): pages come in two
+  // screens above the top, mid-fling, a step of turns at a time, and the
+  // browser keeps the view; no scrollTop write stops the fling. At the very
+  // top, where the browser does not anchor, the view is held by hand.
+  describe("on touch with native scroll anchoring", () => {
     const originalMatchMedia = window.matchMedia
-    window.matchMedia = ((query: string) => ({ matches: query.includes("coarse"), media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false })) as unknown as typeof window.matchMedia
-    try {
+    const originalSupports = globalThis.CSS?.supports
+    beforeEach(() => {
+      window.matchMedia = ((query: string) => ({ matches: query.includes("coarse"), media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false })) as unknown as typeof window.matchMedia
+      Object.defineProperty(globalThis.CSS, "supports", { value: (property: string) => property === "overflow-anchor", configurable: true, writable: true })
       storeState.hasMore = true
       storeState.nextCursor = "cursor-1"
+    })
+    afterEach(() => {
+      window.matchMedia = originalMatchMedia
+      Object.defineProperty(globalThis.CSS, "supports", { value: originalSupports, configurable: true, writable: true })
+    })
+
+    function landPageAt(rerender: (ui: React.ReactElement) => void, el: HTMLDivElement, blocks: ContentBlock[], scrollTop: number) {
+      mockLoadOlderMessages.mockImplementation(async () => {
+        Object.defineProperty(el, "scrollTop", { value: scrollTop, configurable: true, writable: true })
+        rerender(<AgentView blocks={[...makeTurns(20, "old-"), ...blocks]} currentBlocks={[]} isWorking={false} />)
+      })
+    }
+
+    it("loads two screens above the top and shows one step without touching the scroll", async () => {
       const blocks = makeTurns(3)
       const { container, rerender } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
       const el = getScrollEl(container)
-      mockLoadOlderMessages.mockImplementation(async () => {
-        rerender(<AgentView blocks={[...makeTurns(20, "old-"), ...blocks]} currentBlocks={[]} isWorking={false} />)
-        // The reader is still flinging as the page lands (away from the top).
-        Object.defineProperty(el, "scrollTop", { value: 1000, configurable: true, writable: true })
-        el.dispatchEvent(new Event("scroll", { bubbles: true }))
-      })
-      const count = () => container.querySelectorAll("[data-block-id]").length
+      landPageAt(rerender, el, blocks, 700)
 
-      await readAt(el, 150)
-      await act(async () => { await new Promise((r) => setTimeout(r, 170)) })
+      await readAt(el, 800)
+
       expect(mockLoadOlderMessages).toHaveBeenCalledTimes(1)
-      expect(count()).toBe(6)
+      expect(container.querySelectorAll("[data-block-id]").length).toBe(6 + 16)
+      expect(el.scrollTop).toBe(700)
+    })
 
-      await act(async () => { await new Promise((r) => setTimeout(r, 200)) })
-      expect(count()).toBe(6 + 16)
-    } finally {
-      window.matchMedia = originalMatchMedia
-    }
+    it("holds the view by hand when the page lands at the very top", async () => {
+      const blocks = makeTurns(3)
+      const { container, rerender } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+      const el = getScrollEl(container)
+      landPageAt(rerender, el, blocks, 0)
+
+      await readAt(el, 800)
+
+      expect(el.scrollTop).toBe(1600)
+    })
   })
 })

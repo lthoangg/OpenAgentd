@@ -942,9 +942,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Scrolling up shows a **Loading earlier messages…** row while older
     turns load, and one **Jump to latest** chip counts what arrived since
     (`3 new`). Since `[v3.49.0]` it is a pill at the top of the view that
-    never moves the messages, and on a phone a loaded page shows a few turns
-    at a time once your scroll comes to rest, so loading no longer flickers
-    or stops a fling. Closing the sidebar while the Review panel is open no longer
+    never moves the messages. On a phone whose browser keeps the view itself
+    (iOS 27 and Android), earlier messages start loading two screens before
+    the top and come in a few turns at a time while you keep scrolling, so a
+    fling is never stopped and the chat does not jump. Closing the sidebar while the Review panel is open no longer
     leaves the chat scrolled up a little with the chip showing.
   - A subagent row is a button that opens the subagent's session, with its
     state in words (Running, Done, Failed, Needs you, Stopped) and a running

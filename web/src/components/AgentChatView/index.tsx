@@ -502,9 +502,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const { data: goalData } = useSessionGoalQuery(sessionIdState)
   const goal = goalData?.goal ?? null
   // The goal lives in the dock's Goal tab (its actions too): the palette
-  // lists one entry that opens it, and only while the session has a goal.
+  // lists one entry that opens it, even before there is a goal, so it can be
+  // found; the tab's empty state says how a goal starts.
   const paletteGoal = useMemo(
-    () => (workspace && goal && goal.status !== 'cleared' ? { onShow: handleOpenGoal } : undefined),
+    () => (workspace ? { onShow: handleOpenGoal, active: Boolean(goal && goal.status !== 'cleared') } : undefined),
     [workspace, goal, handleOpenGoal],
   )
   // The header's Task list button shows the live goal as a ring and tooltip.
@@ -723,7 +724,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleSplitDock,
     handleSplitDockDown,
     handleFindInSession: sessionIdState ? handleFindInSession : undefined,
-    handleOpenPlan: plan || planAwaitingReview ? handleOpenPlan : undefined,
+    handleOpenPlan,
+    hasPlan: Boolean(plan),
     planAwaitingReview,
     handleOpenPreview: workspace && previewsAvailable() ? handleOpenNewPreview : undefined,
     handleOpenSideQuestions,

@@ -57,8 +57,9 @@ export interface UseCommandPaletteArgs {
   handleSplitDockDown: () => void
   /** ⌘F — find in the session; omitted where there is no transcript to search. */
   handleFindInSession?: () => void
-  /** Only while the session has a plan; lists Open Plan. */
+  /** Opens the plan; listed even before there is one. */
   handleOpenPlan?: () => void
+  hasPlan?: boolean
   planAwaitingReview?: boolean
   /** Workspace with a local backend only: opens a web preview tab. */
   handleOpenPreview?: () => void
@@ -103,6 +104,7 @@ export function useCommandPalette({
   handleSplitDockDown,
   handleFindInSession,
   handleOpenPlan,
+  hasPlan,
   planAwaitingReview,
   handleOpenPreview,
   handleOpenSideQuestions: openSideQuestions,
@@ -145,6 +147,7 @@ export function useCommandPalette({
     handleSplitDockDown: workspace && !isMobile ? handleSplitDockDown : undefined,
     handleFindInSession: isMobile ? undefined : handleFindInSession,
     handleOpenPlan,
+    hasPlan,
     planAwaitingReview,
     handleOpenPreview,
     handleOpenSideQuestions,

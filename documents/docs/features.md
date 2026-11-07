@@ -2280,6 +2280,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The command palette (⌘K) opens on a **Recent** group, the last five
     commands and sessions you ran from it, and a search marks the words you
     typed in each row's name.
+  - The palette always lists **Open Plan** and, in a workspace, **Goal**,
+    even before the session has a plan or a goal; their descriptions then
+    say how one starts (Plan mode; approving a plan with **Keep going until
+    done**).
   - The keyboard focus ring shows whole on segmented controls, tabs, menu
     and palette rows, settings lists, the status bar and the header's
     sidebar button, instead of being cut to a bar on one side, and **Tab**

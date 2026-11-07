@@ -296,7 +296,7 @@ pub fn force_reload_app(app: &AppHandle) {
             let result = restart_sidecar_and_reload_window(&handle).await;
             if let Err(e) = result {
                 log::error!("failed to force reload backend: {e:#}");
-                update_tray_status(&handle, "Status: Error");
+                update_tray_status(&handle, crate::menu::TRAY_STATUS_FAILED);
                 handle
                     .emit(
                         "backend-error",
@@ -567,7 +567,7 @@ async fn publish_backend(app: &AppHandle, started: StartedBackend) -> Result<()>
             .ok();
         }
         StartedBackend::Failed(message) => {
-            update_tray_status(app, "Status: Error");
+            update_tray_status(app, crate::menu::TRAY_STATUS_FAILED);
             app.emit("backend-error", BackendError { message }).ok();
         }
     }
@@ -735,7 +735,7 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = start_backend_and_window(handle.clone(), backend).await {
                     log::error!("failed to start backend: {e:#}");
-                    update_tray_status(&handle, "Status: Error");
+                    update_tray_status(&handle, crate::menu::TRAY_STATUS_FAILED);
                     handle
                         .emit(
                             "backend-error",

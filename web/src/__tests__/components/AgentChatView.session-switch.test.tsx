@@ -222,6 +222,13 @@ describe('AgentChatView — switching sessions', () => {
     expect(screen.queryByText('No workspace attached')).toBeNull()
   })
 
+  // Desktop mockup 12.5: a dead link offered only a fresh start.
+  it('also offers to find the session that was meant', () => {
+    render(<AgentChatView sessionId="gone" workspace={null} sessionNotFound />)
+
+    expect(screen.getByRole('button', { name: /^Find a session/ })).toBeTruthy()
+  })
+
   // Opened with the server down, nothing could load, so the view knows no
   // workspace. Asking for one sends the user the wrong way.
   it('says the server is unreachable instead of asking for a workspace', () => {

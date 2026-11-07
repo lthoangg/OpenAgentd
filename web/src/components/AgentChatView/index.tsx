@@ -65,6 +65,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { useFocusRegions } from '@/hooks/use-focus-regions'
 import { usePlatform } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, dispatchAppShortcut, shortcutLabel } from '@/lib/app-shortcuts'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -269,7 +270,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const pushToast = useToastStore((s) => s.push)
   const isMobile = useIsMobile()
   const isPhone = useIsPhone()
-  const { isMacOverlay } = usePlatform()
+  const { isMacOverlay, os } = usePlatform()
   const storeWorkspace = useAgentStore((s) => s._workspace)
   const effectiveWorkspace = workspace || storeWorkspace
   // Chat sessions run on the same screen as project workspaces but the root is
@@ -1043,10 +1044,18 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             title="Session not found"
             body="It may have been deleted, or the link is wrong."
             action={
-              // A phone's way back is the Sessions list it came from.
-              <Button type="button" onClick={() => navigate({ to: isPhone ? '/sessions' : '/', replace: true })}>
-                {isPhone ? 'Back to Sessions' : 'New session'}
-              </Button>
+              // A phone's way back is the Sessions list it came from. Desktop
+              // can also look for the session it meant (desktop mockup 12.5).
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button type="button" onClick={() => navigate({ to: isPhone ? '/sessions' : '/', replace: true })}>
+                  {isPhone ? 'Back to Sessions' : 'New session'}
+                </Button>
+                {!isMobile && (
+                  <Button type="button" variant="subtle" onClick={() => dispatchAppShortcut(APP_SHORTCUTS.switchWorkspace, os)}>
+                    Find a session <span className="text-(--color-text-muted)">{shortcutLabel(APP_SHORTCUTS.switchWorkspace, os)}</span>
+                  </Button>
+                )}
+              </div>
             }
           />
         ) : isSessionLoading && !chatOnScreen ? (

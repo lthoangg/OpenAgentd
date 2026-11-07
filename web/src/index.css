@@ -977,6 +977,11 @@ html[data-mobile-shell][data-vp-rise] [data-bottom-sheet] {
   :focus:not(:focus-visible) {
     outline: none;
   }
+  /* Tab scrolls a control in a scroller only to the nearest edge, which
+   * left its ring (2px out, 2px wide) under the clip. */
+  :where(button, select, a[href], [tabindex]) {
+    scroll-margin-block: 6px;
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────

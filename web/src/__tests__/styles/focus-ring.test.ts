@@ -38,6 +38,13 @@ describe('keyboard focus ring', () => {
     for (const block of layered) expect(block).not.toContain('focus-visible:is(')
   })
 
+  // Tab scrolls a control in a scroller only to the nearest edge; without a
+  // margin its ring (2px out, 2px wide) lands under the clip.
+  it('keeps a control Tab scrolls into view clear of its scroller edge', () => {
+    const base = css.match(/@layer base\s*\{[\s\S]*?\n\}/g)?.join('\n') ?? ''
+    expect(base).toMatch(/:where\(button, select, a\[href\], \[tabindex\]\)\s*\{\s*scroll-margin-block: 6px;\s*\}/)
+  })
+
   it('insets the status bar items, which sit on the window edge in a clipping row', () => {
     const footer = read('components/AppFooter.tsx')
     for (const name of ['ITEM', 'ICON_ITEM']) {

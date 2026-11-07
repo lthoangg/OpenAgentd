@@ -11,14 +11,18 @@ import { useConnectLink } from '@/hooks/useConnectLink'
 import { useDynamicType } from '@/hooks/use-dynamic-type'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
-import { getBundledBackendLogPath } from '@/lib/app-backend'
+import { getAppBackendStatus, getBundledBackendLogPath } from '@/lib/app-backend'
 import { clearBackendSwitchHandoff, pendingBackendSwitch, type BackendSwitchTarget } from '@/stores/useBackendSwitchStore'
 import { openServersScreen } from '@/stores/useServersScreenStore'
 import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
 import { router } from './router'
 
-/** A phone still not connected after this long shows Servers instead of the logo. */
-const PHONE_SERVERS_AFTER_MS = 2000
+/**
+ * A phone with a server saved shows the logo while it connects (a cold start
+ * can spend seconds reading the access key); only one that is still not
+ * connected after this long shows Servers. No server at all shows it at once.
+ */
+const PHONE_SERVERS_AFTER_MS = 10_000
 
 function App() {
   // Mounted here, not in the root route, so the loading screen and the
@@ -34,8 +38,15 @@ function App() {
   const [phoneServers, setPhoneServers] = useState(false)
   useEffect(() => {
     if (!isPhone || ready) return
+    let cancelled = false
+    void getAppBackendStatus().then((status) => {
+      if (!cancelled && !status?.base_url) setPhoneServers(true)
+    }).catch(() => {})
     const timer = setTimeout(() => setPhoneServers(true), PHONE_SERVERS_AFTER_MS)
-    return () => clearTimeout(timer)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
   }, [isPhone, ready])
   // A server switch reloaded the window: the startup screen keeps saying
   // where it is going, and forgets once the new server is up.

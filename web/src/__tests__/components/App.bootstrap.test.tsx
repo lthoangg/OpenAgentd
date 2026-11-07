@@ -401,19 +401,30 @@ describe('App backend bootstrap', () => {
     timers.restore()
   })
 
-  it('shows a phone only the logo, then its Servers screen if nothing connects', async () => {
+  it('shows a phone with no server its Servers screen at once, with no dialog', async () => {
     isPhone = true
-    const timers = useFakeTimers()
     statusPayload = { base_url: '', sidecar_running: false, external: true }
     render(<App />)
-    await act(async () => { await Promise.resolve() })
-    expect(screen.getByRole('status', { name: 'Loading OpenAgentd' })).toBeTruthy()
+    expect(await screen.findByTestId('servers-screen')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Choose server' })).toBeNull()
-    expect(screen.queryByTestId('servers-screen')).toBeNull()
-    await act(async () => { timers.tick(2_000) })
-    expect(screen.getByTestId('servers-screen')).toBeTruthy()
     expect(screen.queryByRole('dialog')).toBeNull()
-    timers.restore()
+  })
+
+  it('keeps a phone on the logo while its saved server connects, Servers only after a long wait', async () => {
+    isPhone = true
+    const timers = useFakeTimers()
+    try {
+      statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: false, external: false, backend_starting: true }
+      render(<App />)
+      await act(async () => { await Promise.resolve() })
+      expect(screen.getByRole('status', { name: 'Loading OpenAgentd' })).toBeTruthy()
+      await act(async () => { timers.tick(5_000) })
+      expect(screen.queryByTestId('servers-screen')).toBeNull()
+      await act(async () => { timers.tick(5_000) })
+      expect(screen.getByTestId('servers-screen')).toBeTruthy()
+    } finally {
+      timers.restore()
+    }
   })
 
   it('copies the backend log path while the sidecar is still unavailable', async () => {

@@ -51,6 +51,13 @@ afterEach(() => {
 })
 
 describe('Servers rows on touch', () => {
+  it('lists nothing until the shell answers, so no placeholder row flashes', async () => {
+    render(<AppBackendPanel active />)
+    expect(document.querySelector('[data-server-row]')).toBeNull()
+    expect(screen.queryByText('Built-in server')).toBeNull()
+    expect(await screen.findByRole('button', { name: 'More actions for Local CLI' })).toBeInTheDocument()
+  })
+
   it('keeps no buttons on the row: a tap opens it, Edit and Remove are in the sheet', async () => {
     render(<AppBackendPanel active />)
     const more = await screen.findByRole('button', { name: 'More actions for Local CLI' })

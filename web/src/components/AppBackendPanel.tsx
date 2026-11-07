@@ -138,6 +138,9 @@ type ServerFormTarget =
 
 export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, sectionTitle = 'Servers', onOpenInUse, controlRef }: AppBackendPanelProps) {
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
+  // Nothing is listed until the shell has answered once: before that a
+  // phone with no server would flash the browser build's placeholder rows.
+  const [loaded, setLoaded] = useState(false)
   const [confirm, setConfirm] = useState<{ kind: 'stop' } | { kind: 'remove'; baseUrl: string; label: string } | null>(null)
   const [form, setForm] = useState<ServerFormTarget | null>(null)
   // Touch: a saved server's row keeps one button; Edit and Remove move to
@@ -188,6 +191,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     void getAppBackendStatus().then((next) => {
       if (cancelled) return
       setStatus(next)
+      setLoaded(true)
       setListError(null)
       setScanned(Boolean(prefill))
       // A scanned link opens the add form, filled in and tested; otherwise no form is open.
@@ -454,13 +458,13 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     }
   }
 
-  const servers = status?.servers ?? DEFAULT_SERVERS
+  const servers = loaded ? status?.servers ?? DEFAULT_SERVERS : []
   // Browser builds have no shell status and a relative `/api` base: show the page origin.
   const currentUrl = status?.base_url || apiBaseUrl().replace(/\/api$/, '') || window.location.origin
   const onExternal = status?.mode === 'external' || Boolean(status?.external)
   // A connected server that is not in the saved list still gets a row. Without
   // shell status (a browser) the one server is the page's own.
-  const unlistedUrl = status ? unlistedConnectedUrl(status, servers) : normalizeServerBaseUrl(currentUrl)
+  const unlistedUrl = !loaded ? null : status ? unlistedConnectedUrl(status, servers) : normalizeServerBaseUrl(currentUrl)
   const tested = testedBaseUrl !== null && testedBaseUrl === normalizeServerBaseUrl(baseUrl)
   const editTarget = form?.kind === 'edit' ? form : null
   // A rename saves at once; a new address or key waits for Test.
@@ -512,7 +516,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
         description={touch ? 'Tap a server to use it; ⋯ edits or removes it.' : 'Use switches the app to a server. Edit changes its address, key or name.'}
         flush
       >
-        {status?.supports_bundled !== false ? (
+        {loaded && status?.supports_bundled !== false ? (
           <ServerRow
             health={status?.sidecar_running ? 'online' : undefined}
             title="Built-in server"

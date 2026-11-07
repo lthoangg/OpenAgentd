@@ -1412,6 +1412,15 @@ html[data-app-hidden="true"] *::after {
 .oa-icon-in {
   animation: oa-icon-in var(--motion-base) var(--ease-spring-soft) backwards;
 }
+/* A hold menu blooms out of the control that opened it, as iOS's context
+ * menus do: from a smaller, faded copy anchored at that corner (the caller
+ * sets ``transform-origin``), settling with a soft spring. */
+@keyframes oa-menu-bloom {
+  from { opacity: 0; scale: 0.6; }
+}
+.oa-menu-bloom {
+  animation: oa-menu-bloom var(--motion-base) var(--ease-spring-soft) backwards;
+}
 /* Work in progress said in words ("running…", "Thinking…"): a light passes
  * over the label, as Apple Intelligence marks it. The words stay the muted
  * tone (AA) with the ink tone sweeping across; under reduced motion the

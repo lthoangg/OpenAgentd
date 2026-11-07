@@ -856,6 +856,16 @@ describe('Sidebar page mode: press and slide on the toolbar', () => {
     fireEvent.pointerUp(newButton(), at(320, 620))
   })
 
+  it('presses ✎ in under the finger, lets it spring back when the hold opens the menu, and blooms the menu', async () => {
+    await renderPage()
+    fireEvent.pointerDown(newButton(), at(320, 620))
+    expect(newButton().hasAttribute('data-pressed')).toBe(true)
+    await waitFor(() => { if (!menu()) throw new Error('no menu yet') }, { timeout: 1500 })
+    expect(newButton().hasAttribute('data-pressed')).toBe(false)
+    expect(menu()?.className).toContain('oa-menu-bloom')
+    fireEvent.pointerUp(newButton(), at(320, 620))
+  })
+
   it('slides from ✎ to a workspace and lifts there to open a draft in it', async () => {
     await renderPage()
     await holdNew()

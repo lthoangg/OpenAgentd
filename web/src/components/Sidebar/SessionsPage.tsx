@@ -317,7 +317,7 @@ export function SessionsPageToolbar({
             role="menu"
             aria-label="New session in"
             data-sessions-new-menu=""
-            className="absolute bottom-full right-0 mb-3 w-60 rounded-2xl border border-(--color-border) bg-(--bg-card) p-1.5 shadow-(--shadow-depth)"
+            className="oa-menu-bloom absolute bottom-full right-0 mb-3 w-60 origin-bottom-right rounded-2xl border border-(--color-border) bg-(--bg-card) p-1.5 shadow-(--shadow-depth)"
           >
             <p className="px-2.5 pb-1 pt-1.5 text-xs text-(--color-text-muted)">New session in…</p>
             {newSessionChoices.map((choice) => {
@@ -350,10 +350,14 @@ export function SessionsPageToolbar({
           data-sessions-new=""
           data-slide-id="new"
           data-active={menuOpen && newSlide.active === 'new' ? '' : undefined}
+          // A finger on ✎ presses it in, as an iOS button gives; the hold
+          // that opens the menu lets it spring back (the snappy spring
+          // overshoots a little) while ✕ springs into its place.
+          data-pressed={!menuOpen && newSlide.active === 'new' ? '' : undefined}
           // Round and 52px, as the mockup: ``!`` beats the icon size's square 36px.
-          className="size-13! min-h-13! min-w-13! rounded-full! shadow-(--shadow-depth) data-active:scale-105"
+          className="size-13! min-h-13! min-w-13! rounded-full! shadow-(--shadow-depth) transition-[scale,background-color,color] duration-(--motion-base) ease-(--ease-spring-snappy) data-active:scale-105 data-pressed:scale-[0.88] data-pressed:duration-(--motion-fast) data-pressed:ease-out"
         >
-          {menuOpen ? <X className="size-5" aria-hidden="true" /> : <SquarePen className="size-5" aria-hidden="true" />}
+          {menuOpen ? <X key="x" className="oa-icon-in size-5" aria-hidden="true" /> : <SquarePen key="new" className="size-5" aria-hidden="true" />}
         </Button>
       </div>
     </div>

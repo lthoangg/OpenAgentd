@@ -199,12 +199,16 @@ export function groupSessionsByDate(
 /**
  * Needs you · Running · Recent. ``active`` is every session running or
  * waiting (one page, any age); ``recent`` the paged list, which may repeat
- * them. Keeps each input's order and drops empty groups.
+ * them. Keeps each input's order and drops empty groups. A session shows in
+ * one place only: pinned ones live in Pinned (which carries their status),
+ * never again under Needs you, Running or Recent.
  */
 export function groupSessionsByStatus(
-  recent: readonly SessionResponse[],
-  active: readonly SessionResponse[],
+  recentRows: readonly SessionResponse[],
+  activeRows: readonly SessionResponse[],
 ): SessionGroup[] {
+  const recent = recentRows.filter((session) => !session.pinned_at)
+  const active = activeRows.filter((session) => !session.pinned_at)
   const needsYou = active.filter((session) => session.needs_input === true)
   const working = active.filter((session) => session.needs_input !== true && sessionWorking(session))
   const activeIds = new Set([...needsYou, ...working].map((session) => session.id))

@@ -897,6 +897,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     none); the chevron beside it folds the list.
   - Pinned, Needs you, the sessions and Scheduled scroll together in one
     list, under one style of section header with an always-visible chevron.
+    A session shows in one place only: a pinned one stays in Pinned even
+    when it needs you or is running. `[v3.49.0]`
     Needs you counts in words ("2 waiting"). Scheduled is always there, with
     **+** for a new task. A row whose session is busy, waiting, finished
     unseen or failed says so in words in place of its time: **Running**,

@@ -2261,6 +2261,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     running ones, then the rest by recency; a workspace with a session
     waiting or running says **Needs you** or **Running** and lists right
     after the current one.
+  - **Keyboard shortcuts** (⌘/) opens with a search field in focus that
+    filters by name, key (`F6`) or area (`terminal`), and lays the areas out
+    in two columns on a wide window.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

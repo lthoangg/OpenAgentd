@@ -675,11 +675,11 @@ export function Sidebar({
   }
 
   // A folder from Open workspace…: register it (so it has a row) and open a
-  // draft there.
+  // draft there. A desktop says so once the folder is new to the sidebar.
   const openFolderDraft = async (path: string) => {
     setPendingWorkspace(path)
     try {
-      await openWorkspaceDraft({
+      const added = await openWorkspaceDraft({
         path,
         listed: isChatPath(path) || workspaceByPath.has(path),
         currentSessionId,
@@ -687,6 +687,7 @@ export function Sidebar({
         refreshWorkspaceTree,
         navigate,
       })
+      if (added && !isMobile) pushToast({ tone: 'info', title: `Added ${workspaceLabel(path)}` })
       onMobileClose?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to open workspace')

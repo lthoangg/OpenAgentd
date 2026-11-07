@@ -1009,6 +1009,27 @@ describe('Sidebar workspace trust flow', () => {
     expect(loadLastWorkspace()?.path).toBe('/repo/project')
   })
 
+  it('says Added {folder} once Open workspace… puts a new folder in the sidebar (desktop)', async () => {
+    useToastStore.setState({ toasts: [] })
+    const user = userEvent.setup()
+    await renderSidebar()
+    await user.click(screen.getByRole('button', { name: /trust and open/i }))
+
+    await waitFor(() => expect(useToastStore.getState().toasts.map((toast) => toast.title)).toEqual(['Added project']))
+    expect(useToastStore.getState().toasts[0].tone).toBe('info')
+  })
+
+  it('says nothing when the folder was already in the sidebar', async () => {
+    useToastStore.setState({ toasts: [] })
+    sessionsData = [{ id: 'session-1', title: 'Old', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' }]
+    const user = userEvent.setup()
+    await renderSidebar()
+    await user.click(screen.getByRole('button', { name: /trust and open/i }))
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/project' }, replace: false }))
+    expect(useToastStore.getState().toasts).toEqual([])
+  })
+
   it('uses the native desktop folder picker on Linux desktop too', async () => {
     platformOs = 'linux'
 

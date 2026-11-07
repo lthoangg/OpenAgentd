@@ -2300,6 +2300,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Each scheduled task's row has an on/off switch beside its **⋯**, as on
     the phone, so pausing or resuming a task is one click that does not
     open it. **Pause** and **Resume** stay in the menu too.
+  - Opening a folder the sidebar did not list yet (**Open workspace…**)
+    says **Added {folder}** as it opens the new session there; a folder
+    that was already listed just opens.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

@@ -8,7 +8,7 @@ import { startNewSession, type NewSessionNavigate } from '@/lib/new-session'
 /**
  * Open a folder on a new-session draft. A folder the sidebar does not list
  * yet is registered first (un-hidden), so its row is there before the first
- * message creates a session in it.
+ * message creates a session in it. Resolves true when it added the folder.
  */
 export async function openWorkspaceDraft(options: {
   path: string
@@ -19,7 +19,7 @@ export async function openWorkspaceDraft(options: {
   refreshWorkspaceTree: () => Promise<void>
   navigate: NewSessionNavigate
   setCodingWorkspaceVisibilityFn?: typeof setCodingWorkspaceVisibility
-}): Promise<void> {
+}): Promise<boolean> {
   if (!options.listed) {
     await (options.setCodingWorkspaceVisibilityFn ?? setCodingWorkspaceVisibility)(options.path, false)
     await options.refreshWorkspaceTree()
@@ -29,6 +29,7 @@ export async function openWorkspaceDraft(options: {
     workspace: options.path,
     current: { sessionId: options.currentSessionId, workspace: options.currentWorkspace },
   })
+  return !options.listed
 }
 
 /** The newest top-level session in ``workspace``, or null (created order). */

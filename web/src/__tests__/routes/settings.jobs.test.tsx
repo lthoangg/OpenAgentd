@@ -153,19 +153,19 @@ describe('WorkspacesSettingsPage', () => {
 })
 
 describe('TitlesSettingsPage', () => {
-  it('labels the rows "Wait for title (seconds)" and "Update title after summarizing"', async () => {
+  it('has no title-wait row; the wait stays in the settings YAML', async () => {
     server.use(...baseHandlers(null))
     renderPage(<TitlesSettingsPage />)
 
-    expect(await screen.findByText('Wait for title (seconds)')).toBeTruthy()
-    expect(screen.getByText('Update title after summarizing')).toBeTruthy()
+    expect(await screen.findByText('Update title after summarizing')).toBeTruthy()
+    expect(screen.queryByText('Wait for title (seconds)')).toBeNull()
   })
 
   it('shows no save bar until something is edited', async () => {
     server.use(...baseHandlers())
     renderPage(<TitlesSettingsPage />)
 
-    await screen.findByLabelText('Wait for title (seconds)')
+    await screen.findByRole('switch', { name: /update title after summarizing/i })
     expect(screen.queryByText('Unsaved changes')).toBeNull()
     expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull()
   })
@@ -178,10 +178,7 @@ describe('TitlesSettingsPage', () => {
     expect(enabled.closest('[class~="min-h-(--phone-control)"]')).not.toBeNull()
     expect(document.querySelector(`label[for="${enabled.id}"]`)?.textContent).toMatch(/generate titles automatically/i)
 
-    const waitTimeout = screen.getByLabelText('Wait for title (seconds)')
-    expect(waitTimeout.className).toContain('h-9')
-
-    fireEvent.change(waitTimeout, { target: { value: '5' } })
+    fireEvent.click(screen.getByRole('switch', { name: /update title after summarizing/i }))
 
     const save = await screen.findByRole('button', { name: /^save$/i })
     expect(save.className).toContain('min-h-9')
@@ -192,15 +189,14 @@ describe('TitlesSettingsPage', () => {
     expect(reset.className).toContain('md:min-h-0')
   })
 
-  it('hides the model and timeout rows while titles are off', async () => {
+  it('hides the model and retitle rows while titles are off', async () => {
     server.use(...baseHandlers(null))
     renderPage(<TitlesSettingsPage />)
 
     const enabled = await screen.findByRole('switch', { name: /generate titles automatically/i })
     await waitFor(() => expect(enabled.getAttribute('aria-checked')).toBe('true'))
     fireEvent.click(enabled)
-    await waitFor(() => expect(screen.queryByLabelText('Wait for title (seconds)')).toBeNull())
-    expect(screen.queryByRole('switch', { name: /update title after summarizing/i })).toBeNull()
+    await waitFor(() => expect(screen.queryByRole('switch', { name: /update title after summarizing/i })).toBeNull())
   })
 
   it('turns on retitling after compaction', async () => {
@@ -220,7 +216,9 @@ describe('TitlesSettingsPage', () => {
     fireEvent.click(toggle)
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
 
-    await waitFor(() => expect(bodies).toEqual([{ ...TITLES, update_after_compaction: true }]))
+    const { wait_timeout_seconds: _wait, ...rest } = TITLES
+    // The wait is not sent: the server keeps the value in the YAML.
+    await waitFor(() => expect(bodies).toEqual([{ ...rest, update_after_compaction: true }]))
   })
 })
 

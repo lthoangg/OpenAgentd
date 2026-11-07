@@ -58,7 +58,6 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   { section: 'goals', label: 'Allow questions during goals', keywords: ['goal', 'ask', 'questions', 'interrupt'] },
   // Sessions
   { section: 'titles', label: 'Generate titles automatically', keywords: ['session name', 'rename', 'title'] },
-  { section: 'titles', label: 'Wait for title (seconds)', keywords: ['session name', 'delay', 'timeout'] },
   { section: 'titles', label: 'Update title after summarizing', keywords: ['session name', 'summary'] },
   { section: 'context', label: 'Token threshold', keywords: ['summarize', 'summarization', 'compact', 'context window', 'long sessions'] },
   { section: 'context', label: 'Summarize idle sessions', keywords: ['idle', 'summary', 'cache'] },

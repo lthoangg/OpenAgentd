@@ -109,7 +109,7 @@ Review Notes (App Store) and Test Information (Beta App Review) cover:
 - 3–5 numbered steps to try it: install the server, Settings → Connection →
   Connect a device → Show QR, then Scan QR code in the app, accept the AI-data
   consent, send a message;
-- the native parts (QR pairing, voice input, widgets, share sheet, photo and
+- the native parts (QR pairing, widgets, share sheet, photo and
   file pickers), since a thin web wrapper is rejected under 4.2/4.3;
 - plugins and MCP servers run on the server; the app runs no downloaded code
   outside WebKit;

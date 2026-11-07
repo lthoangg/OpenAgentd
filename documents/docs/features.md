@@ -2256,6 +2256,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     workspace with a count (**openagentd · 3**) below a summary (**6
     results · 3 workspaces**), the matched text is marked in each title,
     rows show their age, and **↓** moves from the field into the results.
+  - **Switch Workspace/Session** (⌘L, ⌘⇧L) leads each row with the
+    sidebar's status mark. A session that needs you lists first, then the
+    running ones, then the rest by recency; a workspace with a session
+    waiting or running says **Needs you** or **Running** and lists right
+    after the current one.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

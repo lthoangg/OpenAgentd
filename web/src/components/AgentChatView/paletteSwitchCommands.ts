@@ -14,6 +14,7 @@ import type { Command } from '../CommandPalette'
 import { formatCompactRelative } from '@/utils/format'
 import { sameWorkspacePath } from '@/utils/workspace'
 import { sessionActivityTime } from '../Sidebar.helpers'
+import { sessionStatus, sessionStateWord, type SessionStatus } from '../Sidebar/SessionStatusMark'
 
 export interface SwitchCommandsInput {
   currentSessionId: string | null
@@ -48,15 +49,29 @@ export interface SwitchCommandHandlers {
   loadWorkspace: (path: string) => void
 }
 
-function sessionStatus(session: SessionResponse, now: Date): string {
-  // ``needs_input`` implies ``running``, so it is checked first.
-  if (session.needs_input) return 'Needs you'
-  if (session.running) return 'Running'
-  return formatCompactRelative(sessionActivityTime(session), now)
+/** Needs you, then running, then the rest: what the user should look at first. */
+const URGENCY: Record<SessionStatus, number> = { needs_input: 0, running: 1, failed: 2, unread: 2, idle: 2 }
+
+/**
+ * A session's state as the sidebar reads it (no unread state here: the
+ * palette is built from query data alone). A lead whose subagents still
+ * work is running.
+ */
+function stateOf(session: SessionResponse): SessionStatus {
+  return sessionStatus(session, false)
+}
+
+/** The state in words, or the age of an idle session. */
+function sessionDescription(session: SessionResponse, now: Date): string {
+  return sessionStateWord(stateOf(session)) ?? formatCompactRelative(sessionActivityTime(session), now)
 }
 
 function byRecency(a: SessionResponse, b: SessionResponse): number {
   return (sessionActivityTime(b) ?? '').localeCompare(sessionActivityTime(a) ?? '')
+}
+
+function byUrgency(a: SessionResponse, b: SessionResponse): number {
+  return URGENCY[stateOf(a)] - URGENCY[stateOf(b)] || byRecency(a, b)
 }
 
 function sessionPage(
@@ -71,11 +86,12 @@ function sessionPage(
     : input.sessions
   const sessions = loaded
     .filter((s) => s.id !== input.currentSessionId && !s.parent_session_id && sameWorkspacePath(s.workspace, path))
-    .sort(byRecency)
+    .sort(byUrgency)
     .map((s): Command => ({
       id: `session:${s.id}`,
       label: s.title?.trim() || 'Untitled session',
-      description: sessionStatus(s, now),
+      description: sessionDescription(s, now),
+      status: stateOf(s),
       action: () => handlers.openSession(s),
     }))
   return [
@@ -84,6 +100,8 @@ function sessionPage(
       label: 'New Session',
       description: `Start a fresh conversation in ${label}`,
       browseOnly: true,
+      // Not a session: an empty mark slot, so its title lines up with theirs.
+      status: 'idle',
       action: () => handlers.newSession(path),
     },
     ...sessions,
@@ -102,28 +120,44 @@ function workspaceCommands(input: SwitchCommandsInput, handlers: SwitchCommandHa
   // The tree has no last-used time; the newest session in a workspace is the
   // best recency signal. Workspaces without sessions keep tree order.
   const lastActive = new Map<string, string>()
+  // The most urgent state among a workspace's other sessions (the one on
+  // screen says its own): a workspace waiting on the user lists early.
+  const urgent = new Map<string, SessionStatus>()
   for (const s of input.sessions) {
     const row = s.workspace ? rows.find((r) => sameWorkspacePath(r.path, s.workspace)) : undefined
     const at = sessionActivityTime(s) ?? ''
     if (row && at > (lastActive.get(row.path) ?? '')) lastActive.set(row.path, at)
+    if (!row || s.parent_session_id || s.id === input.currentSessionId) continue
+    const state = stateOf(s)
+    if (state !== 'needs_input' && state !== 'running') continue
+    const held = urgent.get(row.path)
+    if (held === undefined || URGENCY[state] < URGENCY[held]) urgent.set(row.path, state)
   }
   const isCurrent = (path: string) => sameWorkspacePath(path, input.currentWorkspace)
+  const urgency = (path: string) => URGENCY[urgent.get(path) ?? 'idle']
   return rows
     .sort((a, b) =>
       Number(isCurrent(b.path)) - Number(isCurrent(a.path))
+      || urgency(a.path) - urgency(b.path)
       || (lastActive.get(b.path) ?? '').localeCompare(lastActive.get(a.path) ?? ''))
-    .map((r) => ({
-      id: `workspace:${r.path}`,
-      label: r.label,
-      description: isCurrent(r.path) ? `Current workspace · ${r.description}` : r.description,
-      page: {
-        placeholder: `Search sessions in ${r.label}…`,
-        commands: sessionPage(r.path, r.label, input, handlers, now),
-        loading: sameWorkspacePath(input.loadingWorkspace, r.path),
-      },
-      onOpenPage: () => handlers.loadWorkspace(r.path),
-      action: () => {},
-    }))
+    .map((r): Command => {
+      const state = urgent.get(r.path) ?? 'idle'
+      const word = sessionStateWord(state)
+      const where = word ? `${word} · ${r.description}` : r.description
+      return {
+        id: `workspace:${r.path}`,
+        label: r.label,
+        description: isCurrent(r.path) ? `Current workspace · ${where}` : where,
+        status: state,
+        page: {
+          placeholder: `Search sessions in ${r.label}…`,
+          commands: sessionPage(r.path, r.label, input, handlers, now),
+          loading: sameWorkspacePath(input.loadingWorkspace, r.path),
+        },
+        onOpenPage: () => handlers.loadWorkspace(r.path),
+        action: () => {},
+      }
+    })
 }
 
 export function buildSwitchCommands(input: SwitchCommandsInput, handlers: SwitchCommandHandlers): Command[] {

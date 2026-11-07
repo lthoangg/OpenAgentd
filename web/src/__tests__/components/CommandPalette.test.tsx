@@ -41,6 +41,25 @@ describe("CommandPalette", () => {
     expect(screen.getByText("Start a new session")).toBeTruthy()
   })
 
+  it("draws a session's status mark at the start of its row", () => {
+    render(
+      <CommandPalette
+        commands={[
+          { id: "a", label: "Plan release", description: "Needs you", status: "needs_input", action: () => {} },
+          { id: "b", label: "Old notes", description: "3h", status: "idle", action: () => {} },
+          { id: "c", label: "Toggle Sidebar", action: () => {} },
+        ]}
+        onClose={() => {}}
+      />,
+    )
+    const row = (label: string) => screen.getByText(label).closest("button")!
+
+    expect(within(row("Plan release")).getByRole("img", { name: "Session needs your input" })).toBeTruthy()
+    // An idle session keeps the slot, so titles line up; a command has none.
+    expect(row("Old notes").querySelector("[data-session-status-mark]")).toBeTruthy()
+    expect(row("Toggle Sidebar").querySelector("[data-session-status-mark]")).toBeNull()
+  })
+
   it("renders keyboard shortcut hints", () => {
     render(<CommandPalette commands={makeCommands()} onClose={() => {}} />)
     expect(screen.getByText("Ctrl+N")).toBeTruthy()

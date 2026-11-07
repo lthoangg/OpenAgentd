@@ -38,6 +38,7 @@ import { IGNORED_FILE_PENALTY } from '@/components/InputComposer.mentions'
 import { hoverIntent } from '@/hooks/use-hover-intent'
 import { useHeightGlide } from '@/hooks/useHeightGlide'
 import { useSlidingHighlight } from '@/hooks/useSlidingHighlight'
+import { SessionStatusMark, type SessionStatus } from '@/components/Sidebar/SessionStatusMark'
 
 /** Nested list a command opens in place of running. */
 export interface CommandPage {
@@ -62,6 +63,11 @@ export interface Command {
   onOpenPage?: () => void
   /** Listed only while the query is empty, e.g. New Session atop a session list. */
   browseOnly?: boolean
+  /**
+   * A session's (or a workspace's most urgent session's) state: its mark
+   * leads the row, as in the sidebar. Idle keeps the slot so titles align.
+   */
+  status?: SessionStatus
   action: () => void
 }
 
@@ -813,6 +819,11 @@ function CommandRow({ cmd, idx, isActive, onRun, onActivate }: CommandRowProps) 
       data-highlighted={isActive ? '' : undefined}
       className={PALETTE_ROW_CLASS}
     >
+      {cmd.status !== undefined && (
+        <span data-session-status-mark="" className="flex shrink-0 -mr-1">
+          <SessionStatusMark status={cmd.status} />
+        </span>
+      )}
       <div className="min-w-0 flex-1 overflow-hidden">
         <span className="block truncate text-xs font-medium text-(--color-text)">{cmd.label}</span>
         {cmd.description && (

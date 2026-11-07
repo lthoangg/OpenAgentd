@@ -1,4 +1,4 @@
-.PHONY: dev ios-init ios-icons ios-icons-force ios-web ios-dev ios-dev-device ios-install-device ios-install-device-fast ios-ipa ios-release ios-build ios-clean android-init android-icons android-dev android-apk android-release android-install android-clean build clean
+.PHONY: dev ios-init ios-icons ios-icons-force ios-web ios-dev ios-dev-device ios-install-device ios-install-device-fast ios-screenshots ios-build ios-clean android-init android-icons android-dev android-apk android-release android-install android-clean build clean
 
 IOS_DEVICE ?= $(word 2,$(MAKECMDGOALS))
 IOS_DEV_IDENTIFIER ?= com.dev.openagentd.mobile
@@ -107,16 +107,6 @@ ios-install-device-fast: ## Build and install a bundled debug iOS app on a devic
 	cd src-tauri && cargo tauri ios build --debug --archive-only
 	xcrun devicectl device install app --device "$(IOS_DEVICE)" src-tauri/gen/apple/build/openagentd-mobile_iOS.xcarchive/Products/Applications/OpenAgentd.app
 
-ios-ipa: ## Build the release archive and package a sideloadable IPA into dist/
-	$(MAKE) ios-icons
-	./scripts/patch-ios-widget.sh
-	./scripts/patch-xcode-project.sh
-	cd src-tauri && cargo tauri ios build --archive-only
-	./scripts/package-ipa.sh
-
-ios-release: ios-ipa ## Build the IPA and upload it plus source.json to the GitHub release (DRY_RUN=1 to preview)
-	./scripts/publish-ipa.sh
-
 # The device-taking targets read a device name as the next goal (`make
 # ios-dev-device MyPhone`); this rule makes that goal a no-op. Defined only
 # for them, so a mistyped target still fails.
@@ -124,6 +114,9 @@ ifneq ($(filter ios-dev-device ios-install-device ios-install-device-fast androi
 %:
 	@:
 endif
+
+ios-screenshots: ## App Store screenshots (iPhone 6.9", iPad 13") from the simulators into screenshots/
+	./scripts/ios-screenshots.sh
 
 ios-build: ## Build the iOS app
 	$(MAKE) ios-icons

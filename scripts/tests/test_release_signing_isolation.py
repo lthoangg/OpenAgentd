@@ -20,7 +20,11 @@ SIGNING_SECRET = re.compile(
 # workflow -> {signing job: environment}
 SIGNING_JOBS = {
     "release-desktop.yml": {"sign": "release-macos"},
-    "release-ios.yml": {"sign": "release-ios"},
+    # internal builds sign in an unreviewed environment, public ones in the
+    # approved one; the build job still never sees a secret.
+    "release-ios.yml": {
+        "sign": "${{ inputs.channel == 'public' && 'release-ios' || 'testflight-internal' }}"
+    },
 }
 
 

@@ -17,8 +17,7 @@
 # nested frameworks first, then the widget extension and the app, each with
 # the entitlements from its own provisioning profile (application
 # identifier, team, App Group, beta-reports-active) and the profile
-# embedded. The never-loaded Rust static library is dropped, as
-# package-ipa.sh does.
+# embedded. The never-loaded Rust static library is dropped.
 
 set -euo pipefail
 

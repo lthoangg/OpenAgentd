@@ -313,7 +313,7 @@ await master(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="14 14 36 36"><path fill="#000" d="${data.seal.a}"/>` +
     `<circle fill="#000" cx="${data.seal.dot.cx}" cy="${data.seal.dot.cy}" r="${data.seal.dot.r}"/></svg>`,
 );
-// iOS (and SideStore, Android legacy icons): opaque, full-bleed Paper; the
+// iOS (and Android legacy icons): opaque, full-bleed Paper; the
 // system applies the mask. The App Store rejects an alpha channel, so drop it.
 const iosMaster = join(assetsDir, 'openagentd-app-icon.png');
 await master(iosMaster, 1024, svg1024(`<rect width="1024" height="1024" fill="${PAPER.light.bg}"/>` + centred(1024, 600)), PAPER.light.bg);

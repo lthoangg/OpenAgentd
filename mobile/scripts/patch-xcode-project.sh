@@ -32,6 +32,10 @@ if os.path.isfile(pbxproj):
         if idx != -1:
             end_quote = content.find('";', idx)
             if end_quote != -1:
+                # xcodegen ends the script with an escaped newline; the hook
+                # must join the same line, or the shell sees a lone `&&`.
+                while content[end_quote - 2:end_quote] == "\\n":
+                    end_quote -= 2
                 new_content = content[:end_quote] + hook_cmd + content[end_quote:]
                 with open(pbxproj, "w") as f:
                     f.write(new_content)

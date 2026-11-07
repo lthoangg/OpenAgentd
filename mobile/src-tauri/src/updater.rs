@@ -8,12 +8,9 @@
 //!   `updater_download` fetches the APK into the cache directory and checks
 //!   its SHA-256, and `updater_install` hands it to the system installer.
 //!   Android only installs it over the app when the signing key matches.
-//! * **iOS**: apps cannot install their own updates. `updater_check` reads
-//!   the SideStore source feed on `latest-ios` (both the TestFlight and the
-//!   SideStore builds come from the same release), and `updater_install`
-//!   opens TestFlight. A copy SideStore installed is told, every check, that
-//!   OpenAgentd has moved to TestFlight, and the button opens the iOS
-//!   download page instead.
+//! * **iOS**: no in-app updates. TestFlight and the App Store deliver and
+//!   announce new builds themselves, so the web UI hides the updater there
+//!   and `updater_check` only answers that.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -26,23 +23,10 @@ const REPO: &str = "lthoangg/openagentd";
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 const ANDROID_FEED: &str =
     "https://github.com/lthoangg/openagentd/releases/download/latest-android/latest.json";
-#[cfg_attr(target_os = "android", allow(dead_code))]
-const IOS_FEED: &str =
-    "https://github.com/lthoangg/openagentd/releases/download/latest-ios/source.json";
-#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
-const TESTFLIGHT_URL: &str = "itms-beta://";
-/// Where a SideStore copy is sent: the iOS page links the TestFlight beta.
-#[cfg_attr(target_os = "android", allow(dead_code))]
-const MOVED_TO_TESTFLIGHT_URL: &str = "https://openagentd.dev/download/ios/";
-#[cfg_attr(target_os = "android", allow(dead_code))]
-const MOVED_TO_TESTFLIGHT_MESSAGE: &str = "OpenAgentd for iPhone and iPad now comes from TestFlight, and SideStore copies get no more updates. Install it from TestFlight, then delete this copy; your sessions live on your server.";
 /// Build-time override of the Android feed, for testing an update end to
 /// end against a local server. Release builds never set it; when set, the
 /// APK URL check only requires an `.apk` path.
 const FEED_OVERRIDE: Option<&str> = option_env!("OAD_UPDATER_FEED_URL");
-/// The same for the iOS source feed.
-#[cfg_attr(target_os = "android", allow(dead_code))]
-const IOS_FEED_OVERRIDE: Option<&str> = option_env!("OAD_UPDATER_IOS_FEED_URL");
 /// Bound on the APK download (today's APK is ~40 MB).
 const MAX_APK_BYTES: u64 = 300 * 1024 * 1024;
 const PROGRESS_EVERY: Duration = Duration::from_millis(250);
@@ -56,7 +40,7 @@ pub struct UpdateStatus {
     pub downloaded_bytes: Option<u64>,
     pub total_bytes: Option<u64>,
     pub message: Option<String>,
-    /// `apk`, `testflight`, or `sidestore`.
+    /// `apk` on Android.
     pub channel: Option<String>,
 }
 
@@ -80,10 +64,8 @@ pub struct AndroidManifest {
 
 /// The latest release the check found, kept for download and install.
 #[derive(Clone, Debug)]
-#[cfg_attr(target_os = "android", allow(dead_code))]
 enum Found {
     Android { manifest: AndroidManifest, path: Option<PathBuf> },
-    Ios { version: String, open_url: String },
 }
 
 #[derive(Default)]
@@ -104,27 +86,6 @@ pub fn is_newer(candidate: &str, current: &str) -> bool {
         (Some(a), Some(b)) => a > b,
         _ => false,
     }
-}
-
-/// Newest version and its notes from an AltStore/SideStore source feed.
-#[cfg_attr(target_os = "android", allow(dead_code))]
-pub fn ios_latest(source: &serde_json::Value) -> Option<(String, Option<String>)> {
-    let versions = source.get("apps")?.get(0)?.get("versions")?.as_array()?;
-    versions
-        .iter()
-        .filter_map(|v| {
-            let version = v.get("version")?.as_str()?.to_string();
-            parse_version(&version)?;
-            let notes = v.get("localizedDescription").and_then(|n| n.as_str()).map(str::to_string);
-            Some((version, notes))
-        })
-        .max_by_key(|(v, _)| parse_version(v))
-}
-
-/// SideStore/AltStore add `ALTDeviceID` to the Info.plist of apps they sign.
-#[cfg_attr(target_os = "android", allow(dead_code))]
-pub fn installed_by_sidestore(info_plist: &[u8]) -> bool {
-    info_plist.windows(b"ALTDeviceID".len()).any(|w| w == b"ALTDeviceID")
 }
 
 /// The download URL must be this repository's immutable release asset.
@@ -195,9 +156,23 @@ pub async fn updater_check(
     request: Option<UpdateStatusRequest>,
 ) -> Result<UpdateStatus, String> {
     let _ = request;
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = state;
+        Ok(UpdateStatus {
+            message: Some("TestFlight and the App Store keep OpenAgentd up to date.".into()),
+            ..status(&app, "up_to_date")
+        })
+    }
+    #[cfg(target_os = "android")]
+    android_check(app, state).await
+}
+
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+async fn android_check(app: AppHandle, state: State<'_, UpdaterState>) -> Result<UpdateStatus, String> {
     let current = current_version(&app);
-    let found = match check_feed().await {
-        Ok(found) => found,
+    let manifest: AndroidManifest = match fetch_json(FEED_OVERRIDE.unwrap_or(ANDROID_FEED)).await {
+        Ok(manifest) => manifest,
         // Before the first release with a feed, say so instead of failing.
         Err(e) if e == NO_FEED => {
             return Ok(UpdateStatus {
@@ -207,60 +182,19 @@ pub async fn updater_check(
         }
         Err(e) => return Err(e),
     };
-    let (version, notes, channel) = match &found {
-        Found::Android { manifest, .. } => {
-            (manifest.version.clone(), manifest.notes.clone(), "apk".to_string())
-        }
-        Found::Ios { version, open_url } => {
-            let channel = if open_url == MOVED_TO_TESTFLIGHT_URL { "sidestore" } else { "testflight" };
-            (version.clone(), None, channel.to_string())
-        }
-    };
-    // SideStore copies always see the move, whatever the version.
-    if channel == "sidestore" {
-        *state.0.lock().unwrap() = Some(found);
-        return Ok(UpdateStatus {
-            version: Some(version),
-            channel: Some(channel),
-            message: Some(MOVED_TO_TESTFLIGHT_MESSAGE.into()),
-            ..status(&app, "available")
-        });
-    }
-    if !is_newer(&version, &current) {
+    validate_apk_url(&manifest.url)?;
+    if !is_newer(&manifest.version, &current) {
         *state.0.lock().unwrap() = None;
         return Ok(status(&app, "up_to_date"));
     }
-    *state.0.lock().unwrap() = Some(found);
+    let (version, notes) = (manifest.version.clone(), manifest.notes.clone());
+    *state.0.lock().unwrap() = Some(Found::Android { manifest, path: None });
     Ok(UpdateStatus {
         version: Some(version),
         notes,
-        channel: Some(channel),
+        channel: Some("apk".into()),
         ..status(&app, "available")
     })
-}
-
-#[cfg(target_os = "android")]
-async fn check_feed() -> Result<Found, String> {
-    let manifest: AndroidManifest = fetch_json(FEED_OVERRIDE.unwrap_or(ANDROID_FEED)).await?;
-    validate_apk_url(&manifest.url)?;
-    Ok(Found::Android { manifest, path: None })
-}
-
-#[cfg(not(target_os = "android"))]
-async fn check_feed() -> Result<Found, String> {
-    let source: serde_json::Value = fetch_json(IOS_FEED_OVERRIDE.unwrap_or(IOS_FEED)).await?;
-    let (version, _notes) =
-        ios_latest(&source).ok_or("The update feed lists no versions")?;
-    let sidestore = std::env::current_exe()
-        .ok()
-        .and_then(|exe| std::fs::read(exe.parent()?.join("Info.plist")).ok())
-        .is_some_and(|plist| installed_by_sidestore(&plist));
-    let open_url = if sidestore {
-        MOVED_TO_TESTFLIGHT_URL.to_string()
-    } else {
-        TESTFLIGHT_URL.to_string()
-    };
-    Ok(Found::Ios { version, open_url })
 }
 
 #[tauri::command]
@@ -352,12 +286,6 @@ pub async fn updater_install(app: AppHandle, state: State<'_, UpdaterState>) -> 
         Some(Found::Android { path: None, .. }) => {
             Err("Download the update before installing it.".into())
         }
-        Some(Found::Ios { open_url, .. }) => {
-            use tauri_plugin_opener::OpenerExt;
-            app.opener()
-                .open_url(open_url, None::<&str>)
-                .map_err(|e| format!("Could not open the App Store app: {e}"))
-        }
         None => Err("No update found. Check for updates first.".into()),
     }
 }
@@ -418,23 +346,6 @@ mod tests {
         assert!(!is_newer("3.49.0", "3.49.0"));
         assert!(!is_newer("3.48.0", "3.49.0"));
         assert!(!is_newer("garbage", "3.49.0"));
-    }
-
-    #[test]
-    fn ios_latest_picks_the_highest_version() {
-        let source = serde_json::json!({"apps": [{"versions": [
-            {"version": "3.48.0", "localizedDescription": "old"},
-            {"version": "3.49.0", "localizedDescription": "new"},
-            {"version": "not-a-version"}
-        ]}]});
-        assert_eq!(ios_latest(&source), Some(("3.49.0".into(), Some("new".into()))));
-        assert_eq!(ios_latest(&serde_json::json!({"apps": []})), None);
-    }
-
-    #[test]
-    fn sidestore_is_detected_from_info_plist() {
-        assert!(installed_by_sidestore(b"<key>ALTDeviceID</key><string>x</string>"));
-        assert!(!installed_by_sidestore(b"<key>CFBundleIdentifier</key>"));
     }
 
     #[test]

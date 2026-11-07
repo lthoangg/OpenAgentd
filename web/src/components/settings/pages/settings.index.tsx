@@ -4,7 +4,9 @@
  * lives in General and the backend in Connection.
  */
 import { useEffect, useState } from 'react'
-import { AlertTriangle, ExternalLink, Globe, MessageSquare, Users, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, ExternalLink, Globe, MessageSquare, Shield, Users, type LucideIcon } from 'lucide-react'
+
+import { PRIVACY_URL } from '@/components/AiDataConsent'
 
 import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
 import { SettingsPage } from '@/components/settings/SettingsPage'
@@ -17,7 +19,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Seal, Wordmark } from '@/components/brand/Logo'
 import { getPlatform } from '@/hooks/use-platform'
 import { clientLabel, clientVersion, versionSkew, WEB_BUILD_VERSION } from '@/lib/app-version'
-import { checkForUpdates, downloadUpdate, installUpdate, openStoreLabel, type UpdateStatus } from '@/lib/updater'
+import { checkForUpdates, downloadUpdate, hasInAppUpdates, installUpdate, type UpdateStatus } from '@/lib/updater'
 import { apiBaseUrl } from '@/api/base-url'
 import { openExternalUrl } from '@/lib/open-external'
 import { cn } from '@/lib/utils'
@@ -141,11 +143,11 @@ function UpdatesSection() {
     setPending(true)
     setStatus((current) => current ? { ...current, status: 'installing' } : { status: 'installing' })
     if (mobile) {
-      // Mobile hands off to the Android installer, TestFlight, or SideStore
-      // and returns; the system replaces the app if the user confirms.
+      // Android hands off to the system installer and returns; the system
+      // replaces the app if the user confirms.
       try {
         await installUpdate()
-        setStatus((current) => current ? { ...current, status: current.channel === 'apk' ? 'downloaded' : 'available' } : null)
+        setStatus((current) => current ? { ...current, status: 'downloaded' } : null)
       } catch (error) {
         setStatus({ status: 'error', message: errorMessage(error) })
       } finally {
@@ -171,7 +173,6 @@ function UpdatesSection() {
   }
 
   const showNotes = status?.version && (status.status === 'available' || status.status === 'downloaded')
-  const storeLabel = status ? openStoreLabel(status) : null
 
   return (
     <PanelSection title="Updates" flush>
@@ -196,12 +197,7 @@ function UpdatesSection() {
         <Button size="sm" variant="default" disabled={pending} onClick={() => void onCheck()}>
           Check for updates
         </Button>
-        {status?.status === 'available' && storeLabel ? (
-          <Button size="sm" variant="primary" disabled={pending} onClick={() => void onInstall()}>
-            {storeLabel}
-          </Button>
-        ) : null}
-        {status?.status === 'available' && !storeLabel ? (
+        {status?.status === 'available' ? (
           <Button size="sm" variant="primary" disabled={pending} onClick={() => void onDownload()}>
             Download
           </Button>
@@ -248,10 +244,7 @@ function statusDescription(status: UpdateStatus | null, mobile = false): string 
   if (status.message) return status.message
   if (status.status === 'checking') return 'Checking for updates…'
   if (status.status === 'available') {
-    const how = status.channel === 'testflight'
-      ? ' Install it from TestFlight.'
-      : ''
-    return `OpenAgentd ${status.version} is available. Current version: ${status.current_version}.${how}`
+    return `OpenAgentd ${status.version} is available. Current version: ${status.current_version}.`
   }
   if (status.status === 'downloaded') return `OpenAgentd ${status.version} has been downloaded and is ready to install.`
   if (status.status === 'installing') {
@@ -309,7 +302,7 @@ export function AboutSettingsPage() {
       <VersionSection client={client} server={serverVersion} />
 
       {/* Updates come from the desktop and mobile shells; the browser build has none. */}
-      {getPlatform().isTauri && <UpdatesSection />}
+      {hasInAppUpdates() && <UpdatesSection />}
 
       <section aria-labelledby="settings-community-heading" className="space-y-3">
         <div className="select-none">
@@ -337,6 +330,13 @@ export function AboutSettingsPage() {
             tint="bg-(--bg-key) text-(--color-text-2)"
             title="Facebook group"
             body="Connect with other OpenAgentd users and maintainers on Facebook."
+          />
+          <CommunityLink
+            href={PRIVACY_URL}
+            icon={Shield}
+            tint="bg-(--bg-key) text-(--color-text-2)"
+            title="Privacy policy"
+            body="What the apps send to your server and the AI providers it uses."
           />
         </div>
       </section>

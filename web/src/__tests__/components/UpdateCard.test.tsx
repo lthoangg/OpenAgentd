@@ -169,20 +169,15 @@ describe('UpdateCard — platform lifecycle', () => {
     expect(invokeCalls).toHaveLength(0)
   })
 
-  it('opens TestFlight for an iOS update instead of downloading', async () => {
+  it('never checks for updates on iOS', async () => {
     platform = { isTauri: true, os: 'ios', isMacOverlay: false }
-    installBehaviour = 'resolve-ok'
-    checkResponse = { status: 'available', version: '1.71.0', current_version: '1.70.0', channel: 'testflight' }
+    checkResponse = { status: 'available', version: '1.71.0', current_version: '1.70.0' }
     render(<UpdateCard />)
 
-    const open = await screen.findByRole('button', { name: /open testflight/i })
-    // A phone starts with the one-line banner, without a drag grip.
-    expect(screen.getByRole('button', { name: 'Expand' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Drag update notification/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /^download$/i })).toBeNull()
-    fireEvent.click(open)
-    await waitFor(() => expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(true))
-    expect(invokeCalls.some((c) => c.command === 'updater_download')).toBe(false)
+    await act(async () => {})
+
+    expect(listenMock).not.toHaveBeenCalled()
+    expect(invokeCalls).toHaveLength(0)
   })
 
   it('installs an Android APK without a restart and stays ready to retry', async () => {

@@ -1,3 +1,5 @@
+import { getPlatform } from '@/hooks/use-platform'
+
 export type UpdateStatus = {
   status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'up_to_date' | 'error'
   version?: string | null
@@ -7,19 +9,20 @@ export type UpdateStatus = {
   total_bytes?: number | null
   message?: string | null
   /**
-   * Mobile only: how the update is installed. `apk` downloads and opens the
-   * Android installer; `testflight` opens TestFlight, because iOS apps
-   * cannot install their own updates; `sidestore` marks a SideStore copy,
-   * which is sent to the TestFlight download page. Absent on desktop.
+   * Android only: `apk` downloads and opens the Android installer. Absent on
+   * desktop.
    */
-  channel?: 'apk' | 'testflight' | 'sidestore' | null
+  channel?: 'apk' | null
 }
 
-/** Button label for an available update that opens another app (iOS). */
-export function openStoreLabel(status: UpdateStatus): string | null {
-  if (status.channel === 'testflight') return 'Open TestFlight'
-  if (status.channel === 'sidestore') return 'Get it on TestFlight'
-  return null
+/**
+ * Whether this shell updates itself: desktop and Android do. The browser
+ * build has no updater, and on iOS TestFlight and the App Store deliver and
+ * announce new builds themselves.
+ */
+export function hasInAppUpdates(): boolean {
+  const { isTauri, os } = getPlatform()
+  return isTauri && os !== 'ios'
 }
 
 export async function checkForUpdates(silent = false): Promise<UpdateStatus> {

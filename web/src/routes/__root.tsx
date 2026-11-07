@@ -26,6 +26,7 @@ import { GlobalEventStream } from '@/hooks/use-global-event-stream'
 import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
 import { getPlatform } from '@/hooks/use-platform'
 import { FloatingNotices } from '@/components/FloatingNotices'
+import { AiDataConsent } from '@/components/AiDataConsent'
 import { CAPABILITY, useServerCapability } from '@/queries'
 
 // Home-screen widgets exist only in the phone apps; keep their sync out of
@@ -150,6 +151,7 @@ export function Root() {
       <TelemetrySurface />
       <ShortcutsSurface />
       <FloatingNotices />
+      <AiDataConsent />
       <TitleTooltipLayer />
       <RunStatusAnnouncer />
     </QueryClientProvider>

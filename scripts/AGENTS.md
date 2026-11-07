@@ -23,9 +23,6 @@ generation, updater helpers, and code-health analysis.
   icons) through `cargo tauri icon`.
 - `make_updater_manifest.py` and `generate_updater_keys.sh`: desktop updater
   metadata and local key setup.
-- `make_sidestore_source.py`: SideStore/AltStore source feed for the iOS
-  sideload IPA, generated from the IPA's `Info.plist` by
-  `mobile/scripts/publish-ipa.sh`.
 - `release_version.sh`, `bump_version.sh`, `check_version_consistency.sh`, and
   `release_commits_since_last_tag.sh`: synchronized release metadata and
   release-note inputs. The `[workspace.package]` version in

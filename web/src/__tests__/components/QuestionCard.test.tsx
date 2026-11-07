@@ -115,6 +115,26 @@ describe('QuestionCard', () => {
     expect(screen.getByRole('radio', { name: /bun/ })).toBeInTheDocument()
   })
 
+  it('renders the question as full markdown, tables included', () => {
+    renderCard({
+      question: question({
+        questions: [
+          {
+            question: 'Pick one:\n\n| Option | Cost |\n| --- | --- |\n| pnpm | low |\n| bun | lower |',
+            header: 'Table',
+            multiple: false,
+            options: [{ label: 'pnpm', description: null, recommended: false }],
+          },
+        ],
+      }),
+    })
+
+    const table = screen.getByRole('table')
+    expect(within(table).getByRole('columnheader', { name: 'Cost' })).toBeInTheDocument()
+    expect(within(table).getByRole('cell', { name: 'lower' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: /Pick one/ })).toBeInTheDocument()
+  })
+
   it('wraps long unbroken text (URLs, paths) inside the card instead of clipping it', () => {
     // happy-dom has no layout, so this guards the class that lets a long URL
     // break mid-string; the card frame is overflow-hidden and would clip it.
@@ -137,7 +157,7 @@ describe('QuestionCard', () => {
 
     const wraps = (text: string | RegExp) =>
       screen.getByText(text).closest('[class*="[overflow-wrap:anywhere]"]')
-    expect(wraps(`Open ${url}?`)?.tagName).toBe('LEGEND')
+    expect(wraps(/^Open/)?.id).toBe('q-1-q0')
     expect(wraps(path)).not.toBeNull()
     expect(wraps(`See ${url}#desc`)).not.toBeNull()
   })

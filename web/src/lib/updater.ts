@@ -8,8 +8,9 @@ export type UpdateStatus = {
   message?: string | null
   /**
    * Mobile only: how the update is installed. `apk` downloads and opens the
-   * Android installer; `testflight` and `sidestore` open that app, because
-   * iOS apps cannot install their own updates. Absent on desktop.
+   * Android installer; `testflight` opens TestFlight, because iOS apps
+   * cannot install their own updates; `sidestore` marks a SideStore copy,
+   * which is sent to the TestFlight download page. Absent on desktop.
    */
   channel?: 'apk' | 'testflight' | 'sidestore' | null
 }
@@ -17,7 +18,7 @@ export type UpdateStatus = {
 /** Button label for an available update that opens another app (iOS). */
 export function openStoreLabel(status: UpdateStatus): string | null {
   if (status.channel === 'testflight') return 'Open TestFlight'
-  if (status.channel === 'sidestore') return 'Open SideStore'
+  if (status.channel === 'sidestore') return 'Get it on TestFlight'
   return null
 }
 

@@ -472,7 +472,7 @@ function descriptionForStatus(status: UpdateStatus): string {
   if (status.status === 'available') {
     const how = status.channel === 'testflight'
       ? ' Install it from TestFlight.'
-      : status.channel === 'sidestore' ? ' Install it from SideStore.' : ''
+      : ''
     return `Current version: ${status.current_version}.${how}`
   }
   if (status.status === 'downloaded') {

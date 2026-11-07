@@ -11,7 +11,9 @@
 //! * **iOS**: apps cannot install their own updates. `updater_check` reads
 //!   the SideStore source feed on `latest-ios` (both the TestFlight and the
 //!   SideStore builds come from the same release), and `updater_install`
-//!   opens TestFlight, or SideStore when SideStore installed this copy.
+//!   opens TestFlight. A copy SideStore installed is told, every check, that
+//!   OpenAgentd has moved to TestFlight, and the button opens the iOS
+//!   download page instead.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -29,6 +31,11 @@ const IOS_FEED: &str =
     "https://github.com/lthoangg/openagentd/releases/download/latest-ios/source.json";
 #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
 const TESTFLIGHT_URL: &str = "itms-beta://";
+/// Where a SideStore copy is sent: the iOS page links the TestFlight beta.
+#[cfg_attr(target_os = "android", allow(dead_code))]
+const MOVED_TO_TESTFLIGHT_URL: &str = "https://openagentd.dev/download/ios/";
+#[cfg_attr(target_os = "android", allow(dead_code))]
+const MOVED_TO_TESTFLIGHT_MESSAGE: &str = "OpenAgentd for iPhone and iPad now comes from TestFlight, and SideStore copies get no more updates. Install it from TestFlight, then delete this copy; your sessions live on your server.";
 /// Build-time override of the Android feed, for testing an update end to
 /// end against a local server. Release builds never set it; when set, the
 /// APK URL check only requires an `.apk` path.
@@ -205,10 +212,20 @@ pub async fn updater_check(
             (manifest.version.clone(), manifest.notes.clone(), "apk".to_string())
         }
         Found::Ios { version, open_url } => {
-            let channel = if open_url.starts_with("sidestore:") { "sidestore" } else { "testflight" };
+            let channel = if open_url == MOVED_TO_TESTFLIGHT_URL { "sidestore" } else { "testflight" };
             (version.clone(), None, channel.to_string())
         }
     };
+    // SideStore copies always see the move, whatever the version.
+    if channel == "sidestore" {
+        *state.0.lock().unwrap() = Some(found);
+        return Ok(UpdateStatus {
+            version: Some(version),
+            channel: Some(channel),
+            message: Some(MOVED_TO_TESTFLIGHT_MESSAGE.into()),
+            ..status(&app, "available")
+        });
+    }
     if !is_newer(&version, &current) {
         *state.0.lock().unwrap() = None;
         return Ok(status(&app, "up_to_date"));
@@ -239,7 +256,7 @@ async fn check_feed() -> Result<Found, String> {
         .and_then(|exe| std::fs::read(exe.parent()?.join("Info.plist")).ok())
         .is_some_and(|plist| installed_by_sidestore(&plist));
     let open_url = if sidestore {
-        format!("sidestore://source?url={IOS_FEED}")
+        MOVED_TO_TESTFLIGHT_URL.to_string()
     } else {
         TESTFLIGHT_URL.to_string()
     };

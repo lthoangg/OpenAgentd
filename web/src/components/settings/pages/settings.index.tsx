@@ -250,7 +250,7 @@ function statusDescription(status: UpdateStatus | null, mobile = false): string 
   if (status.status === 'available') {
     const how = status.channel === 'testflight'
       ? ' Install it from TestFlight.'
-      : status.channel === 'sidestore' ? ' Install it from SideStore.' : ''
+      : ''
     return `OpenAgentd ${status.version} is available. Current version: ${status.current_version}.${how}`
   }
   if (status.status === 'downloaded') return `OpenAgentd ${status.version} has been downloaded and is ready to install.`

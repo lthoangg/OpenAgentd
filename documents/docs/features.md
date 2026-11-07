@@ -2421,6 +2421,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   home-screen widgets share data through the real App Group. The SideStore IPA
   is still published for a few releases. See
   [Install the iOS app](../../mobile/INSTALL-IOS.md).
+  A copy installed with SideStore now says, on every update check, that the
+  app has moved to TestFlight, and **Get it on TestFlight** opens the iOS
+  download page `[v3.49.0]`.
 - **Android app (APK)** `[v3.15.0]` — releases include a sideloadable
   `OpenAgentd_<version>_Android.apk` with a checksum. Access keys are
   encrypted with an Android Keystore key, downloads open the system share

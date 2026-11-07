@@ -2303,6 +2303,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Opening a folder the sidebar did not list yet (**Open workspace…**)
     says **Added {folder}** as it opens the new session there; a folder
     that was already listed just opens.
+  - The task form says when a new schedule runs, not only for cron: a
+    repeating task adds **If you save now: Nov 7, 14:50** to "The first run
+    is one interval after you save", and a one-time task reads **Runs in
+    3h (Asia/Ho_Chi_Minh)** under its date, or warns in orange that a time
+    already gone **runs as soon as you save**.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

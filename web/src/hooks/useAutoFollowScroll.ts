@@ -1,17 +1,23 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { DURATIONS_S, prefersReducedMotion } from '@/lib/motion'
-import { touchScrollAnchoring } from '@/lib/scroll-anchoring'
 
 const SCROLL_THRESHOLD = 40
 /** Sending from up to this many screens above the end glides there; further jumps. */
 const SMOOTH_SEND_SCREENS = 2
-/** ms of scroll silence on touch before earlier turns are revealed (see onScroll). */
-const OLDER_IDLE_MS = 140
-/**
- * With the browser's scroll anchoring on touch, earlier turns start coming in
- * this many screens above the top, so they land before the reader gets there.
- */
+/** ms with no scroll event and no finger down before a touch scroll counts as at rest. */
+const SCROLL_REST_MS = 140
+/** On touch, earlier turns start coming in this many screens above the first one. */
 const OLDER_PREFETCH_SCREENS = 2
+const OLDER_ZONE_MIN_PX = 300
+
+/**
+ * How close (px) the first turn may come to the top of the view before
+ * earlier ones are asked for. With a mouse, near the very top; on touch,
+ * two screens ahead, so they are in before a fling gets there.
+ */
+export function olderZonePx(clientHeight: number, touch: boolean): number {
+  return touch ? Math.max(OLDER_ZONE_MIN_PX, clientHeight * OLDER_PREFETCH_SCREENS) : OLDER_ZONE_MIN_PX
+}
 const USER_SCROLL_INTENT_MS = 250
 /** Quiet time after the last visual-viewport resize before the keyboard counts as settled. */
 export const KEYBOARD_SETTLE_MS = 120
@@ -105,11 +111,16 @@ export interface UseAutoFollowScrollOptions {
   sessionId?: string
   isUserMessage?: boolean
   isEmpty?: boolean
-  onLoadOlderTop?: () => void
+  /** Earlier turns are wanted: the first one is near the top. ``moving`` while a touch scroll is under way. */
+  onLoadOlderTop?: (moving: boolean) => void
+  /** Empty room above the first turn (the touch runway), left out of "near the top". */
+  topInset?: () => number
+  /** A touch scroll has come to rest: nothing moving, no finger down. */
+  onScrollRest?: () => void
 }
 
 export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
-  const { totalLen, lastContent, sessionId, isUserMessage, isEmpty, onLoadOlderTop } = options
+  const { totalLen, lastContent, sessionId, isUserMessage, isEmpty, onLoadOlderTop, topInset, onScrollRest } = options
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -136,9 +147,22 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
   const saveFrameRef = useRef(0)
 
   const onLoadOlderTopRef = useRef(onLoadOlderTop)
+  const topInsetRef = useRef(topInset)
+  const onScrollRestRef = useRef(onScrollRest)
   useEffect(() => {
     onLoadOlderTopRef.current = onLoadOlderTop
-  }, [onLoadOlderTop])
+    topInsetRef.current = topInset
+    onScrollRestRef.current = onScrollRest
+  }, [onLoadOlderTop, onScrollRest, topInset])
+  // Touch scroll state, for ``isScrollAtRest``.
+  const touchDownRef = useRef(false)
+  const lastScrollAtRef = useRef(0)
+
+  /** No finger on the transcript and no scroll event for a moment: a scrollTop write now stops nothing. */
+  const isScrollAtRest = useCallback(
+    () => !touchDownRef.current && performance.now() - lastScrollAtRef.current >= SCROLL_REST_MS,
+    [],
+  )
 
   // Two anchoring modes, keyed on ``data-follow`` (index.css):
   // - ``live``: the scroller opts out of native anchoring and this hook keeps
@@ -261,12 +285,21 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     }
 
     const touchScroll = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
-    const nativeAnchor = touchScrollAnchoring()
-    let olderIdleTimer: ReturnType<typeof setTimeout> | null = null
+    let restTimer: ReturnType<typeof setTimeout> | null = null
+    const scheduleRest = () => {
+      if (!touchScroll) return
+      if (restTimer) clearTimeout(restTimer)
+      restTimer = setTimeout(() => {
+        restTimer = null
+        // The finger is still down: its lift schedules this again.
+        if (!touchDownRef.current) onScrollRestRef.current?.()
+      }, SCROLL_REST_MS)
+    }
     const onScroll = () => {
       const currentScrollTop = el.scrollTop
       const prevScrollTop = lastScrollTopRef.current
       lastScrollTopRef.current = currentScrollTop
+      lastScrollAtRef.current = performance.now()
 
       const currentScrollHeight = el.scrollHeight
       const prevScrollHeight = lastScrollHeightRef.current
@@ -324,22 +357,13 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
         setChip(true)
       }
 
-      // Near the top earlier turns load. On touch with the browser's scroll
-      // anchoring they come in early, mid-fling, and the browser keeps the
-      // view. Without it they land only once the scroll has come to rest:
-      // holding the view sets scrollTop, and doing that mid-fling stops the
-      // momentum and jumps the view (a flicker on iOS, on-device report).
-      const olderZone = nativeAnchor ? Math.max(300, el.clientHeight * OLDER_PREFETCH_SCREENS) : 300
-      if (currentScrollTop <= olderZone) {
-        if (!touchScroll || nativeAnchor) onLoadOlderTopRef.current?.()
-        else {
-          if (olderIdleTimer) clearTimeout(olderIdleTimer)
-          olderIdleTimer = setTimeout(() => {
-            olderIdleTimer = null
-            if (el.scrollTop <= 300) onLoadOlderTopRef.current?.()
-          }, OLDER_IDLE_MS)
-        }
-      }
+      // Near the first turn earlier ones are asked for. On touch that is
+      // two screens ahead and mid-fling too: AgentView lands them in the
+      // runway above, so the turns in view never move and nothing writes
+      // scrollTop, which would stop the fling (an iOS flicker, on-device).
+      const firstTurnTop = currentScrollTop - (topInsetRef.current?.() ?? 0)
+      if (firstTurnTop <= olderZonePx(el.clientHeight, touchScroll)) onLoadOlderTopRef.current?.(touchScroll)
+      scheduleRest()
       scheduleSave()
     }
 
@@ -403,8 +427,14 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     let lastTouchY: number | null = null
     let lastTouchTarget: EventTarget | null = null
     const onTouchStart = (e: TouchEvent) => {
+      touchDownRef.current = true
       lastTouchY = e.touches[0]?.clientY ?? null
       lastTouchTarget = e.target
+    }
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length > 0) return
+      touchDownRef.current = false
+      scheduleRest()
     }
     const onTouchMove = (e: TouchEvent) => {
       const y = e.touches[0]?.clientY
@@ -464,17 +494,21 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     el.addEventListener('wheel', onWheel, { passive: true })
     el.addEventListener('touchstart', onTouchStart, { passive: true })
     el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true })
     el.addEventListener('pointerdown', onPointerDown, { passive: true })
     window.addEventListener('pointerup', onPointerUp, { passive: true })
     window.addEventListener('pointercancel', onPointerUp, { passive: true })
     document.addEventListener('keydown', onKeyDown)
 
     return () => {
-      if (olderIdleTimer) clearTimeout(olderIdleTimer)
+      if (restTimer) clearTimeout(restTimer)
       el.removeEventListener('scroll', onScroll)
       el.removeEventListener('wheel', onWheel)
       el.removeEventListener('touchstart', onTouchStart)
       el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
       el.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerUp)
@@ -656,5 +690,6 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     showScrollBtn,
     scrollToBottom,
     jumpToLatest,
+    isScrollAtRest,
   }
 }

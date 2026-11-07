@@ -16,6 +16,7 @@
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react'
+import { flushSync } from 'react-dom'
 import { Seal } from '@/components/brand/Logo'
 
 import { MarkdownBlock } from '@/utils/markdown'
@@ -23,13 +24,12 @@ import { Loader2 } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { lazySurface } from '@/lib/lazy-surface'
-import { touchScrollAnchoring } from '@/lib/scroll-anchoring'
 import { TimelineScrubber } from './AgentView/TimelineScrubber'
 import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn, type AssistantTurnProps } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { JumpToLatest } from './JumpToLatestChip'
-import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns, promptModels } from '@/utils/turns'
+import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns, promptModels, type TurnItem } from '@/utils/turns'
 import { countBlocksAfter, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { Callout } from '@/components/ui/callout'
@@ -58,7 +58,7 @@ import { PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarge
 import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
 import { EmptyState } from '@/components/ui/empty-state'
-import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
+import { olderZonePx, useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 import { useDismissKeyboardOnTouch } from '@/hooks/use-mobile-viewport'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
@@ -71,10 +71,18 @@ const MCPAppResult = lazySurface(() => import('./MCPAppResult'), 'MCPAppResult')
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
 /**
- * On touch the reveal is smaller: each one lands after a fling rests, and
- * mounting 80 turns at once cost a long frame the reader saw as a stutter.
+ * On touch the reveal is smaller: mounting 80 turns at once cost a long
+ * frame the reader saw as a stutter. Mid-fling smaller still, a few a
+ * frame, so each fits the runway above the view.
  */
 const TOUCH_TURN_RENDER_STEP = 16
+const TOUCH_FLING_RENDER_STEP = 4
+/**
+ * Touch: empty room kept above the first turn while there is more to come,
+ * in screens. Earlier turns land in it without moving the view; it is
+ * topped up whenever the scroll rests.
+ */
+const RUNWAY_SCREENS = 3
 const turnRenderStep = () => (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches ? TOUCH_TURN_RENDER_STEP : TURN_RENDER_STEP)
 const ENTER_EASE = `cubic-bezier(${EASINGS.out.join(', ')})`
 /** Older pages a reload may fetch on its own to reach a prompt (100 rows each). */
@@ -114,6 +122,11 @@ function blockElement(root: HTMLElement, id: string): HTMLElement | undefined {
   // else takes the scan instead of needing CSS.escape.
   if (/^[\w-]+$/.test(id)) return root.querySelector<HTMLElement>(`[data-block-id="${id}"]`) ?? undefined
   return Array.from(root.querySelectorAll<HTMLElement>('[data-block-id]')).find((el) => el.dataset.blockId === id)
+}
+
+/** A turn's identity across renders: its first block. */
+function turnKey(item: TurnItem): string {
+  return item.kind === 'assistant' ? item.blocks[0]?.id ?? `@${item.startIndex}` : item.block.id
 }
 
 /** A pinned prompt stays up until an undo takes it back with the rest of its run. */
@@ -739,7 +752,17 @@ export function AgentView({
   const pinnedPrompt = shownPinnedPrompt && pinnedPromptShows(shownPinnedPrompt, hold ? null : leadRevertTime) ? shownPinnedPrompt : null
   const loadingOlderRef = useRef(false)
   const hiddenTurnCountRef = useRef(0)
-  const onLoadOlderTopRef = useRef<() => void>(() => {})
+  const onLoadOlderTopRef = useRef<(moving?: boolean) => void>(() => {})
+  // Touch history loading, with its runway (see ``loadOlderOnTouch``).
+  const [touchHistory] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches)
+  const runwayRef = useRef<HTMLDivElement>(null)
+  const fillAtRestRef = useRef<() => void>(() => {})
+  /** The runway's height; its inline style is the record, so a remount resets it. */
+  const runwayPx = useCallback(() => parseFloat(runwayRef.current?.style.height ?? '') || 0, [])
+  const setRunwayPx = useCallback((px: number) => {
+    if (runwayRef.current) runwayRef.current.style.height = `${Math.max(0, Math.round(px))}px`
+  }, [])
+  const onScrollRest = useCallback(() => fillAtRestRef.current(), [])
 
   // The store puts the prompt back in the composer via ``pendingDraft``.
   const handleEdit = useCallback((blockId: string) => {
@@ -783,6 +806,22 @@ export function AgentView({
   const endingErrorId = isTurnOpen || showsLastError ? undefined : endingProviderError(trailingBlocks)?.id
   const errorRetry = canRetry ? onRetry : undefined
   const errorSwitchModel = isTurnOpen ? undefined : onSwitchModel ?? openModelPicker
+  // The render window counts back from the newest turn. A running session
+  // adds turns at the end (a reply, a subagent's report, a steer), and a
+  // sync can merge them again; counted from the end, each one hid or showed
+  // a turn at the top, moving everything above the reader (on-device: long
+  // and running sessions jumped). While the first turn is the same, the
+  // hidden count holds; an older page or another session starts afresh.
+  const firstTurnKey = turnItems.length === 0 ? '' : turnKey(turnItems[0])
+  const [windowBase, setWindowBase] = useState({ key: firstTurnKey, length: turnItems.length })
+  if (windowBase.key !== firstTurnKey || windowBase.length !== turnItems.length) {
+    if (windowBase.key === firstTurnKey && firstTurnKey !== '') {
+      const hiddenBefore = Math.max(0, windowBase.length - renderedTurnCount)
+      const hiddenNow = Math.max(0, turnItems.length - renderedTurnCount)
+      if (hiddenNow !== hiddenBefore) setRenderedTurnCount(turnItems.length - hiddenBefore)
+    }
+    setWindowBase({ key: firstTurnKey, length: turnItems.length })
+  }
   const { hiddenTurnCount, visibleTurnItems } = useMemo(
     () => getVisibleTurnWindow(turnItems, renderedTurnCount),
     [renderedTurnCount, turnItems],
@@ -890,12 +929,12 @@ export function AgentView({
   const promptJumpRef = useRef<PendingPromptJump | null>(null)
   const viewHoldRef = useRef<ViewHold | null>(null)
 
-  const handleLoadOlderTopTrigger = useCallback(() => {
+  const handleLoadOlderTopTrigger = useCallback((moving: boolean) => {
     // A prompt jump owns the scroll position until it lands: revealing or
     // loading turns above it now would restore the view out from under it.
     const jump = pendingJumpRef.current
     if (promptJumpRef.current || (jump && performance.now() < jump.until)) return
-    onLoadOlderTopRef.current()
+    onLoadOlderTopRef.current(moving)
   }, [])
 
   const {
@@ -906,6 +945,7 @@ export function AgentView({
     syncAnchor,
     showScrollBtn,
     jumpToLatest: jumpToEnd,
+    isScrollAtRest,
   } = useAutoFollowScroll({
     totalLen,
     lastContent,
@@ -913,6 +953,8 @@ export function AgentView({
     isUserMessage,
     isEmpty,
     onLoadOlderTop: handleLoadOlderTopTrigger,
+    topInset: runwayPx,
+    onScrollRest,
   })
   // Phone: drag or tap the transcript to put the keyboard away.
   useDismissKeyboardOnTouch(scrollRef)
@@ -1031,37 +1073,77 @@ export function AgentView({
   const revealBusyRef = useRef(false)
 
   /**
-   * Touch with the browser's scroll anchoring (``touchScrollAnchoring``):
-   * earlier turns come in a step (16) at a time while the reader is still
-   * a screen or two below the top, and the browser keeps the view, so a
-   * fling is never stopped by a scrollTop write. Only at the very top, where
-   * the browser does not anchor, is the view held by hand.
+   * Touch: earlier turns, revealed or loaded, land in the runway (see
+   * ``runwayPx``). The hold measures what landed and takes it out of the
+   * runway, so the turns in view never move and scrollTop is never written
+   * mid-fling, which on iOS stops the fling and flickers. A fling reveals a
+   * few turns per frame, and only while the runway can take them; at rest
+   * a full step comes in, and a write is invisible anyway. True when it
+   * asked for something.
    */
-  const loadOlderAnchored = useCallback(() => {
-    if (revealBusyRef.current) return
-    const holdAtTop = () => ((scrollRef.current?.scrollTop ?? 1) < 1 ? holdView() : null)
+  const loadOlderOnTouch = useCallback((moving: boolean): boolean => {
+    const root = scrollRef.current
+    if (!root || revealBusyRef.current) return false
+    if (moving && runwayPx() < root.clientHeight / 2) return false
     if (hiddenTurnCountRef.current > 0) {
       revealBusyRef.current = true
-      const release = holdAtTop()
-      setRenderedTurnCount((count) => Math.min(turnItemsLengthRef.current, count + TOUCH_TURN_RENDER_STEP))
-      release?.()
+      const release = holdView()
+      const step = moving ? TOUCH_FLING_RENDER_STEP : TOUCH_TURN_RENDER_STEP
+      // Committed now, so the hold sees it before its release frame.
+      flushSync(() => setRenderedTurnCount((count) => Math.min(turnItemsLengthRef.current, count + step)))
+      release()
       requestAnimationFrame(() => { revealBusyRef.current = false })
-    } else if (useAgentStore.getState().hasMore && !loadingOlderRef.current) {
-      loadingOlderRef.current = true
-      // The page's turns land outside the render window; one step shows.
-      setRenderedTurnCount((count) => Math.min(count, turnItemsLengthRef.current))
-      void useAgentStore.getState().loadOlderMessages().finally(() => {
-        loadingOlderRef.current = false
-        const release = holdAtTop()
-        setRenderedTurnCount((count) => count + TOUCH_TURN_RENDER_STEP)
-        release?.()
-      })
+      return true
     }
-  }, [holdView, scrollRef])
+    if (!useAgentStore.getState().hasMore || loadingOlderRef.current) return false
+    loadingOlderRef.current = true
+    // The page's turns land past the render window, to come in as above.
+    const lengthBefore = turnItemsLengthRef.current
+    setRenderedTurnCount((count) => Math.min(count, lengthBefore))
+    const release = holdView()
+    void useAgentStore.getState().loadOlderMessages().finally(() => {
+      loadingOlderRef.current = false
+      release()
+      // The reader may be resting near the top, with no scroll to ask
+      // again. Only when the page brought turns: an empty one would ask forever.
+      requestAnimationFrame(() => {
+        if (turnItemsLengthRef.current > lengthBefore) fillAtRestRef.current()
+      })
+    })
+    return true
+  }, [holdView, runwayPx, scrollRef])
 
-  const handleLoadOlderTop = useCallback(() => {
-    if (touchScrollAnchoring()) {
-      loadOlderAnchored()
+  /**
+   * At rest on touch: size the runway (three screens while there is more
+   * to come and the reader is scrolled up, none otherwise), then bring in
+   * earlier turns while the first one is near the top, a step a frame.
+   */
+  const fillAtRest = useCallback(() => {
+    const root = scrollRef.current
+    if (!touchHistory || !root || viewHoldRef.current || promptJumpRef.current || !isScrollAtRest()) return
+    const more = hiddenTurnCountRef.current > 0 || useAgentStore.getState().hasMore
+    const current = runwayPx()
+    const target = more && !attachedRef.current ? RUNWAY_SCREENS * root.clientHeight : 0
+    if (more ? target > current : current > 0) {
+      // Resized with the view held by hand: native anchoring (on while
+      // reading) must not shift it as well.
+      const anchor = root.querySelector<HTMLElement>('[data-block-id]')
+      const before = anchor?.getBoundingClientRect().top
+      root.dataset.viewHold = ''
+      setRunwayPx(target)
+      root.scrollTop += before === undefined || !anchor ? target - current : anchor.getBoundingClientRect().top - before
+      requestAnimationFrame(() => { if (!viewHoldRef.current) delete root.dataset.viewHold })
+    }
+    if (root.scrollTop - runwayPx() > olderZonePx(root.clientHeight, true)) return
+    if (loadOlderOnTouch(false)) requestAnimationFrame(() => fillAtRestRef.current())
+  }, [attachedRef, isScrollAtRest, loadOlderOnTouch, runwayPx, scrollRef, setRunwayPx, touchHistory])
+  useEffect(() => {
+    fillAtRestRef.current = fillAtRest
+  })
+
+  const handleLoadOlderTop = useCallback((moving = false) => {
+    if (touchHistory) {
+      loadOlderOnTouch(moving)
     } else if (hiddenTurnCountRef.current > 0) {
       showEarlierTurns()
     } else if (useAgentStore.getState().hasMore && !loadingOlderRef.current) {
@@ -1072,12 +1154,13 @@ export function AgentView({
         release()
       })
     }
-  }, [holdView, loadOlderAnchored, showEarlierTurns])
+  }, [holdView, loadOlderOnTouch, showEarlierTurns, touchHistory])
 
   // Keep the refs in sync so callbacks/listeners always see
-  // the latest values without needing to re-register listeners.
+  // the latest values without needing to re-register listeners. At commit,
+  // so a frame callback right after it never reads the last render's counts.
   const turnItemsLengthRef = useRef(0)
-  useEffect(() => {
+  useLayoutEffect(() => {
     onLoadOlderTopRef.current = handleLoadOlderTop
     hiddenTurnCountRef.current = hiddenTurnCount
     turnItemsLengthRef.current = turnItems.length
@@ -1153,8 +1236,17 @@ export function AgentView({
     const anchor = hold.anchorId === null ? undefined : blockElement(root, hold.anchorId)
     if (anchor) {
       const top = contentTop(root, anchor)
-      if (top !== hold.anchorTop) root.scrollTop += top - hold.anchorTop
-      hold.anchorTop = top
+      let dy = top - hold.anchorTop
+      // Touch: what landed above fills the runway first, so the view stays
+      // put without a scrollTop write (see ``loadOlderOnTouch``).
+      const runway = dy > 0 ? runwayPx() : 0
+      if (runway > 0) {
+        const taken = Math.min(dy, runway)
+        setRunwayPx(runway - taken)
+        dy -= taken
+      }
+      if (dy !== 0) root.scrollTop += dy
+      hold.anchorTop = runway > 0 ? contentTop(root, anchor) : top
     }
     const jump = promptJumpRef.current
     if (!jump?.jump) return
@@ -1172,7 +1264,7 @@ export function AgentView({
     if (!prompt) return
     promptJumpRef.current = null
     scrollPromptIntoView(prompt)
-  }, [hiddenTurnCount, scrollPromptIntoView, scrollRef, sessionId, turnItems])
+  }, [hiddenTurnCount, runwayPx, scrollPromptIntoView, scrollRef, sessionId, setRunwayPx, turnItems])
 
   // Scrolling by hand while earlier turns load means the reader went elsewhere.
   const cancelPromptJump = useCallback(() => {
@@ -1282,6 +1374,10 @@ export function AgentView({
         className={`mx-auto max-w-3xl px-3 py-5 transition-opacity duration-(--motion-fast) ease-(--ease-in-out) sm:px-4 sm:py-6${hold?.kind === 'outgoing' ? ' opacity-70' : ''}`}
       >
         {isEmpty && isLoadingHistory && <TranscriptSkeleton />}
+        {/* Touch: room above the first turn for earlier ones to land in
+            without moving the view (``loadOlderOnTouch``). Sized by hand;
+            a new session remounts it empty. */}
+        {touchHistory && !isEmpty && <div key={sessionId} ref={runwayRef} aria-hidden="true" data-history-runway="" />}
         {isEmpty && !isLoadingHistory && (
            emptyState ?? (
              // Same weight as every other blank state (see `EmptyState`); the

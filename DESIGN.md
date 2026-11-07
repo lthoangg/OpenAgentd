@@ -958,7 +958,11 @@ for layout (no `translateX(-50%)` centering) — center fixed elements with
   on the end takes it away. When a stream ends, the
   text still to show keeps flowing to the end rather than landing in one
   frame. On a phone the header's bottom line shows only once the transcript
-  scrolls under it.
+  scrolls under it. Earlier turns never move what is on screen: new turns
+  at the end never hide one at the top (the hidden count holds while the
+  first turn is the same), and on touch earlier turns land in a runway of
+  empty room kept above the first turn (three screens, sized only while
+  the scroll rests), so a fling is never stopped by a scroll write.
 - **Loading placeholders wait a beat.** Skeletons match the geometry of what
   replaces them, and fade in after `fast` (`oa-fade-in-late`), so a fast load
   never flashes one. A saved session shows a transcript skeleton, not the
@@ -1877,7 +1881,8 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   the transcript, and a reader at the end stays at the end as it grows, with
   the keyboard up too. Queued and steer messages wait at the end of the
   transcript instead, as faded user bubbles (four lines at most) with their
-  delivery state under them: tap edits, ✕ removes with Undo.
+  delivery state under them. A tap takes one back into the composer, to
+  edit or clear there; there is no ✕.
 - **Run control.** Mid-turn, Send is one pill: a tap steers, a long press
   opens an action sheet (Steer now, Send after this turn finishes, Stop and
   send). Stop gives a medium haptic and a "Stopped" toast whose **Resume**

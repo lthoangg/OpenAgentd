@@ -202,6 +202,22 @@ describe("AgentView — scroll-to-top pagination", () => {
     expect(mockLoadOlderMessages).toHaveBeenCalledTimes(1)
   })
 
+  // A running session adds turns at the end; counted from the end, each one
+  // hid the top turn and moved everything above the reader (on-device).
+  it("keeps the same turns hidden while new ones arrive at the end", async () => {
+    const blocks = makeTurns(45) // 90 items, 80 rendered: u0–u4 and t0–t4 hidden
+    const { container, rerender } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    expect(container.querySelector('[data-block-id="u5"]')).not.toBeNull()
+
+    await act(async () => {
+      rerender(<AgentView blocks={[...blocks, ...makeTurns(2, "new-")]} currentBlocks={[]} isWorking={false} />)
+    })
+
+    expect(container.querySelector('[data-block-id="u5"]')).not.toBeNull()
+    expect(container.querySelector('[data-block-id="u4"]')).toBeNull()
+    expect(container.querySelector('[data-block-id="new-t1"]')).not.toBeNull()
+  })
+
   it("does not snap back to bottom after scroll-position restore (unpin regression)", async () => {
     storeState.hasMore = true
     storeState.nextCursor = "cursor-1"
@@ -296,8 +312,9 @@ describe("AgentView — earlier turns landing above the view", () => {
       const scroller = this.closest<HTMLElement>(".oa-chat-scroll")
       if (this === scroller) return rect(0, 500)
       if (!scroller || this.dataset.blockId === undefined) return rect(0, 0)
+      const runway = parseFloat(scroller.querySelector<HTMLElement>("[data-history-runway]")?.style.height ?? "") || 0
       const index = [...scroller.querySelectorAll("[data-block-id]")].indexOf(this)
-      return rect(index * 100 - scroller.scrollTop, 100)
+      return rect(runway + index * 100 - scroller.scrollTop, 100)
     }
   })
 
@@ -382,53 +399,97 @@ describe("AgentView — earlier turns landing above the view", () => {
     expect(container.querySelector('[data-block-id="t1"]')).toBe(reply)
   })
 
-  // Touch with the browser's scroll anchoring (iOS 27): pages come in two
-  // screens above the top, mid-fling, a step of turns at a time, and the
-  // browser keeps the view; no scrollTop write stops the fling. At the very
-  // top, where the browser does not anchor, the view is held by hand.
-  describe("on touch with native scroll anchoring", () => {
+  // Touch: earlier turns land in a runway of empty room above the first
+  // turn, so the turns in view never move and a fling is never stopped by a
+  // scrollTop write. The runway is sized only while the scroll rests.
+  describe("on touch, with the runway", () => {
     const originalMatchMedia = window.matchMedia
-    const originalSupports = globalThis.CSS?.supports
     beforeEach(() => {
       window.matchMedia = ((query: string) => ({ matches: query.includes("coarse"), media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false })) as unknown as typeof window.matchMedia
-      Object.defineProperty(globalThis.CSS, "supports", { value: (property: string) => property === "overflow-anchor", configurable: true, writable: true })
       storeState.hasMore = true
       storeState.nextCursor = "cursor-1"
     })
     afterEach(() => {
       window.matchMedia = originalMatchMedia
-      Object.defineProperty(globalThis.CSS, "supports", { value: originalSupports, configurable: true, writable: true })
     })
 
-    function landPageAt(rerender: (ui: React.ReactElement) => void, el: HTMLDivElement, blocks: ContentBlock[], scrollTop: number) {
-      mockLoadOlderMessages.mockImplementation(async () => {
-        Object.defineProperty(el, "scrollTop", { value: scrollTop, configurable: true, writable: true })
-        rerender(<AgentView blocks={[...makeTurns(20, "old-"), ...blocks]} currentBlocks={[]} isWorking={false} />)
-      })
-    }
+    const runwayOf = (container: HTMLElement) => (container.querySelector("[data-history-runway]") as HTMLElement).style.height
+    const firstTop = (container: HTMLElement, id: string) => (container.querySelector(`[data-block-id="${id}"]`) as HTMLElement).getBoundingClientRect().top
+    /** Long enough for the scroll to count as at rest, and for its frames to run. */
+    const rest = () => act(async () => { await new Promise((r) => setTimeout(r, 400)) })
 
-    it("loads two screens above the top and shows one step without touching the scroll", async () => {
+    it("at rest, keeps a runway above the turns without moving them", async () => {
+      const { container } = render(<AgentView blocks={makeTurns(45)} currentBlocks={[]} isWorking={false} />)
+      const el = getScrollEl(container)
+      await readAt(el, 3000)
+      const before = firstTop(container, "u5")
+
+      await rest()
+
+      expect(runwayOf(container)).toBe("1500px")
+      expect(el.scrollTop).toBe(4500)
+      expect(firstTop(container, "u5")).toBe(before)
+    })
+
+    it("mid-fling, earlier turns fill the runway and scrollTop is never written", async () => {
+      const { container } = render(<AgentView blocks={makeTurns(45)} currentBlocks={[]} isWorking={false} />)
+      const el = getScrollEl(container)
+      await readAt(el, 3000)
+      await rest()
+
+      // The first turn comes within two screens: four turns come in.
+      await scrollTo(el, 2400)
+
+      expect(container.querySelectorAll("[data-block-id]").length).toBe(80 + 4)
+      expect(el.scrollTop).toBe(2400)
+      expect(runwayOf(container)).toBe("1100px")
+    })
+
+    it("mid-fling with no runway yet, waits for the scroll to rest", async () => {
+      const { container } = render(<AgentView blocks={makeTurns(45)} currentBlocks={[]} isWorking={false} />)
+      const el = getScrollEl(container)
+
+      await readAt(el, 600)
+
+      expect(container.querySelectorAll("[data-block-id]").length).toBe(80)
+      expect(el.scrollTop).toBe(600)
+    })
+
+    it("with nothing more to come, the runway folds away at rest", async () => {
+      const { container } = render(<AgentView blocks={makeTurns(30)} currentBlocks={[]} isWorking={false} />)
+      const el = getScrollEl(container)
+      await readAt(el, 3000)
+      await rest()
+      expect(runwayOf(container)).toBe("1500px")
+
+      storeState.hasMore = false
+      await scrollTo(el, 4400)
+      const before = firstTop(container, "u0")
+      await rest()
+
+      expect(runwayOf(container)).toBe("0px")
+      expect(el.scrollTop).toBe(2900)
+      expect(firstTop(container, "u0")).toBe(before)
+    })
+
+    it("a page loaded at rest near the top comes in without moving the view", async () => {
       const blocks = makeTurns(3)
       const { container, rerender } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
       const el = getScrollEl(container)
-      landPageAt(rerender, el, blocks, 700)
-
+      mockLoadOlderMessages.mockImplementation(async () => {
+        rerender(<AgentView blocks={[...makeTurns(20, "old-"), ...blocks]} currentBlocks={[]} isWorking={false} />)
+      })
       await readAt(el, 800)
+      const before = firstTop(container, "u0")
+
+      // Outside act: the page commits on its own, as in a browser, rather
+      // than when an act scope ends.
+      await new Promise((r) => setTimeout(r, 500))
 
       expect(mockLoadOlderMessages).toHaveBeenCalledTimes(1)
       expect(container.querySelectorAll("[data-block-id]").length).toBe(6 + 16)
-      expect(el.scrollTop).toBe(700)
-    })
-
-    it("holds the view by hand when the page lands at the very top", async () => {
-      const blocks = makeTurns(3)
-      const { container, rerender } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
-      const el = getScrollEl(container)
-      landPageAt(rerender, el, blocks, 0)
-
-      await readAt(el, 800)
-
-      expect(el.scrollTop).toBe(1600)
+      expect(firstTop(container, "u0")).toBe(before)
+      expect(runwayOf(container)).toBe("1500px")
     })
   })
 })

@@ -942,10 +942,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Scrolling up shows a **Loading earlier messages…** row while older
     turns load, and one **Jump to latest** chip counts what arrived since
     (`3 new`). Since `[v3.49.0]` it is a pill at the top of the view that
-    never moves the messages. On a phone whose browser keeps the view itself
-    (iOS 27 and Android), earlier messages start loading two screens before
-    the top and come in a few turns at a time while you keep scrolling, so a
-    fling is never stopped and the chat does not jump. Closing the sidebar while the Review panel is open no longer
+    never moves the messages. On a phone, earlier messages start loading two
+    screens before the top and come in a few turns at a time while you keep
+    scrolling, so a fling is never stopped and the chat does not jump. Long
+    and running sessions no longer jump while you read them as new turns
+    arrive. Closing the sidebar while the Review panel is open no longer
     leaves the chat scrolled up a little with the chip showing.
   - A subagent row is a button that opens the subagent's session, with its
     state in words (Running, Done, Failed, Needs you, Stopped) and a running
@@ -2135,7 +2136,7 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **The phone app reads like an iOS app** `[v3.48.0]`. It is still the web
   UI; the changes apply only on a phone (touch and narrow). Tablets and
   narrow mouse windows keep their layout.
-  - `[v3.49.0]` The composer's **+** menu has **Photos** and **Files**, which open the phone's photo library or document picker directly in the iOS and Android apps. Send and Stop are a little smaller, and the context ring sits with the run controls instead of beside Send. Above the composer, the running line and side questions share one slim line (side questions is a small **btw** pill, no longer floating over the chat, and opening it no longer moves the chat), and the end of the chat stays in view as it changes, even with the keyboard up. Queued and steer messages wait, faded, at the end of the chat instead of above the composer. Rows under Pinned on the Sessions screen no longer show a pin mark.
+  - `[v3.49.0]` The composer's **+** menu has **Photos** and **Files**, which open the phone's photo library or document picker directly in the iOS and Android apps. Send and Stop are a little smaller, and the context ring sits with the run controls instead of beside Send. Above the composer, the running line and side questions share one slim line (side questions is a small **btw** pill, no longer floating over the chat, and opening it no longer moves the chat), and the end of the chat stays in view as it changes, even with the keyboard up. Queued and steer messages wait, faded, at the end of the chat instead of above the composer; tap one to take it back into the composer. Rows under Pinned on the Sessions screen no longer show a pin mark.
   - The app opens on **Sessions**, which has a large title, a search field,
     and *Needs you* at the top, then Pinned and the workspaces. Pull down to
     refresh. Swipe a row left to Pin or Delete it; Delete asks first. A long

@@ -2264,6 +2264,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Keyboard shortcuts** (⌘/) opens with a search field in focus that
     filters by name, key (`F6`) or area (`terminal`), and lays the areas out
     in two columns on a wide window.
+  - The command palette (⌘K) opens on a **Recent** group, the last five
+    commands and sessions you ran from it, and a search marks the words you
+    typed in each row's name.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

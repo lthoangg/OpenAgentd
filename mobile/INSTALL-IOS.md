@@ -15,9 +15,6 @@ and keeps it updated.
    [openagentd.dev/download/ios](https://openagentd.dev/download/ios/), and
    tap **Accept**, then **Install**.
 3. New versions appear in TestFlight; turn on **Automatic Updates** there.
-   When your server is newer than the app, the app also says so (card, or
-   **Settings → About OpenAgentd → Updates**), and **Open TestFlight** takes
-   you there.
 
 Once OpenAgentd is on the App Store, install it from there instead; the App
 Store keeps it up to date, and TestFlight stays the beta.

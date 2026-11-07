@@ -2,7 +2,7 @@ name: Release iOS
 
 # Builds the iOS app in CI and uploads it to App Store Connect / TestFlight.
 # One binary goes to TestFlight and, once tested, is submitted unchanged to
-# the App Store from App Store Connect; the app reads its channel at run time.
+# the App Store from App Store Connect; the app itself has no update check.
 #
 # Channels (input ``channel``):
 #   internal  any branch or commit, no confirmation and no approval. The build

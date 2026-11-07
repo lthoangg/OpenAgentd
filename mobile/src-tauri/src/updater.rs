@@ -8,13 +8,9 @@
 //!   `updater_download` fetches the APK into the cache directory and checks
 //!   its SHA-256, and `updater_install` hands it to the system installer.
 //!   Android only installs it over the app when the signing key matches.
-//! * **iOS**: apps cannot install their own updates, and one binary ships to
-//!   TestFlight and then, unchanged, to the App Store. So the channel is read
-//!   at run time from the bundle (`ios_channel`): an App Store copy never
-//!   checks (the App Store updates it, and App Review rejects pointers to
-//!   other installers), a development build has nothing to update from, and
-//!   a TestFlight copy compares itself with the server's version, which the
-//!   web UI passes in, and `updater_install` opens TestFlight.
+//! * **iOS**: no in-app updates. TestFlight and the App Store deliver and
+//!   announce new builds themselves, so the web UI hides the updater there
+//!   and `updater_check` only answers that.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -27,7 +23,6 @@ const REPO: &str = "lthoangg/openagentd";
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 const ANDROID_FEED: &str =
     "https://github.com/lthoangg/openagentd/releases/download/latest-android/latest.json";
-const TESTFLIGHT_URL: &str = "itms-beta://";
 /// Build-time override of the Android feed, for testing an update end to
 /// end against a local server. Release builds never set it; when set, the
 /// APK URL check only requires an `.apk` path.
@@ -45,7 +40,7 @@ pub struct UpdateStatus {
     pub downloaded_bytes: Option<u64>,
     pub total_bytes: Option<u64>,
     pub message: Option<String>,
-    /// `apk` on Android; `testflight`, `appstore` or `dev` on iOS.
+    /// `apk` on Android.
     pub channel: Option<String>,
 }
 
@@ -53,10 +48,6 @@ pub struct UpdateStatus {
 pub struct UpdateStatusRequest {
     #[allow(dead_code)]
     pub silent: Option<bool>,
-    /// The connected server's version: a TestFlight copy older than its
-    /// server offers the update.
-    #[allow(dead_code)]
-    pub server_version: Option<String>,
 }
 
 /// `latest.json` on `latest-android`.
@@ -73,10 +64,8 @@ pub struct AndroidManifest {
 
 /// The latest release the check found, kept for download and install.
 #[derive(Clone, Debug)]
-#[cfg_attr(target_os = "android", allow(dead_code))]
 enum Found {
     Android { manifest: AndroidManifest, path: Option<PathBuf> },
-    Ios,
 }
 
 #[derive(Default)]
@@ -96,22 +85,6 @@ pub fn is_newer(candidate: &str, current: &str) -> bool {
     match (parse_version(candidate), parse_version(current)) {
         (Some(a), Some(b)) => a > b,
         _ => false,
-    }
-}
-
-/// How this iOS copy was installed. TestFlight names its receipt
-/// `sandboxReceipt` (the receipt file itself may not exist yet, so only the
-/// URL's name counts), a development install embeds its provisioning
-/// profile, and an App Store copy has neither (Apple strips the profile).
-/// Unknown shapes count as the App Store, which shows no update notice.
-#[cfg_attr(target_os = "android", allow(dead_code))]
-pub fn ios_channel(receipt_name: Option<&str>, app_dir: &std::path::Path) -> &'static str {
-    if receipt_name == Some("sandboxReceipt") {
-        "testflight"
-    } else if app_dir.join("embedded.mobileprovision").is_file() {
-        "dev"
-    } else {
-        "appstore"
     }
 }
 
@@ -176,78 +149,23 @@ async fn fetch_json<T: serde::de::DeserializeOwned>(url: &str) -> Result<T, Stri
         .map_err(|e| format!("Could not read the update feed: {e}"))
 }
 
-/// What an iOS copy on `channel` reports, given the connected server's
-/// version: `(status, newer version, message)`.
-#[cfg_attr(target_os = "android", allow(dead_code))]
-pub fn ios_check(
-    channel: &str,
-    current: &str,
-    server_version: Option<&str>,
-) -> (&'static str, Option<String>, Option<&'static str>) {
-    match channel {
-        "testflight" => match server_version {
-            Some(server) if is_newer(server, current) => ("available", Some(server.to_string()), None),
-            _ => ("up_to_date", None, None),
-        },
-        "dev" => ("up_to_date", None, Some("This is a development build, so it does not check for updates.")),
-        _ => ("up_to_date", None, Some("The App Store keeps OpenAgentd up to date.")),
-    }
-}
-
 #[tauri::command]
 pub async fn updater_check(
     app: AppHandle,
     state: State<'_, UpdaterState>,
     request: Option<UpdateStatusRequest>,
 ) -> Result<UpdateStatus, String> {
+    let _ = request;
     #[cfg(not(target_os = "android"))]
     {
-        let channel = updater_channel();
-        let server = request.and_then(|r| r.server_version);
-        let current = current_version(&app);
-        let (kind, version, message) = ios_check(channel, &current, server.as_deref());
-        *state.0.lock().unwrap() = version.clone().map(|_| Found::Ios);
+        let _ = state;
         Ok(UpdateStatus {
-            version,
-            message: message.map(str::to_string),
-            channel: Some(channel.to_string()),
-            ..status(&app, kind)
+            message: Some("TestFlight and the App Store keep OpenAgentd up to date.".into()),
+            ..status(&app, "up_to_date")
         })
     }
     #[cfg(target_os = "android")]
-    {
-        let _ = request;
-        android_check(app, state).await
-    }
-}
-
-/// `apk` on Android; on iOS how this copy was installed (`ios_channel`).
-#[tauri::command]
-pub fn updater_channel() -> &'static str {
-    #[cfg(target_os = "android")]
-    {
-        "apk"
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        #[cfg(target_os = "ios")]
-        let receipt = ios_receipt_name();
-        #[cfg(not(target_os = "ios"))]
-        let receipt: Option<String> = None;
-        std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(|dir| ios_channel(receipt.as_deref(), dir)))
-            .unwrap_or("appstore")
-    }
-}
-
-/// The last path component of the bundle's App Store receipt URL.
-#[cfg(target_os = "ios")]
-#[allow(deprecated)] // appStoreReceiptURL: deprecated for StoreKit 2 but still answers.
-fn ios_receipt_name() -> Option<String> {
-    use objc2_foundation::NSBundle;
-    let url = NSBundle::mainBundle().appStoreReceiptURL()?;
-    Some(url.lastPathComponent()?.to_string())
+    android_check(app, state).await
 }
 
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
@@ -368,12 +286,6 @@ pub async fn updater_install(app: AppHandle, state: State<'_, UpdaterState>) -> 
         Some(Found::Android { path: None, .. }) => {
             Err("Download the update before installing it.".into())
         }
-        Some(Found::Ios) => {
-            use tauri_plugin_opener::OpenerExt;
-            app.opener()
-                .open_url(TESTFLIGHT_URL, None::<&str>)
-                .map_err(|e| format!("Could not open the App Store app: {e}"))
-        }
         None => Err("No update found. Check for updates first.".into()),
     }
 }
@@ -434,32 +346,6 @@ mod tests {
         assert!(!is_newer("3.49.0", "3.49.0"));
         assert!(!is_newer("3.48.0", "3.49.0"));
         assert!(!is_newer("garbage", "3.49.0"));
-    }
-
-    #[test]
-    fn ios_channel_reads_the_bundle() {
-        let dir = std::env::temp_dir().join(format!("oad-channel-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        assert_eq!(ios_channel(None, &dir), "appstore");
-        assert_eq!(ios_channel(Some("receipt"), &dir), "appstore");
-        std::fs::write(dir.join("embedded.mobileprovision"), b"x").unwrap();
-        assert_eq!(ios_channel(Some("receipt"), &dir), "dev");
-        assert_eq!(ios_channel(Some("sandboxReceipt"), &dir), "testflight");
-        std::fs::remove_file(dir.join("embedded.mobileprovision")).unwrap();
-        assert_eq!(ios_channel(Some("sandboxReceipt"), &dir), "testflight");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn only_testflight_offers_an_update_from_a_newer_server() {
-        assert_eq!(ios_check("testflight", "3.49.0", Some("3.50.0")), ("available", Some("3.50.0".into()), None));
-        assert_eq!(ios_check("testflight", "3.49.0", Some("3.49.0")).0, "up_to_date");
-        assert_eq!(ios_check("testflight", "3.49.0", None).0, "up_to_date");
-        let (kind, version, message) = ios_check("appstore", "3.49.0", Some("9.0.0"));
-        assert_eq!((kind, version), ("up_to_date", None));
-        assert!(!message.unwrap().contains("TestFlight"));
-        assert_eq!(ios_check("dev", "3.49.0", Some("9.0.0")).0, "up_to_date");
     }
 
     #[test]

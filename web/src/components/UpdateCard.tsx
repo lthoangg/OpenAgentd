@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion'
 import { AlertCircle, Download, GripVertical, Loader2, Maximize2, Minus } from 'lucide-react'
-import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, installUpdate as invokeInstallUpdate, openStoreLabel, type UpdateStatus } from '@/lib/updater'
+import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, hasInAppUpdates, installUpdate as invokeInstallUpdate, type UpdateStatus } from '@/lib/updater'
 import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
 import { Button } from '@/components/ui/button'
 import { getPlatform } from '@/hooks/use-platform'
@@ -101,8 +101,8 @@ export function UpdateCard() {
   const installUpdate = useCallback(async () => {
     setStatus((current) => ({ ...current, status: 'installing' }))
     if (isMobileShell()) {
-      // Mobile hands off to the Android installer or TestFlight
-      // and returns; the system replaces the app if the user confirms.
+      // Android hands off to the system installer and returns; the system
+      // replaces the app if the user confirms.
       try {
         await invokeInstallUpdate()
         setStatus((current) => current.channel === 'apk' ? { ...current, status: 'downloaded' } : { status: 'idle' })
@@ -168,10 +168,9 @@ export function UpdateCard() {
   }, [])
 
   useEffect(() => {
-    const platform = getPlatform()
-    // The desktop and mobile shells register the updater commands; the
-    // browser build has none.
-    if (!platform.isTauri) {
+    // Desktop and Android update themselves; the browser build has no
+    // updater, and iOS gets updates from TestFlight or the App Store.
+    if (!hasInAppUpdates()) {
       setTauriReady(false)
       return
     }
@@ -288,15 +287,9 @@ export function UpdateCard() {
             </button>
 
             {status.status === 'available' && (
-              openStoreLabel(status) ? (
-                <Button type="button" variant="primary" size="xs" onClick={() => void installUpdate()}>
-                  {openStoreLabel(status)}
-                </Button>
-              ) : (
-                <Button type="button" variant="primary" size="xs" onClick={() => void downloadUpdate()}>
-                  Download
-                </Button>
-              )
+              <Button type="button" variant="primary" size="xs" onClick={() => void downloadUpdate()}>
+                Download
+              </Button>
             )}
             {status.status === 'downloaded' && (
               <Button type="button" variant="primary" size="xs" onClick={requestInstall}>
@@ -403,15 +396,9 @@ export function UpdateCard() {
                 </Button>
               ) : null}
               {status.status === 'available' ? (
-                openStoreLabel(status) ? (
-                  <Button type="button" variant="primary" size="sm" onClick={() => void installUpdate()}>
-                    {openStoreLabel(status)}
-                  </Button>
-                ) : (
-                  <Button type="button" variant="primary" size="sm" onClick={() => void downloadUpdate()}>
-                    Download
-                  </Button>
-                )
+                <Button type="button" variant="primary" size="sm" onClick={() => void downloadUpdate()}>
+                  Download
+                </Button>
               ) : null}
               {status.status === 'downloaded' ? (
                 busyWarning ? (
@@ -470,10 +457,7 @@ function descriptionForStatus(status: UpdateStatus): string {
   if (status.message) return status.message
   const mobile = isMobileShell()
   if (status.status === 'available') {
-    const how = status.channel === 'testflight'
-      ? ' Install it from TestFlight.'
-      : ''
-    return `Current version: ${status.current_version}.${how}`
+    return `Current version: ${status.current_version}.`
   }
   if (status.status === 'downloaded') {
     return mobile ? 'Android asks you to confirm the install.' : 'Install now to restart into the new version.'

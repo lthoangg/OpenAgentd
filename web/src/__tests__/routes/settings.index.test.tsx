@@ -34,12 +34,10 @@ mock.module('@tauri-apps/api/app', () => ({
 
 const updaterCalls: string[] = []
 let checkResult: Record<string, unknown> = { status: 'up_to_date', current_version: '1.2.3' }
-let channel: string | null = null
 mock.module('@tauri-apps/api/core', () => ({
   invoke: async (cmd: string) => {
     updaterCalls.push(cmd)
     if (cmd === 'updater_check') return checkResult
-    if (cmd === 'updater_channel') return channel
     if (cmd === 'app_backend_status') return { base_url: 'http://10.0.0.2:8000' }
     return undefined
   },
@@ -77,7 +75,6 @@ beforeEach(() => {
   platform = { isTauri: true, os: 'macos' }
   shellVersion = '1.2.3'
   updaterCalls.length = 0
-  channel = null
   checkResult = { status: 'up_to_date', current_version: '1.2.3' }
   originalFetch = globalThis.fetch
   globalThis.fetch = (() =>
@@ -109,21 +106,17 @@ describe('AboutSettingsPage — desktop updates card', () => {
     expect(screen.queryByRole('button', { name: /check for updates?/i })).toBeNull()
   })
 
-  it('shows updates in the mobile shells too', () => {
+  it('shows updates in the Android shell too', () => {
     platform = { isTauri: true, os: 'android' }
     renderHub({ status: 'ok', version: '1.2.3' })
     expect(screen.getByRole('button', { name: /check for updates?/i })).toBeInTheDocument()
   })
 
-  it('offers TestFlight instead of a download on iOS', async () => {
+  it('has no updates section on iOS (TestFlight and the App Store update it)', () => {
     platform = { isTauri: true, os: 'ios' }
-    checkResult = { status: 'available', version: '1.3.0', current_version: '1.2.3', channel: 'testflight' }
     renderHub({ status: 'ok', version: '1.2.3' })
-    fireEvent.click(screen.getByRole('button', { name: /check for updates?/i }))
-    const open = await screen.findByRole('button', { name: /open testflight/i })
-    expect(screen.queryByRole('button', { name: /^download$/i })).toBeNull()
-    fireEvent.click(open)
-    await waitFor(() => expect(updaterCalls).toContain('updater_install'))
+    expect(screen.queryByRole('button', { name: /check for updates?/i })).toBeNull()
+    expect(updaterCalls).not.toContain('updater_check')
   })
 
   it('downloads, then asks before installing the APK on Android', async () => {
@@ -165,21 +158,6 @@ describe('AboutSettingsPage — version section', () => {
     renderHub({ status: 'ok', version: '1.2.3' })
     expect(await screen.findByText(/patch versions differ/i)).toBeInTheDocument()
     expect(screen.queryByRole('alert')).toBeNull()
-  })
-
-  it('names the iOS install channel', async () => {
-    platform = { isTauri: true, os: 'ios' }
-    channel = 'testflight'
-    renderHub({ status: 'ok', version: '1.2.3' })
-    expect(await screen.findByText('The app on this device, from TestFlight beta.')).toBeInTheDocument()
-  })
-
-  it('names the App Store channel without mentioning TestFlight', async () => {
-    platform = { isTauri: true, os: 'ios' }
-    channel = 'appstore'
-    renderHub({ status: 'ok', version: '1.2.3' })
-    expect(await screen.findByText('The app on this device, from App Store.')).toBeInTheDocument()
-    expect(screen.queryByText(/TestFlight/)).toBeNull()
   })
 
   it('says not connected without a server version', () => {

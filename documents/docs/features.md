@@ -2427,9 +2427,8 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **iOS channels: TestFlight beta and App Store** `[v3.50.0]` — the iOS app
   ships only through App Store Connect; the SideStore IPA and source feed are
   no longer published. One build goes to TestFlight and then, unchanged, to
-  the App Store: the app reads how it was installed, so a TestFlight copy
-  offers **Open TestFlight** when its server is newer, an App Store copy shows
-  no update notice, and **Settings → About OpenAgentd** names the channel.
+  the App Store. The iOS app no longer checks for updates itself:
+  TestFlight and the App Store deliver and announce new versions.
   Maintainers can send any branch to TestFlight Internal from CI, for example
   from the phone through the agent.
   Before anything is sent, the iOS app asks once for consent to share what you

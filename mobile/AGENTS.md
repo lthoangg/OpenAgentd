@@ -56,8 +56,8 @@ only `sign` signs with `scripts/sign-ipa-appstore.sh` and uploads. Never give
 the build job a secret or an `environment:`
 (`scripts/tests/test_release_signing_isolation.py`).
 
-Channels (one binary; the app reads its channel at run time, see
-`src-tauri/src/updater.rs` `ios_channel`):
+Channels (one binary; the iOS app has no update check, TestFlight and the
+App Store deliver updates):
 
 | Channel | How | Environment |
 |---|---|---|

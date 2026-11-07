@@ -19,7 +19,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Seal, Wordmark } from '@/components/brand/Logo'
 import { getPlatform } from '@/hooks/use-platform'
 import { clientLabel, clientVersion, versionSkew, WEB_BUILD_VERSION } from '@/lib/app-version'
-import { appChannel, channelLabel, checkForUpdates, downloadUpdate, installUpdate, openStoreLabel, type AppChannel, type UpdateStatus } from '@/lib/updater'
+import { checkForUpdates, downloadUpdate, hasInAppUpdates, installUpdate, type UpdateStatus } from '@/lib/updater'
 import { apiBaseUrl } from '@/api/base-url'
 import { openExternalUrl } from '@/lib/open-external'
 import { cn } from '@/lib/utils'
@@ -60,18 +60,6 @@ function useClientVersion(): string | undefined {
   return version
 }
 
-/** iOS install channel (TestFlight, App Store, development); null elsewhere. */
-function useAppChannel(): AppChannel | null {
-  const [channel, setChannel] = useState<AppChannel | null>(null)
-  useEffect(() => {
-    if (!isMobileShell()) return
-    let cancelled = false
-    void appChannel().then((c) => { if (!cancelled) setChannel(c) })
-    return () => { cancelled = true }
-  }, [])
-  return channel
-}
-
 function skewMessage(client: string, server: string): { warn: boolean; text: string } | null {
   const skew = versionSkew(client, server)
   if (skew.kind === 'major-minor') {
@@ -94,11 +82,10 @@ function skewMessage(client: string, server: string): { warn: boolean; text: str
 function VersionSection({ client, server }: { client?: string; server?: string }) {
   const address = useBackendStatusQuery().data?.base_url || apiBaseUrl()
   const skew = client && server ? skewMessage(client, server) : null
-  const channel = channelLabel(useAppChannel())
 
   return (
     <PanelSection title="Version" flush>
-      <PanelRow label={clientLabel()} description={channel ? `The app on this device, from ${channel === 'Development build' ? 'a development build' : channel}.` : 'The app on this device.'}>
+      <PanelRow label={clientLabel()} description="The app on this device.">
         <span className="font-mono text-sm text-(--color-text)">{client ? `v${client}` : 'unknown'}</span>
       </PanelRow>
       <PanelRow label="Server" description={<span className="font-mono break-all">{address}</span>}>
@@ -156,11 +143,11 @@ function UpdatesSection() {
     setPending(true)
     setStatus((current) => current ? { ...current, status: 'installing' } : { status: 'installing' })
     if (mobile) {
-      // Mobile hands off to the Android installer or TestFlight
-      // and returns; the system replaces the app if the user confirms.
+      // Android hands off to the system installer and returns; the system
+      // replaces the app if the user confirms.
       try {
         await installUpdate()
-        setStatus((current) => current ? { ...current, status: current.channel === 'apk' ? 'downloaded' : 'available' } : null)
+        setStatus((current) => current ? { ...current, status: 'downloaded' } : null)
       } catch (error) {
         setStatus({ status: 'error', message: errorMessage(error) })
       } finally {
@@ -186,7 +173,6 @@ function UpdatesSection() {
   }
 
   const showNotes = status?.version && (status.status === 'available' || status.status === 'downloaded')
-  const storeLabel = status ? openStoreLabel(status) : null
 
   return (
     <PanelSection title="Updates" flush>
@@ -211,12 +197,7 @@ function UpdatesSection() {
         <Button size="sm" variant="default" disabled={pending} onClick={() => void onCheck()}>
           Check for updates
         </Button>
-        {status?.status === 'available' && storeLabel ? (
-          <Button size="sm" variant="primary" disabled={pending} onClick={() => void onInstall()}>
-            {storeLabel}
-          </Button>
-        ) : null}
-        {status?.status === 'available' && !storeLabel ? (
+        {status?.status === 'available' ? (
           <Button size="sm" variant="primary" disabled={pending} onClick={() => void onDownload()}>
             Download
           </Button>
@@ -263,10 +244,7 @@ function statusDescription(status: UpdateStatus | null, mobile = false): string 
   if (status.message) return status.message
   if (status.status === 'checking') return 'Checking for updates…'
   if (status.status === 'available') {
-    const how = status.channel === 'testflight'
-      ? ' Install it from TestFlight.'
-      : ''
-    return `OpenAgentd ${status.version} is available. Current version: ${status.current_version}.${how}`
+    return `OpenAgentd ${status.version} is available. Current version: ${status.current_version}.`
   }
   if (status.status === 'downloaded') return `OpenAgentd ${status.version} has been downloaded and is ready to install.`
   if (status.status === 'installing') {
@@ -324,7 +302,7 @@ export function AboutSettingsPage() {
       <VersionSection client={client} server={serverVersion} />
 
       {/* Updates come from the desktop and mobile shells; the browser build has none. */}
-      {getPlatform().isTauri && <UpdatesSection />}
+      {hasInAppUpdates() && <UpdatesSection />}
 
       <section aria-labelledby="settings-community-heading" className="space-y-3">
         <div className="select-none">

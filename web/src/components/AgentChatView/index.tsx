@@ -75,7 +75,6 @@ import { PlusMenu, type ComposerActions } from '../composer/PlusMenu'
 import { ContextMeter } from '../composer/ContextMeter'
 import { useRunSettings } from '../composer/useRunSettings'
 import { BtwPanel } from '../BtwPanel'
-import { PendingMessageQueue } from '../PendingMessageQueue'
 import { PhoneStatusLine, RunBar } from '../composer/RunBar'
 import { PinnedQuestion } from '../AskUser'
 import { PinnedPlanReview } from '../PlanReview/PlanReviewCard'
@@ -916,7 +915,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               {btwPanel}
             </PhoneStatusLine>
           ) : null}
-          {isPhone && <PendingMessageQueue placement="composer" />}
           {!isPhone && btwPanel}
         </>
       )}

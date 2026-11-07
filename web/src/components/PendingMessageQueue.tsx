@@ -180,36 +180,41 @@ function QueuedBubble({ content, attachments, label, sender, onEdit, onRemove }:
 }
 
 /**
- * A phone's queued message: one line above the composer. A tap moves it
- * back into the composer to edit, ✕ throws it away (with Undo).
+ * A phone's queued message: a faded bubble at the end of the transcript,
+ * where it will land (user request: below the chat, not above the composer).
+ * A tap on the bubble moves it back into the composer to edit; ✕ throws it
+ * away (with Undo). Long text shows four lines.
  */
-function QueuedChip({ content, label, onEdit, onRemove }: {
+function QueuedPhoneBubble({ content, label, onEdit, onRemove }: {
   content: string
+  attachments?: MessageAttachment[]
   label: string
+  sender?: QueuedSender
   onEdit: () => void | Promise<void>
   onRemove: () => void | Promise<void>
 }) {
-  const text = designFeedbackPlainText(content).replace(/\s+/g, ' ').trim()
+  const text = designFeedbackPlainText(content).trim()
   return (
-    <div className="oa-rise-in flex min-h-8 max-w-full items-center rounded-full bg-(--bg-key) text-meta text-(--color-text-2)">
-      <button
-        type="button"
-        title={label}
-        aria-label={`Edit queued message: ${text}`}
-        onClick={() => { void onEdit() }}
-        className="flex min-h-8 min-w-0 flex-1 items-center gap-1 pl-3 text-left"
-      >
-        <span className="shrink-0 text-(--color-text-muted)">Queued:</span>
-        <span className="min-w-0 truncate">“{text}”</span>
-      </button>
-      <button
-        type="button"
-        aria-label="Remove queued message"
-        onClick={() => { void onRemove() }}
-        className="relative touch-hit flex size-8 shrink-0 items-center justify-center text-(--color-text-muted)"
-      >
-        <X size={14} aria-hidden="true" />
-      </button>
+    <div data-queued-bubble="" className="oa-rise-in flex flex-col items-end gap-1 opacity-60">
+      <div className="flex max-w-full items-center gap-1">
+        <button
+          type="button"
+          aria-label={`Edit queued message: ${text.replace(/\s+/g, ' ')}`}
+          onClick={() => { void onEdit() }}
+          className="min-w-0 max-w-[85%] rounded-sm bg-(--bg-key) px-3 py-2.5 text-left text-sm leading-relaxed text-(--color-text) transition-transform duration-(--motion-instant) active:scale-[0.98] motion-reduce:active:scale-100"
+        >
+          <span className="line-clamp-4 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{text}</span>
+        </button>
+        <button
+          type="button"
+          aria-label="Remove queued message"
+          onClick={() => { void onRemove() }}
+          className="relative touch-hit flex size-7 shrink-0 items-center justify-center rounded-full text-(--color-text-muted)"
+        >
+          <X size={14} aria-hidden="true" />
+        </button>
+      </div>
+      <span className="pr-9 text-meta text-(--color-text-muted)">{label}</span>
     </div>
   )
 }
@@ -233,13 +238,11 @@ function offerUndo(content: string, files?: File[]) {
 }
 
 /**
- * ``placement``: the transcript (the default; under the turn they wait
- * behind) or the composer (a phone's chips above it). Each shows on its own
- * kind of screen only, so a phone shows the queue once.
+ * Queued messages at the end of the transcript, under the turn they wait
+ * behind: bubbles with Edit and Remove on desktop, faded bubbles on a phone.
  */
-export const PendingMessageQueue = memo(function PendingMessageQueue({ placement = 'transcript' }: { placement?: 'transcript' | 'composer' } = {}) {
+export const PendingMessageQueue = memo(function PendingMessageQueue() {
   const isPhone = useIsPhone()
-  const shown = (placement === 'composer') === isPhone
   const allMessages = useAgentStore((s) => s._pendingMessages)
   const sessionId = useAgentStore((s) => s.sessionId)
   // `agentStreams` is replaced on every SSE flush, so select only which
@@ -274,11 +277,11 @@ export const PendingMessageQueue = memo(function PendingMessageQueue({ placement
   const allHeld = useHeldMessagesStore((s) => s.messages)
   const held = useMemo(() => allHeld.filter((msg) => msg.sessionId === sessionId), [allHeld, sessionId])
 
-  if (!shown || (messages.length === 0 && held.length === 0)) return null
-  const Item = isPhone ? QueuedChip : QueuedBubble
+  if (messages.length === 0 && held.length === 0) return null
+  const Item = isPhone ? QueuedPhoneBubble : QueuedBubble
 
   return (
-    <div className={isPhone ? 'flex flex-col gap-1 pb-1.5' : 'flex flex-col gap-3'}>
+    <div className={isPhone ? 'flex flex-col gap-2.5' : 'flex flex-col gap-3'}>
       {messages.map((msg) => (
         <Item
           key={msg.id}

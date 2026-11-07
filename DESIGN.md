@@ -1872,10 +1872,12 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   awaiting approval ("View" opens it full screen with Approve pinned), one
   28pt status line (the run on the left, "Running · step 7 · 3:12" while the
   agent works; a 24pt **btw** pill with the count on the right, which opens
-  side questions), and queued messages as 32pt one-line chips (tap edits, ✕
-  removes with Undo). All of it is in the flow, never floating over the
-  transcript, and a reader at the end stays at the end as it grows, with the
-  keyboard up too.
+  side questions in a sheet and stays, pressed, while the sheet is open so
+  nothing behind it moves). All of it is in the flow, never floating over
+  the transcript, and a reader at the end stays at the end as it grows, with
+  the keyboard up too. Queued and steer messages wait at the end of the
+  transcript instead, as faded user bubbles (four lines at most) with their
+  delivery state under them: tap edits, ✕ removes with Undo.
 - **Run control.** Mid-turn, Send is one pill: a tap steers, a long press
   opens an action sheet (Steer now, Send after this turn finishes, Stop and
   send). Stop gives a medium haptic and a "Stopped" toast whose **Resume**

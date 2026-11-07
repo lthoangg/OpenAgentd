@@ -96,6 +96,23 @@ The same secrets in both `testflight-internal` and `release-ios`
   already installed from the App Store or TestFlight.
 - The build number is the workflow run number, so every upload is unique.
 
+App Store submission (App Store Connect, by hand):
+
+- Screenshots: `make ios-screenshots` (iPhone 6.9" and iPad 13" from the
+  simulators; `SESSIONS="<id> <id>"` adds chat screens) against a seeded
+  local server; check each image before uploading.
+- URLs: Privacy `https://openagentd.dev/privacy/`, Support
+  `https://openagentd.dev/support/`.
+- App Privacy: Data Not Collected (the app sends data only to the user's own
+  server); matches `src-tauri/PrivacyInfo.xcprivacy` and the site.
+- Review Notes (also Beta App Review "Test Information"): the HTTPS address
+  and access key of a demo server with a spending-limited model key; that the
+  app is a client for the user's own OpenAgentd server; the native parts
+  (QR pairing, voice input, home-screen widgets, share sheet, photo and file
+  pickers); that plugins and MCP servers run on the server and the app runs
+  no downloaded code outside WebKit; and that the AI-data consent appears
+  on first launch.
+
 ## Constraints
 
 - Keep remote-server connection behavior distinct from desktop's bundled

@@ -47,3 +47,12 @@ def test_ios_makefile_has_no_sideload_targets():
     assert "ios-ipa:" not in makefile
     assert "ios-release:" not in makefile
     assert "package-ipa" not in makefile
+
+
+def test_ios_screenshots_target_runs_the_simulator_script():
+    makefile = MOBILE_MAKEFILE.read_text()
+    script = (REPO_ROOT / "mobile" / "scripts" / "ios-screenshots.sh").read_text()
+
+    assert "./scripts/ios-screenshots.sh" in _target_recipe(makefile, "ios-screenshots")
+    assert "iPhone-17-Pro-Max" in script and "iPad-Pro-13-inch" in script
+    assert "SIMCTL_CHILD_OAD_SCREENSHOT_MODE=1" in script

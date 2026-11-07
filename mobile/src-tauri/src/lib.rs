@@ -490,6 +490,26 @@ fn share_file_ios(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// `mobile/scripts/ios-screenshots.sh` launches a debug simulator build with
+/// `OAD_SCREENSHOT_MODE=1`: it skips the one-time AI-data consent so the
+/// store screenshots show the app. Debug builds only; release builds never
+/// read the variable.
+#[cfg(all(target_os = "ios", debug_assertions))]
+fn screenshot_mode(app: &AppHandle) {
+    if std::env::var("OAD_SCREENSHOT_MODE").as_deref() != Ok("1") {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(3));
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.eval(
+                "if (localStorage.getItem('oad.ai-data-consent.v1') !== 'agreed') { localStorage.setItem('oad.ai-data-consent.v1', 'agreed'); location.reload() }",
+            );
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
@@ -521,6 +541,8 @@ pub fn run() {
         .setup(|_app| {
             #[cfg(target_os = "ios")]
             theme::paint_launch_background(_app.handle());
+            #[cfg(all(target_os = "ios", debug_assertions))]
+            screenshot_mode(_app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

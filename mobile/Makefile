@@ -1,4 +1,4 @@
-.PHONY: dev ios-init ios-icons ios-icons-force ios-web ios-dev ios-dev-device ios-install-device ios-install-device-fast ios-build ios-clean android-init android-icons android-dev android-apk android-release android-install android-clean build clean
+.PHONY: dev ios-init ios-icons ios-icons-force ios-web ios-dev ios-dev-device ios-install-device ios-install-device-fast ios-screenshots ios-build ios-clean android-init android-icons android-dev android-apk android-release android-install android-clean build clean
 
 IOS_DEVICE ?= $(word 2,$(MAKECMDGOALS))
 IOS_DEV_IDENTIFIER ?= com.dev.openagentd.mobile
@@ -114,6 +114,9 @@ ifneq ($(filter ios-dev-device ios-install-device ios-install-device-fast androi
 %:
 	@:
 endif
+
+ios-screenshots: ## App Store screenshots (iPhone 6.9", iPad 13") from the simulators into screenshots/
+	./scripts/ios-screenshots.sh
 
 ios-build: ## Build the iOS app
 	$(MAKE) ios-icons

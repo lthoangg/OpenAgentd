@@ -570,12 +570,33 @@ export const MarkdownTable = memo(function MarkdownTable(
   props: React.HTMLAttributes<HTMLTableElement>,
 ) {
   const tableRef = useRef<HTMLTableElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
+
+  // While the table runs past the wrap's right edge, ``data-clipped-end``
+  // lets the CSS fade that edge (index.css). An attribute, not state: a
+  // scroll never re-renders the table.
+  useEffect(() => {
+    const wrap = wrapRef.current
+    if (!wrap) return
+    const sync = () => {
+      wrap.toggleAttribute('data-clipped-end', wrap.scrollWidth - wrap.scrollLeft - wrap.clientWidth > 1)
+    }
+    sync()
+    wrap.addEventListener('scroll', sync, { passive: true })
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(sync)
+    observer?.observe(wrap)
+    if (tableRef.current) observer?.observe(tableRef.current)
+    return () => {
+      wrap.removeEventListener('scroll', sync)
+      observer?.disconnect()
     }
   }, [])
 
@@ -620,7 +641,7 @@ export const MarkdownTable = memo(function MarkdownTable(
           <TooltipContent>{copied ? 'Copied' : 'Copy table'}</TooltipContent>
         </Tooltip>
       </div>
-      <div className="oa-table-wrap">
+      <div ref={wrapRef} className="oa-table-wrap">
         <table ref={tableRef} {...props} />
       </div>
     </div>

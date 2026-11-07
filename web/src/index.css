@@ -1304,6 +1304,15 @@ html[data-app-hidden="true"] *::after {
 .oa-prose .oa-table-container .oa-table-wrap {
   margin: 0;
 }
+/* A wide table that runs past the right edge fades out there, so it reads
+   as more to scroll to (desktop mockup 7.7). A mask, not a painted cover:
+   prose sits on the page, bubbles, cards and dialogs alike. The table sets
+   ``data-clipped-end`` while clipped (MarkdownTable); the phone draws its
+   own shade below. */
+.oa-prose .oa-table-wrap[data-clipped-end] {
+  -webkit-mask-image: linear-gradient(to left, transparent, #000 32px);
+  mask-image: linear-gradient(to left, transparent, #000 32px);
+}
 .oa-prose table {
   border-collapse: collapse;
   font-size: 0.875em;
@@ -1777,6 +1786,10 @@ html[data-app-hidden="true"] *::after {
     background:
       linear-gradient(to left, var(--bg-page) 40%, transparent) right center / 32px 100% no-repeat local,
       linear-gradient(to left, color-mix(in srgb, var(--color-text) 14%, transparent), transparent) right center / 16px 100% no-repeat scroll;
+  }
+  .oa-prose .oa-table-wrap[data-clipped-end] {
+    -webkit-mask-image: none;
+    mask-image: none;
   }
   .oa-prose table {
     /* On the phone's type steps, not 0.875em of them (12.25px at 14px). */

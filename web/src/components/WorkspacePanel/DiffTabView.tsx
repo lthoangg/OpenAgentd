@@ -41,10 +41,11 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
   )
   const fileDiff = useMemo(() => fileDiffBody(diff.data, path), [diff.data, path])
   const canOpen = onOpenFile && changed?.status !== 'D'
-  // A phone keeps lines whole and scrolls sideways; the toggle wraps them.
+  // A phone keeps lines whole and scrolls sideways, a desktop wraps them; the
+  // toggle flips either default for this tab.
   const isPhone = useIsPhone()
-  const [wrapLines, setWrapLines] = useState(false)
-  const wrap = !isPhone || wrapLines
+  const [wrapChoice, setWrapChoice] = useState<boolean | null>(null)
+  const wrap = wrapChoice ?? !isPhone
   const refresh = () => {
     void diff.refetch()
     void changes.refetch()
@@ -62,17 +63,22 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
           <TooltipContent side="bottom">{path}</TooltipContent>
         </Tooltip>
         {changed && <ChangeCounts file={changed} />}
-        {isPhone && (
-          <button
-            type="button"
-            aria-label="Wrap lines"
-            aria-pressed={wrapLines}
-            onClick={() => setWrapLines((value) => !value)}
-            className={DOCK_ACTION_BUTTON_CLASS}
-          >
-            <WrapText size={14} aria-hidden="true" className={wrapLines ? 'text-(--color-text)' : undefined} />
-          </button>
-        )}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label="Wrap lines"
+                aria-pressed={wrap}
+                onClick={() => setWrapChoice(!wrap)}
+                className={DOCK_ACTION_BUTTON_CLASS}
+              >
+                <WrapText size={14} aria-hidden="true" className={wrap ? 'text-(--color-text)' : undefined} />
+              </button>
+            }
+          />
+          <TooltipContent side="bottom">{wrap ? 'Keep lines whole' : 'Wrap lines'}</TooltipContent>
+        </Tooltip>
         {canOpen && (
           <Tooltip>
             <TooltipTrigger

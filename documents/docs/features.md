@@ -2233,6 +2233,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     **Hide from sidebar**, instead of a card over the transcript.
   - **Session not found** also offers **Find a session ⌘L** beside **New
     session**.
+  - A diff tab's **Wrap lines** toggle is on desktop too: diffs still wrap
+    by default, and the toggle keeps long lines whole so they scroll
+    sideways.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

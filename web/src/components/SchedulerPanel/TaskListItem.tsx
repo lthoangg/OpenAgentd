@@ -141,21 +141,20 @@ export function TaskListItem({
           )}
         </div>
 
-        {/* One ⋯ on every platform (24px, 36px on touch) opens the menu with
-            Run now, Pause / Resume and Delete in words: the same menu as a
-            right-click or a long press. It shows a spinner while one runs. */}
+        {/* On / off in one click or tap, then one ⋯ on every platform (24px,
+            36px on touch) for Run now, Pause / Resume and Delete in words:
+            the same menu as a right-click or a long press. It shows a
+            spinner while one runs. */}
         <div className="-mr-1.5 flex shrink-0 items-center gap-2">
-          {phoneSheet && (
-            // On / off in one tap; the row's tap still opens the task.
-            <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} className="flex">
-              <Switch
-                checked={task.status !== 'paused'}
-                onCheckedChange={togglePaused}
-                disabled={pauseMutation.isPending || resumeMutation.isPending}
-                aria-label={`${task.name} on`}
-              />
-            </span>
-          )}
+          {/* The row's click still opens the task; the switch's does not. */}
+          <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} className="flex">
+            <Switch
+              checked={task.status !== 'paused'}
+              onCheckedChange={togglePaused}
+              disabled={pauseMutation.isPending || resumeMutation.isPending}
+              aria-label={`${task.name} on`}
+            />
+          </span>
           <Tooltip>
             <TooltipTrigger
               render={

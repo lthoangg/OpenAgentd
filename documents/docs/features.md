@@ -2297,6 +2297,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     `sleep`) shows the running spinner in place of its icon, and its
     tooltip reads **Terminal 1 · Running**, so you can see which tab is busy
     before you close it.
+  - Each scheduled task's row has an on/off switch beside its **⋯**, as on
+    the phone, so pausing or resuming a task is one click that does not
+    open it. **Pause** and **Resume** stay in the menu too.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

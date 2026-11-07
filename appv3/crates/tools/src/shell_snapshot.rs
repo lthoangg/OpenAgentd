@@ -179,7 +179,7 @@ pub async fn build(kind: Kind, shell_bin: &str, v2_prefix: &str, env: &HashMap<S
 pub fn argv(kind: Kind, snapshot: &Path, command: &str) -> Vec<String> {
     let src = sh_quote(&snapshot.to_string_lossy());
     let script = match kind {
-        Kind::Zsh => format!("source {src} >/dev/null 2>&1; unset HISTFILE; HISTSIZE=0; SAVEHIST=0; unsetopt appendhistory incappendhistory sharehistory 2>/dev/null; eval \"$1\""),
+        Kind::Zsh => format!("source {src} >/dev/null 2>&1; unset HISTFILE; HISTSIZE=0; SAVEHIST=0; unsetopt appendhistory incappendhistory sharehistory 2>/dev/null; setopt nonomatch 2>/dev/null; eval \"$1\""),
         Kind::Bash => format!("shopt -s expand_aliases; source {src} >/dev/null 2>&1; unset HISTFILE; HISTSIZE=0; HISTFILESIZE=0; set +o history 2>/dev/null; eval \"$1\""),
     };
     vec!["-c".into(), script, "openagentd".into(), command.into()]

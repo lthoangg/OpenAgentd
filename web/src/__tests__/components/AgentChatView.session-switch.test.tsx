@@ -15,6 +15,7 @@ mock.module('@tanstack/react-router', () => ({
 }))
 
 mock.module('@tanstack/react-query', () => ({
+  QueryClient: class {},
   useQueryClient: () => ({}),
   useQuery: (options: { queryKey?: readonly unknown[] }) => ({
     data: options?.queryKey?.[0] === 'coding-workspace-tree' ? workspaceTree : undefined,

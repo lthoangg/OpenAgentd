@@ -28,6 +28,7 @@ mock.module('@tanstack/react-router', () => ({
 }))
 
 mock.module('@tanstack/react-query', () => ({
+  QueryClient: class {},
   useQueryClient: () => ({}),
   useQuery: () => ({ data: undefined, isLoading: false }),
   useInfiniteQuery: () => ({ data: undefined, isLoading: false }),

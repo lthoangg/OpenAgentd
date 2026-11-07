@@ -13,6 +13,7 @@ import { queryKeys } from '@/queries/keys'
 // failure. The real icons render fine and cost nothing measurable.
 mock.module('@tanstack/react-router', () => ({ useNavigate: () => () => Promise.resolve() }))
 mock.module('@tanstack/react-query', () => ({
+  QueryClient: class {},
   useQueryClient: () => ({}),
   useQuery: () => ({ data: undefined, isLoading: false }),
   useInfiniteQuery: () => ({ data: undefined, isLoading: false }),

@@ -2236,6 +2236,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A diff tab's **Wrap lines** toggle is on desktop too: diffs still wrap
     by default, and the toggle keeps long lines whole so they scroll
     sideways.
+  - The marks on the transcript's timeline rail name what they mark: hover
+    one to see the first line of its prompt (or **Question waiting**), and
+    click it to bring that prompt to the top.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

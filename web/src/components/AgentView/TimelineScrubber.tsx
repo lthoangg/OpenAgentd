@@ -2,7 +2,9 @@
  * TimelineScrubber — an overview rail at the transcript's right edge that
  * stands in for its scrollbar from ``md`` up. The view is a thumb; marks
  * show where prompts and a question waiting on the user sit.
- * Press or drag anywhere on it to scrub.
+ * Press or drag anywhere on it to scrub. Under the pointer a mark names its
+ * prompt (its first line) or the waiting question, and pressing it lands that
+ * spot just below the top, as a prompt jump does.
  *
  * Pointer-only and hidden from assistive tech: prompt navigation covers the
  * same ground from the keyboard.
@@ -18,7 +20,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from 'react'
 import { cn } from '@/lib/utils'
-import { promptElements } from './prompt-nav'
+import { PROMPT_JUMP_MARGIN, promptElements } from './prompt-nav'
 
 type MarkKind = 'prompt' | 'question'
 
@@ -27,6 +29,8 @@ interface Mark {
   kind: MarkKind
   /** Offset down the transcript, 0–1. */
   at: number
+  /** What the mark names under the pointer; empty names nothing. */
+  label: string
 }
 
 /** Later kinds paint over earlier ones where marks meet. */
@@ -45,6 +49,11 @@ const MARK_CLASS: Record<MarkKind, string> = {
  */
 const MARK_REMEASURE_MS = 200
 
+/** How far from a mark, in px along the rail, the pointer still names it. */
+const MARK_HIT_PX = 6
+
+const QUESTION_LABEL = 'Question waiting'
+
 function percent(fraction: number): string {
   return `${Math.round(fraction * 10_000) / 100}%`
 }
@@ -55,7 +64,9 @@ function sameFraction(a: number, b: number): boolean {
 }
 
 function sameMarks(a: readonly Mark[], b: readonly Mark[]): boolean {
-  return a.length === b.length && a.every((mark, i) => mark.key === b[i].key && mark.kind === b[i].kind && sameFraction(mark.at, b[i].at))
+  return a.length === b.length && a.every((mark, i) => (
+    mark.key === b[i].key && mark.kind === b[i].kind && mark.label === b[i].label && sameFraction(mark.at, b[i].at)
+  ))
 }
 
 export function TimelineScrubber({ scrollRef, contentRef }: {
@@ -67,6 +78,8 @@ export function TimelineScrubber({ scrollRef, contentRef }: {
   const [view, setView] = useState<{ top: number; height: number } | null>(null)
   const [marks, setMarks] = useState<Mark[]>([])
   const [dragging, setDragging] = useState(false)
+  /** The mark the pointer names, by key. */
+  const [hovered, setHovered] = useState<string | null>(null)
   const measuredHeight = useRef(-1)
   const lastMeasureAt = useRef(Number.NEGATIVE_INFINITY)
   const remeasureTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -82,9 +95,14 @@ export function TimelineScrubber({ scrollRef, contentRef }: {
     }
     const origin = root.getBoundingClientRect().top - root.scrollTop
     const at = (el: Element) => Math.min(1, Math.max(0, (el.getBoundingClientRect().top - origin) / height))
-    const next: Mark[] = promptElements(root).map((el) => ({ key: `prompt:${el.dataset.promptId}`, kind: 'prompt', at: at(el) }))
+    const next: Mark[] = promptElements(root).map((el) => ({
+      key: `prompt:${el.dataset.promptId}`,
+      kind: 'prompt',
+      at: at(el),
+      label: el.dataset.promptLabel ?? '',
+    }))
     const question = root.querySelector('[data-question-waiting]')
-    if (question) next.push({ key: 'question', kind: 'question', at: at(question) })
+    if (question) next.push({ key: 'question', kind: 'question', at: at(question), label: QUESTION_LABEL })
     setMarks((current) => (sameMarks(current, next) ? current : next))
   }, [])
   const measureMarksRef = useRef(measureMarks)
@@ -146,16 +164,52 @@ export function TimelineScrubber({ scrollRef, contentRef }: {
     root.scrollTop = ((clientY - rail.top - grab.current) / rail.height) * root.scrollHeight
   }
 
+  /** The named mark nearest ``clientY`` on the rail, within ``MARK_HIT_PX``. */
+  const markAt = (clientY: number): Mark | null => {
+    const rail = railRef.current?.getBoundingClientRect()
+    if (!rail || rail.height <= 0) return null
+    let best: Mark | null = null
+    let bestDistance = MARK_HIT_PX
+    for (const mark of marks) {
+      if (!mark.label) continue
+      // Where the mark is drawn: ``top`` clamps it 0.25rem above the bottom.
+      const y = rail.top + Math.min(mark.at * rail.height, rail.height - 4)
+      const distance = Math.abs(clientY - y)
+      if (distance <= bestDistance) {
+        best = mark
+        bestDistance = distance
+      }
+    }
+    return best
+  }
+
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
     const thumb = thumbRef.current?.getBoundingClientRect()
     const onThumb = thumb !== undefined && event.clientY >= thumb.top && event.clientY <= thumb.bottom
+    const mark = onThumb ? null : markAt(event.clientY)
+    const root = scrollRef.current
+    if (mark && root) {
+      event.preventDefault()
+      root.scrollTop = Math.max(0, mark.at * root.scrollHeight - PROMPT_JUMP_MARGIN)
+      return
+    }
     // Held by the thumb, it stays under the pointer; elsewhere the view centres there.
     grab.current = onThumb ? event.clientY - thumb.top : (thumb?.height ?? 0) / 2
     event.currentTarget.setPointerCapture?.(event.pointerId)
     event.preventDefault()
     setDragging(true)
+    setHovered(null)
     scrubTo(event.clientY)
+  }
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (grab.current !== null) {
+      scrubTo(event.clientY)
+      return
+    }
+    const key = markAt(event.clientY)?.key ?? null
+    setHovered((current) => (current === key ? current : key))
   }
 
   const endDrag = () => {
@@ -172,6 +226,7 @@ export function TimelineScrubber({ scrollRef, contentRef }: {
   }
 
   const orderedMarks = useMemo(() => [...marks].sort((a, b) => MARK_ORDER[a.kind] - MARK_ORDER[b.kind]), [marks])
+  const named = hovered === null ? null : marks.find((mark) => mark.key === hovered) ?? null
 
   if (!view) return null
 
@@ -182,7 +237,8 @@ export function TimelineScrubber({ scrollRef, contentRef }: {
       data-transcript-scrubber=""
       className="oa-fade-in-fast group/scrubber absolute inset-y-0 right-0 z-10 hidden w-3 touch-none select-none md:block"
       onPointerDown={onPointerDown}
-      onPointerMove={(event) => scrubTo(event.clientY)}
+      onPointerMove={onPointerMove}
+      onPointerLeave={() => setHovered(null)}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
       onLostPointerCapture={endDrag}
@@ -210,6 +266,16 @@ export function TimelineScrubber({ scrollRef, contentRef }: {
           style={{ top: `calc(min(${percent(mark.at)}, 100% - 0.25rem))` }}
         />
       ))}
+      {named && (
+        <span
+          data-scrubber-label=""
+          // The app's tooltip face, beside the rail and centred on the mark.
+          className="pointer-events-none absolute right-4 w-max max-w-xs -translate-y-1/2 truncate rounded-sm border border-(--color-tooltip-border) bg-(--bg-tooltip) px-2 py-1 text-meta text-(--color-tooltip-text) shadow-(--shadow-depth)"
+          style={{ top: `calc(max(0.75rem, min(${percent(named.at)}, 100% - 0.75rem)))` }}
+        >
+          {named.label}
+        </span>
+      )}
     </div>
   )
 }

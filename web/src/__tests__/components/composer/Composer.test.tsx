@@ -90,7 +90,8 @@ describe('RunChip', () => {
     const chip = document.querySelector('[data-run-chip]') as HTMLElement
 
     fireEvent.mouseEnter(chip.parentElement!)
-    const tip = await screen.findByRole('tooltip')
+    // The hover hint waits 500ms (ui/tooltip); a loaded runner needs the slack.
+    const tip = await screen.findByRole('tooltip', undefined, { timeout: 3000 })
     expect(tip.querySelector('.font-mono')?.textContent).toBe('anthropic:claude-sonnet-4-5')
     expect(tip.textContent).toMatch(/^anthropic:claude-sonnet-4-5 · Change \((⌘|Ctrl\+)\.\)$/)
   })

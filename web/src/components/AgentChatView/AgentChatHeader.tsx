@@ -397,7 +397,7 @@ function PhoneChatNavBar({ onBack, workspace, workspaceName, sessionId, sessionT
   sessionId: string | null | undefined
   sessionTitle: string | null
   onOpenLead?: () => void
-  /** "3/5" while the session has tasks; null hides Tasks from ⋯. */
+  /** "3/5" while the session has tasks; null reads "No tasks" in ⋯. */
   todoProgress: string | null
   onToggleTasks?: () => void
   onWorkspaceFiles?: () => void
@@ -408,7 +408,8 @@ function PhoneChatNavBar({ onBack, workspace, workspaceName, sessionId, sessionT
     ? 'Choose a workspace'
     : sessionTitle ? <AnimatedTitle text={sessionTitle} sessionId={sessionId} /> : sessionId ? 'Untitled session' : 'New session'
   const items: ActionSheetItem[] = [
-    ...(todoProgress && onToggleTasks ? [{ id: 'tasks', label: `Tasks · ${todoProgress}`, icon: ListTodo, run: onToggleTasks }] : []),
+    // Always listed, so the task list is findable before the agent makes one.
+    ...(onToggleTasks ? [{ id: 'tasks', label: todoProgress ? `Tasks · ${todoProgress}` : 'No tasks', icon: ListTodo, run: onToggleTasks }] : []),
     ...(onWorkspaceFiles ? [{ id: 'workspace', label: 'Workspace', icon: PanelRight, run: onWorkspaceFiles }] : []),
   ]
   return (

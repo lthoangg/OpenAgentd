@@ -2179,6 +2179,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     destructive action last; so does the Review panel's **+**.
   - In Settings, the filter of Providers, Agents, Skills and MCP servers
     stays pinned at the top while the list scrolls.
+  - The chat's ⋯ always lists Tasks: **Tasks · 3/5** with progress, or
+    **No tasks** before the agent makes any.
 - **One look across the app** `[v3.48.0]`:
   - The same status looks the same everywhere. Needs you is orange and
     Failed is red. Connected and passing checks are green. Running and Done

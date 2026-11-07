@@ -501,5 +501,14 @@ describe('AgentChatHeader', () => {
       expect(info).toHaveTextContent('Fix updater restart')
       expect(info).toHaveTextContent('Workspace A')
     })
+
+    it('always lists Tasks in ⋯, reading "No tasks" before the agent makes any', async () => {
+      const onToggleTasks = mock(() => {})
+      renderHeader({ onBack: () => undefined, onToggleTasks, todos: [] })
+      const user = userEvent.setup()
+      await user.click(screen.getByRole('button', { name: 'Session actions' }))
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'No tasks' }))
+      expect(onToggleTasks).toHaveBeenCalledTimes(1)
+    })
   })
 })

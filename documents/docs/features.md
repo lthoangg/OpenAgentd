@@ -2228,6 +2228,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     **Start built-in server** (or **Use built-in server** when a remote one
     is down), and Send is disabled with the reason while your draft stays in
     the box.
+  - A session whose folder was moved or deleted shows one line under the
+    header, **{folder} was moved or deleted**, with **Open workspace…** and
+    **Hide from sidebar**, instead of a card over the transcript.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

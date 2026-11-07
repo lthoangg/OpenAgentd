@@ -239,7 +239,7 @@ describe('AgentChatView — switching sessions', () => {
     render(<AgentChatView sessionId="session-g" workspace="/repo/gone" />)
 
     expect(screen.getByTestId('transcript')).toBeTruthy()
-    expect(screen.getByText("This session's folder was moved or deleted.")).toBeTruthy()
+    expect(screen.getByText(/was moved or deleted/).textContent).toContain('gone was moved or deleted')
     expect(screen.getByRole('button', { name: 'Open workspace…' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Hide from sidebar' })).toBeTruthy()
   })
@@ -249,7 +249,7 @@ describe('AgentChatView — switching sessions', () => {
     useAgentStore.setState({ sessionId: 'session-b', _workspace: '/repo/b' })
     render(<AgentChatView sessionId="session-b" workspace="/repo/b" />)
 
-    expect(screen.queryByText("This session's folder was moved or deleted.")).toBeNull()
+    expect(screen.queryByText(/was moved or deleted/)).toBeNull()
   })
 
   it("does not hand a main session's message queue to the composer's tray", () => {

@@ -12,7 +12,7 @@ import { TriangleAlert } from 'lucide-react'
 import { getCodingWorkspaceTree, setCodingWorkspaceVisibility } from '@/api/client'
 import { ActionSheet } from '@/components/ui/action-sheet'
 import { Button } from '@/components/ui/button'
-import { Callout } from '@/components/ui/callout'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { queryKeys } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
@@ -81,21 +81,26 @@ export function MissingFolderBanner({ workspace, onOpenFolder }: MissingFolderBa
     )
   }
 
+  // Desktop: one line under the header as well, the width of the column,
+  // never a card over the transcript (desktop mockup 12.3). The full path
+  // and what it means are the tooltip.
+  const name = workspace.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || workspace
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pt-3">
-      <Callout
-        tone="warning"
-        role="status"
-        title="This session's folder was moved or deleted."
-        action={(
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={onOpenFolder}>Open workspace…</Button>
-            <Button size="sm" variant="ghost" onClick={() => { void hideWorkspace() }}>Hide from sidebar</Button>
-          </div>
-        )}
-      >
-        <span className="font-mono [overflow-wrap:anywhere]">{workspace}</span> is not on disk. You can read this session, but new messages need the folder back.
-      </Callout>
+    <div role="status" className="flex min-h-8 shrink-0 items-center gap-2 border-b border-(--color-border-subtle) bg-(--bg-card) py-1 pr-2 pl-3 text-xs">
+      <TriangleAlert size={13} aria-hidden="true" className="shrink-0 text-(--accent-orange-text)" />
+      <Tooltip className="min-w-0 flex-1">
+        <TooltipTrigger
+          className="min-w-0 flex-1"
+          render={(
+            <p className="min-w-0 truncate text-(--color-text)">
+              <span className="font-medium">{name}</span> was moved or deleted · new messages need the folder back
+            </p>
+          )}
+        />
+        <TooltipContent>{`${workspace} is not on disk. You can read this session.`}</TooltipContent>
+      </Tooltip>
+      <Button size="xs" onClick={onOpenFolder}>Open workspace…</Button>
+      <Button size="xs" variant="ghost" onClick={() => { void hideWorkspace() }}>Hide from sidebar</Button>
     </div>
   )
 }

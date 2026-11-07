@@ -1879,7 +1879,8 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   side questions in a sheet and stays, pressed, while the sheet is open so
   nothing behind it moves). All of it is in the flow, never floating over
   the transcript, and a reader at the end stays at the end as it grows, with
-  the keyboard up too. Queued and steer messages wait at the end of the
+  the keyboard up too; as the keyboard rises the end rides up with the
+  composer every frame. Queued and steer messages wait at the end of the
   transcript instead, as faded user bubbles (four lines at most) with their
   delivery state under them. A tap takes one back into the composer, to
   edit or clear there; there is no ✕.

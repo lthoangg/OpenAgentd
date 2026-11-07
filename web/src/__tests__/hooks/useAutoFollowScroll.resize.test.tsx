@@ -129,7 +129,9 @@ describe('useAutoFollowScroll and layout changes', () => {
     expect(layout.box.scrollTop).toBe(1500 - 360)
   })
 
-  it('leaves the keyboard\'s own rise to the settle that follows it', async () => {
+  // The shell eases its height as the keyboard rises; the end rides up with
+  // the composer each frame rather than snapping back once it stops.
+  it('keeps the end in view through each frame of the keyboard\'s rise', async () => {
     render(<Harness />)
     const el = hook!.scrollRef.current!
     const layout = fakeLayout(el, el.firstElementChild as HTMLDivElement)
@@ -140,8 +142,11 @@ describe('useAutoFollowScroll and layout changes', () => {
     document.documentElement.setAttribute('data-keyboard-open', '')
     document.documentElement.setAttribute('data-vp-rise', '')
 
+    layout.relayout(1500, 550)
+    await observe()
+    expect(layout.box.scrollTop).toBe(1500 - 550)
     layout.relayout(1500, 400)
     await observe()
-    expect(layout.box.scrollTop).toBe(800)
+    expect(layout.box.scrollTop).toBe(1500 - 400)
   })
 })

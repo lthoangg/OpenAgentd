@@ -600,17 +600,8 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     const el = scrollRef.current
     const content = contentRef.current
     if (!el || !content || typeof ResizeObserver === 'undefined') return
-    let lastContentHeight = content.getBoundingClientRect().height
-    let lastClientHeight = el.clientHeight
-    const ro = new ResizeObserver((entries) => {
+    const ro = new ResizeObserver(() => {
       const nextContentHeight = content.getBoundingClientRect().height
-      const nextClientHeight = el.clientHeight
-      const contentGrew = nextContentHeight > lastContentHeight
-      const viewportChanged = nextClientHeight !== lastClientHeight
-      const contentChanged = entries.some((entry) => entry.target === content)
-
-      lastContentHeight = nextContentHeight
-      lastClientHeight = nextClientHeight
       // Recorded while reading too, so a later shrink is measured against
       // the content as it was, not as it was at the last scroll event. The
       // view too: a shrink clamps it to the new end, and when the layout
@@ -628,11 +619,11 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       if (pointerDownRef.current) return
       // A glide to the end is under way; it settles on the new end itself.
       if (smoothScrollFinishRef.current) return
-      // Only the keyboard's own rise is left to the settle below: once it is
-      // up, a smaller view is the composer growing (a queued steer, the run
-      // line), and the end of the reply must not slide under it.
-      const root = document.documentElement
-      if (root.hasAttribute('data-keyboard-open') && root.hasAttribute('data-vp-rise') && viewportChanged && !contentGrew && !contentChanged) return
+      // A smaller view keeps the end in view every frame, the keyboard's
+      // rise included: the shell eases its height on the keyboard's curve
+      // (index.css, data-vp-rise), and the end rides up with the composer.
+      // Left to the settle below, it slid under the composer and snapped
+      // back once the keyboard stopped (a hitch, on-device report).
       const target = Math.max(0, el.scrollHeight - el.clientHeight)
       if (Math.abs(el.scrollTop - target) > 0.5) {
         el.scrollTop = target
@@ -645,11 +636,10 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     return () => ro.disconnect()
   }, [hasContent, setChip])
 
-  // The soft keyboard shrinks the scrollport from the bottom while scrollTop
-  // stays put, so the end of the latest reply slides under the composer. The
-  // observer above deliberately ignores those per-frame shrinks (chasing the
-  // keyboard animation is janky); instead re-pin once, after the keyboard has
-  // settled, if the reader was following the bottom.
+  // A backstop for the soft keyboard: the observer above keeps the end in
+  // view as the scrollport shrinks, and this re-pins once more after the
+  // keyboard has settled, for a WebView that resizes without a layout the
+  // observer sees.
   useEffect(() => {
     if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return
     const root = document.documentElement

@@ -96,6 +96,13 @@ The same secrets in both `testflight-internal` and `release-ios`
   already installed from the App Store or TestFlight.
 - The build number is the workflow run number, so every upload is unique.
 
+When a run fails: `gh run view <id> --log-failed | grep -iE "error|FAILED"`,
+fix on the branch, push, and dispatch again. The `build` job takes about 20
+minutes cold; Apple's bundle rules only surface in `sign` at
+`altool --validate-app`, so check plist edits against them before pushing.
+Apple requires `UISupportedInterfaceOrientations~ipad` to list all four
+orientations (error 90474) while the iPad app supports multitasking.
+
 App Store submission (App Store Connect, by hand):
 
 - Screenshots: `make ios-screenshots` (iPhone 6.9" and iPad 13" from the

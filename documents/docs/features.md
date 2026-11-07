@@ -2432,6 +2432,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   no update notice, and **Settings → About OpenAgentd** names the channel.
   Maintainers can send any branch to TestFlight Internal from CI, for example
   from the phone through the agent.
+  Before anything is sent, the iOS app asks once for consent to share what you
+  write with the AI providers your server uses, with a link to the privacy
+  policy, which is also in **Settings → About OpenAgentd** `[v3.50.0]`.
 - **Android app (APK)** `[v3.15.0]` — releases include a sideloadable
   `OpenAgentd_<version>_Android.apk` with a checksum. Access keys are
   encrypted with an Android Keystore key, downloads open the system share

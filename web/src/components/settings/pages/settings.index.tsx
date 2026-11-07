@@ -4,7 +4,9 @@
  * lives in General and the backend in Connection.
  */
 import { useEffect, useState } from 'react'
-import { AlertTriangle, ExternalLink, Globe, MessageSquare, Users, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, ExternalLink, Globe, MessageSquare, Shield, Users, type LucideIcon } from 'lucide-react'
+
+import { PRIVACY_URL } from '@/components/AiDataConsent'
 
 import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
 import { SettingsPage } from '@/components/settings/SettingsPage'
@@ -350,6 +352,13 @@ export function AboutSettingsPage() {
             tint="bg-(--bg-key) text-(--color-text-2)"
             title="Facebook group"
             body="Connect with other OpenAgentd users and maintainers on Facebook."
+          />
+          <CommunityLink
+            href={PRIVACY_URL}
+            icon={Shield}
+            tint="bg-(--bg-key) text-(--color-text-2)"
+            title="Privacy policy"
+            body="What the apps send to your server and the AI providers it uses."
           />
         </div>
       </section>

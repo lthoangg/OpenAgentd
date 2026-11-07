@@ -1,19 +1,23 @@
 /**
  * RunChip — the run deck's "how this message runs" control:
- * ``provider:model · Thinking · Account``, and the run picker it opens.
+ * ``model · Thinking · Account``, and the run picker it opens.
  *
- * The model always reads as ``provider:model`` in mono. When the composer
- * narrows the ``provider:`` part gives way first; under 520px the chip
- * stacks into two lines (model, then level and account). Desktop and tablet
- * open the picker as a popover over the chip, phones as a bottom sheet.
+ * The chip names the model in sans, as a label, not an ID to copy: the
+ * ``provider:model`` ID is in mono in the picker, in the chip's accessible
+ * name and, from a pointer, in its tooltip. A long name gives up its start
+ * and keeps its end (``…sonnet-4-6``), since models differ at the end; a
+ * phone shows that end alone. Under 520px the chip stacks into two lines
+ * (model, then level and account). Desktop and tablet open the picker as a
+ * popover over the chip, phones as a bottom sheet.
  */
 import { useLayoutEffect, useRef } from 'react'
 import { ChevronDown } from 'lucide-react'
 
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import type { SheetDetent } from '@/components/ui/_sheet'
-import { MODEL_LINE_CLASS, ModelPart, PROVIDER_PART_CLASS, splitModelTail } from '@/components/ui/model-name'
+import { ModelPart, splitModelTail } from '@/components/ui/model-name'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
@@ -72,7 +76,7 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
     else ui.closeRunPicker()
   }
 
-  const { provider, model } = settings.model ? splitModelId(settings.model) : { provider: '', model: 'No model' }
+  const { model } = settings.model ? splitModelId(settings.model) : { model: 'No model' }
   const level = settings.thinkingLevel ? thinkingLevelLabel(settings.thinkingLevel) : null
   // With several accounts the chip always names the one in use.
   const account = settings.inUseAccount?.label ?? null
@@ -89,8 +93,7 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
     <button
       type="button"
       disabled={disabled}
-      // The picker is the detail view, so the chip carries no tooltip; its
-      // name says what runs and how to change it.
+      // Its name says what runs (the whole ID) and how to change it.
       aria-label={isMobile ? `${label}. Change` : `${label}. Change (${shortcut})`}
       aria-haspopup="dialog"
       data-run-chip=""
@@ -114,10 +117,9 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
             {splitModelTail(model).tail || model}
           </span>
         ) : (
-          <span className={cn('flex', MODEL_LINE_CLASS)}>
-            {/* The provider part gives way first, whole; the model part only
-                truncates after that (see ui/model-name). */}
-            {provider && <span className={cn(PROVIDER_PART_CLASS, 'text-(--color-text-muted)')}>{provider}:</span>}
+          // One line, clipped below: ModelPart drops a squeezed start onto
+          // the hidden second line rather than clip a letter (ui/model-name).
+          <span data-run-chip-model="" className="flex h-[1lh] min-w-0 max-w-full overflow-y-clip">
             <ModelPart model={model} />
           </span>
         )}
@@ -147,7 +149,15 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={chip} />
+      {/* The wrappers shrink with the chip, so the model name still truncates. */}
+      <Tooltip className="min-w-0 shrink">
+        <TooltipTrigger className="min-w-0 shrink" render={<PopoverTrigger render={chip} />} />
+        {!open && (
+          <TooltipContent side="top">
+            <span className="font-mono">{settings.model ?? 'No model'}</span> · Change ({shortcut})
+          </TooltipContent>
+        )}
+      </Tooltip>
       <PopoverContent
         side="top"
         align="start"

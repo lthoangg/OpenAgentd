@@ -1362,7 +1362,7 @@ no drag, no collapse, no saved position. It is one framed field (one
 the text sits the run deck, which says how the next message runs:
 
 ```
-[+•] [Code] [provider:model · Level · Account ▾]   (ring 42%) [Send]
+[+•] [Code] [model · Level · Account ▾]   (ring 42%) [Send]
 ```
 
 Every control in the deck is one height, the same steps as Send: 28px on
@@ -1386,14 +1386,15 @@ stacked chip (below) is 36px: its two lines need it.
   words hold the slot, so a switch moves nothing beside it. A switch queued
   behind a running turn is italic until it applies. Plan mode changes the
   placeholder to say the agent reads and proposes without editing.
-- **The run chip** reads `provider:model` in mono, then the thinking level and
-  a pinned account in words. The `provider:` part gives way first; a long
-  model name then gives up its middle (`antigravit…sonnet-4-6`, then
-  `sonnet-4-6` alone), since models differ at the end, everywhere a model is
-  named. Under 520px
+- **The run chip** names the model in sans (`claude-sonnet-4-6`), a label
+  rather than an ID to copy, then the thinking level and a pinned account in
+  words. The `provider:model` ID is in mono in its tooltip
+  (`anthropic:claude-sonnet-4-6 · Change (⌘.)`, hidden while the picker is
+  open), in its accessible name with the shortcut, and in the picker. A long
+  model name gives up its start (`…sonnet-4-6`), since models differ at the
+  end, everywhere a model is named; a phone shows that end alone. Under 520px
   of composer width (container query) the chip stacks into two lines and the
-  context ring drops its percentage. The chip has no tooltip: its accessible
-  name carries the shortcut.
+  context ring drops its percentage.
 - **The run picker** (⌘., `/model`, `/think`, the palette's "Model and
   Thinking…") is one surface for all three: a model search with Recent first,
   thinking as a segmented control (←/→ step it from the empty search; Extra
@@ -1513,7 +1514,8 @@ primitives in `components/ui/`:
   gives way first (it ellipsizes), and the full ID is in the tooltip. In a
   list grouped by provider (the model pickers) the group header names the
   provider and each row shows only the model; typing `openai:` still finds
-  them.
+  them. The run chip is the one label: it names the model alone, in sans,
+  with the ID in its tooltip (Composer → the run chip).
 - **One name per thing.** Workspace (not project or repo), Worktree,
   Rename, Tasks, Scheduled tasks, Review panel, Side questions, Find file,
   Session, Built-in server, Main agent / Subagent, Run now, Usage (the

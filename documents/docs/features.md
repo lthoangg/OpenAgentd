@@ -2239,6 +2239,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The marks on the transcript's timeline rail name what they mark: hover
     one to see the first line of its prompt (or **Question waiting**), and
     click it to bring that prompt to the top.
+  - The composer's model chip names the model in the interface font
+    (`claude-sonnet-4-6 · High`) rather than `provider:model` in code type;
+    hovering it shows the full `provider:model` and its shortcut, and the
+    picker still lists models by provider.
 - **Tool rows open files; a compact run deck** `[v3.48.0]`:
   - Tool rows have no hover tooltip, so hovering a shell row no longer
     shows its command. When a row's title is cut short (a long URL, query

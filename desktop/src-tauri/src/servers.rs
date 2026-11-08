@@ -190,8 +190,8 @@ pub fn focused_app_window(app: &AppHandle) -> Option<String> {
 /// not the test.
 pub async fn bundled_running(app: &AppHandle) -> bool {
     let state: tauri::State<'_, AppState> = app.state();
-    let mut sidecar = state.sidecar.lock().await;
-    sidecar.as_mut().is_some_and(|s| s.is_alive())
+    let running = state.sidecar.alive().await;
+    running
 }
 
 /// [`current_server`] for the running app.

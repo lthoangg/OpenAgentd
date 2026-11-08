@@ -23,6 +23,7 @@
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 use std::fs::OpenOptions;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -33,6 +34,126 @@ use tokio::time::timeout;
 
 const HANDSHAKE_PREFIX: &str = "OPENAGENTD_HANDSHAKE ";
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+/// Grace for reaping an attempt that failed its handshake or health check.
+const FAILED_ATTEMPT_GRACE: Duration = Duration::from_millis(750);
+
+/// How long a start attempt waits for the handshake and the health check.
+struct StartLimits {
+    handshake: Duration,
+    health_attempts: u32,
+    health_delay: Duration,
+}
+
+const START_LIMITS: StartLimits = StartLimits {
+    handshake: crate::SIDECAR_HANDSHAKE_TIMEOUT,
+    health_attempts: 60,
+    health_delay: Duration::from_millis(250),
+};
+
+/// A spawned sidecar that sent its handshake and answers its health check.
+pub struct Ready {
+    pub sidecar: Sidecar,
+    pub handshake: Handshake,
+    pub base: String,
+}
+
+/// The step a start attempt failed at. Any child it spawned is already
+/// shut down: a failed attempt is reaped before its result is published.
+#[derive(Debug)]
+pub enum StartFailure {
+    Spawn(anyhow::Error),
+    Handshake(anyhow::Error),
+    Health(anyhow::Error),
+}
+
+impl StartFailure {
+    /// The recovery-screen message of a failed launch.
+    pub fn startup_message(&self) -> String {
+        match self {
+            Self::Spawn(e) => format!("Sidecar unavailable: {e:#}"),
+            Self::Handshake(e) => format!("Sidecar handshake failed: {e:#}"),
+            Self::Health(e) => format!("Sidecar health check failed: {e:#}"),
+        }
+    }
+}
+
+impl std::fmt::Display for StartFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Spawn(e) | Self::Handshake(e) | Self::Health(e) => write!(f, "{e:#}"),
+        }
+    }
+}
+
+/// Spawn the bundled sidecar (reusing `desktop_token` when given, so open
+/// windows stay authenticated) and wait until it is ready: handshake, then
+/// health. The one spawn path for launch, Retry, crash recovery, update
+/// recovery and force reload.
+///
+/// `superseded` is the attempt's [`crate::lifecycle::Attempt::superseded`]:
+/// once it resolves (a Stop, quit or update decided meanwhile) the child is
+/// shut down at once and the result is `Ok(None)`.
+pub async fn start_ready(
+    app: &AppHandle,
+    desktop_token: Option<&str>,
+    superseded: impl Future<Output = ()>,
+) -> Result<Option<Ready>, StartFailure> {
+    let sidecar = Sidecar::spawn_with_desktop_token(app, desktop_token).map_err(StartFailure::Spawn)?;
+    log::info!("sidecar spawned at_ms={}", crate::launch_ms());
+    bring_up(sidecar, &START_LIMITS, superseded).await
+}
+
+/// Handshake, then health. A handshake alone is not readiness. On failure
+/// or when `superseded` resolves first, the child is shut down before the
+/// result is returned. If this future is dropped instead (its task aborted),
+/// dropping the unpublished `Sidecar` kills the child.
+async fn bring_up(
+    mut sidecar: Sidecar,
+    limits: &StartLimits,
+    superseded: impl Future<Output = ()>,
+) -> Result<Option<Ready>, StartFailure> {
+    let outcome = tokio::select! {
+        biased;
+        () = superseded => None,
+        result = handshake_and_health(&mut sidecar, limits) => Some(result),
+    };
+    match outcome {
+        Some(Ok((handshake, base))) => Ok(Some(Ready { sidecar, handshake, base })),
+        Some(Err(failure)) => {
+            // Dropping a tokio Child does not end the process on Unix; reap it
+            // so it neither lingers nor contends with the next attempt.
+            sidecar.shutdown_with_grace(FAILED_ATTEMPT_GRACE).await;
+            Err(failure)
+        }
+        None => {
+            log::info!("sidecar start superseded; shutting the new child down");
+            sidecar.shutdown_with_grace(FAILED_ATTEMPT_GRACE).await;
+            Ok(None)
+        }
+    }
+}
+
+async fn handshake_and_health(
+    sidecar: &mut Sidecar,
+    limits: &StartLimits,
+) -> Result<(Handshake, String), StartFailure> {
+    let handshake = match sidecar.read_handshake(limits.handshake).await {
+        Ok(handshake) => handshake,
+        Err(e) => return Err(StartFailure::Handshake(e.context("read sidecar handshake"))),
+    };
+    log::info!(
+        "sidecar handshake: port={} pid={} version={} at_ms={}",
+        handshake.port,
+        handshake.pid,
+        handshake.version,
+        crate::launch_ms()
+    );
+    let base = format!("http://127.0.0.1:{}", handshake.port);
+    crate::commands::wait_for_health(&base, limits.health_attempts, limits.health_delay)
+        .await
+        .map_err(StartFailure::Health)?;
+    Ok((handshake, base))
+}
 
 /// Roll `backend.log` over once it passes this size.
 ///
@@ -81,13 +202,14 @@ pub struct Sidecar {
     /// other platforms.
     #[cfg_attr(not(windows), allow(dead_code))]
     handshake_file: Option<PathBuf>,
+    /// Still an attempt's child: not yet published to the slot. Dropping it
+    /// then (an aborted start) kills the process; a published child is
+    /// only ever ended by an explicit shutdown or the platform backstops
+    /// (`--parent-pid`, the Windows Job Object).
+    unpublished: bool,
 }
 
 impl Sidecar {
-    pub fn spawn(app: &AppHandle) -> Result<Self> {
-        Self::spawn_with_desktop_token(app, None)
-    }
-
     pub fn spawn_with_desktop_token(app: &AppHandle, desktop_token: Option<&str>) -> Result<Self> {
         let resource_dir = app
             .path()
@@ -227,6 +349,7 @@ impl Sidecar {
             cmd.creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
         }
 
+        #[cfg_attr(not(windows), allow(unused_mut))]
         let mut child = cmd.spawn().context("spawn backend sidecar")?;
 
         #[cfg(windows)]
@@ -245,10 +368,6 @@ impl Sidecar {
             }
         }
 
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| anyhow!("sidecar stdout missing"))?;
         // Stderr was wired directly to ``backend.log`` via ``Stdio::from(File)``
         // above (see ``stderr_for_child``); there is nothing to drain here.
         // Keep ``stderr_log`` alive for the rest of this function — dropping
@@ -257,12 +376,21 @@ impl Sidecar {
         // end of ``spawn_with_desktop_token``.
         drop(stderr_log);
 
+        Self::from_child(child, log_path, handshake_file)
+    }
+
+    fn from_child(mut child: Child, log_path: PathBuf, handshake_file: Option<PathBuf>) -> Result<Self> {
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("sidecar stdout missing"))?;
         Ok(Sidecar {
             child,
             handshake: None,
             stdout_reader: Some(BufReader::new(stdout)),
             log_path,
             handshake_file,
+            unpublished: true,
         })
     }
 
@@ -475,6 +603,31 @@ impl Sidecar {
                 log::warn!("sidecar did not exit in {grace:?}; force-killing");
                 let _ = self.child.kill().await;
             }
+        }
+    }
+}
+
+impl crate::lifecycle::OwnedChild for Sidecar {
+    fn is_alive(&mut self) -> bool {
+        Sidecar::is_alive(self)
+    }
+    fn exit_status(&mut self) -> Option<std::process::ExitStatus> {
+        Sidecar::exit_status(self)
+    }
+    fn published(&mut self) {
+        self.unpublished = false;
+    }
+}
+
+impl Drop for Sidecar {
+    fn drop(&mut self) {
+        // Normal paths shut the child down (and reap it) first, so this only
+        // acts when a start was dropped mid-flight. It cannot wait; tokio
+        // reaps the killed child in the background. Windows terminates it
+        // the same way; it stays in the Job Object either way.
+        if self.unpublished && matches!(self.child.try_wait(), Ok(None)) {
+            log::info!("killing the child of an abandoned sidecar start");
+            let _ = self.child.start_kill();
         }
     }
 }
@@ -857,6 +1010,214 @@ mod tests {
         let dir = tempfile::tempdir().expect("create log dir");
 
         rotate_backend_log(&dir.path().join("backend.log"));
+    }
+}
+
+/// The shared attempt path against a stand-in child (`sh`), so the cleanup
+/// contract is checked on real processes. POSIX only: Windows spawns
+/// through `CREATE_SUSPENDED` and a Job Object, which only the app's own
+/// spawn sets up.
+#[cfg(all(test, unix))]
+mod start_tests {
+    use super::{bring_up, Sidecar, StartFailure, StartLimits};
+    use crate::lifecycle::OwnedChild;
+    use std::future::pending;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+    use tokio::process::Command;
+
+    const QUICK: StartLimits = StartLimits {
+        handshake: Duration::from_secs(5),
+        health_attempts: 2,
+        health_delay: Duration::from_millis(10),
+    };
+
+    fn stand_in(script: &str, log_dir: &std::path::Path) -> (Sidecar, u32) {
+        let child = Command::new("/bin/sh")
+            .arg("-c")
+            .arg(script)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn stand-in");
+        let pid = child.id().expect("pid");
+        let sidecar = Sidecar::from_child(child, log_dir.join("backend.log"), None).expect("sidecar");
+        (sidecar, pid)
+    }
+
+    /// The pid no longer names a process (reaped, not a zombie we own).
+    fn gone(pid: u32) -> bool {
+        use nix::sys::signal::kill;
+        use nix::unistd::Pid;
+        kill(Pid::from_raw(pid as i32), None).is_err()
+    }
+
+    /// The pid no longer runs: gone, or killed and awaiting tokio's
+    /// background reaping (a zombie). Polls, since that reaping is async.
+    async fn stops_running(pid: u32) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let state = std::process::Command::new("ps")
+                .args(["-o", "stat=", "-p", &pid.to_string()])
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_default();
+            if gone(pid) || state.is_empty() || state.starts_with('Z') {
+                return true;
+            }
+            if Instant::now() > deadline {
+                return false;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    /// A loopback port with nothing listening on it.
+    fn closed_port() -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        listener.local_addr().expect("addr").port()
+    }
+
+    /// A stand-in that hands over a port whose health check never answers:
+    /// the test's listener accepts the request and stays silent.
+    fn hanging_health(dir: &std::path::Path) -> (Sidecar, u32, std::net::TcpListener) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let script = format!(
+            r#"echo 'OPENAGENTD_HANDSHAKE {{"port":{port},"pid":1,"version":"t","token":"x"}}'; exec sleep 30"#
+        );
+        let (sidecar, pid) = stand_in(&script, dir);
+        (sidecar, pid, listener)
+    }
+
+    /// Wait until the attempt's health request arrives; the returned
+    /// connection is held open and never answered.
+    async fn health_request(listener: std::net::TcpListener) -> std::net::TcpStream {
+        tokio::task::spawn_blocking(move || listener.accept().expect("health request").0)
+            .await
+            .expect("accept task")
+    }
+
+    const SLOW_HEALTH: StartLimits = StartLimits {
+        handshake: Duration::from_secs(5),
+        health_attempts: 1000,
+        health_delay: Duration::from_millis(50),
+    };
+
+    #[tokio::test]
+    async fn a_handshake_without_health_is_not_ready_and_the_child_is_reaped() {
+        let dir = tempfile::tempdir().expect("log dir");
+        let port = closed_port();
+        let script = format!(
+            r#"echo 'OPENAGENTD_HANDSHAKE {{"port":{port},"pid":1,"version":"t","token":"x"}}'; exec sleep 30"#
+        );
+        let (sidecar, pid) = stand_in(&script, dir.path());
+
+        let result = bring_up(sidecar, &QUICK, pending()).await;
+
+        assert!(matches!(result, Err(StartFailure::Health(_))), "health failed, so not ready");
+        assert!(gone(pid), "the attempt's child is shut down before the failure is returned");
+    }
+
+    #[tokio::test]
+    async fn a_child_that_exits_before_its_handshake_fails_the_attempt() {
+        let dir = tempfile::tempdir().expect("log dir");
+        let (sidecar, pid) = stand_in("echo booting; exit 3", dir.path());
+
+        let result = bring_up(sidecar, &QUICK, pending()).await;
+
+        let Err(StartFailure::Handshake(e)) = result else { panic!("expected a handshake failure") };
+        assert!(format!("{e:#}").contains("exited before handshake"));
+        assert!(gone(pid));
+    }
+
+    #[tokio::test]
+    async fn a_silent_child_is_reaped_when_the_handshake_times_out() {
+        let dir = tempfile::tempdir().expect("log dir");
+        let (sidecar, pid) = stand_in("exec sleep 30", dir.path());
+        let limits = StartLimits { handshake: Duration::from_millis(100), ..QUICK };
+
+        let result = bring_up(sidecar, &limits, pending()).await;
+
+        assert!(matches!(result, Err(StartFailure::Handshake(_))));
+        assert!(gone(pid));
+    }
+
+    #[tokio::test]
+    async fn a_stop_during_the_health_wait_shuts_the_child_down_at_once() {
+        let dir = tempfile::tempdir().expect("log dir");
+        let (sidecar, pid, listener) = hanging_health(dir.path());
+        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+        let start = tokio::spawn(async move {
+            bring_up(sidecar, &SLOW_HEALTH, async move {
+                let _ = stopped.await;
+            })
+            .await
+        });
+
+        // The handshake is in and the health request is waiting on us.
+        let _held = health_request(listener).await;
+        stop.send(()).expect("start still running");
+        let result = tokio::time::timeout(Duration::from_secs(5), start)
+            .await
+            .expect("the stop ends the start without waiting out the health budget")
+            .expect("start task");
+
+        assert!(matches!(result, Ok(None)), "superseded, not ready and not failed");
+        assert!(gone(pid), "the child is shut down and reaped before the result");
+    }
+
+    #[tokio::test]
+    async fn an_aborted_start_kills_its_child() {
+        let dir = tempfile::tempdir().expect("log dir");
+        let (sidecar, pid, listener) = hanging_health(dir.path());
+        let start = tokio::spawn(async move { bring_up(sidecar, &SLOW_HEALTH, pending()).await });
+
+        let _held = health_request(listener).await;
+        start.abort();
+        // `Ready` holds the backend's auth token, so it has no Debug impl.
+        assert!(matches!(start.await, Err(e) if e.is_cancelled()));
+
+        assert!(stops_running(pid).await, "dropping the attempt does not leave its child running");
+    }
+
+    #[tokio::test]
+    async fn an_aborted_start_before_the_handshake_kills_its_child() {
+        let dir = tempfile::tempdir().expect("log dir");
+        let (sidecar, pid) = stand_in("exec sleep 30", dir.path());
+        let mut start = Box::pin(bring_up(sidecar, &SLOW_HEALTH, pending()));
+        assert!(futures_poll_once(&mut start).await, "still waiting for the handshake");
+
+        drop(start);
+
+        assert!(stops_running(pid).await);
+    }
+
+    #[tokio::test]
+    async fn a_published_child_outlives_its_handle() {
+        let dir = tempfile::tempdir().expect("log dir");
+        let (mut sidecar, pid) = stand_in("exec sleep 30", dir.path());
+        sidecar.published();
+
+        drop(sidecar);
+
+        assert!(!gone(pid), "only the platform backstops or a shutdown end a published child");
+        let _ = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid as i32), nix::sys::signal::Signal::SIGKILL);
+    }
+
+    /// Poll `fut` once; true while it is still pending.
+    async fn futures_poll_once<F: std::future::Future + Unpin>(fut: &mut F) -> bool {
+        tokio::time::timeout(Duration::ZERO, fut).await.is_err()
+    }
+
+    #[test]
+    fn launch_failures_keep_their_recovery_screen_wording() {
+        let e = || anyhow::anyhow!("boom");
+        assert_eq!(StartFailure::Spawn(e()).startup_message(), "Sidecar unavailable: boom");
+        assert_eq!(StartFailure::Handshake(e()).startup_message(), "Sidecar handshake failed: boom");
+        assert_eq!(StartFailure::Health(e()).startup_message(), "Sidecar health check failed: boom");
+        assert_eq!(StartFailure::Health(e()).to_string(), "boom");
     }
 }
 

@@ -9,6 +9,7 @@ mod updater;
 mod menu;
 mod commands;
 mod sidecar;
+mod lifecycle;
 mod usage;
 mod tray_popup;
 mod island;
@@ -42,6 +43,7 @@ use tauri::{
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 use tokio::sync::Mutex;
 
+use crate::lifecycle::{Attempt, AttemptCause, Commit, SidecarSlot};
 use crate::sidecar::Sidecar;
 use crate::config::save_window_state;
 use crate::window::{
@@ -50,7 +52,6 @@ use crate::window::{
     show_target_window,
 };
 use crate::menu::{install_desktop_menus, update_tray_status, handle_desktop_menu};
-use crate::commands::wait_for_health;
 
 static LAUNCHED: OnceLock<Instant> = OnceLock::new();
 
@@ -91,7 +92,9 @@ fn apply_linux_webview_workarounds() {
 
 /// Shared application state.
 pub struct AppState {
-    pub sidecar: Arc<Mutex<Option<Sidecar>>>,
+    /// The bundled sidecar and every decision about who owns it (see
+    /// `lifecycle`). Start, stop, crash takeover and reload go through it.
+    pub sidecar: Arc<SidecarSlot<Sidecar>>,
     pub desktop_token: Arc<Mutex<Option<String>>>,
     pub backend_base_url: Arc<Mutex<Option<String>>>,
     pub backend_mode: Arc<Mutex<BackendMode>>,
@@ -110,8 +113,17 @@ pub struct AppState {
     /// runtime — which stalls the UI thread whenever a background task
     /// holds the lock.
     pub window_backend_base_urls: Arc<StdMutex<HashMap<String, String>>>,
+    /// Whole-app intent, independent of the sidecar's phase: a force
+    /// reload is running.
     pub force_reloading: Arc<AtomicBool>,
+    /// Whole-app intent: the app is exiting or re-executing (quit, restart,
+    /// an update past verification). Windows close for real and the
+    /// watchdog stops recovering.
     pub quitting: Arc<AtomicBool>,
+    /// The one update install operation in flight (`updater::InstallLease`).
+    /// Separate from `quitting`: an install owns this from its first
+    /// precondition and only sets `quitting` once the bytes are verified.
+    pub update_install: Arc<AtomicBool>,
     pub tray_status: Arc<Mutex<Option<MenuItem<Wry>>>>,
     pub tray_session: Arc<Mutex<Option<MenuItem<Wry>>>>,
     pub update_state: Arc<Mutex<Option<CachedUpdateState>>>,
@@ -327,32 +339,49 @@ pub fn restart_app_process(app: &AppHandle) {
 #[cfg(not(target_os = "macos"))]
 async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
     let state: tauri::State<'_, AppState> = app.state();
+    // One owned attempt: no other start can spawn a second child meanwhile,
+    // and a Stop during the reload is not undone by it.
+    let mut attempt = match state
+        .sidecar
+        .begin(AttemptCause::Reload, &state.backend_starting, &state.backend_failed)
+        .await
+    {
+        Ok(attempt) => attempt,
+        Err(crate::lifecycle::Refused::AlreadyStarting) => {
+            log::info!("force reload skipped: a bundled backend start is in progress");
+            return Ok(());
+        }
+        Err(refused) => anyhow::bail!("{refused}"),
+    };
     let existing_token = state.desktop_token.lock().await.clone();
 
-    shutdown_sidecar_now_with_grace(app, RELOAD_SHUTDOWN_GRACE).await;
+    if let Some(mut old) = state.sidecar.take_for_reload(&mut attempt).await {
+        old.shutdown_with_grace(RELOAD_SHUTDOWN_GRACE).await;
+    }
 
-    let mut sidecar = if let Some(token) = existing_token.as_deref() {
-        Sidecar::spawn_with_desktop_token(app, Some(token)).context("spawn sidecar")?
-    } else {
-        Sidecar::spawn(app).context("spawn sidecar")?
+    // A failed attempt is already reaped; dropping `attempt` records it.
+    let started = crate::sidecar::start_ready(app, existing_token.as_deref(), attempt.superseded())
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e.startup_message()))?;
+    let Some(ready) = started else {
+        log::info!("force reload superseded by a stop while it started");
+        attempt.finish_superseded();
+        return Ok(());
     };
-    let handshake = sidecar
-        .read_handshake(SIDECAR_HANDSHAKE_TIMEOUT)
-        .await
-        .context("read sidecar handshake")?;
+    let crate::sidecar::Ready { sidecar, handshake, base } = ready;
+    match state.sidecar.commit(attempt, sidecar).await {
+        Commit::Published { replaced } => {
+            if let Some(mut old) = replaced {
+                old.shutdown_with_grace(RELOAD_SHUTDOWN_GRACE).await;
+            }
+        }
+        Commit::Superseded(mut sidecar) => {
+            log::info!("force reload superseded by a stop; shutting the new backend down");
+            sidecar.shutdown_with_grace(RELOAD_SHUTDOWN_GRACE).await;
+            return Ok(());
+        }
+    }
     let token = handshake.token.clone();
-
-    log::info!(
-        "sidecar handshake: port={} pid={} version={}",
-        handshake.port,
-        handshake.pid,
-        handshake.version
-    );
-
-    let base = format!("http://127.0.0.1:{}", handshake.port);
-    wait_for_health(&base, 60, Duration::from_millis(250))
-        .await
-        .context("wait_for_health")?;
 
     let init_script = frontend_init_script(Some(&token), &base);
     // Overlays (tray popup, island) never hold the backend token.
@@ -391,8 +420,6 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
         .await
         .replace(format!("http://127.0.0.1:{}", handshake.port));
     *state.backend_mode.lock().await = BackendMode::Bundled;
-    let _ = state.sidecar.lock().await.replace(sidecar);
-    state.backend_failed.store(false, Ordering::SeqCst);
     crate::network_access::reapply(app);
     // Only notify windows that are actually on the bundled backend. A plain
     // `app.emit(...)` broadcasts to every window's JS listener, which would
@@ -424,31 +451,35 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
     Ok(())
 }
 
-/// Cleanly stop the backend sidecar before a process re-exec.
+/// Deliberately stop the backend sidecar (Stop, restart, update).
 ///
-/// Idempotent: ``.take()``s the sidecar out of shared state, so repeat
-/// calls (or a race with ``ExitRequested``) are no-ops.
-pub async fn shutdown_sidecar_now(app: &AppHandle) {
-    shutdown_sidecar_now_with_grace(app, NORMAL_SHUTDOWN_GRACE).await;
+/// Idempotent: takes the sidecar out of shared state, so repeat calls (or a
+/// race with ``ExitRequested``) are no-ops. It also supersedes any start
+/// attempt or crash recovery that began earlier, so none of them brings
+/// the backend back afterwards; an attempt in flight shuts its own child
+/// down. Returns whether a bundled backend was running, starting or
+/// awaiting crash recovery (what a failed update brings back).
+pub async fn shutdown_sidecar_now(app: &AppHandle) -> bool {
+    shutdown_sidecar_now_with_grace(app, NORMAL_SHUTDOWN_GRACE).await
 }
 
-pub async fn shutdown_sidecar_now_with_grace(app: &AppHandle, grace: Duration) {
+pub async fn shutdown_sidecar_now_with_grace(app: &AppHandle, grace: Duration) -> bool {
     let state: tauri::State<'_, AppState> = app.state();
-    let sidecar = state.sidecar.clone();
-    let mut guard = sidecar.lock().await;
-    if let Some(mut s) = guard.take() {
+    let stopped = state.sidecar.stop().await;
+    if let Some(mut s) = stopped.child {
         s.shutdown_with_grace(grace).await;
     }
+    stopped.had_backend
 }
 
 /// The backend a launch settled on, before it is published to the window.
 enum StartedBackend {
     Bundled {
-        sidecar: Box<Sidecar>,
-        handshake: crate::sidecar::Handshake,
-        base: String,
-        guard: BackendStartGuard,
+        ready: Box<crate::sidecar::Ready>,
+        attempt: Attempt<crate::sidecar::Sidecar>,
     },
+    /// A stop came while it started; the child is already shut down.
+    Superseded,
     /// Why the bundled backend could not start (shown with Retry).
     Failed(String),
 }
@@ -480,70 +511,51 @@ async fn start_backend_and_window(
 /// saved server: those are choices in Choose Server, made per window.
 async fn start_backend(app: AppHandle) -> Result<StartedBackend> {
     let state: tauri::State<'_, AppState> = app.state();
-    let guard = BackendStartGuard::try_acquire(
-        state.backend_starting.clone(),
-        state.backend_failed.clone(),
-    )
-    .ok_or_else(|| anyhow::anyhow!("bundled backend is already starting"))?;
-    let mut sidecar = match Sidecar::spawn(&app) {
-        Ok(sidecar) => sidecar,
-        Err(e) => {
-            log::warn!("desktop: sidecar unavailable at startup: {e:#}");
-            return Ok(StartedBackend::Failed(format!("Sidecar unavailable: {e:#}")));
-        }
-    };
-    log::info!("startup: sidecar spawned at_ms={}", launch_ms());
-    let handshake = match sidecar
-        .read_handshake(SIDECAR_HANDSHAKE_TIMEOUT)
+    let attempt = state
+        .sidecar
+        .begin(AttemptCause::Requested, &state.backend_starting, &state.backend_failed)
         .await
-        .context("read sidecar handshake")
-    {
-        Ok(handshake) => handshake,
-        Err(e) => {
-            log::warn!("desktop: sidecar handshake failed at startup: {e:#}");
-            sidecar
-                .shutdown_with_grace(Duration::from_millis(750))
-                .await;
-            return Ok(StartedBackend::Failed(format!("Sidecar handshake failed: {e:#}")));
+        .map_err(|refused| anyhow::anyhow!("{refused}"))?;
+    // A launch generates a fresh desktop token.
+    match crate::sidecar::start_ready(&app, None, attempt.superseded()).await {
+        Ok(Some(ready)) => Ok(StartedBackend::Bundled { ready: Box::new(ready), attempt }),
+        Ok(None) => {
+            attempt.finish_superseded();
+            Ok(StartedBackend::Superseded)
         }
-    };
-    log::info!(
-        "sidecar handshake: port={} pid={} version={} at_ms={}",
-        handshake.port,
-        handshake.pid,
-        handshake.version,
-        launch_ms()
-    );
-
-    let base = format!("http://127.0.0.1:{}", handshake.port);
-    if let Err(e) = wait_for_health(&base, 60, Duration::from_millis(250)).await {
-        log::warn!("desktop: sidecar health check failed at startup: {e:#}");
-        // The sidecar is not stored in AppState on failure, so
-        // explicitly reap it before exposing Retry. Dropping a
-        // tokio Child alone does not guarantee process exit on
-        // Unix; an orphan would waste memory and contend with
-        // the replacement backend.
-        sidecar
-            .shutdown_with_grace(Duration::from_millis(750))
-            .await;
-        return Ok(StartedBackend::Failed(format!("Sidecar health check failed: {e:#}")));
+        Err(failure) => {
+            // The child is already reaped; dropping `attempt` records the
+            // failure so a late webview still sees Retry.
+            log::warn!("desktop: sidecar start failed at startup: {}", failure.startup_message());
+            Ok(StartedBackend::Failed(failure.startup_message()))
+        }
     }
-    Ok(StartedBackend::Bundled { sidecar: Box::new(sidecar), handshake, base, guard })
 }
 
 /// Hand the backend to the main window, the tray and the frontend.
 async fn publish_backend(app: &AppHandle, started: StartedBackend) -> Result<()> {
     let state: tauri::State<'_, AppState> = app.state();
     match started {
-        StartedBackend::Bundled { sidecar, handshake, base, mut guard } => {
+        StartedBackend::Bundled { ready, attempt } => {
+            let crate::sidecar::Ready { sidecar, handshake, base } = *ready;
+            match state.sidecar.commit(attempt, sidecar).await {
+                Commit::Published { replaced } => {
+                    if let Some(mut old) = replaced {
+                        old.shutdown_with_grace(Duration::from_millis(750)).await;
+                    }
+                }
+                Commit::Superseded(mut sidecar) => {
+                    log::info!("startup: bundled backend stopped before it was published");
+                    sidecar.shutdown_with_grace(Duration::from_millis(750)).await;
+                    return Ok(());
+                }
+            }
             let token = handshake.token.clone();
             let init_script = frontend_init_script(Some(&token), &base);
 
-            let _ = state.sidecar.lock().await.replace(*sidecar);
             let _ = state.desktop_token.lock().await.replace(handshake.token);
             let _ = state.backend_base_url.lock().await.replace(base.clone());
             *state.backend_mode.lock().await = BackendMode::Bundled;
-            guard.complete();
             crate::network_access::reapply(app);
 
             if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
@@ -566,6 +578,9 @@ async fn publish_backend(app: &AppHandle, started: StartedBackend) -> Result<()>
             )
             .ok();
         }
+        StartedBackend::Superseded => {
+            log::info!("startup: bundled backend stopped while it started");
+        }
         StartedBackend::Failed(message) => {
             update_tray_status(app, crate::menu::TRAY_STATUS_FAILED);
             app.emit("backend-error", BackendError { message }).ok();
@@ -580,7 +595,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     apply_linux_webview_workarounds();
     let state = AppState {
-        sidecar: Arc::new(Mutex::new(None)),
+        sidecar: Arc::new(SidecarSlot::default()),
         desktop_token: Arc::new(Mutex::new(None)),
         backend_base_url: Arc::new(Mutex::new(None)),
         backend_mode: Arc::new(Mutex::new(BackendMode::Bundled)),
@@ -589,6 +604,7 @@ fn main() {
         window_backend_base_urls: Arc::new(StdMutex::new(HashMap::new())),
         force_reloading: Arc::new(AtomicBool::new(false)),
         quitting: Arc::new(AtomicBool::new(false)),
+        update_install: Arc::new(AtomicBool::new(false)),
         tray_status: Arc::new(Mutex::new(None)),
         tray_session: Arc::new(Mutex::new(None)),
         update_state: Arc::new(Mutex::new(None)),
@@ -839,7 +855,10 @@ fn main() {
                 let sidecar = state.sidecar.clone();
                 // Block so the child receives SIGTERM before the parent exits.
                 tauri::async_runtime::block_on(async move {
-                    if let Some(mut s) = sidecar.lock().await.take() {
+                    // An attempt in flight is superseded and shuts its own
+                    // child down; this exit does not wait for it, so a child
+                    // still starting is left to `--parent-pid` / the Job Object.
+                    if let Some(mut s) = sidecar.stop().await.child {
                         s.shutdown().await;
                     }
                 });

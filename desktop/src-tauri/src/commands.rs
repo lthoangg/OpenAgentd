@@ -9,9 +9,10 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::{
-    backend_log_path, AppState, BackendMode, BackendReady, BackendStartGuard, SIDECAR_HANDSHAKE_TIMEOUT,
+    backend_log_path, AppState, BackendMode, BackendReady,
 };
-use crate::sidecar::Sidecar;
+use crate::lifecycle::{AttemptCause, Commit, Refused};
+use crate::sidecar::StartFailure;
 use crate::config::{
     load_app_backend_config, normalize_external_base_url, normalize_server_name,
     remove_app_backend_server, save_app_backend_config, AppBackendStatus,
@@ -389,11 +390,7 @@ pub async fn save_workspace_file(
 
 #[tauri::command]
 pub async fn backend_health(state: tauri::State<'_, AppState>) -> Result<bool, String> {
-    let mut guard = state.sidecar.lock().await;
-    match guard.as_mut() {
-        Some(s) => Ok(s.is_alive()),
-        None => Ok(false),
-    }
+    Ok(state.sidecar.alive().await)
 }
 
 #[tauri::command]
@@ -435,12 +432,7 @@ pub async fn app_backend_status_for_window(
     let base_url = window_base_url
         .or(bundled_base_url)
         .unwrap_or_else(|| "".to_string());
-    let sidecar_running = state
-        .sidecar
-        .lock()
-        .await
-        .as_mut()
-        .is_some_and(|s| s.is_alive());
+    let sidecar_running = state.sidecar.alive().await;
     let mode = if external {
         BackendMode::External
     } else {
@@ -620,10 +612,7 @@ pub async fn app_use_bundled_backend(
     let state: tauri::State<'_, AppState> = app.state();
 
     let existing_token = state.desktop_token.lock().await.clone();
-    let sidecar_alive = {
-        let mut guard = state.sidecar.lock().await;
-        guard.as_mut().is_some_and(|sidecar| sidecar.is_alive())
-    };
+    let sidecar_alive = state.sidecar.alive().await;
 
     let backend_ready = if sidecar_alive {
         state
@@ -664,45 +653,67 @@ pub async fn app_use_bundled_backend(
     Ok(())
 }
 
-/// Spawn the bundled sidecar (reusing the desktop token, so open windows
-/// stay authenticated), wait until it is healthy, and store it as the
-/// bundled backend. Shared by "use bundled backend" and the crash watcher.
-pub async fn start_bundled_sidecar(app: &AppHandle) -> Result<BackendReady, String> {
-    let state: tauri::State<'_, AppState> = app.state();
-    let existing_token = state.desktop_token.lock().await.clone();
-    let mut start_guard = BackendStartGuard::try_acquire(
-        state.backend_starting.clone(),
-        state.backend_failed.clone(),
-    )
-    .ok_or_else(|| "bundled backend is already starting".to_string())?;
-    let mut sidecar = if let Some(token) = existing_token.as_deref() {
-        Sidecar::spawn_with_desktop_token(app, Some(token)).map_err(|e| format!("{e:#}"))?
-    } else {
-        Sidecar::spawn(app).map_err(|e| format!("{e:#}"))?
-    };
-    let handshake = match sidecar.read_handshake(SIDECAR_HANDSHAKE_TIMEOUT).await {
-        Ok(handshake) => handshake,
-        Err(e) => {
-            sidecar
-                .shutdown_with_grace(Duration::from_millis(750))
-                .await;
-            return Err(format!("{e:#}"));
+/// Why [`start_bundled`] did not produce a newly started backend.
+#[derive(Debug)]
+pub enum StartError {
+    /// Not attempted: another attempt owns the start, a child already runs,
+    /// or (recovery) a later stop/start superseded it.
+    Refused(Refused),
+    /// Spawn, handshake or health failed; the child is already reaped.
+    Failed(StartFailure),
+    /// Healthy, but a stop was decided meanwhile; the child was shut down.
+    Superseded,
+}
+
+impl std::fmt::Display for StartError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Refused(refused) => std::fmt::Display::fmt(refused, f),
+            Self::Failed(failure) => std::fmt::Display::fmt(failure, f),
+            Self::Superseded => f.write_str("bundled backend was stopped while it started"),
         }
+    }
+}
+
+/// Start the bundled sidecar (reusing the desktop token, so open windows
+/// stay authenticated) as one owned attempt: spawn, handshake and health
+/// via `sidecar::start_ready`, then publish unless a stop came first.
+/// Shared by "use bundled backend", the crash watcher and update recovery.
+pub async fn start_bundled(app: &AppHandle, cause: AttemptCause) -> Result<BackendReady, StartError> {
+    let state: tauri::State<'_, AppState> = app.state();
+    let attempt = state
+        .sidecar
+        .begin(cause, &state.backend_starting, &state.backend_failed)
+        .await
+        .map_err(StartError::Refused)?;
+    let existing_token = state.desktop_token.lock().await.clone();
+    // On failure `attempt` drops here, after the child was reaped.
+    let started = crate::sidecar::start_ready(app, existing_token.as_deref(), attempt.superseded())
+        .await
+        .map_err(StartError::Failed)?;
+    let Some(ready) = started else {
+        // A stop came while it started; the child is already shut down.
+        attempt.finish_superseded();
+        return Err(StartError::Superseded);
     };
-    let base = format!("http://127.0.0.1:{}", handshake.port);
-    if let Err(e) = wait_for_health(&base, 60, Duration::from_millis(250)).await {
-        sidecar
-            .shutdown_with_grace(Duration::from_millis(750))
-            .await;
-        return Err(format!("{e:#}"));
+    let (handshake, base) = (ready.handshake, ready.base);
+    match state.sidecar.commit(attempt, ready.sidecar).await {
+        Commit::Published { replaced } => {
+            if let Some(mut old) = replaced {
+                old.shutdown_with_grace(Duration::from_millis(750)).await;
+            }
+        }
+        Commit::Superseded(mut sidecar) => {
+            log::info!("bundled backend start superseded by a stop; shutting it down");
+            sidecar.shutdown_with_grace(Duration::from_millis(750)).await;
+            return Err(StartError::Superseded);
+        }
     }
 
     let token = handshake.token.clone();
-    let _ = state.sidecar.lock().await.replace(sidecar);
     let _ = state.desktop_token.lock().await.replace(token.clone());
     let _ = state.backend_base_url.lock().await.replace(base.clone());
     update_tray_status(app, "Status: Running");
-    start_guard.complete();
     crate::network_access::reapply(app);
 
     Ok(BackendReady {
@@ -712,6 +723,32 @@ pub async fn start_bundled_sidecar(app: &AppHandle) -> Result<BackendReady, Stri
         token: Some(token),
         sidecar_running: true,
     })
+}
+
+/// [`start_bundled`] on request. A backend that is already running counts
+/// as started (a concurrent request won the race).
+pub async fn start_bundled_sidecar(app: &AppHandle) -> Result<BackendReady, String> {
+    match start_bundled(app, AttemptCause::Requested).await {
+        Ok(ready) => Ok(ready),
+        Err(StartError::Refused(Refused::AlreadyRunning)) => {
+            let state: tauri::State<'_, AppState> = app.state();
+            let base_url = state
+                .backend_base_url
+                .lock()
+                .await
+                .clone()
+                .ok_or_else(|| "bundled backend is not ready".to_string())?;
+            let token = state.desktop_token.lock().await.clone();
+            Ok(BackendReady {
+                port: 0,
+                version: "bundled".to_string(),
+                base_url,
+                token,
+                sidecar_running: true,
+            })
+        }
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 #[tauri::command]

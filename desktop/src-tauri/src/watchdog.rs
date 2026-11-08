@@ -2,7 +2,10 @@
 //! (panic, OOM kill, crash) while the app runs, restarts it with the same
 //! desktop token, and points the windows on the bundled backend at the new
 //! port. Deliberate stops (quit, reload, "stop bundled backend") take the
-//! sidecar out of `AppState` first, so the watcher never sees them.
+//! sidecar out of `AppState` first, so the watcher never sees them; one
+//! that comes while a restart is pending supersedes it (`lifecycle`), as
+//! does a start someone else made. The watcher only observes and asks:
+//! the attempt itself is `commands::start_bundled`.
 
 use std::collections::VecDeque;
 use std::sync::atomic::Ordering;
@@ -13,6 +16,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::menu::update_tray_status;
 use crate::window::frontend_init_script;
 use crate::{AppState, BackendError, BackendReady};
+use crate::commands::StartError;
+use crate::lifecycle::AttemptCause;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// Restarts counted against the budget within this sliding window.
@@ -47,33 +52,48 @@ impl RestartBudget {
     }
 }
 
+/// Whether a failed restart means someone else decided (a stop, another
+/// start), so the watcher leaves it to them, rather than a failure it
+/// should retry while the budget lasts.
+fn yields_to_owner(error: &StartError) -> bool {
+    match error {
+        StartError::Refused(_) | StartError::Superseded => true,
+        StartError::Failed(_) => false,
+    }
+}
+
 pub async fn run(app: AppHandle) {
     let mut budget = RestartBudget::default();
     let mut tick = tokio::time::interval(POLL_INTERVAL);
     loop {
         tick.tick().await;
-        let Some(status) = take_exited_sidecar(&app).await else {
+        let Some((status, observed)) = take_exited_sidecar(&app).await else {
             continue;
         };
         log::error!("bundled backend exited unexpectedly: {status}");
         update_tray_status(&app, "Status: Restarting…");
-        let mut recovered = false;
+        let mut settled = false;
         while let Some(delay) = budget.next_delay(Instant::now()) {
             tokio::time::sleep(delay).await;
             if app.state::<AppState>().quitting.load(Ordering::SeqCst) {
                 return;
             }
-            match crate::commands::start_bundled_sidecar(&app).await {
+            match crate::commands::start_bundled(&app, AttemptCause::Recovery { observed }).await {
                 Ok(ready) => {
                     log::info!("bundled backend restarted on port {}", ready.port);
                     notify_bundled_windows(&app, ready);
-                    recovered = true;
+                    settled = true;
+                    break;
+                }
+                Err(e) if yields_to_owner(&e) => {
+                    log::info!("bundled backend restart abandoned: {e}");
+                    settled = true;
                     break;
                 }
                 Err(e) => log::warn!("bundled backend restart failed: {e}"),
             }
         }
-        if !recovered {
+        if !settled {
             let state = app.state::<AppState>();
             state.backend_failed.store(true, Ordering::SeqCst);
             update_tray_status(&app, crate::menu::TRAY_STATUS_FAILED);
@@ -91,19 +111,17 @@ pub async fn run(app: AppHandle) {
 }
 
 /// Take the sidecar out of `AppState` if it exited while nothing was
-/// stopping or starting it.
-async fn take_exited_sidecar(app: &AppHandle) -> Option<std::process::ExitStatus> {
+/// stopping or starting it, with the decision a restart must still be
+/// current at. Whether a start is in flight is checked by the slot under
+/// the same lock that takes the crash, so a Retry that just began keeps
+/// ownership of what runs next.
+async fn take_exited_sidecar(app: &AppHandle) -> Option<(std::process::ExitStatus, u64)> {
     let state = app.state::<AppState>();
-    if state.quitting.load(Ordering::SeqCst)
-        || state.force_reloading.load(Ordering::SeqCst)
-        || state.backend_starting.load(Ordering::SeqCst)
-    {
+    if state.quitting.load(Ordering::SeqCst) || state.force_reloading.load(Ordering::SeqCst) {
         return None;
     }
-    let mut guard = state.sidecar.lock().await;
-    let status = guard.as_mut()?.exit_status()?;
-    guard.take();
-    Some(status)
+    let exited = state.sidecar.take_exited().await;
+    exited
 }
 
 fn target_label(target: &tauri::EventTarget) -> Option<&str> {
@@ -170,5 +188,20 @@ mod tests {
         }
         let later = t0 + RESTART_WINDOW + Duration::from_secs(1);
         assert_eq!(b.next_delay(later), Some(Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn a_restart_someone_else_decided_against_is_abandoned_not_retried() {
+        use crate::lifecycle::Refused;
+        assert!(yields_to_owner(&StartError::Refused(Refused::Superseded)), "a Stop came meanwhile");
+        assert!(yields_to_owner(&StartError::Refused(Refused::AlreadyStarting)), "another start owns it");
+        assert!(yields_to_owner(&StartError::Refused(Refused::AlreadyRunning)));
+        assert!(yields_to_owner(&StartError::Superseded));
+    }
+
+    #[test]
+    fn a_failed_restart_is_retried_within_the_budget() {
+        let failed = StartError::Failed(crate::sidecar::StartFailure::Health(anyhow::anyhow!("down")));
+        assert!(!yields_to_owner(&failed));
     }
 }

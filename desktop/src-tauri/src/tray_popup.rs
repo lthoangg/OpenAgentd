@@ -299,10 +299,7 @@ pub async fn get_tray_usage_summary(
     let saved_config = crate::config::load_app_backend_config(&app).unwrap_or_default();
     let bundled_base = state.backend_base_url.lock().await.clone();
     let desktop_token = state.desktop_token.lock().await.clone();
-    let sidecar_alive = {
-        let mut guard = state.sidecar.lock().await;
-        guard.as_mut().is_some_and(|s| s.is_alive())
-    };
+    let sidecar_alive = state.sidecar.alive().await;
 
     // Keep only saved servers that are online. Only a server never probed
     // is waited on; a known one is answered from the cache and re-probed in

@@ -1,7 +1,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
@@ -139,6 +140,97 @@ pub fn validate_install_preconditions(
     Ok(())
 }
 
+/// Ownership of the one update install. Taken before any asynchronous
+/// precondition, so a second "Install & Restart" (another window, a
+/// double tap) cannot run a parallel install. Dropped (released) on every
+/// failure; on success the app restarts while holding it.
+///
+/// Deliberately not the app's `quitting` flag: setting that at entry would
+/// close windows for real and stop crash recovery before the bytes were
+/// verified.
+pub struct InstallLease {
+    flag: Arc<AtomicBool>,
+}
+
+impl Drop for InstallLease {
+    fn drop(&mut self) {
+        self.flag.store(false, Ordering::SeqCst);
+    }
+}
+
+/// How an install request starts.
+pub enum InstallEntry {
+    Proceed(InstallLease),
+    /// Another install owns the operation; it restarts the app on success.
+    AlreadyInstalling,
+    /// The app is already exiting or restarting.
+    Quitting,
+}
+
+pub fn begin_install(install: &Arc<AtomicBool>, quitting: &AtomicBool) -> InstallEntry {
+    if quitting.load(Ordering::SeqCst) {
+        return InstallEntry::Quitting;
+    }
+    match install.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
+        Ok(_) => InstallEntry::Proceed(InstallLease { flag: install.clone() }),
+        Err(_) => InstallEntry::AlreadyInstalling,
+    }
+}
+
+/// The effects of one install, in the order [`install_verified`] runs them.
+/// The app's are `AppInstall`; tests record them.
+pub(crate) trait InstallSteps {
+    type Update;
+    fn version(update: &Self::Update) -> &str;
+    /// The live listing (`None`: nothing available any more).
+    async fn check(&mut self) -> Result<Option<Self::Update>, String>;
+    async fn read(&mut self, path: PathBuf) -> Result<Vec<u8>, String>;
+    fn verify(&mut self, update: &Self::Update, bytes: &[u8]) -> Result<(), String>;
+    /// Set the quit intent and stop the backend. Returns whether a bundled
+    /// backend was running, starting or awaiting crash recovery.
+    async fn teardown(&mut self) -> bool;
+    async fn install(&mut self, update: Self::Update, bytes: Vec<u8>) -> Result<(), String>;
+    /// Undo `teardown` after a failed install: the old version still runs.
+    async fn recover(&mut self, had_sidecar: bool);
+}
+
+/// Check, read and verify the downloaded bytes while the app and backend
+/// keep running; only then tear down and install those same bytes. A
+/// failure before teardown changes nothing; one after it is recovered.
+pub(crate) async fn install_verified<S: InstallSteps>(
+    steps: &mut S,
+    cached: Option<CachedUpdateState>,
+) -> Result<(), String> {
+    // Re-check to obtain a live `Update` object whose `install()` carries
+    // the correct `extract_path` for this platform, and to catch a manifest
+    // that moved on since the download.
+    let update = steps.check().await?;
+    validate_install_preconditions(cached.as_ref(), update.as_ref().map(S::version))?;
+    let (Some(update), Some(cached)) = (update, cached) else {
+        unreachable!("validate_install_preconditions requires both");
+    };
+    log::info!(
+        "updater install preconditions ok version={} path={}",
+        cached.version,
+        cached.bytes_path.display()
+    );
+    let bytes = steps.read(cached.bytes_path).await?;
+    // `install()` checks the bytes against the published signature
+    // (tauri-plugin-updater >= 2.14.0), so they go in exactly as downloaded.
+    // Check them now, while the backend still runs, so a bad download fails
+    // without taking the app down.
+    steps.verify(&update, &bytes).map_err(|e| {
+        format!("The downloaded update failed verification ({e}). Download it again.")
+    })?;
+    let had_sidecar = steps.teardown().await;
+    log::info!("updater install applying version={}", S::version(&update));
+    if let Err(error) = steps.install(update, bytes).await {
+        steps.recover(had_sidecar).await;
+        return Err(error);
+    }
+    Ok(())
+}
+
 /// Manual "Check for Updates…" flow triggered from the menu bar.
 ///
 /// The React shell owns updater UI. Rust keeps the menu working by focusing
@@ -246,6 +338,13 @@ pub async fn run_update_check(app: AppHandle, silent: bool) -> Result<UpdateStat
 
 pub async fn run_update_download(app: AppHandle) -> Result<UpdateStatus, String> {
     log::info!("updater download started");
+    // A new download is refused while an install holds its lease. A download
+    // that was already running may still finish and rewrite the cache; the
+    // install is unaffected because it reads the bytes once and verifies and
+    // installs exactly those (`install_verified`).
+    if app.state::<AppState>().update_install.load(Ordering::SeqCst) {
+        return Err("An update is being installed.".into());
+    }
     let updater = app
         .updater()
         .map_err(|e| format!("Updater unavailable: {e}"))?;
@@ -327,94 +426,30 @@ pub async fn run_update_install(app: AppHandle) -> Result<(), String> {
     log::info!("updater install started");
     let state: tauri::State<'_, AppState> = app.state();
 
-    // Guard against a double-invoke: if the user hits "Install & Restart"
-    // while a previous install is already tearing the app down, reject
-    // immediately. Without this guard the second call queues a redundant
-    // restart that fires *after* the new binary has already launched,
-    // re-opening the old version on top of the fresh one.
-    if state.quitting.load(Ordering::SeqCst) {
-        log::info!("updater install skipped: already quitting");
-        // Return Ok so the frontend doesn't show an error toast — the
-        // install is in progress and the restart will happen on its own.
-        return Ok(());
-    }
+    // Guard against a double-invoke: a second "Install & Restart" while an
+    // install is checking, verifying or tearing the app down must not run
+    // another one. A second install queued a redundant restart that fired
+    // *after* the new binary had launched, re-opening the old version on
+    // top of the fresh one. The lease is taken here, before any await; the
+    // `quitting` flag is only set once the bytes are verified.
+    let _lease = match begin_install(&state.update_install, &state.quitting) {
+        InstallEntry::Proceed(lease) => lease,
+        // Ok, so the frontend doesn't show an error toast: the owning
+        // install is in progress and restarts the app on its own.
+        InstallEntry::AlreadyInstalling => {
+            log::info!("updater install skipped: another install is in progress");
+            return Ok(());
+        }
+        InstallEntry::Quitting => {
+            log::info!("updater install skipped: already quitting");
+            return Ok(());
+        }
+    };
     let cached_guard = state.update_state.lock().await;
     let cached = cached_guard.clone();
     drop(cached_guard);
 
-    // Re-check to obtain a live `Update` object whose `install()` carries the
-    // correct `extract_path` for this platform. We validate preconditions
-    // BEFORE the network round-trip so that missing-cache errors are
-    // immediate, and AFTER so that we can catch a genuine mid-install manifest
-    // rollover (server already bumped to the next version).
-    let updater = app
-        .updater()
-        .map_err(|e| format!("Updater unavailable: {e}"))?;
-    let update = updater
-        .check()
-        .await
-        .map_err(|e| format!("Couldn't check for updates: {e}"))?;
-
-    validate_install_preconditions(
-        cached.as_ref(),
-        update.as_ref().map(|u| u.version.as_str()),
-    )?;
-
-    // SAFETY: validate_install_preconditions returned Ok, so `update` is Some.
-    let update = update.expect("update is Some after validate_install_preconditions");
-    // SAFETY: validate_install_preconditions returned Ok, so `cached` is Some
-    // and `cached.bytes_path.is_file()`.
-    let cached = cached.expect("cached is Some after validate_install_preconditions");
-    log::info!(
-        "updater install preconditions ok version={} path={}",
-        cached.version,
-        cached.bytes_path.display()
-    );
-
-    let read_path = cached.bytes_path.clone();
-    let bytes = tauri::async_runtime::spawn_blocking(move || std::fs::read(read_path))
-        .await
-        .map_err(|e| format!("Read cached update: {e}"))?
-        .map_err(|e| format!("Read cached update: {e}"))?;
-
-    // `install()` checks the bytes against the published signature
-    // (tauri-plugin-updater >= 2.14.0), so they go in exactly as downloaded:
-    // CI already signs the macOS bundle with the stable identifier-only
-    // requirement. Check them now, while the backend still runs, so a bad
-    // download fails without taking the app down.
-    update
-        .verify(&bytes)
-        .map_err(|e| format!("The downloaded update failed verification ({e}). Download it again."))?;
-
-    // Flip the quit guard BEFORE the relaunch sequence so the window
-    // `CloseRequested` handler stops calling `prevent_close()`. If it did not,
-    // the bundle swap below could leave a hidden window alive and trap the exit
-    // half-way, which is one way the relaunch silently fails.
-    persist_active_window_state(&app);
-    state.quitting.store(true, Ordering::SeqCst);
-
-    // Shut the backend sidecar down *before* the bundle swap so the child
-    // receives SIGTERM while we still own a clean process tree. Doing it after
-    // `install()` races the relaunch.
-    let had_sidecar = state.sidecar.lock().await.is_some();
-    shutdown_sidecar_now(&app).await;
-
-    update_tray_status(&app, "Status: Installing update…");
-    log::info!("updater install applying version={}", update.version);
-
-    // On macOS and Linux `install()` swaps the bundle and returns; on Windows
-    // it launches the installer and exits. So restart exactly once, after it
-    // returns: a second restart re-opened the old version on top of the new
-    // one. Off-load to `spawn_blocking` so the runtime stays responsive
-    // during decompression.
-    let install_result = tokio::task::spawn_blocking(move || update.install(bytes))
-        .await
-        .map_err(|e| format!("Install task panicked: {e}"))
-        .and_then(|result| result.map_err(|e| format!("Failed to install update: {e}")));
-    if let Err(error) = install_result {
-        recover_from_failed_install(&app, had_sidecar).await;
-        return Err(error);
-    }
+    install_verified(&mut AppInstall { app: app.clone() }, cached).await?;
 
     update_tray_status(&app, "Status: Restarting…");
     log::info!("updater install complete; dispatching app restart");
@@ -428,6 +463,71 @@ pub async fn run_update_install(app: AppHandle) -> Result<(), String> {
     // stays on "Installing / Restarting…" rather than resolving prematurely.
     loop {
         tokio::time::sleep(Duration::from_secs(60)).await;
+    }
+}
+
+/// The app's install effects for [`install_verified`].
+struct AppInstall {
+    app: AppHandle,
+}
+
+impl InstallSteps for AppInstall {
+    type Update = tauri_plugin_updater::Update;
+
+    fn version(update: &Self::Update) -> &str {
+        update.version.as_str()
+    }
+
+    async fn check(&mut self) -> Result<Option<Self::Update>, String> {
+        self.app
+            .updater()
+            .map_err(|e| format!("Updater unavailable: {e}"))?
+            .check()
+            .await
+            .map_err(|e| format!("Couldn't check for updates: {e}"))
+    }
+
+    async fn read(&mut self, path: PathBuf) -> Result<Vec<u8>, String> {
+        tauri::async_runtime::spawn_blocking(move || std::fs::read(path))
+            .await
+            .map_err(|e| format!("Read cached update: {e}"))?
+            .map_err(|e| format!("Read cached update: {e}"))
+    }
+
+    fn verify(&mut self, update: &Self::Update, bytes: &[u8]) -> Result<(), String> {
+        update.verify(bytes).map_err(|e| e.to_string())
+    }
+
+    async fn teardown(&mut self) -> bool {
+        let state: tauri::State<'_, AppState> = self.app.state();
+        // Flip the quit guard BEFORE the relaunch sequence so the window
+        // `CloseRequested` handler stops calling `prevent_close()`. If it did
+        // not, the bundle swap could leave a hidden window alive and trap the
+        // exit half-way, which is one way the relaunch silently fails.
+        persist_active_window_state(&self.app);
+        state.quitting.store(true, Ordering::SeqCst);
+        // Shut the backend sidecar down *before* the bundle swap so the child
+        // receives SIGTERM while we still own a clean process tree. Doing it
+        // after `install()` races the relaunch.
+        let had_sidecar = shutdown_sidecar_now(&self.app).await;
+        update_tray_status(&self.app, "Status: Installing update…");
+        had_sidecar
+    }
+
+    async fn install(&mut self, update: Self::Update, bytes: Vec<u8>) -> Result<(), String> {
+        // On macOS and Linux `install()` swaps the bundle and returns; on
+        // Windows it launches the installer and exits. So restart exactly
+        // once, after it returns: a second restart re-opened the old version
+        // on top of the new one. Off-load to `spawn_blocking` so the runtime
+        // stays responsive during decompression.
+        tokio::task::spawn_blocking(move || update.install(bytes))
+            .await
+            .map_err(|e| format!("Install task panicked: {e}"))
+            .and_then(|result| result.map_err(|e| format!("Failed to install update: {e}")))
+    }
+
+    async fn recover(&mut self, had_sidecar: bool) {
+        recover_from_failed_install(&self.app, had_sidecar).await;
     }
 }
 
@@ -585,6 +685,150 @@ pub fn format_download_progress(downloaded_mb: usize, total_bytes: Option<u64>) 
             format!("Status: Downloading {downloaded_mb}/{total_mb} MB")
         }
         _ => format!("Status: Downloading {downloaded_mb} MB"),
+    }
+}
+
+#[cfg(test)]
+mod install_tests {
+    use super::*;
+
+    /// Records the effects of an install, in order.
+    #[derive(Default)]
+    struct Recorder {
+        events: Vec<String>,
+        listed: Option<&'static str>,
+        bytes_on_disk: Vec<u8>,
+        verify_ok: bool,
+        install_ok: bool,
+        had_sidecar: bool,
+        installed: Option<Vec<u8>>,
+    }
+
+    impl InstallSteps for Recorder {
+        type Update = &'static str;
+        fn version(update: &Self::Update) -> &str {
+            update
+        }
+        async fn check(&mut self) -> Result<Option<&'static str>, String> {
+            self.events.push("check".into());
+            Ok(self.listed)
+        }
+        async fn read(&mut self, _path: PathBuf) -> Result<Vec<u8>, String> {
+            self.events.push("read".into());
+            Ok(self.bytes_on_disk.clone())
+        }
+        fn verify(&mut self, _update: &&'static str, _bytes: &[u8]) -> Result<(), String> {
+            self.events.push("verify".into());
+            if self.verify_ok { Ok(()) } else { Err("bad signature".into()) }
+        }
+        async fn teardown(&mut self) -> bool {
+            self.events.push("teardown".into());
+            self.had_sidecar
+        }
+        async fn install(&mut self, _update: &'static str, bytes: Vec<u8>) -> Result<(), String> {
+            self.events.push("install".into());
+            self.installed = Some(bytes);
+            if self.install_ok { Ok(()) } else { Err("Failed to install update: disk full".into()) }
+        }
+        async fn recover(&mut self, had_sidecar: bool) {
+            self.events.push(format!("recover had_sidecar={had_sidecar}"));
+        }
+    }
+
+    fn cached(dir: &tempfile::TempDir, version: &str) -> CachedUpdateState {
+        let bytes_path = dir.path().join(format!("openagentd-{version}.update"));
+        std::fs::write(&bytes_path, b"bundle").expect("write bundle");
+        CachedUpdateState { version: version.into(), bytes_path }
+    }
+
+    fn recorder(listed: &'static str) -> Recorder {
+        Recorder {
+            listed: Some(listed),
+            bytes_on_disk: b"signed bundle bytes".to_vec(),
+            verify_ok: true,
+            install_ok: true,
+            had_sidecar: true,
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn the_bytes_are_verified_before_the_app_is_torn_down_and_installed_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut steps = recorder("1.2.0");
+
+        install_verified(&mut steps, Some(cached(&dir, "1.2.0"))).await.expect("install");
+
+        assert_eq!(steps.events, ["check", "read", "verify", "teardown", "install"]);
+        assert_eq!(steps.installed.as_deref(), Some(&b"signed bundle bytes"[..]));
+    }
+
+    #[tokio::test]
+    async fn bytes_that_fail_verification_leave_the_app_and_backend_running() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut steps = Recorder { verify_ok: false, ..recorder("1.2.0") };
+
+        let err = install_verified(&mut steps, Some(cached(&dir, "1.2.0"))).await.unwrap_err();
+
+        assert!(err.contains("failed verification"), "{err}");
+        assert_eq!(steps.events, ["check", "read", "verify"], "no teardown, no install");
+    }
+
+    #[tokio::test]
+    async fn a_listing_that_moved_on_stops_before_reading_the_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut steps = recorder("1.3.0");
+
+        let err = install_verified(&mut steps, Some(cached(&dir, "1.2.0"))).await.unwrap_err();
+
+        assert!(err.contains("no longer matches"), "{err}");
+        assert_eq!(steps.events, ["check"]);
+    }
+
+    #[tokio::test]
+    async fn a_failed_install_after_teardown_recovers_the_previous_runtime() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut steps = Recorder { install_ok: false, had_sidecar: false, ..recorder("1.2.0") };
+
+        let err = install_verified(&mut steps, Some(cached(&dir, "1.2.0"))).await.unwrap_err();
+
+        assert!(err.contains("disk full"), "{err}");
+        assert_eq!(
+            steps.events,
+            ["check", "read", "verify", "teardown", "install", "recover had_sidecar=false"]
+        );
+    }
+
+    #[test]
+    fn a_second_install_is_refused_while_the_first_still_verifies() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let quitting = AtomicBool::new(false);
+
+        let first = begin_install(&flag, &quitting);
+        assert!(matches!(first, InstallEntry::Proceed(_)));
+        // `quitting` is still false: the first install has not verified yet.
+        assert!(matches!(begin_install(&flag, &quitting), InstallEntry::AlreadyInstalling));
+        assert!(!quitting.load(Ordering::SeqCst), "taking the lease is not a quit");
+    }
+
+    #[test]
+    fn a_failed_install_releases_only_its_own_lease() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let quitting = AtomicBool::new(false);
+
+        let InstallEntry::Proceed(lease) = begin_install(&flag, &quitting) else { panic!("first install") };
+        drop(lease); // the install returned an error
+
+        assert!(matches!(begin_install(&flag, &quitting), InstallEntry::Proceed(_)), "the user can retry");
+    }
+
+    #[test]
+    fn no_install_starts_while_the_app_is_quitting() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let quitting = AtomicBool::new(true);
+
+        assert!(matches!(begin_install(&flag, &quitting), InstallEntry::Quitting));
+        assert!(!flag.load(Ordering::SeqCst));
     }
 }
 

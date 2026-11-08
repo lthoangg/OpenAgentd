@@ -2,7 +2,7 @@ import type { ContentBlock, PendingQuestion } from '@/api/types'
 import { patchFiles } from '@/components/ToolCall/diffUtils'
 import { isGoalTurnBlock } from '@/lib/goal'
 import { restartNoteInfo } from '@/lib/restart-note'
-import type { AgentStream, CacheInvalidation, ResolvedQuestion } from './types'
+import type { AgentStream, CacheInvalidation, QuestionClosedReason, ResolvedQuestion } from './types'
 
 /** Kinds whose live id (``generateBlockId``) differs from the server row's. */
 const ADOPTABLE_KINDS = new Set<ContentBlock['type']>(['thinking', 'text'])
@@ -52,6 +52,23 @@ export function adoptLiveBlockIds(
   return result ?? next
 }
 
+/** Unknown wire reasons use the card's generic closed label. */
+export function parseQuestionClosedReason(raw: unknown): QuestionClosedReason | null {
+  if (raw === undefined || raw === null) return 'dismissed'
+  switch (raw) {
+    case 'dismissed':
+      return 'dismissed'
+    case 'superseded':
+      return 'superseded'
+    case 'expired':
+      return 'expired'
+    case 'resolved_elsewhere':
+      return 'resolved_elsewhere'
+    default:
+      return null
+  }
+}
+
 /**
  * Close the open question and record how it ended.
  *
@@ -78,7 +95,7 @@ export function applyQuestionResolution(
    *  question without naming it. */
   questionId: string | null,
   answers: string[][] | null,
-  reason: string | null,
+  reason: QuestionClosedReason | null,
 ): void {
   if (!draft.pendingQuestion) return
   if (questionId !== null && draft.pendingQuestion.id !== questionId) return

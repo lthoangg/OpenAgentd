@@ -163,6 +163,43 @@ describe("useAgentStore — ask_user", () => {
     expect(useAgentStore.getState().resolvedQuestions["call-1"].reason).toBeNull()
   })
 
+  it("reads a dismissal that names no reason as dismissed", () => {
+    ask()
+
+    useAgentStore.getState()._handleSSEEvent("question_dismissed", {
+      question_id: QUESTION_ID,
+      session_id: SESSION_ID,
+    })
+
+    expect(useAgentStore.getState().resolvedQuestions["call-1"].reason).toBe("dismissed")
+  })
+
+  it("records an expired question as expired", () => {
+    ask()
+
+    useAgentStore.getState()._handleSSEEvent("question_dismissed", {
+      question_id: QUESTION_ID,
+      session_id: SESSION_ID,
+      reason: "expired",
+    })
+
+    expect(useAgentStore.getState().resolvedQuestions["call-1"].reason).toBe("expired")
+  })
+
+  it("closes a question whose dismissal reason it does not know, without a specific reason", () => {
+    ask()
+
+    useAgentStore.getState()._handleSSEEvent("question_dismissed", {
+      question_id: QUESTION_ID,
+      session_id: SESSION_ID,
+      reason: "something_new",
+    })
+
+    const state = useAgentStore.getState()
+    expect(state.pendingQuestion).toBeNull()
+    expect(state.resolvedQuestions["call-1"]).toMatchObject({ answers: null, reason: null })
+  })
+
   it("clears the question when it is dismissed", () => {
     ask()
 

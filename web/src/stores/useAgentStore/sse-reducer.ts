@@ -22,6 +22,7 @@ import {
   applyLocalBlockTransform,
   applyQuestionResolution,
   extractToolPaths,
+  parseQuestionClosedReason,
 } from './helpers'
 import type { CacheInvalidation, AgentError, AgentStore } from './types'
 import { canonicalToolName } from '@/utils/tool-names'
@@ -863,7 +864,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             draft,
             questionId,
             answers,
-            answers === null ? ((d.reason as string) ?? 'dismissed') : null,
+            answers === null ? parseQuestionClosedReason(d.reason) : null,
           )
         })
         break

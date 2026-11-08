@@ -111,7 +111,7 @@ async fn a_member_out_of_quota_alerts_its_lead_and_can_be_stopped_and_resumed() 
     wait_until("the member's turn to end", || member.active_task_done() && !member.is_busy()).await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert!(!subagents::has_working_subagents(&sid));
-    assert_eq!(subagents::with_instance(&sid, "worker#1", |i| i.status.clone()).as_deref(), Some("stopped"));
+    assert_eq!(subagents::with_instance(&sid, "worker#1", |i| i.status().as_str()), Some("stopped"));
     assert_eq!(subagents::describe_subagents(&sid), "- worker#1: stopped (send it a task to resume)");
     let reports = user_texts(&lead_mock).into_iter().filter(|t| t.contains("worker#1 failed") || t.contains("no text output")).count();
     assert_eq!(reports, 0, "a stopped member reported to its lead");

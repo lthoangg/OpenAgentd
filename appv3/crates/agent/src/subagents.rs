@@ -44,7 +44,8 @@ pub struct SubagentInstance {
     pub lead_session_id: String,
     pub session_id: String,
     pub session: Arc<AgentSession>,
-    pub status: String,
+    /// Its lifecycle; only this module and [`Self::wait_on_lead`] move it.
+    status: MemberStatus,
     pub last_result: Option<String>,
     pub pending_lead_question: Option<Value>,
     pub last_error: Option<String>,
@@ -60,14 +61,14 @@ pub struct SubagentInstance {
 }
 
 impl SubagentInstance {
-    pub fn new(handle: &str, profile: &str, lead: &str, session_id: &str, session: Arc<AgentSession>, status: &str) -> Self {
+    pub fn new(handle: &str, profile: &str, lead: &str, session_id: &str, session: Arc<AgentSession>, status: MemberStatus) -> Self {
         Self {
             handle: handle.into(),
             profile_name: profile.into(),
             lead_session_id: lead.into(),
             session_id: session_id.into(),
             session,
-            status: status.into(),
+            status,
             last_result: None,
             pending_lead_question: None,
             last_error: None,
@@ -75,9 +76,120 @@ impl SubagentInstance {
             result_delivered: false,
             pending_tool_call_id: None,
             stall: None,
-            working_since: (status == "working").then(std::time::Instant::now),
+            working_since: (status == MemberStatus::Working).then(std::time::Instant::now),
             stopped_by_restart: false,
         }
+    }
+
+    pub fn status(&self) -> MemberStatus {
+        self.status
+    }
+
+    /// `ask_lead` suspends its turn on `question`: it waits for the lead's
+    /// answer, which arrives through [`send_subagent_message`].
+    pub fn wait_on_lead(&mut self, question: Value, tool_call_id: Option<String>) {
+        self.pending_lead_question = Some(question);
+        self.status = MemberStatus::WaitingLead;
+        if tool_call_id.is_some() {
+            self.pending_tool_call_id = tool_call_id;
+        }
+    }
+
+    /// The lead sent it new work: it is working again, and nothing is owed
+    /// from its earlier turns.
+    fn start_follow_up(&mut self) {
+        self.status = MemberStatus::Working;
+        self.stopped_by_restart = false;
+        self.question_delivered = false;
+        self.result_delivered = false;
+        self.last_error = None;
+        self.stall = None;
+        self.working_since = Some(std::time::Instant::now());
+    }
+}
+
+/// A member's lifecycle as the registry records it. The registry owns this
+/// and report delivery; the member's `AgentSession` owns execution (whether
+/// a turn runs). [`MemberStatus::as_str`] is the string the API, SSE
+/// `subagent_status` and `team(action='list')` show.
+/// A member missing from the registry (a restart emptied it, or it was never
+/// rehydrated) is listed as [`UNREGISTERED_MEMBER_STATUS`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemberStatus {
+    Working,
+    /// Suspended on `ask_lead`: its turn stays open until the lead answers.
+    WaitingLead,
+    /// Its last turn completed and the report went to the lead.
+    Completed,
+    /// Its last turn failed (or was refused) and the failure went to the lead.
+    Error,
+    /// Stopped by the lead or a restart; no report. A message resumes it.
+    Stopped,
+}
+
+/// What `list_subagents` shows for a child session the registry does not
+/// hold: its work is over as far as this process knows.
+pub const UNREGISTERED_MEMBER_STATUS: MemberStatus = MemberStatus::Completed;
+
+impl MemberStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Working => "working",
+            Self::WaitingLead => "waiting_lead",
+            Self::Completed => "completed",
+            Self::Error => "error",
+            Self::Stopped => "stopped",
+        }
+    }
+
+    /// How a member's closed turn ends: stopped (cancelled), completed, or failed.
+    /// `status` is the session's turn status: anything but `completed` failed.
+    pub fn turn_end(status: &str, cancelled: bool) -> Self {
+        if cancelled {
+            Self::Stopped
+        } else if status == "completed" {
+            Self::Completed
+        } else {
+            Self::Error
+        }
+    }
+
+    /// Whether a turn that ended this way reports to the lead. A stopped turn
+    /// sends nothing; the member keeps its conversation.
+    pub fn reports(self) -> bool {
+        matches!(self, Self::Completed | Self::Error)
+    }
+
+    /// Whether the member holds a turn the lead is owed an end for: working,
+    /// or suspended on `ask_lead`. Stopping it settles it as stopped.
+    pub fn is_active(self) -> bool {
+        matches!(self, Self::Working | Self::WaitingLead)
+    }
+
+    /// Whether a turn may still run, so dropping the member must stop its
+    /// session. Only a reported end (completed, error) rules that out.
+    pub fn may_still_run(self) -> bool {
+        !self.reports()
+    }
+
+    /// The member's status once a turn ended as `self`. A completed turn's
+    /// last look at the queue starts a follow-up queued for it, so with one
+    /// queued the member is still working; failed and stopped turns leave
+    /// the queue alone.
+    pub fn after_turn(self, follow_up_queued: bool) -> Self {
+        if self == Self::Completed && follow_up_queued {
+            Self::Working
+        } else {
+            self
+        }
+    }
+
+    /// Whether a follow-up queued behind the member's running turn will run
+    /// next, given the status the registry holds after the queueing: the
+    /// turn is still running (`Working`) or closed as completed and has yet
+    /// to look at the queue. A failed or stopped close never reads it.
+    fn follow_up_runs_next(self) -> bool {
+        matches!(self, Self::Working | Self::Completed)
     }
 }
 
@@ -111,14 +223,14 @@ fn find_by_session<R>(lead: &str, child: &str, f: impl FnOnce(&mut SubagentInsta
 /// just ended is already marked done before its report reaches the lead.
 pub fn has_working_subagents(lead: &str) -> bool {
     let r = reg().lock().unwrap();
-    r.live.get(lead).is_some_and(|m| m.values().any(|i| i.status == "working" && i.session.is_busy()))
+    r.live.get(lead).is_some_and(|m| m.values().any(|i| i.status == MemberStatus::Working && i.session.is_busy()))
 }
 
 /// Every lead with a subagent still running ([`has_working_subagents`]), as
 /// API ids.
 pub fn leads_with_working_subagents() -> HashSet<String> {
     let r = reg().lock().unwrap();
-    r.live.iter().filter(|(_, m)| m.values().any(|i| i.status == "working" && i.session.is_busy())).map(|(lead, _)| db::codec::api_uuid(lead)).collect()
+    r.live.iter().filter(|(_, m)| m.values().any(|i| i.status == MemberStatus::Working && i.session.is_busy())).map(|(lead, _)| db::codec::api_uuid(lead)).collect()
 }
 
 /// Whether a lead whose turn ended still has work coming back to it: a
@@ -141,7 +253,7 @@ pub fn sessions_with_pending_work() -> HashSet<String> {
 /// `needs_input`, the lead being who must answer.
 pub fn subagents_waiting_on_lead() -> HashSet<String> {
     let r = reg().lock().unwrap();
-    r.live.values().flat_map(|m| m.values()).filter(|i| i.status == "waiting_lead").map(|i| db::codec::api_uuid(&i.session_id)).collect()
+    r.live.values().flat_map(|m| m.values()).filter(|i| i.status == MemberStatus::WaitingLead).map(|i| db::codec::api_uuid(&i.session_id)).collect()
 }
 
 /// `prune_subagent_output`.
@@ -264,10 +376,10 @@ fn publish_both(lead: &str, event: &str, payload: Value) {
 /// it: record the failure, or it stays listed as working for good.
 fn mark_turn_refused(lead: &str, handle: &str, child: &str, error: &str) {
     with_instance(lead, handle, |i| {
-        i.status = "error".into();
+        i.status = MemberStatus::Error;
         i.last_error = Some(error.to_string());
     });
-    publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child, "handle": handle, "status": "error"}));
+    publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child, "handle": handle, "status": MemberStatus::Error.as_str()}));
 }
 
 /// The model a member runs on when the lead names none: its profile's own
@@ -352,7 +464,7 @@ pub async fn rehydrate_member(lead: &str, handle: &str, pool: &DbPool, factory: 
         if live.contains_key(handle) {
             return Ok(handle.to_string());
         }
-        let mut inst = SubagentInstance::new(handle, &profile, lead, &child_sid, session, "stopped");
+        let mut inst = SubagentInstance::new(handle, &profile, lead, &child_sid, session, MemberStatus::Stopped);
         inst.stopped_by_restart = stopped_by_restart;
         live.insert(handle.to_string(), inst);
         let order = r.order.entry(lead.to_string()).or_default();
@@ -361,7 +473,11 @@ pub async fn rehydrate_member(lead: &str, handle: &str, pool: &DbPool, factory: 
         }
     }
     tracing::info!("subagent_rehydrated lead={} handle={} session_id={}", lead, handle, child_sid);
-    publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child_sid, "handle": handle, "status": "stopped", "workspace": workspace}));
+    publish_both(
+        lead,
+        "subagent_status",
+        json!({"lead_session_id": lead, "session_id": child_sid, "handle": handle, "status": MemberStatus::Stopped.as_str(), "workspace": workspace}),
+    );
     Ok(handle.to_string())
 }
 
@@ -406,7 +522,7 @@ pub async fn spawn_subagent(
     reconcile_lead_instances(lead, pool).await.map_err(err)?;
     {
         let r = reg().lock().unwrap();
-        let active = r.live.get(lead).map(|m| m.values().filter(|i| i.status == "working").count()).unwrap_or(0);
+        let active = r.live.get(lead).map(|m| m.values().filter(|i| i.status == MemberStatus::Working).count()).unwrap_or(0);
         if active >= MAX_CONCURRENT_MEMBERS {
             return Err(SubagentError::MaxConcurrent(format!("Reached maximum concurrent members limit ({MAX_CONCURRENT_MEMBERS}).")));
         }
@@ -450,7 +566,7 @@ pub async fn spawn_subagent(
     .map_err(err)?;
     {
         let mut r = reg().lock().unwrap();
-        r.live.entry(lead.to_string()).or_default().insert(handle.clone(), SubagentInstance::new(&handle, profile, lead, &child_sid, child.clone(), "working"));
+        r.live.entry(lead.to_string()).or_default().insert(handle.clone(), SubagentInstance::new(&handle, profile, lead, &child_sid, child.clone(), MemberStatus::Working));
         let order = r.order.entry(lead.to_string()).or_default();
         if !order.contains(&handle) {
             order.push(handle.clone());
@@ -460,7 +576,7 @@ pub async fn spawn_subagent(
     publish_both(
         lead,
         "subagent_spawned",
-        json!({"lead_session_id": lead, "session_id": child_sid, "handle": handle, "profile": profile, "workspace": workspace, "title": title, "status": "working", "running": true}),
+        json!({"lead_session_id": lead, "session_id": child_sid, "handle": handle, "profile": profile, "workspace": workspace, "title": title, "status": MemberStatus::Working.as_str(), "running": true}),
     );
     if let Err(e) = child
         .handle_user_message(UserMessage {
@@ -484,17 +600,15 @@ pub async fn spawn_subagent(
 /// `send_subagent_message(..., wait=False)`.
 pub async fn send_subagent_message(lead: &str, member_id: &str, message: &str, pool: &DbPool) -> Result<Value, SubagentError> {
     let handle = resolve_or_rehydrate(lead, member_id, pool).await?;
+    // A member waiting on `ask_lead` takes the message as its answer and is
+    // working again at once. Any other member is marked working only once the
+    // message is queued or its turn is starting (below): its running turn may
+    // close in between, and that close must not overwrite the follow-up.
     let (inst_session, waiting, tool_call_id, child_sid) = with_instance(lead, &handle, |i| {
-        let waiting = i.status == "waiting_lead";
+        let waiting = i.status == MemberStatus::WaitingLead;
         let tcid = i.pending_tool_call_id.clone();
-        i.status = "working".into();
-        i.stopped_by_restart = false;
-        i.question_delivered = false;
-        i.result_delivered = false;
-        i.last_error = None;
-        i.stall = None;
-        i.working_since = Some(std::time::Instant::now());
         if waiting {
+            i.start_follow_up();
             i.pending_lead_question = None;
         }
         (i.session.clone(), waiting, tcid, i.session_id.clone())
@@ -520,15 +634,29 @@ pub async fn send_subagent_message(lead: &str, member_id: &str, message: &str, p
     if queued {
         db::save_queued_user_message(pool, &child_sid, &content, Some(from_lead_extra(lead))).await.map_err(|e| SubagentError::General(e.to_string()))?;
         // The turn may have ended between the check and the save.
-        if !inst_session.has_active_user_turn() {
+        if inst_session.has_active_user_turn() {
+            // Saved under the lock the turn's last look at the queue takes:
+            // that look starts it unless the turn failed or was stopped.
+            with_instance(lead, &handle, |i| {
+                if i.status.follow_up_runs_next() {
+                    i.start_follow_up();
+                }
+            });
+        } else {
+            with_instance(lead, &handle, SubagentInstance::start_follow_up);
             inst_session.activate_queued_user_messages(&child_sid).await;
         }
-    } else if let Err(e) = inst_session
-        .handle_user_message(UserMessage { content, session_id: child_sid.clone(), origin: "agent".into(), extra: Some(from_lead_extra(lead)), ..Default::default() })
-        .await
-    {
-        mark_turn_refused(lead, &handle, &child_sid, &e.to_string());
-        return Err(SubagentError::General(e.to_string()));
+    } else {
+        // No turn runs, so no close can race this mark; the new turn's own
+        // close comes after it.
+        with_instance(lead, &handle, SubagentInstance::start_follow_up);
+        if let Err(e) = inst_session
+            .handle_user_message(UserMessage { content, session_id: child_sid.clone(), origin: "agent".into(), extra: Some(from_lead_extra(lead)), ..Default::default() })
+            .await
+        {
+            mark_turn_refused(lead, &handle, &child_sid, &e.to_string());
+            return Err(SubagentError::General(e.to_string()));
+        }
     }
     Ok(json!({"status": "sent", "member_id": handle, "queued": queued, "message": format!("Message delivered to '{handle}' in background.")}))
 }
@@ -537,11 +665,11 @@ pub async fn send_subagent_message(lead: &str, member_id: &str, message: &str, p
 /// the next message sent to it resumes with full context.
 pub async fn stop_subagent(lead: &str, member_id: &str) -> Result<Value, SubagentError> {
     let handle = resolve_instance(lead, member_id)?;
-    let (session, child, status) = with_instance(lead, &handle, |i| (i.session.clone(), i.session_id.clone(), i.status.clone()))
-        .ok_or_else(|| SubagentError::NotFound(format!("Member '{member_id}' not found.")))?;
+    let (session, child, status) =
+        with_instance(lead, &handle, |i| (i.session.clone(), i.session_id.clone(), i.status)).ok_or_else(|| SubagentError::NotFound(format!("Member '{member_id}' not found.")))?;
     let ran = session.handle_stop().await;
-    let active = ran || status == "working" || status == "waiting_lead";
-    if !ran && status == "waiting_lead" {
+    let active = ran || status.is_active();
+    if !ran && status == MemberStatus::WaitingLead {
         // Its turn stayed open while it waited on `ask_lead`; nothing else
         // will close it now, so clients would keep showing it running.
         store().push_event(&child, &Envelope::from_parts("done", json!({})), true);
@@ -550,17 +678,18 @@ pub async fn stop_subagent(lead: &str, member_id: &str) -> Result<Value, Subagen
     }
     with_instance(lead, &handle, |i| {
         if active {
-            i.status = "stopped".into();
+            i.status = MemberStatus::Stopped;
         }
         i.stall = None;
         i.working_since = None;
         i.pending_lead_question = None;
     });
     if active {
-        publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child, "handle": handle, "status": "stopped"}));
+        publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child, "handle": handle, "status": MemberStatus::Stopped.as_str()}));
     }
     tracing::info!("subagent_stopped lead={} handle={} was_running={}", lead, handle, active);
-    Ok(json!({"status": if active { "stopped" } else { status.as_str() }, "member_id": handle, "was_running": active}))
+    let status = if active { MemberStatus::Stopped } else { status };
+    Ok(json!({"status": status.as_str(), "member_id": handle, "was_running": active}))
 }
 
 /// Cut a member's current step short and start it on `message` at once. The
@@ -568,8 +697,8 @@ pub async fn stop_subagent(lead: &str, member_id: &str) -> Result<Value, Subagen
 /// waiting on `ask_lead` takes `message` as the answer.
 pub async fn interrupt_subagent(lead: &str, member_id: &str, message: &str, pool: &DbPool) -> Result<Value, SubagentError> {
     let handle = resolve_or_rehydrate(lead, member_id, pool).await?;
-    let (session, waiting) =
-        with_instance(lead, &handle, |i| (i.session.clone(), i.status == "waiting_lead")).ok_or_else(|| SubagentError::NotFound(format!("Member '{member_id}' not found.")))?;
+    let (session, waiting) = with_instance(lead, &handle, |i| (i.session.clone(), i.status == MemberStatus::WaitingLead))
+        .ok_or_else(|| SubagentError::NotFound(format!("Member '{member_id}' not found.")))?;
     if waiting {
         return send_subagent_message(lead, &handle, message, pool).await;
     }
@@ -708,15 +837,15 @@ pub fn describe_subagents(lead: &str) -> String {
     let lines: Vec<String> = handles
         .filter_map(|h| live.get(h))
         .map(|i| {
-            let state = match i.status.as_str() {
-                "working" => {
+            let state = match i.status {
+                MemberStatus::Working => {
                     let since = i.working_since.map(|t| format!(" for {}", crate::retry::format_duration(t.elapsed().as_secs_f64()))).unwrap_or_default();
                     match &i.stall {
                         Some(s) => format!("working{since}, stalled: {s}"),
                         None => format!("working{since}"),
                     }
                 }
-                "waiting_lead" => {
+                MemberStatus::WaitingLead => {
                     let q = i.pending_lead_question.as_ref().and_then(|q| q.get("question")).and_then(Value::as_str).unwrap_or("");
                     if q.is_empty() {
                         "waiting for your answer".to_string()
@@ -724,11 +853,10 @@ pub fn describe_subagents(lead: &str) -> String {
                         format!("waiting for your answer: {q}")
                     }
                 }
-                "error" => format!("failed: {}", i.last_error.as_deref().filter(|e| !e.is_empty()).unwrap_or("unknown error")),
-                "stopped" if i.stopped_by_restart => "stopped by a server restart (send it a task to resume)".to_string(),
-                "stopped" => "stopped (send it a task to resume)".to_string(),
-                "completed" => "done (report delivered)".to_string(),
-                other => other.to_string(),
+                MemberStatus::Error => format!("failed: {}", i.last_error.as_deref().filter(|e| !e.is_empty()).unwrap_or("unknown error")),
+                MemberStatus::Stopped if i.stopped_by_restart => "stopped by a server restart (send it a task to resume)".to_string(),
+                MemberStatus::Stopped => "stopped (send it a task to resume)".to_string(),
+                MemberStatus::Completed => "done (report delivered)".to_string(),
             };
             format!("- {}: {state}", i.handle)
         })
@@ -776,19 +904,36 @@ pub async fn deliver_agent_message(lead: &str, content: &str, extra: serde_json:
 /// why its member failed, not just that it did.
 #[allow(clippy::too_many_arguments)]
 pub async fn on_subagent_turn_completed(lead: &str, child: &str, status: &str, workspace: &str, handle: &str, pool: &DbPool, cancelled: bool, error: Option<&Value>) {
-    // A stopped turn reports nothing; the member keeps its conversation.
-    let st = if cancelled {
-        "stopped"
-    } else if status == "completed" {
-        "completed"
-    } else {
-        "error"
+    let end = MemberStatus::turn_end(status, cancelled);
+    // Settle the member under its senders' lock: a follow-up is either queued
+    // before the look at the queue below, or queued after the member is
+    // settled, where `send_subagent_message` reads this end and marks it
+    // working. Unlocked, a send landing between the look and the write was
+    // overwritten. The report below is sent after the lock is released.
+    let member = find_by_session(lead, child, |i| i.session.clone());
+    let senders = match &member {
+        Some(s) => Some(s.user_message_lock.lock().await),
+        None => None,
     };
+    // A follow-up the lead queued while this turn ran starts next (see
+    // `send_subagent_message`); this turn still reports its own answer.
+    let follow_up_queued = end == MemberStatus::Completed
+        && match db::has_queued_user_messages(pool, child).await {
+            Ok(queued) => queued,
+            Err(e) => {
+                // The turn's own end stands; the turn's last look at the
+                // queue still starts any follow-up.
+                tracing::warn!("subagent_follow_up_check_failed lead={} session_id={} error={}", lead, child, e);
+                false
+            }
+        };
+    let next = end.after_turn(follow_up_queued);
+    let st = next.as_str();
     let inst = find_by_session(lead, child, |i| {
-        i.status = st.into();
+        i.status = next;
         i.stall = None;
-        i.working_since = None;
-        if st == "error" {
+        i.working_since = (next == MemberStatus::Working).then(std::time::Instant::now);
+        if end == MemberStatus::Error {
             if let Some(m) = error.and_then(|e| e.get("message")).and_then(Value::as_str).filter(|m| !m.is_empty()) {
                 i.last_error = Some(m.to_string());
             }
@@ -801,10 +946,12 @@ pub async fn on_subagent_turn_completed(lead: &str, child: &str, status: &str, w
         None => format!("subagent-{}", crate::util::head_chars(child, 8)),
     };
     publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child, "handle": effective_handle, "status": st, "workspace": workspace}));
-    if cancelled {
+    drop(senders);
+    // A stopped turn reports nothing; the member keeps its conversation.
+    if !end.reports() {
         return;
     }
-    let output = if status == "completed" {
+    let output = if end == MemberStatus::Completed {
         // Read this turn's answer from the newest assistant row. `last_result`
         // holds what an earlier turn reported, so a follow-up from the lead must
         // never fall back to it and re-send a stale report.
@@ -837,7 +984,7 @@ pub async fn on_subagent_question_asked(lead: &str, child: &str, data: &Value, p
     let (handle, profile) = inst.clone().unwrap_or_else(|| (format!("subagent-{}", crate::util::head_chars(child, 8)), "explorer".into()));
     // The turn stays open while it waits, so no turn event says so; without
     // this, every client but the one on the lead's stream shows it working.
-    publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child, "handle": handle, "status": "waiting_lead"}));
+    publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child, "handle": handle, "status": MemberStatus::WaitingLead.as_str()}));
     let q = data.get("question").map(crate::pystr::py_str).unwrap_or_default();
     let opts: Vec<String> = data.get("options").and_then(|o| o.as_array()).map(|a| a.iter().map(crate::pystr::py_str).collect()).unwrap_or_default();
     let opts_text = if opts.is_empty() { String::new() } else { format!(" (Options: {})", opts.join(", ")) };
@@ -865,15 +1012,15 @@ pub async fn list_subagents(lead: &str, pool: &DbPool) -> Value {
                 // before its first turn spawns (the web refetches on
                 // `subagent_spawned`), and inferring completion there kept the
                 // lead off the active list while its members still worked.
-                Some(i) => (i.status.clone(), i.last_error.clone(), i.pending_lead_question.is_some()),
-                None => ("completed".into(), None, false),
+                Some(i) => (i.status, i.last_error.clone(), i.pending_lead_question.is_some()),
+                None => (UNREGISTERED_MEMBER_STATUS, None, false),
             };
             let profile_name = parse_instance_handle(&handle).map(|p| p.0).unwrap_or_else(|| handle.clone());
             members.push(json!({
                 "member_id": handle,
                 "profile": profile_name,
                 "title": row.title.clone().filter(|t| !t.is_empty()).unwrap_or_else(|| handle.clone()),
-                "status": status,
+                "status": status.as_str(),
                 "session_id": db::codec::api_uuid(&row.id),
                 "created_at": db::codec::parse_dt(&row.created_at).map(|d| db::codec::py_isoformat(&d)),
                 "last_error": last_error,
@@ -883,7 +1030,7 @@ pub async fn list_subagents(lead: &str, pool: &DbPool) -> Value {
     }
     for (h, i) in &live {
         if !seen.contains(h) {
-            members.push(json!({"member_id": h, "profile": i.profile_name, "title": h, "status": i.status, "session_id": i.session_id, "created_at": null, "last_error": i.last_error, "has_pending_question": i.pending_lead_question.is_some()}));
+            members.push(json!({"member_id": h, "profile": i.profile_name, "title": h, "status": i.status.as_str(), "session_id": i.session_id, "created_at": null, "last_error": i.last_error, "has_pending_question": i.pending_lead_question.is_some()}));
         }
     }
     json!({"available_profiles": summaries, "live_members": members.clone(), "subagents": members})
@@ -897,8 +1044,8 @@ pub async fn stop_all_subagents(lead: &str) {
         // a status set by an earlier stop must not shield a turn still going.
         i.session.handle_stop().await;
         with_instance(lead, &i.handle, |x| {
-            if x.status == "working" || x.status == "waiting_lead" {
-                x.status = "stopped".into();
+            if x.status.is_active() {
+                x.status = MemberStatus::Stopped;
             }
             x.stall = None;
             x.working_since = None;
@@ -934,7 +1081,7 @@ pub fn remove_subagent(child: &str) -> bool {
         for h in handles {
             if let Some(i) = m.remove(&h) {
                 removed = true;
-                if i.status != "completed" && i.status != "error" {
+                if i.status.may_still_run() {
                     let s = i.session.clone();
                     tokio::spawn(async move {
                         s.handle_stop().await;
@@ -954,7 +1101,7 @@ pub fn cleanup_lead_session(lead: &str) {
     let mut r = reg().lock().unwrap();
     if let Some(m) = r.live.remove(lead) {
         for i in m.into_values() {
-            if i.status != "completed" && i.status != "error" {
+            if i.status.may_still_run() {
                 let s = i.session.clone();
                 tokio::spawn(async move {
                     s.handle_stop().await;
@@ -1060,7 +1207,7 @@ mod tests {
         let child = uuid::Uuid::now_v7().to_string();
         let agent = Agent::new(provider.clone(), "explorer#1", "", vec![], None);
         let session = AgentSession::new(agent, Some(child.clone()), None, pool.clone(), factory, Some(lead.into()));
-        let mut inst = SubagentInstance::new("explorer#1", "explorer", lead, &child, session, "waiting_lead");
+        let mut inst = SubagentInstance::new("explorer#1", "explorer", lead, &child, session, MemberStatus::WaitingLead);
         inst.pending_lead_question = Some(json!({"question": "Which branch?"}));
         reg().lock().unwrap().live.entry(lead.into()).or_default().insert("explorer#1".into(), inst);
         store().init_turn(&child, true);
@@ -1083,7 +1230,7 @@ mod tests {
         let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
         let lead = "lead-list";
         assert_eq!(describe_subagents(lead), "No subagents yet.");
-        let add = |handle: &str, status: &str, edit: &dyn Fn(&mut SubagentInstance)| {
+        let add = |handle: &str, status: MemberStatus, edit: &dyn Fn(&mut SubagentInstance)| {
             let agent = Agent::new(provider.clone(), handle, "", vec![], None);
             let session = AgentSession::new(agent, Some(format!("{handle}-sid")), None, pool.clone(), factory.clone(), Some(lead.into()));
             let mut inst = SubagentInstance::new(handle, "explorer", lead, &format!("{handle}-sid"), session, status);
@@ -1092,11 +1239,11 @@ mod tests {
             r.live.entry(lead.into()).or_default().insert(handle.into(), inst);
             r.order.entry(lead.into()).or_default().push(handle.into());
         };
-        add("explorer#2", "working", &|i| i.stall = Some("it has not reached m for 2 min (HTTP 503)".into()));
-        add("explorer#10", "waiting_lead", &|i| i.pending_lead_question = Some(json!({"question": "Which branch?"})));
-        add("explorer#3", "error", &|i| i.last_error = Some("Rate limited.".into()));
-        add("explorer#4", "stopped", &|_| {});
-        add("explorer#5", "completed", &|_| {});
+        add("explorer#2", MemberStatus::Working, &|i| i.stall = Some("it has not reached m for 2 min (HTTP 503)".into()));
+        add("explorer#10", MemberStatus::WaitingLead, &|i| i.pending_lead_question = Some(json!({"question": "Which branch?"})));
+        add("explorer#3", MemberStatus::Error, &|i| i.last_error = Some("Rate limited.".into()));
+        add("explorer#4", MemberStatus::Stopped, &|_| {});
+        add("explorer#5", MemberStatus::Completed, &|_| {});
 
         assert_eq!(
             describe_subagents(lead),
@@ -1129,7 +1276,7 @@ mod tests {
         let p2 = provider.clone();
         let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
         let lead = "lead-working-subagents";
-        let add = |handle: &str, status: &str, state: &str| {
+        let add = |handle: &str, status: MemberStatus, state: &str| {
             let agent = Agent::new(provider.clone(), handle, "", vec![], None);
             let session = AgentSession::new(agent, Some(format!("{handle}-sid")), None, pool.clone(), factory.clone(), Some(lead.into()));
             session.set_state(state);
@@ -1139,7 +1286,7 @@ mod tests {
                 lead_session_id: lead.into(),
                 session_id: format!("{handle}-sid"),
                 session,
-                status: status.into(),
+                status,
                 last_result: None,
                 pending_lead_question: None,
                 last_error: None,
@@ -1154,10 +1301,10 @@ mod tests {
         };
         assert!(!has_working_subagents(lead), "no subagents");
         // Done (its report is on its way to the lead), or marked working with no turn left.
-        add("explorer#1", "completed", "idle");
-        add("explorer#2", "working", "idle");
+        add("explorer#1", MemberStatus::Completed, "idle");
+        add("explorer#2", MemberStatus::Working, "idle");
         assert!(!has_working_subagents(lead));
-        add("explorer#3", "working", "working");
+        add("explorer#3", MemberStatus::Working, "working");
         assert!(has_working_subagents(lead));
         assert!(!has_working_subagents("another-lead"));
         assert!(leads_with_working_subagents().contains(lead));
@@ -1195,7 +1342,7 @@ mod tests {
             lead_session_id: lead.clone(),
             session_id: child_sid,
             session: session.clone(),
-            status: "working".into(),
+            status: MemberStatus::Working,
             last_result: None,
             pending_lead_question: None,
             last_error: None,
@@ -1239,7 +1386,7 @@ mod tests {
             lead_session_id: lead.into(),
             session_id: child_sid,
             session,
-            status: "completed".into(),
+            status: MemberStatus::Completed,
             last_result: None,
             pending_lead_question: None,
             last_error: None,
@@ -1253,8 +1400,8 @@ mod tests {
         reg().lock().unwrap().live.entry(lead.into()).or_default().insert("worker#1".into(), inst);
 
         assert!(send_subagent_message(lead, "worker#1", "one more thing", &pool).await.is_err());
-        let (status, error) = with_instance(lead, "worker#1", |i| (i.status.clone(), i.last_error.clone())).unwrap();
-        assert_eq!(status, "error");
+        let (status, error) = with_instance(lead, "worker#1", |i| (i.status, i.last_error.clone())).unwrap();
+        assert_eq!(status.as_str(), "error");
         assert!(error.is_some_and(|e| !e.is_empty()));
     }
 
@@ -1276,7 +1423,7 @@ mod tests {
             lead_session_id: lead.into(),
             session_id: child_sid.clone(),
             session,
-            status: "working".into(),
+            status: MemberStatus::Working,
             last_result: None,
             pending_lead_question: None,
             last_error: None,
@@ -1323,7 +1470,7 @@ mod tests {
             session_id: child_sid.clone(),
             session,
             // `ask_lead` sets this before the turn suspends.
-            status: "waiting_lead".into(),
+            status: MemberStatus::WaitingLead,
             last_result: None,
             pending_lead_question: Some(json!({"question": "Which branch?", "options": []})),
             last_error: None,
@@ -1350,7 +1497,131 @@ mod tests {
         assert_eq!(status["lead_session_id"], json!(lead));
 
         // The lead answers: the subagent works again and no longer waits.
-        with_instance(lead, "explorer#1", |i| i.status = "working".into());
+        with_instance(lead, "explorer#1", |i| i.status = MemberStatus::Working);
         assert!(!subagents_waiting_on_lead().contains(&child_sid));
+    }
+
+    /// A registered member of `lead` whose session reads as mid-turn.
+    async fn busy_member(lead: &str) -> (DbPool, String, Arc<AgentSession>, tempfile::TempDir) {
+        let root = tempfile::tempdir().unwrap();
+        let pool = db::create_pool(root.path().join("oad.db")).await.unwrap();
+        let provider: Arc<dyn appv3_providers::LlmProvider> = Arc::new(appv3_providers::mock::MockProvider::new(vec![]));
+        let p2 = provider.clone();
+        let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
+        let child = db::create_session(&pool, db::NewSession { agent_name: Some("worker#1".into()), workspace: "/tmp".into(), ..Default::default() }).await.unwrap();
+        let child_sid = db::codec::api_uuid(&child.id);
+        let agent = Agent::new(provider, "worker#1", "", vec![], None);
+        let session = AgentSession::new(agent, Some(child_sid.clone()), None, pool.clone(), factory, Some(lead.into()));
+        session.set_state("working");
+        let inst = SubagentInstance::new("worker#1", "worker", lead, &child_sid, session.clone(), MemberStatus::Working);
+        let mut r = reg().lock().unwrap();
+        r.live.entry(lead.into()).or_default().insert("worker#1".into(), inst);
+        r.order.entry(lead.into()).or_default().push("worker#1".into());
+        drop(r);
+        (pool, child_sid, session, root)
+    }
+
+    /// A follow-up queued while the member's turn ends is started by that
+    /// turn's last look at the queue, so the member is still working. The
+    /// turn's close used to settle it as completed, and the follow-up's turn
+    /// then ran listed as done.
+    #[tokio::test]
+    async fn a_follow_up_queued_before_the_turn_closes_keeps_the_member_working() {
+        let lead = "lead-follow-up-before-close";
+        let (pool, child_sid, _session, _root) = busy_member(lead).await;
+        db::save_queued_user_message(&pool, &child_sid, "[Lead]: also run the tests", Some(from_lead_extra(lead))).await.unwrap();
+
+        on_subagent_turn_completed(lead, &child_sid, "completed", "/tmp", "worker#1", &pool, false, None).await;
+
+        assert_eq!(with_instance(lead, "worker#1", |i| i.status().as_str()), Some("working"));
+        assert_eq!(with_instance(lead, "worker#1", |i| i.last_result.clone()).flatten().as_deref(), Some("Subagent 'worker#1' completed task with no text output."));
+    }
+
+    /// The close looks at the queue only once it holds the member's senders'
+    /// lock, so a row a sender queues while holding it is seen. Unlocked, the
+    /// close looked first and settled the member as completed while the
+    /// turn's last look started the follow-up.
+    #[tokio::test]
+    async fn the_close_looks_at_the_queue_only_under_the_senders_lock() {
+        let lead = "lead-close-under-senders-lock";
+        let (pool, child_sid, session, _root) = busy_member(lead).await;
+        let sender = session.user_message_lock.lock().await;
+        let mut close = std::pin::pin!(on_subagent_turn_completed(lead, &child_sid, "completed", "/tmp", "worker#1", &pool, false, None));
+        assert!(futures::poll!(close.as_mut()).is_pending(), "the close finished while a sender held the lock");
+        db::save_queued_user_message(&pool, &child_sid, "[Lead]: also run the tests", Some(from_lead_extra(lead))).await.unwrap();
+        drop(sender);
+        close.await;
+
+        assert_eq!(with_instance(lead, "worker#1", |i| i.status().as_str()), Some("working"));
+    }
+
+    /// The lead's follow-up and the member's closing turn wait on the
+    /// member's senders' lock in either order. Polling each once parks it on
+    /// the held lock, which takes waiters first come, first served, so the
+    /// order is fixed. Either way the member ends up working: the send used
+    /// to mark it before taking the lock, and the close used to settle it
+    /// without the lock, so each could overwrite the follow-up.
+    #[tokio::test]
+    async fn a_follow_up_racing_the_turns_close_keeps_the_member_working() {
+        for (lead, close_first) in [("lead-follow-up-close-first", true), ("lead-follow-up-send-first", false)] {
+            let (pool, child_sid, session, _root) = busy_member(lead).await;
+            let held = session.user_message_lock.lock().await;
+            let mut close = std::pin::pin!(on_subagent_turn_completed(lead, &child_sid, "completed", "/tmp", "worker#1", &pool, false, None));
+            let mut send = std::pin::pin!(send_subagent_message(lead, "worker#1", "also run the tests", &pool));
+            if close_first {
+                assert!(futures::poll!(close.as_mut()).is_pending(), "{lead}");
+                assert!(futures::poll!(send.as_mut()).is_pending(), "{lead}");
+            } else {
+                assert!(futures::poll!(send.as_mut()).is_pending(), "{lead}");
+                assert!(futures::poll!(close.as_mut()).is_pending(), "{lead}");
+            }
+            drop(held);
+            let ((), out) = tokio::join!(close, send);
+
+            assert_eq!(out.unwrap()["queued"], json!(true), "{lead}");
+            assert_eq!(with_instance(lead, "worker#1", |i| i.status().as_str()), Some("working"), "{lead}");
+        }
+    }
+
+    /// The registry's statuses are the wire strings clients already read.
+    #[test]
+    fn member_statuses_keep_their_wire_strings_and_turn_end_rules() {
+        use MemberStatus::*;
+        let wire: Vec<&str> = [Working, WaitingLead, Completed, Error, Stopped].iter().map(|s| s.as_str()).collect();
+        assert_eq!(wire, ["working", "waiting_lead", "completed", "error", "stopped"]);
+        assert_eq!(UNREGISTERED_MEMBER_STATUS.as_str(), "completed");
+
+        assert_eq!(MemberStatus::turn_end("completed", false), Completed);
+        assert_eq!(MemberStatus::turn_end("error", false), Error);
+        // Cancelled wins over how the turn's status reads.
+        assert_eq!(MemberStatus::turn_end("completed", true), Stopped);
+        assert_eq!(MemberStatus::turn_end("error", true), Stopped);
+        assert!(Completed.reports() && Error.reports() && !Stopped.reports());
+
+        assert_eq!(Completed.after_turn(true), Working);
+        assert_eq!(Completed.after_turn(false), Completed);
+        assert_eq!(Error.after_turn(true), Error);
+        assert_eq!(Stopped.after_turn(true), Stopped);
+
+        assert!(Working.follow_up_runs_next() && Completed.follow_up_runs_next());
+        assert!(!Error.follow_up_runs_next() && !Stopped.follow_up_runs_next() && !WaitingLead.follow_up_runs_next());
+
+        assert!(Working.is_active() && WaitingLead.is_active());
+        assert!(!Completed.is_active() && !Error.is_active() && !Stopped.is_active());
+        assert!(Working.may_still_run() && WaitingLead.may_still_run() && Stopped.may_still_run());
+        assert!(!Completed.may_still_run() && !Error.may_still_run());
+    }
+
+    /// A follow-up queued behind a turn that fails or is stopped does not
+    /// start (the turn's end does not read the queue), so the turn's own end
+    /// is what the member reads as.
+    #[tokio::test]
+    async fn a_follow_up_behind_a_failed_or_stopped_turn_leaves_its_end() {
+        for (lead, status, cancelled, expect) in [("lead-follow-up-failed", "error", false, "error"), ("lead-follow-up-stopped", "completed", true, "stopped")] {
+            let (pool, child_sid, _session, _root) = busy_member(lead).await;
+            db::save_queued_user_message(&pool, &child_sid, "[Lead]: also run the tests", Some(from_lead_extra(lead))).await.unwrap();
+            on_subagent_turn_completed(lead, &child_sid, status, "/tmp", "worker#1", &pool, cancelled, None).await;
+            assert_eq!(with_instance(lead, "worker#1", |i| i.status().as_str()), Some(expect), "{lead}");
+        }
     }
 }

@@ -83,6 +83,32 @@ enum Outcome {
     Answered,
 }
 
+/// What to do with a lead turn a restart left marked, decided from what is
+/// stored before any agent is started. Checked in this order: an open
+/// question parks it (its answer resumes the turn); a transcript that ends on
+/// a finished answer means the turn was over (a legacy build could leave its
+/// mark behind); a turn already continued [`MAX_RESUMES`] times is not
+/// continued again; anything else is continued.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Resume {
+    Park,
+    AlreadyAnswered,
+    LimitReached,
+    Continue,
+}
+
+fn resume_decision(pending_question: bool, ends_with_answer: bool, resumes: i64) -> Resume {
+    if pending_question {
+        Resume::Park
+    } else if ends_with_answer {
+        Resume::AlreadyAnswered
+    } else if resumes >= MAX_RESUMES {
+        Resume::LimitReached
+    } else {
+        Resume::Continue
+    }
+}
+
 /// Continue what the last server process left running. Call once, after
 /// [`crate::manager::init`] and once tools (MCP) are up.
 pub async fn resume_after_restart(pool: &DbPool) -> Report {
@@ -178,22 +204,27 @@ async fn resume_lead(pool: &DbPool, sid: &str, row: &db::ChatSession, resumes: i
     if let Err(e) = crate::history::heal_orphaned_tool_calls_with(pool, sid, RESTART_TOOL_RESULT).await {
         tracing::warn!("restart_resume_heal_failed session_id={} error={}", sid, e);
     }
-    if db::get_pending_question(pool, sid).await.ok().flatten().is_some() {
-        clear(pool, sid).await;
-        return Outcome::Parked;
-    }
+    let pending_question = db::get_pending_question(pool, sid).await.ok().flatten().is_some();
     // A turn that ends on a finished answer was over: an older build could
     // leave its mark behind, and running it again repeats finished work.
-    if db::transcript_ends_with_answer(pool, sid).await.unwrap_or(false) {
-        clear(pool, sid).await;
-        tracing::info!("restart_resume_skipped session_id={} reason=turn_finished", sid);
-        return Outcome::Answered;
-    }
-    if resumes >= MAX_RESUMES {
-        clear(pool, sid).await;
-        save_note(pool, sid, NOT_CONTINUED_NOTE, false).await;
-        tracing::warn!("restart_resume_skipped session_id={} reason=already_continued", sid);
-        return Outcome::NotContinued;
+    let ends_with_answer = !pending_question && db::transcript_ends_with_answer(pool, sid).await.unwrap_or(false);
+    match resume_decision(pending_question, ends_with_answer, resumes) {
+        Resume::Park => {
+            clear(pool, sid).await;
+            return Outcome::Parked;
+        }
+        Resume::AlreadyAnswered => {
+            clear(pool, sid).await;
+            tracing::info!("restart_resume_skipped session_id={} reason=turn_finished", sid);
+            return Outcome::Answered;
+        }
+        Resume::LimitReached => {
+            clear(pool, sid).await;
+            save_note(pool, sid, NOT_CONTINUED_NOTE, false).await;
+            tracing::warn!("restart_resume_skipped session_id={} reason=already_continued", sid);
+            return Outcome::NotContinued;
+        }
+        Resume::Continue => {}
     }
     let ws = if row.workspace.is_empty() { std::env::current_dir().unwrap_or_default().display().to_string() } else { row.workspace.clone() };
     let agent = match crate::manager::get_or_start_agent_session(&ws, Some(sid)).await {
@@ -251,5 +282,25 @@ async fn save_note(pool: &DbPool, sid: &str, text: &str, continued: bool) {
 async fn clear(pool: &DbPool, sid: &str) {
     if let Err(e) = db::clear_turn_in_flight(pool, sid).await {
         tracing::warn!("turn_in_flight_clear_failed session_id={} error={}", sid, e);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_marked_turn_is_parked_skipped_or_continued_in_order() {
+        use Resume::*;
+        // An open question wins: its answer resumes the turn, whatever else holds.
+        assert_eq!(resume_decision(true, true, MAX_RESUMES), Park);
+        assert_eq!(resume_decision(true, false, 0), Park);
+        // A finished answer means the turn was over, even past the limit.
+        assert_eq!(resume_decision(false, true, 0), AlreadyAnswered);
+        assert_eq!(resume_decision(false, true, MAX_RESUMES), AlreadyAnswered);
+        assert_eq!(resume_decision(false, false, MAX_RESUMES), LimitReached);
+        assert_eq!(resume_decision(false, false, MAX_RESUMES + 3), LimitReached);
+        assert_eq!(resume_decision(false, false, 0), Continue);
+        assert_eq!(MAX_RESUMES, 1, "a restart continues the same turn once");
     }
 }

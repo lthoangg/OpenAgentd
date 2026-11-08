@@ -236,8 +236,10 @@ jobs:
           ASC_API_ISSUER: ${{ secrets.ASC_API_ISSUER }}
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet --disable-pip-version-check 'pyjwt[crypto]==2.10.1'
-          python3 mobile/scripts/asc-public-beta.py \
+          # The runner's Homebrew Python refuses global installs (PEP 668).
+          python3 -m venv "$RUNNER_TEMP/asc-venv"
+          "$RUNNER_TEMP/asc-venv/bin/pip" install --quiet --disable-pip-version-check 'pyjwt[crypto]==2.10.1'
+          "$RUNNER_TEMP/asc-venv/bin/python" mobile/scripts/asc-public-beta.py \
             --key-file "$API_PRIVATE_KEYS_DIR/AuthKey_${ASC_API_KEY}.p8" \
             --version "${{ needs.build.outputs.version }}" --build "${{ github.run_number }}"
 

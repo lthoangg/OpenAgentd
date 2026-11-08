@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
 mod native_ui;
+mod push;
 mod theme;
 mod updater;
 mod widgets;
@@ -567,6 +568,8 @@ pub fn run() {
         .setup(|_app| {
             #[cfg(target_os = "ios")]
             theme::paint_launch_background(_app.handle());
+            #[cfg(target_os = "ios")]
+            push::refresh_at_launch();
             #[cfg(all(target_os = "ios", debug_assertions))]
             screenshot_mode(_app.handle());
             Ok(())
@@ -587,6 +590,8 @@ pub fn run() {
             theme::set_app_theme,
             native_ui::share_text,
             native_ui::pick_one,
+            push::push_status,
+            push::push_register,
             updater::updater_check,
             updater::updater_download,
             updater::updater_install,

@@ -8,6 +8,11 @@
 # * ios-widget/App + ios-widget/Shared compiled into the app target (the
 #   Swift bridge the Rust shell calls to store the widget snapshot);
 # * an App Group, `group.<app bundle id>`, on both, so they share storage.
+# * `aps-environment = development` on the app, so Xcode-signed builds
+#   (`make ios-dev*`, automatic signing) can register for push
+#   (`src-tauri/src/push.rs`, ios-widget/App/PushBridge.swift). Release CI
+#   archives unsigned and `sign-ipa-appstore.sh` signs with the App Store
+#   profile's entitlements (`aps-environment = production`) instead.
 #
 # `cargo tauri ios init` regenerates `src-tauri/gen/apple/` from a template,
 # so this runs after every init and before every build (see mobile/Makefile).
@@ -105,6 +110,7 @@ inserts = [
         f"      properties: {MARK}\n",
         f"        com.apple.security.application-groups: {MARK}\n",
         f"          - group.$(PRODUCT_BUNDLE_IDENTIFIER) {MARK}\n",
+        f"        aps-environment: development {MARK}\n",
     ]),
 ]
 for index, block in sorted(inserts, reverse=True):

@@ -11,6 +11,14 @@ integration for the mobile shell.
 - `src/widgets.rs`: the home-screen widget snapshot: its shape (unknown
   fields refused), limits, and the hand-off to the iOS Swift bridge
   (`../ios-widget/App/`) or the Android plugin.
+- `src/push.rs`: APNs registration (iOS only; elsewhere `unsupported`):
+  `push_status` (no prompt) and `push_register` (prompts once) resolve to
+  `{ status, registration, error? }`, where `registration` is agentd-cloud's
+  `POST /v1/push/register` body. The environment comes from the bundle's
+  `embedded.mobileprovision` (none: production), never a guess. The Swift
+  half, `../ios-widget/App/PushBridge.swift`, adds the token callbacks to
+  tao's app delegate class at runtime. Nothing is sent to a server yet;
+  release builds never log the token.
 - `src/native_ui.rs`: `share_text` (the system share sheet for a link) and
   `pick_one` (a native single-choice picker: iOS action sheet, Android
   dialog). Input is validated and bounded once, for both platforms; the iOS

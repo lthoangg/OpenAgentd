@@ -823,6 +823,32 @@ pub async fn last_assistant_content(pool: &DbPool, session_id: &str) -> Result<O
     Ok(row.and_then(|r| r.0))
 }
 
+/// `seq` of the newest assistant row, `0` when there is none: what a turn
+/// about to run comes after, for [`turn_prompt_authors`].
+pub async fn last_assistant_seq(pool: &DbPool, session_id: &str) -> Result<i64> {
+    let row: (Option<i64>,) = sqlx::query_as("SELECT MAX(seq) FROM session_messages WHERE session_id = ? AND role = 'assistant'").bind(db_id(session_id)).fetch_one(pool).await?;
+    Ok(row.0.unwrap_or(0))
+}
+
+/// Who wrote the prompts after `after_seq` (what started or steered a turn).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TurnPromptAuthors {
+    /// The user typed one. A subagent's report and a runtime note are not theirs.
+    pub user: bool,
+    /// Another workspace's agent sent one (`extra.sent_from`).
+    pub workspace_agent: bool,
+}
+
+pub async fn turn_prompt_authors(pool: &DbPool, session_id: &str, after_seq: i64) -> Result<TurnPromptAuthors> {
+    let rows = sqlx::query_as::<_, SessionMessage>("SELECT * FROM session_messages WHERE session_id = ? AND role = 'user' AND kind = 'chat' AND seq > ?")
+        .bind(db_id(session_id))
+        .bind(after_seq)
+        .fetch_all(pool)
+        .await?;
+    let sent = |r: &SessionMessage| r.extra_json().is_some_and(|e| e.get("sent_from").is_some_and(|v| !v.is_null()));
+    Ok(TurnPromptAuthors { user: rows.iter().any(SessionMessage::is_from_user), workspace_agent: rows.iter().any(sent) })
+}
+
 /// Whether the newest row by `(seq, id)` ends a turn: a chat reply from the
 /// assistant with no tool calls that was not interrupted. Any other last row
 /// (a prompt, a tool result, a pending call, a note) does not.

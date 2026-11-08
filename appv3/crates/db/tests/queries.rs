@@ -397,6 +397,39 @@ async fn undo_boundary_then_cleanup_matches_v2_semantics() {
     assert_eq!(page.len(), 2);
 }
 
+/// Who wrote into a turn: a request from another workspace's agent or a
+/// subagent's report is not the user's; a steer the user typed is.
+#[tokio::test]
+async fn turn_prompt_authors_tell_the_user_from_agents() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    assert_eq!(last_assistant_seq(&pool, &s.id).await.unwrap(), 0);
+    save_message(&pool, &s.id, NewMessage::user("mine")).await.unwrap();
+    assert_eq!(turn_prompt_authors(&pool, &s.id, 0).await.unwrap(), TurnPromptAuthors { user: true, workspace_agent: false });
+    let a1 = save_message(&pool, &s.id, NewMessage::assistant(Some("a1".into()))).await.unwrap();
+    let boundary = last_assistant_seq(&pool, &s.id).await.unwrap();
+    assert_eq!(boundary, a1.seq);
+    assert_eq!(turn_prompt_authors(&pool, &s.id, boundary).await.unwrap(), TurnPromptAuthors::default(), "nothing since");
+
+    let with = |k: &str, v: serde_json::Value| {
+        let mut e = serde_json::Map::new();
+        e.insert(k.into(), v);
+        Some(e)
+    };
+    save_message(&pool, &s.id, NewMessage { extra: with("sent_from", serde_json::json!({"session_id": "s1", "workspace": "/r/app"})), ..NewMessage::user("from app") })
+        .await
+        .unwrap();
+    save_message(&pool, &s.id, NewMessage { extra: with("from_agent", serde_json::json!("explorer#1")), ..NewMessage::user("report") }).await.unwrap();
+    save_message(&pool, &s.id, NewMessage { extra: with("hidden_from_user", serde_json::json!(true)), ..NewMessage::user("<note>") }).await.unwrap();
+    assert_eq!(turn_prompt_authors(&pool, &s.id, boundary).await.unwrap(), TurnPromptAuthors { user: false, workspace_agent: true }, "only agents and notes");
+
+    save_message(&pool, &s.id, NewMessage::user("my steer")).await.unwrap();
+    assert_eq!(turn_prompt_authors(&pool, &s.id, boundary).await.unwrap(), TurnPromptAuthors { user: true, workspace_agent: true });
+    // The user's earlier prompt, before the boundary, is not this turn's.
+    let later = save_message(&pool, &s.id, NewMessage::assistant(Some("a2".into()))).await.unwrap();
+    assert_eq!(turn_prompt_authors(&pool, &s.id, later.seq).await.unwrap(), TurnPromptAuthors::default());
+}
+
 /// A request from another workspace's agent is that agent's turn, not the
 /// user's: undo and redo step over it like a subagent's report.
 #[tokio::test]

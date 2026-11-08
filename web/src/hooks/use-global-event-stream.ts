@@ -162,10 +162,11 @@ export async function handleGlobalEvent(
 
     const before = useAgentStore.getState()
     // Subagent output surfaces through its lead, a stopped turn is the
-    // user's own doing, and an idle compaction only summarises what was
-    // already read; none has anything new to read.
+    // user's own doing, an idle compaction only summarises what was
+    // already read, and a quiet turn only agents worked in (another
+    // workspace's request) is theirs to read; none has anything new for the user.
     const shown = before.sessionId === sessionId && document.visibilityState === 'visible'
-    if (!parentSessionId && event.status !== 'stopped' && event.idle_compaction !== true && !shown) {
+    if (!parentSessionId && event.status !== 'stopped' && event.idle_compaction !== true && event.quiet !== true && !shown) {
       useUnreadStore.getState().markUnread(sessionId, { failed: event.status === 'error' })
     }
     if (before.sessionId !== sessionId) return true

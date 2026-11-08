@@ -814,6 +814,19 @@ describe('handleGlobalEvent', () => {
     expect(useUnreadStore.getState().ids).toEqual([])
   })
 
+  it('does not mark a turn only agents worked in unread, even a failed one', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+
+    for (const status of ['completed', 'error']) {
+      await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'spawned', status, quiet: true }, 1, () => 1)
+    }
+    expect(useUnreadStore.getState().ids).toEqual([])
+    // The user's own turn in that session reads as new again.
+    await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'spawned', status: 'completed' }, 1, () => 1)
+    expect(useUnreadStore.getState().ids).toEqual(['spawned'])
+  })
+
   it('invalidates parent subagents on session_turn_completed with parent_session_id', async () => {
     const client = new QueryClient()
     client.setQueryData(queryKeys.session.subagents('lead-parent'), { live_members: [] })

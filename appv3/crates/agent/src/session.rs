@@ -236,6 +236,11 @@ pub struct AgentSession {
     /// category), which a member's failure report hands to its lead.
     last_error_info: Mutex<Option<Value>>,
     pending_interaction_mode: Mutex<Option<String>>,
+    /// The session and the `seq` of its newest assistant row when the turn
+    /// now running began: prompts after it started or steered this turn (see
+    /// [`AgentSession::turn_is_quiet`]). Kept across queued activations and
+    /// question resumes, cleared when the turn closes.
+    turn_floor: Mutex<Option<(String, i64)>>,
     /// `<openagentd_memory>` as of this session's first turn. Frozen so the
     /// system prompt stays byte-identical across turns (prefix caching);
     /// pages saved mid-session show up in the next session.
@@ -294,6 +299,7 @@ impl AgentSession {
             last_error: Mutex::new(None),
             last_error_info: Mutex::new(None),
             pending_interaction_mode: Mutex::new(None),
+            turn_floor: Mutex::new(None),
             memory_snapshot: Mutex::new(None),
             idle_timer: Mutex::new(None),
             idle_compaction_delay: Mutex::new(IDLE_COMPACTION_DELAY),
@@ -1103,13 +1109,15 @@ impl AgentSession {
     async fn close_turn(&self, session_id: &str, status: &str, notify: bool, idle_compaction: bool, goal_id: Option<&str>) {
         store().push_event(session_id, &events::done(Some(json!({"session_id": session_id}))), true);
         store().mark_done(session_id);
+        let floor = self.turn_floor.lock().unwrap().take();
+        let quiet = self.parent_session_id.is_none() && self.turn_is_quiet(session_id, floor).await;
         match &self.parent_session_id {
             None => {
                 // Requests from other workspaces get their answer first; a
                 // final answer wakes the sender, whose turn notifies instead.
                 let last_error = self.last_error();
                 let replied = crate::workspace_messages::on_turn_closed(&self.pool, session_id, status, self.cancel.is_set(), last_error.as_deref()).await;
-                let label = if notify && !replied { self.notification_status(session_id, status) } else { None };
+                let label = if notify && !replied && !quiet { self.notification_status(session_id, status) } else { None };
                 // A goal's last turn says what became of the goal instead of "Done".
                 let goal = match (label, goal_id) {
                     (Some("Done"), Some(id)) => self.goal_outcome(session_id, id).await,
@@ -1139,6 +1147,9 @@ impl AgentSession {
         if idle_compaction {
             payload["idle_compaction"] = json!(true);
         }
+        if quiet {
+            payload["quiet"] = json!(true);
+        }
         // A turn can fail before any client has attached to its stream (e.g.
         // a missing provider key fails in milliseconds) and the error is not
         // persisted, so clients on the global stream get the text here.
@@ -1148,6 +1159,26 @@ impl AgentSession {
             }
         }
         broadcaster::publish("session_turn_completed", payload);
+    }
+
+    /// A turn only agents worked in: every prompt that started or steered it
+    /// came from another agent, in a session another workspace's send
+    /// started or with a request from one. It does not notify and does not
+    /// read as unread; once the user writes into a turn it notifies as usual.
+    /// Questions for the user notify on their own path either way.
+    async fn turn_is_quiet(&self, session_id: &str, floor: Option<(String, i64)>) -> bool {
+        let Some((_, seq)) = floor.filter(|(s, _)| s == session_id) else { return false };
+        let authors = match db::turn_prompt_authors(&self.pool, session_id, seq).await {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::warn!("turn_prompt_authors_failed session_id={} error={}", session_id, e);
+                return false;
+            }
+        };
+        if authors.user {
+            return false;
+        }
+        authors.workspace_agent || db::get_session(&self.pool, session_id).await.ok().flatten().is_some_and(|s| s.sent_from_session_id.is_some())
     }
 
     /// The notification status for a lead turn that just ended, or `None`
@@ -1224,6 +1255,15 @@ impl AgentSession {
         let marked_sid = sid.clone();
         if !sid.is_empty() {
             store().init_turn(&sid, true);
+        }
+        if !sid.is_empty() && self.parent_session_id.is_none() {
+            let starts = self.turn_floor.lock().unwrap().as_ref().is_none_or(|(s, _)| *s != sid);
+            if starts {
+                match db::last_assistant_seq(&self.pool, &sid).await {
+                    Ok(seq) => *self.turn_floor.lock().unwrap() = Some((sid.clone(), seq)),
+                    Err(e) => tracing::warn!("turn_floor_failed session_id={} error={}", sid, e),
+                }
+            }
         }
         // Compactions are not continued after a restart: a forced one would
         // run as an ordinary turn, and an idle one is not worth the cost.

@@ -1116,11 +1116,15 @@ impl AgentSession {
                     _ => None,
                 };
                 if let Some(label) = goal.map(notification::goal_status).or(label) {
+                    // After `done`: a first turn's notification waits for its title.
+                    crate::hooks::title::wait_for_first_title(session_id).await;
                     let mut payload = self.completion_notification(session_id, label).await;
                     if let Some(goal) = goal {
                         payload["goal"] = json!(goal);
                     }
                     broadcaster::publish("desktop_notification", payload);
+                } else {
+                    crate::hooks::title::forget_first_title(session_id);
                 }
             }
             Some(lead) => {

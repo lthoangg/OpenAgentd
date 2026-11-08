@@ -10,6 +10,7 @@ use appv3_providers::{ChatMessage, Kwargs, LlmProvider, ProviderError};
 use async_trait::async_trait;
 use regex::Regex;
 use serde_json::json;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -381,6 +382,30 @@ fn title_wait_seconds(cfg: &appv3_core::runtime_settings::TitleGenerationSetting
     cfg.wait_timeout_seconds.max(0.0)
 }
 
+/// First titles still being generated when their turn ended, by session, with
+/// how long the turn's notification may wait for them.
+type PendingTitles = Mutex<HashMap<String, (tokio::task::JoinHandle<()>, f64)>>;
+
+fn pending_titles() -> &'static PendingTitles {
+    static M: OnceLock<PendingTitles> = OnceLock::new();
+    M.get_or_init(Default::default)
+}
+
+/// Wait (up to the configured time) for a first title still being generated,
+/// so the first turn's notification names the session. Called after the turn
+/// has sent `done`: the answer never waits for its title.
+pub async fn wait_for_first_title(session_id: &str) {
+    let pending = pending_titles().lock().unwrap().remove(session_id);
+    if let Some((mut task, secs)) = pending {
+        let _ = tokio::time::timeout(Duration::from_secs_f64(secs), &mut task).await;
+    }
+}
+
+/// A turn that does not notify drops its wait; the title still lands on its own.
+pub fn forget_first_title(session_id: &str) {
+    pending_titles().lock().unwrap().remove(session_id);
+}
+
 #[async_trait]
 impl Hook for TitleGenerationHook {
     async fn before_agent(&self, ctx: &RunContext, state: &mut AgentState) {
@@ -401,13 +426,17 @@ impl Hook for TitleGenerationHook {
         *self.task.lock().unwrap() = Some(handle);
     }
 
-    async fn after_agent(&self, _ctx: &RunContext, _state: &mut AgentState, _resp: &appv3_providers::AssistantMessage) {
+    async fn after_agent(&self, ctx: &RunContext, _state: &mut AgentState, _resp: &appv3_providers::AssistantMessage) {
         let task = self.task.lock().unwrap().take();
-        let Some(mut t) = task else { return };
+        let Some(t) = task else { return };
         if t.is_finished() || self.wait_timeout <= 0.0 {
             return;
         }
-        let _ = tokio::time::timeout(Duration::from_secs_f64(self.wait_timeout), &mut t).await;
+        // Handed to the end of the turn ([`wait_for_first_title`]) rather than
+        // awaited here: waiting here held `done` back by up to the timeout.
+        if let Some(sid) = &ctx.session_id {
+            pending_titles().lock().unwrap().insert(sid.clone(), (t, self.wait_timeout));
+        }
     }
 }
 
@@ -431,6 +460,37 @@ mod tests {
         assert_eq!(with(1.5), 1.5);
         // An unset value keeps the 3 s default.
         assert_eq!(title_wait_seconds(&Default::default()), 3.0);
+    }
+
+    /// The first turn's end waited up to 3 s for its title before `done`, so
+    /// the answer looked unfinished. The turn now ends at once; only its
+    /// notification waits, after `done`.
+    #[tokio::test]
+    async fn the_first_turn_ends_without_waiting_for_its_title() {
+        use appv3_providers::mock::MockProvider;
+        let dir = tempfile::tempdir().unwrap();
+        let pool = appv3_db::create_pool(dir.path().join("oad.db")).await.unwrap();
+        // Paused after the pool opens: its connect timeout would fire at once.
+        tokio::time::pause();
+        let provider = Arc::new(MockProvider::new(vec![]));
+        let hook = TitleGenerationHook { provider, pool, wait_timeout: 3.0, task: Mutex::new(None) };
+        let sid = uuid::Uuid::now_v7().to_string();
+        *hook.task.lock().unwrap() = Some(tokio::spawn(tokio::time::sleep(Duration::from_secs(60))));
+        let ctx = RunContext { session_id: Some(sid.clone()), run_id: "run".into(), agent_name: "lead".into(), workspace: None };
+        let mut state = AgentState::new(vec![], String::new());
+
+        let start = tokio::time::Instant::now();
+        hook.after_agent(&ctx, &mut state, &appv3_providers::AssistantMessage::default()).await;
+        assert!(start.elapsed() < Duration::from_millis(10), "after_agent waited {:?}", start.elapsed());
+
+        // The notification still waits for it, up to the configured time.
+        let start = tokio::time::Instant::now();
+        wait_for_first_title(&sid).await;
+        assert_eq!(start.elapsed().as_secs(), 3);
+        // Only once: a later turn does not wait again.
+        let start = tokio::time::Instant::now();
+        wait_for_first_title(&sid).await;
+        assert!(start.elapsed() < Duration::from_millis(10));
     }
 
     #[test]

@@ -13,7 +13,14 @@ mock.module('@/lib/haptics', () => ({ haptic, outcomeHapticFeedback }))
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
-import { deliverFromComposer, pushStoppedToast, stopTurn, useReleaseHeldMessages } from '@/components/AgentChatView/heldMessages'
+import {
+  decideHeldRelease,
+  deliverFromComposer,
+  planComposerDelivery,
+  pushStoppedToast,
+  stopTurn,
+  useReleaseHeldMessages,
+} from '@/components/AgentChatView/heldMessages'
 import { useToastStore } from '@/stores/useToastStore'
 import type { InputComposerHandle } from '@/components/InputComposer'
 
@@ -434,5 +441,40 @@ describe('deliverFromComposer', () => {
     useAgentStore.setState({ sendMessage: mock(async () => false), isAgentWorking: false })
     await deliverFromComposer('/repo', composer.ref.current, { content: 'broken' }, 'steer')
     expect(outcomeHapticFeedback.mock.calls).toEqual([['error']])
+  })
+})
+
+describe('planComposerDelivery', () => {
+  it.each([
+    [true, 's1', 'after-turn', { kind: 'hold', sessionId: 's1' }],
+    [true, 's1', 'interrupt', { kind: 'stop_then_send' }],
+    [true, 's1', 'steer', { kind: 'send' }],
+    [false, 's1', 'after-turn', { kind: 'send' }],
+    [false, 's1', 'interrupt', { kind: 'send' }],
+    [true, null, 'after-turn', { kind: 'send' }],
+    [true, null, 'interrupt', { kind: 'stop_then_send' }],
+  ] as const)('working=%p session=%p %s -> %o', (working, sessionId, delivery, expected) => {
+    expect(planComposerDelivery({ working, sessionId, delivery })).toEqual(expected)
+  })
+})
+
+describe('decideHeldRelease', () => {
+  const ready = { hasTarget: true, idle: true, releasing: false, turnFailed: false, heldCount: 1, steerCount: 0 }
+
+  it('sends the next held message once the session is idle by its history', () => {
+    expect(decideHeldRelease(ready)).toEqual({ kind: 'send_next' })
+  })
+
+  it('waits without a session, while a turn may run, or while a release is in flight', () => {
+    expect(decideHeldRelease({ ...ready, hasTarget: false })).toEqual({ kind: 'wait' })
+    expect(decideHeldRelease({ ...ready, idle: false })).toEqual({ kind: 'wait' })
+    expect(decideHeldRelease({ ...ready, releasing: true })).toEqual({ kind: 'wait' })
+    expect(decideHeldRelease({ ...ready, heldCount: 0, steerCount: 2 })).toEqual({ kind: 'wait' })
+  })
+
+  it('returns held messages and steers after a failed turn instead of sending', () => {
+    expect(decideHeldRelease({ ...ready, turnFailed: true })).toEqual({ kind: 'return_to_composer' })
+    expect(decideHeldRelease({ ...ready, turnFailed: true, heldCount: 0, steerCount: 1 })).toEqual({ kind: 'return_to_composer' })
+    expect(decideHeldRelease({ ...ready, turnFailed: true, heldCount: 0 })).toEqual({ kind: 'wait' })
   })
 })

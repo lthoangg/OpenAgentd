@@ -31,7 +31,7 @@ BUNDLE_ID=$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.
 SERVER_URL=${SERVER_URL:-http://127.0.0.1:8000}
 APPEARANCES=${APPEARANCES:-light dark}
 if [ -z "${SHOTS:-}" ]; then
-  SHOTS="new=new"
+  SHOTS="sessions=session/sessions"
   for id in ${SESSIONS:-}; do SHOTS="$SHOTS chat-${id:0:8}=session/$id"; done
   SHOTS="$SHOTS scheduler=scheduler"
 fi
@@ -76,6 +76,8 @@ for entry in "${DEVICES[@]}"; do
   log "$title ($udid)"
   # A fresh boot: no system alert left over from an earlier session.
   xcrun simctl shutdown "$udid" 2>/dev/null || true
+  # Erased: no server, route or consent saved by an earlier run.
+  xcrun simctl erase "$udid"
   xcrun simctl boot "$udid"
   xcrun simctl bootstatus "$udid" -b >/dev/null
   xcrun simctl status_bar "$udid" override --time 9:41 --dataNetwork wifi --wifiMode active \
@@ -87,7 +89,7 @@ for entry in "${DEVICES[@]}"; do
   data=$(xcrun simctl get_app_container "$udid" "$BUNDLE_ID" data)
   config="$data/Library/Application Support/$BUNDLE_ID"
   mkdir -p "$config"
-  printf '{"active_base_url":"%s","servers":[{"base_url":"%s","name":"Studio Mac","enabled":true}]}\n' \
+  printf '{"active_base_url":"%s","servers":[{"base_url":"%s","name":"My Mac","enabled":true}]}\n' \
     "$SERVER_URL" "$SERVER_URL" > "$config/app-backend.json"
 
   for appearance in $APPEARANCES; do
@@ -95,14 +97,17 @@ for entry in "${DEVICES[@]}"; do
     xcrun simctl terminate "$udid" "$BUNDLE_ID" 2>/dev/null || true
     rm -f "$config/screenshot-link.txt"
     SIMCTL_CHILD_OAD_SCREENSHOT_MODE=1 xcrun simctl launch "$udid" "$BUNDLE_ID" >/dev/null
-    sleep 8  # launch, skip the consent (screenshot mode reloads once), load
+    sleep 40  # launch, skip the consent (screenshot mode reloads once), load
+    # The first link after launch leaves a blank page; send a throwaway one.
+    printf 'openagentd://new\n' > "$config/screenshot-link.txt"
+    sleep 6
     n=0
     for shot in $SHOTS; do
       name=${shot%%=*} path=${shot#*=}
       n=$((n + 1))
       # The app opens it like a tapped link (screenshot mode, debug builds).
       printf 'openagentd://%s\n' "$path" > "$config/screenshot-link.txt"
-      sleep 4
+      sleep 6
       file="$out/$appearance-$n-$name.png"
       xcrun simctl io "$udid" screenshot --type=png "$file" >/dev/null
       log "wrote mobile/$file ($(sips -g pixelWidth -g pixelHeight "$file" | awk '/pixel/{printf "%s ", $2}'))"

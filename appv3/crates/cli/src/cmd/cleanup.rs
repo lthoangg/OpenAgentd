@@ -158,7 +158,8 @@ async fn cleanup_generated_artifacts(db: &SqlitePool, db_path: &Path, older_than
     scan(s.data_dir.join(appv3_tools::denied::SESSIONS_DIR), ("expired coding session artifacts", "expired session artifacts"), "orphaned session artifacts", &mut candidates);
     scan(s.state_dir.join("snapshot"), ("expired coding session snapshots", "expired session snapshots"), "old session snapshots", &mut candidates);
 
-    for repo in child_dirs(&s.data_dir.join("worktrees")) {
+    // The current worktrees root and the pre-v3.50.0 one in the data dir.
+    for repo in s.worktree_roots().iter().flat_map(|root| child_dirs(root)) {
         for child in child_dirs(&repo) {
             if coding_workspaces.contains(&resolve(&child).display().to_string()) {
                 continue;

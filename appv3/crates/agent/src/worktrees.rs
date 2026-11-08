@@ -169,14 +169,27 @@ pub fn resolve(p: &Path) -> PathBuf {
     appv3_tools::denied::resolve(p)
 }
 
+/// The folder for `source`'s new worktrees, under [`Settings::worktrees_dir`].
 pub fn worktree_root(source: &Path, create: bool) -> PathBuf {
-    let key = hex(&sha1(source.display().to_string().as_bytes()))[..10].to_string();
-    let name = source.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let root = settings().data_dir.join("worktrees").join(format!("{name}-{key}"));
+    let root = settings().worktrees_dir.join(repo_folder(source));
     if create {
         let _ = std::fs::create_dir_all(&root);
     }
     resolve(&root)
+}
+
+/// `<repo>-<key>`: one folder per repository under a worktrees root.
+fn repo_folder(source: &Path) -> String {
+    let key = hex(&sha1(source.display().to_string().as_bytes()))[..10].to_string();
+    let name = source.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    format!("{name}-{key}")
+}
+
+/// Whether `dir` is a worktree OpenAgentd made for `source`: under its folder
+/// in the current worktrees root, or in the pre-v3.50.0 one in the data dir.
+pub fn is_managed_for(dir: &Path, source: &Path) -> bool {
+    let folder = repo_folder(source);
+    settings().worktree_roots().iter().any(|root| has_ancestor(dir, &resolve(&root.join(&folder))))
 }
 
 fn hex(b: &[u8]) -> String {
@@ -331,15 +344,14 @@ pub async fn placement(directory: &Path) -> Placement {
     if source == resolved {
         return Placement::Repo;
     }
-    let managed = has_ancestor(&resolved, &worktree_root(&source, false));
+    let managed = is_managed_for(&resolved, &source);
     Placement::Worktree { source: source_str, managed }
 }
 
 /// The repository of a worktree OpenAgentd created under its data folder.
 pub async fn find_managed_worktree_source(directory: &Path) -> Option<String> {
     let resolved = canonical(directory);
-    let data_root = resolve(&settings().data_dir.join("worktrees"));
-    if !has_ancestor(&resolved, &data_root) {
+    if !settings().worktree_roots().iter().any(|root| has_ancestor(&resolved, &resolve(root))) {
         return None;
     }
     match placement(&resolved).await {

@@ -2793,6 +2793,11 @@ agent against it.
   list existing worktrees, edit sidebar titles without renaming git directories,
   and remove OpenAgentd-managed worktrees. Removing a worktree asks for confirmation
   first, warning that uncommitted changes will be lost `[v1.101.0]`.
+  Since `[v3.50.0]` new worktrees go to `~/.openagentd/worktrees/<repo>-<key>/<name>`
+  (`OPENAGENTD_WORKTREES_DIR` moves them) instead of the data folder, which
+  agents may not read, so a lead can read the worktree it sent work to.
+  Worktrees made before stay where they are and are still managed and cleaned
+  up.
   Since `[v3.1.0]` these actions live in the repository's checkout menu (see
   **Compact coding sidebar**), where **New worktree…**, **Rename** and
   **Remove** act on the worktree the list is narrowed to.

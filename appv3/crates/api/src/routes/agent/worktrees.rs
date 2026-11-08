@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use appv3_agent::worktrees as wt;
 pub use appv3_agent::worktrees::{
-    canonical, find_managed_worktree_source, has_ancestor, list_entries as git_list_entries, worktree_root, GitError, GitOut, WorktreeInfo, OWN_BRANCH_PREFIXES,
+    canonical, find_managed_worktree_source, has_ancestor, is_managed_for, list_entries as git_list_entries, worktree_root, GitError, GitOut, WorktreeInfo, OWN_BRANCH_PREFIXES,
 };
 
 impl From<GitError> for ApiError {
@@ -55,7 +55,6 @@ async fn list_worktrees(q: Qs) -> ApiResult<Response> {
     let source = validated_source(&q.req("source_workspace")?)?;
     require_git_repo(&source).await?;
     let source_real = resolve(&source);
-    let root = worktree_root(&source, true);
     let mut out = vec![];
     for (dir, branch) in list_entries(&source).await? {
         if dir.is_empty() || resolve(Path::new(&dir)) == source_real {
@@ -66,7 +65,7 @@ async fn list_worktrees(q: Qs) -> ApiResult<Response> {
             "name": r.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
             "directory": r.display().to_string(),
             "branch": branch,
-            "managed": has_ancestor(&r, &root),
+            "managed": is_managed_for(&r, &source),
         }));
     }
     Ok(json(Value::Array(out)))
@@ -105,8 +104,7 @@ async fn remove_worktree(State(st): State<AppState>, raw: Bytes) -> ApiResult<Re
     let source = validated_source(&src)?;
     require_git_repo(&source).await?;
     let directory = canonical(Path::new(&dir));
-    let root = worktree_root(&source, true);
-    if !has_ancestor(&directory, &root) {
+    if !is_managed_for(&directory, &source) {
         return Err(ApiError::new(403, "Only OpenAgentd-managed worktrees can be removed."));
     }
     let target = resolve(&directory);

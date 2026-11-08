@@ -31,6 +31,8 @@ fn setup_roots(root: &Path) {
         ("OPENAGENTD_STATE_DIR", "state"),
         ("OPENAGENTD_CACHE_DIR", "cache"),
         ("OPENAGENTD_WORKSPACE_DIR", "ws"),
+        // Apart from the data dir, as for the installed app (`~/.openagentd/worktrees`).
+        ("OPENAGENTD_WORKTREES_DIR", "worktrees"),
     ] {
         std::env::set_var(k, root.join(d));
     }
@@ -154,6 +156,7 @@ async fn worktrees_file_under_their_repo_and_leads_open_them() {
         let dir = appv3_db::list_visible_coding_workspaces(&pool).await.unwrap().into_iter().find(|r| r.name.as_deref() == Some(feature)).expect("registered");
         assert_eq!((dir.kind.as_str(), dir.source_path.as_deref(), dir.managed), ("worktree", Some(app_ws.as_str()), true));
         assert_eq!(git(Path::new(&dir.path), &["rev-parse", "--abbrev-ref", "HEAD"]), format!("oad/{feature}"));
+        assert!(Path::new(&dir.path).starts_with(wt::resolve(&root.join("worktrees"))), "new worktrees go to the worktrees dir: {}", dir.path);
         let sid = appv3_db::list_sessions_page(&pool, None, 5, &appv3_db::SessionListFilter { workspaces: std::slice::from_ref(&dir.path), ..Default::default() })
             .await
             .unwrap()
@@ -189,6 +192,16 @@ async fn worktrees_file_under_their_repo_and_leads_open_them() {
     wait_turn(&auth_ws, &auth_sid).await;
     let worktrees = git(&app, &["worktree", "list", "--porcelain"]);
     assert_eq!(worktrees.matches("\nworktree ").count() + 1, 4, "main, app-fix, auth and billing only: {worktrees}");
+
+    // ── a worktree made before v3.50.0, under the data dir ──────────────
+    // It stays where it is and is still one OpenAgentd manages.
+    let folder = wt::worktree_root(Path::new(&app_ws), false).file_name().unwrap().to_owned();
+    let legacy = root.join("data").join("worktrees").join(folder).join("old");
+    std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+    git(&app, &["worktree", "add", "-q", "-b", "oad/old", legacy.to_str().unwrap()]);
+    assert_eq!(wt::placement(&legacy).await, Placement::Worktree { source: app_ws.clone(), managed: true });
+    assert_eq!(wt::find_managed_worktree_source(&legacy).await.as_deref(), Some(app_ws.as_str()));
+    git(&app, &["worktree", "remove", "--force", legacy.to_str().unwrap()]);
 
     // ── a worktree session reaches the main checkout ────────────────────
     let wt_tool = WorkspaceTool::new(fix_sid.clone(), pool.clone());

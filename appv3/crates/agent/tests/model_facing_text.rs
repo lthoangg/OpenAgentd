@@ -162,7 +162,9 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// links instead of code spans, so they open in the viewer from the transcript.
 /// Raised by 590 for the `workspace` tool's `worktree` argument and the
 /// Delegating rule to give each independent feature its own worktree.
-const LEAD_ALWAYS_ON_CHARS: usize = 39_721;
+/// Raised by 62 for the `workspace` tool to say a reply may be a question to
+/// answer with a follow-up (the other session's user is not there to ask).
+const LEAD_ALWAYS_ON_CHARS: usize = 39_783;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

@@ -363,6 +363,9 @@ pub async fn send(pool: &DbPool, req: SendRequest) -> Result<Sent, String> {
     sent_from.insert("session_title".into(), json!(source_row.as_ref().and_then(|r| r.title.clone())));
     sent_from.insert("reply".into(), json!(req.reply));
     sent_from.insert("hops".into(), json!(hops));
+    // `v: 2`: the request's header says to ask this agent, not the user
+    // (`history::workspace_message_header`).
+    sent_from.insert("v".into(), json!(2));
     let mut extra = Map::new();
     extra.insert("sent_from".into(), Value::Object(sent_from));
 

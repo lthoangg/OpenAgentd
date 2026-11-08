@@ -2537,8 +2537,12 @@ executes tools, manages its task list, and inspects workspace repositories.
   - Since `[v3.50.0]` a turn only agents worked in (another workspace's
     request, with nothing you typed into it) sends no Done or Failed
     notification and does not mark the session unread. A turn you start or
-    steer in that session notifies as usual, and a question for you always
-    does.
+    steer in that session notifies as usual.
+    In such a turn the agent's `ask_user` does not reach you either, since
+    you are not following it: the agent is told to end with its question,
+    which goes back to the sending agent to answer with a follow-up, or,
+    when no reply was asked for, to decide and state its assumptions. Once
+    you write into the turn, its questions reach you as usual.
 
   When the session it continues is busy, `delivery` picks how the message lands,
   the same three ways you can send while a turn runs `[v3.35.0]`:

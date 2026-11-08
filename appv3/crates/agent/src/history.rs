@@ -239,10 +239,14 @@ fn workspace_message_header(extra: &serde_json::Map<String, Value>) -> Option<St
     }
     let Some(Value::Object(f)) = extra.get("sent_from") else { return None };
     let reply = f.get("reply").is_some_and(crate::util::truthy);
-    let tail = if reply {
-        "Your final answer is delivered back to it automatically, so end with a self-contained summary; do not call `workspace` to reply."
-    } else {
-        "No reply is expected."
+    // Requests saved since v3.50.0 (`v: 2`) also say how to get a decision;
+    // older rows keep their text, so their sessions keep their prompt cache.
+    let asks_sender = f.get("v").and_then(Value::as_i64).is_some_and(|v| v >= 2);
+    let tail = match (reply, asks_sender) {
+        (true, false) => "Your final answer is delivered back to it automatically, so end with a self-contained summary; do not call `workspace` to reply.",
+        (true, true) => "The user is not following this session: if you need a decision, end with the question as your final answer, and that agent answers with a follow-up here. Your final answer is delivered back to it automatically, so otherwise end with a self-contained summary; do not call `workspace` to reply.",
+        (false, false) => "No reply is expected.",
+        (false, true) => "No reply is expected. The user is not following this session: decide on reasonable assumptions and state them in your answer.",
     };
     // Written once when the request is saved, so a row renders the same forever.
     let stopped = if f.get("stopped_turn").is_some_and(crate::util::truthy) { " It stopped your previous turn to send this." } else { "" };
@@ -486,6 +490,24 @@ mod tests {
         let c = user_with(json!({"from_agent": "infra", "reply_from": {"session_id": "s2", "workspace": "/r/infra", "workspace_name": "infra", "status": "error"}}));
         assert!(c.starts_with("[Status update from"), "{c}");
         assert_eq!(user_with(json!({"from_agent": "explorer#1"})), "[explorer#1]:\ndo it");
+    }
+
+    /// A request saved since v3.50.0 (`v: 2`) says how to get a decision: the
+    /// user is not there to ask. Older rows render exactly as before, so their
+    /// sessions keep their prompt cache.
+    #[test]
+    fn a_new_request_says_to_ask_the_sender_and_an_old_one_is_unchanged() {
+        let old = |reply: bool| user_with(json!({"sent_from": {"session_id": "s1", "workspace": "/r/app", "workspace_name": "app", "reply": reply}}));
+        let new = |reply: bool| user_with(json!({"sent_from": {"session_id": "s1", "workspace": "/r/app", "workspace_name": "app", "reply": reply, "v": 2}}));
+        assert_eq!(
+            old(true),
+            "[Message from the agent in workspace 'app' (/r/app), session s1. Its files are readable by absolute path. Your final answer is delivered back to it automatically, so end with a self-contained summary; do not call `workspace` to reply.]\ndo it"
+        );
+        assert_eq!(old(false), "[Message from the agent in workspace 'app' (/r/app), session s1. Its files are readable by absolute path. No reply is expected.]\ndo it");
+        let c = new(true);
+        assert!(c.contains("The user is not following this session") && c.contains("end with the question as your final answer"), "{c}");
+        let c = new(false);
+        assert!(c.contains("No reply is expected.") && c.contains("decide on reasonable assumptions and state them"), "{c}");
     }
 
     /// A request's header is fixed when it is saved: fields stamped later

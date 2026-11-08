@@ -264,6 +264,29 @@ pub struct AgentSession {
     me: Weak<AgentSession>,
 }
 
+/// Turn metadata key: the `seq` of the newest assistant row when the turn
+/// began (a lead's turn only), for [`agent_only_since`].
+pub const TURN_FLOOR_META: &str = "turn_floor_seq";
+
+/// Whether only agents worked in the turn whose prompts come after
+/// `after_seq`: nothing the user typed, in a session another workspace's
+/// send started or with a request from one. Such a turn does not notify
+/// (see `close_turn`), and `ask_user` sends its question back to the agent
+/// that sent the request instead of to the user, who is not following it.
+pub async fn agent_only_since(pool: &DbPool, session_id: &str, after_seq: i64) -> bool {
+    let authors = match db::turn_prompt_authors(pool, session_id, after_seq).await {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::warn!("turn_prompt_authors_failed session_id={} error={}", session_id, e);
+            return false;
+        }
+    };
+    if authors.user {
+        return false;
+    }
+    authors.workspace_agent || db::get_session(pool, session_id).await.ok().flatten().is_some_and(|s| s.sent_from_session_id.is_some())
+}
+
 /// A stopped turn that has not ended this long after Stop is force-ended:
 /// its remaining work (a hook or checkpoint that never returns) is dropped
 /// so the session cannot stay busy forever.
@@ -1161,20 +1184,11 @@ impl AgentSession {
     /// came from another agent, in a session another workspace's send
     /// started or with a request from one. It does not notify and does not
     /// read as unread; once the user writes into a turn it notifies as usual.
-    /// Questions for the user notify on their own path either way.
+    /// Its `ask_user` goes back to the sending agent instead (see
+    /// [`agent_only_since`]).
     async fn turn_is_quiet(&self, session_id: &str, floor: Option<(String, i64)>) -> bool {
         let Some((_, seq)) = floor.filter(|(s, _)| s == session_id) else { return false };
-        let authors = match db::turn_prompt_authors(&self.pool, session_id, seq).await {
-            Ok(a) => a,
-            Err(e) => {
-                tracing::warn!("turn_prompt_authors_failed session_id={} error={}", session_id, e);
-                return false;
-            }
-        };
-        if authors.user {
-            return false;
-        }
-        authors.workspace_agent || db::get_session(&self.pool, session_id).await.ok().flatten().is_some_and(|s| s.sent_from_session_id.is_some())
+        agent_only_since(&self.pool, session_id, seq).await
     }
 
     /// The notification status for a lead turn that just ended, or `None`
@@ -1558,6 +1572,10 @@ impl AgentSession {
         let mut meta = Map::new();
         meta.insert("session_id".into(), json!(sid));
         meta.insert("interaction_mode".into(), json!(interaction));
+        // Where this turn's prompts begin, for `ask_user` (see [`agent_only_since`]).
+        if let Some((_, seq)) = self.turn_floor.lock().unwrap().as_ref().filter(|(s, _)| *s == sid) {
+            meta.insert(TURN_FLOOR_META.into(), json!(seq));
+        }
         if let Some(t) = thinking_level.filter(|t| !t.is_empty()) {
             meta.insert("thinking_level".into(), json!(t));
         }

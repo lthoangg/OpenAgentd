@@ -1,8 +1,9 @@
 //! A turn only agents worked in stays quiet: a session another workspace's
 //! send started runs its request without a "Done" notification and with
 //! `quiet` on `session_turn_completed`, so clients do not mark it unread.
-//! Once the user writes into a turn, it notifies as usual, and a question
-//! for the user always does.
+//! Once the user writes into a turn, it notifies as usual. In a turn only
+//! agents worked in, `ask_user` does not reach the user, who is not
+//! following it: the agent is told to ask the sending agent instead.
 
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::session::{AgentSession, UserMessage};
@@ -66,8 +67,13 @@ async fn an_agent_only_turn_is_quiet_and_the_users_own_turn_notifies() {
     let sid = sid.to_string();
 
     let ask = r#"{"questions":[{"question":"Which region?","header":"Region"}]}"#;
-    let provider: Arc<dyn LlmProvider> =
-        Arc::new(MockProvider::new(vec![MockProvider::text("Queue created."), MockProvider::text("Renamed it."), MockProvider::tool_call("q1", "ask_user", ask)]));
+    let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::new(vec![
+        MockProvider::text("Queue created."),
+        MockProvider::text("Renamed it."),
+        MockProvider::tool_call("q1", "ask_user", ask),
+        MockProvider::text("Assumed us-east-1."),
+        MockProvider::tool_call("q2", "ask_user", ask),
+    ]));
     let p2 = provider.clone();
     let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
     let ask_user = AskUserTool { session_id: sid.clone(), pool: pool.clone(), agent_name: "code".into() };
@@ -92,8 +98,23 @@ async fn an_agent_only_turn_is_quiet_and_the_users_own_turn_notifies() {
     assert!(completed.get("quiet").is_none(), "{completed}");
     assert!(notified, "the user's turn notifies");
 
-    // An agent-only turn that needs the user still says so.
+    // An agent-only turn: the question goes back as guidance, not to the user.
     session.handle_user_message(request("Add a dead-letter queue.")).await.unwrap();
+    session.wait_turn_finished().await;
+    let (_, notified) = turn_end(&mut global, &sid).await;
+    assert!(!notified, "no question reaches the user");
+    assert!(appv3_db::get_pending_question(&pool, &sid).await.unwrap().is_none());
+    let results: Vec<(Option<String>,)> = sqlx::query_as("SELECT content FROM session_messages WHERE session_id = ? AND role = 'tool' ORDER BY seq")
+        .bind(appv3_db::codec::db_id(&sid))
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    let guidance = results.last().and_then(|r| r.0.clone()).unwrap_or_default();
+    assert!(guidance.contains("The user is not following this session") && guidance.contains("'app'"), "{guidance}");
+    assert!(guidance.contains("No reply was asked for"), "reply=false: decide and state assumptions: {guidance}");
+
+    // The user writes in: their turn's question reaches them.
+    session.handle_user_message(UserMessage { content: "Which region should it use?".into(), session_id: sid.clone(), origin: "user".into(), ..Default::default() }).await.unwrap();
     let mut asked = None;
     while let Ok(Some(e)) = tokio::time::timeout(Duration::from_secs(5), global.next()).await {
         if e.event == "desktop_notification" && e.data.contains(&sid) {
@@ -102,4 +123,5 @@ async fn an_agent_only_turn_is_quiet_and_the_users_own_turn_notifies() {
         }
     }
     assert_eq!(asked.expect("a question notifies")["kind"], "input_needed");
+    assert!(appv3_db::get_pending_question(&pool, &sid).await.unwrap().is_some());
 }

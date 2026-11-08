@@ -84,7 +84,6 @@ export async function updateSummarizationSettings(
 export type TitleGenerationSettings = {
   enabled: boolean
   model: string
-  wait_timeout_seconds: number
   /** Retitle the session from its summary after each compaction (v3 only). */
   update_after_compaction: boolean
 }
@@ -95,8 +94,7 @@ export async function getTitleGenerationSettings(): Promise<TitleGenerationSetti
   return res.json()
 }
 
-/** The UI does not edit the title wait; the server keeps it when omitted. */
-export type TitleGenerationUpdate = Omit<TitleGenerationSettings, 'wait_timeout_seconds'>
+export type TitleGenerationUpdate = TitleGenerationSettings
 
 export async function updateTitleGenerationSettings(
   body: TitleGenerationUpdate,

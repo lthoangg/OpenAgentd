@@ -35,7 +35,6 @@ let originalFetch: typeof fetch | undefined
 const TITLES = {
   enabled: true,
   model: 'codex:gpt-5.5-mini',
-  wait_timeout_seconds: 3,
   update_after_compaction: false,
 }
 
@@ -216,9 +215,7 @@ describe('TitlesSettingsPage', () => {
     fireEvent.click(toggle)
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
 
-    const { wait_timeout_seconds: _wait, ...rest } = TITLES
-    // The wait is not sent: the server keeps the value in the YAML.
-    await waitFor(() => expect(bodies).toEqual([{ ...rest, update_after_compaction: true }]))
+    await waitFor(() => expect(bodies).toEqual([{ ...TITLES, update_after_compaction: true }]))
   })
 })
 

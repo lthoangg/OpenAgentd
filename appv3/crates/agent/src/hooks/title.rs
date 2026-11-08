@@ -10,8 +10,7 @@ use appv3_providers::{ChatMessage, Kwargs, LlmProvider, ProviderError};
 use async_trait::async_trait;
 use regex::Regex;
 use serde_json::json;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 const MAX_CONTENT_CHARS: usize = 500;
@@ -315,8 +314,6 @@ async fn generate_inner(span: &Span, source: TitleSource, session_id: String, us
 pub struct TitleGenerationHook {
     provider: Arc<dyn LlmProvider>,
     pool: DbPool,
-    wait_timeout: f64,
-    task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 /// The title settings when titling is on (`None` when off or unreadable).
@@ -361,7 +358,7 @@ fn resolve_title_provider(default_provider: Arc<dyn LlmProvider>, cfg: &appv3_co
 pub fn build_title_generation_hook(default_provider: Arc<dyn LlmProvider>, pool: DbPool, pin: Option<&str>) -> Option<TitleGenerationHook> {
     let cfg = enabled_title_settings()?;
     let provider = resolve_title_provider(default_provider, &cfg, pin)?;
-    Some(TitleGenerationHook { provider, pool, wait_timeout: title_wait_seconds(&cfg), task: Mutex::new(None) })
+    Some(TitleGenerationHook { provider, pool })
 }
 
 /// The summarization hook's callback that retitles the session from each
@@ -373,37 +370,6 @@ pub fn build_summary_retitle(default_provider: Arc<dyn LlmProvider>, pool: DbPoo
     Some(Arc::new(move |session_id: &str, summary: &str, latest_prompt: Option<&str>| {
         otel::spawn(retitle_from_summary(session_id.to_string(), summary.to_string(), latest_prompt.map(String::from), provider.clone(), pool.clone()));
     }))
-}
-
-/// How long the end of the first turn waits for its title. `0` (or anything
-/// not positive) turns the wait off: the title then arrives on its own as a
-/// `title_update`. An unset value is already the 3 s default from settings.
-fn title_wait_seconds(cfg: &appv3_core::runtime_settings::TitleGenerationSettings) -> f64 {
-    cfg.wait_timeout_seconds.max(0.0)
-}
-
-/// First titles still being generated when their turn ended, by session, with
-/// how long the turn's notification may wait for them.
-type PendingTitles = Mutex<HashMap<String, (tokio::task::JoinHandle<()>, f64)>>;
-
-fn pending_titles() -> &'static PendingTitles {
-    static M: OnceLock<PendingTitles> = OnceLock::new();
-    M.get_or_init(Default::default)
-}
-
-/// Wait (up to the configured time) for a first title still being generated,
-/// so the first turn's notification names the session. Called after the turn
-/// has sent `done`: the answer never waits for its title.
-pub async fn wait_for_first_title(session_id: &str) {
-    let pending = pending_titles().lock().unwrap().remove(session_id);
-    if let Some((mut task, secs)) = pending {
-        let _ = tokio::time::timeout(Duration::from_secs_f64(secs), &mut task).await;
-    }
-}
-
-/// A turn that does not notify drops its wait; the title still lands on its own.
-pub fn forget_first_title(session_id: &str) {
-    pending_titles().lock().unwrap().remove(session_id);
 }
 
 #[async_trait]
@@ -422,21 +388,8 @@ impl Hook for TitleGenerationHook {
         if text.starts_with("[Scheduled Task:") || should_skip(&text) {
             return;
         }
-        let handle = otel::spawn(generate_and_save_title(sid, text, self.provider.clone(), self.pool.clone()));
-        *self.task.lock().unwrap() = Some(handle);
-    }
-
-    async fn after_agent(&self, ctx: &RunContext, _state: &mut AgentState, _resp: &appv3_providers::AssistantMessage) {
-        let task = self.task.lock().unwrap().take();
-        let Some(t) = task else { return };
-        if t.is_finished() || self.wait_timeout <= 0.0 {
-            return;
-        }
-        // Handed to the end of the turn ([`wait_for_first_title`]) rather than
-        // awaited here: waiting here held `done` back by up to the timeout.
-        if let Some(sid) = &ctx.session_id {
-            pending_titles().lock().unwrap().insert(sid.clone(), (t, self.wait_timeout));
-        }
+        // Nothing waits for it: the title lands on its own as `title_update`.
+        otel::spawn(generate_and_save_title(sid, text, self.provider.clone(), self.pool.clone()));
     }
 }
 
@@ -449,48 +402,6 @@ mod tests {
         let kw = title_model_kwargs(Some("work"));
         assert_eq!(kw.get(appv3_providers::pool::PIN_KWARG), Some(&json!("work")));
         assert!(title_model_kwargs(None).is_empty());
-    }
-
-    #[test]
-    fn zero_wait_timeout_turns_the_wait_off() {
-        let with = |secs: f64| title_wait_seconds(&appv3_core::runtime_settings::TitleGenerationSettings { wait_timeout_seconds: secs, ..Default::default() });
-        assert_eq!(with(0.0), 0.0);
-        assert_eq!(with(-2.0), 0.0);
-        assert_eq!(with(f64::NAN), 0.0);
-        assert_eq!(with(1.5), 1.5);
-        // An unset value keeps the 3 s default.
-        assert_eq!(title_wait_seconds(&Default::default()), 3.0);
-    }
-
-    /// The first turn's end waited up to 3 s for its title before `done`, so
-    /// the answer looked unfinished. The turn now ends at once; only its
-    /// notification waits, after `done`.
-    #[tokio::test]
-    async fn the_first_turn_ends_without_waiting_for_its_title() {
-        use appv3_providers::mock::MockProvider;
-        let dir = tempfile::tempdir().unwrap();
-        let pool = appv3_db::create_pool(dir.path().join("oad.db")).await.unwrap();
-        // Paused after the pool opens: its connect timeout would fire at once.
-        tokio::time::pause();
-        let provider = Arc::new(MockProvider::new(vec![]));
-        let hook = TitleGenerationHook { provider, pool, wait_timeout: 3.0, task: Mutex::new(None) };
-        let sid = uuid::Uuid::now_v7().to_string();
-        *hook.task.lock().unwrap() = Some(tokio::spawn(tokio::time::sleep(Duration::from_secs(60))));
-        let ctx = RunContext { session_id: Some(sid.clone()), run_id: "run".into(), agent_name: "lead".into(), workspace: None };
-        let mut state = AgentState::new(vec![], String::new());
-
-        let start = tokio::time::Instant::now();
-        hook.after_agent(&ctx, &mut state, &appv3_providers::AssistantMessage::default()).await;
-        assert!(start.elapsed() < Duration::from_millis(10), "after_agent waited {:?}", start.elapsed());
-
-        // The notification still waits for it, up to the configured time.
-        let start = tokio::time::Instant::now();
-        wait_for_first_title(&sid).await;
-        assert_eq!(start.elapsed().as_secs(), 3);
-        // Only once: a later turn does not wait again.
-        let start = tokio::time::Instant::now();
-        wait_for_first_title(&sid).await;
-        assert!(start.elapsed() < Duration::from_millis(10));
     }
 
     #[test]
@@ -568,7 +479,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let pool = appv3_db::create_pool(dir.path().join("oad.db")).await.unwrap();
         let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Site update for v3.30")]));
-        let hook = TitleGenerationHook { provider: provider.clone(), pool, wait_timeout: 1.0, task: Mutex::new(None) };
+        let hook = TitleGenerationHook { provider: provider.clone(), pool };
 
         let mut sent = ChatMessage::user("Update the site for the v3.30 release.");
         let mut extra = serde_json::Map::new();
@@ -584,8 +495,14 @@ mod tests {
         let ctx = RunContext { session_id: Some(uuid::Uuid::now_v7().to_string()), run_id: "run".into(), agent_name: "lead".into(), workspace: None };
 
         hook.before_agent(&ctx, &mut state).await;
-        let task = hook.task.lock().unwrap().take().expect("titling started");
-        task.await.unwrap();
+        // Titling runs in the background; wait for its model call.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while provider.calls.lock().unwrap().is_empty() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("titling started");
         let request = provider.calls.lock().unwrap()[0].0.last().unwrap().content().unwrap().to_string();
         assert!(request.contains("<message>\nUpdate the site for the v3.30 release.\n</message>"), "{request}");
     }

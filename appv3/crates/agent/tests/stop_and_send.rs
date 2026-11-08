@@ -186,7 +186,14 @@ async fn wait_for_stop_reports_whether_the_turn_ended() {
     h.start_build().await;
 
     assert!(h.session.handle_stop().await);
+    assert_eq!(h.session.state(), "idle", "Stop changes the display before the task has drained");
+    assert!(h.session.is_busy(), "the stopped task still owns execution");
+    assert!(h.session.has_active_user_turn());
+    assert!(h.session.is_stopping());
     assert!(!h.session.wait_for_stop(Duration::from_millis(50)).await, "the turn ended before its tool wound down");
     assert!(h.session.wait_for_stop(Duration::from_secs(5)).await);
     assert!(!h.session.is_stopping());
+    assert!(!h.session.is_busy());
+    assert!(!h.session.has_active_user_turn());
+    assert!(h.session.is_cancelled(), "cancellation may remain set after ownership is released");
 }

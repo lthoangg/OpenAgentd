@@ -1,5 +1,8 @@
 //! Single-agent session runtime — port of `app/agent/session.py`.
 
+mod control;
+
+use self::control::{ControlState, SessionStatus, Transition, TurnExit, TurnWork};
 use crate::agent::{Agent, RunOptions};
 use crate::broadcaster;
 use crate::checkpointer::Checkpointer;
@@ -133,6 +136,12 @@ pub struct TurnOptions {
     pub restart_resume: bool,
 }
 
+impl TurnOptions {
+    fn work(&self) -> TurnWork {
+        TurnWork::from_compaction(self.force_compaction, self.idle_compaction)
+    }
+}
+
 /// `handle_user_message` arguments.
 #[derive(Default, Clone)]
 pub struct UserMessage {
@@ -209,12 +218,11 @@ pub struct AgentSession {
     pub pool: DbPool,
     pub provider_factory: ProviderFactory,
     pub parent_session_id: Option<String>,
-    state: Mutex<String>,
+    control: Mutex<ControlState>,
     cancel: Event,
     hard_cancel: Event,
     pub user_message_lock: tokio::sync::Mutex<()>,
     command_lock: tokio::sync::Mutex<()>,
-    has_active_turn: AtomicBool,
     /// When a turn last started or ended; the manager counts idle time
     /// from here as well as from the last lookup.
     last_turn_activity: Mutex<std::time::Instant>,
@@ -272,12 +280,11 @@ impl AgentSession {
             pool,
             provider_factory,
             parent_session_id,
-            state: Mutex::new("idle".into()),
+            control: Mutex::new(ControlState::default()),
             cancel: Event::new(),
             hard_cancel: Event::new(),
             user_message_lock: tokio::sync::Mutex::new(()),
             command_lock: tokio::sync::Mutex::new(()),
-            has_active_turn: AtomicBool::new(false),
             last_turn_activity: Mutex::new(std::time::Instant::now()),
             active_task: Mutex::new(None),
             turn_generation: tokio::sync::watch::channel(0).0,
@@ -419,10 +426,42 @@ impl AgentSession {
         self.workspace.lock().unwrap().clone()
     }
     pub fn state(&self) -> String {
-        self.state.lock().unwrap().clone()
+        self.status().as_str().to_string()
     }
+
+    fn status(&self) -> SessionStatus {
+        self.control.lock().unwrap().status()
+    }
+
+    fn owns_turn(&self) -> bool {
+        self.control.lock().unwrap().owns_turn()
+    }
+
+    fn transition(&self, event: Transition) {
+        let (from, to, owns_turn) = {
+            let mut control = self.control.lock().unwrap();
+            let from = control.status();
+            control.apply(event);
+            (from, control.status(), control.owns_turn())
+        };
+        if event.touches_turn_activity() {
+            *self.last_turn_activity.lock().unwrap() = std::time::Instant::now();
+            self.turn_generation.send_modify(|generation| *generation += 1);
+        }
+        tracing::debug!(session_id = %self.session_id(), ?event, from = from.as_str(), to = to.as_str(), owns_turn, "session_transition");
+    }
+
+    #[cfg(test)]
     pub(crate) fn set_state(&self, s: &str) {
-        *self.state.lock().unwrap() = s.to_string();
+        self.transition(match s {
+            "idle" => Transition::BecomeIdle,
+            "working" => Transition::StartTurn,
+            "waiting_input" => Transition::WaitForQuestion,
+            "waiting_lead" => Transition::WaitForLead,
+            "error" => Transition::FailTurn,
+            "offline" => Transition::GoOffline,
+            _ => panic!("unknown test session state: {s}"),
+        });
     }
     pub fn last_error(&self) -> Option<String> {
         self.last_error.lock().unwrap().clone()
@@ -434,14 +473,13 @@ impl AgentSession {
         self.lead_suspended.lock().unwrap().clone()
     }
     pub fn is_busy(&self) -> bool {
-        let s = self.state();
-        s == "working" || s == "waiting_input" || self.has_active_turn.load(Ordering::SeqCst)
+        self.control.lock().unwrap().is_busy()
     }
     pub fn has_active_user_turn(&self) -> bool {
-        self.has_active_turn.load(Ordering::SeqCst) || self.is_busy()
+        self.is_busy()
     }
     pub fn is_awaiting_question_answer(&self) -> bool {
-        self.state() == "waiting_input"
+        self.status() == SessionStatus::WaitingInput
     }
     pub fn pending_interaction_mode(&self) -> Option<String> {
         self.pending_interaction_mode.lock().unwrap().clone()
@@ -464,7 +502,7 @@ impl AgentSession {
     /// Resolve when the current turn's task (and any chained queued activation) finishes.
     pub async fn wait_turn_finished(&self) {
         let mut rx = self.turn_generation.subscribe();
-        while self.has_active_turn.load(Ordering::SeqCst) {
+        while self.owns_turn() {
             if rx.changed().await.is_err() {
                 return;
             }
@@ -475,7 +513,7 @@ impl AgentSession {
     /// cancelled tool can take seconds to drain and reap). `cancel` stays set
     /// after the turn ends, so the active turn is what marks the stop pending.
     pub fn is_stopping(&self) -> bool {
-        self.cancel.is_set() && self.has_active_turn.load(Ordering::SeqCst)
+        self.control.lock().unwrap().is_stopping(self.cancel.is_set())
     }
 
     /// Wait up to `limit` for the current turn to end; `true` when none is active.
@@ -490,12 +528,6 @@ impl AgentSession {
     fn clear_cancel(&self) {
         self.cancel.clear();
         self.hard_cancel.clear();
-    }
-
-    fn set_active_turn(&self, v: bool) {
-        self.has_active_turn.store(v, Ordering::SeqCst);
-        *self.last_turn_activity.lock().unwrap() = std::time::Instant::now();
-        self.turn_generation.send_modify(|g| *g += 1);
     }
 
     /// When a turn last started or ended (session creation before any turn).
@@ -629,9 +661,9 @@ impl AgentSession {
         }
         tracing::info!("idle_compaction_started session_id={} tokens={} threshold={} percent={}", sid, tokens, threshold, percent);
         store().init_turn(&sid, true);
-        self.set_state("working");
+        self.transition(Transition::StartTurn);
         self.clear_cancel();
-        self.set_active_turn(true);
+        self.transition(Transition::ClaimTurn);
         self.spawn_turn(TurnOptions { force_compaction: true, idle_compaction: true, ..Default::default() });
     }
 
@@ -659,7 +691,7 @@ impl AgentSession {
         if self.parent_session_id.is_none() {
             crate::subagents::stop_all_subagents(&self.session_id()).await;
         }
-        self.set_state("offline");
+        self.transition(Transition::GoOffline);
         tracing::info!("agent_session_stopped session_id={}", self.session_id());
     }
 
@@ -911,11 +943,11 @@ impl AgentSession {
             db::save_message(&self.pool, &sid, note).await?;
         }
         store().init_turn(&sid, true);
-        self.set_state("working");
+        self.transition(Transition::StartTurn);
         *self.question_suspended.lock().unwrap() = None;
         *self.lead_suspended.lock().unwrap() = None;
         self.clear_cancel();
-        self.set_active_turn(true);
+        self.transition(Transition::ClaimTurn);
         self.spawn_turn(TurnOptions { starts_run: true, unattended: m.origin == "scheduler", ..Default::default() });
         Ok((sid, db::codec::api_uuid(&persisted.id)))
     }
@@ -948,7 +980,7 @@ impl AgentSession {
         }
         self.dismiss_pending_question("dismissed", None).await;
         *self.lead_suspended.lock().unwrap() = None;
-        self.set_state("idle");
+        self.transition(Transition::RequestStop);
         self.emit("agent_status", Some("idle"), None);
         true
     }
@@ -965,9 +997,9 @@ impl AgentSession {
         }
         self.bind_session(session_id, workspace, None).await?;
         store().init_turn(session_id, true);
-        self.set_state("working");
+        self.transition(Transition::StartTurn);
         self.clear_cancel();
-        self.set_active_turn(true);
+        self.transition(Transition::ClaimTurn);
         self.spawn_turn(TurnOptions { starts_run: true, runtime_model: model, runtime_thinking_level: thinking_level, ..Default::default() });
         Ok((session_id.to_string(), uuid::Uuid::new_v4().to_string()))
     }
@@ -978,9 +1010,9 @@ impl AgentSession {
         }
         self.bind_session(session_id, workspace, None).await?;
         store().init_turn(session_id, true);
-        self.set_state("working");
+        self.transition(Transition::StartTurn);
         self.clear_cancel();
-        self.set_active_turn(true);
+        self.transition(Transition::ClaimTurn);
         self.spawn_turn(TurnOptions { starts_run: true, force_compaction: true, ..Default::default() });
         Ok(session_id.to_string())
     }
@@ -1032,31 +1064,34 @@ impl AgentSession {
         let data: Vec<Value> =
             visible.iter().map(|r| json!({"id": db::codec::api_uuid(&r.id), "content": r.content.clone().unwrap_or_default(), "extra": r.extra_json()})).collect();
         self.clear_cancel();
-        self.set_active_turn(true);
+        self.transition(Transition::ClaimTurn);
         self.spawn_turn(TurnOptions { queued_activation_event: Some(json!({"type": "queued_turn_start", "agent": self.name(), "message_ids": ids, "messages": data})), ..opts });
         true
     }
 
     pub async fn handle_question_answer(&self, question_id: &str, answers: &Value) -> anyhow::Result<()> {
-        db::resolve_pending_question(&self.pool, question_id, "answered", Some(answers)).await?;
-        self.resume_after_question_answer().await;
+        if db::resolve_pending_question(&self.pool, question_id, "answered", Some(answers)).await?.is_some() {
+            self.resume_after_question_answer().await;
+        }
         Ok(())
     }
 
     pub async fn resume_after_question_answer(&self) {
         *self.question_suspended.lock().unwrap() = None;
         *self.lead_suspended.lock().unwrap() = None;
-        self.set_state("working");
+        self.transition(Transition::StartTurn);
         self.emit("agent_status", Some("working"), None);
         self.clear_cancel();
-        self.set_active_turn(true);
+        self.transition(Transition::ClaimTurn);
         self.spawn_turn(TurnOptions { question_resume: true, ..Default::default() });
     }
 
     pub async fn handle_question_dismiss(&self, question_id: &str, reason: &str) -> anyhow::Result<()> {
-        db::resolve_pending_question(&self.pool, question_id, normalize_question_status(reason), None).await?;
+        if db::resolve_pending_question(&self.pool, question_id, normalize_question_status(reason), None).await?.is_none() {
+            return Ok(());
+        }
         *self.question_suspended.lock().unwrap() = None;
-        self.set_state("idle");
+        self.transition(Transition::BecomeIdle);
         self.emit("agent_status", Some("idle"), None);
         Ok(())
     }
@@ -1188,13 +1223,14 @@ impl AgentSession {
         }
         // Compactions are not continued after a restart: a forced one would
         // run as an ordinary turn, and an idle one is not worth the cost.
-        let tracks_in_flight = !sid.is_empty() && !opts.force_compaction && !opts.idle_compaction;
+        let work = opts.work();
+        let tracks_in_flight = !sid.is_empty() && work.is_conversation();
         if tracks_in_flight {
             if let Err(e) = db::mark_turn_in_flight(&self.pool, &sid, opts.restart_resume).await {
                 tracing::warn!("turn_in_flight_mark_failed session_id={} error={}", sid, e);
             }
         }
-        self.set_state("working");
+        self.transition(Transition::StartTurn);
         *self.question_suspended.lock().unwrap() = None;
         *self.lead_suspended.lock().unwrap() = None;
         self.emit("agent_status", Some("working"), None);
@@ -1265,7 +1301,7 @@ impl AgentSession {
                         forget_retired_model(m.as_deref());
                     }
                 }
-                self.set_state("error");
+                self.transition(Transition::FailTurn);
                 let info = format_agent_error(&e, Some(&self.name()));
                 *self.last_error.lock().unwrap() = info["message"].as_str().map(String::from);
                 *self.last_error_info.lock().unwrap() = Some(info.clone());
@@ -1282,27 +1318,28 @@ impl AgentSession {
 
         // ── finally ──
         let mut activated = false;
-        let state = self.state();
+        let status = self.status();
         let qs = self.question_suspended.lock().unwrap().clone();
         let ls = self.lead_suspended.lock().unwrap().clone();
-        let suspended = qs.is_some() || ls.is_some();
-        if state == "error" || (qs.is_none() && ls.is_none()) {
+        let exit = TurnExit::decide(status == SessionStatus::Error, qs, ls);
+        let suspended = exit.is_suspended();
+        if !suspended {
             self.apply_pending_interaction_mode().await;
         }
         let sid = self.session_id();
-        let errored = state == "error";
+        let errored = matches!(&exit, TurnExit::Failed);
         // A background compaction was not asked for, so it never notifies.
-        let notify = !opts.idle_compaction;
+        let notify = work.should_notify();
         let mut completed = false;
         // Account a goal turn and queue the goal's next one before queued
         // messages start, so the continuation runs as the next turn.
         let goal_turn = self.goal_turn.lock().unwrap().take();
         let goal_id = goal_turn.as_ref().map(|t| t.goal_id.clone());
-        if self.parent_session_id.is_none() && !opts.force_compaction && !opts.idle_compaction && !sid.is_empty() {
+        if self.parent_session_id.is_none() && work.is_conversation() && !sid.is_empty() {
             use crate::goal::TurnEnd;
             let how = if errored {
                 TurnEnd::Failed(self.last_error())
-            } else if qs.is_some() || ls.is_some() {
+            } else if suspended {
                 TurnEnd::Suspended
             } else if self.cancel.is_set() {
                 TurnEnd::Stopped
@@ -1311,29 +1348,34 @@ impl AgentSession {
             };
             self.goal_turn_ended(&sid, goal_turn, how).await;
         }
-        if let Some(q) = qs.as_ref().filter(|_| !errored) {
-            self.set_state("waiting_input");
-            let mut e = Map::new();
-            e.insert("question_id".into(), json!(crate::pystr::py_str(&q["question_id"])));
-            self.emit("agent_status", Some("waiting_input"), Some(e));
-        } else if let Some(data) = ls.filter(|_| !errored) {
-            self.set_state("waiting_lead");
-            self.emit("agent_status", Some("waiting_lead"), data.as_object().cloned());
-            if let Some(lead) = &self.parent_session_id {
-                crate::subagents::on_subagent_question_asked(lead, &sid, &data, &self.pool).await;
+        match &exit {
+            TurnExit::Question(q) => {
+                self.transition(Transition::WaitForQuestion);
+                let mut e = Map::new();
+                e.insert("question_id".into(), json!(crate::pystr::py_str(&q["question_id"])));
+                self.emit("agent_status", Some("waiting_input"), Some(e));
             }
-        } else if !errored {
-            if !sid.is_empty() && !self.cancel.is_set() {
-                activated = self.activate_queued_user_messages(&sid).await;
+            TurnExit::Lead(data) => {
+                self.transition(Transition::WaitForLead);
+                self.emit("agent_status", Some("waiting_lead"), data.as_object().cloned());
+                if let Some(lead) = &self.parent_session_id {
+                    crate::subagents::on_subagent_question_asked(lead, &sid, data, &self.pool).await;
+                }
             }
-            if !activated {
-                self.set_state("idle");
-                self.emit("agent_status", Some("idle"), None);
-                self.close_turn(&sid, "completed", notify, opts.idle_compaction, goal_id.as_deref()).await;
-                completed = true;
+            TurnExit::Ready => {
+                if exit.may_activate_queue(self.cancel.is_set(), !sid.is_empty()) {
+                    activated = self.activate_queued_user_messages(&sid).await;
+                }
+                if !activated {
+                    self.transition(Transition::BecomeIdle);
+                    self.emit("agent_status", Some("idle"), None);
+                    self.close_turn(&sid, "completed", notify, opts.idle_compaction, goal_id.as_deref()).await;
+                    completed = true;
+                }
             }
-        } else {
-            self.close_turn(&sid, "error", notify, opts.idle_compaction, goal_id.as_deref()).await;
+            TurnExit::Failed => {
+                self.close_turn(&sid, "error", notify, opts.idle_compaction, goal_id.as_deref()).await;
+            }
         }
         if !activated {
             // A turn the server's own shutdown stopped stays marked, so the
@@ -1351,12 +1393,12 @@ impl AgentSession {
             // row waits for the next message (a member's report delivered as
             // its lead's turn closed sat queued for good).
             let _senders = self.user_message_lock.lock().await;
-            let may_continue = !errored && !suspended && !self.cancel.is_set() && !sid.is_empty();
+            let may_continue = exit.may_activate_queue(self.cancel.is_set(), !sid.is_empty());
             if may_continue && self.activate_queued_user_messages(&sid).await {
                 // The late row's turn is now the active one.
                 completed = false;
             } else {
-                self.set_active_turn(false);
+                self.transition(Transition::ReleaseTurn);
             }
         }
         let lead = self.parent_session_id.is_none();
@@ -1406,7 +1448,7 @@ impl AgentSession {
         let provider_for_hooks = runtime_provider.clone().unwrap_or_else(|| agent.provider.clone());
         let is_lead = self.parent_session_id.is_none();
         // A lead turn in Code mode while a goal is active works on it.
-        let goal = if opts.force_compaction || opts.idle_compaction { None } else { self.goal_for_turn(&sid, &interaction).await };
+        let goal = if opts.work().is_conversation() { self.goal_for_turn(&sid, &interaction).await } else { None };
 
         let ws_path = session_workspace_dir(&sid, Some(&workspace));
         let denied = Arc::new(DeniedPaths::new(&ws_path, Some(sid.clone())));

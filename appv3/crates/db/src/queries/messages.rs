@@ -496,9 +496,12 @@ pub async fn get_history_cursor(pool: &DbPool, session_id: &str) -> Result<Optio
 
 // ── Undo / redo ──────────────────────────────────────────────────────────────
 
-/// Real human-authored user rows (not another agent's inbox message).
+/// Real human-authored user rows: not another agent's inbox message, nor a
+/// request another workspace's agent sent (`sent_from`), which is that
+/// agent's to take back.
 const REAL_USER: &str = "role = 'user' AND (json_extract(extra, '$.from_agent') IS NULL \
-                         OR json_extract(extra, '$.from_agent') = 'user')";
+                         OR json_extract(extra, '$.from_agent') = 'user') \
+                         AND json_extract(extra, '$.sent_from') IS NULL";
 
 /// Next undo target.
 pub async fn find_undo_target(pool: &DbPool, session: &ChatSession) -> Result<Option<SessionMessage>> {

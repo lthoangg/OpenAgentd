@@ -397,6 +397,24 @@ async fn undo_boundary_then_cleanup_matches_v2_semantics() {
     assert_eq!(page.len(), 2);
 }
 
+/// A request from another workspace's agent is that agent's turn, not the
+/// user's: undo and redo step over it like a subagent's report.
+#[tokio::test]
+async fn undo_and_redo_skip_another_workspace_agents_requests() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let u1 = save_message(&pool, &s.id, NewMessage::user("mine")).await.unwrap();
+    save_message(&pool, &s.id, NewMessage::assistant(Some("a1".into()))).await.unwrap();
+    let mut extra = serde_json::Map::new();
+    extra.insert("sent_from".into(), serde_json::json!({"session_id": "s1", "workspace": "/r/app", "reply": true, "hops": 1}));
+    save_message(&pool, &s.id, NewMessage { extra: Some(extra), ..NewMessage::user("from app") }).await.unwrap();
+    save_message(&pool, &s.id, NewMessage::assistant(Some("a2".into()))).await.unwrap();
+
+    assert_eq!(find_undo_target(&pool, &s).await.unwrap().unwrap().id, u1.id);
+    // Nothing of the user's follows their prompt, so there is nothing to redo.
+    assert!(find_redo_target(&pool, &s, &u1).await.unwrap().is_none());
+}
+
 #[tokio::test]
 async fn queued_messages_promote_to_tail() {
     let (_d, pool) = fresh().await;

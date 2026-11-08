@@ -2509,8 +2509,12 @@ executes tools, manages its task list, and inspects workspace repositories.
   repository, a worktree of its repository, or Chat), for example from an app
   repository to its infrastructure repository. The request starts a new session there, or
   continues one of its top-level sessions (queued when that session is busy). It
-  arrives as an ordinary, editable prompt with a **From <workspace> · <session>**
-  chip that opens the sending session. `mode: "plan"` makes a new session plan
+  arrives as a prompt with a **From <workspace> · <session>**
+  chip that opens the sending session. Since `[v3.50.0]` it is the sending
+  agent's, not yours: it has no Edit, Revert or Retry, and undo and redo step
+  over it. A session a send started shows **Handled by the agent in
+  <workspace> · <session>** above its composer, which opens the sender; you can
+  still type into it and steer as usual. `mode: "plan"` makes a new session plan
   first and wait for your approval; an existing session keeps its mode, and a
   `mode` sent along with `session_id` is ignored instead of refused `[v3.35.0]`.
   The tool card in the sending session has an

@@ -1438,6 +1438,12 @@ async fn linked_sessions_flow(c: &Client, pool: &appv3_db::DbPool) {
 
     let (_, v) = c.json("GET", &format!("/api/agent/sessions/{}", id(&infra)), None).await;
     assert_eq!(v["sent_from"]["session_id"], json!(id(&app)), "{v}");
+    // The chat view reads its sender from the history it opens with.
+    let (st, v) = c.json("GET", &format!("/api/agent/{}/history", id(&infra)), None).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["lead"]["sent_from"], json!({"session_id": id(&app), "workspace": "/r/linked-app", "title": "Orders API"}), "{v}");
+    let (_, v) = c.json("GET", &format!("/api/agent/{}/history", id(&app)), None).await;
+    assert!(v["lead"].get("sent_from").is_none(), "{v}");
     let (_, v) = c.json("GET", &format!("/api/agent/sessions/{}", id(&app)), None).await;
     assert!(v.get("sent_from").is_none() && v.get("linked_sessions").is_none(), "{v}");
 

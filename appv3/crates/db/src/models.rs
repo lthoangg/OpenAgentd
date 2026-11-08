@@ -98,9 +98,14 @@ impl SessionMessage {
     pub fn snapshot(&self) -> Option<String> {
         self.extra_json()?.get("snapshot")?.as_str().filter(|s| !s.is_empty()).map(str::to_string)
     }
-    /// `extra.from_agent` is absent or `"user"` — authored by the human.
+    /// `extra.from_agent` is absent or `"user"`, and no other workspace's
+    /// agent sent it (`extra.sent_from`) — authored by the human.
     pub fn is_from_user(&self) -> bool {
-        match self.extra_json().as_ref().and_then(|e| e.get("from_agent")) {
+        let extra = self.extra_json();
+        if extra.as_ref().and_then(|e| e.get("sent_from")).is_some_and(|v| !v.is_null()) {
+            return false;
+        }
+        match extra.as_ref().and_then(|e| e.get("from_agent")) {
             None | Some(Value::Null) => true,
             Some(Value::String(s)) => s == "user",
             _ => false,

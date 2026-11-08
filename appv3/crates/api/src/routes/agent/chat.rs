@@ -1211,7 +1211,9 @@ fn member_part(statuses: &[(String, String)], sub: &db::ChatSession, totals: &Us
 /// The lead's part of a history response. `totals` is `None` on older pages:
 /// the totals cover the whole session, and only the newest page and the
 /// delta carry them (the client ignores them anywhere else).
-fn lead_part<'a>(root: &db::ChatSession, msgs: &'a [db::SessionMessage], totals: Option<&UsageTotals>) -> WithMessages<'a> {
+/// `sent_from`: who started this session from another workspace, for the
+/// chat view's "handled by" strip (the newest page and the delta carry it).
+fn lead_part<'a>(root: &db::ChatSession, msgs: &'a [db::SessionMessage], totals: Option<&UsageTotals>, sent_from: Option<Value>) -> WithMessages<'a> {
     let effective = root.agent_name.clone().unwrap_or_else(|| if root.parent_session_id.is_none() { "code".into() } else { "member".into() });
     let usage = totals.map(|t| t.get(&root.id).copied().unwrap_or((0.0, 0)));
     let rid = db::codec::api_uuid(&root.id);
@@ -1222,10 +1224,19 @@ fn lead_part<'a>(root: &db::ChatSession, msgs: &'a [db::SessionMessage], totals:
             running: store().is_running(&rid),
             estimated_cost_usd: usage.map(|(cost, _)| cost),
             completion_tokens: usage.map(|(_, completion)| completion),
+            sent_from,
             ..Default::default()
         },
     );
     WithMessages { session, messages: MessagesView(msgs) }
+}
+
+/// The `sent_from` of `root`, when another workspace's send started it.
+async fn sender_of(pool: &DbPool, root: &db::ChatSession) -> ApiResult<Option<Value>> {
+    if root.sent_from_session_id.is_none() {
+        return Ok(None);
+    }
+    Ok(sent_from_by_id(pool, std::iter::once(root)).await?.into_values().next())
 }
 
 /// Usage totals for the lead and its members in one scan.
@@ -1320,7 +1331,7 @@ async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<Stri
         ensure_agent_ready(&root).await?;
         let totals = usage_totals(pool, &root, &subs).await?;
         let statuses = store().get_agent_statuses(&sid);
-        let lead = lead_part(&root, &lead_rows, Some(&totals));
+        let lead = lead_part(&root, &lead_rows, Some(&totals), sender_of(pool, &root).await?);
         let members = subs.iter().map(|sub| member_part(&statuses, sub, &totals)).collect();
         return Ok(json_status(StatusCode::OK, &HistoryBody { lead, members, has_more: false, next_cursor: None, truncated, pending_question: None, latest_prompt: None }));
     }
@@ -1344,7 +1355,7 @@ async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<Stri
         let ((rows, has_more, boundary), ()) =
             futures::future::try_join(async { Ok::<_, ApiError>(db::history_page(pool, &sid, cursor.clone()).await?) }, ensure_agent_ready(&root)).await?;
         let next_cursor = boundary.map(|b| format!("{}|{}", b.seq, db::codec::api_uuid(&b.id)));
-        let lead = lead_part(&root, &rows, None);
+        let lead = lead_part(&root, &rows, None, None);
         return Ok(json_status(StatusCode::OK, &HistoryBody { lead, members: vec![], has_more, next_cursor, truncated: false, pending_question: None, latest_prompt: None }));
     }
     // The newest page reaches back to the latest prompt (see
@@ -1366,7 +1377,7 @@ async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<Stri
     log_page_breakdown(&sid, &lead_rows);
     let next_cursor = boundary.map(|b| format!("{}|{}", b.seq, db::codec::api_uuid(&b.id)));
     let members = subs.iter().map(|sub| member_part(&statuses, sub, &totals)).collect();
-    let lead = lead_part(&root, &lead_rows, Some(&totals));
+    let lead = lead_part(&root, &lead_rows, Some(&totals), sender_of(pool, &root).await?);
     let latest_prompt = latest_prompt.as_ref().map(MessageView);
     Ok(json_status(StatusCode::OK, &HistoryBody { lead, members, has_more, next_cursor, truncated: false, pending_question: pending, latest_prompt }))
 }

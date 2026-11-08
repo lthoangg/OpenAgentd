@@ -557,7 +557,10 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       // The lead's message to this subagent: its prefix is the chip's job, and
       // Edit would rewind the subagent, which the lead directs.
       const lead = fromAgent ? null : fromLead(block.extra, block.content, leadSessionId)
-      return <UserBubble content={lead ? lead.content : block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent && !lead ? () => onEdit(block.id) : undefined} onRevert={onEdit && !fromAgent && !lead ? () => { void useAgentStore.getState().revertToMessage(block.id, { restoreDraft: false }) } : undefined} editLocked={editLocked} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} fromLeadSessionId={lead?.sessionId} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
+      // Another workspace's agent sent it: rewinding it is that agent's call.
+      const sender = sentFrom(block.extra)
+      const editable = Boolean(onEdit) && !fromAgent && !lead && !sender
+      return <UserBubble content={lead ? lead.content : block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={editable && onEdit ? () => onEdit(block.id) : undefined} onRevert={editable ? () => { void useAgentStore.getState().revertToMessage(block.id, { restoreDraft: false }) } : undefined} editLocked={editLocked} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sender} fromLeadSessionId={lead?.sessionId} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} durationMs={block.thinkingDurationMs} />
@@ -795,8 +798,8 @@ export function AgentView({
     : undefined
   // A report folded into the answer (reader mode) follows the prompt too.
   const answerHoldsReport = lastTurnItem?.kind === 'assistant' && lastTurnItem.blocks.some((b) => b.type === 'user')
-  // The lead's message is not the user's to resend.
-  const canRetry = Boolean(onRetry) && !isTurnOpen && latestPrompt !== undefined && isTypedPromptBlock(latestPrompt.block) && !isLeadMessage(latestPrompt.block, leadSessionId) && !answerHoldsReport
+  // The lead's message, or another workspace agent's, is not the user's to resend.
+  const canRetry = Boolean(onRetry) && !isTurnOpen && latestPrompt !== undefined && isTypedPromptBlock(latestPrompt.block) && !isLeadMessage(latestPrompt.block, leadSessionId) && !sentFrom(latestPrompt.block.extra) && !answerHoldsReport
   // A failed turn offers its way forward on the failure itself: the card for
   // a failure the transcript does not show, else the error the turn ended on.
   const trailingBlocks = lastTurnItem?.kind === 'assistant' ? lastTurnItem.blocks : []

@@ -6,6 +6,7 @@ import type {
   QuestionItem,
   AgentCommandResponse,
   SessionInteractionMode,
+  SessionSentFrom,
 } from '@/api/types'
 import type { OrphanToolResult } from '@/utils/messages'
 
@@ -154,6 +155,8 @@ export interface AgentStoreState {
   sessionId: string | null
   parentSessionId: string | null
   sessionTitle: string | null
+  /** The session in another workspace whose send started this one (``lead.sent_from``). */
+  sessionSentFrom: SessionSentFrom | null
   sessionInteractionMode: SessionInteractionMode
   /**
    * Mode the user picked while a turn was in flight. The backend queues it

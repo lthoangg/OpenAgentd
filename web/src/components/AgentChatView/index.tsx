@@ -98,6 +98,7 @@ import { AgentChatHeader } from './AgentChatHeader'
 import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
 import { MissingFolderBanner, useFolderMissing } from './MissingFolderBanner'
+import { HandledByStrip } from './HandledByStrip'
 import { retryLatestPrompt } from './retryPrompt'
 import { useDragDrop } from './useDragDrop'
 import { useOverlayState } from './useOverlayState'
@@ -311,6 +312,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         parentSessionId: s.parentSessionId,
         leadName: s.leadName,
         sessionTitle: s.sessionTitle,
+        sessionSentFrom: s.sessionSentFrom,
         sessionInteractionMode: s.sessionInteractionMode,
         sessionPendingInteractionMode: s.sessionPendingInteractionMode,
         sessionModel: s.sessionModel,
@@ -344,6 +346,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     parentSessionId,
     leadName,
     sessionTitle,
+    sessionSentFrom,
     sessionInteractionMode,
     sessionPendingInteractionMode,
     sessionModel,
@@ -913,6 +916,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       ) : null}
       aboveComposer={(
         <>
+          {/* Another workspace's agent is driving this session. */}
+          <HandledByStrip sentFrom={sessionSentFrom} onOpenSession={handleOpenSession} />
           {/* What the run waits on, pinned so it cannot scroll away. */}
           <PinnedQuestion />
           <PinnedPlanReview />

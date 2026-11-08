@@ -375,12 +375,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   Since `[v3.31.0]`, pressing Install while agents are still working warns
   that restarting may interrupt their turns. You can then choose **Restart
   anyway** or **Later**.
-  Since `[v3.49.0]` the mobile apps check for updates too, with the same
-  card and Settings → About → Updates. Android downloads the APK, checks its
+  Since `[v3.49.0]` the Android app checks for updates too, with the same
+  card and Settings → About → Updates. It downloads the APK, checks its
   SHA-256 against the `latest-android` feed, and opens the system installer
   (Android asks to allow installs from OpenAgentd once, and only accepts an
-  APK signed with the same key). iOS apps cannot install their own updates,
-  so the card opens TestFlight, or SideStore for a SideStore install.
+  APK signed with the same key). The iOS app has no update check: TestFlight
+  and the App Store deliver its updates.
   Earlier iterations: `[v1.18.0]`, `[v1.20.0]`, `[v1.21.0]`.
 - **Client and server versions** `[v3.49.0]` — Settings → About has a
   **Version** section with the version of this app (desktop, iOS, Android, or

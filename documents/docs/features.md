@@ -1139,6 +1139,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     in new window) focuses the window that already shows it. When one
     session is open in two windows anyway, the window in the background
     shows the draft as it is typed in the other.
+    Since `[v3.50.0]` a session opened from the notch or the pet comes
+    forward without putting focus in its composer; a system notification
+    still starts there.
 - **Phones: everything fits, nothing twice** `[v3.41.0]`:
   - Typing in the composer keeps the caret at the end of the text; it used
     to drift further from it with every letter.

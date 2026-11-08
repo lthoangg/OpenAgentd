@@ -6,6 +6,7 @@ const navigate = mock(() => Promise.resolve())
 const router = { navigate } as unknown as import('@tanstack/react-router').AnyRouter
 
 import { openNotificationSession } from '@/lib/desktop-commands'
+import { takeQuietOpen } from '@/lib/quiet-open'
 
 beforeEach(() => navigate.mockClear())
 
@@ -66,5 +67,13 @@ describe('openNotificationSession', () => {
       to: '/$sessionId',
       params: { sessionId: 'session-456' },
     })
+  })
+
+  it('marks a widget open as quiet, and an OS notification open not', () => {
+    openNotificationSession({ sessionId: 'from-island', quiet: true }, router)
+    expect(takeQuietOpen('from-island')).toBe(true)
+    openNotificationSession({ sessionId: 'from-notification' }, router)
+    expect(takeQuietOpen('from-notification')).toBe(false)
+    expect(navigate).toHaveBeenCalledTimes(2)
   })
 })

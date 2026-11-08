@@ -165,7 +165,7 @@ fn wait_on_thread<F: std::future::Future>(wait: Duration, work: F) -> Option<F::
 /// router fails, bring the asking window (or any) forward.
 fn open_from_notification(app: &AppHandle, sender: &str, server: ServerId, session_id: Option<&str>) {
     if let Some(session_id) = session_id {
-        let opened = crate::island::open_session(app, server, session_id, crate::island::OpenIn::Existing);
+        let opened = crate::island::open_session(app, server, session_id, crate::island::OpenIn::Existing, false);
         match tauri::async_runtime::block_on(opened) {
             Ok(()) => return,
             Err(error) => log::warn!("desktop_notification_open_failed error={error:#}"),

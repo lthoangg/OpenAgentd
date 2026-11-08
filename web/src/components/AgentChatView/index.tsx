@@ -99,6 +99,7 @@ import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
 import { MissingFolderBanner, useFolderMissing } from './MissingFolderBanner'
 import { HandledByStrip } from './HandledByStrip'
+import { takeQuietOpen } from '@/lib/quiet-open'
 import { retryLatestPrompt } from './retryPrompt'
 import { useDragDrop } from './useDragDrop'
 import { useOverlayState } from './useOverlayState'
@@ -781,7 +782,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // <body>, and start in the composer once a session is on screen (with a
   // mouse or trackpad; a touch tablet waits for a tap, see useStartInComposer).
   useStrandedFocusGuard(!isMobile, returnFocusToComposer)
-  useStartInComposer(!isMobile && !isSessionLoading, sessionIdState, returnFocusToComposer)
+  useStartInComposer(!isMobile && !isSessionLoading, sessionIdState, returnFocusToComposer, takeQuietOpen)
 
   const handleRetry = useCallback(() => {
     if (effectiveWorkspace) void retryLatestPrompt(effectiveWorkspace)

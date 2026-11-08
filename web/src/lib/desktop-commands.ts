@@ -20,12 +20,15 @@ import { listenForNotificationTaps } from '@/lib/desktop-notifications'
 import { isDesktopShell } from '@/lib/desktop-shell'
 import { desktopWindowId } from '@/lib/desktop-window-identity'
 import { queryClient } from '@/lib/query-client'
+import { markQuietOpen } from '@/lib/quiet-open'
 import { queryKeys } from '@/queries/keys'
 import type { SessionPageResponse } from '@/api/types'
 
 interface NotificationClickPayload {
   sessionId?: unknown
   mode?: unknown
+  /** Opened from a desktop widget (the island, the pet): leave focus alone. */
+  quiet?: unknown
 }
 
 /** View → Text Size items, as the shell names them. */
@@ -122,6 +125,7 @@ export function openNotificationSession(payload: unknown, router: AnyRouter): vo
   if (!payload || typeof payload !== 'object') return
   const notification = payload as NotificationClickPayload
   if (typeof notification.sessionId !== 'string') return
+  if (notification.quiet === true) markQuietOpen(notification.sessionId)
   const to = '/$sessionId'
   void router.navigate({ to, params: { sessionId: notification.sessionId } })
 }

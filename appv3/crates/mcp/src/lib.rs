@@ -61,8 +61,57 @@ pub struct ServerStatus {
     pub plugin: Option<String>,
 }
 
+/// Lifecycle of one runner, which starts at most once (a restart replaces
+/// the runner). `Starting` is the only unsettled state: the others end the
+/// start attempt, and only `Ready` means the server is usable. A ready
+/// server can still stop; every other settled state is final, so a late
+/// completion cannot overwrite it ([`RunnerState::can_become`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunnerState {
+    Stopped,
+    Starting,
+    Ready,
+    Error,
+    AuthRequired,
+}
+
+impl RunnerState {
+    /// The `ServerStatus.state` string.
+    fn as_str(self) -> &'static str {
+        match self {
+            RunnerState::Stopped => "stopped",
+            RunnerState::Starting => "starting",
+            RunnerState::Ready => "ready",
+            RunnerState::Error => "error",
+            RunnerState::AuthRequired => "auth_required",
+        }
+    }
+
+    /// The start attempt is over (successfully or not).
+    fn settled(self) -> bool {
+        self != RunnerState::Starting
+    }
+
+    fn can_become(self, next: RunnerState) -> bool {
+        use RunnerState::*;
+        matches!((self, next), (Starting, Ready | Stopped | Error | AuthRequired) | (Ready, Stopped))
+    }
+}
+
+/// What a runner reports besides its state.
+#[derive(Default)]
+struct Details {
+    error: Option<String>,
+    tool_names: Vec<String>,
+    started_at: Option<String>,
+}
+
 struct Runner {
-    status: Mutex<ServerStatus>,
+    name: String,
+    /// The authority on the runner's lifecycle; waiters watch it settle.
+    /// Changed only with `details` locked, so a status reads both together.
+    state: watch::Sender<RunnerState>,
+    details: Mutex<Details>,
     /// What this runner was started with: a plugin sync compares it with the
     /// plugin's current config to see whether the server changed.
     config: ServerConfig,
@@ -70,7 +119,6 @@ struct Runner {
     plugin: Option<String>,
     tools: Mutex<Vec<Arc<McpTool>>>,
     client: Mutex<Option<Arc<McpClient>>>,
-    ready: watch::Sender<bool>,
     shutdown: watch::Sender<bool>,
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
@@ -82,44 +130,78 @@ impl SessionProvider for Runner {
 }
 
 impl Runner {
-    fn new(name: &str, cfg: &ServerConfig, state: &str, plugin: Option<&str>) -> Arc<Self> {
+    fn new(name: &str, cfg: &ServerConfig, state: RunnerState, plugin: Option<&str>) -> Arc<Self> {
         Arc::new(Runner {
-            status: Mutex::new(ServerStatus {
-                name: name.into(),
-                transport: cfg.transport().into(),
-                enabled: cfg.enabled(),
-                state: state.into(),
-                error: None,
-                tool_names: vec![],
-                started_at: None,
-                plugin: plugin.map(String::from),
-            }),
+            name: name.into(),
+            state: watch::channel(state).0,
+            details: Mutex::default(),
             config: cfg.clone(),
             plugin: plugin.map(String::from),
             tools: Mutex::new(vec![]),
             client: Mutex::new(None),
-            ready: watch::channel(state == "stopped").0,
-            shutdown: watch::channel(state == "stopped").0,
+            shutdown: watch::channel(state == RunnerState::Stopped).0,
             task: Mutex::new(None),
         })
     }
-    fn state(&self) -> String {
-        self.status.lock().unwrap().state.clone()
+    fn state(&self) -> RunnerState {
+        *self.state.borrow()
     }
-    fn finish(&self, state: &str, error: Option<String>) {
+    fn status(&self) -> ServerStatus {
+        let d = self.details.lock().unwrap();
+        ServerStatus {
+            name: self.name.clone(),
+            transport: self.config.transport().into(),
+            enabled: self.config.enabled(),
+            state: self.state().as_str().into(),
+            error: d.error.clone(),
+            tool_names: d.tool_names.clone(),
+            started_at: d.started_at.clone(),
+            plugin: self.plugin.clone(),
+        }
+    }
+    /// `Starting` → `Ready` with the server's client and tools; `false` (and
+    /// nothing kept) when the runner is no longer starting.
+    fn become_ready(&self, client: Arc<McpClient>, tools: Vec<Arc<McpTool>>) -> bool {
+        let mut d = self.details.lock().unwrap();
+        if !self.state().can_become(RunnerState::Ready) {
+            return false;
+        }
+        d.tool_names = tools.iter().map(|t| t.name.clone()).collect();
+        d.started_at = Some(utc_isoformat());
+        d.error = None;
+        *self.client.lock().unwrap() = Some(client);
+        *self.tools.lock().unwrap() = tools;
+        self.state.send_replace(RunnerState::Ready);
+        drop(d);
+        publish_status(&self.name, RunnerState::Ready.as_str());
+        true
+    }
+    /// Ends the runner in `state` (not `Ready`), dropping its client and
+    /// tools. `false` when the runner already settled for good: a stale
+    /// completion changes nothing.
+    fn settle(&self, state: RunnerState, error: Option<String>) -> bool {
+        debug_assert_ne!(state, RunnerState::Ready, "use become_ready");
+        let mut d = self.details.lock().unwrap();
+        let from = self.state();
+        if !from.can_become(state) {
+            tracing::debug!("mcp_runner_settle_ignored name={} state={} next={}", self.name, from.as_str(), state.as_str());
+            return false;
+        }
         *self.client.lock().unwrap() = None;
         self.tools.lock().unwrap().clear();
-        let mut st = self.status.lock().unwrap();
-        st.state = state.into();
-        st.error = error;
-        st.tool_names.clear();
-        let name = st.name.clone();
-        drop(st);
-        let _ = self.ready.send(true);
-        publish_status(&name, state);
+        d.error = error;
+        d.tool_names.clear();
+        self.state.send_replace(state);
+        drop(d);
+        publish_status(&self.name, state.as_str());
+        true
     }
-    async fn wait_ready(&self, timeout: Duration) -> bool {
-        tokio::time::timeout(timeout, wait_true(self.ready.subscribe())).await.is_ok()
+    /// Waits for the start attempt to end (ready or not); `false` on timeout.
+    async fn wait_settled(&self, timeout: Duration) -> bool {
+        let mut rx = self.state.subscribe();
+        // Bound first so the borrowed `Ref` drops before `rx`.
+        let waited = tokio::time::timeout(timeout, rx.wait_for(|s| s.settled())).await;
+        waited.is_ok()
     }
 }
 
@@ -313,19 +395,12 @@ async fn run_server(name: String, cfg: ServerConfig, runner: Arc<Runner>) {
         };
         let weak: std::sync::Weak<dyn SessionProvider> = Arc::downgrade(&(runner.clone() as Arc<dyn SessionProvider>));
         let tools: Vec<Arc<McpTool>> = defs.into_iter().map(|d| Arc::new(McpTool::new(&name, d, weak.clone()))).collect();
-        let names: Vec<String> = tools.iter().map(|t| t.name.clone()).collect();
-        *runner.client.lock().unwrap() = Some(client.clone());
-        *runner.tools.lock().unwrap() = tools;
-        {
-            let mut st = runner.status.lock().unwrap();
-            st.state = "ready".into();
-            st.tool_names = names.clone();
-            st.started_at = Some(utc_isoformat());
-            st.error = None;
+        let count = tools.len();
+        if !runner.become_ready(client.clone(), tools) {
+            client.close().await;
+            return Ok(());
         }
-        let _ = runner.ready.send(true);
-        publish_status(&name, "ready");
-        tracing::info!("mcp_server_ready name={} transport={} tools={}", name, cfg.transport(), names.len());
+        tracing::info!("mcp_server_ready name={} transport={} tools={}", name, cfg.transport(), count);
         wait_true(shutdown).await;
         *runner.client.lock().unwrap() = None;
         tracing::info!("mcp_server_stopping name={}", name);
@@ -335,18 +410,16 @@ async fn run_server(name: String, cfg: ServerConfig, runner: Arc<Runner>) {
     .await;
     match res {
         Ok(()) => {
-            if runner.state() != "ready" {
-                runner.finish("stopped", None);
-            }
+            runner.settle(RunnerState::Stopped, None);
         }
         Err(RunError::AuthRequired(m)) => {
             tracing::warn!("mcp_server_auth_required name={} transport={} err={}", name, cfg.transport(), m);
-            runner.finish("auth_required", Some(m));
+            runner.settle(RunnerState::AuthRequired, Some(m));
         }
         Err(RunError::Failed(e)) => {
             if e.type_name() == "OAuthRequiredError" {
                 tracing::warn!("mcp_server_auth_required name={} transport={} err={}", name, cfg.transport(), e);
-                runner.finish("auth_required", Some(e.to_string()));
+                runner.settle(RunnerState::AuthRequired, Some(e.to_string()));
                 return;
             }
             // Only a server with its own Authorization header gets here on a 401: the others sign in.
@@ -354,17 +427,17 @@ async fn run_server(name: String, cfg: ServerConfig, runner: Arc<Runner>) {
             if matches!(&cfg, ServerConfig::Http { .. }) && !cfg.signs_in_with_oauth() && is_http_auth_failure(&e.to_string()) {
                 let m = format!("MCP server '{name}' did not accept its Authorization header ({e}). Update the header in Settings -> MCP.");
                 tracing::warn!("mcp_server_failed name={} transport={} err={}", name, cfg.transport(), m);
-                runner.finish("error", Some(m));
+                runner.settle(RunnerState::Error, Some(m));
                 return;
             }
             if is_oauth_registration_failure(&e) || unresolved_client_id(&cfg) {
                 let m = oauth_credentials_required_message(&name);
                 tracing::warn!("mcp_server_auth_required name={} transport={} err={}", name, cfg.transport(), m);
-                runner.finish("auth_required", Some(m));
+                runner.settle(RunnerState::AuthRequired, Some(m));
                 return;
             }
             tracing::error!("mcp_server_failed name={} transport={} err={}", name, cfg.transport(), e);
-            runner.finish("error", Some(e.formatted()));
+            runner.settle(RunnerState::Error, Some(e.formatted()));
         }
     }
 }
@@ -377,7 +450,7 @@ impl McpManager {
     /// Starts a runner for `name` (replacing any in the map); `plugin` is the
     /// plugin that provides the server, if one does.
     fn spawn(&self, name: &str, cfg: &ServerConfig, plugin: Option<&str>) {
-        let runner = Runner::new(name, cfg, if cfg.enabled() { "starting" } else { "stopped" }, plugin);
+        let runner = Runner::new(name, cfg, if cfg.enabled() { RunnerState::Starting } else { RunnerState::Stopped }, plugin);
         self.runners.write().unwrap().insert(name.to_string(), runner.clone());
         if cfg.enabled() {
             let h = tokio::spawn(run_server(name.to_string(), cfg.clone(), runner.clone()));
@@ -398,7 +471,7 @@ impl McpManager {
             }
         }
         self.apply_plugin_servers(plugin::wanted_now()).await;
-        let running: Vec<(String, String)> = self.runners.read().unwrap().iter().map(|(n, r)| (n.clone(), r.state())).collect();
+        let running: Vec<(String, &str)> = self.runners.read().unwrap().iter().map(|(n, r)| (n.clone(), r.state().as_str())).collect();
         if !running.is_empty() {
             tracing::info!("mcp_manager_started servers={:?}", running);
         }
@@ -421,7 +494,7 @@ impl McpManager {
             if tokio::time::timeout(Duration::from_secs(10), &mut h).await.is_err() {
                 h.abort();
                 let _ = h.await;
-                runner.finish("stopped", None);
+                runner.settle(RunnerState::Stopped, None);
             }
         }
     }
@@ -488,11 +561,10 @@ impl McpManager {
             // removes the entry, and this call still reports on the restart.
             self.runners.read().unwrap().get(name).cloned().expect("spawned above")
         };
-        if runner.state() != "stopped" && !runner.wait_ready(ready_timeout).await {
+        if !runner.wait_settled(ready_timeout).await {
             tracing::warn!("mcp_restart_timeout server={} timeout_s={}", name, ready_timeout.as_secs_f64());
         }
-        let st = runner.status.lock().unwrap().clone();
-        Ok(st)
+        Ok(runner.status())
     }
 
     /// Stops and forgets the user's server `name`. A plugin's server is not
@@ -510,9 +582,10 @@ impl McpManager {
         self.runners.write().unwrap().shift_remove(name);
     }
 
+    /// Waits until every runner's start attempt has settled, ready or not.
     pub async fn wait_until_ready(&self, timeout: Duration) {
         let all: Vec<Arc<Runner>> = self.runners.read().unwrap().values().cloned().collect();
-        let _ = tokio::time::timeout(timeout, futures::future::join_all(all.iter().map(|r| r.wait_ready(timeout)))).await;
+        let _ = tokio::time::timeout(timeout, futures::future::join_all(all.iter().map(|r| r.wait_settled(timeout)))).await;
     }
 
     /// Every runner by name: the user's servers in config order, then the
@@ -525,11 +598,11 @@ impl McpManager {
     }
 
     pub fn list_status(&self) -> Vec<ServerStatus> {
-        self.ordered_runners().iter().map(|(_, r)| r.status.lock().unwrap().clone()).collect()
+        self.ordered_runners().iter().map(|(_, r)| r.status()).collect()
     }
 
     pub fn get_status(&self, name: &str) -> Option<ServerStatus> {
-        self.runners.read().unwrap().get(name).map(|r| r.status.lock().unwrap().clone())
+        self.runners.read().unwrap().get(name).map(|r| r.status())
     }
 
     pub fn server_names(&self) -> Vec<String> {
@@ -538,7 +611,7 @@ impl McpManager {
 
     pub fn tools_for_server(&self, name: &str) -> Option<Vec<ToolRef>> {
         let r = self.runners.read().unwrap().get(name).cloned()?;
-        if r.state() != "ready" {
+        if r.state() != RunnerState::Ready {
             return Some(vec![]);
         }
         let t = r.tools.lock().unwrap().iter().map(|t| t.clone() as ToolRef).collect();
@@ -550,7 +623,7 @@ impl McpManager {
     /// calls.
     pub fn ready_tools(&self, server: Option<&str>) -> Vec<Arc<McpTool>> {
         let runners: Vec<Arc<Runner>> = self.ordered_runners().into_iter().filter(|(n, _)| server.is_none_or(|s| s == n.as_str())).map(|(_, r)| r).collect();
-        runners.iter().filter(|r| r.state() == "ready").flat_map(|r| r.tools.lock().unwrap().clone()).collect()
+        runners.iter().filter(|r| r.state() == RunnerState::Ready).flat_map(|r| r.tools.lock().unwrap().clone()).collect()
     }
 
     /// `call_app_tool` errors: `KeyError` → NotFound, `RuntimeError` → NotConnected,
@@ -558,7 +631,7 @@ impl McpManager {
     pub async fn call_app_tool(&self, server: &str, tool: &str, arguments: Value) -> Result<Value, AppToolError> {
         let Some(r) = self.runners.read().unwrap().get(server).cloned() else { return Err(AppToolError::NotFound) };
         let client = r.client.lock().unwrap().clone();
-        let Some(client) = client.filter(|_| r.state() == "ready") else {
+        let Some(client) = client.filter(|_| r.state() == RunnerState::Ready) else {
             return Err(AppToolError::NotConnected(format!("MCP server '{server}' is not connected.")));
         };
         let advertised = r.tools.lock().unwrap().iter().any(|t| t.remote_name == tool);
@@ -902,5 +975,73 @@ for line in sys.stdin:
 
         m.apply_plugin_servers(vec![]).await;
         assert!(m.get_status("changelog-tools/github").is_none());
+    }
+
+    use RunnerState::*;
+
+    /// Every runner starts once: only `starting` settles, and only a ready
+    /// server can still stop. A settled runner never changes again.
+    #[test]
+    fn runner_transitions_follow_the_lifecycle() {
+        let all = [Stopped, Starting, Ready, Error, AuthRequired];
+        let allowed = [(Starting, Ready), (Starting, Stopped), (Starting, Error), (Starting, AuthRequired), (Ready, Stopped)];
+        for from in all {
+            for to in all {
+                assert_eq!(from.can_become(to), allowed.contains(&(from, to)), "{from:?} -> {to:?}");
+            }
+        }
+        assert_eq!(all.map(RunnerState::as_str), ["stopped", "starting", "ready", "error", "auth_required"]);
+        assert_eq!(all.map(RunnerState::settled), [true, false, true, true, true]);
+    }
+
+    #[tokio::test]
+    async fn a_late_completion_does_not_overwrite_a_settled_runner() {
+        let cfg = config::parse_config(&json!({"servers": {"s": {"command": "x"}}})).unwrap();
+        let runner = Runner::new("s", &cfg.servers["s"], Starting, None);
+        assert!(!runner.wait_settled(Duration::from_millis(10)).await, "starting is not settled");
+        assert!(runner.settle(Error, Some("boom".into())));
+        assert!(!runner.settle(Stopped, None), "a stale stop is ignored");
+        let st = runner.status();
+        assert_eq!((st.state.as_str(), st.error.as_deref()), ("error", Some("boom")));
+        assert!(runner.wait_settled(Duration::from_millis(10)).await);
+    }
+
+    /// A start attempt that fails has settled, but the server is not ready.
+    #[tokio::test]
+    async fn a_server_that_cannot_start_settles_as_an_error() {
+        let d = tempfile::tempdir().unwrap();
+        let missing = d.path().join("no-such-server").display().to_string();
+        let cfg = config::parse_config(&json!({"servers": {"broken": {"command": missing, "env": {"PATH": d.path().display().to_string()}}}})).unwrap();
+        let m = McpManager::default();
+        m.spawn_runner("broken", &cfg.servers["broken"]);
+        m.wait_until_ready(Duration::from_secs(20)).await;
+        let st = m.get_status("broken").unwrap();
+        assert_eq!(st.state, "error", "{st:?}");
+        assert!(st.error.is_some());
+        assert_eq!(m.tools_for_server("broken").map(|t| t.len()), Some(0));
+    }
+
+    /// Stopping a ready server leaves the runner stopped, without its tools
+    /// or client, rather than still claiming `ready`.
+    #[tokio::test]
+    async fn stopping_a_ready_server_leaves_it_stopped_without_tools() {
+        let path = std::env::var("PATH").unwrap_or_default();
+        let py = which_in("python3", &path).expect("this test needs python3 on PATH: it runs a small stdio MCP server");
+        let d = tempfile::tempdir().unwrap();
+        let script = d.path().join("srv.py");
+        std::fs::write(&script, WHERE_SERVER).unwrap();
+        let cfg = config::parse_config(&json!({"servers": {"w": {"command": py, "args": [script.display().to_string()], "env": {"PATH": path}}}})).unwrap();
+        let m = McpManager::default();
+        m.spawn_runner("w", &cfg.servers["w"]);
+        m.wait_until_ready(Duration::from_secs(20)).await;
+        let runner = m.runners.read().unwrap().get("w").cloned().unwrap();
+        assert_eq!(m.get_status("w").unwrap().state, "ready");
+
+        McpManager::stop_runner(&runner).await;
+        let st = m.get_status("w").unwrap();
+        assert_eq!(st.state, "stopped", "{st:?}");
+        assert!(st.tool_names.is_empty());
+        assert_eq!(m.tools_for_server("w").map(|t| t.len()), Some(0));
+        assert!(runner.client().is_none());
     }
 }

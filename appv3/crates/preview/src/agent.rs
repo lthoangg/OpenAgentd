@@ -95,6 +95,33 @@ impl Drop for PollGuard<'_> {
     }
 }
 
+/// One command's bookkeeping, owned by the [`AgentChannel::run`] call that
+/// sent it: however that call ends (answer, timeout, or its caller going
+/// away), the command leaves the queue and the maps, so a page never runs a
+/// command nobody waits for and nothing accumulates.
+struct Pending<'a> {
+    channel: &'a AgentChannel,
+    id: String,
+}
+
+impl Pending<'_> {
+    /// Takes the command back and tells whether a page had taken it, in one
+    /// critical section: a page cannot take it between the answer and the
+    /// withdrawal, so `NotPickedUp` always means the page never ran it.
+    fn withdraw(&self) -> bool {
+        let mut s = self.channel.lock();
+        s.waiting.remove(&self.id);
+        s.queue.retain(|c| c.id != self.id);
+        s.taken.remove(&self.id)
+    }
+}
+
+impl Drop for Pending<'_> {
+    fn drop(&mut self) {
+        self.withdraw();
+    }
+}
+
 impl AgentChannel {
     fn lock(&self) -> std::sync::MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
@@ -186,7 +213,7 @@ impl AgentChannel {
     /// Send `command` to the page and wait up to `timeout` for its result.
     pub async fn run(&self, command: Value, timeout: Duration) -> Result<Value, AgentError> {
         let id = uuid::Uuid::new_v4().to_string();
-        let rx = {
+        let (rx, pending) = {
             let mut s = self.lock();
             let live = s.pollers > 0 || s.last_poll.is_some_and(|t| t.elapsed() < STALE_AFTER);
             if !live {
@@ -195,17 +222,12 @@ impl AgentChannel {
             let (tx, rx) = oneshot::channel();
             s.waiting.insert(id.clone(), tx);
             s.queue.push_back(AgentCommand { id: id.clone(), command });
-            rx
+            (rx, Pending { channel: self, id })
         };
         self.notify.notify_one();
         match tokio::time::timeout(timeout, rx).await {
             Ok(Ok(result)) => result.map_err(AgentError::Page),
-            _ => {
-                let mut s = self.lock();
-                s.waiting.remove(&id);
-                s.queue.retain(|c| c.id != id);
-                Err(if s.taken.remove(&id) { AgentError::NoAnswer } else { AgentError::NotPickedUp })
-            }
+            _ => Err(if pending.withdraw() { AgentError::NoAnswer } else { AgentError::NotPickedUp }),
         }
     }
 }
@@ -305,5 +327,101 @@ mod tests {
         }
         tx.send(true).unwrap();
         assert!(poll.await.is_none());
+    }
+
+    /// A caller that stops waiting (the agent's Stop drops the tool call)
+    /// takes its command back: the page never runs it and nothing is kept.
+    #[tokio::test]
+    async fn a_command_whose_caller_went_away_is_withdrawn() {
+        let ch = Arc::new(AgentChannel::default());
+        assert!(ch.next(Duration::ZERO, never_stop()).await.is_none(), "a page polled just now");
+        let caller = {
+            let ch = ch.clone();
+            tokio::spawn(async move { ch.run(json!({"action": "click"}), Duration::from_secs(60)).await })
+        };
+        while ch.lock().waiting.is_empty() {
+            tokio::task::yield_now().await;
+        }
+        caller.abort();
+        assert!(caller.await.unwrap_err().is_cancelled());
+        {
+            let s = ch.lock();
+            assert!(s.queue.is_empty() && s.waiting.is_empty() && s.taken.is_empty());
+        }
+        assert!(ch.take().is_none(), "the page got a command nobody waits for");
+    }
+
+    /// Same once the page has taken it: its late answer finds nothing.
+    #[tokio::test]
+    async fn a_taken_command_whose_caller_went_away_is_forgotten() {
+        let ch = Arc::new(AgentChannel::default());
+        assert!(ch.next(Duration::ZERO, never_stop()).await.is_none());
+        let caller = {
+            let ch = ch.clone();
+            tokio::spawn(async move { ch.run(json!({"action": "click"}), Duration::from_secs(60)).await })
+        };
+        let cmd = ch.next(Duration::from_secs(5), never_stop()).await.unwrap();
+        caller.abort();
+        assert!(caller.await.unwrap_err().is_cancelled());
+        {
+            let s = ch.lock();
+            assert!(s.queue.is_empty() && s.waiting.is_empty() && s.taken.is_empty());
+        }
+        ch.resolve(AgentReply { id: cmd.id, ok: true, result: Value::Null, error: None });
+    }
+
+    /// How a timeout is reported matches what the page could do: after
+    /// `NotPickedUp` the page can no longer get the command (so a retry does
+    /// not run it twice); `NoAnswer` only for a command the page took.
+    #[tokio::test(start_paused = true)]
+    async fn a_timed_out_command_is_reported_by_whether_the_page_took_it() {
+        let ch = Arc::new(AgentChannel::default());
+        assert!(ch.next(Duration::ZERO, never_stop()).await.is_none(), "a page polled just now");
+        let send = |ch: &Arc<AgentChannel>| {
+            let ch = ch.clone();
+            tokio::spawn(async move { ch.run(json!({"action": "click"}), Duration::from_secs(1)).await })
+        };
+
+        let caller = send(&ch);
+        assert_eq!(caller.await.unwrap(), Err(AgentError::NotPickedUp));
+        assert!(ch.take().is_none(), "a command reported as not picked up was still handed out");
+
+        let caller = send(&ch);
+        while ch.lock().waiting.is_empty() {
+            tokio::task::yield_now().await;
+        }
+        let cmd = ch.take().expect("the page takes the command");
+        assert_eq!(caller.await.unwrap(), Err(AgentError::NoAnswer));
+        {
+            let s = ch.lock();
+            assert!(s.queue.is_empty() && s.waiting.is_empty() && s.taken.is_empty());
+        }
+        ch.resolve(AgentReply { id: cmd.id, ok: true, result: Value::Null, error: None });
+    }
+
+    /// The timeout's classification and withdrawal are one step: whatever
+    /// `withdraw` reports, the command is gone from the queue and the maps.
+    #[test]
+    fn withdrawing_reports_whether_the_page_took_the_command() {
+        let ch = AgentChannel::default();
+        for page_takes in [false, true] {
+            let (tx, _rx) = oneshot::channel();
+            let id = format!("c-{page_takes}");
+            {
+                let mut s = ch.lock();
+                s.waiting.insert(id.clone(), tx);
+                s.queue.push_back(AgentCommand { id: id.clone(), command: Value::Null });
+            }
+            if page_takes {
+                assert_eq!(ch.take().map(|c| c.id), Some(id.clone()));
+            }
+            let pending = Pending { channel: &ch, id };
+            assert_eq!(pending.withdraw(), page_takes);
+            drop(pending);
+            let s = ch.lock();
+            assert!(s.queue.is_empty() && s.waiting.is_empty() && s.taken.is_empty());
+            drop(s);
+            assert!(ch.take().is_none());
+        }
     }
 }

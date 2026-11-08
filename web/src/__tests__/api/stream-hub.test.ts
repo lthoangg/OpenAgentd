@@ -64,7 +64,13 @@ function world(options: { putTimeoutMs?: number } = {}) {
   const puts: { clientId: string; ids: string[]; sessions: string[] }[] = []
   // ``hang``: the request never answers on its own, as one queued behind the
   // webview's per-host connection limit does; only its signal can end it.
-  const state = { putResult: 'ok' as 'ok' | 'gone' | 'error', hang: false }
+  // ``defer``: the request answers when the test settles it from ``answers``.
+  const state = {
+    putResult: 'ok' as 'ok' | 'gone' | 'error',
+    hang: false,
+    defer: false,
+    answers: [] as ((result: 'ok' | 'gone' | 'error') => void)[],
+  }
   let windows = 0
   let gens = 0
   const makeWindow = (key = 'http://a/api') => {
@@ -77,6 +83,9 @@ function world(options: { putTimeoutMs?: number } = {}) {
         puts.push({ clientId, ids: subs.map((s) => s.id).sort(), sessions: subs.map((s) => s.session_id).sort() })
         if (state.hang) {
           return new Promise<'error'>((resolve) => signal?.addEventListener('abort', () => resolve('error'), { once: true }))
+        }
+        if (state.defer) {
+          return new Promise<'ok' | 'gone' | 'error'>((resolve) => { state.answers.push(resolve) })
         }
         return state.putResult
       },
@@ -91,10 +100,16 @@ function world(options: { putTimeoutMs?: number } = {}) {
 }
 
 function global(hub: StreamHub) {
-  const log = { opens: 0, errors: 0, dones: 0, events: [] as string[] }
+  const log = { opens: 0, errors: 0, dones: 0, parseErrors: 0, events: [] as string[] }
   const controller = new AbortController()
   hub.subscribeGlobal(
-    { onOpen: () => { log.opens++ }, onEvent: (type) => { log.events.push(type) }, onError: () => { log.errors++ }, onDone: () => { log.dones++ } },
+    {
+      onOpen: () => { log.opens++ },
+      onEvent: (type) => { log.events.push(type) },
+      onError: () => { log.errors++ },
+      onDone: () => { log.dones++ },
+      onParseError: () => { log.parseErrors++ },
+    },
     controller.signal,
   )
   return { log, controller }
@@ -455,5 +470,183 @@ describe('StreamHub: session streams', () => {
     w.feeds.at(-1)!.callbacks.onEvent('session_event', frame(w.puts.at(-1)!.ids[0], 'message'))
     await settle()
     expect(second.log.events).toEqual(['message'])
+  })
+})
+
+describe('StreamHub: leadership replacement during a subscription request', () => {
+  /** Lead with sid-a subscribed on gen1, its request still out; then the feed drops and the window leads again. */
+  async function replacedWhileSyncing() {
+    const w = world()
+    const hub = w.makeWindow()
+    const watching = global(hub)
+    await settle()
+    w.state.defer = true
+    w.feeds[0].callbacks.onOpen?.()
+    const old = session(hub, 'sid-a')
+    await settle()
+    expect(w.puts).toHaveLength(1)
+    expect(w.puts[0].clientId).toBe('gen1')
+    const oldAnswer = w.state.answers[0]
+
+    w.feeds[0].callbacks.onError?.(new Error('boom'))
+    await settle()
+    expect(old.log.errors).toHaveLength(1)
+    // The global consumer reconnects, which re-runs the election.
+    const again = global(hub)
+    await settle()
+    expect(w.feeds).toHaveLength(2)
+    w.feeds[1].callbacks.onOpen?.()
+    const fresh = session(hub, 'sid-a')
+    await settle()
+    return { w, hub, watching, again, old, fresh, oldAnswer }
+  }
+
+  it('sends the new leader\'s subscriptions without waiting for the old leader\'s request', async () => {
+    const { w } = await replacedWhileSyncing()
+    expect(w.puts.at(-1)).toMatchObject({ clientId: 'gen2', sessions: ['sid-a'] })
+  })
+
+  it('still sends the new leader\'s subscriptions after the old request answers', async () => {
+    const { w, oldAnswer } = await replacedWhileSyncing()
+    oldAnswer('ok')
+    await settle()
+    expect(w.puts.filter((p) => p.clientId === 'gen2').at(-1)?.sessions).toEqual(['sid-a'])
+  })
+
+  it('does not let the old leader\'s late refusal mark the server unsupported or restart the new feed', async () => {
+    const { w, hub, again, fresh, oldAnswer } = await replacedWhileSyncing()
+    oldAnswer('gone')
+    await settle()
+    expect(hub.muxSupported).toBeNull()
+    expect(w.feeds[1].signal.aborted).toBe(false)
+    expect(again.log.errors).toBe(0)
+    expect(fresh.log.errors).toHaveLength(0)
+  })
+
+  it('does not let the old leader\'s late failure restart the new feed', async () => {
+    const { w, again, fresh, oldAnswer } = await replacedWhileSyncing()
+    oldAnswer('error')
+    await settle()
+    expect(w.feeds[1].signal.aborted).toBe(false)
+    expect(again.log.errors).toBe(0)
+    expect(fresh.log.errors).toHaveLength(0)
+  })
+
+  it('routes no frame from the old feed into the new one\'s subscriptions or global consumers', async () => {
+    const { w, again, fresh } = await replacedWhileSyncing()
+    const newId = w.puts.filter((p) => p.clientId === 'gen2').at(-1)?.ids[0] ?? ''
+    w.feeds[0].callbacks.onEvent('session_event', frame(newId, 'message'))
+    w.feeds[0].callbacks.onEvent('title_update', {})
+    await settle()
+    expect(fresh.log.events).toEqual([])
+    expect(again.log.events).toEqual([])
+  })
+
+  it('sends nothing for an old leader\'s request that answers after the window let go of the feed', async () => {
+    const w = world()
+    const hub = w.makeWindow()
+    const watching = global(hub)
+    await settle()
+    w.state.defer = true
+    w.feeds[0].callbacks.onOpen?.()
+    const mine = session(hub, 'sid-a')
+    await settle()
+    mine.controller.abort()
+    watching.controller.abort()
+    await settle()
+    expect(w.feeds[0].signal.aborted).toBe(true)
+    const sent = w.puts.length
+
+    w.state.answers[0]('ok')
+    await settle()
+    expect(w.puts).toHaveLength(sent)
+    expect(w.feeds).toHaveLength(1)
+  })
+})
+
+describe('StreamHub: callbacks from a term that ended', () => {
+  it('does not open a late consumer after its feed was replaced', async () => {
+    const w = world()
+    const hub = w.makeWindow()
+    global(hub)
+    await settle()
+    w.feeds[0].callbacks.onOpen?.()
+    const late = global(hub)
+
+    w.feeds[0].callbacks.onError?.(new Error('boom'))
+    await settle()
+
+    expect(late.log.errors).toBe(1)
+    expect(late.log.opens).toBe(0)
+  })
+
+  it('reports a parse error from the current feed to the global consumers', async () => {
+    const w = world()
+    const watching = global(w.makeWindow())
+    await settle()
+    w.feeds[0].callbacks.onOpen?.()
+    w.feeds[0].callbacks.onParseError?.(new Error('bad frame'))
+    expect(watching.log.parseErrors).toBe(1)
+  })
+
+  it('does not report a parse error from a feed that was replaced', async () => {
+    const w = world()
+    const hub = w.makeWindow()
+    global(hub)
+    await settle()
+    w.feeds[0].callbacks.onOpen?.()
+    w.feeds[0].callbacks.onError?.(new Error('boom'))
+    await settle()
+    const again = global(hub)
+    await settle()
+    expect(w.feeds).toHaveLength(2)
+
+    w.feeds[0].callbacks.onParseError?.(new Error('late bad frame'))
+    expect(again.log.parseErrors).toBe(0)
+  })
+
+  it('sends no subscription request from a late open of a feed the window let go of', async () => {
+    const w = world()
+    const hub = w.makeWindow()
+    const mine = session(hub, 'sid-a')
+    await settle()
+    mine.controller.abort()
+    await settle()
+    expect(w.feeds[0].signal.aborted).toBe(true)
+
+    w.feeds[0].callbacks.onOpen?.()
+    await settle()
+    expect(w.puts).toHaveLength(0)
+  })
+
+  it('does not bind a resubscription made while the feed drops to the dropped feed', async () => {
+    const w = world()
+    const hub = w.makeWindow()
+    const watching = global(hub)
+    await settle()
+    w.feeds[0].callbacks.onOpen?.()
+    // A consumer that subscribes again from inside its error callback.
+    const retried: { errors: Error[] } = { errors: [] }
+    hub.subscribeSession('sid-a', {
+      onEvent: () => {},
+      onError: () => {
+        hub.subscribeSession('sid-a', { onEvent: () => {}, onError: (e) => { retried.errors.push(e) } })
+      },
+    })
+    await settle()
+    expect(w.puts).toHaveLength(1)
+
+    w.feeds[0].callbacks.onError?.(new Error('boom'))
+    await settle()
+    expect(watching.log.errors).toBe(1)
+    expect(w.puts.filter((p) => p.clientId === 'gen1')).toHaveLength(1)
+
+    // The next term carries the retried subscription without failing it first.
+    global(hub)
+    await settle()
+    w.feeds[1].callbacks.onOpen?.()
+    await settle()
+    expect(retried.errors).toHaveLength(0)
+    expect(w.puts.at(-1)).toMatchObject({ clientId: 'gen2', sessions: ['sid-a'] })
   })
 })

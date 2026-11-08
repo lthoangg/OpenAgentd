@@ -254,7 +254,19 @@ fn reload_lock() -> &'static tokio::sync::Mutex<()> {
 /// Brings the running plugin modules in line with the plugin folders:
 /// starts the new and enabled ones, restarts the ones whose files changed,
 /// and removes the ones deleted, disabled or broken. One reload at a time.
+///
+/// A reload runs to the end in its own task even when its caller goes away
+/// (a closed request): cut short, it would forget the running modules it had
+/// taken out of the registry, and a later reload could not remove them.
 pub async fn reload() {
+    match tokio::spawn(reload_to_completion()).await {
+        Ok(()) => {}
+        Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
+        Err(e) => tracing::error!("plugin_reload_cancelled error={}", e),
+    }
+}
+
+async fn reload_to_completion() {
     let _g = reload_lock().lock().await;
     install_credentials_gate();
     let s = appv3_core::settings();

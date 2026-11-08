@@ -69,7 +69,177 @@ struct SyncStream(ChunkStream);
 // SAFETY: the inner stream is only accessed via `&mut SyncStream`.
 unsafe impl Sync for SyncStream {}
 
-/// Pull-based `stream_with_retry`.
+/// Where a [`RetryStream`] is between pulls.
+enum Phase {
+    /// The next pull issues a request. `restart`: the failed attempt before
+    /// it had streamed chunks, so the pull first yields [`RetryItem::Restart`].
+    Request { restart: bool },
+    /// An attempt is streaming; `emitted` once it has yielded a chunk.
+    Streaming { stream: SyncStream, emitted: bool },
+    /// The stream completed, Stop ended it, or it returned an error.
+    Finished,
+}
+
+/// What one call has spent of each retry budget. Each kind of failure spends
+/// only its own: HTTP errors, transport failures, quota waits and
+/// credential switches never draw on each other.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct Spent {
+    /// HTTP errors retried (of [`MAX_RETRIES`] attempts).
+    http: i64,
+    /// Transport failures retried (of the stream's network limit).
+    network: i64,
+    /// Quota resets waited out (of [`MAX_QUOTA_WAITS`]).
+    quota_waits: i64,
+    /// Credential switches (of [`MAX_CREDENTIAL_SWITCHES`]).
+    switches: i64,
+}
+
+impl Spent {
+    /// Charges a finished wait to its budget.
+    fn charge(&mut self, wait: &Wait) {
+        match wait {
+            Wait::Quota { .. } => self.quota_waits += 1,
+            Wait::Http { .. } => self.http += 1,
+            Wait::Network { .. } => self.network += 1,
+        }
+    }
+}
+
+/// A wait before the next attempt; [`Spent::charge`] says which budget it
+/// spends.
+#[derive(Debug, Clone, PartialEq)]
+enum Wait {
+    /// A 429 whose reset is past the backoff cap: wait for the reset.
+    Quota { status: u16, reset: i64, wait: f64, every_account: bool },
+    /// Backoff before retrying an HTTP error.
+    Http { status: u16, retry_after: i64, delay: f64 },
+    /// A short flat wait before retrying a transport failure.
+    Network { error_type: String, delay: f64 },
+}
+
+impl Wait {
+    fn seconds(&self) -> f64 {
+        match self {
+            Wait::Quota { wait, .. } => *wait,
+            Wait::Http { delay, .. } | Wait::Network { delay, .. } => *delay,
+        }
+    }
+}
+
+/// What to do about one failed attempt that no credential switch fixed.
+#[derive(Debug)]
+enum Recovery {
+    /// Wait, then issue the next request.
+    Wait(Wait),
+    /// The failure's budget is spent: report it, then fail with `error`.
+    Exhausted { error_type: String, status_code: Option<i64>, max_attempts: i64, error: ModelError },
+    /// Fail at once.
+    Fail(ModelError),
+}
+
+/// [`plan_recovery`]'s decision. `rate_limit` is the retry-after a 429 that
+/// can be retried announces through `on_rate_limit` before the recovery
+/// (even when the recovery then gives up).
+#[derive(Debug)]
+struct Plan {
+    rate_limit: Option<i64>,
+    recovery: Recovery,
+}
+
+impl Plan {
+    fn fail(error: ModelError) -> Self {
+        Plan { rate_limit: None, recovery: Recovery::Fail(error) }
+    }
+}
+
+/// Error raised after the retry loop gives up on an HTTP error.
+fn final_error(err: &ProviderError) -> ModelError {
+    if err.status() == Some(429) {
+        return AgentError::RateLimit("The configured LLM provider is rate-limited or quota-exhausted.".into()).into();
+    }
+    AgentError::Other(err.to_string()).into()
+}
+
+/// Decides how a call recovers from `err`, given what it has `spent`. Pure
+/// apart from backoff jitter and logging; `every_account` (seconds until the
+/// first of a pooled provider's credentials recovers) is asked only for a 429.
+fn plan_recovery(err: &ProviderError, spent: Spent, network_limit: Option<i64>, every_account: impl FnOnce() -> Option<f64>, label: &str) -> Plan {
+    match err {
+        ProviderError::Http { status, body, .. } => {
+            let status = *status;
+            if !is_retryable_http(status, body) {
+                tracing::warn!("llm_provider_error model={} status={} body={}", label, status, crate::util::head_chars(body, 500));
+                return Plan::fail(classify_http(status, body, label).into());
+            }
+            let mut rate_limit = None;
+            let retry_after = if status == 429 {
+                if is_spend_limit_429(status, body) {
+                    tracing::warn!("llm_provider_spend_limit model={} body={}", label, crate::util::head_chars(body, 300));
+                    return Plan::fail(
+                        AgentError::RateLimit(format!("{label} reached the account's spend limit. Raise the limit in the provider's console, or switch to another model.")).into(),
+                    );
+                }
+                let mut reset = parse_retry_after(err);
+                // Every credential is cooling down: wait for the first one to
+                // recover, not necessarily the one that failed.
+                let every_account = every_account();
+                if let Some(next) = every_account {
+                    let next = next.ceil().max(1.0) as i64;
+                    reset = if reset > 0 { reset.min(next) } else { next };
+                }
+                if reset as f64 > MAX_DELAY {
+                    if reset > MAX_QUOTA_WAIT_SECONDS {
+                        return Plan::fail(
+                            AgentError::RateLimit(format!(
+                                "The configured LLM provider quota is exhausted. Reset in {}, which exceeds the maximum auto-wait of {}.",
+                                format_duration(reset as f64),
+                                format_duration(MAX_QUOTA_WAIT_SECONDS as f64)
+                            ))
+                            .into(),
+                        );
+                    }
+                    if spent.quota_waits >= MAX_QUOTA_WAITS {
+                        return Plan::fail(final_error(err));
+                    }
+                    let wait = reset as f64 + CLOCK_SKEW_BUFFER_SECONDS;
+                    return Plan { rate_limit: None, recovery: Recovery::Wait(Wait::Quota { status, reset, wait, every_account: every_account.is_some() }) };
+                }
+                if is_non_retryable_429(status, body) && reset == 0 {
+                    return Plan::fail(final_error(err));
+                }
+                rate_limit = Some(reset);
+                reset
+            } else {
+                parse_retry_after(err)
+            };
+            if spent.http + 1 >= MAX_RETRIES {
+                let recovery = Recovery::Exhausted { error_type: "HTTPStatusError".into(), status_code: Some(status as i64), max_attempts: MAX_RETRIES, error: final_error(err) };
+                return Plan { rate_limit, recovery };
+            }
+            if status == 429 && required_delay(spent.http, retry_after) >= MAX_DELAY {
+                return Plan { rate_limit, recovery: Recovery::Fail(final_error(err)) };
+            }
+            let delay = backoff_delay(spent.http, retry_after);
+            Plan { rate_limit, recovery: Recovery::Wait(Wait::Http { status, retry_after, delay }) }
+        }
+        ProviderError::Network(msg) => {
+            let error_type = network_error_type(msg).to_string();
+            if let Some(limit) = network_limit.filter(|l| spent.network + 1 >= *l) {
+                let error = ModelError::Transient { error_type: error_type.clone(), message: msg.clone() };
+                return Plan { rate_limit: None, recovery: Recovery::Exhausted { error_type, status_code: None, max_attempts: limit, error } };
+            }
+            Plan { rate_limit: None, recovery: Recovery::Wait(Wait::Network { error_type, delay: network_retry_delay() }) }
+        }
+        ProviderError::Unconfigured(m) => Plan::fail(AgentError::Unconfigured(m.clone()).into()),
+        ProviderError::Auth(m) => Plan::fail(AgentError::Auth { message: m.clone(), status: None, provider: None }.into()),
+        other => Plan::fail(AgentError::Other(other.to_string()).into()),
+    }
+}
+
+/// Pull-based `stream_with_retry`: each pull moves it through [`Phase`]s,
+/// and each failed attempt goes through a credential switch or
+/// [`plan_recovery`].
 pub struct RetryStream<'a> {
     provider: Arc<dyn LlmProvider>,
     label: String,
@@ -78,22 +248,16 @@ pub struct RetryStream<'a> {
     kwargs: Kwargs,
     hooks: Option<(&'a [HookRef], &'a RunContext)>,
     interrupt: Option<Event>,
-    current: Option<SyncStream>,
+    phase: Phase,
     /// When the current attempt's request was issued.
     attempt_started: Instant,
-    attempt: i64,
-    /// Transport failures so far; budgeted apart from HTTP errors.
-    network_attempt: i64,
+    spent: Spent,
     /// Most attempts through transport failures; `None` retries until the
     /// network is back (or the caller stops the stream).
-    network_budget: Option<i64>,
-    quota_waits: i64,
-    /// Credential switches so far (multi-credential providers).
-    switches: i64,
-    emitted: bool,
-    done: bool,
+    network_limit: Option<i64>,
 }
 
+/// How a failed attempt ended: retry, or Stop came during the wait.
 enum Next {
     Continue,
     Stop,
@@ -117,15 +281,10 @@ impl<'a> RetryStream<'a> {
             kwargs,
             hooks,
             interrupt,
-            current: None,
+            phase: Phase::Request { restart: false },
             attempt_started: Instant::now(),
-            attempt: 0,
-            network_attempt: 0,
-            network_budget: Some(MAX_NETWORK_ATTEMPTS),
-            quota_waits: 0,
-            switches: 0,
-            emitted: false,
-            done: false,
+            spent: Spent::default(),
+            network_limit: Some(MAX_NETWORK_ATTEMPTS),
         }
     }
 
@@ -133,7 +292,7 @@ impl<'a> RetryStream<'a> {
     /// stop: the turn's own model call, which races its interrupt and
     /// hard-cancel. A background call (summarization) keeps the budget.
     pub fn retry_network_indefinitely(mut self) -> Self {
-        self.network_budget = None;
+        self.network_limit = None;
         self
     }
 
@@ -192,18 +351,18 @@ impl<'a> RetryStream<'a> {
     /// model; nothing was emitted by the failed request). `true` when it
     /// switched.
     async fn try_switch_credential(&mut self, err: &ProviderError) -> bool {
-        if self.switches >= MAX_CREDENTIAL_SWITCHES {
+        if self.spent.switches >= MAX_CREDENTIAL_SWITCHES {
             return false;
         }
         let Some((reason, cooldown)) = credential_cooldown(err) else { return false };
         let pid = self.provider.provider_name().unwrap_or("").to_string();
         let from = appv3_providers::pool::credential_label(&pid, err);
         let Some(to) = self.provider.rotate_credential(err, reason, cooldown) else { return false };
-        self.switches += 1;
+        self.spent.switches += 1;
         let status = err.status().unwrap_or(0);
         let from = from.unwrap_or_else(|| "The credential in use".into());
         let msg = format!("{from} {}. Continuing on {to} with the same model.", switch_reason_text(reason, cooldown));
-        tracing::warn!("llm_provider_credential_switched model={} status={} reason={} switch={}", self.label, status, reason, self.switches);
+        tracing::warn!("llm_provider_credential_switched model={} status={} reason={} switch={}", self.label, status, reason, self.spent.switches);
         self.notify_retry(ProviderStatus {
             status: "switched_credential".into(),
             model: Some(self.label.clone()),
@@ -217,221 +376,162 @@ impl<'a> RetryStream<'a> {
         true
     }
 
-    /// Handle one failed attempt. `Ok(Continue)` retries, `Ok(Stop)` ends the
-    /// stream (interrupted), `Err` raises.
-    async fn on_error(&mut self, err: ProviderError) -> Result<Next, ModelError> {
-        self.current = None;
+    /// Announces `wait` (log and status), then sleeps through it. `Stop`
+    /// when the interrupt fired first; the budget is charged only for a wait
+    /// that ran to its end.
+    async fn wait_out(&mut self, wait: Wait) -> Next {
+        let status = match &wait {
+            Wait::Quota { status, reset, wait: secs, every_account } => {
+                let secs = *secs;
+                tracing::warn!("llm_provider_quota_wait model={} status={} wait={:.0}s quota_wait={}/{}", self.label, status, secs, self.spent.quota_waits + 1, MAX_QUOTA_WAITS);
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
+                // A provider with several accounts only waits once every one
+                // is limited (a locked session included).
+                let msg = if *every_account {
+                    format!(
+                        "Every account for {} is at its usage limit. Waiting {} for the first one to reset. Agent will automatically resume work. You can stop at any time.",
+                        self.label,
+                        format_duration(secs)
+                    )
+                } else {
+                    format!(
+                        "Provider quota exhausted for {}. Waiting {} for reset. Agent will automatically resume work. You can stop at any time.",
+                        self.label,
+                        format_duration(secs)
+                    )
+                };
+                ProviderStatus {
+                    status: "waiting_quota".into(),
+                    model: Some(self.label.clone()),
+                    attempt: Some(self.spent.http + 1),
+                    max_attempts: Some(MAX_RETRIES),
+                    delay_seconds: Some(secs),
+                    error_type: Some("HTTPStatusError".into()),
+                    status_code: Some(*status as i64),
+                    retry_after: Some(*reset),
+                    message: Some(msg),
+                    resets_at: Some((now + *reset as f64) as i64),
+                    ..Default::default()
+                }
+            }
+            Wait::Http { status, retry_after, delay } => {
+                tracing::warn!("llm_provider_retry model={} status={} attempt={}/{} delay={:.1}s", self.label, status, self.spent.http + 1, MAX_RETRIES, delay);
+                ProviderStatus {
+                    status: "retrying".into(),
+                    model: Some(self.label.clone()),
+                    attempt: Some(self.spent.http + 1),
+                    max_attempts: Some(MAX_RETRIES),
+                    delay_seconds: Some(*delay),
+                    error_type: Some("HTTPStatusError".into()),
+                    status_code: Some(*status as i64),
+                    retry_after: Some(*retry_after),
+                    ..Default::default()
+                }
+            }
+            Wait::Network { error_type, delay } => {
+                let limit = self.network_limit.map(|b| b.to_string()).unwrap_or_else(|| "unlimited".into());
+                tracing::warn!("llm_provider_retry model={} error={} attempt={}/{} delay={:.1}s", self.label, error_type, self.spent.network + 1, limit, delay);
+                ProviderStatus {
+                    status: "retrying".into(),
+                    model: Some(self.label.clone()),
+                    attempt: Some(self.spent.network + 1),
+                    max_attempts: self.network_limit,
+                    delay_seconds: Some(*delay),
+                    error_type: Some(error_type.clone()),
+                    ..Default::default()
+                }
+            }
+        };
+        self.notify_retry(status).await;
+        if self.sleep(wait.seconds()).await {
+            return Next::Stop;
+        }
+        self.spent.charge(&wait);
+        Next::Continue
+    }
+
+    /// Handle one failed attempt: switch credentials, or carry out
+    /// [`plan_recovery`]. `Ok(Continue)` retries, `Ok(Stop)` ends the stream
+    /// (interrupted), `Err` raises.
+    async fn recover(&mut self, err: ProviderError) -> Result<Next, ModelError> {
         if self.try_switch_credential(&err).await {
             return Ok(Next::Continue);
         }
-        match &err {
-            ProviderError::Http { status, body, .. } => {
-                let status = *status;
-                if !is_retryable_http(status, body) {
-                    tracing::warn!("llm_provider_error model={} status={} body={}", self.label, status, crate::util::head_chars(body, 500));
-                    return Err(classify_http(status, body, &self.label).into());
-                }
-                let retry_after;
-                if status == 429 {
-                    if is_spend_limit_429(status, body) {
-                        tracing::warn!("llm_provider_spend_limit model={} body={}", self.label, crate::util::head_chars(body, 300));
-                        return Err(AgentError::RateLimit(format!(
-                            "{} reached the account's spend limit. Raise the limit in the provider's console, or switch to another model.",
-                            self.label
-                        ))
-                        .into());
-                    }
-                    let mut reset = parse_retry_after(&err);
-                    // Every credential is cooling down: wait for the first
-                    // one to recover, not necessarily the one that failed.
-                    let every_account = self.provider.credential_recovery_secs();
-                    if let Some(next) = every_account {
-                        let next = next.ceil().max(1.0) as i64;
-                        reset = if reset > 0 { reset.min(next) } else { next };
-                    }
-                    if reset as f64 > MAX_DELAY {
-                        if reset > MAX_QUOTA_WAIT_SECONDS {
-                            return Err(AgentError::RateLimit(format!(
-                                "The configured LLM provider quota is exhausted. Reset in {}, which exceeds the maximum auto-wait of {}.",
-                                format_duration(reset as f64),
-                                format_duration(MAX_QUOTA_WAIT_SECONDS as f64)
-                            ))
-                            .into());
-                        }
-                        if self.quota_waits >= MAX_QUOTA_WAITS {
-                            return Err(self.final_error(&err));
-                        }
-                        self.quota_waits += 1;
-                        let wait = reset as f64 + CLOCK_SKEW_BUFFER_SECONDS;
-                        tracing::warn!("llm_provider_quota_wait model={} status={} wait={:.0}s quota_wait={}/{}", self.label, status, wait, self.quota_waits, MAX_QUOTA_WAITS);
-                        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
-                        // A provider with several accounts only waits once
-                        // every one is limited (a locked session included).
-                        let msg = if every_account.is_some() {
-                            format!(
-                                "Every account for {} is at its usage limit. Waiting {} for the first one to reset. Agent will automatically resume work. You can stop at any time.",
-                                self.label,
-                                format_duration(wait)
-                            )
-                        } else {
-                            format!(
-                                "Provider quota exhausted for {}. Waiting {} for reset. Agent will automatically resume work. You can stop at any time.",
-                                self.label,
-                                format_duration(wait)
-                            )
-                        };
-                        self.notify_retry(ProviderStatus {
-                            status: "waiting_quota".into(),
-                            model: Some(self.label.clone()),
-                            attempt: Some(self.attempt + 1),
-                            max_attempts: Some(MAX_RETRIES),
-                            delay_seconds: Some(wait),
-                            error_type: Some("HTTPStatusError".into()),
-                            status_code: Some(status as i64),
-                            retry_after: Some(reset),
-                            message: Some(msg),
-                            resets_at: Some((now + reset as f64) as i64),
-                            ..Default::default()
-                        })
-                        .await;
-                        if self.sleep(wait).await {
-                            return Ok(Next::Stop);
-                        }
-                        return Ok(Next::Continue);
-                    }
-                    if is_non_retryable_429(status, body) && reset == 0 {
-                        return Err(self.final_error(&err));
-                    }
-                    retry_after = reset;
-                    if let Some((hooks, ctx)) = self.hooks {
-                        for h in hooks {
-                            h.on_rate_limit(ctx, retry_after, self.attempt + 1, MAX_RETRIES).await;
-                        }
-                    }
-                } else {
-                    retry_after = parse_retry_after(&err);
-                }
-                if self.attempt + 1 >= MAX_RETRIES {
-                    tracing::warn!("llm_provider_exhausted model={} status={} attempts={}", self.label, status, MAX_RETRIES);
-                    self.notify_exhausted("HTTPStatusError", Some(status as i64), MAX_RETRIES).await;
-                    return Err(self.final_error(&err));
-                }
-                let required = required_delay(self.attempt, retry_after);
-                let delay = backoff_delay(self.attempt, retry_after);
-                if status == 429 && required >= MAX_DELAY {
-                    return Err(self.final_error(&err));
-                }
-                tracing::warn!("llm_provider_retry model={} status={} attempt={}/{} delay={:.1}s", self.label, status, self.attempt + 1, MAX_RETRIES, delay);
-                self.notify_retry(ProviderStatus {
-                    status: "retrying".into(),
-                    model: Some(self.label.clone()),
-                    attempt: Some(self.attempt + 1),
-                    max_attempts: Some(MAX_RETRIES),
-                    delay_seconds: Some(delay),
-                    error_type: Some("HTTPStatusError".into()),
-                    status_code: Some(status as i64),
-                    retry_after: Some(retry_after),
-                    ..Default::default()
-                })
-                .await;
-                if self.sleep(delay).await {
-                    return Ok(Next::Stop);
-                }
-                self.attempt += 1;
-                Ok(Next::Continue)
+        let provider = self.provider.clone();
+        let plan = plan_recovery(&err, self.spent, self.network_limit, || provider.credential_recovery_secs(), &self.label);
+        if let (Some(retry_after), Some((hooks, ctx))) = (plan.rate_limit, self.hooks) {
+            for h in hooks {
+                h.on_rate_limit(ctx, retry_after, self.spent.http + 1, MAX_RETRIES).await;
             }
-            ProviderError::Network(msg) => {
-                let et = network_error_type(msg).to_string();
-                if let Some(budget) = self.network_budget.filter(|b| self.network_attempt + 1 >= *b) {
-                    tracing::warn!("llm_provider_exhausted model={} error={} attempts={}", self.label, et, budget);
-                    self.notify_exhausted(&et, None, budget).await;
-                    return Err(ModelError::Transient { error_type: et, message: msg.clone() });
+        }
+        match plan.recovery {
+            Recovery::Wait(wait) => Ok(self.wait_out(wait).await),
+            Recovery::Exhausted { error_type, status_code, max_attempts, error } => {
+                match status_code {
+                    Some(status) => tracing::warn!("llm_provider_exhausted model={} status={} attempts={}", self.label, status, max_attempts),
+                    None => tracing::warn!("llm_provider_exhausted model={} error={} attempts={}", self.label, error_type, max_attempts),
                 }
-                let delay = network_retry_delay();
-                let budget = self.network_budget.map(|b| b.to_string()).unwrap_or_else(|| "unlimited".into());
-                tracing::warn!("llm_provider_retry model={} error={} attempt={}/{} delay={:.1}s", self.label, et, self.network_attempt + 1, budget, delay);
-                self.notify_retry(ProviderStatus {
-                    status: "retrying".into(),
-                    model: Some(self.label.clone()),
-                    attempt: Some(self.network_attempt + 1),
-                    max_attempts: self.network_budget,
-                    delay_seconds: Some(delay),
-                    error_type: Some(et),
-                    ..Default::default()
-                })
-                .await;
-                if self.sleep(delay).await {
-                    return Ok(Next::Stop);
-                }
-                self.network_attempt += 1;
-                Ok(Next::Continue)
+                self.notify_exhausted(&error_type, status_code, max_attempts).await;
+                Err(error)
             }
-            ProviderError::Unconfigured(m) => Err(AgentError::Unconfigured(m.clone()).into()),
-            ProviderError::Auth(m) => Err(AgentError::Auth { message: m.clone(), status: None, provider: None }.into()),
-            other => Err(AgentError::Other(other.to_string()).into()),
+            Recovery::Fail(error) => Err(error),
         }
     }
 
-    /// Error raised after the retry loop gives up on an HTTP error.
-    fn final_error(&self, err: &ProviderError) -> ModelError {
-        if err.status() == Some(429) {
-            return AgentError::RateLimit("The configured LLM provider is rate-limited or quota-exhausted.".into()).into();
+    /// Ends the current attempt after `err` (`emitted`: it had yielded
+    /// chunks). The stream then waits for its next request, or finishes when
+    /// Stop came during the wait or the error is final.
+    async fn end_attempt(&mut self, err: ProviderError, emitted: bool) -> Result<(), ModelError> {
+        self.phase = Phase::Request { restart: emitted };
+        match self.recover(err).await {
+            Ok(Next::Continue) => Ok(()),
+            Ok(Next::Stop) => {
+                self.phase = Phase::Finished;
+                Ok(())
+            }
+            Err(e) => {
+                self.phase = Phase::Finished;
+                Err(e)
+            }
         }
-        AgentError::Other(err.to_string()).into()
     }
 
     pub async fn next(&mut self) -> Result<Option<RetryItem>, ModelError> {
         loop {
-            if self.done {
-                return Ok(None);
-            }
-            if self.current.is_none() {
-                if self.attempt >= MAX_RETRIES || self.interrupted() {
-                    self.done = true;
-                    return Ok(None);
-                }
-                if self.emitted {
-                    self.emitted = false;
-                    return Ok(Some(RetryItem::Restart));
-                }
-                self.attempt_started = Instant::now();
-                match self.provider.stream(self.messages, self.tools, &self.kwargs).await {
-                    Ok(s) => self.current = Some(SyncStream(s)),
-                    Err(e) => match self.on_error(e).await {
-                        Ok(Next::Continue) => continue,
-                        Ok(Next::Stop) => {
-                            self.done = true;
-                            return Ok(None);
-                        }
-                        Err(e) => {
-                            self.done = true;
-                            return Err(e);
-                        }
-                    },
-                }
-            }
-            let item = self.current.as_mut().unwrap().0.next().await;
-            match item {
-                Some(Ok(chunk)) => {
-                    self.emitted = true;
-                    return Ok(Some(RetryItem::Chunk(chunk)));
-                }
-                None => {
-                    self.done = true;
-                    self.current = None;
-                    return Ok(None);
-                }
-                Some(Err(e)) => match self.on_error(e).await {
-                    Ok(Next::Continue) => continue,
-                    Ok(Next::Stop) => {
-                        self.done = true;
+            match self.phase {
+                Phase::Finished => return Ok(None),
+                Phase::Request { restart } => {
+                    if self.interrupted() {
+                        self.phase = Phase::Finished;
                         return Ok(None);
                     }
-                    Err(e) => {
-                        self.done = true;
-                        return Err(e);
+                    if restart {
+                        self.phase = Phase::Request { restart: false };
+                        return Ok(Some(RetryItem::Restart));
                     }
-                },
+                    self.attempt_started = Instant::now();
+                    match self.provider.stream(self.messages, self.tools, &self.kwargs).await {
+                        Ok(s) => self.phase = Phase::Streaming { stream: SyncStream(s), emitted: false },
+                        Err(e) => self.end_attempt(e, false).await?,
+                    }
+                }
+                Phase::Streaming { ref mut stream, ref mut emitted } => {
+                    let item = stream.0.next().await;
+                    match item {
+                        Some(Ok(chunk)) => {
+                            *emitted = true;
+                            return Ok(Some(RetryItem::Chunk(chunk)));
+                        }
+                        None => {
+                            self.phase = Phase::Finished;
+                            return Ok(None);
+                        }
+                        Some(Err(e)) => {
+                            let emitted = *emitted;
+                            self.end_attempt(e, emitted).await?;
+                        }
+                    }
+                }
             }
         }
     }
@@ -999,6 +1099,371 @@ mod tests {
         let statuses = log.0.lock().unwrap();
         assert_eq!(statuses.len() as i64, MAX_NETWORK_ATTEMPTS);
         assert_eq!(statuses.last().unwrap().status, "exhausted");
+    }
+
+    fn server_error() -> MockTurn {
+        MockTurn::Error(ProviderError::http(500, "https://example.test/v1/chat", String::new(), vec![]))
+    }
+
+    fn http(status: u16, body: &str, retry_after: Option<&str>) -> ProviderError {
+        let headers = retry_after.map(|r| vec![("retry-after".to_string(), r.to_string())]).unwrap_or_default();
+        ProviderError::http(status, "https://example.test/v1/chat", body.into(), headers)
+    }
+
+    fn plan(err: &ProviderError, spent: Spent, network_limit: Option<i64>) -> Plan {
+        plan_recovery(err, spent, network_limit, || None, "mock:mock")
+    }
+
+    #[test]
+    fn each_failure_kind_spends_and_exhausts_only_its_own_budget() {
+        let lost = ProviderError::Network("connection reset".into());
+        let full = Spent { http: MAX_RETRIES - 1, network: MAX_NETWORK_ATTEMPTS - 1, quota_waits: MAX_QUOTA_WAITS, switches: MAX_CREDENTIAL_SWITCHES };
+
+        // A transport failure looks only at the network budget.
+        let spent_elsewhere = Spent { network: 0, ..full };
+        assert!(matches!(plan(&lost, spent_elsewhere, Some(MAX_NETWORK_ATTEMPTS)).recovery, Recovery::Wait(Wait::Network { .. })));
+        let Recovery::Exhausted { status_code, max_attempts, error, .. } = plan(&lost, full, Some(MAX_NETWORK_ATTEMPTS)).recovery else { panic!("not exhausted") };
+        assert_eq!((status_code, max_attempts), (None, MAX_NETWORK_ATTEMPTS));
+        assert!(matches!(error, ModelError::Transient { .. }));
+        assert!(matches!(plan(&lost, Spent { network: 10_000, ..full }, None).recovery, Recovery::Wait(Wait::Network { .. })), "no limit: never exhausted");
+
+        // An HTTP error looks only at the HTTP budget.
+        let err = http(500, "", None);
+        let spent_elsewhere = Spent { http: 0, ..full };
+        let Recovery::Wait(Wait::Http { status, .. }) = plan(&err, spent_elsewhere, Some(1)).recovery else { panic!("no backoff") };
+        assert_eq!(status, 500);
+        let Recovery::Exhausted { status_code, max_attempts, .. } = plan(&err, full, Some(1)).recovery else { panic!("not exhausted") };
+        assert_eq!((status_code, max_attempts), (Some(500), MAX_RETRIES));
+
+        // A quota reset looks only at the quota waits.
+        let quota = http(429, "{}", Some("120"));
+        let spent_elsewhere = Spent { quota_waits: 0, ..full };
+        let Recovery::Wait(Wait::Quota { reset, wait, every_account, .. }) = plan(&quota, spent_elsewhere, Some(1)).recovery else { panic!("no quota wait") };
+        assert_eq!((reset, wait, every_account), (120, 120.0 + CLOCK_SKEW_BUFFER_SECONDS, false));
+        assert!(matches!(plan(&quota, full, Some(1)).recovery, Recovery::Fail(ModelError::Agent(AgentError::RateLimit(_)))));
+    }
+
+    #[test]
+    fn a_wait_is_charged_to_its_own_budget() {
+        let mut spent = Spent::default();
+        spent.charge(&Wait::Quota { status: 429, reset: 120, wait: 122.0, every_account: false });
+        spent.charge(&Wait::Http { status: 500, retry_after: 0, delay: 1.0 });
+        spent.charge(&Wait::Network { error_type: "ConnectError".into(), delay: 3.0 });
+        spent.charge(&Wait::Network { error_type: "ConnectError".into(), delay: 3.0 });
+        assert_eq!(spent, Spent { http: 1, network: 2, quota_waits: 1, switches: 0 });
+    }
+
+    #[test]
+    fn a_retryable_429_is_announced_as_a_rate_limit_even_when_it_gives_up() {
+        let limited = http(429, "{}", Some("5"));
+        let p = plan(&limited, Spent::default(), None);
+        assert_eq!(p.rate_limit, Some(5));
+        assert!(matches!(p.recovery, Recovery::Wait(Wait::Http { retry_after: 5, .. })));
+        let p = plan(&limited, Spent { http: MAX_RETRIES - 1, ..Spent::default() }, None);
+        assert_eq!(p.rate_limit, Some(5));
+        assert!(matches!(p.recovery, Recovery::Exhausted { .. }));
+        // Other errors are not rate limits.
+        assert_eq!(plan(&http(503, "", Some("5")), Spent::default(), None).rate_limit, None);
+        assert_eq!(plan(&http(429, "{}", Some("120")), Spent::default(), None).rate_limit, None, "a quota wait is announced as such");
+    }
+
+    #[test]
+    fn final_failures_do_not_retry() {
+        let fails = |err: ProviderError| matches!(plan(&err, Spent::default(), None).recovery, Recovery::Fail(_));
+        assert!(fails(http(400, r#"{"error":{"message":"bad request"}}"#, None)), "not retryable");
+        assert!(fails(http(429, "monthly spend limit reached", Some("60"))), "spend limit");
+        assert!(fails(http(429, "{}", Some("172800"))), "reset past the longest quota wait");
+        assert!(fails(http(429, "insufficient_quota", None)), "a quota marker with no reset");
+        assert!(fails(ProviderError::Unconfigured("no key".into())));
+        assert!(fails(ProviderError::Auth("rejected".into())));
+    }
+
+    /// A pooled provider whose accounts are all cooling waits for the first
+    /// to recover, and the plan says it is every account.
+    #[test]
+    fn every_cooling_account_shortens_the_quota_wait_to_the_first_recovery() {
+        let quota = http(429, "{}", Some("3600"));
+        let p = plan_recovery(&quota, Spent::default(), None, || Some(599.2), "mock:mock");
+        let Recovery::Wait(Wait::Quota { reset, every_account, .. }) = p.recovery else { panic!("{p:?}") };
+        assert_eq!((reset, every_account), (600, true));
+        let mut asked = false;
+        plan_recovery(
+            &http(500, "", None),
+            Spent::default(),
+            None,
+            || {
+                asked = true;
+                None
+            },
+            "mock:mock",
+        );
+        assert!(!asked, "only a 429 asks the pool");
+    }
+
+    /// A 429 whose reset is past the backoff cap: a quota wait.
+    fn quota_reset_in_two_minutes() -> MockTurn {
+        MockTurn::Error(ProviderError::http(429, "https://example.test/v1/chat", "{}".into(), vec![("retry-after".into(), "120".into())]))
+    }
+
+    fn statuses_of(log: &StatusLog) -> Vec<String> {
+        log.0.lock().unwrap().iter().map(|s| s.status.clone()).collect()
+    }
+
+    /// HTTP errors and transport failures each spend their own budget: four
+    /// server errors and nine dropped connections still end in an answer.
+    #[tokio::test(start_paused = true)]
+    async fn http_and_network_failures_draw_on_separate_budgets() {
+        let mut turns: Vec<MockTurn> = (0..MAX_RETRIES - 1).map(|_| server_error()).collect();
+        turns.extend((0..MAX_NETWORK_ATTEMPTS - 1).map(|_| dropped()));
+        turns.push(MockProvider::text("answer"));
+        let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::new(turns));
+        let log = Arc::new(StatusLog::default());
+        let hooks: Vec<HookRef> = vec![log.clone()];
+        let ctx = ctx();
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider, "mock:mock", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None);
+
+        assert_eq!(drain(&mut rs).await.unwrap(), "answer");
+        let statuses = log.0.lock().unwrap();
+        assert_eq!(statuses.len() as i64, MAX_RETRIES - 1 + MAX_NETWORK_ATTEMPTS - 1);
+        assert!(statuses.iter().all(|s| s.status == "retrying"), "{statuses:?}");
+        let http: Vec<_> = statuses.iter().filter(|s| s.status_code == Some(500)).map(|s| (s.attempt, s.max_attempts)).collect();
+        assert_eq!(http, (1..MAX_RETRIES).map(|a| (Some(a), Some(MAX_RETRIES))).collect::<Vec<_>>());
+        let network: Vec<_> = statuses.iter().filter(|s| s.status_code.is_none()).map(|s| (s.attempt, s.max_attempts)).collect();
+        assert_eq!(network, (1..MAX_NETWORK_ATTEMPTS).map(|a| (Some(a), Some(MAX_NETWORK_ATTEMPTS))).collect::<Vec<_>>());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_last_http_attempt_reports_exhaustion_and_fails() {
+        let turns: Vec<MockTurn> = (0..MAX_RETRIES + 1).map(|_| server_error()).collect();
+        let mock = Arc::new(MockProvider::new(turns));
+        let provider: Arc<dyn LlmProvider> = mock.clone();
+        let log = Arc::new(StatusLog::default());
+        let hooks: Vec<HookRef> = vec![log.clone()];
+        let ctx = ctx();
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider, "mock:mock", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None).retry_network_indefinitely();
+
+        let err = drain(&mut rs).await.unwrap_err();
+        assert!(matches!(err, ModelError::Agent(AgentError::Other(_))), "{err:?}");
+        assert_eq!(mock.calls.lock().unwrap().len() as i64, MAX_RETRIES);
+        {
+            let statuses = log.0.lock().unwrap();
+            let last = statuses.last().unwrap();
+            assert_eq!((last.status.as_str(), last.status_code, last.max_attempts), ("exhausted", Some(500), Some(MAX_RETRIES)));
+        }
+        assert!(rs.next().await.unwrap().is_none(), "a failed stream stays finished");
+    }
+
+    /// Waiting out a quota reset is not an HTTP retry: after the quota waits,
+    /// the full HTTP budget is still there.
+    #[tokio::test(start_paused = true)]
+    async fn quota_waits_do_not_charge_the_http_budget() {
+        let mut turns: Vec<MockTurn> = (0..MAX_QUOTA_WAITS).map(|_| quota_reset_in_two_minutes()).collect();
+        turns.extend((0..MAX_RETRIES - 1).map(|_| server_error()));
+        turns.push(MockProvider::text("answer"));
+        let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::new(turns));
+        let log = Arc::new(StatusLog::default());
+        let hooks: Vec<HookRef> = vec![log.clone()];
+        let ctx = ctx();
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider, "mock:mock", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None);
+
+        assert_eq!(drain(&mut rs).await.unwrap(), "answer");
+        let mut expected = vec!["waiting_quota".to_string(); MAX_QUOTA_WAITS as usize];
+        expected.extend(vec!["retrying".to_string(); MAX_RETRIES as usize - 1]);
+        assert_eq!(statuses_of(&log), expected);
+        let waits: Vec<_> = log.0.lock().unwrap().iter().filter(|s| s.status == "waiting_quota").map(|s| s.attempt).collect();
+        assert_eq!(waits, vec![Some(1); MAX_QUOTA_WAITS as usize], "a quota wait does not advance the HTTP attempt");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_quota_reset_after_the_last_wait_fails_as_rate_limited() {
+        let turns: Vec<MockTurn> = (0..MAX_QUOTA_WAITS + 1).map(|_| quota_reset_in_two_minutes()).collect();
+        let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::new(turns));
+        let log = Arc::new(StatusLog::default());
+        let hooks: Vec<HookRef> = vec![log.clone()];
+        let ctx = ctx();
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider, "mock:mock", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None);
+
+        let err = drain(&mut rs).await.unwrap_err();
+        let ModelError::Agent(AgentError::RateLimit(message)) = err else { panic!("{err:?}") };
+        assert!(message.contains("rate-limited or quota-exhausted"), "{message}");
+        assert_eq!(statuses_of(&log), vec!["waiting_quota".to_string(); MAX_QUOTA_WAITS as usize]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stop_ends_a_quota_wait() {
+        let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::new(vec![quota_reset_in_two_minutes(), MockProvider::text("too late")]));
+        let messages = vec![ChatMessage::user("hi")];
+        let stop = Event::new();
+        let mut rs = RetryStream::new(provider, "mock:mock", &messages, None, Kwargs::new(), None, Some(stop.clone()));
+        let stopper = stop.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            stopper.set();
+        });
+
+        let started = Instant::now();
+        assert_eq!(drain(&mut rs).await.unwrap(), "");
+        assert!(started.elapsed() < Duration::from_secs(11), "stopped after {:?}", started.elapsed());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stop_ends_an_http_backoff() {
+        let error = MockTurn::Error(ProviderError::http(503, "https://example.test/v1/chat", String::new(), vec![("retry-after".into(), "50".into())]));
+        let mock = Arc::new(MockProvider::new(vec![error, MockProvider::text("too late")]));
+        let provider: Arc<dyn LlmProvider> = mock.clone();
+        let messages = vec![ChatMessage::user("hi")];
+        let stop = Event::new();
+        let mut rs = RetryStream::new(provider, "mock:mock", &messages, None, Kwargs::new(), None, Some(stop.clone()));
+        let stopper = stop.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            stopper.set();
+        });
+
+        let started = Instant::now();
+        assert_eq!(drain(&mut rs).await.unwrap(), "");
+        assert!(started.elapsed() < Duration::from_secs(6), "stopped after {:?}", started.elapsed());
+        assert_eq!(mock.calls.lock().unwrap().len(), 1, "no request after Stop");
+    }
+
+    /// Every credential is rejected and the provider always has another one:
+    /// switching stops after its own budget and the error surfaces.
+    struct EndlessKeys {
+        kw: Kwargs,
+        calls: Mutex<usize>,
+    }
+
+    #[async_trait]
+    impl LlmProvider for EndlessKeys {
+        fn model(&self) -> &str {
+            "m"
+        }
+        fn provider_name(&self) -> Option<&str> {
+            Some("pool-test")
+        }
+        fn base_kwargs(&self) -> &Kwargs {
+            &self.kw
+        }
+        async fn chat(&self, _: &[ChatMessage], _: Option<&[ToolSpec]>, _: &Kwargs) -> appv3_providers::ProviderResult<AssistantMessage> {
+            unreachable!()
+        }
+        async fn stream(&self, _: &[ChatMessage], _: Option<&[ToolSpec]>, _: &Kwargs) -> appv3_providers::ProviderResult<ChunkStream> {
+            *self.calls.lock().unwrap() += 1;
+            Err(ProviderError::http(401, "https://example.test/v1/chat", "{}".into(), vec![]))
+        }
+        fn rotate_credential(&self, _: &ProviderError, _: &str, _: f64) -> Option<String> {
+            Some("Next".into())
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn credential_switches_stop_at_their_budget() {
+        let provider = Arc::new(EndlessKeys { kw: Kwargs::new(), calls: Mutex::new(0) });
+        let log = Arc::new(StatusLog::default());
+        let hooks: Vec<HookRef> = vec![log.clone()];
+        let ctx = ctx();
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider.clone(), "mock:mock", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None);
+
+        let err = drain(&mut rs).await.unwrap_err();
+        assert!(matches!(err, ModelError::Agent(AgentError::Auth { .. })), "{err:?}");
+        assert_eq!(*provider.calls.lock().unwrap() as i64, MAX_CREDENTIAL_SWITCHES + 1);
+        assert_eq!(statuses_of(&log), vec!["switched_credential".to_string(); MAX_CREDENTIAL_SWITCHES as usize]);
+    }
+
+    /// Streams `first` then fails with a dropped connection, then answers
+    /// `second` on the retry.
+    struct DropsMidStream {
+        kw: Kwargs,
+        first: Vec<&'static str>,
+        calls: Mutex<usize>,
+    }
+
+    #[async_trait]
+    impl LlmProvider for DropsMidStream {
+        fn model(&self) -> &str {
+            "mock"
+        }
+        fn provider_name(&self) -> Option<&str> {
+            Some("mock")
+        }
+        fn base_kwargs(&self) -> &Kwargs {
+            &self.kw
+        }
+        async fn chat(&self, _: &[ChatMessage], _: Option<&[ToolSpec]>, _: &Kwargs) -> appv3_providers::ProviderResult<AssistantMessage> {
+            unreachable!()
+        }
+        async fn stream(&self, _: &[ChatMessage], _: Option<&[ToolSpec]>, _: &Kwargs) -> appv3_providers::ProviderResult<ChunkStream> {
+            let call = {
+                let mut calls = self.calls.lock().unwrap();
+                *calls += 1;
+                *calls
+            };
+            let delta = |s: &str| ChatCompletionChunk::delta("mock", "mock", ChatCompletionDelta { content: Some(s.into()), ..Default::default() }, None, None);
+            let items: Vec<Result<ChatCompletionChunk, ProviderError>> = if call == 1 {
+                let mut v: Vec<_> = self.first.iter().map(|s| Ok(delta(s))).collect();
+                v.push(Err(ProviderError::Network("connection reset".into())));
+                v
+            } else {
+                vec![Ok(delta("second"))]
+            };
+            Ok(Box::pin(futures::stream::iter(items)))
+        }
+    }
+
+    async fn items(rs: &mut RetryStream<'_>) -> Vec<String> {
+        let mut out = Vec::new();
+        while let Some(item) = rs.next().await.unwrap() {
+            out.push(match item {
+                RetryItem::Restart => "<restart>".into(),
+                RetryItem::Chunk(c) => c.choices.iter().filter_map(|ch| ch.delta.content.clone()).collect(),
+            });
+        }
+        out
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_retry_after_streamed_output_is_marked_as_a_restart() {
+        let provider: Arc<dyn LlmProvider> = Arc::new(DropsMidStream { kw: Kwargs::new(), first: vec!["par", "tial"], calls: Mutex::new(0) });
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider, "mock:mock", &messages, None, Kwargs::new(), None, None);
+        assert_eq!(items(&mut rs).await, ["par", "tial", "<restart>", "second"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_retry_before_any_output_is_not_a_restart() {
+        let provider: Arc<dyn LlmProvider> = Arc::new(DropsMidStream { kw: Kwargs::new(), first: vec![], calls: Mutex::new(0) });
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider, "mock:mock", &messages, None, Kwargs::new(), None, None);
+        assert_eq!(items(&mut rs).await, ["second"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_assembled_message_keeps_only_the_restarted_output() {
+        let provider: Arc<dyn LlmProvider> = Arc::new(DropsMidStream { kw: Kwargs::new(), first: vec!["dropped"], calls: Mutex::new(0) });
+        let ctx = ctx();
+        let state = AgentState::new(vec![], String::new());
+        let (msg, _, _) = stream_and_assemble(StreamArgs {
+            ctx: &ctx,
+            state: &state,
+            hooks: &[],
+            interrupt: None,
+            hard_cancel: None,
+            system_prompt: "",
+            messages: vec![ChatMessage::user("hi")],
+            tool_defs: &[],
+            provider,
+            label: "mock:mock",
+            agent_name: "lead",
+            agent_id: "lead-id",
+        })
+        .await
+        .unwrap();
+        assert_eq!(msg.content.as_deref(), Some("second"));
     }
 
     /// An account's spend cap does not lift on its own within the quota

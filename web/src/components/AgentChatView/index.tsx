@@ -328,6 +328,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         leadCompletionTokens: leadStream?.usage.completionTokens ?? 0,
         leadCachedTokens: leadStream?.usage.cachedTokens ?? 0,
         leadCachedPercent: leadStream?.usage.cachedPercent,
+        // The lead's and its subagents' spend so far.
+        sessionCostUsd: Object.values(s.agentStreams).reduce((total, stream) => total + (stream.usage?.estimatedCostUsd ?? 0), 0),
       }
     })
   )
@@ -360,6 +362,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     leadCompletionTokens,
     leadCachedTokens,
     leadCachedPercent,
+    sessionCostUsd,
   } = storeState
 
 
@@ -912,6 +915,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           output={headerTokens.output}
           cachedPercent={headerTokens.cachedPercent}
           trigger={headerTokens.trigger}
+          sessionCostUsd={sessionCostUsd}
           canSummarize={leadHasVisibleBlocks && !isAgentWorking}
         />
       ) : null}

@@ -748,6 +748,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     `provider:` part gives way first; the full ID is in the tooltip.
   - The context ring opens the token numbers and **Summarize now**. The
     header and status bar no longer show the context meter or the model.
+    Since `[v3.50.0]` it also shows the session's **Cost** so far, its
+    subagents' included (hidden while nothing was priced).
     Its full track is drawn, so a part-filled ring reads as a gauge, not a
     spinner. Its labels are in the UI font and only the numbers in mono, as
     in an answer's details.

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
-use sqlx::SqlitePool;
+use sqlx::{Connection, SqlitePool};
 use std::path::Path;
 use std::str::FromStr;
 
@@ -43,25 +43,50 @@ pub async fn create_pool(db_path: impl AsRef<Path>) -> Result<DbPool> {
         opts = opts.journal_mode(SqliteJournalMode::Wal);
     }
 
+    let pool = pool_options(in_memory).connect_with(opts).await?;
+
+    crate::migrations::run_migrations(&pool).await?;
+
+    Ok(pool)
+}
+
+/// The pool settings [`create_pool`] uses.
+fn pool_options(in_memory: bool) -> SqlitePoolOptions {
     let (max, min) = if in_memory { (1, 1) } else { (16, 1) };
     // sqlx's network-database defaults cost SQLite for nothing: a ping round
     // trip to the connection's worker thread on every acquire, and recycling
     // connections every 30 minutes, which throws away their page cache. The
     // single in-memory connection *is* the database, so it is never reaped.
     let idle_timeout = if in_memory { None } else { Some(std::time::Duration::from_secs(600)) };
-    let pool = SqlitePoolOptions::new()
+    let opts = SqlitePoolOptions::new()
         .max_connections(max)
         .min_connections(min)
         .acquire_timeout(std::time::Duration::from_secs(10))
         .test_before_acquire(false)
         .max_lifetime(None)
-        .idle_timeout(idle_timeout)
-        .connect_with(opts)
-        .await?;
-
-    crate::migrations::run_migrations(&pool).await?;
-
-    Ok(pool)
+        .idle_timeout(idle_timeout);
+    // Closing the single in-memory connection would drop the database itself.
+    if in_memory {
+        return opts;
+    }
+    opts.after_release(|conn, _meta| {
+        Box::pin(async move {
+            if !conn.is_in_transaction() {
+                return Ok(true);
+            }
+            // A dropped transaction queues its ROLLBACK; the ping runs after it.
+            conn.ping().await?;
+            if conn.is_in_transaction() {
+                // The ROLLBACK failed (SQLite had already rolled back, as on a
+                // full disk) and sqlx still counts a transaction: every later
+                // `BEGIN IMMEDIATE` on this connection would fail. Close it;
+                // the pool opens a fresh one.
+                tracing::warn!("db_connection_discarded_stuck_transaction");
+                return Ok(false);
+            }
+            Ok(true)
+        })
+    })
 }
 
 /// Turn off SQLite's global allocation statistics before the library
@@ -105,5 +130,35 @@ mod tests {
         let mem = create_pool(":memory:").await.unwrap();
         assert_eq!(mem.options().get_idle_timeout(), None);
         assert_eq!(mem.options().get_max_lifetime(), None);
+    }
+
+    /// The disk filled mid-write, SQLite rolled the transaction back on its
+    /// own, sqlx's ROLLBACK then failed and left the
+    /// connection's transaction depth at 1. Back in the pool, every later
+    /// `BEGIN IMMEDIATE` on it failed with "non-zero transaction depth" until
+    /// the app restarted, long after the disk had room again.
+    #[tokio::test]
+    async fn a_write_that_fills_the_disk_does_not_break_later_transactions() {
+        let dir = tempfile::tempdir().unwrap();
+        let opts = SqliteConnectOptions::from_str(&format!("sqlite://{}", dir.path().join("t.db").display())).unwrap().create_if_missing(true).journal_mode(SqliteJournalMode::Wal);
+        // One connection, so the next transaction reuses the one that failed.
+        let pool = pool_options(false).max_connections(1).connect_with(opts).await.unwrap();
+        sqlx::query("CREATE TABLE t (v BLOB)").execute(&pool).await.unwrap();
+        let pages: i64 = sqlx::query_scalar("PRAGMA page_count").fetch_one(&pool).await.unwrap();
+        // The "disk" holds only a few more pages.
+        sqlx::query(sqlx::AssertSqlSafe(format!("PRAGMA max_page_count = {}", pages + 4))).execute(&pool).await.unwrap();
+
+        {
+            let mut tx = pool.begin_with("BEGIN IMMEDIATE").await.unwrap();
+            let full = sqlx::query("INSERT INTO t VALUES (zeroblob(1000000))").execute(&mut *tx).await;
+            assert!(full.is_err(), "the write should have hit the page limit");
+            // Dropped like `?` drops it in the checkpointer.
+        }
+
+        // Room again.
+        sqlx::query("PRAGMA max_page_count = 1073741823").execute(&pool).await.unwrap();
+        let mut tx = pool.begin_with("BEGIN IMMEDIATE").await.expect("a transaction after the disk had room again");
+        sqlx::query("INSERT INTO t VALUES (x'01')").execute(&mut *tx).await.unwrap();
+        tx.commit().await.unwrap();
     }
 }

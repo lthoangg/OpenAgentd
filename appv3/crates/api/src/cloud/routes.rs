@@ -56,15 +56,28 @@ fn status_json() -> ApiResult<Response> {
 }
 
 /// Anyone who may use the API sees the state; only this computer sees a
-/// sign-in code in progress (it would let another device finish it).
+/// sign-in code in progress (it would let another device finish it) or
+/// the 6-digit code of a join (a relayed device must not read it off).
 async fn status(ext: Extensions) -> ApiResult<Response> {
     let mut v = serde_json::to_value(super::status()).map_err(ApiError::internal)?;
-    if v["state"] == "signing_in" && !is_local_caller(&ext) {
-        if let Some(o) = v.as_object_mut() {
-            o.retain(|k, _| k == "state" || k == "fingerprint");
+    redact_for_remote(&mut v, is_local_caller(&ext));
+    Ok(json(v))
+}
+
+fn redact_for_remote(v: &mut serde_json::Value, local: bool) {
+    if local {
+        return;
+    }
+    let state = v["state"].as_str().unwrap_or_default().to_string();
+    if let Some(o) = v.as_object_mut() {
+        match state.as_str() {
+            "signing_in" => o.retain(|k, _| k == "state" || k == "fingerprint"),
+            "joining" => {
+                o.remove("code");
+            }
+            _ => {}
         }
     }
-    Ok(json(v))
 }
 
 async fn login(ext: Extensions) -> ApiResult<Response> {
@@ -126,4 +139,32 @@ async fn reload(ext: Extensions) -> ApiResult<Response> {
     local_only(&ext)?;
     super::reload().await;
     status_json()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{RelayState, Status};
+    use super::redact_for_remote;
+
+    fn seen(s: Status, local: bool) -> serde_json::Value {
+        let mut v = serde_json::to_value(s).unwrap();
+        redact_for_remote(&mut v, local);
+        v
+    }
+
+    #[test]
+    fn a_remote_caller_never_sees_a_code() {
+        let joining = || Status::Joining { fingerprint: "3F9A 21C4".into(), code: Some("123456".into()) };
+        assert_eq!(seen(joining(), true)["code"], "123456");
+        let v = seen(joining(), false);
+        assert!(v.get("code").is_none(), "{v}");
+        assert_eq!((v["state"].as_str(), v["fingerprint"].as_str()), (Some("joining"), Some("3F9A 21C4")));
+        let signing =
+            Status::SigningIn { user_code: "ABCD-EFGH".into(), url: "https://account.openagentd.dev/device?code=ABCD-EFGH".into(), fingerprint: "3F9A".into(), expires_in: 600 };
+        let v = seen(signing, false);
+        assert!(v.get("user_code").is_none() && v.get("url").is_none(), "{v}");
+        // Other states are unchanged.
+        let connected = Status::Connected { fingerprint: "3F9A".into(), signer: false, relay: RelayState::Online, sessions: 1 };
+        assert_eq!(seen(connected.clone(), false), serde_json::to_value(connected).unwrap());
+    }
 }

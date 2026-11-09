@@ -178,7 +178,8 @@ The connector therefore must never look like a loopback caller.
 - Account routes (`/api/cloud/login`, `/api/cloud/logout`) refuse
   `RelayDevice` and LAN callers. A relayed device cannot sign the host into
   another account or out of this one. `GET /api/cloud/status` shows a
-  sign-in code in progress only to this computer.
+  sign-in code in progress, and a join's 6-digit code, only to this
+  computer.
 - A relay session is checked against the roster again after it is
   registered and before each stream; a controller removed in between is
   closed with 4001.

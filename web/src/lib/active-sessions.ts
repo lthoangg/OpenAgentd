@@ -13,9 +13,17 @@ export function needsYouSessions(data: InfiniteData<SessionPageResponse> | undef
 /**
  * Sessions at work, from ``useActiveSessionsQuery`` data: a turn running, or
  * a lead whose subagents still work. One waiting on the user is in Needs you.
+ * One an agent started from another workspace stays under the session that
+ * sent it (its ↗ list), so Running lists only the user's own sessions.
  */
 export function runningSessions(data: InfiniteData<SessionPageResponse> | undefined): SessionResponse[] {
-  return topLevelSessions(data).filter((session) => session.needs_input !== true && sessionWorking(session))
+  return topLevelSessions(data).filter((session) => session.needs_input !== true && sessionWorking(session) && !startedByAgent(session))
+}
+
+/** Whether an agent's ``workspace`` send in another workspace started this session. */
+export function startedByAgent(session: SessionResponse): boolean {
+  const sender = session.sent_from?.session_id
+  return Boolean(sender && sender !== session.id)
 }
 
 function topLevelSessions(data: InfiniteData<SessionPageResponse> | undefined): SessionResponse[] {

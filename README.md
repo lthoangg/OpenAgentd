@@ -71,8 +71,8 @@ Install only the backend to run it from a terminal, use it from a browser, or se
 ```bash
 curl -fsSL https://openagentd.dev/install.sh | sh -s -- --cli
 agentd server start                       # add --public --key --qr to pair a phone
-agentd run --prompt "Summarize this project"
-agentd run --continue --prompt "Now add tests for it"
+agentd run "Summarize this project"
+agentd run --continue "Now add tests for it"
 ```
 
 ```powershell

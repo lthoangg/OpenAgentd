@@ -386,6 +386,139 @@ pub async fn register_workspace(pool: &DbPool, workspace: &str) -> anyhow::Resul
     Ok(())
 }
 
+/// Why a relocate was refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RelocateError {
+    /// 422: the request itself does not hold (paths, folder still there…).
+    Invalid(String),
+    /// 409: sessions in the workspace are running; their titles.
+    Busy(Vec<String>),
+}
+
+/// What a relocate did, or (dry run) would do.
+#[derive(Debug, Clone, Default)]
+pub struct RelocateReport {
+    pub workspace: String,
+    pub summary: db::RelocateSummary,
+    /// Managed worktrees moved into the new repository's worktree folder: `(old, new)`.
+    pub moved: Vec<(String, String)>,
+    /// Git steps that failed; the move itself stands.
+    pub warnings: Vec<String>,
+}
+
+/// Check a relocate of the repository `from` (its folder gone) to the
+/// folder `to`; returns the resolved `to`.
+/// Returns `(from, to)` in the stored form (`db::relocate_path`), so a
+/// trailing separator or a lower-case drive letter still finds the row.
+async fn check_relocate(pool: &DbPool, from: &str, to: &str) -> Result<(String, String), RelocateError> {
+    let from = db::relocate_path(from);
+    let from = from.as_str();
+    let row = db::get_workspace_by_path(pool, from).await.map_err(|e| RelocateError::Invalid(e.to_string()))?;
+    if !row.as_ref().is_some_and(|r| r.kind == "repo" && r.deleted_at.is_none()) {
+        return Err(RelocateError::Invalid(format!("{from} is not a workspace in the sidebar.")));
+    }
+    if Path::new(from).exists() {
+        return Err(RelocateError::Invalid(format!("The folder {from} still exists; only a missing folder can be located.")));
+    }
+    let to = manager::validate_workspace(to, true).map_err(RelocateError::Invalid)?;
+    if settings().is_chat_workspace(Some(Path::new(&to))) {
+        return Err(RelocateError::Invalid("A workspace cannot move to the Chat folder.".into()));
+    }
+    if db::rebase_path(&to, from, &to).is_some() {
+        return Err(RelocateError::Invalid("The new folder cannot be inside the old one.".into()));
+    }
+    Ok((from.to_string(), to))
+}
+
+/// Every path a relocate from `from` touches: `from` and paths inside it,
+/// plus the worktrees filed under it.
+fn relocated_paths(from: &str, worktrees: &[(String, bool)]) -> impl Fn(&str) -> bool {
+    let from = from.to_string();
+    let worktrees: Vec<String> = worktrees.iter().map(|(p, _)| p.clone()).collect();
+    move |p: &str| db::rebase_path(p, &from, &from).is_some() || worktrees.iter().any(|w| db::rebase_path(p, w, w).is_some())
+}
+
+/// Point the repository `from`, whose folder is gone (renamed or moved),
+/// at `to`, keeping everything recorded under it: sessions, scheduled
+/// tasks, worktree and subfolder rows, and groups (`db::relocate_workspace`;
+/// a workspace already at `to` merges). Then git: `worktree repair` relinks
+/// the worktrees to the moved repository, and OpenAgentd's own worktrees
+/// move into the new repository's worktree folder, where it recognises them
+/// as its own. Refused while a session there is running. `dry_run` only
+/// reports what would move.
+pub async fn relocate_repository(pool: &DbPool, from: &str, to: &str, dry_run: bool) -> Result<RelocateReport, RelocateError> {
+    let invalid = |e: anyhow::Error| RelocateError::Invalid(e.to_string());
+    let (from, to) = check_relocate(pool, from, to).await?;
+    let from = from.as_str();
+    let summary = db::relocate_summary(pool, from, &to).await.map_err(invalid)?;
+    let under = relocated_paths(from, &summary.worktrees);
+    let mut report = RelocateReport { workspace: to.clone(), summary: summary.clone(), ..Default::default() };
+    if dry_run {
+        return Ok(report);
+    }
+
+    // Running sessions hold the old path; so do live idle ones, which are
+    // dropped and start again from their row on the next message.
+    let (busy, idle) = manager::live_sessions_in(&under);
+    let running = crate::stream_store::store().running_session_ids();
+    let mut busy_ids: Vec<String> = busy.iter().map(|s| s.session_id()).collect();
+    for row in db::get_sessions_by_ids(pool, &running).await.map_err(invalid)? {
+        if under(&row.workspace) {
+            busy_ids.push(db::codec::api_uuid(&row.id));
+        }
+    }
+    if !busy_ids.is_empty() {
+        busy_ids.sort();
+        busy_ids.dedup();
+        let rows = db::get_sessions_by_ids(pool, &busy_ids).await.map_err(invalid)?;
+        let titles = busy_ids
+            .iter()
+            .map(|id| rows.iter().find(|r| db::codec::api_uuid(&r.id) == *id).and_then(|r| r.title.clone()).filter(|t| !t.is_empty()).unwrap_or_else(|| "Untitled session".into()))
+            .collect();
+        return Err(RelocateError::Busy(titles));
+    }
+    if !idle.is_empty() {
+        manager::evict_sessions(&idle.iter().map(|s| s.session_id()).collect()).await;
+    }
+
+    db::relocate_workspace(pool, from, &to).await.map_err(invalid)?;
+
+    let target = Path::new(&to);
+    let present: Vec<&(String, bool)> = summary.worktrees.iter().filter(|(p, _)| Path::new(p).is_dir()).collect();
+    if present.is_empty() {
+        return Ok(report);
+    }
+    let mut args = vec!["worktree", "repair"];
+    args.extend(present.iter().map(|(p, _)| p.as_str()));
+    match run_git(target, &args).await {
+        Ok(o) if o.code == 0 => {}
+        Ok(o) => report.warnings.push(fail_detail(&o, "git worktree repair failed.")),
+        Err(e) => report.warnings.push(e.detail),
+    }
+    for (old, _) in present.iter().filter(|(_, managed)| *managed) {
+        let Some(name) = Path::new(old).file_name() else { continue };
+        let new = worktree_root(target, true).join(name);
+        let new_s = new.display().to_string();
+        if new_s == *old {
+            continue;
+        }
+        if new.exists() {
+            report.warnings.push(format!("Kept {old} in place: {new_s} already exists."));
+            continue;
+        }
+        match run_git(target, &["worktree", "move", old, &new_s]).await {
+            Ok(o) if o.code == 0 => {
+                let new_s = resolve(&new).display().to_string();
+                db::relocate_workspace(pool, old, &new_s).await.map_err(invalid)?;
+                report.moved.push((old.clone(), new_s));
+            }
+            Ok(o) => report.warnings.push(format!("Kept {old} in place: {}", fail_detail(&o, "git worktree move failed."))),
+            Err(e) => report.warnings.push(format!("Kept {old} in place: {}", e.detail)),
+        }
+    }
+    Ok(report)
+}
+
 /// Make sure the repository row exists without un-hiding a hidden one.
 async fn ensure_repo_row(pool: &DbPool, source: &str) -> anyhow::Result<()> {
     match db::get_workspace_by_path(pool, &db::resolve_path(source)).await? {

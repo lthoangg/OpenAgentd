@@ -499,6 +499,15 @@ async fn roster_put(State(f): State<Fake>, method: Method, uri: Uri, headers: He
         if !ok {
             return err(409, "enrollment_not_ready");
         }
+        // Spec 3.3: the added entry has the keys of its pubs, and only the
+        // roles its pubs asked for (or fewer).
+        let p = a.pending.values().find(|p| p["device_id"] == json!(added)).unwrap();
+        let asked = openagentd_cloud::keys::parse_pubs(&from_b64(p["pubs"].as_str().unwrap_or("")).unwrap_or_default());
+        let entry = next.body.device(added).unwrap();
+        let fits = asked.is_ok_and(|asked| entry.box_key() == asked.r#box && entry.sign_key() == asked.sign && entry.roles().within(asked.roles));
+        if !fits {
+            return err(400, "invalid_roster");
+        }
     }
     let mut used = Vec::new();
     for added in &change.added {
@@ -718,7 +727,15 @@ async fn invite_confirm(State(f): State<Fake>, method: Method, uri: Uri, headers
 pub fn tamper_swap_pubs(p: &mut Value) {
     // The cloud swaps in its own keys for the joining device's.
     let k = openagentd_cloud::keys::DeviceKeys::generate();
-    p["pubs"] = json!(b64(&k.pubs()));
+    p["pubs"] = json!(b64(&k.pubs(openagentd_cloud::keys::Roles::BOTH)));
+}
+
+pub fn tamper_raise_roles(p: &mut Value) {
+    // The cloud asks for more roles than the joining device did, with the
+    // same keys.
+    let pubs = from_b64(p["pubs"].as_str().unwrap()).unwrap();
+    let parsed = openagentd_cloud::keys::parse_pubs(&pubs).unwrap();
+    p["pubs"] = json!(b64(&openagentd_cloud::keys::pubs_bytes(&parsed.r#box, &parsed.sign, openagentd_cloud::keys::Roles::BOTH)));
 }
 
 pub fn decoded(s: &str) -> Vec<u8> {

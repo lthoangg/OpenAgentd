@@ -52,7 +52,12 @@ impl Sandbox {
         ] {
             cmd.env(k, self.path(d));
         }
-        cmd.env("OPENAGENTD_ENV", "production").env("NO_COLOR", "1").env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false").env("OPENAGENTD_SNAPSHOT_MAINTENANCE_ENABLED", "false");
+        cmd.env("OPENAGENTD_ENV", "production")
+            .env("NO_COLOR", "1")
+            .env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false")
+            .env("OPENAGENTD_SNAPSHOT_MAINTENANCE_ENABLED", "false")
+            // No release lookups from tests: a closed port answers at once.
+            .env("OPENAGENTD_RELEASES_URL", "http://127.0.0.1:9");
         for k in [
             "OPENAGENTD_DESKTOP_TOKEN",
             "OPENAGENTD_ACCESS_KEY",
@@ -67,6 +72,7 @@ impl Sandbox {
             "LOG_LEVEL",
             "OPENAGENTD_LOG_LEVEL",
             "OPENAI_API_KEY",
+            "AGENTD_AGENT",
         ] {
             cmd.env_remove(k);
         }
@@ -94,6 +100,19 @@ fn version_prints_the_release_string() {
     let o = Sandbox::new().run(&["--version"]);
     assert_eq!(code(&o), 0);
     assert_eq!(stdout(&o), format!("agentd v{}\n", env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn cloud_approve_refuses_without_a_terminal_or_under_an_agent() {
+    let sb = Sandbox::new();
+    // Answers piped in (stdin is not a terminal): `printf 'y\ny\n' | agentd cloud approve`.
+    let o = sb.run(&["cloud", "approve"]);
+    assert_eq!(code(&o), 1, "{}", stderr(&o));
+    assert!(stderr(&o).contains("Run this in Terminal"), "{}", stderr(&o));
+    // Anything an agent runs carries the marker.
+    let o = sb.run_with(&["cloud", "approve"], &[("AGENTD_AGENT", "1")]);
+    assert_eq!(code(&o), 1, "{}", stderr(&o));
+    assert!(stderr(&o).contains("An agent cannot approve devices"), "{}", stderr(&o));
 }
 
 #[test]

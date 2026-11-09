@@ -1,12 +1,14 @@
 //! `agentd cloud`: this computer's OpenAgentd Cloud account.
 //!
 //! Optional: local use and LAN pairing never need it. Signing in lets the
-//! person's phone reach this computer from anywhere through the end-to-end
-//! encrypted relay. A computer joins an account the phone set up: by the
-//! invitation link the phone shows (`join`, the default), or by signing in
-//! and comparing a 6-digit code on the phone (`login`, the fallback).
+//! person's other devices reach this computer from anywhere through the
+//! end-to-end encrypted relay. `login` signs in: on an empty account this
+//! computer creates it (after the recovery code), otherwise a device already
+//! in the account approves it with a 6-digit code. `join` takes an
+//! invitation link instead. `approve` lets this computer, when it is the
+//! one that approves devices, add a device that signed in.
 
-use crate::cli::CloudCmd;
+use crate::cli::{CloudCmd, CloudRoles};
 use crate::net::{display_host, http_get_with_headers, http_post_with_headers, resolve_addr, server_settings};
 use crate::ui::{bold, cyan, dim, field, green, yellow};
 use anyhow::{anyhow, Result};
@@ -18,14 +20,15 @@ use openagentd_cloud::recovery;
 use openagentd_cloud::roster;
 use openagentd_cloud::store::{self as idstore, SecretStore};
 use serde_json::Value;
-use std::io::{BufRead, Write};
+use std::io::{BufRead, IsTerminal, Write};
 use std::process::ExitCode;
 use std::time::Duration;
 
 pub fn cloud(cmd: &CloudCmd) -> Result<ExitCode> {
     match cmd {
-        CloudCmd::Join => join(),
-        CloudCmd::Login { first_device } => login(*first_device),
+        CloudCmd::Join { roles } => join(*roles),
+        CloudCmd::Login { roles, .. } => login(*roles),
+        CloudCmd::Approve => approve(),
         CloudCmd::Status => status(),
         CloudCmd::Logout { yes } => logout(*yes),
     }
@@ -73,6 +76,29 @@ fn prompt(label: &str) -> Result<String> {
     Ok(line.trim().to_string())
 }
 
+/// Why this process may not sign a roster, if it may not: only a person at
+/// a terminal approves (`tunnel-threats.md`, "Computer signers"). Both
+/// stdin and stdout must be terminals, so answers cannot be piped in, and
+/// no agent may drive the process (`AGENTD_AGENT`, set for everything the
+/// agent runs). This raises the bar; code running as the user can still
+/// fake a terminal.
+fn not_for_a_person(stdin_tty: bool, stdout_tty: bool, agent: bool) -> Option<&'static str> {
+    if agent {
+        Some("An agent cannot approve devices. Run this yourself in Terminal, or approve in the OpenAgentd app.")
+    } else if !(stdin_tty && stdout_tty) {
+        Some("Run this in Terminal: you compare a code and answer yourself, so it needs a terminal.")
+    } else {
+        None
+    }
+}
+
+/// Refuses (and says why) unless a person runs this at a terminal.
+fn require_person() -> Option<ExitCode> {
+    let why = not_for_a_person(std::io::stdin().is_terminal(), std::io::stdout().is_terminal(), appv3_core::auth::is_agent_process())?;
+    eprintln!("\n  {} {why}\n", yellow("!"));
+    Some(ExitCode::FAILURE)
+}
+
 /// Whether this computer already has an account (and says so).
 fn already_signed_in(store: &idstore::FileStore) -> Result<bool> {
     if let Some(id) = idstore::load(store)? {
@@ -88,14 +114,14 @@ fn already_signed_in(store: &idstore::FileStore) -> Result<bool> {
 /// Joins with the invitation link the phone shows. The link works like a
 /// password, so it is read without echo, never from the command line
 /// (shell history), and never stored.
-fn join() -> Result<ExitCode> {
+fn join(roles: CloudRoles) -> Result<ExitCode> {
     let store = identity_store();
     if already_signed_in(&store)? {
         return Ok(ExitCode::SUCCESS);
     }
     println!();
     println!("  Join your account to reach this computer from your devices. {}", dim("(optional; local use needs no account)"));
-    println!("  On your phone: OpenAgentd → Settings → Account → Add a device → Can't scan? Use a link.");
+    println!("  On a device in your account: OpenAgentd → Settings → Account → Add a device → Can't scan? Use a link.");
     println!();
     let link = zeroize::Zeroizing::new(crate::ui::read_secret("  Invitation link (hidden): ")?);
     if openagentd_cloud::invite::parse_link(&link).is_err() {
@@ -103,13 +129,13 @@ fn join() -> Result<ExitCode> {
         return Ok(ExitCode::FAILURE);
     }
     let rt = runtime()?;
-    let outcome = rt.block_on(engine::join_invite(Endpoints::current(), http(), &link, |event| {
+    let outcome = rt.block_on(engine::join_invite(Endpoints::current(), http(), &link, roles.roles(), |event| {
         if let engine::Event::Invited { fingerprint, kind } = event {
             println!();
             field("Device", &format!("{}   {}", bold(&fingerprint), dim(kind.unwrap_or("computer"))));
             println!();
-            println!("  On your phone, check it shows this device, then tap Add.");
-            println!("  {}", dim("Waiting for your phone… (Ctrl-C to cancel)"));
+            println!("  On the device that invited it, check it shows this device, then tap Add.");
+            println!("  {}", dim("Waiting… (Ctrl-C to cancel)"));
         }
     }));
     drop(link);
@@ -135,16 +161,26 @@ fn join() -> Result<ExitCode> {
     }
 }
 
-fn login(first_device: bool) -> Result<ExitCode> {
+fn roles_line(roles: openagentd_cloud::keys::Roles) -> &'static str {
+    match (roles.server, roles.client) {
+        (true, true) => "server and client",
+        (true, false) => "server: your other devices reach this computer",
+        _ => "client: this computer reaches your other computers",
+    }
+}
+
+fn login(roles: CloudRoles) -> Result<ExitCode> {
+    let roles = roles.roles();
     let store = identity_store();
     if already_signed_in(&store)? {
         return Ok(ExitCode::SUCCESS);
     }
     println!();
     println!("  Sign in to reach this computer from your devices. {}", dim("(optional; local use needs no account)"));
+    field("Use as", roles_line(roles));
     println!();
     let rt = runtime()?;
-    let outcome = rt.block_on(engine::sign_in(Endpoints::current(), http(), |event| match event {
+    let outcome = rt.block_on(engine::sign_in(Endpoints::current(), http(), roles, |event| match event {
         engine::Event::Code(c) => {
             field("Open", &cyan(&c.url));
             field("Code", &bold(&c.user_code));
@@ -156,8 +192,9 @@ fn login(first_device: bool) -> Result<ExitCode> {
         engine::Event::Joining { code: None, .. } => {
             println!("  {} Signed in.", green("✓"));
             println!();
-            println!("  Approve this computer on your phone: OpenAgentd → Settings → Account.");
-            println!("  {}", dim("Waiting for your phone…"));
+            println!("  Approve this computer on a device already in your account:");
+            println!("  OpenAgentd → Settings → Account → Pending approvals.");
+            println!("  {}", dim("Waiting for approval…"));
         }
         engine::Event::Joining { code: Some(c), .. } => {
             field("Code to compare", &bold(&code::display(&c)));
@@ -173,17 +210,19 @@ fn login(first_device: bool) -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         Ok(engine::Outcome::EmptyAccount { mut member, session }) => {
-            if !first_device {
-                println!();
-                println!("  {} This account has no devices yet. Set it up in the OpenAgentd", yellow("!"));
-                println!("    app on your phone first, then run agentd cloud login again.");
-                println!("    {}", dim("No phone? agentd cloud login --first-device sets it up here."));
-                println!();
-                return Ok(ExitCode::FAILURE);
+            // Creating the account signs its first roster: a person decides.
+            if let Some(code) = require_person() {
+                return Ok(code);
             }
             println!();
-            println!("  {} This computer will be the account's first device and the only one", yellow("!"));
-            println!("    that can approve others. Its signing key is kept in a file only you can read.");
+            println!("  {} This account has no devices yet. This computer would create it and be", yellow("!"));
+            println!("    the device that approves the others (agentd cloud approve). Its signing key");
+            println!("    is kept in a file only you can read.");
+            let answer = prompt("  Create the account here? [y/N] ")?;
+            if !matches!(answer.as_str(), "y" | "Y" | "yes") {
+                println!("  Cancelled. Nothing was created.\n");
+                return Ok(ExitCode::FAILURE);
+            }
             let draft = GenesisDraft::new();
             if !confirm_recovery_code(&draft)? {
                 println!("  Cancelled. Nothing was created.\n");
@@ -266,8 +305,12 @@ fn status() -> Result<ExitCode> {
         return Ok(ExitCode::SUCCESS);
     };
     let keys = id.keys()?;
-    let signer = id.roster.as_deref().and_then(|b| roster::parse(b).ok()).and_then(|r| r.body.device(&keys.id()).map(|d| d.signer)).unwrap_or(false);
+    let me = id.roster.as_deref().and_then(|b| roster::parse(b).ok()).and_then(|r| r.body.device(&keys.id()).cloned());
+    let signer = me.as_ref().is_some_and(|d| d.signer);
     field("Account", &format!("signed in · {}", if signer { "approves devices" } else { "member" }));
+    if let Some(d) = &me {
+        field("Use as", roles_line(d.roles()));
+    }
     field("Device", &format!("{}  {}", bold(&keys.fingerprint()), dim(&format!("({})", openagentd_cloud::api::this_kind().unwrap_or("device")))));
     field("Keys", &format!("{} {}", store.kind(), dim(&crate::ui::tilde(store.path()))));
     match call_server(false, "/api/cloud/status") {
@@ -285,6 +328,7 @@ pub fn relay_line(v: &Value) -> String {
             Some("online") => green("online"),
             Some("paused") => yellow("paused: today's relay allowance is used up"),
             Some("connecting") => dim("connecting"),
+            Some("off") => dim("off: not used as a server"),
             _ => yellow("offline, retrying"),
         },
         Some("closing") => yellow("paused: account scheduled for deletion"),
@@ -303,6 +347,73 @@ pub(crate) fn server_status_line() -> Option<String> {
     }
     let fp = v["fingerprint"].as_str().unwrap_or_default();
     Some(format!("{} · {}", relay_line(&v), bold(fp)))
+}
+
+/// Approves a device that signed in, when this computer approves devices:
+/// shows each request, compares the 6-digit code with the person, and adds
+/// the device with the roles it asked for.
+fn approve() -> Result<ExitCode> {
+    use appv3_api::cloud::signer;
+    if let Some(code) = require_person() {
+        return Ok(code);
+    }
+    if idstore::load(&identity_store())?.filter(|i| i.account_id.is_some()).is_none() {
+        println!("\n  Not signed in.\n");
+        return Ok(ExitCode::FAILURE);
+    }
+    let rt = runtime()?;
+    let fail = |e: signer::SignerError| {
+        let msg = match e {
+            signer::SignerError::Flow(flows::FlowError::NotSigner) => "This computer cannot approve devices.".to_string(),
+            signer::SignerError::Flow(flows::FlowError::JoinEnded) => "The request was cancelled or expired.".to_string(),
+            signer::SignerError::Flow(flows::FlowError::CommitMismatch) => "Request cancelled. If you didn't start it, someone may be trying to join your account.".to_string(),
+            signer::SignerError::Flow(f) => problem_message(&f),
+            other => format!("{other:?}"),
+        };
+        println!("\n  {} {msg}\n", yellow("!"));
+        Ok(ExitCode::FAILURE)
+    };
+    let rows = match rt.block_on(signer::pending()) {
+        Ok(r) => r,
+        Err(e) => return fail(e),
+    };
+    if rows.is_empty() {
+        println!("\n  No device is waiting. Sign in on the new device first.\n");
+        return Ok(ExitCode::SUCCESS);
+    }
+    println!();
+    for (i, r) in rows.iter().enumerate() {
+        let roles = openagentd_cloud::keys::Roles { server: r.server, client: r.client };
+        println!("  {}. {}  {}  {}", i + 1, bold(&r.fingerprint), dim(r.kind.as_deref().unwrap_or("device")), dim(roles_line(roles)));
+    }
+    let pick = if rows.len() == 1 { "1".to_string() } else { prompt("\n  Which one? ")? };
+    let Some(row) = pick.parse::<usize>().ok().and_then(|n| rows.get(n.wrapping_sub(1))) else {
+        println!("  Cancelled.\n");
+        return Ok(ExitCode::FAILURE);
+    };
+    println!("  {}", dim("Waiting for the new device to show its code…"));
+    let view = match rt.block_on(signer::approve_begin(&row.enrollment_id)) {
+        Ok(v) => v,
+        Err(e) => return fail(e),
+    };
+    field("Code", &bold(&code::display(&view.code)));
+    let answer = prompt("  Does the new device show the same code? [y/N] ")?;
+    if !matches!(answer.as_str(), "y" | "Y" | "yes") {
+        let _ = rt.block_on(signer::approve_reject(&row.enrollment_id));
+        println!("  Request cancelled. If you didn't start it, someone may be trying to join your account.\n");
+        return Ok(ExitCode::FAILURE);
+    }
+    // A device that opens sessions has a person at it: it may approve too.
+    let approver = view.client && matches!(prompt("  May it approve other devices too? [Y/n] ")?.as_str(), "" | "y" | "Y" | "yes");
+    match rt.block_on(signer::approve_confirm(&row.enrollment_id, signer::grant(approver, view.server, view.client))) {
+        Ok(()) => {
+            println!("  {} Added.", green("✓"));
+            notify_server();
+            println!();
+            Ok(ExitCode::SUCCESS)
+        }
+        Err(e) => fail(e),
+    }
 }
 
 fn logout(yes: bool) -> Result<ExitCode> {
@@ -333,4 +444,17 @@ fn logout(yes: bool) -> Result<ExitCode> {
     }
     println!("  {} Signed out. Keys erased from this computer.\n", green("✓"));
     Ok(ExitCode::SUCCESS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::not_for_a_person;
+
+    #[test]
+    fn only_a_person_at_a_terminal_signs() {
+        assert_eq!(not_for_a_person(true, true, false), None);
+        assert!(not_for_a_person(false, true, false).is_some(), "answers piped in");
+        assert!(not_for_a_person(true, false, false).is_some(), "output captured");
+        assert!(not_for_a_person(true, true, true).unwrap().contains("agent"), "an agent, even at a terminal");
+    }
 }

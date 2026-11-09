@@ -199,33 +199,76 @@ impl DeviceKeys {
         fingerprint(&self.id()).expect("a derived device id")
     }
 
-    /// The `pubs` bytes (spec section 2.1).
-    pub fn pubs(&self) -> Vec<u8> {
-        pubs_bytes(&self.r#box.public(), &self.sign.public())
+    /// The `pubs` bytes (spec section 2.1), asking for `roles`.
+    pub fn pubs(&self, roles: Roles) -> Vec<u8> {
+        pubs_bytes(&self.r#box.public(), &self.sign.public(), roles)
     }
 }
 
-/// `{"v":1,"box":"…","sign":"…"}`, exactly as the reference writes it.
-pub fn pubs_bytes(box_pub: &[u8; 32], sign_pub: &[u8; 32]) -> Vec<u8> {
-    format!(r#"{{"v":1,"box":"{}","sign":"{}"}}"#, b64(box_pub), b64(sign_pub)).into_bytes()
+/// What a device is used as (spec section 3.1): it serves sessions
+/// (`server`), opens them (`client`), or both. At least one is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct Roles {
+    pub server: bool,
+    pub client: bool,
 }
 
-/// The public keys in a `pubs` value.
+impl Roles {
+    pub const BOTH: Roles = Roles { server: true, client: true };
+    pub const SERVER: Roles = Roles { server: true, client: false };
+    pub const CLIENT: Roles = Roles { server: false, client: true };
+
+    /// At least one role is on (spec section 3.2, rule 4).
+    pub fn is_valid(self) -> bool {
+        self.server || self.client
+    }
+
+    /// Whether every role in `self` is also in `asked`: an approver may turn
+    /// a requested role off, never one on.
+    pub fn within(self, asked: Roles) -> bool {
+        (!self.server || asked.server) && (!self.client || asked.client)
+    }
+
+    /// What this build can be by default: a phone only opens sessions (it
+    /// has no host); a computer does both.
+    pub fn platform_default() -> Roles {
+        if cfg!(any(target_os = "ios", target_os = "android")) {
+            Roles::CLIENT
+        } else {
+            Roles::BOTH
+        }
+    }
+}
+
+/// `{"v":2,"box":"…","sign":"…","server":…,"client":…}`, exactly as the
+/// reference writes it.
+pub fn pubs_bytes(box_pub: &[u8; 32], sign_pub: &[u8; 32], roles: Roles) -> Vec<u8> {
+    format!(r#"{{"v":2,"box":"{}","sign":"{}","server":{},"client":{}}}"#, b64(box_pub), b64(sign_pub), roles.server, roles.client).into_bytes()
+}
+
+/// The public keys and requested roles in a `pubs` value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pubs {
     pub r#box: [u8; 32],
     pub sign: [u8; 32],
+    pub roles: Roles,
 }
 
-/// Parses `pubs` bytes: exactly `v`, `box` and `sign`, with `v` 1.
+/// Parses `pubs` bytes: exactly `v`, `box`, `sign`, `server` and `client`,
+/// with `v` 2 and at least one role.
 pub fn parse_pubs(bytes: &[u8]) -> Result<Pubs> {
     let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| Error::Key)?;
     let obj = value.as_object().ok_or(Error::Key)?;
-    if obj.len() != 3 || obj.get("v").and_then(|v| v.as_u64()) != Some(1) {
+    if obj.len() != 5 || !obj.get("v").is_some_and(|v| v.is_u64() && v.as_u64() == Some(2)) {
         return Err(Error::Key);
     }
     let key = |name: &str| -> Result<[u8; 32]> { crate::encoding::from_b64_array(obj.get(name).and_then(|v| v.as_str()).ok_or(Error::Key)?) };
-    Ok(Pubs { r#box: key("box")?, sign: key("sign")? })
+    let flag = |name: &str| -> Result<bool> { obj.get(name).and_then(|v| v.as_bool()).ok_or(Error::Key) };
+    let roles = Roles { server: flag("server")?, client: flag("client")? };
+    if !roles.is_valid() {
+        return Err(Error::Key);
+    }
+    Ok(Pubs { r#box: key("box")?, sign: key("sign")?, roles })
 }
 
 #[cfg(test)]
@@ -254,8 +297,22 @@ mod tests {
     #[test]
     fn pubs_round_trip_and_reject_extras() {
         let keys = DeviceKeys::from_seeds(Seed::from_bytes([1; 32]), Seed::from_bytes([2; 32]), Seed::from_bytes([3; 32]));
-        let parsed = parse_pubs(&keys.pubs()).unwrap();
+        let parsed = parse_pubs(&keys.pubs(Roles::SERVER)).unwrap();
         assert_eq!(parsed.r#box, keys.r#box.public());
+        assert_eq!(parsed.roles, Roles::SERVER);
         assert!(parse_pubs(br#"{"v":1,"box":"AA","sign":"AA","x":1}"#).is_err());
+        let (bx, sg) = (b64(&keys.r#box.public()), b64(&keys.sign.public()));
+        for bad in [
+            format!(r#"{{"v":1,"box":"{bx}","sign":"{sg}"}}"#),
+            format!(r#"{{"v":2,"box":"{bx}","sign":"{sg}","server":false,"client":false}}"#),
+            format!(r#"{{"v":2,"box":"{bx}","sign":"{sg}","server":true}}"#),
+            format!(r#"{{"v":2,"box":"{bx}","sign":"{sg}","server":1,"client":true}}"#),
+            format!(r#"{{"v":2,"box":"{bx}","sign":"{sg}","server":true,"client":true,"signer":true}}"#),
+        ] {
+            assert!(parse_pubs(bad.as_bytes()).is_err(), "{bad}");
+        }
+        // Member order does not matter to a reader.
+        let reordered = format!(r#"{{"client":true,"server":false,"sign":"{sg}","box":"{bx}","v":2}}"#);
+        assert_eq!(parse_pubs(reordered.as_bytes()).unwrap().roles, Roles::CLIENT);
     }
 }

@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.50.0 · November 9, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.50.0)
+**Latest release:** v3.51.0 · November 9, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.51.0)
 
 ---
 
@@ -388,6 +388,17 @@ run from the terminal (the native Rust binary since v3.0.0).
   differ by a major or minor version it warns which side to update; a
   patch-only difference gets a quiet note. The header shows the app's own
   version (before, it showed the server's).
+- **One-click server update** `[v3.51.0]` — when a newer release is out, the
+  Server row of Settings → About → Version has **Update to vX**, from the
+  phone, the browser, or a desktop app connected to another computer. It
+  works for a server `agentd server start` launched: the server downloads and
+  verifies the release (or runs `brew upgrade`), restarts, and resumes the
+  turns the restart cut off. If agents are working it asks first. While the
+  server restarts the connection banner says **Updating the server** instead
+  of **Can't reach**, and the row then says how it went (on failure with the
+  path of the update log on the server). A server in the foreground, or the
+  desktop app's own, says what to do instead. Servers before v3.51.0 need one
+  `agentd upgrade` first.
 - **Native app notifications** `[v1.19.0]` — finished assistant turns and
   scheduled reminders in the desktop app, plus local native
   notifications in the remote-backend mobile shell `[v1.34.0]`. Clicking a
@@ -1127,6 +1138,13 @@ run from the terminal (the native Rust binary since v3.0.0).
     the row retries)*.
   - The pet keeps a question until it is answered: × folds it behind the
     badge, and its menu lists questions first.
+    Since `[v3.51.0]` a question answered anywhere leaves the pet even while
+    another still waits, a moment's lost connection no longer clears its
+    questions, and a question asked while the pet was hidden (or before it
+    started) shows when it comes back. The notch reports a turn that failed
+    within moments of starting, and one that finished while its server
+    could not be reached once it is back; a finish put off with Later comes
+    back when the session finishes again.
   - A question card in the transcript no longer sticks on "Waiting for an
     answer…": once the turn is over and no question is open, it says **No
     answer recorded** with what was asked, and a card closed from another
@@ -1726,7 +1744,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   open windows `[v1.66.1]`. Window titles read `workspace - session title`
   (just the workspace until the session is named, long session titles
   shortened), so the Window menu, Mission Control, and the Windows/Linux
-  taskbar tell windows apart `[v3.10.0]`. Fixed a bug where switching one window's CLI server
+  taskbar tell windows apart `[v3.10.0]`.
+  A worktree or subfolder reads as `repo (worktree)` there and in the header,
+  whose title now takes the header's free width instead of being cut off at
+  a fixed width `[v3.51.0]`. Fixed a bug where switching one window's CLI server
   could still redirect other open windows onto the same server: the backend
   now targets its "backend ready" notification at the switching window only,
   and the frontend listens for it on a per-window channel instead of the
@@ -2234,6 +2255,12 @@ run from the terminal (the native Rust binary since v3.0.0).
     line and the branch chip.
   - Sidebar rows show their status or age at rest. A missing folder is a
     small ⚠ with a tooltip, and worktrees show as a count.
+    Its menu offers **Locate folder…** `[v3.51.0]`: pick where the folder is
+    now (a renamed or moved repository) and its sessions, worktrees,
+    scheduled tasks and groups move with it, after a confirmation that counts
+    them; the row takes the new folder's name, a workspace already at the new
+    folder merges in, git links in the worktrees are repaired, and the move
+    waits while a session there is running.
   - Model pickers name the provider once, as a group header.
   - The Review panel's tab strip keeps +, Maximize and a ⋯ menu.
     Menus show their keys (F2, ⌫, ⌘W).
@@ -2452,11 +2479,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   `[v3.49.0]` The iOS and Android apps scan it themselves: **Scan QR code** under Settings → Server (beside **Add a server**) opens the camera (asked once) and fills in the same form; a code that is not a connect code, or a camera that is off, says so.
 - **OpenAgentd Cloud account (beta, optional)** `[v3.50.0]` — reach your computers from your iPhone away from home, and get notified when agents finish. Nothing changes for people who don't sign in: local use, LAN pairing and `agentd server start --public --key --qr` work as before, and no screen asks for an account. It is offered only in a skippable card on the phone's Servers screen and in **Settings → Account** (desktop and phone); `agentd cloud join | login | status | logout` does the same on a headless server, and `agentd server status` adds a `Cloud:` line once signed in.
   - **Adding a device: QR invitation first.** On the phone, **Settings → Account → Add a device** shows a QR code for 10 minutes, and only while that screen is open (closing it or leaving the app cancels it). Another phone scans it; a computer can't scan, so **Can't scan? Use a link** shows the same invitation as a link, after a warning that it works like a password. Paste it in the computer's **Settings → Account**, or run `agentd cloud join` (it asks for the link without echoing it). The phone then shows the new device's kind and fingerprint, which the new device shows too, and adds it only when you tap **Add** (Face ID). If two devices claim the same invitation, nobody is added, the invitation is cancelled, and the phone offers a new one. The 6-digit code stays as the fallback: **Use a 6-digit code instead** on the phone, **Sign in with a code instead** on the computer, or `agentd cloud login`. An account holds up to 10 devices.
-  - **The phone sets up the account.** Signing in on the phone shows a recovery code once (you type two of its groups back); other devices join an account the phone approves, by invitation or, as the fallback, by comparing a 6-digit code on both screens and confirming with Face ID or the passcode. `agentd cloud login --first-device` sets an account up on a computer when there is no phone.
+  - **The phone sets up the account.** Signing in on the phone shows a recovery code once (you type two of its groups back); other devices join an account the phone approves, by invitation or, as the fallback, by comparing a 6-digit code on both screens and confirming with Face ID or the passcode. `agentd cloud login --first-device` sets an account up on a computer when there is no phone. Since `[v3.51.0]` any device can be first (below), and `--first-device` is accepted but does nothing.
+  - **Any device signs in first; servers and clients** `[v3.51.0]`. A computer creates the account from **Settings → Account → Sign in** or `agentd cloud login` (it asks before creating one, then shows the recovery code). Signing in chooses what the device is for: **Use as server** (your other devices open sessions on it) and **Use as client** (it opens sessions on your other computers); a computer offers both, on by default in the app, while `agentd cloud login` is server-only unless given `--client`; a phone is a client only. A later device signs in the same way and waits; every device that approves gets "A device wants to join your account" (a push on the phone, which opens the request when tapped; a notification and an in-app prompt in the desktop app; `agentd cloud approve` on a headless computer). Approving compares the 6-digit code on both screens and confirms with Face ID, Touch ID or the login password; the approver can turn a requested role off but never add one. Each device's roles show in **Devices**. A server-only device cannot open sessions on others, and a client-only computer runs no relay connector. On a computer, only a person approves or removes devices: in the desktop app (which proves the confirmation to its own server), or with `agentd cloud approve` typed in a terminal; an agent's commands, a script, or a plain browser tab cannot, and say where to do it instead.
   - **End-to-end encrypted.** Traffic between the phone and a computer goes through the relay inside a Noise session keyed to the account's signed device list, which every device verifies; the relay cannot read it, and the cloud cannot add a device. On the computer, relayed requests are served in-process, never as a local caller, and lose any credential or proxy header the phone sends. Done / Needs you / Failed notifications are sealed to the phone and opened by its notification extension.
   - **One row per computer.** The phone's Servers list shows each account computer once, labelled "via LAN" when its saved LAN address answers (tried first) and "via account" otherwise.
   - **Keys stay on the device:** the iPhone keeps them in the Keychain (the approval key behind Face ID); computers keep them in `cloud/identity.json` in the server's state folder, readable only by your user. Signing out leaves the account and erases the keys; sessions and settings stay. Removed, deleted, closing and unavailable accounts each say so; in every state the app keeps working on its own, and only reaching other devices through the relay and notifications stop.
-  - Not yet: Android, approving from a computer. The protocol is in `appv3/contract/tunnel.md`, its threat model in `appv3/contract/tunnel-threats.md`.
+  - Not yet: Android, changing a device's roles after it joined. Approving from a computer arrived in `[v3.51.0]`. The protocol is in `appv3/contract/tunnel.md`, its threat model in `appv3/contract/tunnel-threats.md`.
 
 ---
 
@@ -2545,6 +2573,10 @@ executes tools, manages its task list, and inspects workspace repositories.
     request, with nothing you typed into it) sends no Done or Failed
     notification and does not mark the session unread. A turn you start or
     steer in that session notifies as usual.
+    Since `[v3.51.0]` the notch and the tray's list follow the same rule
+    (they used to show such a turn as **Done**), and while the sending
+    session is listed, the session it started is left out of the notch, as
+    the sidebar nests it under its sender; a question from it still shows.
     In such a turn the agent's `ask_user` does not reach you either, since
     you are not following it: the agent is told to end with its question,
     which goes back to the sending agent to answer with a follow-up, or,
@@ -2598,6 +2630,11 @@ executes tools, manages its task list, and inspects workspace repositories.
   when it asks you something. A session you started yourself stays where it
   is when another workspace messages it. Sessions sends started before this
   release are grouped too, and deleting the sender leaves them in place.
+  Since `[v3.51.0]` the **Running** section (the phone's Sessions page and the
+  sidebar's Status view) lists only sessions you started; one an agent started
+  stays under its sender (or in Recent when its sender is not listed), and
+  still shows under **Needs you** when it asks you something. The ↗ list and
+  the subagent list under a session show the most recently active first.
 - **Workspace groups** `[v3.21.0]` — named tags on
   repositories that say which workspaces belong together. Set them up in
   **Settings → Workspaces → Groups**: create a group, give it a
@@ -3135,6 +3172,9 @@ agent against it.
   (desktop) or long-press (mobile) a changed file inside the Changes tab or a
   commit's detail view to open, copy, or otherwise act on that file, including
   deleted files, which render a dedicated deleted-file view in the editor panel.
+  - **Copy path** copies the file's absolute path and **Copy relative path**
+    its path in the workspace; right-click (or long-press, or Shift+F10) the
+    name of an open file in its tab's toolbar for the same two `[v3.50.2]`.
 - **Persisted coding sessions per workspace** `[v1.18.0]` — `/{session_id}`
   (`/coding/{session_id}` before v3.0.0) restores workspace context from the
   saved session. Bare `/` is the launcher or last-workspace restore. New empty sessions exist before the
@@ -4310,6 +4350,19 @@ Desktop is primary. CLI / server is the developer path.
   running. Homebrew installations delegate to `brew upgrade`. In v2.27.0, `openagentd upgrade`
   migrates existing uv/pipx/pip installations to the v3 native binary. `agentd update`
   is an alias `[v3.1.0]`.
+- **CLI output** `[v3.51.0]` — every command prints in one style: a title
+  line, sections, aligned columns, ✓/⚠/✗ marks, warnings that wrap, and a
+  dim next step; piped output is the same text without colour. The top-level
+  help groups the commands (Server, Agents, Setup, Maintenance), and errors
+  can carry a `hint:` line. `agentd run "prompt"` takes the prompt as an
+  argument (`--prompt` still works) and ends with the session id and how to
+  continue it. `agentd doctor` groups its checks (Config, Providers, Server,
+  Modules), folds the module list to one line when every module runs, and
+  says when a newer release is out. `agentd lsp status` is a ✓/✗ table with
+  the install command for each missing server; `agentd cleanup` totals what
+  it would delete by kind and lists the largest folders by short id;
+  `agentd server logs` shortens each record on a terminal; `agentd upgrade`
+  reports each step and links the release notes.
 - **CLI OAuth login status** `[v3.1.0]` — `agentd auth list` shows which
   OAuth providers (Codex, GitHub Copilot, Grok) are logged in, and
   `agentd auth logout <provider>` deletes the saved login.

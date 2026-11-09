@@ -22,19 +22,24 @@
 //! island does. The window never takes keyboard focus.
 //!
 //! Its data comes from the island's server feed (`island.rs`), which runs
-//! while the island or the pet is on: the active-session snapshot drives
-//! the pet's pose, and each `desktop_notification` event the feed sees is
-//! offered to the pet ([`on_feed_notification`]). It works with every app
-//! window closed, and, like the island, never sees the backend token.
+//! whenever the app does: the active-session snapshot drives the pet's pose
+//! and lists what each waiting session asks ([`PetStatus::waiting`]), and
+//! each `desktop_notification` event the feed sees is offered to the pet
+//! ([`on_feed_notification`]). It works with every app window closed, and,
+//! like the island, never sees the backend token.
 //!
 //! The pet replaces a system banner only while it is actually on screen
-//! ([`claims`]): `show_desktop_notification` asks [`claims_banner`] and the
+//! ([`claims`]): `show_desktop_notification` asks [`take_banner`] and the
 //! feed asks the same question, so a notification shows in exactly one
 //! place. Hidden (a full-screen app, OpenAgentd in front with that option
 //! off, the screen locked), the banner is used as before.
 //!
 //! A question stays with the pet until it is answered: "Later" only folds
 //! its bubble behind the badge, and the right-click menu lists it first.
+//! The page keeps one question bubble per waiting session from the status:
+//! it adds one it missed (asked while the pet was hidden, or before the page
+//! loaded) and drops one answered anywhere, but keeps those of a server that
+//! can't be reached right now ([`PetStatus::held`]).
 //! The bubble only tells: a click on it opens the session ([`pet_open`]),
 //! where the question is answered.
 
@@ -286,17 +291,66 @@ pub fn display_title(kind: &str, title: &str) -> String {
     }
 }
 
-/// How many sessions run and how many wait on the user: the pet's pose.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+/// How many sessions run and how many wait on the user (the pet's pose),
+/// and what each waiting one asks (its question bubble).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PetStatus {
     pub running: usize,
     pub needs_input: usize,
+    /// The sessions waiting on the user now: the page keeps a question
+    /// bubble for each, adding one it missed (it arrived while the pet was
+    /// hidden, or before the page loaded) and dropping one answered anywhere.
+    pub waiting: Vec<WaitingQuestion>,
+    /// Sessions ([`id_key`]s) that waited when their server was last reached;
+    /// it can't be now, so their bubbles stay as they are.
+    pub held: Vec<String>,
 }
+
+/// A session waiting on the user, as its question bubble shows it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitingQuestion {
+    /// The bubble's id: one per session and question.
+    pub id: String,
+    pub session_id: String,
+    pub session_key: String,
+    pub title: String,
+    pub body: String,
+    pub question_id: Option<String>,
+}
+
+/// The bubble id of a question the status lists (see [`waiting_route`]).
+const WAITING_PREFIX: &str = "waiting:";
 
 pub fn pet_status(status: &IslandStatus) -> PetStatus {
     let count = |state| status.sessions.iter().filter(|s| s.state == state).count();
-    PetStatus { running: count(SessionState::Running), needs_input: count(SessionState::NeedsInput) }
+    let waiting = status
+        .sessions
+        .iter()
+        .filter(|s| s.state == SessionState::NeedsInput)
+        .map(|s| {
+            let key = id_key(&s.id);
+            let title = match s.workspace.as_deref() {
+                Some(ws) => format!("Needs you · {ws}"),
+                None => "Needs you".to_string(),
+            };
+            WaitingQuestion {
+                id: format!("{WAITING_PREFIX}{key}:{}", s.question_id.as_deref().unwrap_or_default()),
+                session_id: s.id.clone(),
+                session_key: key,
+                title,
+                body: s.question.clone().unwrap_or_else(|| s.title.clone()),
+                question_id: s.question_id.clone(),
+            }
+        })
+        .collect();
+    PetStatus { running: count(SessionState::Running), needs_input: count(SessionState::NeedsInput), waiting, held: status.held.clone() }
+}
+
+/// The session key a bubble id from [`PetStatus::waiting`] is about.
+fn waiting_route(notification_id: &str) -> Option<&str> {
+    notification_id.strip_prefix(WAITING_PREFIX)?.split(':').next().filter(|key| !key.is_empty())
 }
 
 /// A display's work area (without the Dock or taskbar), in physical pixels.
@@ -994,7 +1048,7 @@ pub struct PetView {
 fn view() -> PetView {
     let s = shared().lock().unwrap();
     let frames = s.strip.zip(s.window).map(|(work, window)| (page_size(&work), page_frame(&window, &work)));
-    PetView { settings: s.settings.clone(), status: s.status, shown: s.shown, area: frames.map(|f| f.0), frame: frames.map(|f| f.1) }
+    PetView { settings: s.settings.clone(), status: s.status.clone(), shown: s.shown, area: frames.map(|f| f.0), frame: frames.map(|f| f.1) }
 }
 
 fn emit_state(app: &AppHandle) {
@@ -1006,7 +1060,10 @@ pub fn status_changed(app: &AppHandle, status: &IslandStatus) {
     let next = pet_status(status);
     let changed = {
         let mut s = shared().lock().unwrap();
-        s.settings.enabled && std::mem::replace(&mut s.status, next) != next
+        s.settings.enabled && s.status != next && {
+            s.status = next;
+            true
+        }
     };
     if changed {
         emit_state(app);
@@ -1065,9 +1122,7 @@ fn offer(app: &AppHandle, server: &ServerId, bubble: PetBubble) -> bool {
             return true;
         }
         if let Some(session_id) = bubble.session_id.clone() {
-            if s.routes.len() >= MAX_ROUTES {
-                s.routes.pop_front();
-            }
+            evict_route(&mut s.routes);
             s.routes.push_back(Route { notification_id: bubble.id.clone(), session_id, server: server.clone(), kind: bubble.kind.clone() });
         }
     }
@@ -1084,6 +1139,22 @@ fn offer(app: &AppHandle, server: &ServerId, bubble: PetBubble) -> bool {
         let _ = app.emit_to(PET_WINDOW, PET_NOTIFICATION_EVENT, bubble);
     }
     true
+}
+
+/// Make room for a route at the cap: the oldest finished turn or reminder
+/// goes first, so a question still shown keeps its way to its session.
+fn evict_route(routes: &mut VecDeque<Route>) {
+    if routes.len() < MAX_ROUTES {
+        return;
+    }
+    match routes.iter().position(|r| r.kind != "input_needed") {
+        Some(index) => {
+            routes.remove(index);
+        }
+        None => {
+            routes.pop_front();
+        }
+    }
 }
 
 /// `bubble` with the options and the id of the question its session holds.
@@ -1178,6 +1249,12 @@ pub fn pet_open(app: AppHandle, window: WebviewWindow, notification_id: String) 
 
 fn open_notification(app: &AppHandle, notification_id: &str) {
     let route = shared().lock().unwrap().routes.iter().find(|r| r.notification_id == notification_id).cloned();
+    // A question the status listed (not a notification): its session's row says where it lives.
+    let route = route.or_else(|| {
+        let key = waiting_route(notification_id)?;
+        let (session_id, server) = crate::island::session_server(key)?;
+        Some(Route { notification_id: notification_id.to_string(), session_id, server, kind: "input_needed".into() })
+    });
     let Some(route) = route else {
         log::warn!("pet: no session for bubble {notification_id}");
         return;
@@ -1507,6 +1584,10 @@ fn update_settings(app: &AppHandle, patch: PetSettingsPatch) -> Result<PetSettin
             let mut s = shared().lock().unwrap();
             s.status = PetStatus::default();
             s.routes.clear();
+        } else {
+            // The feed only says what changes: start from where it stands.
+            let status = pet_status(&crate::island::current_status());
+            shared().lock().unwrap().status = status;
         }
     }
     log::info!("pet: settings={next:?}");
@@ -1933,14 +2014,81 @@ mod tests {
             server_id: None,
             goal: None,
             account: None,
+            sent_from: None,
+            finished_seq: None,
         };
         let status = IslandStatus {
             seq: 1,
             sessions: vec![session("a", SessionState::NeedsInput), session("b", SessionState::Running), session("c", SessionState::Running)],
             unread: vec![session("d", SessionState::Done)],
             unreachable: Vec::new(),
+            held: Vec::new(),
         };
-        assert_eq!(pet_status(&status), PetStatus { running: 2, needs_input: 1 });
+        let pet = pet_status(&status);
+        assert_eq!((pet.running, pet.needs_input), (2, 1));
+    }
+
+    // A question that came while the pet was hidden (or before its page
+    // loaded) left the `!` pose with no bubble; one answered in the app
+    // stayed up while another still waited.
+    #[test]
+    fn the_status_lists_each_waiting_question_and_the_sessions_held_by_an_outage() {
+        let mut asked = IslandSession {
+            id: "AB-cd".into(),
+            title: "Orders".into(),
+            workspace: Some("api".into()),
+            state: SessionState::NeedsInput,
+            question: Some("Keep v1?".into()),
+            question_id: Some("q1".into()),
+            server: None,
+            server_id: Some(ServerId::Bundled),
+            goal: None,
+            account: None,
+            sent_from: None,
+            finished_seq: None,
+        };
+        let status = IslandStatus { sessions: vec![asked.clone()], held: vec!["zz".into()], ..IslandStatus::default() };
+        let pet = pet_status(&status);
+        assert_eq!(
+            pet.waiting,
+            [WaitingQuestion {
+                id: "waiting:abcd:q1".into(),
+                session_id: "AB-cd".into(),
+                session_key: "abcd".into(),
+                title: "Needs you · api".into(),
+                body: "Keep v1?".into(),
+                question_id: Some("q1".into()),
+            }]
+        );
+        assert_eq!(pet.held, ["zz"]);
+        assert_eq!(waiting_route(&pet.waiting[0].id), Some("abcd"));
+        assert_eq!(waiting_route("n-123"), None);
+
+        // Before the server's copy of the question arrives, the title stands in.
+        (asked.question, asked.question_id, asked.workspace) = (None, None, None);
+        let pet = pet_status(&IslandStatus { sessions: vec![asked], ..IslandStatus::default() });
+        assert_eq!((pet.waiting[0].id.as_str(), pet.waiting[0].title.as_str(), pet.waiting[0].body.as_str()), ("waiting:abcd:", "Needs you", "Orders"));
+        let wire = serde_json::to_value(&pet).unwrap();
+        assert_eq!(wire["waiting"][0]["sessionKey"], "abcd");
+    }
+
+    // After 50 later notifications a question still shown opened nothing.
+    #[test]
+    fn a_full_route_list_lets_finished_turns_go_before_questions() {
+        let route = |id: &str, kind: &str| Route { notification_id: id.into(), session_id: id.into(), server: ServerId::Bundled, kind: kind.into() };
+        let mut routes: VecDeque<Route> = VecDeque::new();
+        routes.push_back(route("q", "input_needed"));
+        for i in 1..MAX_ROUTES {
+            routes.push_back(route(&format!("d{i}"), "assistant_done"));
+        }
+        evict_route(&mut routes);
+        assert_eq!(routes.len(), MAX_ROUTES - 1);
+        assert_eq!(routes[0].notification_id, "q", "the question keeps its route");
+        assert_eq!(routes[1].notification_id, "d2");
+
+        let mut questions: VecDeque<Route> = (0..MAX_ROUTES).map(|i| route(&format!("q{i}"), "input_needed")).collect();
+        evict_route(&mut questions);
+        assert_eq!(questions[0].notification_id, "q1", "only questions: the oldest goes");
     }
 
     #[test]

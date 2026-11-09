@@ -30,6 +30,7 @@ const { resetPhoneCloudPush, phoneCloudPollInterval } = await import('@/queries/
 const { rememberLanFingerprint, parseLanComputers } = await import('@/lib/computer-fingerprints')
 
 import type { DeviceRow, PendingRow, PhoneCloudStatus } from '@/api/phone-cloud'
+import type { ApprovalView } from '@/api/cloud'
 
 const CURRENT = 'http://127.0.0.1:5999'
 const LAN = 'http://192.168.1.20:4082'
@@ -216,6 +217,15 @@ describe('Account page', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
+  it('signs a phone in as a client only: Use as server shows, disabled', async () => {
+    shell({ state: 'guest', notice: null, supported: true })
+    render(<PhoneAccountContent />)
+    const server = await screen.findByRole('checkbox', { name: /Use as server/ })
+    expect((server as HTMLInputElement).disabled).toBe(true)
+    expect((server as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByRole('checkbox', { name: /Use as client/ }) as HTMLInputElement).checked).toBe(true)
+  })
+
   it('has no account UI where accounts are not supported', async () => {
     shell({ state: 'guest', notice: null, supported: false })
     render(<PhoneAccountContent />)
@@ -252,7 +262,7 @@ describe('Account page', () => {
     shell({ state: 'joining', fingerprint: 'AA11 BB22', code: '418207' })
     render(<PhoneAccountContent />)
 
-    expect(await screen.findByText('Approve this phone on your other phone: Settings → Account.')).toBeTruthy()
+    expect(await screen.findByText('Approve this phone on a device already in your account: Settings → Account → Pending approvals.')).toBeTruthy()
     expect(screen.getByText('418 207')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
   })
@@ -413,11 +423,11 @@ describe('approval sheet', () => {
   it('keeps Codes match disabled until the code arrives, then confirms with the approver flag', async () => {
     let release: (code: string) => void = () => {}
     const sheet = await review({
-      cloud_approve_begin: () => new Promise<string>((resolve) => { release = resolve }),
+      cloud_approve_begin: () => new Promise<ApprovalView>((resolve) => { release = (code) => resolve({ code, server: true, client: false }) }),
       cloud_approve_confirm: () => CONNECTED,
     })
 
-    expect(within(sheet).getByText('Add this computer?')).toBeTruthy()
+    expect(within(sheet).getByText('Add this device?')).toBeTruthy()
     expect(within(sheet).getByText('Waiting for the other device…')).toBeTruthy()
     expect((within(sheet).getByRole('button', { name: 'Codes match' }) as HTMLButtonElement).disabled).toBe(true)
     expect(ran('cloud_approve_begin')[0].args).toEqual({ enrollmentId: 'enr-1' })
@@ -427,20 +437,22 @@ describe('approval sheet', () => {
     const match = within(sheet).getByRole('button', { name: 'Codes match' }) as HTMLButtonElement
     expect(match.disabled).toBe(false)
 
+    // Asked for server only: client cannot be turned on, and a server-only device does not approve by default.
+    expect((within(sheet).getByRole('checkbox', { name: /Use as client/ }) as HTMLInputElement).disabled).toBe(true)
     fireEvent.click(within(sheet).getByRole('checkbox', { name: 'Can approve other devices' }))
     fireEvent.click(match)
     await waitFor(() => expect(ran('cloud_approve_confirm')).toHaveLength(1))
-    expect(ran('cloud_approve_confirm')[0].args).toEqual({ enrollmentId: 'enr-1', approver: true })
+    expect(ran('cloud_approve_confirm')[0].args).toEqual({ enrollmentId: 'enr-1', approver: true, server: true, client: false })
   })
 
-  it('adds a device that cannot approve others by default', async () => {
+  it('adds a server-only device that cannot approve others by default', async () => {
     const sheet = await review({
-      cloud_approve_begin: () => '418207',
+      cloud_approve_begin: () => ({ code: '418207', server: true, client: false }),
       cloud_approve_confirm: () => CONNECTED,
     })
     fireEvent.click(await within(sheet).findByRole('button', { name: 'Codes match' }))
     await waitFor(() => expect(ran('cloud_approve_confirm')).toHaveLength(1))
-    expect(ran('cloud_approve_confirm')[0].args).toEqual({ enrollmentId: 'enr-1', approver: false })
+    expect(ran('cloud_approve_confirm')[0].args).toEqual({ enrollmentId: 'enr-1', approver: false, server: true, client: false })
     // Confirmed: the sheet closes without rejecting anything.
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(ran('cloud_approve_reject')).toHaveLength(0)
@@ -448,7 +460,7 @@ describe('approval sheet', () => {
 
   it('rejects the request when the sheet is closed without confirming', async () => {
     const sheet = await review({
-      cloud_approve_begin: () => '418207',
+      cloud_approve_begin: () => ({ code: '418207', server: true, client: false }),
       cloud_approve_reject: () => null,
     })
     await within(sheet).findByText('418 207')
@@ -461,7 +473,7 @@ describe('approval sheet', () => {
 
   it("rejects on Don't match and says someone may be trying to join", async () => {
     const sheet = await review({
-      cloud_approve_begin: () => '418207',
+      cloud_approve_begin: () => ({ code: '418207', server: true, client: false }),
       cloud_approve_reject: () => null,
     })
     fireEvent.click(await within(sheet).findByRole('button', { name: "Don't match" }))
@@ -475,11 +487,73 @@ describe('approval sheet', () => {
     expect(ran('cloud_approve_reject')).toHaveLength(1)
   })
 
+  it('lets the person turn a requested role off, and a device that opens sessions approves by default', async () => {
+    const sheet = await review({
+      cloud_approve_begin: () => ({ code: '418207', server: true, client: true }),
+      cloud_approve_confirm: () => CONNECTED,
+    })
+    await within(sheet).findByText('418 207')
+    const approver = within(sheet).getByRole('checkbox', { name: 'Can approve other devices' })
+    expect((approver as HTMLInputElement).checked).toBe(true)
+    fireEvent.click(within(sheet).getByRole('checkbox', { name: /Use as server/ }))
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Codes match' }))
+    await waitFor(() => expect(ran('cloud_approve_confirm')).toHaveLength(1))
+    expect(ran('cloud_approve_confirm')[0].args).toEqual({ enrollmentId: 'enr-1', approver: true, server: false, client: true })
+  })
+
+  it('cannot confirm with no role left', async () => {
+    const sheet = await review({
+      cloud_approve_begin: () => ({ code: '418207', server: false, client: true }),
+    })
+    await within(sheet).findByText('418 207')
+    fireEvent.click(within(sheet).getByRole('checkbox', { name: /Use as client/ }))
+    expect(within(sheet).getByText('Choose at least one.')).toBeTruthy()
+    expect((within(sheet).getByRole('button', { name: 'Codes match' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('shows why an approval could not start', async () => {
     const sheet = await review({
       cloud_approve_begin: () => { throw new Error('The other device stopped waiting.') },
     })
     expect((await within(sheet).findByRole('alert')).textContent).toContain('The other device stopped waiting.')
     expect((within(sheet).getByRole('button', { name: 'Codes match' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('approval push', () => {
+  const OLD: PendingRow = { enrollment_id: 'enr-old', fingerprint: '1111 2222', country: null, created_at: Date.now() - 120_000, expires_at: null, kind: 'linux' }
+  const NEW: PendingRow = { enrollment_id: 'enr-new', fingerprint: '9C02 E1B7', country: 'VN', created_at: Date.now() - 5_000, expires_at: null, kind: 'macos' }
+
+  it('opens the sheet for the newest request when the push was tapped', async () => {
+    const { PhoneCloudSync } = await import('@/hooks/use-phone-cloud-sync')
+    shell(CONNECTED, {
+      cloud_take_notification: () => 'approval',
+      cloud_pending: () => [OLD, NEW],
+      cloud_approve_begin: () => new Promise(() => {}),
+    })
+    render(<PhoneCloudSync />)
+    const sheet = await screen.findByRole('dialog')
+    expect(within(sheet).getByText('Add this device?')).toBeTruthy()
+    expect(within(sheet).getByText(/9C02 E1B7/)).toBeTruthy()
+    await waitFor(() => expect(ran('cloud_approve_begin')).toHaveLength(1))
+    expect(ran('cloud_approve_begin')[0].args).toEqual({ enrollmentId: 'enr-new' })
+  })
+
+  it('opens nothing when the app opened without a tap, or the phone does not approve', async () => {
+    const { PhoneCloudSync } = await import('@/hooks/use-phone-cloud-sync')
+    shell(CONNECTED, { cloud_take_notification: () => null, cloud_pending: () => [NEW] })
+    const first = render(<PhoneCloudSync />)
+    await waitFor(() => expect(ran('cloud_take_notification')).toHaveLength(1))
+    expect(ran('cloud_pending')).toHaveLength(0)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    first.unmount()
+    queryClient.clear()
+    calls = []
+
+    shell({ ...CONNECTED, signer: false }, { cloud_take_notification: () => 'approval' })
+    render(<PhoneCloudSync />)
+    await waitFor(() => expect(ran('cloud_status')).not.toHaveLength(0))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(ran('cloud_take_notification')).toHaveLength(0)
   })
 })

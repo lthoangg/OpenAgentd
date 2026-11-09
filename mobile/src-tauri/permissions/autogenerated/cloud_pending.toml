@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-pending"
+description = "Enables the cloud_pending command without any pre-configured scope."
+commands.allow = ["cloud_pending"]
+
+[[permission]]
+identifier = "deny-cloud-pending"
+description = "Denies the cloud_pending command without any pre-configured scope."
+commands.deny = ["cloud_pending"]

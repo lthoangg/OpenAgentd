@@ -69,6 +69,21 @@ export const DEFAULT_PET_SETTINGS: PetSettings = {
 export interface PetStatus {
   running: number
   needsInput: number
+  /** The sessions waiting on the user now; absent from older shells. */
+  waiting?: WaitingQuestion[]
+  /** Sessions that waited when their server was last reached (it can't be now). */
+  held?: string[]
+}
+
+/** A session waiting on the user, as its question bubble shows it. */
+export interface WaitingQuestion {
+  /** The bubble id: one per session and question. */
+  id: string
+  sessionId: string
+  sessionKey: string
+  title: string
+  body: string
+  questionId?: string | null
 }
 
 export interface PetView {
@@ -647,9 +662,14 @@ export interface BubbleState {
   unread: PetBubble[]
   /** The unread list is open (the pet was clicked). */
   listOpen: boolean
+  /**
+   * The sessions the last status said wait on the user (or held by an
+   * outage): a question bubble goes once its session leaves this set.
+   */
+  waitingKeys: string[]
 }
 
-export const EMPTY_BUBBLES: BubbleState = { questions: [], later: [], current: null, unread: [], listOpen: false }
+export const EMPTY_BUBBLES: BubbleState = { questions: [], later: [], current: null, unread: [], listOpen: false, waitingKeys: [] }
 
 export type BubbleAction =
   | { type: 'notify'; bubble: PetBubble }
@@ -658,7 +678,8 @@ export type BubbleAction =
   | { type: 'showQuestion'; id: string }
   | { type: 'answered'; key: string }
   | { type: 'readSession'; key: string }
-  | { type: 'status'; status: PetStatus }
+  /** `addMissing`: question bubbles are on, so a waiting session without one gets one. */
+  | { type: 'status'; status: PetStatus; addMissing?: boolean }
   | { type: 'toggleList' }
   | { type: 'clearUnread' }
   | { type: 'clear' }
@@ -678,6 +699,45 @@ export function hiddenQuestions(state: Pick<BubbleState, 'questions' | 'later'>)
   return state.questions.filter((q) => q !== shown)
 }
 
+/**
+ * Questions after a status: a bubble goes once its session stops waiting
+ * (answered anywhere), but not while its server can't be reached (`held`).
+ * A bubble the status has not confirmed yet (its notification beat the
+ * list) stays, unless nothing waits at all. With `addMissing`, a waiting
+ * session without a bubble gets one: it asked while the pet was hidden, or
+ * before the page loaded. An older shell sends no list: nothing waiting
+ * clears every question.
+ */
+function withWaiting(state: BubbleState, status: PetStatus, addMissing: boolean): BubbleState {
+  if (!status.waiting) {
+    return status.needsInput === 0 && state.questions.length > 0 ? { ...state, questions: [], later: [] } : state
+  }
+  const next = new Set([...status.waiting.map((w) => w.sessionKey), ...(status.held ?? [])])
+  const before = new Set(state.waitingKeys)
+  const keyOf = (q: PetBubble) => (q.sessionId ? sessionKey(q.sessionId) : null)
+  const gone = (q: PetBubble) => {
+    const key = keyOf(q)
+    if (key && next.has(key)) return false
+    return next.size === 0 || (key !== null && before.has(key))
+  }
+  const questions = state.questions.filter((q) => !gone(q))
+  if (addMissing) {
+    for (const w of status.waiting) {
+      if (questions.some((q) => keyOf(q) === w.sessionKey)) continue
+      questions.push({ id: w.id, kind: 'input_needed', tone: 'input', sessionId: w.sessionId, title: w.title, body: w.body, questionId: w.questionId ?? null })
+    }
+  }
+  const waitingKeys = [...next]
+  const same =
+    questions.length === state.questions.length &&
+    questions.every((q, i) => q === state.questions[i]) &&
+    waitingKeys.length === state.waitingKeys.length &&
+    waitingKeys.every((k) => before.has(k))
+  if (same) return state
+  const later = state.later.filter((id) => questions.some((q) => q.id === id))
+  return { ...state, questions, later, waitingKeys, listOpen: state.listOpen && state.unread.length + questions.length > 0 }
+}
+
 export function bubbleReducer(state: BubbleState, action: BubbleAction): BubbleState {
   switch (action.type) {
     case 'notify': {
@@ -686,7 +746,8 @@ export function bubbleReducer(state: BubbleState, action: BubbleAction): BubbleS
       if (bubble.tone === 'input') {
         // One question per session: a newer one replaces it (and is new, so
         // it shows even if the one it replaces was put off).
-        const replaced = state.questions.filter((q) => bubble.sessionId && q.sessionId === bubble.sessionId).map((q) => q.id)
+        const key = bubble.sessionId ? sessionKey(bubble.sessionId) : null
+        const replaced = state.questions.filter((q) => key && q.sessionId && sessionKey(q.sessionId) === key).map((q) => q.id)
         const questions = [...state.questions.filter((q) => !replaced.includes(q.id)), bubble]
         const later = state.later.filter((id) => !replaced.includes(id))
         // A question takes the stage; what was on show waits behind the badge.
@@ -752,8 +813,7 @@ export function bubbleReducer(state: BubbleState, action: BubbleAction): BubbleS
       }
     }
     case 'status':
-      // Nothing waits on the user any more: the questions were answered.
-      return action.status.needsInput === 0 && state.questions.length > 0 ? { ...state, questions: [], later: [] } : state
+      return withWaiting(state, action.status, action.addMissing ?? false)
     case 'toggleList':
       return { ...state, listOpen: !state.listOpen && state.unread.length + state.questions.length > 0 }
     case 'clearUnread':

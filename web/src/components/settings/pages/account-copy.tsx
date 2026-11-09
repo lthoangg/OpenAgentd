@@ -16,8 +16,9 @@ export const NOTICES: Record<CloudNotice, { title?: string; body: string; tone?:
     body: 'If your browser said you are on the waitlist, you can finish once you are approved. Everything on this device keeps working.',
   },
   empty_account: {
-    body: 'This account has no devices yet. Set it up in the OpenAgentd app on your phone first, then sign in here again.',
+    body: 'This account has no devices yet. Sign in again to set it up on this device.',
   },
+  roles: { body: 'A device can only get the roles it asked for, and needs at least one.' },
   revoked: {
     title: 'This device was removed from your account.',
     body: 'It was signed out and keeps working on its own. Your local sessions and settings are unchanged.',
@@ -64,8 +65,8 @@ export function OfferCopy() {
     <>
       <p className="font-medium text-(--color-text)">Reach your computer from anywhere.</p>
       <p>
-        Sign in to use your computers from your phone away from home, and get notified when
-        agents finish. It&apos;s optional: everything else works without an account.
+        Sign in to use your computers from your other devices away from home, and get notified
+        when agents finish. It&apos;s optional: everything else works without an account.
       </p>
     </>
   )

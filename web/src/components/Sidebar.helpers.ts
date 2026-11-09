@@ -3,7 +3,7 @@ import type {
   CodingWorkspaceTreeWorktree,
   SessionResponse,
 } from '@/api/types'
-import { sessionWorking } from '@/lib/active-sessions'
+import { sessionWorking, startedByAgent } from '@/lib/active-sessions'
 
 export function toggleExpandedPath(current: Set<string>, path: string): Set<string> {
   const next = new Set(current)
@@ -175,6 +175,23 @@ export function sessionActivityTime(session: SessionResponse): string | null {
   return session.last_message_at ?? session.updated_at ?? session.created_at
 }
 
+/**
+ * ``items`` with the newest time first (a copy; ties keep their order, and
+ * items without a time go last). The nested subagent and ↗ lists use it, so
+ * the latest update is on top.
+ */
+export function newestFirst<T>(items: readonly T[], time: (item: T) => string | null | undefined): T[] {
+  const at = (item: T) => {
+    const raw = time(item)
+    const ms = raw ? Date.parse(raw) : Number.NaN
+    return Number.isNaN(ms) ? Number.NEGATIVE_INFINITY : ms
+  }
+  return items
+    .map((item, index) => ({ item, index, ms: at(item) }))
+    .sort((a, b) => (b.ms === a.ms ? a.index - b.index : b.ms - a.ms))
+    .map(({ item }) => item)
+}
+
 /** Local midnight ``daysAgo`` calendar days before ``now`` (DST-safe). */
 function localMidnight(now: Date, daysAgo: number): number {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo).getTime()
@@ -220,6 +237,8 @@ export function groupSessionsByDate(
  * them. Keeps each input's order and drops empty groups. A session shows in
  * one place only: pinned ones live in Pinned (which carries their status),
  * never again under Needs you, Running or Recent.
+ * A session an agent started from another workspace is not listed under
+ * Running: it is the sender's work and nests under it (or stays in Recent).
  */
 export function groupSessionsByStatus(
   recentRows: readonly SessionResponse[],
@@ -228,7 +247,7 @@ export function groupSessionsByStatus(
   const recent = recentRows.filter((session) => !session.pinned_at)
   const active = activeRows.filter((session) => !session.pinned_at)
   const needsYou = active.filter((session) => session.needs_input === true)
-  const working = active.filter((session) => session.needs_input !== true && sessionWorking(session))
+  const working = active.filter((session) => session.needs_input !== true && sessionWorking(session) && !startedByAgent(session))
   const activeIds = new Set([...needsYou, ...working].map((session) => session.id))
   const groups: SessionGroup[] = [
     { id: 'needs_input', label: 'Needs you', sessions: needsYou },

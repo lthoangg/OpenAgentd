@@ -3,7 +3,7 @@
 use openagentd_cloud::code::{self, CodeInput, Joiner, Signer};
 use openagentd_cloud::encoding::{b64, from_b64, from_b64_array};
 use openagentd_cloud::invite::{self, Candidate, Confirmation};
-use openagentd_cloud::keys::{device_id, fingerprint, parse_pubs, pubs_bytes, Ed25519, Seed, X25519};
+use openagentd_cloud::keys::{device_id, fingerprint, parse_pubs, pubs_bytes, Ed25519, Roles, Seed, X25519};
 use openagentd_cloud::letter::{self, Context, Kind};
 use openagentd_cloud::noise::{self, Initiator, Responder};
 use openagentd_cloud::recovery;
@@ -68,10 +68,13 @@ fn pubs() {
         let sg = Ed25519::from_seed(seed(c, "sign_seed"));
         assert_eq!(b64(&bx.public()), s(c, "box_pub"));
         assert_eq!(b64(&sg.public()), s(c, "sign_pub"));
-        let bytes = pubs_bytes(&bx.public(), &sg.public());
+        let roles = Roles { server: c["server"].as_bool().unwrap(), client: c["client"].as_bool().unwrap() };
+        let bytes = pubs_bytes(&bx.public(), &sg.public(), roles);
         assert_eq!(String::from_utf8(bytes.clone()).unwrap(), s(c, "json"));
         assert_eq!(b64(&bytes), s(c, "pubs"));
-        assert_eq!(parse_pubs(&bytes).unwrap().r#box, bx.public());
+        let parsed = parse_pubs(&bytes).unwrap();
+        assert_eq!(parsed.r#box, bx.public());
+        assert_eq!(parsed.roles, roles);
     }
 }
 
@@ -98,7 +101,12 @@ fn rosters_valid_and_invalid() {
     let account = s(&v, "account_id");
     let mut accepted: HashMap<String, Roster> = HashMap::new();
     let cases = v["roster"].as_array().unwrap();
-    assert_eq!(cases.len(), 26);
+    assert_eq!(cases.len(), 30);
+    // Roles (rule 1 types, rule 4 at least one): each case breaks the rule named.
+    for (name, rule) in [("no_role", "devices"), ("body_v1", "format"), ("roles_missing", "format"), ("role_not_boolean", "format")] {
+        let c = cases.iter().find(|c| c["name"] == name).unwrap_or_else(|| panic!("vector {name}"));
+        assert_eq!(c.get("rule").and_then(|r| r.as_str()), Some(rule), "{name}");
+    }
     // Rule 4's bound: ten devices pass, eleven break it.
     for (name, rule) in [("ten_devices", None), ("eleven_devices", Some("devices"))] {
         let c = cases.iter().find(|c| c["name"] == name).unwrap_or_else(|| panic!("vector {name}"));
@@ -125,7 +133,7 @@ fn rosters_valid_and_invalid() {
             }
         }
     }
-    assert_eq!(rejected, 19);
+    assert_eq!(rejected, 23);
 }
 
 /// Signing the valid bodies again with the vector keys gives the same

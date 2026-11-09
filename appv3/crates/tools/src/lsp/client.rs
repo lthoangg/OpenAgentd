@@ -158,6 +158,7 @@ impl LspClient {
         if let Some(env) = &self.env {
             cmd.env_clear();
             cmd.envs(env.iter().cloned());
+            cmd.env(appv3_core::auth::AGENT_MARKER_ENV, "1");
         }
         let mut child = cmd.spawn().map_err(|e| crate::lsp::py_os_error(&e, &self.command[0]))?;
         let stdout = child.stdout.take();

@@ -287,7 +287,8 @@ describe('Review dock diff tabs', () => {
     expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
       'Open diff in tab',
       'Open file',
-      'Copy file path',
+      'Copy path',
+      'Copy relative path',
       'Discard changes…',
     ])
 

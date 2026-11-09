@@ -3,7 +3,7 @@
 
 use crate::net::{display_host, http_get_with_headers, resolve_addr};
 use crate::paths::find_pids;
-use crate::ui::{bold, cyan, dim, tilde, Checks};
+use crate::ui::{self, dim, tilde, tilde_text, Checks};
 use anyhow::Result;
 use appv3_core::runtime_settings::ServerYaml;
 use serde_json::Value;
@@ -172,6 +172,17 @@ fn modules_section(answer: Option<(u16, &[u8])>, key_sent: bool) -> ModulesSecti
     }
 }
 
+/// All running: one ✓ line instead of one per module. Anything else is
+/// listed in full, so the module that needs a look stands out.
+fn collapsed(section: ModulesSection) -> ModulesSection {
+    let all_ok = !section.lines.is_empty() && section.lines.iter().all(|(m, _)| *m == Mark::Ok);
+    if !all_ok {
+        return section;
+    }
+    let n = section.lines.len();
+    ModulesSection { lines: vec![(Mark::Ok, format!("{n} of {n} modules running"))], note: None }
+}
+
 /// The Modules section: the local server's modules and their state, or why
 /// they are not listed. Its lines count in the summary and the exit code
 /// like any other check.
@@ -183,9 +194,8 @@ fn report_modules(checks: &mut Checks, cfg: &ServerYaml) {
     let bearer = format!("Bearer {key}");
     let headers: Vec<(&str, &str)> = if key.is_empty() { vec![] } else { vec![("Authorization", bearer.as_str())] };
     let answer = http_get_with_headers(&display_host(&host), port, "/api/modules", &headers, MODULES_TIMEOUT);
-    let section = modules_section(answer.as_ref().map(|(status, body)| (*status, body.as_slice())), !key.is_empty());
-    println!();
-    println!("  {}", bold("Modules"));
+    let section = collapsed(modules_section(answer.as_ref().map(|(status, body)| (*status, body.as_slice())), !key.is_empty()));
+    ui::section("Modules");
     for (mark, text) in &section.lines {
         match mark {
             Mark::Ok => checks.ok(text),
@@ -201,6 +211,29 @@ fn report_modules(checks: &mut Checks, cfg: &ServerYaml) {
     }
 }
 
+/// Whether a newer agentd is out. An update is a warning; a failed check
+/// (offline, a mirror down) is only a dim note.
+fn report_update(checks: &mut Checks) {
+    let current = appv3_core::VERSION;
+    let latest = tokio::runtime::Builder::new_current_thread().enable_all().build().ok().and_then(|rt| {
+        rt.block_on(async {
+            let client = reqwest::Client::builder().user_agent(format!("openagentd/{current}")).timeout(UPDATE_TIMEOUT).build().ok()?;
+            crate::cmd::self_update::latest_version(&client, &appv3_core::release::releases_base()).await.ok()
+        })
+    });
+    match latest {
+        Some(v) if appv3_core::release::is_newer(&v, current) => {
+            let how = if appv3_core::release::is_desktop_bundled(&appv3_core::release::current_exe()) { "update the desktop app" } else { "run `agentd upgrade`" };
+            checks.warn(&format!("agentd v{v} is out (this is v{current}) — {how}"));
+        }
+        Some(_) => checks.ok(&format!("agentd v{current} is the latest release")),
+        None => ui::mark_line(&ui::idle_mark(), &dim("Could not check for a newer release")),
+    }
+}
+
+/// Longest wait for the latest-release lookup.
+const UPDATE_TIMEOUT: Duration = Duration::from_secs(3);
+
 pub fn doctor() -> Result<ExitCode> {
     // Non-secret settings may still come from a dotenv file; provider keys
     // live in credentials.yaml.
@@ -210,10 +243,9 @@ pub fn doctor() -> Result<ExitCode> {
     crate::cmd::auth::migrate_first();
     crate::dotenv::migrate();
 
-    println!();
-    println!("  {}  {}", bold(&cyan("agentd doctor")), dim(&format!("v{}", appv3_core::VERSION)));
-    println!();
+    ui::header("agentd doctor", &format!("v{}", appv3_core::VERSION));
     let mut checks = Checks::default();
+    println!("  {}", ui::bold("Config"));
 
     // Provider credentials.
     match appv3_core::credentials::load() {
@@ -231,8 +263,22 @@ pub fn doctor() -> Result<ExitCode> {
         println!("     {}", dim("Add them in Settings → Providers, or run `agentd credentials import <file>`"));
     }
     for n in appv3_core::env::env_notices() {
-        checks.warn(&n);
+        checks.warn(&tilde_text(&n));
     }
+    // Database.
+    if s.database_path.exists() {
+        checks.ok(&format!("Database: {}", tilde(&s.database_path)));
+    } else {
+        checks.warn(&format!("Database not found: {}  (created on first start)", tilde(&s.database_path)));
+    }
+    // Agents.
+    if !md_files(&s.agents_dir).is_empty() {
+        checks.ok(&format!("Agents: {}", tilde(&s.agents_dir)));
+    } else {
+        checks.fail(&format!("Agents not found: {}  (start the server to restore the defaults)", tilde(&s.agents_dir)));
+    }
+
+    ui::section("Providers");
     let key_vars = provider_key_vars();
     let lead = read_lead_provider(&s.agents_dir);
     let mut found: Vec<&str> = vec![];
@@ -275,14 +321,7 @@ pub fn doctor() -> Result<ExitCode> {
         }
     }
 
-    // Database.
-    if s.database_path.exists() {
-        checks.ok(&format!("Database: {}", tilde(&s.database_path)));
-    } else {
-        checks.warn(&format!("Database not found: {}  (created on first start)", tilde(&s.database_path)));
-    }
-
-    // Server port.
+    ui::section("Server");
     let server = crate::net::server_settings();
     match &server {
         Err(e) => checks.fail(&format!("{e:#}")),
@@ -300,12 +339,7 @@ pub fn doctor() -> Result<ExitCode> {
         }
     }
 
-    // Agents.
-    if !md_files(&s.agents_dir).is_empty() {
-        checks.ok(&format!("Agents: {}", tilde(&s.agents_dir)));
-    } else {
-        checks.fail(&format!("Agents not found: {}  (start the server to restore the defaults)", tilde(&s.agents_dir)));
-    }
+    report_update(&mut checks);
 
     // Modules of the running server.
     if let Ok(cfg) = &server {
@@ -320,7 +354,7 @@ pub fn doctor() -> Result<ExitCode> {
 
 #[cfg(test)]
 mod tests {
-    use super::{module_lines, modules_section, read_lead_provider, Mark, ModulesSection};
+    use super::{collapsed, module_lines, modules_section, read_lead_provider, Mark, ModulesSection};
     use serde_json::{json, Value};
 
     #[test]
@@ -389,6 +423,17 @@ mod tests {
             module("f", "starting", None),
         ]);
         assert_eq!(mixed.note.as_deref(), Some("6 modules, 1 running, 1 failed, 1 blocked, 1 stopped, 1 pending, 1 other"));
+    }
+
+    #[test]
+    fn all_running_modules_fold_into_one_line() {
+        let all = collapsed(section(&[module("lsp", "running", None), module("mcp", "running", None)]));
+        assert_eq!((all.lines, all.note), (vec![line(Mark::Ok, "2 of 2 modules running")], None));
+        let mixed = collapsed(section(&[module("lsp", "running", None), module("mcp", "failed", Some("x"))]));
+        assert_eq!(mixed.lines.len(), 2, "a failure lists every module");
+        assert_eq!(mixed.note.as_deref(), Some("2 modules, 1 running, 1 failed"));
+        let none = collapsed(ModulesSection::note_only("Start the server to see its modules."));
+        assert_eq!((none.lines.len(), none.note.as_deref()), (0, Some("Start the server to see its modules.")));
     }
 
     #[test]

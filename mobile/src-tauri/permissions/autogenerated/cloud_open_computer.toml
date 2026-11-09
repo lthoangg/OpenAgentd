@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-open-computer"
+description = "Enables the cloud_open_computer command without any pre-configured scope."
+commands.allow = ["cloud_open_computer"]
+
+[[permission]]
+identifier = "deny-cloud-open-computer"
+description = "Denies the cloud_open_computer command without any pre-configured scope."
+commands.deny = ["cloud_open_computer"]

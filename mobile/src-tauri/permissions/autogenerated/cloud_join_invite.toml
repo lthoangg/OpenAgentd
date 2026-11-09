@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-join-invite"
+description = "Enables the cloud_join_invite command without any pre-configured scope."
+commands.allow = ["cloud_join_invite"]
+
+[[permission]]
+identifier = "deny-cloud-join-invite"
+description = "Denies the cloud_join_invite command without any pre-configured scope."
+commands.deny = ["cloud_join_invite"]

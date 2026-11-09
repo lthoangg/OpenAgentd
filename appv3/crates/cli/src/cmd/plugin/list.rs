@@ -142,12 +142,26 @@ fn render_single_files(files: &[SingleFile]) -> Vec<Line> {
     out
 }
 
+const ADD_HINT: &str = "agentd plugin add <folder or git URL>";
+
+/// What an empty bundle list says: nothing at all is installed, or only
+/// single-file plugins (listed below it) are.
+fn no_bundles(others: bool) -> Line {
+    if others {
+        vec![ind(2), sp(Tone::Dim, format!("No plugin folders yet. Add one with: {ADD_HINT}"))]
+    } else {
+        vec![ind(2), sp(Tone::Dim, format!("No plugin is installed. Add one with: {ADD_HINT}"))]
+    }
+}
+
 /// The "Plugins" of a running server: `GET /api/plugins`.
 fn server_view(body: &Value, at: &str) -> Vec<Line> {
     let mut out = vec![vec![ind(2), sp(Tone::Bold, "Plugins"), ind(2), sp(Tone::Dim, format!("from the server at {at}"))], blank()];
+    let python = body.get("unported").and_then(Value::as_array).map(|a| a.iter().filter_map(|p| p.get("file").and_then(Value::as_str)).collect::<Vec<_>>()).unwrap_or_default();
+    let has_files = body.get("plugins").and_then(Value::as_array).is_some_and(|a| !a.is_empty()) || !python.is_empty();
     match body.get("bundles").and_then(Value::as_array) {
         None => out.push(vec![ind(2), sp(Tone::Dim, "This server does not report plugin bundles.")]),
-        Some(list) if list.is_empty() => out.push(vec![ind(2), sp(Tone::Dim, "No plugin is installed. Add one with: agentd plugin add <folder or git URL>")]),
+        Some(list) if list.is_empty() => out.push(no_bundles(has_files)),
         Some(list) => out.extend(render_rows(&list.iter().map(server_row).collect::<Vec<_>>())),
     }
     let files: Vec<SingleFile> = body
@@ -175,11 +189,11 @@ fn server_view(body: &Value, at: &str) -> Vec<Line> {
         })
         .unwrap_or_default();
     out.extend(render_single_files(&files));
-    let python = body.get("unported").and_then(Value::as_array).map(|a| a.iter().filter_map(|p| p.get("file").and_then(Value::as_str)).collect::<Vec<_>>()).unwrap_or_default();
     if !python.is_empty() {
+        let width = python.iter().map(|f| exact(f).chars().count()).max().unwrap_or(0);
         out.push(blank());
         out.push(heading("Not loaded"));
-        out.extend(python.iter().map(|f| vec![ind(4), sp(Tone::Dim, format!("{}  Python plugins are not supported", exact(f)))]));
+        out.extend(python.iter().map(|f| vec![ind(4), sp(Tone::Bold, pad(&exact(f), width)), ind(2), sp(Tone::Dim, "Python plugins are not supported")]));
     }
     let dirs = strings(body.get("dirs"));
     if !dirs.is_empty() {
@@ -208,15 +222,16 @@ fn disk_view(ctx: &Ctx, reason: Line) -> Vec<Line> {
     let items = installed(&ctx.dirs, &ctx.data_root);
     let rows = disk_rows(&items, &disabled(&ctx.config_dir));
     let mut out = vec![vec![ind(2), sp(Tone::Bold, "Plugins")], reason, blank()];
+    let file_paths = appv3_jsplugin::plugin_files(&ctx.dirs);
     if rows.is_empty() {
-        out.push(vec![ind(2), sp(Tone::Dim, "No plugin is installed. Add one with: agentd plugin add <folder or git URL>")]);
+        out.push(no_bundles(!file_paths.is_empty()));
     }
     out.extend(render_rows(&rows));
     if rows.iter().any(|r| r.tools.is_none()) {
         out.push(blank());
         out.push(vec![ind(2), sp(Tone::Dim, "Tools come from plugin code, which only a running server loads.")]);
     }
-    let files: Vec<SingleFile> = appv3_jsplugin::plugin_files(&ctx.dirs)
+    let files: Vec<SingleFile> = file_paths
         .iter()
         .map(|f| SingleFile {
             file: f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
@@ -312,6 +327,25 @@ mod tests {
         assert_eq!(
             text(&server_view(&none, "h:1")),
             ["  Plugins  from the server at h:1", "", "  No plugin is installed. Add one with: agentd plugin add <folder or git URL>", "", "  Folders  /d"]
+        );
+        // Single-file plugins only: the bundle line must not say nothing is installed.
+        let files = json!({"dirs": ["/d"], "plugins": [{"file": "agy_auth.ts", "status": "loaded", "provider": "agy"}], "unported": [{"file": "rtk_rewrite.py"}, {"file": "secret_scrubber.py"}], "bundles": []});
+        assert_eq!(
+            text(&server_view(&files, "h:1")),
+            [
+                "  Plugins  from the server at h:1",
+                "",
+                "  No plugin folders yet. Add one with: agentd plugin add <folder or git URL>",
+                "",
+                "  Single-file plugins",
+                "    agy_auth.ts  loaded  provider agy",
+                "",
+                "  Not loaded",
+                "    rtk_rewrite.py      Python plugins are not supported",
+                "    secret_scrubber.py  Python plugins are not supported",
+                "",
+                "  Folders  /d",
+            ]
         );
     }
 

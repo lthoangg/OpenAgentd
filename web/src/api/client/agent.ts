@@ -37,6 +37,7 @@ import type {
   AgentChatResponse,
   DiscardWorkspaceFileResponse,
   CodingWorkspaceVisibilityResponse,
+  WorkspaceRelocateResponse,
   WorktreeRemoveResponse,
   GitUndoResponse,
   GitRevertResponse,
@@ -511,6 +512,20 @@ export async function setCodingWorkspaceVisibility(workspace: string, hidden: bo
     body: JSON.stringify({ workspace, hidden }),
   })
   if (!res.ok) await parseDetailOrThrow(res, 'setCodingWorkspaceVisibility')
+  return res.json()
+}
+
+/**
+ * Point a sidebar workspace whose folder is gone at ``to``, keeping its
+ * sessions, worktrees, scheduled tasks and groups. ``dryRun`` only counts.
+ */
+export async function relocateCodingWorkspace(from: string, to: string, dryRun = false): Promise<WorkspaceRelocateResponse> {
+  const res = await fetch(`${apiBaseUrl()}/agent/workspace/relocate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to, dry_run: dryRun }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'relocateCodingWorkspace')
   return res.json()
 }
 

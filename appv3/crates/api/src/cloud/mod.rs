@@ -7,10 +7,12 @@
 //! protocol lives in `native/cloud`; the client threat model is
 //! `appv3/contract/tunnel-threats.md`.
 
+pub mod approval;
 pub mod connector;
 pub mod engine;
 pub mod letters;
 pub mod routes;
+pub mod signer;
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -20,7 +22,8 @@ use axum::Router;
 use openagentd_cloud::account_state::{AccountProblem, UNAVAILABLE_RETRY_SECS};
 use openagentd_cloud::api::Cloud;
 use openagentd_cloud::endpoints::Endpoints;
-use openagentd_cloud::flows::{FlowError, Member, Removal};
+use openagentd_cloud::flows::{FlowError, GenesisDraft, Member, Removal, Session};
+use openagentd_cloud::keys::Roles;
 use openagentd_cloud::relay::{self, HostHandler, Join, RelayError, Sessions};
 use openagentd_cloud::roster::{self, Chain, Roster};
 use openagentd_cloud::store::{self as idstore, FileStore, Identity, SecretStore};
@@ -48,7 +51,11 @@ pub enum Notice {
     /// The text pasted is not an invitation link.
     InviteInvalid,
     SignedOut,
+    /// No longer happens (any device may create the account); kept so an
+    /// older page still reads the status.
     EmptyAccount,
+    /// A device needs at least one role, and gets only the ones it asked for.
+    Roles,
     Failed,
 }
 
@@ -63,6 +70,8 @@ pub enum RelayState {
         until: Option<u64>,
     },
     Offline,
+    /// This device is not a server in its roster: it runs no connector.
+    Off,
 }
 
 /// What `GET /api/cloud/status` reports. The web UI shows one screen per
@@ -79,6 +88,12 @@ pub enum Status {
         fingerprint: String,
         expires_in: u64,
     },
+    /// A new account (no device in it yet): show the recovery code once,
+    /// then ask two of its groups (1-based) back. Only this computer sees it.
+    Recovery {
+        code: String,
+        check: [usize; 2],
+    },
     Joining {
         fingerprint: String,
         code: Option<String>,
@@ -92,6 +107,9 @@ pub enum Status {
     Connected {
         fingerprint: String,
         signer: bool,
+        /// Its roles in the verified roster: it serves sessions, opens them.
+        server: bool,
+        client: bool,
         relay: RelayState,
         sessions: usize,
     },
@@ -104,10 +122,21 @@ pub enum Status {
     },
 }
 
+/// A signed-in account with no roster yet, waiting for the person to
+/// confirm the recovery code (spec 4.1).
+struct Genesis {
+    member: Member,
+    session: Session,
+    draft: GenesisDraft,
+}
+
 struct Host {
     status: Mutex<Status>,
     run: Mutex<Option<JoinHandle<()>>>,
     sign_in: Mutex<Option<JoinHandle<()>>>,
+    genesis: Mutex<Option<Genesis>>,
+    /// Tells the running connection loop that a signer route wrote a roster.
+    poke: Mutex<Option<mpsc::UnboundedSender<RosterNote>>>,
     router: OnceLock<Router>,
     private_port: OnceLock<u16>,
     sessions: Sessions,
@@ -119,6 +148,8 @@ fn host() -> &'static Host {
         status: Mutex::new(Status::Guest { notice: None }),
         run: Mutex::new(None),
         sign_in: Mutex::new(None),
+        genesis: Mutex::new(None),
+        poke: Mutex::new(None),
         router: OnceLock::new(),
         private_port: OnceLock::new(),
         sessions: Sessions::default(),
@@ -192,19 +223,20 @@ pub async fn reload() {
     let _ = start().await;
 }
 
-/// Starts sign-in in the background (`POST /api/cloud/login`).
-pub fn begin_sign_in() -> Status {
+/// Starts sign-in in the background (`POST /api/cloud/login`), asking for
+/// `roles` when this computer joins or creates the account.
+pub fn begin_sign_in(roles: Roles) -> Status {
     let mut slot = host().sign_in.lock().expect("cloud sign-in");
     if let Some(h) = slot.as_ref() {
         if !h.is_finished() {
             return status();
         }
     }
-    if matches!(status(), Status::Connected { .. } | Status::Closing { .. } | Status::Unavailable { .. }) {
+    if !matches!(status(), Status::Guest { .. }) {
         return status();
     }
     *slot = Some(tokio::spawn(async move {
-        let outcome = engine::sign_in(Endpoints::current(), http(), on_event).await;
+        let outcome = engine::sign_in(Endpoints::current(), http(), roles, on_event).await;
         finish_join(outcome);
     }));
     drop(slot);
@@ -224,7 +256,7 @@ fn on_event(event: engine::Event<'_>) {
 
 /// Joins by invitation link in the background (`POST /api/cloud/join`).
 /// A link that does not parse is refused here, before any network call.
-pub fn begin_join(link: zeroize::Zeroizing<String>) -> Result<Status, Notice> {
+pub fn begin_join(link: zeroize::Zeroizing<String>, roles: Roles) -> Result<Status, Notice> {
     if openagentd_cloud::invite::parse_link(&link).is_err() {
         return Err(Notice::InviteInvalid);
     }
@@ -233,7 +265,7 @@ pub fn begin_join(link: zeroize::Zeroizing<String>) -> Result<Status, Notice> {
         return Ok(status());
     }
     *slot = Some(tokio::spawn(async move {
-        let outcome = engine::join_invite(Endpoints::current(), http(), &link, on_event).await;
+        let outcome = engine::join_invite(Endpoints::current(), http(), &link, roles, on_event).await;
         drop(link);
         finish_join(outcome);
     }));
@@ -251,10 +283,53 @@ fn finish_join(outcome: Result<engine::Outcome, FlowError>) {
             tracing::info!("cloud_joined");
             spawn_run(identity);
         }
-        Ok(engine::Outcome::EmptyAccount { .. }) => set_status(Status::Guest { notice: Some(Notice::EmptyAccount) }),
+        Ok(engine::Outcome::EmptyAccount { member, session }) => {
+            // This computer creates the account: the recovery code comes first.
+            let draft = GenesisDraft::new();
+            let (a, b) = draft.check_groups();
+            set_status(Status::Recovery { code: draft.code.to_string(), check: [a, b] });
+            *host().genesis.lock().expect("cloud genesis") = Some(Genesis { member: *member, session, draft });
+        }
         Err(e) => {
             tracing::info!("cloud_sign_in_ended reason={}", engine::reason(&e));
             set_status(Status::Guest { notice: Some(engine::notice(&e)) });
+        }
+    }
+}
+
+/// Why the recovery step did not create the account.
+#[derive(Debug)]
+pub enum RecoveryError {
+    /// Not on the recovery step.
+    NotAsked,
+    /// The groups typed do not match; the step stays open.
+    Mismatch { first: usize, second: usize },
+    /// Genesis failed; back to guest.
+    Failed(FlowError),
+}
+
+/// The person typed two groups of the recovery code back: create the
+/// account with this computer as its first device (`POST
+/// /api/cloud/recovery`). The recovery key is wiped once registered.
+pub async fn confirm_recovery(first: &str, second: &str) -> Result<Status, RecoveryError> {
+    let Status::Recovery { check: [a, b], .. } = status() else {
+        return Err(RecoveryError::NotAsked);
+    };
+    let mut g = host().genesis.lock().expect("cloud genesis").take().ok_or(RecoveryError::NotAsked)?;
+    if !openagentd_cloud::recovery::group_matches(&g.draft.code, a, first) || !openagentd_cloud::recovery::group_matches(&g.draft.code, b, second) {
+        *host().genesis.lock().expect("cloud genesis") = Some(g);
+        return Err(RecoveryError::Mismatch { first: a, second: b });
+    }
+    match openagentd_cloud::flows::genesis(&mut g.member, &g.session, g.draft).await {
+        Ok(r) => {
+            tracing::info!("cloud_genesis");
+            finish_join(Ok(engine::Outcome::Joined(engine::identity_of(&g.member, &r))));
+            Ok(status())
+        }
+        Err(e) => {
+            tracing::info!("cloud_genesis_failed reason={}", engine::reason(&e));
+            set_status(Status::Guest { notice: Some(engine::notice(&e)) });
+            Err(RecoveryError::Failed(e))
         }
     }
 }
@@ -263,7 +338,8 @@ pub fn cancel_sign_in() -> Status {
     if let Some(h) = host().sign_in.lock().expect("cloud sign-in").take() {
         h.abort();
     }
-    if matches!(status(), Status::SigningIn { .. } | Status::Joining { .. } | Status::Invited { .. }) {
+    host().genesis.lock().expect("cloud genesis").take();
+    if matches!(status(), Status::SigningIn { .. } | Status::Joining { .. } | Status::Invited { .. } | Status::Recovery { .. }) {
         set_status(Status::Guest { notice: None });
     }
     status()
@@ -291,7 +367,7 @@ pub async fn sign_out() -> Status {
 
 fn spawn_run(identity: Identity) {
     let fingerprint = fingerprint_of(&identity);
-    set_status(Status::Connected { fingerprint, signer: false, relay: RelayState::Connecting, sessions: 0 });
+    set_status(Status::Connected { fingerprint, signer: false, server: false, client: false, relay: RelayState::Connecting, sessions: 0 });
     let handle = tokio::spawn(run(identity));
     if let Some(old) = host().run.lock().expect("cloud run").replace(handle) {
         old.abort();
@@ -348,7 +424,8 @@ impl HostHandler for Handler {
         if device_id == self.me || self.revoked.read().ok()?.contains(device_id) {
             return None;
         }
-        self.roster.read().ok()?.body.device(device_id).map(|d| d.box_key())
+        // Only a device the roster lets open sessions (`client`, spec 3.4).
+        self.roster.read().ok()?.body.client(device_id).map(|d| d.box_key())
     }
 
     fn serve(&self, stream: openagentd_cloud::mux::Stream, from: String) {
@@ -408,9 +485,29 @@ fn on_problem(p: AccountProblem, fingerprint: &str) -> bool {
     }
 }
 
-fn set_relay(relay_state: RelayState, signer: bool, fingerprint: &str) {
-    set_status(Status::Connected { fingerprint: fingerprint.to_string(), signer, relay: relay_state, sessions: 0 });
+fn set_relay(relay_state: RelayState, member: &Member, fingerprint: &str) {
+    let me = member.me();
+    set_status(Status::Connected {
+        fingerprint: fingerprint.to_string(),
+        signer: me.is_some_and(|d| d.signer),
+        server: me.is_some_and(|d| d.server),
+        client: me.is_some_and(|d| d.client),
+        relay: relay_state,
+        sessions: 0,
+    });
 }
+
+/// Tells the running connection loop to fetch the roster again (a signer
+/// route on this host wrote one).
+pub(crate) fn poke_roster() {
+    if let Some(tx) = host().poke.lock().expect("cloud poke").as_ref() {
+        let _ = tx.send(RosterNote::Fetch);
+    }
+}
+
+/// How often a device that is not a server checks its roster, having no
+/// presence socket to hear about changes.
+const IDLE_SYNC: Duration = Duration::from_secs(300);
 
 /// Exponential backoff with jitter, 1 s to 60 s.
 fn backoff(attempt: u32) -> Duration {
@@ -420,7 +517,7 @@ fn backoff(attempt: u32) -> Duration {
 }
 
 /// Saves a newly verified roster as the host's `K`.
-fn persist_roster(r: &Roster) {
+pub(crate) fn persist_roster(r: &Roster) {
     let store = identity_store();
     if let Ok(Some(mut id)) = idstore::load(&store) {
         id.roster = Some(r.blob.clone());
@@ -460,6 +557,7 @@ async fn run(identity: Identity) {
     let presence_cloud = Arc::new(Cloud::new(http(), Endpoints::current(), keys, Some(account.clone())));
     let shared = Arc::new(RwLock::new(known));
     let (resync_tx, mut resync_rx) = mpsc::unbounded_channel();
+    *host().poke.lock().expect("cloud poke") = Some(resync_tx.clone());
     let handler: Arc<dyn HostHandler> = Arc::new(Handler { roster: shared.clone(), me: me.clone(), revoked: RwLock::new(HashSet::new()), resync: resync_tx });
     // Notifications go to the phone while this host is signed in; the task
     // ends with this one (dropped when `run` is aborted or returns). Its own
@@ -474,27 +572,40 @@ async fn run(identity: Identity) {
                 if !on_problem(p, &fingerprint) {
                     return;
                 }
-                set_relay(RelayState::Offline, member.is_signer(), &fingerprint);
+                set_relay(RelayState::Offline, &member, &fingerprint);
                 tokio::time::sleep(Duration::from_secs(UNAVAILABLE_RETRY_SECS)).await;
                 continue;
             }
             Err(FlowError::Roster(rule)) => {
                 // The cloud served a roster we cannot accept: keep K, stay offline.
                 tracing::warn!("cloud_roster_refused rule={rule}");
-                set_relay(RelayState::Offline, member.is_signer(), &fingerprint);
+                set_relay(RelayState::Offline, &member, &fingerprint);
                 tokio::time::sleep(backoff(attempt)).await;
                 attempt += 1;
                 continue;
             }
             Err(e) => {
                 tracing::info!("cloud_sync_failed reason={}", engine::reason(&e));
-                set_relay(RelayState::Offline, member.is_signer(), &fingerprint);
+                set_relay(RelayState::Offline, &member, &fingerprint);
                 tokio::time::sleep(backoff(attempt)).await;
                 attempt += 1;
                 continue;
             }
         }
-        set_relay(RelayState::Connecting, member.is_signer(), &fingerprint);
+        if !member.is_server() {
+            // Not a server in the roster (spec 3.4): no presence socket and
+            // no relay sessions. Check the roster now and then, and at once
+            // when a signer route here wrote one.
+            host().sessions.close_all(4001);
+            set_relay(RelayState::Off, &member, &fingerprint);
+            attempt = 0;
+            tokio::select! {
+                _ = tokio::time::sleep(IDLE_SYNC) => {}
+                _ = resync_rx.recv() => {}
+            }
+            continue;
+        }
+        set_relay(RelayState::Connecting, &member, &fingerprint);
         let (stop_tx, stop_rx) = oneshot::channel();
         let mut presence = tokio::spawn(relay::host(presence_cloud.clone(), relay::http1_client(), handler.clone(), host().sessions.clone(), Join::default(), stop_rx));
         // Presence is up once the socket opened; we cannot see that
@@ -505,7 +616,7 @@ async fn run(identity: Identity) {
             tokio::select! {
                 r = &mut presence => break r.unwrap_or(RelayError::Network),
                 _ = &mut online_after, if !presence.is_finished() => {
-                    set_relay(RelayState::Online, member.is_signer(), &fingerprint);
+                    set_relay(RelayState::Online, &member, &fingerprint);
                     attempt = 0;
                     online_after.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(3600 * 24 * 365));
                 }
@@ -550,7 +661,7 @@ async fn run(identity: Identity) {
             // Close 4001 or a refused relay token: unsigned. The signed
             // roster fetch at the top of the loop decides; keys stay.
             on_problem(AccountProblem::RemovalSignal, &fingerprint);
-            set_relay(RelayState::Offline, member.is_signer(), &fingerprint);
+            set_relay(RelayState::Offline, &member, &fingerprint);
             tokio::time::sleep(backoff(attempt)).await;
             attempt += 1;
             continue;
@@ -565,14 +676,14 @@ async fn run(identity: Identity) {
         if let RelayError::Refused(e) = &ended {
             if e.is("quota_exhausted") {
                 let until = e.body.as_ref().and_then(|b| b.get("paused_until")).and_then(|v| v.as_u64());
-                set_relay(RelayState::Paused { until }, member.is_signer(), &fingerprint);
+                set_relay(RelayState::Paused { until }, &member, &fingerprint);
                 let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
                 let wait = until.map(|u| u.saturating_sub(now)).unwrap_or(3_600_000);
                 tokio::time::sleep(Duration::from_millis(wait.clamp(60_000, 86_400_000))).await;
                 continue;
             }
         }
-        set_relay(RelayState::Offline, member.is_signer(), &fingerprint);
+        set_relay(RelayState::Offline, &member, &fingerprint);
         tokio::time::sleep(backoff(attempt)).await;
         attempt += 1;
     }
@@ -616,15 +727,16 @@ mod tests {
     fn the_departed_set_holds_only_devices_the_roster_still_lists() {
         use openagentd_cloud::keys::DeviceKeys;
         use openagentd_cloud::roster::{sign, Body, Device};
+        let both = Roles::BOTH;
         let (me, a, b) = (DeviceKeys::generate(), DeviceKeys::generate(), DeviceKeys::generate());
-        let body = Body::genesis("acct", &[7; 32], Device::of(&me, true));
-        let one = sign(&Body { devices: vec![Device::of(&me, true), Device::of(&a, false), Device::of(&b, false)], ..body }, &me.id(), &me.sign);
+        let body = Body::genesis("acct", &[7; 32], Device::of(&me, true, both));
+        let one = sign(&Body { devices: vec![Device::of(&me, true, both), Device::of(&a, false, both), Device::of(&b, false, both)], ..body }, &me.id(), &me.sign);
         let mut set = HashSet::new();
         // Ids the roster does not list, and this host, are not kept.
         note_revoked(&mut set, &one, &me.id(), &ids(&[a.id().as_str(), me.id().as_str(), "stranger"]));
         assert_eq!(set, HashSet::from([a.id()]));
         // A later roster without `a` (a signer rewrote it): `a` leaves the set.
-        let two = sign(&one.next_body(vec![Device::of(&me, true), Device::of(&b, false)]), &me.id(), &me.sign);
+        let two = sign(&one.next_body(vec![Device::of(&me, true, both), Device::of(&b, false, both)]), &me.id(), &me.sign);
         note_revoked(&mut set, &two, &me.id(), &ids(&[b.id().as_str()]));
         assert_eq!(set, HashSet::from([b.id()]));
         // A long list cannot grow it past the roster.

@@ -23,13 +23,45 @@ import {
   applyQuestionResolution,
   extractToolPaths,
   parseQuestionClosedReason,
+  revokeBlobUrlsFromBlocks,
 } from './helpers'
 import type { CacheInvalidation, AgentError, AgentStore } from './types'
 import { canonicalToolName } from '@/utils/tool-names'
-import type { ContentBlock, PendingQuestion, QuestionItem, SSEEventType } from '@/api/types'
+import type { ContentBlock, MessageAttachment, PendingQuestion, QuestionItem, SSEEventType } from '@/api/types'
 
 type Setter = (fn: (draft: AgentStore) => void) => void
 type Getter = () => AgentStore
+
+/** The display fields of an attachment, as history serves them. */
+const ATTACHMENT_FIELDS = ['filename', 'media_type', 'original_name', 'category', 'url', 'source'] as const
+
+/**
+ * A ``queued_turn_start`` row's raw ``extra``, split as history splits it:
+ * the display attachments beside the rest. The event carries the stored
+ * ``extra``, so internal fields (``path``, ``converted_text``) are dropped.
+ */
+export function splitEventAttachments(raw: unknown): {
+  attachments: MessageAttachment[] | undefined
+  extra: Record<string, unknown> | undefined
+} {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { attachments: undefined, extra: undefined }
+  const { attachments: rawAtts, ...rest } = raw as Record<string, unknown>
+  const attachments = Array.isArray(rawAtts)
+    ? rawAtts.flatMap((att) => {
+        if (!att || typeof att !== 'object') return []
+        const src = att as Record<string, unknown>
+        const out: Record<string, unknown> = {}
+        for (const key of ATTACHMENT_FIELDS) {
+          if (typeof src[key] === 'string') out[key] = src[key]
+        }
+        return [out as MessageAttachment]
+      })
+    : []
+  return {
+    attachments: attachments.length > 0 ? attachments : undefined,
+    extra: rawAtts === undefined ? (raw as Record<string, unknown>) : rest,
+  }
+}
 
 /**
  * Session-stream events the reducer deliberately drops, with the reason.
@@ -516,10 +548,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const eventMessages = Array.isArray(d.messages)
           ? (d.messages as Array<{ id?: unknown; content?: unknown; extra?: unknown }>).flatMap((msg) => {
               if (typeof msg.id !== 'string' || typeof msg.content !== 'string') return []
+              const { attachments, extra } = splitEventAttachments(msg.extra)
               return [{
                 id: msg.id,
                 content: msg.content,
-                extra: (msg.extra && typeof msg.extra === 'object' ? msg.extra : undefined) as Record<string, unknown> | undefined,
+                extra,
+                attachments,
               }]
             })
           : []
@@ -546,6 +580,11 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           const extraOf = (msg: (typeof queued)[number]): Record<string, unknown> | undefined => (
             eventById.get(msg.id)?.extra
           )
+          // The queued chip's metas carry no URL; the server's row does, so a
+          // spliced image can show at once instead of after a reload.
+          const attachmentsOf = (msg: (typeof queued)[number]) => (
+            eventById.get(msg.id)?.attachments ?? msg.attachments
+          )
           // `message_ids` is the single authoritative order (it is built
           // server-side from the same query, in the same order, as
           // `messages`). Resolve each id against the locally-tracked pending
@@ -562,12 +601,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                   id: msg.id,
                   content: msg.content,
                   submittedAt: msg.submittedAt,
-                  attachments: msg.attachments,
+                  attachments: attachmentsOf(msg),
                   extra: extraOf(msg),
                 })),
                 ...eventMessages
                   .filter((msg) => !queuedIds.has(msg.id))
-                  .map((msg) => ({ ...msg, submittedAt: Date.now(), attachments: undefined, extra: msg.extra })),
+                  .map((msg) => ({ ...msg, submittedAt: Date.now() })),
               ]
             : Array.from(messageIds).flatMap((id) => {
                 const pending = queuedById.get(id)
@@ -576,12 +615,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                     id: pending.id,
                     content: pending.content,
                     submittedAt: pending.submittedAt,
-                    attachments: pending.attachments,
+                    attachments: attachmentsOf(pending),
                     extra: extraOf(pending),
                   }]
                 }
                 const ev = eventById.get(id)
-                return ev ? [{ ...ev, submittedAt: Date.now(), attachments: undefined, extra: ev.extra }] : []
+                return ev ? [{ ...ev, submittedAt: Date.now() }] : []
               })
           if (messages.length === 0) return
           const now = Date.now()
@@ -665,11 +704,15 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
 
             if (matchIdx !== -1) {
               const existing = existingOptimisticBlocks[matchIdx]
+              // The server's URLs replace the bubble's in-browser preview; a
+              // queued chip's URL-less metas never replace a working one.
+              const served = attachments?.some((att) => att.url) ? attachments : undefined
+              if (served && existing.attachments) revokeBlobUrlsFromBlocks([existing])
               newUserBlocks.push({
                 ...existing,
                 id: msg.id,
                 timestamp: existing.timestamp ?? timestamp,
-                attachments: attachments ?? existing.attachments,
+                attachments: served ?? existing.attachments ?? attachments,
               })
               continue
             }

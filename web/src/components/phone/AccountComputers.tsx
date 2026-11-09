@@ -1,8 +1,8 @@
 /**
  * The account's computers on the phone's Servers screen (decision D8).
  *
- * One row per computer of the account (the phone itself and other phones
- * left out). A saved LAN server that is known to be the same computer (its
+ * One row per server of the account (spec 3.4: the phone opens sessions
+ * only on devices with the server role; itself and clients left out). A saved LAN server that is known to be the same computer (its
  * remembered fingerprint matches, see `lib/computer-fingerprints`) is that
  * row, "via LAN", and no longer appears again in the saved list. Opening a
  * row asks the shell for the LAN address first and the account's relay
@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { deviceLabel, type DeviceRow } from '@/api/phone-cloud'
+import { deviceLabel, isServer, type DeviceRow } from '@/api/phone-cloud'
 import { ServerRow } from '@/components/AppBackendPanel'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
@@ -49,7 +49,7 @@ export function useAccountComputers(active: boolean) {
     if (!connected) return []
     const saved = new Set((app?.servers ?? []).map((server) => normalizeServerBaseUrl(server.base_url)))
     return (devicesQ.data ?? [])
-      .filter((device) => !device.me && device.kind !== 'ios' && device.kind !== 'android')
+      .filter((device) => !device.me && isServer(device))
       .map((device) => {
         const remembered = lan[normalizeFingerprint(device.fingerprint)]
         const lanUrl = remembered ? normalizeServerBaseUrl(remembered) : null

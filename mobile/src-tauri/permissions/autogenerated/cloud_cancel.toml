@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-cancel"
+description = "Enables the cloud_cancel command without any pre-configured scope."
+commands.allow = ["cloud_cancel"]
+
+[[permission]]
+identifier = "deny-cloud-cancel"
+description = "Denies the cloud_cancel command without any pre-configured scope."
+commands.deny = ["cloud_cancel"]

@@ -383,8 +383,8 @@ pub async fn connect(cloud: &Cloud, http1: &reqwest::Client, host_id: &str, host
 
 /// What a host decides and does, from its verified roster.
 pub trait HostHandler: Send + Sync + 'static {
-    /// The `box` key of an active controller in the host's verified
-    /// roster, or `None` to refuse it.
+    /// The `box` key of an active device with `client: true` in the host's
+    /// verified roster (`Member::controller_box`), or `None` to refuse it.
     fn controller_box(&self, device_id: &str) -> Option<[u8; 32]>;
     /// Serves one stream (one HTTP exchange) from `from`.
     fn serve(&self, stream: Stream, from: String);

@@ -14,6 +14,26 @@ pub const QS_TOKEN_PARAM: &str = "_token";
 /// the token could call the API with full rights.
 pub const CHILD_ENV_SECRETS: [&str; 3] = [DESKTOP_TOKEN_ENV, ACCESS_KEY_ENV, HANDSHAKE_FILE_ENV];
 
+/// Set to `1` in every process an agent can drive: the server and
+/// `agentd run` set it on themselves before any thread starts, so the
+/// agent's shell commands, git hooks, plugins and package installs inherit
+/// it, and the spawners that start from an empty environment (MCP servers,
+/// language servers) add it back. The user's own terminal tabs drop it.
+/// `agentd cloud approve` refuses to run under it: approving a device is for
+/// the person, not for an agent (`tunnel-threats.md`, "Computer signers").
+pub const AGENT_MARKER_ENV: &str = "AGENTD_AGENT";
+
+/// Marks this process (and so its children) as agent-driven. Call before
+/// the async runtime starts: environment mutation is not thread-safe.
+pub fn mark_agent_process() {
+    std::env::set_var(AGENT_MARKER_ENV, "1");
+}
+
+/// Whether an agent drives this process (see [`AGENT_MARKER_ENV`]).
+pub fn is_agent_process() -> bool {
+    std::env::var_os(AGENT_MARKER_ENV).is_some_and(|v| !v.is_empty())
+}
+
 static DESKTOP_SESSION: OnceLock<bool> = OnceLock::new();
 
 /// Whether the desktop app started this process (it passes a token).

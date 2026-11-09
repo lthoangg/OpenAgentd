@@ -307,8 +307,10 @@ impl Sidecar {
 
         cmd.arg("--parent-pid")
             .arg(parent_pid.to_string())
+            // The approval key arrives as one line on stdin (`approval.rs`).
+            .arg("--approval-key-stdin")
             .env("OPENAGENTD_ENV", app_env)
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::from(stderr_for_child));
         for (key, value) in dev_env.iter().filter(|(key, _)| *key != "OPENAGENTD_ENV") {
@@ -351,6 +353,21 @@ impl Sidecar {
 
         #[cfg_attr(not(windows), allow(unused_mut))]
         let mut child = cmd.spawn().context("spawn backend sidecar")?;
+
+        // Hand over the approval key, then close our end: the server reads
+        // one line, and an inherited copy would only ever see end-of-file.
+        // The line fits a pipe's buffer, so this never waits on the child
+        // (still suspended on Windows).
+        if let Some(mut stdin) = child.stdin.take() {
+            tauri::async_runtime::spawn(async move {
+                use tokio::io::AsyncWriteExt;
+                let line = crate::approval::key_line();
+                if let Err(e) = stdin.write_all(line.as_bytes()).await {
+                    log::warn!("sidecar approval key not delivered: {e}");
+                }
+                drop(stdin);
+            });
+        }
 
         #[cfg(windows)]
         {

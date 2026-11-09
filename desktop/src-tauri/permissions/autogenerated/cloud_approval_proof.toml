@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-approval-proof"
+description = "Enables the cloud_approval_proof command without any pre-configured scope."
+commands.allow = ["cloud_approval_proof"]
+
+[[permission]]
+identifier = "deny-cloud-approval-proof"
+description = "Denies the cloud_approval_proof command without any pre-configured scope."
+commands.deny = ["cloud_approval_proof"]

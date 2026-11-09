@@ -133,6 +133,7 @@ const RULES: Rule[] = [
       'components/ui/goal-ring.tsx': 1,
       'components/AgentChatView/index.tsx': 1,
       'components/AppBackendPanel.tsx': 1,
+      'components/ConnectionBanner.tsx': 1,
       'components/WorkSummary.tsx': 1,
       'components/WorkspacePanel/GoalTabView.tsx': 1,
     },

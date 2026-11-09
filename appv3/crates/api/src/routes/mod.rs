@@ -12,6 +12,7 @@ pub mod modules;
 pub mod plugins;
 pub mod preview;
 pub mod scheduler;
+pub mod server_update;
 pub mod settings;
 pub mod terminal;
 
@@ -41,6 +42,7 @@ pub fn router() -> Router<AppState> {
         .nest("/api/preview", preview::router())
         .nest("/api/desktop", desktop::router())
         .nest("/api/cloud", crate::cloud::routes::router())
+        .nest("/api/server", server_update::router())
         .fallback(|| async { json_code(404, json!({"detail": "Not Found"})) })
         .method_not_allowed_fallback(|| async { json_code(405, json!({"detail": "Method Not Allowed"})) })
 }

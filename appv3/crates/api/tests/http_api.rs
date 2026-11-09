@@ -458,6 +458,36 @@ async fn http_api_end_to_end() {
     assert_eq!((repo["group_ids"].clone(), v["groups"].clone()), (json!([]), json!([])), "{v}");
     appv3_db::mark_coding_workspace_deleted(&pool, &wt).await.unwrap();
 
+    // Relocate (v3 addition): a repository whose folder is gone takes a new
+    // folder, with its sessions; a dry run only counts.
+    let gone_dir = tempfile::tempdir().unwrap();
+    let gone = appv3_db::resolve_path(&gone_dir.path().join("agentd").display().to_string());
+    std::fs::create_dir_all(&gone).unwrap();
+    let gone = appv3_db::resolve_path(&gone);
+    appv3_db::upsert_coding_workspace(&pool, &gone, "repo", None, None, false, false).await.unwrap();
+    let moved_id = uuid::Uuid::now_v7();
+    appv3_db::create_session(&pool, appv3_db::NewSession { id: Some(moved_id), workspace: gone.clone(), ..Default::default() }).await.unwrap();
+    let renamed = std::path::Path::new(&gone).with_file_name("openagentd").display().to_string();
+    let (st, v) = c.json("POST", "/api/agent/workspace/relocate", Some(json!({"from": gone, "to": renamed}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "the new folder does not exist yet: {v}");
+    std::fs::rename(&gone, &renamed).unwrap();
+    let (st, v) = c.json("POST", "/api/agent/workspace/relocate", Some(json!({"from": gone}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (st, v) = c.json("POST", "/api/agent/workspace/relocate", Some(json!({"from": gone, "to": renamed, "dry_run": true}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!((v["sessions"].clone(), v["merge"].clone(), v["workspace"].clone()), (json!(1), json!(false), json!(renamed)), "{v}");
+    assert!(appv3_db::get_workspace_by_path(&pool, &gone).await.unwrap().is_some(), "a dry run moves nothing");
+    let (st, v) = c.json("POST", "/api/agent/workspace/relocate", Some(json!({"from": gone, "to": renamed}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let (_, v) = c.json("GET", "/api/agent/workspace/tree", None).await;
+    let repos = v["repositories"].as_array().unwrap();
+    assert!(repos.iter().any(|r| r["path"] == json!(renamed) && r["name"] == json!("openagentd") && r["missing"] == json!(false)), "{v}");
+    assert!(!repos.iter().any(|r| r["path"] == json!(gone)), "{v}");
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}", enc(&renamed)), None).await;
+    assert_eq!(v["data"].as_array().unwrap().len(), 1, "{v}");
+    appv3_db::delete_session_rows(&pool, &moved_id.to_string()).await.unwrap();
+    appv3_db::hide_coding_workspace(&pool, &renamed).await.unwrap();
+
     // `sort` (v3 addition): `activity` orders by the newest message, `created`
     // (the default) by creation; anything else is rejected. A rename is not
     // activity.

@@ -5,8 +5,10 @@ import { getPlatform } from '@/hooks/use-platform'
  * continue until the user answers. Unlike the others it is sent with
  * ``force: true`` when the asking session is not the one on screen, so a
  * blocked agent is not silently waiting behind a focused window.
+ * ``device_approval`` — a device signed in to the account and waits for this
+ * computer (a signer) to approve it; its text is fixed and names no device.
  */
-export type DesktopNotificationKind = 'assistant_done' | 'reminder_fired' | 'input_needed'
+export type DesktopNotificationKind = 'assistant_done' | 'reminder_fired' | 'input_needed' | 'device_approval'
 export type DesktopNotificationStatus = 'sent' | 'disabled' | 'unsupported' | 'permission-denied' | 'error'
 
 export interface DesktopNotificationPayload {

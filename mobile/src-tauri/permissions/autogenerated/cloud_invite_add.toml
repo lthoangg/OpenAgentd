@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-invite-add"
+description = "Enables the cloud_invite_add command without any pre-configured scope."
+commands.allow = ["cloud_invite_add"]
+
+[[permission]]
+identifier = "deny-cloud-invite-add"
+description = "Denies the cloud_invite_add command without any pre-configured scope."
+commands.deny = ["cloud_invite_add"]

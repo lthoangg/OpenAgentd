@@ -170,6 +170,12 @@ pub fn all_sessions() -> Vec<Arc<AgentSession>> {
     MANAGER.get().map(|m| m.sessions.lock().unwrap().values().cloned().collect()).unwrap_or_default()
 }
 
+/// Live sessions whose workspace `under` accepts, split into the busy ones
+/// (working, waiting on the user, or holding work) and the idle ones.
+pub fn live_sessions_in(under: impl Fn(&str) -> bool) -> (Vec<Arc<AgentSession>>, Vec<Arc<AgentSession>>) {
+    all_sessions().into_iter().filter(|s| under(&s.workspace())).partition(|s| !evictable(s) || crate::subagents::has_working_subagents(&s.session_id()))
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ManagerError {
     #[error("{0}")]

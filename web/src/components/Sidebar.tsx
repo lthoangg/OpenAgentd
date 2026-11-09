@@ -59,6 +59,7 @@ import {
   Copy,
   Folder,
   FolderPlus,
+  FolderSearch,
   GitBranch,
   Loader2,
   MessageCircle,
@@ -86,7 +87,9 @@ import {
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceTree, listSessions, listWorktrees, setCodingWorkspaceVisibility } from '@/api/client'
-import { WORKSPACES_KEY, workspaceLabel } from '@/utils/workspace'
+import { WORKSPACES_KEY, renameSavedWorkspace, workspaceLabel } from '@/utils/workspace'
+import { RelocateWorkspaceDialog } from '@/components/LazyRelocateWorkspaceDialog'
+import type { WorkspaceRelocateResponse } from '@/api/types'
 import { startNewSession } from '@/lib/new-session'
 import { softHapticFeedback } from '@/lib/haptics'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
@@ -450,6 +453,9 @@ export function Sidebar({
   // starts in the checkout its list shows (``sessionPath``).
   const [desktopWorkspaceActions, setDesktopWorkspaceActions] = useState<{ path: string; sessionPath: string; x: number; y: number } | null>(null)
   const [mobileWorkspaceActions, setMobileWorkspaceActions] = useState<{ path: string; sessionPath: string; kind: 'main' | 'chat' } | null>(null)
+  // "Locate folder…" for a workspace whose folder is gone. ``native`` picks
+  // with the OS dialog (the desktop app on its own server).
+  const [relocateTarget, setRelocateTarget] = useState<{ path: string; native: boolean } | null>(null)
   // Repository path → the one checkout its list shows (its own path or a
   // worktree's). Absent means every checkout.
   const [checkoutFilter, setCheckoutFilter] = useState<Record<string, string>>({})
@@ -548,6 +554,24 @@ export function Sidebar({
     ]),
     [queryClient, refreshWorkspaceTree],
   )
+  const openRelocate = useCallback(async (path: string) => {
+    let native = false
+    try {
+      native = !(await shouldUseServerWorkspaceBrowser(isTauri, isTauriMobile))
+    } catch {
+      native = false
+    }
+    setRelocateTarget({ path, native })
+  }, [isTauri, isTauriMobile])
+  const handleRelocated = useCallback((result: WorkspaceRelocateResponse) => {
+    setRelocateTarget(null)
+    renameSavedWorkspace(result.from, result.workspace)
+    for (const moved of result.moved_worktrees) renameSavedWorkspace(moved.from, moved.to)
+    void refreshSessionList()
+    pushToast(result.warnings.length > 0
+      ? { tone: 'error', title: `Moved to ${workspaceLabel(result.workspace)}, but git needs a hand`, description: result.warnings.join('\n') }
+      : { tone: 'info', title: `Moved to ${workspaceLabel(result.workspace)}` })
+  }, [pushToast, refreshSessionList])
   // Scheduled on the page toolbar: the caller's way, else the way the
   // drawer's Scheduled section opens it.
   const openScheduler = onOpenScheduler ?? (() => {
@@ -1905,6 +1929,21 @@ export function Sidebar({
             )}
             {mobileWorkspaceActions?.kind === 'main' && (
               <>
+                {workspaceByPath.get(mobileWorkspaceActions.path)?.missing && (
+                  <button
+                    type="button"
+                    data-sidebar-locate=""
+                    className={SHEET_ROW_CLASS}
+                    onClick={() => {
+                      const action = mobileWorkspaceActions
+                      setMobileWorkspaceActions(null)
+                      if (action) void openRelocate(action.path)
+                    }}
+                  >
+                    <FolderSearch size={16} aria-hidden="true" />
+                    Locate folder…
+                  </button>
+                )}
                 <button
                   type="button"
                   className={SHEET_ROW_CLASS}
@@ -2065,6 +2104,14 @@ export function Sidebar({
         </DialogContent>
       </Dialog>
 
+      <RelocateWorkspaceDialog
+        from={relocateTarget?.path ?? null}
+        name={relocateTarget ? workspaceByPath.get(relocateTarget.path)?.name : undefined}
+        pickFolder={relocateTarget?.native ? pickWorkspaceDirectory : null}
+        onClose={() => setRelocateTarget(null)}
+        onRelocated={handleRelocated}
+      />
+
       {desktopWorkspaceActions && (
         <ContextMenu
           at={desktopWorkspaceActions}
@@ -2092,6 +2139,22 @@ export function Sidebar({
               )}
             </button>
             <ContextMenuSeparator />
+            {workspaceByPath.get(desktopWorkspaceActions.path)?.missing && (
+              <button
+                type="button"
+                role="menuitem"
+                data-sidebar-locate=""
+                className={CONTEXT_MENU_ITEM_CLASS}
+                onClick={() => {
+                  const action = desktopWorkspaceActions
+                  setDesktopWorkspaceActions(null)
+                  void openRelocate(action.path)
+                }}
+              >
+                <FolderSearch size={12} aria-hidden="true" />
+                Locate folder…
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"

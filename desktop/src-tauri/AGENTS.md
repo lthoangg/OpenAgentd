@@ -58,7 +58,9 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   server (one task per server, started and stopped by a 2 s supervisor,
   woken by `servers_changed` when the saved list changes), refetches each one's
   active-session list, merges them, and places the window over the notch
-  with AppKit. It keeps each feed's `WatchState` (read by Settings through
+  with AppKit. Unread follows the sidebar's rules (no row for a stopped,
+  idle-compaction or `quiet` turn); each server's memo and last list outlive
+  a reconnect. It keeps each feed's `WatchState` (read by Settings through
   `app_server_watch_states`). Its webview has its own capability
   (`capabilities/island.json`, like the tray popup's `capabilities/tray.json`)
   and, like the tray popup, never gets the backend token

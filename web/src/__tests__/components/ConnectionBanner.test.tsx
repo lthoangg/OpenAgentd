@@ -21,14 +21,25 @@ mock.module('@/components/AppBackendDialog', () => ({
 }))
 
 import { ConnectionBanner } from '@/components/ConnectionBanner'
+import { useServerUpdateStore } from '@/stores/useServerUpdateStore'
 
 beforeEach(() => {
   health = { isSuccess: true, isError: false, isPending: false }
   external = false
+  useServerUpdateStore.setState({ phase: { kind: 'idle' } })
 })
 afterEach(cleanup)
 
 describe('ConnectionBanner', () => {
+  it('says the server is updating, with no alarm or actions, while this app updates it', () => {
+    health = { isSuccess: false, isError: true, isPending: false }
+    useServerUpdateStore.setState({ phase: { kind: 'updating', from: '3.50.0', target: '3.51.0' } })
+    render(<ConnectionBanner />)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('status').textContent).toContain('Updating the server to v3.51.0')
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
   it('stays hidden while the backend answers', () => {
     render(<ConnectionBanner />)
     expect(screen.queryByRole('alert')).toBeNull()

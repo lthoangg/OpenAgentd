@@ -19,6 +19,25 @@ export function sameWorkspacePath(a: string | null | undefined, b: string | null
   return a.replace(/[\\/]+$/, '') === b.replace(/[\\/]+$/, '')
 }
 
+/** An absolute path: POSIX (`/…`), a Windows drive (`C:\…`, `C:/…`) or a UNC share (`\\server\…`). */
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('\\\\')
+}
+
+/**
+ * ``path`` (relative to ``workspace``, as the file and git APIs give it) as
+ * an absolute path, for "Copy path". An absolute ``path`` is kept. A Windows
+ * workspace (one written with backslashes) gets backslashes throughout.
+ */
+export function absoluteWorkspacePath(workspace: string, path: string): string {
+  if (isAbsolutePath(path)) return path
+  const windows = /^[A-Za-z]:\\|^\\\\/.test(workspace)
+  const sep = windows ? '\\' : '/'
+  const root = workspace.replace(/[\\/]+$/, '')
+  const rel = path.replace(/^(?:\.[\\/]+)+/, '')
+  return `${root}${sep}${windows ? rel.replace(/\//g, '\\') : rel}`
+}
+
 /**
  * Latest chat workspace entry from the workspace tree (`useChatWorkspace`).
  *
@@ -122,6 +141,32 @@ export function removeWorkspace(workspace: string): void {
     if (lastId && !entries.some((entry) => entry.id === lastId)) {
       localStorage.removeItem(LAST_WORKSPACE_KEY)
     }
+    window.dispatchEvent(new CustomEvent('workspaces-changed'))
+  } catch {
+    // ignore storage failures
+  }
+}
+
+/**
+ * A workspace moved from ``from`` to ``to`` (Locate folder…): the saved list
+ * and the "last opened" pointer follow it, so the next launch reopens the
+ * new folder. ``to`` keeps an entry it already had (a merge).
+ */
+export function renameSavedWorkspace(from: string, to: string): void {
+  try {
+    const entries = loadWorkspaceEntries()
+    const old = entries.find((entry) => sameWorkspacePath(entry.path, from))
+    if (!old) return
+    const lastId = localStorage.getItem(LAST_WORKSPACE_KEY)
+    const kept = entries.filter((entry) => entry !== old)
+    let target = kept.find((entry) => sameWorkspacePath(entry.path, to))
+    if (!target) {
+      target = { id: workspaceId(to), path: to, createdAt: old.createdAt }
+      kept.push(target)
+    }
+    kept.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+    localStorage.setItem(WORKSPACES_KEY, JSON.stringify(kept))
+    if (lastId === old.id) localStorage.setItem(LAST_WORKSPACE_KEY, target.id)
     window.dispatchEvent(new CustomEvent('workspaces-changed'))
   } catch {
     // ignore storage failures

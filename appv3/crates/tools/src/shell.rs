@@ -389,6 +389,8 @@ fn scrubbed_env(cmd: &mut tokio::process::Command) {
     for k in appv3_core::env::child_env_blocklist() {
         cmd.env_remove(k);
     }
+    // Whoever embeds this tool, its commands are the agent's.
+    cmd.env(appv3_core::auth::AGENT_MARKER_ENV, "1");
 }
 
 /// `PATH` for the commands the agent runs, when it needs a change: `path`

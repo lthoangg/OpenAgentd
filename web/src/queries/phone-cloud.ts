@@ -26,6 +26,7 @@ import {
   phoneCloudInviteAdd,
   phoneCloudJoinInvite,
 } from '@/api/phone-cloud'
+import type { Roles } from '@/api/cloud'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys } from './keys'
 
@@ -122,8 +123,8 @@ export const usePhoneRemoveDevice = () => useStatusMutation((deviceId: string) =
 export const usePhoneConfirmRecovery = () =>
   useStatusMutation(({ first, second }: { first: string; second: string }) => phoneCloudConfirmRecovery(first, second))
 export const usePhoneApproveConfirm = () =>
-  useStatusMutation(({ enrollmentId, approver }: { enrollmentId: string; approver: boolean }) =>
-    phoneCloudApproveConfirm(enrollmentId, approver))
+  useStatusMutation(({ enrollmentId, approver, roles }: { enrollmentId: string; approver: boolean; roles: Roles }) =>
+    phoneCloudApproveConfirm(enrollmentId, approver, roles))
 
 export const usePhoneApproveBegin = () =>
   useMutation({ mutationFn: (enrollmentId: string) => phoneCloudApproveBegin(enrollmentId) }, queryClient)

@@ -11,8 +11,7 @@ mod paths;
 mod qr;
 mod ui;
 
-use clap::{CommandFactory, Parser};
-use cli::{Cli, Command, ServerCmd, TransferCmd};
+use cli::{Command, ServerCmd, TransferCmd};
 use std::process::ExitCode;
 
 fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
@@ -37,7 +36,7 @@ fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
         }),
         Command::Lsp(l) => done(cmd::lsp::lsp(&l)),
         Command::Plugin(p) => cmd::plugin::plugin(&p),
-        Command::Upgrade => cmd::upgrade::upgrade(),
+        Command::Upgrade(a) => cmd::upgrade::upgrade(&a),
         Command::Cloud(c) => cmd::cloud::cloud(&c),
     }
 }
@@ -50,9 +49,9 @@ fn main() -> ExitCode {
         ui::print_error(&e);
         return ExitCode::FAILURE;
     }
-    let result = match Cli::parse().command {
+    let result = match cli::parse().command {
         // Bare `agentd` is reserved for a future TUI; print help for now.
-        None => Cli::command().print_help().map(|()| ExitCode::SUCCESS).map_err(Into::into),
+        None => cli::command().print_help().map(|()| ExitCode::SUCCESS).map_err(Into::into),
         Some(command) => dispatch(command),
     };
     use std::io::Write;
@@ -60,7 +59,7 @@ fn main() -> ExitCode {
     match result {
         Ok(code) => code,
         Err(e) => {
-            ui::print_error(&format!("{e:#}"));
+            ui::report_error(&e);
             ExitCode::FAILURE
         }
     }

@@ -1,12 +1,20 @@
 //! `/api/cloud/*`: this server's OpenAgentd Cloud account. Separate from
 //! `/api/auth/*`, which is model-provider sign-in.
 //!
-//! Anyone who may use the API can read the status. Signing in or out only
-//! answers the machine itself: an unproxied loopback caller on the private
-//! listener, never a relayed device or a LAN client.
+//! Anyone who may use the API can read the status. Everything else (signing
+//! in or out, the recovery step, and the signer routes: devices, pending
+//! requests, approving, removing) only answers the machine itself: an
+//! unproxied loopback caller on the private listener, never a relayed
+//! device or a LAN client.
+//!
+//! The two routes that sign a roster, `approve/confirm` and
+//! `devices/remove`, also need the desktop app's proof that the person
+//! approved ([`super::approval`]): a loopback caller alone may be an
+//! agent's shell. Creating the account (`recovery`, the genesis roster of an
+//! empty account) does not, and neither do the routes that sign nothing.
 
 use axum::extract::ConnectInfo;
-use axum::http::Extensions;
+use axum::http::{Extensions, HeaderMap};
 use axum::response::Response;
 use axum::routing::{get, post};
 use axum::Router;
@@ -24,6 +32,50 @@ pub fn router() -> Router<AppState> {
         .route("/join", post(join))
         .route("/logout", post(logout))
         .route("/reload", post(reload))
+        .route("/recovery", post(recovery))
+        .route("/devices", get(devices))
+        .route("/devices/remove", post(remove_device))
+        .route("/pending", get(pending))
+        .route("/approve/begin", post(approve_begin))
+        .route("/approve/confirm", post(approve_confirm))
+        .route("/approve/reject", post(approve_reject))
+}
+
+/// The roles a computer asks for when it signs in or joins (spec 4):
+/// `{ "server": bool, "client": bool }`, both on when absent.
+#[derive(serde::Deserialize, Default)]
+struct RolesBody {
+    server: Option<bool>,
+    client: Option<bool>,
+}
+
+impl RolesBody {
+    fn roles(&self) -> ApiResult<openagentd_cloud::keys::Roles> {
+        let roles = openagentd_cloud::keys::Roles { server: self.server.unwrap_or(true), client: self.client.unwrap_or(true) };
+        if roles.is_valid() {
+            Ok(roles)
+        } else {
+            Err(ApiError::new(400, "Choose at least one: use as server, or use as client."))
+        }
+    }
+}
+
+/// A small JSON body, or the default for an empty one.
+fn body_or_default<T: serde::de::DeserializeOwned + Default>(body: &[u8]) -> ApiResult<T> {
+    if body.iter().all(u8::is_ascii_whitespace) {
+        return Ok(T::default());
+    }
+    if body.len() > 4096 {
+        return Err(ApiError::new(400, "Request too large."));
+    }
+    serde_json::from_slice(body).map_err(|_| ApiError::new(400, "Malformed request."))
+}
+
+fn body_of<T: serde::de::DeserializeOwned>(body: &[u8]) -> ApiResult<T> {
+    if body.len() > 4096 {
+        return Err(ApiError::new(400, "Request too large."));
+    }
+    serde_json::from_slice(body).map_err(|_| ApiError::new(400, "Malformed request."))
 }
 
 /// Whether the caller is this machine's own user: not relayed, not
@@ -72,6 +124,8 @@ fn redact_for_remote(v: &mut serde_json::Value, local: bool) {
     if let Some(o) = v.as_object_mut() {
         match state.as_str() {
             "signing_in" => o.retain(|k, _| k == "state" || k == "fingerprint"),
+            // The recovery code is for the person at this computer only.
+            "recovery" => o.retain(|k, _| k == "state"),
             "joining" => {
                 o.remove("code");
             }
@@ -80,9 +134,10 @@ fn redact_for_remote(v: &mut serde_json::Value, local: bool) {
     }
 }
 
-async fn login(ext: Extensions) -> ApiResult<Response> {
+async fn login(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
     local_only(&ext)?;
-    super::begin_sign_in();
+    let roles = body_or_default::<RolesBody>(&body)?.roles()?;
+    super::begin_sign_in(roles);
     // The first answer (the user code) usually arrives within a second.
     for _ in 0..30 {
         if !matches!(super::status(), super::Status::Guest { .. }) {
@@ -103,16 +158,19 @@ async fn join(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
     #[derive(serde::Deserialize)]
     struct Body {
         link: String,
+        #[serde(flatten)]
+        roles: RolesBody,
     }
     if body.len() > MAX_LINK + 64 {
         return Err(ApiError::new(400, "That is not an invitation link."));
     }
     let parsed: Body = serde_json::from_slice(&body).map_err(|_| ApiError::new(400, "That is not an invitation link."))?;
+    let roles = parsed.roles.roles()?;
     let link = zeroize::Zeroizing::new(parsed.link);
     if link.len() > MAX_LINK {
         return Err(ApiError::new(400, "That is not an invitation link."));
     }
-    super::begin_join(link).map_err(|_| ApiError::new(400, "That is not an invitation link."))?;
+    super::begin_join(link, roles).map_err(|_| ApiError::new(400, "That is not an invitation link."))?;
     // The claim usually answers within a second.
     for _ in 0..30 {
         if !matches!(super::status(), super::Status::Guest { .. }) {
@@ -141,6 +199,128 @@ async fn reload(ext: Extensions) -> ApiResult<Response> {
     status_json()
 }
 
+/// `{ "first": "ABCD", "second": "EFGH" }`: two groups of the recovery
+/// code typed back. Creates the account with this computer as its first
+/// device.
+async fn recovery(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    #[derive(serde::Deserialize)]
+    struct Body {
+        first: String,
+        second: String,
+    }
+    let b: Body = body_of(&body)?;
+    match super::confirm_recovery(&b.first, &b.second).await {
+        Ok(_) => status_json(),
+        Err(super::RecoveryError::NotAsked) => Err(ApiError::new(409, "Sign in again to set up the account.")),
+        Err(super::RecoveryError::Mismatch { first, second }) => Err(ApiError::new(400, format!("Those are not groups {first} and {second}. Check the code you saved."))),
+        Err(super::RecoveryError::Failed(e)) => Err(signer_error(super::signer::SignerError::Flow(e))),
+    }
+}
+
+/// What a signer route's failure says to the person.
+fn signer_error(e: super::signer::SignerError) -> ApiError {
+    use super::signer::SignerError;
+    use openagentd_cloud::flows::FlowError;
+    match e {
+        SignerError::NotSignedIn => ApiError::new(409, "This computer is not signed in."),
+        SignerError::NoApproval => ApiError::new(409, "Start the approval again."),
+        SignerError::Flow(f) => {
+            tracing::info!("cloud_signer_route_failed reason={}", super::engine::reason(&f));
+            match f {
+                FlowError::NotSigner => ApiError::new(403, "This computer cannot approve devices."),
+                FlowError::Roles => ApiError::new(400, "A device can only get the roles it asked for, and needs at least one."),
+                FlowError::JoinEnded | FlowError::TimedOut => ApiError::new(409, "The request was cancelled or expired."),
+                FlowError::CommitMismatch => ApiError::new(409, "Request cancelled. If you didn't start it, someone may be trying to join your account."),
+                FlowError::Roster(rule) => ApiError::new(502, format!("The account's device list failed a check ({rule}). Nothing was changed.")),
+                FlowError::Problem(_) => ApiError::new(409, "Your account is not available right now."),
+                FlowError::Api(a) if a.status == 0 => ApiError::new(502, "No connection to OpenAgentd. Check your network."),
+                FlowError::Api(a) => ApiError::new(502, format!("OpenAgentd answered {} ({}).", a.status, a.code)),
+                other => ApiError::new(502, other.to_string()),
+            }
+        }
+    }
+}
+
+fn json_of<T: serde::Serialize>(v: &T) -> ApiResult<Response> {
+    Ok(json(serde_json::to_value(v).map_err(ApiError::internal)?))
+}
+
+async fn devices(ext: Extensions) -> ApiResult<Response> {
+    local_only(&ext)?;
+    json_of(&super::signer::devices().await.map_err(signer_error)?)
+}
+
+async fn pending(ext: Extensions) -> ApiResult<Response> {
+    local_only(&ext)?;
+    json_of(&super::signer::pending().await.map_err(signer_error)?)
+}
+
+#[derive(serde::Deserialize)]
+struct EnrollmentBody {
+    enrollment_id: String,
+}
+
+fn enrollment_id(body: &[u8]) -> ApiResult<String> {
+    let b: EnrollmentBody = body_of(body)?;
+    // Ids go into a URL path: the shape is checked before anything else.
+    if !openagentd_cloud::api::valid_enrollment_id(&b.enrollment_id) {
+        return Err(ApiError::new(400, "Malformed request."));
+    }
+    Ok(b.enrollment_id)
+}
+
+async fn approve_begin(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    let id = enrollment_id(&body)?;
+    json_of(&super::signer::approve_begin(&id).await.map_err(signer_error)?)
+}
+
+/// `{ enrollment_id, signer, server, client }`: the codes matched and the
+/// person approved in the desktop app (after Touch ID where available),
+/// which sends its proof for exactly this request.
+async fn approve_confirm(ext: Extensions, headers: HeaderMap, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    #[derive(serde::Deserialize)]
+    struct Body {
+        enrollment_id: String,
+        signer: bool,
+        server: bool,
+        client: bool,
+    }
+    let b: Body = body_of(&body)?;
+    if !openagentd_cloud::api::valid_enrollment_id(&b.enrollment_id) {
+        return Err(ApiError::new(400, "Malformed request."));
+    }
+    // Before the open approval is touched: a refused confirm leaves it open.
+    let action = openagentd_cloud::approval::Action::Approve { signer: b.signer, server: b.server, client: b.client };
+    super::approval::require(&headers, action, &b.enrollment_id)?;
+    super::signer::approve_confirm(&b.enrollment_id, super::signer::grant(b.signer, b.server, b.client)).await.map_err(signer_error)?;
+    status_json()
+}
+
+async fn approve_reject(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    let id = enrollment_id(&body)?;
+    super::signer::approve_reject(&id).await.map_err(signer_error)?;
+    status_json()
+}
+
+async fn remove_device(ext: Extensions, headers: HeaderMap, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    #[derive(serde::Deserialize)]
+    struct Body {
+        device_id: String,
+    }
+    let b: Body = body_of(&body)?;
+    if !openagentd_cloud::keys::is_device_id(&b.device_id) {
+        return Err(ApiError::new(400, "Malformed request."));
+    }
+    super::approval::require(&headers, openagentd_cloud::approval::Action::Remove, &b.device_id)?;
+    super::signer::remove(&b.device_id).await.map_err(signer_error)?;
+    status_json()
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{RelayState, Status};
@@ -164,7 +344,20 @@ mod tests {
         let v = seen(signing, false);
         assert!(v.get("user_code").is_none() && v.get("url").is_none(), "{v}");
         // Other states are unchanged.
-        let connected = Status::Connected { fingerprint: "3F9A".into(), signer: false, relay: RelayState::Online, sessions: 1 };
+        let connected = Status::Connected { fingerprint: "3F9A".into(), signer: false, server: true, client: true, relay: RelayState::Online, sessions: 1 };
         assert_eq!(seen(connected.clone(), false), serde_json::to_value(connected).unwrap());
+        // The recovery code never leaves this computer.
+        let recovery = Status::Recovery { code: "AAAA-BBBB".into(), check: [1, 2] };
+        assert_eq!(seen(recovery.clone(), true)["code"], "AAAA-BBBB");
+        assert_eq!(seen(recovery, false), serde_json::json!({"state": "recovery"}));
+    }
+
+    #[test]
+    fn roles_default_to_both_and_need_one() {
+        use super::RolesBody;
+        use openagentd_cloud::keys::Roles;
+        assert_eq!(RolesBody::default().roles().unwrap(), Roles::BOTH);
+        assert_eq!(RolesBody { server: Some(false), client: None }.roles().unwrap(), Roles::CLIENT);
+        assert!(RolesBody { server: Some(false), client: Some(false) }.roles().is_err());
     }
 }

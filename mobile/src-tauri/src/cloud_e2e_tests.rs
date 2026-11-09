@@ -50,7 +50,7 @@ impl HostHandler for Computer {
             .lock()
             .unwrap()
             .body
-            .device(id)
+            .client(id)
             .map(|d| d.box_key())
     }
     fn serve(&self, stream: Stream, _from: String) {
@@ -150,6 +150,7 @@ fn phone_account_end_to_end() {
             ),
             None,
         );
+        computer.cloud.roles = openagentd_cloud::keys::Roles::BOTH;
         let dc = computer.cloud.device_code().await.unwrap();
         fake.approve(&dc.user_code, &account);
         let session = flows::wait_for_session(&computer.cloud, &dc).await.unwrap();
@@ -159,24 +160,42 @@ fn phone_account_end_to_end() {
         let pending = cloud::cloud_pending().await.unwrap();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].fingerprint, computer.cloud.keys.fingerprint());
+        assert!(
+            pending[0].server && pending[0].client,
+            "a computer asks for both roles"
+        );
         let (phone_code, joined) = tokio::join!(
             cloud::cloud_approve_begin(pending[0].enrollment_id.clone()),
             flows::await_signer(&mut computer, &req, FAST)
         );
         let joined = joined.unwrap();
-        assert_eq!(
-            phone_code.unwrap(),
-            joined.code,
-            "both screens show the same code"
-        );
+        let view = phone_code.unwrap();
+        assert_eq!(view.code, joined.code, "both screens show the same code");
+        assert!(view.server && view.client);
+        // A role the computer did not ask for is refused before Face ID;
+        // here it asked for both, so turning none on is the only check:
+        // no role at all is refused too.
+        let none = cloud::cloud_approve_confirm(
+            pending[0].enrollment_id.clone(),
+            Some(false),
+            Some(false),
+            Some(false),
+        )
+        .await;
+        assert!(none.is_err(), "a device needs a role");
         let (confirmed, added) = tokio::join!(
-            cloud::cloud_approve_confirm(pending[0].enrollment_id.clone(), Some(false)),
+            cloud::cloud_approve_confirm(pending[0].enrollment_id.clone(), Some(false), None, None),
             flows::await_added(&mut computer, joined, &req, FAST)
         );
         confirmed.unwrap();
         added.unwrap();
         let devices = cloud::cloud_devices().await.unwrap();
         assert_eq!(devices.len(), 2);
+        let phone_row = devices.iter().find(|d| d.me).unwrap();
+        assert!(
+            phone_row.client && !phone_row.server,
+            "the phone is a client only"
+        );
         assert!(
             devices.iter().any(|d| d.me && d.signer) && devices.iter().any(|d| !d.me && !d.signer)
         );

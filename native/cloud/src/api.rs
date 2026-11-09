@@ -18,7 +18,7 @@ use zeroize::Zeroizing;
 use crate::account_state::{self, AccountProblem};
 use crate::encoding::b64;
 use crate::endpoints::{valid_user_code, Endpoints};
-use crate::keys::DeviceKeys;
+use crate::keys::{DeviceKeys, Roles};
 use crate::lines;
 
 /// A credential string. `Debug` and `Display` never show it.
@@ -143,6 +143,14 @@ pub struct Pending {
     pub kind: Option<String>,
 }
 
+impl Pending {
+    /// The keys and roles the joining device asked for, from its `pubs`.
+    /// `None` when `pubs` does not parse.
+    pub fn requested(&self) -> Option<crate::keys::Pubs> {
+        crate::keys::parse_pubs(&crate::encoding::from_b64(&self.pubs).ok()?).ok()
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct RosterHead {
     pub version: u64,
@@ -257,6 +265,10 @@ pub struct Cloud {
     http: reqwest::Client,
     pub endpoints: Endpoints,
     pub keys: DeviceKeys,
+    /// The roles this device asks for when it joins (its `pubs`, spec
+    /// section 2.1) or creates the account. What it may do once it is in is
+    /// in the verified roster, not here.
+    pub roles: Roles,
     /// Set once the device knows its account.
     pub account_id: Option<String>,
     nonce: Mutex<Option<Secret>>,
@@ -274,7 +286,12 @@ fn sha256_b64(data: &[u8]) -> String {
 
 impl Cloud {
     pub fn new(http: reqwest::Client, endpoints: Endpoints, keys: DeviceKeys, account_id: Option<String>) -> Self {
-        Cloud { http, endpoints, keys, account_id, nonce: Mutex::new(None) }
+        Cloud { http, endpoints, keys, roles: Roles::platform_default(), account_id, nonce: Mutex::new(None) }
+    }
+
+    /// The `pubs` bytes this device sends: its keys and [`Cloud::roles`].
+    pub fn pubs(&self) -> Vec<u8> {
+        self.keys.pubs(self.roles)
     }
 
     pub fn device_id(&self) -> String {
@@ -400,7 +417,7 @@ impl Cloud {
                 json!({
                     "device_id": self.device_id(),
                     "auth_pub": b64(&self.keys.auth.public()),
-                    "pubs": b64(&self.keys.pubs()),
+                    "pubs": b64(&self.pubs()),
                     "commit": b64(commit),
                     "kind": this_kind(),
                 }),
@@ -637,7 +654,7 @@ impl Cloud {
             enrollment_id: String,
         }
         let path = Self::slot_path(slot_id, "/claim")?;
-        let raw: Raw = self.signed(Method::POST, &path, Some(json!({ "pubs": b64(&self.keys.pubs()), "proof": b64(proof), "kind": this_kind() }))).await?;
+        let raw: Raw = self.signed(Method::POST, &path, Some(json!({ "pubs": b64(&self.pubs()), "proof": b64(proof), "kind": this_kind() }))).await?;
         if !valid_enrollment_id(&raw.enrollment_id) {
             return Err(ApiError::bad_response());
         }

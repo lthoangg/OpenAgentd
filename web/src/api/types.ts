@@ -885,6 +885,27 @@ export interface CodingWorkspaceVisibilityResponse {
   hidden: boolean
 }
 
+/** ``POST /agent/workspace/relocate``: what moved (or, on a dry run, would). */
+export interface WorkspaceRelocateResponse {
+  from: string
+  /** The new folder, resolved. */
+  workspace: string
+  dry_run: boolean
+  /** Top-level sessions under the folder and its worktrees. */
+  sessions: number
+  scheduled_tasks: number
+  worktrees: Array<{ path: string; managed: boolean }>
+  /** Names of the groups the repository is in. */
+  groups: string[]
+  /** The new folder is already a listed workspace: the two merge. */
+  merge: boolean
+  /** Sessions already at the new folder. */
+  target_sessions: number
+  moved_worktrees: Array<{ from: string; to: string }>
+  /** Git steps that failed; the move itself stands. */
+  warnings: string[]
+}
+
 export interface TaskTriggerResponse {
   status: string
 }

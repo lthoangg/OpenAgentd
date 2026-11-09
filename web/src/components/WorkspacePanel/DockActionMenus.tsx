@@ -26,6 +26,7 @@ import {
   ContextMenu,
   ContextMenuSeparator,
 } from '@/components/ui/context-menu'
+import { absoluteWorkspacePath } from '@/utils/workspace'
 import type { ChangedFileInfo } from './diff-helpers'
 
 export interface CommitActionTarget {
@@ -37,6 +38,8 @@ export interface CommitActionTarget {
 type At<T> = T & { x: number; y: number }
 
 export interface DockActionMenusProps {
+  /** The workspace's absolute path: "Copy path" joins the file's path onto it. */
+  workspace: string
   mobileFileActions: ChangedFileInfo | null
   setMobileFileActions: (value: ChangedFileInfo | null) => void
   desktopFileActions: { file: ChangedFileInfo; x: number; y: number } | null
@@ -67,6 +70,7 @@ function copy(text: string) {
 }
 
 export function DockActionMenus({
+  workspace,
   mobileFileActions,
   setMobileFileActions,
   desktopFileActions,
@@ -96,7 +100,8 @@ export function DockActionMenus({
     ? [
         ...(hasWorkingDiff(file.path) ? [{ id: 'diff', label: 'Open diff in tab', icon: FileDiff, run: () => onOpenDiffTab(file) }] : []),
         ...(file.status !== 'D' ? [{ id: 'open', label: 'Open file', icon: FolderOpen, run: () => onOpenFile(file.path) }] : []),
-        { id: 'copy-path', label: 'Copy file path', icon: Copy, run: () => copy(file.path) },
+        { id: 'copy-path', label: 'Copy path', icon: Copy, run: () => copy(absoluteWorkspacePath(workspace, file.path)) },
+        { id: 'copy-relative-path', label: 'Copy relative path', icon: Copy, run: () => copy(file.path) },
         { id: 'discard', label: 'Discard changes…', icon: Undo2, danger: true, separatorBefore: true, run: () => setDiscardTarget(file) },
       ]
     : []
@@ -247,11 +252,20 @@ export function DockActionMenus({
           <button
             type="button"
             role="menuitem"
+            onClick={() => { const f = desktopFileActions.file; setDesktopFileActions(null); copy(absoluteWorkspacePath(workspace, f.path)) }}
+            className={MENU_ITEM_CLASS}
+          >
+            <Copy size={12} aria-hidden="true" />
+            Copy path
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             onClick={() => { const f = desktopFileActions.file; setDesktopFileActions(null); copy(f.path) }}
             className={MENU_ITEM_CLASS}
           >
             <Copy size={12} aria-hidden="true" />
-            Copy file path
+            Copy relative path
           </button>
           {MENU_DIVIDER}
           <button

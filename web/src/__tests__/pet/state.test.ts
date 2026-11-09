@@ -191,6 +191,55 @@ describe('bubbleReducer', () => {
     expect(badgeCount(state)).toBe(2)
   })
 
+  const waiting = (key: string, id = `waiting:${key}:`) => ({ id, sessionId: key, sessionKey: key, title: 'Needs you · api', body: `Asks ${key}` })
+  const status = (keys: string[], held: string[] = []) => ({ running: 0, needsInput: keys.length, waiting: keys.map((k) => waiting(k)), held })
+
+  // Two questions waiting, one answered in the app: its bubble used to stay
+  // until nothing waited at all.
+  it('drops the question of a session that stopped waiting, keeping the others', () => {
+    let state = notify(EMPTY_BUBBLES, bubble('q1', 'input', 's1'))
+    state = notify(state, bubble('q2', 'input', 's2'))
+    state = bubbleReducer(state, { type: 'status', status: status(['s1', 's2']) })
+    expect(state.questions.map((q) => q.id)).toEqual(['q1', 'q2'])
+    state = bubbleReducer(state, { type: 'status', status: status(['s2']) })
+    expect(state.questions.map((q) => q.id)).toEqual(['q2'])
+  })
+
+  // A one-second outage emptied the list and every question bubble went with it.
+  it('keeps the questions of a server that cannot be reached right now', () => {
+    let state = notify(EMPTY_BUBBLES, bubble('q1', 'input', 's1'))
+    state = bubbleReducer(state, { type: 'status', status: status(['s1']) })
+    state = bubbleReducer(state, { type: 'status', status: { ...status([], ['s1']), needsInput: 0 } })
+    expect(state.questions.map((q) => q.id)).toEqual(['q1'])
+    state = bubbleReducer(state, { type: 'status', status: status([]) })
+    expect(state.questions).toEqual([])
+  })
+
+  it('keeps a question its notification brought before the list confirms it', () => {
+    let state = bubbleReducer(EMPTY_BUBBLES, { type: 'status', status: status(['s2']) })
+    state = notify(state, bubble('q1', 'input', 's1'))
+    state = bubbleReducer(state, { type: 'status', status: status(['s2']) })
+    expect(state.questions.map((q) => q.id)).toEqual(['q1'])
+  })
+
+  // A question that came while the pet was hidden (or before the page
+  // loaded) left the alert pose with no bubble, badge or menu entry.
+  it('adds a bubble for a waiting session it missed, once, and only with question bubbles on', () => {
+    expect(bubbleReducer(EMPTY_BUBBLES, { type: 'status', status: status(['s1']) }).questions).toEqual([])
+    let state = bubbleReducer(EMPTY_BUBBLES, { type: 'status', status: status(['s1']), addMissing: true })
+    expect(state.questions).toHaveLength(1)
+    expect(state.questions[0]).toMatchObject({ id: 'waiting:s1:', tone: 'input', sessionId: 's1', body: 'Asks s1' })
+    expect(visibleBubble(state)).toMatchObject({ bubble: { id: 'waiting:s1:' } })
+    // Its notification later replaces it rather than adding a second one.
+    state = notify(state, bubble('q1', 'input', 'S-1'))
+    expect(state.questions.map((q) => q.id)).toEqual(['q1'])
+    // Put off with Later, it is not added again.
+    state = bubbleReducer(state, { type: 'dismiss', id: 'q1' })
+    const again = bubbleReducer(state, { type: 'status', status: status(['s1']), addMissing: true })
+    expect(again.questions.map((q) => q.id)).toEqual(['q1'])
+    expect(again.later).toEqual(['q1'])
+  })
+
   it('keeps one question per session', () => {
     let state = notify(EMPTY_BUBBLES, bubble('q1', 'input', 's1'))
     state = notify(state, bubble('q2', 'input', 's1'))

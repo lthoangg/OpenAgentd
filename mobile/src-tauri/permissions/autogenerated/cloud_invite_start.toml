@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-invite-start"
+description = "Enables the cloud_invite_start command without any pre-configured scope."
+commands.allow = ["cloud_invite_start"]
+
+[[permission]]
+identifier = "deny-cloud-invite-start"
+description = "Denies the cloud_invite_start command without any pre-configured scope."
+commands.deny = ["cloud_invite_start"]

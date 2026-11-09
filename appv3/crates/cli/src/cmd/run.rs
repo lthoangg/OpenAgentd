@@ -41,8 +41,8 @@ async fn pick_session(pool: &appv3_db::DbPool, args: &RunArgs) -> Result<(String
 }
 
 async fn run_turn(args: &RunArgs) -> Result<()> {
-    if args.prompt.trim().is_empty() {
-        bail!("--prompt must not be blank");
+    if args.prompt_text().trim().is_empty() {
+        bail!("the prompt must not be blank");
     }
     let model = normalized(args.model.as_deref());
     let thinking = normalized(args.thinking.as_deref());
@@ -59,8 +59,14 @@ async fn run_turn(args: &RunArgs) -> Result<()> {
     let Some(session) = manager::get_or_start_agent_session(&workspace, Some(&session_id)).await.map_err(|e| anyhow!("{e}"))? else {
         bail!("no agent is configured");
     };
-    let dispatch =
-        service::Dispatch { content: args.prompt.clone(), session_id: Some(session_id), workspace: Some(workspace), model, thinking_level: thinking, ..Default::default() };
+    let dispatch = service::Dispatch {
+        content: args.prompt_text().to_string(),
+        session_id: Some(session_id),
+        workspace: Some(workspace),
+        model,
+        thinking_level: thinking,
+        ..Default::default()
+    };
     let (session_id, _, _) = service::dispatch_user_message(&session, dispatch).await.map_err(|e| anyhow!("{e}"))?;
 
     let mut out = std::io::stdout().lock();
@@ -71,6 +77,7 @@ async fn run_turn(args: &RunArgs) -> Result<()> {
     }
     let mut wrote_text = false;
     let mut terminal_error: Option<String> = None;
+    let mut not_configured = false;
     let lead_name = session.name();
     if let Some(mut sub) = stream_store::store().attach(&session_id) {
         while let Some(ev) = sub.next().await {
@@ -94,8 +101,14 @@ async fn run_turn(args: &RunArgs) -> Result<()> {
                         }
                     }
                 }
-                "error" => terminal_error = Some(s("title").or_else(|| s("code")).unwrap_or_else(|| "the agent run failed".into())),
-                "agent_not_configured" => terminal_error = Some(s("message").unwrap_or_else(|| "the agent is not configured".into())),
+                "error" => {
+                    not_configured |= s("code").is_some_and(|c| c.contains("not_configured"));
+                    terminal_error = Some(s("title").or_else(|| s("code")).unwrap_or_else(|| "the agent run failed".into()));
+                }
+                "agent_not_configured" => {
+                    not_configured = true;
+                    terminal_error = Some(s("message").unwrap_or_else(|| "the agent is not configured".into()));
+                }
                 "question_asked" => {
                     service::interrupt_agent(&session, Some(&session_id)).await;
                     terminal_error = Some("the agent asked a question, which a non-interactive run cannot answer".into());
@@ -110,11 +123,25 @@ async fn run_turn(args: &RunArgs) -> Result<()> {
     }
     drop(out);
     if !args.json && std::io::stderr().is_terminal() {
-        eprintln!("session: {session_id}");
+        eprintln!();
+        eprintln!("{}", footer(&session_id, crate::ui::color_allowed_on_stderr()));
     }
     match terminal_error {
+        Some(e) if not_configured => {
+            Err(crate::ui::hinted(e, "connect a model provider in the app (Settings → Providers), or import keys with `agentd credentials import <.env>`"))
+        }
         Some(e) => Err(anyhow!(e)),
         None => Ok(()),
+    }
+}
+
+/// The dim line under a reply: the session, and how to continue it.
+fn footer(session_id: &str, color: bool) -> String {
+    let text = format!("session {session_id}  ·  continue: agentd run --session {session_id} \"…\"");
+    if color {
+        format!("\x1b[2m{text}\x1b[0m")
+    } else {
+        text
     }
 }
 
@@ -132,7 +159,13 @@ pub fn run(args: &RunArgs) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::json_line;
+    use super::{footer, json_line};
+
+    #[test]
+    fn the_footer_says_how_to_continue() {
+        assert_eq!(footer("abc", false), "session abc  ·  continue: agentd run --session abc \"…\"");
+        assert!(footer("abc", true).starts_with("\x1b[2m"));
+    }
 
     #[test]
     fn json_lines_put_the_event_first_and_embed_data() {

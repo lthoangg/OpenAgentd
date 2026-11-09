@@ -2,7 +2,7 @@
 //! files, snapshots, telemetry, managed worktrees). Dry run unless `--apply`.
 
 use crate::cli::CleanupArgs;
-use crate::ui::{bold, cyan, dim, green, tilde, yellow};
+use crate::ui::{self, bold, dim, tilde, Table};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -268,40 +268,114 @@ pub fn cleanup(args: &CleanupArgs) -> Result<()> {
         })
         .with_context(|| format!("clean up {}", db_path.display()))?
     };
-    print_result(&r, args.limit);
+    print_result(&r, args.older_than_days, args.limit);
     Ok(())
 }
 
-fn print_result(r: &CleanupResult, limit: usize) {
-    let mode = if r.dry_run { "dry run" } else { "deleted" };
-    let total: u64 = r.candidates.iter().map(|c| c.bytes).sum();
-    println!("  {} ({mode})", bold(&cyan("Generated artifact cleanup")));
+/// `62426` → `62,426`.
+fn thousands(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// A session folder as `~/…/snapshot/01a04658…`: the UUID cut to 8 chars.
+fn short_path(p: &Path) -> String {
+    let n = name(p);
+    if is_uuid(&n) && n.len() > 8 {
+        if let Some(parent) = p.parent() {
+            return format!("{}/{}…", tilde(parent), &n[..8]);
+        }
+    }
+    tilde(p)
+}
+
+fn print_result(r: &CleanupResult, days: u32, limit: usize) {
+    let mode = if r.dry_run { "dry run" } else { "applied" };
+    ui::header("Cleanup", &format!("{mode} · older than {days} days"));
     if r.not_initialized {
-        println!("  {}", yellow("Database not initialized yet; session-backed cleanup was skipped."));
+        ui::mark_line(&ui::idle_mark(), "Database not initialized yet; session-backed cleanup was skipped.");
+        println!();
         return;
     }
-    println!("  {} {}", dim("Expired sessions:"), r.expired_sessions);
-    println!("  {} {}", dim("Expired messages:"), r.expired_messages);
-    println!("  {} {}", dim("Candidates:"), r.candidates.len());
-    println!("  {}      {}", dim("Total:"), format_bytes(total));
+    let total: u64 = r.candidates.iter().map(|c| c.bytes).sum();
+    let verb = if r.dry_run { "expire" } else { "removed" };
+    println!("  {} sessions · {} messages {}", bold(&thousands(r.expired_sessions as u64)), bold(&thousands(r.expired_messages.max(0) as u64)), dim(verb));
+    if r.candidates.is_empty() {
+        println!();
+        ui::mark_line(&ui::ok_mark(), "No old files to remove");
+        println!();
+        return;
+    }
+
+    // By kind, largest first.
+    let mut kinds: Vec<(&str, u64, usize)> = vec![];
+    for c in &r.candidates {
+        match kinds.iter_mut().find(|(k, ..)| *k == c.reason) {
+            Some(k) => {
+                k.1 += c.bytes;
+                k.2 += 1;
+            }
+            None => kinds.push((c.reason, c.bytes, 1)),
+        }
+    }
+    kinds.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+    let folders = |n: usize| format!("{n} {}", if n == 1 { "folder" } else { "folders" });
+    let mut table = Table::new();
+    for (kind, bytes, n) in &kinds {
+        table.row([format!("{:>9}", format_bytes(*bytes)), (*kind).to_string(), dim(&folders(*n))]);
+    }
+    table.row([format!("{:>9}", bold(&format_bytes(total))), bold("total"), dim(&folders(r.candidates.len()))]);
+    println!();
+    table.print();
+
     let mut sorted: Vec<&Candidate> = r.candidates.iter().collect();
     sorted.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.path.cmp(&b.path)));
     let shown = if limit == 0 { sorted.len() } else { limit.min(sorted.len()) };
-    for c in &sorted[..shown] {
-        println!("    {:>9}  {}  {}", format_bytes(c.bytes), dim(&format!("{:<32}", c.reason)), tilde(&c.path));
+    if shown > 0 {
+        ui::section(if shown == sorted.len() { "Folders" } else { "Largest" });
+        let mut table = Table::new();
+        for c in &sorted[..shown] {
+            table.row([format!("{:>9}", format_bytes(c.bytes)), short_path(&c.path)]);
+        }
+        table.print();
+        if shown < sorted.len() {
+            ui::hint(&format!("… {} more (--limit 0 lists every folder)", sorted.len() - shown));
+        }
     }
-    if shown < sorted.len() {
-        println!("    {} {} more (--limit 0 lists all)", dim("…"), sorted.len() - shown);
-    }
+    println!();
     if let Some(b) = r.vacuum_reclaimed_bytes {
-        println!("  {} {}", dim("Vacuum reclaimed:"), format_bytes(b));
+        ui::mark_line(&ui::ok_mark(), &format!("Vacuum reclaimed {}", format_bytes(b)));
     }
     if let Some(e) = &r.vacuum_error {
-        println!("  {} {e}", yellow("Vacuum skipped:"));
+        ui::mark_line(&ui::warn_mark(), &format!("Vacuum skipped: {e}"));
     }
     if r.dry_run {
-        println!("  {} Re-run with {} to delete.", yellow("No files deleted."), bold("--apply"));
+        ui::next("No files deleted. Delete them with:", "agentd cleanup --apply");
+        ui::hint("Add --vacuum to compact the database afterwards.");
     } else {
-        println!("  {} {} paths.", green("Deleted"), r.deleted.len());
+        ui::mark_line(&ui::ok_mark(), &format!("Deleted {} ({})", folders(r.deleted.len()), format_bytes(total)));
+    }
+    println!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn numbers_and_paths_read_short() {
+        assert_eq!(thousands(62426), "62,426");
+        assert_eq!(thousands(999), "999");
+        assert_eq!(thousands(1_000_000), "1,000,000");
+        let p = Path::new("/x/snapshot/01a04658-5218-7498-8788-14a4be521c27");
+        assert_eq!(short_path(p), "/x/snapshot/01a04658…");
+        assert_eq!(short_path(Path::new("/x/otel/2026-01")), "/x/otel/2026-01");
     }
 }

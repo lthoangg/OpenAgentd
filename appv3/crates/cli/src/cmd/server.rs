@@ -4,7 +4,7 @@
 use crate::cli::{LogsArgs, StartArgs, StatusArgs};
 use crate::net::{display_host, http_get, is_port_reachable, require_loopback_or_auth, resolve_addr, server_addresses, server_settings};
 use crate::paths::{clear_pids, find_pids, pid_alive, server_log, write_pids};
-use crate::ui::{bold, cyan, dim, field, green, print_banner, red, yellow, Checks};
+use crate::ui::{bold, dim, field, green, print_banner, red, yellow, Checks};
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -56,11 +56,19 @@ pub fn start(args: &StartArgs) -> Result<ExitCode> {
 
 /// `Ok(false)` when `--wait` saw the server die or time out.
 fn start_daemon(args: &StartArgs) -> Result<bool> {
-    if !find_pids().is_empty() {
-        println!("  {}  (run {} first)", yellow("already running"), bold("agentd server stop"));
+    let running = find_pids();
+    if !running.is_empty() {
+        let cfg = server_settings()?;
+        let (host, port) = resolve_addr(None, None, &cfg);
+        crate::ui::header("OpenAgentd server", &format!("v{}", appv3_core::VERSION));
+        field("Status:", &format!("{}  pid {}", green("already running"), pid_list(&running)));
+        field("Local:", &bold(&server_addresses(&host, port).local));
+        println!();
+        crate::ui::next("Apply new options:", "agentd server restart");
         if args.qr {
-            println!("  {}  run {}", dim("QR code:"), bold("agentd server status --qr"));
+            crate::ui::next("QR code:", "agentd server status --qr");
         }
+        println!();
         return Ok(true);
     }
     let mut cfg = server_settings()?;
@@ -207,8 +215,20 @@ fn kill_pid(pid: i32, sig: nix::sys::signal::Signal) {
 pub fn stop() -> Result<()> {
     let alive = find_pids();
     if alive.is_empty() {
-        println!("  {}", yellow("not running"));
+        crate::ui::mark_line(&crate::ui::idle_mark(), "The server is not running");
         return Ok(());
+    }
+    stop_quietly()?;
+    crate::ui::mark_line(&crate::ui::ok_mark(), &format!("Stopped the server  {}", dim(&format!("pid {}", pid_list(&alive)))));
+    Ok(())
+}
+
+/// Stop the background server, printing nothing. `Ok(false)` when it was
+/// not running.
+pub fn stop_quietly() -> Result<bool> {
+    let alive = find_pids();
+    if alive.is_empty() {
+        return Ok(false);
     }
     #[cfg(unix)]
     {
@@ -247,23 +267,17 @@ pub fn stop() -> Result<()> {
         }
     }
     clear_pids();
-    println!("  {}", green("stopped"));
-    Ok(())
+    Ok(true)
 }
 
 pub fn restart(args: &StartArgs) -> Result<ExitCode> {
     println!();
-    println!("  {}", bold(&cyan("Restarting OpenAgentd")));
-    println!();
     if find_pids().is_empty() {
-        println!("  {}  starting fresh", yellow("not running"));
+        crate::ui::mark_line(&crate::ui::idle_mark(), "The server was not running; starting it");
     } else {
         stop()?;
     }
     let ok = start_daemon(args)?;
-    if ok {
-        println!("  {}", green("restart complete"));
-    }
     Ok(code(ok))
 }
 
@@ -284,12 +298,12 @@ pub fn status(args: &StatusArgs) -> Result<ExitCode> {
     let (bind_host, port) = resolve_addr(addr.host.as_deref(), addr.port, &cfg);
     let host = display_host(&bind_host);
     let alive = find_pids();
-    println!();
-    println!("  {}  {}", bold(&cyan("OpenAgentd server")), dim(&format!("v{}", appv3_core::VERSION)));
-    println!();
+    crate::ui::header("OpenAgentd server", &format!("v{}", appv3_core::VERSION));
     if alive.is_empty() {
         field("Status:", &yellow("stopped"));
-        field("Start:", &format!("{}  or  {}", bold("agentd server start"), bold("agentd server start --public --key --qr")));
+        println!();
+        crate::ui::next("Start it:      ", "agentd server start");
+        crate::ui::next("For your phone:", "agentd server start --public --key --qr");
         println!();
         return Ok(ExitCode::FAILURE);
     }
@@ -321,7 +335,7 @@ pub fn status(args: &StatusArgs) -> Result<ExitCode> {
     match fetch_json(&host, port, "/api/health/live") {
         (200, payload) => {
             let version = payload.as_ref().and_then(|p| p.get("version")).and_then(Value::as_str).map(|v| format!(" · v{v}")).unwrap_or_default();
-            checks.ok(&name("API live", &format!("live endpoint ok{version}")));
+            checks.ok(&name("API live", &format!("answering{version}")));
         }
         _ => checks.fail(&name("API live", "no healthy /api/health/live response")),
     }
@@ -349,7 +363,7 @@ pub fn status(args: &StatusArgs) -> Result<ExitCode> {
 pub fn logs(args: &LogsArgs) -> Result<()> {
     let log = server_log();
     if !log.is_file() {
-        bail!("no server log at {}; start the server with `agentd server start`", log.display());
+        return Err(crate::ui::hinted(format!("no server log at {}", crate::ui::tilde(&log)), "start the server with `agentd server start`"));
     }
     match follow_log(&log, args.lines) {
         Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
@@ -390,7 +404,11 @@ fn emit_lines(out: &mut impl std::io::Write, chunk: &[u8], pending: &mut Vec<u8>
     while let Some(i) = pending.iter().position(|&b| b == b'\n') {
         let line: Vec<u8> = pending.drain(..=i).collect();
         let text = String::from_utf8_lossy(&line[..i]);
-        writeln!(out, "{}", render_log_line(text.trim_end_matches('\r')))?;
+        let record = render_log_line(text.trim_end_matches('\r'));
+        match crate::ui::color().then(|| pretty_log_line(&record)).flatten() {
+            Some(pretty) => writeln!(out, "{pretty}")?,
+            None => writeln!(out, "{record}")?,
+        }
     }
     out.flush()
 }
@@ -406,6 +424,25 @@ fn render_log_line(line: &str) -> Cow<'_, str> {
         }
     }
     Cow::Borrowed(line)
+}
+
+/// A `2026-09-29 09:56:04.022 | INFO     | appv3_agent.agent:<module>:481 -
+/// msg` record for a terminal: dim `09-29 09:56:04`, a coloured level, the
+/// crate dim, then the message. `None` for any other line (printed as is).
+fn pretty_log_line(line: &str) -> Option<String> {
+    let mut parts = line.splitn(3, " | ");
+    let (stamp, level, rest) = (parts.next()?, parts.next()?.trim(), parts.next()?);
+    let (origin, msg) = rest.split_once(" - ")?;
+    let (date, time) = stamp.split_once(' ')?;
+    let when = format!("{} {}", date.get(5..)?, time.split('.').next()?);
+    let target = origin.split(':').next()?.split('.').next()?;
+    let lvl = match level {
+        "ERROR" | "CRITICAL" => red(&bold(&format!("{level:<5}"))),
+        "WARNING" => yellow("WARN "),
+        "INFO" => green("INFO "),
+        _ => dim(&format!("{:<5}", level.get(..5).unwrap_or(level))),
+    };
+    Some(format!("{} {lvl} {} {msg}", dim(&when), dim(target)))
 }
 
 /// Byte offset where the last `lines` lines of `data` begin (`tail -n`).
@@ -447,6 +484,14 @@ mod tests {
         assert_eq!(render_log_line("error: address already in use"), "error: address already in use");
         assert_eq!(render_log_line(r#"{"no_text": 1}"#), r#"{"no_text": 1}"#);
         assert_eq!(render_log_line("{not json"), "{not json");
+    }
+
+    #[test]
+    fn records_read_short_on_a_terminal() {
+        let line = "2026-09-29 09:56:04.022 | WARNING  | appv3_agent.agent:<module>:481 - llm_response agent=code - done";
+        // No terminal under test, so no colour codes.
+        assert_eq!(pretty_log_line(line).as_deref(), Some("09-29 09:56:04 WARN  appv3_agent llm_response agent=code - done"));
+        assert_eq!(pretty_log_line("error: address already in use"), None);
     }
 
     #[test]

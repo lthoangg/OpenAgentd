@@ -13,48 +13,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
-pub const RELEASES_URL_ENV: &str = "OPENAGENTD_RELEASES_URL";
-const DEFAULT_RELEASES_URL: &str = "https://github.com/lthoangg/openagentd/releases";
-
-/// Rust target triple of the release archive for this build.
-pub fn target_triple() -> &'static str {
-    if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        "aarch64-apple-darwin"
-    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        "x86_64-unknown-linux-gnu"
-    } else if cfg!(all(windows, target_arch = "x86_64")) {
-        "x86_64-pc-windows-msvc"
-    } else {
-        "unsupported"
-    }
-}
-
-pub fn archive_name(version: &str, target: &str) -> String {
-    let ext = if target.contains("windows") { "zip" } else { "tar.gz" };
-    format!("openagentd-{version}-{target}.{ext}")
-}
-
-pub fn releases_base() -> String {
-    std::env::var(RELEASES_URL_ENV).ok().filter(|s| !s.is_empty()).unwrap_or_else(|| DEFAULT_RELEASES_URL.into()).trim_end_matches('/').to_string()
-}
-
-/// `X.Y.Z` → comparable tuple; pre-release/build suffixes are ignored.
-fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
-    let core = v.trim().trim_start_matches('v').split(['-', '+']).next()?;
-    let mut it = core.split('.').map(|p| p.parse::<u64>().ok());
-    let v = (it.next()??, it.next()??, it.next()??);
-    it.next().is_none().then_some(v)
-}
-
-pub fn is_newer(latest: &str, current: &str) -> bool {
-    matches!((parse_version(latest), parse_version(current)), (Some(l), Some(c)) if l > c)
-}
-
-/// Binaries shipped inside the desktop app are updated by the app itself.
-pub fn is_desktop_bundled(exe: &Path) -> bool {
-    let parent = exe.parent();
-    parent.and_then(|p| p.file_name()).is_some_and(|n| n == "bin") && parent.and_then(|p| p.parent()).and_then(|p| p.file_name()).is_some_and(|n| n == "sidecar")
-}
+pub use appv3_core::release::{archive_name, is_newer, releases_base, target_triple};
 
 /// `<hex>  <name>` (sha256sum format) → verified or an error.
 pub fn verify_sha256(bytes: &[u8], sha_file: &str) -> Result<()> {
@@ -155,14 +114,11 @@ pub enum Outcome {
     Updated { from: String, to: String },
 }
 
-async fn latest_version(client: &reqwest::Client, base: &str) -> Result<String> {
+/// The newest release in the feed at `base`.
+pub async fn latest_version(client: &reqwest::Client, base: &str) -> Result<String> {
     let resp = client.get(format!("{base}/latest")).send().await.context("resolve the latest release")?.error_for_status()?;
-    let tag = resp.url().path_segments().and_then(|mut s| s.next_back().map(str::to_string)).unwrap_or_default();
-    let version = tag.trim_start_matches('v').to_string();
-    if parse_version(&version).is_none() {
-        bail!("unexpected latest release tag: {tag:?}");
-    }
-    Ok(version)
+    let path = resp.url().path().to_string();
+    appv3_core::release::version_from_tag_url(&path).ok_or_else(|| anyhow!("unexpected latest release URL: {path:?}"))
 }
 
 async fn fetch(client: &reqwest::Client, url: &str) -> Result<Vec<u8>> {
@@ -219,29 +175,6 @@ mod tests {
 
     fn sha_hex(bytes: &[u8]) -> String {
         Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
-    }
-
-    #[test]
-    fn versions_compare_numerically() {
-        assert!(is_newer("3.0.1", "3.0.0"));
-        assert!(is_newer("3.10.0", "3.9.9"));
-        assert!(is_newer("v4.0.0", "3.99.0"));
-        assert!(!is_newer("3.0.0", "3.0.0"));
-        assert!(!is_newer("2.27.0", "3.0.0"), "never moves back to v2");
-        assert!(!is_newer("garbage", "3.0.0"));
-    }
-
-    #[test]
-    fn archive_names_match_the_release_contract() {
-        assert_eq!(archive_name("3.0.0", "aarch64-apple-darwin"), "openagentd-3.0.0-aarch64-apple-darwin.tar.gz");
-        assert_eq!(archive_name("3.0.0", "x86_64-pc-windows-msvc"), "openagentd-3.0.0-x86_64-pc-windows-msvc.zip");
-        assert_ne!(target_triple(), "unsupported");
-    }
-
-    #[test]
-    fn desktop_sidecar_is_detected() {
-        assert!(is_desktop_bundled(Path::new("/Applications/OpenAgentd.app/Contents/Resources/sidecar/bin/agentd")));
-        assert!(!is_desktop_bundled(Path::new("/home/u/.local/bin/agentd")));
     }
 
     #[test]

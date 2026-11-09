@@ -185,18 +185,15 @@ fn modules_section(out: &str) -> Vec<&str> {
     out.lines().skip_while(|l| l.trim() != "Modules").skip(1).take_while(|l| !l.trim().is_empty()).collect()
 }
 
-/// Doctor lists every built-in module as a running ✓ line, then counts them
-/// all as running.
+/// With every module running, doctor's Modules section is one ✓ line
+/// counting them, built-ins included.
 fn assert_all_running(out: &str) {
     let section = modules_section(out);
-    for id in BUILTIN {
-        let line = section.iter().find(|l| l.split_whitespace().nth(1) == Some(id)).unwrap_or_else(|| panic!("no {id} line in the Modules section:\n{out}"));
-        assert_eq!(line.split_whitespace().collect::<Vec<_>>(), ["✓", id, "running"], "{out}");
-    }
-    let summary = section.last().expect("a summary line").trim();
-    let total: usize = summary.split(' ').next().and_then(|n| n.parse().ok()).unwrap_or_else(|| panic!("no summary line in:\n{out}"));
+    assert_eq!(section.len(), 1, "one collapsed line:\n{out}");
+    let words: Vec<&str> = section[0].split_whitespace().collect();
+    let total: usize = words.get(1).and_then(|n| n.parse().ok()).unwrap_or_else(|| panic!("no count in:\n{out}"));
     assert!(total >= BUILTIN.len(), "{out}");
-    assert_eq!(summary, format!("{total} modules, {total} running"), "{out}");
+    assert_eq!(words.join(" "), format!("✓ {total} of {total} modules running"), "{out}");
 }
 
 fn free_port() -> u16 {

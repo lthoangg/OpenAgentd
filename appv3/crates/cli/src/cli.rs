@@ -1,17 +1,70 @@
 //! The `agentd` command tree.
 //!
-//! Bare `agentd` prints help; the name is kept for a future TUI.
+//! Bare `agentd` prints help; the name is kept for a future TUI. The
+//! top-level help lists the commands in groups (`GROUPS`), drawn from the
+//! tree itself so a new command cannot go missing from it.
 
+use clap::builder::styling::{AnsiColor, Effects, Styles};
 use clap::builder::PossibleValuesParser;
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
+
+/// Top-level help groups, in order. Every visible command is in one.
+const GROUPS: &[(&str, &[&str])] =
+    &[("Server", &["server"]), ("Agents", &["run", "auth", "credentials"]), ("Setup", &["doctor", "plugin", "lsp", "cloud", "transfer"]), ("Maintenance", &["cleanup", "upgrade"])];
+
+fn styles() -> Styles {
+    Styles::styled()
+        .header(AnsiColor::BrightWhite.on_default() | Effects::BOLD)
+        .usage(AnsiColor::BrightWhite.on_default() | Effects::BOLD)
+        .literal(AnsiColor::Cyan.on_default() | Effects::BOLD)
+        .placeholder(AnsiColor::BrightBlack.on_default())
+        .error(AnsiColor::Red.on_default() | Effects::BOLD)
+        .valid(AnsiColor::Green.on_default())
+        .invalid(AnsiColor::Yellow.on_default())
+}
+
+/// The commands of `cmd`, grouped per `GROUPS`, as help text.
+fn grouped_commands(cmd: &clap::Command) -> String {
+    let styles = styles();
+    let (header, literal) = (styles.get_header(), styles.get_literal());
+    let visible: Vec<&clap::Command> = cmd.get_subcommands().filter(|c| !c.is_hide_set() && c.get_name() != "help").collect();
+    let width = visible.iter().map(|c| c.get_name().len()).max().unwrap_or(0);
+    let mut out = String::new();
+    for (title, names) in GROUPS {
+        out += &format!("{header}{title}:{header:#}\n");
+        for name in *names {
+            let Some(c) = visible.iter().find(|c| c.get_name() == *name) else { continue };
+            let about = c.get_about().map(|a| a.to_string()).unwrap_or_default();
+            let aliases: Vec<&str> = c.get_visible_aliases().collect();
+            let alias = if aliases.is_empty() { String::new() } else { format!(" [alias: {}]", aliases.join(", ")) };
+            out += &format!("  {literal}{name}{literal:#}{}  {about}{alias}\n", " ".repeat(width - name.len()));
+        }
+        out += "\n";
+    }
+    out
+}
+
+/// The command tree with the house styles and the grouped top-level help.
+pub fn command() -> clap::Command {
+    let cmd = Cli::command().styles(styles());
+    let groups = grouped_commands(&cmd);
+    let header = styles().get_header().to_owned();
+    cmd.help_template(format!("{{about-with-newline}}\n{{usage-heading}} {{usage}}\n\n{groups}{header}Options:{header:#}\n{{options}}{{after-help}}"))
+}
+
+/// Parse the process arguments (exits on `--help`, `--version`, errors).
+pub fn parse() -> Cli {
+    let matches = command().get_matches();
+    Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit())
+}
 
 const EXAMPLES: &str = "\
 Examples:
   agentd server start                          Start the background server
   agentd server start --public --key --qr      Serve phones on the LAN and show a QR code to scan
   agentd server status                         Check the background server
-  agentd run --prompt 'Summarize this repo'    Run one agent turn in this folder
+  agentd run 'Summarize this repo'             Run one agent turn in this folder
   agentd auth copilot                          Log in to an OAuth provider";
 
 #[derive(Debug, Parser)]
@@ -48,10 +101,18 @@ pub enum Command {
     Plugin(PluginCmd),
     /// Update agentd to the latest release
     #[command(visible_alias = "update")]
-    Upgrade,
+    Upgrade(UpgradeArgs),
     /// Sign this computer in to an OpenAgentd Cloud account (optional)
     #[command(subcommand)]
     Cloud(CloudCmd),
+}
+
+#[derive(Debug, Args, Default)]
+pub struct UpgradeArgs {
+    /// Started by the server's update API (`/api/server/update`): leave the
+    /// server's process tree, log to upgrade.log, and record the outcome
+    #[arg(long, hide = true)]
+    pub from_server: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -99,6 +160,7 @@ pub enum ServerCmd {
     /// Follow the server log
     Logs(LogsArgs),
     /// Run the server in the foreground (desktop sidecar, `make run`)
+    #[command(hide = true)]
     Serve(ServeArgs),
 }
 
@@ -168,10 +230,14 @@ pub struct ServeArgs {
 }
 
 #[derive(Debug, Args)]
+#[command(group(clap::ArgGroup::new("input").required(true).args(["text", "prompt"])))]
 pub struct RunArgs {
     /// Prompt to send to the agent
-    #[arg(long)]
-    pub prompt: String,
+    #[arg(value_name = "PROMPT")]
+    pub text: Option<String>,
+    /// The prompt, as a flag (same as the positional PROMPT)
+    #[arg(long, value_name = "PROMPT", conflicts_with = "text")]
+    pub prompt: Option<String>,
     /// Model override, e.g. openai:gpt-5.5
     #[arg(long)]
     pub model: Option<String>,
@@ -260,8 +326,8 @@ pub struct CleanupArgs {
     /// Compact the SQLite database afterwards
     #[arg(long, requires = "apply")]
     pub vacuum: bool,
-    /// Items to list (0 lists all)
-    #[arg(long, value_name = "N", default_value_t = 20)]
+    /// Largest folders to list (0 lists all)
+    #[arg(long, value_name = "N", default_value_t = 8)]
     pub limit: usize,
 }
 
@@ -395,6 +461,13 @@ pub enum PythonTool {
     Ty,
 }
 
+impl RunArgs {
+    /// The prompt, from the argument or `--prompt`.
+    pub fn prompt_text(&self) -> &str {
+        self.text.as_deref().or(self.prompt.as_deref()).unwrap_or("")
+    }
+}
+
 impl PythonTool {
     pub fn name(self) -> &'static str {
         match self {
@@ -435,6 +508,34 @@ mod tests {
     #[test]
     fn the_tree_is_consistent() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn every_visible_command_is_in_one_help_group() {
+        let cmd = Cli::command();
+        let grouped: Vec<&str> = GROUPS.iter().flat_map(|(_, names)| names.iter().copied()).collect();
+        for c in cmd.get_subcommands().filter(|c| !c.is_hide_set() && c.get_name() != "help") {
+            assert_eq!(grouped.iter().filter(|n| **n == c.get_name()).count(), 1, "{} must be in exactly one group", c.get_name());
+        }
+        for name in &grouped {
+            assert!(cmd.find_subcommand(name).is_some(), "{name} is grouped but not a command");
+        }
+    }
+
+    #[test]
+    fn top_level_help_lists_the_groups_in_order() {
+        let help = command().render_help().to_string();
+        let at = |s: &str| help.find(s).unwrap_or_else(|| panic!("{s:?} missing from:\n{help}"));
+        assert!(at("Server:") < at("Agents:") && at("Agents:") < at("Setup:") && at("Setup:") < at("Maintenance:") && at("Maintenance:") < at("Options:"));
+        assert!(help.contains("upgrade") && help.contains("[alias: update]"), "{help}");
+        assert!(help.contains("Examples:"), "{help}");
+    }
+
+    #[test]
+    fn serve_is_hidden_from_server_help_but_still_runs() {
+        let mut server = Cli::command().find_subcommand("server").unwrap().clone();
+        assert!(!server.render_help().to_string().lines().any(|l| l.trim_start().starts_with("serve")));
+        assert!(matches!(parse(&["server", "serve"]).unwrap(), Some(Command::Server(ServerCmd::Serve(_)))));
     }
 
     #[test]
@@ -492,7 +593,10 @@ mod tests {
         let Some(Command::Run(a)) = parse(&["run", "--prompt", "hi", "-C", "/tmp", "-c", "--json", "--model", "openai:gpt-5.5", "--thinking", "high"]).unwrap() else {
             panic!("not run")
         };
-        assert_eq!(a.prompt, "hi");
+        assert_eq!(a.prompt_text(), "hi");
+        let Some(Command::Run(p)) = parse(&["run", "Summarize this repo", "-c"]).unwrap() else { panic!("not run") };
+        assert_eq!((p.prompt_text(), p.continue_session), ("Summarize this repo", true));
+        assert_eq!(kind(&["run", "one", "--prompt", "two"]), ErrorKind::ArgumentConflict);
         assert_eq!(a.cd.as_deref(), Some(std::path::Path::new("/tmp")));
         assert!(a.continue_session && a.json && a.session.is_none());
         assert_eq!((a.model.as_deref(), a.thinking.as_deref()), (Some("openai:gpt-5.5"), Some("high")));
@@ -525,8 +629,11 @@ mod tests {
 
     #[test]
     fn update_is_an_alias_of_upgrade() {
-        assert!(matches!(parse(&["update"]).unwrap(), Some(Command::Upgrade)));
-        assert!(matches!(parse(&["upgrade"]).unwrap(), Some(Command::Upgrade)));
+        assert!(matches!(parse(&["update"]).unwrap(), Some(Command::Upgrade(UpgradeArgs { from_server: false }))));
+        assert!(matches!(parse(&["upgrade"]).unwrap(), Some(Command::Upgrade(UpgradeArgs { from_server: false }))));
+        assert!(matches!(parse(&["upgrade", "--from-server"]).unwrap(), Some(Command::Upgrade(UpgradeArgs { from_server: true }))));
+        let mut upgrade = Cli::command().find_subcommand("upgrade").unwrap().clone();
+        assert!(!upgrade.render_help().to_string().contains("from-server"), "internal flag stays out of help");
     }
 
     #[test]
@@ -540,7 +647,7 @@ mod tests {
     #[test]
     fn cleanup_defaults_and_vacuum_needs_apply() {
         let Some(Command::Cleanup(a)) = parse(&["cleanup"]).unwrap() else { panic!("not cleanup") };
-        assert_eq!((a.older_than_days, a.apply, a.vacuum, a.limit), (14, false, false, 20));
+        assert_eq!((a.older_than_days, a.apply, a.vacuum, a.limit), (14, false, false, 8));
         assert_eq!(kind(&["cleanup", "--vacuum"]), ErrorKind::MissingRequiredArgument);
         assert!(matches!(parse(&["cleanup", "--apply", "--vacuum", "--limit", "0"]).unwrap(), Some(Command::Cleanup(CleanupArgs { vacuum: true, limit: 0, .. }))));
     }

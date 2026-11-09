@@ -109,7 +109,7 @@ fn logout(provider: &str, account: Option<&str>) -> Result<()> {
         let _ = appv3_core::runtime_settings::forget_provider_models(provider);
     }
     match (removed, &target) {
-        (0, _) => println!("  {provider} was not logged in"),
+        (0, _) => println!("  {}  {provider} was not logged in", crate::ui::idle_mark()),
         (_, Some(c)) => println!("  {}  Logged out of {provider} ({})", green("✓"), c.label),
         (n, None) => println!("  {}  Logged out of {provider} ({n} account{})", green("✓"), if n == 1 { "" } else { "s" }),
     }
@@ -143,6 +143,7 @@ pub fn credentials(cmd: &CredentialsCmd) -> Result<ExitCode> {
         }
         CredentialsCmd::Import { path, label } => {
             let r = appv3_providers::credentials_migration::import_dotenv(path, label).map_err(|e| anyhow!("{e}"))?;
+            crate::ui::header("Import credentials", &tilde(path));
             for (p, names) in &r.providers {
                 println!("  {}  {p}: {}", green("✓"), names.join(", "));
             }
@@ -153,8 +154,9 @@ pub fn credentials(cmd: &CredentialsCmd) -> Result<ExitCode> {
                 println!("  {}", dim(&format!("Already stored: {}", r.unchanged.join(", "))));
             }
             if r.is_empty() && r.unchanged.is_empty() {
-                println!("  No provider keys found in {}", path.display());
+                println!("  {}  No provider keys found in {}", crate::ui::idle_mark(), tilde(path));
             }
+            println!();
             Ok(ExitCode::SUCCESS)
         }
     }

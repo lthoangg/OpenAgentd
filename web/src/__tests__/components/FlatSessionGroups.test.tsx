@@ -215,7 +215,8 @@ describe('FlatSessionGroups', () => {
   describe('sessions another workspace started', () => {
     const from = { session_id: 's-app', workspace: '/r/app', title: 'Orders API' }
     const infra = session('s-infra', 'Orders table', '/r/infra', HOUR, { running: true, sent_from: from })
-    const web = session('s-web', 'Orders page', '/r/web', HOUR, { needs_input: true, sent_from: from })
+    // Newer than Orders table, so it nests first: the latest update is on top.
+    const web = session('s-web', 'Orders page', '/r/web', HOUR / 2, { needs_input: true, sent_from: from })
     const app = session('s-app', 'Orders API', '/r/app', 2 * HOUR, { background_work: true, linked_sessions: [infra, web] })
     /** Titles of the list's own rows (not the ones nested under a sender). */
     const ownRows = (root: ParentNode = document) =>
@@ -228,7 +229,7 @@ describe('FlatSessionGroups', () => {
         setup({ groupBy, all: [infra, app, web] })
         expect(ownRows()).toEqual(['Orders API'])
         expandLinked()
-        expect(nested()).toEqual(['s-infra', 's-web'])
+        expect(nested()).toEqual(['s-web', 's-infra'])
       })
     }
 
@@ -239,7 +240,7 @@ describe('FlatSessionGroups', () => {
       expect(ownRows(screen.getByRole('region', { name: 'Needs you' }))).toEqual(['Orders page'])
       expect(ownRows(screen.getByRole('region', { name: 'Recent' }))).toEqual(['Orders API'])
       expandLinked()
-      expect(nested()).toEqual(['s-infra', 's-web'])
+      expect(nested()).toEqual(['s-web', 's-infra'])
     })
 
     it('keep their own row, marked with the sender, when the sender is not listed', () => {

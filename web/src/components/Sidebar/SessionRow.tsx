@@ -7,7 +7,7 @@ import { useUnreadStore } from '@/stores/useUnreadStore'
 import { formatRelativeDate } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
 import { useCompactRelative } from '@/hooks/useCompactRelative'
-import { sessionActivityTime } from '../Sidebar.helpers'
+import { newestFirst, sessionActivityTime } from '../Sidebar.helpers'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { InlineTitleInput } from '@/components/ui/inline-title-input'
 import { AnimatedTitle, useTitleWash } from '@/components/ui/animated-title'
@@ -243,7 +243,7 @@ function SessionRowView({
   const isTargetSession = isCurrent || currentSessionId === session.id || isChildSessionCurrent
   const { data: subagentsData } = useSessionSubagentsQuery(session.id, isTargetSession)
   const liveMembers = subagentsData?.live_members ?? subagentsData?.subagents
-  const subagents = (isTargetSession && liveMembers !== undefined)
+  const subagentRows = (isTargetSession && liveMembers !== undefined)
     ? liveMembers
     : (session.subagents && session.subagents.length > 0
         ? session.subagents.map((s) => ({
@@ -258,6 +258,10 @@ function SessionRowView({
             has_pending_question: s.needs_input === true,
           }))
         : (liveMembers ?? []))
+  // Newest update on top: the list row's last message when the session list
+  // carries it, else when the subagent started.
+  const subagentActivity = new Map((session.subagents ?? []).map((s) => [s.id, sessionActivityTime(s)]))
+  const subagents = newestFirst(subagentRows, (sub) => subagentActivity.get(sub.session_id) ?? sub.created_at)
 
   const hasSubagents = subagents.length > 0
   const isChildActive = subagents.some((sub) => sub.session_id === currentSessionId)
@@ -274,8 +278,9 @@ function SessionRowView({
   const subagentToggleLabel = `${isExpanded ? 'Collapse' : 'Expand'} ${subagents.length} subagents`
 
   // Sessions other workspaces ran for this one fold behind their own count
-  // pill; opening one of them keeps the group open.
-  const linked = session.linked_sessions ?? []
+  // pill; opening one of them keeps the group open. Newest update on top
+  // (the server sends them oldest first).
+  const linked = newestFirst(session.linked_sessions ?? [], sessionActivityTime)
   const hasLinked = linked.length > 0
   const isLinkedCurrent = Boolean(currentSessionId) && linked.some((s) => s.id === currentSessionId)
   const [linkedOverride, setLinkedOverride] = useState<boolean | null>(null)

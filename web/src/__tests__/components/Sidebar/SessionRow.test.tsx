@@ -103,6 +103,20 @@ describe('SessionRow actions', () => {
     const [session] = onContext.mock.calls[0] as unknown as [SessionResponse]
     expect(session).toMatchObject({ id: 'child', parent_session_id: 'lead' })
   })
+
+  it('lists subagents with the most recent update first', () => {
+    const sub = (id: string, lastMessageAt: string): SessionResponse => ({
+      ...lead.subagents![0], id, title: `${id}: work`, agent_name: id, running: false, last_message_at: lastMessageAt,
+    })
+    const team: SessionResponse = {
+      ...lead,
+      subagents: [sub('first', '2026-09-01T10:01:00Z'), sub('latest', '2026-09-01T10:30:00Z'), sub('middle', '2026-09-01T10:10:00Z')],
+    }
+    render(row(() => {}, team))
+    fireEvent.click(screen.getByLabelText('Expand 3 subagents'))
+    const order = screen.getAllByLabelText(/^More actions for subagent /).map((b) => b.getAttribute('aria-label'))
+    expect(order).toEqual(['More actions for subagent latest', 'More actions for subagent middle', 'More actions for subagent first'])
+  })
 })
 
 describe('SessionRow goal mark', () => {
@@ -283,6 +297,20 @@ describe('SessionRow sessions in other workspaces', () => {
     } finally {
       timers.restore()
     }
+  })
+
+  it('lists the most recently active first', () => {
+    const ordered: SessionResponse = {
+      ...origin,
+      linked_sessions: [
+        linkedSession('infra-1', 'Orders table', '/r/infra', { last_message_at: '2026-09-01T10:10:00Z' }),
+        linkedSession('web-1', 'Orders page', '/r/web', { last_message_at: '2026-09-01T11:30:00Z' }),
+        linkedSession('docs-1', 'Orders docs', '/r/docs', { last_message_at: '2026-09-01T10:45:00Z' }),
+      ],
+    }
+    render(row(() => {}, ordered, { isCurrent: false, currentSessionId: 'web-1' }))
+    const rows = Array.from(document.querySelectorAll('[data-linked-session]'))
+    expect(rows.map((r) => r.getAttribute('data-linked-session'))).toEqual(['web-1', 'docs-1', 'infra-1'])
   })
 
   it('opens a nested session in its own workspace', () => {

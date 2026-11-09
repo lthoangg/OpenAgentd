@@ -32,6 +32,7 @@ const PENDING_URL = 'http://localhost/api/cloud/pending'
 const BEGIN_URL = 'http://localhost/api/cloud/approve/begin'
 const CONFIRM_URL = 'http://localhost/api/cloud/approve/confirm'
 const REJECT_URL = 'http://localhost/api/cloud/approve/reject'
+const REMOVE_URL = 'http://localhost/api/cloud/devices/remove'
 /** Synthetic: not a real account, slot, or secret. */
 const INVITE = 'agentd://invite?a=test-account-0000000000&s=test-slot-000000000&k=test-only'
 
@@ -311,7 +312,36 @@ describe('AccountSettingsPage', () => {
   })
 })
 
+/** Calls to the desktop app's `cloud_approval_proof`, and what it answers. */
+let proofCalls: Array<Record<string, unknown>> = []
+let proofAnswer: string | null = 'app-proof'
+const realPlatform = Object.getOwnPropertyDescriptor(window.navigator, 'platform')
+
+/** Runs the page as the desktop app on a Mac would. */
+function inDesktopApp() {
+  ;(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+    invoke: async (command: string, args: Record<string, unknown>) => {
+      if (command !== 'cloud_approval_proof') throw new Error(`unexpected command: ${command}`)
+      proofCalls.push(args)
+      return proofAnswer
+    },
+    transformCallback: () => 0,
+  }
+  Object.defineProperty(window.navigator, 'platform', { value: 'MacIntel', configurable: true })
+}
+
 describe('a computer that creates the account or approves devices', () => {
+  beforeEach(() => {
+    proofCalls = []
+    proofAnswer = 'app-proof'
+  })
+
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
+    if (realPlatform) Object.defineProperty(window.navigator, 'platform', realPlatform)
+    else delete (window.navigator as unknown as Record<string, unknown>).platform
+  })
+
   it('shows the recovery code once and sends the two groups typed back', async () => {
     let sent: unknown = null
     serveStatus({ state: 'recovery', code: 'AAAA-BBBB-CCCC', check: [1, 3] })
@@ -338,6 +368,7 @@ describe('a computer that creates the account or approves devices', () => {
   })
 
   it('lists the devices with their roles, and the requests waiting', async () => {
+    inDesktopApp()
     serveStatus({ state: 'connected', fingerprint: 'AA11 BB22', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
     server.use(
       http.get(DEVICES_URL, () => HttpResponse.json([
@@ -360,7 +391,9 @@ describe('a computer that creates the account or approves devices', () => {
   })
 
   it('approves a request with the code, never adding a role it did not ask for', async () => {
+    inDesktopApp()
     let confirmed: unknown = null
+    let proof: string | null = null
     serveStatus({ state: 'connected', fingerprint: 'f', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
     server.use(
       http.get(PENDING_URL, () => HttpResponse.json([
@@ -369,6 +402,7 @@ describe('a computer that creates the account or approves devices', () => {
       http.post(BEGIN_URL, () => HttpResponse.json({ code: '418207', server: false, client: true })),
       http.post(CONFIRM_URL, async ({ request }) => {
         confirmed = await request.json()
+        proof = request.headers.get('X-Agentd-Approval')
         return HttpResponse.json({ state: 'connected', fingerprint: 'f', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
       }),
       http.post(REJECT_URL, () => HttpResponse.json({ state: 'connected', fingerprint: 'f', signer: true, relay: { state: 'online' }, sessions: 0 })),
@@ -384,6 +418,75 @@ describe('a computer that creates the account or approves devices', () => {
     expect((screen.getByRole('checkbox', { name: 'Can approve other devices' }) as HTMLInputElement).checked).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'Codes match' }))
     await waitFor(() => expect(confirmed).toEqual({ enrollment_id: 'enr-1', signer: true, server: false, client: true }))
+    // The app confirmed with the person, then proved exactly this request.
+    expect(proofCalls).toEqual([{ action: 'approve', id: 'enr-1', signer: true, server: false, client: true, reason: 'add a device to your account' }])
+    expect(proof).toBe('app-proof')
+  })
+
+  it('adds nothing when the person cancels Touch ID', async () => {
+    inDesktopApp()
+    proofAnswer = null
+    let confirmed = false
+    serveStatus({ state: 'connected', fingerprint: 'f', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+    server.use(
+      http.get(PENDING_URL, () => HttpResponse.json([
+        { enrollment_id: 'enr-1', fingerprint: '9C02 E1B7', country: null, created_at: null, expires_at: null, kind: 'ios', server: false, client: true },
+      ])),
+      http.post(BEGIN_URL, () => HttpResponse.json({ code: '418207', server: false, client: true })),
+      http.post(CONFIRM_URL, () => {
+        confirmed = true
+        return HttpResponse.json({})
+      }),
+      http.post(REJECT_URL, () => HttpResponse.json({ state: 'connected', fingerprint: 'f', signer: true, relay: { state: 'online' }, sessions: 0 })),
+    )
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Codes match' }))
+    expect(await screen.findByText('Not confirmed. Nothing was added.')).toBeTruthy()
+    expect(confirmed).toBe(false)
+  })
+
+  it('removes a device with the app\'s proof for that device', async () => {
+    inDesktopApp()
+    let removed: { body: unknown; proof: string | null } | null = null
+    serveStatus({ state: 'connected', fingerprint: 'f', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+    server.use(
+      http.get(DEVICES_URL, () => HttpResponse.json([
+        { device_id: 'me', fingerprint: 'AA11 BB22', signer: true, server: true, client: true, me: true, kind: 'macos' },
+        { device_id: 'ci', fingerprint: 'C1C1 0000', signer: false, server: true, client: false, me: false, kind: 'linux' },
+      ])),
+      http.post(REMOVE_URL, async ({ request }) => {
+        removed = { body: await request.json(), proof: request.headers.get('X-Agentd-Approval') }
+        return HttpResponse.json({ state: 'connected', fingerprint: 'f', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+      }),
+    )
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Linux · C1C1 0000' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
+    await waitFor(() => expect(removed).toEqual({ body: { device_id: 'ci' }, proof: 'app-proof' }))
+    expect(proofCalls).toEqual([{ action: 'remove', id: 'ci', signer: false, server: false, client: false, reason: 'remove a device from your account' }])
+  })
+
+  it('in a plain browser, says where to approve instead of offering buttons that would fail', async () => {
+    serveStatus({ state: 'connected', fingerprint: 'AA11 BB22', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+    server.use(
+      http.get(DEVICES_URL, () => HttpResponse.json([
+        { device_id: 'me', fingerprint: 'AA11 BB22', signer: true, server: true, client: true, me: true, kind: 'macos' },
+        { device_id: 'ci', fingerprint: 'C1C1 0000', signer: false, server: true, client: false, me: false, kind: 'linux' },
+      ])),
+      http.get(PENDING_URL, () => HttpResponse.json([
+        { enrollment_id: 'enr-1', fingerprint: '9C02 E1B7', country: null, created_at: null, expires_at: null, kind: 'ios', server: false, client: true },
+      ])),
+    )
+    renderPage()
+
+    expect(await screen.findByText('Approve in the OpenAgentd app on this computer, or run agentd cloud approve in Terminal.')).toBeTruthy()
+    expect(screen.getByText('Remove devices in the OpenAgentd app on this computer.')).toBeTruthy()
+    expect(screen.getByText('Asks to be: client')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Review' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull()
   })
 
   it('shows no device list to another device viewing this server', async () => {

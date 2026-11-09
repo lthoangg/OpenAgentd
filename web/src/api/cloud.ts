@@ -87,17 +87,29 @@ export interface ApprovalView {
   client: boolean
 }
 
-async function cloudCall<T>(path: string, method: 'GET' | 'POST', body?: unknown): Promise<T> {
+async function cloudCall<T>(path: string, method: 'GET' | 'POST', body?: unknown, proof?: string): Promise<T> {
   const label = `${method} /cloud${path}`
-  const init: RequestInit = body === undefined
-    ? { method }
-    : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+  const headers: Record<string, string> = {}
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  if (proof) headers[APPROVAL_HEADER] = proof
+  const init: RequestInit = body === undefined ? { method, headers } : { method, headers, body: JSON.stringify(body) }
   const res = await fetch(`${apiBaseUrl()}/cloud${path}`, init)
   if (!res.ok) await parseDetailOrThrow(res, label)
   return res.json()
 }
 
-const cloudRequest = (path: string, method: 'GET' | 'POST', body?: unknown) => cloudCall<CloudStatus>(path, method, body)
+const cloudRequest = (path: string, method: 'GET' | 'POST', body?: unknown, proof?: string) =>
+  cloudCall<CloudStatus>(path, method, body, proof)
+
+/**
+ * The desktop app's proof that the person approved a roster change
+ * (`desktop/src-tauri/src/approval.rs`): this server refuses to add or
+ * remove a device without it, so an agent's shell cannot.
+ */
+export const APPROVAL_HEADER = 'X-Agentd-Approval'
+/** What the server says without the proof; shown as is where there is no app to give one. */
+export const APPROVE_ELSEWHERE = 'Approve in the OpenAgentd app on this computer, or run agentd cloud approve in Terminal.'
+export const REMOVE_ELSEWHERE = 'Remove devices in the OpenAgentd app on this computer.'
 
 export const getCloudStatus = () => cloudRequest('/status', 'GET')
 /** Signs in asking for `roles`; on an empty account this computer creates it. */
@@ -111,10 +123,11 @@ export const getCloudPending = () => cloudCall<CloudPending[]>('/pending', 'GET'
 /** Waits (up to 3 minutes) until both screens can show the code. */
 export const cloudApproveBegin = (enrollmentId: string) =>
   cloudCall<ApprovalView>('/approve/begin', 'POST', { enrollment_id: enrollmentId })
-export const cloudApproveConfirm = (enrollmentId: string, approver: boolean, roles: Roles) =>
-  cloudRequest('/approve/confirm', 'POST', { enrollment_id: enrollmentId, signer: approver, ...roles })
+export const cloudApproveConfirm = (enrollmentId: string, approver: boolean, roles: Roles, proof: string) =>
+  cloudRequest('/approve/confirm', 'POST', { enrollment_id: enrollmentId, signer: approver, ...roles }, proof)
 export const cloudApproveReject = (enrollmentId: string) =>
   cloudRequest('/approve/reject', 'POST', { enrollment_id: enrollmentId })
-export const cloudRemoveDevice = (deviceId: string) => cloudRequest('/devices/remove', 'POST', { device_id: deviceId })
+export const cloudRemoveDevice = (deviceId: string, proof: string) =>
+  cloudRequest('/devices/remove', 'POST', { device_id: deviceId }, proof)
 export const cloudLoginCancel = () => cloudRequest('/login/cancel', 'POST')
 export const cloudLogout = () => cloudRequest('/logout', 'POST')

@@ -12,7 +12,7 @@
  */
 import { useState, type ReactNode } from 'react'
 
-import type { CloudPending, CloudStatus, RelayState, Roles } from '@/api/cloud'
+import { APPROVE_ELSEWHERE, REMOVE_ELSEWHERE, type CloudPending, type CloudStatus, type RelayState, type Roles } from '@/api/cloud'
 import { deviceLabel, pendingLabel } from '@/api/phone-cloud'
 import { DesktopApprovalSheet } from '@/components/account/DesktopApprovalSheet'
 import { RecoveryStep } from '@/components/account/RecoveryStep'
@@ -35,6 +35,7 @@ import { Callout } from '@/components/ui/callout'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
+import { canApproveHere } from '@/lib/approval-proof'
 import {
   useCloudCancelMutation,
   useCloudConfirmRecovery,
@@ -73,11 +74,13 @@ function DevicesSection({ canRemove }: { canRemove: boolean }) {
   const devicesQ = useCloudDevicesQuery(true)
   const remove = useCloudRemoveDevice()
   const [removing, setRemoving] = useState<string | null>(null)
+  // Removing signs the account's device list: only the desktop app can prove the person asked.
+  const here = canApproveHere()
   // A remote viewer: these routes answer only this computer.
   if (isForbidden(devicesQ.error)) return null
   return (
     <>
-      <PanelSection title="Devices" flush>
+      <PanelSection title="Devices" description={canRemove && !here ? REMOVE_ELSEWHERE : undefined} flush>
         {devicesQ.isLoading && <PanelRow label="Loading devices…" />}
         {devicesQ.data?.map((device) => (
           <PanelRow
@@ -91,7 +94,7 @@ function DevicesSection({ canRemove }: { canRemove: boolean }) {
               </span>
             )}
           >
-            {canRemove && !device.me && (
+            {canRemove && here && !device.me && (
               <Button size="sm" variant="danger-subtle" aria-label={`Remove ${deviceLabel(device)}`} onClick={() => setRemoving(device.device_id)}>
                 Remove
               </Button>
@@ -119,11 +122,14 @@ function PendingSection({ onReview }: { onReview: (row: CloudPending) => void })
   const pendingQ = useCloudPendingQuery(true)
   const rows = pendingQ.data ?? []
   if (rows.length === 0) return null
+  // Approving signs the account's device list: only the desktop app can prove the person asked.
+  const here = canApproveHere()
+  const description = here ? 'A device is asking to join your account. Only approve a request you started.' : APPROVE_ELSEWHERE
   return (
-    <PanelSection title="Pending approvals" description="A device is asking to join your account. Only approve a request you started." flush>
+    <PanelSection title="Pending approvals" description={description} flush>
       {rows.map((row) => (
         <PanelRow key={row.enrollment_id} label={pendingLabel(row)} description={`Asks to be: ${rolesLabel(row).toLowerCase()}`}>
-          <Button size="sm" variant="primary" onClick={() => onReview(row)}>Review</Button>
+          {here && <Button size="sm" variant="primary" onClick={() => onReview(row)}>Review</Button>}
         </PanelRow>
       ))}
     </PanelSection>

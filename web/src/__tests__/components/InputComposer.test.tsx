@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
+import { describe, it, expect, afterEach, beforeEach, mock, beforeAll } from "bun:test"
 import { render, screen, cleanup, fireEvent, act } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { createRef } from "react"
@@ -13,6 +13,7 @@ import {
   filterSnippetCommands,
 } from "@/components/InputComposer.menus"
 import type { AgentCapabilities } from "@/api/types"
+import { prefetchSurfaces } from "@/lib/lazy-surface"
 
 let isMobile = false
 
@@ -36,6 +37,11 @@ afterEach(cleanup)
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure logic (no DOM) — fast sanity checks on exported helpers
 // ─────────────────────────────────────────────────────────────────────────────
+// The attachment strip loads lazily; load it before the tests render.
+beforeAll(async () => {
+  await prefetchSurfaces()
+})
+
 describe("InputComposer — pure logic helpers", () => {
   it("buildHistoryEntries merges local + persisted, deduplicates and trims", () => {
     expect(buildHistoryEntries([" local ", "other"], ["other", "", " persisted "])).toEqual([

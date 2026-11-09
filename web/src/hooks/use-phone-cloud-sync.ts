@@ -1,4 +1,4 @@
-import { usePhoneCloudStatus } from '@/queries/phone-cloud'
+import { usePhoneCloudStatus } from '@/queries/phone-cloud-status'
 
 /**
  * Keeps the phone's account in step while the app runs. Reading the status is

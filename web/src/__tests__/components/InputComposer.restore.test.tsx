@@ -3,10 +3,11 @@
  * the send turns out to have failed, the caller restores what was cleared —
  * otherwise the text and its attachments are gone for good.
  */
-import { describe, it, expect, afterEach, mock } from "bun:test"
+import { describe, it, expect, afterEach, mock, beforeAll } from "bun:test"
 import { render, screen, cleanup, fireEvent, act } from "@testing-library/react"
 import { createRef } from "react"
 import { InputComposer, type InputComposerHandle } from "@/components/InputComposer"
+import { prefetchSurfaces } from "@/lib/lazy-surface"
 
 mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
 
@@ -40,6 +41,11 @@ function dropFile(file: File) {
   const pill = textarea().closest("div")!.parentElement!.parentElement!
   fireEvent.drop(pill, { dataTransfer: { types: ["Files"], files: [file] } })
 }
+
+// The attachment strip loads lazily; load it before the tests render.
+beforeAll(async () => {
+  await prefetchSurfaces()
+})
 
 describe("InputComposer draft restore after a failed send", () => {
   it("clears the composer on submit", () => {

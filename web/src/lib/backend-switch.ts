@@ -12,8 +12,7 @@ import { forgetRouteForBackendSwitch } from '@/lib/route-restore'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
 import { queryKeys } from '@/queries/keys'
 import { beginBackendSwitch, endBackendSwitch, type BackendSwitchTarget } from '@/stores/useBackendSwitchStore'
-import { rememberLanFingerprint } from '@/lib/computer-fingerprints'
-import { openPhoneCloudComputer, type OpenedComputer } from '@/api/phone-cloud'
+import type { OpenedComputer } from '@/api/phone-cloud-core'
 import {
   getAppBackendStatus,
   switchToBundledAppBackend,
@@ -141,7 +140,8 @@ async function switchExternal(target: string, options: Parameters<typeof connect
     installDesktopAuth()
     const reload = normalizeServerBaseUrl(next.base_url) !== options.currentBaseUrl
     await refreshBackendQueries()
-    void rememberLanFingerprint(target)
+    // Loaded here: fingerprints matter only to the phone's account list.
+    void import('@/lib/computer-fingerprints').then((m) => m.rememberLanFingerprint(target)).catch(() => undefined)
     return { ok: true, status: next, reload }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -169,6 +169,8 @@ export async function connectAccountComputer(options: {
   const detail = options.lanBaseUrl ?? 'Through your account'
   return withSwitchScreen({ name: options.label, detail }, async (): Promise<AccountSwitchResult> => {
     try {
+      // Loaded here: the account's commands stay out of the startup path.
+      const { openPhoneCloudComputer } = await import('@/api/phone-cloud')
       const opened = await openPhoneCloudComputer(options.deviceId, options.lanBaseUrl)
       const next = opened.status
       await primeStoredAccessKey(next.base_url)

@@ -1,8 +1,9 @@
-import { describe, it, expect, afterEach, mock } from "bun:test"
+import { describe, it, expect, afterEach, mock, beforeAll } from "bun:test"
 import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import { useRef } from "react"
 import { InputComposer, type InputComposerHandle } from "@/components/InputComposer"
 import { useDragDrop } from "@/components/AgentChatView/useDragDrop"
+import { prefetchSurfaces } from "@/lib/lazy-surface"
 
 mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
 
@@ -56,6 +57,11 @@ function folderTransfer(folder: File) {
     },
   }
 }
+
+// The attachment strip loads lazily; load it before the tests render.
+beforeAll(async () => {
+  await prefetchSurfaces()
+})
 
 describe("InputComposer drag-and-drop", () => {
   it("attaches a file dropped on the pill exactly once", () => {

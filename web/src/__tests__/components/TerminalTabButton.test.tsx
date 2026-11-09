@@ -191,5 +191,7 @@ describe('TerminalTabButton', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
 
     await waitFor(() => expect(useTerminalStore.getState().sessions[id]?.title).toBe('Logs'))
-  })
+    // The long press, the sheet and the rename take over 5 s on a loaded
+    // CI runner (seen on PR #511); alone it takes under a second.
+  }, 15_000)
 })

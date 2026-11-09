@@ -320,7 +320,9 @@ describe('App backend bootstrap', () => {
 
     statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: true, external: false, token: 'desktop-token' }
     await waitFor(() => expect(routerMounted).toBe(true))
-    expect(window.sessionStorage.getItem('openagentd.backendSwitch')).toBeNull()
+    // Cleared by an effect after the router's first render: on a loaded
+    // runner the two can land in separate ticks.
+    await waitFor(() => expect(window.sessionStorage.getItem('openagentd.backendSwitch')).toBeNull(), { timeout: 5000 })
   })
 
   it('shows recovery immediately when the native shell reports a startup error', async () => {

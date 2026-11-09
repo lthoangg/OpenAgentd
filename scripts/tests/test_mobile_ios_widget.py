@@ -118,6 +118,10 @@ def test_app_and_extension_share_an_app_group_named_after_the_app(tmp_path: Path
     assert "          - group.$(OA_APP_BUNDLE_ID)\n" in yml
     assert "        OA_APP_BUNDLE_ID: com.openagentd.mobile\n" in yml
     assert "        PRODUCT_BUNDLE_IDENTIFIER: com.openagentd.mobile.widgets\n" in yml
+    # The Notification Service Extension opens OpenAgentd Cloud letters.
+    assert "        PRODUCT_BUNDLE_IDENTIFIER: com.openagentd.mobile.notifications\n" in yml
+    assert "          NSExtensionPointIdentifier: com.apple.usernotifications.service\n" in yml
+    assert "      - target: OpenAgentdNotifications # openagentd-widgets\n" in yml
     assert '        CFBundleShortVersionString: "9.8.7"\n' in yml
     assert "        DEVELOPMENT_TEAM: TEAM123\n" in yml
 
@@ -127,13 +131,14 @@ def test_running_again_changes_nothing_and_skips_xcodegen(tmp_path: Path):
     _run(mobile)
     # A real xcodegen run leaves the target in the project.
     pbxproj = mobile / "src-tauri" / "gen" / "apple" / "openagentd-mobile.xcodeproj" / "project.pbxproj"
-    pbxproj.write_text("// OpenAgentdWidgets\n")
+    pbxproj.write_text("// OpenAgentdWidgets OpenAgentdNotifications\n")
     first = _yml(mobile)
 
     _run(mobile)
 
     assert _yml(mobile) == first
     assert first.count("OpenAgentdWidgets:") == 1
+    assert first.count("OpenAgentdNotifications:") == 1
     assert _regenerations(mobile) == 1
 
 

@@ -161,13 +161,14 @@ jobs:
           IOS_DIST_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DIST_CERTIFICATE_PASSWORD }}
           IOS_PROFILE_APP: ${{ secrets.IOS_PROFILE_APP }}
           IOS_PROFILE_WIDGET: ${{ secrets.IOS_PROFILE_WIDGET }}
+          IOS_PROFILE_NOTIFICATIONS: ${{ secrets.IOS_PROFILE_NOTIFICATIONS }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
           ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
           ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
         run: |
           set -euo pipefail
           for v in IOS_DIST_CERTIFICATE IOS_DIST_CERTIFICATE_PASSWORD IOS_PROFILE_APP \
-                   IOS_PROFILE_WIDGET KEYCHAIN_PASSWORD ASC_API_KEY ASC_API_KEY_P8; do
+                   IOS_PROFILE_WIDGET IOS_PROFILE_NOTIFICATIONS KEYCHAIN_PASSWORD ASC_API_KEY ASC_API_KEY_P8; do
             [ -n "${!v}" ] || { echo "::error::secret $v is not set in this environment (testflight-internal or release-ios; see mobile/AGENTS.md)"; exit 1; }
           done
           umask 077
@@ -187,6 +188,7 @@ jobs:
             $(security list-keychains -d user | tr -d '"')
           printf '%s' "$IOS_PROFILE_APP" | base64 --decode -o "$RUNNER_TEMP/app.mobileprovision"
           printf '%s' "$IOS_PROFILE_WIDGET" | base64 --decode -o "$RUNNER_TEMP/widget.mobileprovision"
+          printf '%s' "$IOS_PROFILE_NOTIFICATIONS" | base64 --decode -o "$RUNNER_TEMP/notifications.mobileprovision"
           # altool looks the key up by id in this directory.
           mkdir -p "$RUNNER_TEMP/asc"
           printf '%s' "$ASC_API_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey_${ASC_API_KEY}.p8"
@@ -194,6 +196,7 @@ jobs:
             echo "KEYCHAIN_PATH=$KEYCHAIN_PATH"
             echo "IOS_PROFILE_APP_PATH=$RUNNER_TEMP/app.mobileprovision"
             echo "IOS_PROFILE_WIDGET_PATH=$RUNNER_TEMP/widget.mobileprovision"
+            echo "IOS_PROFILE_NOTIFICATIONS_PATH=$RUNNER_TEMP/notifications.mobileprovision"
             echo "API_PRIVATE_KEYS_DIR=$RUNNER_TEMP/asc"
           } >> "$GITHUB_ENV"
 

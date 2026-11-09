@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-approve-begin"
+description = "Enables the cloud_approve_begin command without any pre-configured scope."
+commands.allow = ["cloud_approve_begin"]
+
+[[permission]]
+identifier = "deny-cloud-approve-begin"
+description = "Denies the cloud_approve_begin command without any pre-configured scope."
+commands.deny = ["cloud_approve_begin"]

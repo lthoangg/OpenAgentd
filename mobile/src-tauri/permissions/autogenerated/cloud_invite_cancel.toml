@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-invite-cancel"
+description = "Enables the cloud_invite_cancel command without any pre-configured scope."
+commands.allow = ["cloud_invite_cancel"]
+
+[[permission]]
+identifier = "deny-cloud-invite-cancel"
+description = "Denies the cloud_invite_cancel command without any pre-configured scope."
+commands.deny = ["cloud_invite_cancel"]

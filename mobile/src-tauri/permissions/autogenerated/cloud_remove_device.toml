@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-remove-device"
+description = "Enables the cloud_remove_device command without any pre-configured scope."
+commands.allow = ["cloud_remove_device"]
+
+[[permission]]
+identifier = "deny-cloud-remove-device"
+description = "Denies the cloud_remove_device command without any pre-configured scope."
+commands.deny = ["cloud_remove_device"]

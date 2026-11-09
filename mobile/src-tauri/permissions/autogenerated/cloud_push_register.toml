@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-push-register"
+description = "Enables the cloud_push_register command without any pre-configured scope."
+commands.allow = ["cloud_push_register"]
+
+[[permission]]
+identifier = "deny-cloud-push-register"
+description = "Denies the cloud_push_register command without any pre-configured scope."
+commands.deny = ["cloud_push_register"]

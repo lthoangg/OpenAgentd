@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-invite-poll"
+description = "Enables the cloud_invite_poll command without any pre-configured scope."
+commands.allow = ["cloud_invite_poll"]
+
+[[permission]]
+identifier = "deny-cloud-invite-poll"
+description = "Denies the cloud_invite_poll command without any pre-configured scope."
+commands.deny = ["cloud_invite_poll"]

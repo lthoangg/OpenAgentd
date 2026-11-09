@@ -7,6 +7,7 @@ on:
       - "native/shell-core/**"
       - "desktop/src-tauri/**"
       - "mobile/src-tauri/**"
+      - "scripts/check_tauri_commands.py"
       - ".github/workflows/tauri.yml"
       - ".github/workflows/release-desktop.yml"
   pull_request:
@@ -15,6 +16,7 @@ on:
       - "native/shell-core/**"
       - "desktop/src-tauri/**"
       - "mobile/src-tauri/**"
+      - "scripts/check_tauri_commands.py"
       - ".github/workflows/tauri.yml"
       - ".github/workflows/release-desktop.yml"
 
@@ -50,11 +52,13 @@ jobs:
             desktop:
               - 'native/shell-core/**'
               - 'desktop/src-tauri/**'
+              - 'scripts/check_tauri_commands.py'
               - '.github/workflows/tauri.yml'
               - '.github/workflows/release-desktop.yml'
             mobile:
               - 'native/shell-core/**'
               - 'mobile/src-tauri/**'
+              - 'scripts/check_tauri_commands.py'
               - '.github/workflows/tauri.yml'
 
   shell-core:
@@ -99,6 +103,12 @@ jobs:
         working-directory: desktop/src-tauri
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # A command in generate_handler! but missing from build.rs or the
+      # capabilities compiles fine and fails at runtime ("not allowed by ACL").
+      - name: Command ACL
+        working-directory: .
+        run: python3 scripts/check_tauri_commands.py desktop/src-tauri
 
       - name: Install Linux WebKitGTK deps
         run: |
@@ -182,6 +192,12 @@ jobs:
         working-directory: mobile/src-tauri
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # See the desktop job: v3.50.0 shipped the phone's cloud commands
+      # without ACL entries.
+      - name: Command ACL
+        working-directory: .
+        run: python3 scripts/check_tauri_commands.py mobile/src-tauri
 
       - name: Install Linux WebKitGTK deps
         run: |

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-status"
+description = "Enables the cloud_status command without any pre-configured scope."
+commands.allow = ["cloud_status"]
+
+[[permission]]
+identifier = "deny-cloud-status"
+description = "Denies the cloud_status command without any pre-configured scope."
+commands.deny = ["cloud_status"]

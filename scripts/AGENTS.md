@@ -29,6 +29,11 @@ generation, updater helpers, and code-health analysis.
   `appv3/Cargo.toml` is the release version.
 - `e2e_cli_install.sh` and `fake_release_server.py`: CLI install and
   self-update end-to-end check used by the appv3 workflow.
+- `check_tauri_commands.py`: fails when a desktop or mobile command in
+  `generate_handler!` is missing from `build.rs` or from every capability
+  (Tauri then rejects it at runtime as "not allowed by ACL"), or when
+  `build.rs` lists a command the handler does not register. The Tauri
+  workflow runs it per shell.
 - `readme-shots/`: regenerates the README screenshots and banner from a
   throwaway instance. `run.sh up` starts an isolated backend and web UI (HOME
   and every data directory under `/tmp/oad-demo`, invented demo repos from

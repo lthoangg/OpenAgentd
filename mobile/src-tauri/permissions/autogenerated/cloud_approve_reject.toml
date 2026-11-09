@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-approve-reject"
+description = "Enables the cloud_approve_reject command without any pre-configured scope."
+commands.allow = ["cloud_approve_reject"]
+
+[[permission]]
+identifier = "deny-cloud-approve-reject"
+description = "Denies the cloud_approve_reject command without any pre-configured scope."
+commands.deny = ["cloud_approve_reject"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-confirm-recovery"
+description = "Enables the cloud_confirm_recovery command without any pre-configured scope."
+commands.allow = ["cloud_confirm_recovery"]
+
+[[permission]]
+identifier = "deny-cloud-confirm-recovery"
+description = "Denies the cloud_confirm_recovery command without any pre-configured scope."
+commands.deny = ["cloud_confirm_recovery"]

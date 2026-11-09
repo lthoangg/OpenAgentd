@@ -206,6 +206,26 @@ describe('AgentChatHeader', () => {
     expect(screen.getByText('Fix updater restart')).toBeInTheDocument()
   })
 
+  it('lets the desktop title take the free width: no fixed cap, it truncates at the buttons', () => {
+    renderHeader({ isMobile: false })
+    const title = document.querySelector('[data-header-title]') as HTMLElement
+    expect(title.className.split(' ').some((c) => /(^|:)max-w-/.test(c))).toBe(false)
+    expect(title.className.split(' ')).toContain('min-w-0')
+  })
+
+  it('names a worktree "repo (worktree)" on desktop and on phones', () => {
+    for (const isMobile of [false, true]) {
+      const { unmount } = renderHeader({ isMobile, workspace: '/wt/openagentd-1a2b/fix-login', workspaceTitle: 'openagentd', checkoutName: 'fix-login' })
+      expect(document.querySelector('header')).toHaveTextContent('openagentd (fix-login)')
+      unmount()
+    }
+  })
+
+  it('keeps the main checkout to the repository name', () => {
+    renderHeader({ isMobile: false, workspace: '/code/openagentd', workspaceTitle: 'openagentd', checkoutName: null })
+    expect((document.querySelector('[data-header-workspace]') as HTMLElement).textContent).toBe('openagentd')
+  })
+
   it('keeps every header control in Tab order', () => {
     const { container } = renderHeader({ isMobile: false })
     const buttons = Array.from(container.querySelectorAll<HTMLElement>('header button'))

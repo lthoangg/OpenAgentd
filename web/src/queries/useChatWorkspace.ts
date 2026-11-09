@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getCodingWorkspaceTree } from '@/api/client'
 import type { CodingWorkspaceTreeChat } from '@/api/types'
 import { getChatWorkspaceEntry, sameWorkspacePath, setChatWorkspaceEntry } from '@/utils/workspace'
+import { checkoutLabel, type CheckoutLabel } from '@/utils/checkout-label'
 import { queryKeys } from './keys'
 
 const CHAT_WORKSPACE_STALE_MS = 30_000
@@ -31,6 +32,21 @@ export function useChatWorkspace(): CodingWorkspaceTreeChat | null {
   }, [data])
 
   return data
+}
+
+/**
+ * ``workspace``'s label in two parts (``checkoutLabel``): its repository, and
+ * the worktree or subfolder name when it is one. Reads the same cached tree
+ * as ``useChatWorkspace``, so it adds no request.
+ */
+export function useCheckoutLabel(workspace: string | null | undefined): CheckoutLabel | null {
+  const { data } = useQuery({
+    queryKey: queryKeys.coding.tree(),
+    queryFn: getCodingWorkspaceTree,
+    staleTime: CHAT_WORKSPACE_STALE_MS,
+  })
+  if (!workspace) return null
+  return checkoutLabel(workspace, data?.repositories, data?.chat ?? getChatWorkspaceEntry())
 }
 
 /** Return true when ``workspace`` is the chat root. */

@@ -31,6 +31,14 @@ interface AgentChatHeaderProps {
   workspace: string | null
   /** Chat entry from the workspace tree — labels the chat root as "Chat". */
   chatWorkspace?: CodingWorkspaceTreeChat | null
+  /**
+   * The workspace's display name from the workspace tree; a worktree or
+   * subfolder gets its repository's name here and its own in ``checkoutName``.
+   * Falls back to the path's label.
+   */
+  workspaceTitle?: string | null
+  /** The worktree or subfolder name, shown as "repo (name)". */
+  checkoutName?: string | null
   sessionTitle: string | null
   /**
    * Opens the main agent's session. Set only for a subagent's session: the
@@ -155,6 +163,8 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   isMobile,
   workspace,
   chatWorkspace = null,
+  workspaceTitle = null,
+  checkoutName = null,
   sessionTitle,
   onOpenLead,
   onSidebarToggle,
@@ -179,7 +189,8 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   // The chat workspace reads as "Chat" rather than the home directory's
   // basename, on every label derived from the workspace path.
   const isChatWorkspace = isChatWorkspacePath(workspace, chatWorkspace)
-  const workspaceName = workspace ? workspaceLabel(workspace, chatWorkspace) : ''
+  const repoName = workspace ? (workspaceTitle || workspaceLabel(workspace, chatWorkspace)) : ''
+  const workspaceName = checkoutName ? `${repoName} (${checkoutName})` : repoName
   // The tooltip exists to disambiguate a truncated basename (two workspaces can
   // share one), so it keeps revealing the real path for project workspaces —
   // but never the home path for chat, whose label is already unambiguous.
@@ -251,9 +262,18 @@ export const AgentChatHeader = memo(function AgentChatHeader({
           <div className="flex min-w-0 flex-1 items-center pr-2 pl-3">
             {onOpenLead && <OpenLeadButton onOpen={onOpenLead} className="mr-1.5" />}
             {workspace ? (
-              <div className="flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl">
+              // No width cap: the title takes the header's free width and
+              // truncates only at the dock cap.
+              <div data-header-title="" className="flex min-w-0 items-baseline gap-1 text-sm">
                 <Tooltip className="shrink-0">
-                  <TooltipTrigger render={<span className="font-semibold text-(--color-text)">{workspaceName}</span>} />
+                  <TooltipTrigger
+                    render={(
+                      <span data-header-workspace="" className="font-semibold text-(--color-text)">
+                        {repoName}
+                        {checkoutName && <span className="font-normal text-(--color-text-2)">{` (${checkoutName})`}</span>}
+                      </span>
+                    )}
+                  />
                   <TooltipContent>{workspaceTooltip}</TooltipContent>
                 </Tooltip>
                 {sessionTitle && (

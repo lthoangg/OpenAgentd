@@ -35,7 +35,7 @@ import { useGoalSessionState } from '@/hooks/useGoalSessionState'
 import { goalHeaderState } from '@/lib/work'
 import { useHealthQuery, useProvidersQuery } from '@/queries'
 import { modelReadiness } from '@/lib/model-readiness'
-import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
+import { isChatWorkspacePath, useChatWorkspace, useCheckoutLabel } from '@/queries/useChatWorkspace'
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -281,6 +281,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const chatWorkspace = useChatWorkspace()
   const isChatWorkspace = isChatWorkspacePath(effectiveWorkspace, chatWorkspace)
   const workspaceName = effectiveWorkspace ? workspaceLabel(effectiveWorkspace, chatWorkspace) : ''
+  // The header names a worktree by its repository too: "openagentd (fix-login)".
+  const headerLabel = useCheckoutLabel(workspace)
   // Manual drag pattern: a mousedown handler that only starts a drag
   // when the user pressed on the bare header, not on a child button.
   // The hook returns `{}` outside Tauri so the spread is a no-op in
@@ -981,6 +983,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           isMobile={isMobile}
           workspace={workspace}
           chatWorkspace={chatWorkspace}
+          workspaceTitle={headerLabel?.workspace}
+          checkoutName={headerLabel?.checkout}
           sessionTitle={sessionTitle}
           onOpenLead={parentSessionId ? handleOpenLead : undefined}
           onSidebarToggle={handleSidebarToggle}

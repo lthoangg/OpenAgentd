@@ -1726,7 +1726,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   open windows `[v1.66.1]`. Window titles read `workspace - session title`
   (just the workspace until the session is named, long session titles
   shortened), so the Window menu, Mission Control, and the Windows/Linux
-  taskbar tell windows apart `[v3.10.0]`. Fixed a bug where switching one window's CLI server
+  taskbar tell windows apart `[v3.10.0]`.
+  A worktree or subfolder reads as `repo (worktree)` there and in the header,
+  whose title now takes the header's free width instead of being cut off at
+  a fixed width `[v3.51.0]`. Fixed a bug where switching one window's CLI server
   could still redirect other open windows onto the same server: the backend
   now targets its "backend ready" notification at the switching window only,
   and the frontend listens for it on a per-window channel instead of the

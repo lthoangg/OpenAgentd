@@ -9,11 +9,12 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { initBroadcastSync, broadcastMessage } from '@/lib/broadcast-sync'
 import { queryKeys } from '@/queries'
+import { formatCheckoutLabel } from '@/utils/checkout-label'
 import { loadLastWorkspace, removeWorkspace, saveLastWorkspace, shouldRestoreLastWorkspace, workspaceFromSession, workspaceLabel } from '@/utils/workspace'
 import { startNewSession } from '@/lib/new-session'
 import { syncDesktopWindowTitle } from '@/lib/window-title'
 import { useNeedsYouCount } from '@/hooks/use-needs-you-badge'
-import { useChatWorkspace } from '@/queries/useChatWorkspace'
+import { useChatWorkspace, useCheckoutLabel } from '@/queries/useChatWorkspace'
 import { clearFreshDesktopWindow, isFreshDesktopWindow } from '@/lib/fresh-window'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { moveAppToBackground, useBackHandler } from '@/lib/back-button'
@@ -87,7 +88,9 @@ function AgentLayoutBase() {
     ? workspaceFromSession(sessionId, cachedSession?.workspace ?? sessionQuery.data?.workspace ?? adoptedWorkspace)
     : draftWorkspace
   const chatWorkspace = useChatWorkspace()
-  const workspaceName = workspace ? workspaceLabel(workspace, chatWorkspace) : null
+  // A worktree reads as its repository plus its name: "openagentd (fix-login)".
+  const checkout = useCheckoutLabel(workspace)
+  const workspaceName = checkout ? formatCheckoutLabel(checkout) : workspace ? workspaceLabel(workspace, chatWorkspace) : null
   // Only the number, for the title: the app root runs the badge itself.
   const needsYou = useNeedsYouCount()
 

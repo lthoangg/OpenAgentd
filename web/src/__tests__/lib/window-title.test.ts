@@ -10,6 +10,7 @@ mock.module('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ setBad
 mock.module('@tauri-apps/api/core', () => ({ invoke }))
 
 const { buildDesktopWindowTitle, syncDesktopBadgeCount, syncDesktopWindowTitle } = await import('@/lib/window-title')
+const { checkoutLabel, formatCheckoutLabel } = await import('@/utils/checkout-label')
 
 beforeEach(() => {
   isTauri = true
@@ -27,6 +28,13 @@ describe('buildDesktopWindowTitle', () => {
 
   it('falls back to the workspace basename for coding windows without a session title', () => {
     expect(buildDesktopWindowTitle({ workspace: '/Users/name/Workspace A' })).toBe('Workspace A')
+  })
+
+  it('names a worktree window "repo (worktree) - title"', () => {
+    const workspaceName = formatCheckoutLabel(
+      checkoutLabel('/wt/app-1a2b/fix-login', [{ path: '/code/app', name: 'app', worktrees: [{ path: '/wt/app-1a2b/fix-login', name: 'fix-login' }] }], null),
+    )
+    expect(buildDesktopWindowTitle({ workspace: '/wt/app-1a2b/fix-login', workspaceName, sessionTitle: 'Fix' })).toBe('app (fix-login) - Fix')
   })
 
   it('uses only the session title when no workspace is attached', () => {

@@ -1,15 +1,15 @@
 //! Joining an account for a host, shared by the routes and the CLI: by
-//! invitation link (`POST /api/cloud/join`, `agentd cloud join`), the
-//! default, or by device code and the 6-digit code (`POST /api/cloud/login`,
-//! `agentd cloud login`), the fallback.
-//! Computers do not create accounts here: an empty account ends in
-//! [`Outcome::EmptyAccount`], and only `agentd cloud login --first-device`
-//! continues with genesis.
+//! signing in and having a device already in the account approve this one
+//! with the 6-digit code (`POST /api/cloud/login`, `agentd cloud login`),
+//! the default, or by invitation link (`POST /api/cloud/join`,
+//! `agentd cloud join`). An empty account ends in [`Outcome::EmptyAccount`]
+//! with the session unspent: the caller shows the recovery code and runs
+//! genesis (spec 4.1), so any computer can be the first device.
 
 use openagentd_cloud::api::{Cloud, DeviceCode};
 use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{self, FlowError, Member, Pace, Session};
-use openagentd_cloud::keys::DeviceKeys;
+use openagentd_cloud::keys::{DeviceKeys, Roles};
 use openagentd_cloud::store::Identity;
 
 use super::Notice;
@@ -28,8 +28,8 @@ pub enum Event<'a> {
 pub enum Outcome {
     /// Joined: the identity to store.
     Joined(Identity),
-    /// The account has no devices yet. The session is unspent, so a caller
-    /// that may create the account (`--first-device`) can still do genesis.
+    /// The account has no devices yet. The session is unspent, so the
+    /// caller can create the account with this device (genesis).
     EmptyAccount { member: Box<Member>, session: Session },
 }
 
@@ -52,16 +52,19 @@ pub fn notice(e: &FlowError) -> Notice {
         FlowError::ConfirmMismatch => Notice::ConfirmMismatch,
         FlowError::Protocol(openagentd_cloud::Error::Invite) => Notice::InviteInvalid,
         FlowError::EmptyAccount => Notice::EmptyAccount,
+        FlowError::Roles => Notice::Roles,
         FlowError::Problem(openagentd_cloud::account_state::AccountProblem::Deleted) => Notice::Deleted,
         _ => Notice::Failed,
     }
 }
 
-/// Signs in a fresh device identity and joins the account through a signer.
-pub async fn sign_in(endpoints: Endpoints, http: reqwest::Client, mut on: impl FnMut(Event<'_>)) -> Result<Outcome, FlowError> {
+/// Signs in a fresh device identity asking for `roles`, and joins the
+/// account through a signer.
+pub async fn sign_in(endpoints: Endpoints, http: reqwest::Client, roles: Roles, mut on: impl FnMut(Event<'_>)) -> Result<Outcome, FlowError> {
     let keys = DeviceKeys::generate();
     let fingerprint = keys.fingerprint();
-    let cloud = Cloud::new(http, endpoints, keys, None);
+    let mut cloud = Cloud::new(http, endpoints, keys, None);
+    cloud.roles = roles;
     let code = cloud.device_code().await?;
     on(Event::Code(&code));
     let session = flows::wait_for_session(&cloud, &code).await?;
@@ -80,10 +83,11 @@ pub async fn sign_in(endpoints: Endpoints, http: reqwest::Client, mut on: impl F
 
 /// Joins the account in an invitation link with a fresh device identity.
 /// The link is a bearer secret: it is never logged or stored.
-pub async fn join_invite(endpoints: Endpoints, http: reqwest::Client, link: &str, mut on: impl FnMut(Event<'_>)) -> Result<Outcome, FlowError> {
+pub async fn join_invite(endpoints: Endpoints, http: reqwest::Client, link: &str, roles: Roles, mut on: impl FnMut(Event<'_>)) -> Result<Outcome, FlowError> {
     let keys = DeviceKeys::generate();
     let fingerprint = keys.fingerprint();
     let mut member = Member::new(Cloud::new(http, endpoints, keys, None), None);
+    member.cloud.roles = roles;
     let claim = flows::claim_invite(&mut member, link).await?;
     on(Event::Invited { fingerprint, kind: openagentd_cloud::api::this_kind() });
     let roster = flows::await_invited(&mut member, claim, Pace::default()).await?;

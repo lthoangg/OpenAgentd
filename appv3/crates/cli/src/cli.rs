@@ -56,14 +56,22 @@ pub enum Command {
 
 #[derive(Debug, Subcommand)]
 pub enum CloudCmd {
-    /// Join your account with the invitation link from your phone (asks for it)
-    Join,
-    /// Sign in with a code instead, then compare a 6-digit code on your phone
+    /// Join your account with an invitation link from another device (asks for it)
+    Join {
+        #[command(flatten)]
+        roles: CloudRoles,
+    },
+    /// Sign in; a device already in your account approves this one with a 6-digit code.
+    /// On an account with no devices yet, this computer creates it.
     Login {
-        /// Set up a new account on this computer (for people without a phone)
-        #[arg(long)]
+        #[command(flatten)]
+        roles: CloudRoles,
+        /// No longer needed: any device can be the first. Accepted and ignored.
+        #[arg(long, hide = true)]
         first_device: bool,
     },
+    /// Approve a device that signed in (when this computer approves devices)
+    Approve,
     /// Show whether this computer is signed in and reachable
     Status,
     /// Sign out and erase this computer's account keys (local data stays)
@@ -72,6 +80,25 @@ pub enum CloudCmd {
         #[arg(long, short)]
         yes: bool,
     },
+}
+
+/// What this computer asks to be in the account. Without a flag it only
+/// serves: a computer used from the terminal has nobody at its screen to
+/// approve devices, so it joins as a member that other devices reach.
+#[derive(Debug, Clone, Copy, clap::Args)]
+pub struct CloudRoles {
+    /// Also open sessions to the account's other computers (use as client)
+    #[arg(long)]
+    pub client: bool,
+    /// Do not serve sessions; only open them (use as client only)
+    #[arg(long, requires = "client")]
+    pub no_server: bool,
+}
+
+impl CloudRoles {
+    pub fn roles(self) -> openagentd_cloud::keys::Roles {
+        openagentd_cloud::keys::Roles { server: !self.no_server, client: self.client }
+    }
 }
 
 const PLUGIN_EXAMPLES: &str = "\

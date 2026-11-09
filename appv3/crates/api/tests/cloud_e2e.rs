@@ -36,7 +36,7 @@ use http_body_util::BodyExt;
 use openagentd_cloud::api::Cloud;
 use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{self, GenesisDraft, Member, Pace};
-use openagentd_cloud::keys::DeviceKeys;
+use openagentd_cloud::keys::{DeviceKeys, Roles};
 use openagentd_cloud::letter::{self, Context, Kind};
 use openagentd_cloud::relay::{self, Join};
 use serde_json::{json, Value};
@@ -115,6 +115,7 @@ async fn phone_and_server_through_the_account() {
     // 1. The phone creates the account.
     let account = fake.new_account();
     let mut phone = Member::new(Cloud::new(reqwest::Client::new(), Endpoints::custom(&base, "https://account.openagentd.dev"), DeviceKeys::generate(), None), None);
+    phone.cloud.roles = Roles::CLIENT;
     let code = phone.cloud.device_code().await.unwrap();
     fake.approve(&code.user_code, &account);
     let session = flows::wait_for_session(&phone.cloud, &code).await.unwrap();
@@ -141,9 +142,11 @@ async fn phone_and_server_through_the_account() {
     let v = wait_for(&app, "the server's code", |v| v["code"].is_string()).await;
     assert_eq!(v["code"].as_str().unwrap(), shown.code, "both screens show the same 6-digit code");
     assert_eq!(v["fingerprint"].as_str().unwrap(), shown.fingerprint);
-    flows::confirm_approval(&mut phone, approval, false).await.unwrap();
+    assert_eq!(shown.roles, Roles::BOTH, "a computer asks to serve and to open sessions by default");
+    flows::confirm_approval(&mut phone, approval, flows::Grant { signer: false, roles: Roles::BOTH }).await.unwrap();
     let v = wait_for(&app, "online", |v| v["state"] == "connected" && v["relay"]["state"] == "online").await;
-    assert_eq!(v["signer"], false, "a computer joins as a member");
+    assert_eq!(v["signer"], false, "approved as a member");
+    assert_eq!((v["server"].as_bool(), v["client"].as_bool()), (Some(true), Some(true)));
     let identity = temp.path().join("state").join("cloud").join("identity.json");
     #[cfg(unix)]
     {
@@ -246,7 +249,7 @@ async fn phone_and_server_through_the_account() {
     // Nothing is added until the person taps Add on the phone.
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(local(&app, "GET", "/api/cloud/status").await.1["state"], "invited");
-    flows::add_invited(&mut phone, invite, &candidate.enrollment_id).await.unwrap();
+    flows::add_invited(&mut phone, invite, &candidate.enrollment_id, flows::Grant { signer: false, roles: Roles::BOTH }).await.unwrap();
     let v = wait_for(&app, "online again", |v| v["state"] == "connected" && v["relay"]["state"] == "online").await;
     assert_eq!(v["fingerprint"].as_str().unwrap(), candidate.fingerprint);
     assert!(identity.exists(), "the new keys are stored");
@@ -269,7 +272,7 @@ async fn phone_and_server_through_the_account() {
         let link = link.to_string();
         async move {
             let mut fp = None;
-            let r = appv3_api::cloud::engine::join_invite(Endpoints::custom(&base, "https://account.openagentd.dev"), reqwest::Client::new(), &link, |e| {
+            let r = appv3_api::cloud::engine::join_invite(Endpoints::custom(&base, "https://account.openagentd.dev"), reqwest::Client::new(), &link, Roles::BOTH, |e| {
                 if let appv3_api::cloud::engine::Event::Invited { fingerprint, .. } = e {
                     fp = Some(fingerprint);
                 }
@@ -284,7 +287,7 @@ async fn phone_and_server_through_the_account() {
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     };
-    flows::add_invited(&mut phone, invite, &candidate.enrollment_id).await.unwrap();
+    flows::add_invited(&mut phone, invite, &candidate.enrollment_id, flows::Grant { signer: false, roles: Roles::BOTH }).await.unwrap();
     let (r, fp) = cli.await.unwrap();
     match r.unwrap() {
         appv3_api::cloud::engine::Outcome::Joined(id) => {

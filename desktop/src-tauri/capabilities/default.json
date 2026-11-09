@@ -56,7 +56,7 @@
     "allow-show-snap-layouts",
     "allow-set-attention-badge",
     "allow-share-url",
-    "allow-confirm-user-presence",
+    "allow-cloud-approval-proof",
     "allow-haptic-alignment",
     "allow-get-tray-usage-summary",
     "allow-tray-action",

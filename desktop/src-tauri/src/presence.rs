@@ -1,11 +1,16 @@
 //! Asks the person at this computer to confirm before the account adds a
-//! device (`tunnel-threats.md`, "Computer signers: the trade-off"): Touch ID
+//! or removes a device (`tunnel-threats.md`, "Computer signers"): Touch ID
 //! or the login password through LocalAuthentication on macOS. Elsewhere,
 //! and on a Mac with neither, the click in the app is the confirmation.
+//! Only then does the app make the proof its server needs for that exact
+//! change (`approval.rs`).
 //!
 //! This is about the person, not about secrecy: the signing key sits in the
 //! user-only identity file, which anything running as the user can read
-//! anyway. What it stops is an approval nobody at the screen meant.
+//! anyway. What it stops is an approval nobody at the screen meant, such as
+//! one an agent's shell command sends to the server.
+
+use crate::approval::{self, Action};
 
 /// Most characters of the reason shown in the system prompt.
 const MAX_REASON_CHARS: usize = 120;
@@ -18,20 +23,40 @@ fn reason_text(reason: &str) -> String {
     reason.chars().take(MAX_REASON_CHARS).collect()
 }
 
-/// True when the person confirmed (or the platform has no such check),
-/// false when they cancelled or failed it.
+/// The `X-Agentd-Approval` proof for `action` (`approve` or `remove`) on
+/// `id`, once the person confirmed (or the platform has no such check);
+/// `None` when they cancelled or failed it.
 #[tauri::command]
-pub async fn confirm_user_presence(
+#[allow(clippy::too_many_arguments)]
+pub async fn cloud_approval_proof(
     window: tauri::WebviewWindow,
+    action: String,
+    id: String,
+    signer: bool,
+    server: bool,
+    client: bool,
     reason: String,
-) -> Result<bool, String> {
+) -> Result<Option<String>, String> {
     if crate::window::is_overlay_window(window.label()) {
         return Err("Only app windows can approve devices.".into());
     }
+    let action = match action.as_str() {
+        "approve" => Action::Approve {
+            signer,
+            server,
+            client,
+        },
+        "remove" => Action::Remove,
+        _ => return Err("Unknown action.".into()),
+    };
+    if !approval::valid_id(&id) {
+        return Err("Malformed request.".into());
+    }
     let reason = reason_text(&reason);
-    tauri::async_runtime::spawn_blocking(move || platform::confirm(&reason))
+    let confirmed = tauri::async_runtime::spawn_blocking(move || platform::confirm(&reason))
         .await
-        .map_err(|e| format!("presence check failed: {e}"))?
+        .map_err(|e| format!("presence check failed: {e}"))??;
+    Ok(confirmed.then(|| approval::proof(action, &id)))
 }
 
 #[cfg(target_os = "macos")]

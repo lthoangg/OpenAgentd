@@ -1,11 +1,11 @@
 # Automatically generated - DO NOT EDIT!
 
 [[permission]]
-identifier = "allow-confirm-user-presence"
-description = "Enables the confirm_user_presence command without any pre-configured scope."
-commands.allow = ["confirm_user_presence"]
+identifier = "allow-cloud-approval-proof"
+description = "Enables the cloud_approval_proof command without any pre-configured scope."
+commands.allow = ["cloud_approval_proof"]
 
 [[permission]]
-identifier = "deny-confirm-user-presence"
-description = "Denies the confirm_user_presence command without any pre-configured scope."
-commands.deny = ["confirm_user_presence"]
+identifier = "deny-cloud-approval-proof"
+description = "Denies the cloud_approval_proof command without any pre-configured scope."
+commands.deny = ["cloud_approval_proof"]

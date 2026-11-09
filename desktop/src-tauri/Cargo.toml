@@ -45,6 +45,10 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 url = "2"
 base64 = "0.23"
 getrandom = "0.4"
+# The approval proof (src/approval.rs): HMAC over SHA-256, key zeroized on
+# drop. Both already in the lock through Tauri's dependencies.
+sha2 = "0.10"
+zeroize = "1"
 
 [dev-dependencies]
 # Enables `tauri::test::mock_app()` used by the native unit-test suite.

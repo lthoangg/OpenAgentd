@@ -1,9 +1,8 @@
-import { describe, it, expect, afterEach, beforeEach, mock, beforeAll } from "bun:test"
+import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import { InputComposer } from "@/components/InputComposer"
 import { MAX_TOTAL_ATTACHMENT_BYTES, splitFilesByBudget } from "@/components/InputComposer.files"
 import { useToastStore } from "@/stores/useToastStore"
-import { prefetchSurfaces } from "@/lib/lazy-surface"
 
 mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
 
@@ -20,11 +19,6 @@ function sizedFile(name: string, size: number): File {
 }
 
 const MB = 1024 * 1024
-
-// The attachment strip loads lazily; load it before the tests render.
-beforeAll(async () => {
-  await prefetchSurfaces()
-})
 
 describe("splitFilesByBudget", () => {
   it("accepts files that fit within the budget", () => {

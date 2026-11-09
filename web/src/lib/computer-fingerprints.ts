@@ -10,7 +10,7 @@
 import { useSyncExternalStore } from 'react'
 
 import { getStoredAccessKey } from '@/api/auth'
-import { isPhoneCloudShell } from '@/api/phone-cloud-core'
+import { isPhoneCloudShell } from '@/api/phone-cloud'
 
 const STORAGE_KEY = 'openagentd.cloud.lanComputers'
 const CHANGED = 'openagentd:lan-computers'

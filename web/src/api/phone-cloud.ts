@@ -4,20 +4,33 @@
  * app shell: every call is a Tauri command (`mobile/src-tauri/src/cloud.rs`).
  * Guest is the default; nothing here may block a guest.
  */
-import {
-  phoneCloudCall as call,
-  type OpenedComputer,
-  type PhoneCloudStatus,
-} from './phone-cloud-core'
+import { getPlatform } from '@/hooks/use-platform'
+import type { AppBackendStatus } from '@/lib/app-backend'
 
-export {
-  getPhoneCloudStatus,
-  isPhoneCloudShell,
-  phoneCloudPushRegister,
-  type OpenedComputer,
-  type PhoneCloudStatus,
-  type PhoneNotice,
-} from './phone-cloud-core'
+export type PhoneNotice =
+  | 'denied'
+  | 'expired'
+  | 'revoked'
+  | 'deleted'
+  | 'join_ended'
+  | 'commit_mismatch'
+  | 'confirm_mismatch'
+  | 'invite_invalid'
+  | 'signed_out'
+  | 'failed'
+
+export type PhoneCloudStatus =
+  /** `supported: false` (Android for now): hide every account control. */
+  | { state: 'guest'; notice: PhoneNotice | null; supported: boolean }
+  | { state: 'signing_in'; user_code: string; url: string; fingerprint: string; expires_in: number }
+  /** A new account: the code is shown once, then groups `check` (1-based) are asked back. */
+  | { state: 'recovery'; code: string; check: [number, number] }
+  | { state: 'joining'; fingerprint: string; code: string | null }
+  /** Claimed an invitation: the other phone adds this one once the person compares these. */
+  | { state: 'invited'; fingerprint: string; kind: string | null }
+  | { state: 'connected'; fingerprint: string; signer: boolean }
+  | { state: 'closing'; fingerprint: string; deletes_at: number | null }
+  | { state: 'unavailable'; fingerprint: string }
 
 export interface DeviceRow {
   device_id: string
@@ -35,6 +48,11 @@ export interface PendingRow {
   expires_at: number | null
   /** The joining device's self-reported kind; absent from older shells. */
   kind?: string | null
+}
+
+export interface OpenedComputer {
+  status: AppBackendStatus
+  via: 'lan' | 'account'
 }
 
 const KIND_LABELS: Record<string, string> = {
@@ -74,6 +92,23 @@ export function pendingLabel(row: PendingRow, now?: number): string {
   return [deviceKindLabel(row.kind), row.fingerprint, row.country, ageText(row.created_at, now)].filter(Boolean).join(' · ')
 }
 
+/** The iOS and Android apps: the only shells that hold a phone account. */
+export function isPhoneCloudShell(): boolean {
+  const { isTauri, os } = getPlatform()
+  return isTauri && (os === 'ios' || os === 'android')
+}
+
+/** Tauri rejects with a bare string; callers want an `Error` with that message. */
+async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  try {
+    return await invoke<T>(command, args)
+  } catch (error) {
+    throw error instanceof Error ? error : new Error(String(error))
+  }
+}
+
+export const getPhoneCloudStatus = () => call<PhoneCloudStatus>('cloud_status')
 export const phoneCloudSignIn = () => call<PhoneCloudStatus>('cloud_sign_in')
 /** Joins with an invitation (scanned or pasted). The link works like a password. */
 export const phoneCloudJoinInvite = (link: string) => call<PhoneCloudStatus>('cloud_join_invite', { link })
@@ -117,3 +152,5 @@ export const phoneCloudRemoveDevice = (deviceId: string) => call<PhoneCloudStatu
 export const phoneCloudSignOut = () => call<PhoneCloudStatus>('cloud_sign_out')
 export const openPhoneCloudComputer = (deviceId: string, lanBaseUrl: string | null) =>
   call<OpenedComputer>('cloud_open_computer', { deviceId, lanBaseUrl })
+/** Silently hands the APNs token to the account; never asks for permission. */
+export const phoneCloudPushRegister = () => call<unknown>('cloud_push_register', { prompt: false })

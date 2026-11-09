@@ -53,7 +53,7 @@ import { GeneralSettingsPage } from '@/components/settings/pages/settings.genera
 import { ConnectionSettingsPage } from '@/components/settings/pages/settings.connection'
 import { AccountSettingsPage } from '@/components/settings/pages/settings.account'
 import { PhoneAccountSettingsPage } from '@/components/settings/pages/settings.account.phone'
-import { isPhoneCloudShell } from '@/api/phone-cloud-core'
+import { isPhoneCloudShell } from '@/api/phone-cloud'
 import { AgentsListPage } from '@/components/settings/pages/settings.agents'
 import { SkillsListPage } from '@/components/settings/pages/settings.skills'
 import { NewSkillPage } from '@/components/settings/pages/settings.skills.new'

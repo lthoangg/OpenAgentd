@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo, type ReactNode } from 'react'
 import { ArrowUp, Loader2, Paperclip, Square } from 'lucide-react'
-import { lazySurface } from '@/lib/lazy-surface'
+import { FilePreviewStrip } from './FilePreviewStrip'
 import { Collapsible } from '@/components/ui/collapsible'
 import { useHasSwapped } from '@/components/ui/swap'
 import { DesignFeedbackStrip } from './DesignFeedbackViews'
@@ -29,9 +29,6 @@ import { ActionSheet } from '@/components/ui/action-sheet'
 import { SessionModeToggle } from './SessionModeToggle'
 import type { ComposerActions } from './composer/PlusMenu'
 import { canPickNatively, pickNatively } from '@/lib/native-pick'
-
-// Shown only once a file is attached: loads on first use or when idle.
-const FilePreviewStrip = lazySurface(() => import('./FilePreviewStrip'), 'FilePreviewStrip')
 
 // Re-export the public type so callers can import ``FileRef`` from this module
 // alongside the component. (The helper ``findActiveMention`` is imported from

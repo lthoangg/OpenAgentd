@@ -40,7 +40,7 @@ export function measureBundle(directory) {
 // Surfaces kept out of the startup path (`web/src/lib/lazy-surface.tsx`):
 // each loads on first use or while the app is idle after it starts. A static
 // import from startup code would quietly put it back; this check fails then.
-export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult', 'RunPicker', 'PlanTabView', 'GoalTabView', 'TerminalFindBar', 'TerminalSubPanel', 'CommitTabView', 'AppBackendDialog', 'TodosPopover', 'SessionMcpServers', 'KeyboardShortcutsSheet', 'ServersScreen', 'DiffTabView', 'FilePreviewStrip']
+export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult', 'RunPicker', 'PlanTabView', 'GoalTabView', 'TerminalFindBar', 'TerminalSubPanel', 'CommitTabView', 'AppBackendDialog', 'TodosPopover', 'SessionMcpServers', 'KeyboardShortcutsSheet', 'ServersScreen', 'DiffTabView']
 
 // The startup path loads everything not behind a dynamic import. History:
 // features had grown it from 2.37 MB / 705 kB gzip (early October) to
@@ -78,10 +78,6 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // v3.49.0 (phone density tokens, the Servers level, the composer swipe and
 // the reading-column review footer) reached 661.5 kB; the Keyboard Shortcuts
 // sheet, opened only with ⌘/, moved behind lazySurface (655.9 kB).
-// v3.50.0 (cross-workspace sessions, session cost, the optional account)
-// reached 684.5 kB; the account's commands beyond its status, and the
-// composer's attachment strip, shown only once a file is attached, moved
-// behind dynamic imports and lazySurface (680.4 kB).
 // The P1 phone work then reached 667.6 kB. On-demand cards (plan review,
 // goal check, questions) render blank for a moment on first use, so they stay
 // eager and the budget rose instead: the experience wins over a few kB.

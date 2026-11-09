@@ -26,8 +26,9 @@ const DEFAULT_LABELS: Record<Exclude<SessionStatus, 'idle'>, string> = {
 }
 
 /**
- * The state in words (DESIGN.md → One name per thing). Every state has
- * words; the mark beside them is only the secondary cue.
+ * The state in words (DESIGN.md → One name per thing), for surfaces without
+ * the mark (the ⌘L switcher) and for a row's tooltip. Sidebar rows show the
+ * mark alone; its label carries the state for assistive tech.
  */
 const STATE_WORDS: Record<Exclude<SessionStatus, 'idle'>, string> = {
   needs_input: 'Needs you',
@@ -36,36 +37,9 @@ const STATE_WORDS: Record<Exclude<SessionStatus, 'idle'>, string> = {
   failed: 'Failed',
 }
 
-const STATE_WORD_TONES: Record<Exclude<SessionStatus, 'idle'>, string> = {
-  needs_input: 'text-(--accent-orange-text)',
-  running: 'text-(--color-text-muted)',
-  unread: 'text-(--color-text-muted)',
-  failed: 'text-(--color-error)',
-}
-
 /** The word for a state; ``null`` for an idle session, which shows its age instead. */
 export function sessionStateWord(status: SessionStatus): string | null {
   return status === 'idle' ? null : STATE_WORDS[status]
-}
-
-/**
- * A session's state as a word, for the row's meta slot in place of its age.
- * Decorative for assistive tech: the status mark carries the same state in
- * its label. ``className`` adds visibility rules for the row. It is a status
- * word, so ``text-subhead``: the same size as ``text-meta`` on desktop, 15px
- * (where an age or a caption is 13px) on a phone.
- */
-export function SessionStateWord({ status, className = '' }: { status: SessionStatus; className?: string }) {
-  if (status === 'idle') return null
-  return (
-    <span
-      data-session-state={status}
-      className={`shrink-0 whitespace-nowrap px-1 text-subhead ${STATE_WORD_TONES[status]} ${className}`}
-      aria-hidden="true"
-    >
-      {STATE_WORDS[status]}
-    </span>
-  )
 }
 
 /**

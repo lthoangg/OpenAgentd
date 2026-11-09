@@ -913,9 +913,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     A session shows in one place only: a pinned one stays in Pinned even
     when it needs you or is running. `[v3.49.0]`
     Needs you counts in words ("2 waiting"). Scheduled is always there, with
-    **+** for a new task. A row whose session is busy, waiting, finished
-    unseen or failed says so in words in place of its time: **Running**,
-    **Needs you**, **Done**, **Failed**.
+    **+** for a new task. Since `[v3.51.0]` a row's state is its leading
+    mark alone: **!** needs you, a spinner running, a dot finished unseen,
+    **✗** failed. The row keeps its time beside it, and the state in words
+    is in its tooltip (before, the row said **Needs you**, **Done** or
+    **Failed** in place of its time).
   - While the workspace list first loads it shows placeholder rows, and if it
     fails, **Retry**; "No workspaces yet" only means there are none.
   - A session's menu (⋯, right-click, long-press) has **Open in new window**
@@ -2253,7 +2255,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     duration, the cost and Copy response.
   - The New session screen names the workspace once and drops the hint
     line and the branch chip.
-  - Sidebar rows show their status or age at rest. A missing folder is a
+  - Sidebar rows show their status mark and age at rest. A missing folder is a
     small ⚠ with a tooltip, and worktrees show as a count.
     Its menu offers **Locate folder…** `[v3.51.0]`: pick where the folder is
     now (a renamed or moved repository) and its sessions, worktrees,

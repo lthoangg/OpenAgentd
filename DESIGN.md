@@ -1961,7 +1961,10 @@ this file wins.
 - **Status in one second.** The session states are the same words on every
   surface: Needs you, Running, Done, Failed, Can't reach, in the sidebar,
   the ⌘L switcher, notifications, the tray, the notch island, the status bar
-  and the banner. Running is the small spinner (a terminal tab running a
+  and the banner. A sidebar session row shows the state as its leading mark
+  alone (! Needs you, spinner Running, dot Done, ✗ Failed, each with an
+  accessible label) and keeps its age; the word is in its tooltip, and a
+  section heading still says Needs you. Running is the small spinner (a terminal tab running a
   command shows it in place of its icon); Signal Blue stays the logo and the
   focus ring (lint `stray-blue`). Needs you is the one sidebar section above
   the workspaces; there is no Running section, and a workspace with a

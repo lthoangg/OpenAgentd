@@ -53,23 +53,36 @@ private func baseQuery(_ item: Int32) -> [String: Any]? {
     return q
 }
 
-/// Replaces an item. Returns an `OSStatus` (0: stored).
+/// Stores an item. Returns an `OSStatus` (0: stored).
+///
+/// `identity` and `box` are updated in place and added only when missing
+/// (`KeychainWrite.upsert`), so a failed write keeps the stored value.
+/// `sign` is written only for brand-new keys (`finish` in
+/// `mobile/src-tauri/src/cloud.rs`, before `identity`): an item already
+/// there belongs to keys being replaced, and updating an item that needs
+/// user presence would ask for Face ID, so that one is deleted and added.
 @_cdecl("openagentd_keychain_set")
 public func openagentdKeychainSet(_ item: Int32, _ value: UnsafePointer<CChar>) -> Int32 {
     guard var q = baseQuery(item) else { return -50 }
-    SecItemDelete(q as CFDictionary)
     let data = Data(String(cString: value).utf8)
     if item == 2 {
         var error: Unmanaged<CFError>?
         guard let access = SecAccessControlCreateWithFlags(
             nil, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .userPresence, &error
         ) else { return -50 }
+        SecItemDelete(q as CFDictionary)
         q[kSecAttrAccessControl as String] = access
-    } else {
-        q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        q[kSecValueData as String] = data
+        return SecItemAdd(q as CFDictionary, nil)
     }
-    q[kSecValueData as String] = data
-    return SecItemAdd(q as CFDictionary, nil)
+    let attributes: [String: Any] = [
+        kSecValueData as String: data,
+        kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+    ]
+    return KeychainWrite.upsert(
+        update: { SecItemUpdate(q as CFDictionary, attributes as CFDictionary) },
+        add: { SecItemAdd(q.merging(attributes) { $1 } as CFDictionary, nil) }
+    )
 }
 
 /// Reads an item into `*out` (free it with `openagentd_keychain_free`).

@@ -24,17 +24,22 @@ final class NotificationService: UNNotificationServiceExtension {
         handler = contentHandler
         let content = (request.content.mutableCopy() as? UNMutableNotificationContent) ?? UNMutableNotificationContent()
         self.content = content
-        if let opened = Self.open(request.content.userInfo), let text = LetterOpener.text(opened.json) {
-            content.title = String(text.title.prefix(120))
-            content.body = String(text.body.prefix(600))
-            if let session = text.session, !session.isEmpty {
-                content.threadIdentifier = session
-                content.userInfo["session"] = session
+        let info = request.content.userInfo
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            // Show Previews off: keep the placeholder (PreviewPolicy.swift).
+            if PreviewPolicy.opensLetter(settings.showPreviewsSetting),
+               let opened = Self.open(info), let text = LetterOpener.text(opened.json) {
+                content.title = String(text.title.prefix(120))
+                content.body = String(text.body.prefix(600))
+                if let session = text.session, !session.isEmpty {
+                    content.threadIdentifier = session
+                    content.userInfo["session"] = session
+                }
+                content.userInfo["kind"] = opened.kind
+                content.userInfo.removeValue(forKey: "l")
             }
-            content.userInfo["kind"] = opened.kind
-            content.userInfo.removeValue(forKey: "l")
+            contentHandler(content)
         }
-        contentHandler(content)
     }
 
     override func serviceExtensionTimeWillExpire() {

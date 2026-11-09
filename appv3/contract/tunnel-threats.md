@@ -217,6 +217,10 @@ connect to that port.
   letter that opens. The public keys it needs (`cloud-push.json` in the App
   Group container) are not secret; the phone's `box` key is a Keychain
   item. A letter that does not open shows the placeholder text.
+- The opened text never shows more than the person's Show Previews setting
+  allows. iOS applies that setting to the text the extension sets (only
+  while unlocked for "When Unlocked", never for "Never"); with "Never" the
+  extension does not open the letter at all and the placeholder stays.
 - Notification text comes only from the sealed JSON, never from the
   push payload's outer fields.
 

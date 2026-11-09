@@ -1,0 +1,3 @@
+# Same house style as appv3, which formats this crate as a path dependency.
+max_width = 180
+use_small_heuristics = "Max"

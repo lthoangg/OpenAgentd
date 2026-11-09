@@ -1,0 +1,51 @@
+[package]
+name = "openagentd-cloud"
+version = "0.0.0"
+description = "OpenAgentd Cloud accounts: the tunnel protocol (appv3/contract/tunnel.md), the device API client, and the relay host and controller"
+authors = ["openagentd contributors"]
+license = "Apache-2.0"
+homepage = "https://openagentd.dev"
+repository = "https://github.com/lthoangg/openagentd"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+
+# Crypto dependencies (reviewed in appv3/contract/tunnel-threats.md):
+# - ed25519-dalek / x25519-dalek (dalek-cryptography, curve25519-dalek 4):
+#   signatures are checked with `verify_strict`; low-order X25519 points are
+#   refused before any exchange.
+# - sha2, hmac, hkdf, aes-gcm (RustCrypto): the primitives the spec names.
+# - snow (Noise_IK_25519_AESGCM_SHA256) on the RustCrypto resolver only:
+#   no `std` feature, so no ring. `use-chacha20poly1305` is enabled only
+#   because snow 0.10 does not compile its AES-GCM cipher without it; the
+#   protocol never selects ChaChaPoly.
+# - data-encoding: strict base64url and base32 (canonical trailing bits).
+# - subtle: constant-time comparison of MACs and commits.
+# - zeroize: private seeds are wiped on drop.
+[dependencies]
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+data-encoding = "2.6"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+ed25519-dalek = { version = "2.2", default-features = false, features = ["std", "zeroize"] }
+getrandom = "0.2"
+hkdf = "0.12"
+hmac = "0.12"
+# TLS and platform roots are chosen by each consumer's own reqwest
+# dependency (Cargo unifies features), as in native/shell-core.
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+snow = { version = "0.10", default-features = false, features = ["default-resolver", "use-aes-gcm", "use-chacha20poly1305", "use-sha2", "use-curve25519", "use-getrandom"] }
+subtle = "2.6"
+thiserror = "2"
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+# WebSocket framing only: the upgrade and TLS go through reqwest.
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
+x25519-dalek = { version = "2", default-features = false, features = ["static_secrets", "zeroize"] }
+zeroize = { version = "1.8", features = ["derive"] }
+
+[dev-dependencies]
+axum = { version = "0.8", features = ["ws"] }
+proptest = "1"
+tokio = { version = "1", features = ["full"] }

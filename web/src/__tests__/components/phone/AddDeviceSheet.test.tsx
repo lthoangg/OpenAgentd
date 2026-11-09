@@ -6,6 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { StrictMode } from 'react'
 
 const realPlatform = await import('@/hooks/use-platform')
 const phone = { isTauri: true, os: 'ios', isMacOverlay: false, isFullscreen: false }
@@ -66,8 +67,10 @@ beforeEach(() => {
   }
 })
 
-afterEach(() => {
+afterEach(async () => {
   cleanup()
+  // Leaving a sheet cancels its invitation a tick later; let that land here.
+  await new Promise((resolve) => setTimeout(resolve, 5))
   queryClient.clear()
 })
 
@@ -117,6 +120,17 @@ describe('AddDeviceSheet', () => {
     expect(screen.queryByTestId('invite-candidate')).toBeNull()
   })
 
+  it('shows why "Not this one" failed', async () => {
+    poll = { state: 'candidate', candidate: CANDIDATE }
+    handlers.cloud_approve_reject = () => { throw new Error('No connection to OpenAgentd. Check your network.') }
+    render(<AddDeviceSheet onClose={() => {}} />)
+    await screen.findByTestId('invite-candidate')
+    poll = { state: 'waiting' }
+    fireEvent.click(screen.getByRole('button', { name: 'Not this one' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('No connection to OpenAgentd.')
+    expect(ran('cloud_invite_add')).toHaveLength(0)
+  })
+
   it('says someone else has the invitation and offers a new one', async () => {
     poll = { state: 'compromised' }
     render(<AddDeviceSheet onClose={() => {}} />)
@@ -137,6 +151,33 @@ describe('AddDeviceSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(closed).toBe(true)
     await waitFor(() => expect(ran('cloud_invite_cancel')).toHaveLength(1))
+  })
+
+  it('cancels the invitation when the sheet goes away without closing', async () => {
+    const view = render(<AddDeviceSheet onClose={() => {}} />)
+    await screen.findByRole('img', { name: 'Invitation QR code' })
+    view.unmount()
+    await waitFor(() => expect(ran('cloud_invite_cancel')).toHaveLength(1))
+  })
+
+  it("keeps the invitation through strict mode's remount", async () => {
+    render(<StrictMode><AddDeviceSheet onClose={() => {}} /></StrictMode>)
+    await screen.findByRole('img', { name: 'Invitation QR code' })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(ran('cloud_invite_start')).toHaveLength(1)
+    expect(ran('cloud_invite_cancel')).toHaveLength(0)
+  })
+
+  it('cancels an invitation that arrives after the sheet went away', async () => {
+    let release: (v: unknown) => void = () => {}
+    handlers.cloud_invite_start = () => new Promise((resolve) => { release = resolve })
+    const view = render(<AddDeviceSheet onClose={() => {}} />)
+    await waitFor(() => expect(ran('cloud_invite_start')).toHaveLength(1))
+    view.unmount()
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    release({ link: LINK, expires_at: Date.now() + 600_000 })
+    // Once when it left, and again for the invitation that came after.
+    await waitFor(() => expect(ran('cloud_invite_cancel')).toHaveLength(2))
   })
 
   it('cancels the invitation when the app goes to the background', async () => {

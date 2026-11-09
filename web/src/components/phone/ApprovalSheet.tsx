@@ -5,7 +5,9 @@
  * the other device to show its code. Only with that code on screen can the
  * person compare it with the other screen: "Codes match" stays disabled
  * until then. Confirming asks for Face ID natively; "Don't match" rejects the
- * request and says what that may mean.
+ * request and says what that may mean. Closing the sheet any other way
+ * without confirming rejects the request too: an approval is never left
+ * half open.
  */
 import { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
@@ -25,6 +27,8 @@ export function ApprovalSheet({ row, onClose }: { row: PendingRow; onClose: () =
   const [approver, setApprover] = useState(false)
   const [rejected, setRejected] = useState(false)
   const started = useRef(false)
+  /** Confirmed or rejected: closing then changes nothing. */
+  const settled = useRef(false)
   const { mutate: startApproval } = begin
 
   // Once per sheet: a strict-mode remount must not start a second approval.
@@ -38,8 +42,35 @@ export function ApprovalSheet({ row, onClose }: { row: PendingRow; onClose: () =
   const busy = confirm.isPending || reject.isPending
   const failure = begin.error ?? confirm.error ?? reject.error
 
+  const close = () => {
+    // A confirm in flight (Face ID) decides by itself; do not race it.
+    if (!settled.current && !busy) {
+      settled.current = true
+      reject.mutate(row.enrollment_id)
+    }
+    onClose()
+  }
+
+  const dontMatch = () => {
+    reject.mutate(row.enrollment_id, {
+      onSuccess: () => {
+        settled.current = true
+        setRejected(true)
+      },
+    })
+  }
+
+  const codesMatch = () => {
+    confirm.mutate({ enrollmentId: row.enrollment_id, approver }, {
+      onSuccess: () => {
+        settled.current = true
+        onClose()
+      },
+    })
+  }
+
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+    <Dialog open onOpenChange={(open) => { if (!open) close() }}>
       <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle>Add this computer?</DialogTitle>
@@ -76,18 +107,10 @@ export function ApprovalSheet({ row, onClose }: { row: PendingRow; onClose: () =
             <Button variant="primary" onClick={onClose}>Done</Button>
           ) : (
             <>
-              <Button
-                variant="default"
-                disabled={begin.isPending || busy}
-                onClick={() => reject.mutate(row.enrollment_id, { onSuccess: () => setRejected(true) })}
-              >
+              <Button variant="default" disabled={begin.isPending || busy} onClick={dontMatch}>
                 Don&apos;t match
               </Button>
-              <Button
-                variant="primary"
-                disabled={!code || busy}
-                onClick={() => confirm.mutate({ enrollmentId: row.enrollment_id, approver }, { onSuccess: onClose })}
-              >
+              <Button variant="primary" disabled={!code || busy} onClick={codesMatch}>
                 Codes match
               </Button>
             </>

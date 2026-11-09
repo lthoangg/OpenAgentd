@@ -441,6 +441,22 @@ describe('approval sheet', () => {
     fireEvent.click(await within(sheet).findByRole('button', { name: 'Codes match' }))
     await waitFor(() => expect(ran('cloud_approve_confirm')).toHaveLength(1))
     expect(ran('cloud_approve_confirm')[0].args).toEqual({ enrollmentId: 'enr-1', approver: false })
+    // Confirmed: the sheet closes without rejecting anything.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(ran('cloud_approve_reject')).toHaveLength(0)
+  })
+
+  it('rejects the request when the sheet is closed without confirming', async () => {
+    const sheet = await review({
+      cloud_approve_begin: () => '418207',
+      cloud_approve_reject: () => null,
+    })
+    await within(sheet).findByText('418 207')
+    fireEvent.keyDown(sheet, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await waitFor(() => expect(ran('cloud_approve_reject')).toHaveLength(1))
+    expect(ran('cloud_approve_reject')[0].args).toEqual({ enrollmentId: 'enr-1' })
+    expect(ran('cloud_approve_confirm')).toHaveLength(0)
   })
 
   it("rejects on Don't match and says someone may be trying to join", async () => {
@@ -453,6 +469,10 @@ describe('approval sheet', () => {
     expect(await screen.findByText("Request cancelled. If you didn't start it, someone may be trying to join your account.")).toBeTruthy()
     expect(ran('cloud_approve_reject')[0].args).toEqual({ enrollmentId: 'enr-1' })
     expect(ran('cloud_approve_confirm')).toHaveLength(0)
+    // Done after a rejection does not reject again.
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(ran('cloud_approve_reject')).toHaveLength(1)
   })
 
   it('shows why an approval could not start', async () => {

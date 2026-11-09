@@ -4,8 +4,9 @@
  * fallback (spec section 4.3).
  *
  * The invitation is a secret until it is used, so:
- * - the QR code exists only while this sheet is open: closing it, or the
- *   app going to the background, cancels the invitation;
+ * - the QR code exists only while this sheet is open: closing it, leaving
+ *   it (unmount), or the app going to the background cancels the
+ *   invitation, unless the device was added;
  * - the link is shown only after a step that says it works like a password;
  * - a device whose proof checks out is shown with its kind and fingerprint,
  *   and added only when the person taps Add (Face ID, natively);
@@ -46,6 +47,17 @@ export function AddDeviceSheet({ onClose }: { onClose: () => void }) {
   const add = usePhoneInviteAdd()
   const added = useRef(false)
   const started = useRef(false)
+  /** Cancelled already (closed, or left for good). */
+  const cancelled = useRef(false)
+  /** The sheet is gone: an invitation that arrives late is cancelled. */
+  const gone = useRef(false)
+  const leaving = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const cancelInvite = useCallback(() => {
+    if (added.current || cancelled.current) return
+    cancelled.current = true
+    void phoneCloudInviteCancel().catch(() => undefined)
+  }, [])
 
   const start = useCallback(() => {
     setInvite(null)
@@ -53,8 +65,14 @@ export function AddDeviceSheet({ onClose }: { onClose: () => void }) {
     setOutcome(null)
     setError(null)
     setStep('qr')
-    phoneCloudInviteStart().then(setInvite, (e: Error) => setError(e.message))
-  }, [])
+    cancelled.current = false
+    phoneCloudInviteStart().then((v) => {
+      if (gone.current) {
+        cancelled.current = false
+        cancelInvite()
+      } else setInvite(v)
+    }, (e: Error) => setError(e.message))
+  }, [cancelInvite])
 
   // Once per sheet: a strict-mode remount must not open a second invitation.
   useEffect(() => {
@@ -62,6 +80,21 @@ export function AddDeviceSheet({ onClose }: { onClose: () => void }) {
     started.current = true
     start()
   }, [start])
+
+  // Leaving the sheet cancels the invitation. The cancel waits a tick, so
+  // strict mode's unmount-and-remount (which keeps the sheet) clears it
+  // instead of cancelling the fresh invitation.
+  useEffect(() => {
+    if (leaving.current) clearTimeout(leaving.current)
+    leaving.current = null
+    gone.current = false
+    return () => {
+      leaving.current = setTimeout(() => {
+        gone.current = true
+        cancelInvite()
+      }, 0)
+    }
+  }, [cancelInvite])
 
   // Look for a claim while an invitation is open.
   useEffect(() => {
@@ -85,9 +118,9 @@ export function AddDeviceSheet({ onClose }: { onClose: () => void }) {
   }, [invite, outcome, add.isPending])
 
   const close = useCallback(() => {
-    if (!added.current) void phoneCloudInviteCancel().catch(() => undefined)
+    cancelInvite()
     onClose()
-  }, [onClose])
+  }, [onClose, cancelInvite])
 
   // Out of sight is out of use: the code must not outlive the screen.
   useEffect(() => {
@@ -106,7 +139,8 @@ export function AddDeviceSheet({ onClose }: { onClose: () => void }) {
 
   const notThisOne = (c: InviteCandidate) => {
     setCandidate(null)
-    void phoneCloudApproveReject(c.enrollment_id).catch(() => undefined)
+    setError(null)
+    void phoneCloudApproveReject(c.enrollment_id).catch((e: Error) => setError(e.message))
   }
 
   const copyLink = (link: string) => {

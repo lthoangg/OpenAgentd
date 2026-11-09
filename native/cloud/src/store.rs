@@ -125,6 +125,9 @@ pub fn save(store: &dyn SecretStore, identity: &Identity) -> io::Result<()> {
 
 /// A file only the user can read and write (mode 600 on Unix). Written by
 /// replacing it atomically, so a crash never leaves half an identity.
+/// Windows sets no ACL of its own: the file inherits its folder's, which
+/// under the user's profile admits the user, SYSTEM and Administrators
+/// (`appv3/contract/tunnel-threats.md`, Storage).
 pub struct FileStore {
     path: PathBuf,
 }

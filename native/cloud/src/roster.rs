@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::encoding::{b64, from_b64, from_b64_array};
-use crate::keys::{self, device_id, Ed25519};
+use crate::keys::{self, device_id, Ed25519, Roles};
 use crate::lines;
 use crate::{Error, Result};
 
@@ -20,6 +20,8 @@ pub const RECOVERY: &str = "recovery";
 pub const MAX_ENVELOPE: usize = 64 * 1024;
 /// Most devices in a roster.
 pub const MAX_DEVICES: usize = 10;
+/// The body's `v`. The envelope's stays 1.
+pub const BODY_VERSION: u8 = 2;
 
 /// Which rule of section 3.2 a roster breaks (the vectors use these names).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,7 +61,8 @@ impl fmt::Display for Rule {
     }
 }
 
-/// One device in a roster. Keys are base64url as written.
+/// One device in a roster. Keys are base64url as written. Field order is
+/// the order a writer uses (spec section 3.1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Device {
     pub id: String,
@@ -68,17 +71,34 @@ pub struct Device {
     pub r#box: String,
     pub sign: String,
     pub signer: bool,
+    /// Runs a host: other devices may open sessions to it.
+    pub server: bool,
+    /// May open sessions to hosts.
+    pub client: bool,
 }
 
 impl Device {
     /// The entry for a device with these keys.
-    pub fn of(keys: &keys::DeviceKeys, signer: bool) -> Self {
-        Device { id: keys.id(), auth: b64(&keys.auth.public()), r#box: b64(&keys.r#box.public()), sign: b64(&keys.sign.public()), signer }
+    pub fn of(keys: &keys::DeviceKeys, signer: bool, roles: Roles) -> Self {
+        Device {
+            id: keys.id(),
+            auth: b64(&keys.auth.public()),
+            r#box: b64(&keys.r#box.public()),
+            sign: b64(&keys.sign.public()),
+            signer,
+            server: roles.server,
+            client: roles.client,
+        }
     }
 
-    /// The entry for a device that enrolled with `auth_pub` and `pubs`.
-    pub fn enrolled(auth_pub: &[u8; 32], pubs: &keys::Pubs, signer: bool) -> Self {
-        Device { id: device_id(auth_pub), auth: b64(auth_pub), r#box: b64(&pubs.r#box), sign: b64(&pubs.sign), signer }
+    /// The entry for a device that enrolled with `auth_pub` and `pubs`,
+    /// with `roles` (the ones `pubs` asked for, or fewer).
+    pub fn enrolled(auth_pub: &[u8; 32], pubs: &keys::Pubs, signer: bool, roles: Roles) -> Self {
+        Device { id: device_id(auth_pub), auth: b64(auth_pub), r#box: b64(&pubs.r#box), sign: b64(&pubs.sign), signer, server: roles.server, client: roles.client }
+    }
+
+    pub fn roles(&self) -> Roles {
+        Roles { server: self.server, client: self.client }
     }
 
     pub fn box_key(&self) -> [u8; 32] {
@@ -106,6 +126,17 @@ impl Body {
         self.devices.iter().find(|d| d.id == id)
     }
 
+    /// The device with `id` if it may open sessions (`client: true`). A
+    /// host accepts a relay session only from such a device (spec 3.4).
+    pub fn client(&self, id: &str) -> Option<&Device> {
+        self.device(id).filter(|d| d.client)
+    }
+
+    /// The devices other devices may open sessions to (`server: true`).
+    pub fn servers(&self) -> impl Iterator<Item = &Device> {
+        self.devices.iter().filter(|d| d.server)
+    }
+
     /// The signer with `id`, if it is one.
     pub fn signer(&self, id: &str) -> Option<&Device> {
         self.device(id).filter(|d| d.signer)
@@ -113,7 +144,7 @@ impl Body {
 
     /// The genesis body: `first` alone, a signer.
     pub fn genesis(account_id: &str, recovery_pub: &[u8; 32], first: Device) -> Self {
-        Body { v: 1, account_id: account_id.to_string(), version: 1, prev: None, recovery_pub: b64(recovery_pub), devices: vec![Device { signer: true, ..first }] }
+        Body { v: BODY_VERSION, account_id: account_id.to_string(), version: 1, prev: None, recovery_pub: b64(recovery_pub), devices: vec![Device { signer: true, ..first }] }
     }
 }
 
@@ -144,7 +175,7 @@ impl Roster {
     /// `prev` linked, one version up.
     pub fn next_body(&self, devices: Vec<Device>) -> Body {
         Body {
-            v: 1,
+            v: BODY_VERSION,
             account_id: self.body.account_id.clone(),
             version: self.body.version + 1,
             prev: Some(self.hash.clone()),
@@ -210,7 +241,7 @@ fn parse_inner(blob: &str) -> Option<Roster> {
     let body_bytes = from_b64(env["body"].as_str()?).ok()?;
     let body: Value = serde_json::from_slice(&body_bytes).ok()?;
     let b = exact_keys(&body, &["v", "account_id", "version", "prev", "recovery_pub", "devices"])?;
-    if b["v"].as_u64() != Some(1) {
+    if b["v"].as_u64() != Some(BODY_VERSION as u64) || !b["v"].is_u64() {
         return None;
     }
     let account_id = b["account_id"].as_str()?.to_string();
@@ -222,17 +253,19 @@ fn parse_inner(blob: &str) -> Option<Roster> {
     let recovery_pub = b64_len(&b["recovery_pub"], 32)?;
     let mut devices = Vec::new();
     for d in b["devices"].as_array()? {
-        let d = exact_keys(d, &["id", "auth", "box", "sign", "signer"])?;
+        let d = exact_keys(d, &["id", "auth", "box", "sign", "signer", "server", "client"])?;
         devices.push(Device {
             id: d["id"].as_str()?.to_string(),
             auth: b64_len(&d["auth"], 32)?,
             r#box: b64_len(&d["box"], 32)?,
             sign: b64_len(&d["sign"], 32)?,
             signer: d["signer"].as_bool()?,
+            server: d["server"].as_bool()?,
+            client: d["client"].as_bool()?,
         });
     }
     let hash = b64(&sha256(&envelope));
-    Some(Roster { blob: blob.to_string(), envelope, hash, by, body: Body { v: 1, account_id, version, prev, recovery_pub, devices }, sig, body_bytes })
+    Some(Roster { blob: blob.to_string(), envelope, hash, by, body: Body { v: BODY_VERSION, account_id, version, prev, recovery_pub, devices }, sig, body_bytes })
 }
 
 fn devices_valid(body: &Body) -> bool {
@@ -246,6 +279,10 @@ fn devices_valid(body: &Body) -> bool {
         }
         // A low-order box key would make the 6-digit code and Noise trivial.
         if keys::is_low_order(&d.box_key()) {
+            return false;
+        }
+        // Rule 4: every device serves, opens sessions, or both.
+        if !d.roles().is_valid() {
             return false;
         }
     }
@@ -381,15 +418,15 @@ mod tests {
         let phone = device(10);
         let server = device(20);
         let recovery = Ed25519::from_seed(Seed::from_bytes([99; 32]));
-        let g = sign(&Body::genesis("acct-aaaaaaaaaaaaaaaa", &recovery.public(), Device::of(&phone, true)), &phone.id(), &phone.sign);
+        let g = sign(&Body::genesis("acct-aaaaaaaaaaaaaaaa", &recovery.public(), Device::of(&phone, true, Roles::CLIENT)), &phone.id(), &phone.sign);
         let g = verify(&g.blob, "acct-aaaaaaaaaaaaaaaa", None, Chain::Linked).unwrap();
-        let add = sign(&g.next_body(vec![Device::of(&phone, true), Device::of(&server, false)]), &phone.id(), &phone.sign);
+        let add = sign(&g.next_body(vec![Device::of(&phone, true, Roles::CLIENT), Device::of(&server, false, Roles::SERVER)]), &phone.id(), &phone.sign);
         let add = verify(&add.blob, "acct-aaaaaaaaaaaaaaaa", Some(&g), Chain::Linked).unwrap();
         assert_eq!(diff(&g.body, &add.body).added, vec![server.id()]);
         // The member cannot sign the next roster.
-        let bad = sign(&add.next_body(vec![Device::of(&server, true)]), &server.id(), &server.sign);
+        let bad = sign(&add.next_body(vec![Device::of(&server, true, Roles::SERVER)]), &server.id(), &server.sign);
         assert_eq!(verify(&bad.blob, "acct-aaaaaaaaaaaaaaaa", Some(&add), Chain::Linked), Err(Error::Roster(Rule::UntrustedSigner)));
-        let rm = sign(&add.next_body(vec![Device::of(&phone, true)]), &phone.id(), &phone.sign);
+        let rm = sign(&add.next_body(vec![Device::of(&phone, true, Roles::CLIENT)]), &phone.id(), &phone.sign);
         let rm = verify(&rm.blob, "acct-aaaaaaaaaaaaaaaa", Some(&add), Chain::Linked).unwrap();
         assert_eq!(diff(&add.body, &rm.body).removed, vec![server.id()]);
     }

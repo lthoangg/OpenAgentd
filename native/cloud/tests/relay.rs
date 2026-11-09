@@ -11,7 +11,7 @@ use openagentd_cloud::account_state::AccountProblem;
 use openagentd_cloud::api::Cloud;
 use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{self, FlowError, GenesisDraft, Member, Pace};
-use openagentd_cloud::keys::DeviceKeys;
+use openagentd_cloud::keys::{DeviceKeys, Roles};
 use openagentd_cloud::mux::Stream;
 use openagentd_cloud::relay::{self, HostHandler, Join, RelayError, Sessions};
 use openagentd_cloud::roster::Roster;
@@ -30,20 +30,27 @@ async fn sign_in(fake: &Fake, c: &Cloud, account: &str) -> flows::Session {
     flows::wait_for_session(c, &code).await.unwrap()
 }
 
-/// A phone (signer) and a server (member) in one account.
+/// A phone (signer, client) and a server (member, server only) in one account.
 async fn account(fake: &Fake, base: &str) -> (Member, Member) {
+    account_with(fake, base, Roles::CLIENT).await
+}
+
+/// Like [`account`], with the first device's roles chosen.
+async fn account_with(fake: &Fake, base: &str, first: Roles) -> (Member, Member) {
     let account = fake.new_account();
     let mut phone = Member::new(cloud(base), None);
+    phone.cloud.roles = first;
     let s = sign_in(fake, &phone.cloud, &account).await;
     flows::genesis(&mut phone, &s, GenesisDraft::new()).await.unwrap();
     let mut server = Member::new(cloud(base), None);
+    server.cloud.roles = Roles::SERVER;
     let s = sign_in(fake, &server.cloud, &account).await;
     let req = flows::request_to_join(&mut server, &s).await.unwrap();
     let p = phone.cloud.pending_list().await.unwrap().remove(0);
     let mut a = flows::begin_approval(&mut phone, p).await.unwrap();
     let jc = flows::await_signer(&mut server, &req, FAST).await.unwrap();
     flows::await_reveal(&mut phone, &mut a, FAST).await.unwrap();
-    let (r1, r2) = tokio::join!(flows::confirm_approval(&mut phone, a, false), flows::await_added(&mut server, jc, &req, FAST));
+    let (r1, r2) = tokio::join!(flows::confirm_approval(&mut phone, a, flows::Grant { signer: false, roles: Roles::SERVER }), flows::await_added(&mut server, jc, &req, FAST));
     r1.unwrap();
     r2.unwrap();
     (phone, server)
@@ -61,7 +68,7 @@ impl HostHandler for Echo {
         if id == self.me {
             return None;
         }
-        self.roster.lock().unwrap().body.device(id).map(|d| d.box_key())
+        self.roster.lock().unwrap().body.client(id).map(|d| d.box_key())
     }
     fn serve(&self, mut stream: Stream, _from: String) {
         tokio::spawn(async move {
@@ -104,6 +111,20 @@ async fn a_controller_reaches_the_host_through_the_relay() {
         assert_eq!(back, body.to_ascii_uppercase().into_bytes());
     }
     assert_eq!(sessions.count(), 1);
+}
+
+#[tokio::test]
+async fn a_server_only_device_cannot_open_sessions() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    // The first device is a computer that only serves.
+    let (computer, server) = account_with(&fake, &base, Roles::SERVER).await;
+    assert!(!computer.is_client());
+    let (_h, sessions, _stop) = start_host(&server).await;
+    let host_box = computer.box_of(&server.cloud.device_id()).unwrap();
+    let r = relay::connect(&computer.cloud, &relay::http1_client(), &server.cloud.device_id(), &host_box, Join::default()).await;
+    assert!(matches!(r, Err(RelayError::Handshake) | Err(RelayError::Closed(4002))), "{:?}", r.err());
+    assert_eq!(sessions.count(), 0);
 }
 
 #[tokio::test]
@@ -199,7 +220,7 @@ impl HostHandler for Chatty {
         if id == self.me {
             return None;
         }
-        self.roster.lock().unwrap().body.device(id).map(|d| d.box_key())
+        self.roster.lock().unwrap().body.client(id).map(|d| d.box_key())
     }
     fn serve(&self, mut stream: Stream, _from: String) {
         let n = self.n;

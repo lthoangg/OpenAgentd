@@ -10,7 +10,7 @@ use openagentd_cloud::account_state::AccountProblem;
 use openagentd_cloud::api::Cloud;
 use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{self, FlowError, GenesisDraft, Member, Pace};
-use openagentd_cloud::keys::DeviceKeys;
+use openagentd_cloud::keys::{DeviceKeys, Roles};
 use openagentd_cloud::roster::{self, Body, Device};
 use openagentd_cloud::{letter, recovery};
 use serde_json::json;
@@ -34,7 +34,8 @@ async fn sign_in(fake: &Fake, c: &Cloud, account: &str) -> flows::Session {
 /// A phone that created `account`.
 async fn phone_with_account(fake: &Fake, base: &str) -> (Member, String) {
     let account = fake.new_account();
-    let phone = cloud(base);
+    let mut phone = cloud(base);
+    phone.roles = Roles::CLIENT;
     let session = sign_in(fake, &phone, &account).await;
     let mut member = Member::new(phone, None);
     // An empty account: joining is refused and the session stays unspent.
@@ -46,12 +47,14 @@ async fn phone_with_account(fake: &Fake, base: &str) -> (Member, String) {
     let r = flows::genesis(&mut member, &session, draft).await.unwrap();
     assert_eq!(r.version(), 1);
     assert!(member.is_signer());
+    assert_eq!(member.me().unwrap().roles(), Roles::CLIENT, "genesis keeps the roles it chose");
     (member, account)
 }
 
 /// A server that joined through the phone; returns both codes it saw.
 async fn join(fake: &Fake, base: &str, phone: &mut Member, account: &str) -> Member {
-    let server = cloud(base);
+    let mut server = cloud(base);
+    server.roles = Roles::SERVER;
     let session = sign_in(fake, &server, account).await;
     let mut server = Member::new(server, None);
     let req = flows::request_to_join(&mut server, &session).await.unwrap();
@@ -62,10 +65,111 @@ async fn join(fake: &Fake, base: &str, phone: &mut Member, account: &str) -> Mem
     let shown = flows::await_reveal(phone, &mut approval, FAST).await.unwrap();
     assert_eq!(shown.code, join_code.code, "both screens show the same code");
     assert_eq!(shown.fingerprint, server.cloud.keys.fingerprint());
-    let (added, ours) = tokio::join!(flows::confirm_approval(phone, approval, false), flows::await_added(&mut server, join_code, &req, FAST));
+    assert_eq!(shown.roles, Roles::SERVER, "the approver sees the roles it asked for");
+    let grant = flows::Grant { signer: false, roles: Roles::SERVER };
+    let (added, ours) = tokio::join!(flows::confirm_approval(phone, approval, grant), flows::await_added(&mut server, join_code, &req, FAST));
     assert_eq!(added.unwrap().version(), ours.unwrap().version());
     assert!(!server.is_signer());
+    assert!(server.is_server() && !server.is_client());
     server
+}
+
+/// Signs `c` in and takes it as far as both codes, approved by `signer`.
+async fn ask(fake: &Fake, signer: &mut Member, c: Cloud, account: &str) -> (Member, flows::JoinRequest, flows::JoinCode, flows::Approval) {
+    let session = sign_in(fake, &c, account).await;
+    let mut n = Member::new(c, None);
+    let req = flows::request_to_join(&mut n, &session).await.unwrap();
+    let pending = signer.cloud.pending_list().await.unwrap().into_iter().find(|p| p.enrollment_id == req.enrollment_id).unwrap();
+    let mut approval = flows::begin_approval(signer, pending).await.unwrap();
+    let jc = flows::await_signer(&mut n, &req, FAST).await.unwrap();
+    let shown = flows::await_reveal(signer, &mut approval, FAST).await.unwrap();
+    assert_eq!(shown.code, jc.code);
+    (n, req, jc, approval)
+}
+
+#[tokio::test]
+async fn a_computer_signs_in_first_and_approves_a_phone() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let account = fake.new_account();
+    let mut mac = cloud(&base);
+    mac.roles = Roles::BOTH;
+    let session = sign_in(&fake, &mac, &account).await;
+    let mut mac = Member::new(mac, None);
+    assert!(matches!(flows::request_to_join(&mut mac, &session).await, Err(FlowError::EmptyAccount)));
+    flows::genesis(&mut mac, &session, GenesisDraft::new()).await.unwrap();
+    assert!(mac.is_signer() && mac.is_server() && mac.is_client());
+    let mut phone = cloud(&base);
+    phone.roles = Roles::CLIENT;
+    let (mut phone, req, jc, approval) = ask(&fake, &mut mac, phone, &account).await;
+    assert_eq!(approval.requested(), Roles::CLIENT);
+    let grant = flows::Grant { signer: true, roles: Roles::CLIENT };
+    let (a, b) = tokio::join!(flows::confirm_approval(&mut mac, approval, grant), flows::await_added(&mut phone, jc, &req, FAST));
+    assert_eq!(a.unwrap().blob, b.unwrap().blob);
+    assert!(phone.is_signer() && phone.is_client() && !phone.is_server());
+    // The Mac hosts sessions for the phone; the phone is no host.
+    assert_eq!(mac.controller_box(&phone.cloud.device_id()), Some(phone.cloud.keys.r#box.public()));
+    let hosts: Vec<_> = phone.roster.as_ref().unwrap().body.servers().map(|d| d.id.clone()).collect();
+    assert_eq!(hosts, vec![mac.cloud.device_id()]);
+}
+
+#[tokio::test]
+async fn the_approver_cannot_add_a_role() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, account) = phone_with_account(&fake, &base).await;
+    for roles in [Roles::BOTH, Roles::CLIENT, Roles { server: false, client: false }] {
+        let mut box_ = cloud(&base);
+        box_.roles = Roles::SERVER;
+        let (_n, _req, _jc, approval) = ask(&fake, &mut phone, box_, &account).await;
+        let r = flows::confirm_approval(&mut phone, approval, flows::Grant { signer: false, roles }).await;
+        assert!(matches!(r, Err(FlowError::Roles)), "{roles:?}: {r:?}");
+    }
+    assert_eq!(fake.account(&account).version, 1, "nothing was written");
+    // A signer that writes the roster itself is refused by the cloud too.
+    let mut box_ = cloud(&base);
+    box_.roles = Roles::SERVER;
+    let (n, _req, _jc, _approval) = ask(&fake, &mut phone, box_, &account).await;
+    let mut devices = phone.roster.as_ref().unwrap().body.devices.clone();
+    devices.push(Device::of(&n.cloud.keys, false, Roles::BOTH));
+    match phone.write(devices).await {
+        Err(FlowError::Api(e)) => assert!(e.is("invalid_roster"), "{e:?}"),
+        other => panic!("expected invalid_roster, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn the_approver_may_turn_a_role_off() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, account) = phone_with_account(&fake, &base).await;
+    let mut mac = cloud(&base);
+    mac.roles = Roles::BOTH;
+    let (mut mac, req, jc, approval) = ask(&fake, &mut phone, mac, &account).await;
+    let grant = flows::Grant { signer: true, roles: Roles::SERVER };
+    let (a, b) = tokio::join!(flows::confirm_approval(&mut phone, approval, grant), flows::await_added(&mut mac, jc, &req, FAST));
+    a.unwrap();
+    b.unwrap();
+    assert!(mac.is_server() && !mac.is_client() && mac.is_signer());
+}
+
+#[tokio::test]
+async fn a_cloud_that_raises_the_requested_roles_is_caught_by_the_commitment() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, account) = phone_with_account(&fake, &base).await;
+    let mut server = cloud(&base);
+    server.roles = Roles::SERVER;
+    let session = sign_in(&fake, &server, &account).await;
+    let mut server = Member::new(server, None);
+    let req = flows::request_to_join(&mut server, &session).await.unwrap();
+    fake.0.lock().unwrap().tamper_pending = Some(fake_cloud::tamper_raise_roles);
+    let pending = phone.cloud.pending_list().await.unwrap();
+    let mut approval = flows::begin_approval(&mut phone, pending[0].clone()).await.unwrap();
+    assert_eq!(approval.requested(), Roles::BOTH, "the tampered request");
+    let _ = flows::await_signer(&mut server, &req, FAST).await.unwrap();
+    let result = flows::await_reveal(&mut phone, &mut approval, FAST).await;
+    assert!(matches!(result, Err(FlowError::CommitMismatch)), "{result:?}");
 }
 
 #[tokio::test]
@@ -203,7 +307,7 @@ async fn a_forged_roster_is_refused() {
     // The cloud adds its own device, signed by a key the roster does not trust.
     let intruder = DeviceKeys::generate();
     let known = phone.roster.clone().unwrap();
-    let forged = roster::sign(&known.next_body(vec![Device::of(&phone.cloud.keys, true), Device::of(&intruder, true)]), &intruder.id(), &intruder.sign);
+    let forged = roster::sign(&known.next_body(vec![Device::of(&phone.cloud.keys, true, Roles::CLIENT), Device::of(&intruder, true, Roles::BOTH)]), &intruder.id(), &intruder.sign);
     fake.force_roster(&account, forged.blob, 2);
     assert!(matches!(phone.sync().await, Err(FlowError::Roster(roster::Rule::UntrustedSigner))));
     assert_eq!(phone.roster.as_ref().unwrap().version(), 1, "K is unchanged");

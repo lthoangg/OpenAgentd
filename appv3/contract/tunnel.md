@@ -523,8 +523,7 @@ outputs:
 | `device_id` | `auth` public key to device id and fingerprint |
 | `recovery_code` | Seed to recovery code and back |
 | `pubs` | The `pubs` bytes, with each device's roles |
-| `pubs_invalid` | `pubs` values a reader must refuse |
-| `roster` | Genesis (on a phone and on a computer), an add, a removal, a recovery; envelopes, hashes, signatures; and invalid rosters with the rule they break (including a device with no role, missing or non-boolean roles, and a version 1 body) |
+| `roster` | Genesis, an add, a removal, a recovery; envelopes, hashes, signatures; and invalid rosters with the rule they break (including a device with no role, missing or non-boolean roles, and a version 1 body) |
 | `code` | Commit and the 6-digit code, from both sides |
 | `invite` | `proof` and `confirm` |
 | `noise` | A full IK handshake and two transport messages each way |

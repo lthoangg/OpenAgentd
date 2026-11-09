@@ -41,7 +41,7 @@ struct Echo(std::sync::Mutex<openagentd_cloud::roster::Roster>, String);
 
 impl HostHandler for Echo {
     fn controller_box(&self, id: &str) -> Option<[u8; 32]> {
-        (id != self.1).then(|| self.0.lock().unwrap().body.device(id).map(|d| d.box_key())).flatten()
+        (id != self.1).then(|| self.0.lock().unwrap().body.client(id).map(|d| d.box_key())).flatten()
     }
     fn serve(&self, mut s: openagentd_cloud::mux::Stream, _from: String) {
         tokio::spawn(async move {
@@ -63,12 +63,14 @@ async fn full_scenario() {
 
     // The phone creates the account.
     let mut phone = Member::new(Cloud::new(http.clone(), e.clone(), DeviceKeys::generate(), None), None);
+    phone.cloud.roles = openagentd_cloud::keys::Roles::CLIENT;
     let s = sign_in("phone", &phone.cloud).await;
     assert!(matches!(flows::request_to_join(&mut phone, &s).await, Err(flows::FlowError::EmptyAccount)), "use an account with no devices");
     flows::genesis(&mut phone, &s, GenesisDraft::new()).await.expect("genesis");
 
     // The server joins; both sides compute the same code.
     let mut server = Member::new(Cloud::new(http.clone(), e.clone(), DeviceKeys::generate(), None), None);
+    server.cloud.roles = openagentd_cloud::keys::Roles::SERVER;
     let s = sign_in("server", &server.cloud).await;
     let req = flows::request_to_join(&mut server, &s).await.expect("join request");
     let pending = loop {
@@ -81,7 +83,10 @@ async fn full_scenario() {
     let joined = flows::await_signer(&mut server, &req, pace).await.expect("n_n");
     let shown = flows::await_reveal(&mut phone, &mut approval, pace).await.expect("reveal");
     assert_eq!(shown.code, joined.code, "the 6-digit codes match");
-    let (a, b) = tokio::join!(flows::confirm_approval(&mut phone, approval, false), flows::await_added(&mut server, joined, &req, pace));
+    let (a, b) = tokio::join!(
+        flows::confirm_approval(&mut phone, approval, flows::Grant { signer: false, roles: openagentd_cloud::keys::Roles::SERVER }),
+        flows::await_added(&mut server, joined, &req, pace)
+    );
     a.expect("roster write");
     b.expect("server sees itself added");
 

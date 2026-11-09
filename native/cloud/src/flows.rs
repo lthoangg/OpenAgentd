@@ -10,7 +10,7 @@ use crate::account_state::AccountProblem;
 use crate::api::{ApiError, Cloud, DeviceCode, Pending, Secret, TokenPoll};
 use crate::code::{self, CodeInput, Joiner, Signer};
 use crate::encoding::{b64, from_b64};
-use crate::keys::{self, random_bytes, Ed25519, Seed};
+use crate::keys::{self, random_bytes, Ed25519, Roles, Seed};
 use crate::roster::{self, Chain, Device, Roster};
 use crate::{invite, lines, recovery};
 
@@ -38,6 +38,10 @@ pub enum FlowError {
     CommitMismatch,
     #[error("this device cannot approve devices")]
     NotSigner,
+    /// The approver tried to give a role the joining device did not ask
+    /// for, or no role at all.
+    #[error("a device can only get the roles it asked for, and at least one")]
+    Roles,
     #[error("timed out")]
     TimedOut,
     /// More than one device proved it holds the invitation's secret, so
@@ -199,6 +203,22 @@ impl Member {
         self.roster.as_ref()?.body.device(device_id).map(|d| d.box_key())
     }
 
+    /// The `box` key of a device in `K` that may open sessions to this
+    /// host (`client: true`); `None` refuses it (spec section 3.4).
+    pub fn controller_box(&self, device_id: &str) -> Option<[u8; 32]> {
+        self.roster.as_ref()?.body.client(device_id).map(|d| d.box_key())
+    }
+
+    /// Whether this device's own entry in `K` says it runs a host.
+    pub fn is_server(&self) -> bool {
+        self.me().is_some_and(|d| d.server)
+    }
+
+    /// Whether this device's own entry in `K` lets it open sessions.
+    pub fn is_client(&self) -> bool {
+        self.me().is_some_and(|d| d.client)
+    }
+
     /// Fetches the head and verifies it after `K`. A roster that no longer
     /// lists this device means it was removed.
     pub async fn sync(&mut self) -> FlowResult<Sync> {
@@ -298,13 +318,17 @@ pub fn recovery_key_message(account_id: &str, recovery_pub: &[u8; 32]) -> Vec<u8
     lines!["agentd-cloud-recovery-key-v1", account_id, &b64(recovery_pub)]
 }
 
-/// Creates the account's first roster with this device as its signer. The
-/// draft (and with it the recovery private key) is dropped and wiped here.
+/// Creates the account's first roster with this device as its signer and
+/// `member.cloud.roles` as its roles. Any device may be first. The draft
+/// (and with it the recovery private key) is dropped and wiped here.
 pub async fn genesis(member: &mut Member, session: &Session, draft: GenesisDraft) -> FlowResult<Roster> {
     let account = session.account_id.clone();
     member.cloud.account_id = Some(account.clone());
     let recovery_pub = draft.recovery.public();
-    let body = roster::Body::genesis(&account, &recovery_pub, Device::of(&member.cloud.keys, true));
+    if !member.cloud.roles.is_valid() {
+        return Err(FlowError::Roles);
+    }
+    let body = roster::Body::genesis(&account, &recovery_pub, Device::of(&member.cloud.keys, true, member.cloud.roles));
     let r = roster::sign(&body, &member.cloud.device_id(), &member.cloud.keys.sign);
     let r = roster::verify(&r.blob, &account, None, Chain::Linked)?;
     let sig = draft.recovery.sign(&recovery_key_message(&account, &recovery_pub));
@@ -328,12 +352,16 @@ impl std::fmt::Debug for JoinRequest {
     }
 }
 
-/// Posts the pending enrollment. An account without a roster answers
-/// [`FlowError::EmptyAccount`], and the session stays unspent for genesis.
+/// Posts the pending enrollment, asking for `member.cloud.roles`. An
+/// account without a roster answers [`FlowError::EmptyAccount`], and the
+/// session stays unspent for genesis.
 pub async fn request_to_join(member: &mut Member, session: &Session) -> FlowResult<JoinRequest> {
+    if !member.cloud.roles.is_valid() {
+        return Err(FlowError::Roles);
+    }
     member.cloud.account_id = Some(session.account_id.clone());
     let n_n = Zeroizing::new(random_bytes::<32>());
-    let commit = code::commit(&member.cloud.keys.pubs(), n_n.as_ref());
+    let commit = code::commit(&member.cloud.pubs(), n_n.as_ref());
     match member.cloud.enroll_pending(&session.session, &commit).await {
         Ok(enrollment_id) => Ok(JoinRequest { enrollment_id, n_n }),
         Err(e) if e.is("no_roster") => Err(FlowError::EmptyAccount),
@@ -368,7 +396,7 @@ pub async fn await_signer(member: &mut Member, req: &JoinRequest, pace: Pace) ->
     let a = head.body.signer(&signer_id).ok_or(FlowError::NotSigner)?.clone();
     let n_a = from_b64(asked.n_a.as_deref().expect("checked")).map_err(FlowError::Protocol)?;
     cloud.post_n_n(&req.enrollment_id, req.n_n.as_ref()).await?;
-    let pubs = cloud.keys.pubs();
+    let pubs = cloud.pubs();
     let me = cloud.device_id();
     let input = CodeInput {
         account_id: &account,
@@ -386,7 +414,7 @@ pub async fn await_signer(member: &mut Member, req: &JoinRequest, pace: Pace) ->
 /// code the person compared. It becomes `K`.
 pub async fn await_added(member: &mut Member, join: JoinCode, req: &JoinRequest, pace: Pace) -> FlowResult<Roster> {
     let account = member.cloud.account_id.clone().expect("set");
-    let mine = Device::of(&member.cloud.keys, false);
+    let mine = Device::of(&member.cloud.keys, false, member.cloud.roles);
     let cloud = &member.cloud;
     let head = &join.head;
     let added = poll(pace, || async {
@@ -405,7 +433,15 @@ pub async fn await_added(member: &mut Member, join: JoinCode, req: &JoinRequest,
         }
         let r = roster::verify(&now.blob, &account, Some(head), Chain::Skip)?;
         match r.body.device(&mine.id) {
-            Some(me) if r.by == join.signer_id && me.auth == mine.auth && me.r#box == mine.r#box && me.sign == mine.sign => Ok(Some(r)),
+            // Roles may be fewer than asked (the approver turned one off),
+            // never more: the cloud refuses that, and so does this device.
+            Some(me) if r.by == join.signer_id && me.auth == mine.auth && me.r#box == mine.r#box && me.sign == mine.sign => {
+                if me.roles().within(mine.roles()) {
+                    Ok(Some(r))
+                } else {
+                    Err(FlowError::Roles)
+                }
+            }
             Some(_) => Err(FlowError::Roster(roster::Rule::Keys)),
             None => Ok(None),
         }
@@ -430,12 +466,38 @@ impl std::fmt::Debug for Approval {
     }
 }
 
-/// The code A shows, next to the joining device's fingerprint.
+/// The code A shows, next to the joining device's fingerprint and the
+/// roles it asked for.
 #[derive(Debug, Clone)]
 pub struct ApprovalCode {
     pub code: String,
     pub fingerprint: String,
     pub kind: Option<String>,
+    pub roles: Roles,
+}
+
+/// What the approver gives the joining device: signer or member, and its
+/// roles (those it asked for, or fewer, at least one).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Grant {
+    pub signer: bool,
+    pub roles: Roles,
+}
+
+impl Approval {
+    /// The roles the joining device asked for (covered by the code).
+    pub fn requested(&self) -> Roles {
+        self.pubs.roles
+    }
+}
+
+/// Checks a grant against what the device asked for.
+fn granted(asked: Roles, grant: Grant) -> FlowResult<Roles> {
+    if grant.roles.is_valid() && grant.roles.within(asked) {
+        Ok(grant.roles)
+    } else {
+        Err(FlowError::Roles)
+    }
 }
 
 /// Step 2: post `n_a` for a pending request.
@@ -489,15 +551,18 @@ pub async fn await_reveal(member: &mut Member, approval: &mut Approval, pace: Pa
     };
     let code = code::six_digit_code(&member.cloud.keys.r#box, &input)?;
     approval.pending.n_n = revealed.n_n;
-    Ok(ApprovalCode { code, fingerprint: keys::fingerprint(&approval.pending.device_id).unwrap_or_default(), kind: approval.pending.kind.clone() })
+    Ok(ApprovalCode { code, fingerprint: keys::fingerprint(&approval.pending.device_id).unwrap_or_default(), kind: approval.pending.kind.clone(), roles: approval.pubs.roles })
 }
 
-/// The person confirmed the codes match: write the roster that adds it.
-pub async fn confirm_approval(member: &mut Member, approval: Approval, as_signer: bool) -> FlowResult<Roster> {
+/// The person confirmed the codes match: write the roster that adds it
+/// with `grant`. A role it did not ask for is refused ([`FlowError::Roles`])
+/// before anything is written.
+pub async fn confirm_approval(member: &mut Member, approval: Approval, grant: Grant) -> FlowResult<Roster> {
+    let roles = granted(approval.pubs.roles, grant)?;
     let auth_pub: [u8; 32] = crate::encoding::from_b64_array(approval.pending.auth_pub.as_deref().unwrap_or_default()).map_err(FlowError::Protocol)?;
     member.sync().await?;
     let mut devices = member.roster.as_ref().expect("synced").body.devices.clone();
-    devices.push(Device::enrolled(&auth_pub, &approval.pubs, as_signer));
+    devices.push(Device::enrolled(&auth_pub, &approval.pubs, grant.signer, roles));
     member.write(devices).await
 }
 
@@ -547,6 +612,8 @@ pub struct InviteCandidate {
     pub fingerprint: String,
     /// Self-reported; a label only.
     pub kind: Option<String>,
+    /// The roles it asked for (covered by its proof).
+    pub roles: Roles,
     auth_pub: [u8; 32],
     pubs: keys::Pubs,
 }
@@ -590,6 +657,7 @@ fn check_candidate(secret: &[u8], account_id: &str, slot_id: &str, p: &Pending) 
         device_id: p.device_id.clone(),
         fingerprint: keys::fingerprint(&p.device_id)?,
         kind: p.kind.clone(),
+        roles: pubs.roles,
         auth_pub,
         pubs,
     })
@@ -631,16 +699,17 @@ pub async fn check_candidates(member: &Member, invite: &Invite) -> FlowResult<Ca
 
 /// The person confirmed `enrollment_id` (its fingerprint and kind match the
 /// new device's screen): checks every candidate again, writes the roster
-/// that adds it, and posts `confirm`. Consumes the invitation.
-pub async fn add_invited(member: &mut Member, invite: Invite, enrollment_id: &str) -> FlowResult<Roster> {
+/// that adds it with `grant`, and posts `confirm`. Consumes the invitation.
+pub async fn add_invited(member: &mut Member, invite: Invite, enrollment_id: &str, grant: Grant) -> FlowResult<Roster> {
     let chosen = match check_candidates(member, &invite).await? {
         Candidates::One(c) if c.enrollment_id == enrollment_id => c,
         // The person's choice is gone or no longer the only valid one.
         _ => return Err(FlowError::JoinEnded),
     };
+    let roles = granted(chosen.pubs.roles, grant)?;
     member.sync().await?;
     let mut devices = member.roster.as_ref().ok_or(FlowError::EmptyAccount)?.body.devices.clone();
-    devices.push(Device::enrolled(&chosen.auth_pub, &chosen.pubs, false));
+    devices.push(Device::enrolled(&chosen.auth_pub, &chosen.pubs, grant.signer, roles));
     let r = member.write(devices).await?;
     let confirm = invite::signer_confirm(
         invite.secret.as_ref(),
@@ -678,7 +747,10 @@ pub async fn claim_invite(member: &mut Member, link: &str) -> FlowResult<InviteC
     let invitation = invite::parse_link(link)?;
     member.cloud.account_id = Some(invitation.account_id.clone());
     let auth_pub = member.cloud.keys.auth.public();
-    let pubs = member.cloud.keys.pubs();
+    if !member.cloud.roles.is_valid() {
+        return Err(FlowError::Roles);
+    }
+    let pubs = member.cloud.pubs();
     let me = member.cloud.device_id();
     let proof = invite::candidate_proof(
         invitation.secret.as_ref(),
@@ -724,7 +796,11 @@ pub async fn await_invited(member: &mut Member, claim: InviteClaim, pace: Pace) 
     if !ok {
         return Err(FlowError::ConfirmMismatch);
     }
-    let r = roster::verify_first(&head.blob, &inv.account_id, &Device::of(&cloud.keys, false))?;
+    let mine = Device::of(&cloud.keys, false, cloud.roles);
+    let r = roster::verify_first(&head.blob, &inv.account_id, &mine)?;
+    if !r.body.device(&mine.id).is_some_and(|d| d.roles().within(mine.roles())) {
+        return Err(FlowError::Roles);
+    }
     if r.version() != head.version {
         return Err(FlowError::ConfirmMismatch);
     }

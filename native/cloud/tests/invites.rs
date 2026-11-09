@@ -13,6 +13,8 @@ use openagentd_cloud::flows::{self, Candidates, FlowError, GenesisDraft, Member,
 use openagentd_cloud::keys::DeviceKeys;
 use serde_json::json;
 
+const BOTH: flows::Grant = flows::Grant { signer: false, roles: openagentd_cloud::keys::Roles::BOTH };
+
 const FAST: Pace = Pace { every: Duration::from_millis(20), timeout: Duration::from_secs(10) };
 
 fn cloud(base: &str) -> Cloud {
@@ -66,10 +68,11 @@ async fn a_server_joins_by_invitation_after_the_person_confirms() {
     // The signer shows the candidate; it is not added until the person taps.
     let c = one_candidate(&phone, &invite).await;
     assert_eq!(c.kind.as_deref(), openagentd_cloud::api::this_kind());
+    assert_eq!(c.roles, openagentd_cloud::keys::Roles::BOTH, "the roles it asked for, covered by its proof");
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(fake.account(&account).version, 1, "checking candidates never adds one");
 
-    let r = flows::add_invited(&mut phone, invite, &c.enrollment_id).await.unwrap();
+    let r = flows::add_invited(&mut phone, invite, &c.enrollment_id, BOTH).await.unwrap();
     assert_eq!(r.version(), 2);
     let (server, ours) = joined.await.unwrap();
     let ours = ours.unwrap();
@@ -116,7 +119,7 @@ async fn a_second_proof_after_the_first_still_stops_the_add() {
     // While the person looks at the card, a second device claims.
     let mut theirs = newcomer(&base);
     flows::claim_invite(&mut theirs, &link).await.unwrap();
-    let r = flows::add_invited(&mut phone, invite, &c.enrollment_id).await;
+    let r = flows::add_invited(&mut phone, invite, &c.enrollment_id, BOTH).await;
     assert!(matches!(r, Err(FlowError::InviteCompromised)), "{r:?}");
     assert_eq!(fake.account(&account).version, 1);
 }
@@ -130,7 +133,7 @@ async fn only_the_candidate_the_person_picked_is_added() {
     let mut n = newcomer(&base);
     flows::claim_invite(&mut n, &invite.link()).await.unwrap();
     one_candidate(&phone, &invite).await;
-    let r = flows::add_invited(&mut phone, invite, "not-the-shown-candidate").await;
+    let r = flows::add_invited(&mut phone, invite, "not-the-shown-candidate", BOTH).await;
     assert!(matches!(r, Err(FlowError::JoinEnded)), "{r:?}");
     assert_eq!(fake.account(&account).version, 1);
 }
@@ -168,7 +171,7 @@ async fn the_new_device_refuses_a_roster_the_confirm_does_not_cover() {
     let mut n = newcomer(&base);
     let claim = flows::claim_invite(&mut n, &invite.link()).await.unwrap();
     let c = one_candidate(&phone, &invite).await;
-    flows::add_invited(&mut phone, invite, &c.enrollment_id).await.unwrap();
+    flows::add_invited(&mut phone, invite, &c.enrollment_id, BOTH).await.unwrap();
     // The cloud forges the confirmation it relays.
     fake.0.lock().unwrap().invites.get_mut(&slot).unwrap().confirm = Some(openagentd_cloud::encoding::b64(&[7u8; 32]));
     assert!(matches!(flows::await_invited(&mut n, claim, FAST).await, Err(FlowError::ConfirmMismatch)));
@@ -205,4 +208,23 @@ async fn the_secret_never_shows_in_debug_output() {
     }
     flows::cancel_invite(&phone, invite).await.unwrap();
     assert!(fake.0.lock().unwrap().invites.is_empty());
+}
+
+#[tokio::test]
+async fn an_invited_device_gets_fewer_roles_never_more() {
+    use openagentd_cloud::keys::Roles;
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, _account) = phone_with_account(&fake, &base).await;
+    let invite = flows::start_invite(&mut phone).await.unwrap();
+    let mut n = newcomer(&base);
+    n.cloud.roles = Roles::SERVER;
+    let claim = flows::claim_invite(&mut n, &invite.link()).await.unwrap();
+    let c = one_candidate(&phone, &invite).await;
+    assert_eq!(c.roles, Roles::SERVER);
+    // Asking for client too is refused before anything is written.
+    let more = flows::Grant { signer: false, roles: Roles::BOTH };
+    assert!(matches!(flows::add_invited(&mut phone, invite, &c.enrollment_id, more).await, Err(FlowError::Roles)));
+    assert_eq!(phone.roster.as_ref().unwrap().version(), 1, "nothing was written");
+    drop(claim);
 }

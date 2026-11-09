@@ -6,9 +6,15 @@
 //! requests, approving, removing) only answers the machine itself: an
 //! unproxied loopback caller on the private listener, never a relayed
 //! device or a LAN client.
+//!
+//! The two routes that sign a roster, `approve/confirm` and
+//! `devices/remove`, also need the desktop app's proof that the person
+//! approved ([`super::approval`]): a loopback caller alone may be an
+//! agent's shell. Creating the account (`recovery`, the genesis roster of an
+//! empty account) does not, and neither do the routes that sign nothing.
 
 use axum::extract::ConnectInfo;
-use axum::http::Extensions;
+use axum::http::{Extensions, HeaderMap};
 use axum::response::Response;
 use axum::routing::{get, post};
 use axum::Router;
@@ -271,8 +277,9 @@ async fn approve_begin(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Re
 }
 
 /// `{ enrollment_id, signer, server, client }`: the codes matched and the
-/// person approved (in the desktop app, after Touch ID where available).
-async fn approve_confirm(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
+/// person approved in the desktop app (after Touch ID where available),
+/// which sends its proof for exactly this request.
+async fn approve_confirm(ext: Extensions, headers: HeaderMap, body: axum::body::Bytes) -> ApiResult<Response> {
     local_only(&ext)?;
     #[derive(serde::Deserialize)]
     struct Body {
@@ -285,6 +292,9 @@ async fn approve_confirm(ext: Extensions, body: axum::body::Bytes) -> ApiResult<
     if !openagentd_cloud::api::valid_enrollment_id(&b.enrollment_id) {
         return Err(ApiError::new(400, "Malformed request."));
     }
+    // Before the open approval is touched: a refused confirm leaves it open.
+    let action = openagentd_cloud::approval::Action::Approve { signer: b.signer, server: b.server, client: b.client };
+    super::approval::require(&headers, action, &b.enrollment_id)?;
     super::signer::approve_confirm(&b.enrollment_id, super::signer::grant(b.signer, b.server, b.client)).await.map_err(signer_error)?;
     status_json()
 }
@@ -296,7 +306,7 @@ async fn approve_reject(ext: Extensions, body: axum::body::Bytes) -> ApiResult<R
     status_json()
 }
 
-async fn remove_device(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
+async fn remove_device(ext: Extensions, headers: HeaderMap, body: axum::body::Bytes) -> ApiResult<Response> {
     local_only(&ext)?;
     #[derive(serde::Deserialize)]
     struct Body {
@@ -306,6 +316,7 @@ async fn remove_device(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Re
     if !openagentd_cloud::keys::is_device_id(&b.device_id) {
         return Err(ApiError::new(400, "Malformed request."));
     }
+    super::approval::require(&headers, openagentd_cloud::approval::Action::Remove, &b.device_id)?;
     super::signer::remove(&b.device_id).await.map_err(signer_error)?;
     status_json()
 }

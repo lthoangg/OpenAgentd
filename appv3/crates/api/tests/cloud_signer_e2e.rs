@@ -11,6 +11,10 @@
 //! 3. the phone (a client) reaches the server through the relay;
 //! 4. a server-only device joins the same way and cannot open a session to
 //!    the server; then the server removes it (`POST /api/cloud/devices/remove`).
+//!
+//! Confirming and removing need the desktop app's proof
+//! (`X-Agentd-Approval`); the test installs a key as the app would and
+//! checks that every other proof, or none, is refused with nothing written.
 
 #[path = "../../../../native/cloud/tests/fake_cloud/mod.rs"]
 mod fake_cloud;
@@ -25,6 +29,7 @@ use axum::http::{Request, StatusCode};
 use fake_cloud::Fake;
 use http_body_util::BodyExt;
 use openagentd_cloud::api::Cloud;
+use openagentd_cloud::approval::{self, Action};
 use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{self, Member, Pace};
 use openagentd_cloud::keys::{DeviceKeys, Roles};
@@ -35,8 +40,18 @@ use tower::ServiceExt;
 
 const FAST: Pace = Pace { every: Duration::from_millis(50), timeout: Duration::from_secs(20) };
 
+/// The key the desktop app would hand its server.
+const KEY: [u8; approval::KEY_LEN] = [42; approval::KEY_LEN];
+
 async fn call(app: &axum::Router, method: &str, uri: &str, body: Option<Value>, remote: &str) -> (StatusCode, Value) {
-    let builder = Request::builder().method(method).uri(uri).header("host", "localhost:8000");
+    call_with(app, method, uri, body, remote, None).await
+}
+
+async fn call_with(app: &axum::Router, method: &str, uri: &str, body: Option<Value>, remote: &str, proof: Option<String>) -> (StatusCode, Value) {
+    let mut builder = Request::builder().method(method).uri(uri).header("host", "localhost:8000");
+    if let Some(p) = proof {
+        builder = builder.header(approval::HEADER, p);
+    }
     let mut req = match body {
         Some(b) => builder.header("content-type", "application/json").body(Body::from(b.to_string())).unwrap(),
         None => builder.body(Body::empty()).unwrap(),
@@ -51,6 +66,17 @@ async fn call(app: &axum::Router, method: &str, uri: &str, body: Option<Value>, 
 
 async fn local(app: &axum::Router, method: &str, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
     call(app, method, uri, body, "127.0.0.1:50000").await
+}
+
+/// A local call carrying `proof`.
+async fn proved(app: &axum::Router, uri: &str, body: Value, proof: Option<String>) -> (StatusCode, Value) {
+    call_with(app, "POST", uri, Some(body), "127.0.0.1:50000", proof).await
+}
+
+/// The app's proof for a confirm body (`{enrollment_id, signer, server, client}`).
+fn approve_proof(key: &[u8; approval::KEY_LEN], body: &Value) -> String {
+    let flag = |k: &str| body[k].as_bool().unwrap();
+    approval::proof(key, Action::Approve { signer: flag("signer"), server: flag("server"), client: flag("client") }, body["enrollment_id"].as_str().unwrap())
 }
 
 async fn wait_for(app: &axum::Router, what: &str, ok: impl Fn(&Value) -> bool) -> Value {
@@ -99,7 +125,10 @@ async fn approve_on_server(app: &axum::Router, m: &mut Member, req: &flows::Join
     body["enrollment_id"] = json!(req.enrollment_id);
     let confirm = tokio::spawn({
         let app = app.clone();
-        async move { local(&app, "POST", "/api/cloud/approve/confirm", Some(body)).await }
+        async move {
+            let proof = approve_proof(&KEY, &body);
+            proved(&app, "/api/cloud/approve/confirm", body, Some(proof)).await
+        }
     });
     let added = flows::await_added(m, joined, req, FAST).await.unwrap();
     let (s, v) = confirm.await.unwrap();
@@ -130,6 +159,12 @@ async fn a_computer_creates_the_account_and_approves_the_others() {
     appv3_db::migrations::run_migrations(&pool).await.unwrap();
     let app = create_app(AppState { pool }, Policy::from_env());
     appv3_api::cloud::install(app.clone(), 8000);
+    // A server the desktop app did not start has no key: nothing it is sent proves an approval.
+    appv3_api::cloud::approval::clear_key();
+    let anything = json!({ "enrollment_id": "enr_0123456789abcdef", "signer": false, "server": false, "client": true });
+    let (s, v) = proved(&app, "/api/cloud/approve/confirm", anything.clone(), Some(approve_proof(&KEY, &anything))).await;
+    assert_eq!((s, v["detail"].as_str()), (StatusCode::FORBIDDEN, Some(appv3_api::cloud::approval::APPROVE_ELSEWHERE)));
+    appv3_api::cloud::approval::install_key(zeroize::Zeroizing::new(KEY));
 
     // 1. This server signs in first, on an empty account.
     let account = fake.new_account();
@@ -169,15 +204,36 @@ async fn a_computer_creates_the_account_and_approves_the_others() {
     let joined = flows::await_signer(&mut phone, &req, FAST).await.unwrap();
     let (_, view) = begin.await.unwrap();
     assert_eq!(view["code"].as_str().unwrap(), joined.code);
-    // The approver cannot add a role the phone did not ask for.
+    // The approver cannot add a role the phone did not ask for, even with the app's proof.
     let more = json!({ "enrollment_id": req.enrollment_id, "signer": true, "server": true, "client": true });
-    let (s, v) = local(&app, "POST", "/api/cloud/approve/confirm", Some(more)).await;
+    let (s, v) = proved(&app, "/api/cloud/approve/confirm", more.clone(), Some(approve_proof(&KEY, &more))).await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
     assert_eq!(fake.account(&account).version, 1, "nothing was written");
     let asked = json!({ "enrollment_id": req.enrollment_id, "signer": true, "server": false, "client": true });
+    // A loopback caller without the app's proof (an agent's shell, say) cannot approve.
+    let other_enrollment = approve_proof(&KEY, &json!({ "enrollment_id": "enr_0123456789abcdef", "signer": true, "server": false, "client": true }));
+    let other_roles = approve_proof(&KEY, &json!({ "enrollment_id": req.enrollment_id, "signer": false, "server": false, "client": true }));
+    let other_action = approval::proof(&KEY, Action::Remove, &req.enrollment_id);
+    let other_key = approve_proof(&[1; approval::KEY_LEN], &asked);
+    for (why, proof) in [
+        ("no proof", None),
+        ("garbage", Some("not-a-proof".to_string())),
+        ("another enrollment", Some(other_enrollment)),
+        ("other roles", Some(other_roles)),
+        ("another action", Some(other_action)),
+        ("another key", Some(other_key)),
+    ] {
+        let (s, v) = proved(&app, "/api/cloud/approve/confirm", asked.clone(), proof).await;
+        assert_eq!(s, StatusCode::FORBIDDEN, "{why}: {v}");
+        assert_eq!(v["detail"].as_str(), Some(appv3_api::cloud::approval::APPROVE_ELSEWHERE), "{why}");
+    }
+    assert_eq!(fake.account(&account).version, 1, "nothing was written");
     let confirm = tokio::spawn({
         let app = app.clone();
-        async move { local(&app, "POST", "/api/cloud/approve/confirm", Some(asked)).await }
+        async move {
+            let proof = approve_proof(&KEY, &asked);
+            proved(&app, "/api/cloud/approve/confirm", asked, Some(proof)).await
+        }
     });
     flows::await_added(&mut phone, joined, &req, FAST).await.unwrap();
     assert_eq!(confirm.await.unwrap().0, StatusCode::OK);
@@ -202,8 +258,18 @@ async fn a_computer_creates_the_account_and_approves_the_others() {
     assert!(ci.is_server() && !ci.is_client());
     let r = relay::connect(&ci.cloud, &relay::http1_client(), &server_id, &host_box, Join::default()).await;
     assert!(matches!(r, Err(RelayError::Handshake) | Err(RelayError::Closed(4002))), "{:?}", r.err());
-    let (s, _) = local(&app, "POST", "/api/cloud/devices/remove", Some(json!({ "device_id": ci.cloud.device_id() }))).await;
-    assert_eq!(s, StatusCode::OK);
+    let ci_id = ci.cloud.device_id();
+    let version = fake.account(&account).version;
+    let approve_mac = approval::proof(&KEY, Action::Approve { signer: false, server: false, client: false }, &ci_id);
+    let other_device = approval::proof(&KEY, Action::Remove, &server_id);
+    for (why, proof) in [("no proof", None), ("an approve proof", Some(approve_mac)), ("another device", Some(other_device))] {
+        let (s, v) = proved(&app, "/api/cloud/devices/remove", json!({ "device_id": ci_id }), proof).await;
+        assert_eq!(s, StatusCode::FORBIDDEN, "{why}: {v}");
+        assert_eq!(v["detail"].as_str(), Some(appv3_api::cloud::approval::REMOVE_ELSEWHERE), "{why}");
+    }
+    assert_eq!(fake.account(&account).version, version, "nothing was written");
+    let (s, v) = proved(&app, "/api/cloud/devices/remove", json!({ "device_id": ci_id }), Some(approval::proof(&KEY, Action::Remove, &ci_id))).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
     let (_, devices) = local(&app, "GET", "/api/cloud/devices", None).await;
     assert_eq!(devices.as_array().unwrap().len(), 2);
     phone.cloud.leave().await.ok();

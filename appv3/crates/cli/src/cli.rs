@@ -192,6 +192,9 @@ pub struct ServeArgs {
     /// Exit when this process is gone
     #[arg(long, value_name = "PID")]
     pub parent_pid: Option<i32>,
+    /// Read the desktop app's approval key as one line on stdin (the app only)
+    #[arg(long, hide = true)]
+    pub approval_key_stdin: bool,
 }
 
 #[derive(Debug, Args)]

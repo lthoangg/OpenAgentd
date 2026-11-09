@@ -52,6 +52,11 @@ sha2.workspace = true
 notify = "8"
 dunce.workspace = true
 
+# Points stdin at /dev/null once the desktop app's approval key is read
+# (src/cloud/approval.rs).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 tower = { workspace = true, features = ["util"] }
 tempfile = "3"

@@ -124,6 +124,8 @@ pub fn run(args: &RunArgs) -> Result<()> {
     crate::logging::setup("ERROR", "DEBUG", true);
     appv3_providers::credentials_migration::migrate_active();
     crate::dotenv::migrate();
+    // The agent's commands inherit this: see `AGENT_MARKER_ENV`.
+    appv3_core::auth::mark_agent_process();
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     let res = rt.block_on(run_turn(args));
     rt.shutdown_background();

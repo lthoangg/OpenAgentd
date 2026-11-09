@@ -230,6 +230,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "indexmap",
+ "libc",
  "md-5 0.10.6",
  "notify",
  "openagentd-cloud",

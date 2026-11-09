@@ -85,6 +85,9 @@ async fn shutdown_signal() {
 }
 
 pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
+    // First, before any thread exists: the desktop app's approval key, then
+    // stdin goes to /dev/null so no child can inherit the pipe.
+    let approval_key = args.approval_key_stdin.then(appv3_api::cloud::approval::read_key_from_stdin);
     // The desktop shell captures stderr into backend.log, and this line
     // marks the sidecar start there. The `server start` daemon skips it.
     let daemon = std::env::var_os(DAEMON_ENV).is_some();
@@ -122,6 +125,13 @@ pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
     let policy = Policy::from_env();
     let handshake_file = std::env::var(appv3_core::auth::HANDSHAKE_FILE_ENV).ok().filter(|p| !p.is_empty());
     appv3_core::auth::scrub_child_env_secrets();
+    // Everything this server starts may be driven by an agent.
+    appv3_core::auth::mark_agent_process();
+    match approval_key {
+        Some(Some(key)) => appv3_api::cloud::approval::install_key(key),
+        Some(None) => tracing::warn!("cloud_approval_key_missing"),
+        None => {}
+    }
 
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     rt.block_on(async move {

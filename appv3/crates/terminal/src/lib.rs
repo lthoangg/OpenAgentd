@@ -524,6 +524,8 @@ pub fn create_session(workspace: &str, rows: i64, cols: i64) -> Result<Arc<Termi
     for k in appv3_core::env::child_env_blocklist().iter().map(String::as_str).chain(IDENTITY_LEAK_KEYS) {
         cmd.env_remove(k);
     }
+    // The person's own terminal, not the agent's: `agentd cloud approve` works here.
+    cmd.env_remove(appv3_core::auth::AGENT_MARKER_ENV);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     cmd.cwd(workspace);

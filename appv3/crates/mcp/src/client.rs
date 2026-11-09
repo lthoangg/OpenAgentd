@@ -112,6 +112,8 @@ fn default_environment() -> HashMap<String, String> {
 fn stdio_command(command: &str, args: &[String], env: &[(String, String)], cwd: Option<&Path>) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(command);
     cmd.args(args).env_clear().envs(default_environment()).envs(env.iter().cloned());
+    // An agent drives it: see `AGENT_MARKER_ENV`. Last, so a config cannot unset it.
+    cmd.env(appv3_core::auth::AGENT_MARKER_ENV, "1");
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }

@@ -7,6 +7,7 @@
 //! protocol lives in `native/cloud`; the client threat model is
 //! `appv3/contract/tunnel-threats.md`.
 
+pub mod approval;
 pub mod connector;
 pub mod engine;
 pub mod letters;

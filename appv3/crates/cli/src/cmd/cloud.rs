@@ -20,7 +20,7 @@ use openagentd_cloud::recovery;
 use openagentd_cloud::roster;
 use openagentd_cloud::store::{self as idstore, SecretStore};
 use serde_json::Value;
-use std::io::{BufRead, Write};
+use std::io::{BufRead, IsTerminal, Write};
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -74,6 +74,29 @@ fn prompt(label: &str) -> Result<String> {
         return Err(anyhow!("no input"));
     }
     Ok(line.trim().to_string())
+}
+
+/// Why this process may not sign a roster, if it may not: only a person at
+/// a terminal approves (`tunnel-threats.md`, "Computer signers"). Both
+/// stdin and stdout must be terminals, so answers cannot be piped in, and
+/// no agent may drive the process (`AGENTD_AGENT`, set for everything the
+/// agent runs). This raises the bar; code running as the user can still
+/// fake a terminal.
+fn not_for_a_person(stdin_tty: bool, stdout_tty: bool, agent: bool) -> Option<&'static str> {
+    if agent {
+        Some("An agent cannot approve devices. Run this yourself in Terminal, or approve in the OpenAgentd app.")
+    } else if !(stdin_tty && stdout_tty) {
+        Some("Run this in Terminal: you compare a code and answer yourself, so it needs a terminal.")
+    } else {
+        None
+    }
+}
+
+/// Refuses (and says why) unless a person runs this at a terminal.
+fn require_person() -> Option<ExitCode> {
+    let why = not_for_a_person(std::io::stdin().is_terminal(), std::io::stdout().is_terminal(), appv3_core::auth::is_agent_process())?;
+    eprintln!("\n  {} {why}\n", yellow("!"));
+    Some(ExitCode::FAILURE)
 }
 
 /// Whether this computer already has an account (and says so).
@@ -187,6 +210,10 @@ fn login(roles: CloudRoles) -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         Ok(engine::Outcome::EmptyAccount { mut member, session }) => {
+            // Creating the account signs its first roster: a person decides.
+            if let Some(code) = require_person() {
+                return Ok(code);
+            }
             println!();
             println!("  {} This account has no devices yet. This computer would create it and be", yellow("!"));
             println!("    the device that approves the others (agentd cloud approve). Its signing key");
@@ -327,6 +354,9 @@ pub(crate) fn server_status_line() -> Option<String> {
 /// the device with the roles it asked for.
 fn approve() -> Result<ExitCode> {
     use appv3_api::cloud::signer;
+    if let Some(code) = require_person() {
+        return Ok(code);
+    }
     if idstore::load(&identity_store())?.filter(|i| i.account_id.is_some()).is_none() {
         println!("\n  Not signed in.\n");
         return Ok(ExitCode::FAILURE);
@@ -414,4 +444,17 @@ fn logout(yes: bool) -> Result<ExitCode> {
     }
     println!("  {} Signed out. Keys erased from this computer.\n", green("✓"));
     Ok(ExitCode::SUCCESS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::not_for_a_person;
+
+    #[test]
+    fn only_a_person_at_a_terminal_signs() {
+        assert_eq!(not_for_a_person(true, true, false), None);
+        assert!(not_for_a_person(false, true, false).is_some(), "answers piped in");
+        assert!(not_for_a_person(true, false, false).is_some(), "output captured");
+        assert!(not_for_a_person(true, true, true).unwrap().contains("agent"), "an agent, even at a terminal");
+    }
 }

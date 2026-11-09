@@ -397,3 +397,84 @@ fn turn_continues_after(signal: nix::sys::signal::Signal) {
     assert_eq!(chats.load(Ordering::SeqCst), 2, "the continued turn asked the model once more");
     terminate(&mut child);
 }
+
+/// The desktop app's approval key: one line on the server's stdin
+/// (`--approval-key-stdin`). The server then accepts the app's proof, while
+/// a command the agent runs gets neither the key nor the pipe, carries
+/// `AGENTD_AGENT=1`, and cannot run `agentd cloud approve`.
+#[test]
+fn the_approval_key_arrives_on_stdin_and_the_agents_commands_cannot_use_it() {
+    use openagentd_cloud::approval::{self, Action};
+    let root = tempfile::tempdir().unwrap();
+    let key = [0x3c_u8; approval::KEY_LEN];
+    let encoded = openagentd_cloud::encoding::b64(&key);
+    // `$PPID` is the server: the agent's shell is its child.
+    let command =
+        r#"env; echo FD0:; if [ -e /proc/$PPID/fd/0 ]; then readlink /proc/$PPID/fd/0; else lsof -a -p $PPID -d 0 -Fn; fi; echo :FD0; agentd cloud approve; echo "EXIT=$?""#;
+    let (fake, chats) = shell_calling_provider(command);
+    let base = format!("http://127.0.0.1:{fake}/v1");
+
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_agentd"));
+    cmd.args(["server", "serve", "--host", "127.0.0.1", "--port", "0", "--handshake", "--approval-key-stdin"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    for (k, d) in [
+        ("OPENAGENTD_DATA_DIR", "data"),
+        ("OPENAGENTD_CONFIG_DIR", "config"),
+        ("OPENAGENTD_STATE_DIR", "state"),
+        ("OPENAGENTD_CACHE_DIR", "cache"),
+        ("OPENAGENTD_WORKSPACE_DIR", "ws"),
+        ("HOME", "home"),
+    ] {
+        cmd.env(k, root.path().join(d));
+    }
+    cmd.env("OPENAGENTD_ENV", "production").env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false").env("OPENAGENTD_SNAPSHOT_MAINTENANCE_ENABLED", "false");
+    cmd.env("OLLAMA_BASE_URL", &base).env("SHELL", "/bin/sh").env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
+    for k in ["OPENAGENTD_DESKTOP_TOKEN", "OPENAGENTD_ACCESS_KEY", "DATABASE_URL", "OPENAGENTD_DATABASE_URL", "OPENAGENTD_HANDSHAKE_FILE", "AGENTD_AGENT"] {
+        cmd.env_remove(k);
+    }
+    let mut child = cmd.spawn().expect("spawn agentd");
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(format!("{encoded}\n").as_bytes()).unwrap();
+    }
+    let mut line = String::new();
+    BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
+    let json = line.strip_prefix("OPENAGENTD_HANDSHAKE ").unwrap_or_else(|| panic!("no handshake: {line:?}"));
+    let port = serde_json::from_str::<serde_json::Value>(json).unwrap()["port"].as_u64().unwrap() as u16;
+
+    // The key arrived: the app's proof passes the check (and the route then
+    // says this computer is not signed in), anything else is refused.
+    let id = "enr_0123456789abcdef";
+    let body = format!(r#"{{"enrollment_id":"{id}","signer":false,"server":false,"client":true}}"#);
+    let confirm = |proof: &str| {
+        let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let req = format!(
+            "POST /api/cloud/approve/confirm HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Agentd-Approval: {proof}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        s.write_all(req.as_bytes()).unwrap();
+        let mut raw = String::new();
+        s.read_to_string(&mut raw).unwrap();
+        raw.split(' ').nth(1).and_then(|c| c.parse::<u16>().ok()).unwrap_or(0)
+    };
+    assert_eq!(confirm(&approval::proof(&key, Action::Approve { signer: false, server: false, client: true }, id)), 409);
+    assert_eq!(confirm(&approval::proof(&[1; approval::KEY_LEN], Action::Approve { signer: false, server: false, client: true }, id)), 403);
+
+    // A command the agent runs.
+    assert_eq!(http(port, "POST", "/api/settings/default-model", None, Some(r#"{"provider_model":"ollama:mock-1"}"#)).0, 200);
+    let titles = r#"{"enabled":false,"model":"ollama:mock-1","wait_timeout_seconds":0}"#;
+    assert_eq!(http(port, "PUT", "/api/settings/title-generation", None, Some(titles)).0, 200);
+    let ws = root.path().join("proj");
+    std::fs::create_dir_all(&ws).unwrap();
+    let (st, body) = send_chat(port, "try to approve", &ws.display().to_string());
+    assert_eq!(st, 202, "{body}");
+    wait_until("the shell output to reach the model", Duration::from_secs(30), || chats.lock().unwrap().len() >= 2);
+    let out = chats.lock().unwrap()[1].clone();
+    assert!(!out.contains(&encoded), "the key reached the agent's command:\n{out}");
+    assert!(out.contains("AGENTD_AGENT=1"), "no agent marker:\n{out}");
+    // The request also echoes the command itself: the output is the last part.
+    let fd0 = out.rsplit("FD0:").next().and_then(|s| s.split(":FD0").next()).unwrap_or_default();
+    assert!(fd0.contains("/dev/null"), "the server's stdin is not /dev/null: {fd0}");
+    assert!(out.contains("An agent cannot approve devices"), "agentd cloud approve ran for the agent:\n{out}");
+    assert!(out.contains("EXIT=1"), "{out}");
+    terminate(&mut child);
+}

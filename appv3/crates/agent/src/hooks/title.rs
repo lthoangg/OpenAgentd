@@ -10,7 +10,7 @@ use appv3_providers::{ChatMessage, Kwargs, LlmProvider, ProviderError};
 use async_trait::async_trait;
 use regex::Regex;
 use serde_json::json;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 const MAX_CONTENT_CHARS: usize = 500;
@@ -314,8 +314,6 @@ async fn generate_inner(span: &Span, source: TitleSource, session_id: String, us
 pub struct TitleGenerationHook {
     provider: Arc<dyn LlmProvider>,
     pool: DbPool,
-    wait_timeout: f64,
-    task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 /// The title settings when titling is on (`None` when off or unreadable).
@@ -360,7 +358,7 @@ fn resolve_title_provider(default_provider: Arc<dyn LlmProvider>, cfg: &appv3_co
 pub fn build_title_generation_hook(default_provider: Arc<dyn LlmProvider>, pool: DbPool, pin: Option<&str>) -> Option<TitleGenerationHook> {
     let cfg = enabled_title_settings()?;
     let provider = resolve_title_provider(default_provider, &cfg, pin)?;
-    Some(TitleGenerationHook { provider, pool, wait_timeout: title_wait_seconds(&cfg), task: Mutex::new(None) })
+    Some(TitleGenerationHook { provider, pool })
 }
 
 /// The summarization hook's callback that retitles the session from each
@@ -372,13 +370,6 @@ pub fn build_summary_retitle(default_provider: Arc<dyn LlmProvider>, pool: DbPoo
     Some(Arc::new(move |session_id: &str, summary: &str, latest_prompt: Option<&str>| {
         otel::spawn(retitle_from_summary(session_id.to_string(), summary.to_string(), latest_prompt.map(String::from), provider.clone(), pool.clone()));
     }))
-}
-
-/// How long the end of the first turn waits for its title. `0` (or anything
-/// not positive) turns the wait off: the title then arrives on its own as a
-/// `title_update`. An unset value is already the 3 s default from settings.
-fn title_wait_seconds(cfg: &appv3_core::runtime_settings::TitleGenerationSettings) -> f64 {
-    cfg.wait_timeout_seconds.max(0.0)
 }
 
 #[async_trait]
@@ -397,17 +388,8 @@ impl Hook for TitleGenerationHook {
         if text.starts_with("[Scheduled Task:") || should_skip(&text) {
             return;
         }
-        let handle = otel::spawn(generate_and_save_title(sid, text, self.provider.clone(), self.pool.clone()));
-        *self.task.lock().unwrap() = Some(handle);
-    }
-
-    async fn after_agent(&self, _ctx: &RunContext, _state: &mut AgentState, _resp: &appv3_providers::AssistantMessage) {
-        let task = self.task.lock().unwrap().take();
-        let Some(mut t) = task else { return };
-        if t.is_finished() || self.wait_timeout <= 0.0 {
-            return;
-        }
-        let _ = tokio::time::timeout(Duration::from_secs_f64(self.wait_timeout), &mut t).await;
+        // Nothing waits for it: the title lands on its own as `title_update`.
+        otel::spawn(generate_and_save_title(sid, text, self.provider.clone(), self.pool.clone()));
     }
 }
 
@@ -420,17 +402,6 @@ mod tests {
         let kw = title_model_kwargs(Some("work"));
         assert_eq!(kw.get(appv3_providers::pool::PIN_KWARG), Some(&json!("work")));
         assert!(title_model_kwargs(None).is_empty());
-    }
-
-    #[test]
-    fn zero_wait_timeout_turns_the_wait_off() {
-        let with = |secs: f64| title_wait_seconds(&appv3_core::runtime_settings::TitleGenerationSettings { wait_timeout_seconds: secs, ..Default::default() });
-        assert_eq!(with(0.0), 0.0);
-        assert_eq!(with(-2.0), 0.0);
-        assert_eq!(with(f64::NAN), 0.0);
-        assert_eq!(with(1.5), 1.5);
-        // An unset value keeps the 3 s default.
-        assert_eq!(title_wait_seconds(&Default::default()), 3.0);
     }
 
     #[test]
@@ -508,7 +479,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let pool = appv3_db::create_pool(dir.path().join("oad.db")).await.unwrap();
         let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Site update for v3.30")]));
-        let hook = TitleGenerationHook { provider: provider.clone(), pool, wait_timeout: 1.0, task: Mutex::new(None) };
+        let hook = TitleGenerationHook { provider: provider.clone(), pool };
 
         let mut sent = ChatMessage::user("Update the site for the v3.30 release.");
         let mut extra = serde_json::Map::new();
@@ -524,8 +495,14 @@ mod tests {
         let ctx = RunContext { session_id: Some(uuid::Uuid::now_v7().to_string()), run_id: "run".into(), agent_name: "lead".into(), workspace: None };
 
         hook.before_agent(&ctx, &mut state).await;
-        let task = hook.task.lock().unwrap().take().expect("titling started");
-        task.await.unwrap();
+        // Titling runs in the background; wait for its model call.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while provider.calls.lock().unwrap().is_empty() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("titling started");
         let request = provider.calls.lock().unwrap()[0].0.last().unwrap().content().unwrap().to_string();
         assert!(request.contains("<message>\nUpdate the site for the v3.30 release.\n</message>"), "{request}");
     }

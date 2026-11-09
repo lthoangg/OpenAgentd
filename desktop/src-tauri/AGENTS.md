@@ -42,6 +42,12 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
 - `src/commands.rs`: Tauri commands exposed to the frontend; access-key and
   download commands are thin wrappers over `openagentd-shell-core`.
 - `src/sidecar.rs`: sidecar discovery, spawn, handshake, health, and cleanup.
+- `src/lifecycle.rs`: `SidecarSlot`, the single owner of the bundled sidecar.
+  Every start, reload, stop and watchdog restart takes a decision from it;
+  an attempt superseded by a later decision (it is woken at once) shuts its
+  own child down instead of publishing it, and the watchdog never takes a
+  crash while a start is in flight. A child dropped before it is published
+  is killed.
 - `src/watchdog.rs`: restarts a crashed bundled sidecar with a bounded
   backoff budget, then re-points bundled windows; windows on an external
   server are left alone.
@@ -112,8 +118,11 @@ bridge and all relevant Tauri config variants.
 - `install()` (tauri-plugin-updater >= 2.14) verifies the bytes it is given,
   so pass the downloaded archive unchanged; never re-sign or repack it on the
   client. It swaps the bundle and returns (Windows exits into the
-  installer); restart exactly once afterwards. Preserve the double-invoke
-  quitting guard.
+  installer); restart exactly once afterwards. A second install, or a new
+  download, is refused while the install lease (`update_install`) is held
+  (a download already running may finish); the install verifies and
+  installs the one copy of the bytes it read, before the sidecar is shut
+  down.
 - Desktop secrets (access keys, the LAN key) live in user-only files, not
   the OS keychain. Releases before Developer ID signing had no Team ID, so
   keychain items would have prompted on every update; moving them now needs

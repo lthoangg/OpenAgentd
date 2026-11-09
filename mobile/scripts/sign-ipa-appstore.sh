@@ -9,6 +9,9 @@
 #   IOS_SIGNING_IDENTITY     keychain identity (default "Apple Distribution")
 #   IOS_PROFILE_APP_PATH     App Store profile for the app bundle id
 #   IOS_PROFILE_WIDGET_PATH  App Store profile for the widget extension
+#   IOS_PROFILE_NOTIFICATIONS_PATH  App Store profile for the Notification
+#                            Service Extension (<bundle id>.notifications,
+#                            with the same App Group)
 #   IOS_BUILD_NUMBER         CFBundleVersion for this upload (must grow
 #                            for every upload; CI passes the run number)
 #
@@ -29,6 +32,7 @@ src_app=$1 out=$2
 identity=${IOS_SIGNING_IDENTITY:-Apple Distribution}
 app_profile=${IOS_PROFILE_APP_PATH:?IOS_PROFILE_APP_PATH is required}
 widget_profile=${IOS_PROFILE_WIDGET_PATH:?IOS_PROFILE_WIDGET_PATH is required}
+nse_profile=${IOS_PROFILE_NOTIFICATIONS_PATH:?IOS_PROFILE_NOTIFICATIONS_PATH is required}
 build_number=${IOS_BUILD_NUMBER:?IOS_BUILD_NUMBER is required}
 [ -d "$src_app" ] || die "no app at $src_app"
 [[ "$build_number" =~ ^[0-9]+$ ]] || die "IOS_BUILD_NUMBER must be an integer: $build_number"
@@ -81,12 +85,18 @@ if [ -d "$app/PlugIns" ]; then
   while IFS= read -r -d '' x; do appexes+=("$x"); done \
     < <(find "$app/PlugIns" -maxdepth 1 -name '*.appex' -print0)
 fi
-[ ${#appexes[@]} -eq 1 ] || die "expected one app extension (the widget), found ${#appexes[@]}"
-sign_bundle "${appexes[0]}" "$widget_profile"
+[ ${#appexes[@]} -eq 2 ] || die "expected two app extensions (widgets, notifications), found ${#appexes[@]}"
+for x in "${appexes[@]}"; do
+  case "$(basename "$x")" in
+    OpenAgentdWidgets.appex) sign_bundle "$x" "$widget_profile" ;;
+    OpenAgentdNotifications.appex) sign_bundle "$x" "$nse_profile" ;;
+    *) die "unexpected app extension $(basename "$x")" ;;
+  esac
+done
 sign_bundle "$app" "$app_profile"
 
 codesign --verify --deep --strict "$app" || die "signature verification failed"
-for b in "$app" "${appexes[0]}"; do
+for b in "$app" "${appexes[@]}"; do
   codesign -d --entitlements - --xml "$b" 2>/dev/null | plutil -convert json -o - - \
     | python3 -c 'import json,sys; e=json.load(sys.stdin); assert e.get("com.apple.security.application-groups"), "no App Group"' \
     || die "$(basename "$b") is missing the App Group entitlement"

@@ -13,7 +13,10 @@ import { Button } from '@/components/ui/button'
 /** One corner mark: two 3px strokes meeting at a rounded corner. */
 const CORNER = 'absolute size-8 drop-shadow-sm'
 
-export function QrScanOverlay({ onCancel }: { onCancel: () => void }) {
+export function QrScanOverlay({
+  onCancel,
+  hint = 'Scan the QR code under Network access on your computer.',
+}: { onCancel: () => void; hint?: string }) {
   return createPortal(
     <div
       data-qr-scan-overlay=""
@@ -35,7 +38,7 @@ export function QrScanOverlay({ onCancel }: { onCancel: () => void }) {
         </div>
       </div>
       <p className="relative text-center text-xs text-(--color-text-2)">
-        Scan the QR code under Network access on your computer.
+        {hint}
       </p>
       <Button type="button" variant="default" className="relative h-11 px-6" onClick={onCancel}>
         Cancel

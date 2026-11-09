@@ -49,6 +49,29 @@ pub enum Command {
     /// Update agentd to the latest release
     #[command(visible_alias = "update")]
     Upgrade,
+    /// Sign this computer in to an OpenAgentd Cloud account (optional)
+    #[command(subcommand)]
+    Cloud(CloudCmd),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CloudCmd {
+    /// Join your account with the invitation link from your phone (asks for it)
+    Join,
+    /// Sign in with a code instead, then compare a 6-digit code on your phone
+    Login {
+        /// Set up a new account on this computer (for people without a phone)
+        #[arg(long)]
+        first_device: bool,
+    },
+    /// Show whether this computer is signed in and reachable
+    Status,
+    /// Sign out and erase this computer's account keys (local data stays)
+    Logout {
+        /// Do not ask for confirmation
+        #[arg(long, short)]
+        yes: bool,
+    },
 }
 
 const PLUGIN_EXAMPLES: &str = "\

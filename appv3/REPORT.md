@@ -1345,6 +1345,27 @@ explicitly.
   request carries the desktop token and comes from a loopback peer on the
   private listener. v2 had no equivalent. Tests: `api/src/network_access.rs`,
   `cli/tests/serve_shutdown.rs`.
+- **OpenAgentd Cloud account (v3 only, optional):** `GET /api/cloud/status`
+  and `POST /api/cloud/{join,login,login/cancel,logout,reload}`
+  (`api/src/cloud/`), separate from `/api/auth/*` (model-provider sign-in).
+  Health advertises `api.cloud`. A guest server never contacts the cloud:
+  with no stored identity, status is `{"state":"guest"}`. A signed-in
+  server keeps a presence socket and serves relay streams in-process with
+  its own router (`cloud/connector.rs`): the request has no `ConnectInfo`,
+  carries a `RelayPeer` marker no header can produce, is authenticated as
+  `AuthenticatedBy::RelayDevice` (the rights of the LAN access key), and
+  loses `Authorization`, `Cookie`, `Origin`, `Forwarded`, `X-Forwarded-*`,
+  `X-Real-IP`, `Via`, `Accept-Encoding` and the access-key query parameter
+  before routing. A `Host` other than `localhost` gets 400; SSE `: ping`
+  frames are not relayed. The `POST` routes answer only an unproxied,
+  unrelayed loopback caller on the private listener (403 otherwise). Keys
+  live in `<state>/cloud/identity.json`, mode 600. `/join` takes the
+  invitation link the phone shows (`{ "link" }`, never logged); `/login` is
+  the 6-digit fallback. `agentd cloud join|login|status|logout` manages the
+  same identity (`join` reads the link without echo), and `agentd server status`
+  adds a `Cloud:` line only when signed in. Protocol: `contract/tunnel.md`.
+  Tests: `api/src/cloud/connector.rs`, `api/tests/cloud_routes.rs`,
+  `api/tests/cloud_e2e.rs`, `native/cloud/tests/`.
 - **Default model on the first credential (v3 only):** `PUT
   /api/settings/providers/{id}` and `POST
   /api/settings/providers/{id}/credentials` set the provider's suggested

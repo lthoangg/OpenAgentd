@@ -71,9 +71,11 @@ they accept the email) through the App Store Connect API before changing code.
 
 ## 4. Setup and secrets
 
-Apple: App IDs `com.openagentd.mobile` and `com.openagentd.mobile.widgets`, both
-with the App Group `group.com.openagentd.mobile`; one *App Store* profile for
-each; an App Store Connect record with an Internal group (automatic
+Apple: App IDs `com.openagentd.mobile`, `com.openagentd.mobile.widgets` and
+`com.openagentd.mobile.notifications` (the Notification Service Extension that
+opens OpenAgentd Cloud notifications), all with the App Group
+`group.com.openagentd.mobile`, and Push Notifications on the app; one *App
+Store* profile for each; an App Store Connect record with an Internal group (automatic
 distribution on) and an external group `Public Beta` with a public link
 (linked from openagentd.dev/download/ios).
 
@@ -83,7 +85,7 @@ The same secrets in `testflight-internal` and `release-ios`
 | Secret | Value |
 |---|---|
 | `IOS_DIST_CERTIFICATE` / `_PASSWORD` | base64 of the Apple Distribution `.p12` / its password |
-| `IOS_PROFILE_APP` / `IOS_PROFILE_WIDGET` | base64 of the two App Store `.mobileprovision` files |
+| `IOS_PROFILE_APP` / `IOS_PROFILE_WIDGET` / `IOS_PROFILE_NOTIFICATIONS` | base64 of the three App Store `.mobileprovision` files |
 | `ASC_API_KEY` / `ASC_API_ISSUER` | App Store Connect API key ID / issuer ID (role *App Manager*) |
 | `ASC_API_KEY_P8` | contents of `AuthKey_<id>.p8` |
 | `KEYCHAIN_PASSWORD` | any random string |

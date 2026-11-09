@@ -430,7 +430,7 @@ fn parse_config_arg(v: &Value) -> Result<Value, ToolError> {
 mod tests {
     use super::*;
     use crate::tool::SessionProvider;
-    use crate::{config, Runner};
+    use crate::{config, Runner, RunnerState};
 
     struct NoSession;
     impl SessionProvider for NoSession {
@@ -514,10 +514,10 @@ mod tests {
     fn manager_with(server: &str, defs: Vec<Value>) -> Arc<McpManager> {
         let m = Arc::new(McpManager::default());
         let cfg = config::parse_config(&json!({"servers": {"s": {"command": "x"}}})).unwrap();
-        let runner = Runner::new(server, &cfg.servers["s"], "ready", server.split_once('/').map(|(plugin, _)| plugin));
+        let runner = Runner::new(server, &cfg.servers["s"], RunnerState::Ready, server.split_once('/').map(|(plugin, _)| plugin));
         let weak = Arc::downgrade(&(runner.clone() as Arc<dyn SessionProvider>));
         let tools: Vec<Arc<McpTool>> = defs.into_iter().map(|d| Arc::new(McpTool::new(server, d, weak.clone()))).collect();
-        runner.status.lock().unwrap().tool_names = tools.iter().map(|t| t.name.clone()).collect();
+        runner.details.lock().unwrap().tool_names = tools.iter().map(|t| t.name.clone()).collect();
         *runner.tools.lock().unwrap() = tools;
         m.runners.write().unwrap().insert(server.into(), runner);
         m
@@ -584,7 +584,7 @@ mod tests {
     async fn a_call_refused_for_sign_in_rides_with_the_call() {
         let m = Arc::new(McpManager::default());
         let cfg = config::parse_config(&json!({"servers": {"s": {"command": "x"}}})).unwrap();
-        m.runners.write().unwrap().insert("excalidraw".into(), Runner::new("excalidraw", &cfg.servers["s"], "auth_required", None));
+        m.runners.write().unwrap().insert("excalidraw".into(), Runner::new("excalidraw", &cfg.servers["s"], RunnerState::AuthRequired, None));
         let hub = hub_with_test_kit(m);
         for args in [json!({"action": "call", "server": "excalidraw", "tool": "create_view"}), json!({"action": "search", "server": "excalidraw"})] {
             let answer = format!("Error: {}", run(&hub, false, args).await.unwrap_err());

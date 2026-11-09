@@ -1184,7 +1184,7 @@ fn open_notification(app: &AppHandle, notification_id: &str) {
     };
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        match crate::island::open_session(&app, route.server, &route.session_id, crate::island::OpenIn::Existing).await {
+        match crate::island::open_session(&app, route.server, &route.session_id, crate::island::OpenIn::Existing, true).await {
             Ok(()) => crate::island::mark_session_read(&app, &route.session_id, None),
             Err(e) => log::warn!("pet: could not open session: {e:#}"),
         }

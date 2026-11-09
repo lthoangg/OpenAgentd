@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod cleanup;
+pub mod cloud;
 pub mod doctor;
 pub mod lsp;
 pub mod plugin;

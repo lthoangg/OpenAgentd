@@ -174,7 +174,7 @@ impl McpManager {
 
     /// The plugins' servers with the configs they run, in listing order.
     pub fn plugin_servers(&self) -> Vec<(ServerStatus, ServerConfig)> {
-        self.ordered_runners().into_iter().filter(|(_, r)| r.plugin.is_some()).map(|(_, r)| (r.status.lock().unwrap().clone(), r.config.clone())).collect()
+        self.ordered_runners().into_iter().filter(|(_, r)| r.plugin.is_some()).map(|(_, r)| (r.status(), r.config.clone())).collect()
     }
 }
 

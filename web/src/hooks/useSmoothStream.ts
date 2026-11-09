@@ -8,6 +8,9 @@ import { prefersReducedMotion } from '@/lib/motion'
  */
 const MAX_DRAIN_CHARS = 4000
 
+/** How long the rest may keep flowing once the stream has ended. */
+export const END_DRAIN_MS = 250
+
 /**
  * A hook that takes a fast or chunky streaming string and smoothly interpolates
  * it over time, creating a typewriter-like effect that adapts to the stream speed.
@@ -16,8 +19,8 @@ const MAX_DRAIN_CHARS = 4000
  * effect handles the entire animation without triggering a re-render per frame.
  *
  * When the stream ends while text is still being revealed (the last delta
- * usually lands with "done"), the rest keeps flowing at the same pace
- * instead of appearing in one frame; the caller can tell from the returned
+ * usually lands with "done"), the rest keeps flowing for at most
+ * END_DRAIN_MS instead of appearing in one frame; the caller can tell from the returned
  * text differing from ``targetText`` that it is still settling. Text that was
  * never streamed, and reduced motion, show at once.
  *
@@ -45,11 +48,17 @@ export function useSmoothStream(targetText: string, isStreaming: boolean): strin
   // Outlives the effect: it re-runs on every delta (~16 ms), and a clock local
   // to it reset on each run, so the throttle never held between deltas.
   const lastUpdateTimeRef = useRef(0)
+  // The reveal after the stream ended: when it began and from how far, so it
+  // ends within END_DRAIN_MS whatever the backlog. Null while streaming.
+  const drainRef = useRef<{ start: number | null; from: number } | null>(null)
 
   useEffect(() => {
     targetRef.current = targetText
+    if (isStreaming) drainRef.current = null
+    else if (draining && !drainRef.current) drainRef.current = { start: null, from: 0 }
     // Not streaming and nothing left to flow: show the real text.
     if (!isStreaming && !draining) {
+      drainRef.current = null
       setDisplayedText(targetText)
       displayedLengthRef.current = targetText.length
       if (streamed) setStreamed(false)
@@ -75,10 +84,14 @@ export function useSmoothStream(targetText: string, isStreaming: boolean): strin
       const timestamp = time || performance.now()
 
       const currentLength = displayedLengthRef.current
+      const drain = drainRef.current
       let throttleMs = 0
       // Adaptive throttling: decrease rendering frequency as document length grows
-      // to reduce markdown parsing CPU/rendering overhead.
-      if (currentLength > 10000) {
+      // to reduce markdown parsing CPU/rendering overhead. The end-of-stream
+      // reveal is short and bounded, so it runs every frame.
+      if (drain) {
+        throttleMs = 0
+      } else if (currentLength > 10000) {
         throttleMs = 150
       } else if (currentLength > 5000) {
         throttleMs = 75
@@ -97,6 +110,19 @@ export function useSmoothStream(targetText: string, isStreaming: boolean): strin
 
           const diff = target.length - prev.length
           if (diff <= 0) return prev
+
+          if (drain) {
+            if (drain.start === null) {
+              drain.start = timestamp
+              drain.from = prev.length
+            }
+            const t = Math.min(1, (timestamp - drain.start) / END_DRAIN_MS)
+            const eased = 1 - (1 - t) * (1 - t)
+            const len = Math.max(prev.length + 1, drain.from + Math.ceil((target.length - drain.from) * eased))
+            const nextText = target.slice(0, len)
+            displayedLengthRef.current = nextText.length
+            return nextText
+          }
 
           // Add at least 1 char, up to 15% of the remaining distance per frame.
           // Scale step up if we are throttling to maintain smooth catch-up speed.

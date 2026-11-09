@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-11-07
+updated: 2026-11-09
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.49.0 · November 7, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.49.0)
+**Latest release:** v3.50.0 · November 9, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.50.0)
 
 ---
 
@@ -375,12 +375,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   Since `[v3.31.0]`, pressing Install while agents are still working warns
   that restarting may interrupt their turns. You can then choose **Restart
   anyway** or **Later**.
-  Since `[v3.49.0]` the mobile apps check for updates too, with the same
-  card and Settings → About → Updates. Android downloads the APK, checks its
+  Since `[v3.49.0]` the Android app checks for updates too, with the same
+  card and Settings → About → Updates. It downloads the APK, checks its
   SHA-256 against the `latest-android` feed, and opens the system installer
   (Android asks to allow installs from OpenAgentd once, and only accepts an
-  APK signed with the same key). iOS apps cannot install their own updates,
-  so the card opens TestFlight, or SideStore for a SideStore install.
+  APK signed with the same key). The iOS app has no update check: TestFlight
+  and the App Store deliver its updates.
   Earlier iterations: `[v1.18.0]`, `[v1.20.0]`, `[v1.21.0]`.
 - **Client and server versions** `[v3.49.0]` — Settings → About has a
   **Version** section with the version of this app (desktop, iOS, Android, or
@@ -748,6 +748,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     `provider:` part gives way first; the full ID is in the tooltip.
   - The context ring opens the token numbers and **Summarize now**. The
     header and status bar no longer show the context meter or the model.
+    Since `[v3.50.0]` it also shows the session's **Cost** so far, its
+    subagents' included (hidden while nothing was priced).
     Its full track is drawn, so a part-filled ring reads as a gauge, not a
     spinner. Its labels are in the UI font and only the numbers in mono, as
     in an answer's details.
@@ -1139,6 +1141,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     in new window) focuses the window that already shows it. When one
     session is open in two windows anyway, the window in the background
     shows the draft as it is typed in the other.
+    Since `[v3.50.0]` a session opened from the notch or the pet comes
+    forward without putting focus in its composer; a system notification
+    still starts there.
 - **Phones: everything fits, nothing twice** `[v3.41.0]`:
   - Typing in the composer keeps the caret at the end of the text; it used
     to drift further from it with every letter.
@@ -2445,6 +2450,13 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Desktop network access** `[v3.15.0]` — a **Network access** switch in desktop **Settings → Server → Access from other devices** (and the **Server** dialog) lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in a file only your user can read (`network-access-key` in its app config folder; before v3.22.0 it was in the OS credential store, so devices paired earlier need the new key), and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. `[v3.16.0]` While network access is on, **Show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Server** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save and use**. The code hides when the key changes or network access turns off.
   `[v3.46.0]` The code carries the OpenAgentd seal in its centre and uses a higher error-correction level, so it still scans.
   `[v3.49.0]` The iOS and Android apps scan it themselves: **Scan QR code** under Settings → Server (beside **Add a server**) opens the camera (asked once) and fills in the same form; a code that is not a connect code, or a camera that is off, says so.
+- **OpenAgentd Cloud account (beta, optional)** `[v3.50.0]` — reach your computers from your iPhone away from home, and get notified when agents finish. Nothing changes for people who don't sign in: local use, LAN pairing and `agentd server start --public --key --qr` work as before, and no screen asks for an account. It is offered only in a skippable card on the phone's Servers screen and in **Settings → Account** (desktop and phone); `agentd cloud join | login | status | logout` does the same on a headless server, and `agentd server status` adds a `Cloud:` line once signed in.
+  - **Adding a device: QR invitation first.** On the phone, **Settings → Account → Add a device** shows a QR code for 10 minutes, and only while that screen is open (closing it or leaving the app cancels it). Another phone scans it; a computer can't scan, so **Can't scan? Use a link** shows the same invitation as a link, after a warning that it works like a password. Paste it in the computer's **Settings → Account**, or run `agentd cloud join` (it asks for the link without echoing it). The phone then shows the new device's kind and fingerprint, which the new device shows too, and adds it only when you tap **Add** (Face ID). If two devices claim the same invitation, nobody is added, the invitation is cancelled, and the phone offers a new one. The 6-digit code stays as the fallback: **Use a 6-digit code instead** on the phone, **Sign in with a code instead** on the computer, or `agentd cloud login`. An account holds up to 10 devices.
+  - **The phone sets up the account.** Signing in on the phone shows a recovery code once (you type two of its groups back); other devices join an account the phone approves, by invitation or, as the fallback, by comparing a 6-digit code on both screens and confirming with Face ID or the passcode. `agentd cloud login --first-device` sets an account up on a computer when there is no phone.
+  - **End-to-end encrypted.** Traffic between the phone and a computer goes through the relay inside a Noise session keyed to the account's signed device list, which every device verifies; the relay cannot read it, and the cloud cannot add a device. On the computer, relayed requests are served in-process, never as a local caller, and lose any credential or proxy header the phone sends. Done / Needs you / Failed notifications are sealed to the phone and opened by its notification extension.
+  - **One row per computer.** The phone's Servers list shows each account computer once, labelled "via LAN" when its saved LAN address answers (tried first) and "via account" otherwise.
+  - **Keys stay on the device:** the iPhone keeps them in the Keychain (the approval key behind Face ID); computers keep them in `cloud/identity.json` in the server's state folder, readable only by your user. Signing out leaves the account and erases the keys; sessions and settings stay. Removed, deleted, closing and unavailable accounts each say so; in every state the app keeps working on its own, and only reaching other devices through the relay and notifications stop.
+  - Not yet: Android, approving from a computer. The protocol is in `appv3/contract/tunnel.md`, its threat model in `appv3/contract/tunnel-threats.md`.
 
 ---
 
@@ -2509,8 +2521,12 @@ executes tools, manages its task list, and inspects workspace repositories.
   repository, a worktree of its repository, or Chat), for example from an app
   repository to its infrastructure repository. The request starts a new session there, or
   continues one of its top-level sessions (queued when that session is busy). It
-  arrives as an ordinary, editable prompt with a **From <workspace> · <session>**
-  chip that opens the sending session. `mode: "plan"` makes a new session plan
+  arrives as a prompt with a **From <workspace> · <session>**
+  chip that opens the sending session. Since `[v3.50.0]` it is the sending
+  agent's, not yours: it has no Edit, Revert or Retry, and undo and redo step
+  over it. A session a send started shows **Handled by the agent in
+  <workspace> · <session>** above its composer, which opens the sender; you can
+  still type into it and steer as usual. `mode: "plan"` makes a new session plan
   first and wait for your approval; an existing session keeps its mode, and a
   `mode` sent along with `session_id` is ignored instead of refused `[v3.35.0]`.
   The tool card in the sending session has an
@@ -2525,6 +2541,15 @@ executes tools, manages its task list, and inspects workspace repositories.
     follows if it is retried.
   - You get one completion notification, from the sender, instead of one from
     each side.
+  - Since `[v3.50.0]` a turn only agents worked in (another workspace's
+    request, with nothing you typed into it) sends no Done or Failed
+    notification and does not mark the session unread. A turn you start or
+    steer in that session notifies as usual.
+    In such a turn the agent's `ask_user` does not reach you either, since
+    you are not following it: the agent is told to end with its question,
+    which goes back to the sending agent to answer with a follow-up, or,
+    when no reply was asked for, to decide and state its assumptions. Once
+    you write into the turn, its questions reach you as usual.
 
   When the session it continues is busy, `delivery` picks how the message lands,
   the same three ways you can send while a turn runs `[v3.35.0]`:
@@ -2779,6 +2804,11 @@ agent against it.
   list existing worktrees, edit sidebar titles without renaming git directories,
   and remove OpenAgentd-managed worktrees. Removing a worktree asks for confirmation
   first, warning that uncommitted changes will be lost `[v1.101.0]`.
+  Since `[v3.50.0]` new worktrees go to `~/.openagentd/worktrees/<repo>-<key>/<name>`
+  (`OPENAGENTD_WORKTREES_DIR` moves them) instead of the data folder, which
+  agents may not read, so a lead can read the worktree it sent work to.
+  Worktrees made before stay where they are and are still managed and cleaned
+  up.
   Since `[v3.1.0]` these actions live in the repository's checkout menu (see
   **Compact coding sidebar**), where **New worktree…**, **Rename** and
   **Remove** act on the worktree the list is narrowed to.

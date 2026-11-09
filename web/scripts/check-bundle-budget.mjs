@@ -87,7 +87,8 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // lazySurface (679.5 kB). Making the Git and file views lazy again cost more
 // than it saved (681.1 kB), and the rest sits in the composer, sidebar and
 // transcript, so the gzip limit rose.
-export const LIMITS = { eagerBytes: 2_110_000, eagerGzipBytes: 682_000, largestChunkBytes: 1_180_000 }
+// v3.50.0: the OpenAgentd Cloud account UI added about 2.5 KB gzip of eager JS (684.5 kB).
+export const LIMITS = { eagerBytes: 2_110_000, eagerGzipBytes: 692_000, largestChunkBytes: 1_180_000 }
 
 /** Each lazy surface must have a chunk of its own, outside the startup path. */
 export function lazySurfaceFailures(directory, names = LAZY_SURFACES) {

@@ -363,6 +363,9 @@ pub async fn send(pool: &DbPool, req: SendRequest) -> Result<Sent, String> {
     sent_from.insert("session_title".into(), json!(source_row.as_ref().and_then(|r| r.title.clone())));
     sent_from.insert("reply".into(), json!(req.reply));
     sent_from.insert("hops".into(), json!(hops));
+    // `v: 2`: the request's header says to ask this agent, not the user
+    // (`history::workspace_message_header`).
+    sent_from.insert("v".into(), json!(2));
     let mut extra = Map::new();
     extra.insert("sent_from".into(), Value::Object(sent_from));
 
@@ -618,6 +621,41 @@ pub fn interim_notice(status: &str, workspace_name: &str, error: Option<&str>) -
     }
 }
 
+/// What a closed turn does for the requests one sender is owed. A request is
+/// consumed when a turn reads it; it is owed a reply until `replied_at` is
+/// stamped. Every row in `on_turn_closed`'s groups is still owed one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplyAction {
+    /// The sender's session is gone: settle the requests (`replied_at`)
+    /// without sending anything.
+    DropSourceGone,
+    /// Send the final answer, grouped, and settle the requests (`replied_at`).
+    Final,
+    /// Send one interim notice (`error_notified_at`); the requests stay owed
+    /// a final answer, which a later completed turn sends.
+    Interim,
+    /// Every request already had its interim notice: send nothing more.
+    AlreadyNotified,
+}
+
+/// [`ReplyAction`] for one sender. `final_answer`: the turn completed and its
+/// answer goes out; `all_notified`: each of the sender's requests already
+/// carries `error_notified_at`.
+pub fn reply_action(source_exists: bool, final_answer: bool, all_notified: bool) -> ReplyAction {
+    match (source_exists, final_answer, all_notified) {
+        (false, _, _) => ReplyAction::DropSourceGone,
+        (true, true, _) => ReplyAction::Final,
+        (true, false, true) => ReplyAction::AlreadyNotified,
+        (true, false, false) => ReplyAction::Interim,
+    }
+}
+
+/// A completed turn while the session's members still work is not its last:
+/// their reports start another turn, and that one replies.
+pub fn reply_waits_for_members(outcome: &str, members_working: bool) -> bool {
+    outcome == "completed" && members_working
+}
+
 fn sent_from(row: &SessionMessage) -> Option<(Map<String, Value>, Map<String, Value>)> {
     let extra = row.extra_json()?.as_object()?.clone();
     let sf = extra.get("sent_from")?.as_object()?.clone();
@@ -642,7 +680,7 @@ async fn stamp(pool: &DbPool, row: &SessionMessage, field: &str) {
 /// sends one interim notice and leaves the request pending for a retry.
 pub async fn on_turn_closed(pool: &DbPool, session_id: &str, status: &str, cancelled: bool, last_error: Option<&str>) -> bool {
     let outcome = reply_status(status, cancelled);
-    if outcome == "completed" && crate::subagents::has_working_subagents(session_id) {
+    if reply_waits_for_members(outcome, crate::subagents::has_working_subagents(session_id)) {
         return false;
     }
     let rows = match db::pending_reply_requests(pool, session_id).await {
@@ -675,21 +713,20 @@ pub async fn on_turn_closed(pool: &DbPool, session_id: &str, status: &str, cance
     }
     let mut delivered = false;
     for (source, rows) in groups {
-        if db::get_session(pool, &source).await.ok().flatten().is_none() {
-            tracing::info!("workspace_message_reply_dropped source_session_id={} target_session_id={} reason=source_gone", source, sid);
-            for r in &rows {
-                stamp(pool, r, "replied_at").await;
-            }
-            continue;
-        }
-        let content = match &answer {
-            Some(a) => a.clone(),
-            None => {
-                if rows.iter().all(|r| sent_from(r).is_some_and(|(_, sf)| sf.get("error_notified_at").is_some_and(|v| !v.is_null()))) {
-                    continue;
+        let source_exists = db::get_session(pool, &source).await.ok().flatten().is_some();
+        let all_notified = rows.iter().all(|r| sent_from(r).is_some_and(|(_, sf)| sf.get("error_notified_at").is_some_and(|v| !v.is_null())));
+        let action = reply_action(source_exists, answer.is_some(), all_notified);
+        let content = match (action, &answer) {
+            (ReplyAction::DropSourceGone, _) => {
+                tracing::info!("workspace_message_reply_dropped source_session_id={} target_session_id={} reason=source_gone", source, sid);
+                for r in &rows {
+                    stamp(pool, r, "replied_at").await;
                 }
-                interim_notice(outcome, &target_name, last_error)
+                continue;
             }
+            (ReplyAction::AlreadyNotified, _) => continue,
+            (ReplyAction::Final, Some(a)) => a.clone(),
+            _ => interim_notice(outcome, &target_name, last_error),
         };
         let mut extra = Map::new();
         extra.insert("from_agent".into(), json!(target_name));
@@ -698,14 +735,15 @@ pub async fn on_turn_closed(pool: &DbPool, session_id: &str, status: &str, cance
             tracing::warn!("workspace_message_reply_failed source_session_id={} target_session_id={} error={}", source, sid, e);
             continue;
         }
-        let field = if answer.is_some() { "replied_at" } else { "error_notified_at" };
+        let settles = action == ReplyAction::Final;
+        let field = if settles { "replied_at" } else { "error_notified_at" };
         for r in &rows {
             stamp(pool, r, field).await;
-            if answer.is_some() {
+            if settles {
                 settle_outstanding(&source);
             }
         }
-        delivered |= answer.is_some();
+        delivered |= settles;
         tracing::info!("workspace_message_replied source_session_id={} target_session_id={} status={}", source, sid, outcome);
     }
     delivered
@@ -826,6 +864,28 @@ mod tests {
         assert_eq!(next_hops(None), 1);
         assert_eq!(next_hops(Some(&json!({"hops": 2}))), 3);
         assert_eq!(next_hops(Some(&json!({}))), 1);
+    }
+
+    #[test]
+    fn each_sender_gets_one_reply_decision() {
+        // The reply owed to one sender, for every combination.
+        use ReplyAction::*;
+        for (source_exists, final_answer, all_notified, expect) in [
+            (false, true, false, DropSourceGone),
+            (false, false, true, DropSourceGone),
+            (true, true, false, Final),
+            // A final answer goes out even after an interim notice.
+            (true, true, true, Final),
+            (true, false, false, Interim),
+            // One interim notice per request: a second failure sends nothing.
+            (true, false, true, AlreadyNotified),
+        ] {
+            assert_eq!(reply_action(source_exists, final_answer, all_notified), expect, "{source_exists} {final_answer} {all_notified}");
+        }
+        assert!(reply_waits_for_members("completed", true));
+        // A failed or stopped turn sends its interim notice now.
+        assert!(!reply_waits_for_members("error", true) && !reply_waits_for_members("stopped", true));
+        assert!(!reply_waits_for_members("completed", false));
     }
 
     #[test]

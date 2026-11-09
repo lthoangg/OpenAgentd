@@ -142,14 +142,20 @@ export function useStrandedFocusGuard(enabled: boolean, restore: () => void) {
  * Only with a mouse or trackpad: on a touch-first device a focused text
  * field raises the on-screen keyboard over the conversation, which no
  * native app does when one opens. There the composer waits for a tap.
+ *
+ * ``quiet(key)`` true: the session was opened from a desktop widget (the
+ * island, the pet), where the user only looked in, so focus stays put.
  */
-export function useStartInComposer(enabled: boolean, key: unknown, restore: () => void) {
+export function useStartInComposer<K>(enabled: boolean, key: K, restore: () => void, quiet?: (key: K) => boolean) {
   const restoreRef = useRef(restore)
+  const quietRef = useRef(quiet)
   useEffect(() => {
     restoreRef.current = restore
+    quietRef.current = quiet
   })
   useEffect(() => {
     if (!enabled || typeof document === 'undefined' || !hasFinePointer()) return
+    if (quietRef.current?.(key)) return
     if (document.hasFocus() && isFocusStranded()) restoreRef.current()
   }, [enabled, key])
 }

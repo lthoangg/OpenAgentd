@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach, mock } from 'bun:test'
 import { renderHook, cleanup, act } from '@testing-library/react'
-import { useSmoothStream } from '@/hooks/useSmoothStream'
+import { useSmoothStream, END_DRAIN_MS } from '@/hooks/useSmoothStream'
 
 // ---------------------------------------------------------------------------
 // Deterministic rAF mock
@@ -127,6 +127,36 @@ describe('useSmoothStream', () => {
     streaming = false
     rerender()
     expect(result.current).toBe(text)
+  })
+
+  /**
+   * The reveal after the stream ended took 15% of what was left per frame,
+   * throttled on long answers: 0.5–1.7 s of a blinking caret after the answer
+   * was complete. It now has a fixed time budget, however much is left.
+   */
+  it('finishes the rest within its time budget after the stream ends', () => {
+    let text = 'Hello'
+    let streaming = true
+    const { result, rerender } = renderHook(() => useSmoothStream(text, streaming))
+    text = 'Hello ' + 'word '.repeat(600)
+    streaming = false
+    rerender()
+
+    const start = 1000
+    let frame = 0
+    while (result.current !== text && frame < 200) {
+      const at = start + frame * 16.67
+      act(() => {
+        const frames = pendingFrames.slice()
+        pendingFrames = []
+        frames.forEach((cb) => cb(at))
+      })
+      frame++
+    }
+    expect(result.current).toBe(text)
+    expect(frame * 16.67).toBeLessThanOrEqual(END_DRAIN_MS + 2 * 16.67)
+    // It still flows rather than snapping on the first frame.
+    expect(frame).toBeGreaterThan(3)
   })
 
   it('snaps at the end under reduced motion', () => {

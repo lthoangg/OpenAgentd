@@ -21,6 +21,8 @@ pub struct Settings {
     pub state_dir: PathBuf,
     pub cache_dir: PathBuf,
     pub workspace_dir: PathBuf,
+    /// Where new managed git worktrees go (see [`worktrees_dir_for`]).
+    pub worktrees_dir: PathBuf,
     pub agents_dir: PathBuf,
     pub skills_dir: PathBuf,
     pub plugins_dirs: Vec<PathBuf>,
@@ -106,6 +108,27 @@ pub fn default_dirs(app_env: &str) -> (PathBuf, PathBuf, PathBuf, PathBuf, PathB
     }
 }
 
+/// Where OpenAgentd creates git worktrees: `OPENAGENTD_WORKTREES_DIR`, else
+/// `~/.openagentd/worktrees` for the installed app, beside the other dev
+/// folders in development, and under the data dir when that was moved
+/// (tests, custom installs), so such a setup stays self-contained. Before
+/// v3.50.0 they went under the data dir, which agents may not read, so a
+/// lead could not look at the worktree it sent work to; those stay where
+/// they are (see [`Settings::legacy_worktrees_dir`]).
+pub fn worktrees_dir_for(app_env: &str, override_dir: Option<&str>, data_dir_set: bool, data_dir: &Path) -> PathBuf {
+    if let Some(p) = override_dir {
+        return abs(p);
+    }
+    if data_dir_set {
+        return data_dir.join("worktrees");
+    }
+    if app_env == "production" {
+        home().join(".openagentd").join("worktrees")
+    } else {
+        std::env::current_dir().unwrap_or_default().join(".openagentd").join("dev").join("worktrees")
+    }
+}
+
 fn abs(p: &str) -> PathBuf {
     let path = PathBuf::from(p);
     if path.is_absolute() {
@@ -174,6 +197,7 @@ impl Settings {
         let state_dir = env_str("OPENAGENTD_STATE_DIR").map(|p| abs(&p)).unwrap_or(d_state);
         let cache_dir = env_str("OPENAGENTD_CACHE_DIR").map(|p| abs(&p)).unwrap_or(d_cache);
         let workspace_dir = env_str("OPENAGENTD_WORKSPACE_DIR").map(|p| abs(&p)).unwrap_or(d_ws);
+        let worktrees_dir = worktrees_dir_for(&app_env, env_str("OPENAGENTD_WORKTREES_DIR").as_deref(), env_str("OPENAGENTD_DATA_DIR").is_some(), &data_dir);
         let database_path = match env_var("OPENAGENTD_DATABASE_URL") {
             Some(url) => {
                 let path = url.strip_prefix("sqlite+aiosqlite:///").or_else(|| url.strip_prefix("sqlite:///")).unwrap_or(&url);
@@ -210,6 +234,7 @@ impl Settings {
             state_dir,
             cache_dir,
             workspace_dir,
+            worktrees_dir,
             database_path,
         }
     }
@@ -287,6 +312,20 @@ impl Settings {
     pub fn session_workspace_dir(&self, session_id: &str) -> PathBuf {
         self.workspace_dir.join(session_id)
     }
+    /// Where managed worktrees were created before v3.50.0; still recognised
+    /// and cleaned up.
+    pub fn legacy_worktrees_dir(&self) -> PathBuf {
+        self.data_dir.join("worktrees")
+    }
+    /// Every folder that holds managed worktrees: the current one first.
+    pub fn worktree_roots(&self) -> Vec<PathBuf> {
+        let legacy = self.legacy_worktrees_dir();
+        if legacy == self.worktrees_dir {
+            vec![self.worktrees_dir.clone()]
+        } else {
+            vec![self.worktrees_dir.clone(), legacy]
+        }
+    }
     pub fn uploads_dir(&self, session_id: &str) -> PathBuf {
         self.session_workspace_dir(session_id).join("uploads")
     }
@@ -320,4 +359,22 @@ pub fn path_within(path: &Path, root: &Path) -> bool {
     let p = dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let r = dunce::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     p.starts_with(r)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn worktrees_go_to_the_home_folder_unless_moved() {
+        let data = Path::new("/d/data");
+        assert_eq!(worktrees_dir_for("production", None, false, data), home().join(".openagentd/worktrees"));
+        assert!(worktrees_dir_for("development", None, false, data).ends_with(".openagentd/dev/worktrees"));
+        // A moved data dir (tests, custom installs) keeps its worktrees with it.
+        assert_eq!(worktrees_dir_for("production", None, true, data), data.join("worktrees"));
+        // An absolute override is used as is ("/w/trees" has no drive on
+        // Windows, so the test takes a path that is absolute everywhere).
+        let trees = std::env::temp_dir().join("trees");
+        assert_eq!(worktrees_dir_for("production", trees.to_str(), true, data), trees);
+    }
 }

@@ -198,6 +198,80 @@ fn exhausted(t: &ScheduledTask) -> bool {
     matches!(t.max_runs, Some(m) if t.run_count >= m)
 }
 
+/// Why a fire did not dispatch to a session it targets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SkipReason {
+    /// The task's own session (not a fresh one) is running a turn.
+    ActiveTurn,
+    /// The session waits on the user's answer to a question.
+    PendingQuestion,
+}
+
+/// How one fire ended, for the scheduler's accounting. `Dispatched` means the
+/// session accepted the prompt, not that the agent has finished the work.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FireOutcome {
+    /// The task changed (edited, paused, removed) after this fire was
+    /// scheduled: whatever ran is not this task's run, and nothing is
+    /// accounted. The change itself set the stored status.
+    Superseded,
+    /// Not this slot: rescheduled to the next one without counting a run.
+    Skipped(SkipReason),
+    Dispatched,
+    /// `dispatch_attempted`: the prompt was handed to the session.
+    Failed {
+        error: String,
+        dispatch_attempted: bool,
+    },
+}
+
+impl FireOutcome {
+    /// A failure before dispatch belongs to the fire's version: once the task
+    /// changed, it is superseded instead of counted.
+    fn settle(self, still_current: bool) -> Self {
+        match self {
+            FireOutcome::Failed { dispatch_attempted: false, .. } if !still_current => FireOutcome::Superseded,
+            o => o,
+        }
+    }
+
+    /// The error a counted run records; `None` for an outcome that is not one.
+    fn counted_run(&self) -> Option<Option<String>> {
+        match self {
+            FireOutcome::Superseded | FireOutcome::Skipped(_) => None,
+            FireOutcome::Dispatched => Some(None),
+            FireOutcome::Failed { error, .. } => Some(Some(error.clone())),
+        }
+    }
+}
+
+/// Count one run on the stored task, record its error, and set what comes
+/// next: `failed` keeps the schedule (the next slot fires again), a
+/// `max_runs` reached or an `at` task completes, and anything else waits for
+/// its next slot. A task paused while it ran stays paused.
+fn record_run(t: &mut ScheduledTask, error: Option<String>, now: DateTime<Utc>) {
+    let was_paused = !t.enabled || t.status == "paused";
+    t.run_count += 1;
+    t.last_error = error;
+    if was_paused {
+        return;
+    }
+    let failed = t.last_error.is_some();
+    let nxt = nf(t, Some(now));
+    let finite_complete = !failed && matches!(t.max_runs, Some(m) if t.run_count >= m);
+    t.next_fire_at = if finite_complete { None } else { nxt };
+    t.status = if failed {
+        "failed".into()
+    } else if finite_complete {
+        t.enabled = false;
+        "completed".into()
+    } else if t.schedule_type == "at" {
+        "completed".into()
+    } else {
+        "pending".into()
+    };
+}
+
 fn dt(s: &Option<String>) -> Option<DateTime<Utc>> {
     s.as_deref().and_then(codec::parse_dt)
 }
@@ -630,6 +704,12 @@ impl TaskScheduler {
         let now = Utc::now();
         {
             let _g = self.state_lock.lock().await;
+            // Every change to a task bumps its version under this lock, so
+            // this is the last point where a change can supersede the fire
+            // before it marks the task running.
+            if self.version(&task.id) != v {
+                return;
+            }
             match db::get_task(&self.pool, &task.id).await {
                 Ok(Some(mut t)) if t.enabled && !exhausted(&t) => {
                     t.status = "running".into();
@@ -648,22 +728,20 @@ impl TaskScheduler {
             Some("auto") => Some(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, format!("scheduler:{}", task.name).as_bytes()).to_string()),
             Some(s) => Some(s.to_string()),
         };
-        let mut error: Option<String> = None;
-        let mut fired_sid: Option<String> = None;
         let mut dispatch_attempted = false;
-        let res: Result<(), String> = async {
+        let res: Result<FireOutcome, String> = async {
             if task.workspace.is_empty() {
                 return Err("Task has no workspace configured.".to_string());
             }
             let agent = crate::manager::get_or_start_agent_session(&task.workspace, resolved_sid.as_deref()).await.map_err(|e| e.to_string())?;
             let Some(agent) = agent else { return Err("No agent configured.".to_string()) };
             if self.version(&task.id) != v {
-                return Ok(());
+                return Ok(FireOutcome::Superseded);
             }
             if !fresh && agent.has_active_user_turn() {
                 self.reschedule_without_firing(task, v).await;
                 tracing::info!("scheduler_skip_active_session task_slug={} name={} session_id={:?}", task.slug, task.name, resolved_sid);
-                return Err("__skip__".into());
+                return Ok(FireOutcome::Skipped(SkipReason::ActiveTurn));
             }
             // Only a session the scheduler owns is marked as the task's, from
             // its first turn. A task running in the user's own session leaves
@@ -684,55 +762,34 @@ impl TaskScheduler {
                         "session_turn_started",
                         json!({"session_id": sid, "source": "scheduled_task", "task_slug": task.slug, "task_name": task.name, "workspace": task.workspace, "started_at": codec::py_isoformat(&Utc::now())}),
                     );
-                    fired_sid = Some(sid);
-                    Ok(())
+                    Ok(FireOutcome::Dispatched)
                 }
                 Err(DispatchError::Session(SessionError::QuestionPending(_))) => {
                     self.reschedule_without_firing(task, v).await;
                     tracing::info!("scheduler_skip_pending_question task_slug={} name={} session_id={:?}", task.slug, task.name, resolved_sid);
-                    Err("__skip__".into())
+                    Ok(FireOutcome::Skipped(SkipReason::PendingQuestion))
                 }
                 Err(e) => Err(e.to_string()),
             }
         }
         .await;
-        match res {
-            Err(e) if e == "__skip__" => return,
-            Err(e) => {
-                tracing::error!("scheduler_fire_error task_slug={} name={} error={}", task.slug, task.name, e);
-                error = Some(e);
+        let outcome = match res {
+            Ok(o) => o,
+            Err(error) => {
+                tracing::error!("scheduler_fire_error task_slug={} name={} error={}", task.slug, task.name, error);
+                FireOutcome::Failed { error, dispatch_attempted }
             }
-            Ok(()) => {}
-        }
-        if !dispatch_attempted && error.is_none() && fired_sid.is_none() {
-            // Stale fire version: nothing dispatched, nothing to account.
+        };
+        let outcome = outcome.settle(self.version(&task.id) == v);
+        let Some(error) = outcome.counted_run() else {
+            tracing::debug!("scheduler_fire_not_counted task_slug={} outcome={:?}", task.slug, outcome);
             return;
-        }
-        if !dispatch_attempted && self.version(&task.id) != v {
-            return;
-        }
+        };
         let _g = self.state_lock.lock().await;
         let Ok(Some(mut t)) = db::get_task(&self.pool, &task.id).await else {
             return;
         };
-        let was_paused = !t.enabled || t.status == "paused";
-        t.run_count += 1;
-        t.last_error = error.clone();
-        if !was_paused {
-            let nxt = nf(&t, Some(Utc::now()));
-            let finite_complete = error.is_none() && matches!(t.max_runs, Some(m) if t.run_count >= m);
-            t.next_fire_at = if finite_complete { None } else { nxt };
-            t.status = if error.is_some() {
-                "failed".into()
-            } else if finite_complete {
-                t.enabled = false;
-                "completed".into()
-            } else if t.schedule_type == "at" {
-                "completed".into()
-            } else {
-                "pending".into()
-            };
-        }
+        record_run(&mut t, error.clone(), Utc::now());
         let _ = self.persist(&t).await;
         tracing::info!("scheduler_fired task_slug={} name={} run_count={} error={:?}", task.slug, task.name, task.run_count + 1, error);
     }
@@ -1280,5 +1337,135 @@ mod tests {
         assert!(out.contains("next=2099-06-01 07:00:00"), "{out}");
         let out = run(&ctx, serde_json::json!({"action": "update", "slug": "once", "at_datetime": "2099-06-01T09:00:00", "timezone": "UTC"})).await;
         assert!(out.contains("next=2099-06-01 09:00:00"), "{out}");
+    }
+
+    /// A scheduler of its own (not the process-wide one), on a fresh database.
+    async fn own_scheduler() -> (Arc<TaskScheduler>, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = appv3_db::create_pool(dir.path().join("t.db")).await.unwrap();
+        (Arc::new(TaskScheduler { pool, st: Mutex::new(State::default()), state_lock: tokio::sync::Mutex::new(()) }), dir)
+    }
+
+    /// An hourly task with no workspace: a fire fails before it dispatches,
+    /// so no agent or session is needed to drive the fire path.
+    async fn hourly_task(s: &TaskScheduler, slug: &str) -> ScheduledTask {
+        let now = codec::now_db();
+        let t = ScheduledTask {
+            id: String::new(),
+            name: slug.into(),
+            schedule_type: "every".into(),
+            at_datetime: None,
+            every_seconds: Some(3600),
+            cron_expression: None,
+            timezone: "UTC".into(),
+            prompt: "p".into(),
+            session_id: None,
+            enabled: true,
+            status: "pending".into(),
+            run_count: 0,
+            last_run_at: None,
+            last_error: None,
+            next_fire_at: None,
+            created_at: now.clone(),
+            updated_at: now,
+            workspace: String::new(),
+            max_runs: None,
+            slug: slug.into(),
+        };
+        db::insert_task(&s.pool, &t).await.unwrap()
+    }
+
+    /// Characterization: a fire that fails before dispatch still counts a
+    /// run and records the error, so the task shows it failed.
+    #[tokio::test]
+    async fn a_fire_that_fails_before_dispatch_counts_a_failed_run() {
+        let (s, _dir) = own_scheduler().await;
+        let t = hourly_task(&s, "no-workspace").await;
+
+        s.clone().fire_task(t.clone(), Some(0)).await;
+
+        let fresh = db::get_task(&s.pool, &t.id).await.unwrap().unwrap();
+        assert_eq!((fresh.status.as_str(), fresh.run_count), ("failed", 1));
+        assert_eq!(fresh.last_error.as_deref(), Some("Task has no workspace configured."));
+        assert!(fresh.enabled && fresh.next_fire_at.is_some(), "a failed run keeps the schedule");
+    }
+
+    /// An edit that lands after a fire passed its version check, but before
+    /// it marked the task running, supersedes that fire. The fire used to mark
+    /// the edited task running anyway and then return as stale, so the task
+    /// read "running" until its next fire.
+    #[tokio::test]
+    async fn an_edit_landing_while_a_fire_waits_leaves_the_task_pending() {
+        let (s, _dir) = own_scheduler().await;
+        let t = hourly_task(&s, "edited").await;
+        let held = s.state_lock.lock().await;
+        let fire = tokio::spawn(s.clone().fire_task(t.clone(), Some(0)));
+        // The fire passed its version check and now waits for the lock.
+        while !s.st.lock().unwrap().firing.contains(&t.id) {
+            tokio::task::yield_now().await;
+        }
+        let mut edited = db::get_task(&s.pool, &t.id).await.unwrap().unwrap();
+        edited.prompt = "edited".into();
+        s.update_locked(edited).await.unwrap();
+        drop(held);
+        fire.await.unwrap();
+        s.stop();
+
+        let fresh = db::get_task(&s.pool, &t.id).await.unwrap().unwrap();
+        assert_eq!((fresh.status.as_str(), fresh.run_count, fresh.last_error.as_deref()), ("pending", 0, None), "a superseded fire changed the task");
+    }
+
+    fn task(schedule_type: &str, status: &str, enabled: bool, run_count: i64, max_runs: Option<i64>) -> ScheduledTask {
+        ScheduledTask {
+            id: "t".into(),
+            name: "t".into(),
+            schedule_type: schedule_type.into(),
+            at_datetime: (schedule_type == "at").then(|| codec::dt_db(&(Utc::now() - chrono::Duration::minutes(1)))),
+            every_seconds: (schedule_type == "every").then_some(60),
+            cron_expression: None,
+            timezone: "UTC".into(),
+            prompt: "p".into(),
+            session_id: None,
+            enabled,
+            status: status.into(),
+            run_count,
+            last_run_at: None,
+            last_error: None,
+            next_fire_at: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+            workspace: "/w".into(),
+            max_runs,
+            slug: "t".into(),
+        }
+    }
+
+    /// Each counted run's next state, by schedule and outcome.
+    #[test]
+    fn a_counted_run_sets_the_tasks_next_state() {
+        let now = Utc::now();
+        let run = |mut t: ScheduledTask, error: Option<&str>| {
+            record_run(&mut t, error.map(String::from), now);
+            (t.status.clone(), t.enabled, t.run_count, t.next_fire_at.is_some(), t.last_error.clone())
+        };
+        assert_eq!(run(task("every", "running", true, 0, None), None), ("pending".into(), true, 1, true, None));
+        assert_eq!(run(task("every", "running", true, 1, Some(2)), None), ("completed".into(), false, 2, false, None));
+        // A failed run keeps its schedule, even on its last allowed run.
+        assert_eq!(run(task("every", "running", true, 1, Some(2)), Some("boom")), ("failed".into(), true, 2, true, Some("boom".into())));
+        assert_eq!(run(task("at", "running", true, 0, None), None).0, "completed");
+        // Paused while it ran: counted, but the pause stands.
+        assert_eq!(run(task("every", "paused", false, 0, None), None), ("paused".into(), false, 1, false, None));
+    }
+
+    #[test]
+    fn only_a_current_fire_that_ran_or_failed_counts() {
+        let failed = |dispatch_attempted| FireOutcome::Failed { error: "e".into(), dispatch_attempted };
+        assert_eq!(FireOutcome::Dispatched.settle(false).counted_run(), Some(None), "a dispatched prompt counts after any change");
+        assert_eq!(failed(true).settle(false).counted_run(), Some(Some("e".into())));
+        assert_eq!(failed(false).settle(true).counted_run(), Some(Some("e".into())));
+        assert_eq!(failed(false).settle(false), FireOutcome::Superseded);
+        assert_eq!(FireOutcome::Superseded.settle(true).counted_run(), None);
+        assert_eq!(FireOutcome::Skipped(SkipReason::ActiveTurn).settle(true).counted_run(), None);
+        assert_eq!(FireOutcome::Skipped(SkipReason::PendingQuestion).settle(true).counted_run(), None);
     }
 }

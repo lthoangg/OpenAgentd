@@ -321,6 +321,57 @@ async fn a_plugins_hooks_wrap_tool_calls_until_it_is_removed() {
     assert!(appv3_agent::plugins::bundle_tool_hooks().is_empty(), "a removed plugin's hooks stop wrapping calls");
 }
 
+/// A reload whose caller goes away (a closed request) still finishes: a
+/// reload cut short while loading one plugin's code must not forget the
+/// running module of another plugin that was deleted meanwhile.
+///
+/// The cut is placed by a barrier, not a timer: late-kit's code marks its
+/// data folder when it starts loading (the reload has then taken the running
+/// modules out of its registry) and waits at its top level until the test
+/// creates the gate file, so the reload cannot finish before it is dropped.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_reload_abandoned_by_its_caller_still_removes_a_deleted_plugin() {
+    let e = env().await;
+    let _g = serial().lock().await;
+    e.fresh().await;
+    let late = e.plugins.join("late-kit");
+    let loading = appv3_core::settings().data_dir.join("plugin-data/late-kit/loading");
+    let _ = std::fs::remove_file(&loading);
+    notes_kit(&e.plugins.join("notes-kit"), "v1");
+    appv3_api::plugins::reload().await;
+    assert_eq!(module_state("plugin:notes-kit"), Some("running"));
+
+    // notes-kit is deleted while a new plugin's code has to load.
+    std::fs::remove_dir_all(e.plugins.join("notes-kit")).unwrap();
+    let gate = late.join("gate");
+    write(&late.join("plugin.json"), r#"{"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", "name": "late-kit"}"#);
+    write(
+        &late.join("dev.openagentd/plugin.ts"),
+        &format!(
+            r#"import {{ bundle, fs, sleep }} from "openagentd"
+fs.writeText(bundle.dataDir + "/loading", "")
+while (!fs.exists({gate:?})) await sleep(5)
+export default {{ tools: [] }}
+"#,
+            gate = gate.display().to_string()
+        ),
+    );
+    let started = async {
+        while !loading.exists() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    };
+    tokio::select! {
+        _ = appv3_api::plugins::reload() => panic!("the reload finished while late-kit's code was held at its gate"),
+        r = tokio::time::timeout(Duration::from_secs(20), started) => r.expect("late-kit's code never started loading"),
+    }
+    // The caller is gone mid-reload; let late-kit's code finish loading.
+    write(&gate, "");
+    appv3_api::plugins::reload().await;
+    assert_eq!(module_state("plugin:notes-kit"), None, "the deleted plugin still runs after an abandoned reload");
+    assert_eq!(module_state("plugin:late-kit"), Some("running"));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_plugin_copied_into_the_folder_loads_without_a_restart() {
     let e = env().await;

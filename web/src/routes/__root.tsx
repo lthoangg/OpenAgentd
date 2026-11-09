@@ -28,11 +28,16 @@ import { getPlatform } from '@/hooks/use-platform'
 import { FloatingNotices } from '@/components/FloatingNotices'
 import { AiDataConsent } from '@/components/AiDataConsent'
 import { CAPABILITY, useServerCapability } from '@/queries'
+import { takeQuietOpenFromRoute } from '@/lib/quiet-open'
 
 // Home-screen widgets exist only in the phone apps; keep their sync out of
 // the desktop and browser bundle.
 const WidgetSnapshotSync = lazy(() =>
   import('@/hooks/use-widget-snapshot').then((module) => ({ default: module.WidgetSnapshotSync })),
+)
+// Same for the phone's account: only the phone apps have one.
+const PhoneCloudSync = lazy(() =>
+  import('@/hooks/use-phone-cloud-sync').then((module) => ({ default: module.PhoneCloudSync })),
 )
 
 // Settings and Telemetry stay out of the startup bundle; they load while the
@@ -104,7 +109,8 @@ export function Root() {
 
   useEffect(() => {
     const target = window as Window & { __OAD_INITIAL_ROUTE__?: string }
-    const initialRoute = target.__OAD_INITIAL_ROUTE__
+    // A widget's new window marks its session quiet (`?quiet=1`) and opens it without the flag.
+    const initialRoute = takeQuietOpenFromRoute(target.__OAD_INITIAL_ROUTE__)
     delete target.__OAD_INITIAL_ROUTE__
 
     const storageKey = lastRouteStorageKey()
@@ -138,6 +144,11 @@ export function Root() {
       {widgetsSupported() && (
         <Suspense fallback={null}>
           <WidgetSnapshotSync />
+        </Suspense>
+      )}
+      {widgetsSupported() && (
+        <Suspense fallback={null}>
+          <PhoneCloudSync />
         </Suspense>
       )}
       <PluginNoticeGate />

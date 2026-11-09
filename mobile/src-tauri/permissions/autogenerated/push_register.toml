@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-push-register"
+description = "Enables the push_register command without any pre-configured scope."
+commands.allow = ["push_register"]
+
+[[permission]]
+identifier = "deny-push-register"
+description = "Denies the push_register command without any pre-configured scope."
+commands.deny = ["push_register"]

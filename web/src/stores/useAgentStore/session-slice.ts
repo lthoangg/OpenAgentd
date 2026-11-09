@@ -463,6 +463,7 @@ export function resetSessionState(
   state.sessionId = options.sessionId
   state.parentSessionId = null
   state.sessionTitle = null
+  state.sessionSentFrom = null
   state.sessionInteractionMode = options.interactionMode ?? 'code'
   state.sessionPendingInteractionMode = null
   state.sessionModel = options.model ?? null
@@ -531,6 +532,7 @@ export type SessionSlice = Pick<
   | 'sessionId'
   | 'parentSessionId'
   | 'sessionTitle'
+  | 'sessionSentFrom'
   | 'sessionInteractionMode'
   | 'sessionPendingInteractionMode'
   | 'sessionModel'
@@ -614,6 +616,7 @@ async function loadSessionImpl(
       draft.sessionId = sessionId
       draft.parentSessionId = history.lead.parent_session_id ?? null
       draft.sessionTitle = history.lead.title ?? null
+      draft.sessionSentFrom = history.lead.sent_from ?? null
       draft.sessionInteractionMode = history.lead.interaction_mode ?? 'code'
       draft.sessionPendingInteractionMode = history.lead.pending_interaction_mode ?? null
       if (!draft._sessionSettingsDirty && draft._sessionSettingsVersion === settingsVersion) {
@@ -941,6 +944,7 @@ export const createSessionSlice: StateCreator<
   sessionId: null,
   parentSessionId: null,
   sessionTitle: null,
+  sessionSentFrom: null,
   sessionInteractionMode: 'code',
   sessionPendingInteractionMode: null,
   sessionModel: null,
@@ -1338,6 +1342,7 @@ export const createSessionSlice: StateCreator<
     set((draft) => {
       // Metadata the delta carries authoritatively.
       draft.sessionTitle = delta.lead.title ?? draft.sessionTitle
+      draft.sessionSentFrom = delta.lead.sent_from ?? draft.sessionSentFrom
       draft.sessionInteractionMode = delta.lead.interaction_mode ?? draft.sessionInteractionMode
       if (!draft._sessionSettingsDirty && draft._sessionSettingsVersion === settingsVersion) {
         draft.sessionModel = delta.lead.model ?? draft.sessionModel

@@ -79,8 +79,10 @@ impl Peer {
     pub fn of(req: &Request) -> Self {
         let loopback = req.extensions().get::<ConnectInfo<ConnInfo>>().and_then(|c| c.0.remote).is_some_and(|a| a.ip().to_canonical().is_loopback());
         let h = req.headers();
-        let proxied = h.contains_key(header::FORWARDED) || h.contains_key("x-forwarded-for") || h.contains_key(header::VIA);
-        Peer { loopback, proxied }
+        // A relayed request is remote: its bytes cross the relay.
+        let relayed = req.extensions().get::<RelayPeer>().is_some();
+        let proxied = relayed || h.contains_key(header::FORWARDED) || h.contains_key("x-forwarded-for") || h.contains_key(header::VIA);
+        Peer { loopback: loopback && !relayed, proxied }
     }
 
     /// The bytes cross a network to reach the user.
@@ -135,6 +137,18 @@ pub struct Policy {
 pub enum AuthenticatedBy {
     DesktopToken,
     NetworkKey,
+    /// A device of this server's OpenAgentd Cloud account, through the
+    /// relay: authenticated by the Noise session against the verified
+    /// roster (`cloud::connector`). Same rights as `NetworkKey`.
+    RelayDevice,
+}
+
+/// Marks a request the cloud connector serves in-process for a relayed
+/// device. Only `cloud::connector` attaches it; no header can produce it.
+/// Such a request has no `ConnectInfo`, so it never counts as loopback.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RelayPeer {
+    pub device_id: String,
 }
 
 impl Policy {
@@ -259,6 +273,13 @@ fn strip_token(req: &mut Request) {
 }
 
 pub async fn desktop_token(policy: axum::extract::State<Policy>, mut req: Request, next: Next) -> Response {
+    // A relayed device is authenticated by its session, never by a key it
+    // sent (the connector removed any).
+    if req.extensions().get::<RelayPeer>().is_some() {
+        req.extensions_mut().insert(AuthenticatedBy::RelayDevice);
+        strip_token(&mut req);
+        return next.run(req).await;
+    }
     if policy.token.is_empty() {
         return next.run(req).await;
     }

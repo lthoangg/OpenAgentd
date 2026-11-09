@@ -306,6 +306,9 @@ pub fn status(args: &StatusArgs) -> Result<ExitCode> {
         }
     }
     field("Logs:", &server_log().display().to_string());
+    if let Some(line) = super::cloud::server_status_line() {
+        field("Cloud:", &line);
+    }
     println!();
 
     let mut checks = Checks::default();

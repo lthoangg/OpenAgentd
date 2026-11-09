@@ -202,6 +202,9 @@ impl Tool for AskUserTool {
         if ctx.tool_call_id.is_empty() {
             return Ok(ToolOutput::text("Your question could not be delivered (no tool call id). Continue with your best judgment."));
         }
+        if let Some(text) = self.agent_only_guidance(ctx).await {
+            return Ok(ToolOutput::text(text));
+        }
         let row = appv3_db::create_pending_question(&self.pool, &self.session_id, &ctx.tool_call_id, &payload).await.map_err(ToolError::exec)?;
         let sid = appv3_db::codec::api_uuid(&appv3_db::codec::db_id(&self.session_id));
         let qid = appv3_db::codec::api_uuid(&row.id);
@@ -217,6 +220,32 @@ impl Tool for AskUserTool {
         .await;
         let _ = &self.agent_name;
         Err(ToolError::Suspended(Suspension::Question { question_id: qid, session_id: sid }))
+    }
+}
+
+impl AskUserTool {
+    /// In a turn only agents worked in (another workspace's request, nothing
+    /// the user typed), the user is not following the session: a question
+    /// would wait for nobody. The agent is told to ask the sender instead,
+    /// through its final answer, or to decide when no answer goes back.
+    async fn agent_only_guidance(&self, ctx: &ToolContext) -> Option<String> {
+        let floor = ctx.metadata.lock().unwrap().get(crate::session::TURN_FLOOR_META).and_then(Value::as_i64)?;
+        if !crate::session::agent_only_since(&self.pool, &self.session_id, floor).await {
+            return None;
+        }
+        let sender = appv3_db::latest_sent_from(&self.pool, &self.session_id).await.ok().flatten();
+        Some(agent_only_text(sender.as_ref()))
+    }
+}
+
+fn agent_only_text(sender: Option<&Value>) -> String {
+    let name = sender.and_then(|s| s.get("workspace_name")).and_then(Value::as_str).filter(|n| !n.is_empty()).unwrap_or("another workspace");
+    let reply = sender.and_then(|s| s.get("reply")).is_some_and(|v| lax_bool(v).unwrap_or(false));
+    let head = format!("Not asked. The user is not following this session: the agent in workspace '{name}' sent this request and is the one to ask.");
+    if reply {
+        format!("{head} End your turn with your question as your final answer; it goes back to that agent, which answers with a follow-up in this session.")
+    } else {
+        format!("{head} No reply was asked for, so nothing goes back to it: decide on reasonable assumptions, state them in your answer, and carry on.")
     }
 }
 

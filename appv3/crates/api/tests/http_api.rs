@@ -194,13 +194,15 @@ async fn http_api_end_to_end() {
     assert_eq!(v["update_after_compaction"], json!(true));
     let (st, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 0, "update_after_compaction": false}))).await;
     assert_eq!((st, v["update_after_compaction"].clone()), (StatusCode::OK, json!(false)));
-    // The UI no longer sends the title wait: a hand-set value is kept.
-    let (_, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 7}))).await;
-    assert_eq!(v["wait_timeout_seconds"], json!(7.0));
+    // Nothing waits for a title any more: an older client's wait is accepted
+    // and ignored, and the settings no longer name it.
+    let (st, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 7}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert!(v.get("wait_timeout_seconds").is_none(), "{v}");
     let (st, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1"}))).await;
-    assert_eq!((st, v["wait_timeout_seconds"].clone()), (StatusCode::OK, json!(7.0)));
-    let (_, v) = c.json("PUT", titles, Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 0}))).await;
-    assert_eq!(v["wait_timeout_seconds"], json!(0.0));
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let (_, v) = c.json("GET", titles, None).await;
+    assert!(v.get("wait_timeout_seconds").is_none(), "{v}");
 
     // ── workspace messages switch (v3 only) ──────────────────────────────
     let (st, v) = c.json("GET", "/api/settings/workspace-messages", None).await;
@@ -1438,6 +1440,12 @@ async fn linked_sessions_flow(c: &Client, pool: &appv3_db::DbPool) {
 
     let (_, v) = c.json("GET", &format!("/api/agent/sessions/{}", id(&infra)), None).await;
     assert_eq!(v["sent_from"]["session_id"], json!(id(&app)), "{v}");
+    // The chat view reads its sender from the history it opens with.
+    let (st, v) = c.json("GET", &format!("/api/agent/{}/history", id(&infra)), None).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["lead"]["sent_from"], json!({"session_id": id(&app), "workspace": "/r/linked-app", "title": "Orders API"}), "{v}");
+    let (_, v) = c.json("GET", &format!("/api/agent/{}/history", id(&app)), None).await;
+    assert!(v["lead"].get("sent_from").is_none(), "{v}");
     let (_, v) = c.json("GET", &format!("/api/agent/sessions/{}", id(&app)), None).await;
     assert!(v.get("sent_from").is_none() && v.get("linked_sessions").is_none(), "{v}");
 

@@ -42,12 +42,26 @@ describe("AgentView — workspace messages", () => {
     expect(chip.className).toContain("pointer-coarse:min-h-9")
     await userEvent.setup().click(chip)
     expect(onOpenSession).toHaveBeenCalledWith("app-session", "/r/app")
-    // It is a prompt, not a report: it stays editable.
-    expect(screen.getByRole("button", { name: "Edit prompt" })).toBeTruthy()
+    // Another agent's prompt is not the user's to rewind or resend; it is still copyable.
+    expect(screen.queryByRole("button", { name: "Edit prompt" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Copy prompt" })).toBeTruthy()
+  })
+
+  it("offers no Retry on a failed turn another agent started", () => {
+    const own: ContentBlock = { id: "own", type: "user", content: "Create the orders queue.", timestamp: new Date() }
+    const failed = (prompt: ContentBlock) => <AgentView blocks={[prompt]} currentBlocks={[]} isWorking={false} isError lastError="Provider unavailable" onRetry={() => {}} />
+    // Control: the user's own failed prompt offers it.
+    const { unmount } = render(failed(own))
+    expect(screen.getByRole("button", { name: /Retry/ })).toBeTruthy()
+    unmount()
+    render(failed(request))
+    expect(screen.getByText("Provider unavailable")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull()
   })
 
   it("draws the prompt's Edit and Copy 28px on a phone, like the answer's footer, keeping a 36px hit area", () => {
-    render(<AgentView blocks={[request]} currentBlocks={[]} isWorking={false} />)
+    const own: ContentBlock = { id: "own", type: "user", content: "Create the orders queue.", timestamp: new Date() }
+    render(<AgentView blocks={[own]} currentBlocks={[]} isWorking={false} />)
     for (const name of ["Edit prompt", "Copy prompt"]) {
       const button = screen.getByRole("button", { name })
       // The shared Button; the phone size sets its own floor so the touch floor keeps it 28px.

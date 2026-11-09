@@ -65,7 +65,7 @@ mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
 // The context meter rides in the composer's run deck, on every layout.
 mock.module('@/components/composer/ContextMeter', () => ({
   ContextMeter: (props: Record<string, unknown>) => (
-    <div data-testid="context-meter" data-props={Object.keys(props).sort().join(',')} />
+    <div data-testid="context-meter" data-props={Object.keys(props).sort().join(',')} data-cost={typeof props.sessionCostUsd === 'number' ? props.sessionCostUsd.toFixed(2) : undefined} />
   ),
 }))
 /** The composer's ``onHistoryRecall``, as the mounted chat view passed it. */
@@ -243,12 +243,16 @@ describe('AgentChatView reactive derived state', () => {
     expect(screen.queryByTestId('context-meter')).not.toBeNull()
   })
 
-  it('gives the context meter no cost: spend shows per turn and for the last 24 hours only', () => {
+  it("gives the context meter the session's cost, its subagents' included", () => {
+    useAgentStore.setState((state) => {
+      state.agentStreams.lead.usage.estimatedCostUsd = 0.3
+      state.agentStreams['explorer#1'] = { ...state.agentStreams.lead, usage: { ...state.agentStreams.lead.usage, estimatedCostUsd: 0.12 } }
+    })
     render(<AgentChatView sessionId="session-1" workspace="/repo/project" />)
 
     const props = (screen.getByTestId('context-meter').getAttribute('data-props') ?? '').split(',')
     expect(props).toContain('input')
-    expect(props).not.toContain('sessionCostUsd')
+    expect(screen.getByTestId('context-meter').getAttribute('data-cost')).toBe('0.42')
   })
 
   it('asks "Ask anything…" in the composer, without repeating the workspace name the screen already shows', () => {

@@ -9,6 +9,16 @@ import {
   type BufferedSSEDelta,
 } from './sse-reducer'
 import { isTransientNetworkError } from '@/utils/errors'
+import {
+  decideAbort,
+  decideFrame,
+  decideReconnectTimer,
+  decideSilence,
+  decideStreamEnd,
+  decideStreamError,
+  reconnectDelay,
+  type AttachPhase,
+} from './stream-connection'
 import type { AgentStore } from './types'
 
 export function clearReconnectTimer(state: Pick<AgentStore, '_reconnectTimer'>) {
@@ -386,7 +396,7 @@ export const createStreamSlice: StateCreator<
   resolveQuestion: (
     questionId: string,
     answers: string[][] | null,
-    reason: string | null,
+    reason,
   ) => {
     set((draft) => {
       applyQuestionResolution(draft, questionId, answers, reason)
@@ -493,7 +503,8 @@ export const createStreamSlice: StateCreator<
     // connected. Otherwise every recovery path that skips an "already
     // connected and working" session left the chat frozen until a reload.
     abort.signal.addEventListener('abort', () => {
-      if (replacedControllers.has(abort) || get()._abortController !== abort) return
+      const decision = decideAbort({ replaced: replacedControllers.has(abort), current: get()._abortController === abort })
+      if (decision.kind === 'ignore') return
       set((draft) => {
         draft.isConnected = false
         draft._abortController = null
@@ -514,9 +525,13 @@ export const createStreamSlice: StateCreator<
       watchTimer = streamWatchClock.set(() => {
         watchTimer = null
         const s = get()
-        if (abort.signal.aborted || s._abortController !== abort) return
-        if (s.sessionId !== sessionId || s._sessionGeneration !== generation) return
-        if (!s.isAgentWorking || s._unloading) return
+        const decision = decideSilence({
+          current: !abort.signal.aborted && s._abortController === abort,
+          sameSession: s.sessionId === sessionId && s._sessionGeneration === generation,
+          working: s.isAgentWorking,
+          unloading: s._unloading,
+        })
+        if (decision.kind === 'ignore') return
         void s.resyncStream(`no live update for ${STREAM_SILENCE_MS / 1000}s`)
       }, STREAM_SILENCE_MS)
     }
@@ -524,8 +539,8 @@ export const createStreamSlice: StateCreator<
     activeWatch = { abort, arm: armWatch }
     // Attached beside a history load, frames wait for it (see `holdUntil`);
     // so does the silence check, since only the history says the turn runs.
-    let held: Array<() => void> | null = options?.holdUntil ? [] : null
-    if (!held && get().isAgentWorking && get().pendingQuestion === null) armWatch()
+    let phase: AttachPhase = options?.holdUntil ? { kind: 'holding', frames: [] } : { kind: 'delivering' }
+    if (phase.kind === 'delivering' && get().isAgentWorking && get().pendingQuestion === null) armWatch()
 
     // Reopening the moment the backend closes is right when the connection was
     // doing something — but a stream that closes having delivered nothing will
@@ -536,6 +551,7 @@ export const createStreamSlice: StateCreator<
     // replay is in by then): look for rows saved before it that this client
     // never received. A fetch, not a store update.
     let gapChecked = false
+    const isSameSession = (s: AgentStore) => s.sessionId === sessionId && s._sessionGeneration === generation
     const scheduleReconnect = () => {
       set((draft) => {
         draft.isConnected = false
@@ -544,31 +560,35 @@ export const createStreamSlice: StateCreator<
         // mobile device remains offline so background wakeups do not run
         // an unbounded 1.5-second polling loop. Any received SSE event
         // resets the attempt counter.
-        const delay = Math.min(30_000, 1_500 * 2 ** draft._reconnectAttempts)
+        const delay = reconnectDelay(draft._reconnectAttempts)
         draft._reconnectAttempts += 1
         draft._reconnectTimer = setTimeout(() => {
           set((timerDraft) => {
             if (timerDraft._reconnectTimer !== null) timerDraft._reconnectTimer = null
           })
           const s = get()
-          if (s.sessionId !== sessionId || s._sessionGeneration !== generation) return
-          if (s._unloading || s.isConnected) return
+          const decision = decideReconnectTimer({ sameSession: isSameSession(s), unloading: s._unloading, connected: s.isConnected })
+          if (decision.kind === 'ignore') return
           get().connectStream()
         }, delay)
       })
     }
 
     const onEvent = (type: string, data: unknown) => {
+          const current = get()
           // A read() already in flight can resolve with a chunk in the same
           // tick this exact connection was superseded (aborted in favor of a
-          // fresh one) for the same session/generation, which the check below
-          // alone would not catch. The replacement connection's own attach
-          // independently redelivers the same content, so dropping this
-          // straggler is safe and avoids double-applying it.
-          if (abort.signal.aborted) return
-          const current = get()
-          if (current._unloading && type === 'error') return
-          if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
+          // fresh one) for the same session/generation, which the session
+          // check alone would not catch. The replacement connection's own
+          // attach independently redelivers the same content, so dropping
+          // this straggler is safe and avoids double-applying it.
+          const decision = decideFrame({
+            aborted: abort.signal.aborted,
+            sameSession: isSameSession(current),
+            unloading: current._unloading,
+            type,
+          })
+          if (decision.kind === 'ignore') return
           receivedAnyEvent = true
           disarmWatch()
           if (!gapChecked && STEP_CONTENT_FRAMES.has(type)) {
@@ -593,24 +613,30 @@ export const createStreamSlice: StateCreator<
           flushBufferedDeltas()
           abort.signal.removeEventListener('abort', flushBufferedDeltas)
           const current = get()
-          if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
-          if (current._unloading || abort.signal.aborted) return
-          if (isTransientNetworkError(err)) {
+          const decision = decideStreamError({
+            sameSession: isSameSession(current),
+            aborted: abort.signal.aborted,
+            unloading: current._unloading,
+            transient: isTransientNetworkError(err),
+            working: current.isAgentWorking,
+            message: err.message,
+          })
+          if (decision.kind === 'ignore') return
+          if (decision.kind === 'back_off') {
             scheduleReconnect()
             return
           }
-          if (!current.isAgentWorking) {
+          if (decision.kind === 'detach') {
             set((draft) => { draft.isConnected = false })
             return
           }
-          set((draft) => { draft.error = err.message; draft.isConnected = false })
+          set((draft) => { draft.error = decision.message; draft.isConnected = false })
     }
     const onDone = () => {
           disarmWatch()
           flushBufferedDeltas()
           abort.signal.removeEventListener('abort', flushBufferedDeltas)
           const current = get()
-          if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
           // The underlying `reader.read()` can resolve with `done: true` in
           // the same tick another caller already superseded this connection
           // (aborted it and opened a fresh one) — session/generation still
@@ -618,22 +644,29 @@ export const createStreamSlice: StateCreator<
           // this belated `done` would reopen *again*, leaving two live
           // connections racing and double-applying every subsequent event
           // until a reload. Mirrors the same guard on `onError` above.
-          if (abort.signal.aborted) return
           // If the backend closed the SSE channel while the session is
           // still running (e.g. server restart / idle keepalive timeout),
           // reopen the stream immediately so we don't miss events.
-          if (current.isAgentWorking && !current._unloading) {
-            // A stream that closed having delivered nothing is a stream that
-            // will close again — most often the backend has no turn state for
-            // this session, so `attach` returns at once. Reopening immediately
-            // spins as fast as round trips complete, and a clean close raises
-            // no error to reach the backoff in `onError`.
-            if (receivedAnyEvent) {
-              set((draft) => { draft.isConnected = false })
-              get().connectStream()
-            } else {
-              scheduleReconnect()
-            }
+          // A stream that closed having delivered nothing is a stream that
+          // will close again — most often the backend has no turn state for
+          // this session, so `attach` returns at once. Reopening immediately
+          // spins as fast as round trips complete, and a clean close raises
+          // no error to reach the backoff in `onError`.
+          const decision = decideStreamEnd({
+            sameSession: isSameSession(current),
+            aborted: abort.signal.aborted,
+            working: current.isAgentWorking,
+            unloading: current._unloading,
+            receivedAnyEvent,
+          })
+          if (decision.kind === 'ignore') return
+          if (decision.kind === 'reattach') {
+            set((draft) => { draft.isConnected = false })
+            get().connectStream()
+            return
+          }
+          if (decision.kind === 'back_off') {
+            scheduleReconnect()
             return
           }
           set((draft) => {
@@ -650,13 +683,13 @@ export const createStreamSlice: StateCreator<
           })
     }
 
-    if (held && options?.holdUntil) {
+    if (phase.kind === 'holding' && options?.holdUntil) {
       const release = () => {
-        const queued = held ?? []
-        held = null
+        const queued = phase.kind === 'holding' ? phase.frames : []
+        phase = { kind: 'delivering' }
         if (abort.signal.aborted) return
         const s = get()
-        if (s.sessionId !== sessionId || s._sessionGeneration !== generation) return
+        if (!isSameSession(s)) return
         // Each frame applies as if it arrived now, on the committed history.
         // A `done` commits the live blocks, so the ones the history already
         // holds go first.
@@ -669,7 +702,7 @@ export const createStreamSlice: StateCreator<
       void options.holdUntil.then(release, release)
     }
     const hold = (run: () => void) => {
-      if (held) held.push(run)
+      if (phase.kind === 'holding') phase.frames.push(run)
       else run()
     }
 
@@ -677,8 +710,8 @@ export const createStreamSlice: StateCreator<
       sessionId,
       {
         onEvent: (type, data) => {
-          if (held && !abort.signal.aborted) {
-            held.push(() => {
+          if (phase.kind === 'holding' && !abort.signal.aborted) {
+            phase.frames.push(() => {
               if (type === 'done') {
                 flushBufferedDeltas()
                 get()._alignLiveWithHistory()

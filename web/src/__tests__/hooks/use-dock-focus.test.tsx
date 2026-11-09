@@ -126,8 +126,8 @@ describe('useReturnFocusFromDock', () => {
   })
 })
 
-function StartHarness({ session }: { session: string }) {
-  useStartInComposer(true, session, () => document.getElementById('composer')?.focus())
+function StartHarness({ session, quiet }: { session: string; quiet?: (key: string) => boolean }) {
+  useStartInComposer(true, session, () => document.getElementById('composer')?.focus(), quiet)
   return <textarea id="composer" aria-label="Composer" />
 }
 
@@ -160,5 +160,17 @@ describe('useStartInComposer', () => {
     const { rerender } = render(<StartHarness session="a" />)
     rerender(<StartHarness session="b" />)
     expect(document.activeElement).not.toBe(screen.getByRole('textbox', { name: 'Composer' }))
+  })
+
+  // Opened from a desktop widget (the island, the pet): the user only looked in.
+  it('leaves focus alone for a session opened quietly, and starts in the composer for the next', () => {
+    stubPointer(true)
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    const quiet = (key: string) => key === 'a'
+    const { rerender } = render(<StartHarness session="a" quiet={quiet} />)
+    const composer = screen.getByRole('textbox', { name: 'Composer' })
+    expect(document.activeElement).not.toBe(composer)
+    rerender(<StartHarness session="b" quiet={quiet} />)
+    expect(document.activeElement).toBe(composer)
   })
 })

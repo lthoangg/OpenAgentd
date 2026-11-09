@@ -1,0 +1,31 @@
+# gitleaks configuration (CI: .github/workflows/secrets.yml).
+# This repository is public: nothing secret may be committed. The paths
+# below hold reviewed, synthetic values only. Prefer allowing a single
+# line with a `gitleaks:allow` comment over adding a path here.
+
+title = "openagentd"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Published protocol test vectors and reviewed synthetic test fixtures"
+paths = [
+  # Seeds and keys published as the protocol's test vectors.
+  '''^appv3/contract/tunnel_vectors\.json$''',
+  # Redaction and parser tests that need secret-shaped strings.
+  '''^appv3/crates/jsplugin/src/re\.rs$''',
+  '''^appv3/crates/providers/src/bedrock\.rs$''',
+  '''^appv3/crates/api/tests/http_api\.rs$''',
+  '''^desktop/src-tauri/src/sidecar\.rs$''',
+  # Lock files carry integrity hashes.
+  '''(^|/)(Cargo\.lock|bun\.lock)$''',
+]
+# Reviewed historical commits: a star-history image URL in the README, the
+# Gemini CLI's published installed-app OAuth client (public by design), and
+# the v2 secret scrubber's synthetic fixtures.
+commits = [
+  "b6c05e17a9665e00e0460ac7d8e679ff483ad2f0",
+  "8f2f84ecc8bae06322b4b86ac39338a4d7dbdffd",
+  "90d12f864b330f2fab00cc19b2cd89ca9a58e351",
+]

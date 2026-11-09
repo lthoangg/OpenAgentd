@@ -17,6 +17,8 @@ fn main() {
                 "set_app_theme",
                 "share_text",
                 "pick_one",
+                "push_status",
+                "push_register",
                 "updater_check",
                 "updater_download",
                 "updater_install",
@@ -26,8 +28,9 @@ fn main() {
     )
     .expect("failed to build Tauri application");
 
-    // iOS: `widgets.rs` calls `openagentd_widget_write`, which lives in the
-    // Swift bridge compiled into the Xcode app, not in this crate. The
+    // iOS: `widgets.rs` and `push.rs` call `openagentd_widget_write` and
+    // `openagentd_push_*`, which live in the Swift bridges compiled into
+    // the Xcode app, not in this crate. The
     // staticlib is linked there, so the symbol resolves; the cdylib is only
     // for Android and would otherwise fail to link on iOS.
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("ios") {

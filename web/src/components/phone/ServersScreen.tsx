@@ -21,6 +21,9 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { AppBackendPanel, type AppBackendPanelControl, type AppBackendPrefill } from '@/components/AppBackendPanel'
+import { AccountComputersSection, useAccountComputers } from '@/components/phone/AccountComputers'
+import { AccountOnboardingCard } from '@/components/phone/AccountOnboardingCard'
+import { AccountSheet } from '@/components/phone/AccountSheet'
 import { PullToRefresh } from '@/components/phone/PullToRefresh'
 import { useLargeTitleCollapse } from '@/components/Sidebar/useLargeTitleCollapse'
 import { takeServersPrefill, useServersScreenStore } from '@/stores/useServersScreenStore'
@@ -28,6 +31,8 @@ import { takeServersPrefill, useServersScreenStore } from '@/stores/useServersSc
 export function ServersScreen({ active, onOpenSessions }: { active: boolean; onOpenSessions: () => void }) {
   const { barRef, titleRef, onScroll } = useLargeTitleCollapse(false)
   const panel = useRef<AppBackendPanelControl>(null)
+  const [accountOpen, setAccountOpen] = useState(false)
+  const { computers, hiddenServerUrls, app, refresh: refreshComputers } = useAccountComputers(active)
   // A connect link's address and key, kept while the screen is up.
   const pending = useServersScreenStore((state) => state.prefill)
   const [prefill, setPrefill] = useState<AppBackendPrefill | null>(null)
@@ -53,17 +58,20 @@ export function ServersScreen({ active, onOpenSessions }: { active: boolean; onO
         data-servers-scroller=""
         className="min-h-0 flex-1 overflow-x-hidden pb-safe"
         onScroll={onScroll}
-        onRefresh={() => panel.current?.refresh() ?? Promise.resolve()}
+        onRefresh={async () => { await Promise.all([panel.current?.refresh(), refreshComputers()]) }}
       >
         <div className="px-4 pb-2">
           <h1 ref={titleRef} className="pb-1 pt-0.5 text-large-title font-bold text-(--color-text)">
             Servers
           </h1>
         </div>
-        <div className="px-4 pb-6">
-          <AppBackendPanel active={active} prefill={prefill} sectionTitle="Your servers" onOpenInUse={onOpenSessions} controlRef={panel} />
+        <div className="space-y-8 px-4 pb-6">
+          <AccountComputersSection computers={computers} app={app} onOpenSessions={onOpenSessions} />
+          <AppBackendPanel active={active} prefill={prefill} sectionTitle="Your servers" onOpenInUse={onOpenSessions} controlRef={panel} hiddenServerUrls={hiddenServerUrls} />
+          <AccountOnboardingCard onSignedIn={() => setAccountOpen(true)} />
         </div>
       </PullToRefresh>
+      <AccountSheet open={accountOpen} onClose={() => setAccountOpen(false)} />
     </div>
   )
 }

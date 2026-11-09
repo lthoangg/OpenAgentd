@@ -1,6 +1,6 @@
 # Makefile for openagentd
 
-.PHONY: all run dev kill-dev-ports verify verify-scripts verify-web verify-docs verify-version verify-native verify-shell-core verify-desktop verify-mobile health health-json build-web icons clean help
+.PHONY: all run dev kill-dev-ports verify verify-scripts verify-web verify-docs verify-version verify-native verify-cloud verify-shell-core verify-desktop verify-mobile health health-json build-web icons clean help
 .PHONY: run-v3 dev-v3 run3 dev3 build-v3 verify-v3
 
 # Default target
@@ -88,6 +88,11 @@ verify-version: ## Verify release-facing versions and release docs stay synchron
 		grep -E '^updated: [0-9]{4}-[0-9]{2}-[0-9]{2}$$' documents/docs/features.md
 
 verify-native: verify-shell-core verify-desktop verify-mobile ## Run shared-crate, desktop, and mobile Rust checks (requires native build dependencies)
+
+verify-cloud: ## Format-check, lint, and test the OpenAgentd Cloud protocol crate (vectors, flows, release host pin)
+	cd native/cloud && cargo fmt --check
+	cd native/cloud && cargo clippy --all-targets -- -D warnings
+	cd native/cloud && cargo test
 
 verify-shell-core: ## Format-check, lint, and test the Rust crate shared by both native shells (no Tauri deps)
 	cd native/shell-core && cargo fmt --check

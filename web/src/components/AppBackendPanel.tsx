@@ -47,6 +47,7 @@ import { useTouchFirst } from '@/hooks/use-touch-first'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { shake } from '@/lib/shake'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
+import { rememberLanFingerprint } from '@/lib/computer-fingerprints'
 import { cn } from '@/lib/utils'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
@@ -120,6 +121,11 @@ interface AppBackendPanelProps {
   onOpenInUse?: () => void
   /** Lets a host reload the list (the phone's pull to refresh). */
   controlRef?: Ref<AppBackendPanelControl>
+  /**
+   * Saved servers (normalized addresses) the host lists itself, as one row
+   * with the account computer they are: the phone's merged Servers list.
+   */
+  hiddenServerUrls?: ReadonlySet<string>
 }
 
 export interface AppBackendPanelControl {
@@ -136,7 +142,7 @@ type ServerFormTarget =
   | { kind: 'add' }
   | { kind: 'edit'; baseUrl: string; label: string; inUse: boolean }
 
-export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, sectionTitle = 'Servers', onOpenInUse, controlRef }: AppBackendPanelProps) {
+export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, sectionTitle = 'Servers', onOpenInUse, controlRef, hiddenServerUrls }: AppBackendPanelProps) {
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
   // Nothing is listed until the shell has answered once: before that a
   // phone with no server would flash the browser build's placeholder rows.
@@ -206,6 +212,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
         void pingServer(normalized).then((online) => {
           if (cancelled) return
           setServerHealth((prev) => ({ ...prev, [normalized]: online ? 'online' : 'offline' }))
+          // An answering server may be an account computer: learn which.
+          if (online) void rememberLanFingerprint(normalized)
         })
       }
       if (prefill) void testConnection(prefill.baseUrl, prefill.accessKey)
@@ -225,6 +233,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       await Promise.all(toCheck.map(async (normalized) => {
         const online = await pingServer(normalized)
         setServerHealth((prev) => ({ ...prev, [normalized]: online ? 'online' : 'offline' }))
+        if (online) void rememberLanFingerprint(normalized)
       }))
     },
   }), [])
@@ -557,7 +566,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             {openInUse(status ? unlistedUrl : 'This server')}
           </ServerRow>
         ) : null}
-        {servers.map((server) => {
+        {servers.filter((server) => !hiddenServerUrls?.has(normalizeServerBaseUrl(server.base_url))).map((server) => {
           const normalizedServerUrl = normalizeServerBaseUrl(server.base_url)
           const active = onExternal && normalizeServerBaseUrl(currentUrl) === normalizedServerUrl
           const label = server.name || server.base_url
@@ -842,7 +851,7 @@ function ServerForm({
   )
 }
 
-function ServerRow({
+export function ServerRow({
   health,
   title,
   subtitle,
@@ -854,7 +863,8 @@ function ServerRow({
   onOpen,
   children,
 }: {
-  health: Health | undefined
+  /** `null`: no status dot (an account computer has no address to ping). */
+  health: Health | null | undefined
   title: string
   subtitle?: string
   /** Title is a URL. */
@@ -905,7 +915,7 @@ function ServerRow({
           },
         } : {})}
       >
-        <ServerStatusDot status={health} />
+        {health === null ? null : <ServerStatusDot status={health} />}
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
             <span className={cn('truncate', TEXT.label, mono && 'font-mono')}>{title}</span>

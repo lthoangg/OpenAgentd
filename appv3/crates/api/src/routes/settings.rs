@@ -232,7 +232,6 @@ fn title_json(t: &rs::TitleGenerationSettings) -> Value {
     json!({
         "enabled": t.enabled,
         "model": t.model.clone().unwrap_or_default(),
-        "wait_timeout_seconds": t.wait_timeout_seconds,
         "update_after_compaction": t.update_after_compaction,
     })
 }
@@ -243,15 +242,14 @@ async fn get_title() -> ApiResult<Response> {
 }
 
 /// `update_after_compaction` (v3 only) keeps its stored value when the body
-/// omits it, so older clients leave it alone. So does `wait_timeout_seconds`:
-/// the UI no longer edits it, and a value set by hand in the YAML stays.
+/// omits it, so older clients leave it alone. `wait_timeout_seconds`, which
+/// clients before v3.49 still send, is accepted and ignored: nothing waits
+/// for a title any more.
 async fn put_title(raw: Bytes) -> ApiResult<Response> {
     let v = body_value(&raw)?;
     let mut b = Body::new(&v)?;
     let enabled = b.bool("enabled", None);
     let model = b.str("model", Some(""));
-    let has_wait = v.as_object().is_some_and(|o| o.contains_key("wait_timeout_seconds"));
-    let wait = if has_wait { Some(b.float("wait_timeout_seconds", 3.0)) } else { None };
     let has_update = v.as_object().is_some_and(|o| o.contains_key("update_after_compaction"));
     let update = if has_update { Some(b.bool("update_after_compaction", Some(false))) } else { None };
     b.finish(&["enabled", "model", "wait_timeout_seconds", "update_after_compaction"])?;
@@ -259,9 +257,6 @@ async fn put_title(raw: Bytes) -> ApiResult<Response> {
     cfg.title_generation.enabled = enabled;
     let m = crate::routes::library::py_strip(&model);
     cfg.title_generation.model = (!m.is_empty()).then_some(m);
-    if let Some(wait) = wait {
-        cfg.title_generation.wait_timeout_seconds = wait.max(0.0);
-    }
     if let Some(on) = update {
         cfg.title_generation.update_after_compaction = on;
     }

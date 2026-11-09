@@ -32,6 +32,8 @@
     "allow-set-app-theme",
     "allow-share-text",
     "allow-pick-one",
+    "allow-push-status",
+    "allow-push-register",
     "allow-updater-check",
     "allow-updater-download",
     "allow-updater-install",

@@ -8,6 +8,16 @@
 # * ios-widget/App + ios-widget/Shared compiled into the app target (the
 #   Swift bridge the Rust shell calls to store the widget snapshot);
 # * an App Group, `group.<app bundle id>`, on both, so they share storage.
+# * an `OpenAgentdNotifications` Notification Service Extension target
+#   (ios-widget/NotificationService), embedded in the app with the same App
+#   Group. It opens the end-to-end encrypted letters of OpenAgentd Cloud
+#   pushes; its Keychain access group is the App Group
+#   (ios-widget/App/KeychainBridge.swift).
+# * `aps-environment = development` on the app, so Xcode-signed builds
+#   (`make ios-dev*`, automatic signing) can register for push
+#   (`src-tauri/src/push.rs`, ios-widget/App/PushBridge.swift). Release CI
+#   archives unsigned and `sign-ipa-appstore.sh` signs with the App Store
+#   profile's entitlements (`aps-environment = production`) instead.
 #
 # `cargo tauri ios init` regenerates `src-tauri/gen/apple/` from a template,
 # so this runs after every init and before every build (see mobile/Makefile).
@@ -42,6 +52,7 @@ if not re.fullmatch(r"[A-Za-z0-9.-]+", app_id):
 
 APP_TARGET = "openagentd-mobile_iOS"
 EXT_TARGET = "OpenAgentdWidgets"
+NSE_TARGET = "OpenAgentdNotifications"
 MARK = "# openagentd-widgets"
 BEGIN = f"  # >>> {EXT_TARGET} (scripts/patch-ios-widget.sh)\n"
 END = f"  # <<< {EXT_TARGET}\n"
@@ -100,11 +111,13 @@ inserts = [
     ]),
     (find("dependencies") + 1, [
         f"      - target: {EXT_TARGET} {MARK}\n",
+        f"      - target: {NSE_TARGET} {MARK}\n",
     ]),
     (find("entitlements") + 2, [
         f"      properties: {MARK}\n",
         f"        com.apple.security.application-groups: {MARK}\n",
         f"          - group.$(PRODUCT_BUNDLE_IDENTIFIER) {MARK}\n",
+        f"        aps-environment: development {MARK}\n",
     ]),
 ]
 for index, block in sorted(inserts, reverse=True):
@@ -148,6 +161,42 @@ extension = f"""{BEGIN}  {EXT_TARGET}:
         ARCHS: [arm64]
         EXCLUDED_ARCHS[sdk=iphoneos*]: x86_64
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"
+  {NSE_TARGET}:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: ../../../ios-widget/NotificationService
+    info:
+      path: {NSE_TARGET}/Info.plist
+      properties:
+        CFBundleDisplayName: OpenAgentd
+        CFBundleShortVersionString: "{version}"
+        CFBundleVersion: "{version}"
+        OAWidgetAppGroup: group.$(OA_APP_BUNDLE_ID)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    entitlements:
+      path: {NSE_TARGET}/{NSE_TARGET}.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.$(OA_APP_BUNDLE_ID)
+    dependencies:
+      - sdk: UserNotifications.framework
+    settings:
+      base:
+        OA_APP_BUNDLE_ID: {app_id}
+        PRODUCT_BUNDLE_IDENTIFIER: {app_id}.notifications
+        PRODUCT_NAME: {NSE_TARGET}
+        DEVELOPMENT_TEAM: {team}
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: true
+        ARCHS: [arm64]
+        EXCLUDED_ARCHS[sdk=iphoneos*]: x86_64
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"
 {END}"""
 lines[end:end] = [extension]
 
@@ -170,7 +219,8 @@ for source in ios-widget/App/*.swift; do
   [ -e "$source" ] || continue
   grep -q "$(basename "$source")" "$pbxproj" 2>/dev/null || missing_source=1
 done
-if [ "$status" -eq 10 ] || [ "$missing_source" -eq 1 ] || ! grep -q "OpenAgentdWidgets" "$pbxproj" 2>/dev/null; then
+if [ "$status" -eq 10 ] || [ "$missing_source" -eq 1 ] || ! grep -q "OpenAgentdWidgets" "$pbxproj" 2>/dev/null \
+  || ! grep -q "OpenAgentdNotifications" "$pbxproj" 2>/dev/null; then
   command -v xcodegen >/dev/null 2>&1 || { echo "patch-ios-widget: xcodegen is required (brew install xcodegen)" >&2; exit 1; }
   (cd src-tauri/gen/apple && xcodegen generate --spec project.yml --quiet)
   echo "patch-ios-widget: regenerated the Xcode project"

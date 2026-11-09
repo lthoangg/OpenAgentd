@@ -3,12 +3,12 @@
  * older messages are summarized, with the numbers and "Summarize now" behind
  * a click. The percentage drops out when the composer is narrow.
  *
- * It carries no cost: spend shows per turn (the answer footer) and for the
- * last 24 hours (the status bar), and nowhere else.
+ * It also holds the session's cost so far (its subagents' included); the
+ * answer footer shows each turn's, the status bar the last 24 hours'.
  */
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Button } from '@/components/ui/button'
-import { formatCompact } from '@/utils/telemetryFormat'
+import { formatCompact, formatSpend } from '@/utils/telemetryFormat'
 import { useAgentStore } from '@/stores/useAgentStore'
 
 /** Where the context summarizes when the model's registry entry gives no trigger. */
@@ -19,6 +19,8 @@ export interface ContextMeterProps {
   output: number
   cachedPercent?: number
   trigger?: number
+  /** The session's estimated spend in USD; hidden at 0 (nothing priced). */
+  sessionCostUsd?: number
   /** "Summarize now" works on an idle session with messages. */
   canSummarize: boolean
 }
@@ -26,7 +28,7 @@ export interface ContextMeterProps {
 const RADIUS = 7
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
-export function ContextMeter({ input, output, cachedPercent, trigger = DEFAULT_SUMMARY_TRIGGER_TOKENS, canSummarize }: ContextMeterProps) {
+export function ContextMeter({ input, output, cachedPercent, trigger = DEFAULT_SUMMARY_TRIGGER_TOKENS, sessionCostUsd, canSummarize }: ContextMeterProps) {
   const limit = Math.max(trigger, 1)
   const progress = Math.min(input / limit, 1)
   const percent = Math.round(progress * 100)
@@ -70,6 +72,12 @@ export function ContextMeter({ input, output, cachedPercent, trigger = DEFAULT_S
             <>
               <dt className="text-(--color-text-muted)">Cached</dt>
               <dd className="text-right font-mono tabular-nums">{cachedPercent.toFixed(0)}%</dd>
+            </>
+          )}
+          {sessionCostUsd !== undefined && sessionCostUsd > 0 && (
+            <>
+              <dt className="text-(--color-text-muted)">Cost</dt>
+              <dd className="text-right font-mono tabular-nums">{formatSpend(sessionCostUsd)}</dd>
             </>
           )}
         </dl>

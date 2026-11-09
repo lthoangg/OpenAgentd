@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
@@ -134,7 +135,29 @@ def validate_repository(root: Path, markdown_files: list[Path]) -> list[str]:
                 errors.append(
                     f"AGENTS.md: referenced AGENTS path does not exist: {referenced}"
                 )
+    errors.extend(_tunnel_contract_errors(root))
     return sorted(errors)
+
+
+TUNNEL_SPEC = Path("appv3/contract/tunnel.md")
+TUNNEL_VECTORS = Path("appv3/contract/tunnel_vectors.json")
+# Shared inputs of the vectors file, not sections of their own.
+TUNNEL_VECTOR_INPUTS = frozenset({"about", "account_id", "devices"})
+
+
+def _tunnel_contract_errors(root: Path) -> list[str]:
+    """Every section of the tunnel vectors is named in the spec's vector table."""
+    spec, vectors = root / TUNNEL_SPEC, root / TUNNEL_VECTORS
+    if not spec.is_file() and not vectors.is_file():
+        return []
+    if not spec.is_file() or not vectors.is_file():
+        return [f"{TUNNEL_SPEC}: the spec and {TUNNEL_VECTORS.name} must ship together"]
+    try:
+        sections = set(json.loads(vectors.read_text(encoding="utf-8"))) - TUNNEL_VECTOR_INPUTS
+    except (json.JSONDecodeError, TypeError):
+        return [f"{TUNNEL_VECTORS}: not a JSON object"]
+    named = set(re.findall(r"^\| `([a-z_]+)` \|", spec.read_text(encoding="utf-8"), re.MULTILINE))
+    return [f"{TUNNEL_SPEC}: vector section not described: {name}" for name in sorted(sections - named)]
 
 
 def main() -> int:

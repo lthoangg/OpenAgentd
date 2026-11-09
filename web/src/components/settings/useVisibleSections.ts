@@ -1,5 +1,7 @@
 import { useHealthQuery } from '@/queries/useHealthQuery'
+import { isPhoneCloudShell } from '@/api/phone-cloud'
 import { isDesktopShell } from '@/lib/desktop-shell'
+import { usePhoneCloudStatus } from '@/queries/phone-cloud'
 import { hasDesktopSettings } from './pages/settings.desktop'
 import { useDeniedPathsSettingsQuery, useMcpServersQuery, useSkillFilesQuery } from '@/queries'
 import { SETTINGS_SECTIONS, type SettingsSectionDef, type TopLevelSection } from './sections'
@@ -11,8 +13,15 @@ import { SETTINGS_SECTIONS, type SettingsSectionDef, type TopLevelSection } from
 export function useVisibleSettingsSections(): readonly SettingsSectionDef[] {
   const capabilities = useHealthQuery().data?.capabilities
   const desktop = isDesktopShell()
+  // The phone's account is its own (no server capability needed); it is
+  // hidden only where the build cannot keep account keys.
+  const phone = isPhoneCloudShell()
+  const phoneStatus = usePhoneCloudStatus().data
+  const accountUnsupported = phoneStatus?.state === 'guest' && !phoneStatus.supported
   return SETTINGS_SECTIONS.filter((s) =>
-    (!s.capability || (capabilities?.includes(s.capability) ?? false))
+    (s.id === 'account' && phone
+      ? !accountUnsupported
+      : !s.capability || (capabilities?.includes(s.capability) ?? false))
     && (!s.desktopOnly || desktop)
     // Desktop lists the notch and the pet; a shell with neither has no page.
     && (s.id !== 'desktop' || hasDesktopSettings()),

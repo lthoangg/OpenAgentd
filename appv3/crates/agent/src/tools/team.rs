@@ -249,11 +249,7 @@ impl Tool for AskLeadTool {
         }
         let tcid = if ctx.tool_call_id.is_empty() { None } else { Some(ctx.tool_call_id.clone()) };
         subagents::with_instance(&self.lead_session_id, &self.member_handle, |i| {
-            i.pending_lead_question = Some(serde_json::json!({"question": question, "options": options.clone().unwrap_or_default()}));
-            i.status = "waiting_lead".into();
-            if let Some(t) = &tcid {
-                i.pending_tool_call_id = Some(t.clone());
-            }
+            i.wait_on_lead(serde_json::json!({"question": question, "options": options.clone().unwrap_or_default()}), tcid.clone());
         });
         Err(ToolError::Suspended(Suspension::Lead { question, options: options.unwrap_or_default(), tool_call_id: tcid }))
     }

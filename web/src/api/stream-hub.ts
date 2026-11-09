@@ -70,6 +70,35 @@ interface Sub {
   gen: string | null
 }
 
+/**
+ * One term of leadership: the feed this window opened and the subscription
+ * set synchronized on it. A new term starts with fresh state, so nothing a
+ * previous term left in flight (a subscription request, a frame, a close) can
+ * apply to it: every callback names its term and is ignored once that term
+ * is no longer the current one.
+ */
+interface Term {
+  /** The client id the feed was opened with; subscriptions are bound to it. */
+  readonly gen: string
+  readonly mux: AbortController
+  /** `open` once the server answered the feed; subscriptions go out only then. */
+  feed: 'opening' | 'open'
+  /** The server has accepted a subscription request on this feed. */
+  proven: boolean
+  /** Other windows' subscriptions, sent to this term's `gen`. */
+  readonly remote: Map<string, { w: string; sid: string }>
+  /** One request at a time; `dirty` asks the running loop for another pass. */
+  readonly sync: { running: boolean; dirty: boolean; sent: string }
+}
+
+/**
+ * Leader holds the Web Lock and a term; a follower only knows the leader's
+ * `gen` once the leader has said its feed is open.
+ */
+type Role =
+  | { kind: 'follower'; knownGen: string | null }
+  | { kind: 'leader'; term: Term }
+
 const NAME_PREFIX = 'openagentd-stream:'
 
 /**
@@ -97,23 +126,18 @@ export class StreamHub {
   private counter = 0
   /** null until the server has shown whether it carries session streams. */
   muxSupported: boolean | null = null
-  // Leader.
-  private leading = false
-  private gen: string | null = null
-  private ready = false
-  private proven = false
-  private mux: AbortController | null = null
-  private readonly remote = new Map<string, { w: string; sid: string }>()
+  private role: Role = { kind: 'follower', knownGen: null }
+  /** Leader → window channels; closed when the term ends. */
   private readonly targets = new Map<string, ChannelLike>()
-  private syncing = false
-  private dirty = false
-  private sent = ''
-  // Follower.
-  private knownGen: string | null = null
 
   constructor(deps: HubDeps) {
     this.deps = deps
     this.name = `${NAME_PREFIX}${deps.key}`
+  }
+
+  /** The current term, or null when this window does not lead. */
+  private currentTerm(): Term | null {
+    return this.role.kind === 'leader' ? this.role.term : null
   }
 
   // ── consumers ────────────────────────────────────────────────────────────
@@ -122,9 +146,14 @@ export class StreamHub {
     if (signal?.aborted) return
     this.globals.add(callbacks)
     this.engage()
-    if (this.leading) {
+    const term = this.currentTerm()
+    if (term) {
       // Already open: tell this consumer without reopening anything.
-      if (this.ready) queueMicrotask(() => { if (this.globals.has(callbacks)) callbacks.onOpen?.() })
+      if (term.feed === 'open') {
+        queueMicrotask(() => {
+          if (this.currentTerm() === term && this.globals.has(callbacks)) callbacks.onOpen?.()
+        })
+      }
     } else {
       this.post({ t: 'hello', w: this.deps.windowId })
     }
@@ -140,14 +169,16 @@ export class StreamHub {
     const sub: Sub = { id, sid: sessionId, callbacks, gen: null }
     this.subs.set(id, sub)
     this.engage()
-    if (this.leading) {
-      if (this.ready) {
-        sub.gen = this.gen
-        this.scheduleSync()
+    const role = this.role
+    if (role.kind === 'leader') {
+      const { term } = role
+      if (term.feed === 'open') {
+        sub.gen = term.gen
+        this.scheduleSync(term)
       }
-    } else if (this.knownGen !== null) {
-      sub.gen = this.knownGen
-      this.post({ t: 'sub', w: this.deps.windowId, id, sid: sessionId, gen: this.knownGen })
+    } else if (role.knownGen !== null) {
+      sub.gen = role.knownGen
+      this.post({ t: 'sub', w: this.deps.windowId, id, sid: sessionId, gen: role.knownGen })
     } else {
       this.post({ t: 'hello', w: this.deps.windowId })
     }
@@ -158,7 +189,8 @@ export class StreamHub {
     const sub = this.subs.get(id)
     if (!sub) return
     this.subs.delete(id)
-    if (this.leading) this.scheduleSync()
+    const term = this.currentTerm()
+    if (term) this.scheduleSync(term)
     else if (sub.gen !== null) this.post({ t: 'unsub', id })
     this.idle()
   }
@@ -178,8 +210,9 @@ export class StreamHub {
   }
 
   private teardown(): void {
-    if (this.leading) {
-      this.mux?.abort()
+    const term = this.currentTerm()
+    if (term) {
+      term.mux.abort()
       this.stepDown()
     }
     this.election?.abort()
@@ -191,7 +224,7 @@ export class StreamHub {
     this.own?.close()
     this.shared = null
     this.own = null
-    this.knownGen = null
+    this.role = { kind: 'follower', knownGen: null }
   }
 
   // ── channels ─────────────────────────────────────────────────────────────
@@ -251,25 +284,23 @@ export class StreamHub {
   }
 
   private lead(): void {
-    this.leading = true
-    this.gen = this.deps.newId()
-    this.ready = false
-    this.proven = false
-    this.sent = ''
-    this.knownGen = null
+    const term: Term = {
+      gen: this.deps.newId(),
+      mux: new AbortController(),
+      feed: 'opening',
+      proven: false,
+      remote: new Map(),
+      sync: { running: false, dirty: false, sent: '' },
+    }
+    this.role = { kind: 'leader', term }
     // What was sent to the previous leader is not carried over.
     for (const sub of [...this.subs.values()]) if (sub.gen !== null) this.fail(sub)
-    this.openMux()
+    this.openMux(term)
   }
 
+  /** Ends the current term; anything it left in flight no longer applies. */
   private stepDown(): void {
-    this.leading = false
-    this.ready = false
-    this.gen = null
-    this.mux = null
-    this.dirty = false
-    this.sent = ''
-    this.remote.clear()
+    this.role = { kind: 'follower', knownGen: null }
     for (const channel of this.targets.values()) channel.close()
     this.targets.clear()
     const release = this.release
@@ -278,38 +309,43 @@ export class StreamHub {
     release?.()
   }
 
-  private openMux(): void {
-    const controller = new AbortController()
-    this.mux = controller
-    const gen = this.gen as string
+  private openMux(term: Term): void {
+    const { gen } = term
     this.deps.openStream(
       this.muxSupported === false ? null : gen,
       {
         onOpen: () => {
-          if (this.mux !== controller) return
-          this.ready = true
+          if (this.currentTerm() !== term) return
+          term.feed = 'open'
           this.post({ t: 'open', gen })
           for (const sub of this.subs.values()) if (sub.gen === null) sub.gen = gen
           for (const g of [...this.globals]) g.onOpen?.()
-          this.scheduleSync()
+          this.scheduleSync(term)
         },
         onEvent: (type, data) => {
-          if (this.mux === controller) this.onFrame(type, data)
+          if (this.currentTerm() === term) this.onFrame(term, type, data)
         },
-        onParseError: (error) => { for (const g of this.globals) g.onParseError?.(error) },
-        onError: (error) => this.muxDown(controller, error),
-        onDone: () => this.muxDown(controller, null),
+        onParseError: (error) => {
+          if (this.currentTerm() === term) for (const g of this.globals) g.onParseError?.(error)
+        },
+        onError: (error) => this.muxDown(term, error),
+        onDone: () => this.muxDown(term, null),
       },
-      controller.signal,
+      term.mux.signal,
     )
   }
 
-  /** The feed ended: every subscription on it is lost, and so is leadership. */
-  private muxDown(controller: AbortController, error: Error | null): void {
-    if (this.mux !== controller) return
-    controller.abort()
-    for (const sub of [...this.subs.values()]) this.fail(sub)
+  /**
+   * The feed ended: every subscription on it is lost, and so is leadership.
+   * The term ends before anyone is told, so a consumer that subscribes again
+   * from its callback waits for the next term instead of binding to this one.
+   */
+  private muxDown(term: Term, error: Error | null): void {
+    if (this.currentTerm() !== term) return
+    term.mux.abort()
+    const lost = [...this.subs.values()]
     this.stepDown()
+    for (const sub of lost) this.fail(sub)
     for (const g of [...this.globals]) {
       if (error) g.onError?.(error)
       else g.onDone?.()
@@ -324,104 +360,109 @@ export class StreamHub {
 
   // ── leader: frames in ────────────────────────────────────────────────────
 
-  private onFrame(type: string, data: unknown): void {
+  private onFrame(term: Term, type: string, data: unknown): void {
     if (type === 'session_event') {
       const frame = data as { sub_id?: unknown; type?: unknown; data?: unknown }
-      if (typeof frame.sub_id === 'string' && typeof frame.type === 'string') this.route(frame.sub_id, frame.type, frame.data)
+      if (typeof frame.sub_id === 'string' && typeof frame.type === 'string') this.route(term, frame.sub_id, frame.type, frame.data)
       return
     }
     if (type === 'session_stream_end') {
       const id = (data as { sub_id?: unknown }).sub_id
-      if (typeof id === 'string') this.endSub(id)
+      if (typeof id === 'string') this.endSub(term, id)
       return
     }
     for (const g of [...this.globals]) g.onEvent(type, data)
     this.post({ t: 'ev', type, data })
   }
 
-  private route(id: string, type: string, data: unknown): void {
+  private route(term: Term, id: string, type: string, data: unknown): void {
     const local = this.subs.get(id)
     if (local) {
       local.callbacks.onEvent(type, data)
       return
     }
-    const remote = this.remote.get(id)
+    const remote = term.remote.get(id)
     if (remote) this.tell(remote.w, { t: 's', id, type, data })
   }
 
-  private endSub(id: string): void {
+  private endSub(term: Term, id: string): void {
     const local = this.subs.get(id)
     if (local) {
       this.subs.delete(id)
       local.callbacks.onDone?.()
     } else {
-      const remote = this.remote.get(id)
+      const remote = term.remote.get(id)
       if (!remote) return
-      this.remote.delete(id)
+      term.remote.delete(id)
       this.tell(remote.w, { t: 'e', id })
     }
-    this.scheduleSync()
+    this.scheduleSync(term)
   }
 
   // ── leader: subscriptions out ────────────────────────────────────────────
 
-  private wanted(): StreamSubscription[] {
+  private wanted(term: Term): StreamSubscription[] {
     const out: StreamSubscription[] = []
-    for (const sub of this.subs.values()) if (sub.gen === this.gen) out.push({ id: sub.id, session_id: sub.sid })
-    for (const [id, r] of this.remote) out.push({ id, session_id: r.sid })
+    for (const sub of this.subs.values()) if (sub.gen === term.gen) out.push({ id: sub.id, session_id: sub.sid })
+    for (const [id, r] of term.remote) out.push({ id, session_id: r.sid })
     return out
   }
 
-  /** Sends the full set, one request at a time and only when it changed. */
-  private scheduleSync(): void {
-    if (!this.ready || this.muxSupported === false) return
-    this.dirty = true
-    if (this.syncing) return
-    this.syncing = true
-    const controller = this.mux
+  /**
+   * Sends the full set, one request at a time and only when it changed. The
+   * loop belongs to its term: a request still out when the term ends neither
+   * delays the next term's requests nor applies its answer to them.
+   */
+  private scheduleSync(term: Term): void {
+    if (this.currentTerm() !== term || term.mux.signal.aborted) return
+    if (term.feed !== 'open' || this.muxSupported === false) return
+    const { sync } = term
+    sync.dirty = true
+    if (sync.running) return
+    sync.running = true
     void (async () => {
       try {
-        while (this.dirty && controller && this.mux === controller) {
-          this.dirty = false
-          const wanted = this.wanted()
+        while (sync.dirty && this.currentTerm() === term) {
+          sync.dirty = false
+          const wanted = this.wanted(term)
           const signature = wanted.map((s) => s.id).sort().join(',')
-          if (signature === this.sent) continue
+          if (signature === sync.sent) continue
           const timeout = new AbortController()
           const timer = setTimeout(() => timeout.abort(), this.deps.putTimeoutMs ?? PUT_TIMEOUT_MS)
           let result: 'ok' | 'gone' | 'error'
           try {
-            result = await this.deps.putSubscriptions(this.gen as string, wanted, timeout.signal)
+            result = await this.deps.putSubscriptions(term.gen, wanted, timeout.signal)
           } finally {
             clearTimeout(timer)
           }
-          if (this.mux !== controller) return
+          if (this.currentTerm() !== term) return
           if (timeout.signal.aborted && result !== 'ok') {
             console.warn(`[stream-hub] subscription request timed out; restarting the shared feed (${wanted.length} sessions)`)
           }
           if (result === 'ok') {
-            this.proven = true
-            this.sent = signature
-          } else if (result === 'gone' && !this.proven && this.muxSupported === null) {
+            term.proven = true
+            sync.sent = signature
+          } else if (result === 'gone' && !term.proven && this.muxSupported === null) {
             // The server answered 404 to a feed it just opened: an older
             // server that serves the global feed but not sessions on it.
-            this.unsupported()
+            this.unsupported(term)
             return
           } else {
-            this.muxDown(controller, new Error('Connection closed: could not subscribe to sessions'))
+            this.muxDown(term, new Error('Connection closed: could not subscribe to sessions'))
             return
           }
         }
       } finally {
-        this.syncing = false
+        sync.running = false
       }
     })()
   }
 
-  private unsupported(): void {
+  private unsupported(term: Term): void {
     this.muxSupported = false
     this.post({ t: 'nomux' })
     for (const sub of [...this.subs.values()]) this.fail(sub)
-    this.remote.clear()
+    term.remote.clear()
     this.idle()
   }
 
@@ -429,33 +470,34 @@ export class StreamHub {
 
   private onShared(m: SharedMessage): void {
     if (!m || typeof m !== 'object') return
-    if (this.leading) {
+    const term = this.currentTerm()
+    if (term) {
       if (m.t === 'hello') {
         if (this.muxSupported === false) this.post({ t: 'nomux' })
-        if (this.ready) this.post({ t: 'open', gen: this.gen as string, to: m.w })
+        if (term.feed === 'open') this.post({ t: 'open', gen: term.gen, to: m.w })
       } else if (m.t === 'sub') {
-        if (this.ready && m.gen === this.gen && this.muxSupported !== false) {
-          this.remote.set(m.id, { w: m.w, sid: m.sid })
-          this.scheduleSync()
+        if (term.feed === 'open' && m.gen === term.gen && this.muxSupported !== false) {
+          term.remote.set(m.id, { w: m.w, sid: m.sid })
+          this.scheduleSync(term)
         }
       } else if (m.t === 'unsub') {
-        if (this.remote.delete(m.id)) this.scheduleSync()
+        if (term.remote.delete(m.id)) this.scheduleSync(term)
       } else if (m.t === 'bye') {
         let changed = false
-        for (const [id, r] of this.remote) {
+        for (const [id, r] of term.remote) {
           if (r.w !== m.w) continue
-          this.remote.delete(id)
+          term.remote.delete(id)
           changed = true
         }
         this.targets.get(m.w)?.close()
         this.targets.delete(m.w)
-        if (changed) this.scheduleSync()
+        if (changed) this.scheduleSync(term)
       }
       return
     }
     if (m.t === 'open') {
       if (m.to && m.to !== this.deps.windowId) return
-      this.knownGen = m.gen
+      this.role = { kind: 'follower', knownGen: m.gen }
       for (const sub of [...this.subs.values()]) {
         if (sub.gen === null) {
           sub.gen = m.gen

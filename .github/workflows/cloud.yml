@@ -1,0 +1,93 @@
+name: cloud
+
+# The OpenAgentd Cloud protocol crate (native/cloud): every test vector of
+# appv3/contract/tunnel_vectors.json, the decoder property tests, the
+# client flows against an in-process fake cloud, and the check that a
+# release build ignores every host override. Staging tests are #[ignore]d
+# and run by hand.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "appv3/Cargo.lock"
+      - "mobile/src-tauri/Cargo.lock"
+      - "native/cloud/**"
+      - "appv3/contract/**"
+      - ".github/workflows/cloud.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "appv3/Cargo.lock"
+      - "mobile/src-tauri/Cargo.lock"
+      - "native/cloud/**"
+      - "appv3/contract/**"
+      - ".github/workflows/cloud.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-26, windows-2025]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: native/cloud
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: native/cloud
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cargo fmt
+        if: runner.os == 'Linux'
+        run: cargo fmt --check
+
+      - name: Cargo clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Cargo test
+        run: cargo test --locked --no-fail-fast
+
+  # RustSec advisories for the three lock files that link the protocol
+  # crate. A known vulnerability fails the job; unmaintained notices are
+  # reported only.
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit
+        run: |
+          set -euo pipefail
+          for lock in native/cloud/Cargo.lock appv3/Cargo.lock mobile/src-tauri/Cargo.lock; do
+            echo "::group::$lock"
+            cargo audit --file "$lock"
+            echo "::endgroup::"
+          done

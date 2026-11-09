@@ -13,6 +13,7 @@ export type {
   AgentStream,
   CacheInvalidation,
   PendingMessage,
+  QuestionClosedReason,
   ResolvedQuestion,
   AgentError,
   AgentStoreState,

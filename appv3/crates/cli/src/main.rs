@@ -38,6 +38,7 @@ fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
         Command::Lsp(l) => done(cmd::lsp::lsp(&l)),
         Command::Plugin(p) => cmd::plugin::plugin(&p),
         Command::Upgrade => cmd::upgrade::upgrade(),
+        Command::Cloud(c) => cmd::cloud::cloud(&c),
     }
 }
 

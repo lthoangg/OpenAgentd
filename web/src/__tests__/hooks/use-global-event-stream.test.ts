@@ -814,6 +814,19 @@ describe('handleGlobalEvent', () => {
     expect(useUnreadStore.getState().ids).toEqual([])
   })
 
+  it('does not mark a turn only agents worked in unread, even a failed one', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+
+    for (const status of ['completed', 'error']) {
+      await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'spawned', status, quiet: true }, 1, () => 1)
+    }
+    expect(useUnreadStore.getState().ids).toEqual([])
+    // The user's own turn in that session reads as new again.
+    await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'spawned', status: 'completed' }, 1, () => 1)
+    expect(useUnreadStore.getState().ids).toEqual(['spawned'])
+  })
+
   it('invalidates parent subagents on session_turn_completed with parent_session_id', async () => {
     const client = new QueryClient()
     client.setQueryData(queryKeys.session.subagents('lead-parent'), { live_members: [] })
@@ -1122,5 +1135,44 @@ describe('handleGlobalEvent', () => {
 
     expect(handled).toBe(false)
     expect(sendDesktopNotification).not.toHaveBeenCalled()
+  })
+})
+
+describe('a global connection replaced while a session reload is pending', () => {
+  function pendingLoad() {
+    let finish!: () => void
+    const loadSession = mock(() => new Promise<void>((resolve) => {
+      finish = () => { useAgentStore.setState({ isAgentWorking: true }); resolve() }
+    }))
+    return { loadSession, finish: async () => { finish(); await Promise.resolve(); await Promise.resolve() } }
+  }
+
+  it('does not attach the session stream from a resync whose connection was replaced', async () => {
+    const load = pendingLoad()
+    const connectStream = mock(() => new AbortController())
+    useAgentStore.setState({ sessionId: 'current', loadSession: load.loadSession, connectStream })
+    let generation = 1
+
+    const done = reconcileCurrentSession(1, () => generation)
+    // A backend switch (or reconnect) started a new global connection.
+    generation = 2
+    await load.finish()
+    await done
+
+    expect(connectStream).not.toHaveBeenCalled()
+  })
+
+  it('does not attach the session stream from a turn start whose connection was replaced', async () => {
+    const load = pendingLoad()
+    const connectStream = mock(() => new AbortController())
+    useAgentStore.setState({ sessionId: 'current', loadSession: load.loadSession, connectStream })
+    let generation = 1
+
+    const handled = handleGlobalEvent(new QueryClient(), 'session_turn_started', { session_id: 'current' }, 1, () => generation)
+    generation = 2
+    await load.finish()
+
+    expect(await handled).toBe(false)
+    expect(connectStream).not.toHaveBeenCalled()
   })
 })

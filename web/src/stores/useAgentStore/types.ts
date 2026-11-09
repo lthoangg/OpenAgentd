@@ -6,6 +6,7 @@ import type {
   QuestionItem,
   AgentCommandResponse,
   SessionInteractionMode,
+  SessionSentFrom,
 } from '@/api/types'
 import type { OrphanToolResult } from '@/utils/messages'
 
@@ -52,17 +53,20 @@ export type CacheInvalidation =
   /** Session list membership changed outside a turn (a pin): refetch the lists. */
   | { kind: 'sessions' }
 
+/** Why a question closed without an answer (wire values plus local resolution). */
+export type QuestionClosedReason = 'dismissed' | 'superseded' | 'expired' | 'resolved_elsewhere'
+
 /** How a question ended, with enough context to render it without the wire text. */
 export interface ResolvedQuestion {
   questions: QuestionItem[]
   /** Index-matched selections, or ``null`` when it closed without an answer. */
   answers: string[][] | null
   /**
-   * Why it closed without an answer — ``dismissed``, ``superseded`` or
-   * ``expired``; ``null`` when answered. A null answer list alone cannot tell
-   * "I decided not to say" from "I typed something else instead".
+   * Why it closed without an answer; ``null`` when answered (or for a reason
+   * this client does not know). A null answer list alone cannot tell "I
+   * decided not to say" from "I typed something else instead".
    */
-  reason: string | null
+  reason: QuestionClosedReason | null
 }
 
 export interface SetupRequiredNotice {
@@ -151,6 +155,8 @@ export interface AgentStoreState {
   sessionId: string | null
   parentSessionId: string | null
   sessionTitle: string | null
+  /** The session in another workspace whose send started this one (``lead.sent_from``). */
+  sessionSentFrom: SessionSentFrom | null
   sessionInteractionMode: SessionInteractionMode
   /**
    * Mode the user picked while a turn was in flight. The backend queues it
@@ -318,7 +324,7 @@ export interface AgentStoreActions {
   resolveQuestion: (
     questionId: string,
     answers: string[][] | null,
-    reason: string | null,
+    reason: QuestionClosedReason | null,
   ) => void
   /**
    * Mark the lead's turn live again after an answered ``ask_user``.

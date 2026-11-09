@@ -1768,7 +1768,8 @@ async fn run_session_action(app: &AppHandle, session_id: &str, action: SessionAc
         return Ok(());
     }
     let mode = if action == SessionAction::NewWindow { OpenIn::NewWindow } else { OpenIn::Existing };
-    open_session(app, server, session_id, mode).await?;
+    // The island is a widget: opening from it leaves focus where it is.
+    open_session(app, server, session_id, mode, true).await?;
     mark_session_read(app, session_id, None);
     Ok(())
 }
@@ -1814,11 +1815,14 @@ pub(crate) fn focus_window_showing(app: &AppHandle, session_id: &str) -> bool {
 ///    any other), and with no window on that server (an enabled saved server
 ///    watched in the background, or its last window just closed) one opens
 ///    there. Never on another server, where the session is not found.
-pub(crate) async fn open_session(app: &AppHandle, server: ServerId, session_id: &str, mode: OpenIn) -> Result<()> {
+///
+/// `quiet`: a widget (the island, the pet) opens it, and the page does not
+/// put focus in the composer ([`open_path`], [`open_payload`]).
+pub(crate) async fn open_session(app: &AppHandle, server: ServerId, session_id: &str, mode: OpenIn, quiet: bool) -> Result<()> {
     if focus_window_showing(app, session_id) {
         return Ok(());
     }
-    let path = format!("/{session_id}");
+    let path = open_path(session_id, quiet);
     if mode == OpenIn::NewWindow {
         crate::window::create_app_window_on_server(app, server, &path).await?;
         return Ok(());
@@ -1833,8 +1837,7 @@ pub(crate) async fn open_session(app: &AppHandle, server: ServerId, session_id: 
     );
     match target.and_then(|label| app.get_webview_window(&label)) {
         Some(target) => {
-            let payload = serde_json::json!({ "sessionId": session_id });
-            app.emit_to(target.label(), "desktop-notification-clicked", payload)?;
+            app.emit_to(target.label(), "desktop-notification-clicked", open_payload(session_id, quiet))?;
             crate::window::show_window(&target);
         }
         None => {
@@ -1842,6 +1845,25 @@ pub(crate) async fn open_session(app: &AppHandle, server: ServerId, session_id: 
         }
     }
     Ok(())
+}
+
+/// The app path a new window opens `session_id` at; `?quiet=1` asks the page
+/// to leave focus alone (`web/src/lib/quiet-open.ts`).
+fn open_path(session_id: &str, quiet: bool) -> String {
+    if quiet {
+        format!("/{session_id}?quiet=1")
+    } else {
+        format!("/{session_id}")
+    }
+}
+
+/// What a window that switches to `session_id` is sent, with `quiet` only when set.
+fn open_payload(session_id: &str, quiet: bool) -> serde_json::Value {
+    let mut payload = serde_json::json!({ "sessionId": session_id });
+    if quiet {
+        payload["quiet"] = serde_json::json!(true);
+    }
+    payload
 }
 
 /// The session id in an app path (`/<id>`, maybe with a query or hash).
@@ -2773,6 +2795,18 @@ mod tests {
         for other in ["", "/", "/settings", "/new", "/../x", "/abc"] {
             assert_eq!(session_id_from_path(other), None, "{other}");
         }
+    }
+
+    /// A widget's open (the island, the pet) asks the page to leave focus
+    /// where it is; an OS notification's open does not.
+    #[test]
+    fn a_widget_open_asks_the_page_to_leave_focus_alone() {
+        let id = "5f0c1d2e-3a4b-4c5d-8e6f-7a8b9c0d1e2f";
+        assert_eq!(open_path(id, true), format!("/{id}?quiet=1"));
+        assert_eq!(open_path(id, false), format!("/{id}"));
+        assert_eq!(session_id_from_path(&open_path(id, true)).as_deref(), Some(id));
+        assert_eq!(open_payload(id, true), serde_json::json!({ "sessionId": id, "quiet": true }));
+        assert_eq!(open_payload(id, false), serde_json::json!({ "sessionId": id }));
     }
 
     #[test]

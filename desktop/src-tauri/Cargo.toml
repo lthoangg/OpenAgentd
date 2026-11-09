@@ -65,6 +65,9 @@ gtk = "0.18"
 # Cargo.lock and every feature listed is one Tauri already turns on.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
+# The reply block of LAContext's evaluatePolicy (src/presence.rs: Touch ID
+# before the account adds a device). Already built by Tauri's objc2 stack.
+block2 = "0.6"
 # NSString/NSURL/NSObject: the share sheet (src/share.rs) builds an NSURL item.
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSArray", "NSString", "NSURL", "NSObject", "objc2-core-foundation"] }
 # NSView/NSSharingService: the share sheet (src/share.rs).

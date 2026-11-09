@@ -22,6 +22,7 @@ mod shell_prefs;
 mod badge;
 mod context_menu;
 mod app_menu;
+mod presence;
 mod share;
 mod haptics;
 mod global_shortcuts;
@@ -691,6 +692,7 @@ fn main() {
             caption::show_snap_layouts,
             badge::set_attention_badge,
             share::share_url,
+            presence::confirm_user_presence,
             haptics::haptic_alignment,
             tray_popup::get_tray_usage_summary,
             tray_popup::tray_action,

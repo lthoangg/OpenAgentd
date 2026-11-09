@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-confirm-user-presence"
+description = "Enables the confirm_user_presence command without any pre-configured scope."
+commands.allow = ["confirm_user_presence"]
+
+[[permission]]
+identifier = "deny-confirm-user-presence"
+description = "Denies the confirm_user_presence command without any pre-configured scope."
+commands.deny = ["confirm_user_presence"]

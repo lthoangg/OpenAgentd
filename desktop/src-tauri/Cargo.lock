@@ -2690,6 +2690,7 @@ version = "3.50.1"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
+ "block2",
  "getrandom 0.4.3",
  "gtk",
  "image",

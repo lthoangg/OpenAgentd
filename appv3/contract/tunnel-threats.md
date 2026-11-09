@@ -74,11 +74,71 @@ always reachable from it as a client. What we do about it:
   platform has it; the routes that sign answer only local callers, never a
   relay session or the LAN, and agent tools already deny reading
   `cloud/identity.json`;
+- a local caller is not enough, because an agent's shell is one. The two
+  server routes that sign a roster, `POST /api/cloud/approve/confirm` and
+  `POST /api/cloud/devices/remove`, also need the **approval proof** that
+  only the desktop app can make (described below). Creating the account
+  (genesis on an empty account) needs no proof. The routes that sign
+  nothing (`approve/begin`, `approve/reject`, `pending`, `devices`) need no
+  proof either; a rejection is always safe;
+- `agentd cloud approve`, and `agentd cloud login` when it would create the
+  account, run only for a person: they refuse unless stdin and stdout are
+  both terminals, and refuse whenever `AGENTD_AGENT` is set (below);
 - every added device shows on every other device's device list, and any
   signer can remove it;
 - a person who wants the stronger model keeps signing on the phone: when a
   computer joins later they approve it as a member, and a CLI-only
   computer is a member by default.
+
+**The approval proof.** At each launch the desktop app makes a random
+32-byte key, in memory only. When it starts its bundled server it passes
+`--approval-key-stdin` and writes the key as one line (unpadded base64url)
+into a pipe that is the server's stdin, then closes its end. The key is
+never in an environment variable, a file, an argument or a log. The
+server reads the line straight from the descriptor before any thread
+starts, into memory zeroized on drop, then points stdin at `/dev/null`,
+which closes the pipe; every other descriptor it opens is close-on-exec.
+So nothing the server starts later (the agent's shell, terminals, MCP and
+language servers, plugins) inherits the key or the pipe. On Windows the
+pipe stays open in the server but is drained, and the app's end is
+closed, so a child that inherits it reads end-of-file. A server started
+any other way (`agentd server start`, a terminal) has no key, so its two
+signing routes refuse every request; the person uses `agentd cloud approve`
+in a terminal instead.
+
+After the person confirms (Touch ID or the login password through
+LocalAuthentication where the platform has it, otherwise the explicit
+click), the app's `cloud_approval_proof` command returns
+
+    X-Agentd-Approval: b64url(HMAC-SHA256(key,
+        "agentd-approve-v1" || 0x00 || action || 0x00 || id || 0x00 ||
+        signer "," server "," client))
+
+where `action` is `approve` (id: the enrollment id, roles as granted) or
+`remove` (id: the device id, roles all `0`), and each role is `1` or `0`.
+The server compares it in constant time, after `local_only` and before it
+touches the open approval. A missing key, a missing header or a wrong MAC
+(another key, enrollment, device, set of roles or action) answers `403`
+with a fixed message ("Approve in the OpenAgentd app on this computer, or
+run agentd cloud approve in Terminal."; for removal, "Remove devices in
+the OpenAgentd app on this computer."). The web UI in a plain browser,
+where there is no app to make the proof, shows that message instead of
+the buttons.
+
+**The agent marker.** `AGENTD_AGENT=1` marks every process an agent can
+drive. The server and `agentd run` set it on themselves before any thread
+starts, so the agent's shell commands, git hooks, plugins and package
+installs inherit it; the shell tool, MCP servers and language servers
+(which start from an empty environment) set it explicitly. The terminal
+tabs the person opens in the app remove it.
+
+**What this does not stop.** These checks raise the bar for an agent that
+was talked into approving a device (prompt injection, together with a
+stolen account session that created the request). They do not stop
+arbitrary code running as the user: such code can read `cloud/identity.json`
+and sign a roster itself, unset `AGENTD_AGENT`, fake a terminal with
+`script`, or drive the app's window. That residual risk is the trade-off
+above, accepted because such code already controls this computer.
 
 A stolen key of a member computer cannot approve devices. It can act as
 that computer, which someone who can read the user's files can do anyway.
@@ -324,7 +384,11 @@ files of `native/cloud`, `appv3` and `mobile/src-tauri`, and checked with
       connector.
 - [ ] A computer signs a roster only after a click by the person at its
       screen (plus Touch ID where available), through routes that refuse
-      relayed and LAN callers.
+      relayed and LAN callers and need the desktop app's approval proof
+      for exactly that change; the CLI signs only at a terminal and never
+      under `AGENTD_AGENT`.
+- [ ] The approval key never reaches an environment variable, a file, an
+      argument, a log or a child process.
 - [ ] No URL from a response is opened. The hosts are the compiled
       constants.
 - [ ] Relayed requests cannot reach the account routes, cannot carry

@@ -89,7 +89,11 @@ cannot hold the key without prompting, as on a server).
   `sign` is used only after the person at that screen approves, by a click
   in the app plus the platform's user check (Touch ID or the login
   password) where the platform offers one; the key itself may sit in the
-  user-only file (`tunnel-threats.md`, "Storage"). A server without a
+  user-only file (`tunnel-threats.md`, "Storage"). The app proves that
+  approval to its own server with a per-launch key, so a local process
+  such as an agent's shell cannot sign (`tunnel-threats.md`, "The approval
+  proof"); this is local to the computer and does not change anything
+  the cloud or other devices see. A server without a
   screen has a `sign` key too, so a signer can promote it later, but it
   should stay a member.
 - **Device id** and **fingerprint** are derived from `auth`

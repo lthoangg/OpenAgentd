@@ -408,7 +408,11 @@ pub struct RelocateReport {
 
 /// Check a relocate of the repository `from` (its folder gone) to the
 /// folder `to`; returns the resolved `to`.
-async fn check_relocate(pool: &DbPool, from: &str, to: &str) -> Result<String, RelocateError> {
+/// Returns `(from, to)` in the stored form (`db::relocate_path`), so a
+/// trailing separator or a lower-case drive letter still finds the row.
+async fn check_relocate(pool: &DbPool, from: &str, to: &str) -> Result<(String, String), RelocateError> {
+    let from = db::relocate_path(from);
+    let from = from.as_str();
     let row = db::get_workspace_by_path(pool, from).await.map_err(|e| RelocateError::Invalid(e.to_string()))?;
     if !row.as_ref().is_some_and(|r| r.kind == "repo" && r.deleted_at.is_none()) {
         return Err(RelocateError::Invalid(format!("{from} is not a workspace in the sidebar.")));
@@ -423,7 +427,7 @@ async fn check_relocate(pool: &DbPool, from: &str, to: &str) -> Result<String, R
     if db::rebase_path(&to, from, &to).is_some() {
         return Err(RelocateError::Invalid("The new folder cannot be inside the old one.".into()));
     }
-    Ok(to)
+    Ok((from.to_string(), to))
 }
 
 /// Every path a relocate from `from` touches: `from` and paths inside it,
@@ -444,7 +448,8 @@ fn relocated_paths(from: &str, worktrees: &[(String, bool)]) -> impl Fn(&str) ->
 /// reports what would move.
 pub async fn relocate_repository(pool: &DbPool, from: &str, to: &str, dry_run: bool) -> Result<RelocateReport, RelocateError> {
     let invalid = |e: anyhow::Error| RelocateError::Invalid(e.to_string());
-    let to = check_relocate(pool, from, to).await?;
+    let (from, to) = check_relocate(pool, from, to).await?;
+    let from = from.as_str();
     let summary = db::relocate_summary(pool, from, &to).await.map_err(invalid)?;
     let under = relocated_paths(from, &summary.worktrees);
     let mut report = RelocateReport { workspace: to.clone(), summary: summary.clone(), ..Default::default() };

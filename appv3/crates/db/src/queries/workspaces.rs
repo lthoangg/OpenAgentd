@@ -180,6 +180,21 @@ pub fn rebase_path(path: &str, from: &str, to: &str) -> Option<String> {
     (rest.starts_with('/') || rest.starts_with('\\')).then(|| format!("{to}{rest}"))
 }
 
+/// A relocate's `from` or `to` in the form the stored rows use: through
+/// [`resolve_path`], as every writer stores it (absolute, no trailing
+/// separator, no `.`/`..`), with a Windows drive letter in upper case, as
+/// canonicalising stores it. Without this, the plain string comparisons in
+/// [`rebase_path`] miss rows whenever the caller's spelling differs.
+pub fn relocate_path(p: &str) -> String {
+    let mut s = resolve_path(p);
+    if cfg!(windows) && s.as_bytes().get(1) == Some(&b':') {
+        if let Some(drive) = s.get_mut(..1) {
+            drive.make_ascii_uppercase();
+        }
+    }
+    s
+}
+
 /// What a relocate from `from` to `to` would carry over (the confirmation's
 /// counts).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -202,6 +217,8 @@ async fn distinct_paths(pool: &DbPool, sql: &'static str) -> Result<Vec<String>>
 }
 
 pub async fn relocate_summary(pool: &DbPool, from: &str, to: &str) -> Result<RelocateSummary> {
+    let (from, to) = (relocate_path(from), relocate_path(to));
+    let (from, to) = (from.as_str(), to.as_str());
     let mut s = RelocateSummary::default();
     let rows =
         sqlx::query_as::<_, CodingWorkspace>("SELECT * FROM coding_workspaces WHERE kind = 'worktree' AND deleted_at IS NULL AND source_path IS NOT NULL ORDER BY created_at ASC")
@@ -241,6 +258,8 @@ pub async fn relocate_summary(pool: &DbPool, from: &str, to: &str) -> Result<Rel
 ///
 /// Paths in old messages and tool calls are history and stay as they were.
 pub async fn relocate_workspace(pool: &DbPool, from: &str, to: &str) -> Result<()> {
+    let (from, to) = (relocate_path(from), relocate_path(to));
+    let (from, to) = (from.as_str(), to.as_str());
     let now = now_db();
     let mut tx = pool.begin().await?;
     // Sessions and scheduled tasks: one UPDATE per distinct path.
@@ -346,6 +365,17 @@ mod tests {
         sqlx::query_scalar(sql).fetch_all(pool).await.unwrap()
     }
 
+    /// `rel` under the temp dir, in the stored form, so the paths are real
+    /// absolute paths on every platform (`/c/agentd` is not one on Windows).
+    fn at(dir: &tempfile::TempDir, rel: &str) -> String {
+        resolve_path(&dir.path().join(rel).to_string_lossy())
+    }
+
+    fn sorted(mut v: Vec<String>) -> Vec<String> {
+        v.sort();
+        v
+    }
+
     #[test]
     fn rebase_takes_the_folder_and_paths_inside_it_only() {
         assert_eq!(rebase_path("/c/agentd", "/c/agentd", "/c/oad").as_deref(), Some("/c/oad"));
@@ -355,15 +385,32 @@ mod tests {
         assert_eq!(rebase_path("/c/other", "/c/agentd", "/c/oad"), None);
     }
 
+    #[test]
+    fn relocate_path_takes_the_stored_form() {
+        let dir = tempfile::tempdir().unwrap();
+        let from = at(&dir, "agentd");
+        let sep = std::path::MAIN_SEPARATOR;
+        assert_eq!(relocate_path(&format!("{from}{sep}")), from, "a trailing separator");
+        assert_eq!(relocate_path(&format!("{from}{sep}web{sep}..")), from);
+        #[cfg(windows)]
+        {
+            assert_eq!(relocate_path(r"c:\gone\agentd\"), r"C:\gone\agentd");
+            let lower_drive = format!("{}{}", from[..1].to_ascii_lowercase(), &from[1..]);
+            assert_eq!(relocate_path(&lower_drive), from, "a lower-case drive letter");
+        }
+    }
+
     #[tokio::test]
     async fn moves_sessions_tasks_rows_and_groups_and_takes_the_new_name() {
-        let (_d, pool) = fresh().await;
-        let (from, to) = ("/c/agentd", "/c/openagentd");
+        let (d, pool) = fresh().await;
+        let (from, to) = (at(&d, "agentd"), at(&d, "openagentd"));
+        let (from, to) = (from.as_str(), to.as_str());
+        let (web, wt, other, new_web) = (at(&d, "agentd/web"), at(&d, "wt/agentd-1/fix"), at(&d, "agentd-other"), at(&d, "openagentd/web"));
         upsert_coding_workspace(&pool, from, "repo", None, None, false, false).await.unwrap();
-        upsert_coding_workspace(&pool, "/c/agentd/web", "folder", Some(from), None, false, false).await.unwrap();
-        upsert_coding_workspace(&pool, "/wt/agentd-1/fix", "worktree", Some(from), Some("fix"), true, false).await.unwrap();
-        upsert_coding_workspace(&pool, "/c/agentd-other", "repo", None, None, false, false).await.unwrap();
-        for ws in [from, from, "/c/agentd/web", "/wt/agentd-1/fix", "/c/agentd-other"] {
+        upsert_coding_workspace(&pool, &web, "folder", Some(from), None, false, false).await.unwrap();
+        upsert_coding_workspace(&pool, &wt, "worktree", Some(from), Some("fix"), true, false).await.unwrap();
+        upsert_coding_workspace(&pool, &other, "repo", None, None, false, false).await.unwrap();
+        for ws in [from, from, &web, &wt, &other] {
             add_session(&pool, ws).await;
         }
         add_task(&pool, "nightly", from).await;
@@ -372,29 +419,30 @@ mod tests {
 
         let summary = relocate_summary(&pool, from, to).await.unwrap();
         assert_eq!((summary.sessions, summary.scheduled_tasks, summary.merge), (4, 1, false), "the worktree's session counts too");
-        assert_eq!(summary.worktrees, vec![("/wt/agentd-1/fix".to_string(), true)]);
+        assert_eq!(summary.worktrees, vec![(wt.clone(), true)]);
         assert_eq!(summary.groups, vec!["backend".to_string()]);
 
         relocate_workspace(&pool, from, to).await.unwrap();
-        assert_eq!(workspaces_of(&pool, "chat_sessions").await, vec!["/c/agentd-other", "/c/openagentd", "/c/openagentd", "/c/openagentd/web", "/wt/agentd-1/fix"]);
-        assert_eq!(workspaces_of(&pool, "scheduled_task").await, vec!["/c/openagentd"]);
+        assert_eq!(workspaces_of(&pool, "chat_sessions").await, sorted(vec![other.clone(), to.into(), to.into(), new_web.clone(), wt.clone()]));
+        assert_eq!(workspaces_of(&pool, "scheduled_task").await, vec![to]);
         let repo = get_workspace_by_path(&pool, to).await.unwrap().unwrap();
         assert_eq!(repo.name.as_deref(), Some("openagentd"));
         assert!(get_workspace_by_path(&pool, from).await.unwrap().is_none());
-        let folder = get_workspace_by_path(&pool, "/c/openagentd/web").await.unwrap().unwrap();
+        let folder = get_workspace_by_path(&pool, &new_web).await.unwrap().unwrap();
         assert_eq!(folder.source_path.as_deref(), Some(to));
-        let wt = get_workspace_by_path(&pool, "/wt/agentd-1/fix").await.unwrap().unwrap();
-        assert_eq!((wt.source_path.as_deref(), wt.name.as_deref()), (Some(to), Some("fix")));
+        let wt_row = get_workspace_by_path(&pool, &wt).await.unwrap().unwrap();
+        assert_eq!((wt_row.source_path.as_deref(), wt_row.name.as_deref()), (Some(to), Some("fix")));
         let members = crate::list_group_memberships(&pool).await.unwrap();
         assert_eq!(members.iter().map(|(_, p)| p.as_str()).collect::<Vec<_>>(), vec![to]);
         // A sibling sharing the prefix is untouched.
-        assert!(get_workspace_by_path(&pool, "/c/agentd-other").await.unwrap().is_some());
+        assert!(get_workspace_by_path(&pool, &other).await.unwrap().is_some());
     }
 
     #[tokio::test]
     async fn merges_into_a_workspace_already_at_the_new_folder() {
-        let (_d, pool) = fresh().await;
-        let (from, to) = ("/c/agentd", "/c/openagentd");
+        let (d, pool) = fresh().await;
+        let (from, to) = (at(&d, "agentd"), at(&d, "openagentd"));
+        let (from, to) = (from.as_str(), to.as_str());
         upsert_coding_workspace(&pool, from, "repo", None, None, false, false).await.unwrap();
         upsert_coding_workspace(&pool, to, "repo", None, Some("My app"), false, false).await.unwrap();
         add_session(&pool, from).await;

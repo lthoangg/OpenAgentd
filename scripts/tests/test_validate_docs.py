@@ -102,3 +102,19 @@ def test_main_returns_nonzero_and_prints_deterministic_errors(
         capsys.readouterr().err
         == "documents/docs/guide.md: local link target does not exist: missing.md\n"
     )
+
+
+def test_tunnel_vector_sections_must_be_named_in_the_spec(tmp_path: Path) -> None:
+    module = _load_module()
+    contract = tmp_path / "appv3" / "contract"
+    contract.mkdir(parents=True)
+    (contract / "tunnel_vectors.json").write_text('{"about": "x", "account_id": "a", "roster": [], "noise": []}')
+    (contract / "tunnel.md").write_text("| Key | Covers |\n|---|---|\n| `roster` | Rosters |\n")
+    errors = module.validate_repository(tmp_path, [])
+    assert errors == ["appv3/contract/tunnel.md: vector section not described: noise"]
+
+
+def test_the_real_tunnel_contract_is_complete() -> None:
+    module = _load_module()
+    root = Path(__file__).resolve().parents[2]
+    assert module._tunnel_contract_errors(root) == []

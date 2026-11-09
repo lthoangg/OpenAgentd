@@ -16,7 +16,8 @@ pub fn router() -> Router<AppState> {
 
 /// Optional features the web UI can rely on (v2 reports none): push events
 /// that replace polling, and the plugin and module status APIs.
-pub const CAPABILITIES: &[&str] = &["events.workspace_files_changed", "events.config_changed", "events.mcp_status_changed", "api.plugins", "api.modules", "api.cloud"];
+pub const CAPABILITIES: &[&str] =
+    &["events.workspace_files_changed", "events.config_changed", "events.mcp_status_changed", "api.plugins", "api.modules", "api.cloud", "api.server_update"];
 
 async fn live() -> Response {
     json(j!({"status": "ok", "version": VERSION, "capabilities": CAPABILITIES}))

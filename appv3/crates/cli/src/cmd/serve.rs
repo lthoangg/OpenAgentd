@@ -124,6 +124,13 @@ pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
     // environment before any thread or child process can inherit them.
     let policy = Policy::from_env();
     let handshake_file = std::env::var(appv3_core::auth::HANDSHAKE_FILE_ENV).ok().filter(|p| !p.is_empty());
+    // The update API needs to know who can start this server again, and the
+    // env access key the scrub below removes (the restart must present it).
+    appv3_api::routes::server_update::set_launch(appv3_api::routes::server_update::Launch {
+        cli_daemon: daemon,
+        desktop_sidecar: args.generate_token || args.parent_pid.is_some() || token.is_some(),
+        access_key: std::env::var(appv3_core::auth::ACCESS_KEY_ENV).ok().filter(|k| !k.is_empty()),
+    });
     appv3_core::auth::scrub_child_env_secrets();
     // Everything this server starts may be driven by an agent.
     appv3_core::auth::mark_agent_process();

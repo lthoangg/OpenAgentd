@@ -1446,6 +1446,26 @@ blocked; a critical one still stops the server.
   mode only `read_only` tools run. A server of the user's named like a plugin
   hides that plugin's tools; the plugin's Settings entry warns.
 
+### Server update API (v3 only)
+
+- **`GET /api/server/update`** (new, capability `api.server_update`):
+  `{current, latest, available, can_upgrade, method, reason, check_error,
+  in_progress, release_url, log, last}`. `latest` is cached for an hour (five
+  minutes after a failed check; `?refresh=true` skips the cache). `reason` is
+  `desktop_sidecar`, `foreground` or `unsupported_platform` when
+  `can_upgrade` is false: only a server `agentd server start` launched
+  updates itself. `last` is the helper's `state/upgrade-status.json`.
+- **`POST /api/server/update`** takes no input and answers 202 `{status:
+  "started", from, target, started_at}`; 409 when an update runs or nothing
+  is newer, 422 `{message, reason}` when this server cannot update itself,
+  502 when the release feed fails. It starts `agentd upgrade --from-server`,
+  which leaves the server's process tree (`setsid`; a new process group
+  outside the job on Windows), stops the server, installs the release the
+  same way `agentd upgrade` does, and starts it again with `--wait`. Its
+  output goes to `state/logs/upgrade.log`. The feed is
+  `OPENAGENTD_RELEASES_URL` on the server, never the client's
+  (`cli/tests/server_update.rs` runs the whole flow against a fake feed).
+
 ## 4. Layout
 
 - Workspace crates: `core`, `db`, `kernel`, `tools`, `terminal`, `providers`,

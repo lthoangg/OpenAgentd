@@ -1,7 +1,7 @@
 //! `agentd transfer export|import`.
 
 use crate::cli::{ExportArgs, ImportArgs};
-use crate::ui::{bold, cyan, dim, green, yellow};
+use crate::ui::{self, bold, dim, green, tilde, Table};
 use anyhow::{anyhow, bail, Context, Result};
 use appv3_core::pyyaml::{safe_dump_py, safe_load_py, Py};
 use std::path::{Component, Path, PathBuf};
@@ -147,32 +147,28 @@ pub fn export(a: &ExportArgs) -> Result<()> {
             std::env::current_dir()?.join(format!("openagentd-export-{stamp}.tar.gz"))
         }
     };
+    ui::header("Export config", &tilde(&cfg));
     if a.include_secrets {
-        println!();
-        println!(
-            "  {}  {} is set — credentials.yaml (API keys, OAuth logins) and the server access key will be stored in plaintext inside the archive.",
-            yellow("⚠"),
-            bold("--include-secrets")
+        ui::mark_line(
+            &ui::warn_mark(),
+            "--include-secrets is set: credentials.yaml (API keys, OAuth logins) and the server access key are stored in plaintext inside the archive. Only move it over a trusted, encrypted channel (e.g. local disk → SCP → remote).",
         );
-        println!("     {}", dim("Only use this over a trusted, encrypted channel (e.g. local disk → SCP → remote)."));
         println!();
     }
-    println!("  {}  Exporting config from {}", dim("…"), cfg.display());
     let packed = export_config(&cfg, &output, a.include_secrets)?;
-    println!("  {}  Archive: {}", green("✓"), bold(&output.display().to_string()));
-    println!("  {} {} file(s):", dim("Packed"), packed.len());
-    if !a.include_secrets && cfg.join(appv3_core::credentials::FILE_NAME).is_file() {
-        println!("    {} {}", dim("  ·"), dim("credentials.yaml left out (pass --include-secrets to pack it)"));
-    }
+    ui::mark_line(&ui::ok_mark(), &format!("Packed {} file(s) into {}", packed.len(), bold(&tilde(&output))));
+    let mut table = Table::new();
     for f in &packed {
         let sensitive = matches!(f.as_str(), ".env" | "server.yaml" | "credentials.yaml");
-        let marker = if sensitive { yellow("  •") } else { cyan("  •") };
-        let suffix = if sensitive && !a.include_secrets { dim("  (secrets redacted)") } else { String::new() };
-        println!("    {marker} {f}{suffix}");
+        let note = if sensitive && !a.include_secrets { dim("secrets redacted") } else { String::new() };
+        table.row([format!("   {}", dim("·")), f.clone(), note]);
+    }
+    table.print();
+    if !a.include_secrets && cfg.join(appv3_core::credentials::FILE_NAME).is_file() {
+        ui::hint("     credentials.yaml left out (pass --include-secrets to pack it)");
     }
     println!();
-    println!("  {}", bold("To import on the target server:"));
-    println!("    agentd transfer import {}", output.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
+    ui::next("Import it on the other computer:", &format!("agentd transfer import {}", output.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
     println!();
     Ok(())
 }
@@ -255,10 +251,7 @@ fn import_config(archive: &Path, cfg: &Path, force: bool) -> Result<(Vec<String>
 pub fn import(a: &ImportArgs) -> Result<()> {
     let cfg = config_dir(a.config_dir.as_deref());
     let archive = resolve(&expanduser(&a.archive));
-    println!();
-    println!("  {}  Importing from {}", dim("…"), archive.display());
-    println!("  {}  Config dir: {}", dim("→"), cfg.display());
-    println!();
+    ui::header("Import config", &format!("{} → {}", tilde(&archive), tilde(&cfg)));
     let (mut written, mut skipped) = import_config(&archive, &cfg, a.force)?;
     // A legacy archive carries provider keys in its dotenv file: move them
     // into the credential store, as the first server start would.
@@ -272,27 +265,26 @@ pub fn import(a: &ImportArgs) -> Result<()> {
         let r = appv3_providers::credentials_migration::absorb_dotenv(&src, "Imported").map_err(|e| anyhow!("{e}"))?;
         if !r.is_empty() {
             let names: Vec<String> = r.providers.iter().map(|(p, _)| p.clone()).chain(r.secrets.iter().cloned()).collect();
-            println!("  {}  Moved keys from the archive's .env into credentials.yaml: {}", green("✓"), names.join(", "));
+            ui::mark_line(&ui::ok_mark(), &format!("Moved keys from the archive's .env into credentials.yaml: {}", names.join(", ")));
         }
     }
     if !written.is_empty() {
-        println!("  {}  Wrote {} file(s):", green("✓"), written.len());
+        ui::mark_line(&ui::ok_mark(), &format!("Wrote {} file(s)", written.len()));
         written.sort();
         for f in &written {
-            println!("    {} {f}", green("  +"));
+            println!("     {} {f}", green("+"));
         }
     }
     if !skipped.is_empty() {
-        println!("  {}  Skipped {} existing file(s):", yellow("ℹ"), skipped.len());
+        ui::mark_line(&ui::idle_mark(), &format!("Skipped {} existing file(s)", skipped.len()));
         skipped.sort();
         for f in &skipped {
-            println!("    {} {f}", dim("  ·"));
+            println!("     {} {}", dim("·"), dim(f));
         }
-        println!("\n  {} {} {}", dim("Tip: pass"), bold("--force"), dim("to overwrite existing files."));
+        ui::hint("     Pass --force to overwrite them.");
     }
     println!();
-    println!("  {} start the server:", bold("Next:"));
-    println!("    agentd server start");
+    ui::next("Next:", "agentd server start");
     println!();
     Ok(())
 }

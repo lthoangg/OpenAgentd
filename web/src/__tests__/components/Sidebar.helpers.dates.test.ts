@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import type { SessionResponse } from '@/api/types'
-import { groupSessionsByDate, groupSessionsByStatus, orderWorkspacePaths } from '@/components/Sidebar.helpers'
+import { groupSessionsByDate, groupSessionsByStatus, newestFirst, orderWorkspacePaths } from '@/components/Sidebar.helpers'
 import type { CodingWorkspaceTreeRepository } from '@/api/types'
 
 const session = (id: string, fields: Partial<SessionResponse> = {}): SessionResponse => ({
@@ -108,6 +108,17 @@ describe('groupSessionsByStatus', () => {
     const lead = session('lead', { running: false, subagents: [session('child', { running: true, parent_session_id: 'lead' })] })
     const groups = groupSessionsByStatus([lead], [lead])
     expect(groups.map((g) => [g.label, g.sessions.map((s) => s.id)])).toEqual([['Running', ['lead']]])
+  })
+
+  it('keeps a session an agent started out of Running, in Recent instead', () => {
+    const sent = session('sent', { running: true, sent_from: { session_id: 'elsewhere', workspace: '/w' } })
+    const groups = groupSessionsByStatus([sent], [sent])
+    expect(groups.map((g) => [g.label, g.sessions.map((s) => s.id)])).toEqual([['Recent', ['sent']]])
+  })
+
+  it('orders newest first, keeping ties and putting undated items last', () => {
+    const rows = [{ id: 'a', t: '2026-01-01T00:00:00Z' }, { id: 'none', t: null }, { id: 'b', t: '2026-03-01T00:00:00Z' }, { id: 'a2', t: '2026-01-01T00:00:00Z' }]
+    expect(newestFirst(rows, (r) => r.t).map((r) => r.id)).toEqual(['b', 'a', 'a2', 'none'])
   })
 
   it('shows a pinned session only in Pinned, even when it needs you', () => {

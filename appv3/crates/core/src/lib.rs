@@ -13,6 +13,7 @@ pub mod proctree;
 pub mod pyjson;
 pub mod pymath;
 pub mod pyyaml;
+pub mod release;
 pub mod runtime_settings;
 pub mod secret_files;
 pub mod security;

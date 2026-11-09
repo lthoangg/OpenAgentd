@@ -41,6 +41,19 @@ describe('runningSessions', () => {
     expect(kept.map((s) => s.id)).toEqual(['busy', 'delegating'])
   })
 
+  it('leaves out a session an agent started from another workspace', () => {
+    const rows = [
+      session({ id: 'mine', running: true }),
+      session({ id: 'sent', running: true, workspace: '/infra', sent_from: { session_id: 'mine', workspace: '/w' } }),
+    ]
+    const data = { pages: [{ data: rows, next_cursor: null, has_more: false }], pageParams: [null] }
+
+    expect(runningSessions(data).map((s) => s.id)).toEqual(['mine'])
+    // Waiting on the user, it still shows under Needs you.
+    const asking = [session({ id: 'sent', running: true, needs_input: true, sent_from: { session_id: 'mine', workspace: '/w' } })]
+    expect(needsYouSessions({ pages: [{ data: asking, next_cursor: null, has_more: false }], pageParams: [null] }).map((s) => s.id)).toEqual(['sent'])
+  })
+
   it('is empty before the list loads', () => {
     expect(runningSessions(undefined)).toEqual([])
   })

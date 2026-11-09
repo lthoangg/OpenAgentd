@@ -388,6 +388,17 @@ run from the terminal (the native Rust binary since v3.0.0).
   differ by a major or minor version it warns which side to update; a
   patch-only difference gets a quiet note. The header shows the app's own
   version (before, it showed the server's).
+- **One-click server update** `[v3.51.0]` — when a newer release is out, the
+  Server row of Settings → About → Version has **Update to vX**, from the
+  phone, the browser, or a desktop app connected to another computer. It
+  works for a server `agentd server start` launched: the server downloads and
+  verifies the release (or runs `brew upgrade`), restarts, and resumes the
+  turns the restart cut off. If agents are working it asks first. While the
+  server restarts the connection banner says **Updating the server** instead
+  of **Can't reach**, and the row then says how it went (on failure with the
+  path of the update log on the server). A server in the foreground, or the
+  desktop app's own, says what to do instead. Servers before v3.51.0 need one
+  `agentd upgrade` first.
 - **Native app notifications** `[v1.19.0]` — finished assistant turns and
   scheduled reminders in the desktop app, plus local native
   notifications in the remote-backend mobile shell `[v1.34.0]`. Clicking a
@@ -2619,6 +2630,11 @@ executes tools, manages its task list, and inspects workspace repositories.
   when it asks you something. A session you started yourself stays where it
   is when another workspace messages it. Sessions sends started before this
   release are grouped too, and deleting the sender leaves them in place.
+  Since `[v3.51.0]` the **Running** section (the phone's Sessions page and the
+  sidebar's Status view) lists only sessions you started; one an agent started
+  stays under its sender (or in Recent when its sender is not listed), and
+  still shows under **Needs you** when it asks you something. The ↗ list and
+  the subagent list under a session show the most recently active first.
 - **Workspace groups** `[v3.21.0]` — named tags on
   repositories that say which workspaces belong together. Set them up in
   **Settings → Workspaces → Groups**: create a group, give it a
@@ -4334,6 +4350,19 @@ Desktop is primary. CLI / server is the developer path.
   running. Homebrew installations delegate to `brew upgrade`. In v2.27.0, `openagentd upgrade`
   migrates existing uv/pipx/pip installations to the v3 native binary. `agentd update`
   is an alias `[v3.1.0]`.
+- **CLI output** `[v3.51.0]` — every command prints in one style: a title
+  line, sections, aligned columns, ✓/⚠/✗ marks, warnings that wrap, and a
+  dim next step; piped output is the same text without colour. The top-level
+  help groups the commands (Server, Agents, Setup, Maintenance), and errors
+  can carry a `hint:` line. `agentd run "prompt"` takes the prompt as an
+  argument (`--prompt` still works) and ends with the session id and how to
+  continue it. `agentd doctor` groups its checks (Config, Providers, Server,
+  Modules), folds the module list to one line when every module runs, and
+  says when a newer release is out. `agentd lsp status` is a ✓/✗ table with
+  the install command for each missing server; `agentd cleanup` totals what
+  it would delete by kind and lists the largest folders by short id;
+  `agentd server logs` shortens each record on a terminal; `agentd upgrade`
+  reports each step and links the release notes.
 - **CLI OAuth login status** `[v3.1.0]` — `agentd auth list` shows which
   OAuth providers (Codex, GitHub Copilot, Grok) are logged in, and
   `agentd auth logout <provider>` deletes the saved login.

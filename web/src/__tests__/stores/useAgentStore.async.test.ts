@@ -994,6 +994,61 @@ describe("sendMessage: queue behaviour", () => {
     ])
   })
 
+  // A steer's image: the queued chip has no URL, so the bubble needs the
+  // server's. Without it the thumbnail and the viewer stayed blank until a
+  // reload.
+  it("gives a spliced queued message the server's attachment URLs", () => {
+    useAgentStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: { lead: makeStream({ status: "working" as const }) },
+      _pendingMessages: [
+        {
+          id: "pm-img",
+          sessionId: "session-a",
+          content: "look",
+          attachments: [{ original_name: "shot.png", media_type: "image/png", category: "image" }],
+        },
+      ],
+    })
+
+    useAgentStore.getState()._handleSSEEvent("queued_turn_start", {
+      agent: "lead",
+      message_ids: ["pm-img", "pm-other"],
+      messages: [
+        {
+          id: "pm-img",
+          content: "look",
+          extra: {
+            model: "m",
+            attachments: [{
+              filename: "shot.png",
+              path: "/ws/uploads/shot.png",
+              original_name: "shot.png",
+              media_type: "image/png",
+              category: "image",
+              url: "/api/agent/session-a/uploads/shot.png",
+            }],
+          },
+        },
+        {
+          id: "pm-other",
+          content: "from another client",
+          extra: { attachments: [{ original_name: "b.png", category: "image", url: "/api/agent/session-a/uploads/b.png" }] },
+        },
+      ],
+    })
+
+    const blocks = useAgentStore.getState().agentStreams.lead.currentBlocks
+    expect(blocks.map((b) => b.attachments?.[0]?.url)).toEqual([
+      "/api/agent/session-a/uploads/shot.png",
+      "/api/agent/session-a/uploads/b.png",
+    ])
+    // Display shape only, as history serves it.
+    expect(blocks[0].attachments?.[0]).not.toHaveProperty("path")
+    expect(blocks[0].extra).toEqual({ model: "m" })
+  })
+
   it("moves only queued ids named by queued_turn_start", () => {
     useAgentStore.setState({
       sessionId: "session-a",

@@ -52,7 +52,12 @@ impl Sandbox {
         ] {
             cmd.env(k, self.path(d));
         }
-        cmd.env("OPENAGENTD_ENV", "production").env("NO_COLOR", "1").env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false").env("OPENAGENTD_SNAPSHOT_MAINTENANCE_ENABLED", "false");
+        cmd.env("OPENAGENTD_ENV", "production")
+            .env("NO_COLOR", "1")
+            .env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false")
+            .env("OPENAGENTD_SNAPSHOT_MAINTENANCE_ENABLED", "false")
+            // No release lookups from tests: a closed port answers at once.
+            .env("OPENAGENTD_RELEASES_URL", "http://127.0.0.1:9");
         for k in [
             "OPENAGENTD_DESKTOP_TOKEN",
             "OPENAGENTD_ACCESS_KEY",

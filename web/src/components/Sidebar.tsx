@@ -88,7 +88,7 @@ import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspac
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceTree, listSessions, listWorktrees, setCodingWorkspaceVisibility } from '@/api/client'
 import { WORKSPACES_KEY, renameSavedWorkspace, workspaceLabel } from '@/utils/workspace'
-import { RelocateWorkspaceDialog } from '@/components/RelocateWorkspaceDialog'
+import { RelocateWorkspaceDialog } from '@/components/LazyRelocateWorkspaceDialog'
 import type { WorkspaceRelocateResponse } from '@/api/types'
 import { startNewSession } from '@/lib/new-session'
 import { softHapticFeedback } from '@/lib/haptics'

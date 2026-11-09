@@ -6,7 +6,7 @@
  * the server is away instead of "Can't reach".
  */
 import { create } from 'zustand'
-import { getServerUpdate, startServerUpdate, type ServerUpdateStatus } from '@/api/client/server-update'
+import type { ServerUpdateStatus } from '@/api/client/server-update'
 import { errorMessage } from '@/utils/errors'
 
 export type ServerUpdatePhase =
@@ -54,9 +54,14 @@ export const useServerUpdateStore = create<ServerUpdateStore>((set, get) => ({
   reset: () => set({ phase: { kind: 'idle' } }),
   start: async (options) => {
     if (get().phase.kind === 'updating') return
+    // The connection banner reads this store at startup; the API calls load
+    // only when an update starts, keeping them out of the startup bundle.
+    let getServerUpdate: typeof import('@/api/client/server-update').getServerUpdate
     let started
     try {
-      started = await startServerUpdate()
+      const api = await import('@/api/client/server-update')
+      getServerUpdate = api.getServerUpdate
+      started = await api.startServerUpdate()
     } catch (error) {
       set({ phase: { kind: 'failed', message: errorMessage(error) } })
       options?.onSettled?.()

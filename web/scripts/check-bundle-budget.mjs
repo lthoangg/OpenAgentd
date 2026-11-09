@@ -40,7 +40,7 @@ export function measureBundle(directory) {
 // Surfaces kept out of the startup path (`web/src/lib/lazy-surface.tsx`):
 // each loads on first use or while the app is idle after it starts. A static
 // import from startup code would quietly put it back; this check fails then.
-export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult', 'RunPicker', 'PlanTabView', 'GoalTabView', 'TerminalFindBar', 'TerminalSubPanel', 'CommitTabView', 'AppBackendDialog', 'TodosPopover', 'SessionMcpServers', 'KeyboardShortcutsSheet', 'ServersScreen', 'DiffTabView']
+export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult', 'RunPicker', 'PlanTabView', 'GoalTabView', 'TerminalFindBar', 'TerminalSubPanel', 'CommitTabView', 'AppBackendDialog', 'TodosPopover', 'SessionMcpServers', 'KeyboardShortcutsSheet', 'ServersScreen', 'DiffTabView', 'RelocateWorkspaceDialog']
 
 // The startup path loads everything not behind a dynamic import. History:
 // features had grown it from 2.37 MB / 705 kB gzip (early October) to
@@ -88,6 +88,10 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // than it saved (681.1 kB), and the rest sits in the composer, sidebar and
 // transcript, so the gzip limit rose.
 // v3.50.0: the OpenAgentd Cloud account UI added about 2.5 KB gzip of eager JS (684.5 kB).
+// v3.51.0 merged the cloud sign-in, Locate folder… and the server update and
+// went 758 bytes over eagerBytes; the Locate folder… dialog, opened only for
+// a workspace whose folder is gone, moved behind lazySurface, and the server
+// update's API calls load on the first update.
 export const LIMITS = { eagerBytes: 2_110_000, eagerGzipBytes: 692_000, largestChunkBytes: 1_180_000 }
 
 /** Each lazy surface must have a chunk of its own, outside the startup path. */

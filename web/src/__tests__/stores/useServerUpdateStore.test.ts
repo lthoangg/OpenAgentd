@@ -80,10 +80,11 @@ describe('useServerUpdateStore.start', () => {
   it('waits through the restart and ends done on the new version', async () => {
     answers.push(status({}), new Error('connection refused'), new Error('connection refused'), status({ current: '3.51.0' }))
     const settled = mock(() => {})
-    const run = useServerUpdateStore.getState().start({ onSettled: settled })
-    await Promise.resolve()
-    expect(useServerUpdateStore.getState().phase).toEqual({ kind: 'updating', from: '3.50.0', target: '3.51.0' })
-    await run
+    const phases: unknown[] = []
+    const unsubscribe = useServerUpdateStore.subscribe((s) => { phases.push(s.phase) })
+    await useServerUpdateStore.getState().start({ onSettled: settled })
+    unsubscribe()
+    expect(phases[0]).toEqual({ kind: 'updating', from: '3.50.0', target: '3.51.0' })
     expect(useServerUpdateStore.getState().phase).toEqual({ kind: 'done', from: '3.50.0', to: '3.51.0' })
     expect(getServerUpdate).toHaveBeenCalledTimes(4)
     expect(settled).toHaveBeenCalledTimes(1)

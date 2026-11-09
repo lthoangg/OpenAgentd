@@ -1127,6 +1127,13 @@ run from the terminal (the native Rust binary since v3.0.0).
     the row retries)*.
   - The pet keeps a question until it is answered: × folds it behind the
     badge, and its menu lists questions first.
+    Since `[v3.51.0]` a question answered anywhere leaves the pet even while
+    another still waits, a moment's lost connection no longer clears its
+    questions, and a question asked while the pet was hidden (or before it
+    started) shows when it comes back. The notch reports a turn that failed
+    within moments of starting, and one that finished while its server
+    could not be reached once it is back; a finish put off with Later comes
+    back when the session finishes again.
   - A question card in the transcript no longer sticks on "Waiting for an
     answer…": once the turn is over and no question is open, it says **No
     answer recorded** with what was asked, and a card closed from another
@@ -2555,6 +2562,10 @@ executes tools, manages its task list, and inspects workspace repositories.
     request, with nothing you typed into it) sends no Done or Failed
     notification and does not mark the session unread. A turn you start or
     steer in that session notifies as usual.
+    Since `[v3.51.0]` the notch and the tray's list follow the same rule
+    (they used to show such a turn as **Done**), and while the sending
+    session is listed, the session it started is left out of the notch, as
+    the sidebar nests it under its sender; a question from it still shows.
     In such a turn the agent's `ask_user` does not reach you either, since
     you are not following it: the agent is told to end with its question,
     which goes back to the sending agent to answer with a follow-up, or,

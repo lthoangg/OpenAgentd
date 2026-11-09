@@ -30,6 +30,8 @@ export interface IslandSession {
   account?: string | null
   /** Absent from older shells. */
   goal?: IslandGoal | null
+  /** On a finished row: which finish it is (each one is new). Absent from older shells. */
+  finishedSeq?: number | null
 }
 
 /** A followed server the shell can't talk to. */
@@ -254,7 +256,7 @@ export const STATE_WORD: Record<Exclude<SessionState, 'running'>, string> = {
  * (a new question, a new outcome), not before.
  */
 export function rowSignature(session: IslandSession): string {
-  return [session.state, session.questionId ?? '', session.goal?.status ?? ''].join('|')
+  return [session.state, session.questionId ?? '', session.goal?.status ?? '', session.finishedSeq ?? ''].join('|')
 }
 
 /** What "Later" remembers about an unreachable server: it comes back after it recovers and drops again. */

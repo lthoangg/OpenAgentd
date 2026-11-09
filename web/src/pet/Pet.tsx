@@ -368,7 +368,9 @@ export function Pet() {
   const applyView = useCallback((next: PetView) => {
     if (next.area && next.frame) adoptFrame({ area: next.area, frame: next.frame })
     setView(next)
-    dispatch({ type: 'status', status: next.status })
+    // Question bubbles on: a waiting session the pet has no bubble for gets one.
+    const addMissing = next.settings.enabled && next.settings.bubbles && next.settings.bubbleKinds.inputNeeded
+    dispatch({ type: 'status', status: next.status, addMissing })
     if (next.status.running > 0 || next.status.needsInput > 0) setLastActivity(Date.now())
     if (!next.settings.enabled) dispatch({ type: 'clear' })
   }, [adoptFrame])

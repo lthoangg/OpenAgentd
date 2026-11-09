@@ -225,6 +225,13 @@ describe('Later', () => {
     expect(withoutLater([done('w')], later).map((r) => r.id)).toEqual(['w'])
   })
 
+  it('brings back a new finish that looks like the one put off', () => {
+    const first = { ...done('x'), finishedSeq: 1 }
+    const later = new Map([['x', rowSignature(first)]])
+    expect(withoutLater([first], later)).toEqual([])
+    expect(withoutLater([{ ...done('x'), finishedSeq: 2 }], later).map((r) => r.id)).toEqual(['x'])
+  })
+
   it('hides a server that cannot be reached until it recovers and drops again', () => {
     const later = new Map([[`server:${lost.id}`, serverSignature(lost)]])
     expect(serversWithoutLater([lost], later)).toEqual([])

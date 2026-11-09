@@ -41,9 +41,16 @@
 //! kept until you open it. App windows report the session they show
 //! (`island_viewing`), so one finishing on screen in the focused window is
 //! never unread, and focusing a window clears the one it shows. A turn the
-//! user stopped, or a background idle compaction, has nothing new to read.
-//! A session only finishes on its own server: a server that is no longer
-//! followed (its last window closed) drops out without reporting anything.
+//! user stopped, a background idle compaction, or a turn only agents worked
+//! in (`quiet`: another workspace's request) has nothing new to read, the
+//! same rules as the sidebar's unread mark. A turn that ends before any list
+//! saw it (a failure within moments) is unread from its notification. A
+//! session only finishes on its own server: a server that can't be reached
+//! shows no rows, but its last list is kept so what finished meanwhile is
+//! reported once it is back; one that is no longer followed (its last
+//! window closed) drops out, unread rows and all, without reporting anything.
+//! A session another workspace's send started is left out while its sender
+//! is listed (the sidebar nests it there), unless it waits on the user.
 //! Clicking a row opens it in a window on its server, or focuses the window
 //! that already shows it: [`open_session`] is the one router every path
 //! that opens a session goes through (this island, the pet, the tray, an OS
@@ -142,6 +149,11 @@ const POINTER_NEAR: f64 = 240.0;
 const MAX_UNREAD: usize = 6;
 /// How the memo records a turn that only compacted an idle session.
 const IDLE_COMPACTION_STATUS: &str = "idle_compaction";
+/// How the memo records a turn only agents worked in (`quiet` on its
+/// completion): another workspace's request, nothing for the user to read.
+const QUIET_STATUS: &str = "quiet";
+/// Notifications kept until their turn's completion arrives, at most.
+const MAX_NOTIFIED: usize = 32;
 /// What a row calls the builtin sidecar: one name on every surface.
 const BUILTIN_NAME: &str = "Built-in server";
 
@@ -229,6 +241,13 @@ pub struct IslandSession {
     pub question_id: Option<String>,
     /// The account the session is pinned to; `None` on Auto.
     pub account: Option<String>,
+    /// The session another workspace's send started it from (its id), if one did.
+    #[serde(skip)]
+    pub sent_from: Option<String>,
+    /// On a finished row: which finish this is, so a new one is never
+    /// mistaken for one put off with "Later".
+    #[serde(rename = "finishedSeq", skip_serializing_if = "Option::is_none")]
+    pub finished_seq: Option<u64>,
 }
 
 /// A session's goal, as the island shows it.
@@ -269,6 +288,11 @@ pub struct IslandStatus {
     pub unread: Vec<IslandSession>,
     /// Servers that dropped off after being followed, or refuse the key.
     pub unreachable: Vec<UnreachableServer>,
+    /// Sessions ([`id_key`]s) that waited on the user when their server was
+    /// last reached: it can't be now, so whether they still wait is unknown.
+    /// For the pet, which keeps their questions meanwhile.
+    #[serde(skip)]
+    pub held: Vec<String>,
 }
 
 /// A followed server the shell can't talk to: its rows are gone, and the
@@ -383,6 +407,17 @@ pub struct SessionRow {
     /// The pinned account's name; missing on Auto, or from older backends.
     #[serde(default)]
     pub credential_label: Option<String>,
+    /// Who started the session from another workspace; missing when the
+    /// user did, or from older backends.
+    #[serde(default)]
+    pub sent_from: Option<SentFrom>,
+}
+
+/// The `sent_from` of a session row: the session that sent it.
+#[derive(Debug, Default, Deserialize)]
+pub struct SentFrom {
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -445,6 +480,8 @@ pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, Asked>
                 server_id: None,
                 goal,
                 account: row.credential_label,
+                sent_from: row.sent_from.and_then(|s| s.session_id),
+                finished_seq: None,
             }
         })
         .collect();
@@ -454,10 +491,12 @@ pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, Asked>
 }
 
 /// Sessions that left the active list, as finished rows. A turn the user
-/// stopped is their own doing, and an idle compaction only summarised what
-/// was already read; neither is reported. Without an outcome (a missed
-/// event) the turn counts as done. A goal's last turn carries what became of
-/// the goal (`goals`, from its notification).
+/// stopped is their own doing, an idle compaction only summarised what was
+/// already read, and a turn only agents worked in (`quiet`) is theirs to
+/// read; none is reported. Without an outcome (a missed event) the turn
+/// counts as done, except in a session another workspace started: its turns
+/// are usually that agent's, so a guess would be noise. A goal's last turn
+/// carries what became of the goal (`goals`, from its notification).
 pub fn newly_finished(
     previous: &[IslandSession],
     next: &[IslandSession],
@@ -470,14 +509,21 @@ pub fn newly_finished(
         .filter_map(|session| {
             let key = id_key(&session.id);
             let state = match statuses.get(&key).map(String::as_str) {
-                Some("stopped" | IDLE_COMPACTION_STATUS) => return None,
+                Some("stopped" | IDLE_COMPACTION_STATUS | QUIET_STATUS) => return None,
                 Some("error" | "failed") => SessionState::Failed,
+                None if session.sent_from.is_some() => return None,
                 _ => SessionState::Done,
             };
             let goal = goals.get(&key).cloned();
-            Some(IslandSession { state, question: None, question_id: None, goal, ..session.clone() })
+            Some(IslandSession { state, question: None, question_id: None, goal, finished_seq: Some(next_finish()), ..session.clone() })
         })
         .collect()
+}
+
+/// A new number for a finish ([`IslandSession::finished_seq`]).
+fn next_finish() -> u64 {
+    static FINISHES: AtomicU64 = AtomicU64::new(0);
+    FINISHES.fetch_add(1, Ordering::Relaxed) + 1
 }
 
 /// Add `finished` to the unread list (newest first), except the session on
@@ -522,8 +568,11 @@ pub enum WatchState {
 pub struct ServerFeed {
     /// What rows call it: "Builtin", or the name it was saved under.
     pub name: String,
-    /// Its active sessions, as last fetched.
+    /// Its active sessions as shown: emptied while it can't be reached.
     pub sessions: Vec<IslandSession>,
+    /// Its active sessions as last fetched, kept through an outage: a
+    /// session that finished meanwhile is still reported once it is back.
+    pub baseline: Vec<IslandSession>,
     pub watch: WatchState,
     /// A list was fetched from it at some point. A server that never answered
     /// (a laptop asleep since launch) is not announced as lost.
@@ -653,20 +702,51 @@ impl Feeds {
         for session in &mut next {
             session.server_id = Some(server.clone());
         }
-        let finished = if show_finished { newly_finished(&feed.sessions, &next, statuses, goals) } else { Vec::new() };
+        let finished = if show_finished { newly_finished(&feed.baseline, &next, statuses, goals) } else { Vec::new() };
         let sessions_changed = feed.sessions != next;
         // A fresh list means the server is reachable.
         let watch_changed = std::mem::replace(&mut feed.watch, WatchState::Connected) != WatchState::Connected;
         feed.ever_connected = true;
         feed.failures = 0;
         let unread_changed = merge_unread(&mut self.unread, finished, &next, viewed);
+        feed.baseline = next.clone();
         feed.sessions = next;
         sessions_changed || unread_changed || watch_changed
     }
 
+    /// Turns that finished on `server` without ever being in its list
+    /// (`late`, e.g. one that failed within moments of starting): they are
+    /// unread like any other, unless the list covers them already (the last
+    /// list held them, so [`Feeds::update`] reports them, or `next` holds
+    /// them because they run again). Call before `update` with the same
+    /// `next`. True when the unread list changed.
+    pub fn add_late(
+        &mut self,
+        server: &ServerId,
+        late: Vec<IslandSession>,
+        next: &[IslandSession],
+        viewed: Option<&str>,
+        show_finished: bool,
+    ) -> bool {
+        let Some(feed) = self.servers.get(server) else {
+            return false;
+        };
+        if !show_finished || late.is_empty() {
+            return false;
+        }
+        let listed = |s: &IslandSession| feed.baseline.iter().chain(next).any(|l| id_key(&l.id) == id_key(&s.id));
+        let late: Vec<IslandSession> = late
+            .into_iter()
+            .filter(|s| !listed(s))
+            .map(|s| IslandSession { server_id: Some(server.clone()), ..s })
+            .collect();
+        !late.is_empty() && merge_unread(&mut self.unread, late, next, viewed)
+    }
+
     /// Empty `server`'s active list without reporting a finish: stale
     /// "running" rows are worse than none while it can't be reached. What
-    /// finished before stays unread. True when it changed.
+    /// finished before stays unread, and the last list is kept to tell, once
+    /// it is back, what finished meanwhile. True when it changed.
     pub fn clear_sessions(&mut self, server: &ServerId) -> bool {
         self.servers.get_mut(server).is_some_and(|feed| !std::mem::take(&mut feed.sessions).is_empty())
     }
@@ -675,13 +755,32 @@ impl Feeds {
     pub fn lists(&self) -> (Vec<IslandSession>, Vec<IslandSession>) {
         merged_lists(&self.servers, &self.unread)
     }
+
+    /// The sessions that waited on the user on a server that can't be
+    /// reached now, as last seen ([`IslandStatus::held`]).
+    pub fn held(&self) -> Vec<String> {
+        let mut held: Vec<String> = self
+            .servers
+            .values()
+            .filter(|feed| feed.watch != WatchState::Connected)
+            .flat_map(|feed| &feed.baseline)
+            .filter(|s| s.state == SessionState::NeedsInput)
+            .map(|s| id_key(&s.id))
+            .collect();
+        held.sort();
+        held.dedup();
+        held
+    }
 }
 
 /// The island's two lists across `servers`: waiting sessions first, each
 /// session once (a server reached through two URLs reports it twice), and,
 /// with more than one server in play (connected, or holding unread rows),
 /// each row named after its server. An enabled server that is off does not
-/// make the others' rows carry a name.
+/// make the others' rows carry a name. A session another workspace's send
+/// started is shown under its sender, as the sidebar nests it: while the
+/// sender is listed (it works until the answer comes) the row is left out,
+/// unless it waits on the user.
 pub fn merged_lists(
     servers: &BTreeMap<ServerId, ServerFeed>,
     unread: &[IslandSession],
@@ -703,9 +802,15 @@ pub fn merged_lists(
         ..session.clone()
     };
     let mut seen = HashSet::new();
+    let listed: HashSet<String> = servers.values().flat_map(|feed| &feed.sessions).map(|s| id_key(&s.id)).collect();
+    let under_sender = |session: &IslandSession| {
+        session.state != SessionState::NeedsInput
+            && session.sent_from.as_deref().map(id_key).is_some_and(|sender| sender != id_key(&session.id) && listed.contains(&sender))
+    };
     let mut sessions: Vec<IslandSession> = servers
         .values()
         .flat_map(|feed| &feed.sessions)
+        .filter(|session| !under_sender(session))
         .filter(|session| seen.insert(id_key(&session.id)))
         .map(label)
         .collect();
@@ -736,6 +841,12 @@ pub struct FeedMemo {
     goals: HashMap<String, IslandGoal>,
     /// Sessions running an idle compaction, kept out of the list.
     compacting: HashSet<String>,
+    /// Finish notifications (`assistant_done`) waiting for their turn's
+    /// completion, as the row they would make: the backend only sends one
+    /// for a turn the user should read.
+    notified: HashMap<String, IslandSession>,
+    /// Turns that finished with a notification, for [`Feeds::add_late`].
+    late: Vec<IslandSession>,
     /// Path of the backend's Chat workspace, fetched once per connection.
     chat_root: Option<String>,
 }
@@ -749,11 +860,15 @@ impl FeedMemo {
                 let data = data();
                 if let Some(id) = data["session_id"].as_str() {
                     let key = id_key(id);
-                    self.statuses.remove(&key);
                     self.goals.remove(&key);
+                    self.notified.remove(&key);
+                    // An idle compaction is never news, even when the list
+                    // saw the session before this event did.
                     if data["idle_compaction"].as_bool() == Some(true) {
+                        self.statuses.insert(key.clone(), IDLE_COMPACTION_STATUS.to_string());
                         self.compacting.insert(key);
                     } else {
+                        self.statuses.remove(&key);
                         self.compacting.remove(&key);
                     }
                 }
@@ -773,7 +888,24 @@ impl FeedMemo {
                 if let (Some(id), Some(status)) = (data["session_id"].as_str(), data["status"].as_str()) {
                     let key = id_key(id);
                     self.compacting.remove(&key);
-                    let status = if data["idle_compaction"].as_bool() == Some(true) { IDLE_COMPACTION_STATUS } else { status };
+                    let status = if data["idle_compaction"].as_bool() == Some(true) {
+                        IDLE_COMPACTION_STATUS
+                    } else if data["quiet"].as_bool() == Some(true) {
+                        QUIET_STATUS
+                    } else {
+                        status
+                    };
+                    if let Some(mut row) = self.notified.remove(&key) {
+                        if !matches!(status, "stopped" | IDLE_COMPACTION_STATUS | QUIET_STATUS) {
+                            if matches!(status, "error" | "failed") {
+                                row.state = SessionState::Failed;
+                            }
+                            row.goal = self.goals.get(&key).cloned();
+                            row.finished_seq = Some(next_finish());
+                            self.late.retain(|l| id_key(&l.id) != key);
+                            self.late.push(row);
+                        }
+                    }
                     self.statuses.insert(key, status.to_string());
                 }
                 true
@@ -783,8 +915,14 @@ impl FeedMemo {
                 // A goal's last turn: its row says what became of the goal.
                 // The turn's own completion event follows and refetches.
                 if data["kind"].as_str() == Some("assistant_done") {
-                    if let (Some(id), Some(goal)) = (data["session_id"].as_str(), data["goal"].as_str().and_then(IslandGoal::outcome)) {
-                        self.goals.insert(id_key(id), goal);
+                    if let Some(id) = data["session_id"].as_str() {
+                        if let Some(goal) = data["goal"].as_str().and_then(IslandGoal::outcome) {
+                            self.goals.insert(id_key(id), goal);
+                        }
+                        if self.notified.len() >= MAX_NOTIFIED {
+                            self.notified.clear();
+                        }
+                        self.notified.insert(id_key(id), notified_row(id, &data));
                     }
                     return false;
                 }
@@ -832,6 +970,42 @@ impl FeedMemo {
     /// Drop sessions that are only compacting: a background summary is not work to watch.
     fn hide_compacting(&self, sessions: &mut Vec<IslandSession>) {
         sessions.retain(|s| !self.compacting.contains(&id_key(&s.id)));
+    }
+
+    /// Forget compactions of sessions no longer active (`active`: the
+    /// list's [`id_key`]s, before [`Self::hide_compacting`]): such a
+    /// compaction is over, though its end was missed (the memo outlives a
+    /// reconnect).
+    fn prune_compacting(&mut self, active: &HashSet<String>) {
+        self.compacting.retain(|key| active.contains(key));
+    }
+
+    /// The late finishes noted since the last list.
+    fn take_late(&mut self) -> Vec<IslandSession> {
+        std::mem::take(&mut self.late)
+    }
+}
+
+/// The finished row a finish notification describes: its body is the
+/// session's title (or "Session 1a2b3c4d" without one), its title "Done ·
+/// workspace" (or "Failed · …", "Goal achieved · …").
+fn notified_row(session_id: &str, data: &serde_json::Value) -> IslandSession {
+    let title = data["title"].as_str().unwrap_or_default();
+    let workspace = title.split_once(" · ").map(|(_, w)| w.trim().to_string()).filter(|w| !w.is_empty());
+    let state = if title.starts_with("Failed") { SessionState::Failed } else { SessionState::Done };
+    IslandSession {
+        id: session_id.to_string(),
+        title: session_title(data["body"].as_str()),
+        workspace,
+        state,
+        question: None,
+        question_id: None,
+        server: None,
+        server_id: None,
+        goal: None,
+        account: None,
+        sent_from: None,
+        finished_seq: None,
     }
 }
 
@@ -1042,10 +1216,11 @@ impl Shared {
     fn rebuild(&mut self) -> Option<IslandStatus> {
         let (sessions, unread) = self.feeds.lists();
         let unreachable = self.feeds.unreachable();
-        if self.status.sessions == sessions && self.status.unread == unread && self.status.unreachable == unreachable {
+        let held = self.feeds.held();
+        if self.status.sessions == sessions && self.status.unread == unread && self.status.unreachable == unreachable && self.status.held == held {
             return None;
         }
-        self.status = IslandStatus { seq: self.status.seq + 1, sessions, unread, unreachable };
+        self.status = IslandStatus { seq: self.status.seq + 1, sessions, unread, unreachable, held };
         Some(self.status.clone())
     }
 }
@@ -1437,13 +1612,16 @@ impl std::error::Error for AuthRejected {}
 async fn follow_server(app: AppHandle, server: ServerId) {
     let client = stream_client();
     let mut failures: u32 = 0;
+    // Kept across reconnects: how a turn ended (stopped, quiet, a
+    // compaction) still applies to a session the next list no longer has.
+    let mut memo = FeedMemo::default();
     let retry_max = if server == ServerId::Bundled { RETRY_MAX } else { RETRY_MAX_REMOTE };
     while is_enabled() {
         let Some((base, token)) = crate::servers::endpoint(&app, &server).await else {
             pause(RETRY_BASE).await;
             continue;
         };
-        if let Err(e) = follow(&app, &client, &server, &base, token.as_deref(), &mut failures).await {
+        if let Err(e) = follow(&app, &client, &server, &base, token.as_deref(), &mut failures, &mut memo).await {
             failures = failures.saturating_add(1);
             let rejected = e.downcast_ref::<AuthRejected>().is_some();
             let watch = if rejected { WatchState::KeyRejected } else { WatchState::Reconnecting };
@@ -1471,7 +1649,8 @@ async fn follow_server(app: AppHandle, server: ServerId) {
 }
 
 /// Follow `server`'s event stream at `base` until it fails or the feature
-/// is turned off. Resets `failures` once connected.
+/// is turned off. Resets `failures` once connected. `memo` is the server's,
+/// kept from earlier connections.
 async fn follow(
     app: &AppHandle,
     client: &reqwest::Client,
@@ -1479,9 +1658,9 @@ async fn follow(
     base: &str,
     token: Option<&str>,
     failures: &mut u32,
+    memo: &mut FeedMemo,
 ) -> Result<()> {
     let base = base.trim_end_matches('/');
-    let mut memo = FeedMemo::default();
     let url = format!("{base}/api/events/stream");
     let mut request = client.get(&url).header(reqwest::header::ACCEPT, "text/event-stream");
     if let Some(token) = token {
@@ -1497,7 +1676,7 @@ async fn follow(
         .context("event stream returned an error status")?;
     // Seed after connecting, so nothing that happens in between is missed.
     memo.chat_root = chat_root(client, base, token).await;
-    refresh(app, client, server, base, token, &mut memo).await?;
+    refresh(app, client, server, base, token, memo).await?;
     log::info!("island: {} {base}", if *failures > 0 { "reconnected to" } else { "following" });
     *failures = 0;
 
@@ -1543,7 +1722,7 @@ async fn follow(
         if due {
             refresh_at = None;
             last_refresh = now;
-            refresh(app, client, server, base, token, &mut memo).await?;
+            refresh(app, client, server, base, token, memo).await?;
         }
         if now.duration_since(last_bytes) >= STREAM_IDLE_LIMIT {
             bail!("event stream went quiet");
@@ -1574,6 +1753,9 @@ async fn refresh(
         .await
         .context("parse active sessions")?;
     learn_questions(client, base, token, &page.data, memo).await;
+    let active: HashSet<String> =
+        page.data.iter().filter(|row| row.running || row.background_work || row.needs_input).map(|row| id_key(&row.id)).collect();
+    memo.prune_compacting(&active);
     let mut next = active_sessions(page.data, &memo.questions, memo.chat_root.as_deref());
     memo.hide_compacting(&mut next);
     publish(app, server, next, memo);
@@ -1632,10 +1814,12 @@ fn publish(app: &AppHandle, server: &ServerId, next: Vec<IslandSession>, memo: &
     let status = {
         let mut s = shared().lock().unwrap();
         let show_finished = s.settings.show_finished;
+        // Turns that finished before any list saw them, then the list.
+        let late = s.feeds.add_late(server, memo.take_late(), &next, viewed.as_deref(), show_finished);
         // The outcomes of sessions that just left the list are read here,
         // before `settle` drops them.
         let changed = s.feeds.update(server, next.clone(), &memo.statuses, &memo.goals, viewed.as_deref(), show_finished);
-        changed.then(|| s.rebuild()).flatten()
+        (late || changed).then(|| s.rebuild()).flatten()
     };
     memo.settle(&next);
     let Some(status) = status else {
@@ -1719,6 +1903,22 @@ pub(crate) fn viewed_session(app: &AppHandle) -> Option<String> {
         return None;
     }
     s.viewing.get(&label).cloned()
+}
+
+/// The snapshot as last sent, for a surface switched on since (the pet).
+pub(crate) fn current_status() -> IslandStatus {
+    shared().lock().unwrap().status.clone()
+}
+
+/// The id and server of a listed session (an [`id_key`]).
+pub(crate) fn session_server(key: &str) -> Option<(String, ServerId)> {
+    let s = shared().lock().unwrap();
+    s.status
+        .sessions
+        .iter()
+        .chain(&s.status.unread)
+        .find(|session| id_key(&session.id) == key)
+        .and_then(|session| Some((session.id.clone(), session.server_id.clone()?)))
 }
 
 // ── Commands ────────────────────────────────────────────────────────────────
@@ -2209,6 +2409,7 @@ mod tests {
             goal_turns_used: None,
             goal_max_turns: None,
             credential_label: None,
+            sent_from: None,
         }
     }
 
@@ -2224,6 +2425,8 @@ mod tests {
             server_id: None,
             goal: None,
             account: None,
+            sent_from: None,
+            finished_seq: None,
         }
     }
 
@@ -2553,6 +2756,169 @@ mod tests {
             (id_key("b"), IDLE_COMPACTION_STATUS.to_string()),
         ]);
         assert!(newly_finished(&previous, &[], &statuses, &HashMap::new()).is_empty());
+    }
+
+    // A turn only agents worked in (another workspace's request) used to
+    // turn Done in the notch, though the backend sent no notification and
+    // the sidebar did not mark it unread.
+    #[test]
+    fn a_quiet_turn_is_not_finished_and_the_users_own_turn_is() {
+        let mut memo = FeedMemo::default();
+        for status in ["completed", "error"] {
+            let quiet = serde_json::json!({"session_id": "a", "status": status, "quiet": true});
+            assert!(memo.note(&event("session_turn_completed", quiet)));
+            assert_eq!(memo.statuses.get("a").map(String::as_str), Some(QUIET_STATUS));
+            let previous = [session("a", SessionState::Running)];
+            assert!(newly_finished(&previous, &[], &memo.statuses, &memo.goals).is_empty(), "{status}");
+        }
+
+        // The user wrote into the session: the backend notifies and drops `quiet`.
+        memo.note(&event("session_turn_started", serde_json::json!({"session_id": "a"})));
+        memo.note(&event("desktop_notification", serde_json::json!({"kind": "assistant_done", "session_id": "a", "title": "Done · infra", "body": "Orders"})));
+        memo.note(&event("session_turn_completed", serde_json::json!({"session_id": "a", "status": "completed"})));
+        let finished = newly_finished(&[session("a", SessionState::Running)], &[], &memo.statuses, &memo.goals);
+        assert_eq!(finished.iter().map(|s| s.state).collect::<Vec<_>>(), [SessionState::Done]);
+    }
+
+    // Decision: a session another workspace started, whose outcome was
+    // missed, is not guessed Done; one the user started still is.
+    #[test]
+    fn a_missed_outcome_reads_done_except_for_an_agent_started_session() {
+        let mut sent = session("s", SessionState::Running);
+        sent.sent_from = Some("sender".into());
+        let previous = [session("a", SessionState::Running), sent];
+        let finished = newly_finished(&previous, &[], &HashMap::new(), &HashMap::new());
+        assert_eq!(ids(&finished), ["a"]);
+
+        // A known outcome still counts for it (the user wrote into it).
+        let statuses = HashMap::from([(id_key("s"), "error".to_string())]);
+        let finished = newly_finished(&previous[1..], &[], &statuses, &HashMap::new());
+        assert_eq!(finished.iter().map(|s| s.state).collect::<Vec<_>>(), [SessionState::Failed]);
+    }
+
+    // A compaction's start event can land after a list that showed the
+    // session as running; the next list hid it, and it turned Done.
+    #[test]
+    fn an_idle_compaction_seen_late_is_still_not_news() {
+        let mut memo = FeedMemo::default();
+        let previous = [session("a", SessionState::Running)];
+        memo.note(&event("session_turn_started", serde_json::json!({"session_id": "a", "idle_compaction": true})));
+        let mut next = previous.to_vec();
+        memo.hide_compacting(&mut next);
+        assert!(next.is_empty());
+        assert!(newly_finished(&previous, &next, &memo.statuses, &memo.goals).is_empty());
+
+        // A normal turn forgets it.
+        memo.note(&event("session_turn_started", serde_json::json!({"session_id": "a"})));
+        assert!(memo.statuses.is_empty() && memo.compacting.is_empty());
+    }
+
+    #[test]
+    fn a_compaction_whose_session_left_the_list_is_forgotten() {
+        let mut memo = FeedMemo::default();
+        memo.note(&event("session_turn_started", serde_json::json!({"session_id": "a", "idle_compaction": true})));
+        memo.prune_compacting(&HashSet::from([id_key("a")]));
+        assert!(memo.compacting.contains("a"), "still running");
+        memo.prune_compacting(&HashSet::new());
+        assert!(memo.compacting.is_empty(), "its end was missed, but it is over");
+    }
+
+    // An outage used to empty the list it diffs against, so a session
+    // that finished meanwhile was never reported.
+    #[test]
+    fn a_session_that_finished_during_an_outage_is_reported_once_back() {
+        let mut feeds = two_servers(&[], &["r", "s"]);
+        assert!(feeds.clear_sessions(&remote()));
+        assert!(feeds.lists().1.is_empty(), "nothing is reported while it is away");
+        feeds.update(&remote(), vec![session("s", SessionState::Running)], &HashMap::new(), &HashMap::new(), None, true);
+        let (sessions, unread) = feeds.lists();
+        assert_eq!((ids(&sessions), ids(&unread)), (vec!["s"], vec!["r"]));
+
+        // How it ended still applies: a stopped turn stays quiet after a reconnect.
+        feeds.clear_sessions(&remote());
+        let statuses = HashMap::from([(id_key("s"), "stopped".to_string())]);
+        feeds.update(&remote(), vec![], &statuses, &HashMap::new(), None, true);
+        assert_eq!(ids(&feeds.lists().1), ["r"]);
+    }
+
+    // A turn that failed within moments of starting was never in a list,
+    // so the notch missed the Failed row the sidebar showed.
+    #[test]
+    fn a_turn_that_ended_before_any_list_saw_it_is_unread() {
+        let mut memo = FeedMemo::default();
+        memo.note(&event("session_turn_started", serde_json::json!({"session_id": "f"})));
+        let failed = serde_json::json!({"kind": "assistant_done", "session_id": "f", "title": "Failed · web", "body": "Fix the build"});
+        assert!(!memo.note(&event("desktop_notification", failed)));
+        memo.note(&event("session_turn_completed", serde_json::json!({"session_id": "f", "status": "error"})));
+        // A quiet one and a stopped one leave nothing (no notification, or none kept).
+        memo.note(&event("session_turn_completed", serde_json::json!({"session_id": "q", "status": "completed", "quiet": true})));
+        let late = memo.take_late();
+        assert_eq!(late.len(), 1);
+        assert_eq!((late[0].title.as_str(), late[0].workspace.as_deref(), late[0].state), ("Fix the build", Some("web"), SessionState::Failed));
+
+        let mut feeds = two_servers(&["a"], &[]);
+        assert!(feeds.add_late(&ServerId::Bundled, late.clone(), &[session("a", SessionState::Running)], None, true));
+        let unread = feeds.lists().1;
+        assert_eq!(ids(&unread), ["f"]);
+        assert_eq!(unread[0].server_id, Some(ServerId::Bundled));
+
+        // One the last list held is reported by `update` instead, once.
+        let mut feeds = two_servers(&["f"], &[]);
+        assert!(!feeds.add_late(&ServerId::Bundled, late.clone(), &[], None, true));
+        // The session on screen, or with finished rows off, is not unread.
+        let mut feeds = two_servers(&[], &[]);
+        assert!(!feeds.add_late(&ServerId::Bundled, late.clone(), &[], Some("f"), true));
+        assert!(!feeds.add_late(&ServerId::Bundled, late, &[], None, false));
+    }
+
+    // The pet keeps the questions of a server it can't reach right now.
+    #[test]
+    fn sessions_waiting_on_a_server_that_dropped_out_are_held() {
+        let mut feeds = two_servers(&["a"], &[]);
+        feeds.update(&remote(), vec![session("q", SessionState::NeedsInput), session("r", SessionState::Running)], &HashMap::new(), &HashMap::new(), None, true);
+        assert!(feeds.held().is_empty(), "connected: the list says it all");
+        feeds.clear_sessions(&remote());
+        feeds.set_watch(&remote(), WatchState::Reconnecting);
+        assert_eq!(feeds.held(), ["q"]);
+        feeds.update(&remote(), vec![], &HashMap::new(), &HashMap::new(), None, true);
+        assert!(feeds.held().is_empty(), "back, and no longer waiting");
+    }
+
+    #[test]
+    fn every_finish_gets_its_own_number() {
+        let previous = [session("a", SessionState::Running)];
+        let first = newly_finished(&previous, &[], &HashMap::new(), &HashMap::new());
+        let second = newly_finished(&previous, &[], &HashMap::new(), &HashMap::new());
+        assert!(first[0].finished_seq.is_some());
+        assert_ne!(first[0].finished_seq, second[0].finished_seq);
+        let wire = serde_json::to_value(&first[0]).unwrap();
+        assert!(wire["finishedSeq"].is_u64());
+        assert!(serde_json::to_value(&previous[0]).unwrap().get("finishedSeq").is_none(), "only on finished rows");
+    }
+
+    // Decision: the sidebar nests a session another workspace started under
+    // its sender; the notch leaves it out while the sender is listed.
+    #[test]
+    fn an_agent_started_session_is_shown_under_its_listed_sender() {
+        let mut rows = vec![row("sender", Some("Orders API"), false, false), row("spawned", Some("Orders table"), true, false), row("asks", Some("Region"), true, true)];
+        rows[0].background_work = true;
+        rows[1].sent_from = Some(SentFrom { session_id: Some("sender".into()) });
+        rows[2].sent_from = Some(SentFrom { session_id: Some("sender".into()) });
+        let mut feeds = Feeds::default();
+        feeds.join(&ServerId::Bundled, BUILTIN_NAME.into());
+        feeds.update(&ServerId::Bundled, active_sessions(rows, &HashMap::new(), None), &HashMap::new(), &HashMap::new(), None, true);
+        assert_eq!(ids(&feeds.lists().0), ["asks", "sender"], "its question still shows");
+
+        // The sender is done: the agent-started session shows on its own.
+        let mut alone = row("spawned", Some("Orders table"), true, false);
+        alone.sent_from = Some(SentFrom { session_id: Some("sender".into()) });
+        feeds.update(&ServerId::Bundled, active_sessions(vec![alone], &HashMap::new(), None), &HashMap::new(), &HashMap::new(), None, true);
+        assert_eq!(ids(&feeds.lists().0), ["spawned"]);
+        assert!(feeds.lists().1.iter().all(|u| u.id != "spawned"));
+
+        let page: SessionPage = serde_json::from_str(r#"{"data": [{"id": "a", "running": true, "sent_from": {"session_id": "s", "workspace": "/r/app"}}, {"id": "b", "sent_from": null}]}"#).unwrap();
+        assert_eq!(page.data[0].sent_from.as_ref().and_then(|s| s.session_id.as_deref()), Some("s"));
+        assert!(page.data[1].sent_from.is_none());
     }
 
     #[test]

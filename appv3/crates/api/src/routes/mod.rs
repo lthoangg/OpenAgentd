@@ -40,6 +40,7 @@ pub fn router() -> Router<AppState> {
         .nest("/api/terminal", terminal::router())
         .nest("/api/preview", preview::router())
         .nest("/api/desktop", desktop::router())
+        .nest("/api/cloud", crate::cloud::routes::router())
         .fallback(|| async { json_code(404, json!({"detail": "Not Found"})) })
         .method_not_allowed_fallback(|| async { json_code(405, json!({"detail": "Method Not Allowed"})) })
 }

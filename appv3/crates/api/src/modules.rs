@@ -228,6 +228,9 @@ const BUILTIN: &[Spec] = &[
         }),
         stop: Some(|| Box::pin(async { appv3_agent::restart_resume::begin_shutdown() })),
     },
+    // OpenAgentd Cloud: reconnects a signed-in host. Last in the table, so
+    // it stops first: remote sessions close before anything they use.
+    Spec { id: "cloud", deps: &["workspace"], critical: false, start: Some(|_| Box::pin(crate::cloud::start())), stop: Some(|| Box::pin(crate::cloud::stop())) },
 ];
 
 /// The built-in modules, in start order.
@@ -281,7 +284,7 @@ mod tests {
     #[tokio::test]
     async fn builtin_modules_stop_in_the_servers_shutdown_order() {
         let (_, stops) = run_recorded().await;
-        assert_eq!(stops, ["restart_resume", "model_registry", "terminal", "preview", "scheduler", "snapshots", "sessions", "subagents", "mcp", "lsp", "otel"]);
+        assert_eq!(stops, ["cloud", "restart_resume", "model_registry", "terminal", "preview", "scheduler", "snapshots", "sessions", "subagents", "mcp", "lsp", "otel"]);
     }
 
     #[tokio::test]

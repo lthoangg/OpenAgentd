@@ -17,6 +17,9 @@ pub struct Broadcaster {
     /// Set on server shutdown: open streams end and new ones end at once,
     /// so they cannot hold the graceful drain open.
     closed: AtomicBool,
+    /// In-process listeners for one event (see [`Broadcaster::tap`]). Not
+    /// clients: they do not count in [`Broadcaster::subscriber_count`].
+    taps: Mutex<Vec<(String, tokio::sync::mpsc::UnboundedSender<Value>)>>,
 }
 
 pub fn broadcaster() -> &'static Broadcaster {
@@ -40,6 +43,10 @@ pub fn publish_session_activity(session_id: &str, at: &str) {
 impl Broadcaster {
     pub fn publish(&self, event: &str, data: Value) {
         crate::events::check_contract(crate::events::Stream::Global, event);
+        {
+            let mut taps = self.taps.lock().unwrap();
+            taps.retain(|(name, tx)| name != event || tx.send(data.clone()).is_ok());
+        }
         let wire = Arc::new(WireEvent { event: event.to_string(), data: compact(&data) });
         let mut subs = self.subs.lock().unwrap();
         subs.retain(|q| {
@@ -63,6 +70,15 @@ impl Broadcaster {
         }
         drop(subs);
         GlobalSubscription { owner: self, queue: q }
+    }
+
+    /// Every later `event`'s data, for in-process listeners (the cloud
+    /// module forwards notifications to the person's phone). Dropping the
+    /// receiver removes the tap at the next matching event.
+    pub fn tap(&self, event: &str) -> tokio::sync::mpsc::UnboundedReceiver<Value> {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        self.taps.lock().unwrap().push((event.to_string(), tx));
+        rx
     }
 
     pub fn subscriber_count(&self) -> usize {
@@ -113,5 +129,18 @@ mod tests {
         let mut late = b.attach();
         assert!(late.next().await.is_none());
         assert_eq!(b.subscriber_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_tap_gets_its_event_and_is_not_a_client() {
+        let b: &'static Broadcaster = Box::leak(Box::default());
+        let mut tap = b.tap("desktop_notification");
+        b.publish("config_changed", serde_json::json!({}));
+        b.publish("desktop_notification", serde_json::json!({"title": "Done"}));
+        assert_eq!(tap.recv().await.unwrap()["title"], "Done");
+        assert_eq!(b.subscriber_count(), 0);
+        drop(tap);
+        b.publish("desktop_notification", serde_json::json!({}));
+        assert!(b.taps.lock().unwrap().is_empty());
     }
 }

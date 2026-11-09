@@ -136,6 +136,8 @@ pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
         tracing::info!("server_listening host={} port={}", host, port);
         // A preview must never proxy back to this API from loopback.
         appv3_preview::block_port(port);
+        // OpenAgentd Cloud serves relay streams with this router, in-process.
+        appv3_api::cloud::install(app.clone(), port);
         // The desktop shell can open a LAN listener on demand ("Network access").
         if token.is_some() {
             appv3_api::network_access::install(app.clone(), policy, port);

@@ -74,6 +74,8 @@ appv3-memory = { path = "crates/memory" }
 appv3-mcp = { path = "crates/mcp" }
 appv3-api = { path = "crates/api" }
 appv3-preview = { path = "crates/preview" }
+# OpenAgentd Cloud accounts: the protocol crate shared with the mobile shell.
+openagentd-cloud = { path = "../native/cloud" }
 
 [profile.release]
 lto = "thin"

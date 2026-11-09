@@ -1,6 +1,7 @@
 //! HTTP API on axum. Every route lives under
 //! `/api/*` exactly as in v2; there is no static SPA mount.
 
+pub mod cloud;
 pub mod config_watch;
 pub mod error;
 pub mod fileresp;

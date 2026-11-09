@@ -7,7 +7,7 @@ license = "Apache-2.0"
 homepage = "https://openagentd.dev"
 repository = "https://github.com/lthoangg/openagentd"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.85"
 
 [lib]
 name = "openagentd_mobile_lib"
@@ -34,6 +34,19 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 base64 = "0.23"
 sha2 = "0.10"
 keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
+# OpenAgentd Cloud accounts (optional): the protocol, the API client, and the
+# relay session. Its crypto dependencies are reviewed in
+# appv3/contract/tunnel-threats.md.
+openagentd-cloud = { path = "../../native/cloud" }
+# The loopback bridge that carries the web UI's requests over the relay.
+hyper = { version = "1", features = ["server", "client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+tokio = { version = "1", features = ["net", "io-util", "sync", "time", "macros", "rt"] }
+subtle = "2.6"
+zeroize = "1.8"
+form_urlencoded = "1"
 
 # The QR scanner for connect links (Servers → Scan QR code). Mobile only.
 [target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
@@ -60,7 +73,10 @@ tauri-plugin-openagentd-android = { path = "../android-plugin" }
 
 [dev-dependencies]
 tempfile = "3"
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
+# The fake cloud of native/cloud/tests, for the account end-to-end test.
+axum = { version = "0.8", features = ["ws"] }
+futures-util = { version = "0.3", features = ["sink"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

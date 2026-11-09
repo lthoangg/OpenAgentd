@@ -4,14 +4,17 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use openagentd_shell_core::{
-    load_backend_config_from, normalize_base_url, normalize_server_name,
-    remove_backend_server_at, resolve_download_bytes, safe_download_filename,
-    save_backend_config_to, unique_cache_path, AppBackendConfig, DownloadSource,
-    RelayInfo, RelayRegistry, SavedAppServer,
+    load_backend_config_from, normalize_base_url, normalize_server_name, remove_backend_server_at,
+    resolve_download_bytes, safe_download_filename, save_backend_config_to, unique_cache_path,
+    AppBackendConfig, DownloadSource, RelayInfo, RelayRegistry, SavedAppServer,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
+mod cloud;
+mod cloud_bridge;
+#[cfg(test)]
+mod cloud_e2e_tests;
 mod native_ui;
 mod push;
 mod theme;
@@ -54,6 +57,10 @@ async fn off_main_thread<T: Send + 'static>(
 
 #[tauri::command]
 async fn secure_get_access_key(origin: String) -> Result<Option<String>, String> {
+    // A relay bridge's key lives in memory for this launch only.
+    if let Some(key) = cloud::bridge_key(&origin) {
+        return Ok(Some(key));
+    }
     off_main_thread(move || openagentd_shell_core::get_access_key(&origin)).await
 }
 
@@ -144,6 +151,74 @@ async fn preview_relay_open(
 #[tauri::command]
 fn preview_relay_close(relays: tauri::State<'_, PreviewRelays>, preview_id: String) -> bool {
     relays.0.close(RELAY_SCOPE, &preview_id)
+}
+
+// ── Account computers ───────────────────────────────────────────────────
+
+#[derive(Clone, Serialize)]
+struct OpenedComputer {
+    status: AppBackendStatus,
+    /// "lan" when the saved LAN address answered, else "account".
+    via: &'static str,
+}
+
+/// Opens a computer of the person's account (plan decision D8): its saved
+/// LAN address first, when there is one and it answers within 1.5 s, else
+/// the end-to-end encrypted relay through a loopback bridge. A bridge is
+/// never saved as a server: its port and key last one launch.
+#[tauri::command]
+async fn cloud_open_computer(
+    app: AppHandle,
+    state: tauri::State<'_, MobileBackendState>,
+    relays: tauri::State<'_, PreviewRelays>,
+    device_id: String,
+    lan_base_url: Option<String>,
+) -> Result<OpenedComputer, String> {
+    if let Some(lan) = lan_base_url.and_then(|u| normalize_base_url(&u).ok()) {
+        let live = shared_client()
+            .get(format!("{}/api/health/live", lan.trim_end_matches('/')))
+            .timeout(Duration::from_millis(1500))
+            .send()
+            .await
+            .is_ok_and(|r| r.status().is_success());
+        if live {
+            let status =
+                app_use_external_backend(app, state, relays, lan, None, Some(true)).await?;
+            return Ok(OpenedComputer { status, via: "lan" });
+        }
+    }
+    let origin = cloud::open_bridge(&device_id).await?;
+    let previous = state
+        .active_base_url
+        .lock()
+        .map_err(|_| "backend state unavailable".to_string())?
+        .replace(origin.clone());
+    if previous.as_deref() != Some(origin.as_str()) {
+        relays.0.close_all();
+    }
+    Ok(OpenedComputer {
+        status: app_backend_status(app, state)?,
+        via: "account",
+    })
+}
+
+/// Registers this phone's APNs token with the account, so its computers
+/// can send it end-to-end encrypted notifications. Asks for permission only
+/// if `prompt`.
+#[tauri::command]
+async fn cloud_push_register(prompt: Option<bool>) -> Result<push::PushState, String> {
+    let state = if prompt.unwrap_or(false) {
+        push::push_register().await
+    } else {
+        push::push_status().await
+    };
+    if let Some(registration) = state.registration.as_ref() {
+        if cloud::signed_in() {
+            let body = serde_json::to_value(registration).map_err(|e| e.to_string())?;
+            cloud::register_push(body).await?;
+        }
+    }
+    Ok(state)
 }
 
 /// Save what the home-screen widgets show (see `widgets.rs`).
@@ -566,6 +641,9 @@ pub fn run() {
         .plugin(tauri_plugin_haptics::init())
         .plugin(tauri_plugin_deep_link::init())
         .setup(|_app| {
+            if let Ok(dir) = _app.path().app_data_dir() {
+                cloud::init(dir);
+            }
             #[cfg(target_os = "ios")]
             theme::paint_launch_background(_app.handle());
             #[cfg(target_os = "ios")]
@@ -592,6 +670,24 @@ pub fn run() {
             native_ui::pick_one,
             push::push_status,
             push::push_register,
+            cloud::cloud_status,
+            cloud::cloud_sign_in,
+            cloud::cloud_join_invite,
+            cloud::cloud_cancel,
+            cloud::cloud_confirm_recovery,
+            cloud::cloud_devices,
+            cloud::cloud_pending,
+            cloud::cloud_approve_begin,
+            cloud::cloud_approve_confirm,
+            cloud::cloud_approve_reject,
+            cloud::cloud_invite_start,
+            cloud::cloud_invite_poll,
+            cloud::cloud_invite_add,
+            cloud::cloud_invite_cancel,
+            cloud::cloud_remove_device,
+            cloud::cloud_sign_out,
+            cloud_open_computer,
+            cloud_push_register,
             updater::updater_check,
             updater::updater_download,
             updater::updater_install,
@@ -677,6 +773,9 @@ mod tests {
             .await
             .expect_err("an unreachable backend must not be accepted");
 
-        assert!(error.starts_with("Backend is not reachable"), "unexpected: {error}");
+        assert!(
+            error.starts_with("Backend is not reachable"),
+            "unexpected: {error}"
+        );
     }
 }

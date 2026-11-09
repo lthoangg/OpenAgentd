@@ -2,7 +2,8 @@
 //!
 //! Produces the registration agentd-cloud's `POST /v1/push/register` takes,
 //! field for field: `{ provider: "apns", token, environment }`. Nothing here
-//! sends it anywhere; a cloud client will.
+//! sends it anywhere: `cloud_push_register` (lib.rs) sends it, signed by
+//! this phone, only when the person has an account.
 //!
 //! The environment comes from the app's own signature, never a guess: a
 //! token sent to the wrong APNs host is answered `BadDeviceToken` and the

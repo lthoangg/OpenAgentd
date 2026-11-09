@@ -20,8 +20,8 @@ def _load_module():
 mod = _load_module()
 
 
-def _rules(text: str, allow=None, deny=None) -> list[str]:
-    return [f.rule for f in mod.scan_text(text, "f", allow or [], deny or [])]
+def _rules(text: str, allow=None, deny=None, message=False) -> list[str]:
+    return [f.rule for f in mod.scan_text(text, "f", allow or [], deny or [], message=message)]
 
 
 def test_cloud_tokens_are_found_and_never_printed_in_full():
@@ -29,6 +29,9 @@ def test_cloud_tokens_are_found_and_never_printed_in_full():
     findings = mod.scan_text(f'let t = "{token}";', "f", [], [])
     assert [f.rule for f in findings] == ["cloud token"]
     assert token not in findings[0].render()
+    # Not even a prefix: only where, which rule, and the length.
+    assert "t1." not in findings[0].render() and "AAAA" not in findings[0].render()
+    assert findings[0].render() == f"f:1: cloud token: [{len(token)} chars]"
     assert _rules("e1." + "x" * 24 + "." + "y" * 24) == ["cloud token"]
     assert _rules("n1." + "x" * 24 + "." + "y" * 24) == ["cloud token"]
 
@@ -45,7 +48,20 @@ def test_personal_emails_but_not_placeholders_or_file_names():
     assert _rules(f"contact {personal}") == ["email address"]
     assert _rules("user@example.com and team@openagentd.dev") == []
     assert _rules("icon-128x128@2x.png") == []
-    assert _rules(f"Signed-off-by: Someone <{personal}>") == []
+    # A trailer is skipped in a commit message only; in a file it is scanned.
+    assert _rules(f"Signed-off-by: Someone <{personal}>", message=True) == []
+    assert _rules(f"Signed-off-by: Someone <{personal}>") == ["email address"]
+
+
+def test_an_allowed_value_exempts_only_itself():
+    allow = [re.compile(r"git@github\.com")]
+    personal = "someone" + "@" + "gmail.com"
+    assert _rules("remote git@github.com:org/repo", allow=allow) == []
+    # The rest of the line is still scanned.
+    token = "n1." + "x" * 24 + "." + "y" * 24
+    assert _rules(f"git@github.com {token} {personal}", allow=allow) == ["cloud token", "email address"]
+    # A pattern that matches only part of a finding does not exempt it.
+    assert _rules("evil" + "git@github.com", allow=allow) == ["email address"]
 
 
 def test_private_key_needs_a_body():

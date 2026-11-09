@@ -12,7 +12,8 @@ Usage:
     python3 scripts/check_no_secrets.py --history  # every commit (patches and messages)
 
 Known-safe values (published test vectors, documented placeholders) are
-listed in ``scripts/secret_scan_allow.txt``. Literal values that must never
+listed in ``scripts/secret_scan_allow.txt``, each matching the whole value
+it allows. Literal values that must never
 appear but must not be published either (your own ids) go, one per line, in
 the ignored file ``.openagentd/secret-denylist``.
 """
@@ -109,10 +110,9 @@ def load_denylist(path: Path = DENY_FILE) -> list[str]:
 
 
 def _redact(value: str) -> str:
-    """Never print a found secret in full: CI logs are public too."""
-    if len(value) <= 8:
-        return value[:2] + "…"
-    return value[:6] + "…" + f"({len(value)} chars)"
+    """Never print any of a found secret: CI logs are public too. The
+    location and the rule name say where to look."""
+    return f"[{len(value)} chars]"
 
 
 def _email_ok(domain: str) -> bool:
@@ -120,8 +120,14 @@ def _email_ok(domain: str) -> bool:
     return any(domain == ok or domain.endswith("." + ok) for ok in EMAIL_OK_DOMAINS)
 
 
-# Commit trailers carry the committer identity git already publishes.
+# Commit trailers carry the committer identity git already publishes. Only
+# commit messages have trailers; in a file the same line is scanned.
 TRAILER = re.compile(r"^(?i:signed-off-by|co-authored-by):")
+
+
+def _allowed(line: str, start: int, end: int, allow: list[re.Pattern[str]]) -> bool:
+    """Whether a reviewed pattern matches the whole finding at [start, end)."""
+    return any(a.start() <= start and end <= a.end() for pattern in allow for a in pattern.finditer(line))
 
 
 def scan_text(
@@ -129,16 +135,19 @@ def scan_text(
     where: str,
     allow: list[re.Pattern[str]],
     deny: list[str],
+    message: bool = False,
 ) -> list[Finding]:
     findings: list[Finding] = []
     for lineno, line in enumerate(text.splitlines(), 1):
-        if any(a.search(line) for a in allow) or TRAILER.match(line):
+        if message and TRAILER.match(line):
             continue
         for rule in RULES:
             for m in rule.pattern.finditer(line):
                 if rule.name == "email address":
                     if _email_ok(m.group(1)) or m.group(1).rsplit(".", 1)[-1].lower() in NOT_MAIL_TLDS:
                         continue
+                if _allowed(line, m.start(), m.end(), allow):
+                    continue
                 findings.append(Finding(f"{where}:{lineno}", rule.name, _redact(m.group(0))))
         for literal in deny:
             if literal in line:
@@ -196,7 +205,7 @@ def scan_history(root: Path, allow: list[re.Pattern[str]], deny: list[str]) -> l
             continue
         if in_message:
             if line == "--end-message--":
-                findings.extend(scan_text("\n".join(message), f"{commit} message", allow, deny))
+                findings.extend(scan_text("\n".join(message), f"{commit} message", allow, deny, message=True))
                 message.clear()
                 in_message = False
             else:

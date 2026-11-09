@@ -21,7 +21,7 @@ mock.module('@tauri-apps/api/core', () => ({
   },
 }))
 
-const KEY = 'generated-key-0123456789abcdef'
+const KEY = 'generated-key-0123456789abcdef' // gitleaks:allow (synthetic)
 let latest: ReturnType<typeof useConnectLink> | null = null
 
 function Probe() {

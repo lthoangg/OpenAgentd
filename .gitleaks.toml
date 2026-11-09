@@ -18,7 +18,6 @@ paths = [
   '''^appv3/crates/providers/src/bedrock\.rs$''',
   '''^appv3/crates/api/tests/http_api\.rs$''',
   '''^desktop/src-tauri/src/sidecar\.rs$''',
-  '''^web/src/__tests__/''',
   # Lock files carry integrity hashes.
   '''(^|/)(Cargo\.lock|bun\.lock)$''',
 ]

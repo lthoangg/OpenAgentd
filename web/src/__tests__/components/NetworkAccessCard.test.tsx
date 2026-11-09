@@ -141,7 +141,7 @@ describe('NetworkAccessCard', () => {
     expect(calls.some((c) => c.command === 'app_network_access_key')).toBe(true)
     expect(parseConnectLink(encoded.at(-1) ?? '')).toEqual({
       urls: ['http://192.168.1.20:4082', 'http://10.0.0.5:4082'],
-      key: 'generated-key-0123456789abcdef',
+      key: 'generated-key-0123456789abcdef', // gitleaks:allow (synthetic)
     })
 
     await userEvent.click(screen.getByRole('button', { name: 'Hide QR' }))

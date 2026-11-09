@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { buildConnectLink, parseConnectLink } from '@/lib/connect-link'
 
-const KEY = 'generated-key-0123456789abcdef'
+const KEY = 'generated-key-0123456789abcdef' // gitleaks:allow (synthetic)
 
 describe('connect links', () => {
   it('round-trips every address and the key', () => {

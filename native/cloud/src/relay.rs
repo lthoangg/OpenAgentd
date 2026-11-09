@@ -94,7 +94,8 @@ pub async fn open_socket(cloud: &Cloud, http1: &reqwest::Client, path: &str) -> 
         .map_err(|_| RelayError::Network)?;
     if resp.status().as_u16() != 101 {
         let status = resp.status().as_u16();
-        let body: Option<Value> = resp.json().await.ok();
+        // An error body is read up to the API's cap; a larger one is dropped.
+        let body: Option<Value> = crate::api::read_body(resp).await.ok().and_then(|b| serde_json::from_slice(&b).ok());
         let code = body.as_ref().and_then(|b| b.get("error")).and_then(|e| e.as_str()).unwrap_or("unknown").to_string();
         return Err(RelayError::Refused(ApiError { status, code, body, retry_after: None }));
     }

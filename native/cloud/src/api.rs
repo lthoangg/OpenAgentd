@@ -196,6 +196,37 @@ pub fn valid_slot_id(s: &str) -> bool {
     (16..=64).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
+/// Enrollment ids go into URL paths and into `lines(...)` (the 6-digit
+/// code): the same rule as slot ids.
+pub fn valid_enrollment_id(s: &str) -> bool {
+    valid_slot_id(s)
+}
+
+/// Nonces go into a header and into `lines(...)`: the token alphabet
+/// (base64url and `.`), of a bounded length.
+pub fn valid_nonce(s: &str) -> bool {
+    (1..=1024).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.')
+}
+
+/// Largest response body read from the cloud.
+pub const MAX_BODY: usize = 1024 * 1024;
+
+/// Reads a response body, refusing one larger than [`MAX_BODY`] before
+/// holding more than that in memory.
+pub async fn read_body(mut resp: reqwest::Response) -> ApiResult<Vec<u8>> {
+    if resp.content_length().is_some_and(|n| n > MAX_BODY as u64) {
+        return Err(ApiError::bad_response());
+    }
+    let mut out = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|e| ApiError::network(&e))? {
+        if out.len() + chunk.len() > MAX_BODY {
+            return Err(ApiError::bad_response());
+        }
+        out.extend_from_slice(&chunk);
+    }
+    Ok(out)
+}
+
 /// A relay token and when to stop using it.
 #[derive(Debug, Clone)]
 pub struct RelayToken {
@@ -257,7 +288,7 @@ impl Cloud {
     async fn answer<T: DeserializeOwned>(resp: reqwest::Response) -> ApiResult<T> {
         let status = resp.status();
         let retry_after = resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok());
-        let bytes = resp.bytes().await.map_err(|e| ApiError::network(&e))?;
+        let bytes = read_body(resp).await?;
         if status.is_success() {
             let body = if bytes.is_empty() { b"{}".as_slice() } else { &bytes };
             return serde_json::from_slice(body).map_err(|_| ApiError::bad_response());
@@ -375,6 +406,9 @@ impl Cloud {
                 }),
             )
             .await?;
+        if !valid_enrollment_id(&raw.enrollment_id) {
+            return Err(ApiError::bad_response());
+        }
         Ok(raw.enrollment_id)
     }
 
@@ -425,6 +459,10 @@ impl Cloud {
             Some(n) => n,
             None => self.fresh_nonce().await?,
         };
+        // A nonce goes into `lines(...)`, which refuses a newline by panicking.
+        if !valid_nonce(nonce.expose()) {
+            return Err(ApiError::bad_response());
+        }
         let account = self.account()?;
         let device = self.device_id();
         let message = lines!["agentd-cloud-request-v1", method.as_str(), path, account, &device, nonce.expose(), &sha256_b64(body)];
@@ -464,30 +502,45 @@ impl Cloud {
 
     // ---- Pending enrollments --------------------------------------------
 
-    pub async fn pending(&self, enrollment_id: &str) -> ApiResult<Pending> {
-        self.signed(Method::GET, &format!("/v1/enroll/pending/{enrollment_id}"), None).await
+    fn pending_path(enrollment_id: &str, tail: &str) -> ApiResult<String> {
+        if !valid_enrollment_id(enrollment_id) {
+            return Err(ApiError::bad_response());
+        }
+        Ok(format!("/v1/enroll/pending/{enrollment_id}{tail}"))
     }
 
+    pub async fn pending(&self, enrollment_id: &str) -> ApiResult<Pending> {
+        let p: Pending = self.signed(Method::GET, &Self::pending_path(enrollment_id, "")?, None).await?;
+        if p.enrollment_id != enrollment_id {
+            return Err(ApiError::bad_response());
+        }
+        Ok(p)
+    }
+
+    /// The account's pending requests. Entries whose enrollment id breaks
+    /// the id rule are left out: they could not be approved or cancelled.
     pub async fn pending_list(&self) -> ApiResult<Vec<Pending>> {
         #[derive(Deserialize)]
         struct Raw {
             pending: Vec<Pending>,
         }
-        Ok(self.signed::<Raw>(Method::GET, "/v1/enroll/pending", None).await?.pending)
+        let mut list = self.signed::<Raw>(Method::GET, "/v1/enroll/pending", None).await?.pending;
+        list.retain(|p| valid_enrollment_id(&p.enrollment_id));
+        Ok(list)
     }
 
     pub async fn post_n_a(&self, enrollment_id: &str, n_a: &[u8]) -> ApiResult<()> {
-        let _: Value = self.signed(Method::POST, &format!("/v1/enroll/pending/{enrollment_id}/na"), Some(json!({ "n_a": b64(n_a) }))).await?;
+        let _: Value = self.signed(Method::POST, &Self::pending_path(enrollment_id, "/na")?, Some(json!({ "n_a": b64(n_a) }))).await?;
         Ok(())
     }
 
     pub async fn post_n_n(&self, enrollment_id: &str, n_n: &[u8]) -> ApiResult<()> {
-        let _: Value = self.signed(Method::POST, &format!("/v1/enroll/pending/{enrollment_id}/nn"), Some(json!({ "n_n": b64(n_n) }))).await?;
+        let _: Value = self.signed(Method::POST, &Self::pending_path(enrollment_id, "/nn")?, Some(json!({ "n_n": b64(n_n) }))).await?;
         Ok(())
     }
 
     pub async fn cancel_pending(&self, enrollment_id: &str) -> ApiResult<()> {
-        let _: Value = self.signed(Method::DELETE, &format!("/v1/enroll/pending/{enrollment_id}"), None).await?;
+        let _: Value = self.signed(Method::DELETE, &Self::pending_path(enrollment_id, "")?, None).await?;
         Ok(())
     }
 
@@ -585,6 +638,9 @@ impl Cloud {
         }
         let path = Self::slot_path(slot_id, "/claim")?;
         let raw: Raw = self.signed(Method::POST, &path, Some(json!({ "pubs": b64(&self.keys.pubs()), "proof": b64(proof), "kind": this_kind() }))).await?;
+        if !valid_enrollment_id(&raw.enrollment_id) {
+            return Err(ApiError::bad_response());
+        }
         Ok(raw.enrollment_id)
     }
 

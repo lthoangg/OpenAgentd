@@ -27,6 +27,12 @@ integration for the mobile shell.
   `pick_one`: menus and pickers are the app's own on every platform. The web
   command `share_text` has no web caller yet; keep errors as `Err`, never a
   silent success.
+- `src/keyboard_bar.rs` (iOS): hides the WebView's form accessory bar
+  (`< > ✓` above the keyboard) at setup by moving WKWebView's content view to
+  a subclass whose `inputAccessoryView` is nil. On iOS 26 the floating bar is
+  not taken out of `visualViewport` and covered the composer. The keyboard is
+  put away by the composer's swipe down or a tap on the transcript. A renamed
+  content view matches nothing and the bar simply shows again.
 - `../../native/shell-core/`: server config persistence, URL normalization,
   keyring access, and download limits shared with the desktop shell. Change
   those behaviours there, with their tests, not in `lib.rs`.

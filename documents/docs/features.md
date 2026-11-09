@@ -777,6 +777,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     buttons sit inside it, and workspace rows use the phone's short marks
     (**missing**, the worktree count) so the always-shown row actions leave
     the name room.
+  - In the iOS app the keyboard has no `< > ✓` bar above it `[v3.51.0]`,
+    so the composer sits whole on the keyboard (on iOS 26 the bar covered
+    it). Swipe down on the composer or tap the chat to put the keyboard away.
 - **Pin a session to one account** `[v3.40.0]` — when a provider has several
   keys or OAuth profiles, the run picker can pin the session to one of them;
   **Auto** keeps today's rotation. A pinned session only ever uses that

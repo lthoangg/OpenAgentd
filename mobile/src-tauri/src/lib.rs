@@ -15,6 +15,8 @@ mod cloud;
 mod cloud_bridge;
 #[cfg(test)]
 mod cloud_e2e_tests;
+#[cfg(target_os = "ios")]
+mod keyboard_bar;
 mod native_ui;
 mod push;
 mod theme;
@@ -664,6 +666,8 @@ pub fn run() {
             }
             #[cfg(target_os = "ios")]
             theme::paint_launch_background(_app.handle());
+            #[cfg(target_os = "ios")]
+            keyboard_bar::hide(_app.handle());
             #[cfg(target_os = "ios")]
             push::refresh_at_launch();
             #[cfg(all(target_os = "ios", debug_assertions))]

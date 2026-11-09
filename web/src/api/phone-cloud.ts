@@ -4,6 +4,7 @@
  * app shell: every call is a Tauri command (`mobile/src-tauri/src/cloud.rs`).
  * Guest is the default; nothing here may block a guest.
  */
+import type { ApprovalView, Roles } from '@/api/cloud'
 import { getPlatform } from '@/hooks/use-platform'
 import type { AppBackendStatus } from '@/lib/app-backend'
 
@@ -36,6 +37,10 @@ export interface DeviceRow {
   device_id: string
   fingerprint: string
   signer: boolean
+  /** Other devices open sessions on it (absent from an older shell: read as by kind). */
+  server?: boolean
+  /** It opens sessions on the account's servers. */
+  client?: boolean
   me: boolean
   kind: string | null
 }
@@ -48,6 +53,9 @@ export interface PendingRow {
   expires_at: number | null
   /** The joining device's self-reported kind; absent from older shells. */
   kind?: string | null
+  /** The roles it asked for. */
+  server?: boolean
+  client?: boolean
 }
 
 export interface OpenedComputer {
@@ -117,11 +125,17 @@ export const phoneCloudConfirmRecovery = (first: string, second: string) =>
   call<PhoneCloudStatus>('cloud_confirm_recovery', { first, second })
 export const getPhoneCloudDevices = () => call<DeviceRow[]>('cloud_devices')
 export const getPhoneCloudPending = () => call<PendingRow[]>('cloud_pending')
-/** The six digits both screens show; may take minutes while the other device reveals. */
-export const phoneCloudApproveBegin = (enrollmentId: string) => call<string>('cloud_approve_begin', { enrollmentId })
-/** Face ID happens natively. `approver`: the new device may approve others too. */
-export const phoneCloudApproveConfirm = (enrollmentId: string, approver: boolean) =>
-  call<PhoneCloudStatus>('cloud_approve_confirm', { enrollmentId, approver })
+/** Whether a device of the account serves sessions: its roster role, or (older shells) not a phone. */
+export function isServer(device: DeviceRow): boolean {
+  if (device.server !== undefined) return device.server
+  return device.kind !== 'ios' && device.kind !== 'android'
+}
+
+/** The six digits both screens show, and the roles asked for; may take minutes while the other device reveals. */
+export const phoneCloudApproveBegin = (enrollmentId: string) => call<ApprovalView>('cloud_approve_begin', { enrollmentId })
+/** Face ID happens natively. `approver`: the new device may approve others too. `roles`: those it asked for, or fewer. */
+export const phoneCloudApproveConfirm = (enrollmentId: string, approver: boolean, roles: Roles) =>
+  call<PhoneCloudStatus>('cloud_approve_confirm', { enrollmentId, approver, server: roles.server, client: roles.client })
 export const phoneCloudApproveReject = (enrollmentId: string) => call<void>('cloud_approve_reject', { enrollmentId })
 /** An open invitation. `link` is a bearer secret: the QR code's content. */
 export interface InviteView {
@@ -154,3 +168,5 @@ export const openPhoneCloudComputer = (deviceId: string, lanBaseUrl: string | nu
   call<OpenedComputer>('cloud_open_computer', { deviceId, lanBaseUrl })
 /** Silently hands the APNs token to the account; never asks for permission. */
 export const phoneCloudPushRegister = () => call<unknown>('cloud_push_register', { prompt: false })
+/** `"approval"` once after the person tapped "A device wants to join your account". */
+export const phoneCloudTakeNotification = () => call<'approval' | null>('cloud_take_notification')

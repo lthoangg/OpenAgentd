@@ -14,6 +14,7 @@ import { useUIStore } from '@/stores/useUIStore'
 import { MacTitleBar } from '@/components/MacTitleBar'
 import { WindowCaptionButtons } from '@/components/WindowCaptionButtons'
 import { useDesktopCommands } from '@/lib/desktop-commands'
+import { isDesktopShell } from '@/lib/desktop-shell'
 import { LAST_ROUTE_KEY, lastRouteStorageKey, resolveStartupRoute } from '@/lib/route-restore'
 import { isPageReload } from '@/lib/page-reload'
 import { useAppShortcut } from '@/lib/keyboard/hooks'
@@ -38,6 +39,10 @@ const WidgetSnapshotSync = lazy(() =>
 // Same for the phone's account: only the phone apps have one.
 const PhoneCloudSync = lazy(() =>
   import('@/hooks/use-phone-cloud-sync').then((module) => ({ default: module.PhoneCloudSync })),
+)
+// A computer that approves devices hears about new requests (desktop app only).
+const DesktopApprovalWatcher = lazy(() =>
+  import('@/components/account/DesktopApprovalWatcher').then((module) => ({ default: module.DesktopApprovalWatcher })),
 )
 
 // Settings and Telemetry stay out of the startup bundle; they load while the
@@ -149,6 +154,11 @@ export function Root() {
       {widgetsSupported() && (
         <Suspense fallback={null}>
           <PhoneCloudSync />
+        </Suspense>
+      )}
+      {isDesktopShell() && (
+        <Suspense fallback={null}>
+          <DesktopApprovalWatcher />
         </Suspense>
       )}
       <PluginNoticeGate />

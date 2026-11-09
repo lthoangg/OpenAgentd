@@ -4,6 +4,8 @@ export const queryKeys = {
   health: () => ['health'] as const,
   cloud: {
     status: () => ['cloud', 'status'] as const,
+    devices: () => ['cloud', 'devices'] as const,
+    pending: () => ['cloud', 'pending'] as const,
   },
   phoneCloud: {
     status: () => ['phone-cloud', 'status'] as const,

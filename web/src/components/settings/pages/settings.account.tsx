@@ -1,15 +1,22 @@
 /**
  * Settings → Account — this computer's optional OpenAgentd Cloud account.
- * Guest is the default and is never blocked or nagged. Joining is by the
- * invitation link the phone shows (the default: a computer cannot scan),
- * or by signing in and comparing a 6-digit code (the fallback). Only this
+ * Guest is the default and is never blocked or nagged. **Sign in** is the
+ * way in, with **Use as server** and **Use as client** (both on): on an
+ * empty account this computer creates it (after the recovery code), and
+ * otherwise a device already in the account approves it after comparing a
+ * 6-digit code. An invitation link is the alternative. Once connected, a
+ * computer that approves devices lists the account's devices and the
+ * pending requests, and approves one with the code and Touch ID. Only this
  * computer may change its account; anyone else (a phone viewing a remote
  * server) sees the status and a hint.
  */
 import { useState, type ReactNode } from 'react'
 
-import type { CloudStatus, RelayState } from '@/api/cloud'
-import { deviceLabel } from '@/api/phone-cloud'
+import type { CloudPending, CloudStatus, RelayState, Roles } from '@/api/cloud'
+import { deviceLabel, pendingLabel } from '@/api/phone-cloud'
+import { DesktopApprovalSheet } from '@/components/account/DesktopApprovalSheet'
+import { RecoveryStep } from '@/components/account/RecoveryStep'
+import { COMPUTER_ROLES, RolesChoice, rolesLabel } from '@/components/account/RolesChoice'
 import { ApiValidationError } from '@/api/client/_shared'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import {
@@ -30,9 +37,13 @@ import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import {
   useCloudCancelMutation,
+  useCloudConfirmRecovery,
+  useCloudDevicesQuery,
   useCloudJoinMutation,
   useCloudLoginMutation,
   useCloudLogoutMutation,
+  useCloudPendingQuery,
+  useCloudRemoveDevice,
   useCloudStatusQuery,
 } from '@/queries/cloud'
 
@@ -44,6 +55,8 @@ function relayText(relay: RelayState): string {
       return 'Connecting…'
     case 'offline':
       return 'Offline, retrying'
+    case 'off':
+      return 'Not used as a server: your other devices do not reach this one'
     case 'paused': {
       const until = relay.until === null
         ? ''
@@ -55,16 +68,83 @@ function relayText(relay: RelayState): string {
 
 const isForbidden = (error: unknown) => error instanceof ApiValidationError && error.status === 403
 
+/** The account's devices; an approver can remove the others. */
+function DevicesSection({ canRemove }: { canRemove: boolean }) {
+  const devicesQ = useCloudDevicesQuery(true)
+  const remove = useCloudRemoveDevice()
+  const [removing, setRemoving] = useState<string | null>(null)
+  // A remote viewer: these routes answer only this computer.
+  if (isForbidden(devicesQ.error)) return null
+  return (
+    <>
+      <PanelSection title="Devices" flush>
+        {devicesQ.isLoading && <PanelRow label="Loading devices…" />}
+        {devicesQ.data?.map((device) => (
+          <PanelRow
+            key={device.device_id}
+            label={deviceLabel(device)}
+            description={(
+              <span className="flex flex-wrap gap-x-2">
+                {device.me && <span>This computer</span>}
+                <span>{rolesLabel(device)}</span>
+                {device.signer && <span>Approver</span>}
+              </span>
+            )}
+          >
+            {canRemove && !device.me && (
+              <Button size="sm" variant="danger-subtle" aria-label={`Remove ${deviceLabel(device)}`} onClick={() => setRemoving(device.device_id)}>
+                Remove
+              </Button>
+            )}
+          </PanelRow>
+        ))}
+      </PanelSection>
+      {(devicesQ.error ?? remove.error) && (
+        <Callout tone="error" role="alert">{(devicesQ.error ?? remove.error)?.message}</Callout>
+      )}
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => { if (!open) setRemoving(null) }}
+        title="Remove this device?"
+        description="It stops reaching your devices through your account."
+        confirmLabel="Remove"
+        onConfirm={() => (removing ? remove.mutateAsync(removing).catch(() => undefined) : undefined)}
+      />
+    </>
+  )
+}
+
+/** Requests from devices that signed in, for a computer that approves. */
+function PendingSection({ onReview }: { onReview: (row: CloudPending) => void }) {
+  const pendingQ = useCloudPendingQuery(true)
+  const rows = pendingQ.data ?? []
+  if (rows.length === 0) return null
+  return (
+    <PanelSection title="Pending approvals" description="A device is asking to join your account. Only approve a request you started." flush>
+      {rows.map((row) => (
+        <PanelRow key={row.enrollment_id} label={pendingLabel(row)} description={`Asks to be: ${rolesLabel(row).toLowerCase()}`}>
+          <Button size="sm" variant="primary" onClick={() => onReview(row)}>Review</Button>
+        </PanelRow>
+      ))}
+    </PanelSection>
+  )
+}
+
 export function AccountSettingsPage() {
   const statusQ = useCloudStatusQuery()
   const login = useCloudLoginMutation()
   const join = useCloudJoinMutation()
   const cancel = useCloudCancelMutation()
   const logout = useCloudLogoutMutation()
+  const confirmRecovery = useCloudConfirmRecovery()
   const [confirmingSignOut, setConfirmingSignOut] = useState(false)
+  const [roles, setRoles] = useState<Roles>(COMPUTER_ROLES)
+  const [withLink, setWithLink] = useState(false)
+  const [reviewing, setReviewing] = useState<CloudPending | null>(null)
 
   const status: CloudStatus | undefined = statusQ.data
   const mutations = [login, join, cancel, logout]
+  const noRole = !roles.server && !roles.client
   // Not this computer: the status stays visible, the buttons give way to a hint.
   const readOnly = mutations.some((m) => isForbidden(m.error))
   const failure = mutations.map((m) => m.error).find((e) => e && !isForbidden(e))
@@ -93,17 +173,28 @@ export function AccountSettingsPage() {
               <OfferCopy />
               {!readOnly && (
                 <>
-                  <JoinWithLink
-                    busy={busy}
-                    onJoin={(link) => join.mutate(link)}
-                    hint="On your phone, open Settings → Account → Add a device, choose Can't scan? Use a link, and paste the link here."
-                  />
+                  <RolesChoice value={roles} onChange={setRoles} disabled={busy} />
+                  <Button variant="primary" size="sm" disabled={busy || noRole} onClick={() => login.mutate(roles)}>
+                    {status.notice === 'expired' ? 'Sign in again' : 'Sign in'}
+                  </Button>
                   <p>
-                    No link?{' '}
-                    <Button variant="link" size="sm" className="h-auto p-0" disabled={busy} onClick={() => login.mutate()}>
-                      {status.notice === 'expired' ? 'Sign in with a code again' : 'Sign in with a code instead'}
-                    </Button>
+                    If your account has devices already, one of them approves this computer after you compare a
+                    6-digit code. Otherwise this computer sets the account up.
                   </p>
+                  {withLink ? (
+                    <JoinWithLink
+                      busy={busy || noRole}
+                      onJoin={(link) => join.mutate({ link, roles })}
+                      hint="On a device in your account, open Settings → Account → Add a device, choose Can't scan? Use a link, and paste the link here."
+                    />
+                  ) : (
+                    <p>
+                      Have an invitation link?{' '}
+                      <Button variant="link" size="sm" className="h-auto p-0" disabled={busy} onClick={() => setWithLink(true)}>
+                        Join with a link instead
+                      </Button>
+                    </p>
+                  )}
                 </>
               )}
             </Body>
@@ -136,11 +227,28 @@ export function AccountSettingsPage() {
         </PanelSection>
       )
       break
+    case 'recovery':
+      content = status.code && status.check ? (
+        <RecoveryStep
+          code={status.code}
+          check={status.check}
+          busy={busy}
+          confirm={confirmRecovery}
+          onCancel={() => cancel.mutate()}
+        />
+      ) : (
+        <PanelSection title="Setting up">
+          <Body>
+            <p>This computer is setting up a new account. Finish on its own screen.</p>
+          </Body>
+        </PanelSection>
+      )
+      break
     case 'joining':
       content = (
         <PanelSection title="Joining">
           <Body>
-            <p>Approve this computer on your phone: Settings → Account.</p>
+            <p>Approve this computer on a device already in your account: Settings → Account → Pending approvals.</p>
             {status.code && (
               <p>
                 Code to compare:{' '}
@@ -169,6 +277,11 @@ export function AccountSettingsPage() {
           <PanelRow label="This device">
             <span className="font-mono text-xs text-(--color-text-2)">{status.fingerprint}</span>
           </PanelRow>
+          {status.server !== undefined && (
+            <PanelRow label="Used as">
+              <span className="text-xs text-(--color-text-2)">{rolesLabel({ server: status.server, client: status.client ?? false })}</span>
+            </PanelRow>
+          )}
           <PanelRow label="Role">
             <span className="text-xs text-(--color-text-2)">{status.signer ? 'Approves devices' : 'Member'}</span>
           </PanelRow>
@@ -177,6 +290,15 @@ export function AccountSettingsPage() {
           </PanelRow>
         </PanelSection>
       )
+      if (!readOnly) {
+        content = (
+          <>
+            {content}
+            <DevicesSection canRemove={status.signer} />
+            {status.signer && <PendingSection onReview={setReviewing} />}
+          </>
+        )
+      }
       break
     case 'closing':
       content = (
@@ -210,13 +332,14 @@ export function AccountSettingsPage() {
     >
       {readOnly && (
         <Callout tone="info" role="status">
-          Manage this computer&apos;s account with <code className="font-mono">agentd cloud join</code> on that computer.
+          Manage this computer&apos;s account with <code className="font-mono">agentd cloud login</code> on that computer.
         </Callout>
       )}
       {failure instanceof Error && (
         <Callout tone="error" role="alert" title="That didn't work">{failure.message}</Callout>
       )}
       {content}
+      {reviewing && <DesktopApprovalSheet row={reviewing} onClose={() => setReviewing(null)} />}
       <ConfirmDialog
         open={confirmingSignOut}
         onOpenChange={setConfirmingSignOut}

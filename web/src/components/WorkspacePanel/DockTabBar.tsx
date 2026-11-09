@@ -37,6 +37,7 @@ import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
 import { formatChord, matchChord } from '@/lib/keyboard/chord'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
 import { cn } from '@/lib/utils'
+import { absoluteWorkspacePath } from '@/utils/workspace'
 import type { TerminalSessionMeta } from '@/stores/useTerminalStore'
 import {
   DOCK_ACTION_BUTTON_CLASS,
@@ -189,7 +190,7 @@ const SPLITS = [
 function tabPath(tab: DockTab, workspace: string): string | null {
   const path = tab.type === 'file' ? tab.file.path : tab.type === 'diff' ? tab.path : null
   if (!path) return null
-  return path.startsWith('/') ? path : `${workspace.replace(/\/+$/, '')}/${path}`
+  return absoluteWorkspacePath(workspace, path)
 }
 
 /**

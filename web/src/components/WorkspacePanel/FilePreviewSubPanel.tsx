@@ -1,15 +1,21 @@
 import { useMemo, useState } from 'react'
-import { Download, Globe } from 'lucide-react'
+import { Copy, Download, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control'
+import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
+import { CONTEXT_MENU_ITEM_CLASS, ContextMenu } from '@/components/ui/context-menu'
+import { LongPressButton } from '@/components/ui/long-press-button'
 import { FilePreviewContent, CopyFileButton, canCopyFileContents, isMarkdownFile, type MarkdownView } from '../FileViewerPanel'
 import { FileRefContext, type FileRefOpener } from '../FileRefLink'
 import { FileTypeIcon } from '../FileTypeIcon'
+import { copyText } from '../ChatContextMenu'
 import { downloadWorkspaceFile } from '@/lib/workspace-download'
+import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { documentRefCandidates, resolveDocumentRef } from '@/utils/file-refs'
 import { formatBytes } from '@/utils/format'
+import { absoluteWorkspacePath } from '@/utils/workspace'
 import type { WorkspaceFileInfo } from '@/api/types'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
 import { DockRefreshButton } from './DockRefreshButton'
@@ -28,6 +34,8 @@ interface FilePreviewSubPanelProps {
   listingTruncated?: boolean
   /** Reloads the workspace's files (the file's size and contents follow); omitted, no button. */
   onRefresh?: () => void
+  /** Phone layout: a long-press on the path opens a sheet instead of the right-click menu. */
+  mobile?: boolean
 }
 
 const HTML_FILE = /\.html?$/i
@@ -82,6 +90,73 @@ function documentFileOpener(
 
 const ALWAYS_LISTED = () => true
 
+/**
+ * The file's path in the toolbar. Right-click (Shift+F10 or the Menu key from
+ * the keyboard) opens a menu to copy it, absolute or relative; on a phone a
+ * long-press opens the same choices as a sheet.
+ */
+function FilePathLabel({ workspace, path, mobile }: { workspace: string; path: string; mobile: boolean }) {
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const copyAbsolute = () => copyText(absoluteWorkspacePath(workspace, path))
+  const copyRelative = () => copyText(path)
+  const sheetItems: ActionSheetItem[] = [
+    { id: 'copy-path', label: 'Copy path', icon: Copy, run: copyAbsolute },
+    { id: 'copy-relative-path', label: 'Copy relative path', icon: Copy, run: copyRelative },
+  ]
+  const dir = fileDirName(path)
+  return (
+    <>
+      <Tooltip className="min-w-0 flex-1">
+        <TooltipTrigger
+          className="min-w-0 flex-1"
+          // The file name leads and the folder (muted) gives way first, so a
+          // narrow dock shows "Foo.tsx src/comp…" rather than "src/comp…".
+          render={
+            <LongPressButton
+              type="button"
+              data-file-preview-path=""
+              enabled={mobile}
+              onLongPress={() => setSheetOpen(true)}
+              onContextMenu={(e) => {
+                if (mobile) return
+                e.preventDefault()
+                setMenuAt({ x: e.clientX, y: e.clientY })
+              }}
+              onKeyDown={(e) => {
+                if (mobile || !isMenuKey(e)) return
+                e.preventDefault()
+                const at = menuPointFor(e.currentTarget)
+                setMenuAt({ x: at.clientX, y: at.clientY })
+              }}
+              aria-keyshortcuts={mobile ? undefined : 'Shift+F10'}
+              className="flex min-w-0 cursor-default items-baseline gap-1.5 rounded-sm text-left font-mono text-xs outline-none focus-key:bg-(--bg-key)/60"
+              aria-label={`File path ${path}`}
+            >
+              <span className="min-w-0 truncate text-(--color-text)">{fileBaseName(path)}</span>
+              {dir && <span className="min-w-0 shrink-[4] truncate text-meta text-(--color-text-muted)">{dir}</span>}
+            </LongPressButton>
+          }
+        />
+        <TooltipContent side="bottom">{path}</TooltipContent>
+      </Tooltip>
+      {menuAt && (
+        <ContextMenu at={menuAt} label={`Actions for ${path}`} onDismiss={() => setMenuAt(null)}>
+          <button type="button" role="menuitem" className={CONTEXT_MENU_ITEM_CLASS} onClick={() => { setMenuAt(null); copyAbsolute() }}>
+            <Copy size={12} aria-hidden="true" />
+            Copy path
+          </button>
+          <button type="button" role="menuitem" className={CONTEXT_MENU_ITEM_CLASS} onClick={() => { setMenuAt(null); copyRelative() }}>
+            <Copy size={12} aria-hidden="true" />
+            Copy relative path
+          </button>
+        </ContextMenu>
+      )}
+      {mobile && <ActionSheet open={sheetOpen} onClose={() => setSheetOpen(false)} title={path} items={sheetItems} />}
+    </>
+  )
+}
+
 /** A file tab: one 32px toolbar (path, size, actions, Refresh last) over the preview. */
 export function FilePreviewSubPanel({
   workspace,
@@ -92,6 +167,7 @@ export function FilePreviewSubPanel({
   isListed = ALWAYS_LISTED,
   listingTruncated = false,
   onRefresh,
+  mobile = false,
 }: FilePreviewSubPanelProps) {
   const deleted = file.deleted === true
   const downloadLabel = deleted ? 'File deleted from workspace' : 'Download file'
@@ -114,22 +190,7 @@ export function FilePreviewSubPanel({
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-(--spacing-toolbar) shrink-0 items-center gap-2 border-b border-(--color-border-subtle) bg-(--bg-page) pr-1 pl-3">
         <FileTypeIcon name={file.name || file.path} size={13} />
-        <Tooltip className="min-w-0 flex-1">
-          <TooltipTrigger
-            className="min-w-0 flex-1"
-            // The file name leads and the folder (muted) gives way first, so a
-            // narrow dock shows "Foo.tsx src/comp…" rather than "src/comp…".
-            render={
-              <p data-file-preview-path="" className="flex min-w-0 items-baseline gap-1.5 font-mono text-xs" aria-label={file.path}>
-                <span className="min-w-0 truncate text-(--color-text)">{fileBaseName(file.path)}</span>
-                {fileDirName(file.path) && (
-                  <span className="min-w-0 shrink-[4] truncate text-meta text-(--color-text-muted)">{fileDirName(file.path)}</span>
-                )}
-              </p>
-            }
-          />
-          <TooltipContent side="bottom">{file.path}</TooltipContent>
-        </Tooltip>
+        <FilePathLabel workspace={workspace} path={file.path} mobile={mobile} />
         {file.size > 0 && (
           <span className="hidden shrink-0 font-mono text-meta text-(--color-text-subtle) md:inline">{formatBytes(file.size)}</span>
         )}

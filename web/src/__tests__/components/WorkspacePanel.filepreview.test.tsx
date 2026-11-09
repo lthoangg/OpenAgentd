@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { gitDiffResponse } from '../git-diff-mock'
 import type React from 'react'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
@@ -84,6 +84,8 @@ mock.module('framer-motion', () => ({
     aside: ({ children, className, 'aria-label': ariaLabel }: { children: React.ReactNode; className?: string; 'aria-label'?: string }) => (
       <aside className={className} aria-label={ariaLabel}>{children}</aside>
     ),
+    // The sheet itself: a plain div, without the animation props.
+    div: ({ initial: _i, animate: _a, exit: _e, transition: _t, ...props }: Record<string, unknown>) => <div {...(props as React.ComponentProps<'div'>)} />,
   },
 }))
 beforeEach(() => {
@@ -399,7 +401,7 @@ describe('Coding workspace two-layer file preview', () => {
     // The player names the file; so does the header, file name first.
     expect(screen.getAllByText('voice.mp3')).toHaveLength(2)
     const header = document.querySelector('[data-file-preview-path]') as HTMLElement
-    expect(header.getAttribute('aria-label')).toBe('assets/voice.mp3')
+    expect(header.getAttribute('aria-label')).toBe('File path assets/voice.mp3')
     expect(Array.from(header.children).map((el) => el.textContent)).toEqual(['voice.mp3', 'assets'])
     expect(screen.queryByText('No inline preview for this file type')).toBeNull()
     expect(screen.queryByRole('button', { name: /copy file contents/i })).toBeNull()
@@ -700,5 +702,66 @@ describe('Links in a rendered markdown file', () => {
 
     expect(screen.getByRole('link', { name: 'outside' }).getAttribute('target')).toBe('_blank')
     expect(screen.getByRole('link', { name: 'the site' }).getAttribute('target')).toBe('_blank')
+  })
+})
+
+describe('Copying the open file\'s path', () => {
+  const writes: string[] = []
+  const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+  beforeEach(() => {
+    writes.length = 0
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: (text: string) => { writes.push(text); return Promise.resolve() } },
+    })
+  })
+  afterEach(() => {
+    if (original) Object.defineProperty(navigator, 'clipboard', original)
+    else Reflect.deleteProperty(navigator, 'clipboard')
+  })
+
+  const nested: WorkspaceFileInfo = { path: 'src/app.ts', name: 'app.ts', size: 24, mtime: 1, mime: 'text/plain' }
+
+  async function renderTab(mobile: boolean) {
+    const { FilePreviewSubPanel } = await import('@/components/WorkspacePanel/FilePreviewSubPanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await act(async () => {
+      render(
+        <QueryClientProvider client={queryClient}>
+          <FilePreviewSubPanel workspace={WORKSPACE} file={nested} mobile={mobile} />
+        </QueryClientProvider>,
+      )
+    })
+    return document.querySelector('[data-file-preview-path]') as HTMLElement
+  }
+
+  it('right-click on the path copies it absolute, or relative', async () => {
+    const header = await renderTab(false)
+    fireEvent.contextMenu(header, { clientX: 20, clientY: 10 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy path' }))
+    expect(screen.queryByRole('menu')).toBeNull()
+    fireEvent.contextMenu(header, { clientX: 20, clientY: 10 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy relative path' }))
+    await waitFor(() => expect(writes).toEqual(['/repo/project/src/app.ts', 'src/app.ts']))
+  })
+
+  it('opens the same menu from the keyboard with Shift+F10', async () => {
+    const header = await renderTab(false)
+    expect(header.getAttribute('aria-keyshortcuts')).toBe('Shift+F10')
+    fireEvent.keyDown(header, { key: 'F10', shiftKey: true })
+    const menu = screen.getByRole('menu', { name: 'Actions for src/app.ts' })
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Copy path', 'Copy relative path'])
+  })
+
+  it('a long-press on a phone opens the two choices as a sheet', async () => {
+    const header = await renderTab(true)
+    fireEvent.contextMenu(header)
+    expect(screen.queryByRole('menu')).toBeNull()
+    const realSetTimeout = globalThis.setTimeout
+    fireEvent.pointerDown(header, { pointerType: 'touch', clientX: 10, clientY: 10 })
+    await act(async () => { await new Promise((resolve) => realSetTimeout(resolve, 600)) })
+    const sheet = screen.getByRole('dialog', { name: 'src/app.ts' })
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Copy path' }))
+    await waitFor(() => expect(writes).toEqual(['/repo/project/src/app.ts']))
   })
 })

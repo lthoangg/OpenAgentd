@@ -21,6 +21,7 @@ const file: ChangedFileInfo = { path: 'src/app.ts', status: 'M', additions: 1, d
 function renderMenus(overrides: Partial<DockActionMenusProps> = {}) {
   const noop = () => {}
   const props: DockActionMenusProps = {
+    workspace: '/Users/me/repo/',
     mobileFileActions: null,
     setMobileFileActions: noop,
     desktopFileActions: null,
@@ -106,7 +107,7 @@ describe('file actions', () => {
     const sheet = screen.getByRole('dialog', { name: 'src/app.ts' })
     expect(sheet.querySelector('[data-action-sheet]')).toBeTruthy()
     expect(sheet.querySelector('[data-close-button]')).toBeNull()
-    expect(rows().map((row) => row.textContent)).toEqual(['Open diff in tab', 'Open file', 'Copy file path', 'Discard changes…'])
+    expect(rows().map((row) => row.textContent)).toEqual(['Open diff in tab', 'Open file', 'Copy path', 'Copy relative path', 'Discard changes…'])
     expect(rows().at(-1)!.className).toContain('text-(--color-error)')
     fireEvent.click(rows()[1]!)
     expect(setMobileFileActions).toHaveBeenCalledWith(null)
@@ -115,7 +116,44 @@ describe('file actions', () => {
 
   it('leaves out Open file for a deleted file and Open diff when there is no working diff', () => {
     renderMenus({ mobileFileActions: { ...file, status: 'D' }, hasWorkingDiff: () => false })
-    expect(rows().map((row) => row.textContent)).toEqual(['Copy file path', 'Discard changes…'])
+    expect(rows().map((row) => row.textContent)).toEqual(['Copy path', 'Copy relative path', 'Discard changes…'])
+  })
+
+  describe('copying the path', () => {
+    const writes: string[] = []
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    const stubClipboard = () => {
+      writes.length = 0
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: (text: string) => { writes.push(text); return Promise.resolve() } },
+      })
+    }
+    afterEach(() => {
+      if (original) Object.defineProperty(navigator, 'clipboard', original)
+      else Reflect.deleteProperty(navigator, 'clipboard')
+    })
+
+    it('copies the absolute path and the relative one from the right-click menu', () => {
+      stubClipboard()
+      const setDesktopFileActions = mock((..._args: unknown[]) => {})
+      renderMenus({ desktopFileActions: { file, x: 10, y: 10 }, setDesktopFileActions })
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copy path' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copy relative path' }))
+      expect(writes).toEqual(['/Users/me/repo/src/app.ts', 'src/app.ts'])
+      expect(setDesktopFileActions).toHaveBeenCalledWith(null)
+    })
+
+    it('copies the same two from the phone sheet', () => {
+      stubClipboard()
+      renderMenus({ mobileFileActions: file })
+      fireEvent.click(rows().find((row) => row.textContent === 'Copy path')!)
+      expect(writes).toEqual(['/Users/me/repo/src/app.ts'])
+      cleanup()
+      renderMenus({ mobileFileActions: file })
+      fireEvent.click(rows().find((row) => row.textContent === 'Copy relative path')!)
+      expect(writes).toEqual(['/Users/me/repo/src/app.ts', 'src/app.ts'])
+    })
   })
 })
 

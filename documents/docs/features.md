@@ -3136,6 +3136,9 @@ agent against it.
   (desktop) or long-press (mobile) a changed file inside the Changes tab or a
   commit's detail view to open, copy, or otherwise act on that file, including
   deleted files, which render a dedicated deleted-file view in the editor panel.
+  - **Copy path** copies the file's absolute path and **Copy relative path**
+    its path in the workspace; right-click (or long-press, or Shift+F10) the
+    name of an open file in its tab's toolbar for the same two `[v3.50.2]`.
 - **Persisted coding sessions per workspace** `[v1.18.0]` — `/{session_id}`
   (`/coding/{session_id}` before v3.0.0) restores workspace context from the
   saved session. Bare `/` is the launcher or last-workspace restore. New empty sessions exist before the

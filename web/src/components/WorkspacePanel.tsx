@@ -957,6 +957,7 @@ export function WorkspacePanel({
             isListed={isListedFile}
             listingTruncated={files.data?.truncated === true}
             onRefresh={handleRefresh}
+            mobile={mobile}
           />
         )
       case 'diff':
@@ -1250,6 +1251,7 @@ export function WorkspacePanel({
         />
         <DockOpenSheet open={phoneOpenMenu} items={phoneOpenItems} onClose={() => setPhoneOpenMenu(false)} />
         <DockActionMenus
+          workspace={workspace}
           mobileFileActions={mobileFileActions}
           setMobileFileActions={setMobileFileActions}
           desktopFileActions={desktopFileActions}

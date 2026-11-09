@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'bun:test'
 import {
+  absoluteWorkspacePath,
   loadWorkspaceEntries,
   loadLastWorkspace,
   saveWorkspace,
@@ -80,5 +81,23 @@ describe('coding workspace persistence', () => {
 
   it('uses loaded session workspace for direct coding session links', () => {
     expect(workspaceFromSession('sid', '/repo/session')).toBe('/repo/session')
+  })
+})
+
+describe('absoluteWorkspacePath', () => {
+  it('joins a relative path onto the workspace, with or without its trailing slash', () => {
+    expect(absoluteWorkspacePath('/Users/me/repo', 'src/app.ts')).toBe('/Users/me/repo/src/app.ts')
+    expect(absoluteWorkspacePath('/Users/me/repo/', 'src/app.ts')).toBe('/Users/me/repo/src/app.ts')
+    expect(absoluteWorkspacePath('/Users/me/repo', './src/app.ts')).toBe('/Users/me/repo/src/app.ts')
+  })
+
+  it('keeps a path that is already absolute', () => {
+    expect(absoluteWorkspacePath('/Users/me/repo', '/tmp/x.txt')).toBe('/tmp/x.txt')
+    expect(absoluteWorkspacePath('C:\\work\\repo', 'D:\\x.txt')).toBe('D:\\x.txt')
+  })
+
+  it('writes a Windows workspace with backslashes throughout', () => {
+    expect(absoluteWorkspacePath('C:\\work\\repo\\', 'src/app.ts')).toBe('C:\\work\\repo\\src\\app.ts')
+    expect(absoluteWorkspacePath('\\\\server\\share\\repo', 'a/b.md')).toBe('\\\\server\\share\\repo\\a\\b.md')
   })
 })

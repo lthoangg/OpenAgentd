@@ -19,6 +19,25 @@ export function sameWorkspacePath(a: string | null | undefined, b: string | null
   return a.replace(/[\\/]+$/, '') === b.replace(/[\\/]+$/, '')
 }
 
+/** An absolute path: POSIX (`/…`), a Windows drive (`C:\…`, `C:/…`) or a UNC share (`\\server\…`). */
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('\\\\')
+}
+
+/**
+ * ``path`` (relative to ``workspace``, as the file and git APIs give it) as
+ * an absolute path, for "Copy path". An absolute ``path`` is kept. A Windows
+ * workspace (one written with backslashes) gets backslashes throughout.
+ */
+export function absoluteWorkspacePath(workspace: string, path: string): string {
+  if (isAbsolutePath(path)) return path
+  const windows = /^[A-Za-z]:\\|^\\\\/.test(workspace)
+  const sep = windows ? '\\' : '/'
+  const root = workspace.replace(/[\\/]+$/, '')
+  const rel = path.replace(/^(?:\.[\\/]+)+/, '')
+  return `${root}${sep}${windows ? rel.replace(/\//g, '\\') : rel}`
+}
+
 /**
  * Latest chat workspace entry from the workspace tree (`useChatWorkspace`).
  *

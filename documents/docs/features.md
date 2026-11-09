@@ -2237,6 +2237,12 @@ run from the terminal (the native Rust binary since v3.0.0).
     line and the branch chip.
   - Sidebar rows show their status or age at rest. A missing folder is a
     small ⚠ with a tooltip, and worktrees show as a count.
+    Its menu offers **Locate folder…** `[v3.51.0]`: pick where the folder is
+    now (a renamed or moved repository) and its sessions, worktrees,
+    scheduled tasks and groups move with it, after a confirmation that counts
+    them; the row takes the new folder's name, a workspace already at the new
+    folder merges in, git links in the worktrees are repaired, and the move
+    waits while a session there is running.
   - Model pickers name the provider once, as a group header.
   - The Review panel's tab strip keeps +, Maximize and a ⋯ menu.
     Menus show their keys (F2, ⌫, ⌘W).

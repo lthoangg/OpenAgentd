@@ -147,6 +147,32 @@ export function removeWorkspace(workspace: string): void {
   }
 }
 
+/**
+ * A workspace moved from ``from`` to ``to`` (Locate folder…): the saved list
+ * and the "last opened" pointer follow it, so the next launch reopens the
+ * new folder. ``to`` keeps an entry it already had (a merge).
+ */
+export function renameSavedWorkspace(from: string, to: string): void {
+  try {
+    const entries = loadWorkspaceEntries()
+    const old = entries.find((entry) => sameWorkspacePath(entry.path, from))
+    if (!old) return
+    const lastId = localStorage.getItem(LAST_WORKSPACE_KEY)
+    const kept = entries.filter((entry) => entry !== old)
+    let target = kept.find((entry) => sameWorkspacePath(entry.path, to))
+    if (!target) {
+      target = { id: workspaceId(to), path: to, createdAt: old.createdAt }
+      kept.push(target)
+    }
+    kept.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+    localStorage.setItem(WORKSPACES_KEY, JSON.stringify(kept))
+    if (lastId === old.id) localStorage.setItem(LAST_WORKSPACE_KEY, target.id)
+    window.dispatchEvent(new CustomEvent('workspaces-changed'))
+  } catch {
+    // ignore storage failures
+  }
+}
+
 export function saveLastWorkspace(workspace: string): WorkspaceEntry {
   const entry = saveWorkspace(workspace)
   try {

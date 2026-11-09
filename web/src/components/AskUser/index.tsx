@@ -78,6 +78,28 @@ function isUnsettledResult(result: string | undefined): boolean {
 }
 
 /**
+ * Whether ``toolCallId`` belongs to the turn that is running now. A call from
+ * an earlier turn cannot still be about to ask: the loop only starts a new
+ * turn once the previous question is closed (answered, dismissed, superseded).
+ */
+function selectInLiveTurn(state: AgentStoreState, toolCallId: string | undefined): boolean {
+  if (!toolCallId || !state.isAgentWorking) return false
+  return Object.values(state.agentStreams).some((stream) =>
+    stream.currentBlocks.some((block) => block.toolCallId === toolCallId),
+  )
+}
+
+/** ``|``-joined tool call ids of the running turn (a stable selector value). */
+function selectLiveTurnCallIds(state: AgentStoreState): string {
+  if (!state.isAgentWorking) return ''
+  const ids: string[] = []
+  for (const stream of Object.values(state.agentStreams)) {
+    for (const block of stream.currentBlocks) if (block.toolCallId) ids.push(block.toolCallId)
+  }
+  return ids.join('|')
+}
+
+/**
  * Whether a call that asks the user to confirm a change (``confirm_change``)
  * shows this card: while its question is open, after it was answered here,
  * or while its row still holds the server's placeholder. Otherwise the call
@@ -92,21 +114,25 @@ export function useShowsConfirmationCard(enabled: boolean, toolCallId: string | 
 }
 
 /**
- * Whether an ``ask_user`` block's card still reads "Needs your input": it holds
- * the open question, or nothing has closed it yet. Reader mode keeps such a
- * card out of the work fold and folds it once it settles.
+ * Whether a user-gated block (``ask_user``, plan review, confirmation) still
+ * waits on the user: it holds the open question, or it belongs to the running
+ * turn and nothing has closed it yet (the loop opens the question only after
+ * the reply's other tool calls finish). Reader mode keeps such a card out of
+ * the work fold and folds it once it settles. A call from an earlier turn is
+ * never waiting — that turn could not have ended with it open.
  */
 export function useQuestionAwaitsUser(): (block: ContentBlock) => boolean {
   const openCallId = useAgentStore(selectOpenQuestionCallId)
   const resolvedQuestions = useAgentStore((state) => state.resolvedQuestions)
-  const turnLive = useAgentStore((state) => state.isAgentWorking)
+  const liveCallIds = useAgentStore(selectLiveTurnCallIds)
   return useCallback(
     (block: ContentBlock) => {
       const id = block.toolCallId
       if (openCallId !== null && id === openCallId) return true
-      return turnLive && !(id && resolvedQuestions[id]) && isUnsettledResult(block.toolResult)
+      const inLiveTurn = !!id && liveCallIds.split('|').includes(id)
+      return inLiveTurn && !resolvedQuestions[id] && isUnsettledResult(block.toolResult)
     },
-    [openCallId, resolvedQuestions, turnLive],
+    [openCallId, resolvedQuestions, liveCallIds],
   )
 }
 
@@ -162,7 +188,7 @@ export function AskUser({
   const resolved = useAgentStore((state) =>
     toolCallId ? state.resolvedQuestions[toolCallId] : undefined,
   )
-  const turnLive = useAgentStore((state) => state.isAgentWorking)
+  const inLiveTurn = useAgentStore((state) => selectInLiveTurn(state, toolCallId))
   const hostMounted = usePinHostMounted()
   const isPhone = useIsPhone()
 
@@ -173,7 +199,7 @@ export function AskUser({
   const { submitting, error, answer } = useQuestionResolver(isOpen && !pinned ? pendingQuestion : null)
 
   if (!isOpen) {
-    const { waiting, body } = describeResolution(resolved, result, args, turnLive)
+    const { waiting, body } = describeResolution(resolved, result, args, inLiveTurn)
     return <QuestionShell waiting={waiting}>{body}</QuestionShell>
   }
   if (pinned) return <QuestionShell waiting><QuestionNote text="Answer below" /></QuestionShell>
@@ -257,8 +283,8 @@ function describeResolution(
   resolved: ResolvedQuestion | undefined,
   result: string | undefined,
   args: string | undefined,
-  /** The session's turn is still running, so the question may yet open here. */
-  turnLive: boolean,
+  /** The call belongs to the running turn, so its question may yet open. */
+  inLiveTurn: boolean,
 ): { waiting: boolean; body: ReactNode } {
   if (resolved) {
     if (resolved.answers === null) {
@@ -281,12 +307,13 @@ function describeResolution(
   }
 
   // The row still holds the placeholder (or nothing) and no question is open
-  // here. While the turn runs the question may still open (its event follows
-  // the call), so it waits. Once the turn is over, an open question would be
-  // in the store (a load restores it from the server), so this one closed in
-  // a way that left no outcome here: say so instead of waiting for good.
+  // here. Only an open question asks for input. A call in the running turn may
+  // still open one — the loop asks after the reply's other tool calls finish —
+  // so it says so without claiming the user's attention. Any other call closed
+  // in a way that left no outcome here (an open question would be in the
+  // store: a load or reattach restores it), so say so instead of waiting.
   if (isUnsettledResult(result)) {
-    if (turnLive) return { waiting: true, body: <QuestionNote text="Waiting for an answer…" /> }
+    if (inLiveTurn) return { waiting: false, body: <QuestionNote text="Asks once the running tools finish" /> }
     return { waiting: false, body: <ClosedQuestions reason="unrecorded" questions={parseAskedQuestions(args)} /> }
   }
 

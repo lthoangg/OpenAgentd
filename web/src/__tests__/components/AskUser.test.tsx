@@ -264,14 +264,19 @@ describe('AskUser — resolved state', () => {
     expect(container.textContent).not.toContain('Continue with')
   })
 
-  it('says it is waiting while the turn runs and the question has not opened here yet', () => {
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {}, isAgentWorking: true })
+  it('says it will ask while its turn runs and the question has not opened here yet', () => {
+    useAgentStore.setState({
+      pendingQuestion: null,
+      resolvedQuestions: {},
+      isAgentWorking: true,
+      agentStreams: liveTurnWith('call-1'),
+    })
 
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
-    expect(screen.getByText(/waiting for an answer/i)).toBeInTheDocument()
-    expect(screen.getByText('Needs your input')).toBeInTheDocument()
-    useAgentStore.setState({ isAgentWorking: false })
+    expect(screen.getByText(/asks once the running tools finish/i)).toBeInTheDocument()
+    expect(screen.queryByText('Needs your input')).toBeNull()
+    useAgentStore.setState({ isAgentWorking: false, agentStreams: {} })
   })
 
   it('does not wait forever: with the turn over and no question open, it says no answer was recorded', () => {
@@ -605,15 +610,57 @@ describe('AskUser — card label', () => {
     expect(screen.queryByText(/needs your input/i)).toBeNull()
   })
 
-  it('still asks for input while the turn runs and the question has not opened here yet', () => {
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {}, isAgentWorking: true })
+  /**
+   * The loop runs a reply's other tool calls before it opens the question,
+   * so a live call can sit with no result for minutes while the agent works.
+   * Only an open question asks for input.
+   */
+  it('does not ask for input while the call waits on its sibling tools', () => {
+    useAgentStore.setState({
+      pendingQuestion: null,
+      resolvedQuestions: {},
+      isAgentWorking: true,
+      agentStreams: liveTurnWith('call-1'),
+    })
 
-    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-1" />)
 
-    expect(screen.getByText(/needs your input/i)).toBeInTheDocument()
-    useAgentStore.setState({ isAgentWorking: false })
+    expect(screen.queryByText(/needs your input/i)).toBeNull()
+    expect(screen.getByText(/asks once the running tools finish/i)).toBeInTheDocument()
+    useAgentStore.setState({ isAgentWorking: false, agentStreams: {} })
+  })
+
+  /**
+   * A call from an earlier turn whose outcome never reached this client (no
+   * live result, nothing recorded) is closed: a later turn could only start
+   * once it was. It must not read as waiting while that later turn runs.
+   */
+  it('does not ask for input for an earlier turn\'s unsettled call while a new turn runs', () => {
+    useAgentStore.setState({
+      pendingQuestion: null,
+      resolvedQuestions: {},
+      isAgentWorking: true,
+      agentStreams: liveTurnWith('call-other'),
+    })
+
+    render(<AskUser toolCallId="call-1" args={JSON.stringify({ questions: QUESTION.questions })} />)
+
+    expect(screen.queryByText(/needs your input/i)).toBeNull()
+    expect(screen.queryByText(/waiting for an answer/i)).toBeNull()
+    expect(screen.getByText('Which package manager?')).toBeInTheDocument()
+    useAgentStore.setState({ isAgentWorking: false, agentStreams: {} })
   })
 })
+
+/** Agent streams whose live turn holds one ``ask_user`` call. */
+function liveTurnWith(toolCallId: string) {
+  return {
+    lead: {
+      blocks: [],
+      currentBlocks: [{ id: `b-${toolCallId}`, type: 'tool', content: '', toolName: 'ask_user', toolCallId }],
+    },
+  } as unknown as ReturnType<typeof useAgentStore.getState>['agentStreams']
+}
 
 /**
  * One thin frame, nothing bordered inside it, no icon before the title, and

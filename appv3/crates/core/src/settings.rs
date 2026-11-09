@@ -372,6 +372,9 @@ mod tests {
         assert!(worktrees_dir_for("development", None, false, data).ends_with(".openagentd/dev/worktrees"));
         // A moved data dir (tests, custom installs) keeps its worktrees with it.
         assert_eq!(worktrees_dir_for("production", None, true, data), data.join("worktrees"));
-        assert_eq!(worktrees_dir_for("production", Some("/w/trees"), true, data), PathBuf::from("/w/trees"));
+        // An absolute override is used as is ("/w/trees" has no drive on
+        // Windows, so the test takes a path that is absolute everywhere).
+        let trees = std::env::temp_dir().join("trees");
+        assert_eq!(worktrees_dir_for("production", trees.to_str(), true, data), trees);
     }
 }

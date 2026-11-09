@@ -36,7 +36,7 @@ os_pipe = "1"
 # trafilatura move. markup5ever_rcdom must match htmd's (its `Element.node`);
 # html5ever must match scraper's (`HtmlTreeSink`).
 htmd = "=0.5.6"
-markup5ever_rcdom = "0.38"
+markup5ever_rcdom = "0.40"
 html5ever = "0.40"
 encoding_rs = "0.8"
 scraper = "0.29"

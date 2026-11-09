@@ -13,6 +13,7 @@ export const queryKeys = {
   backendStatus: () => ['app-backend-status'] as const,
   agents: () => ['agents'] as const,
   plugins: () => ['plugins'] as const,
+  serverUpdate: () => ['server-update'] as const,
   agentRegistry: (workspace?: string | null) => workspace ? ['agents', 'registry', workspace] as const : ['agents', 'registry'] as const,
   session: {
     // NOTE: there is no separate agent-status key. The home-page "is agent mode

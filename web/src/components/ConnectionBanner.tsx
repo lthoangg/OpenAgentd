@@ -11,6 +11,9 @@
  * also offers the way back in place (desktop mockup 12.2): Retry checks at
  * once, and the desktop app starts its built-in server when that is the one
  * down and not running, or offers it when a remote server is down.
+ *
+ * While this client updates the server (`useServerUpdateStore`) the server
+ * is away on purpose, so the row says that instead, with no actions.
  */
 import { lazy, Suspense, useState } from 'react'
 
@@ -21,6 +24,7 @@ import { formatBackendConnectionLabel, type AppBackendStatus } from '@/lib/app-b
 import { connectBundledBackend, reloadForBackendSwitch } from '@/lib/backend-switch'
 import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
 import { openServersScreen } from '@/stores/useServersScreenStore'
+import { useServerUpdateStore } from '@/stores/useServerUpdateStore'
 
 // Loaded on first open: the dialog pulls in the backend-switching machinery
 // (query client, auth), which the chat view does not otherwise import. It is
@@ -48,6 +52,7 @@ export function ConnectionBanner({ retry = true }: {
   const [starting, setStarting] = useState(false)
   const label = formatBackendConnectionLabel(backendStatus.data ?? null, apiBaseUrl())
   const builtin = isPhone ? null : builtinAction(backendStatus.data ?? null)
+  const updatingTo = useServerUpdateStore((s) => (s.phase.kind === 'updating' ? s.phase.target : null))
 
   const switchToBuiltin = async () => {
     setStarting(true)
@@ -59,7 +64,17 @@ export function ConnectionBanner({ retry = true }: {
 
   return (
     <>
-      {health.isError && (
+      {health.isError && updatingTo && (
+        <div
+          role="status"
+          data-connection-banner="updating"
+          className="flex min-h-8 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-key) py-1 pr-2 pl-3 text-xs text-(--color-text-muted)"
+        >
+          <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-(--color-text-muted)" aria-hidden="true" />
+          <p className="min-w-0 flex-1 truncate">Updating the server to v{updatingTo} · it reconnects on its own</p>
+        </div>
+      )}
+      {health.isError && !updatingTo && (
         <div
           role="alert"
           className="flex min-h-8 shrink-0 items-center gap-2 border-b border-(--color-warning)/30 bg-(--color-warning-subtle) py-1 pr-2 pl-3 text-xs text-(--accent-orange-text)"

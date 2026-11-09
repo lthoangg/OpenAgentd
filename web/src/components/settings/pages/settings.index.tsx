@@ -10,6 +10,7 @@ import { PRIVACY_URL } from '@/components/AiDataConsent'
 
 import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
 import { SettingsPage } from '@/components/settings/SettingsPage'
+import { ServerUpdateButton, ServerUpdateConfirm, ServerUpdateNote, useServerUpdateFlow } from '@/components/settings/ServerUpdate'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { TEXT } from '@/components/settings/tokens'
@@ -82,6 +83,7 @@ function skewMessage(client: string, server: string): { warn: boolean; text: str
 function VersionSection({ client, server }: { client?: string; server?: string }) {
   const address = useBackendStatusQuery().data?.base_url || apiBaseUrl()
   const skew = client && server ? skewMessage(client, server) : null
+  const update = useServerUpdateFlow()
 
   return (
     <PanelSection title="Version" flush>
@@ -90,7 +92,10 @@ function VersionSection({ client, server }: { client?: string; server?: string }
       </PanelRow>
       <PanelRow label="Server" description={<span className="font-mono break-all">{address}</span>}>
         <span className="font-mono text-sm text-(--color-text)">{server ? `v${server}` : 'not connected'}</span>
+        <ServerUpdateButton onRequest={update.request} />
       </PanelRow>
+      <ServerUpdateNote />
+      <ServerUpdateConfirm flow={update} />
       {skew ? (
         <p
           role={skew.warn ? 'alert' : 'status'}

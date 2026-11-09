@@ -37,6 +37,7 @@ pub fn router() -> Router<AppState> {
         .route("/sessions", get(list_sessions))
         .route("/sessions/resolve", post(resolve_session))
         .route("/workspace/visibility", axum::routing::patch(update_visibility))
+        .route("/workspace/relocate", post(relocate_workspace))
         .route("/workspace/tree", get(workspace_tree))
         .route("/sessions/{session_id}", get(session_detail).patch(update_session).delete(delete_session_route))
         .route("/sessions/{session_id}/subagents", get(session_subagents))
@@ -664,6 +665,50 @@ async fn update_visibility(State(st): State<AppState>, raw: Bytes) -> ApiResult<
 
 fn basename(p: &str) -> String {
     Path::new(p).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+}
+
+/// `POST /agent/workspace/relocate {from, to, dry_run?}` (v3 addition): a
+/// sidebar repository whose folder is gone (renamed, moved) takes the
+/// folder `to`, keeping its sessions, worktrees, scheduled tasks and
+/// groups. `dry_run` answers what would move, for the confirmation.
+async fn relocate_workspace(State(st): State<AppState>, raw: Bytes) -> ApiResult<Response> {
+    let b = body_value(&raw)?;
+    let mut errs = vec![];
+    let mut field = |k: &str| match b.get(k) {
+        Some(Value::String(s)) if !s.is_empty() => s.clone(),
+        None => {
+            errs.push(verr("missing", &loc(&["body", k]), "Field required", b.clone()));
+            String::new()
+        }
+        Some(o) => {
+            errs.push(verr("string_type", &loc(&["body", k]), "Input should be a non-empty string", o.clone()));
+            String::new()
+        }
+    };
+    let (from, to) = (field("from"), field("to"));
+    let dry_run = opt_bool_field(&b, "dry_run")?.unwrap_or(false);
+    if !errs.is_empty() {
+        return Err(ApiError::validation(errs));
+    }
+    use appv3_agent::worktrees::RelocateError;
+    let report = appv3_agent::worktrees::relocate_repository(&st.pool, &from, &to, dry_run).await.map_err(|e| match e {
+        RelocateError::Invalid(d) => ApiError::unprocessable(d),
+        RelocateError::Busy(titles) => ApiError::conflict(format!("Stop the running sessions first: {}.", titles.join(", "))),
+    })?;
+    let s = &report.summary;
+    Ok(json(json!({
+        "from": from,
+        "workspace": report.workspace,
+        "dry_run": dry_run,
+        "sessions": s.sessions,
+        "scheduled_tasks": s.scheduled_tasks,
+        "worktrees": s.worktrees.iter().map(|(p, managed)| json!({"path": p, "managed": managed})).collect::<Vec<_>>(),
+        "groups": s.groups,
+        "merge": s.merge,
+        "target_sessions": s.target_sessions,
+        "moved_worktrees": report.moved.iter().map(|(old, new)| json!({"from": old, "to": new})).collect::<Vec<_>>(),
+        "warnings": report.warnings,
+    })))
 }
 
 async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Response> {

@@ -166,3 +166,256 @@ pub async fn rename_coding_workspace(pool: &DbPool, path: &str, name: &str) -> R
 pub async fn list_visible_coding_workspaces(pool: &DbPool) -> Result<Vec<CodingWorkspace>> {
     Ok(sqlx::query_as::<_, CodingWorkspace>("SELECT * FROM coding_workspaces WHERE hidden = 0 AND deleted_at IS NULL ORDER BY created_at ASC").fetch_all(pool).await?)
 }
+
+// ── relocate ────────────────────────────────────────────────────────────────
+
+/// `path` moved from under `from` to under `to`: `from` itself, or a path
+/// inside it (`from/web`), rebased; anything else is `None`. A sibling that
+/// merely shares the prefix (`from-fix`) is not inside it.
+pub fn rebase_path(path: &str, from: &str, to: &str) -> Option<String> {
+    if path == from {
+        return Some(to.to_string());
+    }
+    let rest = path.strip_prefix(from)?;
+    (rest.starts_with('/') || rest.starts_with('\\')).then(|| format!("{to}{rest}"))
+}
+
+/// What a relocate from `from` to `to` would carry over (the confirmation's
+/// counts).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RelocateSummary {
+    /// Top-level sessions (subagents ride along with their lead).
+    pub sessions: i64,
+    pub scheduled_tasks: i64,
+    /// Worktree rows filed under the repository: `(path, managed)`.
+    pub worktrees: Vec<(String, bool)>,
+    /// Names of the groups the repository is in.
+    pub groups: Vec<String>,
+    /// `to` is already a listed workspace: the two are merged.
+    pub merge: bool,
+    /// Top-level sessions already at `to` (shown when merging).
+    pub target_sessions: i64,
+}
+
+async fn distinct_paths(pool: &DbPool, sql: &'static str) -> Result<Vec<String>> {
+    Ok(sqlx::query_scalar::<_, String>(sql).fetch_all(pool).await?)
+}
+
+pub async fn relocate_summary(pool: &DbPool, from: &str, to: &str) -> Result<RelocateSummary> {
+    let mut s = RelocateSummary::default();
+    let rows =
+        sqlx::query_as::<_, CodingWorkspace>("SELECT * FROM coding_workspaces WHERE kind = 'worktree' AND deleted_at IS NULL AND source_path IS NOT NULL ORDER BY created_at ASC")
+            .fetch_all(pool)
+            .await?;
+    s.worktrees = rows.into_iter().filter(|r| r.source_path.as_deref().is_some_and(|p| rebase_path(p, from, to).is_some())).map(|r| (r.path, r.managed)).collect();
+    // The repository's folder and everything filed under it: its worktrees too.
+    let under = |p: &String| rebase_path(p, from, from).is_some() || s.worktrees.iter().any(|(w, _)| rebase_path(p, w, w).is_some());
+    let mut sessions = 0;
+    for ws in distinct_paths(pool, "SELECT DISTINCT workspace FROM chat_sessions").await?.iter().filter(|p| under(p)) {
+        sessions += sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM chat_sessions WHERE workspace = ? AND parent_session_id IS NULL").bind(ws).fetch_one(pool).await?;
+    }
+    let mut tasks = 0;
+    for ws in distinct_paths(pool, "SELECT DISTINCT workspace FROM scheduled_task").await?.iter().filter(|p| under(p)) {
+        tasks += sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM scheduled_task WHERE workspace = ?").bind(ws).fetch_one(pool).await?;
+    }
+    s.sessions = sessions;
+    s.scheduled_tasks = tasks;
+    s.groups = sqlx::query_scalar::<_, String>(
+        "SELECT g.name FROM workspace_groups g JOIN workspace_group_members m ON m.group_id = g.id WHERE m.path = ? ORDER BY g.name COLLATE NOCASE",
+    )
+    .bind(from)
+    .fetch_all(pool)
+    .await?;
+    s.target_sessions = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM chat_sessions WHERE workspace = ? AND parent_session_id IS NULL").bind(to).fetch_one(pool).await?;
+    let target_row = get_workspace_by_path(pool, to).await?;
+    s.merge = target_row.is_some_and(|r| !r.hidden && r.deleted_at.is_none()) || s.target_sessions > 0;
+    Ok(s)
+}
+
+/// Move everything recorded under `from` (the folder and paths inside it) to
+/// `to`, in one transaction: sessions, scheduled tasks, sidebar rows (their
+/// own paths and the repository they are filed under), and group
+/// memberships. When `to` already has a row, the two merge: `to`'s row stays
+/// (shown again), `from`'s goes, and group memberships are unioned. A row
+/// still named after `from`'s folder takes `to`'s folder name.
+///
+/// Paths in old messages and tool calls are history and stay as they were.
+pub async fn relocate_workspace(pool: &DbPool, from: &str, to: &str) -> Result<()> {
+    let now = now_db();
+    let mut tx = pool.begin().await?;
+    // Sessions and scheduled tasks: one UPDATE per distinct path.
+    const TABLES: [(&str, &str); 2] = [
+        ("SELECT DISTINCT workspace FROM chat_sessions", "UPDATE chat_sessions SET workspace = ? WHERE workspace = ?"),
+        ("SELECT DISTINCT workspace FROM scheduled_task", "UPDATE scheduled_task SET workspace = ? WHERE workspace = ?"),
+    ];
+    for (select, update) in TABLES {
+        let paths: Vec<String> = sqlx::query_scalar(select).fetch_all(&mut *tx).await?;
+        for old in paths {
+            if let Some(new) = rebase_path(&old, from, to) {
+                sqlx::query(update).bind(&new).bind(&old).execute(&mut *tx).await?;
+            }
+        }
+    }
+    // Group memberships: union into the new path, then drop the old one.
+    let member_paths: Vec<String> = sqlx::query_scalar("SELECT DISTINCT path FROM workspace_group_members").fetch_all(&mut *tx).await?;
+    for old in member_paths {
+        if let Some(new) = rebase_path(&old, from, to) {
+            sqlx::query("INSERT OR IGNORE INTO workspace_group_members (group_id, path, created_at) SELECT group_id, ?, created_at FROM workspace_group_members WHERE path = ?")
+                .bind(&new)
+                .bind(&old)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("DELETE FROM workspace_group_members WHERE path = ?").bind(&old).execute(&mut *tx).await?;
+        }
+    }
+    // Sidebar rows. Rows filed under the repository first (their
+    // `source_path`), then each row's own path, merging into a row already
+    // at the new path.
+    let rows: Vec<CodingWorkspace> = sqlx::query_as("SELECT * FROM coding_workspaces").fetch_all(&mut *tx).await?;
+    for row in &rows {
+        if let Some(new_source) = row.source_path.as_deref().and_then(|s| rebase_path(s, from, to)) {
+            sqlx::query("UPDATE coding_workspaces SET source_path = ?, updated_at = ? WHERE id = ?").bind(&new_source).bind(&now).bind(&row.id).execute(&mut *tx).await?;
+        }
+    }
+    for row in &rows {
+        let Some(new_path) = rebase_path(&row.path, from, to) else { continue };
+        let existing: Option<String> = sqlx::query_scalar("SELECT id FROM coding_workspaces WHERE path = ?").bind(&new_path).fetch_optional(&mut *tx).await?;
+        match existing {
+            Some(id) => {
+                sqlx::query("UPDATE coding_workspaces SET hidden = 0, deleted_at = NULL, updated_at = ? WHERE id = ?").bind(&now).bind(&id).execute(&mut *tx).await?;
+                sqlx::query("DELETE FROM coding_workspaces WHERE id = ?").bind(&row.id).execute(&mut *tx).await?;
+            }
+            None => {
+                let renamed = match row.name.as_deref() {
+                    None | Some("") => basename(&new_path),
+                    Some(n) if n == basename(&row.path) => basename(&new_path),
+                    Some(n) => n.to_string(),
+                };
+                sqlx::query("UPDATE coding_workspaces SET path = ?, name = ?, hidden = 0, deleted_at = NULL, updated_at = ? WHERE id = ?")
+                    .bind(&new_path)
+                    .bind(renamed)
+                    .bind(&now)
+                    .bind(&row.id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn fresh() -> (tempfile::TempDir, DbPool) {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::create_pool(dir.path().join("oad.db")).await.unwrap();
+        (dir, pool)
+    }
+
+    async fn add_session(pool: &DbPool, workspace: &str) {
+        sqlx::query("INSERT INTO chat_sessions (id, created_at, updated_at, workspace) VALUES (?, '2026-01-01 00:00:00.000000', '2026-01-01 00:00:00.000000', ?)")
+            .bind(new_id())
+            .bind(workspace)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+
+    async fn add_task(pool: &DbPool, name: &str, workspace: &str) {
+        sqlx::query(
+            "INSERT INTO scheduled_task (id, name, schedule_type, prompt, created_at, updated_at, workspace, slug) \
+             VALUES (?, ?, 'every', 'p', '2026-01-01 00:00:00.000000', '2026-01-01 00:00:00.000000', ?, ?)",
+        )
+        .bind(new_id())
+        .bind(name)
+        .bind(workspace)
+        .bind(name)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    async fn workspaces_of(pool: &DbPool, table: &str) -> Vec<String> {
+        let sql = match table {
+            "chat_sessions" => "SELECT workspace FROM chat_sessions ORDER BY workspace",
+            _ => "SELECT workspace FROM scheduled_task ORDER BY workspace",
+        };
+        sqlx::query_scalar(sql).fetch_all(pool).await.unwrap()
+    }
+
+    #[test]
+    fn rebase_takes_the_folder_and_paths_inside_it_only() {
+        assert_eq!(rebase_path("/c/agentd", "/c/agentd", "/c/oad").as_deref(), Some("/c/oad"));
+        assert_eq!(rebase_path("/c/agentd/web", "/c/agentd", "/c/oad").as_deref(), Some("/c/oad/web"));
+        assert_eq!(rebase_path("C:\\c\\agentd\\web", "C:\\c\\agentd", "C:\\c\\oad").as_deref(), Some("C:\\c\\oad\\web"));
+        assert_eq!(rebase_path("/c/agentd-fix", "/c/agentd", "/c/oad"), None);
+        assert_eq!(rebase_path("/c/other", "/c/agentd", "/c/oad"), None);
+    }
+
+    #[tokio::test]
+    async fn moves_sessions_tasks_rows_and_groups_and_takes_the_new_name() {
+        let (_d, pool) = fresh().await;
+        let (from, to) = ("/c/agentd", "/c/openagentd");
+        upsert_coding_workspace(&pool, from, "repo", None, None, false, false).await.unwrap();
+        upsert_coding_workspace(&pool, "/c/agentd/web", "folder", Some(from), None, false, false).await.unwrap();
+        upsert_coding_workspace(&pool, "/wt/agentd-1/fix", "worktree", Some(from), Some("fix"), true, false).await.unwrap();
+        upsert_coding_workspace(&pool, "/c/agentd-other", "repo", None, None, false, false).await.unwrap();
+        for ws in [from, from, "/c/agentd/web", "/wt/agentd-1/fix", "/c/agentd-other"] {
+            add_session(&pool, ws).await;
+        }
+        add_task(&pool, "nightly", from).await;
+        let g = crate::create_workspace_group(&pool, "backend", None, None).await.unwrap();
+        crate::set_workspace_groups(&pool, from, std::slice::from_ref(&g.id)).await.unwrap();
+
+        let summary = relocate_summary(&pool, from, to).await.unwrap();
+        assert_eq!((summary.sessions, summary.scheduled_tasks, summary.merge), (4, 1, false), "the worktree's session counts too");
+        assert_eq!(summary.worktrees, vec![("/wt/agentd-1/fix".to_string(), true)]);
+        assert_eq!(summary.groups, vec!["backend".to_string()]);
+
+        relocate_workspace(&pool, from, to).await.unwrap();
+        assert_eq!(workspaces_of(&pool, "chat_sessions").await, vec!["/c/agentd-other", "/c/openagentd", "/c/openagentd", "/c/openagentd/web", "/wt/agentd-1/fix"]);
+        assert_eq!(workspaces_of(&pool, "scheduled_task").await, vec!["/c/openagentd"]);
+        let repo = get_workspace_by_path(&pool, to).await.unwrap().unwrap();
+        assert_eq!(repo.name.as_deref(), Some("openagentd"));
+        assert!(get_workspace_by_path(&pool, from).await.unwrap().is_none());
+        let folder = get_workspace_by_path(&pool, "/c/openagentd/web").await.unwrap().unwrap();
+        assert_eq!(folder.source_path.as_deref(), Some(to));
+        let wt = get_workspace_by_path(&pool, "/wt/agentd-1/fix").await.unwrap().unwrap();
+        assert_eq!((wt.source_path.as_deref(), wt.name.as_deref()), (Some(to), Some("fix")));
+        let members = crate::list_group_memberships(&pool).await.unwrap();
+        assert_eq!(members.iter().map(|(_, p)| p.as_str()).collect::<Vec<_>>(), vec![to]);
+        // A sibling sharing the prefix is untouched.
+        assert!(get_workspace_by_path(&pool, "/c/agentd-other").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn merges_into_a_workspace_already_at_the_new_folder() {
+        let (_d, pool) = fresh().await;
+        let (from, to) = ("/c/agentd", "/c/openagentd");
+        upsert_coding_workspace(&pool, from, "repo", None, None, false, false).await.unwrap();
+        upsert_coding_workspace(&pool, to, "repo", None, Some("My app"), false, false).await.unwrap();
+        add_session(&pool, from).await;
+        add_session(&pool, to).await;
+        let a = crate::create_workspace_group(&pool, "a", None, None).await.unwrap();
+        let b = crate::create_workspace_group(&pool, "b", None, None).await.unwrap();
+        crate::set_workspace_groups(&pool, from, &[a.id.clone(), b.id.clone()]).await.unwrap();
+        crate::set_workspace_groups(&pool, to, std::slice::from_ref(&a.id)).await.unwrap();
+
+        let summary = relocate_summary(&pool, from, to).await.unwrap();
+        assert!(summary.merge);
+        assert_eq!(summary.target_sessions, 1);
+
+        relocate_workspace(&pool, from, to).await.unwrap();
+        assert_eq!(workspaces_of(&pool, "chat_sessions").await, vec![to, to]);
+        assert!(get_workspace_by_path(&pool, from).await.unwrap().is_none());
+        assert_eq!(get_workspace_by_path(&pool, to).await.unwrap().unwrap().name.as_deref(), Some("My app"));
+        let mut groups: Vec<String> = crate::list_group_memberships(&pool).await.unwrap().into_iter().filter(|(_, p)| p == to).map(|(g, _)| g).collect();
+        groups.sort();
+        let mut want = vec![a.id, b.id];
+        want.sort();
+        assert_eq!(groups, want);
+    }
+}

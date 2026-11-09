@@ -3,8 +3,9 @@
 //! the 6-digit code behind Face ID, the device list, and the relay bridge
 //! to a computer.
 //!
-//! The phone is a controller and, in v1, the only device that approves
-//! others. Guests never reach this module's network code. The protocol is
+//! The phone is a client (spec 3.4: it opens sessions, never serves them)
+//! and usually a signer. It may be the account's first device, or join an
+//! account a computer started. Guests never reach this module's network code. The protocol is
 //! `native/cloud`; the threat model is `appv3/contract/tunnel-threats.md`.
 //!
 //! Keys: on iOS the Keychain (`ios-widget/App/KeychainBridge.swift`), with
@@ -20,7 +21,7 @@ use openagentd_cloud::account_state::AccountProblem;
 use openagentd_cloud::api::Cloud;
 use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{self, Approval, FlowError, GenesisDraft, Member, Pace, Session};
-use openagentd_cloud::keys::{self, DeviceKeys, Ed25519, Seed};
+use openagentd_cloud::keys::{self, DeviceKeys, Ed25519, Roles, Seed};
 use openagentd_cloud::recovery;
 use openagentd_cloud::relay::{self, Join, RelayError, Tunnel};
 use openagentd_cloud::roster;
@@ -245,6 +246,18 @@ struct Phone {
     bridge_keys: Mutex<HashMap<String, String>>,
 }
 
+/// A phone only opens sessions: it has no host to serve (spec 3.4).
+const PHONE_ROLES: Roles = Roles::CLIENT;
+
+/// A fresh identity's cloud, asking for the phone's roles.
+fn new_cloud() -> (Cloud, String) {
+    let keys = DeviceKeys::generate();
+    let fingerprint = keys.fingerprint();
+    let mut cloud = Cloud::new(http(), Endpoints::current(), keys, None);
+    cloud.roles = PHONE_ROLES;
+    (cloud, fingerprint)
+}
+
 struct Link {
     tunnel: Arc<tokio::sync::Mutex<Option<Tunnel>>>,
     bridge: Bridge,
@@ -284,6 +297,13 @@ pub fn init(data_dir: std::path::PathBuf) {
     };
     if PHONE.set(phone).is_err() {
         return;
+    }
+    #[cfg(target_os = "ios")]
+    {
+        extern "C" {
+            fn openagentd_notification_taps_install();
+        }
+        unsafe { openagentd_notification_taps_install() };
     }
     tauri::async_runtime::spawn(restore());
 }
@@ -512,6 +532,9 @@ async fn flow_error(e: FlowError) -> String {
         FlowError::ConfirmMismatch => {
             "The account's answer did not match the invitation. Nothing was changed.".into()
         }
+        FlowError::Roles => {
+            "A device can only get the roles it asked for, and needs at least one.".into()
+        }
         FlowError::Roster(rule) => {
             format!("The account's device list failed a check ({rule}). Nothing was changed.")
         }
@@ -589,9 +612,8 @@ fn notice_of(e: &FlowError) -> Notice {
 /// link is a bearer secret: it is dropped once claimed.
 fn spawn_join(link: Zeroizing<String>) {
     let task = tauri::async_runtime::spawn(async move {
-        let keys = DeviceKeys::generate();
-        let fingerprint = keys.fingerprint();
-        let mut member = Member::new(Cloud::new(http(), Endpoints::current(), keys, None), None);
+        let (cloud, fingerprint) = new_cloud();
+        let mut member = Member::new(cloud, None);
         let end = |e: FlowError| {
             set_status(Status::Guest {
                 notice: Some(notice_of(&e)),
@@ -647,9 +669,7 @@ pub fn cloud_join_invite(link: String) -> Result<Status, String> {
 
 fn spawn_sign_in() {
     let task = tauri::async_runtime::spawn(async move {
-        let keys = DeviceKeys::generate();
-        let fingerprint = keys.fingerprint();
-        let cloud = Cloud::new(http(), Endpoints::current(), keys, None);
+        let (cloud, fingerprint) = new_cloud();
         let end = |e: FlowError| {
             set_status(Status::Guest {
                 notice: Some(notice_of(&e)),
@@ -820,6 +840,10 @@ pub struct DeviceRow {
     pub device_id: String,
     pub fingerprint: String,
     pub signer: bool,
+    /// Its roles in the verified roster: other devices open sessions to a
+    /// server; a client opens them.
+    pub server: bool,
+    pub client: bool,
     pub me: bool,
     /// "macos", "linux", "windows", "ios", "android" when the cloud says.
     pub kind: Option<String>,
@@ -849,6 +873,8 @@ pub async fn cloud_devices() -> Result<Vec<DeviceRow>, String> {
                     device_id: d.id.clone(),
                     fingerprint: keys::fingerprint(&d.id).unwrap_or_default(),
                     signer: d.signer,
+                    server: d.server,
+                    client: d.client,
                     me: d.id == me,
                     kind: kinds.get(&d.id).cloned().flatten(),
                 })
@@ -866,6 +892,9 @@ pub struct PendingRow {
     pub expires_at: Option<u64>,
     /// The joining device's self-reported kind; a label, never a check.
     pub kind: Option<String>,
+    /// The roles it asked for (inside the code it shows).
+    pub server: bool,
+    pub client: bool,
 }
 
 #[tauri::command]
@@ -885,21 +914,35 @@ pub async fn cloud_pending() -> Result<Vec<PendingRow>, String> {
     };
     Ok(list
         .into_iter()
-        .filter(|r| r.commit.is_some() && r.auth_pub.is_some())
-        .map(|r| PendingRow {
-            fingerprint: keys::fingerprint(&r.device_id).unwrap_or_default(),
-            enrollment_id: r.enrollment_id,
-            country: r.country,
-            created_at: r.created_at,
-            expires_at: r.expires_at,
-            kind: r.kind,
+        .filter(|r| r.commit.is_some() && r.auth_pub.is_some() && r.invite_slot.is_none())
+        .filter_map(|r| {
+            let roles = r.requested()?.roles;
+            Some(PendingRow {
+                fingerprint: keys::fingerprint(&r.device_id).unwrap_or_default(),
+                enrollment_id: r.enrollment_id,
+                country: r.country,
+                created_at: r.created_at,
+                expires_at: r.expires_at,
+                kind: r.kind,
+                server: roles.server,
+                client: roles.client,
+            })
         })
         .collect())
 }
 
+/// What the approval sheet shows once both codes are known.
+#[derive(Debug, Clone, Serialize)]
+pub struct ApprovalView {
+    pub code: String,
+    /// The roles the device asked for: the person may turn one off.
+    pub server: bool,
+    pub client: bool,
+}
+
 /// Starts approving a request and waits for the code both screens show.
 #[tauri::command]
-pub async fn cloud_approve_begin(enrollment_id: String) -> Result<String, String> {
+pub async fn cloud_approve_begin(enrollment_id: String) -> Result<ApprovalView, String> {
     let p = phone()?;
     let mut guard = p.member.lock().await;
     let member = guard.as_mut().ok_or("Not signed in.")?;
@@ -924,7 +967,11 @@ pub async fn cloud_approve_begin(enrollment_id: String) -> Result<String, String
     match result {
         Ok((approval, code)) => {
             p.approvals.lock().await.insert(enrollment_id, approval);
-            Ok(code.code)
+            Ok(ApprovalView {
+                code: code.code,
+                server: code.roles.server,
+                client: code.roles.client,
+            })
         }
         Err(e) => Err(flow_error(e).await),
     }
@@ -962,14 +1009,47 @@ async fn with_sign_key<T>(
     }
 }
 
+/// The grant for a device that asked for `asked`: the person's choices,
+/// defaulting to what it asked for, and to a signer when it opens sessions
+/// (a phone or a desktop app has someone at its screen).
+fn grant_of(
+    asked: Roles,
+    approver: Option<bool>,
+    server: Option<bool>,
+    client: Option<bool>,
+) -> Result<flows::Grant, String> {
+    let roles = Roles {
+        server: server.unwrap_or(asked.server),
+        client: client.unwrap_or(asked.client),
+    };
+    if !roles.is_valid() || !roles.within(asked) {
+        return Err("A device can only get the roles it asked for, and needs at least one.".into());
+    }
+    Ok(flows::Grant {
+        signer: approver.unwrap_or(asked.client),
+        roles,
+    })
+}
+
 /// The codes match: add the device (after Face ID). `approver`: it may
-/// approve others too (another phone).
+/// approve others too. `server` / `client`: its roles, those it asked for
+/// or fewer (a role it did not ask for is refused before Face ID).
 #[tauri::command]
 pub async fn cloud_approve_confirm(
     enrollment_id: String,
     approver: Option<bool>,
+    server: Option<bool>,
+    client: Option<bool>,
 ) -> Result<Status, String> {
     let p = phone()?;
+    let grant = {
+        let open = p.approvals.lock().await;
+        let asked = open
+            .get(&enrollment_id)
+            .ok_or("Start the approval again.")?
+            .requested();
+        grant_of(asked, approver, server, client)?
+    };
     let approval = p
         .approvals
         .lock()
@@ -979,7 +1059,7 @@ pub async fn cloud_approve_confirm(
     with_sign_key(
         "Add this device to your account",
         async move |m: &mut Member| {
-            flows::confirm_approval(m, approval, approver.unwrap_or(false))
+            flows::confirm_approval(m, approval, grant)
                 .await
                 .map(|_| ())
         },
@@ -1060,6 +1140,9 @@ pub struct CandidateRow {
     pub enrollment_id: String,
     pub fingerprint: String,
     pub kind: Option<String>,
+    /// The roles it asked for (covered by its proof).
+    pub server: bool,
+    pub client: bool,
 }
 
 /// One look at the open invitation.
@@ -1129,6 +1212,8 @@ pub async fn cloud_invite_poll() -> Result<InvitePoll, String> {
                 enrollment_id: c.enrollment_id,
                 fingerprint: c.fingerprint,
                 kind: c.kind,
+                server: c.roles.server,
+                client: c.roles.client,
             },
         }),
         Err(FlowError::InviteCompromised) => {
@@ -1148,10 +1233,31 @@ pub async fn cloud_invite_poll() -> Result<InvitePoll, String> {
 }
 
 /// The person checked the fingerprint and tapped Add: adds that candidate
-/// (after Face ID) and spends the invitation.
+/// (after Face ID) and spends the invitation. `approver`, `server`,
+/// `client` as for [`cloud_approve_confirm`]; absent, it gets the roles it
+/// asked for and approves others when it opens sessions.
 #[tauri::command]
-pub async fn cloud_invite_add(enrollment_id: String) -> Result<Status, String> {
+pub async fn cloud_invite_add(
+    enrollment_id: String,
+    approver: Option<bool>,
+    server: Option<bool>,
+    client: Option<bool>,
+) -> Result<Status, String> {
     let p = phone()?;
+    let grant = {
+        let guard = p.member.lock().await;
+        let member = guard.as_ref().ok_or("Not signed in.")?;
+        let slot = p.invite.lock().await;
+        let invite = slot
+            .as_ref()
+            .ok_or("The invitation ended. Show a new one.")?;
+        match flows::check_candidates(member, invite).await {
+            Ok(flows::Candidates::One(c)) if c.enrollment_id == enrollment_id => {
+                grant_of(c.roles, approver, server, client)?
+            }
+            _ => return Err("The invitation ended. Show a new one.".into()),
+        }
+    };
     let invite = p
         .invite
         .lock()
@@ -1161,7 +1267,7 @@ pub async fn cloud_invite_add(enrollment_id: String) -> Result<Status, String> {
     with_sign_key(
         "Add this device to your account",
         async move |m: &mut Member| {
-            flows::add_invited(m, invite, &enrollment_id)
+            flows::add_invited(m, invite, &enrollment_id, grant)
                 .await
                 .map(|_| ())
         },
@@ -1220,6 +1326,23 @@ pub async fn register_push(registration: serde_json::Value) -> Result<(), String
     }
 }
 
+/// What the person tapped since the last call: `"approval"` for the
+/// cloud's "A device wants to join your account", so the web UI opens the
+/// pending approvals. The push carries nothing else.
+#[tauri::command]
+pub fn cloud_take_notification() -> Option<&'static str> {
+    #[cfg(target_os = "ios")]
+    {
+        extern "C" {
+            fn openagentd_notification_take_approval() -> i32;
+        }
+        if unsafe { openagentd_notification_take_approval() } == 1 {
+            return Some("approval");
+        }
+    }
+    None
+}
+
 pub fn signed_in() -> bool {
     matches!(status(), Status::Connected { .. })
 }
@@ -1245,8 +1368,15 @@ async fn connect(device_id: &str) -> Result<Tunnel, String> {
     let p = phone()?;
     let guard = p.member.lock().await;
     let member = guard.as_ref().ok_or("Not signed in.")?;
+    // Only a server, from a client (spec 3.4).
+    if !member.is_client() {
+        return Err("This phone cannot open computers through your account.".into());
+    }
     let host_box = member
-        .box_of(device_id)
+        .roster
+        .as_ref()
+        .and_then(|r| r.body.servers().find(|d| d.id == device_id))
+        .map(|d| d.box_key())
         .ok_or("This computer is not in your account.")?;
     let r = relay::connect(
         &member.cloud,
@@ -1346,6 +1476,24 @@ mod tests {
             s,
             serde_json::json!({"state": "recovery", "code": "X", "check": [2, 9]})
         );
+    }
+
+    #[test]
+    fn an_approver_gives_the_asked_roles_or_fewer() {
+        // Defaults: what it asked for; a signer when it opens sessions.
+        let g = grant_of(Roles::BOTH, None, None, None).unwrap();
+        assert_eq!((g.signer, g.roles), (true, Roles::BOTH));
+        let g = grant_of(Roles::SERVER, None, None, None).unwrap();
+        assert_eq!((g.signer, g.roles), (false, Roles::SERVER));
+        // Turning one off is fine; turning one on, or both off, is not.
+        assert_eq!(
+            grant_of(Roles::BOTH, Some(false), Some(true), Some(false))
+                .unwrap()
+                .roles,
+            Roles::SERVER
+        );
+        assert!(grant_of(Roles::CLIENT, None, Some(true), None).is_err());
+        assert!(grant_of(Roles::BOTH, None, Some(false), Some(false)).is_err());
     }
 
     #[test]

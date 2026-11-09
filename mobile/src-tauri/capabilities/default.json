@@ -50,6 +50,7 @@
     "allow-cloud-invite-cancel",
     "allow-cloud-remove-device",
     "allow-cloud-sign-out",
+    "allow-cloud-take-notification",
     "allow-cloud-open-computer",
     "allow-cloud-push-register",
     "allow-updater-check",

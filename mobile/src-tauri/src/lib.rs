@@ -686,6 +686,7 @@ pub fn run() {
             cloud::cloud_invite_cancel,
             cloud::cloud_remove_device,
             cloud::cloud_sign_out,
+            cloud::cloud_take_notification,
             cloud_open_computer,
             cloud_push_register,
             updater::updater_check,

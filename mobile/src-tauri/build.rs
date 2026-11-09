@@ -39,6 +39,7 @@ fn main() {
                 "cloud_invite_cancel",
                 "cloud_remove_device",
                 "cloud_sign_out",
+                "cloud_take_notification",
                 "cloud_open_computer",
                 "cloud_push_register",
                 "updater_check",

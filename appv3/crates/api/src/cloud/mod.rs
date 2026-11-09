@@ -20,7 +20,7 @@ use axum::Router;
 use openagentd_cloud::account_state::{AccountProblem, UNAVAILABLE_RETRY_SECS};
 use openagentd_cloud::api::Cloud;
 use openagentd_cloud::endpoints::Endpoints;
-use openagentd_cloud::flows::{FlowError, Member};
+use openagentd_cloud::flows::{FlowError, Member, Removal};
 use openagentd_cloud::relay::{self, HostHandler, Join, RelayError, Sessions};
 use openagentd_cloud::roster::{self, Chain, Roster};
 use openagentd_cloud::store::{self as idstore, FileStore, Identity, SecretStore};
@@ -304,7 +304,9 @@ struct Handler {
     me: String,
     /// Devices the relay listed as revoked or left. A device that left
     /// stays in the signed roster until a signer rewrites it, so the roster
-    /// alone would still admit it.
+    /// alone would still admit it. Only ids the verified roster still lists
+    /// are kept (the roster refuses the others anyway), so the set never
+    /// holds more than the roster's devices.
     revoked: RwLock<HashSet<String>>,
     resync: mpsc::UnboundedSender<RosterNote>,
 }
@@ -312,8 +314,9 @@ struct Handler {
 /// What a presence `roster` message asks of the host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RosterNote {
-    /// This host is listed as revoked: forget the account.
-    Forget,
+    /// This host is listed as revoked. The list is unsigned: stop relaying
+    /// and confirm with a signed roster fetch before erasing anything.
+    Check,
     /// The stored version is newer than ours: fetch and verify it.
     Fetch,
     /// Nothing new to fetch (a repeat, or a leave, which changes no version).
@@ -324,12 +327,20 @@ enum RosterNote {
 /// 16 minutes, so this is idempotent; only a newer `version` is fetched.
 fn read_roster_note(me: &str, known_version: u64, version: u64, revoked: &[String]) -> RosterNote {
     if revoked.iter().any(|d| d == me) {
-        RosterNote::Forget
+        RosterNote::Check
     } else if version > known_version {
         RosterNote::Fetch
     } else {
         RosterNote::Nothing
     }
+}
+
+/// Updates the set of departed devices from a presence `revoked` list:
+/// drops ids the verified roster no longer lists, then adds the listed
+/// ones it still does (never this host).
+fn note_revoked(set: &mut HashSet<String>, roster: &Roster, me: &str, revoked: &[String]) {
+    set.retain(|d| roster.body.device(d).is_some());
+    set.extend(revoked.iter().filter(|d| *d != me && roster.body.device(d).is_some()).cloned());
 }
 
 impl HostHandler for Handler {
@@ -346,8 +357,8 @@ impl HostHandler for Handler {
 
     fn on_roster(&self, version: u64, revoked: Vec<String>) {
         // The relay already closed the listed devices' sessions.
-        if let Ok(mut set) = self.revoked.write() {
-            set.extend(revoked.iter().filter(|d| **d != self.me).cloned());
+        if let (Ok(mut set), Ok(roster)) = (self.revoked.write(), self.roster.read()) {
+            note_revoked(&mut set, &roster, &self.me, &revoked);
         }
         let known = self.roster.read().map(|r| r.version()).unwrap_or(0);
         let note = read_roster_note(&self.me, known, version, &revoked);
@@ -388,6 +399,12 @@ fn on_problem(p: AccountProblem, fingerprint: &str) -> bool {
             forget(Notice::Revoked);
             false
         }
+        AccountProblem::RemovalSignal => {
+            // Unsigned: close sessions and keep the keys. The next signed
+            // roster fetch decides (`Revoked` only on a signed answer).
+            host().sessions.close_all(1001);
+            true
+        }
     }
 }
 
@@ -410,6 +427,19 @@ fn persist_roster(r: &Roster) {
         id.problem = None;
         if let Err(e) = idstore::save(&store, &id) {
             tracing::warn!("cloud_roster_save_failed error={e}");
+        }
+    }
+}
+
+/// Takes a changed roster as `K`: stores it and closes the sessions of the
+/// devices it removed.
+fn apply_sync(member: &Member, shared: &RwLock<Roster>, sync: openagentd_cloud::flows::Sync) {
+    if sync.changed {
+        let r = member.roster.clone().expect("synced");
+        persist_roster(&r);
+        *shared.write().expect("roster lock") = r;
+        for d in sync.removed {
+            host().sessions.revoke(&d);
         }
     }
 }
@@ -439,20 +469,12 @@ async fn run(identity: Identity) {
     loop {
         // Bring K up to date (and learn whether the account is usable).
         match member.sync().await {
-            Ok(sync) => {
-                if sync.changed {
-                    let r = member.roster.clone().expect("synced");
-                    persist_roster(&r);
-                    *shared.write().expect("roster lock") = r;
-                    for d in sync.removed {
-                        host().sessions.revoke(&d);
-                    }
-                }
-            }
+            Ok(sync) => apply_sync(&member, &shared, sync),
             Err(FlowError::Problem(p)) => {
                 if !on_problem(p, &fingerprint) {
                     return;
                 }
+                set_relay(RelayState::Offline, member.is_signer(), &fingerprint);
                 tokio::time::sleep(Duration::from_secs(UNAVAILABLE_RETRY_SECS)).await;
                 continue;
             }
@@ -488,23 +510,30 @@ async fn run(identity: Identity) {
                     online_after.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(3600 * 24 * 365));
                 }
                 Some(note) = resync_rx.recv() => {
-                    if note == RosterNote::Forget {
+                    if note == RosterNote::Check {
                         // The relay lists this host as removed or departed.
-                        // (A signed request would get `device_revoked`.)
+                        // Unsigned: stop relaying and close sessions, then
+                        // ask with one signed request. Only that erases keys.
                         let _ = stop_tx.send(());
-                        forget(Notice::Revoked);
-                        return;
+                        host().sessions.close_all(1001);
+                        match member.confirm_removal().await {
+                            Removal::Removed => {
+                                forget(Notice::Revoked);
+                                return;
+                            }
+                            Removal::NotRemoved(sync) => apply_sync(&member, &shared, sync),
+                            Removal::Unsure(FlowError::Problem(p)) => {
+                                if !on_problem(p, &fingerprint) {
+                                    return;
+                                }
+                            }
+                            Removal::Unsure(e) => tracing::info!("cloud_removal_check_failed reason={}", engine::reason(&e)),
+                        }
+                        // Keys kept: reconnect after a backoff.
+                        break RelayError::Closed(1001);
                     }
                     match member.sync().await {
-                        Ok(sync) if sync.changed => {
-                            let r = member.roster.clone().expect("synced");
-                            persist_roster(&r);
-                            *shared.write().expect("roster lock") = r;
-                            for d in sync.removed {
-                                host().sessions.revoke(&d);
-                            }
-                        }
-                        Ok(_) => {}
+                        Ok(sync) => apply_sync(&member, &shared, sync),
                         Err(FlowError::Problem(p)) => {
                             let _ = stop_tx.send(());
                             if !on_problem(p, &fingerprint) {
@@ -517,6 +546,15 @@ async fn run(identity: Identity) {
                 }
             }
         };
+        if ended.problem() == Some(AccountProblem::RemovalSignal) {
+            // Close 4001 or a refused relay token: unsigned. The signed
+            // roster fetch at the top of the loop decides; keys stay.
+            on_problem(AccountProblem::RemovalSignal, &fingerprint);
+            set_relay(RelayState::Offline, member.is_signer(), &fingerprint);
+            tokio::time::sleep(backoff(attempt)).await;
+            attempt += 1;
+            continue;
+        }
         if let Some(p) = ended.problem() {
             if !on_problem(p, &fingerprint) {
                 return;
@@ -562,15 +600,41 @@ mod tests {
     }
 
     #[test]
-    fn roster_note_forgets_only_when_this_host_is_listed() {
-        assert_eq!(read_roster_note("me", 3, 3, &ids(&["other", "me"])), RosterNote::Forget);
-        // Listed again on a later message: still forget (idempotent).
-        assert_eq!(read_roster_note("me", 3, 4, &ids(&["me"])), RosterNote::Forget);
+    fn roster_note_checks_only_when_this_host_is_listed() {
+        // Listed: confirm with a signed request; the note itself erases nothing.
+        assert_eq!(read_roster_note("me", 3, 3, &ids(&["other", "me"])), RosterNote::Check);
+        // Listed again on a later message: check again (idempotent).
+        assert_eq!(read_roster_note("me", 3, 4, &ids(&["me"])), RosterNote::Check);
     }
 
     #[test]
     fn roster_note_fetches_only_a_newer_version() {
         assert_eq!(read_roster_note("me", 3, 4, &[]), RosterNote::Fetch);
+    }
+
+    #[test]
+    fn the_departed_set_holds_only_devices_the_roster_still_lists() {
+        use openagentd_cloud::keys::DeviceKeys;
+        use openagentd_cloud::roster::{sign, Body, Device};
+        let (me, a, b) = (DeviceKeys::generate(), DeviceKeys::generate(), DeviceKeys::generate());
+        let body = Body::genesis("acct", &[7; 32], Device::of(&me, true));
+        let one = sign(&Body { devices: vec![Device::of(&me, true), Device::of(&a, false), Device::of(&b, false)], ..body }, &me.id(), &me.sign);
+        let mut set = HashSet::new();
+        // Ids the roster does not list, and this host, are not kept.
+        note_revoked(&mut set, &one, &me.id(), &ids(&[a.id().as_str(), me.id().as_str(), "stranger"]));
+        assert_eq!(set, HashSet::from([a.id()]));
+        // A later roster without `a` (a signer rewrote it): `a` leaves the set.
+        let two = sign(&one.next_body(vec![Device::of(&me, true), Device::of(&b, false)]), &me.id(), &me.sign);
+        note_revoked(&mut set, &two, &me.id(), &ids(&[b.id().as_str()]));
+        assert_eq!(set, HashSet::from([b.id()]));
+        // A long list cannot grow it past the roster.
+        let many: Vec<String> = (0..1000).map(|i| format!("d{i}")).collect();
+        note_revoked(&mut set, &two, &me.id(), &many);
+        assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn roster_note_ignores_old_versions_and_leaves() {
         // A leave changes no version; repeats of the revoked list are normal.
         assert_eq!(read_roster_note("me", 3, 3, &ids(&["left"])), RosterNote::Nothing);
         assert_eq!(read_roster_note("me", 3, 3, &ids(&["left"])), RosterNote::Nothing);

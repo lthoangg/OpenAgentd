@@ -71,6 +71,18 @@ impl From<crate::Error> for FlowError {
 
 pub type FlowResult<T> = Result<T, FlowError>;
 
+/// What [`Member::confirm_removal`] found.
+#[derive(Debug)]
+pub enum Removal {
+    /// The cloud confirmed it with a signed answer: erase the keys.
+    Removed,
+    /// This device is still in the verified roster (which may have changed).
+    NotRemoved(Sync),
+    /// No signed answer either way (offline, another problem): keep the
+    /// keys and ask again later.
+    Unsure(FlowError),
+}
+
 /// How often the steps that wait on another device poll the cloud.
 #[derive(Debug, Clone, Copy)]
 pub struct Pace {
@@ -204,6 +216,18 @@ impl Member {
             return Err(FlowError::Problem(AccountProblem::Revoked));
         }
         Ok(Sync { changed: true, removed: change.removed })
+    }
+
+    /// After an unsigned removal signal from the relay, asks the cloud with
+    /// one signed `GET /v1/roster`. Only `403 device_revoked`, or a verified
+    /// roster that no longer lists this device, confirms the removal; any
+    /// other answer keeps the keys.
+    pub async fn confirm_removal(&mut self) -> Removal {
+        match self.sync().await {
+            Ok(sync) => Removal::NotRemoved(sync),
+            Err(FlowError::Problem(AccountProblem::Revoked)) => Removal::Removed,
+            Err(e) => Removal::Unsure(e),
+        }
     }
 
     /// Signs and writes the next roster with `devices`.

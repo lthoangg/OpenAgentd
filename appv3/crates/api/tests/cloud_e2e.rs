@@ -10,8 +10,12 @@
 //!    sent removed, and may not touch the account routes;
 //! 4. a notification the server raises arrives in the phone's mailbox as a
 //!    sealed letter that only the phone can open;
+//!    then the relay names the server as revoked, and closes its presence
+//!    with 4001, while the signed roster still lists it: the server closes
+//!    its sessions and keeps its keys (both signals are unsigned);
 //! 5. the phone removes the server, which learns it from the relay, closes
-//!    its sessions and erases its keys: back to guest, local data untouched;
+//!    its sessions, confirms with a signed roster fetch (`device_revoked`)
+//!    and erases its keys: back to guest, local data untouched;
 //! 6. the server joins again by invitation link (`POST /api/cloud/join`, the
 //!    desktop's way), added only once the phone picks it;
 //! 7. another computer joins by link the way `agentd cloud join` does
@@ -190,12 +194,31 @@ async fn phone_and_server_through_the_account() {
     let stranger = DeviceKeys::generate();
     assert!(letter::open(&stranger.r#box, &host_box, &ctx, &sealed).is_err());
 
+    // 4b. Unsigned removal signals: the relay lists the server as revoked,
+    // then closes its presence with 4001. The roster still lists it, so it
+    // closes its sessions, keeps its keys and comes back online.
+    let version = phone.roster.as_ref().unwrap().version();
+    fake.notify_roster(version, vec![server_id.clone()]);
+    let mut tunnel = tunnel;
+    let code = tokio::time::timeout(Duration::from_secs(10), tunnel.wait_closed()).await.expect("sessions closed on the signal");
+    assert_ne!(code, 4001, "the server does not tell the phone it was removed");
+    assert!(identity.exists(), "a relay list alone erases nothing");
+    wait_for(&app, "online after the check", |v| v["state"] == "connected" && v["relay"]["state"] == "online").await;
+    fake.close_presence(4001);
+    wait_for(&app, "offline after the close", |v| v["state"] == "connected" && v["relay"]["state"] == "offline").await;
+    assert!(identity.exists(), "a 4001 close alone erases nothing");
+    let v = wait_for(&app, "online after the close", |v| v["state"] == "connected" && v["relay"]["state"] == "online").await;
+    assert_eq!(v["sessions"], 0);
+    let tunnel = relay::connect(&phone.cloud, &relay::http1_client(), &server_id, &host_box, Join::default()).await.unwrap();
+    let out = relayed(&tunnel, "GET /api/cloud/status HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").await;
+    assert!(out.contains("\"state\":\"connected\""), "{out}");
+
     // 5. The phone removes the server: it learns from the relay, closes its
-    // sessions (4001) and erases its keys; local data stays.
+    // sessions, confirms with a signed request, and erases its keys; local
+    // data stays.
     phone.remove(&server_id).await.unwrap();
     let mut tunnel = tunnel;
-    let code = tokio::time::timeout(Duration::from_secs(10), tunnel.wait_closed()).await.expect("the session closed");
-    assert_eq!(code, 4001);
+    tokio::time::timeout(Duration::from_secs(10), tunnel.wait_closed()).await.expect("the session closed");
     let v = wait_for(&app, "guest again", |v| v["state"] == "guest").await;
     assert_eq!(v["notice"], "revoked");
     assert!(!identity.exists(), "the keys are erased");

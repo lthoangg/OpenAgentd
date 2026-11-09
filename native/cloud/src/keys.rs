@@ -152,6 +152,11 @@ pub fn device_id(auth_pub: &[u8; 32]) -> String {
     b64(&h.finalize()[..16])
 }
 
+/// Whether `id` has the shape of a device id: base64url of 16 bytes.
+pub fn is_device_id(id: &str) -> bool {
+    id.len() == 22 && from_b64(id).is_ok_and(|raw| raw.len() == 16)
+}
+
 /// The first 8 bytes of the raw device id, uppercase hex in groups of 4
 /// (`3F9A 21C4 7B0E 55D2`). `None` when `id` is not a device id.
 pub fn fingerprint(id: &str) -> Option<String> {

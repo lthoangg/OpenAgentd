@@ -162,6 +162,13 @@ impl Fake {
         }
     }
 
+    /// Closes every host's presence socket with `code`.
+    pub fn close_presence(&self, code: u16) {
+        for out in self.1.lock().unwrap().presence.values() {
+            let _ = out.send(axum::extract::ws::Message::Close(Some(axum::extract::ws::CloseFrame { code, reason: "".into() })));
+        }
+    }
+
     /// Fills the account with `n` stand-in active devices (for the cap).
     pub fn add_stand_ins(&self, account: &str, n: usize) {
         let mut s = self.0.lock().unwrap();

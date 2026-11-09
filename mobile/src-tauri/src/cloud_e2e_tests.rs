@@ -17,6 +17,7 @@ use bytes::Bytes;
 use http_body_util::Full;
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
+use openagentd_cloud::account_state::AccountProblem;
 use openagentd_cloud::api::Cloud;
 use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{self, Member, Pace};
@@ -228,6 +229,30 @@ fn phone_account_end_to_end() {
             "the bridge key never reaches the computer: {out}"
         );
         assert_eq!(sessions.count(), 1);
+
+        // The computer closes the phone's session with 4001. That is
+        // unsigned: the phone closes its links, asks with a signed roster
+        // fetch, and stays signed in with its keys.
+        let me = cloud::cloud_devices()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|d| d.me)
+            .unwrap()
+            .device_id;
+        sessions.revoke(&me);
+        let said = cloud::on_problem(AccountProblem::RemovalSignal).await;
+        assert!(said.contains("cannot be reached"), "{said}");
+        assert!(
+            matches!(
+                cloud::cloud_status(),
+                Status::Connected { signer: true, .. }
+            ),
+            "{:?}",
+            cloud::cloud_status()
+        );
+        assert!(dir.path().join("cloud").join("identity.json").exists());
+        assert!(cloud::bridge_key(&origin).is_none(), "its links are closed");
 
         // Remove the computer: its session ends and the bridge goes away.
         cloud::cloud_remove_device(computer.cloud.device_id())

@@ -10,7 +10,7 @@ use fake_cloud::Fake;
 use openagentd_cloud::account_state::AccountProblem;
 use openagentd_cloud::api::Cloud;
 use openagentd_cloud::endpoints::Endpoints;
-use openagentd_cloud::flows::{self, GenesisDraft, Member, Pace};
+use openagentd_cloud::flows::{self, FlowError, GenesisDraft, Member, Pace};
 use openagentd_cloud::keys::DeviceKeys;
 use openagentd_cloud::mux::Stream;
 use openagentd_cloud::relay::{self, HostHandler, Join, RelayError, Sessions};
@@ -130,12 +130,35 @@ async fn removing_a_device_closes_its_sessions_with_4001() {
     sessions.revoke(&phone.cloud.device_id());
     let code = tokio::time::timeout(Duration::from_secs(5), tunnel.wait_closed()).await.unwrap();
     assert_eq!(code, 4001);
-    assert_eq!(openagentd_cloud::account_state::from_close_code(code), Some(AccountProblem::Revoked));
+    // A 4001 is unsigned (here the host sent it): only a signal, and the
+    // signed roster fetch says the phone is still in the account.
+    assert_eq!(openagentd_cloud::account_state::from_close_code(code), Some(AccountProblem::RemovalSignal));
+    assert!(matches!(phone.confirm_removal().await, flows::Removal::NotRemoved(_)));
     // A roster write reaches the host's presence socket.
     phone.remove(&server.cloud.device_id()).await.unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
     let seen = handler.rosters.lock().unwrap().clone();
     assert_eq!(seen.last().unwrap().1, vec![server.cloud.device_id()]);
+    // The server checks with a signed request, and that confirms it.
+    let mut server = server;
+    assert!(matches!(server.confirm_removal().await, flows::Removal::Removed));
+}
+
+#[tokio::test]
+async fn a_removal_signal_without_a_signed_answer_keeps_the_keys() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (_phone, mut server) = account(&fake, &base).await;
+    // The cloud cannot be reached: no signed answer, so no erase.
+    server.cloud.endpoints = Endpoints::custom("http://127.0.0.1:9", "https://account.openagentd.dev");
+    assert!(matches!(server.confirm_removal().await, flows::Removal::Unsure(_)));
+    // A relay `revoked` answer to a signed request is still only a signal.
+    server.cloud.endpoints = Endpoints::custom(&base, "https://account.openagentd.dev");
+    let account = server.account_id().unwrap().to_string();
+    fake.set_problem(&account, Some((401, serde_json::json!({"error": "revoked"}))));
+    assert!(matches!(server.confirm_removal().await, flows::Removal::Unsure(FlowError::Problem(AccountProblem::RemovalSignal))));
+    fake.set_problem(&account, None);
+    assert!(matches!(server.confirm_removal().await, flows::Removal::NotRemoved(_)));
 }
 
 #[tokio::test]

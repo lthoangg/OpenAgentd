@@ -412,7 +412,7 @@ async fn restore() {
 }
 
 /// Applies an account problem. `Err` carries the message to show.
-async fn on_problem(problem: AccountProblem) -> String {
+pub(crate) async fn on_problem(problem: AccountProblem) -> String {
     let Ok(p) = phone() else { return String::new() };
     let fingerprint = match status() {
         Status::Connected { fingerprint, .. }
@@ -435,27 +435,65 @@ async fn on_problem(problem: AccountProblem) -> String {
             "Account unavailable. Remote access is paused; servers on your network still work."
                 .into()
         }
-        AccountProblem::Deleted | AccountProblem::Revoked => {
+        AccountProblem::RemovalSignal => {
+            // Unsigned (a 4001 close, a refused relay token): close the
+            // relay sessions, then ask with one signed roster fetch. Only a
+            // signed answer erases the keys.
             close_links().await;
-            *p.member.lock().await = None;
-            let _ = p.keys.clear();
-            publish_push_context(None);
-            let notice = if problem == AccountProblem::Deleted {
-                Notice::Deleted
-            } else {
-                Notice::Revoked
+            let removal = {
+                let mut guard = p.member.lock().await;
+                let Some(m) = guard.as_mut() else {
+                    return String::new();
+                };
+                let removal = m.confirm_removal().await;
+                if matches!(&removal, flows::Removal::NotRemoved(s) if s.changed) {
+                    let _ = p.keys.update(&identity_of(m));
+                    publish_push_context(Some(m));
+                }
+                removal
             };
-            set_status(Status::Guest {
-                notice: Some(notice),
-                supported: supported(),
-            });
-            if problem == AccountProblem::Deleted {
-                "Account deleted. This phone was signed out; servers on your network still work."
-                    .into()
-            } else {
-                "This phone was removed from your account. It was signed out; servers on your network still work.".into()
+            match removal {
+                flows::Removal::Removed => erase(AccountProblem::Revoked).await,
+                flows::Removal::NotRemoved(_) => {
+                    "This computer cannot be reached through your account right now.".into()
+                }
+                // Another account problem (closing, unavailable, deleted).
+                flows::Removal::Unsure(FlowError::Problem(q))
+                    if q != AccountProblem::RemovalSignal =>
+                {
+                    Box::pin(on_problem(q)).await
+                }
+                flows::Removal::Unsure(_) => {
+                    "This computer cannot be reached through your account right now.".into()
+                }
             }
         }
+        AccountProblem::Deleted | AccountProblem::Revoked => erase(problem).await,
+    }
+}
+
+/// Erases the account on this phone after a signed answer said it ended
+/// (`Deleted`, or `Revoked`: `device_revoked` or a verified roster without
+/// this phone).
+async fn erase(problem: AccountProblem) -> String {
+    let Ok(p) = phone() else { return String::new() };
+    close_links().await;
+    *p.member.lock().await = None;
+    let _ = p.keys.clear();
+    publish_push_context(None);
+    let notice = if problem == AccountProblem::Deleted {
+        Notice::Deleted
+    } else {
+        Notice::Revoked
+    };
+    set_status(Status::Guest {
+        notice: Some(notice),
+        supported: supported(),
+    });
+    if problem == AccountProblem::Deleted {
+        "Account deleted. This phone was signed out; servers on your network still work.".into()
+    } else {
+        "This phone was removed from your account. It was signed out; servers on your network still work.".into()
     }
 }
 

@@ -89,11 +89,19 @@ when formatted. The HTTP trace layer drops `Authorization` and every
   most.
 - **Account state.** The account errors map to client states in a single
   function (`native/cloud/src/account_state.rs`). Closing and unavailable
-  keep every key and the roster. Only `account_deleted` and removal
-  (`device_revoked` 403, the relay's `revoked` list naming this device,
-  close 4001, or a roster without it) erase the account's keys; a
-  `device_revoked` is never retried as a stale nonce, since only a `401`
-  is. Local data is never touched, and no state stops local use (spec §1,
+  keep every key and the roster. Only `account_deleted` and a signed
+  answer that this device was removed (`device_revoked` 403, or a verified
+  roster without it) erase the account's keys; a `device_revoked` is never
+  retried as a stale nonce, since only a `401` is. The relay's word alone
+  (its `revoked` list naming this device, a 4001 close, a refused relay
+  token) is unsigned: the device closes its sessions, stops relaying, and
+  asks with one signed `GET /v1/roster` (`Member::confirm_removal`); any
+  other answer keeps the keys for a later retry. A host keeps at most 16
+  id-shaped entries of a `revoked` list, and its set of departed devices
+  only ids its verified roster still lists. Response bodies from the cloud
+  are read up to 1 MiB, and ids and nonces from the cloud are checked
+  before they go into a URL path or `lines(...)`. Local data is never
+  touched, and no state stops local use (spec §1,
   "What keeps working"): a host keeps serving local and LAN clients, a
   phone keeps its saved servers; only relay sessions and letters stop.
 

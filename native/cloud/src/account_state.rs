@@ -18,8 +18,15 @@ pub enum AccountProblem {
     Unavailable,
     /// The account is gone for good. Forget its keys and roster.
     Deleted,
-    /// This device is no longer in the account. Forget its keys.
+    /// This device is no longer in the account. Forget its keys. Only a
+    /// signed request learns this: `403 device_revoked`, or a verified
+    /// roster that no longer lists the device.
     Revoked,
+    /// The relay says this device was removed (close 4001, a refused relay
+    /// token, or this device in a presence `revoked` list). Nothing signs
+    /// that, so it never erases keys by itself: close sessions, stop
+    /// relaying, and confirm with [`crate::flows::Member::confirm_removal`].
+    RemovalSignal,
 }
 
 impl AccountProblem {
@@ -40,8 +47,10 @@ pub fn from_error(code: &str, body: Option<&serde_json::Value>) -> Option<Accoun
         "account_unavailable" => Some(AccountProblem::Unavailable),
         "account_deleted" => Some(AccountProblem::Deleted),
         // `device_revoked` (403): a removed or departed device's correctly
-        // signed request. `revoked` (401): the relay refusing its token.
-        "device_revoked" | "revoked" => Some(AccountProblem::Revoked),
+        // signed request.
+        "device_revoked" => Some(AccountProblem::Revoked),
+        // `revoked` (401): the relay refusing its token. Only a signal.
+        "revoked" => Some(AccountProblem::RemovalSignal),
         _ => None,
     }
 }
@@ -49,7 +58,7 @@ pub fn from_error(code: &str, body: Option<&serde_json::Value>) -> Option<Accoun
 /// The problem a relay close code names.
 pub fn from_close_code(code: u16) -> Option<AccountProblem> {
     match code {
-        4001 => Some(AccountProblem::Revoked),
+        4001 => Some(AccountProblem::RemovalSignal),
         4011 => Some(AccountProblem::Closing { deletes_at: None }),
         4012 => Some(AccountProblem::Unavailable),
         _ => None,
@@ -67,9 +76,12 @@ mod tests {
         assert_eq!(from_error("account_unavailable", None), Some(AccountProblem::Unavailable));
         assert_eq!(from_error("account_deleted", None), Some(AccountProblem::Deleted));
         assert_eq!(from_error("device_revoked", None), Some(AccountProblem::Revoked));
-        assert_eq!(from_error("revoked", None), Some(AccountProblem::Revoked));
+        assert_eq!(from_error("revoked", None), Some(AccountProblem::RemovalSignal));
         assert_eq!(from_error("unauthorized", None), None);
         assert!(AccountProblem::Revoked.is_terminal());
+        // An unsigned signal never erases keys on its own.
+        assert_eq!(from_close_code(4001), Some(AccountProblem::RemovalSignal));
+        assert!(!AccountProblem::RemovalSignal.is_terminal());
         assert_eq!(from_error("rate_limited", None), None);
         assert_eq!(from_close_code(4012), Some(AccountProblem::Unavailable));
         assert_eq!(from_close_code(4011), Some(AccountProblem::Closing { deletes_at: None }));

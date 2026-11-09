@@ -434,6 +434,18 @@ impl Sessions {
     }
 }
 
+/// Most entries read from a presence `revoked` list. The relay repeats a
+/// device for about 16 minutes after it goes, so a real list stays short.
+const MAX_REVOKED: usize = 16;
+
+/// The device ids of a presence message's `revoked` list: id-shaped
+/// entries only, and the first [`MAX_REVOKED`] of the list (the rest is
+/// ignored).
+fn revoked_list(v: &Value) -> Vec<String> {
+    let Some(list) = v.as_array() else { return Vec::new() };
+    list.iter().take(MAX_REVOKED).filter_map(Value::as_str).filter(|s| crate::keys::is_device_id(s)).map(String::from).collect()
+}
+
 /// The host side: holds the presence socket and serves each offer until
 /// presence closes. Returns how it ended.
 pub async fn host(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<dyn HostHandler>, sessions: Sessions, join: Join, stop: oneshot::Receiver<()>) -> RelayError {
@@ -466,7 +478,7 @@ pub async fn host(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<dyn Ho
                             tokio::spawn(async move { let _ = join_session(&cloud, &http1, &sid, &from, handler, sessions, join).await; });
                         }
                         Some("roster") => {
-                            let revoked: Vec<String> = v["revoked"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+                            let revoked = revoked_list(&v["revoked"]);
                             for d in &revoked {
                                 sessions.revoke(d);
                             }
@@ -541,4 +553,24 @@ async fn join_session(
     let code = tunnel.wait_closed().await;
     sessions.remove(from, &closer);
     Err(RelayError::Closed(code))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn the_revoked_list_keeps_id_shaped_entries_and_at_most_16() {
+        let id = |i: u8| crate::encoding::b64(&[i; 16]);
+        let mixed = json!([id(1), "not-an-id", 7, "x\ny", crate::encoding::b64(&[2; 17]), id(2)]);
+        assert_eq!(revoked_list(&mixed), vec![id(1), id(2)]);
+        let long: Vec<String> = (0..40).map(id).collect();
+        assert_eq!(revoked_list(&json!(long)), long[..16].to_vec());
+        // Junk entries count towards the cap: the rest of the list is ignored.
+        let mut padded = vec![json!("junk"); 16];
+        padded.push(json!(id(3)));
+        assert!(revoked_list(&json!(padded)).is_empty());
+        assert!(revoked_list(&json!({"a": 1})).is_empty());
+    }
 }

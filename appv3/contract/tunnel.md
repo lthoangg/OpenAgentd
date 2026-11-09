@@ -16,18 +16,20 @@ repeated here.
 deny service: refuse requests, drop relay traffic, or hold back a new
 roster, which delays a removal on the devices that have not seen it yet.
 It sees metadata: the account's sign-in email, its devices and their
-kinds, when they connect, and how much they send. It cannot add a device,
-read relay traffic or letters, run anything on a host, or learn a 6-digit
-code or an invitation secret, because:
+kinds and roles, when they connect, and how much they send. It cannot add
+a device, change a device's roles, read relay traffic or letters, run
+anything on a host, or learn a 6-digit code or an invitation secret,
+because:
 
 1. every roster is signed by a signer device or the recovery key, and every
    device verifies it;
 2. a new device joins only through a signer: by claiming an invitation
    whose secret never reaches the cloud, or after the user compares a
    6-digit code that both devices derive from a key agreement the cloud is
-   not part of;
+   not part of; the roles it asked for are inside what the code or the
+   invitation proof covers;
 3. relay sessions and letters are encrypted end to end to keys from the
-   verified roster.
+   verified roster, and each side checks the other's role in it.
 
 ## 1. Conventions
 
@@ -81,10 +83,15 @@ cannot hold the key without prompting, as on a server).
 | `box` | X25519 | Relay sessions (Noise static key), the 6-digit code, letters | Public half only |
 | `sign` | Ed25519 | Signing rosters, when the device is a signer | Public half only |
 
-- **User presence.** On a phone or a desktop, using `sign` must require the
-  user: Face ID, Touch ID, a fingerprint, or the device passcode (an access
-  control on the key store item). A server without a screen has a `sign`
-  key too, so a signer can promote it later, but it should stay a member.
+- **User presence.** On a phone, using `sign` must require the user: Face
+  ID, Touch ID, a fingerprint, or the device passcode (an access control on
+  the key store item). On a computer with a screen (the desktop app),
+  `sign` is used only after the person at that screen approves, by a click
+  in the app plus the platform's user check (Touch ID or the login
+  password) where the platform offers one; the key itself may sit in the
+  user-only file (`tunnel-threats.md`, "Storage"). A server without a
+  screen has a `sign` key too, so a signer can promote it later, but it
+  should stay a member.
 - **Device id** and **fingerprint** are derived from `auth`
   (the API, "Conventions" and "Device code").
 - **Recovery key.** An Ed25519 key the first device makes at genesis. Its
@@ -95,15 +102,21 @@ cannot hold the key without prompting, as on a server).
 
 ### 2.1 `pubs`
 
-A device's public keys besides `auth`, sent as `pubs` when it asks to join
-(pending enrollment or invitation claim). It is the UTF-8 JSON
+A device's public keys besides `auth`, and the roles it asks for, sent as
+`pubs` when it asks to join (pending enrollment or invitation claim). It is
+the UTF-8 JSON
 
 ```json
-{"v":1,"box":"<b64, 32 bytes>","sign":"<b64, 32 bytes>"}
+{"v":2,"box":"<b64, 32 bytes>","sign":"<b64, 32 bytes>","server":true,"client":true}
 ```
 
-and the API field carries b64 of those bytes. Both keys are required.
-Unknown members are an error.
+and the API field carries b64 of those bytes. The new device writes the
+members in this order. Every member is required; `server` and `client` are
+booleans (section 3.1) and at least one is `true`. `v` other than 2 and
+unknown members are errors. A reader does not depend on member order; the
+code (section 4.2) and the invitation proof (section 4.3) cover the exact
+bytes, so the cloud cannot change the requested roles without breaking
+them.
 
 ## 3. Roster
 
@@ -123,17 +136,26 @@ The **body** is UTF-8 JSON:
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "account_id": "<account id>",
   "version": 5,
   "prev": "<b64(SHA-256(previous envelope bytes))>",
   "recovery_pub": "<b64, 32 bytes>",
   "devices": [
-    {"id": "<device id>", "auth": "<b64>", "box": "<b64>", "sign": "<b64>", "signer": true}
+    {"id": "<device id>", "auth": "<b64>", "box": "<b64>", "sign": "<b64>", "signer": true, "server": true, "client": true}
   ]
 }
 ```
 
+- The envelope's `v` stays 1; the body's `v` is 2. Only body version 2 is
+  accepted.
+- Every device entry has exactly the members shown, all required; writers
+  put them in this order, readers do not depend on it. `signer`, `server`,
+  and `client` are booleans.
+- **Roles.** `server: true`: the device runs a host (section 5) and other
+  devices may open sessions to it. `client: true`: the device may open
+  sessions to hosts. A device has at least one role. `signer` is separate:
+  it says who may sign the next roster.
 - `prev` is `null` in the genesis roster only.
 - `devices` holds 1 to 10 entries with distinct ids; each `id` is derived
   from its `auth`. Order carries no meaning.
@@ -154,11 +176,14 @@ by the `sign` key of the device `by`, or by the recovery key when `by` is
 A roster `R` is **valid after** a known roster `K` (the last one this
 verifier accepted) when all of these hold:
 
-1. Both envelope and body parse, `v` is 1, and every field has its type.
+1. Both envelope and body parse, the envelope's `v` is 1, the body's `v`
+   is 2, every device entry has exactly its seven members, and every field
+   has its type.
 2. `R.account_id` is the account, and `R.version > K.version`.
 3. `R.recovery_pub` equals `K.recovery_pub` (no rotation in version 1).
 4. Every device id is derived from its `auth`, the ids are distinct, there
-   are 1 to 10 devices, and at least one has `signer: true`.
+   are 1 to 10 devices, at least one has `signer: true`, and every device
+   has `server: true` or `client: true` (or both).
 5. Every device listed in both `K` and `R` has the same `box` and `sign`
    keys in both (its `auth` is fixed by its id). Version 1 has no key
    rotation: a device with new keys enrolls again.
@@ -176,10 +201,12 @@ route that would let it check every link is later work; see section 9.)
 The **genesis** roster has no `K`. It is valid when rules 1 and 4 hold,
 `prev` is `null`, `version` is 1, it lists exactly one device, that device
 is a signer and is `by`, and the signature checks out under that device's
-`sign`.
+`sign`. The device has the roles it chose; any kind of device may be
+first (section 4.1).
 
 What a roster means: the devices listed are the active devices; those with
-`signer: true` may sign the next roster. A device that is in `K` and not
+`signer: true` may sign the next roster, and each device's roles say what
+it may do in relay sessions (section 3.4). A device that is in `K` and not
 in `R` was removed. A device must stop trusting a removed device at once:
 close its sessions and refuse new ones.
 
@@ -190,7 +217,10 @@ one (section 3.2) and derives the change from the two device lists:
 
 - **Added:** in `R`, not in `K`. Each must be a pending enrollment with
   `n_n` revealed, or an invitation candidate, and its `auth`, `box`, and
-  `sign` must equal the enrollment's `auth_pub` and `pubs`.
+  `sign` must equal the enrollment's `auth_pub` and `pubs`. Its roles may
+  only be the ones its `pubs` asked for or fewer: `server` may be `true`
+  only if `pubs.server` is, and likewise `client`. A roster that gives an
+  added device a role it did not ask for is refused (`invalid_roster`).
 - **Removed:** in `K`, not in `R`. The revocation floor becomes the new
   version.
 - **Signers:** the `signer` flags in `R`. The writer must be a signer in
@@ -208,32 +238,69 @@ nothing through the cloud; devices should treat a device id in the
 closed with 4001) as removed. A removal entry signed by the
 leaving device is later work (section 9).
 
+### 3.4 Roles in use
+
+Roles change nothing in the cryptography; every device and the cloud
+check them:
+
+- A **host** runs its connector (presence socket and relay sessions) only
+  while its own entry in its verified roster has `server: true`. A device
+  without `server` runs no connector.
+- A host accepts a relay session only from a device whose entry in its
+  verified roster has `client: true` (section 5.1); otherwise it closes the
+  session with 4002.
+- A **controller** lists, and opens sessions to, only devices with
+  `server: true` in its verified roster, and opens sessions only while its
+  own entry has `client: true`.
+- Letters (section 6) are not gated by roles.
+- The **cloud** reads the roles from the roster it stores: it gives host
+  presence and data endpoints only to `server` devices and controller
+  sessions only to `client` devices. That is defense in depth; the
+  devices' own checks are what the guarantee rests on.
+- Roles change only by a new roster. In this version a device's roles are
+  fixed when it joins: to change them, remove the device and add it again.
+
 ## 4. Joining an account
 
-A device joins in one of three ways:
+Every device starts the same way: the person signs in on it (the device
+code flow, the API, section 1) and picks its roles. On a computer the
+choice is **Use as server** and **Use as client**, both on by default; on
+a phone **Use as client** is on and **Use as server** is shown but
+disabled. Then:
 
-- **First device** (4.1), on an account with no roster yet.
-- **Invitation** (4.3), the default for every later device: a signer shows
-  a QR code and the new device scans it. A device that cannot scan (no
-  camera) takes the same invitation as a link. The new device needs no
-  sign-in, and nobody compares a code.
-- **6-digit code** (4.2), the fallback when neither the QR code nor the
-  link can reach the new device.
+- **First device** (4.1): on an account with no roster yet, any device
+  (phone, desktop app, or `agentd cloud login`) runs genesis and is
+  connected.
+- **Glance and tap** (4.2), the default for every later device: the new
+  device waits as a pending enrollment; each signer is told (section 4.5),
+  shows the device's name, the roles it asked for, and the 6-digit code,
+  and the person compares the code with the new device's screen and taps
+  Approve.
+- **Invitation** (4.3), the alternative: a signer shows a QR code or a
+  link and the new device takes it. The new device needs no sign-in, and
+  nobody compares a code.
 
-The first device and the 6-digit code start with the device code flow
-(the API, section 1), which ends in a one-time enrollment session for
-this device. An invitation claim is signed by the new device's own key
-instead (the API, section 8).
+The first device and glance and tap start with the device code flow,
+which ends in a one-time enrollment session for this device. An
+invitation claim is signed by the new device's own key instead (the API,
+section 8). Signing in alone never adds a device: only a roster signed by
+a signer does.
+
+**Signer or member.** The first device is a signer. A later device with a
+screen (a phone or the desktop app) is added as a signer by default; a
+computer that runs only the CLI is added as a member. The person approving
+may change that choice.
 
 ### 4.1 First device (genesis)
 
-On an account with no roster (the confirm page told the user so):
+On an account with no roster (the confirm page told the user so), on any
+device; a CLI asks the person to confirm before it goes on:
 
 1. Make the recovery key. Show the recovery code and ask the user to save
    it. Do not continue until the user has typed back two of its groups, or
    confirmed by another explicit step.
 2. Build the genesis roster (section 3.2): this device alone, a signer,
-   with `recovery_pub`.
+   with the roles the person chose and `recovery_pub`.
 3. `POST /v1/enroll/genesis` with that roster and `recovery_sig`
    (the API). Then erase the recovery private key.
 
@@ -243,11 +310,11 @@ On an account with a roster, a new device `N` joins through a signer `A`.
 The cloud relays every value; the code needs a secret it never sees.
 
 1. **N** makes a random 32-byte `nN` and posts a pending enrollment with
-   `pubs` (section 2.1) and
+   `pubs` (section 2.1, with the roles the person picked on N) and
    `commit = SHA-256(lines("agentd-commit-v1", b64(pubs bytes), b64(nN)))`.
-2. **A** (any signer the user picks, usually the phone) sees the pending
-   entry, makes a random 32-byte `nA`, and posts it. The cloud records that
-   `A` posted it (`n_a_by` in the pending object).
+2. **A** (any signer, on whichever the person opens the request) sees the
+   pending entry, makes a random 32-byte `nA`, and posts it. The cloud
+   records that `A` posted it (`n_a_by` in the pending object).
 3. **N** reads `n_a` and `n_a_by`, fetches the roster, and takes `A`'s
    entry. `A` must be a signer there. N reveals `nN`.
 4. **A** reads `n_n` and checks `commit`; on a mismatch it cancels the
@@ -264,9 +331,12 @@ The cloud relays every value; the code needs a secret it never sees.
    code = (okm as a big-endian uint32) mod 1,000,000, as 6 digits with leading zeros
    ```
 
-6. Both show the code, A next to the device's fingerprint. The user
-   confirms on A that the codes match. A then writes a roster that adds N
-   (as a member, or as a signer if the user chose so).
+6. Both show the code, A next to the device's name, fingerprint, and the
+   roles from N's `pubs`. The user confirms on A that the codes match. A
+   then writes a roster that adds N with exactly the roles in N's `pubs`,
+   or with one of them turned off if the person chose so (never one that
+   `pubs` did not ask for, and at least one stays on), as a signer or a
+   member (section 4, "Signer or member").
 7. **N** waits for a roster that is valid after A's (section 3.2 with `K`
    the roster from step 3), lists N with its own keys, and is signed by A. That
    roster is now N's `K`.
@@ -290,7 +360,8 @@ A signer `A` shows an invitation instead of the 6-digit flow:
    `pubs` and
    `proof = HMAC-SHA256(secret, lines("agentd-invite-candidate-v1", account_id, slot_id, N.id, b64(auth_pub), b64(pubs bytes)))`.
 3. A recomputes `proof` for each candidate from the pending entry, keeps
-   the one that matches, drops the others, and writes a roster adding it.
+   the one that matches, drops the others, and writes a roster adding it
+   with the roles from its `pubs` (or fewer, as in section 4.2, step 6).
    It then posts
    `confirm = HMAC-SHA256(secret, lines("agentd-invite-signer-v1", account_id, slot_id, N.id, version, b64(SHA-256(envelope bytes))))`
    for the new roster.
@@ -321,6 +392,17 @@ the new device as a signer, with the request signature of
 `POST /v1/enroll/recover` (the API). The user types the recovery code
 on the new device, which derives the key, signs, and erases it.
 
+### 4.5 Telling the signers
+
+When a pending enrollment is created, the cloud sends every signer that
+registered for push a notification with fixed text ("A device wants to
+join your account") and an approval category, and nothing else: no
+device name, no ids, no secrets. Tapping it opens the approval sheet,
+which reads the pending enrollments with signed requests. A desktop app
+that is a signer asks for pending enrollments every 30 seconds while it
+runs and shows a system notification for a new one. Neither path changes
+what is trusted: approval still needs the code comparison of section 4.2.
+
 ## 5. Relay sessions
 
 A controller (for example the phone) opens a session to a host (a computer
@@ -338,7 +420,9 @@ or server running agents) as the API, section 6 describes. After
 - **Message 1** (controller to host) carries an empty payload. The host
   checks that the initiator's static key equals the `box` key of the
   `from` device of the offer in its own verified roster, and that the
-  device is active; otherwise it closes the session with 4002.
+  device is active and has `client: true` (section 3.4); otherwise it
+  closes the session with 4002. The controller opens sessions only to a
+  host with `server: true` in its verified roster.
 - **Message 2** (host to controller) carries an empty payload.
 - A message that fails to decrypt closes the session with 4002. No other
   message is allowed before the handshake ends.
@@ -438,8 +522,9 @@ outputs:
 |---|---|
 | `device_id` | `auth` public key to device id and fingerprint |
 | `recovery_code` | Seed to recovery code and back |
-| `pubs` | The `pubs` bytes |
-| `roster` | Genesis, an add, a removal, a recovery; envelopes, hashes, signatures; and invalid rosters with the rule they break |
+| `pubs` | The `pubs` bytes, with each device's roles |
+| `pubs_invalid` | `pubs` values a reader must refuse |
+| `roster` | Genesis (on a phone and on a computer), an add, a removal, a recovery; envelopes, hashes, signatures; and invalid rosters with the rule they break (including a device with no role, missing or non-boolean roles, and a version 1 body) |
 | `code` | Commit and the 6-digit code, from both sides |
 | `invite` | `proof` and `confirm` |
 | `noise` | A full IK handshake and two transport messages each way |
@@ -457,5 +542,6 @@ WebCrypto it is imported as PKCS#8: the 16 bytes
 - Signer keys held in hardware (P-256 in the Secure Enclave or StrongBox),
   as a second signature type.
 - Recovery key rotation.
+- Changing a device's roles without removing and adding it again.
 - Host-opened streams (for example the host asking the controller for a
   file).

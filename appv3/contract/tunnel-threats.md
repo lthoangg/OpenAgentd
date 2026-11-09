@@ -13,11 +13,19 @@ they merge.
 
 ## Roles
 
-- **Host:** a computer that runs agents, which is the `agentd` server
-  running as the desktop sidecar or from the CLI. It holds a presence
-  socket and answers relay sessions.
-- **Controller:** the phone. It has no backend, opens relay sessions to
-  hosts, and is also the only signer in version 1.
+These are the protocol roles; each device's roster entry says which it
+has (spec §3.1, `server` and `client`).
+
+- **Host** (`server: true`): a computer that runs agents, which is the
+  `agentd` server running as the desktop sidecar or from the CLI. It holds
+  a presence socket and answers relay sessions. A device without `server`
+  runs no connector.
+- **Controller** (`client: true`): the phone (it has no backend, so it is
+  never a server), or a computer used to reach the others. It opens relay
+  sessions to hosts.
+- **Signer** (`signer: true`): signs rosters. The first device, whatever
+  it is, and by default every later phone or desktop app. A computer that
+  runs only the CLI joins as a member.
 - **Cloud:** the account API and the relay. It is untrusted. It can deny
   service and see metadata (who talks to whom, when, and how much), but it
   must not be able to add a device, read traffic, forge a notification, or
@@ -44,15 +52,36 @@ The account id identifies a person, so logs carry only a short hash of it.
 | Secret | iOS | Android (later) | macOS desktop and CLI | Linux desktop and CLI | Windows desktop |
 |---|---|---|---|---|---|
 | `auth`, `box` | Keychain, this device only, after first unlock; `box` also as its own item in the App Group's access group, for the notification extension | Keystore-wrapped | `cloud/identity.json`, mode 600 | the same file (Secret Service is a later step) | the same file, with no ACL of its own: it inherits the ACL of the user's profile folder (the user, SYSTEM and Administrators) |
-| `sign` | Keychain, user presence required | Keystore, user authentication required | the same file (hosts are members) | same | same |
+| `sign` | Keychain, user presence required | Keystore, user authentication required | the same file; used only after a click in the app plus Touch ID or the login password where available | same, after a click | same, after a click |
 | Tokens, nonces, invite secret | memory only | memory only | memory only | memory only | memory only |
 
 Why the user-only file on macOS computers? The desktop app is ad hoc
 signed, so a Keychain item is tied to the build's code hash, and macOS asks
 for access again after every update (`desktop/src-tauri/AGENTS.md`). The
 desktop access keys already moved to a user-only file for that reason.
-Hosts are members, so a stolen host key cannot approve devices. It can act
-as that host, which someone who can read the user's files can do anyway.
+
+**Computer signers: the trade-off.** A desktop app may be a signer (it is
+by default when it joins, and always when it is the first device). Its
+`sign` key is in that user-only file, not behind hardware user presence as
+on a phone. So anyone who can read the user's files, or run code as the
+user, can sign a roster that adds their own device. We accept this
+because that attacker already controls this computer (its shell, files,
+and agents) and could act as it anyway; the account's other devices were
+always reachable from it as a client. What we do about it:
+
+- the app signs only after the person at the screen clicks Approve, plus
+  Touch ID or the login password through LocalAuthentication where the
+  platform has it; the routes that sign answer only local callers, never a
+  relay session or the LAN, and agent tools already deny reading
+  `cloud/identity.json`;
+- every added device shows on every other device's device list, and any
+  signer can remove it;
+- a person who wants the stronger model keeps signing on the phone: when a
+  computer joins later they approve it as a member, and a CLI-only
+  computer is a member by default.
+
+A stolen key of a member computer cannot approve devices. It can act as
+that computer, which someone who can read the user's files can do anyway.
 
 Secrets never go to settings JSON, SQLite, `server.yaml`, logs, crash
 reports or telemetry. Secret types zeroize on drop and print `[redacted]`
@@ -128,19 +157,38 @@ when formatted. The HTTP trace layer drops `Authorization` and every
   web view the link only to draw the QR code. A computer takes the link
   from a password field (`POST /api/cloud/join`, local callers only) or a
   hidden prompt (`agentd cloud join`), never from argv or a log.
-- With the 6-digit code (the fallback), a new device joins only after the
+- With the 6-digit code (glance and tap, the default for a device that
+  signs in), a new device joins only after the
   person compares the code on both screens (spec §4.2). The cloud commits
   to the keys it would swap
   before it sees the signer's nonce, so it wins by chance at most once in a
   million per attempt, and each attempt shows the person a failed code.
+  The roles the device asked for are inside `pubs`, so they are covered by
+  the commit and the code; the signer writes those roles or fewer, never
+  more, and the cloud refuses a roster that adds a role `pubs` did not ask
+  for.
+- **Signing in alone grants nothing.** The device code flow only proves
+  the person holds the account's email; the device joins only through a
+  signer's roster after the code comparison. A phished or stolen email
+  sign-in yields a pending enrollment that every signer is told about.
+- **The approval push** (spec §4.5) has fixed text and an approval
+  category, and no device name, id or secret, so the push service and the
+  cloud learn nothing from it beyond "this account has a pending
+  enrollment". A forged or replayed push only opens the approval sheet,
+  which reads pending enrollments with a signed request and still needs the
+  code. A flood of pending enrollments is limited per account by the cloud;
+  the sheet shows each with its fingerprint and code, and the person
+  rejects what they did not start.
 - The signer checks the commit. A mismatch cancels the enrollment and tells
   the person that someone may be trying to join.
 - A joining device trusts the roster head it fetches at step 3. The code
   covers the signer's keys from that roster, so a substituted head fails
   the comparison.
-- **Genesis on a computer** (`--first-device`) puts the account's only
-  signer key in a file. The CLI warns about this. The default is genesis on
-  the phone, behind biometrics.
+- **Genesis on a computer** puts the account's only signer key in a
+  user-only file (see "Computer signers: the trade-off"). Any device may
+  be first; `agentd cloud login` asks the person to confirm before it
+  creates the account from a computer. Adding a phone later and approving
+  from it keeps a signer behind biometrics.
 - **Recovery code.** It is shown once. The person must type two groups back
   before genesis continues. The seed is zeroized after `recovery_sig`.
 
@@ -149,7 +197,17 @@ when formatted. The HTTP trace layer drops `Authorization` and every
 - The controller knows the host's `box` key from its verified roster
   (Noise IK). The host accepts a session only if the initiator's static key
   is the `box` key that its own verified roster lists for the offer's
-  `from` device, and that device is active. Otherwise it closes with 4002.
+  `from` device, and that device is active and has `client: true`.
+  Otherwise it closes with 4002. The controller lists and dials only
+  devices with `server: true`.
+- **Roles limit a compromised box.** A server-only device (for example a
+  CI machine joined with only **Use as server**) cannot open sessions to
+  the other hosts: every host refuses it with 4002 and the cloud does not
+  give it controller sessions. So stealing its keys gives that machine,
+  not the account's other computers. A client-only device runs no
+  connector, so nothing reaches it through the relay. The cloud's role
+  checks are defense in depth; a hostile cloud cannot grant a role, since
+  roles are only in the signed roster.
 - The prologue binds the account, the session and both device ids.
 - A device removed from the roster loses every session at once (4001), and
   new streams check the roster again.
@@ -260,6 +318,13 @@ files of `native/cloud`, `appv3` and `mobile/src-tauri`, and checked with
       roster.
 - [ ] No invitation candidate is added without a person's tap, and two
       valid proofs add nobody.
+- [ ] An added device gets the roles its `pubs` asked for or fewer, never
+      more. Hosts refuse sessions from devices without `client`, devices
+      dial only `server` devices, and a device without `server` runs no
+      connector.
+- [ ] A computer signs a roster only after a click by the person at its
+      screen (plus Touch ID where available), through routes that refuse
+      relayed and LAN callers.
 - [ ] No URL from a response is opened. The hosts are the compiled
       constants.
 - [ ] Relayed requests cannot reach the account routes, cannot carry

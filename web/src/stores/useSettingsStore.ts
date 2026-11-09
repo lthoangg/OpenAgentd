@@ -18,6 +18,7 @@ export type SettingsSection =
   | 'general'
   | 'desktop'
   | 'connection'
+  | 'account'
   // Merged into Connection; kept so old links and persisted state resolve.
   | 'network'
   | 'about'

@@ -21,6 +21,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Target,
+  UserRound,
   Waypoints,
   Wrench,
   type LucideIcon,
@@ -37,6 +38,7 @@ export type TopLevelSection = Extract<
   | 'general'
   | 'desktop'
   | 'connection'
+  | 'account'
   | 'agents'
   | 'skills'
   | 'mcp'
@@ -92,6 +94,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: 'general', label: 'Appearance', description: 'Theme, text size, transcript style and previews', icon: SlidersHorizontal, group: 'app' },
   { id: 'desktop', label: 'Desktop', description: 'Agent status in the notch and the desktop pet', icon: Monitor, group: 'app', desktopOnly: true },
   { id: 'connection', label: 'Server', description: 'Which server this app uses, and access from other devices', icon: Server, group: 'app' },
+  { id: 'account', label: 'Account', description: 'Optional: reach this computer from your phone anywhere', icon: UserRound, group: 'app', capability: 'api.cloud' },
   // Agents and tools
   { id: 'agents', label: 'Agents', description: 'The main agent and its subagents', icon: Wrench, group: 'build' },
   { id: 'skills', label: 'Skills', description: 'Reusable instruction packs', icon: Sparkles, group: 'build' },

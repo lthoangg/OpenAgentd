@@ -12,6 +12,8 @@ import { forgetRouteForBackendSwitch } from '@/lib/route-restore'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
 import { queryKeys } from '@/queries/keys'
 import { beginBackendSwitch, endBackendSwitch, type BackendSwitchTarget } from '@/stores/useBackendSwitchStore'
+import { rememberLanFingerprint } from '@/lib/computer-fingerprints'
+import { openPhoneCloudComputer, type OpenedComputer } from '@/api/phone-cloud'
 import {
   getAppBackendStatus,
   switchToBundledAppBackend,
@@ -139,10 +141,47 @@ async function switchExternal(target: string, options: Parameters<typeof connect
     installDesktopAuth()
     const reload = normalizeServerBaseUrl(next.base_url) !== options.currentBaseUrl
     await refreshBackendQueries()
+    void rememberLanFingerprint(target)
     return { ok: true, status: next, reload }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
+}
+
+export type AccountSwitchResult =
+  | { ok: true; status: AppBackendStatus; via: OpenedComputer['via']; reload: boolean }
+  | { ok: false; error: string }
+
+/**
+ * Open a computer of the phone's account and switch this window to it: over
+ * its saved LAN address when `lanBaseUrl` answers, else through the account's
+ * relay. The shell activates the server (as it does for a saved one); the
+ * rest is the same as after choosing a saved server. The caller reloads when
+ * `reload` is true.
+ */
+export async function connectAccountComputer(options: {
+  deviceId: string
+  lanBaseUrl: string | null
+  /** What the switching screen calls it. */
+  label: string
+  currentBaseUrl: string
+}): Promise<AccountSwitchResult> {
+  const detail = options.lanBaseUrl ?? 'Through your account'
+  return withSwitchScreen({ name: options.label, detail }, async (): Promise<AccountSwitchResult> => {
+    try {
+      const opened = await openPhoneCloudComputer(options.deviceId, options.lanBaseUrl)
+      const next = opened.status
+      await primeStoredAccessKey(next.base_url)
+      delete window.__OAD_TOKEN__
+      setApiBaseUrl(next.base_url)
+      installDesktopAuth()
+      const reload = normalizeServerBaseUrl(next.base_url) !== options.currentBaseUrl
+      await refreshBackendQueries()
+      return { ok: true, status: next, via: opened.via, reload }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
 }
 
 export type BundledSwitchResult =

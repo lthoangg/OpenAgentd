@@ -35,6 +35,10 @@ import { takeQuietOpenFromRoute } from '@/lib/quiet-open'
 const WidgetSnapshotSync = lazy(() =>
   import('@/hooks/use-widget-snapshot').then((module) => ({ default: module.WidgetSnapshotSync })),
 )
+// Same for the phone's account: only the phone apps have one.
+const PhoneCloudSync = lazy(() =>
+  import('@/hooks/use-phone-cloud-sync').then((module) => ({ default: module.PhoneCloudSync })),
+)
 
 // Settings and Telemetry stay out of the startup bundle; they load while the
 // app is idle after it starts (or when opened first), so they open at once.
@@ -140,6 +144,11 @@ export function Root() {
       {widgetsSupported() && (
         <Suspense fallback={null}>
           <WidgetSnapshotSync />
+        </Suspense>
+      )}
+      {widgetsSupported() && (
+        <Suspense fallback={null}>
+          <PhoneCloudSync />
         </Suspense>
       )}
       <PluginNoticeGate />

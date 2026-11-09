@@ -51,6 +51,9 @@ import { revealSetting, type SettingsHit } from '@/components/settings/settings-
 import { AboutSettingsPage } from '@/components/settings/pages/settings.index'
 import { GeneralSettingsPage } from '@/components/settings/pages/settings.general'
 import { ConnectionSettingsPage } from '@/components/settings/pages/settings.connection'
+import { AccountSettingsPage } from '@/components/settings/pages/settings.account'
+import { PhoneAccountSettingsPage } from '@/components/settings/pages/settings.account.phone'
+import { isPhoneCloudShell } from '@/api/phone-cloud'
 import { AgentsListPage } from '@/components/settings/pages/settings.agents'
 import { SkillsListPage } from '@/components/settings/pages/settings.skills'
 import { NewSkillPage } from '@/components/settings/pages/settings.skills.new'
@@ -247,6 +250,9 @@ function SectionContent({
     case 'connection':
     case 'network':
       return <ConnectionSettingsPage />
+    case 'account':
+      // On the phone the account is the phone's own, not a server's.
+      return isPhoneCloudShell() ? <PhoneAccountSettingsPage /> : <AccountSettingsPage />
     case 'agents':
       return <AgentsListPage />
     case 'skills':

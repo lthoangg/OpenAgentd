@@ -2,6 +2,14 @@ import type { SessionSort } from '@/api/types'
 
 export const queryKeys = {
   health: () => ['health'] as const,
+  cloud: {
+    status: () => ['cloud', 'status'] as const,
+  },
+  phoneCloud: {
+    status: () => ['phone-cloud', 'status'] as const,
+    devices: () => ['phone-cloud', 'devices'] as const,
+    pending: () => ['phone-cloud', 'pending'] as const,
+  },
   backendStatus: () => ['app-backend-status'] as const,
   agents: () => ['agents'] as const,
   plugins: () => ['plugins'] as const,

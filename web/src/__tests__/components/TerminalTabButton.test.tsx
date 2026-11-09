@@ -6,7 +6,9 @@
  * Both funnel into useTerminalStore.rename() / .close().
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { LONG_PRESS_MS } from '@/hooks/use-long-press'
+import { useFakeTimers } from '../fake-timers'
 import { getTerminalRuntime, useTerminalStore, _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
 
 const Icon = () => null
@@ -181,17 +183,21 @@ describe('TerminalTabButton', () => {
   it('renaming via the mobile sheet updates the store title', async () => {
     const { id } = await setup(true)
     const button = screen.getByRole('button', { name: 'Terminal 1' })
-    fireEvent.pointerDown(button, { pointerType: 'touch', clientX: 10, clientY: 10 })
-    // The sheet opens after the long-press delay: wait as the test above does,
-    // or a loaded full-suite run times out while the tab is still pressing.
-    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }, { timeout: 1500 }))
+    // The hold is a timer: run it on a fake clock, so a loaded runner cannot
+    // stretch the press (or the test) past its limits.
+    const timers = useFakeTimers()
+    try {
+      fireEvent.pointerDown(button, { pointerType: 'touch', clientX: 10, clientY: 10 })
+      act(() => timers.tick(LONG_PRESS_MS + 10))
+    } finally {
+      timers.restore()
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
 
-    const input = await screen.findByLabelText('Terminal name')
+    const input = screen.getByLabelText('Terminal name')
     fireEvent.change(input, { target: { value: 'Logs' } })
     fireEvent.keyDown(input, { key: 'Enter' })
 
-    await waitFor(() => expect(useTerminalStore.getState().sessions[id]?.title).toBe('Logs'))
-    // The long press, the sheet and the rename take over 5 s on a loaded
-    // CI runner (seen on PR #511); alone it takes under a second.
-  }, 15_000)
+    expect(useTerminalStore.getState().sessions[id]?.title).toBe('Logs')
+  })
 })

@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { RouterProvider } from '@tanstack/react-router'
 import { Seal } from '@/components/brand/Logo'
 import type { AppBackendPrefill } from '@/components/AppBackendDialog'
@@ -51,7 +51,10 @@ function App() {
   // A server switch reloaded the window: the startup screen keeps saying
   // where it is going, and forgets once the new server is up.
   const [switchingTo] = useState(pendingBackendSwitch)
-  useEffect(() => {
+  // A layout effect: it runs in the same commit that mounts the router, so
+  // nothing that sees the app running can still find the hand-off (a passive
+  // effect could land a tick later on a busy main thread).
+  useLayoutEffect(() => {
     if (ready) clearBackendSwitchHandoff()
   }, [ready])
   // A scanned `openagentd://connect` link opens the dialog prefilled, in

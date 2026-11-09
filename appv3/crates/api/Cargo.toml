@@ -61,5 +61,5 @@ libc = "0.2"
 tower = { workspace = true, features = ["util"] }
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
-tokio-tungstenite = "0.29"
+tokio-tungstenite = "0.30"
 futures-util = "0.3"

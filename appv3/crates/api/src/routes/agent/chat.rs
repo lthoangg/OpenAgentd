@@ -121,6 +121,9 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
     let interrupt = form_bool(&form, "interrupt", &mut errs);
     let keep_goal = form_bool(&form, "keep_goal", &mut errs);
     let fast_mode = form_bool(&form, "fast_mode", &mut errs);
+    // v3 addition: "Queue until done". Only matters when the message queues;
+    // an idle agent runs it at once, which is what waiting would have done.
+    let hold_until_turn_end = form_bool(&form, "hold_until_turn_end", &mut errs);
     let workspace = form.opt("workspace");
     if workspace.is_none() {
         errs.insert(0, verr("missing", &loc(&["body", "workspace"]), "Field required", Value::Null));
@@ -287,6 +290,7 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
                 thinking_level: thinking_level.clone(),
                 thinking_level_provided: thinking_provided,
                 fast: fast_mode,
+                hold_until_turn_end,
             },
         )
         .await?;

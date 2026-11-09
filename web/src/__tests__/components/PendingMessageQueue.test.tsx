@@ -4,7 +4,6 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PendingMessageQueue } from '@/components/PendingMessageQueue'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { OPEN_SESSION_EVENT } from '@/utils/workspace-messages'
 
@@ -29,7 +28,6 @@ const INITIAL_TEAM_STATE = {
 afterEach(() => {
   cleanup()
   useAgentStore.setState(INITIAL_TEAM_STATE)
-  useHeldMessagesStore.setState({ messages: [] })
   useToastStore.setState({ toasts: [] })
   globalThis.fetch = realFetch
 })
@@ -359,12 +357,16 @@ describe('PendingMessageQueue', () => {
 
     it('removes a message held for the end of the turn, with Undo', async () => {
       const user = userEvent.setup()
-      useHeldMessagesStore.getState().hold({ sessionId: 'session-1', content: 'After the turn' })
+      answerCancel(204)
+      useAgentStore.setState({
+        sessionId: 'session-1',
+        _pendingMessages: [{ id: 'held-1', sessionId: 'session-1', content: 'After the turn', heldUntilTurnEnd: true }],
+      })
 
       render(<PendingMessageQueue />)
       await user.click(screen.getByRole('button', { name: 'Remove queued message' }))
 
-      expect(useHeldMessagesStore.getState().messages).toEqual([])
+      expect(useAgentStore.getState()._pendingMessages).toEqual([])
       expect(screen.queryByText('After the turn')).toBeNull()
       expect(useToastStore.getState().toasts[0]?.action?.label).toBe('Undo')
     })
@@ -478,10 +480,12 @@ describe('PendingMessageQueue', () => {
   it('lists messages held for the end of the turn after the ones steering it', () => {
     useAgentStore.setState({
       sessionId: 'session-1',
-      _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Steer me' }],
+      _pendingMessages: [
+        { id: 'pending-1', sessionId: 'session-1', content: 'Steer me' },
+        { id: 'held-1', sessionId: 'session-1', content: 'After the turn', heldUntilTurnEnd: true },
+        { id: 'held-2', sessionId: 'session-2', content: 'Other session', heldUntilTurnEnd: true },
+      ],
     })
-    useHeldMessagesStore.getState().hold({ sessionId: 'session-1', content: 'After the turn' })
-    useHeldMessagesStore.getState().hold({ sessionId: 'session-2', content: 'Other session' })
 
     render(<PendingMessageQueue />)
 
@@ -537,14 +541,6 @@ describe('PendingMessageQueue', () => {
     expect(screen.queryByRole('button', { name: /Open the sending session/ })).toBeNull()
   })
 
-  it('shows held messages even when nothing is queued server-side', () => {
-    useHeldMessagesStore.getState().hold({ sessionId: 'session-1', content: 'After the turn' })
-
-    render(<PendingMessageQueue />)
-
-    expect(screen.getByText('After the turn')).toBeTruthy()
-  })
-
   // A steer left queued after a failed turn (its files are on another
   // device) has no running turn to read it.
   it('says a steer left queued after a failed turn goes with the next message', () => {
@@ -572,17 +568,19 @@ describe('PendingMessageQueue', () => {
       restored = (e as CustomEvent<{ content?: string; files?: File[] }>).detail
     })
     window.addEventListener('queue:restore-draft', restoreListener)
+    answerCancel(204)
     useAgentStore.setState({
       sessionId: 'session-1',
-      _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Steer me' }],
+      _pendingMessages: [
+        { id: 'pending-1', sessionId: 'session-1', content: 'Steer me' },
+        { id: 'held-1', sessionId: 'session-1', content: 'After the turn', files: [file], heldUntilTurnEnd: true },
+      ],
     })
-    useHeldMessagesStore.getState().hold({ sessionId: 'session-1', content: 'After the turn', files: [file] })
 
     render(<PendingMessageQueue />)
     await user.click(screen.getAllByLabelText('Edit queued message')[1])
 
     expect(restored).toEqual({ content: 'After the turn', files: [file] })
-    expect(useHeldMessagesStore.getState().messages).toEqual([])
     expect(useAgentStore.getState()._pendingMessages.map((m) => m.id)).toEqual(['pending-1'])
     window.removeEventListener('queue:restore-draft', restoreListener)
   })
@@ -644,8 +642,9 @@ describe('PendingMessageQueue look', () => {
   })
 
   it('fades a message held until the turn ends the same way', () => {
-    useHeldMessagesStore.setState({
-      messages: [{ id: 'held-1', sessionId: 'session-1', content: 'Held for later' }],
+    useAgentStore.setState({
+      sessionId: 'session-1',
+      _pendingMessages: [{ id: 'held-1', sessionId: 'session-1', content: 'Held for later', heldUntilTurnEnd: true }],
     })
     render(<PendingMessageQueue />)
 

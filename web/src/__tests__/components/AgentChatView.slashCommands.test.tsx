@@ -4,13 +4,21 @@ import type { AgentCommandResponse } from '@/api/types'
 import { BASE_SLASH_COMMANDS, btwSubmit, filterBaseSlashCommands, parseBtwCommand, parseBuiltInSlashCommand } from '@/components/AgentChatView/helpers'
 import { useSlashCommands } from '@/components/AgentChatView/useSlashCommands'
 import { useBtwStore } from '@/stores/useBtwStore'
-import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
+import type { PendingMessage } from '@/stores/useAgentStore'
 
 const redo = mock(async (): Promise<AgentCommandResponse | undefined> => undefined)
 const undo = mock(async (): Promise<AgentCommandResponse | undefined> => undefined)
 const stopAgent = mock(async () => {})
+let pendingMessages: PendingMessage[] = []
+const removePendingMessage = mock(async (...args: unknown[]) => {
+  const id = String(args[0])
+  pendingMessages = pendingMessages.filter((m) => m.id !== id)
+  return 'cancelled' as const
+})
 mock.module('@/stores/useAgentStore', () => ({
-  useAgentStore: { getState: () => ({ undoAgent: undo, redoAgent: redo, redoAllAgent: redo, sessionId: 'session-1', stopAgent, _pendingMessages: [] }) },
+  useAgentStore: {
+    getState: () => ({ undoAgent: undo, redoAgent: redo, redoAllAgent: redo, sessionId: 'session-1', stopAgent, removePendingMessage, _pendingMessages: pendingMessages }),
+  },
 }))
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
@@ -236,8 +244,7 @@ describe('useSlashCommands', () => {
   })
 
   it('/stop hands messages held for the turn back to the composer', async () => {
-    useHeldMessagesStore.setState({ messages: [] })
-    useHeldMessagesStore.getState().hold({ sessionId: 'session-1', content: 'after that, run the tests' })
+    pendingMessages = [{ id: 'held-1', sessionId: 'session-1', content: 'after that, run the tests', heldUntilTurnEnd: true }]
     const { result } = renderHook(() => useSlashCommands({
       agentWorkspace: '/tmp/project', inputRef, handleNewSession, isAgentWorking: true,
     }))
@@ -246,7 +253,8 @@ describe('useSlashCommands', () => {
 
     expect(inputRef.current.appendValue).toHaveBeenCalledWith('after that, run the tests', { paragraph: true })
     expect(stopAgent).toHaveBeenCalledTimes(1)
-    expect(useHeldMessagesStore.getState().messages).toEqual([])
+    expect(removePendingMessage.mock.calls.map((call) => call[0])).toEqual(['held-1'])
+    expect(pendingMessages).toEqual([])
   })
 })
 

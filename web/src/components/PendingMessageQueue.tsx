@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { CloseButton } from '@/components/ui/close-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
 import { useToastStore } from '@/stores/useToastStore'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
@@ -277,10 +276,8 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
   const turnFailed = useAgentStore((s) => (
     !s.isAgentWorking && Boolean(s.leadName) && s.agentStreams?.[s.leadName as string]?.status === 'error'
   ))
-  const allHeld = useHeldMessagesStore((s) => s.messages)
-  const held = useMemo(() => allHeld.filter((msg) => msg.sessionId === sessionId), [allHeld, sessionId])
 
-  if (messages.length === 0 && held.length === 0) return null
+  if (messages.length === 0) return null
   const Item = isPhone ? QueuedPhoneBubble : QueuedBubble
 
   return (
@@ -315,21 +312,6 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
                 description: 'It reached the agent before it could be removed.',
               })
             }
-          }}
-        />
-      ))}
-      {held.map((msg) => (
-        <Item
-          key={msg.id}
-          content={msg.content}
-          attachments={msg.attachments}
-          label="Sends when this turn ends"
-          onEdit={() => {
-            // Held client-side only, so there is nothing to cancel on the server.
-            if (useHeldMessagesStore.getState().take(msg.id)) restoreDraft(msg.content, msg.files)
-          }}
-          onRemove={() => {
-            if (useHeldMessagesStore.getState().take(msg.id)) offerUndo(msg.content, msg.files)
           }}
         />
       ))}

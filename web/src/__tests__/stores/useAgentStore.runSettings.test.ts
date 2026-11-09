@@ -80,6 +80,7 @@ describe('setSessionRunSettings', () => {
 
     await useAgentStore.getState().sendMessage('hi', undefined, { workspace: '/repo' })
     const args = postAgentChat.mock.calls.at(-1) as unknown as unknown[]
-    expect(args.at(-1)).toBe('cred-work')
+    // ``credentialId``, the 12th argument of ``postAgentChat``.
+    expect(args[11]).toBe('cred-work')
   })
 })

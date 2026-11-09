@@ -119,6 +119,9 @@ pub struct QueueArgs<'a> {
     pub thinking_level: Option<String>,
     pub thinking_level_provided: bool,
     pub fast: bool,
+    /// "Queue until done": the running turn does not read it; it starts a
+    /// turn of its own once that one ends (`db::HOLD_UNTIL_TURN_END`).
+    pub hold_until_turn_end: bool,
 }
 
 /// `persist_queued_user_message` → queued message id.
@@ -144,6 +147,9 @@ pub async fn persist_queued_user_message(pool: &DbPool, a: QueueArgs<'_>) -> Api
     }
     if let Some(m) = a.mentions.filter(|m| !m.is_empty()) {
         extra.insert("mentions".into(), json!(m));
+    }
+    if a.hold_until_turn_end {
+        extra.insert(db::HOLD_UNTIL_TURN_END.into(), json!(true));
     }
     if let Some(row) = db::get_session(pool, a.session_id).await? {
         let mut upd = db::SessionUpdate::default();
@@ -407,6 +413,45 @@ pub fn build_mention_context_blocks(message: &str, session_id: &str, workspace: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// "Queue until done" from the composer: the row waits for the running
+    /// turn to end, on the server, so it survives the client going away.
+    #[tokio::test]
+    async fn a_held_message_is_queued_with_the_hold_flag() {
+        use appv3_providers::mock::MockProvider;
+        let dir = tempfile::tempdir().unwrap();
+        let pool = db::create_pool(dir.path().join("t.db")).await.unwrap();
+        let provider: Arc<dyn appv3_providers::LlmProvider> = Arc::new(MockProvider::new(vec![]));
+        let p2 = provider.clone();
+        let factory: appv3_agent::loader::ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
+        let agent = appv3_agent::Agent::new(provider, "code", "Hi", vec![], Some("mock:mock".into()));
+        let session = AgentSession::new(agent, None, Some(dir.path().display().to_string()), pool.clone(), factory, None);
+        let new = db::NewSession { id: Some(uuid::Uuid::now_v7()), workspace: dir.path().display().to_string(), ..Default::default() };
+        let sid = db::codec::api_uuid(&db::create_session(&pool, new).await.unwrap().id);
+        let args = |message: &'static str, hold: bool| QueueArgs {
+            agent: &session,
+            session_id: &sid,
+            workspace: None,
+            message,
+            attachments: &[],
+            mention_context_blocks: &[],
+            mentions: None,
+            model: None,
+            model_provided: false,
+            thinking_level: None,
+            thinking_level_provided: false,
+            fast: false,
+            hold_until_turn_end: hold,
+        };
+        persist_queued_user_message(&pool, args("steer", false)).await.unwrap();
+        persist_queued_user_message(&pool, args("then deploy", true)).await.unwrap();
+        assert!(db::has_queued_user_messages(&pool, &sid).await.unwrap());
+        let rows = db::release_queued_user_messages_with(&pool, &sid, None, false).await.unwrap();
+        let texts: Vec<_> = rows.iter().map(|r| r.content.clone().unwrap_or_default()).collect();
+        assert_eq!(texts, vec!["steer"], "a held message was offered to the running turn");
+        assert!(db::has_queued_user_messages(&pool, &sid).await.unwrap(), "the held message is still queued");
+        assert!(!db::has_queued_steers(&pool, &sid).await.unwrap());
+    }
 
     #[test]
     fn line_refs() {

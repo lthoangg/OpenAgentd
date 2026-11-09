@@ -108,7 +108,7 @@ import { useDraftHandoff } from './useDraftHandoff'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
 import { btwSubmit, composerHistoryPrompts, newestUserBlockId, parseBuiltInSlashCommand } from './helpers'
-import { deliverFromComposer, pushStoppedToast, stopTurn, useReleaseHeldMessages } from './heldMessages'
+import { deliverFromComposer, pushStoppedToast, stopTurn, useReturnQueuedAfterFailure } from './heldMessages'
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
@@ -669,7 +669,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     onOpenSideQuestions: handleOpenSideQuestions,
   })
 
-  useReleaseHeldMessages({ workspace, sessionId: sessionIdState, composerRef: inputRef })
+  useReturnQueuedAfterFailure({ sessionId: sessionIdState, composerRef: inputRef })
   useMarkSessionRead(sessionIdState)
   useReportShownSession(sessionIdState)
 

@@ -2059,20 +2059,21 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A finished turn lists the files its `patch` calls changed, with line
     counts; each opens its git diff in the review dock. Since `[v3.1.0]` the list starts
     closed behind its "N files changed" header.
-- **The composer while the agent works** `[v3.0.0, updated v3.4.0]`:
+- **The composer while the agent works** `[v3.0.0, updated v3.51.0]`:
   - Scrolled away from the live end, a "↓ N new" chip rides on the
     composer and counts what arrived since.
   - While a turn runs, Send splits in two. The pill steers: the agent reads
     the message before its next step (`Enter`). The chevron adds Queue until
-    done, which holds the message in this window and sends it as a turn of
-    its own once the turn ends (`⌥Enter` / `Alt+Enter`), and Stop & send
+    done, which the server holds and sends as a turn of its own once the turn
+    ends, even if this window is closed or reloaded meanwhile `[v3.51.0]`
+    (`⌥Enter` / `Alt+Enter`), and Stop & send
     (`⌘Enter` / `Ctrl+Enter`). In the transcript, steering messages read
     "Read before the next step" and held ones "Sends when this turn ends".
   - Stop & send waits for the stopped turn, including a running tool, to
     wind down, then sends; steers the agent had not read go out first, after
     the stopped turn `[v3.11.0]`.
   - Queued messages reach the agent in the order they go out: steers first,
-    then held messages, one turn each. A steer is read before the running
+    then held messages, which start the next turn together. A steer is read before the running
     turn's next step, or starts the next turn if that turn makes no further
     step. Its `@` mentions arrive with it `[v3.4.0]`. A steer sent while a
     question or plan review waits replaces it and starts a new turn; a held
@@ -2087,8 +2088,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     agent, are never handed back: a member's report waiting for a busy lead
     stays out of the queue and appears as "Report from …" once the lead
     reads it or the turn is stopped `[v3.30.0]`.
-  - Limits: held messages live only in this window and are lost on reload.
-    A steer sent late still goes out before an earlier held message. Steers
+  - Limits: a steer sent late still goes out before an earlier held message. Steers
     read together run with the model and thinking level of the last one
     sent.
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show

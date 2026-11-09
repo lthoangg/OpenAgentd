@@ -109,6 +109,7 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
         sentFromWorkspace: sender?.workspaceName,
         sentFromSession: sender ? { sessionId: sender.sessionId, workspace: sender.workspace } : undefined,
         heldUntilTurnEnd: msg.extra?.hold_until_turn_end === true || undefined,
+        mentions: Array.isArray(msg.extra?.mentions) && msg.extra.mentions.length > 0 ? msg.extra.mentions as string[] : undefined,
       }
     })
 }

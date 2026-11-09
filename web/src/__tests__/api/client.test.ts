@@ -179,6 +179,20 @@ describe('postAgentChat', () => {
     expect(forms.map((form) => form.get('keep_goal'))).toEqual(['true', null, null])
   })
 
+  // "Queue until done" is held on the server, so it survives the client closing.
+  it('asks the server to hold a message until the turn ends only when told to', async () => {
+    const forms: FormData[] = []
+    globalThis.fetch = mock((_url, init) => {
+      forms.push((init as RequestInit).body as FormData)
+      return Promise.resolve(new Response(JSON.stringify({ status: 'queued', session_id: 'sid', message_id: 'm' })))
+    }) as typeof fetch
+
+    await postAgentChat('later', 'sid', false, '/tmp', undefined, undefined, undefined, false, undefined, undefined, false, null, true)
+    await postAgentChat('now', 'sid', false, '/tmp')
+
+    expect(forms.map((form) => form.get('hold_until_turn_end'))).toEqual(['true', null])
+  })
+
   it('deletes queued messages by session and message id', async () => {
     let url: string | URL | Request | undefined
     let method: string | undefined

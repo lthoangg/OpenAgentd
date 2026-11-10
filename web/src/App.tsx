@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useLayoutEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { RouterProvider } from '@tanstack/react-router'
 import { Seal } from '@/components/brand/Logo'
 import type { AppBackendPrefill } from '@/components/AppBackendDialog'
@@ -11,6 +11,7 @@ import { useConnectLink } from '@/hooks/useConnectLink'
 import { useDynamicType } from '@/hooks/use-dynamic-type'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
+import { getPlatform } from '@/hooks/use-platform'
 import { getAppBackendStatus, getBundledBackendLogPath } from '@/lib/app-backend'
 import { clearBackendSwitchHandoff, pendingBackendSwitch, type BackendSwitchTarget } from '@/stores/useBackendSwitchStore'
 import { openServersScreen } from '@/stores/useServersScreenStore'
@@ -24,6 +25,18 @@ import { router } from './router'
  */
 const PHONE_SERVERS_AFTER_MS = 10_000
 
+// The phone's account sync (a tapped "A device wants to join" opens the
+// approval sheet). The root route mounts it once a server is up; before
+// that, this screen does, so a phone with no server can still approve.
+const PhoneCloudSync = lazy(() =>
+  import('@/hooks/use-phone-cloud-sync').then((module) => ({ default: module.PhoneCloudSync })),
+)
+
+function phoneAppShell(): boolean {
+  const { isTauri, os } = getPlatform()
+  return isTauri && (os === 'ios' || os === 'android')
+}
+
 function App() {
   // Mounted here, not in the root route, so the loading screen and the
   // first-run server dialog already get the mobile shell's viewport guards
@@ -36,6 +49,15 @@ function App() {
   // A phone has one server picker, its Servers screen: shown in place of the
   // loading logo once connecting takes a moment, or at once for a link.
   const [phoneServers, setPhoneServers] = useState(false)
+  // A saved LAN address of an account computer that no longer answers:
+  // open that computer through the account, once per launch.
+  useEffect(() => {
+    if (!phoneAppShell()) return
+    void import('@/lib/account-lan-fallback')
+      .then((module) => module.fallBackToAccountOnce())
+      .then((outcome) => { if (outcome === 'failed') setPhoneServers(true) })
+      .catch(() => {})
+  }, [])
   useEffect(() => {
     if (!isPhone || ready) return
     let cancelled = false
@@ -77,7 +99,7 @@ function App() {
         <>
           {phoneServers ? (
             <div className="mobile-safe-shell mobile-viewport h-dvh">
-              <ServersScreen active onOpenSessions={() => {}} />
+              <ServersScreen active />
             </div>
           ) : (
             <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="status" aria-label="Loading OpenAgentd">
@@ -85,6 +107,11 @@ function App() {
             </div>
           )}
           <BackendSwitchScreen />
+          {phoneAppShell() && (
+            <Suspense fallback={null}>
+              <PhoneCloudSync />
+            </Suspense>
+          )}
         </>
       )
     }

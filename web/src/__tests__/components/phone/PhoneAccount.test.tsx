@@ -1,6 +1,5 @@
 /**
- * The phone's account: the onboarding card and merged computers on the
- * Servers screen, and the Account page with its recovery and approval flows.
+ * The phone's account: merged computers on the Servers screen, and the Account page with its recovery and approval flows.
  * The shell's commands are faked at `invoke`; a guest is never blocked.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -87,52 +86,7 @@ afterEach(() => {
 
 const ran = (command: string) => calls.filter((call) => call.command === command)
 
-describe('onboarding card', () => {
-  it('offers a guest the account, optionally, and "Not now" hides it for good', async () => {
-    shell({ state: 'guest', notice: null, supported: true })
-    const first = render(<ServersScreen active onOpenSessions={() => {}} />)
-
-    expect(await screen.findByText('Reach your computer from anywhere.')).toBeTruthy()
-    expect(screen.getByText(/It's optional: everything else works without an account\./)).toBeTruthy()
-    // The servers list is untouched, so nothing waits on the account.
-    expect(await screen.findByText('Home Mac')).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Not now' }))
-    expect(screen.queryByText('Reach your computer from anywhere.')).toBeNull()
-    first.unmount()
-
-    render(<ServersScreen active onOpenSessions={() => {}} />)
-    await screen.findByText('Home Mac')
-    await waitFor(() => expect(ran('cloud_status').length).toBeGreaterThan(1))
-    expect(screen.queryByText('Reach your computer from anywhere.')).toBeNull()
-  })
-
-  it('shows nothing where accounts are not supported', async () => {
-    shell({ state: 'guest', notice: null, supported: false })
-    render(<ServersScreen active onOpenSessions={() => {}} />)
-
-    await screen.findByText('Home Mac')
-    await waitFor(() => expect(ran('cloud_status').length).toBe(1))
-    expect(screen.queryByText('Reach your computer from anywhere.')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
-  })
-
-  it('signs in and opens the Account sheet on the sign-in code', async () => {
-    const signingIn: PhoneCloudStatus = {
-      state: 'signing_in', user_code: 'WXYZ-1234', url: 'https://account.openagentd.dev/device', fingerprint: 'AA11 BB22', expires_in: 600,
-    }
-    shell({ state: 'guest', notice: null, supported: true }, {
-      cloud_sign_in: () => { status = signingIn; return signingIn },
-    })
-    render(<ServersScreen active onOpenSessions={() => {}} />)
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }))
-
-    const sheet = await screen.findByRole('dialog', { name: 'Account' })
-    expect(await within(sheet).findByText('WXYZ-1234')).toBeTruthy()
-    expect(ran('cloud_sign_in')).toHaveLength(1)
-  })
-})
+// The Account section on the Servers screen: ServersScreen.account.test.tsx.
 
 describe('computers on the Servers screen', () => {
   it('shows a saved LAN server that is an account computer once, "via LAN", and opens it by its address', async () => {
@@ -143,15 +97,16 @@ describe('computers on the Servers screen', () => {
     })
     render(<ServersScreen active onOpenSessions={() => {}} />)
 
-    expect(await screen.findByText('macOS · 3F9A 21C4')).toBeTruthy()
-    expect(screen.getByText('via LAN')).toBeTruthy()
-    // One row for the computer: the saved server is not listed again.
-    expect(screen.queryByText('Studio Mac')).toBeNull()
+    expect(await screen.findByText('via LAN')).toBeTruthy()
+    // One row for the computer, titled with the name typed for its saved
+    // server: the saved server is not listed again.
+    expect(screen.getAllByText('Studio Mac')).toHaveLength(1)
+    expect(screen.queryByText('macOS · 3F9A 21C4')).toBeNull()
     expect(screen.getByText('Home Mac')).toBeTruthy()
     // This phone is not a computer.
     expect(screen.queryByText(/iOS · AA11 BB22/)).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use macOS · 3F9A 21C4' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use Studio Mac' }))
     await waitFor(() => expect(ran('cloud_open_computer')).toHaveLength(1))
     expect(ran('cloud_open_computer')[0].args).toEqual({ deviceId: 'dev-mac', lanBaseUrl: LAN })
     expect(await screen.findByText('Opened over your network.')).toBeTruthy()
@@ -298,7 +253,7 @@ describe('Account page', () => {
 describe('recovery code', () => {
   const CODE = 'AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF-GGGGG'
 
-  it('shows the code once, with no Copy, then asks for two groups and shows a rejection', async () => {
+  it('shows the code once, then asks for two groups and shows a rejection', async () => {
     let attempts = 0
     shell({ state: 'recovery', code: CODE, check: [2, 5] }, {
       cloud_confirm_recovery: () => {
@@ -314,7 +269,7 @@ describe('recovery code', () => {
     expect(screen.getByText(/OpenAgentd can't recover it for you/)).toBeTruthy()
     expect(screen.getByText('AAAAA BBBBB CCCCC DDDDD EEEEE')).toBeTruthy()
     expect(screen.getByText('FFFFF GGGGG')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /copy/i })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Copy code' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'I saved it' }))
     expect(screen.queryByText('AAAAA BBBBB CCCCC DDDDD EEEEE')).toBeNull()

@@ -11,13 +11,13 @@ import { useSyncExternalStore } from 'react'
 
 import { getStoredAccessKey } from '@/api/auth'
 import { isPhoneCloudShell } from '@/api/phone-cloud'
+import { LAN_COMPUTERS_KEY, normalizeFingerprint } from '@/lib/app-backend'
 
-const STORAGE_KEY = 'openagentd.cloud.lanComputers'
+const STORAGE_KEY = LAN_COMPUTERS_KEY
 const CHANGED = 'openagentd:lan-computers'
 const PROBE_TIMEOUT_MS = 3000
 
-/** `3f9a 21c4` and `3F9A-21C4` are the same fingerprint. */
-export const normalizeFingerprint = (fingerprint: string) => fingerprint.replace(/[\s-]+/g, '').toUpperCase()
+export { normalizeFingerprint }
 
 function readRaw(): string {
   try {

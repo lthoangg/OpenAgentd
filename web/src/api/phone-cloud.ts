@@ -6,7 +6,7 @@
  */
 import type { ApprovalView, Roles } from '@/api/cloud'
 import { getPlatform } from '@/hooks/use-platform'
-import type { AppBackendStatus } from '@/lib/app-backend'
+import { deviceKindLabel, type AppBackendStatus } from '@/lib/app-backend'
 
 export type PhoneNotice =
   | 'denied'
@@ -43,6 +43,11 @@ export interface DeviceRow {
   client?: boolean
   me: boolean
   kind: string | null
+  /**
+   * A server's relay connection is open now (the cloud's word, may be a
+   * little stale). null or absent: not a server, or the cloud did not say.
+   */
+  online?: boolean | null
 }
 
 export interface PendingRow {
@@ -63,25 +68,7 @@ export interface OpenedComputer {
   via: 'lan' | 'account'
 }
 
-const KIND_LABELS: Record<string, string> = {
-  macos: 'macOS',
-  linux: 'Linux',
-  windows: 'Windows',
-  ios: 'iOS',
-  android: 'Android',
-}
-
-/** "macOS" for `macos`; null when the account does not say or names a kind
- *  outside the API's set (it is self-reported, so free text is never shown). */
-export function deviceKindLabel(kind: string | null | undefined): string | null {
-  if (!kind) return null
-  return Object.hasOwn(KIND_LABELS, kind) ? KIND_LABELS[kind] : null
-}
-
-/** "macOS · 3F9A 21C4": what a device is called in lists. */
-export function deviceLabel(device: Pick<DeviceRow, 'kind' | 'fingerprint'>): string {
-  return [deviceKindLabel(device.kind), device.fingerprint].filter(Boolean).join(' · ')
-}
+export { deviceKindLabel, deviceLabel } from '@/lib/app-backend'
 
 /** "just now", "1 min ago", "3 h ago", "2 d ago". Cloud times may be seconds or milliseconds. */
 export function ageText(at: number | null | undefined, now: number = Date.now()): string | null {
@@ -141,12 +128,17 @@ export const phoneCloudApproveReject = (enrollmentId: string) => call<void>('clo
 export interface InviteView {
   link: string
   expires_at: number
+  /** A computer's invitation: the slot its candidates are polled by. */
+  slot_id?: string
 }
 
 export interface InviteCandidate {
   enrollment_id: string
   fingerprint: string
   kind: string | null
+  /** The roles it asked for (a computer's invitation says). */
+  server?: boolean
+  client?: boolean
 }
 
 export type InvitePoll =

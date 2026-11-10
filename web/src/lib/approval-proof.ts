@@ -4,6 +4,8 @@ import { getPlatform } from '@/hooks/use-platform'
 export type ApprovalAction =
   | { action: 'approve'; id: string; signer: boolean; server: boolean; client: boolean }
   | { action: 'remove'; id: string }
+  /** Show an invitation (`id`: `start`) or look at its candidates (its slot id); no confirmation asked. */
+  | { action: 'invite'; id: string }
 
 /**
  * Whether this window can approve: only the desktop app holds the key its

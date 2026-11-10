@@ -26,6 +26,10 @@ fn reason_text(reason: &str) -> String {
 /// The `X-Agentd-Approval` proof for `action` (`approve` or `remove`) on
 /// `id`, once the person confirmed (or the platform has no such check);
 /// `None` when they cancelled or failed it.
+///
+/// `invite` (showing an invitation, or looking at its candidates) changes
+/// nothing in the account, so it asks for no confirmation: its proof only
+/// keeps the invitation link from callers outside this app.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn cloud_approval_proof(
@@ -47,10 +51,14 @@ pub async fn cloud_approval_proof(
             client,
         },
         "remove" => Action::Remove,
+        "invite" => Action::Invite,
         _ => return Err("Unknown action.".into()),
     };
     if !approval::valid_id(&id) {
         return Err("Malformed request.".into());
+    }
+    if action == Action::Invite {
+        return Ok(Some(approval::proof(action, &id)));
     }
     let reason = reason_text(&reason);
     let confirmed = tauri::async_runtime::spawn_blocking(move || platform::confirm(&reason))

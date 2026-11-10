@@ -87,7 +87,7 @@ fn approvals() -> &'static Mutex<HashMap<String, Approval>> {
 const MAX_OPEN_APPROVALS: usize = 4;
 
 /// This host's account as a member with its full keys and verified roster.
-fn member() -> Result<Member, SignerError> {
+pub(super) fn member() -> Result<Member, SignerError> {
     let id = idstore::load(&super::identity_store()).ok().flatten().filter(|i| i.account_id.is_some()).ok_or(SignerError::NotSignedIn)?;
     let keys = id.keys().map_err(|_| SignerError::NotSignedIn)?;
     let known = id.roster.as_deref().and_then(|b| roster::parse(b).ok()).ok_or(SignerError::NotSignedIn)?;
@@ -95,7 +95,7 @@ fn member() -> Result<Member, SignerError> {
 }
 
 /// Brings `K` up to date and stores it; the connection loop hears of it.
-async fn synced() -> Result<Member, SignerError> {
+pub(super) async fn synced() -> Result<Member, SignerError> {
     let mut m = member()?;
     let sync = m.sync().await;
     if let Some(r) = m.roster.as_ref() {
@@ -116,7 +116,7 @@ async fn synced() -> Result<Member, SignerError> {
 }
 
 /// After a roster write here: store it and tell the connection loop.
-fn wrote(r: &roster::Roster) {
+pub(super) fn wrote(r: &roster::Roster) {
     super::persist_roster(r);
     super::poke_roster();
 }

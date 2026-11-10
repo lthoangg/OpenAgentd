@@ -10,6 +10,7 @@
 pub mod approval;
 pub mod connector;
 pub mod engine;
+pub mod invite;
 pub mod letters;
 pub mod routes;
 pub mod signer;
@@ -215,6 +216,8 @@ pub async fn stop() {
         h.abort();
     }
     host().sessions.close_all(1000);
+    // An open invitation must not outlive the server that shows it.
+    invite::cancel().await;
 }
 
 /// Picks up an identity another process (`agentd cloud login`) wrote.
@@ -348,6 +351,8 @@ pub fn cancel_sign_in() -> Status {
 /// Signs this host out: leaves the account (best effort), erases its keys
 /// and returns to guest. Local sessions and settings are untouched.
 pub async fn sign_out() -> Status {
+    // While the keys still sign: an open invitation is cancelled first.
+    invite::cancel().await;
     let store = identity_store();
     if let Ok(Some(id)) = idstore::load(&store) {
         if let Ok(keys) = id.keys() {

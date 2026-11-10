@@ -6,7 +6,9 @@
  * otherwise a device already in the account approves it after comparing a
  * 6-digit code. An invitation link is the alternative. Once connected, a
  * computer that approves devices lists the account's devices and the
- * pending requests, and approves one with the code and Touch ID. Only this
+ * pending requests, and approves one with the code and Touch ID; in the
+ * desktop app it also shows an invitation QR code (**Add a device**) that a
+ * phone scans to join, added only after Add and Touch ID. Only this
  * computer may change its account; anyone else (a phone viewing a remote
  * server) sees the status and a hint.
  */
@@ -14,6 +16,7 @@ import { useState, type ReactNode } from 'react'
 
 import { APPROVE_ELSEWHERE, REMOVE_ELSEWHERE, type CloudPending, type CloudStatus, type RelayState, type Roles } from '@/api/cloud'
 import { deviceLabel, pendingLabel } from '@/api/phone-cloud'
+import { DesktopAddDeviceSheet } from '@/components/account/DesktopAddDeviceSheet'
 import { DesktopApprovalSheet } from '@/components/account/DesktopApprovalSheet'
 import { RecoveryStep } from '@/components/account/RecoveryStep'
 import { COMPUTER_ROLES, RolesChoice, rolesLabel } from '@/components/account/RolesChoice'
@@ -69,8 +72,8 @@ function relayText(relay: RelayState): string {
 
 const isForbidden = (error: unknown) => error instanceof ApiValidationError && error.status === 403
 
-/** The account's devices; an approver can remove the others. */
-function DevicesSection({ canRemove }: { canRemove: boolean }) {
+/** The account's devices; an approver can add a device and remove the others. */
+function DevicesSection({ canRemove, onAdd }: { canRemove: boolean; onAdd?: () => void }) {
   const devicesQ = useCloudDevicesQuery(true)
   const remove = useCloudRemoveDevice()
   const [removing, setRemoving] = useState<string | null>(null)
@@ -80,7 +83,12 @@ function DevicesSection({ canRemove }: { canRemove: boolean }) {
   if (isForbidden(devicesQ.error)) return null
   return (
     <>
-      <PanelSection title="Devices" description={canRemove && !here ? REMOVE_ELSEWHERE : undefined} flush>
+      <PanelSection
+        title="Devices"
+        description={canRemove && !here ? REMOVE_ELSEWHERE : undefined}
+        flush
+        actions={onAdd && here && <Button size="sm" variant="primary" onClick={onAdd}>Add a device</Button>}
+      >
         {devicesQ.isLoading && <PanelRow label="Loading devices…" />}
         {devicesQ.data?.map((device) => (
           <PanelRow
@@ -147,6 +155,7 @@ export function AccountSettingsPage() {
   const [roles, setRoles] = useState<Roles>(COMPUTER_ROLES)
   const [withLink, setWithLink] = useState(false)
   const [reviewing, setReviewing] = useState<CloudPending | null>(null)
+  const [adding, setAdding] = useState(false)
 
   const status: CloudStatus | undefined = statusQ.data
   const mutations = [login, join, cancel, logout]
@@ -300,7 +309,7 @@ export function AccountSettingsPage() {
         content = (
           <>
             {content}
-            <DevicesSection canRemove={status.signer} />
+            <DevicesSection canRemove={status.signer} onAdd={status.signer ? () => setAdding(true) : undefined} />
             {status.signer && <PendingSection onReview={setReviewing} />}
           </>
         )
@@ -346,6 +355,7 @@ export function AccountSettingsPage() {
       )}
       {content}
       {reviewing && <DesktopApprovalSheet row={reviewing} onClose={() => setReviewing(null)} />}
+      {adding && <DesktopAddDeviceSheet onClose={() => setAdding(false)} />}
       <ConfirmDialog
         open={confirmingSignOut}
         onOpenChange={setConfirmingSignOut}

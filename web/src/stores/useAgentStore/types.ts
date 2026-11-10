@@ -303,6 +303,12 @@ export interface AgentStoreActions {
    */
   connectStream: (options?: { holdUntil?: Promise<unknown> }) => AbortController
   /**
+   * Whether the attached live feed delivered a frame at or after ``since``
+   * (a ``Date.now()`` time): it is proven live since then, so attaching
+   * again would only replay the same turn.
+   */
+  streamLiveSince: (since: number) => boolean
+  /**
    * Drop the leading live blocks of each stream that the committed history
    * already holds: a feed attached before the history read can replay a step
    * the read then found saved.

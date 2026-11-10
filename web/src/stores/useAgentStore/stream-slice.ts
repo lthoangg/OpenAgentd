@@ -68,6 +68,9 @@ export const streamWatchClock = {
 /** The live connection's silence check, so a turn start can re-arm it. */
 let activeWatch: { abort: AbortController; arm: () => void } | null = null
 
+/** When the live connection last delivered a frame (no store update per frame). */
+let lastFrame: { abort: AbortController; at: number } | null = null
+
 function mergeChangedPaths(
   changed: { added: string[]; modified: string[]; removed: string[] } | undefined,
 ): string[] | undefined {
@@ -131,6 +134,7 @@ export type StreamSlice = Pick<
   | 'setPendingDraft'
   | 'stopAgent'
   | 'connectStream'
+  | 'streamLiveSince'
   | 'expectStreamActivity'
   | 'expectQuestion'
   | 'resyncStream'
@@ -590,6 +594,8 @@ export const createStreamSlice: StateCreator<
           })
           if (decision.kind === 'ignore') return
           receivedAnyEvent = true
+          if (lastFrame?.abort === abort) lastFrame.at = Date.now()
+          else lastFrame = { abort, at: Date.now() }
           disarmWatch()
           if (!gapChecked && STEP_CONTENT_FRAMES.has(type)) {
             gapChecked = true
@@ -732,6 +738,13 @@ export const createStreamSlice: StateCreator<
       { direct: get()._directStreamSession === sessionId },
     )
     return abort
+  },
+
+  streamLiveSince: (since) => {
+    const s = get()
+    const frame = lastFrame
+    if (!s.isConnected || frame === null || frame.abort !== s._abortController) return false
+    return !frame.abort.signal.aborted && frame.at >= since
   },
 
   expectStreamActivity: () => {

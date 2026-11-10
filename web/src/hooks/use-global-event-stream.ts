@@ -365,6 +365,8 @@ function isSessionStreamFrame(type: string): boolean {
 export async function reconcileCurrentSession(
   connectionGeneration: number,
   currentConnectionGeneration: () => number,
+  // When this connection's predecessor dropped (none on the first open).
+  droppedAt?: number,
 ): Promise<void> {
   const before = useAgentStore.getState()
   const sessionId = before.sessionId
@@ -379,6 +381,10 @@ export async function reconcileCurrentSession(
   // replay, so a stream that is still attached stays as it is. Re-attaching
   // it tore the stream down on every resync while the question stayed open.
   if (after.isConnected && waitsOnlyOnUser(after)) return
+  // The chat stream recovered from the same drop by itself: it reattached
+  // and replayed the turn. Attaching again aborted that fresh stream a moment
+  // later, so every recovery opened it twice.
+  if (droppedAt !== undefined && after.streamLiveSince(droppedAt)) return
   after.connectStream()
 }
 
@@ -399,6 +405,9 @@ export function useGlobalEventStream(): void {
     let controller: AbortController | null = null
     // True between onOpen and the next onError/onDone: the socket is known live.
     let opened = false
+    // When the last connection dropped: the catch-up after a reconnect
+    // leaves a chat stream that has delivered since then.
+    let droppedAt: number | undefined
     // The first connection resyncs at once (it may follow a startup gap);
     // later ones wait for ``settleTimer`` so a flapping link stays quiet.
     let everOpened = false
@@ -411,7 +420,7 @@ export function useGlobalEventStream(): void {
     }
     const resync = (generation: number) => {
       invalidateGlobalEventQueries(queryClient)
-      void reconcileCurrentSession(generation, () => connectionGeneration)
+      void reconcileCurrentSession(generation, () => connectionGeneration, droppedAt)
     }
     // The health dot follows this connection instead of a fast poll: a drop
     // rechecks at once, and an open rechecks only a failed check (the first
@@ -458,6 +467,7 @@ export function useGlobalEventStream(): void {
         onError: (error) => {
           if (disposed || generation !== connectionGeneration) return
           opened = false
+          droppedAt = Date.now()
           clearSettleTimer()
           recheckHealth()
           // Old servers do not have this optional endpoint; leave them alone.
@@ -468,6 +478,7 @@ export function useGlobalEventStream(): void {
         onDone: () => {
           if (disposed || generation !== connectionGeneration) return
           opened = false
+          droppedAt = Date.now()
           clearSettleTimer()
           recheckHealth()
           const delay = Math.min(30_000, 1_500 * 2 ** attempts++)

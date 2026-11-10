@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 let isTauri = true
 let focused = false
@@ -10,6 +10,15 @@ let os = 'macos'
 let shellResult: boolean | undefined = undefined
 const mockRequestPermission = mock(async () => permissionResult)
 const mockNotify = mock(async () => shellResult)
+/** What the phone's own `cloud_status` command answers; an Error rejects. */
+let phoneCloud: unknown = { state: 'guest', notice: null, supported: true }
+const mockInvoke = mock(async (...args: unknown[]) => {
+  if (args[0] === 'cloud_status') {
+    if (phoneCloud instanceof Error) throw phoneCloud
+    return phoneCloud
+  }
+  return (mockNotify as unknown as (...args: unknown[]) => Promise<unknown>)(...args)
+})
 const mockPlay = mock(async () => undefined)
 type TapEvent = { actionId?: unknown; notification?: { id?: unknown } }
 let actionListener: ((event: TapEvent) => void) | null = null
@@ -36,7 +45,7 @@ mock.module('@tauri-apps/plugin-notification', () => ({
 }))
 
 mock.module('@tauri-apps/api/core', () => ({
-  invoke: mockNotify,
+  invoke: mockInvoke,
 }))
 
 import { listenForNotificationTaps, sendDesktopNotification } from '../../lib/desktop-notifications'
@@ -60,12 +69,33 @@ beforeEach(() => {
   os = 'macos'
   shellResult = undefined
   actionListener = null
-  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+  phoneCloud = { state: 'guest', notice: null, supported: true }
+  setVisibility('visible')
   mockRequestPermission.mockClear()
   mockNotify.mockClear()
+  mockInvoke.mockClear()
   mockPlay.mockClear()
   globalThis.Audio = mock(() => ({ play: mockPlay })) as unknown as typeof Audio
 })
+
+afterEach(() => {
+  Date.now = realNow
+})
+
+const realNow = Date.now
+/** Bun has no fake clock; the module reads `Date.now()`. */
+function setNow(iso: string) {
+  const at = Date.parse(iso)
+  Date.now = () => at
+}
+
+/** Sets the page visibility; `dispatch` also fires `visibilitychange`, as iOS does. */
+function setVisibility(state: 'visible' | 'hidden', dispatch = false) {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state })
+  if (dispatch) document.dispatchEvent(new Event('visibilitychange'))
+}
+
+const ACCOUNT_PUSH = { state: 'connected', fingerprint: 'AB12 CD34', signer: true }
 
 describe('desktop notification worker', () => {
   it('unfocused native send', async () => {
@@ -164,6 +194,69 @@ describe('desktop notification worker', () => {
 
     expect(actionListener).toBeNull()
     stop()
+  })
+
+  describe('iPhone with account push', () => {
+    it('leaves Done and Needs you to the push while the app is hidden', async () => {
+      os = 'ios'
+      phoneCloud = ACCOUNT_PUSH
+      setVisibility('hidden', true)
+
+      expect((await sendDesktopNotification(payload)).status).toBe('disabled')
+      const question = { ...payload, kind: 'input_needed' as const, title: 'Needs you · openagentd' }
+      expect((await sendDesktopNotification(question, { force: true })).status).toBe('disabled')
+      expect(mockNotify).not.toHaveBeenCalled()
+    })
+
+    it('skips events handled just after the app comes back, which the push already showed', async () => {
+      os = 'ios'
+      phoneCloud = ACCOUNT_PUSH
+      setNow('2020-01-01T00:00:00Z')
+      setVisibility('hidden', true)
+      setVisibility('visible', true)
+
+      setNow('2020-01-01T00:00:02Z')
+      expect((await sendDesktopNotification(payload)).status).toBe('disabled')
+      expect(mockNotify).not.toHaveBeenCalled()
+
+      setNow('2020-01-01T00:00:04Z')
+      expect((await sendDesktopNotification(payload)).status).toBe('sent')
+      expect(mockNotify).toHaveBeenCalledTimes(1)
+    })
+
+    it('still notifies from the open app, where iOS hides the push', async () => {
+      os = 'ios'
+      phoneCloud = ACCOUNT_PUSH
+
+      expect((await sendDesktopNotification(payload, { sessionOnScreen: false })).status).toBe('sent')
+      const question = { ...payload, kind: 'input_needed' as const, title: 'Needs you · openagentd' }
+      expect((await sendDesktopNotification(question, { force: true })).status).toBe('sent')
+      expect(mockNotify).toHaveBeenCalledTimes(2)
+    })
+
+    it('keeps kinds the computer does not push', async () => {
+      os = 'ios'
+      phoneCloud = ACCOUNT_PUSH
+      setVisibility('hidden', true)
+
+      expect((await sendDesktopNotification({ ...payload, kind: 'reminder_fired' })).status).toBe('sent')
+      expect(mockNotify).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('a hidden phone app without account push still notifies', async () => {
+    setVisibility('hidden', true)
+    for (const [platform, account] of [
+      ['ios', { state: 'guest', notice: null, supported: true }],
+      ['ios', { state: 'connected', fingerprint: 'AB12 CD34', signer: false }],
+      ['ios', new Error('cloud_status unavailable')],
+      ['android', ACCOUNT_PUSH],
+    ] as const) {
+      os = platform
+      phoneCloud = account
+      expect((await sendDesktopNotification(payload)).status).toBe('sent')
+    }
+    expect(mockNotify).toHaveBeenCalledTimes(4)
   })
 
   it('unsupported runtime', async () => {

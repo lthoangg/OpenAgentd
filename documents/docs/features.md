@@ -422,6 +422,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   them. Since `[v3.29.0]` only a focused window on the same server skips it,
   so a question from a server you are not looking at still shows, and
   clicking it opens the window that sent it.
+  On an iPhone signed in to an OpenAgentd Cloud account, Done and Needs you
+  show once `[v3.51.2]`: the app shows them itself only while it is open, and
+  the account's push covers the background, the lock screen, and events
+  caught up on in the first seconds after reopening the app.
 - **Home-screen widgets on iPhone and Android** `[v3.31.0]` — three widgets
   for the mobile app: **Quick start** (start a new session, or continue the
   last one), **Sessions** (up to three sessions, the ones that need you first,

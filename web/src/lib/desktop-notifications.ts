@@ -37,6 +37,27 @@ let permissionRequested = false
 const tapSessions = new Map<number, string>()
 const MAX_TAP_SESSIONS = 50
 
+/**
+ * Kinds a computer also sends to its account's phones as an APNs push
+ * (``appv3/crates/api/src/cloud/letters.rs``). On such an iPhone the push
+ * covers the app in the background and iOS hides it while the app is open,
+ * so the app shows these itself only while it is open.
+ */
+const PUSHED_KINDS: ReadonlySet<DesktopNotificationKind> = new Set(['assistant_done', 'input_needed'])
+/**
+ * Events the app handles in its first moments back on screen were raised
+ * while it was in the background (iOS delivers them on resume), and the push
+ * already showed them.
+ */
+const RESUME_GRACE_MS = 3000
+/** When the page last came on screen; 0 at launch, which holds no earlier events. */
+let visibleSince = 0
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') visibleSince = Date.now()
+  })
+}
+
 export interface DesktopNotificationOptions {
   /** Skip the window-focus check; the user's notification setting still applies. */
   force?: boolean
@@ -64,6 +85,25 @@ function isMobileTauriRuntime(): boolean {
   return platform.isTauri && (platform.os === 'ios' || platform.os === 'android')
 }
 
+function appOpenOnScreen(): boolean {
+  return document.visibilityState === 'visible' && Date.now() - visibleSince >= RESUME_GRACE_MS
+}
+
+/**
+ * Whether this phone gets the account's pushes: signed in as a signer, the
+ * devices a computer sends them to. Unknown counts as no, so a failure can
+ * repeat a notification but never lose one.
+ */
+async function phoneReceivesPush(): Promise<boolean> {
+  try {
+    const { getPhoneCloudStatus } = await import('@/api/phone-cloud')
+    const status = await getPhoneCloudStatus()
+    return status.state === 'connected' && status.signer
+  } catch {
+    return false
+  }
+}
+
 export function areDesktopNotificationsEnabled(): boolean {
   if (typeof window === 'undefined') return true
   return window.localStorage.getItem(ENABLED_KEY) !== 'false'
@@ -74,12 +114,20 @@ export function setDesktopNotificationsEnabled(enabled: boolean): void {
   window.localStorage.setItem(ENABLED_KEY, String(enabled))
 }
 
-async function shouldNotify(options: DesktopNotificationOptions = {}): Promise<DesktopNotificationResult | null> {
+async function shouldNotify(
+  kind: DesktopNotificationKind,
+  options: DesktopNotificationOptions = {},
+): Promise<DesktopNotificationResult | null> {
   if (!isTauriRuntime()) {
     return { status: 'unsupported', message: 'Native app notifications only work in the Tauri app.' }
   }
   if (!areDesktopNotificationsEnabled()) {
     return { status: 'disabled', message: 'App notifications are disabled.' }
+  }
+  // Before ``force``: a question would otherwise arrive twice, once from here
+  // and once as the push.
+  if (getPlatform().os === 'ios' && PUSHED_KINDS.has(kind) && !appOpenOnScreen() && (await phoneReceivesPush())) {
+    return { status: 'disabled', message: 'The account push shows this while the app is in the background.' }
   }
   if (options.force) return null
   if (isMobileTauriRuntime()) {
@@ -123,7 +171,7 @@ export async function sendDesktopNotification(
   payload: DesktopNotificationPayload,
   options: DesktopNotificationOptions = {},
 ): Promise<DesktopNotificationResult> {
-  const skipped = await shouldNotify(options)
+  const skipped = await shouldNotify(payload.kind, options)
   if (skipped) return skipped
 
   try {

@@ -30,6 +30,13 @@ pub const ACK_BYTES: usize = 256 * 1024;
 pub const ACK_IDLE: Duration = Duration::from_millis(500);
 /// WebSocket pings from the device keep sockets alive.
 pub const PING_EVERY: Duration = Duration::from_secs(25);
+/// The text keepalive (draft, `tunnel.md` section 5): presence also sends
+/// this every [`PING_EVERY`], so the relay can tell a host that went quiet
+/// (protocol pings never reach it); it answers [`TEXT_PONG`].
+pub const TEXT_PING: &str = "ping";
+pub const TEXT_PONG: &str = "pong";
+/// What a relay from before the text keepalive closes presence with.
+const UNSUPPORTED_DATA: u16 = 1003;
 /// A socket that brought no frame at all (not even a pong) for this long
 /// is dead: two missed pongs and a margin. After Wi-Fi changes or a sleep
 /// a socket can stay half open, with nothing to say it closed.
@@ -529,6 +536,9 @@ pub async fn host_with(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<d
         Err(e) => return e,
     };
     opened.set();
+    // Text pings unless an older relay already refused one (once per client).
+    let text_keepalive = cloud.text_keepalive();
+    let mut ponged = false;
     let mut ping = tokio::time::interval(keepalive.every);
     ping.tick().await;
     let mut stop = stop;
@@ -550,13 +560,17 @@ pub async fn host_with(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<d
             }
             _ = tokio::time::sleep_until(last_in + keepalive.dead_after) => return dead(&sessions),
             _ = ping.tick() => {
+                // The protocol ping keeps the socket alive on any relay.
                 if ws.send(Message::Ping(Vec::new().into())).await.is_err() { return RelayError::Network; }
+                if text_keepalive && ws.send(Message::Text(TEXT_PING.into())).await.is_err() { return RelayError::Network; }
             }
             msg = ws.next() => {
                 if matches!(msg, Some(Ok(_))) {
                     last_in = tokio::time::Instant::now();
                 }
                 match msg {
+                // The keepalive's answer: not a JSON message.
+                Some(Ok(Message::Text(t))) if t.as_str() == TEXT_PONG => ponged = true,
                 Some(Ok(Message::Text(t))) => {
                     let v: Value = serde_json::from_str(&t).unwrap_or_default();
                     match v["type"].as_str() {
@@ -578,6 +592,12 @@ pub async fn host_with(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<d
                 }
                 Some(Ok(Message::Close(f))) => {
                     let code = close_code(f.as_ref());
+                    // An older relay refuses the text ping: stop sending it
+                    // and reconnect as usual. After a `pong`, 1003 is a real
+                    // protocol error, handled like any other close.
+                    if code == UNSUPPORTED_DATA && text_keepalive && !ponged {
+                        cloud.turn_off_text_keepalive();
+                    }
                     sessions.close_all(code);
                     return RelayError::Closed(code);
                 }

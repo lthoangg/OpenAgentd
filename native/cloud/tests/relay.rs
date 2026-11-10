@@ -354,11 +354,19 @@ async fn pause_holds_the_hosts_writes_until_resume() {
 /// Keepalive timings a test can wait out: ping every 30 ms, dead after 150 ms.
 const QUICK: Keepalive = Keepalive { every: Duration::from_millis(30), dead_after: Duration::from_millis(150) };
 
+/// The client a host's presence runs with (one per process in the app).
+fn presence_cloud(server: &Member) -> Arc<Cloud> {
+    Arc::new(Cloud::new(reqwest::Client::new(), server.cloud.endpoints.clone(), server.cloud.keys.clone(), server.cloud.account_id.clone()))
+}
+
 /// Starts presence for `server` with `opts`; the handle says how it ended.
 fn spawn_presence(server: &Member, opts: HostOptions) -> (tokio::task::JoinHandle<RelayError>, oneshot::Sender<()>) {
+    spawn_presence_on(presence_cloud(server), server, opts)
+}
+
+fn spawn_presence_on(c: Arc<Cloud>, server: &Member, opts: HostOptions) -> (tokio::task::JoinHandle<RelayError>, oneshot::Sender<()>) {
     let handler = Arc::new(Echo { roster: Mutex::new(server.roster.clone().unwrap()), me: server.cloud.device_id(), rosters: Mutex::new(vec![]) });
     let (stop, stop_rx) = oneshot::channel();
-    let c = Arc::new(Cloud::new(reqwest::Client::new(), server.cloud.endpoints.clone(), server.cloud.keys.clone(), server.cloud.account_id.clone()));
     (tokio::spawn(relay::host_with(c, relay::http1_client(), handler, Sessions::default(), stop_rx, opts)), stop)
 }
 
@@ -422,4 +430,67 @@ async fn presence_says_open_only_once_the_socket_opened_and_closed_once_it_ends(
     stop.send(()).unwrap();
     presence.await.unwrap();
     assert!(!*opened.borrow(), "closed once presence ended");
+}
+
+#[tokio::test]
+async fn the_host_sends_text_pings_and_stays_connected_to_a_relay_that_answers_pong() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (_phone, server) = account(&fake, &base).await;
+    let c = presence_cloud(&server);
+    let (presence, stop) = spawn_presence_on(c.clone(), &server, HostOptions { keepalive: QUICK, ..HostOptions::default() });
+    tokio::time::sleep(QUICK.dead_after * 6).await;
+    assert!(!presence.is_finished(), "still connected");
+    let (text_pings, opens) = {
+        let r = fake.1.lock().unwrap();
+        (r.text_pings, r.presence_opens)
+    };
+    assert!(text_pings >= 3, "text pings sent: {text_pings}");
+    assert_eq!(opens, 1);
+    assert!(c.text_keepalive());
+    stop.send(()).unwrap();
+    assert_eq!(presence.await.unwrap(), RelayError::Closed(1000));
+}
+
+#[tokio::test]
+async fn an_old_relay_that_closes_1003_on_a_text_ping_gets_one_reconnect_and_no_more_text_pings() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (_phone, server) = account(&fake, &base).await;
+    fake.1.lock().unwrap().mode = PresenceMode::Old;
+    let c = presence_cloud(&server);
+    let (presence, _stop) = spawn_presence_on(c.clone(), &server, HostOptions { keepalive: QUICK, ..HostOptions::default() });
+    let ended = tokio::time::timeout(Duration::from_secs(3), presence).await.expect("the old relay closes it").unwrap();
+    assert_eq!(ended, RelayError::Closed(1003));
+    assert!(!c.text_keepalive(), "no text keepalive from now on");
+    // The caller reconnects as usual: protocol pings only, and it stays up.
+    let (presence, stop) = spawn_presence_on(c.clone(), &server, HostOptions { keepalive: QUICK, ..HostOptions::default() });
+    tokio::time::sleep(QUICK.dead_after * 6).await;
+    assert!(!presence.is_finished(), "the reconnect stays up");
+    let (text_pings, opens) = {
+        let r = fake.1.lock().unwrap();
+        (r.text_pings, r.presence_opens)
+    };
+    assert_eq!(text_pings, 1, "one text ping, before the downgrade");
+    assert_eq!(opens, 2, "one reconnect");
+    stop.send(()).unwrap();
+    assert_eq!(presence.await.unwrap(), RelayError::Closed(1000));
+}
+
+#[tokio::test]
+async fn a_1003_after_a_pong_is_a_real_close_not_a_downgrade() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (_phone, server) = account(&fake, &base).await;
+    let c = presence_cloud(&server);
+    let (presence, _stop) = spawn_presence_on(c.clone(), &server, HostOptions { keepalive: QUICK, ..HostOptions::default() });
+    while fake.1.lock().unwrap().text_pings == 0 {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    // The pong is answered at once; give it time to arrive.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    fake.close_presence(1003);
+    let ended = tokio::time::timeout(Duration::from_secs(3), presence).await.unwrap().unwrap();
+    assert_eq!(ended, RelayError::Closed(1003));
+    assert!(c.text_keepalive(), "the relay had answered pong: keep the text keepalive");
 }

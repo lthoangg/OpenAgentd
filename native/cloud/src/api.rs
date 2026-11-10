@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -300,6 +301,10 @@ pub struct Cloud {
     /// Set once the device knows its account.
     pub account_id: Option<String>,
     nonce: Mutex<Option<Secret>>,
+    /// The relay closed presence (1003) on the text `ping` keepalive before
+    /// ever answering `pong`: it predates the keepalive, so this client
+    /// sends protocol pings only from then on (`relay::host`).
+    text_keepalive_off: AtomicBool,
 }
 
 impl fmt::Debug for Cloud {
@@ -314,7 +319,7 @@ fn sha256_b64(data: &[u8]) -> String {
 
 impl Cloud {
     pub fn new(http: reqwest::Client, endpoints: Endpoints, keys: DeviceKeys, account_id: Option<String>) -> Self {
-        Cloud { http, endpoints, keys, roles: Roles::platform_default(), account_id, nonce: Mutex::new(None) }
+        Cloud { http, endpoints, keys, roles: Roles::platform_default(), account_id, nonce: Mutex::new(None), text_keepalive_off: AtomicBool::new(false) }
     }
 
     /// The `pubs` bytes this device sends: its keys and [`Cloud::roles`].
@@ -324,6 +329,17 @@ impl Cloud {
 
     pub fn device_id(&self) -> String {
         self.keys.id()
+    }
+
+    /// Whether presence may send the text `ping` keepalive.
+    pub fn text_keepalive(&self) -> bool {
+        !self.text_keepalive_off.load(Ordering::Relaxed)
+    }
+
+    /// Stops the text keepalive for the life of this client. Returns
+    /// whether this call turned it off (it happens at most once).
+    pub fn turn_off_text_keepalive(&self) -> bool {
+        !self.text_keepalive_off.swap(true, Ordering::Relaxed)
     }
 
     fn url(&self, path: &str) -> String {

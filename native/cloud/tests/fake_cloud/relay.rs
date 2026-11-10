@@ -23,6 +23,9 @@ pub enum PresenceMode {
     /// Accepts the upgrade and never reads again: no pong ever comes back,
     /// like a socket left half open by a sleep or a network change.
     Silent,
+    /// A relay from before the text keepalive: closes presence with 1003
+    /// on any text but a `reject`.
+    Old,
 }
 
 #[derive(Default)]
@@ -35,6 +38,8 @@ pub struct Relay {
     pub mode: PresenceMode,
     /// Presence sockets opened so far.
     pub presence_opens: usize,
+    /// Text `ping`s received on presence sockets.
+    pub text_pings: usize,
     /// Holds each presence upgrade this long before answering it.
     pub presence_delay: Option<std::time::Duration>,
     /// session id → where the host's data socket goes.
@@ -79,6 +84,7 @@ pub async fn presence(State(f): State<Fake>, Path(host): Path<String>, headers: 
         }
         let (mut tx, mut rx) = socket.split();
         let (out, mut out_rx) = mpsc::unbounded_channel::<Message>();
+        let reply = out.clone();
         {
             let mut r = relay.lock().unwrap();
             r.presence.insert(host.clone(), out);
@@ -92,13 +98,34 @@ pub async fn presence(State(f): State<Fake>, Path(host): Path<String>, headers: 
                 }
             }
         });
+        let mut refused = false;
         while let Some(Ok(m)) = rx.next().await {
-            if matches!(m, Message::Close(_)) {
-                break;
+            match m {
+                Message::Close(_) => break,
+                Message::Text(t) => {
+                    if t.as_str() == "ping" {
+                        relay.lock().unwrap().text_pings += 1;
+                    }
+                    let reject = serde_json::from_str::<serde_json::Value>(t.as_str()).is_ok_and(|v| v["type"] == "reject");
+                    if mode == PresenceMode::Old && !reject {
+                        let _ = reply.send(Message::Close(Some(CloseFrame { code: 1003, reason: "".into() })));
+                        refused = true;
+                        break;
+                    }
+                    if t.as_str() == "ping" {
+                        let _ = reply.send(Message::Text("pong".into()));
+                    }
+                }
+                _ => {}
             }
         }
         relay.lock().unwrap().presence.remove(&host);
-        writer.abort();
+        if refused {
+            // Let the writer send the close frame first.
+            let _ = writer.await;
+        } else {
+            writer.abort();
+        }
     })
     .into_response()
 }

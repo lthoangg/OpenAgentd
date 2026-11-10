@@ -14,12 +14,27 @@ use tokio::sync::{mpsc, oneshot};
 
 use super::{err, Fake};
 
+/// How the fake relay treats a presence socket.
+#[derive(Default, Clone, Copy, PartialEq, Debug)]
+pub enum PresenceMode {
+    /// Reads it, so protocol pings get their pong.
+    #[default]
+    Answer,
+    /// Accepts the upgrade and never reads again: no pong ever comes back,
+    /// like a socket left half open by a sleep or a network change.
+    Silent,
+}
+
 #[derive(Default)]
 pub struct Relay {
     /// host device id → its presence socket's outbox.
     pub presence: HashMap<String, mpsc::UnboundedSender<Message>>,
     /// Hosts that have opened presence at least once (the usage view lists them).
     pub seen: HashSet<String>,
+    /// How presence sockets are treated.
+    pub mode: PresenceMode,
+    /// Presence sockets opened so far.
+    pub presence_opens: usize,
     /// session id → where the host's data socket goes.
     pub waiting: HashMap<String, oneshot::Sender<WebSocket>>,
     /// Control messages the test sends to the host side of a paired
@@ -45,6 +60,17 @@ pub async fn presence(State(f): State<Fake>, Path(host): Path<String>, headers: 
     }
     let relay = f.1.clone();
     ws.on_upgrade(move |socket| async move {
+        let mode = {
+            let mut r = relay.lock().unwrap();
+            r.presence_opens += 1;
+            r.mode
+        };
+        if mode == PresenceMode::Silent {
+            // Hold the socket without reading it, so nothing answers.
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            drop(socket);
+            return;
+        }
         let (mut tx, mut rx) = socket.split();
         let (out, mut out_rx) = mpsc::unbounded_channel::<Message>();
         {

@@ -3,9 +3,11 @@
 
 mod fake_cloud;
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
+use fake_cloud::relay::PresenceMode;
 use fake_cloud::Fake;
 use openagentd_cloud::account_state::AccountProblem;
 use openagentd_cloud::api::Cloud;
@@ -13,7 +15,7 @@ use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{self, FlowError, GenesisDraft, Member, Pace};
 use openagentd_cloud::keys::{DeviceKeys, Roles};
 use openagentd_cloud::mux::Stream;
-use openagentd_cloud::relay::{self, HostHandler, Join, RelayError, Sessions};
+use openagentd_cloud::relay::{self, HostHandler, HostOptions, Join, Keepalive, RelayError, Sessions};
 use openagentd_cloud::roster::Roster;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
@@ -347,4 +349,61 @@ async fn pause_holds_the_hosts_writes_until_resume() {
     let mut tunnel = tunnel;
     let code = tokio::time::timeout(Duration::from_secs(5), tunnel.wait_closed()).await.unwrap();
     assert_eq!(code, 4001);
+}
+
+/// Keepalive timings a test can wait out: ping every 30 ms, dead after 150 ms.
+const QUICK: Keepalive = Keepalive { every: Duration::from_millis(30), dead_after: Duration::from_millis(150) };
+
+/// Starts presence for `server` with `opts`; the handle says how it ended.
+fn spawn_presence(server: &Member, opts: HostOptions) -> (tokio::task::JoinHandle<RelayError>, oneshot::Sender<()>) {
+    let handler = Arc::new(Echo { roster: Mutex::new(server.roster.clone().unwrap()), me: server.cloud.device_id(), rosters: Mutex::new(vec![]) });
+    let (stop, stop_rx) = oneshot::channel();
+    let c = Arc::new(Cloud::new(reqwest::Client::new(), server.cloud.endpoints.clone(), server.cloud.keys.clone(), server.cloud.account_id.clone()));
+    (tokio::spawn(relay::host_with(c, relay::http1_client(), handler, Sessions::default(), stop_rx, opts)), stop)
+}
+
+#[tokio::test]
+async fn the_deadline_fires_when_neither_pong_nor_protocol_pong_arrives() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (_phone, server) = account(&fake, &base).await;
+    fake.1.lock().unwrap().mode = PresenceMode::Silent;
+    let (presence, _stop) = spawn_presence(&server, HostOptions { keepalive: QUICK, ..HostOptions::default() });
+    let ended = tokio::time::timeout(Duration::from_secs(3), presence).await.expect("presence gives up a silent socket").unwrap();
+    assert_eq!(ended, RelayError::Network);
+}
+
+#[tokio::test]
+async fn presence_stays_up_past_several_deadlines_while_the_relay_answers() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (_phone, server) = account(&fake, &base).await;
+    let (presence, stop) = spawn_presence(&server, HostOptions { keepalive: QUICK, ..HostOptions::default() });
+    tokio::time::sleep(QUICK.dead_after * 6).await;
+    assert!(!presence.is_finished(), "pongs keep it alive");
+    assert_eq!(fake.1.lock().unwrap().presence_opens, 1);
+    stop.send(()).unwrap();
+    assert_eq!(presence.await.unwrap(), RelayError::Closed(1000));
+}
+
+/// Milliseconds the test clock is ahead of the real wall clock.
+static SLEPT_MS: AtomicU64 = AtomicU64::new(0);
+
+fn slept_clock() -> SystemTime {
+    SystemTime::now() + Duration::from_millis(SLEPT_MS.load(Ordering::Relaxed))
+}
+
+#[tokio::test]
+async fn presence_reconnects_at_once_when_the_wall_clock_says_the_machine_slept() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (_phone, server) = account(&fake, &base).await;
+    // A long deadline: only the clock jump can end it within the test.
+    let keepalive = Keepalive { every: Duration::from_millis(30), dead_after: Duration::from_secs(60) };
+    let (presence, _stop) = spawn_presence(&server, HostOptions { keepalive, wall_clock: slept_clock, ..HostOptions::default() });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(!presence.is_finished());
+    SLEPT_MS.store(61_000, Ordering::Relaxed);
+    let ended = tokio::time::timeout(Duration::from_secs(2), presence).await.expect("the jump ends it at the next ping").unwrap();
+    assert_eq!(ended, RelayError::Network);
 }

@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use futures_util::{SinkExt, StreamExt};
 use reqwest::header::{CONNECTION, SEC_WEBSOCKET_ACCEPT, SEC_WEBSOCKET_KEY, SEC_WEBSOCKET_VERSION, UPGRADE};
@@ -30,6 +30,10 @@ pub const ACK_BYTES: usize = 256 * 1024;
 pub const ACK_IDLE: Duration = Duration::from_millis(500);
 /// WebSocket pings from the device keep sockets alive.
 pub const PING_EVERY: Duration = Duration::from_secs(25);
+/// A socket that brought no frame at all (not even a pong) for this long
+/// is dead: two missed pongs and a margin. After Wi-Fi changes or a sleep
+/// a socket can stay half open, with nothing to say it closed.
+pub const DEAD_AFTER: Duration = Duration::from_secs(60);
 /// Largest WebSocket message the relay forwards.
 const MAX_WS_MESSAGE: usize = 1024 * 1024;
 
@@ -165,6 +169,36 @@ impl Default for Join {
     }
 }
 
+/// How presence keeps its socket alive and notices it died.
+#[derive(Debug, Clone, Copy)]
+pub struct Keepalive {
+    /// How often it pings.
+    pub every: Duration,
+    /// No frame for this long, or a wall-clock jump this long, ends it.
+    pub dead_after: Duration,
+}
+
+impl Default for Keepalive {
+    fn default() -> Self {
+        Keepalive { every: PING_EVERY, dead_after: DEAD_AFTER }
+    }
+}
+
+/// How [`host_with`] runs.
+pub struct HostOptions {
+    pub join: Join,
+    pub keepalive: Keepalive,
+    /// The wall clock. The monotonic clock stands still while macOS or iOS
+    /// sleeps; the wall clock does not, so a jump says the machine slept.
+    pub wall_clock: fn() -> SystemTime,
+}
+
+impl Default for HostOptions {
+    fn default() -> Self {
+        HostOptions { join: Join::default(), keepalive: Keepalive::default(), wall_clock: SystemTime::now }
+    }
+}
+
 /// A paired, handshaken data socket carrying one yamux session.
 pub struct Tunnel {
     pub session: Session,
@@ -263,19 +297,22 @@ impl Tunnel {
         tokio::spawn(async move {
             let mut unacked = 0usize;
             let mut code = 1006u16;
+            // Pings go out every PING_EVERY (the writer); with no frame
+            // back for DEAD_AFTER the socket is dead.
+            let mut last_in = tokio::time::Instant::now();
             loop {
-                let next = if unacked > 0 {
-                    match tokio::time::timeout(ACK_IDLE, stream.next()).await {
-                        Ok(n) => n,
-                        Err(_) => {
-                            let _ = ctl_tx.send(Message::Text(json!({"type":"ack","bytes":unacked}).to_string().into()));
-                            unacked = 0;
-                            continue;
-                        }
+                let dead_at = last_in + DEAD_AFTER;
+                let wake = if unacked > 0 { dead_at.min(tokio::time::Instant::now() + ACK_IDLE) } else { dead_at };
+                let next = match tokio::time::timeout_at(wake, stream.next()).await {
+                    Ok(n) => n,
+                    Err(_) if tokio::time::Instant::now() >= dead_at => break,
+                    Err(_) => {
+                        let _ = ctl_tx.send(Message::Text(json!({"type":"ack","bytes":unacked}).to_string().into()));
+                        unacked = 0;
+                        continue;
                     }
-                } else {
-                    stream.next().await
                 };
+                last_in = tokio::time::Instant::now();
                 match next {
                     Some(Ok(Message::Binary(b))) => {
                         unacked += b.len();
@@ -449,25 +486,52 @@ fn revoked_list(v: &Value) -> Vec<String> {
 /// The host side: holds the presence socket and serves each offer until
 /// presence closes. Returns how it ended.
 pub async fn host(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<dyn HostHandler>, sessions: Sessions, join: Join, stop: oneshot::Receiver<()>) -> RelayError {
+    host_with(cloud, http1, handler, sessions, stop, HostOptions { join, ..HostOptions::default() }).await
+}
+
+/// The presence socket went quiet, or the machine slept: give it up, so the
+/// caller's reconnect loop opens a fresh one.
+fn dead(sessions: &Sessions) -> RelayError {
+    sessions.close_all(1006);
+    RelayError::Network
+}
+
+/// [`host`] with its timings and clock chosen.
+pub async fn host_with(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<dyn HostHandler>, sessions: Sessions, stop: oneshot::Receiver<()>, opts: HostOptions) -> RelayError {
+    let HostOptions { join, keepalive, wall_clock } = opts;
     let path = format!("/v1/relay/host/{}/presence", cloud.device_id());
     let mut ws = match open_socket(&cloud, &http1, &path).await {
         Ok(ws) => ws,
         Err(e) => return e,
     };
-    let mut ping = tokio::time::interval(PING_EVERY);
+    let mut ping = tokio::time::interval(keepalive.every);
     ping.tick().await;
     let mut stop = stop;
+    let mut last_in = tokio::time::Instant::now();
+    let mut wall = wall_clock();
     loop {
+        // Between two turns of this loop at most `every` passes; a longer
+        // wall-clock gap is a sleep the monotonic clock did not count.
+        let now = wall_clock();
+        if now.duration_since(wall).is_ok_and(|gap| gap > keepalive.dead_after) {
+            return dead(&sessions);
+        }
+        wall = now;
         tokio::select! {
             _ = &mut stop => {
                 close(&mut ws, 1000, "stop").await;
                 sessions.close_all(1000);
                 return RelayError::Closed(1000);
             }
+            _ = tokio::time::sleep_until(last_in + keepalive.dead_after) => return dead(&sessions),
             _ = ping.tick() => {
                 if ws.send(Message::Ping(Vec::new().into())).await.is_err() { return RelayError::Network; }
             }
-            msg = ws.next() => match msg {
+            msg = ws.next() => {
+                if matches!(msg, Some(Ok(_))) {
+                    last_in = tokio::time::Instant::now();
+                }
+                match msg {
                 Some(Ok(Message::Text(t))) => {
                     let v: Value = serde_json::from_str(&t).unwrap_or_default();
                     match v["type"].as_str() {
@@ -497,6 +561,7 @@ pub async fn host(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<dyn Ho
                     sessions.close_all(1006);
                     return RelayError::Network;
                 }
+            }
             }
         }
     }

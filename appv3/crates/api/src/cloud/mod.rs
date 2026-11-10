@@ -25,7 +25,7 @@ use openagentd_cloud::api::Cloud;
 use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{FlowError, GenesisDraft, Member, Removal, Session};
 use openagentd_cloud::keys::Roles;
-use openagentd_cloud::relay::{self, HostHandler, HostOptions, RelayError, Sessions};
+use openagentd_cloud::relay::{self, HostHandler, HostOptions, RelayError, Sessions, TunnelEnd};
 use openagentd_cloud::roster::{self, Chain, Roster};
 use openagentd_cloud::store::{self as idstore, FileStore, Identity, SecretStore};
 use serde::Serialize;
@@ -437,6 +437,12 @@ impl HostHandler for Handler {
         tokio::spawn(connector::serve(stream, from));
     }
 
+    fn on_session_end(&self, _from: &str, end: &TunnelEnd) {
+        // Why a phone's session ended: `cause=deadline` is this host giving
+        // up a socket that went quiet; `cause=closed` came from the relay.
+        tracing::info!("cloud_session_ended {end}");
+    }
+
     fn on_roster(&self, version: u64, revoked: Vec<String>) {
         // The relay already closed the listed devices' sessions.
         if let (Ok(mut set), Ok(roster)) = (self.revoked.write(), self.roster.read()) {
@@ -666,6 +672,7 @@ async fn run(identity: Identity) {
                 }
             }
         };
+        tracing::info!("cloud_presence_ended reason={ended}");
         if ended.problem() == Some(AccountProblem::RemovalSignal) {
             // Close 4001 or a refused relay token: unsigned. The signed
             // roster fetch at the top of the loop decides; keys stay.

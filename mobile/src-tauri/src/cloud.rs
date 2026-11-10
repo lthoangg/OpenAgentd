@@ -1449,7 +1449,19 @@ async fn connect(device_id: &str) -> Result<Tunnel, String> {
     .await;
     drop(guard);
     match r {
-        Ok(t) => Ok(t),
+        Ok(t) => {
+            // Why the session ended, in the device log: `cause=deadline` is
+            // this phone giving up a socket that went quiet.
+            let mut ended = t.ended.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Ok(end) = ended.wait_for(Option::is_some).await {
+                    if let Some(end) = *end {
+                        eprintln!("cloud: session ended {end}");
+                    }
+                }
+            });
+            Ok(t)
+        }
         Err(e) => {
             if let Some(problem) = e.problem() {
                 return Err(on_problem(problem).await);

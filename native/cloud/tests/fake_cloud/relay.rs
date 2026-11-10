@@ -49,6 +49,11 @@ pub struct Relay {
     pub to_host: Vec<mpsc::UnboundedSender<Message>>,
     /// Sizes of the binary messages the host side sent, in order.
     pub host_frames: Vec<usize>,
+    /// Text `ping`s received on data sockets (either side).
+    pub data_text_pings: usize,
+    /// A relay from before the text keepalive: a text `ping` on a data
+    /// socket is not a JSON ack, so it closes the session with 1003.
+    pub data_old: bool,
 }
 
 pub type Shared = Arc<Mutex<Relay>>;
@@ -183,11 +188,27 @@ async fn pair(relay: Shared, controller: WebSocket, host: WebSocket) {
     let paired = || Message::Text(json!({"type":"paired"}).to_string().into());
     let _ = to_c.send(paired());
     let _ = to_h.send(paired());
-    let forward = |mut rx: futures_util::stream::SplitStream<WebSocket>, tx: mpsc::UnboundedSender<Message>, from_host: bool| {
+    // `tx` is the other side, `back` the sender's own side.
+    let forward = |mut rx: futures_util::stream::SplitStream<WebSocket>, tx: mpsc::UnboundedSender<Message>, back: mpsc::UnboundedSender<Message>, from_host: bool| {
         let relay = relay.clone();
         async move {
             while let Some(Ok(m)) = rx.next().await {
                 match m {
+                    Message::Text(ref t) if t.as_str() == "ping" => {
+                        let old = {
+                            let mut r = relay.lock().unwrap();
+                            r.data_text_pings += 1;
+                            r.data_old
+                        };
+                        if old {
+                            let close = || Message::Close(Some(CloseFrame { code: 1003, reason: "".into() }));
+                            let _ = back.send(close());
+                            let _ = tx.send(close());
+                            break;
+                        }
+                        // The real relay's auto-response, on any socket.
+                        let _ = back.send(Message::Text("pong".into()));
+                    }
                     Message::Binary(ref b) => {
                         if from_host {
                             relay.lock().unwrap().host_frames.push(b.len());
@@ -197,9 +218,12 @@ async fn pair(relay: Shared, controller: WebSocket, host: WebSocket) {
                         }
                     }
                     Message::Close(frame) => {
-                        // Closing either side closes the other with the same code.
+                        // Closing either side closes the other with the same
+                        // code, and answers the sender's close (as any
+                        // WebSocket server does).
                         let code = frame.as_ref().map(|f| f.code).unwrap_or(1000);
                         let _ = tx.send(Message::Close(Some(CloseFrame { code, reason: "".into() })));
+                        let _ = back.send(Message::Close(Some(CloseFrame { code, reason: "".into() })));
                         break;
                     }
                     _ => {} // acks and pings are the relay's business
@@ -207,8 +231,8 @@ async fn pair(relay: Shared, controller: WebSocket, host: WebSocket) {
             }
         }
     };
-    let one = forward(c_rx, to_h, false);
-    let two = forward(h_rx, to_c, true);
+    let one = forward(c_rx, to_h.clone(), to_c.clone(), false);
+    let two = forward(h_rx, to_c, to_h, true);
     tokio::select! {
         _ = one => {}
         _ = two => {}

@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use reqwest::{Method, StatusCode};
@@ -301,10 +301,12 @@ pub struct Cloud {
     /// Set once the device knows its account.
     pub account_id: Option<String>,
     nonce: Mutex<Option<Secret>>,
-    /// The relay closed presence (1003) on the text `ping` keepalive before
+    /// The relay closed a socket (1003) on the text `ping` keepalive before
     /// ever answering `pong`: it predates the keepalive, so this client
-    /// sends protocol pings only from then on (`relay::host`).
-    text_keepalive_off: AtomicBool,
+    /// sends protocol pings only from then on, on presence and data
+    /// sockets alike (`relay::host`, `relay::connect`). Shared with the
+    /// tunnels this client opened.
+    text_keepalive_off: Arc<AtomicBool>,
 }
 
 impl fmt::Debug for Cloud {
@@ -319,7 +321,7 @@ fn sha256_b64(data: &[u8]) -> String {
 
 impl Cloud {
     pub fn new(http: reqwest::Client, endpoints: Endpoints, keys: DeviceKeys, account_id: Option<String>) -> Self {
-        Cloud { http, endpoints, keys, roles: Roles::platform_default(), account_id, nonce: Mutex::new(None), text_keepalive_off: AtomicBool::new(false) }
+        Cloud { http, endpoints, keys, roles: Roles::platform_default(), account_id, nonce: Mutex::new(None), text_keepalive_off: Arc::new(AtomicBool::new(false)) }
     }
 
     /// The `pubs` bytes this device sends: its keys and [`Cloud::roles`].
@@ -331,7 +333,7 @@ impl Cloud {
         self.keys.id()
     }
 
-    /// Whether presence may send the text `ping` keepalive.
+    /// Whether this client's relay sockets may send the text `ping` keepalive.
     pub fn text_keepalive(&self) -> bool {
         !self.text_keepalive_off.load(Ordering::Relaxed)
     }
@@ -340,6 +342,12 @@ impl Cloud {
     /// whether this call turned it off (it happens at most once).
     pub fn turn_off_text_keepalive(&self) -> bool {
         !self.text_keepalive_off.swap(true, Ordering::Relaxed)
+    }
+
+    /// The switch [`Cloud::turn_off_text_keepalive`] sets, for a tunnel
+    /// that outlives the borrow of this client.
+    pub(crate) fn text_keepalive_switch(&self) -> Arc<AtomicBool> {
+        self.text_keepalive_off.clone()
     }
 
     fn url(&self, path: &str) -> String {

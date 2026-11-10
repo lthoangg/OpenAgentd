@@ -781,7 +781,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     buttons sit inside it, and workspace rows use the phone's short marks
     (**missing**, the worktree count) so the always-shown row actions leave
     the name room.
-  - In the iOS app the keyboard has no `< > ✓` bar above it `[v3.51.0]`,
+  - In the iOS app the keyboard has no `< > ✓` bar above it `[v3.51.2]`,
     so the composer sits whole on the keyboard (on iOS 26 the bar covered
     it). Swipe down on the composer or tap the chat to put the keyboard away.
 - **Pin a session to one account** `[v3.40.0]` — when a provider has several
@@ -920,7 +920,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     A session shows in one place only: a pinned one stays in Pinned even
     when it needs you or is running. `[v3.49.0]`
     Needs you counts in words ("2 waiting"). Scheduled is always there, with
-    **+** for a new task. Since `[v3.51.0]` a row's state is its leading
+    **+** for a new task. Since `[v3.51.2]` a row's state is its leading
     mark alone: **!** needs you, a spinner running, a dot finished unseen,
     **✗** failed. The row keeps its time beside it, and the state in words
     is in its tooltip (before, the row said **Needs you**, **Done** or
@@ -2069,7 +2069,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - While a turn runs, Send splits in two. The pill steers: the agent reads
     the message before its next step (`Enter`). The chevron adds Queue until
     done, which the server holds and sends as a turn of its own once the turn
-    ends, even if this window is closed or reloaded meanwhile `[v3.51.0]`
+    ends, even if this window is closed or reloaded meanwhile `[v3.51.2]`
     (`⌥Enter` / `Alt+Enter`), and Stop & send
     (`⌘Enter` / `Ctrl+Enter`). In the transcript, steering messages read
     "Read before the next step" and held ones "Sends when this turn ends".

@@ -407,3 +407,19 @@ async fn presence_reconnects_at_once_when_the_wall_clock_says_the_machine_slept(
     let ended = tokio::time::timeout(Duration::from_secs(2), presence).await.expect("the jump ends it at the next ping").unwrap();
     assert_eq!(ended, RelayError::Network);
 }
+
+#[tokio::test]
+async fn presence_says_open_only_once_the_socket_opened_and_closed_once_it_ends() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (_phone, server) = account(&fake, &base).await;
+    fake.1.lock().unwrap().presence_delay = Some(Duration::from_millis(600));
+    let (opened_tx, mut opened) = tokio::sync::watch::channel(false);
+    let (presence, stop) = spawn_presence(&server, HostOptions { opened: Some(opened_tx), ..HostOptions::default() });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!*opened.borrow(), "not open while the upgrade is pending");
+    tokio::time::timeout(Duration::from_secs(5), opened.wait_for(|open| *open)).await.expect("open once the upgrade answers").unwrap();
+    stop.send(()).unwrap();
+    presence.await.unwrap();
+    assert!(!*opened.borrow(), "closed once presence ended");
+}

@@ -25,11 +25,11 @@ use openagentd_cloud::api::Cloud;
 use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{FlowError, GenesisDraft, Member, Removal, Session};
 use openagentd_cloud::keys::Roles;
-use openagentd_cloud::relay::{self, HostHandler, Join, RelayError, Sessions};
+use openagentd_cloud::relay::{self, HostHandler, HostOptions, RelayError, Sessions};
 use openagentd_cloud::roster::{self, Chain, Roster};
 use openagentd_cloud::store::{self as idstore, FileStore, Identity, SecretStore};
 use serde::Serialize;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
 /// Where a host keeps its account: a file only the user can read.
@@ -612,19 +612,23 @@ async fn run(identity: Identity) {
         }
         set_relay(RelayState::Connecting, &member, &fingerprint);
         let (stop_tx, stop_rx) = oneshot::channel();
-        let mut presence = tokio::spawn(relay::host(presence_cloud.clone(), relay::http1_client(), handler.clone(), host().sessions.clone(), Join::default(), stop_rx));
-        // Presence is up once the socket opened; we cannot see that
-        // directly, so report online after a short grace without an error.
-        let online_after = tokio::time::sleep(Duration::from_secs(2));
-        tokio::pin!(online_after);
+        // Online once the presence socket really opened (not on a guess).
+        let (opened_tx, mut opened) = watch::channel(false);
+        let options = HostOptions { opened: Some(opened_tx), ..HostOptions::default() };
+        let mut watching = true;
+        let mut presence = tokio::spawn(relay::host_with(presence_cloud.clone(), relay::http1_client(), handler.clone(), host().sessions.clone(), stop_rx, options));
         let ended = loop {
             tokio::select! {
                 r = &mut presence => break r.unwrap_or(RelayError::Network),
-                _ = &mut online_after, if !presence.is_finished() => {
-                    set_relay(RelayState::Online, &member, &fingerprint);
-                    attempt = 0;
-                    online_after.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(3600 * 24 * 365));
-                }
+                changed = opened.changed(), if watching => match changed {
+                    Ok(()) if *opened.borrow_and_update() => {
+                        set_relay(RelayState::Online, &member, &fingerprint);
+                        attempt = 0;
+                    }
+                    Ok(()) => {}
+                    // Presence ended; its result is next.
+                    Err(_) => watching = false,
+                },
                 Some(note) = resync_rx.recv() => {
                     if note == RosterNote::Check {
                         // The relay lists this host as removed or departed.

@@ -212,6 +212,20 @@ async fn phone_and_server_through_the_account() {
     assert!(identity.exists(), "a 4001 close alone erases nothing");
     let v = wait_for(&app, "online after the close", |v| v["state"] == "connected" && v["relay"]["state"] == "online").await;
     assert_eq!(v["sessions"], 0);
+
+    // 4c. Online means the presence socket opened, not a timer: while the
+    // relay holds the upgrade the status stays connecting, then turns
+    // online once the socket opens.
+    fake.1.lock().unwrap().presence_delay = Some(Duration::from_secs(4));
+    fake.close_presence(1001);
+    wait_for(&app, "reconnecting", |v| v["state"] == "connected" && v["relay"]["state"] == "connecting").await;
+    for _ in 0..30 {
+        let (_, v) = local(&app, "GET", "/api/cloud/status").await;
+        assert_ne!(v["relay"]["state"], "online", "not online before the socket opened");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    fake.1.lock().unwrap().presence_delay = None;
+    wait_for(&app, "online once open", |v| v["state"] == "connected" && v["relay"]["state"] == "online").await;
     let tunnel = relay::connect(&phone.cloud, &relay::http1_client(), &server_id, &host_box, Join::default()).await.unwrap();
     let out = relayed(&tunnel, "GET /api/cloud/status HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").await;
     assert!(out.contains("\"state\":\"connected\""), "{out}");

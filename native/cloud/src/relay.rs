@@ -191,11 +191,34 @@ pub struct HostOptions {
     /// The wall clock. The monotonic clock stands still while macOS or iOS
     /// sleeps; the wall clock does not, so a jump says the machine slept.
     pub wall_clock: fn() -> SystemTime,
+    /// Set to true once the presence socket is open, and back to false when
+    /// presence ends: what a status can say "online" from.
+    pub opened: Option<watch::Sender<bool>>,
 }
 
 impl Default for HostOptions {
     fn default() -> Self {
-        HostOptions { join: Join::default(), keepalive: Keepalive::default(), wall_clock: SystemTime::now }
+        HostOptions { join: Join::default(), keepalive: Keepalive::default(), wall_clock: SystemTime::now, opened: None }
+    }
+}
+
+/// Says presence is open while it lives, and closed once dropped (also when
+/// the task running it is aborted).
+struct OpenFlag(Option<watch::Sender<bool>>);
+
+impl OpenFlag {
+    fn set(&self) {
+        if let Some(tx) = &self.0 {
+            tx.send_replace(true);
+        }
+    }
+}
+
+impl Drop for OpenFlag {
+    fn drop(&mut self) {
+        if let Some(tx) = &self.0 {
+            tx.send_replace(false);
+        }
     }
 }
 
@@ -498,12 +521,14 @@ fn dead(sessions: &Sessions) -> RelayError {
 
 /// [`host`] with its timings and clock chosen.
 pub async fn host_with(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<dyn HostHandler>, sessions: Sessions, stop: oneshot::Receiver<()>, opts: HostOptions) -> RelayError {
-    let HostOptions { join, keepalive, wall_clock } = opts;
+    let HostOptions { join, keepalive, wall_clock, opened } = opts;
+    let opened = OpenFlag(opened);
     let path = format!("/v1/relay/host/{}/presence", cloud.device_id());
     let mut ws = match open_socket(&cloud, &http1, &path).await {
         Ok(ws) => ws,
         Err(e) => return e,
     };
+    opened.set();
     let mut ping = tokio::time::interval(keepalive.every);
     ping.tick().await;
     let mut stop = stop;

@@ -35,6 +35,8 @@ pub struct Relay {
     pub mode: PresenceMode,
     /// Presence sockets opened so far.
     pub presence_opens: usize,
+    /// Holds each presence upgrade this long before answering it.
+    pub presence_delay: Option<std::time::Duration>,
     /// session id → where the host's data socket goes.
     pub waiting: HashMap<String, oneshot::Sender<WebSocket>>,
     /// Control messages the test sends to the host side of a paired
@@ -52,6 +54,10 @@ fn token_of(f: &Fake, headers: &HeaderMap) -> Option<(String, String)> {
 }
 
 pub async fn presence(State(f): State<Fake>, Path(host): Path<String>, headers: HeaderMap, ws: WebSocketUpgrade) -> Response {
+    let delay = f.1.lock().unwrap().presence_delay;
+    if let Some(d) = delay {
+        tokio::time::sleep(d).await;
+    }
     let Some((account, _)) = token_of(&f, &headers) else {
         return err(401, "invalid_token");
     };

@@ -114,6 +114,30 @@ async fn a_controller_reaches_the_host_through_the_relay() {
 }
 
 #[tokio::test]
+async fn the_usage_view_says_which_hosts_are_online() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (phone, server) = account(&fake, &base).await;
+    let host = server.cloud.device_id();
+    // Never opened presence: not listed (the caller reads that as offline).
+    let usage = phone.cloud.relay_usage().await.unwrap();
+    assert!(usage.hosts.is_empty(), "{usage:?}");
+    assert_eq!(usage.online().unwrap().get(&host), None);
+    let (_h, _sessions, stop) = start_host(&server).await;
+    let online = phone.cloud.relay_usage().await.unwrap().online().unwrap();
+    assert_eq!(online.get(&host), Some(&true));
+    stop.send(()).unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let online = phone.cloud.relay_usage().await.unwrap().online().unwrap();
+    assert_eq!(online.get(&host), Some(&false));
+    // A cloud that does not say: unknown, not offline.
+    fake.0.lock().unwrap().usage_without_online = true;
+    let usage = phone.cloud.relay_usage().await.unwrap();
+    assert_eq!(usage.hosts.len(), 1);
+    assert_eq!(usage.online(), None);
+}
+
+#[tokio::test]
 async fn a_server_only_device_cannot_open_sessions() {
     let fake = Fake::new();
     let base = fake.serve().await;

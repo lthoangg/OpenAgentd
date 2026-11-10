@@ -66,6 +66,8 @@ pub struct Inner {
     pub tokens: HashMap<String, (String, String)>,
     /// slot id → invitation.
     pub invites: HashMap<String, InviteRow>,
+    /// The usage view leaves `online` out (a cloud from before it existed).
+    pub usage_without_online: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -111,6 +113,7 @@ impl Fake {
             .route("/v1/devices", get(devices))
             .route("/v1/devices/self/leave", post(leave))
             .route("/v1/relay/token", post(relay_token))
+            .route("/v1/relay/usage", get(relay_usage))
             .route("/v1/mailbox/{to}", post(mailbox_send))
             .route("/v1/mailbox", get(mailbox_get))
             .route("/v1/push/register", post(push_register))
@@ -564,6 +567,30 @@ async fn devices(State(f): State<Fake>, method: Method, uri: Uri, headers: Heade
     (h, Json(json!({ "devices": list, "device_cap": openagentd_cloud::roster::MAX_DEVICES }))).into_response()
 }
 
+/// Today's relay use: the account's active devices that ever opened presence,
+/// `online` while the socket is open.
+async fn relay_usage(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap) -> Response {
+    let (devices, without_online, h) = {
+        let mut s = f.0.lock().unwrap();
+        let (account, _, _, h) = signed_or_return!(s, method, uri, headers, b"", false);
+        let devices: Vec<String> = s.accounts[&account].devices.iter().filter(|(_, (_, active, _))| *active).map(|(id, _)| id.clone()).collect();
+        (devices, s.usage_without_online, h)
+    };
+    let relay = f.1.lock().unwrap();
+    let hosts: Vec<Value> = devices
+        .into_iter()
+        .filter(|id| relay.seen.contains(id))
+        .map(|id| {
+            let mut host = json!({ "device_id": id, "percent": 0, "relay_messages": 0, "paused_until": null });
+            if !without_online {
+                host["online"] = json!(relay.presence.contains_key(&id));
+            }
+            host
+        })
+        .collect();
+    (h, Json(json!({ "resets_at": 0, "hosts": hosts }))).into_response()
+}
+
 async fn leave(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, body: axum::body::Bytes) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, device, _, h) = signed_or_return!(s, method, uri, headers, &body, false);
@@ -627,7 +654,9 @@ async fn invite_create(State(f): State<Fake>, method: Method, uri: Uri, headers:
     }
     let slot = rand_id(16);
     s.invites.insert(slot.clone(), InviteRow { account, ..Default::default() });
-    (StatusCode::CREATED, h, Json(json!({ "slot_id": slot, "expires_at": 600_000 }))).into_response()
+    // Unix ms, ten minutes from now, as the cloud answers.
+    let expires_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64 + 600_000;
+    (StatusCode::CREATED, h, Json(json!({ "slot_id": slot, "expires_at": expires_at }))).into_response()
 }
 
 /// A device not yet in the account claims with its own key.

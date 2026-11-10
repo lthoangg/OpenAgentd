@@ -4,6 +4,7 @@
 //! Credentials (enrollment sessions, relay tokens, nonces) are held in
 //! [`Secret`], which never prints, and are never written anywhere.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -241,6 +242,33 @@ pub struct RelayToken {
     pub token: Secret,
     pub expires_in: u64,
     pub roster_version: u64,
+}
+
+/// One host in `GET /v1/relay/usage`. Only what a device shows is read.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct HostUsage {
+    pub device_id: String,
+    /// True while the host's presence socket is open. `None` from a cloud
+    /// that does not say.
+    #[serde(default)]
+    pub online: Option<bool>,
+}
+
+/// Today's relay use of the account's hosts: the ones that ever opened
+/// presence.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct RelayUsage {
+    #[serde(default)]
+    pub hosts: Vec<HostUsage>,
+}
+
+impl RelayUsage {
+    /// Whether each listed host is online, by device id. A server that is
+    /// not listed never opened presence: offline. `None` when a listed host
+    /// has no `online` (the answer cannot tell online from offline).
+    pub fn online(&self) -> Option<HashMap<String, bool>> {
+        self.hosts.iter().map(|h| Some((h.device_id.clone(), h.online?))).collect()
+    }
 }
 
 /// The device kind the cloud shows beside the fingerprint.
@@ -596,6 +624,11 @@ impl Cloud {
         }
         let raw: Raw = self.signed(Method::POST, "/v1/relay/token", Some(json!({}))).await?;
         Ok(RelayToken { token: Secret::new(raw.token), expires_in: raw.expires_in, roster_version: raw.roster_version })
+    }
+
+    /// Today's relay use, and which hosts are online now.
+    pub async fn relay_usage(&self) -> ApiResult<RelayUsage> {
+        self.signed(Method::GET, "/v1/relay/usage", None).await
     }
 
     // ---- 7. Mailbox and push --------------------------------------------

@@ -1,7 +1,7 @@
 //! The fake relay: presence sockets, pairing, and opaque forwarding of
 //! binary frames, like the real relay (which never parses them).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
@@ -18,6 +18,8 @@ use super::{err, Fake};
 pub struct Relay {
     /// host device id → its presence socket's outbox.
     pub presence: HashMap<String, mpsc::UnboundedSender<Message>>,
+    /// Hosts that have opened presence at least once (the usage view lists them).
+    pub seen: HashSet<String>,
     /// session id → where the host's data socket goes.
     pub waiting: HashMap<String, oneshot::Sender<WebSocket>>,
     /// Control messages the test sends to the host side of a paired
@@ -45,7 +47,11 @@ pub async fn presence(State(f): State<Fake>, Path(host): Path<String>, headers: 
     ws.on_upgrade(move |socket| async move {
         let (mut tx, mut rx) = socket.split();
         let (out, mut out_rx) = mpsc::unbounded_channel::<Message>();
-        relay.lock().unwrap().presence.insert(host.clone(), out);
+        {
+            let mut r = relay.lock().unwrap();
+            r.presence.insert(host.clone(), out);
+            r.seen.insert(host.clone());
+        }
         let writer = tokio::spawn(async move {
             while let Some(m) = out_rx.recv().await {
                 let closing = matches!(m, Message::Close(_));

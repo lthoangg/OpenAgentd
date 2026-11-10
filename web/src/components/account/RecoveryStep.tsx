@@ -1,7 +1,8 @@
 /**
  * The recovery code of a new account (spec 4.1), on whichever device creates
- * it: shown once, then two groups typed back. The code is never selectable
- * and has no Copy button: the clipboard is readable by other apps.
+ * it: shown once, then two groups typed back. It may be selected, copied and
+ * screenshotted (tunnel-threats.md, "Recovery code": the code alone does not
+ * open the account); a copy is cleared, best effort, after two minutes.
  */
 import { useState } from 'react'
 
@@ -10,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { PanelSection } from '@/components/ui/panel-section'
+import { scheduleClipboardClear } from '@/lib/clipboard-clear'
 
 /** Recovery codes are dash-separated groups; five to a line. */
 const GROUPS_PER_LINE = 5
@@ -22,8 +24,8 @@ function lines(code: string): string[] {
 }
 
 /**
- * The recovery code, once, then two groups typed back. The code is never
- * selectable and has no Copy button: the clipboard is readable by other apps.
+ * The recovery code, once, with Copy code and where to keep it; then two
+ * groups typed back.
  */
 export function RecoveryStep({
   code,
@@ -42,7 +44,18 @@ export function RecoveryStep({
   const [step, setStep] = useState<'show' | 'check'>('show')
   const [first, setFirst] = useState('')
   const [second, setSecond] = useState('')
+  const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle')
   const typing = { autoComplete: 'off', autoCapitalize: 'characters', spellCheck: false, className: 'h-9 font-mono' } as const
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code)
+      scheduleClipboardClear()
+      setCopied('copied')
+    } catch {
+      setCopied('failed')
+    }
+  }
 
   if (step === 'show') {
     return (
@@ -55,16 +68,18 @@ export function RecoveryStep({
           </p>
           <div
             data-sensitive=""
-            className="select-none space-y-1 rounded-sm border border-(--color-border) bg-(--bg-key) p-3 font-mono text-sm text-(--color-text) [-webkit-touch-callout:none] [-webkit-user-select:none]"
-            onCopy={(event) => event.preventDefault()}
-            onContextMenu={(event) => event.preventDefault()}
+            className="select-text space-y-1 rounded-sm border border-(--color-border) bg-(--bg-key) p-3 font-mono text-sm text-(--color-text)"
           >
             {lines(code).map((line) => <div key={line}>{line}</div>)}
           </div>
+          <p>Keep it in a password manager, take a screenshot, or write it down. It is shown only once.</p>
           <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => { void copy() }}>Copy code</Button>
             <Button variant="primary" size="sm" onClick={() => setStep('check')}>I saved it</Button>
             <Button size="sm" disabled={busy} onClick={onCancel}>Cancel</Button>
           </div>
+          {copied === 'copied' && <p role="status" className="text-(--accent-green-text)">Copied. The clipboard is cleared in 2 minutes.</p>}
+          {copied === 'failed' && <p role="alert" className="text-(--color-error)">Couldn&apos;t copy. Take a screenshot or write it down.</p>}
         </Body>
       </PanelSection>
     )

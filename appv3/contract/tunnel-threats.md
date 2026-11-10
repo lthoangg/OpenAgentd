@@ -251,6 +251,17 @@ when formatted. The HTTP trace layer drops `Authorization` and every
   from it keeps a signer behind biometrics.
 - **Recovery code.** It is shown once. The person must type two groups back
   before genesis continues. The seed is zeroized after `recovery_sig`.
+  The code may be selected, copied (**Copy code**) and screenshotted, and
+  the step says to keep it in a password manager, a screenshot or on paper.
+  Allowed because the code alone does not open the account: recovery
+  (`POST /v1/enroll/recover`) also needs an enrollment session, which only
+  a sign-in to the account's email gives. What remains: a copy is readable
+  by other apps on that device until it is overwritten; the app writes an
+  empty string over it once, two minutes later while it is visible (or on
+  its next return), best effort (a browser may refuse a write without a
+  tap; iOS has no expiring pasteboard in this build). A screenshot may sync
+  to a photo library (iCloud Photos), so the advice names a password
+  manager first.
 
 ### 3. Relay sessions
 

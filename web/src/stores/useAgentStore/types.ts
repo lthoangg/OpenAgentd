@@ -33,6 +33,8 @@ export interface PendingMessage {
   sentFromSession?: { sessionId: string; workspace: string }
   /** Waits for the running turn to end instead of being read before the next step (``extra.hold_until_turn_end``). */
   heldUntilTurnEnd?: boolean
+  /** Files @-mentioned in it (``extra.mentions``), so a called-off message comes back with them attached. */
+  mentions?: string[]
 }
 
 export type CacheInvalidation =
@@ -259,6 +261,11 @@ export interface SendMessageOptions {
   thinkingLevel?: string | null
   fastMode?: boolean
   mentions?: string[]
+  /**
+   * "Queue until done": if the message queues, the server holds it until the
+   * running turn ends and then starts a turn with it, so it outlives this client.
+   */
+  holdUntilTurnEnd?: boolean
 }
 
 export interface AgentStoreActions {
@@ -295,6 +302,12 @@ export interface AgentStoreActions {
    * blocks it already holds are dropped.
    */
   connectStream: (options?: { holdUntil?: Promise<unknown> }) => AbortController
+  /**
+   * Whether the attached live feed delivered a frame at or after ``since``
+   * (a ``Date.now()`` time): it is proven live since then, so attaching
+   * again would only replay the same turn.
+   */
+  streamLiveSince: (since: number) => boolean
   /**
    * Drop the leading live blocks of each stream that the committed history
    * already holds: a feed attached before the history read can replay a step

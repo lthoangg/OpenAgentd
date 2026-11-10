@@ -532,6 +532,36 @@ describe("sendMessage: queue behaviour", () => {
     expect(pending[0].content).toBe("queued message")
   })
 
+  // "Queue until done": the server holds it, and the chip says so at once.
+  it("queues a held message on the server and marks it held", async () => {
+    mockPostAgentChat.mockImplementationOnce(() =>
+      Promise.resolve({ status: "queued", session_id: "session-a", message_id: "pm-held" }),
+    )
+    useAgentStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: { lead: makeStream({ status: "working" as const }) },
+    })
+    await useAgentStore.getState().sendMessage("then deploy @a.ts", undefined, { workspace: "/repo/a", mentions: ["a.ts"], holdUntilTurnEnd: true })
+    expect(mockPostAgentChat.mock.calls[0][12]).toBe(true)
+    const [pending] = useAgentStore.getState()._pendingMessages
+    expect([pending.id, pending.heldUntilTurnEnd, pending.mentions]).toEqual(["pm-held", true, ["a.ts"]])
+  })
+
+  it("does not ask the server to hold a plain steer", async () => {
+    mockPostAgentChat.mockImplementationOnce(() =>
+      Promise.resolve({ status: "queued", session_id: "session-a", message_id: "pm-steer" }),
+    )
+    useAgentStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: { lead: makeStream({ status: "working" as const }) },
+    })
+    await useAgentStore.getState().sendMessage("steer", undefined, { workspace: "/repo/a" })
+    expect(mockPostAgentChat.mock.calls[0][12]).toBe(false)
+    expect(useAgentStore.getState()._pendingMessages[0].heldUntilTurnEnd).toBeUndefined()
+  })
+
   it("queues explicit file attachments while lead is working", async () => {
     // Regression: the backend accepts file uploads on queued messages
     // (f44b0544), but the frontend kept a stale pre-support guard that

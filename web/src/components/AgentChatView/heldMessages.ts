@@ -1,19 +1,19 @@
 /**
- * How a composer message reaches the agent while a turn runs, and the
- * lifecycle of one held for "Queue until done" (see ``useHeldMessagesStore``):
- * sent as a turn of its own once the running turn ends, or handed back to the
- * composer whenever sending it would no longer be what the user asked for.
+ * How a composer message reaches the agent while a turn runs. "Queue until
+ * done" is held on the server (``hold_until_turn_end``): the running turn does
+ * not read it, and it starts a turn of its own once that one ends, whether or
+ * not this client is still open. Queued messages go back to the composer
+ * whenever sending them would no longer be what the user asked for.
  */
 import { useEffect, useRef, type RefObject } from 'react'
 import { haptic, outcomeHapticFeedback } from '@/lib/haptics'
 import { pauseSessionGoal } from '@/api/client'
 import { useAgentStore, type PendingMessage } from '@/stores/useAgentStore'
-import { useHeldMessagesStore, type HeldMessage } from '@/stores/useHeldMessagesStore'
 import { useToastStore } from '@/stores/useToastStore'
 import type { InputComposerHandle, SendDelivery } from '../InputComposer'
 
 /** Send with the session's current model settings, as the composer does. */
-function sendFromComposer(workspace: string, content: string, files?: File[], mentions?: string[]) {
+function sendFromComposer(workspace: string, content: string, files?: File[], mentions?: string[], holdUntilTurnEnd = false) {
   const current = useAgentStore.getState()
   return current.sendMessage(content, files, {
     workspace,
@@ -21,11 +21,16 @@ function sendFromComposer(workspace: string, content: string, files?: File[], me
     thinkingLevel: current.sessionThinkingLevel || null,
     fastMode: current.sessionFastMode,
     mentions,
+    ...(holdUntilTurnEnd ? { holdUntilTurnEnd } : {}),
   })
 }
 
-/** What goes back into the composer: a held message or a called-off steer. */
-type Returned = Pick<HeldMessage, 'content' | 'files' | 'mentions'>
+/** What goes back into the composer: a called-off queued message. */
+interface Returned {
+  content: string
+  files?: File[]
+  mentions?: string[]
+}
 
 /** Put messages back in the composer, after anything it already holds. */
 export function returnToComposer(composer: InputComposerHandle | null, held: Returned[]) {
@@ -53,23 +58,24 @@ export function planComposerDelivery(input: {
   return { kind: 'send' }
 }
 
-export type HeldReleaseDecision =
+export type QueuedAfterFailureDecision =
   | { kind: 'wait' }
   | { kind: 'return_to_composer' }
-  | { kind: 'send_next' }
 
-export function decideHeldRelease(input: {
+/**
+ * A failed turn starts nothing from its queue, held messages included (the
+ * server leaves them queued): this client's go back to the composer instead.
+ */
+export function decideQueuedAfterFailure(input: {
   hasTarget: boolean
   /** Idle by the loaded history, not merely by the working flag. */
   idle: boolean
-  releasing: boolean
+  returning: boolean
   turnFailed: boolean
-  heldCount: number
-  steerCount: number
-}): HeldReleaseDecision {
-  if (!input.hasTarget || !input.idle || input.releasing) return { kind: 'wait' }
-  if (input.turnFailed) return input.heldCount === 0 && input.steerCount === 0 ? { kind: 'wait' } : { kind: 'return_to_composer' }
-  return input.heldCount === 0 ? { kind: 'wait' } : { kind: 'send_next' }
+  queuedCount: number
+}): QueuedAfterFailureDecision {
+  if (!input.hasTarget || !input.idle || input.returning || !input.turnFailed) return { kind: 'wait' }
+  return input.queuedCount === 0 ? { kind: 'wait' } : { kind: 'return_to_composer' }
 }
 
 /**
@@ -84,33 +90,37 @@ function canCallOff(message: PendingMessage): boolean {
 }
 
 /**
- * Cancel this client's unread steers for ``sessionId``. Returns the ones that
- * were still queued, oldest first; one the agent read first stays where it is.
+ * Cancel this client's queued messages for ``sessionId``: unread steers and
+ * held ones (``heldOnly`` keeps the steers). Returns the ones that were still
+ * queued, oldest first; one the agent read first stays where it is.
  */
-export async function callOffSteers(sessionId: string): Promise<Returned[]> {
+export async function callOffSteers(sessionId: string, options: { heldOnly?: boolean } = {}): Promise<Returned[]> {
   const { _pendingMessages: pending, removePendingMessage } = useAgentStore.getState()
   const steers = pending
     .filter((message) => message.sessionId === sessionId && canCallOff(message))
+    .filter((message) => !options.heldOnly || message.heldUntilTurnEnd)
     .sort((a, b) => (a.submittedAt ?? 0) - (b.submittedAt ?? 0))
   const outcomes = await Promise.all(steers.map((message) => removePendingMessage(message.id)))
   return steers
     .filter((_, i) => outcomes[i] === 'cancelled')
-    .map((message) => ({ content: message.content, ...(message.files?.length ? { files: message.files } : {}) }))
+    .map((message) => ({
+      content: message.content,
+      ...(message.files?.length ? { files: message.files } : {}),
+      ...(message.mentions?.length ? { mentions: message.mentions } : {}),
+    }))
 }
 
 /**
  * Stop the running turn. Stopping also calls off what was lined up behind it:
- * unread steers, then held messages (the order they would have gone out in),
- * return to the composer rather than reaching the agent after the stop.
+ * unread steers and held messages, in the order they were sent, return to
+ * the composer rather than reaching the agent after the stop.
  */
 export async function stopTurn(composer: InputComposerHandle | null): Promise<void> {
   const { sessionId, stopAgent } = useAgentStore.getState()
   if (!sessionId) return stopAgent()
-  // Taken at once, so a turn that ends during the cancels cannot send them.
-  const held = useHeldMessagesStore.getState().takeAll(sessionId)
-  // Before the interrupt, which would release unread steers into history.
-  const steers = await callOffSteers(sessionId)
-  returnToComposer(composer, [...steers, ...held])
+  // Before the interrupt, which would release queued messages into history.
+  const queued = await callOffSteers(sessionId)
+  returnToComposer(composer, queued)
   return stopAgent()
 }
 
@@ -137,21 +147,20 @@ export async function deliverFromComposer(
   haptic('tick')
   const { isAgentWorking, sessionId } = useAgentStore.getState()
   const plan = planComposerDelivery({ working: isAgentWorking, sessionId, delivery })
-  if (plan.kind === 'hold') {
-    useHeldMessagesStore.getState().hold({ sessionId: plan.sessionId, ...message })
-    return
-  }
-  let calledOff: HeldMessage[] = []
+  let calledOff: Returned[] = []
   const stoppedForSend = plan.kind === 'stop_then_send'
   if (stoppedForSend) {
-    // Stopping calls off held messages as any stop does, but they return to
-    // the composer only after this send, so a failed send restores its own
-    // draft first (``restoreLastSubmission`` yields to a non-empty composer).
-    if (sessionId) calledOff = useHeldMessagesStore.getState().takeAll(sessionId)
+    // Stopping calls off held messages as any stop does (unread steers go
+    // along with the stop as context), but they return to the composer only
+    // after this send, so a failed send restores its own draft first
+    // (``restoreLastSubmission`` yields to a non-empty composer).
+    if (sessionId) calledOff = await callOffSteers(sessionId, { heldOnly: true })
     // The stop only adds context, so an active goal stays active.
     await useAgentStore.getState().stopAgent({ keepGoal: true })
   }
-  const delivered = await sendFromComposer(workspace, message.content, message.files, message.mentions)
+  // A held message waits on the server, so it still goes out if this client
+  // closes before the turn ends.
+  const delivered = await sendFromComposer(workspace, message.content, message.files, message.mentions, plan.kind === 'hold')
   // The composer cleared itself on submit; a send that never landed gets its
   // draft and attachments back instead of vanishing behind an error banner.
   if (!delivered) {
@@ -164,16 +173,16 @@ export async function deliverFromComposer(
   returnToComposer(composer, calledOff)
 }
 
-/** Sends held messages one turn at a time as the session goes idle. */
-export function useReleaseHeldMessages({ workspace, sessionId, composerRef }: {
-  workspace: string | null
+/**
+ * After a failed turn, hands this client's queued messages (steers and held
+ * ones) back to the composer: nothing will send them, and the next message
+ * would otherwise carry them along unasked.
+ */
+export function useReturnQueuedAfterFailure({ sessionId, composerRef }: {
   sessionId: string | null
   composerRef: RefObject<InputComposerHandle | null>
 }) {
-  const heldCount = useHeldMessagesStore((s) => (
-    sessionId ? s.messages.filter((message) => message.sessionId === sessionId).length : 0
-  ))
-  const steerCount = useAgentStore((s) => (
+  const queuedCount = useAgentStore((s) => (
     sessionId ? (s._pendingMessages ?? []).filter((message) => message.sessionId === sessionId).length : 0
   ))
   // A session switch clears the working flag before the server has said
@@ -181,37 +190,20 @@ export function useReleaseHeldMessages({ workspace, sessionId, composerRef }: {
   // makes an idle flag trustworthy.
   const idle = useAgentStore((s) => !s.isAgentWorking && s._syncedThrough !== null)
   const turnFailed = useAgentStore((s) => (s.leadName ? s.agentStreams[s.leadName]?.status === 'error' : false))
-  const releasingRef = useRef(false)
+  const returningRef = useRef(false)
 
   useEffect(() => {
-    const decision = decideHeldRelease({
-      hasTarget: Boolean(workspace && sessionId),
+    const decision = decideQueuedAfterFailure({
+      hasTarget: Boolean(sessionId),
       idle,
-      releasing: releasingRef.current,
+      returning: returningRef.current,
       turnFailed,
-      heldCount,
-      steerCount,
+      queuedCount,
     })
-    if (decision.kind === 'wait' || !workspace || !sessionId) return
-    const store = useHeldMessagesStore.getState()
-    // After a failure, steers go back first: the order they would have gone out in.
-    if (decision.kind === 'return_to_composer') {
-      releasingRef.current = true
-      void callOffSteers(sessionId)
-        .then((steers) => returnToComposer(composerRef.current, [...steers, ...useHeldMessagesStore.getState().takeAll(sessionId)]))
-        .finally(() => { releasingRef.current = false })
-      return
-    }
-    const next = store.takeNext(sessionId)
-    if (!next) return
-    releasingRef.current = true
-    void sendFromComposer(workspace, next.content, next.files, next.mentions)
-      .then((delivered) => {
-        if (!delivered) {
-          outcomeHapticFeedback('error')
-          returnToComposer(composerRef.current, [next, ...useHeldMessagesStore.getState().takeAll(sessionId)])
-        }
-      })
-      .finally(() => { releasingRef.current = false })
-  }, [workspace, sessionId, idle, heldCount, steerCount, turnFailed, composerRef])
+    if (decision.kind === 'wait' || !sessionId) return
+    returningRef.current = true
+    void callOffSteers(sessionId)
+      .then((queued) => returnToComposer(composerRef.current, queued))
+      .finally(() => { returningRef.current = false })
+  }, [sessionId, idle, queuedCount, turnFailed, composerRef])
 }

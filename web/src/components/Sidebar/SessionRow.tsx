@@ -15,7 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Collapsible } from '@/components/ui/collapsible'
 import { isDeleteKey, isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/item-keys'
 import { sessionPrefetchProps } from '@/lib/session-prefetch-row'
-import { SessionStateWord, SessionStatusMark, sessionStateWord, sessionStatus } from './SessionStatusMark'
+import { SessionStatusMark, sessionStateWord, sessionStatus } from './SessionStatusMark'
 import { LIST_ROW_GEOMETRY, ROW_ACTION, listRowSurface, listRowText, rowActionsReveal } from '@/components/ui/list-row'
 import { SwipeRow, type SwipeAction } from '@/components/phone/SwipeRow'
 import { cn } from '@/lib/utils'
@@ -230,9 +230,8 @@ function SessionRowView({
   // Touch shows ⋯ at all times and drops the meta for it, but the pin mark
   // is small and says why the row is where it is, so it stays.
   const pinMarkVisibility = mobileLongPressActions ? '' : 'group-hover/row:hidden group-focus-within/row:hidden'
-  // The state word is the row's state in words, so "Show details" off does
-  // not hide it. It gives way to the actions like the pin mark does, and
-  // stays on touch, where the title truncates before it does.
+  // The row's state is its leading mark (! spinner dot ✗); the word is only
+  // in the tooltip, so the meta slot keeps the age.
   const stateWord = sessionStateWord(status)
   // "Show details" off hides the age; the tooltip still carries it.
   const ageVisibility = showDetails ? metaVisibility : 'hidden'
@@ -432,9 +431,9 @@ function SessionRowView({
             title={linkedToggleLabel}
           />
         )}
-        {/* Meta slot: at rest it reads the state word or the age and nothing
-            else; hover/focus swaps them for the row actions in the same
-            place, so neither covers the title. Where the session lives (its
+        {/* Meta slot: at rest it reads the age and nothing else; hover/focus
+            swaps it for the row actions in the same place, so neither
+            covers the title. Where the session lives (its
             workspace and worktree) is in the row's tooltip. Touch with
             long-press sheets has no tooltip and no hover, so there the place
             stays on the row, after the title, giving way first when narrow. */}
@@ -482,16 +481,15 @@ function SessionRowView({
             <Pin size={12} />
           </span>
         )}
-        {/* A running row says so with its leading spinner alone: a word or a
-            goal icon here only squeezed the title and swapped out on hover.
-            The goal stays in the row's accessible name (sr-only above). */}
-        {!isEditing && status !== 'running' && (stateWord
-          ? <SessionStateWord status={status} className={pinMarkVisibility} />
-          : sessionAge && (
-            <span className={`shrink-0 pl-1 pr-1 text-meta tabular-nums text-(--color-text-muted) ${ageVisibility}`} aria-hidden="true">
-              {sessionAge}
-            </span>
-          ))}
+        {/* The state is the leading mark, not a word here: a word only
+            repeated the mark and squeezed the title. A running row shows its
+            spinner alone. The goal stays in the row's accessible name
+            (sr-only above). */}
+        {!isEditing && status !== 'running' && sessionAge && (
+          <span className={`shrink-0 pl-1 pr-1 text-meta tabular-nums text-(--color-text-muted) ${ageVisibility}`} aria-hidden="true">
+            {sessionAge}
+          </span>
+        )}
         <div className={`shrink-0 items-center ${isEditing ? 'hidden' : actionsVisibility}`}>
           {canPin && (
             <button

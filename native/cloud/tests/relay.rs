@@ -15,7 +15,7 @@ use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{self, FlowError, GenesisDraft, Member, Pace};
 use openagentd_cloud::keys::{DeviceKeys, Roles};
 use openagentd_cloud::mux::Stream;
-use openagentd_cloud::relay::{self, HostHandler, HostOptions, Join, Keepalive, RelayError, Sessions};
+use openagentd_cloud::relay::{self, EndCause, HostHandler, HostOptions, Join, Keepalive, RelayError, Sessions, TunnelEnd};
 use openagentd_cloud::roster::Roster;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
@@ -63,6 +63,8 @@ struct Echo {
     roster: Mutex<Roster>,
     me: String,
     rosters: Mutex<Vec<(u64, Vec<String>)>>,
+    /// Sessions that ended, as the host saw them.
+    ends: Mutex<Vec<TunnelEnd>>,
 }
 
 impl HostHandler for Echo {
@@ -83,10 +85,17 @@ impl HostHandler for Echo {
     fn on_roster(&self, version: u64, revoked: Vec<String>) {
         self.rosters.lock().unwrap().push((version, revoked));
     }
+    fn on_session_end(&self, _from: &str, end: &TunnelEnd) {
+        self.ends.lock().unwrap().push(*end);
+    }
+}
+
+fn echo(server: &Member) -> Arc<Echo> {
+    Arc::new(Echo { roster: Mutex::new(server.roster.clone().unwrap()), me: server.cloud.device_id(), rosters: Mutex::new(vec![]), ends: Mutex::new(vec![]) })
 }
 
 async fn start_host(server: &Member) -> (Arc<Echo>, Sessions, oneshot::Sender<()>) {
-    let handler = Arc::new(Echo { roster: Mutex::new(server.roster.clone().unwrap()), me: server.cloud.device_id(), rosters: Mutex::new(vec![]) });
+    let handler = echo(server);
     let sessions = Sessions::default();
     let (stop, stop_rx) = oneshot::channel();
     let c = Arc::new(Cloud::new(reqwest::Client::new(), server.cloud.endpoints.clone(), server.cloud.keys.clone(), server.cloud.account_id.clone()));
@@ -177,6 +186,12 @@ async fn removing_a_device_closes_its_sessions_with_4001() {
     sessions.revoke(&phone.cloud.device_id());
     let code = tokio::time::timeout(Duration::from_secs(5), tunnel.wait_closed()).await.unwrap();
     assert_eq!(code, 4001);
+    // Each side says how it ended: the host closed it, the phone was closed.
+    let end = tunnel.wait_ended().await.unwrap();
+    assert_eq!((end.cause, end.code), (EndCause::Closed, 4001));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let host_end = handler.ends.lock().unwrap().last().copied().expect("the host saw the session end");
+    assert_eq!((host_end.cause, host_end.code), (EndCause::Local, 4001));
     // A 4001 is unsigned (here the host sent it): only a signal, and the
     // signed roster fetch says the phone is still in the account.
     assert_eq!(openagentd_cloud::account_state::from_close_code(code), Some(AccountProblem::RemovalSignal));
@@ -365,7 +380,7 @@ fn spawn_presence(server: &Member, opts: HostOptions) -> (tokio::task::JoinHandl
 }
 
 fn spawn_presence_on(c: Arc<Cloud>, server: &Member, opts: HostOptions) -> (tokio::task::JoinHandle<RelayError>, oneshot::Sender<()>) {
-    let handler = Arc::new(Echo { roster: Mutex::new(server.roster.clone().unwrap()), me: server.cloud.device_id(), rosters: Mutex::new(vec![]) });
+    let handler = echo(server);
     let (stop, stop_rx) = oneshot::channel();
     (tokio::spawn(relay::host_with(c, relay::http1_client(), handler, Sessions::default(), stop_rx, opts)), stop)
 }
@@ -493,4 +508,60 @@ async fn a_1003_after_a_pong_is_a_real_close_not_a_downgrade() {
     let ended = tokio::time::timeout(Duration::from_secs(3), presence).await.unwrap().unwrap();
     assert_eq!(ended, RelayError::Closed(1003));
     assert!(c.text_keepalive(), "the relay had answered pong: keep the text keepalive");
+}
+
+/// A device's client for `member`'s keys that reaches the relay at `base`.
+fn cloud_via(member: &Member, base: &str) -> Cloud {
+    Cloud::new(reqwest::Client::new(), Endpoints::custom(base, "https://account.openagentd.dev"), member.cloud.keys.clone(), member.cloud.account_id.clone())
+}
+
+#[tokio::test]
+async fn a_quiet_tunnel_stays_up_when_protocol_pings_get_no_pong() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (phone, server) = account(&fake, &base).await;
+    // Both devices reach the relay where protocol pings get no answer
+    // either can read: only the text keepalive comes back.
+    let via = fake_cloud::proxy::without_protocol_pongs(&base).await;
+    let opts = HostOptions { keepalive: QUICK, join: Join(Duration::from_millis(2)), ..HostOptions::default() };
+    let (_presence, _stop) = spawn_presence_on(Arc::new(cloud_via(&server, &via)), &server, opts);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let host_box = phone.box_of(&server.cloud.device_id()).unwrap();
+    let tunnel = relay::connect_with(&cloud_via(&phone, &via), &relay::http1_client(), &server.cloud.device_id(), &host_box, Join(Duration::from_millis(2)), QUICK).await.unwrap();
+    // Nothing to say for several deadlines.
+    tokio::time::sleep(QUICK.dead_after * 6).await;
+    assert!(!tunnel.session.is_closed(), "the quiet tunnel is still open, but it ended: {:?}", *tunnel.ended.borrow());
+    // And it still carries a request.
+    let mut s = tunnel.session.open().unwrap();
+    s.write_all(b"still here").await.unwrap();
+    s.shutdown().await.unwrap();
+    let mut back = Vec::new();
+    tokio::time::timeout(Duration::from_secs(5), s.read_to_end(&mut back)).await.unwrap().unwrap();
+    assert_eq!(back, b"STILL HERE");
+    assert!(fake.1.lock().unwrap().data_text_pings >= 3);
+}
+
+#[tokio::test]
+async fn an_old_relay_that_closes_a_data_socket_on_a_text_ping_gets_one_reconnect_with_protocol_pings_only() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (phone, server) = account(&fake, &base).await;
+    let opts = HostOptions { keepalive: QUICK, join: Join(Duration::from_millis(2)), ..HostOptions::default() };
+    let host_cloud = presence_cloud(&server);
+    let (_presence, _stop) = spawn_presence_on(host_cloud.clone(), &server, opts);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    fake.1.lock().unwrap().data_old = true;
+    let host_box = phone.box_of(&server.cloud.device_id()).unwrap();
+    let mut first = relay::connect_with(&phone.cloud, &relay::http1_client(), &server.cloud.device_id(), &host_box, Join(Duration::from_millis(2)), QUICK).await.unwrap();
+    let end = tokio::time::timeout(Duration::from_secs(3), first.wait_ended()).await.expect("the old relay closes it").unwrap();
+    assert_eq!((end.cause, end.code, end.ponged), (EndCause::Closed, 1003, false));
+    assert!(!phone.cloud.text_keepalive(), "no text keepalive from this phone from now on");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!host_cloud.text_keepalive(), "nor from the host, which saw the same close");
+    // The reconnect sends protocol pings only, and stays up.
+    let pings = fake.1.lock().unwrap().data_text_pings;
+    let second = relay::connect_with(&phone.cloud, &relay::http1_client(), &server.cloud.device_id(), &host_box, Join(Duration::from_millis(2)), QUICK).await.unwrap();
+    tokio::time::sleep(QUICK.dead_after * 6).await;
+    assert!(!second.session.is_closed(), "the reconnect stays up: {:?}", *second.ended.borrow());
+    assert_eq!(fake.1.lock().unwrap().data_text_pings, pings, "no text ping after the downgrade");
 }

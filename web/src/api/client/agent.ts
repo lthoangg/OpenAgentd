@@ -67,6 +67,8 @@ export async function postAgentChat(
   keepGoal = false,
   /** The account a new session's draft was pinned to (v3); ignored when null. */
   credentialId: string | null = null,
+  /** "Queue until done": a message that queues waits for the running turn to end (v3). */
+  holdUntilTurnEnd = false,
 ): Promise<AgentChatResponse> {
   const formData = new FormData()
   if (message) {
@@ -99,6 +101,9 @@ export async function postAgentChat(
   }
   if (credentialId) {
     formData.append('credential_id', credentialId)
+  }
+  if (holdUntilTurnEnd) {
+    formData.append('hold_until_turn_end', 'true')
   }
   if (files && files.length > 0) {
     for (const file of files) {

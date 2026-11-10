@@ -3,8 +3,10 @@
 //! control acks and pause/resume, and a yamux session inside.
 
 use std::collections::HashMap;
+use std::fmt;
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use futures_util::{SinkExt, StreamExt};
 use reqwest::header::{CONNECTION, SEC_WEBSOCKET_ACCEPT, SEC_WEBSOCKET_KEY, SEC_WEBSOCKET_VERSION, UPGRADE};
@@ -30,12 +32,14 @@ pub const ACK_BYTES: usize = 256 * 1024;
 pub const ACK_IDLE: Duration = Duration::from_millis(500);
 /// WebSocket pings from the device keep sockets alive.
 pub const PING_EVERY: Duration = Duration::from_secs(25);
-/// The text keepalive (draft, `tunnel.md` section 5): presence also sends
-/// this every [`PING_EVERY`], so the relay can tell a host that went quiet
-/// (protocol pings never reach it); it answers [`TEXT_PONG`].
+/// The text keepalive (`tunnel.md` section 5): every relay socket also
+/// sends this every [`PING_EVERY`]. The relay answers [`TEXT_PONG`] itself,
+/// so presence tells it a host is there (protocol pings never reach it),
+/// and a quiet data socket has a frame to count even where no protocol
+/// pong comes back.
 pub const TEXT_PING: &str = "ping";
 pub const TEXT_PONG: &str = "pong";
-/// What a relay from before the text keepalive closes presence with.
+/// What a relay from before the text keepalive closes a socket with.
 const UNSUPPORTED_DATA: u16 = 1003;
 /// A socket that brought no frame at all (not even a pong) for this long
 /// is dead: two missed pongs and a margin. After Wi-Fi changes or a sleep
@@ -176,7 +180,8 @@ impl Default for Join {
     }
 }
 
-/// How presence keeps its socket alive and notices it died.
+/// How a relay socket (presence or a data tunnel) keeps alive and notices
+/// it died.
 #[derive(Debug, Clone, Copy)]
 pub struct Keepalive {
     /// How often it pings.
@@ -235,13 +240,68 @@ pub struct Tunnel {
     closer: mpsc::UnboundedSender<u16>,
     /// Resolves with the close code once the socket closes.
     pub closed: watch::Receiver<Option<u16>>,
+    /// How it ended, once it has (for the logs).
+    pub ended: watch::Receiver<Option<TunnelEnd>>,
+}
+
+/// Why a tunnel ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EndCause {
+    /// This side closed it (revocation, sign-out, stop).
+    Local,
+    /// A close frame came from the other end or the relay.
+    Closed,
+    /// No frame came for the keepalive's `dead_after`: this side gave the
+    /// socket up.
+    Deadline,
+    /// The socket failed or ended without a close frame.
+    Network,
+    /// A message that did not decrypt, or broke the mux.
+    Protocol,
+}
+
+impl EndCause {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EndCause::Local => "local",
+            EndCause::Closed => "closed",
+            EndCause::Deadline => "deadline",
+            EndCause::Network => "network",
+            EndCause::Protocol => "protocol",
+        }
+    }
+}
+
+/// How a tunnel ended: what a log line says about it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TunnelEnd {
+    pub cause: EndCause,
+    pub code: u16,
+    /// How long the tunnel was open.
+    pub lived: Duration,
+    /// How long before the end the last frame came in.
+    pub quiet: Duration,
+    /// Whether the relay answered a text `ping` on this socket.
+    pub ponged: bool,
+}
+
+impl fmt::Display for TunnelEnd {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "cause={} code={} secs={:.1} quiet_secs={:.1} ponged={}", self.cause.as_str(), self.code, self.lived.as_secs_f64(), self.quiet.as_secs_f64(), self.ponged)
+    }
 }
 
 impl Tunnel {
-    fn start(ws: Ws, transport: Transport, client: bool, join: Join) -> Tunnel {
+    /// `text_off` is the client's text keepalive switch
+    /// ([`Cloud::turn_off_text_keepalive`]).
+    fn start(ws: Ws, transport: Transport, client: bool, join: Join, keepalive: Keepalive, text_off: Arc<AtomicBool>) -> Tunnel {
         let (session, mut outbound) = Session::new(client);
         let (closer, mut close_rx) = mpsc::unbounded_channel::<u16>();
         let (closed_tx, closed) = watch::channel(None);
+        let (ended_tx, ended) = watch::channel(None);
+        // The code this side closed with, if it did (0: it did not).
+        let local = Arc::new(AtomicU16::new(0));
+        let started = Instant::now();
         let transport = Arc::new(Mutex::new(transport));
         let (mut sink, mut stream) = ws.split();
         let (ctl_tx, mut ctl_rx) = mpsc::unbounded_channel::<Message>();
@@ -249,8 +309,10 @@ impl Tunnel {
 
         // Writer: joins yamux frames, encrypts, honours pause, sends acks.
         let t_out = transport.clone();
+        let local_out = local.clone();
+        let text_out = text_off.clone();
         let writer = tokio::spawn(async move {
-            let mut ping = tokio::time::interval(PING_EVERY);
+            let mut ping = tokio::time::interval(keepalive.every);
             ping.tick().await;
             let mut pending: Vec<u8> = Vec::new();
             let mut deadline: Option<tokio::time::Instant> = None;
@@ -266,6 +328,7 @@ impl Tunnel {
                     biased;
                     code = close_rx.recv() => {
                         let code = code.unwrap_or(1000);
+                        local_out.store(code, Ordering::Relaxed);
                         let _ = sink.send(Message::Close(Some(CloseFrame { code: CloseCode::from(code), reason: "".into() }))).await;
                         return;
                     }
@@ -274,7 +337,11 @@ impl Tunnel {
                         continue;
                     }
                     _ = ping.tick() => {
+                        // The protocol ping keeps the socket open on any relay.
                         if sink.send(Message::Ping(Vec::new().into())).await.is_err() { return; }
+                        // The text ping is answered by the relay itself: a
+                        // frame to count while the session has nothing to say.
+                        if !text_out.load(Ordering::Relaxed) && sink.send(Message::Text(TEXT_PING.into())).await.is_err() { return; }
                         continue;
                     }
                     bytes = outbound.recv(), if !flush_now => {
@@ -299,6 +366,7 @@ impl Tunnel {
                             r = pause_rx.changed() => if r.is_err() { return; },
                             code = close_rx.recv() => {
                                 let code = code.unwrap_or(1000);
+                                local_out.store(code, Ordering::Relaxed);
                                 let _ = sink.send(Message::Close(Some(CloseFrame { code: CloseCode::from(code), reason: "".into() }))).await;
                                 return;
                             }
@@ -327,15 +395,21 @@ impl Tunnel {
         tokio::spawn(async move {
             let mut unacked = 0usize;
             let mut code = 1006u16;
-            // Pings go out every PING_EVERY (the writer); with no frame
-            // back for DEAD_AFTER the socket is dead.
+            let mut cause = EndCause::Network;
+            let mut ponged = false;
+            let text_keepalive = !text_off.load(Ordering::Relaxed);
+            // Pings go out every `keepalive.every` (the writer); with no
+            // frame back for `keepalive.dead_after` the socket is dead.
             let mut last_in = tokio::time::Instant::now();
             loop {
-                let dead_at = last_in + DEAD_AFTER;
+                let dead_at = last_in + keepalive.dead_after;
                 let wake = if unacked > 0 { dead_at.min(tokio::time::Instant::now() + ACK_IDLE) } else { dead_at };
                 let next = match tokio::time::timeout_at(wake, stream.next()).await {
                     Ok(n) => n,
-                    Err(_) if tokio::time::Instant::now() >= dead_at => break,
+                    Err(_) if tokio::time::Instant::now() >= dead_at => {
+                        cause = EndCause::Deadline;
+                        break;
+                    }
                     Err(_) => {
                         let _ = ctl_tx.send(Message::Text(json!({"type":"ack","bytes":unacked}).to_string().into()));
                         unacked = 0;
@@ -344,6 +418,8 @@ impl Tunnel {
                 };
                 last_in = tokio::time::Instant::now();
                 match next {
+                    // The keepalive's answer: not a JSON message.
+                    Some(Ok(Message::Text(t))) if t.as_str() == TEXT_PONG => ponged = true,
                     Some(Ok(Message::Binary(b))) => {
                         unacked += b.len();
                         if unacked >= ACK_BYTES {
@@ -356,12 +432,14 @@ impl Tunnel {
                                 if s_in.receive(&p).is_err() {
                                     let _ = closer_in.send(4002);
                                     code = 4002;
+                                    cause = EndCause::Protocol;
                                     break;
                                 }
                             }
                             Err(_) => {
                                 let _ = closer_in.send(4002);
                                 code = 4002;
+                                cause = EndCause::Protocol;
                                 break;
                             }
                         }
@@ -380,18 +458,32 @@ impl Tunnel {
                     }
                     Some(Ok(Message::Close(f))) => {
                         code = close_code(f.as_ref());
+                        cause = EndCause::Closed;
+                        // A relay from before the text keepalive refuses the
+                        // text ping: protocol pings only from now on (the
+                        // caller reconnects as usual). After a `pong`, 1003 is
+                        // a real protocol error.
+                        if code == UNSUPPORTED_DATA && text_keepalive && !ponged {
+                            text_off.store(true, Ordering::Relaxed);
+                        }
                         break;
                     }
                     Some(Ok(_)) => {}
                     Some(Err(_)) | None => break,
                 }
             }
+            let by_us = local.load(Ordering::Relaxed);
+            if by_us != 0 && matches!(cause, EndCause::Closed | EndCause::Network) {
+                (cause, code) = (EndCause::Local, by_us);
+            }
             s_in.close();
             let _ = pause_tx.send(false);
+            let end = TunnelEnd { cause, code, lived: started.elapsed(), quiet: last_in.elapsed(), ponged };
+            let _ = ended_tx.send(Some(end));
             let _ = closed_tx.send(Some(code));
             writer.abort();
         });
-        Tunnel { session, closer, closed }
+        Tunnel { session, closer, closed, ended }
     }
 
     /// Go Away, then close the socket with `code`.
@@ -415,6 +507,11 @@ impl Tunnel {
             }
         }
     }
+
+    /// How the tunnel ended, once it has.
+    pub async fn wait_ended(&mut self) -> Option<TunnelEnd> {
+        self.ended.wait_for(Option::is_some).await.ok().and_then(|e| *e)
+    }
 }
 
 /// Closes a tunnel.
@@ -430,6 +527,11 @@ impl Closer {
 /// The controller side: opens a session to `host_id`, whose `box` key
 /// comes from the controller's verified roster.
 pub async fn connect(cloud: &Cloud, http1: &reqwest::Client, host_id: &str, host_box: &[u8; 32], join: Join) -> Result<Tunnel, RelayError> {
+    connect_with(cloud, http1, host_id, host_box, join, Keepalive::default()).await
+}
+
+/// [`connect`] with the keepalive timings chosen.
+pub async fn connect_with(cloud: &Cloud, http1: &reqwest::Client, host_id: &str, host_box: &[u8; 32], join: Join, keepalive: Keepalive) -> Result<Tunnel, RelayError> {
     let account = cloud.account_id.clone().ok_or(RelayError::Handshake)?;
     let session_id = b64(&random_bytes::<16>());
     let mut ws = open_socket(cloud, http1, &format!("/v1/relay/host/{host_id}/data/{session_id}")).await?;
@@ -440,7 +542,7 @@ pub async fn connect(cloud: &Cloud, http1: &reqwest::Client, host_id: &str, host
     ws.send(Message::Binary(m1.into())).await.map_err(|_| RelayError::Network)?;
     let m2 = next_binary(&mut ws).await?;
     match init.read_message2(&m2) {
-        Ok(t) => Ok(Tunnel::start(ws, t, true, join)),
+        Ok(t) => Ok(Tunnel::start(ws, t, true, join, keepalive, cloud.text_keepalive_switch())),
         Err(_) => {
             close(&mut ws, 4002, "handshake").await;
             Err(RelayError::Handshake)
@@ -457,6 +559,8 @@ pub trait HostHandler: Send + Sync + 'static {
     fn serve(&self, stream: Stream, from: String);
     /// The relay says the roster or floor changed.
     fn on_roster(&self, version: u64, revoked: Vec<String>);
+    /// A session from `from` ended (for the logs).
+    fn on_session_end(&self, _from: &str, _end: &TunnelEnd) {}
 }
 
 /// Open sessions by controller, so a removed device loses them at once.
@@ -578,7 +682,7 @@ pub async fn host_with(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<d
                             let (Some(sid), Some(from)) = (v["session_id"].as_str(), v["from"].as_str()) else { continue };
                             let (sid, from) = (sid.to_string(), from.to_string());
                             let (cloud, http1, handler, sessions) = (cloud.clone(), http1.clone(), handler.clone(), sessions.clone());
-                            tokio::spawn(async move { let _ = join_session(&cloud, &http1, &sid, &from, handler, sessions, join).await; });
+                            tokio::spawn(async move { let _ = join_session(&cloud, &http1, &sid, &from, handler, sessions, (join, keepalive)).await; });
                         }
                         Some("roster") => {
                             let revoked = revoked_list(&v["revoked"]);
@@ -619,7 +723,7 @@ async fn join_session(
     from: &str,
     handler: Arc<dyn HostHandler>,
     sessions: Sessions,
-    join: Join,
+    (join, keepalive): (Join, Keepalive),
 ) -> Result<(), RelayError> {
     let known = handler.controller_box(from);
     let account = cloud.account_id.clone().ok_or(RelayError::Handshake)?;
@@ -639,7 +743,7 @@ async fn join_session(
     }
     let (m2, transport) = resp.write_message2().map_err(|_| RelayError::Handshake)?;
     ws.send(Message::Binary(m2.into())).await.map_err(|_| RelayError::Network)?;
-    let mut tunnel = Tunnel::start(ws, transport, false, join);
+    let mut tunnel = Tunnel::start(ws, transport, false, join, keepalive, cloud.text_keepalive_switch());
     let closer = tunnel.closer();
     sessions.add(from, closer.clone());
     // A removal between the handshake and `add` was missed by `revoke`.
@@ -660,9 +764,12 @@ async fn join_session(
             h.serve(stream, from_owned.clone());
         }
     });
-    let code = tunnel.wait_closed().await;
+    let end = tunnel.wait_ended().await;
     sessions.remove(from, &closer);
-    Err(RelayError::Closed(code))
+    if let Some(end) = &end {
+        handler.on_session_end(from, end);
+    }
+    Err(RelayError::Closed(end.map_or(1006, |e| e.code)))
 }
 
 #[cfg(test)]

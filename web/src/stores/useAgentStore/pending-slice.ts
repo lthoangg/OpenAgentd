@@ -101,6 +101,7 @@ function makePendingMessage(
   content: string,
   submittedAt: number,
   files?: File[],
+  options?: SendOptions,
 ): PendingMessage {
   const attachments = queuedAttachmentMetas(files)
   return {
@@ -109,6 +110,8 @@ function makePendingMessage(
     content,
     submittedAt,
     ...(attachments && attachments.length > 0 ? { attachments, files } : {}),
+    ...(options?.holdUntilTurnEnd ? { heldUntilTurnEnd: true } : {}),
+    ...(options?.mentions?.length ? { mentions: options.mentions } : {}),
   }
 }
 
@@ -159,6 +162,7 @@ export const createPendingSlice: StateCreator<
           newSessionInteractionMode(get()),
           false,
           draftCredentialId(get()),
+          options?.holdUntilTurnEnd ?? false,
         )
         if (result.status !== 'queued') {
           // The lead had already gone idle by the time the POST landed, so
@@ -208,6 +212,7 @@ export const createPendingSlice: StateCreator<
                 content,
                 Date.now(),
                 files,
+                options,
               ),
             )
           }
@@ -265,6 +270,7 @@ export const createPendingSlice: StateCreator<
         newSessionInteractionMode(get()),
         false,
         draftCredentialId(get()),
+        options?.holdUntilTurnEnd ?? false,
       )
       set((draft) => {
         draft.sessionId = result.session_id
@@ -299,7 +305,7 @@ export const createPendingSlice: StateCreator<
           const alreadySpliced = isSpliced(draft, msgId)
           if (!alreadySpliced) {
             draft._pendingMessages.push(
-              makePendingMessage(result.message_id, result.session_id, content, submittedAt, files),
+              makePendingMessage(result.message_id, result.session_id, content, submittedAt, files, options),
             )
           }
           return

@@ -249,4 +249,40 @@ mod tests {
         assert!(!stop.is_set());
         assert!(state.messages[0].meta().db_id.is_some(), "the message was not saved");
     }
+
+    /// A write hit a full disk, SQLite rolled its transaction back on its
+    /// own, and the connection went back to the pool
+    /// still counted as in a transaction. Every save that drew it failed
+    /// ("non-zero transaction depth") until a restart, so tool calls and
+    /// results stopped reaching the database.
+    #[tokio::test]
+    async fn saves_keep_working_after_a_write_hit_a_full_disk() {
+        let root = tempfile::tempdir().unwrap();
+        let pool = db::create_pool(root.path().join("oad.db")).await.unwrap();
+        let row = db::create_session(&pool, db::NewSession { workspace: "/tmp".into(), ..Default::default() }).await.unwrap();
+        let sid = db::codec::api_uuid(&row.id);
+        sqlx::query("CREATE TABLE filler (v BLOB)").execute(&pool).await.unwrap();
+
+        {
+            let mut tx = pool.begin_with("BEGIN IMMEDIATE").await.unwrap();
+            let pages: i64 = sqlx::query_scalar("PRAGMA page_count").fetch_one(&mut *tx).await.unwrap();
+            sqlx::query(sqlx::AssertSqlSafe(format!("PRAGMA max_page_count = {pages}"))).execute(&mut *tx).await.unwrap();
+            let full = sqlx::query("INSERT INTO filler VALUES (zeroblob(1000000))").execute(&mut *tx).await;
+            assert!(full.is_err(), "the write should have hit the page limit");
+            sqlx::query("PRAGMA max_page_count = 1073741823").execute(&mut *tx).await.unwrap();
+        }
+
+        let cp = Checkpointer::new(pool.clone(), None, None);
+        let mut state = AgentState::new(vec![], String::new());
+        // Enough saves to draw every pooled connection, the failed one included.
+        let rounds = pool.options().get_max_connections() as usize * 2;
+        for i in 0..rounds {
+            state.messages.push(ChatMessage::assistant(format!("step {i}")));
+            cp.sync(&ctx(&sid), &mut state).await;
+            assert!(state.messages.iter().all(|m| m.meta().db_id.is_some()), "save {i} failed");
+        }
+
+        let saved: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM session_messages WHERE session_id = ?").bind(&row.id).fetch_one(&pool).await.unwrap();
+        assert_eq!(saved, rounds as i64);
+    }
 }

@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.51.1 · November 10, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.51.1)
+**Latest release:** v3.51.2 · November 10, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.51.2)
 
 ---
 
@@ -422,6 +422,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   them. Since `[v3.29.0]` only a focused window on the same server skips it,
   so a question from a server you are not looking at still shows, and
   clicking it opens the window that sent it.
+  On an iPhone signed in to an OpenAgentd Cloud account, Done and Needs you
+  show once `[v3.51.2]`: the app shows them itself only while it is open, and
+  the account's push covers the background, the lock screen, and events
+  caught up on in the first seconds after reopening the app.
 - **Home-screen widgets on iPhone and Android** `[v3.31.0]` — three widgets
   for the mobile app: **Quick start** (start a new session, or continue the
   last one), **Sessions** (up to three sessions, the ones that need you first,
@@ -777,6 +781,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     buttons sit inside it, and workspace rows use the phone's short marks
     (**missing**, the worktree count) so the always-shown row actions leave
     the name room.
+  - In the iOS app the keyboard has no `< > ✓` bar above it `[v3.51.2]`,
+    so the composer sits whole on the keyboard (on iOS 26 the bar covered
+    it). Swipe down on the composer or tap the chat to put the keyboard away.
 - **Pin a session to one account** `[v3.40.0]` — when a provider has several
   keys or OAuth profiles, the run picker can pin the session to one of them;
   **Auto** keeps today's rotation. A pinned session only ever uses that
@@ -913,9 +920,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     A session shows in one place only: a pinned one stays in Pinned even
     when it needs you or is running. `[v3.49.0]`
     Needs you counts in words ("2 waiting"). Scheduled is always there, with
-    **+** for a new task. A row whose session is busy, waiting, finished
-    unseen or failed says so in words in place of its time: **Running**,
-    **Needs you**, **Done**, **Failed**.
+    **+** for a new task. Since `[v3.51.2]` a row's state is its leading
+    mark alone: **!** needs you, a spinner running, a dot finished unseen,
+    **✗** failed. The row keeps its time beside it, and the state in words
+    is in its tooltip (before, the row said **Needs you**, **Done** or
+    **Failed** in place of its time).
   - While the workspace list first loads it shows placeholder rows, and if it
     fails, **Retry**; "No workspaces yet" only means there are none.
   - A session's menu (⋯, right-click, long-press) has **Open in new window**
@@ -2054,20 +2063,21 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A finished turn lists the files its `patch` calls changed, with line
     counts; each opens its git diff in the review dock. Since `[v3.1.0]` the list starts
     closed behind its "N files changed" header.
-- **The composer while the agent works** `[v3.0.0, updated v3.4.0]`:
+- **The composer while the agent works** `[v3.0.0, updated v3.51.0]`:
   - Scrolled away from the live end, a "↓ N new" chip rides on the
     composer and counts what arrived since.
   - While a turn runs, Send splits in two. The pill steers: the agent reads
     the message before its next step (`Enter`). The chevron adds Queue until
-    done, which holds the message in this window and sends it as a turn of
-    its own once the turn ends (`⌥Enter` / `Alt+Enter`), and Stop & send
+    done, which the server holds and sends as a turn of its own once the turn
+    ends, even if this window is closed or reloaded meanwhile `[v3.51.2]`
+    (`⌥Enter` / `Alt+Enter`), and Stop & send
     (`⌘Enter` / `Ctrl+Enter`). In the transcript, steering messages read
     "Read before the next step" and held ones "Sends when this turn ends".
   - Stop & send waits for the stopped turn, including a running tool, to
     wind down, then sends; steers the agent had not read go out first, after
     the stopped turn `[v3.11.0]`.
   - Queued messages reach the agent in the order they go out: steers first,
-    then held messages, one turn each. A steer is read before the running
+    then held messages, which start the next turn together. A steer is read before the running
     turn's next step, or starts the next turn if that turn makes no further
     step. Its `@` mentions arrive with it `[v3.4.0]`. A steer sent while a
     question or plan review waits replaces it and starts a new turn; a held
@@ -2082,8 +2092,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     agent, are never handed back: a member's report waiting for a busy lead
     stays out of the queue and appears as "Report from …" once the lead
     reads it or the turn is stopped `[v3.30.0]`.
-  - Limits: held messages live only in this window and are lost on reload.
-    A steer sent late still goes out before an earlier held message. Steers
+  - Limits: a steer sent late still goes out before an earlier held message. Steers
     read together run with the model and thinking level of the last one
     sent.
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
@@ -2253,7 +2262,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     duration, the cost and Copy response.
   - The New session screen names the workspace once and drops the hint
     line and the branch chip.
-  - Sidebar rows show their status or age at rest. A missing folder is a
+  - Sidebar rows show their status mark and age at rest. A missing folder is a
     small ⚠ with a tooltip, and worktrees show as a count.
     Its menu offers **Locate folder…** `[v3.51.0]`: pick where the folder is
     now (a renamed or moved repository) and its sessions, worktrees,
@@ -2490,6 +2499,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **The desktop shows an invitation** `[v3.51.1]`. **Settings → Account → Add a device** in the desktop app shows a QR invitation for 10 minutes, with the same rules as the phone's: it ends when you close the sheet, when it expires or when the server stops; the new device's kind and fingerprint show on both screens, and it is added only after **Add** and Touch ID. If two devices claim it, nobody is added. Only the desktop app can start one: relayed requests, agent tools, scripts and plain browser tabs cannot.
   - **Copy the recovery code** `[v3.51.1]`. The recovery step has **Copy code** and says to keep the code in a password manager; the copied code is cleared from the clipboard after two minutes.
   - **A computer's relay connection recovers by itself** `[v3.51.1]`. A computer gives up a relay connection that has not answered for 60 seconds, or at once after waking from sleep, and reconnects; **Settings → Account** says online only once the connection is really open. It also sends a small keepalive the relay can see, so phones can show a sleeping computer as offline once the relay supports it; with an older relay it falls back to how it worked before.
+  - **A quiet chat stays connected away from home** `[v3.51.2]`. A session opened from the phone through the relay no longer drops and reconnects every minute or two while nothing is happening: both ends send the relay's keepalive on the session too, and with an older relay they fall back after one reconnect. A connection that really died is still noticed within about a minute. After a drop the chat reattaches once, not twice, and the computer's server log says why each phone session ended (`cloud_session_ended`).
   - **Keys stay on the device:** the iPhone keeps them in the Keychain (the approval key behind Face ID); computers keep them in `cloud/identity.json` in the server's state folder, readable only by your user. Signing out leaves the account and erases the keys; sessions and settings stay. Removed, deleted, closing and unavailable accounts each say so; in every state the app keeps working on its own, and only reaching other devices through the relay and notifications stop.
   - Not yet: Android, changing a device's roles after it joined. Approving from a computer arrived in `[v3.51.0]`. The protocol is in `appv3/contract/tunnel.md`, its threat model in `appv3/contract/tunnel-threats.md`.
 

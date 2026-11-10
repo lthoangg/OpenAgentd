@@ -62,4 +62,24 @@ describe('desktop notification library integration', () => {
   it('requests OS permission once and does not notify when denied', async () => {
     await runWorker('permission denied')
   })
+
+  it('leaves Done and Needs you to the account push while the iPhone app is hidden', async () => {
+    await runWorker('leaves Done and Needs you to the push')
+  })
+
+  it('skips events handled just after the iPhone app comes back when the push showed them', async () => {
+    await runWorker('skips events handled just after the app comes back')
+  })
+
+  it('still notifies from the open iPhone app, where iOS hides the push', async () => {
+    await runWorker('still notifies from the open app')
+  })
+
+  it('keeps local notifications for kinds the computer does not push', async () => {
+    await runWorker('keeps kinds the computer does not push')
+  })
+
+  it('still notifies from a hidden phone app without account push', async () => {
+    await runWorker('a hidden phone app without account push')
+  })
 })

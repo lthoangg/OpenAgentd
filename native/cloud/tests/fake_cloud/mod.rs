@@ -4,6 +4,7 @@
 
 #![allow(dead_code, clippy::result_large_err)]
 
+pub mod proxy;
 pub mod relay;
 
 use std::collections::HashMap;

@@ -121,6 +121,9 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
     let interrupt = form_bool(&form, "interrupt", &mut errs);
     let keep_goal = form_bool(&form, "keep_goal", &mut errs);
     let fast_mode = form_bool(&form, "fast_mode", &mut errs);
+    // v3 addition: "Queue until done". Only matters when the message queues;
+    // an idle agent runs it at once, which is what waiting would have done.
+    let hold_until_turn_end = form_bool(&form, "hold_until_turn_end", &mut errs);
     let workspace = form.opt("workspace");
     if workspace.is_none() {
         errs.insert(0, verr("missing", &loc(&["body", "workspace"]), "Field required", Value::Null));
@@ -271,7 +274,7 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
     if resolved.existed_id.is_some() {
         db::cleanup_reverted_tail(&st.pool, &sid).await?;
     }
-    if resolved.existed_id.is_some() && agent.has_active_user_turn() && !agent.is_awaiting_question_answer() {
+    if resolved.existed_id.is_some() && waits_behind_turn(agent.has_active_user_turn(), agent.is_awaiting_question_answer(), hold_until_turn_end) {
         let qid = persist_queued_user_message(
             &st.pool,
             QueueArgs {
@@ -287,6 +290,7 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
                 thinking_level: thinking_level.clone(),
                 thinking_level_provided: thinking_provided,
                 fast: fast_mode,
+                hold_until_turn_end,
             },
         )
         .await?;
@@ -322,6 +326,15 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
         Err(appv3_agent::service::DispatchError::Attachment(e)) => Err(ApiError::new(e.status, e.message)),
         Err(appv3_agent::service::DispatchError::Session(e)) => Err(session_err(e)),
     }
+}
+
+/// Whether a message to a session that already exists queues instead of
+/// running now. A busy agent queues it, except while a question waits: a
+/// steer replaces the question, while a held ("Queue until done") message
+/// waits for the answer. Answering resumes the turn, and the held message
+/// starts its own turn when that one ends.
+fn waits_behind_turn(busy: bool, awaiting_question: bool, hold_until_turn_end: bool) -> bool {
+    busy && (!awaiting_question || hold_until_turn_end)
 }
 
 pub fn session_err(e: SessionError) -> ApiError {
@@ -1437,6 +1450,16 @@ mod tests {
         let mut agent = appv3_agent::Agent::new(Arc::new(MockProvider::new(vec![])), "code", "Hi", vec![], Some("mock:mock".into()));
         agent.thinking_level = thinking_level.map(String::from);
         agent
+    }
+
+    #[test]
+    fn a_message_waits_behind_a_running_turn_and_a_held_one_behind_a_question() {
+        // (busy, awaiting a question, held) -> queued
+        assert!(waits_behind_turn(true, false, false), "a steer queues behind a running turn");
+        assert!(waits_behind_turn(true, false, true));
+        assert!(!waits_behind_turn(true, true, false), "a steer replaces an open question");
+        assert!(waits_behind_turn(true, true, true), "a held message waits for the question to be answered");
+        assert!(!waits_behind_turn(false, false, true), "an idle agent runs a held message at once");
     }
 
     fn row(role: &str, content: &str, reasoning: Option<&str>, tool_calls: Option<&str>) -> db::SessionMessage {

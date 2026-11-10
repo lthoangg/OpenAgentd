@@ -413,14 +413,20 @@ A controller (for example the phone) opens a session to a host (a computer
 or server running agents) as the API, section 6 describes. After
 `paired`, every binary WebSocket message is one Noise message.
 
-**Draft: text keepalive.** Besides WebSocket pings, a host sends the text
-`ping` (those four characters, not JSON) on its presence socket every 25
-seconds; the relay answers with the text `pong`, which the host does not
-parse as a message. The relay reports a host that sends it offline 70
-seconds after the last one. A host that has had no frame at all (`pong`
-or protocol pong) for 60 seconds reconnects. A relay from before this
-draft closes the socket with 1003: when that happens before any `pong`
-came, the host reconnects and sends protocol pings only from then on.
+**Draft: text keepalive.** Besides WebSocket pings, every device sends the
+text `ping` (those four characters, not JSON) every 25 seconds on each of
+its relay sockets: the host's presence socket and both ends of every data
+socket. The relay answers with the text `pong` on the same socket (it is
+never forwarded to the other end), which the device does not parse as a
+message. The relay reports a host that sends it on presence offline 70
+seconds after the last one. A socket that has had no frame at all (`pong`,
+protocol pong, or data) for 60 seconds is dead: presence reconnects, and a
+data socket ends its session. A quiet session's only frames are these
+answers, so the text `pong` keeps it up where protocol pongs do not come
+back. A relay from before this draft closes the socket with 1003 (a data
+socket: the whole session): when that happens before any `pong` came, the
+device reconnects and sends protocol pings only from then on, on every
+socket.
 
 ### 5.1 Handshake
 

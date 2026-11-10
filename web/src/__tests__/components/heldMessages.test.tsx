@@ -1,7 +1,7 @@
 /**
- * "Queue until done": a held message is sent as a turn of its own once the
- * running turn has ended, and goes back to the composer whenever it should
- * not be sent after all.
+ * "Queue until done": a held message is queued on the server, which sends it
+ * as a turn of its own once the running turn has ended; this client hands it
+ * back to the composer whenever it should not be sent after all.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
@@ -12,14 +12,14 @@ mock.module('@/lib/haptics', () => ({ haptic, outcomeHapticFeedback }))
 
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
-import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
+import type { PendingMessage } from '@/stores/useAgentStore'
 import {
-  decideHeldRelease,
+  decideQueuedAfterFailure,
   deliverFromComposer,
   planComposerDelivery,
   pushStoppedToast,
   stopTurn,
-  useReleaseHeldMessages,
+  useReturnQueuedAfterFailure,
 } from '@/components/AgentChatView/heldMessages'
 import { useToastStore } from '@/stores/useToastStore'
 import type { InputComposerHandle } from '@/components/InputComposer'
@@ -53,10 +53,24 @@ function sendThatStartsATurn(delivered = true) {
   })
 }
 
-const held = () => useHeldMessagesStore.getState().messages.map((m) => m.content)
+/** A message held on the server until the running turn ends, as the store keeps it. */
+function heldMessage(id: string, content: string, extra: Partial<PendingMessage> = {}): PendingMessage {
+  return { id, sessionId: 's1', content, submittedAt: Number(id.replace(/\D/g, '')) || 10, heldUntilTurnEnd: true, ...extra }
+}
+
+/** A cancel the server grants: the chip leaves the queue. */
+function cancelThatSucceeds(order?: string[]) {
+  return mock(async (...args: unknown[]) => {
+    const id = String(args[0])
+    order?.push(`cancel ${id}`)
+    useAgentStore.setState((s) => ({ _pendingMessages: s._pendingMessages.filter((m) => m.id !== id) }))
+    return 'cancelled' as const
+  })
+}
+
+const queued = () => useAgentStore.getState()._pendingMessages.map((m) => m.content)
 
 beforeEach(() => {
-  useHeldMessagesStore.setState({ messages: [] })
   haptic.mockClear()
   outcomeHapticFeedback.mockClear()
   goalCalls = []
@@ -80,119 +94,87 @@ afterEach(() => {
   useAgentStore.setState(INITIAL_AGENT_STATE, true)
 })
 
-describe('useReleaseHeldMessages', () => {
-  it('sends the oldest held message once the turn has ended', () => {
+describe('useReturnQueuedAfterFailure', () => {
+  // The server starts held messages itself once the turn ends; this client
+  // never sends them, so closing it loses nothing.
+  it('sends nothing itself when the turn ends', async () => {
     const sendMessage = sendThatStartsATurn()
-    const photo = new File(['x'], 'photo.png', { type: 'image/png' })
-    useAgentStore.setState({ sendMessage, sessionModel: 'gpt-5' })
-    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'first', files: [photo], mentions: ['src/a.ts'] })
-    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'second' })
+    const removePendingMessage = cancelThatSucceeds()
+    useAgentStore.setState({ sendMessage, removePendingMessage, _pendingMessages: [heldMessage('h1', 'then do this')] })
     const composer = fakeComposer()
 
-    renderHook(() => useReleaseHeldMessages({ workspace: '/repo', sessionId: 's1', composerRef: composer.ref }))
-    expect(sendMessage).not.toHaveBeenCalled()
-
-    act(() => { useAgentStore.setState({ isAgentWorking: false }) })
-
-    expect(sendMessage).toHaveBeenCalledTimes(1)
-    expect(sendMessage.mock.calls[0]).toEqual([
-      'first',
-      [photo],
-      { workspace: '/repo', model: 'gpt-5', thinkingLevel: null, fastMode: false, mentions: ['src/a.ts'] },
-    ])
-    expect(held()).toEqual(['second'])
-  })
-
-  it('waits for the session history before trusting an idle agent', () => {
-    // A session switch resets the working flag before the server has said
-    // whether the turn is still running.
-    const sendMessage = sendThatStartsATurn()
-    useAgentStore.setState({ sendMessage, isAgentWorking: false, _syncedThrough: null })
-    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'first' })
-    const composer = fakeComposer()
-
-    renderHook(() => useReleaseHeldMessages({ workspace: '/repo', sessionId: 's1', composerRef: composer.ref }))
-    expect(sendMessage).not.toHaveBeenCalled()
-
-    act(() => { useAgentStore.setState({ _syncedThrough: '2026-01-01T00:00:00Z' }) })
-    expect(sendMessage).toHaveBeenCalledTimes(1)
-  })
-
-  it('leaves messages held for another session alone', () => {
-    const sendMessage = sendThatStartsATurn()
-    useAgentStore.setState({ sendMessage, isAgentWorking: false })
-    useHeldMessagesStore.getState().hold({ sessionId: 's2', content: 'elsewhere' })
-    const composer = fakeComposer()
-
-    renderHook(() => useReleaseHeldMessages({ workspace: '/repo', sessionId: 's1', composerRef: composer.ref }))
-
-    expect(sendMessage).not.toHaveBeenCalled()
-    expect(held()).toEqual(['elsewhere'])
-  })
-
-  it('returns a message that could not be sent, and the ones behind it, to the composer', async () => {
-    const sendMessage = mock(async (..._args: unknown[]) => false)
-    useAgentStore.setState({ sendMessage })
-    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'first @src/a.ts', mentions: ['src/a.ts'] })
-    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'second @src/b.ts', mentions: ['src/b.ts', 'src/a.ts'] })
-    const composer = fakeComposer()
-
-    renderHook(() => useReleaseHeldMessages({ workspace: '/repo', sessionId: 's1', composerRef: composer.ref }))
+    renderHook(() => useReturnQueuedAfterFailure({ sessionId: 's1', composerRef: composer.ref }))
     await act(async () => { useAgentStore.setState({ isAgentWorking: false }) })
 
-    expect(sendMessage).toHaveBeenCalledTimes(1)
-    // Mentions come back too, so the files are still attached when resent.
-    expect(composer.appended).toEqual([{ text: 'first @src/a.ts\n\nsecond @src/b.ts', paragraph: true, mentions: ['src/a.ts', 'src/b.ts'] }])
-    expect(held()).toEqual([])
+    expect(sendMessage).not.toHaveBeenCalled()
+    expect(removePendingMessage).not.toHaveBeenCalled()
+    expect(queued()).toEqual(['then do this'])
   })
 
   it('returns held messages to the composer instead of following a failed turn', async () => {
     const sendMessage = sendThatStartsATurn()
     useAgentStore.setState({
       sendMessage,
+      removePendingMessage: cancelThatSucceeds(),
       agentStreams: { lead: { ...createDefaultAgentStream(), status: 'error' } },
+      _pendingMessages: [heldMessage('h1', 'then do this @src/a.ts', { mentions: ['src/a.ts'] })],
     })
-    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'then do this' })
     const composer = fakeComposer()
 
-    renderHook(() => useReleaseHeldMessages({ workspace: '/repo', sessionId: 's1', composerRef: composer.ref }))
+    renderHook(() => useReturnQueuedAfterFailure({ sessionId: 's1', composerRef: composer.ref }))
     await act(async () => { useAgentStore.setState({ isAgentWorking: false }) })
 
     expect(sendMessage).not.toHaveBeenCalled()
-    expect(composer.appended).toEqual([{ text: 'then do this', paragraph: true }])
+    // Mentions come back too, so the files are still attached when resent.
+    expect(composer.appended).toEqual([{ text: 'then do this @src/a.ts', paragraph: true, mentions: ['src/a.ts'] }])
+    expect(queued()).toEqual([])
+  })
+
+  it('waits for the session history before trusting an idle agent', async () => {
+    const removePendingMessage = cancelThatSucceeds()
+    useAgentStore.setState({
+      removePendingMessage,
+      isAgentWorking: false,
+      _syncedThrough: null,
+      agentStreams: { lead: { ...createDefaultAgentStream(), status: 'error' } },
+      _pendingMessages: [heldMessage('h1', 'then do this')],
+    })
+    const composer = fakeComposer()
+
+    renderHook(() => useReturnQueuedAfterFailure({ sessionId: 's1', composerRef: composer.ref }))
+    expect(removePendingMessage).not.toHaveBeenCalled()
+
+    await act(async () => { useAgentStore.setState({ _syncedThrough: '2026-01-01T00:00:00Z' }) })
+    expect(removePendingMessage).toHaveBeenCalledTimes(1)
   })
 
   // Steers the failed turn never read come back too, ahead of the held
   // messages (that is the order they would have gone out in).
   it('returns unread steers to the composer after a failed turn, ahead of held messages', async () => {
     const steerFile = new File(['z'], 'spec.md', { type: 'text/markdown' })
-    const removePendingMessage = mock(async (...args: unknown[]) => {
-      const id = String(args[0])
-      useAgentStore.setState((s) => ({ _pendingMessages: s._pendingMessages.filter((m) => m.id !== id) }))
-      return 'cancelled' as const
-    })
+    const removePendingMessage = cancelThatSucceeds()
     useAgentStore.setState({
       sendMessage: sendThatStartsATurn(),
       removePendingMessage,
       agentStreams: { lead: { ...createDefaultAgentStream(), status: 'error' } },
       _pendingMessages: [
+        heldMessage('h3', 'then do this'),
         { id: 'q1', sessionId: 's1', content: 'steer it', submittedAt: 1, files: [steerFile], attachments: [{ original_name: 'spec.md', media_type: 'text/markdown', category: 'document' }] },
         { id: 'q-other', sessionId: 's2', content: 'elsewhere', submittedAt: 2 },
       ],
     })
-    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'then do this' })
     const composer = fakeComposer()
 
-    renderHook(() => useReleaseHeldMessages({ workspace: '/repo', sessionId: 's1', composerRef: composer.ref }))
+    renderHook(() => useReturnQueuedAfterFailure({ sessionId: 's1', composerRef: composer.ref }))
     await act(async () => { useAgentStore.setState({ isAgentWorking: false }) })
 
-    expect(removePendingMessage.mock.calls.map((c) => c[0])).toEqual(['q1'])
+    expect(removePendingMessage.mock.calls.map((c) => c[0])).toEqual(['q1', 'h3'])
     expect(composer.appended).toEqual([{ text: 'steer it\n\nthen do this', paragraph: true }])
     expect(composer.added).toEqual([steerFile])
-    expect(held()).toEqual([])
+    expect(queued()).toEqual(['elsewhere'])
   })
 
-  it('returns a failed turn\'s steers when nothing is held', async () => {
+  it('returns a failed turn\'s steers', async () => {
     const removePendingMessage = mock(async () => 'cancelled' as const)
     useAgentStore.setState({
       removePendingMessage,
@@ -201,7 +183,7 @@ describe('useReleaseHeldMessages', () => {
     })
     const composer = fakeComposer()
 
-    renderHook(() => useReleaseHeldMessages({ workspace: '/repo', sessionId: 's1', composerRef: composer.ref }))
+    renderHook(() => useReturnQueuedAfterFailure({ sessionId: 's1', composerRef: composer.ref }))
     await act(async () => { useAgentStore.setState({ isAgentWorking: false }) })
 
     expect(composer.appended).toEqual([{ text: 'steer it', paragraph: true }])
@@ -219,7 +201,7 @@ describe('useReleaseHeldMessages', () => {
     })
     const composer = fakeComposer()
 
-    renderHook(() => useReleaseHeldMessages({ workspace: '/repo', sessionId: 's1', composerRef: composer.ref }))
+    renderHook(() => useReturnQueuedAfterFailure({ sessionId: 's1', composerRef: composer.ref }))
     await act(async () => { useAgentStore.setState({ isAgentWorking: false }) })
 
     expect(removePendingMessage).not.toHaveBeenCalled()
@@ -235,7 +217,7 @@ describe('useReleaseHeldMessages', () => {
     })
     const composer = fakeComposer()
 
-    renderHook(() => useReleaseHeldMessages({ workspace: '/repo', sessionId: 's1', composerRef: composer.ref }))
+    renderHook(() => useReturnQueuedAfterFailure({ sessionId: 's1', composerRef: composer.ref }))
     await act(async () => { useAgentStore.setState({ isAgentWorking: false }) })
 
     expect(composer.appended).toEqual([])
@@ -243,27 +225,45 @@ describe('useReleaseHeldMessages', () => {
 })
 
 describe('stopTurn', () => {
-  it('hands held messages back to the composer before stopping the turn', async () => {
+  it('calls held messages off and hands them back to the composer before stopping the turn', async () => {
     const order: string[] = []
     const stopAgent = mock(async () => { order.push('stop') })
-    useAgentStore.setState({ stopAgent })
     const notes = new File(['y'], 'notes.md', { type: 'text/markdown' })
-    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'first', files: [notes] })
-    useHeldMessagesStore.getState().hold({ sessionId: 's2', content: 'elsewhere' })
+    useAgentStore.setState({
+      stopAgent,
+      removePendingMessage: cancelThatSucceeds(order),
+      _pendingMessages: [
+        heldMessage('h1', 'first', { files: [notes], attachments: [{ original_name: 'notes.md', media_type: 'text/markdown', category: 'document' }] }),
+        heldMessage('h2', 'elsewhere', { sessionId: 's2' }),
+      ],
+    })
     const composer = fakeComposer()
     composer.ref.current.appendValue = (text) => { order.push(`restore ${text}`) }
 
     await stopTurn(composer.ref.current)
 
-    expect(order).toEqual(['restore first', 'stop'])
+    expect(order).toEqual(['cancel h1', 'restore first', 'stop'])
     expect(composer.added).toEqual([notes])
-    expect(held()).toEqual(['elsewhere'])
+    expect(queued()).toEqual(['elsewhere'])
+  })
+
+  // After a reload the held message comes from history with its server id,
+  // so Stop still calls it off.
+  it('calls off a held message loaded after a reload', async () => {
+    const stopAgent = mock(async () => {})
+    useAgentStore.setState({ stopAgent, removePendingMessage: cancelThatSucceeds(), _pendingMessages: [heldMessage('h1', 'then deploy')] })
+    const composer = fakeComposer()
+
+    await stopTurn(composer.ref.current)
+
+    expect(composer.appended).toEqual([{ text: 'then deploy', paragraph: true }])
+    expect(queued()).toEqual([])
   })
 
   // Stop calls off a steer the agent has not read yet, as it does a held
   // message, instead of leaving it in history unanswered. The cancel goes
   // first: the interrupt would release unread steers into the transcript.
-  it('calls off unread steers before stopping and returns them ahead of held messages', async () => {
+  it('calls off unread steers and held messages before stopping, in the order they were sent', async () => {
     const order: string[] = []
     const removePendingMessage = mock(async (...args: unknown[]) => {
       order.push(`cancel ${String(args[0])}`)
@@ -277,16 +277,15 @@ describe('stopTurn', () => {
         { id: 'q2', sessionId: 's1', content: 'second steer', submittedAt: 2 },
         { id: 'q1', sessionId: 's1', content: 'first steer', submittedAt: 1 },
         { id: 'q-other', sessionId: 's2', content: 'elsewhere', submittedAt: 3 },
+        heldMessage('h4', 'then this'),
       ],
     })
-    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'then this' })
     const composer = fakeComposer()
     composer.ref.current.appendValue = (text) => { order.push(`restore ${text}`) }
 
     await stopTurn(composer.ref.current)
 
-    expect(order).toEqual(['cancel q1', 'cancel q2', 'restore first steer\n\nsecond steer\n\nthen this', 'stop'])
-    expect(held()).toEqual([])
+    expect(order).toEqual(['cancel q1', 'cancel q2', 'cancel h4', 'restore first steer\n\nsecond steer\n\nthen this', 'stop'])
   })
 
   // A prompt another workspace's agent sent is not the user's to take back:
@@ -317,9 +316,9 @@ describe('stopTurn', () => {
     useAgentStore.setState({
       stopAgent,
       removePendingMessage,
-      _pendingMessages: [{ id: 'q1', sessionId: 's1', content: 'too late', submittedAt: 1 }],
+      _pendingMessages: [{ id: 'q1', sessionId: 's1', content: 'too late', submittedAt: 1 }, heldMessage('h2', 'then this')],
     })
-    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'then this' })
+    removePendingMessage.mockImplementation(async (...args: unknown[]) => (String(args[0]) === 'q1' ? 'sent' : 'cancelled') as never)
     const composer = fakeComposer()
 
     await stopTurn(composer.ref.current)
@@ -344,16 +343,30 @@ describe('deliverFromComposer', () => {
     expect(sendMessage.mock.calls[0][0]).toBe('Continue')
   })
 
-  it('holds a message for the end of the running turn', async () => {
+  // Held on the server, so it still goes out if this client closes or reloads.
+  it('sends a message the server holds for the end of the running turn', async () => {
     const sendMessage = sendThatStartsATurn()
-    useAgentStore.setState({ sendMessage })
+    useAgentStore.setState({ sendMessage, sessionModel: 'gpt-5' })
     const composer = fakeComposer()
 
     await deliverFromComposer('/repo', composer.ref.current, { content: 'then run the tests', mentions: ['a.ts'] }, 'after-turn')
 
-    expect(sendMessage).not.toHaveBeenCalled()
-    const [message] = useHeldMessagesStore.getState().messages
-    expect([message.sessionId, message.content, message.mentions]).toEqual(['s1', 'then run the tests', ['a.ts']])
+    expect(sendMessage.mock.calls).toEqual([[
+      'then run the tests',
+      undefined,
+      { workspace: '/repo', model: 'gpt-5', thinkingLevel: null, fastMode: false, mentions: ['a.ts'], holdUntilTurnEnd: true },
+    ]])
+  })
+
+  it('gives a held message back to the composer when the server never took it', async () => {
+    let restored = 0
+    useAgentStore.setState({ sendMessage: mock(async () => false) })
+    const composer = fakeComposer()
+    composer.ref.current.restoreLastSubmission = () => { restored += 1 }
+
+    await deliverFromComposer('/repo', composer.ref.current, { content: 'later' }, 'after-turn')
+
+    expect(restored).toBe(1)
   })
 
   it('sends straight away when there is no turn to wait for', async () => {
@@ -364,7 +377,7 @@ describe('deliverFromComposer', () => {
     await deliverFromComposer('/repo', composer.ref.current, { content: 'hello' }, 'after-turn')
 
     expect(sendMessage.mock.calls[0][0]).toBe('hello')
-    expect(held()).toEqual([])
+    expect((sendMessage.mock.calls[0] as unknown[])[2]).not.toHaveProperty('holdUntilTurnEnd')
   })
 
   it('stops the running turn before sending in its place', async () => {
@@ -402,21 +415,23 @@ describe('deliverFromComposer', () => {
     expect(goalCalls).toEqual(['POST /api/agent/sessions/s1/goal/pause'])
   })
 
+  // Unread steers go along with the stop as context; held messages come back.
   it('hands held messages back after the replacement, once a failed draft has restored itself', async () => {
     const order: string[] = []
     useAgentStore.setState({
       stopAgent: mock(async () => { order.push('stop') }),
       sendMessage: mock(async () => { order.push('send'); return false }),
+      removePendingMessage: cancelThatSucceeds(order),
+      _pendingMessages: [{ id: 'q1', sessionId: 's1', content: 'a steer', submittedAt: 1 }, heldMessage('h2', 'later')],
     })
-    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'later' })
     const composer = fakeComposer()
     composer.ref.current.restoreLastSubmission = () => { order.push('restore draft') }
     composer.ref.current.appendValue = (text) => { order.push(`return ${text}`) }
 
     await deliverFromComposer('/repo', composer.ref.current, { content: 'do this instead' }, 'interrupt')
 
-    expect(order).toEqual(['stop', 'send', 'restore draft', 'return later'])
-    expect(held()).toEqual([])
+    expect(order).toEqual(['cancel h2', 'stop', 'send', 'restore draft', 'return later'])
+    expect(queued()).toEqual(['a steer'])
   })
 
   // On a phone a light tap confirms the message left the composer, whether it
@@ -458,23 +473,21 @@ describe('planComposerDelivery', () => {
   })
 })
 
-describe('decideHeldRelease', () => {
-  const ready = { hasTarget: true, idle: true, releasing: false, turnFailed: false, heldCount: 1, steerCount: 0 }
+describe('decideQueuedAfterFailure', () => {
+  const failed = { hasTarget: true, idle: true, returning: false, turnFailed: true, queuedCount: 1 }
 
-  it('sends the next held message once the session is idle by its history', () => {
-    expect(decideHeldRelease(ready)).toEqual({ kind: 'send_next' })
+  it('returns queued messages after a failed turn', () => {
+    expect(decideQueuedAfterFailure(failed)).toEqual({ kind: 'return_to_composer' })
   })
 
-  it('waits without a session, while a turn may run, or while a release is in flight', () => {
-    expect(decideHeldRelease({ ...ready, hasTarget: false })).toEqual({ kind: 'wait' })
-    expect(decideHeldRelease({ ...ready, idle: false })).toEqual({ kind: 'wait' })
-    expect(decideHeldRelease({ ...ready, releasing: true })).toEqual({ kind: 'wait' })
-    expect(decideHeldRelease({ ...ready, heldCount: 0, steerCount: 2 })).toEqual({ kind: 'wait' })
+  it('waits on a turn that ended well: the server sends held messages itself', () => {
+    expect(decideQueuedAfterFailure({ ...failed, turnFailed: false })).toEqual({ kind: 'wait' })
   })
 
-  it('returns held messages and steers after a failed turn instead of sending', () => {
-    expect(decideHeldRelease({ ...ready, turnFailed: true })).toEqual({ kind: 'return_to_composer' })
-    expect(decideHeldRelease({ ...ready, turnFailed: true, heldCount: 0, steerCount: 1 })).toEqual({ kind: 'return_to_composer' })
-    expect(decideHeldRelease({ ...ready, turnFailed: true, heldCount: 0 })).toEqual({ kind: 'wait' })
+  it('waits without a session, while a turn may run, mid-return, or with nothing queued', () => {
+    expect(decideQueuedAfterFailure({ ...failed, hasTarget: false })).toEqual({ kind: 'wait' })
+    expect(decideQueuedAfterFailure({ ...failed, idle: false })).toEqual({ kind: 'wait' })
+    expect(decideQueuedAfterFailure({ ...failed, returning: true })).toEqual({ kind: 'wait' })
+    expect(decideQueuedAfterFailure({ ...failed, queuedCount: 0 })).toEqual({ kind: 'wait' })
   })
 })

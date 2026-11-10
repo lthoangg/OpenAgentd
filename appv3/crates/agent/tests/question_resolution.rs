@@ -85,6 +85,36 @@ async fn answering_an_already_resolved_question_does_not_start_another_turn() {
     assert!(appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().is_none());
 }
 
+/// "Queue until done" sent while a question waits (the chat route queues it
+/// held): answering resumes the turn without it, then it runs as its own turn.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_message_held_during_a_question_runs_after_the_answer() {
+    let h = Harness::new("held_during_question", vec![ask("ask_1"), MockProvider::text("Done."), MockProvider::text("Deployed.")]).await;
+    let question = h.pending().await;
+    let mut extra = serde_json::Map::new();
+    extra.insert(appv3_db::HOLD_UNTIL_TURN_END.into(), json!(true));
+    appv3_db::save_queued_user_message(&h.pool, &h.sid, "then deploy", Some(extra)).await.unwrap();
+    assert_eq!(h.session.state(), "waiting_input", "queuing it left the question open");
+
+    h.session.handle_question_answer(&question.id, &json!([["src/main.rs"]])).await.unwrap();
+    h.finished().await;
+
+    let users = |call: usize| -> Vec<String> {
+        h.provider.calls.lock().unwrap()[call]
+            .0
+            .iter()
+            .filter_map(|m| match m {
+                appv3_providers::ChatMessage::User { content, .. } => content.clone(),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(h.provider.calls.lock().unwrap().len(), 3, "the held message never got a turn");
+    assert!(!users(1).iter().any(|c| c.contains("then deploy")), "the resumed turn read the held message");
+    assert!(users(2).iter().any(|c| c.contains("then deploy")));
+    assert!(!appv3_db::has_queued_user_messages(&h.pool, &h.sid).await.unwrap());
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dismissing_an_old_question_does_not_hide_a_new_question() {
     let h = Harness::new("stale_dismiss", vec![ask("ask_1"), ask("ask_2")]).await;

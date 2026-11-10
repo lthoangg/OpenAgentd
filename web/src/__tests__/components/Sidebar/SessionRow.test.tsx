@@ -3,9 +3,9 @@
  * actions as right-click (Pin, Edit title, Delete), so the row carries no
  * one-click delete. Subagent rows offer More too.
  *
- * A row that is waiting on you, unread or failed names that state in words
- * (Needs you, Done, Failed) in its meta slot in place of its age; the mark
- * beside the title is only the secondary cue. A running row shows its
+ * A row's state is its leading mark (! for Needs you, a dot for Done, ✗ for
+ * Failed, a spinner for Running), with no word beside it: the meta slot
+ * keeps the age, and the word is in the tooltip. A running row shows its
  * spinner alone.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -21,7 +21,6 @@ mock.module('@/queries/useSessionsQuery', () => ({
 }))
 
 const { DraftSessionRow, SessionRow } = await import('@/components/Sidebar/SessionRow')
-const { SessionStateWord } = await import('@/components/Sidebar/SessionStatusMark')
 const { TREE_INDENT_PX } = await import('@/components/Sidebar/tree-indent')
 
 beforeEach(() => {
@@ -133,119 +132,76 @@ describe('SessionRow goal mark', () => {
   })
 })
 
-describe('SessionRow state words', () => {
+describe('SessionRow state marks', () => {
   // No subagents: the lead fixture's running child would make every row Running.
   const idle: SessionResponse = {
     ...lead,
     subagents: undefined,
     last_message_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
   }
-  const word = (container: HTMLElement) => container.querySelector<HTMLElement>('[data-session-state]')
+  const tooltipOf = (container: HTMLElement) => container.querySelector('[data-sidebar-session]')?.getAttribute('title') ?? ''
+  const noWords = () => {
+    for (const word of ['Needs you', 'Running', 'Done', 'Failed']) expect(screen.queryByText(word)).toBeNull()
+  }
 
-  // The leading spinner already says it runs: no word beside it, which only
-  // squeezed the title and swapped out on hover.
   it('shows only the spinner for a running session: no word, no age', () => {
-    const { container } = render(row(() => {}, { ...idle, running: true }))
+    render(row(() => {}, { ...idle, running: true }))
 
-    expect(word(container)).toBeNull()
-    expect(screen.queryByText('Running')).toBeNull()
+    noWords()
     expect(screen.getByRole('img', { name: 'Session running' })).toBeTruthy()
     expect(screen.queryByText('3h')).toBeNull()
   })
 
   it('says no word for a lead whose subagents still work either', () => {
-    const { container } = render(row(() => {}))
+    render(row(() => {}))
 
-    expect(word(container)).toBeNull()
-    expect(screen.queryByText('Running')).toBeNull()
+    noWords()
   })
 
-  it('says Needs you in orange, ahead of Running, and keeps its label', () => {
+  it('marks Needs you with ! ahead of Running, keeps the age, and names it in the tooltip', () => {
     const { container } = render(row(() => {}, { ...idle, running: true, needs_input: true }))
 
-    expect(word(container)?.textContent).toBe('Needs you')
-    expect(word(container)?.className).toContain('text-(--accent-orange-text)')
+    noWords()
     expect(screen.getByRole('img', { name: 'Session needs your input' })).toBeTruthy()
-    expect(screen.queryByText('3h')).toBeNull()
+    expect(screen.getByText('3h')).toBeTruthy()
+    expect(tooltipOf(container)).toContain('Needs you')
   })
 
-  it('says Done for a finished session you have not opened, until it is read', () => {
+  it('marks a finished session you have not opened with a dot, until it is read', () => {
     useUnreadStore.setState({ ids: [idle.id] })
-    const { container } = render(row(() => {}, idle))
+    render(row(() => {}, idle))
 
-    expect(word(container)?.textContent).toBe('Done')
-    expect(word(container)?.className).toContain('text-(--color-text-muted)')
+    noWords()
     expect(screen.getByRole('img', { name: 'Unread session' })).toBeTruthy()
-    expect(screen.queryByText('3h')).toBeNull()
+    expect(screen.getByText('3h')).toBeTruthy()
 
     act(() => useUnreadStore.setState({ ids: [] }))
-    expect(word(container)).toBeNull()
+    expect(screen.queryByRole('img')).toBeNull()
     expect(screen.getByText('3h')).toBeTruthy()
   })
 
   it('keeps the age on an idle row and adds no word or mark', () => {
-    const { container } = render(row(() => {}, idle))
+    render(row(() => {}, idle))
 
-    expect(word(container)).toBeNull()
+    noWords()
     expect(screen.getByText('3h')).toBeTruthy()
     expect(screen.queryByRole('img')).toBeNull()
   })
 
-  it('says Failed in the error tone', () => {
-    const { container } = render(<SessionStateWord status="failed" />)
-
-    expect(word(container)?.textContent).toBe('Failed')
-    expect(word(container)?.className).toContain('text-(--color-error)')
-  })
-
-  it('says Failed on the row when its unread turn ended in an error', () => {
+  it('marks the row Failed when its unread turn ended in an error', () => {
     useUnreadStore.setState({ ids: [idle.id], failed: [idle.id] })
-    const { container } = render(row(() => {}, idle))
+    render(row(() => {}, idle))
 
-    expect(word(container)?.textContent).toBe('Failed')
-    expect(screen.queryByText('3h')).toBeNull()
+    noWords()
+    expect(screen.getByRole('img', { name: 'Session failed' })).toBeTruthy()
+    expect(screen.getByText('3h')).toBeTruthy()
   })
 
-  it('says nothing for an idle status', () => {
-    const { container } = render(<SessionStateWord status="idle" />)
+  it('keeps the mark when Show details is off, which hides only the age', () => {
+    render(row(() => {}, { ...idle, needs_input: true }, { showDetails: false }))
 
-    expect(container.innerHTML).toBe('')
-  })
-
-  it('stays on one line: the word never shrinks or wraps, so the title gives way', () => {
-    const { container } = render(row(() => {}, { ...idle, needs_input: true }))
-
-    expect(word(container)?.className).toContain('shrink-0')
-    expect(word(container)?.className).toContain('whitespace-nowrap')
-    // The mark's label is what assistive technology reads.
-    expect(word(container)?.getAttribute('aria-hidden')).toBe('true')
-    expect(container.querySelector('[data-session-row]')?.className).toContain('h-(--spacing-list-row)')
-  })
-
-  it('keeps the word when Show details is off, since it is the state and not a detail', () => {
-    const { container } = render(row(() => {}, { ...idle, needs_input: true }, { showDetails: false }))
-
-    expect(word(container)?.textContent).toBe('Needs you')
-    expect(word(container)?.className.split(/\s+/)).not.toContain('hidden')
-
-    cleanup()
-    render(row(() => {}, idle, { showDetails: false }))
+    expect(screen.getByRole('img', { name: 'Session needs your input' })).toBeTruthy()
     expect(screen.getByText('3h').className.split(/\s+/)).toContain('hidden')
-  })
-
-  it('gives way to the row actions on hover and focus, and stays on touch', () => {
-    const { container } = render(row(() => {}, { ...idle, needs_input: true }))
-    const classes = (word(container)?.className ?? '').split(/\s+/)
-
-    expect(classes).toContain('group-hover/row:hidden')
-    expect(classes).toContain('group-focus-within/row:hidden')
-    expect(classes).not.toContain('pointer-coarse:hidden')
-  })
-
-  it('shows no word while the title is being edited', () => {
-    const { container } = render(row(() => {}, { ...idle, running: true }, { isEditing: true }))
-
-    expect(word(container)).toBeNull()
   })
 })
 
@@ -391,11 +347,11 @@ describe('SessionRow meta slot', () => {
     expect(screen.getByText(', in acme')).toBeTruthy()
   })
 
-  it('reads the state word and nothing else when the session needs you', () => {
+  it('reads the age and nothing else when the session needs you, with the state in the tooltip', () => {
     const { container } = render(row(() => {}, { ...idle, needs_input: true }, { checkoutName: 'task-a', contextLabel: 'acme' }))
 
-    expect(container.querySelector('[data-session-state]')?.textContent).toBe('Needs you')
-    expect(screen.queryByText('3h')).toBeNull()
+    expect(screen.queryByText('Needs you')).toBeNull()
+    expect(screen.getByText('3h')).toBeTruthy()
     expect(container.querySelector('[data-checkout-tag]')).toBeNull()
     expect(container.querySelector('[data-context-label]')).toBeNull()
     expect(tooltipOf(container)).toContain('Needs you')

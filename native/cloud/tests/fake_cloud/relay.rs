@@ -1,7 +1,7 @@
 //! The fake relay: presence sockets, pairing, and opaque forwarding of
 //! binary frames, like the real relay (which never parses them).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
@@ -14,10 +14,34 @@ use tokio::sync::{mpsc, oneshot};
 
 use super::{err, Fake};
 
+/// How the fake relay treats a presence socket.
+#[derive(Default, Clone, Copy, PartialEq, Debug)]
+pub enum PresenceMode {
+    /// Reads it, so protocol pings get their pong.
+    #[default]
+    Answer,
+    /// Accepts the upgrade and never reads again: no pong ever comes back,
+    /// like a socket left half open by a sleep or a network change.
+    Silent,
+    /// A relay from before the text keepalive: closes presence with 1003
+    /// on any text but a `reject`.
+    Old,
+}
+
 #[derive(Default)]
 pub struct Relay {
     /// host device id → its presence socket's outbox.
     pub presence: HashMap<String, mpsc::UnboundedSender<Message>>,
+    /// Hosts that have opened presence at least once (the usage view lists them).
+    pub seen: HashSet<String>,
+    /// How presence sockets are treated.
+    pub mode: PresenceMode,
+    /// Presence sockets opened so far.
+    pub presence_opens: usize,
+    /// Text `ping`s received on presence sockets.
+    pub text_pings: usize,
+    /// Holds each presence upgrade this long before answering it.
+    pub presence_delay: Option<std::time::Duration>,
     /// session id → where the host's data socket goes.
     pub waiting: HashMap<String, oneshot::Sender<WebSocket>>,
     /// Control messages the test sends to the host side of a paired
@@ -35,6 +59,10 @@ fn token_of(f: &Fake, headers: &HeaderMap) -> Option<(String, String)> {
 }
 
 pub async fn presence(State(f): State<Fake>, Path(host): Path<String>, headers: HeaderMap, ws: WebSocketUpgrade) -> Response {
+    let delay = f.1.lock().unwrap().presence_delay;
+    if let Some(d) = delay {
+        tokio::time::sleep(d).await;
+    }
     let Some((account, _)) = token_of(&f, &headers) else {
         return err(401, "invalid_token");
     };
@@ -43,9 +71,25 @@ pub async fn presence(State(f): State<Fake>, Path(host): Path<String>, headers: 
     }
     let relay = f.1.clone();
     ws.on_upgrade(move |socket| async move {
+        let mode = {
+            let mut r = relay.lock().unwrap();
+            r.presence_opens += 1;
+            r.mode
+        };
+        if mode == PresenceMode::Silent {
+            // Hold the socket without reading it, so nothing answers.
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            drop(socket);
+            return;
+        }
         let (mut tx, mut rx) = socket.split();
         let (out, mut out_rx) = mpsc::unbounded_channel::<Message>();
-        relay.lock().unwrap().presence.insert(host.clone(), out);
+        let reply = out.clone();
+        {
+            let mut r = relay.lock().unwrap();
+            r.presence.insert(host.clone(), out);
+            r.seen.insert(host.clone());
+        }
         let writer = tokio::spawn(async move {
             while let Some(m) = out_rx.recv().await {
                 let closing = matches!(m, Message::Close(_));
@@ -54,13 +98,34 @@ pub async fn presence(State(f): State<Fake>, Path(host): Path<String>, headers: 
                 }
             }
         });
+        let mut refused = false;
         while let Some(Ok(m)) = rx.next().await {
-            if matches!(m, Message::Close(_)) {
-                break;
+            match m {
+                Message::Close(_) => break,
+                Message::Text(t) => {
+                    if t.as_str() == "ping" {
+                        relay.lock().unwrap().text_pings += 1;
+                    }
+                    let reject = serde_json::from_str::<serde_json::Value>(t.as_str()).is_ok_and(|v| v["type"] == "reject");
+                    if mode == PresenceMode::Old && !reject {
+                        let _ = reply.send(Message::Close(Some(CloseFrame { code: 1003, reason: "".into() })));
+                        refused = true;
+                        break;
+                    }
+                    if t.as_str() == "ping" {
+                        let _ = reply.send(Message::Text("pong".into()));
+                    }
+                }
+                _ => {}
             }
         }
         relay.lock().unwrap().presence.remove(&host);
-        writer.abort();
+        if refused {
+            // Let the writer send the close frame first.
+            let _ = writer.await;
+        } else {
+            writer.abort();
+        }
     })
     .into_response()
 }

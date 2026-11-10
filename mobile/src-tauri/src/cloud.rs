@@ -242,8 +242,26 @@ struct Phone {
     invite: tokio::sync::Mutex<Option<flows::Invite>>,
     /// Relay sessions and their bridges, by computer device id.
     links: tokio::sync::Mutex<HashMap<String, Link>>,
-    /// Bridge origin → its key, for `secure_get_access_key`.
-    bridge_keys: Mutex<HashMap<String, String>>,
+    /// Bridge origin → its key (for `secure_get_access_key`) and the
+    /// computer it reaches (for the backend status).
+    bridge_keys: Mutex<HashMap<String, BridgeEntry>>,
+    /// The kind the cloud last reported for each device, for labels.
+    kinds: Mutex<HashMap<String, Option<String>>>,
+}
+
+struct BridgeEntry {
+    key: String,
+    device_id: String,
+}
+
+/// The account computer an account bridge reaches, as the shell knows it:
+/// enough for the web UI to name it like its row under "Your computers".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AccountDevice {
+    pub device_id: String,
+    pub fingerprint: String,
+    /// "macos", … when the cloud said (a label, never a check).
+    pub kind: Option<String>,
 }
 
 /// A phone only opens sessions: it has no host to serve (spec 3.4).
@@ -294,6 +312,7 @@ pub fn init(data_dir: std::path::PathBuf) {
         invite: tokio::sync::Mutex::new(None),
         links: tokio::sync::Mutex::new(HashMap::new()),
         bridge_keys: Mutex::new(HashMap::new()),
+        kinds: Mutex::new(HashMap::new()),
     };
     if PHONE.set(phone).is_err() {
         return;
@@ -346,7 +365,28 @@ pub fn bridge_key(origin: &str) -> Option<String> {
         .lock()
         .ok()?
         .get(origin.trim_end_matches('/'))
-        .cloned()
+        .map(|b| b.key.clone())
+}
+
+/// The account computer behind `origin`, when it is an open bridge.
+pub fn account_device(origin: &str) -> Option<AccountDevice> {
+    let p = PHONE.get()?;
+    let bridges = p.bridge_keys.lock().ok()?;
+    let kinds = p.kinds.lock().ok()?;
+    account_device_in(&bridges, &kinds, origin)
+}
+
+fn account_device_in(
+    bridges: &HashMap<String, BridgeEntry>,
+    kinds: &HashMap<String, Option<String>>,
+    origin: &str,
+) -> Option<AccountDevice> {
+    let entry = bridges.get(origin.trim_end_matches('/'))?;
+    Some(AccountDevice {
+        device_id: entry.device_id.clone(),
+        fingerprint: keys::fingerprint(&entry.device_id).unwrap_or_default(),
+        kind: kinds.get(&entry.device_id).cloned().flatten(),
+    })
 }
 
 fn connected_status(member: &Member) -> Status {
@@ -847,6 +887,37 @@ pub struct DeviceRow {
     pub me: bool,
     /// "macos", "linux", "windows", "ios", "android" when the cloud says.
     pub kind: Option<String>,
+    /// For a server: whether its presence socket is open now (the cloud's
+    /// relay usage view; a server it does not list is offline). `None` for
+    /// other devices, or when the cloud could not say.
+    pub online: Option<bool>,
+}
+
+/// The device list: the verified roster, labelled with the cloud's kinds and
+/// its online flags (`online`: `None` when that call failed or did not say).
+fn device_rows(
+    devices: &[roster::Device],
+    me: &str,
+    kinds: &HashMap<String, Option<String>>,
+    online: Option<&HashMap<String, bool>>,
+) -> Vec<DeviceRow> {
+    devices
+        .iter()
+        .map(|d| DeviceRow {
+            device_id: d.id.clone(),
+            fingerprint: keys::fingerprint(&d.id).unwrap_or_default(),
+            signer: d.signer,
+            server: d.server,
+            client: d.client,
+            me: d.id == me,
+            kind: kinds.get(&d.id).cloned().flatten(),
+            online: if d.server {
+                online.map(|o| o.get(&d.id).copied().unwrap_or(false))
+            } else {
+                None
+            },
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -855,32 +926,22 @@ pub async fn cloud_devices() -> Result<Vec<DeviceRow>, String> {
     let p = phone()?;
     let guard = p.member.lock().await;
     let member = guard.as_ref().ok_or("Not signed in.")?;
-    let kinds: HashMap<String, Option<String>> = member
-        .cloud
-        .devices()
-        .await
+    // A failed usage call never fails the list: the dots are only a hint.
+    let (devices, usage) = tokio::join!(member.cloud.devices(), member.cloud.relay_usage());
+    let kinds: HashMap<String, Option<String>> = devices
         .map(|ds| ds.into_iter().map(|d| (d.device_id, d.kind)).collect())
         .unwrap_or_default();
+    let online = usage.ok().and_then(|u| u.online());
     let me = member.cloud.device_id();
-    Ok(member
+    let rows = member
         .roster
         .as_ref()
-        .map(|r| {
-            r.body
-                .devices
-                .iter()
-                .map(|d| DeviceRow {
-                    device_id: d.id.clone(),
-                    fingerprint: keys::fingerprint(&d.id).unwrap_or_default(),
-                    signer: d.signer,
-                    server: d.server,
-                    client: d.client,
-                    me: d.id == me,
-                    kind: kinds.get(&d.id).cloned().flatten(),
-                })
-                .collect()
-        })
-        .unwrap_or_default())
+        .map(|r| device_rows(&r.body.devices, &me, &kinds, online.as_ref()))
+        .unwrap_or_default();
+    if !kinds.is_empty() {
+        *p.kinds.lock().expect("kinds") = kinds;
+    }
+    Ok(rows)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1436,7 +1497,13 @@ pub async fn open_bridge(device_id: &str) -> Result<String, String> {
     p.bridge_keys
         .lock()
         .expect("bridge keys")
-        .insert(origin.clone(), bridge.key().to_string());
+        .insert(
+            origin.clone(),
+            BridgeEntry {
+                key: bridge.key().to_string(),
+                device_id: device_id.to_string(),
+            },
+        );
     if let Some(old) = p.links.lock().await.insert(
         device_id.to_string(),
         Link {
@@ -1494,6 +1561,66 @@ mod tests {
         );
         assert!(grant_of(Roles::CLIENT, None, Some(true), None).is_err());
         assert!(grant_of(Roles::BOTH, None, Some(false), Some(false)).is_err());
+    }
+
+    fn three_devices() -> (Vec<roster::Device>, [String; 3]) {
+        let phone = DeviceKeys::generate();
+        let mac = DeviceKeys::generate();
+        let linux = DeviceKeys::generate();
+        let devices = vec![
+            roster::Device::of(&phone, true, Roles::CLIENT),
+            roster::Device::of(&mac, false, Roles::SERVER),
+            roster::Device::of(&linux, false, Roles::BOTH),
+        ];
+        (devices, [phone.id(), mac.id(), linux.id()])
+    }
+
+    #[test]
+    fn servers_get_the_clouds_online_flag_and_unlisted_ones_are_offline() {
+        let (devices, [phone, mac, linux]) = three_devices();
+        let kinds = HashMap::from([(mac.clone(), Some("macos".to_string()))]);
+        let online = HashMap::from([(mac.clone(), true)]);
+        let rows = device_rows(&devices, &phone, &kinds, Some(&online));
+        let of = |id: &str| rows.iter().find(|r| r.device_id == id).unwrap().clone();
+        assert_eq!(of(&phone).online, None, "a client has no presence");
+        assert!(of(&phone).me);
+        assert_eq!(of(&mac).online, Some(true));
+        assert_eq!(of(&mac).kind.as_deref(), Some("macos"));
+        assert_eq!(of(&linux).online, Some(false), "never opened presence");
+    }
+
+    #[test]
+    fn a_failed_or_silent_usage_call_leaves_online_unknown() {
+        let (devices, [phone, mac, linux]) = three_devices();
+        let rows = device_rows(&devices, &phone, &HashMap::new(), None);
+        assert_eq!(rows.len(), 3, "the list itself still comes back");
+        assert!(rows.iter().all(|r| r.online.is_none()), "{rows:?}");
+        assert!(rows.iter().any(|r| r.device_id == mac) && rows.iter().any(|r| r.device_id == linux));
+        // The web UI reads `online: null` as "no dot".
+        let json = serde_json::to_value(&rows[1]).unwrap();
+        assert_eq!(json["online"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn a_bridge_origin_names_its_computer() {
+        let (_, [_, mac, _]) = three_devices();
+        let bridges = HashMap::from([(
+            "http://127.0.0.1:5999".to_string(),
+            BridgeEntry {
+                key: "k".into(),
+                device_id: mac.clone(),
+            },
+        )]);
+        let kinds = HashMap::from([(mac.clone(), Some("macos".to_string()))]);
+        let device = account_device_in(&bridges, &kinds, "http://127.0.0.1:5999/").unwrap();
+        assert_eq!(device.device_id, mac);
+        assert_eq!(device.fingerprint, keys::fingerprint(&mac).unwrap());
+        assert_eq!(device.kind.as_deref(), Some("macos"));
+        // Kind not known yet: still named by its fingerprint.
+        let device = account_device_in(&bridges, &HashMap::new(), "http://127.0.0.1:5999").unwrap();
+        assert_eq!(device.kind, None);
+        // Any other server is not an account computer.
+        assert_eq!(account_device_in(&bridges, &kinds, "http://192.168.1.20:4082"), None);
     }
 
     #[test]

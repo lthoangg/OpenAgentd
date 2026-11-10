@@ -6,6 +6,7 @@
  */
 import { apiBaseUrl } from './base-url'
 import { parseDetailOrThrow } from './client/_shared'
+import type { InvitePoll } from './phone-cloud'
 
 export type CloudNotice =
   | 'denied'
@@ -131,3 +132,21 @@ export const cloudRemoveDevice = (deviceId: string, proof: string) =>
   cloudRequest('/devices/remove', 'POST', { device_id: deviceId }, proof)
 export const cloudLoginCancel = () => cloudRequest('/login/cancel', 'POST')
 export const cloudLogout = () => cloudRequest('/logout', 'POST')
+
+/** An open invitation this computer shows. `link` is a bearer secret: [REDACTED] QR code's content. */
+export interface CloudInviteView {
+  link: string
+  slot_id: string
+  expires_at: number
+}
+
+/** Both need the desktop app's proof (`invite`): an agent's shell gets no link. */
+export const cloudInviteStart = (proof: string) => cloudCall<CloudInviteView>('/invite/start', 'POST', undefined, proof)
+export const cloudInvitePoll = (slotId: string, proof: string) =>
+  cloudCall<InvitePoll>('/invite/poll', 'POST', { slot_id: slotId }, proof)
+/** Adds the candidate the person checked; the same proof as `approve/confirm`. */
+export const cloudInviteAdd = (enrollmentId: string, approver: boolean, roles: Roles, proof: string) =>
+  cloudRequest('/invite/add', 'POST', { enrollment_id: enrollmentId, signer: approver, ...roles }, proof)
+export const cloudInviteCancel = () => cloudRequest('/invite/cancel', 'POST')
+/** What the server says to an invitation without the app's proof. */
+export const INVITE_ELSEWHERE = 'Show invitations in the OpenAgentd app on this computer.'

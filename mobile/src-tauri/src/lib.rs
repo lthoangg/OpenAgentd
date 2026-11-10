@@ -258,6 +258,11 @@ struct AppBackendStatus {
     external: bool,
     supports_bundled: bool,
     servers: Vec<SavedAppServer>,
+    /// Set while the app is on an account bridge (`cloud_open_computer`):
+    /// the computer it reaches, from this shell's own account data. Absent
+    /// on any other server, so the web UI names the server as before.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    account_device: Option<cloud::AccountDevice>,
 }
 
 #[derive(Default)]
@@ -283,13 +288,26 @@ fn app_backend_status(
         .lock()
         .map_err(|_| "backend state unavailable".to_string())?
         .clone();
-    Ok(AppBackendStatus {
+    Ok(backend_status(config, runtime_base_url, cloud::account_device))
+}
+
+/// The status for a config and the runtime server. `bridge` names the
+/// account computer behind a bridge origin (`cloud::account_device`).
+fn backend_status(
+    config: AppBackendConfig,
+    runtime_base_url: Option<String>,
+    bridge: impl Fn(&str) -> Option<cloud::AccountDevice>,
+) -> AppBackendStatus {
+    // Only the runtime base can be a bridge: a bridge is never persisted.
+    let account_device = runtime_base_url.as_deref().and_then(bridge);
+    AppBackendStatus {
         base_url: resolve_active_base_url(runtime_base_url, config.active_base_url),
         sidecar_running: false,
         external: true,
         supports_bundled: false,
         servers: config.servers,
-    })
+        account_device,
+    }
 }
 
 #[tauri::command]
@@ -700,8 +718,30 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_backend_reachable, relay_base_url, resolve_active_base_url, without_loopback_default};
+    use super::{backend_status, cloud, ensure_backend_reachable, relay_base_url, resolve_active_base_url, without_loopback_default};
     use openagentd_shell_core::{AppBackendConfig, SavedAppServer};
+
+    #[test]
+    fn the_status_names_the_account_computer_only_on_its_bridge() {
+        const BRIDGE: &str = "http://127.0.0.1:5999";
+        let mac = cloud::AccountDevice { device_id: "dev-mac".into(), fingerprint: "3F9A 21C4 0000 0000".into(), kind: Some("macos".into()) };
+        let bridge = |origin: &str| (origin == BRIDGE).then(|| mac.clone());
+        let lan = SavedAppServer { base_url: "http://192.168.1.20:4082".into(), name: Some("Studio".into()), enabled: false };
+        let config = || AppBackendConfig { active_base_url: Some(lan.base_url.clone()), servers: vec![lan.clone()] };
+
+        // Opened through the account: the status says which computer.
+        let on_bridge = backend_status(config(), Some(BRIDGE.into()), bridge);
+        assert_eq!(on_bridge.base_url, BRIDGE);
+        assert_eq!(on_bridge.account_device.as_ref(), Some(&mac));
+        let json = serde_json::to_value(&on_bridge).unwrap();
+        assert_eq!(json["account_device"], serde_json::json!({"device_id": "dev-mac", "fingerprint": "3F9A 21C4 0000 0000", "kind": "macos"}));
+
+        // Switched to another server, or only the persisted one: no field.
+        let on_lan = backend_status(config(), Some(lan.base_url.clone()), bridge);
+        assert!(on_lan.account_device.is_none());
+        assert!(serde_json::to_value(&on_lan).unwrap().get("account_device").is_none());
+        assert!(backend_status(config(), None, bridge).account_device.is_none());
+    }
 
     #[test]
     fn the_seeded_loopback_server_is_not_listed_on_a_phone() {

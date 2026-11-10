@@ -14,6 +14,12 @@
  *
  * Pulling the list down reloads it and pings every server again.
  *
+ * From the top: the phone's account (`AccountSection`, there before any
+ * server answers, so a phone can sign in and approve devices first), the
+ * account's computers, then the saved servers. One **Scan QR code** (in
+ * the guest's Account card and under Your servers) reads both an account
+ * invitation and a server's connect code (`useScanAnyCode`).
+ *
  * It is the phone's only server picker: the connection banner, the server
  * chip and a scanned connect link open it (``useServersScreenStore``), and
  * before any server answers the app shows it in place of the loading screen.
@@ -22,23 +28,53 @@ import { useEffect, useRef, useState } from 'react'
 
 import { AppBackendPanel, type AppBackendPanelControl, type AppBackendPrefill } from '@/components/AppBackendPanel'
 import { AccountComputersSection, useAccountComputers } from '@/components/phone/AccountComputers'
-import { AccountOnboardingCard } from '@/components/phone/AccountOnboardingCard'
+import { AccountSection } from '@/components/phone/AccountSection'
 import { AccountSheet } from '@/components/phone/AccountSheet'
 import { PullToRefresh } from '@/components/phone/PullToRefresh'
+import { QrScanOverlay } from '@/components/phone/QrScanOverlay'
+import { useScanAnyCode } from '@/components/phone/useScanAnyCode'
+import { Callout } from '@/components/ui/callout'
+import { cancelQrScan, canScanQr } from '@/lib/qr-scan'
+import { usePhoneCloudStatus } from '@/queries/phone-cloud'
 import { useLargeTitleCollapse } from '@/components/Sidebar/useLargeTitleCollapse'
 import { takeServersPrefill, useServersScreenStore } from '@/stores/useServersScreenStore'
 
-export function ServersScreen({ active, onOpenSessions }: { active: boolean; onOpenSessions: () => void }) {
+export function ServersScreen({ active, onOpenSessions }: {
+  active: boolean
+  /** Back up to the Sessions of the server in use; absent before any server answers. */
+  onOpenSessions?: () => void
+}) {
   const { barRef, titleRef, onScroll } = useLargeTitleCollapse(false)
   const panel = useRef<AppBackendPanelControl>(null)
   const [accountOpen, setAccountOpen] = useState(false)
-  const { computers, hiddenServerUrls, app, refresh: refreshComputers } = useAccountComputers(active)
+  const { computers, devices, connected, hiddenServerUrls, app, currentAlive, refresh: refreshComputers } = useAccountComputers(active)
   // A connect link's address and key, kept while the screen is up.
   const pending = useServersScreenStore((state) => state.prefill)
   const [prefill, setPrefill] = useState<AppBackendPrefill | null>(null)
   useEffect(() => {
     if (pending) setPrefill(takeServersPrefill())
   }, [pending])
+  // A scanned invitation: the sheet shows the Joining step, and once the
+  // other device adds this phone it closes onto the account's computers.
+  const joinedByScan = useRef(false)
+  const scanner = useScanAnyCode({
+    onConnect: setPrefill,
+    onJoining: () => {
+      joinedByScan.current = true
+      setAccountOpen(true)
+    },
+  })
+  const accountState = usePhoneCloudStatus().data?.state
+  useEffect(() => {
+    if (!joinedByScan.current) return
+    if (accountState === 'connected') {
+      joinedByScan.current = false
+      setAccountOpen(false)
+    } else if (accountState === 'guest') {
+      joinedByScan.current = false
+    }
+  }, [accountState])
+  const scan = canScanQr() ? () => { void scanner.scan() } : undefined
   return (
     <div data-servers-screen="" className="flex h-full w-full min-w-0 flex-col bg-(--bg-page)">
       <header
@@ -66,12 +102,14 @@ export function ServersScreen({ active, onOpenSessions }: { active: boolean; onO
           </h1>
         </div>
         <div className="space-y-8 px-4 pb-6">
-          <AccountComputersSection computers={computers} app={app} onOpenSessions={onOpenSessions} />
-          <AppBackendPanel active={active} prefill={prefill} sectionTitle="Your servers" onOpenInUse={onOpenSessions} controlRef={panel} hiddenServerUrls={hiddenServerUrls} />
-          <AccountOnboardingCard onSignedIn={() => setAccountOpen(true)} />
+          {scanner.error && <Callout tone="error" role="alert">{scanner.error}</Callout>}
+          <AccountSection active={active} devices={devices} onOpen={() => setAccountOpen(true)} onScan={scan} />
+          {connected && <AccountComputersSection computers={computers} loaded={devices !== undefined} app={app} currentAlive={currentAlive} onOpenSessions={onOpenSessions} />}
+          <AppBackendPanel active={active} prefill={prefill} sectionTitle="Your servers" onOpenInUse={onOpenSessions} controlRef={panel} hiddenServerUrls={hiddenServerUrls} onScanQr={scan} />
         </div>
       </PullToRefresh>
       <AccountSheet open={accountOpen} onClose={() => setAccountOpen(false)} />
+      {scanner.scanning && <QrScanOverlay onCancel={() => { void cancelQrScan() }} />}
     </div>
   )
 }

@@ -79,9 +79,14 @@ const DEFAULT_SERVERS: SavedAppServer[] = [{ base_url: 'http://127.0.0.1:4082', 
 /** How often the background connection states refresh while the panel is open. */
 const WATCH_POLL_MS = 3000
 
-/** The server the app is connected to when it is not in the saved list (normalized), else null. */
+/**
+ * The server the app is connected to when it is not in the saved list
+ * (normalized), else null. An account bridge is not one: its computer has a
+ * row under "Your computers".
+ */
 function unlistedConnectedUrl(status: AppBackendStatus | null, servers: SavedAppServer[]): string | null {
   if (!status || !(status.mode === 'external' || status.external)) return null
+  if (status.account_device) return null
   const url = normalizeServerBaseUrl(status.base_url)
   return servers.some((server) => normalizeServerBaseUrl(server.base_url) === url) ? null : url
 }
@@ -126,6 +131,12 @@ interface AppBackendPanelProps {
    * with the account computer they are: the phone's merged Servers list.
    */
   hiddenServerUrls?: ReadonlySet<string>
+  /**
+   * The phone's Servers screen scans with one scanner for both kinds of
+   * code (an account invitation, or a connect code it hands back as
+   * `prefill`): Scan QR code calls this instead of the panel's own.
+   */
+  onScanQr?: () => void
 }
 
 export interface AppBackendPanelControl {
@@ -142,7 +153,7 @@ type ServerFormTarget =
   | { kind: 'add' }
   | { kind: 'edit'; baseUrl: string; label: string; inUse: boolean }
 
-export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, sectionTitle = 'Servers', onOpenInUse, controlRef, hiddenServerUrls }: AppBackendPanelProps) {
+export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, sectionTitle = 'Servers', onOpenInUse, controlRef, hiddenServerUrls, onScanQr }: AppBackendPanelProps) {
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
   // Nothing is listed until the shell has answered once: before that a
   // phone with no server would flash the browser build's placeholder rows.
@@ -665,7 +676,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
               Add a server
             </Button>
             {canScanQr() && (
-              <Button type="button" variant="ghost" size="sm" onClick={() => { void scanConnectCode() }} disabled={pending}>
+              <Button type="button" variant="ghost" size="sm" onClick={() => { if (onScanQr) onScanQr(); else void scanConnectCode() }} disabled={pending}>
                 <ScanQrCode size={ICON_SIZE_INLINE} aria-hidden="true" />
                 Scan QR code
               </Button>

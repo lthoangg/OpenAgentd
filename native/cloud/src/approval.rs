@@ -13,10 +13,14 @@
 //!     "agentd-approve-v1" 0x00 action 0x00 id 0x00 signer "," server "," client))
 //! ```
 //!
-//! where `action` is `approve` (id: the enrollment id) or `remove` (id: the
-//! device id), and each role is `1` or `0` (all `0` for `remove`). The MAC
-//! binds the request: it does not carry over to another device, other
-//! roles, or the other action.
+//! where `action` is `approve` (id: the enrollment id), `remove` (id: the
+//! device id) or `invite` (id: `start`, or the open invitation's slot id to
+//! look at its candidates), and each role is `1` or `0` (all `0` for
+//! `remove` and `invite`). The MAC binds the request: it does not carry over
+//! to another device, other roles, or another action. `invite` signs no
+//! roster: it keeps the invitation link, a bearer secret, from callers that
+//! only reach the loopback API (an agent's shell); the app makes it without
+//! asking for Touch ID.
 
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -37,6 +41,9 @@ pub enum Action {
     Approve { signer: bool, server: bool, client: bool },
     /// Remove a device (`id`: its device id).
     Remove,
+    /// Show an invitation (`id`: `start`) or look at its candidates (`id`:
+    /// its slot id).
+    Invite,
 }
 
 impl Action {
@@ -44,13 +51,14 @@ impl Action {
         match self {
             Action::Approve { .. } => "approve",
             Action::Remove => "remove",
+            Action::Invite => "invite",
         }
     }
 
     fn flags(self) -> [bool; 3] {
         match self {
             Action::Approve { signer, server, client } => [signer, server, client],
-            Action::Remove => [false; 3],
+            Action::Remove | Action::Invite => [false; 3],
         }
     }
 }
@@ -123,6 +131,7 @@ mod tests {
         let a = Action::Approve { signer: true, server: false, client: true };
         assert_eq!(message(a, ENR), b"agentd-approve-v1\0approve\0enr_0123456789abcdef\x001,0,1");
         assert_eq!(message(Action::Remove, "dev1"), b"agentd-approve-v1\0remove\0dev1\x000,0,0");
+        assert_eq!(message(Action::Invite, "start"), b"agentd-approve-v1\0invite\0start\x000,0,0");
     }
 
     #[test]
@@ -142,6 +151,8 @@ mod tests {
         assert!(!verify(&KEY, Action::Approve { signer: true, server: true, client: true }, ENR, &p), "another signer flag");
         assert!(!verify(&KEY, Action::Approve { signer: false, server: false, client: true }, ENR, &p), "other roles");
         assert!(!verify(&KEY, Action::Remove, ENR, &p), "another action");
+        assert!(!verify(&KEY, Action::Invite, ENR, &p), "another action");
+        assert!(!verify(&KEY, Action::Invite, "start", &proof(&KEY, Action::Invite, "slot")), "another id");
         assert!(!verify(&KEY, a, ENR, ""), "empty");
         assert!(!verify(&KEY, a, ENR, "not base64!"), "malformed");
         assert!(!verify(&KEY, a, ENR, &p[..p.len() - 2]), "truncated");

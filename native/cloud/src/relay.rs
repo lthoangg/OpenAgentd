@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use futures_util::{SinkExt, StreamExt};
 use reqwest::header::{CONNECTION, SEC_WEBSOCKET_ACCEPT, SEC_WEBSOCKET_KEY, SEC_WEBSOCKET_VERSION, UPGRADE};
@@ -30,6 +30,17 @@ pub const ACK_BYTES: usize = 256 * 1024;
 pub const ACK_IDLE: Duration = Duration::from_millis(500);
 /// WebSocket pings from the device keep sockets alive.
 pub const PING_EVERY: Duration = Duration::from_secs(25);
+/// The text keepalive (draft, `tunnel.md` section 5): presence also sends
+/// this every [`PING_EVERY`], so the relay can tell a host that went quiet
+/// (protocol pings never reach it); it answers [`TEXT_PONG`].
+pub const TEXT_PING: &str = "ping";
+pub const TEXT_PONG: &str = "pong";
+/// What a relay from before the text keepalive closes presence with.
+const UNSUPPORTED_DATA: u16 = 1003;
+/// A socket that brought no frame at all (not even a pong) for this long
+/// is dead: two missed pongs and a margin. After Wi-Fi changes or a sleep
+/// a socket can stay half open, with nothing to say it closed.
+pub const DEAD_AFTER: Duration = Duration::from_secs(60);
 /// Largest WebSocket message the relay forwards.
 const MAX_WS_MESSAGE: usize = 1024 * 1024;
 
@@ -165,6 +176,59 @@ impl Default for Join {
     }
 }
 
+/// How presence keeps its socket alive and notices it died.
+#[derive(Debug, Clone, Copy)]
+pub struct Keepalive {
+    /// How often it pings.
+    pub every: Duration,
+    /// No frame for this long, or a wall-clock jump this long, ends it.
+    pub dead_after: Duration,
+}
+
+impl Default for Keepalive {
+    fn default() -> Self {
+        Keepalive { every: PING_EVERY, dead_after: DEAD_AFTER }
+    }
+}
+
+/// How [`host_with`] runs.
+pub struct HostOptions {
+    pub join: Join,
+    pub keepalive: Keepalive,
+    /// The wall clock. The monotonic clock stands still while macOS or iOS
+    /// sleeps; the wall clock does not, so a jump says the machine slept.
+    pub wall_clock: fn() -> SystemTime,
+    /// Set to true once the presence socket is open, and back to false when
+    /// presence ends: what a status can say "online" from.
+    pub opened: Option<watch::Sender<bool>>,
+}
+
+impl Default for HostOptions {
+    fn default() -> Self {
+        HostOptions { join: Join::default(), keepalive: Keepalive::default(), wall_clock: SystemTime::now, opened: None }
+    }
+}
+
+/// Says presence is open while it lives, and closed once dropped (also when
+/// the task running it is aborted).
+struct OpenFlag(Option<watch::Sender<bool>>);
+
+impl OpenFlag {
+    fn set(&self) {
+        if let Some(tx) = &self.0 {
+            tx.send_replace(true);
+        }
+    }
+}
+
+impl Drop for OpenFlag {
+    fn drop(&mut self) {
+        if let Some(tx) = &self.0 {
+            tx.send_replace(false);
+        }
+    }
+}
+
 /// A paired, handshaken data socket carrying one yamux session.
 pub struct Tunnel {
     pub session: Session,
@@ -263,19 +327,22 @@ impl Tunnel {
         tokio::spawn(async move {
             let mut unacked = 0usize;
             let mut code = 1006u16;
+            // Pings go out every PING_EVERY (the writer); with no frame
+            // back for DEAD_AFTER the socket is dead.
+            let mut last_in = tokio::time::Instant::now();
             loop {
-                let next = if unacked > 0 {
-                    match tokio::time::timeout(ACK_IDLE, stream.next()).await {
-                        Ok(n) => n,
-                        Err(_) => {
-                            let _ = ctl_tx.send(Message::Text(json!({"type":"ack","bytes":unacked}).to_string().into()));
-                            unacked = 0;
-                            continue;
-                        }
+                let dead_at = last_in + DEAD_AFTER;
+                let wake = if unacked > 0 { dead_at.min(tokio::time::Instant::now() + ACK_IDLE) } else { dead_at };
+                let next = match tokio::time::timeout_at(wake, stream.next()).await {
+                    Ok(n) => n,
+                    Err(_) if tokio::time::Instant::now() >= dead_at => break,
+                    Err(_) => {
+                        let _ = ctl_tx.send(Message::Text(json!({"type":"ack","bytes":unacked}).to_string().into()));
+                        unacked = 0;
+                        continue;
                     }
-                } else {
-                    stream.next().await
                 };
+                last_in = tokio::time::Instant::now();
                 match next {
                     Some(Ok(Message::Binary(b))) => {
                         unacked += b.len();
@@ -449,25 +516,61 @@ fn revoked_list(v: &Value) -> Vec<String> {
 /// The host side: holds the presence socket and serves each offer until
 /// presence closes. Returns how it ended.
 pub async fn host(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<dyn HostHandler>, sessions: Sessions, join: Join, stop: oneshot::Receiver<()>) -> RelayError {
+    host_with(cloud, http1, handler, sessions, stop, HostOptions { join, ..HostOptions::default() }).await
+}
+
+/// The presence socket went quiet, or the machine slept: give it up, so the
+/// caller's reconnect loop opens a fresh one.
+fn dead(sessions: &Sessions) -> RelayError {
+    sessions.close_all(1006);
+    RelayError::Network
+}
+
+/// [`host`] with its timings and clock chosen.
+pub async fn host_with(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<dyn HostHandler>, sessions: Sessions, stop: oneshot::Receiver<()>, opts: HostOptions) -> RelayError {
+    let HostOptions { join, keepalive, wall_clock, opened } = opts;
+    let opened = OpenFlag(opened);
     let path = format!("/v1/relay/host/{}/presence", cloud.device_id());
     let mut ws = match open_socket(&cloud, &http1, &path).await {
         Ok(ws) => ws,
         Err(e) => return e,
     };
-    let mut ping = tokio::time::interval(PING_EVERY);
+    opened.set();
+    // Text pings unless an older relay already refused one (once per client).
+    let text_keepalive = cloud.text_keepalive();
+    let mut ponged = false;
+    let mut ping = tokio::time::interval(keepalive.every);
     ping.tick().await;
     let mut stop = stop;
+    let mut last_in = tokio::time::Instant::now();
+    let mut wall = wall_clock();
     loop {
+        // Between two turns of this loop at most `every` passes; a longer
+        // wall-clock gap is a sleep the monotonic clock did not count.
+        let now = wall_clock();
+        if now.duration_since(wall).is_ok_and(|gap| gap > keepalive.dead_after) {
+            return dead(&sessions);
+        }
+        wall = now;
         tokio::select! {
             _ = &mut stop => {
                 close(&mut ws, 1000, "stop").await;
                 sessions.close_all(1000);
                 return RelayError::Closed(1000);
             }
+            _ = tokio::time::sleep_until(last_in + keepalive.dead_after) => return dead(&sessions),
             _ = ping.tick() => {
+                // The protocol ping keeps the socket alive on any relay.
                 if ws.send(Message::Ping(Vec::new().into())).await.is_err() { return RelayError::Network; }
+                if text_keepalive && ws.send(Message::Text(TEXT_PING.into())).await.is_err() { return RelayError::Network; }
             }
-            msg = ws.next() => match msg {
+            msg = ws.next() => {
+                if matches!(msg, Some(Ok(_))) {
+                    last_in = tokio::time::Instant::now();
+                }
+                match msg {
+                // The keepalive's answer: not a JSON message.
+                Some(Ok(Message::Text(t))) if t.as_str() == TEXT_PONG => ponged = true,
                 Some(Ok(Message::Text(t))) => {
                     let v: Value = serde_json::from_str(&t).unwrap_or_default();
                     match v["type"].as_str() {
@@ -489,6 +592,12 @@ pub async fn host(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<dyn Ho
                 }
                 Some(Ok(Message::Close(f))) => {
                     let code = close_code(f.as_ref());
+                    // An older relay refuses the text ping: stop sending it
+                    // and reconnect as usual. After a `pong`, 1003 is a real
+                    // protocol error, handled like any other close.
+                    if code == UNSUPPORTED_DATA && text_keepalive && !ponged {
+                        cloud.turn_off_text_keepalive();
+                    }
                     sessions.close_all(code);
                     return RelayError::Closed(code);
                 }
@@ -497,6 +606,7 @@ pub async fn host(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<dyn Ho
                     sessions.close_all(1006);
                     return RelayError::Network;
                 }
+            }
             }
         }
     }

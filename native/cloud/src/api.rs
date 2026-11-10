@@ -4,7 +4,9 @@
 //! Credentials (enrollment sessions, relay tokens, nonces) are held in
 //! [`Secret`], which never prints, and are never written anywhere.
 
+use std::collections::HashMap;
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -243,6 +245,33 @@ pub struct RelayToken {
     pub roster_version: u64,
 }
 
+/// One host in `GET /v1/relay/usage`. Only what a device shows is read.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct HostUsage {
+    pub device_id: String,
+    /// True while the host's presence socket is open. `None` from a cloud
+    /// that does not say.
+    #[serde(default)]
+    pub online: Option<bool>,
+}
+
+/// Today's relay use of the account's hosts: the ones that ever opened
+/// presence.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct RelayUsage {
+    #[serde(default)]
+    pub hosts: Vec<HostUsage>,
+}
+
+impl RelayUsage {
+    /// Whether each listed host is online, by device id. A server that is
+    /// not listed never opened presence: offline. `None` when a listed host
+    /// has no `online` (the answer cannot tell online from offline).
+    pub fn online(&self) -> Option<HashMap<String, bool>> {
+        self.hosts.iter().map(|h| Some((h.device_id.clone(), h.online?))).collect()
+    }
+}
+
 /// The device kind the cloud shows beside the fingerprint.
 pub fn this_kind() -> Option<&'static str> {
     if cfg!(target_os = "ios") {
@@ -272,6 +301,10 @@ pub struct Cloud {
     /// Set once the device knows its account.
     pub account_id: Option<String>,
     nonce: Mutex<Option<Secret>>,
+    /// The relay closed presence (1003) on the text `ping` keepalive before
+    /// ever answering `pong`: it predates the keepalive, so this client
+    /// sends protocol pings only from then on (`relay::host`).
+    text_keepalive_off: AtomicBool,
 }
 
 impl fmt::Debug for Cloud {
@@ -286,7 +319,7 @@ fn sha256_b64(data: &[u8]) -> String {
 
 impl Cloud {
     pub fn new(http: reqwest::Client, endpoints: Endpoints, keys: DeviceKeys, account_id: Option<String>) -> Self {
-        Cloud { http, endpoints, keys, roles: Roles::platform_default(), account_id, nonce: Mutex::new(None) }
+        Cloud { http, endpoints, keys, roles: Roles::platform_default(), account_id, nonce: Mutex::new(None), text_keepalive_off: AtomicBool::new(false) }
     }
 
     /// The `pubs` bytes this device sends: its keys and [`Cloud::roles`].
@@ -296,6 +329,17 @@ impl Cloud {
 
     pub fn device_id(&self) -> String {
         self.keys.id()
+    }
+
+    /// Whether presence may send the text `ping` keepalive.
+    pub fn text_keepalive(&self) -> bool {
+        !self.text_keepalive_off.load(Ordering::Relaxed)
+    }
+
+    /// Stops the text keepalive for the life of this client. Returns
+    /// whether this call turned it off (it happens at most once).
+    pub fn turn_off_text_keepalive(&self) -> bool {
+        !self.text_keepalive_off.swap(true, Ordering::Relaxed)
     }
 
     fn url(&self, path: &str) -> String {
@@ -596,6 +640,11 @@ impl Cloud {
         }
         let raw: Raw = self.signed(Method::POST, "/v1/relay/token", Some(json!({}))).await?;
         Ok(RelayToken { token: Secret::new(raw.token), expires_in: raw.expires_in, roster_version: raw.roster_version })
+    }
+
+    /// Today's relay use, and which hosts are online now.
+    pub async fn relay_usage(&self) -> ApiResult<RelayUsage> {
+        self.signed(Method::GET, "/v1/relay/usage", None).await
     }
 
     // ---- 7. Mailbox and push --------------------------------------------

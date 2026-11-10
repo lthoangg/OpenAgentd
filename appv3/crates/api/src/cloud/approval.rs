@@ -36,6 +36,8 @@ static KEY: RwLock<Option<Zeroizing<[u8; KEY_LEN]>>> = RwLock::new(None);
 pub const APPROVE_ELSEWHERE: &str = "Approve in the OpenAgentd app on this computer, or run agentd cloud approve in Terminal.";
 /// What a refused removal says.
 pub const REMOVE_ELSEWHERE: &str = "Remove devices in the OpenAgentd app on this computer.";
+/// What a refused invitation says.
+pub const INVITE_ELSEWHERE: &str = "Show invitations in the OpenAgentd app on this computer.";
 
 /// Installs the key the desktop app handed over. The previous one, if any,
 /// is zeroized as it drops.
@@ -57,7 +59,11 @@ pub fn has_key() -> bool {
 /// Refuses unless the request carries the app's proof for `action` on `id`.
 pub(super) fn require(headers: &HeaderMap, action: Action, id: &str) -> ApiResult<()> {
     let refused = || {
-        let text = if matches!(action, Action::Remove) { REMOVE_ELSEWHERE } else { APPROVE_ELSEWHERE };
+        let text = match action {
+            Action::Remove => REMOVE_ELSEWHERE,
+            Action::Invite => INVITE_ELSEWHERE,
+            Action::Approve { .. } => APPROVE_ELSEWHERE,
+        };
         ApiError::new(403, text)
     };
     let guard = KEY.read().expect("approval key");

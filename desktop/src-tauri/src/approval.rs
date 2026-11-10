@@ -51,6 +51,9 @@ pub enum Action {
         client: bool,
     },
     Remove,
+    /// Show an invitation (`id`: `start`) or look at its candidates (`id`:
+    /// its slot id). Signs no roster.
+    Invite,
 }
 
 fn message(action: Action, id: &str) -> Vec<u8> {
@@ -62,6 +65,7 @@ fn message(action: Action, id: &str) -> Vec<u8> {
             client,
         } => ("approve", [signer, server, client]),
         Action::Remove => ("remove", [false; 3]),
+        Action::Invite => ("invite", [false; 3]),
     };
     format!(
         "agentd-approve-v1\0{name}\0{id}\0{},{},{}",
@@ -164,7 +168,17 @@ mod tests {
             )
         );
         assert_ne!(p, proof_with(&key, Action::Remove, "enr_a"));
+        assert_ne!(p, proof_with(&key, Action::Invite, "enr_a"));
         assert_ne!(p, proof_with(&[8u8; KEY_LEN], a, "enr_a"));
+    }
+
+    #[test]
+    fn the_invite_proof_matches_the_servers_message() {
+        // native/cloud/src/approval.rs: "agentd-approve-v1\0invite\0start\x000,0,0".
+        assert_eq!(
+            message(Action::Invite, "start"),
+            b"agentd-approve-v1\0invite\0start\x000,0,0".to_vec()
+        );
     }
 
     #[test]

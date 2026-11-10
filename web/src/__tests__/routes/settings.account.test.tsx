@@ -1,7 +1,7 @@
 /** Settings → Account: the optional cloud account, guest by default. */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from '@/__tests__/msw'
 import type { ReactNode } from 'react'
@@ -505,6 +505,135 @@ describe('a computer that creates the account or approves devices', () => {
     renderPage()
     expect(await screen.findByText(/Not used as a server/)).toBeTruthy()
     expect(screen.getByText('Client')).toBeTruthy()
+  })
+
+  describe('Add a device (an invitation QR code)', () => {
+    const START_URL = 'http://localhost/api/cloud/invite/start'
+    const POLL_URL = 'http://localhost/api/cloud/invite/poll'
+    const ADD_URL = 'http://localhost/api/cloud/invite/add'
+    const CANCEL_INVITE_URL = 'http://localhost/api/cloud/invite/cancel'
+    const SLOT = 'test-slot-000000000'
+    const CONNECTED: CloudStatus = { state: 'connected', fingerprint: 'f', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 }
+    let seen: Array<{ url: string; body: unknown; proof: string | null }> = []
+
+    // Leaving a sheet cancels its invitation a tick later: land it before the server closes.
+    afterEach(async () => {
+      cleanup()
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    })
+
+    function serveInvite() {
+      seen = []
+      const record = async (request: Request) => {
+        const text = await request.text()
+        seen.push({ url: request.url, body: text ? JSON.parse(text) : null, proof: request.headers.get('X-Agentd-Approval') })
+      }
+      server.use(
+        http.post(START_URL, async ({ request }) => {
+          await record(request)
+          return HttpResponse.json({ link: INVITE, slot_id: SLOT, expires_at: Date.now() + 600_000 })
+        }),
+        http.post(POLL_URL, async ({ request }) => {
+          await record(request)
+          return HttpResponse.json({ state: 'candidate', candidate: { enrollment_id: 'enr-9', fingerprint: '5D1E 0A77', kind: 'ios', server: false, client: true } })
+        }),
+        http.post(ADD_URL, async ({ request }) => {
+          await record(request)
+          return HttpResponse.json(CONNECTED)
+        }),
+        http.post(CANCEL_INVITE_URL, async ({ request }) => {
+          await record(request)
+          return HttpResponse.json(CONNECTED)
+        }),
+      )
+    }
+    const to = (path: string) => seen.filter((s) => s.url.endsWith(path))
+
+    it('shows the QR code with the app\'s proof, then adds the device that scanned it after Touch ID', async () => {
+      inDesktopApp()
+      serveStatus(CONNECTED)
+      serveInvite()
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Add a device' }))
+      const sheet = await screen.findByRole('dialog')
+      expect(screen.getByText('This computer checks every device before it joins.')).toBeTruthy()
+      expect(await screen.findByText('iOS · 5D1E 0A77')).toBeTruthy()
+      expect(screen.getByText('Add it only if the new device shows the same.')).toBeTruthy()
+      expect(to('/invite/start')[0].proof).toBe('app-proof')
+      expect(to('/invite/poll')[0]).toEqual({ url: POLL_URL, body: { slot_id: SLOT }, proof: 'app-proof' })
+      expect(proofCalls.slice(0, 2)).toEqual([
+        { action: 'invite', id: 'start', signer: false, server: false, client: false, reason: 'show an invitation' },
+        { action: 'invite', id: SLOT, signer: false, server: false, client: false, reason: 'show an invitation' },
+      ])
+      expect(to('/invite/add')).toHaveLength(0)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+      await waitFor(() => expect(to('/invite/add')).toHaveLength(1))
+      expect(to('/invite/add')[0]).toEqual({ url: ADD_URL, body: { enrollment_id: 'enr-9', signer: true, server: false, client: true }, proof: 'app-proof' })
+      expect(proofCalls.at(-1)).toEqual({ action: 'approve', id: 'enr-9', signer: true, server: false, client: true, reason: 'add a device to your account' })
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(sheet.isConnected).toBe(false)
+      expect(to('/invite/cancel')).toHaveLength(0)
+    })
+
+    it('adds nothing when Touch ID is cancelled, and cancels the invitation when the sheet closes', async () => {
+      inDesktopApp()
+      serveStatus(CONNECTED)
+      serveInvite()
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Add a device' }))
+      expect(await screen.findByText('iOS · 5D1E 0A77')).toBeTruthy()
+      proofAnswer = null
+      fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+      await waitFor(() => expect(proofCalls.at(-1)?.action).toBe('approve'))
+      expect(to('/invite/add')).toHaveLength(0)
+      expect(screen.getByRole('dialog')).toBeTruthy()
+
+      fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+      await waitFor(() => expect(to('/invite/cancel')).toHaveLength(1))
+    })
+
+    it('keeps the link behind the password warning, and the 6-digit code as the fallback', async () => {
+      inDesktopApp()
+      serveStatus(CONNECTED)
+      serveInvite()
+      server.use(http.post(POLL_URL, () => HttpResponse.json({ state: 'waiting' })))
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Add a device' }))
+      expect(await screen.findByRole('img', { name: 'Invitation QR code' })).toBeTruthy()
+      expect(screen.queryByText(INVITE)).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: "Can't scan? Use a link" }))
+      expect(screen.getByText('This link works like a password')).toBeTruthy()
+      expect(screen.queryByText(INVITE)).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Show link' }))
+      expect(screen.getByText(INVITE)).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: 'Show QR code' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Use a 6-digit code instead' }))
+      expect(screen.getByText(/compare the 6-digit code on both screens/)).toBeTruthy()
+    })
+
+    it('says someone else has the invitation when two devices prove it', async () => {
+      inDesktopApp()
+      serveStatus(CONNECTED)
+      serveInvite()
+      server.use(http.post(POLL_URL, () => HttpResponse.json({ state: 'compromised' })))
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Add a device' }))
+      expect(await screen.findByText(/Someone else has this invitation, so nobody was added/)).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'New invitation' })).toBeTruthy()
+    })
+
+    it('is not offered in a plain browser, which has no proof to give', async () => {
+      serveStatus(CONNECTED)
+      renderPage()
+      expect(await screen.findByText('Approves devices')).toBeTruthy()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(screen.queryByRole('button', { name: 'Add a device' })).toBeNull()
+    })
   })
 })
 

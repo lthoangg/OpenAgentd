@@ -58,6 +58,7 @@ dunce.workspace = true
 libc = "0.2"
 
 [dev-dependencies]
+tracing-subscriber.workspace = true
 tower = { workspace = true, features = ["util"] }
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }

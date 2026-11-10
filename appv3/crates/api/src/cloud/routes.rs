@@ -7,11 +7,14 @@
 //! unproxied loopback caller on the private listener, never a relayed
 //! device or a LAN client.
 //!
-//! The two routes that sign a roster, `approve/confirm` and
+//! The routes that sign a roster, `approve/confirm`, `invite/add` and
 //! `devices/remove`, also need the desktop app's proof that the person
 //! approved ([`super::approval`]): a loopback caller alone may be an
-//! agent's shell. Creating the account (`recovery`, the genesis roster of an
-//! empty account) does not, and neither do the routes that sign nothing.
+//! agent's shell. So do `invite/start` and `invite/poll`, which sign
+//! nothing but hand out an invitation link (a bearer secret) and its
+//! candidates. Creating the account (`recovery`, the genesis roster of an
+//! empty account) does not, and neither do the other routes that sign
+//! nothing (cancelling is always safe).
 
 use axum::extract::ConnectInfo;
 use axum::http::{Extensions, HeaderMap};
@@ -39,6 +42,10 @@ pub fn router() -> Router<AppState> {
         .route("/approve/begin", post(approve_begin))
         .route("/approve/confirm", post(approve_confirm))
         .route("/approve/reject", post(approve_reject))
+        .route("/invite/start", post(invite_start))
+        .route("/invite/poll", post(invite_poll))
+        .route("/invite/add", post(invite_add))
+        .route("/invite/cancel", post(invite_cancel))
 }
 
 /// The roles a computer asks for when it signs in or joins (spec 4):
@@ -231,6 +238,7 @@ fn signer_error(e: super::signer::SignerError) -> ApiError {
                 FlowError::NotSigner => ApiError::new(403, "This computer cannot approve devices."),
                 FlowError::Roles => ApiError::new(400, "A device can only get the roles it asked for, and needs at least one."),
                 FlowError::JoinEnded | FlowError::TimedOut => ApiError::new(409, "The request was cancelled or expired."),
+                FlowError::InviteCompromised => ApiError::new(409, "Someone else has this invitation, so nobody was added. Show a new one."),
                 FlowError::CommitMismatch => ApiError::new(409, "Request cancelled. If you didn't start it, someone may be trying to join your account."),
                 FlowError::Roster(rule) => ApiError::new(502, format!("The account's device list failed a check ({rule}). Nothing was changed.")),
                 FlowError::Problem(_) => ApiError::new(409, "Your account is not available right now."),
@@ -303,6 +311,59 @@ async fn approve_reject(ext: Extensions, body: axum::body::Bytes) -> ApiResult<R
     local_only(&ext)?;
     let id = enrollment_id(&body)?;
     super::signer::approve_reject(&id).await.map_err(signer_error)?;
+    status_json()
+}
+
+/// Opens an invitation and answers its link (a bearer secret: never
+/// logged). Needs the app's proof for `invite` on `start`.
+async fn invite_start(ext: Extensions, headers: HeaderMap) -> ApiResult<Response> {
+    local_only(&ext)?;
+    super::approval::require(&headers, openagentd_cloud::approval::Action::Invite, "start")?;
+    json_of(&super::invite::start().await.map_err(signer_error)?)
+}
+
+/// `{ slot_id }`: the open invitation's candidates. Needs the app's proof
+/// for `invite` on that slot id.
+async fn invite_poll(ext: Extensions, headers: HeaderMap, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    #[derive(serde::Deserialize)]
+    struct Body {
+        slot_id: String,
+    }
+    let b: Body = body_of(&body)?;
+    if !openagentd_cloud::api::valid_slot_id(&b.slot_id) {
+        return Err(ApiError::new(400, "Malformed request."));
+    }
+    super::approval::require(&headers, openagentd_cloud::approval::Action::Invite, &b.slot_id)?;
+    json_of(&super::invite::poll(&b.slot_id).await.map_err(signer_error)?)
+}
+
+/// `{ enrollment_id, signer, server, client }`: the person checked the
+/// candidate's kind and fingerprint and clicked Add (after Touch ID where
+/// available); the same proof as `approve/confirm`.
+async fn invite_add(ext: Extensions, headers: HeaderMap, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    #[derive(serde::Deserialize)]
+    struct Body {
+        enrollment_id: String,
+        signer: bool,
+        server: bool,
+        client: bool,
+    }
+    let b: Body = body_of(&body)?;
+    if !openagentd_cloud::api::valid_enrollment_id(&b.enrollment_id) {
+        return Err(ApiError::new(400, "Malformed request."));
+    }
+    // Before the open invitation is touched: a refused add leaves it open.
+    let action = openagentd_cloud::approval::Action::Approve { signer: b.signer, server: b.server, client: b.client };
+    super::approval::require(&headers, action, &b.enrollment_id)?;
+    super::invite::add(&b.enrollment_id, super::signer::grant(b.signer, b.server, b.client)).await.map_err(signer_error)?;
+    status_json()
+}
+
+async fn invite_cancel(ext: Extensions) -> ApiResult<Response> {
+    local_only(&ext)?;
+    super::invite::cancel().await;
     status_json()
 }
 

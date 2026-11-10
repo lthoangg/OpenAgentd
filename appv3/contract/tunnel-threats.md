@@ -217,6 +217,23 @@ when formatted. The HTTP trace layer drops `Authorization` and every
   web view the link only to draw the QR code. A computer takes the link
   from a password field (`POST /api/cloud/join`, local callers only) or a
   hidden prompt (`agentd cloud join`), never from argv or a log.
+- **A computer that approves can show an invitation too** (desktop app,
+  Settings → Account → Add a device; `POST /api/cloud/invite/{start,poll,
+  add,cancel}`, `crates/api/src/cloud/invite.rs`). What it adds: the QR
+  code is on a computer screen, so screen sharing, a screen recording or a
+  remote-desktop session can capture it for its 10 minutes, and a
+  computer's screen is watched by more people than a phone's. What limits
+  it: the same rules as the phone (the candidate is shown with its kind and
+  fingerprint; it is added only on Add, which needs the desktop app's
+  approval proof after Touch ID or the login password where the Mac has
+  one, exactly as `approve/confirm`; two valid proofs add nobody and cancel
+  the invitation). The routes answer only local callers, never a relayed
+  device or the LAN. Starting an invitation and reading its candidates also
+  need the app's proof (action `invite`, no Touch ID): they sign nothing,
+  but the link is a bearer secret and an agent's shell is a local caller.
+  The invitation lives in the server's memory only, and is cancelled when
+  the sheet closes, after 10 minutes, when another one starts, and when the
+  server stops or signs out; the link is answered once and never logged.
 - With the 6-digit code (glance and tap, the default for a device that
   signs in), a new device joins only after the
   person compares the code on both screens (spec §4.2). The cloud commits
@@ -251,6 +268,17 @@ when formatted. The HTTP trace layer drops `Authorization` and every
   from it keeps a signer behind biometrics.
 - **Recovery code.** It is shown once. The person must type two groups back
   before genesis continues. The seed is zeroized after `recovery_sig`.
+  The code may be selected, copied (**Copy code**) and screenshotted, and
+  the step says to keep it in a password manager, a screenshot or on paper.
+  Allowed because the code alone does not open the account: recovery
+  (`POST /v1/enroll/recover`) also needs an enrollment session, which only
+  a sign-in to the account's email gives. What remains: a copy is readable
+  by other apps on that device until it is overwritten; the app writes an
+  empty string over it once, two minutes later while it is visible (or on
+  its next return), best effort (a browser may refuse a write without a
+  tap; iOS has no expiring pasteboard in this build). A screenshot may sync
+  to a photo library (iCloud Photos), so the advice names a password
+  manager first.
 
 ### 3. Relay sessions
 

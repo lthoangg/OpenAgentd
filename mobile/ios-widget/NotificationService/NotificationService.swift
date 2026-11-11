@@ -25,6 +25,10 @@ final class NotificationService: UNNotificationServiceExtension {
         let content = (request.content.mutableCopy() as? UNMutableNotificationContent) ?? UNMutableNotificationContent()
         self.content = content
         let info = request.content.userInfo
+        // Only a letter that opens says which session and computer a tap
+        // goes to; a push that names them in plain text is not believed.
+        content.userInfo.removeValue(forKey: "session")
+        content.userInfo.removeValue(forKey: "sender")
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             // Show Previews off: keep the placeholder (PreviewPolicy.swift).
             if PreviewPolicy.opensLetter(settings.showPreviewsSetting),
@@ -34,6 +38,7 @@ final class NotificationService: UNNotificationServiceExtension {
                 if let session = text.session, !session.isEmpty {
                     content.threadIdentifier = session
                     content.userInfo["session"] = session
+                    content.userInfo["sender"] = opened.sender
                 }
                 content.userInfo["kind"] = opened.kind
                 content.userInfo.removeValue(forKey: "l")

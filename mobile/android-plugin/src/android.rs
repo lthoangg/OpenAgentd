@@ -74,6 +74,12 @@ struct PickAnswer {
     id: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct LaunchNotification {
+    #[serde(default)]
+    id: Option<i64>,
+}
+
 impl<R: Runtime> AndroidShell<R> {
     /// Offer `path` (a file inside the app cache directory) to other apps
     /// through the system share chooser. Blocks until the chooser is shown;
@@ -142,6 +148,16 @@ impl<R: Runtime> AndroidShell<R> {
             .run_mobile_plugin::<serde::de::IgnoredAny>("moveTaskToBack", ())
             .map(|_| ())
             .map_err(|e| format!("Move to background: {e}"))
+    }
+
+    /// The id of the app's notification whose tap started the app, once
+    /// (the notification plugin reports that tap before the page listens).
+    /// Blocks on the JNI call; call it off the async runtime.
+    pub fn take_launch_notification(&self) -> Result<Option<i64>, String> {
+        self.0
+            .run_mobile_plugin::<LaunchNotification>("takeLaunchNotification", ())
+            .map(|n| n.id)
+            .map_err(|e| format!("Launch notification: {e}"))
     }
 
     /// Match the status bar and webview background to the web UI's theme

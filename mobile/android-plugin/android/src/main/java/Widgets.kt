@@ -51,7 +51,12 @@ internal object Widgets {
         )
     }
 
-    fun sessionUrl(id: String) = "$SCHEME://session/${Uri.encode(id)}"
+    /**
+     * A session's link, naming the server it is on by the app's opaque token
+     * (`?srv=`, never an address) so a tap opens it there.
+     */
+    fun sessionUrl(id: String, server: String?) =
+        "$SCHEME://session/${Uri.encode(id)}" + (server?.let { "?srv=${Uri.encode(it)}" } ?: "")
     fun newSessionUrl() = "$SCHEME://new"
     fun appUrl() = "$SCHEME://session"
     fun schedulerUrl(taskId: String?) =
@@ -93,7 +98,7 @@ class QuickStartWidget : AppWidgetProvider() {
                 views.setViewVisibility(R.id.openagentd_widget_quick_label, View.VISIBLE)
                 views.setOnClickPendingIntent(
                     R.id.openagentd_widget_quick_last,
-                    Widgets.link(context, Widgets.sessionUrl(last.id), Widgets.requestCode(id, 0)),
+                    Widgets.link(context, Widgets.sessionUrl(last.id, snapshot?.server), Widgets.requestCode(id, 0)),
                 )
             } else {
                 views.setTextViewText(R.id.openagentd_widget_quick_title, context.getString(R.string.openagentd_widget_no_sessions))
@@ -159,7 +164,7 @@ class InboxWidget : AppWidgetProvider() {
                 views.setInt(row.pill, "setBackgroundResource", background)
                 views.setOnClickPendingIntent(
                     row.row,
-                    Widgets.link(context, Widgets.sessionUrl(session.id), Widgets.requestCode(id, index + 1)),
+                    Widgets.link(context, Widgets.sessionUrl(session.id, snapshot?.server), Widgets.requestCode(id, index + 1)),
                 )
             }
             manager.updateAppWidget(id, views)

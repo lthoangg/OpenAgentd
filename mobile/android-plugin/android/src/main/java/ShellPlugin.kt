@@ -82,6 +82,12 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
         const val MAX_FONT_SCALE = 1.25f
 
         /**
+         * The intent extra the notification plugin (tauri-plugin-notification,
+         * `NOTIFICATION_INTENT_KEY`) puts the tapped notification's id in.
+         */
+        const val NOTIFICATION_ID_EXTRA = "NotificationId"
+
+        /**
          * The WebView `textZoom` (percent) for a system font scale. Like iOS
          * it never shrinks the UI below its design size, and it ignores a
          * scale that is not a usable number.
@@ -104,6 +110,13 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
         activity.applicationContext.getSharedPreferences("openagentd_theme", Activity.MODE_PRIVATE)
     }
     private var webView: WebView? = null
+
+    /**
+     * The id of the app's own notification whose tap started this activity.
+     * The notification plugin reports that tap before the page listens, so
+     * the shell reads it once with [takeLaunchNotification].
+     */
+    private var launchNotification: Int? = null
 
     /** The boot page's paper tone (web/index.html) for an appearance. */
     private fun paper(dark: Boolean): Int =
@@ -128,6 +141,10 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
         super.load(webView)
         this.webView = webView
         webViewLoaded = true
+        launchNotification = activity.intent
+            ?.takeIf { it.action == Intent.ACTION_MAIN }
+            ?.getIntExtra(NOTIFICATION_ID_EXTRA, Int.MIN_VALUE)
+            ?.takeIf { it != Int.MIN_VALUE }
         applyFontScale(activity.resources.configuration.fontScale)
         fitAboveKeyboard(webView)
         // Tauri applies the config's single (light) backgroundColor right
@@ -402,6 +419,15 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
             activity.moveTaskToBack(true)
             invoke.resolve()
         }
+    }
+
+    /** The notification tap that started the app, once: `{ id }`, or `{}`. */
+    @Command
+    fun takeLaunchNotification(invoke: Invoke) {
+        val result = JSObject()
+        launchNotification?.let { result.put("id", it) }
+        launchNotification = null
+        invoke.resolve(result)
     }
 
     /**

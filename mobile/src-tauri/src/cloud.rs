@@ -261,6 +261,9 @@ struct Phone {
     invite: tokio::sync::Mutex<Option<flows::Invite>>,
     /// Relay sessions and their bridges, by computer device id.
     links: tokio::sync::Mutex<HashMap<String, Link>>,
+    /// Held per computer while its bridge opens, so two opens at once
+    /// share one (and a slow computer doesn't hold up the others).
+    opening: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     /// Bridge origin → its key (for `secure_get_access_key`) and the
     /// computer it reaches (for the backend status).
     bridge_keys: Mutex<HashMap<String, BridgeEntry>>,
@@ -327,18 +330,12 @@ pub fn init(data_dir: std::path::PathBuf) {
         approvals: tokio::sync::Mutex::new(HashMap::new()),
         invite: tokio::sync::Mutex::new(None),
         links: tokio::sync::Mutex::new(HashMap::new()),
+        opening: Mutex::new(HashMap::new()),
         bridge_keys: Mutex::new(HashMap::new()),
         kinds: Mutex::new(HashMap::new()),
     };
     if PHONE.set(phone).is_err() {
         return;
-    }
-    #[cfg(target_os = "ios")]
-    {
-        extern "C" {
-            fn openagentd_notification_taps_install();
-        }
-        unsafe { openagentd_notification_taps_install() };
     }
     tauri::async_runtime::spawn(restore());
 }
@@ -1433,23 +1430,6 @@ pub async fn register_push(registration: serde_json::Value) -> Result<(), String
     }
 }
 
-/// What the person tapped since the last call: `"approval"` for the
-/// cloud's "A device wants to join your account", so the web UI opens the
-/// pending approvals. The push carries nothing else.
-#[tauri::command]
-pub fn cloud_take_notification() -> Option<&'static str> {
-    #[cfg(target_os = "ios")]
-    {
-        extern "C" {
-            fn openagentd_notification_take_approval() -> i32;
-        }
-        if unsafe { openagentd_notification_take_approval() } == 1 {
-            return Some("approval");
-        }
-    }
-    None
-}
-
 pub fn signed_in() -> bool {
     matches!(status(), Status::Connected { .. })
 }
@@ -1542,6 +1522,17 @@ async fn stream_to(
 /// Opens (or reuses) the bridge to an account computer: its loopback origin.
 pub async fn open_bridge(device_id: &str) -> Result<String, String> {
     let p = phone()?;
+    // One open at a time: two at once (a tapped notification while the
+    // launch falls back to the account) both connected, and the second
+    // replaced the first's bridge under a caller already using its origin.
+    let gate = p
+        .opening
+        .lock()
+        .expect("opening")
+        .entry(device_id.to_string())
+        .or_default()
+        .clone();
+    let _opening = gate.lock().await;
     if let Some(link) = p.links.lock().await.get(device_id) {
         return Ok(link.bridge.origin.clone());
     }

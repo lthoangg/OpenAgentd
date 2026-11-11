@@ -30,6 +30,8 @@ internal data class WidgetSnapshot(
     val lastSession: WidgetSession?,
     val inbox: List<WidgetSession>,
     val nextTask: WidgetTask?,
+    /** The app's opaque token for the server these sessions are on. */
+    val server: String?,
 )
 
 internal object WidgetStore {
@@ -57,6 +59,7 @@ internal object WidgetStore {
             lastSession = root.optJSONObject("lastSession")?.let(::parseSession),
             inbox = (0 until (inbox?.length() ?: 0)).mapNotNull { inbox?.optJSONObject(it)?.let(::parseSession) },
             nextTask = root.optJSONObject("nextTask")?.let(::parseTask),
+            server = root.optStringOrNull("server"),
         )
     }
 

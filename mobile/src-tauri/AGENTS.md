@@ -19,6 +19,14 @@ integration for the mobile shell.
   half, `../ios-widget/App/PushBridge.swift`, adds the token callbacks to
   tao's app delegate class at runtime. Nothing is sent to a server yet;
   release builds never log the token.
+- `src/taps.rs`: `notification_take_taps`, the one queue of notification
+  taps (Cloud pushes and the app's own notifications, cold or warm start).
+  On iOS it drains `../ios-widget/App/NotificationTapBridge.swift` (the
+  notification extension adds the push's `sender`); on Android it reads the
+  intent that launched the app, through the plugin, and warm taps come from
+  the notification plugin's events. The web UI routes them all in
+  `web/src/lib/notification-taps.ts`; on iOS the notification plugin's own
+  tap events are not used.
 - `src/native_ui.rs`: `share_text` (the system share sheet for a link) and
   `pick_one` (a native single-choice picker: iOS action sheet, Android
   dialog). Input is validated and bounded once, for both platforms; the iOS

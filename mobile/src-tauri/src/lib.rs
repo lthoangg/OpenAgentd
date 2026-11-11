@@ -19,6 +19,7 @@ mod cloud_e2e_tests;
 mod keyboard_bar;
 mod native_ui;
 mod push;
+mod taps;
 mod theme;
 mod updater;
 mod widgets;
@@ -664,6 +665,7 @@ pub fn run() {
             if let Ok(dir) = _app.path().app_data_dir() {
                 cloud::init(dir);
             }
+            taps::install(_app.handle());
             #[cfg(target_os = "ios")]
             theme::paint_launch_background(_app.handle());
             #[cfg(target_os = "ios")]
@@ -708,7 +710,7 @@ pub fn run() {
             cloud::cloud_invite_cancel,
             cloud::cloud_remove_device,
             cloud::cloud_sign_out,
-            cloud::cloud_take_notification,
+            taps::notification_take_taps,
             cloud_open_computer,
             cloud_push_register,
             updater::updater_check,

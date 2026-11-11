@@ -32,7 +32,7 @@ use openagentd_cloud::store::Identity;
 use serde::Serialize;
 use zeroize::Zeroizing;
 
-use crate::cloud_bridge::{Bridge, Io, Opener};
+use crate::cloud_bridge::{app_origin, Bridge, Io, Opener};
 
 // ---- Key storage ---------------------------------------------------------
 
@@ -1645,7 +1645,7 @@ pub async fn start_bridge(device_id: &str) -> Result<(String, Link), String> {
             }
         })
     });
-    let bridge = match Bridge::start(opener).await {
+    let bridge = match Bridge::start(opener, app_origin).await {
         Ok(b) => b,
         Err(e) => {
             link.close();

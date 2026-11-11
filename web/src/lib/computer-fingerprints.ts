@@ -3,14 +3,15 @@
  *
  * A computer signed in to the account answers `GET /api/cloud/status` with
  * its fingerprint, the same one the account lists for that device. Whenever
- * the phone sees a LAN server it asks, and remembers fingerprint → address, so
- * the Servers list can show that computer once ("via LAN") instead of twice.
+ * the app (phone or desktop) sees a LAN server it asks, and remembers
+ * fingerprint → address, so the Servers list can show that computer once ("via LAN") instead of twice.
  * Older servers have no such route; the answer is simply ignored.
  */
 import { useSyncExternalStore } from 'react'
 
 import { getStoredAccessKey } from '@/api/auth'
 import { isPhoneCloudShell } from '@/api/phone-cloud'
+import { isDesktopShell } from '@/lib/desktop-shell'
 import { LAN_COMPUTERS_KEY, normalizeFingerprint } from '@/lib/app-backend'
 
 const STORAGE_KEY = LAN_COMPUTERS_KEY
@@ -65,9 +66,9 @@ export function useLanComputers(): Record<string, string> {
   return parseLanComputers(raw)
 }
 
-/** Ask a server who it is, and remember it. Phone only; every failure is silent. */
+/** Ask a server who it is, and remember it. The phone and desktop apps; every failure is silent. */
 export async function rememberLanFingerprint(baseUrl: string): Promise<void> {
-  if (!isPhoneCloudShell()) return
+  if (!isPhoneCloudShell() && !isDesktopShell()) return
   const origin = baseUrl.trim().replace(/\/+$/, '').replace(/\/api$/i, '')
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS)

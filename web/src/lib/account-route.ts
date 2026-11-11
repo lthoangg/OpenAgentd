@@ -289,3 +289,22 @@ export function startAccountRouteWatch(): () => void {
     window.removeEventListener('online', onOnline)
   }
 }
+
+/**
+ * Desktop: tell the built-in server's links to the account's computers when
+ * a window comes back or the network changes (`cloud_poke`), so a link
+ * that died meanwhile reconnects now. Never "background": the notch keeps
+ * showing those computers' sessions. Returns the stop.
+ */
+export function startDesktopLinkPokes(): () => void {
+  const onVisibility = () => {
+    if (document.visibilityState === 'visible') cloudPoke('resumed')
+  }
+  const onOnline = () => cloudPoke('network_changed')
+  document.addEventListener('visibilitychange', onVisibility)
+  window.addEventListener('online', onOnline)
+  return () => {
+    document.removeEventListener('visibilitychange', onVisibility)
+    window.removeEventListener('online', onOnline)
+  }
+}

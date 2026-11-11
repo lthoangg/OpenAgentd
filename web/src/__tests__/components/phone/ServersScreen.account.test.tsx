@@ -251,7 +251,7 @@ describe('Your computers', () => {
     render(<ServersScreen active onOpenSessions={() => {}} />)
     await screen.findByText('macOS · 3F9A 21C4')
     expect(within(rowOf('macOS · 3F9A 21C4')).getByLabelText('Online')).toBeTruthy()
-    expect(within(rowOf('macOS · 3F9A 21C4')).getByText('Online · via account')).toBeTruthy()
+    expect(within(rowOf('macOS · 3F9A 21C4')).getByText('Online · through your account')).toBeTruthy()
     expect(within(rowOf('Linux · 9C02 E1B7')).getByLabelText('Offline')).toBeTruthy()
     expect(within(rowOf('Linux · 9C02 E1B7')).getByText('Offline')).toBeTruthy()
     expect(within(rowOf('Windows · 1111 2222')).queryByLabelText(/Online|Offline|Checking/)).toBeNull()

@@ -88,3 +88,46 @@ describe('Switch Server…', () => {
     expect(handlers.manage).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('Switch Server…: your computers', () => {
+  const computers = [
+    { device_id: 'dev-mac', label: 'macOS · 3F9A 21C4', line: 'Current · through your account', current: true },
+    { device_id: 'dev-linux', label: 'Linux · 9C02 E1B7', line: 'Online · through your account', current: false },
+    { device_id: 'dev-win', label: 'Windows · 1111 2222', line: 'Offline', current: false },
+  ]
+
+  it('lists them between the built-in server and the saved ones, the one in use marked', () => {
+    const { rows } = build({ computers })
+    expect(rows.map((r) => r.id)).toEqual([
+      'server:bundled',
+      'server:computer:dev-mac',
+      'server:computer:dev-linux',
+      'server:computer:dev-win',
+      `server:${REMOTE}`,
+      `server:${LAB}`,
+      'server:manage',
+    ])
+    expect(rows.slice(1, 4).map((r) => [r.label, r.description])).toEqual([
+      ['macOS · 3F9A 21C4', 'Current · through your account'],
+      ['Linux · 9C02 E1B7', 'Online · through your account'],
+      ['Windows · 1111 2222', 'Offline'],
+    ])
+  })
+
+  it('opens a computer on Enter, an offline one too, and does nothing for the one in use', () => {
+    const useComputer = mock(() => {})
+    const handlers: ServerCommandHandlers = { useBundled: mock(() => {}), useExternal: mock(() => {}), useComputer, manage: mock(() => {}), checkHealth: mock(() => {}) }
+    const rows = buildServerCommands({ status: status(), health: {}, computers }, handlers)[0].page?.commands ?? []
+    rows[1].action()
+    expect(useComputer).not.toHaveBeenCalled()
+    rows[2].action()
+    rows[3].action()
+    expect(useComputer.mock.calls.map((call) => (call as unknown as [{ device_id: string }])[0].device_id)).toEqual(['dev-linux', 'dev-win'])
+  })
+
+  it('leaves out a saved server that is one of the computers', () => {
+    const { rows } = build({ computers, hiddenServerUrls: new Set([LAB]) })
+    expect(rows.map((r) => r.id)).not.toContain(`server:${LAB}`)
+    expect(rows.map((r) => r.id)).toContain(`server:${REMOTE}`)
+  })
+})

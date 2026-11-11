@@ -13,6 +13,7 @@ import { useIsPhone } from '@/hooks/use-is-phone'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { getPlatform } from '@/hooks/use-platform'
 import { getAppBackendStatus, getBundledBackendLogPath } from '@/lib/app-backend'
+import { isDesktopShell } from '@/lib/desktop-shell'
 import { clearBackendSwitchHandoff, pendingBackendSwitch, type BackendSwitchTarget } from '@/stores/useBackendSwitchStore'
 import { openServersScreen } from '@/stores/useServersScreenStore'
 import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
@@ -70,6 +71,20 @@ function App() {
         return module.checkRouteAtLaunch()
       })
       .then((outcome) => { if (outcome === 'failed') setPhoneServers(true) })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+      stop?.()
+    }
+  }, [])
+  // Desktop: the built-in server's links to other computers check
+  // themselves when a window comes back or the network changes.
+  useEffect(() => {
+    if (!isDesktopShell()) return
+    let cancelled = false
+    let stop: (() => void) | undefined
+    void import('@/lib/account-route')
+      .then((module) => { if (!cancelled) stop = module.startDesktopLinkPokes() })
       .catch(() => {})
     return () => {
       cancelled = true

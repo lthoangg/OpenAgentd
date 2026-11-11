@@ -1,13 +1,20 @@
 /**
- * The account's computers on the phone's Servers screen (decision D8).
+ * The account's computers: the phone's Servers screen (decision D8), and the
+ * desktop app's Settings → Server (one component for both).
  *
- * One row per server of the account (spec 3.4: the phone opens sessions
- * only on devices with the server role; itself and clients left out). A saved LAN server that is known to be the same computer (its
+ * One row per server of the account (spec 3.4: sessions open only on
+ * devices with the server role; this device and clients left out). A saved LAN server that is known to be the same computer (its
  * remembered fingerprint matches, see `lib/computer-fingerprints`) is that
  * row, titled with the name the person gave it, and no longer appears again
  * in the saved list. Opening a row asks the shell to try the LAN address and
  * the account's relay together (the LAN wins when it answers fast and takes
  * the stored key), then switches to it like choosing a saved server.
+ *
+ * The phone's account lives in its shell; the desktop's in the built-in
+ * server (`api/cloud.ts` always calls that one). So on the desktop a
+ * stopped built-in server leaves nothing to list: the section says so and
+ * offers Start. A desktop signed in without the client role cannot open
+ * other computers, and the section says that instead of listing them.
  *
  * The line under a computer follows the route in use: "Through your account"
  * on its bridge, "via LAN" on its LAN address while that answers. A computer
@@ -25,104 +32,38 @@
  * the screen is up and visible. A row is In use when the app is on it, over
  * its LAN address or its account bridge.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 
-import { isServer, type DeviceRow } from '@/api/phone-cloud'
+import type { DeviceRow } from '@/api/phone-cloud'
 import { ServerRow } from '@/components/AppBackendPanel'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { PanelSection } from '@/components/ui/panel-section'
 import { useTouchFirst } from '@/hooks/use-touch-first'
-import { accountComputerTitle, getAppBackendStatus, type AppBackendStatus } from '@/lib/app-backend'
+import {
+  BUILTIN_STOPPED_COMPUTERS,
+  CANNOT_OPEN_COMPUTERS,
+  computerLine,
+  type AccountComputer,
+} from '@/lib/account-computers'
+import type { AppBackendStatus } from '@/lib/app-backend'
 import {
   connectAccountComputer,
   currentBackendOrigin,
   normalizeServerBaseUrl,
   reloadForBackendSwitch,
 } from '@/lib/backend-switch'
-import { normalizeFingerprint, useLanComputers } from '@/lib/computer-fingerprints'
-import { pingServer } from '@/lib/server-probe'
-import { usePhoneCloudDevices, usePhoneCloudStatus } from '@/queries/phone-cloud'
+import { isDesktopShell } from '@/lib/desktop-shell'
 import { setLanAvailable, useAccountRouteStore } from '@/stores/useAccountRouteStore'
 
-/** How often the computers (and their dots) refresh while the screen is up. */
-export const ACCOUNT_COMPUTERS_REFRESH_MS = 30_000
-
-export interface AccountComputer {
-  device: DeviceRow
-  label: string
-  /** The saved LAN server that is this computer, normalized; null: only the account reaches it. */
-  lanUrl: string | null
-}
-
-export function useAccountComputers(active: boolean) {
-  const connected = usePhoneCloudStatus().data?.state === 'connected'
-  const devicesQ = usePhoneCloudDevices(connected && active)
-  const lan = useLanComputers()
-  const [app, setApp] = useState<AppBackendStatus | null>(null)
-  // Whether the server the app is on answers now: a computer is In use over
-  // its LAN address only while it does (its listener can be turned off).
-  const [current, setCurrent] = useState<{ url: string; alive: boolean } | null>(null)
-  const loadApp = useCallback(async () => {
-    const next = await getAppBackendStatus()
-    setApp(next)
-    if (!next?.base_url || next.account_device) return
-    const url = normalizeServerBaseUrl(next.base_url)
-    const alive = await pingServer(url)
-    setCurrent({ url, alive })
-  }, [])
-  const { refetch } = devicesQ
-
-  useEffect(() => {
-    if (active && connected) void loadApp()
-  }, [active, connected, loadApp])
-
-  // The dots go stale: refresh while the screen is up and the app visible.
-  useEffect(() => {
-    if (!active || !connected) return
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refetch()
-    }, ACCOUNT_COMPUTERS_REFRESH_MS)
-    return () => window.clearInterval(timer)
-  }, [active, connected, refetch])
-
-  const computers = useMemo<AccountComputer[]>(() => {
-    if (!connected) return []
-    const servers = app?.servers ?? []
-    const saved = new Set(servers.map((server) => normalizeServerBaseUrl(server.base_url)))
-    return (devicesQ.data ?? [])
-      .filter((device) => !device.me && isServer(device))
-      .map((device) => {
-        const remembered = lan[normalizeFingerprint(device.fingerprint)]
-        const lanUrl = remembered ? normalizeServerBaseUrl(remembered) : null
-        return { device, label: accountComputerTitle(device, servers, lan), lanUrl: lanUrl && saved.has(lanUrl) ? lanUrl : null }
-      })
-  }, [connected, devicesQ.data, app, lan])
-
-  const hiddenServerUrls = useMemo(
-    () => new Set(computers.flatMap((computer) => (computer.lanUrl ? [computer.lanUrl] : []))),
-    [computers],
-  )
-  const refresh = useCallback(async () => {
-    await Promise.all([connected ? refetch() : undefined, loadApp()])
-  }, [connected, refetch, loadApp])
-
-  const currentAlive = app && current?.url === normalizeServerBaseUrl(app.base_url) ? current.alive : null
-  return { computers, devices: connected ? devicesQ.data : undefined, connected, hiddenServerUrls, app, currentAlive, refresh }
-}
-
-/**
- * The line under a computer: the route in use when the app is on it, else
- * what could reach it (and whether it is up).
- */
-function computerLine(computer: AccountComputer, route: 'bridge' | 'lan' | null, lanAvailable: boolean): string {
-  if (route === 'bridge') return lanAvailable ? 'Through your account · Home network available' : 'Through your account'
-  if (route === 'lan') return 'via LAN'
-  if (computer.lanUrl) return 'Home network or account'
-  if (computer.device.online === true) return 'Online · via account'
-  if (computer.device.online === false) return 'Offline'
-  return 'via account'
-}
+export {
+  ACCOUNT_COMPUTERS_REFRESH_MS,
+  BUILTIN_STOPPED_COMPUTERS,
+  CANNOT_OPEN_COMPUTERS,
+  accountComputerLine,
+  useAccountComputers,
+  type AccountComputer,
+} from '@/lib/account-computers'
 
 function computerHealth(device: DeviceRow): 'online' | 'offline' | null {
   if (device.online === true) return 'online'
@@ -136,6 +77,9 @@ export function AccountComputersSection({
   app,
   currentAlive,
   onOpenSessions,
+  builtinStopped = false,
+  onStartBuiltin,
+  cannotOpen = false,
 }: {
   computers: AccountComputer[]
   /** The account's devices have loaded (else an empty list says nothing yet). */
@@ -145,19 +89,65 @@ export function AccountComputersSection({
   currentAlive: boolean | null
   /** Back to the Sessions of the server in use; absent while no server is connected. */
   onOpenSessions?: () => void
+  /** Desktop: the built-in server, which holds the account, is stopped. */
+  builtinStopped?: boolean
+  /** Desktop: starts the built-in server (without switching to it). */
+  onStartBuiltin?: () => Promise<void>
+  /** Desktop: signed in without the client role, so it cannot open others. */
+  cannotOpen?: boolean
 }) {
   const touch = useTouchFirst()
   const [opening, setOpening] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState<string | null>(null)
+  const [starting, setStarting] = useState(false)
   const lanAvailable = useAccountRouteStore((state) => state.lanAvailable)
+  const desktop = isDesktopShell()
+  if (builtinStopped) {
+    const start = async () => {
+      if (!onStartBuiltin) return
+      setStarting(true)
+      setError(null)
+      try {
+        await onStartBuiltin()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        setStarting(false)
+      }
+    }
+    return (
+      <>
+        <PanelSection title="Your computers">
+          <div className="flex items-center gap-3">
+            <p className="min-w-0 flex-1 text-xs leading-relaxed text-(--color-text-2)">{BUILTIN_STOPPED_COMPUTERS}</p>
+            {onStartBuiltin ? (
+              <Button type="button" variant="subtle" size="sm" onClick={() => { void start() }} disabled={starting}>
+                Start
+              </Button>
+            ) : null}
+          </div>
+        </PanelSection>
+        {error && <Callout tone="error" role="alert">{error}</Callout>}
+      </>
+    )
+  }
+  if (cannotOpen) {
+    return (
+      <PanelSection title="Your computers">
+        <p className="text-xs leading-relaxed text-(--color-text-2)">{CANNOT_OPEN_COMPUTERS}</p>
+      </PanelSection>
+    )
+  }
   if (computers.length === 0) {
     if (!loaded) return null
     return (
       <PanelSection title="Your computers">
         <div className="space-y-1 text-xs leading-relaxed text-(--color-text-2)">
           <p className="font-medium text-(--color-text)">No computers yet</p>
-          <p>On your computer, open OpenAgentd, go to Settings → Account and sign in. You approve it here.</p>
+          <p>{desktop
+            ? 'On another computer, open OpenAgentd, go to Settings → Account and sign in to your account.'
+            : 'On your computer, open OpenAgentd, go to Settings → Account and sign in. You approve it here.'}</p>
         </div>
       </PanelSection>
     )

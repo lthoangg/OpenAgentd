@@ -19,6 +19,7 @@ import {
   type Roles,
 } from '@/api/cloud'
 import { approvalProof, canApproveHere } from '@/lib/approval-proof'
+import { queryClient } from '@/lib/query-client'
 import { queryKeys } from './keys'
 
 /** How often the status is refetched while a sign-in is waiting on the user. */
@@ -46,6 +47,27 @@ export function useCloudStatusQuery() {
 /** The account's devices; this computer's own routes, so only while it is connected. */
 export function useCloudDevicesQuery(enabled: boolean) {
   return useQuery({ queryKey: queryKeys.cloud.devices(), queryFn: getCloudDevices, enabled, staleTime: 0 })
+}
+
+/**
+ * The desktop's "Your computers" (Settings → Server, ⌘K → Switch Server…):
+ * the same queries as Settings → Account, with the app's own client so they
+ * work wherever the list shows. Idle unless `enabled`.
+ */
+export function useDesktopCloudStatus(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.cloud.status(),
+    queryFn: getCloudStatus,
+    enabled,
+    refetchInterval: (query) => cloudPollInterval(query.state.data),
+    retry: false,
+  }, queryClient)
+}
+
+export function useDesktopCloudDevices(enabled: boolean) {
+  // Each read asks the cloud (60 per device per 10 minutes): refreshed by
+  // the list's own 30 s timer, and when the palette opens, not on focus.
+  return useQuery({ queryKey: queryKeys.cloud.devices(), queryFn: getCloudDevices, enabled, staleTime: 0, retry: false, refetchOnWindowFocus: false }, queryClient)
 }
 
 /** Requests to join, for a signer. Polled every 30 s while enabled. */

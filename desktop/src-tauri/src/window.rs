@@ -212,19 +212,26 @@ pub fn emit_frontend_command(app: &AppHandle, command: &str) {
     // emit would run the command in all of them. With no window yet, one is
     // being created and a global emit reaches it.
     let label = target_webview_window(app).map(|window| window.label().to_string());
-    let payload = frontend_command(command);
+    emit_while_mounting(app, label, "desktop-command", frontend_command(command));
+}
+
+/// Next id for an event [`emit_while_mounting`] repeats; the page runs each
+/// id once.
+pub fn next_event_id() -> u64 {
+    NEXT_FRONTEND_COMMAND_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Emit `event` to the window `label` (every window when `None`) a few
+/// times over half a second: a just-created or still-loading webview has no
+/// listener yet, and a single emit would be lost. The payload carries an id
+/// the page runs once.
+pub fn emit_while_mounting<S: serde::Serialize + Clone + Send + 'static>(app: &AppHandle, label: Option<String>, event: &'static str, payload: S) {
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        // If a tray command summons a just-created or still-loading webview,
-        // give React a short window to mount its event listener.
         for _ in 0..5 {
             let _ = match &label {
-                Some(label) => handle.emit_to(
-                    EventTarget::webview_window(label.as_str()),
-                    "desktop-command",
-                    payload.clone(),
-                ),
-                None => handle.emit("desktop-command", payload.clone()),
+                Some(label) => handle.emit_to(EventTarget::webview_window(label.as_str()), event, payload.clone()),
+                None => handle.emit(event, payload.clone()),
             };
             tokio::time::sleep(Duration::from_millis(100)).await;
         }

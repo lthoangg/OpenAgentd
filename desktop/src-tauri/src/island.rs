@@ -2037,8 +2037,12 @@ pub(crate) async fn open_session(app: &AppHandle, server: ServerId, session_id: 
     );
     match target.and_then(|label| app.get_webview_window(&label)) {
         Some(target) => {
-            app.emit_to(target.label(), "desktop-notification-clicked", open_payload(session_id, quiet))?;
             crate::window::show_window(&target);
+            // Repeated while the window may still be loading (a reload after
+            // a server switch, a window just opened): one emit could land
+            // before its listener and the click would open nothing.
+            let payload = open_payload(session_id, quiet, crate::window::next_event_id());
+            crate::window::emit_while_mounting(app, Some(target.label().to_string()), "desktop-notification-clicked", payload);
         }
         None => {
             crate::window::create_app_window_on_server(app, server, &path).await?;
@@ -2057,9 +2061,10 @@ fn open_path(session_id: &str, quiet: bool) -> String {
     }
 }
 
-/// What a window that switches to `session_id` is sent, with `quiet` only when set.
-fn open_payload(session_id: &str, quiet: bool) -> serde_json::Value {
-    let mut payload = serde_json::json!({ "sessionId": session_id });
+/// What a window that switches to `session_id` is sent, with `quiet` only
+/// when set. `id` lets the page open it once although it is sent repeatedly.
+fn open_payload(session_id: &str, quiet: bool, id: u64) -> serde_json::Value {
+    let mut payload = serde_json::json!({ "sessionId": session_id, "id": id });
     if quiet {
         payload["quiet"] = serde_json::json!(true);
     }
@@ -3171,8 +3176,8 @@ mod tests {
         assert_eq!(open_path(id, true), format!("/{id}?quiet=1"));
         assert_eq!(open_path(id, false), format!("/{id}"));
         assert_eq!(session_id_from_path(&open_path(id, true)).as_deref(), Some(id));
-        assert_eq!(open_payload(id, true), serde_json::json!({ "sessionId": id, "quiet": true }));
-        assert_eq!(open_payload(id, false), serde_json::json!({ "sessionId": id }));
+        assert_eq!(open_payload(id, true, 7), serde_json::json!({ "sessionId": id, "id": 7, "quiet": true }));
+        assert_eq!(open_payload(id, false, 8), serde_json::json!({ "sessionId": id, "id": 8 }));
     }
 
     #[test]

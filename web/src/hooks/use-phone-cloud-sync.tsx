@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { getPhoneCloudPending, type PendingRow } from '@/api/phone-cloud'
 import { ApprovalSheet } from '@/components/phone/ApprovalSheet'
 import { listenForNotificationTaps } from '@/lib/desktop-notifications'
-import { takeNativeTaps, tapTarget, type NotificationTarget } from '@/lib/notification-taps'
+import type { NotificationTarget } from '@/lib/notification-taps'
 import { openSessionOnServer } from '@/lib/open-on-server'
 import { usePhoneCloudStatus } from '@/queries/phone-cloud'
 
@@ -46,6 +46,8 @@ export function PhoneCloudSync() {
     }
     const check = async () => {
       if (document.visibilityState !== 'visible') return
+      // Loaded here, not at startup: the tap queue is read only on the phone.
+      const { takeNativeTaps, tapTarget } = await import('@/lib/notification-taps')
       const taps = await takeNativeTaps()
       if (cancelled) return
       // Only the newest session tap: older ones were superseded by it.

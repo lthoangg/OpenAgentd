@@ -11,8 +11,6 @@
 import type { InfiniteData } from '@tanstack/react-query'
 import type { ScheduledTaskResponse, SessionPageResponse, SessionResponse } from '@/api/types'
 import { sessionWorking } from '@/lib/active-sessions'
-import { currentServerRef } from '@/lib/notification-taps'
-import { serverToken } from '@/lib/server-refs'
 import { pathBasename } from '@/utils/workspace'
 
 /** Rows the medium inbox widget shows. */
@@ -130,6 +128,11 @@ export function buildWidgetSnapshot({ active, recent, tasks, now }: {
 /** Hand the snapshot to the native shell. Best effort: a widget is never worth an error. */
 export async function pushWidgetSnapshot(snapshot: WidgetSnapshot): Promise<void> {
   try {
+    // Loaded here, not at startup: only the phone writes widget snapshots.
+    const [{ currentServerRef }, { serverToken }] = await Promise.all([
+      import('@/lib/notification-taps'),
+      import('@/lib/server-refs'),
+    ])
     const server = serverToken(await currentServerRef())
     const { invoke } = await import('@tauri-apps/api/core')
     await invoke('widget_update_snapshot', { snapshot: server ? { ...snapshot, server } : snapshot })

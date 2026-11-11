@@ -13,6 +13,9 @@ mock.module('@tauri-apps/api/core', () => ({ invoke }))
 
 const { useWidgetSnapshot, WIDGET_PUSH_DEBOUNCE_MS } = await import('@/hooks/use-widget-snapshot')
 const { queryKeys } = await import('@/queries')
+// The push loads these on first use; loaded here, its import settles in a few microtasks.
+await import('@/lib/notification-taps')
+await import('@/lib/server-refs')
 
 function sessionPages(ids: string[], extra: Record<string, unknown> = {}) {
   return {

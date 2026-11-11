@@ -1,5 +1,7 @@
 import { getPlatform } from '@/hooks/use-platform'
-import { currentServerRef, notificationTarget, rememberNotificationTarget, type NotificationTarget } from '@/lib/notification-taps'
+// Type only: the tap bookkeeping loads with the first mobile notification,
+// outside the startup bundle.
+import type { NotificationTarget } from '@/lib/notification-taps'
 
 /**
  * ``input_needed`` — the lead is suspended on ``ask_user`` and cannot
@@ -163,7 +165,10 @@ async function mobileNotificationOptions(payload: DesktopNotificationPayload) {
   // Random rather than counted: iOS replaces a delivered notification that
   // reuses an identifier, and a counter would restart at every launch.
   const id = 1 + Math.floor(Math.random() * 0x7ffffffe)
-  if (payload.sessionId) rememberNotificationTarget(id, { sessionId: payload.sessionId, ...(await currentServerRef()) })
+  if (payload.sessionId) {
+    const { currentServerRef, rememberNotificationTarget } = await import('@/lib/notification-taps')
+    rememberNotificationTarget(id, { sessionId: payload.sessionId, ...(await currentServerRef()) })
+  }
   return { id, title: payload.title, body: payload.body, group: `openagentd-${payload.kind}` }
 }
 
@@ -224,7 +229,10 @@ export async function sendDesktopNotification(
  */
 export async function listenForNotificationTaps(onTarget: (target: NotificationTarget) => void): Promise<() => void> {
   if (!isMobileTauriRuntime() || getPlatform().os !== 'android') return () => {}
-  const { onAction } = await import('@tauri-apps/plugin-notification')
+  const [{ onAction }, { notificationTarget }] = await Promise.all([
+    import('@tauri-apps/plugin-notification'),
+    import('@/lib/notification-taps'),
+  ])
   const listener = await onAction((event) => {
     // Typed upstream as the send options; the plugin sends { actionId, notification: { id, ... } }.
     const { actionId, notification } = event as unknown as { actionId?: unknown; notification?: { id?: unknown } }

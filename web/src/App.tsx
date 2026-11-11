@@ -19,9 +19,13 @@ import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
 import { router } from './router'
 
 /**
- * A phone with a server saved shows the logo while it connects (a cold start
- * can spend seconds reading the access key); only one that is still not
- * connected after this long shows Servers. No server at all shows it at once.
+ * A phone with a saved server is ready as soon as the shell reports it: an
+ * external server has nothing to start, so the logo shows only for that
+ * answer and the access key read (the router and its own connection banner
+ * take over from there; the server answering is not waited for). A phone
+ * that is still not ready after this long (the shell or the key store not
+ * answering) shows Servers instead of the logo. No saved server at all, or a
+ * scanned connect link, shows it at once.
  */
 const PHONE_SERVERS_AFTER_MS = 10_000
 
@@ -49,14 +53,28 @@ function App() {
   // A phone has one server picker, its Servers screen: shown in place of the
   // loading logo once connecting takes a moment, or at once for a link.
   const [phoneServers, setPhoneServers] = useState(false)
-  // A saved LAN address of an account computer that no longer answers:
-  // open that computer through the account, once per launch.
+  // The phone's route to an account computer (`lib/account-route`): at launch
+  // the computer last opened is opened again (LAN or account, whichever the
+  // shell finds), and a LAN address that stopped answering moves to the
+  // account; on resume and on a network change it re-checks, and tells the
+  // shell (`cloud_poke`) the app came back or went away. A failed launch
+  // attempt shows Servers.
   useEffect(() => {
     if (!phoneAppShell()) return
-    void import('@/lib/account-lan-fallback')
-      .then((module) => module.fallBackToAccountOnce())
+    let cancelled = false
+    let stop: (() => void) | undefined
+    void import('@/lib/account-route')
+      .then((module) => {
+        if (cancelled) return 'skipped' as const
+        stop = module.startAccountRouteWatch()
+        return module.checkRouteAtLaunch()
+      })
       .then((outcome) => { if (outcome === 'failed') setPhoneServers(true) })
       .catch(() => {})
+    return () => {
+      cancelled = true
+      stop?.()
+    }
   }, [])
   useEffect(() => {
     if (!isPhone || ready) return

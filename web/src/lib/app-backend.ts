@@ -32,6 +32,12 @@ export interface AppBackendStatus {
    * origin that relays to this computer of the account). Absent elsewhere.
    */
   account_device?: AccountBridgeDevice | null
+  /**
+   * Phone shell: the account computer last opened with `cloud_open_computer`
+   * (over its LAN address or the account); cleared when the person switches
+   * to some other server. Absent from an older shell.
+   */
+  last_account_device?: string | null
 }
 
 /** Where the phone remembers which saved LAN server is which account computer. */

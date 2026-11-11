@@ -38,6 +38,7 @@ const { NOT_A_CODE } = await import('@/components/phone/useScanAnyCode')
 const { ACCOUNT_COMPUTERS_REFRESH_MS } = await import('@/components/phone/AccountComputers')
 const { queryClient } = await import('@/lib/query-client')
 const { resetPhoneCloudPush } = await import('@/queries/phone-cloud')
+const { useAccountRouteStore } = await import('@/stores/useAccountRouteStore')
 
 import type { DeviceRow, PendingRow, PhoneCloudStatus } from '@/api/phone-cloud'
 import type { AppBackendStatus } from '@/lib/app-backend'
@@ -285,9 +286,9 @@ describe('Your computers', () => {
     window.localStorage.setItem('openagentd.cloud.lanComputers', JSON.stringify({ '3F9A21C4': LAN }))
     shell(CONNECTED, { cloud_devices: () => [ME, MAC] }, app({ servers: [{ base_url: NAS, name: 'Home NAS' }, { base_url: LAN, name: 'Studio Mac' }] }))
     render(<ServersScreen active onOpenSessions={() => {}} />)
-    await screen.findByText('via LAN')
+    await screen.findByText('Home network or account')
     const row = rowOf('Studio Mac')
-    expect(within(row).getByText('via LAN')).toBeTruthy()
+    expect(within(row).getByText('Home network or account')).toBeTruthy()
     expect(screen.getAllByText('Studio Mac')).toHaveLength(1)
   })
 
@@ -330,7 +331,7 @@ describe('a computer whose LAN address stopped answering', () => {
     Object.defineProperty(window, 'location', { configurable: true, value: fakeLocation(realLocation, reload) })
     try {
       render(<ServersScreen active onOpenSessions={onOpenSessions} />)
-      await screen.findByText('via LAN')
+      await screen.findByText('Home network or account')
     const row = rowOf('Studio Mac')
       await waitFor(() => expect(within(row).getByRole('button', { name: 'Use Studio Mac' })).toBeTruthy())
       expect(within(row).queryByText('In use')).toBeNull()
@@ -370,6 +371,121 @@ describe('a computer whose LAN address stopped answering', () => {
     const row = rowOf('Studio Mac')
     fireEvent.click(await within(row).findByRole('button', { name: 'Use Studio Mac' }))
     await waitFor(() => expect(ran('cloud_open_computer')).toHaveLength(1))
+  })
+})
+
+describe('the route in use, and the way back to the home network', () => {
+  const BRIDGED = () => app({
+    base_url: BRIDGE,
+    servers: [{ base_url: LAN, name: 'Studio Mac' }],
+    account_device: { device_id: 'dev-mac', fingerprint: '3F9A 21C4', kind: 'macos' },
+  })
+  const withLan = () => window.localStorage.setItem('openagentd.cloud.lanComputers', JSON.stringify({ '3F9A21C4': LAN }))
+  afterEach(() => { useAccountRouteStore.setState({ lanAvailable: {} }) })
+  const computerRow = async (subtitle: string) => (await screen.findByText(subtitle)).closest('[data-server-row]') as HTMLElement
+
+  it('says "Through your account" on the bridge, and offers Use home network beside Sessions', async () => {
+    withLan()
+    window.__OAD_API_BASE_URL__ = BRIDGE
+    shell(CONNECTED, { cloud_devices: () => [ME, MAC] }, BRIDGED())
+    render(<ServersScreen active onOpenSessions={() => {}} />)
+    const row = await computerRow('Through your account')
+    expect(within(row).queryByText(/via LAN/)).toBeNull()
+    expect(within(row).getByText('In use')).toBeTruthy()
+    expect(within(row).getByRole('button', { name: 'Use home network for Studio Mac' })).toBeTruthy()
+    expect(within(row).getByRole('button', { name: 'Open sessions on Studio Mac' })).toBeTruthy()
+  })
+
+  it('has no home network button for a computer only the account reaches', async () => {
+    window.__OAD_API_BASE_URL__ = BRIDGE
+    shell(CONNECTED, { cloud_devices: () => [ME, MAC] }, app({ base_url: BRIDGE, account_device: { device_id: 'dev-mac', fingerprint: '3F9A 21C4', kind: 'macos' } }))
+    render(<ServersScreen active onOpenSessions={() => {}} />)
+    const row = await waitFor(() => rowOf('macOS · 3F9A 21C4'))
+    await waitFor(() => expect(within(row).getByText('Through your account')).toBeTruthy())
+    expect(within(row).queryByRole('button', { name: /Use home network/ })).toBeNull()
+  })
+
+  it('does not claim via LAN for a computer that is not in use', async () => {
+    withLan()
+    shell(CONNECTED, { cloud_devices: () => [ME, MAC] }, app({ servers: [{ base_url: NAS, name: 'Home NAS' }, { base_url: LAN, name: 'Studio Mac' }] }))
+    render(<ServersScreen active onOpenSessions={() => {}} />)
+    const row = await computerRow('Home network or account')
+    expect(within(row).getByText('Home network or account')).toBeTruthy()
+    expect(within(row).queryByText('via LAN')).toBeNull()
+    expect(within(row).queryByRole('button', { name: /Use home network/ })).toBeNull()
+  })
+
+  it('says when the re-check found the home network but did not move', async () => {
+    withLan()
+    useAccountRouteStore.setState({ lanAvailable: { 'dev-mac': true } })
+    window.__OAD_API_BASE_URL__ = BRIDGE
+    shell(CONNECTED, { cloud_devices: () => [ME, MAC] }, BRIDGED())
+    render(<ServersScreen active onOpenSessions={() => {}} />)
+    expect(await computerRow('Through your account · Home network available')).toBeTruthy()
+  })
+
+  it('switches to the home network with its saved address, and reloads onto it', async () => {
+    withLan()
+    useAccountRouteStore.setState({ lanAvailable: { 'dev-mac': true } })
+    window.__OAD_API_BASE_URL__ = BRIDGE
+    shell(CONNECTED, {
+      cloud_devices: () => [ME, MAC],
+      cloud_open_computer: () => ({ status: app({ base_url: LAN, servers: [{ base_url: LAN, name: 'Studio Mac' }] }), via: 'lan' }),
+    }, BRIDGED())
+    const reload = mock(() => {})
+    const realLocation = window.location
+    Object.defineProperty(window, 'location', { configurable: true, value: fakeLocation(realLocation, reload) })
+    try {
+      render(<ServersScreen active onOpenSessions={() => {}} />)
+      const row = await computerRow('Through your account · Home network available')
+      fireEvent.click(await within(row).findByRole('button', { name: 'Use home network for Studio Mac' }))
+      await waitFor(() => expect(ran('cloud_open_computer')).toHaveLength(1))
+      expect(ran('cloud_open_computer')[0].args).toEqual({ deviceId: 'dev-mac', lanBaseUrl: LAN })
+      await waitFor(() => expect(reload).toHaveBeenCalledTimes(1))
+      expect(useAccountRouteStore.getState().lanAvailable).toEqual({})
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: realLocation })
+    }
+  })
+
+  it('shows the error when the switch fails, and stays put', async () => {
+    withLan()
+    window.__OAD_API_BASE_URL__ = BRIDGE
+    shell(CONNECTED, {
+      cloud_devices: () => [ME, MAC],
+      cloud_open_computer: () => { throw new Error('This computer is offline, or not signed in to your account.') },
+    }, BRIDGED())
+    render(<ServersScreen active onOpenSessions={() => {}} />)
+    const row = await computerRow('Through your account')
+    fireEvent.click(await within(row).findByRole('button', { name: 'Use home network for Studio Mac' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('This computer is offline')
+  })
+
+  it('says so when the shell kept the account (the home network lost the race)', async () => {
+    withLan()
+    window.__OAD_API_BASE_URL__ = BRIDGE
+    shell(CONNECTED, { cloud_devices: () => [ME, MAC], cloud_open_computer: () => ({ status: BRIDGED(), via: 'account' }) }, BRIDGED())
+    render(<ServersScreen active onOpenSessions={() => {}} />)
+    const row = await computerRow('Through your account')
+    fireEvent.click(await within(row).findByRole('button', { name: 'Use home network for Studio Mac' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('Still using your account')
+  })
+
+  it('offers the button on touch too, where the whole row opens it', async () => {
+    withLan()
+    window.__OAD_API_BASE_URL__ = BRIDGE
+    const realMatchMedia = window.matchMedia
+    window.matchMedia = (() => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} })) as unknown as typeof window.matchMedia
+    try {
+      shell(CONNECTED, { cloud_devices: () => [ME, MAC] }, BRIDGED())
+      render(<ServersScreen active onOpenSessions={() => {}} />)
+      const row = await computerRow('Through your account')
+      expect(await within(row).findByRole('button', { name: 'Use home network for Studio Mac' })).toBeTruthy()
+      // Touch has no Sessions button: a tap on the row's name opens it.
+      expect(within(row).queryByRole('button', { name: 'Open sessions on Studio Mac' })).toBeNull()
+    } finally {
+      window.matchMedia = realMatchMedia
+    }
   })
 })
 

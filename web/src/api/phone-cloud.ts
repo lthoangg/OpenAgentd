@@ -165,6 +165,18 @@ export const phoneCloudRemoveDevice = (deviceId: string) => call<PhoneCloudStatu
 export const phoneCloudSignOut = () => call<PhoneCloudStatus>('cloud_sign_out')
 export const openPhoneCloudComputer = (deviceId: string, lanBaseUrl: string | null) =>
   call<OpenedComputer>('cloud_open_computer', { deviceId, lanBaseUrl })
+
+/** Why the shell is told to look at its relay link now (`cloud_poke`). */
+export type CloudPokeReason = 'resumed' | 'network_changed' | 'user_retry' | 'background'
+
+/**
+ * Tells the shell the app came back, went away, or the network changed, so it
+ * checks its relay link at once instead of on its own clock. Fire and forget:
+ * an older shell has no `cloud_poke`, and nothing depends on the answer.
+ */
+export function cloudPoke(why: CloudPokeReason): void {
+  void call<void>('cloud_poke', { why }).catch(() => {})
+}
 /** What `cloud_push_register` answers (`mobile/src-tauri/src/push.rs`). */
 export interface PushState {
   status: string

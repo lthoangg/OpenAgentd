@@ -39,7 +39,8 @@ import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 
 const invoke = mock(async (..._args: unknown[]): Promise<unknown> => null)
 mock.module('@tauri-apps/api/core', () => ({ invoke }))
-mock.module('@/hooks/use-platform', () => ({ getPlatform: () => ({ isTauri: true }) }))
+let platform: { isTauri: boolean; os?: string } = { isTauri: true }
+mock.module('@/hooks/use-platform', () => ({ getPlatform: () => platform }))
 
 type AuthModule = typeof import("@/api/auth")
 
@@ -148,6 +149,7 @@ describe("access key storage", () => {
 
   it('migrates the pre-scoping global key for an explicitly selected saved server', async () => {
     window.localStorage.setItem('openagentd.accessKey', 'legacy-global-key')
+    window.localStorage.setItem('openagentd.activeBackendUrl', 'http://192.168.1.20:4082')
     invoke.mockImplementation(async (...args: unknown[]) => String(args[0]) === 'secure_get_access_key' ? null : undefined)
     const auth = await freshAuth()
 
@@ -157,6 +159,58 @@ describe("access key storage", () => {
       key: 'legacy-global-key',
     })
     expect(window.localStorage.getItem('openagentd.accessKey')).toBeNull()
+  })
+
+  it('never hands the pre-scoping global key to another server, nor migrates it there', async () => {
+    // The key was typed for the server the app was on (the remembered one).
+    window.localStorage.setItem('openagentd.accessKey', 'legacy-global-key')
+    window.localStorage.setItem('openagentd.activeBackendUrl', 'http://192.168.1.20:4082')
+    invoke.mockImplementation(async (...args: unknown[]) => String(args[0]) === 'secure_get_access_key' ? null : undefined)
+    const auth = await freshAuth()
+
+    await expect(auth.getStoredAccessKey('http://192.168.1.99:4082')).resolves.toBeUndefined()
+    expect(auth.getAccessKey('http://192.168.1.99:4082')).toBeUndefined()
+    expect(auth.getToken('http://192.168.1.99:4082/api/x')).toBeUndefined()
+    expect(invoke).not.toHaveBeenCalledWith('secure_set_access_key', expect.anything())
+    expect(window.localStorage.getItem('openagentd.accessKey')).toBe('legacy-global-key')
+  })
+
+  it('has no origin for the pre-scoping global key when the shell remembered no server', async () => {
+    window.localStorage.setItem('openagentd.accessKey', 'legacy-global-key')
+    invoke.mockImplementation(async (...args: unknown[]) => String(args[0]) === 'secure_get_access_key' ? null : undefined)
+    const auth = await freshAuth()
+
+    await expect(auth.getStoredAccessKey('http://192.168.1.20:4082')).resolves.toBeUndefined()
+    expect(invoke).not.toHaveBeenCalledWith('secure_set_access_key', expect.anything())
+  })
+
+  it('never gives the global key to a loopback origin on a phone (an account bridge)', async () => {
+    window.localStorage.setItem('openagentd.accessKey', 'legacy-global-key')
+    window.localStorage.setItem('openagentd.activeBackendUrl', 'http://127.0.0.1:5999')
+    invoke.mockImplementation(async (...args: unknown[]) => String(args[0]) === 'secure_get_access_key' ? null : undefined)
+    platform = { isTauri: true, os: 'ios' }
+    try {
+      const auth = await freshAuth()
+      await expect(auth.getStoredAccessKey('http://127.0.0.1:5999')).resolves.toBeUndefined()
+      expect(auth.getAccessKey('http://127.0.0.1:5999')).toBeUndefined()
+      expect(invoke).not.toHaveBeenCalledWith('secure_set_access_key', expect.anything())
+    } finally {
+      platform = { isTauri: true }
+    }
+  })
+
+  it('in a browser the global key belongs to the page origin only', async () => {
+    window.localStorage.setItem('openagentd.accessKey', 'legacy-global-key')
+    platform = { isTauri: false }
+    try {
+      const auth = await freshAuth()
+      expect(auth.getAccessKey(window.location.origin)).toBe('legacy-global-key')
+      expect(auth.getAccessKey('/api')).toBe('legacy-global-key')
+      expect(auth.getAccessKey('http://192.168.1.20:4082')).toBeUndefined()
+      await expect(auth.getStoredAccessKey('http://192.168.1.20:4082')).resolves.toBeUndefined()
+    } finally {
+      platform = { isTauri: true }
+    }
   })
 
   it("installs request auth when the native key resolves before the backend URL is applied", async () => {
@@ -191,11 +245,13 @@ describe("access key storage", () => {
     expect(auth.getAccessKey('http://127.0.0.1:4999')).toBeUndefined()
   })
 
-  it("falls back to the legacy global key when no per-backend key exists", async () => {
+  it("falls back to the legacy global key for the origin it belonged to when no per-backend key exists", async () => {
     window.localStorage.setItem('openagentd.accessKey', 'legacy-secret')
+    window.localStorage.setItem('openagentd.activeBackendUrl', 'http://127.0.0.1:4082')
     const auth = await freshAuth()
 
     expect(auth.getAccessKey('http://127.0.0.1:4082')).toBe('legacy-secret')
+    expect(auth.getAccessKey('http://127.0.0.1:4999')).toBeUndefined()
   })
 
   it("removes only the targeted backend key when cleared", async () => {

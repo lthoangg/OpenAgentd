@@ -89,7 +89,7 @@ const ran = (command: string) => calls.filter((call) => call.command === command
 // The Account section on the Servers screen: ServersScreen.account.test.tsx.
 
 describe('computers on the Servers screen', () => {
-  it('shows a saved LAN server that is an account computer once, "via LAN", and opens it by its address', async () => {
+  it('shows a saved LAN server that is an account computer once, as "Home network or account", and opens it by its address', async () => {
     window.localStorage.setItem('openagentd.cloud.lanComputers', JSON.stringify({ '3F9A21C4': LAN }))
     shell(CONNECTED, {
       cloud_devices: () => [ME, MAC],
@@ -97,7 +97,7 @@ describe('computers on the Servers screen', () => {
     })
     render(<ServersScreen active onOpenSessions={() => {}} />)
 
-    expect(await screen.findByText('via LAN')).toBeTruthy()
+    expect(await screen.findByText('Home network or account')).toBeTruthy()
     // One row for the computer, titled with the name typed for its saved
     // server: the saved server is not listed again.
     expect(screen.getAllByText('Studio Mac')).toHaveLength(1)

@@ -4,10 +4,20 @@
  * One row per server of the account (spec 3.4: the phone opens sessions
  * only on devices with the server role; itself and clients left out). A saved LAN server that is known to be the same computer (its
  * remembered fingerprint matches, see `lib/computer-fingerprints`) is that
- * row, "via LAN", titled with the name the person gave it, and no longer
- * appears again in the saved list. Opening a row asks the shell for the LAN
- * address first and the account's relay otherwise, then switches to it like
- * choosing a saved server.
+ * row, titled with the name the person gave it, and no longer appears again
+ * in the saved list. Opening a row asks the shell to try the LAN address and
+ * the account's relay together (the LAN wins when it answers fast and takes
+ * the stored key), then switches to it like choosing a saved server.
+ *
+ * The line under a computer follows the route in use: "Through your account"
+ * on its bridge, "via LAN" on its LAN address while that answers. A computer
+ * not in use never claims "via LAN": a row with a saved LAN address says
+ * "Home network or account", one without says what the account knows
+ * (online, offline). On its bridge, a row with a saved LAN address also
+ * offers "Use home network" (touch and pointer alike); the route re-check
+ * (`lib/account-route`) adds "Home network available" to the line when it
+ * answers but the phone did not move by itself (a reply is running, or the
+ * composer holds text). A failed switch shows the error below the list.
  *
  * The dot is the cloud's word on whether the computer holds its relay
  * connection (`online`; none when it could not say). It can be stale, so an
@@ -33,6 +43,7 @@ import {
 import { normalizeFingerprint, useLanComputers } from '@/lib/computer-fingerprints'
 import { pingServer } from '@/lib/server-probe'
 import { usePhoneCloudDevices, usePhoneCloudStatus } from '@/queries/phone-cloud'
+import { setLanAvailable, useAccountRouteStore } from '@/stores/useAccountRouteStore'
 
 /** How often the computers (and their dots) refresh while the screen is up. */
 export const ACCOUNT_COMPUTERS_REFRESH_MS = 30_000
@@ -100,9 +111,14 @@ export function useAccountComputers(active: boolean) {
   return { computers, devices: connected ? devicesQ.data : undefined, connected, hiddenServerUrls, app, currentAlive, refresh }
 }
 
-/** The line under a computer: how the app reaches it, and whether it is up. */
-function computerLine(computer: AccountComputer): string {
-  if (computer.lanUrl) return 'via LAN'
+/**
+ * The line under a computer: the route in use when the app is on it, else
+ * what could reach it (and whether it is up).
+ */
+function computerLine(computer: AccountComputer, route: 'bridge' | 'lan' | null, lanAvailable: boolean): string {
+  if (route === 'bridge') return lanAvailable ? 'Through your account · Home network available' : 'Through your account'
+  if (route === 'lan') return 'via LAN'
+  if (computer.lanUrl) return 'Home network or account'
   if (computer.device.online === true) return 'Online · via account'
   if (computer.device.online === false) return 'Offline'
   return 'via account'
@@ -134,6 +150,7 @@ export function AccountComputersSection({
   const [opening, setOpening] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState<string | null>(null)
+  const lanAvailable = useAccountRouteStore((state) => state.lanAvailable)
   if (computers.length === 0) {
     if (!loaded) return null
     return (
@@ -167,6 +184,35 @@ export function AccountComputersSection({
     else onOpenSessions?.()
   }
 
+  // From the account bridge to the computer's saved home-network address.
+  const switchToHomeNetwork = async (computer: AccountComputer) => {
+    if (!computer.lanUrl) return
+    setOpening(computer.device.device_id)
+    setError(null)
+    setOpened(null)
+    const result = await connectAccountComputer({
+      deviceId: computer.device.device_id,
+      lanBaseUrl: computer.lanUrl,
+      label: computer.label,
+      currentBaseUrl: currentBackendOrigin(app),
+    })
+    setOpening(null)
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+    if (result.via !== 'lan') {
+      // The shell found the home network slower or its key refused: still on the account.
+      setError("Your home network didn't answer, or doesn't accept this phone's key. Still using your account.")
+      if (result.reload) reloadForBackendSwitch()
+      return
+    }
+    setLanAvailable(computer.device.device_id, false)
+    setOpened('Opened over your network.')
+    if (result.reload) reloadForBackendSwitch()
+    else onOpenSessions?.()
+  }
+
   const onExternal = app?.mode === 'external' || Boolean(app?.external)
   return (
     <>
@@ -183,15 +229,21 @@ export function AccountComputersSection({
           const onLan = Boolean(computer.lanUrl && app && normalizeServerBaseUrl(app.base_url) === computer.lanUrl && currentAlive === true)
           const inUse = Boolean(onOpenSessions) && onExternal && (onBridge || onLan)
           const idle = opening === null
+          const homeNetwork = onBridge && computer.lanUrl ? (
+            <Button type="button" variant="subtle" size="sm" aria-label={`Use home network for ${computer.label}`} onClick={() => { void switchToHomeNetwork(computer) }} disabled={!idle}>
+              Use home network
+            </Button>
+          ) : null
           return (
             <ServerRow
               key={computer.device.device_id}
               health={computerHealth(computer.device)}
               title={computer.label}
-              subtitle={computerLine(computer)}
+              subtitle={computerLine(computer, onBridge ? 'bridge' : onLan ? 'lan' : null, Boolean(lanAvailable[computer.device.device_id]))}
               inUse={inUse}
               onOpen={touch && idle ? (inUse ? onOpenSessions : () => { void open(computer) }) : undefined}
             >
+              {homeNetwork}
               {inUse ? (
                 touch ? null : (
                   <Button type="button" variant="subtle" size="sm" aria-label={`Open sessions on ${computer.label}`} onClick={onOpenSessions}>

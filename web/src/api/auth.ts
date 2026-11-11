@@ -32,6 +32,8 @@ declare global {
 const TOKEN_KEY = '__OAD_TOKEN__'
 const ACCESS_KEY_STORAGE = 'openagentd.accessKey'
 const ACCESS_KEY_STORAGE_PREFIX = 'openagentd.accessKey:'
+/** Where `use-app-backend-bootstrap` remembers the external server the app was on. */
+const ACTIVE_BACKEND_URL_STORAGE = 'openagentd.activeBackendUrl'
 const nativeAccessKeys = new Map<string, string>()
 const nativeAccessKeyMisses = new Set<string>()
 const nativeAccessKeyReads = new Map<string, Promise<string | undefined>>()
@@ -59,6 +61,50 @@ function accessKeyStorageKey(baseUrl: string | undefined): string | null {
   return scope ? `${ACCESS_KEY_STORAGE_PREFIX}${scope}` : null
 }
 
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const host = new URL(origin).hostname
+    return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The one origin the global key from before per-server keys can belong to.
+ * That key was typed for a single server, so it is never offered to another:
+ * not sent as that server's bearer token, not migrated into its secure slot.
+ * A browser is served by its backend, so it is the page's own origin. In a
+ * shell it is the server the app was on (`openagentd.activeBackendUrl`); a
+ * phone's loopback origin is an account bridge, which never had a typed key.
+ */
+function legacyKeyOrigin(): string | null {
+  if (typeof window === 'undefined') return null
+  const { isTauri, os } = getPlatform()
+  if (!isTauri) return window.location.origin
+  let remembered: string | null = null
+  try {
+    remembered = window.localStorage.getItem(ACTIVE_BACKEND_URL_STORAGE)
+  } catch {
+    return null
+  }
+  let origin: string
+  try {
+    origin = new URL(remembered ?? '').origin
+  } catch {
+    return null
+  }
+  if ((os === 'ios' || os === 'android') && isLoopbackOrigin(origin)) return null
+  return origin
+}
+
+/** The pre-scoping global key, only for the origin it plausibly belonged to. */
+function legacyKeyFor(origin: string | null): string | null {
+  if (!origin || typeof window === 'undefined') return null
+  if (legacyKeyOrigin() !== origin) return null
+  return window.localStorage.getItem(ACCESS_KEY_STORAGE) || null
+}
+
 export function getAccessKey(baseUrl?: string): string | undefined {
   if (typeof window === 'undefined') return undefined
   const scopedKey = accessKeyStorageKey(baseUrl)
@@ -66,7 +112,7 @@ export function getAccessKey(baseUrl?: string): string | undefined {
     const scoped = window.localStorage.getItem(scopedKey)
     if (scoped) return scoped
   }
-  return window.localStorage.getItem(ACCESS_KEY_STORAGE) || undefined
+  return legacyKeyFor(normalizeAccessKeyScope(baseUrl ?? apiBaseUrl())) ?? undefined
 }
 
 /** Uses the shell credential store when available; browsers and dev retain the
@@ -94,7 +140,7 @@ export async function getStoredAccessKey(baseUrl?: string): Promise<string | und
     }
     const scopedLegacyKey = `${ACCESS_KEY_STORAGE_PREFIX}${origin}`
     const scopedLegacy = window.localStorage.getItem(scopedLegacyKey)
-    const globalLegacy = window.localStorage.getItem(ACCESS_KEY_STORAGE)
+    const globalLegacy = legacyKeyFor(origin)
     const legacyStorageKey = scopedLegacy ? scopedLegacyKey : globalLegacy ? ACCESS_KEY_STORAGE : null
     const legacy = scopedLegacy || globalLegacy
     if (legacy && legacyStorageKey) {

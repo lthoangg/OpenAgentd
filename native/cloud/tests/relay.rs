@@ -124,6 +124,65 @@ async fn a_controller_reaches_the_host_through_the_relay() {
     assert_eq!(sessions.count(), 1);
 }
 
+/// Sends one stream through `tunnel` and checks the echo.
+async fn round_trip(tunnel: &relay::Tunnel, text: &str) {
+    let mut s = tunnel.session.open().unwrap();
+    s.write_all(text.as_bytes()).await.unwrap();
+    s.shutdown().await.unwrap();
+    let mut back = Vec::new();
+    tokio::time::timeout(Duration::from_secs(5), s.read_to_end(&mut back)).await.unwrap().unwrap();
+    assert_eq!(back, text.to_ascii_uppercase().into_bytes());
+}
+
+#[tokio::test]
+async fn a_paired_session_outlives_its_presence_socket() {
+    for code in [4008, 4000, 1011] {
+        let fake = Fake::new();
+        let base = fake.serve().await;
+        let (phone, server) = account(&fake, &base).await;
+        let (_h, sessions, _stop) = start_host(&server).await;
+        let host_box = phone.box_of(&server.cloud.device_id()).unwrap();
+        let tunnel = relay::connect(&phone.cloud, &relay::http1_client(), &server.cloud.device_id(), &host_box, Join(Duration::from_millis(2))).await.unwrap();
+        round_trip(&tunnel, "before").await;
+        // The daily recycle, another copy taking over, or any blip.
+        fake.close_presence(code);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(fake.1.lock().unwrap().presence.is_empty(), "{code}: presence is gone");
+        assert!(!tunnel.session.is_closed(), "{code}: the session ended with presence: {:?}", *tunnel.ended.borrow());
+        round_trip(&tunnel, "after").await;
+        assert_eq!(sessions.count(), 1, "{code}");
+    }
+}
+
+#[tokio::test]
+async fn a_locked_account_or_removed_host_ends_the_sessions_with_presence() {
+    for code in [4011, 4012, 4001] {
+        let fake = Fake::new();
+        let base = fake.serve().await;
+        let (phone, server) = account(&fake, &base).await;
+        let (_h, sessions, _stop) = start_host(&server).await;
+        let host_box = phone.box_of(&server.cloud.device_id()).unwrap();
+        let mut tunnel = relay::connect(&phone.cloud, &relay::http1_client(), &server.cloud.device_id(), &host_box, Join(Duration::from_millis(2))).await.unwrap();
+        fake.close_presence(code);
+        let closed = tokio::time::timeout(Duration::from_secs(5), tunnel.wait_closed()).await.expect("the session ends");
+        assert_eq!(closed, code);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(sessions.count(), 0, "{code}");
+    }
+}
+
+#[tokio::test]
+async fn presence_that_never_opens_times_out() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (_phone, server) = account(&fake, &base).await;
+    // The upgrade is never answered in time.
+    fake.1.lock().unwrap().presence_delay = Some(Duration::from_secs(5));
+    let (presence, _stop) = spawn_presence(&server, HostOptions { open_timeout: Duration::from_millis(300), ..HostOptions::default() });
+    let ended = tokio::time::timeout(Duration::from_secs(3), presence).await.expect("it gives up on its own").unwrap();
+    assert_eq!(ended, RelayError::TimedOut);
+}
+
 #[tokio::test]
 async fn the_usage_view_says_which_hosts_are_online() {
     let fake = Fake::new();

@@ -136,12 +136,27 @@ pub struct Session {
 /// Polls until the person approves the device code, denies it, or it
 /// expires. A person on the waitlist cannot approve, so this ends in
 /// [`FlowError::Expired`] for them; the UI says so.
+///
+/// A poll that gets no answer, `429 rate_limited` or a 5xx is tried again
+/// (after `Retry-After` when the cloud sends one) until the code expires;
+/// then the last such error is returned.
 pub async fn wait_for_session(cloud: &Cloud, code: &DeviceCode) -> FlowResult<Session> {
     let deadline = Instant::now() + Duration::from_secs(code.expires_in);
     let mut interval = Duration::from_secs(code.interval);
     loop {
         // The first poll goes at once: the person may have approved already.
-        let poll = cloud.device_token(code).await?;
+        let poll = match cloud.device_token(code).await {
+            Ok(p) => p,
+            Err(e) if e.is_transient() => {
+                let wait = retry_wait(interval, &e);
+                if Instant::now() + wait > deadline {
+                    return Err(e.into());
+                }
+                tokio::time::sleep(wait).await;
+                continue;
+            }
+            Err(e) => return Err(e.into()),
+        };
         match &poll {
             TokenPoll::Session { session, account_id } => return Ok(Session { session: session.clone(), account_id: account_id.clone() }),
             TokenPoll::Denied => return Err(FlowError::Denied),
@@ -154,6 +169,14 @@ pub async fn wait_for_session(cloud: &Cloud, code: &DeviceCode) -> FlowResult<Se
         }
         tokio::time::sleep(interval).await;
     }
+}
+
+/// How long to wait before polling again after a transient error: the
+/// poll interval, or the cloud's `Retry-After` when that is longer (at
+/// most 10 minutes, the life of a code).
+pub fn retry_wait(interval: Duration, e: &ApiError) -> Duration {
+    let asked = Duration::from_secs(e.retry_after.unwrap_or(0).min(600));
+    interval.max(asked)
 }
 
 // ---- Member: a device in an account -------------------------------------
@@ -426,7 +449,12 @@ pub async fn await_added(member: &mut Member, join: JoinCode, req: &JoinRequest,
         if now.blob == head.blob {
             // Still waiting, unless the request is gone (rejected or expired).
             return match cloud.pending(&req.enrollment_id).await {
-                Err(e) if request_gone(&e) => Err(FlowError::JoinEnded),
+                // Adding the device also ends its request: when the roster
+                // changed between the two reads, look at it on the next turn.
+                Err(e) if request_gone(&e) => match cloud.roster().await {
+                    Ok(again) if again.blob != head.blob => Ok(None),
+                    _ => Err(FlowError::JoinEnded),
+                },
                 Err(e) => Err(e.into()),
                 Ok(_) => Ok(None),
             };
@@ -449,6 +477,133 @@ pub async fn await_added(member: &mut Member, join: JoinCode, req: &JoinRequest,
     .await?;
     member.roster = Some(added.clone());
     Ok(added)
+}
+
+/// Withdraws a request to join (a pending enrollment or an invitation
+/// claim) that will not finish, so it does not hold one of the account's
+/// few pending places until it expires. Armed when the request is posted:
+/// dropped while armed (the person closed the sheet, the task was
+/// aborted), it sends the cancel in the background; [`Withdraw::now`]
+/// sends it and waits; [`Withdraw::keep`] disarms it once the device is in.
+/// Best effort either way: a request that is already gone answers
+/// `not_found`, which is fine.
+pub struct Withdraw {
+    cloud: Option<Cloud>,
+    enrollment_id: String,
+}
+
+impl std::fmt::Debug for Withdraw {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Withdraw({}, armed: {})", self.enrollment_id, self.cloud.is_some())
+    }
+}
+
+impl Withdraw {
+    /// Arms a cancel of `enrollment_id`, signed by `cloud`'s device.
+    pub fn arm(cloud: &Cloud, enrollment_id: &str) -> Self {
+        Withdraw { cloud: Some(cloud.detached()), enrollment_id: enrollment_id.to_string() }
+    }
+
+    /// The device is in: nothing to cancel.
+    pub fn keep(mut self) {
+        self.cloud = None;
+    }
+
+    /// Cancels the request now and waits for the answer (ignored).
+    pub async fn now(mut self) {
+        if let Some(cloud) = self.cloud.take() {
+            let _ = cloud.cancel_pending(&self.enrollment_id).await;
+        }
+    }
+}
+
+impl Drop for Withdraw {
+    fn drop(&mut self) {
+        let Some(cloud) = self.cloud.take() else { return };
+        let id = std::mem::take(&mut self.enrollment_id);
+        // Outside a runtime there is nothing to send it with: the request
+        // then expires on its own.
+        if let Ok(rt) = tokio::runtime::Handle::try_current() {
+            let sending = Sending::start();
+            rt.spawn(async move {
+                let _ = cloud.cancel_pending(&id).await;
+                drop(sending);
+            });
+        }
+    }
+}
+
+/// Cancels sent from [`Withdraw`]'s drop that have not been answered yet.
+static SENDING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static SENT: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
+struct Sending;
+
+impl Sending {
+    fn start() -> Self {
+        SENDING.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Sending
+    }
+}
+
+impl Drop for Sending {
+    fn drop(&mut self) {
+        SENDING.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        SENT.notify_waiters();
+    }
+}
+
+/// Waits, at most `limit`, for the cancels of dropped requests to be sent:
+/// for a process about to exit (a command line cancelled with Ctrl-C).
+pub async fn settle_withdrawals(limit: Duration) {
+    let _ = tokio::time::timeout(limit, async {
+        loop {
+            let sent = SENT.notified();
+            if SENDING.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+                return;
+            }
+            sent.await;
+        }
+    })
+    .await;
+}
+
+/// Where [`join_with_code`] is, for the UI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JoinStep<'a> {
+    /// The request is posted; waiting for a device that approves.
+    Requested,
+    /// Both screens show this code; waiting for the person to approve.
+    Code(&'a str),
+}
+
+/// Joins with the 6-digit code from start to end: posts the request, waits
+/// for a signer, then for the roster that adds this device. A request that
+/// does not end in this device joining is cancelled (on an error, a
+/// timeout, or when this future is dropped), so failed joins do not use
+/// up the account's 3 pending places. An empty account answers
+/// [`FlowError::EmptyAccount`] with the session unspent, as
+/// [`request_to_join`] does.
+pub async fn join_with_code(member: &mut Member, session: &Session, pace: Pace, mut on: impl FnMut(JoinStep<'_>)) -> FlowResult<Roster> {
+    let req = request_to_join(member, session).await?;
+    let withdraw = Withdraw::arm(&member.cloud, &req.enrollment_id);
+    on(JoinStep::Requested);
+    let result = async {
+        let join = await_signer(member, &req, pace).await?;
+        on(JoinStep::Code(&join.code));
+        await_added(member, join, &req, pace).await
+    }
+    .await;
+    match result {
+        Ok(r) => {
+            withdraw.keep();
+            Ok(r)
+        }
+        Err(e) => {
+            withdraw.now().await;
+            Err(e)
+        }
+    }
 }
 
 // ---- Approving (spec section 4.2, signer A) -----------------------------

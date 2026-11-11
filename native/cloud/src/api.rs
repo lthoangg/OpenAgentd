@@ -73,6 +73,41 @@ impl ApiError {
     pub fn is(&self, code: &str) -> bool {
         self.code == code
     }
+
+    /// Whether asking again later may work: no answer at all, `429
+    /// rate_limited`, or a 5xx. Other refusals (`quota_exhausted`, a 4xx)
+    /// stay the same until something changes.
+    pub fn is_transient(&self) -> bool {
+        (self.status == 0 && self.code == "network") || (self.status == 429 && self.code == "rate_limited") || (500..600).contains(&self.status)
+    }
+
+    /// The refusal a person can act on, if this is one (the UIs give each
+    /// its own message). Account problems are [`ApiError::problem`].
+    pub fn refusal(&self) -> Option<Refusal> {
+        match self.code.as_str() {
+            "rate_limited" => Some(Refusal::RateLimited { retry_after: self.retry_after }),
+            "too_many_pending" => Some(Refusal::TooManyPending),
+            "device_limit" => Some(Refusal::DeviceLimit),
+            "device_exists" => Some(Refusal::DeviceExists),
+            "network" if self.status == 0 => Some(Refusal::Unreachable),
+            _ => None,
+        }
+    }
+}
+
+/// A refused request with its own message on every UI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refusal {
+    /// Too many requests from this network: wait `retry_after` seconds.
+    RateLimited { retry_after: Option<u64> },
+    /// The account has 3 devices waiting to join already.
+    TooManyPending,
+    /// The account has the most devices it may have.
+    DeviceLimit,
+    /// This device is already in the account, or already waiting to join.
+    DeviceExists,
+    /// No answer from the cloud (offline, DNS, TLS).
+    Unreachable,
 }
 
 impl fmt::Display for ApiError {
@@ -331,6 +366,16 @@ impl Cloud {
 
     pub fn device_id(&self) -> String {
         self.keys.id()
+    }
+
+    /// Another client for the same device and account, with its own nonce
+    /// sequence: for a request that outlives this one (a best-effort cancel
+    /// after the flow that owned this client was dropped).
+    pub fn detached(&self) -> Cloud {
+        let mut c = Cloud::new(self.http.clone(), self.endpoints.clone(), self.keys.clone(), self.account_id.clone());
+        c.roles = self.roles;
+        c.text_keepalive_off = self.text_keepalive_off.clone();
+        c
     }
 
     /// Whether this client's relay sockets may send the text `ping` keepalive.
@@ -741,5 +786,39 @@ pub fn next_interval(current: Duration, poll: &TokenPoll) -> Duration {
     match poll {
         TokenPoll::SlowDown => current + Duration::from_secs(5),
         _ => current,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn answer(status: u16, code: &str, retry_after: Option<u64>) -> ApiError {
+        ApiError { status, code: code.into(), body: None, retry_after }
+    }
+
+    #[test]
+    fn only_no_answer_rate_limits_and_server_errors_are_worth_retrying() {
+        assert!(answer(0, "network", None).is_transient());
+        assert!(answer(429, "rate_limited", Some(60)).is_transient());
+        assert!(answer(500, "unknown", None).is_transient());
+        assert!(answer(503, "unknown", None).is_transient());
+        // A full allowance or mailbox stays full; a bad answer stays bad.
+        assert!(!answer(429, "quota_exhausted", None).is_transient());
+        assert!(!answer(429, "mailbox_full", None).is_transient());
+        assert!(!answer(0, "bad_response", None).is_transient());
+        assert!(!answer(400, "invalid_grant", None).is_transient());
+        assert!(!answer(409, "too_many_pending", None).is_transient());
+    }
+
+    #[test]
+    fn refusals_a_person_can_act_on_are_named() {
+        assert_eq!(answer(429, "rate_limited", Some(60)).refusal(), Some(Refusal::RateLimited { retry_after: Some(60) }));
+        assert_eq!(answer(409, "too_many_pending", None).refusal(), Some(Refusal::TooManyPending));
+        assert_eq!(answer(403, "device_limit", None).refusal(), Some(Refusal::DeviceLimit));
+        assert_eq!(answer(409, "device_exists", None).refusal(), Some(Refusal::DeviceExists));
+        assert_eq!(answer(0, "network", None).refusal(), Some(Refusal::Unreachable));
+        assert_eq!(answer(0, "bad_response", None).refusal(), None);
+        assert_eq!(answer(403, "account_closing", None).refusal(), None, "an account problem, not a refusal");
     }
 }

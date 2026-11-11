@@ -240,6 +240,123 @@ async fn denied_and_expired_codes() {
 }
 
 #[tokio::test]
+async fn the_code_poll_rides_out_rate_limits_and_server_errors() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let account = fake.new_account();
+    let c = cloud(&base);
+    let code = c.device_code().await.unwrap();
+    fake.approve(&code.user_code, &account);
+    fake.0.lock().unwrap().token_failures.extend([(429, "rate_limited", Some(2)), (503, "unknown", None), (502, "unknown", None)]);
+    let started = std::time::Instant::now();
+    let session = flows::wait_for_session(&c, &code).await.unwrap();
+    assert_eq!(session.account_id, account);
+    // Retry-After (2 s) is longer than the 1 s interval: it was honoured.
+    assert!(started.elapsed() >= Duration::from_secs(4), "{:?}", started.elapsed());
+    assert!(fake.0.lock().unwrap().token_failures.is_empty());
+}
+
+#[tokio::test]
+async fn the_code_poll_still_stops_on_a_refusal_that_will_not_change() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let c = cloud(&base);
+    let code = c.device_code().await.unwrap();
+    fake.0.lock().unwrap().token_failures.push_back((401, "invalid_client", None));
+    match flows::wait_for_session(&c, &code).await {
+        Err(FlowError::Api(e)) => assert!(e.is("invalid_client"), "{e:?}"),
+        other => panic!("expected invalid_client, got {other:?}"),
+    }
+}
+
+/// A joining device whose request no signer answers within `pace`.
+async fn abandoned_join(fake: &Fake, base: &str, account: &str, pace: Pace) -> Result<roster::Roster, FlowError> {
+    let mut c = cloud(base);
+    c.roles = Roles::SERVER;
+    let session = sign_in(fake, &c, account).await;
+    let mut n = Member::new(c, None);
+    flows::join_with_code(&mut n, &session, pace, |_| {}).await
+}
+
+#[tokio::test]
+async fn a_failed_join_cancels_its_request_so_joins_never_lock_up() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, account) = phone_with_account(&fake, &base).await;
+    fake.0.lock().unwrap().pending_cap = Some(3);
+    let nobody_answers = Pace { every: Duration::from_millis(20), timeout: Duration::from_millis(100) };
+    // Four joins nobody approves: each times out and withdraws its request.
+    for _ in 0..4 {
+        let r = abandoned_join(&fake, &base, &account, nobody_answers).await;
+        assert!(matches!(r, Err(FlowError::TimedOut)), "{r:?}");
+        assert!(fake.account(&account).pending.is_empty(), "the request was cancelled");
+    }
+    // The next one still gets in.
+    let mut c = cloud(&base);
+    c.roles = Roles::SERVER;
+    let session = sign_in(&fake, &c, &account).await;
+    let mut n = Member::new(c, None);
+    let mut steps = Vec::new();
+    let joining = flows::join_with_code(&mut n, &session, FAST, |s| {
+        steps.push(match s {
+            flows::JoinStep::Requested => "requested".to_string(),
+            flows::JoinStep::Code(c) => c.to_string(),
+        })
+    });
+    let approving = async {
+        let pending = loop {
+            if let Some(p) = phone.cloud.pending_list().await.unwrap().pop() {
+                break p;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        };
+        let mut approval = flows::begin_approval(&mut phone, pending).await.unwrap();
+        let shown = flows::await_reveal(&mut phone, &mut approval, FAST).await.unwrap();
+        flows::confirm_approval(&mut phone, approval, flows::Grant { signer: false, roles: Roles::SERVER }).await.unwrap();
+        shown.code
+    };
+    let (joined, code) = tokio::join!(joining, approving);
+    joined.unwrap();
+    assert!(n.is_server());
+    assert_eq!(steps, vec!["requested".to_string(), code]);
+}
+
+#[tokio::test]
+async fn a_join_dropped_midway_cancels_its_request() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (_phone, account) = phone_with_account(&fake, &base).await;
+    let task = {
+        let (fake, base, account) = (fake.clone(), base.clone(), account.clone());
+        tokio::spawn(async move { abandoned_join(&fake, &base, &account, FAST).await })
+    };
+    while fake.account(&account).pending.is_empty() {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    // The person closes the sheet: the task is aborted mid-wait.
+    task.abort();
+    let _ = task.await;
+    flows::settle_withdrawals(Duration::from_secs(5)).await;
+    assert!(fake.account(&account).pending.is_empty(), "the request was cancelled");
+}
+
+#[tokio::test]
+async fn a_full_account_says_why() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (_phone, account) = phone_with_account(&fake, &base).await;
+    fake.0.lock().unwrap().pending_cap = Some(0);
+    let mut c = cloud(&base);
+    c.roles = Roles::SERVER;
+    let session = sign_in(&fake, &c, &account).await;
+    let mut n = Member::new(c, None);
+    match flows::join_with_code(&mut n, &session, FAST, |_| {}).await {
+        Err(FlowError::Api(e)) => assert_eq!(e.refusal(), Some(openagentd_cloud::api::Refusal::TooManyPending)),
+        other => panic!("expected too_many_pending, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn account_problems_map_to_states() {
     let fake = Fake::new();
     let base = fake.serve().await;

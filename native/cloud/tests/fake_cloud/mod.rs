@@ -69,6 +69,12 @@ pub struct Inner {
     pub invites: HashMap<String, InviteRow>,
     /// The usage view leaves `online` out (a cloud from before it existed).
     pub usage_without_online: bool,
+    /// Answers the next device-code polls get instead of the real one:
+    /// (status, error code, Retry-After seconds).
+    pub token_failures: std::collections::VecDeque<(u16, &'static str, Option<u64>)>,
+    /// Most pending enrollments per account (`too_many_pending` past it),
+    /// as the cloud does with 3. `None`: no cap.
+    pub pending_cap: Option<usize>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -218,6 +224,13 @@ async fn device_code(State(f): State<Fake>, Form(form): Form<HashMap<String, Str
 
 async fn device_token(State(f): State<Fake>, Form(form): Form<HashMap<String, String>>) -> Response {
     let mut s = f.0.lock().unwrap();
+    if let Some((status, code, retry_after)) = s.token_failures.pop_front() {
+        let mut r = err(status, code);
+        if let Some(secs) = retry_after {
+            r.headers_mut().insert("retry-after", secs.to_string().parse().unwrap());
+        }
+        return r;
+    }
     let Some(row) = form.get("device_code").and_then(|c| s.codes.get(c)).cloned() else {
         return err(400, "invalid_grant");
     };
@@ -304,6 +317,9 @@ async fn pending_create(State(f): State<Fake>, headers: HeaderMap, Json(body): J
     }
     if body["device_id"] != json!(device) {
         return err(403, "wrong_device");
+    }
+    if s.pending_cap.is_some_and(|cap| s.accounts[&account].pending.values().filter(|p| p["invite_slot"].is_null()).count() >= cap) {
+        return err(409, "too_many_pending");
     }
     spend(&mut s, &headers);
     let id = rand_id(16);

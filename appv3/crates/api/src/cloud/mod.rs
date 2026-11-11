@@ -557,6 +557,20 @@ fn backoff(attempt: u32) -> Duration {
     Duration::from_millis(base.min(60) * 1000 + (jitter[0] as u64) * 4)
 }
 
+/// Presence that stayed up this long starts the backoff over. One that
+/// opens and dies sooner keeps backing off, so a socket the relay drops at
+/// once is not reopened in a tight loop.
+const STEADY_AFTER: Duration = Duration::from_secs(60);
+
+/// The backoff attempt after a presence socket that was up for `up_for`
+/// (`None`: it never opened).
+fn attempt_after(attempt: u32, up_for: Option<Duration>) -> u32 {
+    match up_for {
+        Some(d) if d >= STEADY_AFTER => 0,
+        _ => attempt,
+    }
+}
+
 /// How long a host whose presence another copy took over (4000) waits
 /// before it connects again (plus a backoff's jitter).
 const TAKEN_OVER_WAIT: Duration = Duration::from_secs(120);
@@ -643,6 +657,9 @@ async fn run(identity: Identity) {
     // client: signed requests each use a fresh nonce from one sequence.
     let _letters = AbortOnDrop(tokio::spawn(letters::run(Arc::new(Cloud::new(http(), Endpoints::current(), presence_cloud.keys.clone(), Some(account.clone()))), shared.clone())));
     let mut attempt = 0u32;
+    // One HTTP/1.1 client for every presence and data socket: its TLS
+    // sessions and connections are reused.
+    let http1 = relay::http1_client();
     loop {
         // Bring K up to date (and learn whether the account is usable).
         match member.sync().await {
@@ -690,14 +707,15 @@ async fn run(identity: Identity) {
         let (opened_tx, mut opened) = watch::channel(false);
         let options = HostOptions { opened: Some(opened_tx), ..HostOptions::default() };
         let mut watching = true;
-        let mut presence = tokio::spawn(relay::host_with(presence_cloud.clone(), relay::http1_client(), handler.clone(), host().sessions.clone(), stop_rx, options));
+        let mut presence = tokio::spawn(relay::host_with(presence_cloud.clone(), http1.clone(), handler.clone(), host().sessions.clone(), stop_rx, options));
+        let mut opened_at: Option<tokio::time::Instant> = None;
         let ended = loop {
             tokio::select! {
                 r = &mut presence => break r.unwrap_or(RelayError::Network),
                 changed = opened.changed(), if watching => match changed {
                     Ok(()) if *opened.borrow_and_update() => {
                         set_relay(RelayState::Online, &member, &fingerprint);
-                        attempt = 0;
+                        opened_at = Some(tokio::time::Instant::now());
                     }
                     Ok(()) => {}
                     // Presence ended; its result is next.
@@ -741,6 +759,7 @@ async fn run(identity: Identity) {
             }
         };
         tracing::info!("cloud_presence_ended reason={ended}");
+        attempt = attempt_after(attempt, opened_at.map(|t| t.elapsed()));
         if ended.problem() == Some(AccountProblem::RemovalSignal) {
             // Close 4001 or a refused relay token: unsigned. The signed
             // roster fetch at the top of the loop decides; keys stay.
@@ -794,6 +813,15 @@ pub fn verify_after(blob: &str, account: &str, known: &Roster) -> Result<Roster,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_backoff_starts_over_only_after_presence_stayed_up_a_minute() {
+        assert_eq!(attempt_after(4, None), 4, "never opened");
+        assert_eq!(attempt_after(4, Some(Duration::from_secs(5))), 4, "opened and died at once");
+        assert_eq!(attempt_after(4, Some(Duration::from_secs(59))), 4);
+        assert_eq!(attempt_after(4, Some(STEADY_AFTER)), 0);
+        assert_eq!(attempt_after(4, Some(Duration::from_secs(3600))), 0);
+    }
 
     fn ids(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()

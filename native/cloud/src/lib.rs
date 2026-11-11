@@ -16,6 +16,8 @@
 //! - [`letter`]: sealed mailbox letters.
 //! - [`noise`]: the Noise IK handshake and transport of relay sessions.
 //! - [`account_state`]: what the cloud's account errors mean for a device.
+//! - [`relay`]: relay sockets, the send rule, and tunnels.
+//! - [`link`]: one self-healing link per computer, on top of [`relay`].
 
 pub mod account_state;
 pub mod api;
@@ -27,6 +29,7 @@ pub mod flows;
 pub mod invite;
 pub mod keys;
 pub mod letter;
+pub mod link;
 pub mod mux;
 pub mod noise;
 pub mod recovery;

@@ -92,7 +92,12 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // went 758 bytes over eagerBytes; the Locate folder… dialog, opened only for
 // a workspace whose folder is gone, moved behind lazySurface, and the server
 // update's API calls load on the first update.
-export const LIMITS = { eagerBytes: 2_110_000, eagerGzipBytes: 692_000, largestChunkBytes: 1_180_000 }
+// v3.52.0 (notification taps and links on the right computer, feed replay
+// after a reconnect) went 2.3 kB over eagerBytes; the tap queue and server
+// tokens, used only once a notification or widget is written or tapped, load
+// on first use (2.112 MB / 685.5 kB). The rest (resuming the event feed and
+// reading the link that launched the app) runs at startup, so the limit rose.
+export const LIMITS = { eagerBytes: 2_115_000, eagerGzipBytes: 692_000, largestChunkBytes: 1_180_000 }
 
 /** Each lazy surface must have a chunk of its own, outside the startup path. */
 export function lazySurfaceFailures(directory, names = LAZY_SURFACES) {

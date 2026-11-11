@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-notification-take-taps"
+description = "Enables the notification_take_taps command without any pre-configured scope."
+commands.allow = ["notification_take_taps"]
+
+[[permission]]
+identifier = "deny-notification-take-taps"
+description = "Denies the notification_take_taps command without any pre-configured scope."
+commands.deny = ["notification_take_taps"]

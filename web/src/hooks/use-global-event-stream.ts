@@ -19,6 +19,22 @@ import { forgetPrefetchedHistory } from '@/lib/session-prefetch'
 const notifiedIds = new Set<string>()
 const MAX_NOTIFIED_IDS = 200
 /**
+ * Notifications this device has already seen, live or replayed, in any
+ * window or an earlier run of the app: a replay never shows one again.
+ * Live events keep the per-window set above, so another window can still
+ * show one this window skipped while focused.
+ */
+const SEEN_STORAGE_KEY = 'oa-notifications-seen'
+
+/**
+ * Replayed events left in the replay the last `stream_resume` announced:
+ * what was published while this app was away (a phone in the background, a
+ * laptop asleep, a dropped connection).
+ */
+let replayLeft = 0
+/** Questions raised during the replay; shown once it ends if still waiting. */
+let replayQuestions: { id: string; sessionId: string; title: string; body: string }[] = []
+/**
  * How long a reconnected global stream must stay up before it resyncs. A proxy
  * or server that accepts the stream and drops it at once would otherwise
  * refetch every loaded session-list page and the whole current session on
@@ -28,6 +44,13 @@ export const GLOBAL_RECONNECT_SETTLE_MS = 1_000
 
 export function resetGlobalNotificationDedupe(): void {
   notifiedIds.clear()
+  resetGlobalReplay()
+}
+
+/** A new connection: whatever the old one was replaying is over. */
+export function resetGlobalReplay(): void {
+  replayLeft = 0
+  replayQuestions = []
 }
 
 function rememberNotification(id: string): boolean {
@@ -35,6 +58,46 @@ function rememberNotification(id: string): boolean {
   notifiedIds.add(id)
   if (notifiedIds.size > MAX_NOTIFIED_IDS) notifiedIds.delete(notifiedIds.values().next().value!)
   return true
+}
+
+function seenOnDevice(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(SEEN_STORAGE_KEY) ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/** Remembers `id` as seen on this device; false when it already was. */
+function markSeenOnDevice(id: string): boolean {
+  const seen = seenOnDevice()
+  if (seen.includes(id)) return false
+  seen.push(id)
+  try {
+    window.localStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify(seen.slice(-MAX_NOTIFIED_IDS)))
+  } catch {
+    // Storage full or blocked: a replay may show it again.
+  }
+  return true
+}
+
+/**
+ * The replay is over: a question raised while the app was away and still
+ * waiting (no turn started or ended on its session afterwards) is the one
+ * missed notification worth a banner. Done and Failed only mark the session
+ * unread; on an iPhone with the account's push, the push already showed it.
+ */
+async function flushReplayQuestions(): Promise<void> {
+  const questions = replayQuestions
+  replayQuestions = []
+  for (const q of questions) {
+    if (useAgentStore.getState().sessionId === q.sessionId && document.visibilityState === 'visible') continue
+    await sendDesktopNotification(
+      { kind: 'input_needed', notificationId: q.id, sessionId: q.sessionId, title: q.title, body: q.body },
+      { force: true, replayed: true },
+    )
+  }
 }
 
 /**
@@ -102,6 +165,38 @@ export async function handleGlobalEvent(
   if (connectionGeneration !== currentConnectionGeneration() || !data || typeof data !== 'object') return false
   if (isSessionStreamFrame(type)) return false
   const event = data as Record<string, unknown>
+  if (type === 'stream_resume') {
+    // Missed events follow it; live events after them.
+    replayLeft = typeof event.replay === 'number' && event.replay > 0 ? event.replay : 0
+    replayQuestions = []
+    return true
+  }
+  const replayed = replayLeft > 0
+  if (replayed) {
+    replayLeft -= 1
+    // A turn on a session that asked means its question was answered (or
+    // dismissed) while the app was away.
+    if (type === 'session_turn_started' || type === 'session_turn_completed') {
+      const sessionId = typeof event.session_id === 'string' ? event.session_id : null
+      if (sessionId) replayQuestions = replayQuestions.filter((q) => q.sessionId !== sessionId)
+    }
+  }
+  const lastReplayed = replayed && replayLeft === 0
+  try {
+    return await handleEvent(queryClient, type, event, connectionGeneration, currentConnectionGeneration, replayed)
+  } finally {
+    if (lastReplayed && connectionGeneration === currentConnectionGeneration()) void flushReplayQuestions()
+  }
+}
+
+async function handleEvent(
+  queryClient: QueryClient,
+  type: string,
+  event: Record<string, unknown>,
+  connectionGeneration: number,
+  currentConnectionGeneration: () => number,
+  replayed: boolean,
+): Promise<boolean> {
 
   if (type === 'session_turn_started') {
     const sessionId = typeof event.session_id === 'string' ? event.session_id : null
@@ -326,6 +421,8 @@ export async function handleGlobalEvent(
     ) return false
     if (!rememberNotification(id)) return true
     if (typeof event.title !== 'string' || typeof event.body !== 'string') return false
+    // Replayed: never one this device already saw (live, in any window).
+    if (!markSeenOnDevice(id) && replayed) return true
     const sessionId = typeof event.session_id === 'string' ? event.session_id : undefined
     // A question stops the agent until it is answered, so it must reach the user
     // even in a focused window — unless they are already looking at the session
@@ -337,13 +434,18 @@ export async function handleGlobalEvent(
     if (kind === 'input_needed' && sessionId) {
       markSessionRunning(queryClient, sessionId, true, true)
       // Phones: a light tap says an agent stopped for you (no-op elsewhere).
-      haptic('tick')
+      if (!replayed) haptic('tick')
       // The card for the session on screen arrives on its own feed. If that
       // feed missed it, this is the one signal left: fetch it.
       const metadata = event.metadata as Record<string, unknown> | undefined
       const questionId = typeof metadata?.question_id === 'string' ? metadata.question_id : null
       const store = useAgentStore.getState()
       if (questionId && store.sessionId === sessionId) store.expectQuestion(questionId)
+    }
+    if (replayed) {
+      // Decided once the replay ends (see flushReplayQuestions).
+      if (kind === 'input_needed' && sessionId) replayQuestions.push({ id, sessionId, title: event.title, body: event.body })
+      return true
     }
     // Mobile has no window focus to check, so it skips by this instead.
     const sessionOnScreen = sessionId !== undefined && useAgentStore.getState().sessionId === sessionId
@@ -445,6 +547,7 @@ export function useGlobalEventStream(): void {
         onOpen: () => {
           if (disposed || generation !== connectionGeneration) return
           opened = true
+          resetGlobalReplay()
           recheckFailedHealth()
           // The backoff resets on the first real event, or once the link has
           // stayed up — never merely because the response opened.
@@ -467,6 +570,7 @@ export function useGlobalEventStream(): void {
         onError: (error) => {
           if (disposed || generation !== connectionGeneration) return
           opened = false
+          resetGlobalReplay()
           droppedAt = Date.now()
           clearSettleTimer()
           recheckHealth()
@@ -478,6 +582,7 @@ export function useGlobalEventStream(): void {
         onDone: () => {
           if (disposed || generation !== connectionGeneration) return
           opened = false
+          resetGlobalReplay()
           droppedAt = Date.now()
           clearSettleTimer()
           recheckHealth()

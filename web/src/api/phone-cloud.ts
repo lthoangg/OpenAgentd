@@ -165,7 +165,37 @@ export const phoneCloudRemoveDevice = (deviceId: string) => call<PhoneCloudStatu
 export const phoneCloudSignOut = () => call<PhoneCloudStatus>('cloud_sign_out')
 export const openPhoneCloudComputer = (deviceId: string, lanBaseUrl: string | null) =>
   call<OpenedComputer>('cloud_open_computer', { deviceId, lanBaseUrl })
-/** Silently hands the APNs token to the account; never asks for permission. */
-export const phoneCloudPushRegister = () => call<unknown>('cloud_push_register', { prompt: false })
-/** `"approval"` once after the person tapped "A device wants to join your account". */
-export const phoneCloudTakeNotification = () => call<'approval' | null>('cloud_take_notification')
+/** What `cloud_push_register` answers (`mobile/src-tauri/src/push.rs`). */
+export interface PushState {
+  status: string
+  /** Set only when notifications are allowed and APNs gave this phone a token. */
+  registration: unknown | null
+  error?: string | null
+}
+
+/** The account fingerprint this launch registered a push token for. */
+let pushRegisteredFor: string | null = null
+
+/**
+ * Silently hands the APNs token to the account; never asks for permission.
+ * True when this phone is now registered (notifications allowed, token sent).
+ */
+export async function phoneCloudPushRegister(fingerprint: string): Promise<boolean> {
+  const state = await call<PushState | null>('cloud_push_register', { prompt: false })
+  const registered = Boolean(state?.registration)
+  pushRegisteredFor = registered ? fingerprint : null
+  return registered
+}
+
+/**
+ * Whether the account's pushes reach this phone: registered this launch for
+ * the account it is signed in to. Not yet known counts as no.
+ */
+export function phonePushRegistered(fingerprint: string): boolean {
+  return pushRegisteredFor === fingerprint
+}
+
+/** Test seam. */
+export function resetPhonePushRegistration(): void {
+  pushRegisteredFor = null
+}

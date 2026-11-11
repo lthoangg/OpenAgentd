@@ -5,7 +5,6 @@ import { act, render, waitFor } from '@testing-library/react'
 let isTauri = true
 mock.module('@/hooks/use-platform', () => ({ getPlatform: () => ({ isTauri, os: 'windows' }) }))
 mock.module('@tanstack/react-router', () => ({ useRouter: () => ({ navigate: async () => {} }) }))
-mock.module('@/lib/desktop-notifications', () => ({ listenForNotificationTaps: async () => () => {} }))
 mock.module('@tauri-apps/api/event', () => ({ listen: async () => () => {} }))
 const invoke = mock(async (..._args: unknown[]) => {})
 mock.module('@tauri-apps/api/core', () => ({ invoke }))

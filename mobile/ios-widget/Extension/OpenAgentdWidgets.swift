@@ -26,7 +26,12 @@ private enum AppLink {
 
     static var app: URL { URL(string: "\(scheme)://session")! }
     static var newSession: URL { URL(string: "\(scheme)://new")! }
-    static func session(_ id: String) -> URL { URL(string: "\(scheme)://session/\(encode(id))") ?? app }
+    /// A session's link, naming its server by the app's opaque token so a
+    /// tap opens it there.
+    static func session(_ id: String, server: String?) -> URL {
+        let query = server.map { "?srv=\(encode($0))" } ?? ""
+        return URL(string: "\(scheme)://session/\(encode(id))\(query)") ?? app
+    }
     static func scheduler(task: String?) -> URL {
         guard let task else { return URL(string: "\(scheme)://scheduler")! }
         return URL(string: "\(scheme)://scheduler?task=\(encode(task))") ?? app
@@ -218,7 +223,7 @@ struct QuickStartView: View {
                 VStack(alignment: .leading) {
                     Header(title: "OpenAgentd")
                     Spacer(minLength: 4)
-                    Link(destination: last.map { AppLink.session($0.id) } ?? AppLink.app) {
+                    Link(destination: last.map { AppLink.session($0.id, server: entry.snapshot?.server) } ?? AppLink.app) {
                         LastSessionView(session: last)
                     }
                     Spacer(minLength: 4)
@@ -304,7 +309,7 @@ struct InboxView: View {
             if let snapshot = entry.snapshot, !snapshot.inbox.isEmpty {
                 ForEach(Array(snapshot.inbox.enumerated()), id: \.element.id) { index, session in
                     if index > 0 { Divider().overlay(Color.widgetBorder) }
-                    Link(destination: AppLink.session(session.id)) {
+                    Link(destination: AppLink.session(session.id, server: snapshot.server)) {
                         InboxRow(session: session, statusFresh: entry.statusFresh)
                     }
                 }

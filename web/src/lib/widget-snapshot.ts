@@ -4,7 +4,9 @@
  * A widget cannot hold a connection, so the app saves what it last knew:
  * the sessions waiting on you or working, the last session, and the next
  * scheduled task. The native side stores it where the widget can read it.
- * It never carries the server address or access key.
+ * It never carries the server address or access key: the server the
+ * sessions are on is named by an opaque token (`server-refs.ts`) that only
+ * this app can map back, so a tap on a session opens it on that server.
  */
 import type { InfiniteData } from '@tanstack/react-query'
 import type { ScheduledTaskResponse, SessionPageResponse, SessionResponse } from '@/api/types'
@@ -40,6 +42,8 @@ export interface WidgetSnapshot {
   lastSession: WidgetSession | null
   inbox: WidgetSession[]
   nextTask: WidgetTask | null
+  /** Token for the server these sessions are on; added when pushed. */
+  server?: string | null
 }
 
 type SessionPages = InfiniteData<SessionPageResponse> | undefined
@@ -124,8 +128,14 @@ export function buildWidgetSnapshot({ active, recent, tasks, now }: {
 /** Hand the snapshot to the native shell. Best effort: a widget is never worth an error. */
 export async function pushWidgetSnapshot(snapshot: WidgetSnapshot): Promise<void> {
   try {
+    // Loaded here, not at startup: only the phone writes widget snapshots.
+    const [{ currentServerRef }, { serverToken }] = await Promise.all([
+      import('@/lib/notification-taps'),
+      import('@/lib/server-refs'),
+    ])
+    const server = serverToken(await currentServerRef())
     const { invoke } = await import('@tauri-apps/api/core')
-    await invoke('widget_update_snapshot', { snapshot })
+    await invoke('widget_update_snapshot', { snapshot: server ? { ...snapshot, server } : snapshot })
   } catch {
     // An older shell without the command, or no widget storage: nothing to do.
   }

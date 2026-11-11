@@ -21,6 +21,8 @@ export const GLOBAL_EVENT_TYPES = [
   'mcp_status_changed',
   'lsp_install_required',
   'session_goal',
+  // Starts every stream: where it resumes from (see `globalEventStream`).
+  'stream_resume',
   // Session streams carried on this feed; the stream hub consumes them.
   'session_event',
   'session_stream_end',
@@ -32,16 +34,61 @@ export interface GlobalEventCallbacks extends SSECallbacks {
   onOpen?: () => void
 }
 
+/**
+ * Where this app last was on a server's feed: the id of the last event it
+ * read. Reopening the feed with it (`?since=`) replays what was published
+ * meanwhile (a phone in the background, a laptop asleep, a dropped relay).
+ * In localStorage, keyed by server: every window of the app shares it (one
+ * of them reads the feed for all, and another may take over), and it
+ * outlives a reload. A server that cannot serve it says so in
+ * `stream_resume` and the app refreshes everything, as on a first open.
+ */
+const CURSOR_PREFIX = 'oa-global-stream-cursor:'
+
+function cursorKey(): string {
+  return `${CURSOR_PREFIX}${apiBaseUrl()}`
+}
+
+export function readGlobalStreamCursor(): string | null {
+  try {
+    const cursor = window.localStorage.getItem(cursorKey())
+    return cursor && /^[A-Za-z0-9-]{3,40}$/.test(cursor) ? cursor : null
+  } catch {
+    return null
+  }
+}
+
+function saveCursor(id: string): void {
+  try {
+    window.localStorage.setItem(cursorKey(), id)
+  } catch {
+    // Storage full or blocked: the next reconnect refreshes everything.
+  }
+}
+
 /** Open the app-lifetime event feed used by first-party clients. */
 export function globalEventStream(callbacks: GlobalEventCallbacks, signal?: AbortSignal, clientId?: string): void {
   // With a client id the feed also carries the session streams subscribed
   // through `putStreamSubscriptions` (see `stream-hub.ts`).
-  const url = `${apiBaseUrl()}/events/stream${clientId ? `?client_id=${encodeURIComponent(clientId)}` : ''}`
+  const params = new URLSearchParams()
+  if (clientId) params.set('client_id', clientId)
+  const since = readGlobalStreamCursor()
+  if (since) params.set('since', since)
+  const query = params.toString()
+  const url = `${apiBaseUrl()}/events/stream${query ? `?${query}` : ''}`
+  const tracked: SSECallbacks = {
+    ...callbacks,
+    onEvent: (type, data, id) => {
+      // After the event is handled: a drop while handling it replays it.
+      callbacks.onEvent(type, data, id)
+      if (id) saveCursor(id)
+    },
+  }
   fetch(url, { signal, headers: apiAuthHeaders(url) })
     .then((res) => {
       if (!res.ok) throw new Error(`GET /events/stream failed: ${res.status}`)
       callbacks.onOpen?.()
-      readSSE(res, callbacks)
+      readSSE(res, tracked)
     })
     .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })
 }

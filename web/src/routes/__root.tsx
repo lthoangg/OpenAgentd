@@ -16,6 +16,7 @@ import { WindowCaptionButtons } from '@/components/WindowCaptionButtons'
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { isDesktopShell } from '@/lib/desktop-shell'
 import { LAST_ROUTE_KEY, lastRouteStorageKey, resolveStartupRoute } from '@/lib/route-restore'
+import { PENDING_OPEN_EVENT, takePendingSessionOpen } from '@/lib/pending-session-open'
 import { isPageReload } from '@/lib/page-reload'
 import { useAppShortcut } from '@/lib/keyboard/hooks'
 import { useContainerSelectAll } from '@/hooks/useContainerSelectAll'
@@ -120,6 +121,12 @@ export function Root() {
 
     const storageKey = lastRouteStorageKey()
     const savedRoute = localStorage.getItem(storageKey) ?? localStorage.getItem(LAST_ROUTE_KEY)
+    // A tapped notification switched servers and reloaded: open its session.
+    const pendingSession = takePendingSessionOpen()
+    if (pendingSession) {
+      navigate({ to: '/$sessionId', params: { sessionId: pendingSession }, replace: true })
+      return
+    }
     const next = resolveStartupRoute({
       initialRoute,
       isReload: isPageReload(),
@@ -128,6 +135,16 @@ export function Root() {
       savedRoute,
     })
     if (next !== null) navigate({ to: next, replace: true })
+  }, [navigate])
+
+  // A tap or link for the server in use: open its session now.
+  useEffect(() => {
+    const open = () => {
+      const sessionId = takePendingSessionOpen()
+      if (sessionId) void navigate({ to: '/$sessionId', params: { sessionId } })
+    }
+    window.addEventListener(PENDING_OPEN_EVENT, open)
+    return () => window.removeEventListener(PENDING_OPEN_EVENT, open)
   }, [navigate])
 
   useEffect(() => {

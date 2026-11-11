@@ -65,6 +65,19 @@ describe('parseDeepLinkUrl', () => {
     expect(parseDeepLinkUrl('openagentd://session/01a17359-cd87')).toEqual({ kind: 'navigate', path: '/01a17359-cd87' })
   })
 
+  it('reads the server a session link names: a widget token, an account computer, or an address', () => {
+    expect(parseDeepLinkUrl('openagentd://session/s1?srv=k3x9a0b2c7d1')).toEqual({ kind: 'navigate', path: '/s1', server: { token: 'k3x9a0b2c7d1' } }) // gitleaks:allow (a fake widget token)
+    expect(parseDeepLinkUrl('openagentd://session/s1?device=dev-mac&server=http%3A%2F%2F192.168.1.20%3A4082%2F')).toEqual({
+      kind: 'navigate',
+      path: '/s1',
+      server: { deviceId: 'dev-mac', baseUrl: 'http://192.168.1.20:4082' },
+    })
+    // Only web addresses name a server; anything else is ignored.
+    expect(parseDeepLinkUrl('openagentd://session/s1?server=javascript%3Aalert(1)')).toEqual({ kind: 'navigate', path: '/s1' })
+    // A link with no session opens the app as before.
+    expect(parseDeepLinkUrl('openagentd://session?srv=k3x9a0b2c7d1')).toEqual({ kind: 'navigate', path: '/' })
+  })
+
   it('starts a new session draft, in the named folder when given', () => {
     expect(parseDeepLinkUrl('openagentd://new')).toEqual({ kind: 'new_session', workspace: null })
     expect(parseDeepLinkUrl('openagentd-dev://new?workspace=%2FUsers%2Fme%2Frepo')).toEqual({

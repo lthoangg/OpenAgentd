@@ -32,6 +32,9 @@ struct WidgetSnapshot: Codable, Hashable {
     let lastSession: WidgetSession?
     let inbox: [WidgetSession]
     let nextTask: WidgetTask?
+    /// The app's opaque token for the server these sessions are on (never
+    /// an address); session links carry it as `?srv=`.
+    var server: String? = nil
 }
 
 enum WidgetStorage {

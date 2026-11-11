@@ -223,9 +223,16 @@ fn phone_account_end_to_end() {
             stop_rx,
         ));
         tokio::time::sleep(Duration::from_millis(300)).await;
-        let origin = cloud::open_bridge(&computer.cloud.device_id())
-            .await
-            .unwrap();
+        // Opened twice at once (a tapped notification and the launch's
+        // account fallback): one bridge, one relay session, and the origin
+        // either caller got keeps working.
+        let computer_id = computer.cloud.device_id();
+        let (first, second) = tokio::join!(
+            cloud::open_bridge(&computer_id),
+            cloud::open_bridge(&computer_id)
+        );
+        let origin = first.unwrap();
+        assert_eq!(second.unwrap(), origin, "one bridge per computer");
         let key = cloud::bridge_key(&origin).expect("the web UI gets the bridge key");
         let mut tcp = tokio::net::TcpStream::connect(origin.trim_start_matches("http://"))
             .await

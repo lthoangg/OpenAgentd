@@ -151,7 +151,7 @@ async fn oauth_login(AxPath(id): AxPath<String>, axum::extract::RawQuery(q): axu
             if let Some(c) = &credential_id {
                 tag_credential(&mut data, c);
             }
-            let _ = tx.send(Arc::new(WireEvent { event: event.to_string(), data: appv3_core::pyjson::dumps(&data) }));
+            let _ = tx.send(Arc::new(WireEvent::new(event.to_string(), appv3_core::pyjson::dumps(&data))));
         })
     };
     if credential_id.is_some() {
@@ -174,7 +174,7 @@ async fn oauth_login(AxPath(id): AxPath<String>, axum::extract::RawQuery(q): axu
                 if let Some(c) = &credential_id {
                     tag_credential(&mut data, c);
                 }
-                let _ = tx.send(Arc::new(WireEvent { event: "failed".into(), data: appv3_core::pyjson::dumps(&data) }));
+                let _ = tx.send(Arc::new(WireEvent::new("failed", appv3_core::pyjson::dumps(&data))));
             }
         }
         // A new account whose sign-in failed holds no tokens: do not leave

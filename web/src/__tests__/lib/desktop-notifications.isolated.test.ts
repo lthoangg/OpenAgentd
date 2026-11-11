@@ -47,12 +47,16 @@ describe('desktop notification library integration', () => {
     await runWorker('mobile on-screen skip')
   })
 
-  it('opens the notified session when a mobile notification is tapped', async () => {
-    await runWorker('mobile tap opens')
+  it('opens the notified session on its server when an Android notification is tapped', async () => {
+    await runWorker('an Android tap opens')
   })
 
-  it('does not listen for notification taps outside the mobile app', async () => {
-    await runWorker('desktop tap listener')
+  it('remembers what a mobile notification opens in storage that outlives the page', async () => {
+    await runWorker('remembers what a notification opens')
+  })
+
+  it('listens to the notification plugin only on Android', async () => {
+    await runWorker('listens to the plugin only on Android')
   })
 
   it('reports unsupported runtime before touching native APIs', async () => {
@@ -81,5 +85,13 @@ describe('desktop notification library integration', () => {
 
   it('still notifies from a hidden phone app without account push', async () => {
     await runWorker('a hidden phone app without account push')
+  })
+
+  it('relies on the account push only when this iPhone really registered for it', async () => {
+    await runWorker('skips its own only when push really reaches this phone')
+  })
+
+  it('leaves replayed notifications to the account push on an iPhone that gets it', async () => {
+    await runWorker('leaves a replayed Done or question to the push')
   })
 })

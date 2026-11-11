@@ -5,7 +5,9 @@
 //! on iOS (through the Swift bridge in `mobile/ios-widget/`), SharedPreferences
 //! on Android (through the `android-plugin/`). Unknown fields are refused, so
 //! nothing else (a server address, an access key) can ride along into storage
-//! another process reads.
+//! another process reads. The server the sessions are on is named only by an
+//! opaque token the web UI maps back (`web/src/lib/server-refs.ts`); widgets
+//! add it to their session links as `?srv=`.
 
 use serde::{Deserialize, Serialize};
 
@@ -49,6 +51,16 @@ pub struct WidgetSnapshot {
     pub last_session: Option<WidgetSession>,
     pub inbox: Vec<WidgetSession>,
     pub next_task: Option<WidgetTask>,
+    /// The server token: 8 to 32 lowercase letters and digits, else dropped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server: Option<String>,
+}
+
+fn server_token_ok(token: &str) -> bool {
+    (8..=32).contains(&token.len())
+        && token
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
 }
 
 fn clip(text: &mut String) {
@@ -84,6 +96,7 @@ impl WidgetSnapshot {
             clip(&mut task.next_fire_at);
             clip_opt(&mut task.last_run_at);
         }
+        self.server = self.server.filter(|t| server_token_ok(t));
         self
     }
 
@@ -217,5 +230,22 @@ mod tests {
         let written: serde_json::Value =
             serde_json::from_str(&parsed.normalized().to_json().unwrap()).unwrap();
         assert_eq!(written, snapshot(vec![row("a")]));
+    }
+
+    #[test]
+    fn keeps_a_server_token_but_never_an_address() {
+        let mut value = snapshot(vec![row("a")]);
+        value["server"] = json!("k3x9a0b2c7d1");
+        let parsed: WidgetSnapshot = serde_json::from_value(value.clone()).unwrap();
+        let written: serde_json::Value =
+            serde_json::from_str(&parsed.normalized().to_json().unwrap()).unwrap();
+        assert_eq!(written, value);
+
+        for refused in ["http://10.0.0.2:4082", "short", "UPPERCASE123", "../../etc", &"a".repeat(33)] {
+            let mut value = snapshot(vec![]);
+            value["server"] = json!(refused);
+            let parsed: WidgetSnapshot = serde_json::from_value(value).unwrap();
+            assert_eq!(parsed.normalized().server, None, "{refused}");
+        }
     }
 }

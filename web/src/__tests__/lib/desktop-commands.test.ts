@@ -76,4 +76,13 @@ describe('openNotificationSession', () => {
     expect(takeQuietOpen('from-notification')).toBe(false)
     expect(navigate).toHaveBeenCalledTimes(2)
   })
+
+  it('opens a click the shell repeats while the window loads once, and a new click again', () => {
+    // The shell resends a click a few times so a loading window still gets
+    // it; a repeat arriving after the person moved on must not pull them back.
+    for (let i = 0; i < 5; i++) openNotificationSession({ sessionId: 'clicked', id: 9001 }, router)
+    expect(navigate).toHaveBeenCalledTimes(1)
+    openNotificationSession({ sessionId: 'clicked', id: 9002 }, router)
+    expect(navigate).toHaveBeenCalledTimes(2)
+  })
 })

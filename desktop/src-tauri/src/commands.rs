@@ -93,6 +93,13 @@ fn first_notification_request(id: &str) -> bool {
     true
 }
 
+/// `id` could not be shown after all: let a later request (another window,
+/// or the event replayed after a reconnect) show it.
+fn forget_notification_request(id: &str) {
+    let mut seen = SEEN_NOTIFICATIONS.lock().unwrap_or_else(|e| e.into_inner());
+    seen.retain(|s| s != id);
+}
+
 /// Whether an app window other than `caller`, on the same server, has
 /// focus. The user is then looking at the app, and that window got the same
 /// event and decides for itself whether to notify (it knows which session is
@@ -267,7 +274,12 @@ pub fn show_desktop_notification(
                 }
                 open_from_notification(&app, &sender, server, payload.session_id.as_deref());
             }),
-            Err(error) => log::warn!("desktop_notification_failed error={error:#}"),
+            Err(error) => {
+                log::warn!("desktop_notification_failed error={error:#}");
+                if let Some(id) = payload.notification_id.as_deref() {
+                    forget_notification_request(id);
+                }
+            }
         }
         if routes_clicks {
             PENDING_NOTIFICATIONS.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
@@ -851,7 +863,7 @@ mod health_tests {
 #[cfg(test)]
 mod notification_tests {
     use super::{
-        claim_notification_slot, first_notification_request, notification_actions, picked_choice,
+        claim_notification_slot, first_notification_request, forget_notification_request, notification_actions, picked_choice,
         wait_on_thread, MAX_PENDING_NOTIFICATIONS, MAX_SEEN_NOTIFICATIONS, PENDING_NOTIFICATIONS,
     };
     use std::sync::atomic::Ordering;
@@ -932,6 +944,14 @@ mod notification_tests {
             assert!(first_notification_request(&format!("dedupe-fill-{n}")));
         }
         assert!(first_notification_request("dedupe-a"));
+    }
+
+    #[test]
+    fn a_notification_that_failed_to_show_can_be_shown_later() {
+        assert!(first_notification_request("failed-show"));
+        forget_notification_request("failed-show");
+        assert!(first_notification_request("failed-show"), "another window, or a replay, shows it");
+        assert!(!first_notification_request("failed-show"));
     }
 
     fn labels(actions: &[(String, String)]) -> Vec<&str> {

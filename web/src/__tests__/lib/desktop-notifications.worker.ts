@@ -17,8 +17,14 @@ const mockInvoke = mock(async (...args: unknown[]) => {
     if (phoneCloud instanceof Error) throw phoneCloud
     return phoneCloud
   }
+  if (args[0] === 'app_backend_status') return backendStatus
+  if (args[0] === 'cloud_push_register') return { status: 'authorized', registration: pushRegistration }
   return (mockNotify as unknown as (...args: unknown[]) => Promise<unknown>)(...args)
 })
+/** What the phone shell's `app_backend_status` answers (the server in use). */
+let backendStatus: unknown = null
+/** The APNs registration `cloud_push_register` answers; null: notifications not allowed. */
+let pushRegistration: unknown = { provider: 'apns', token: 't', environment: 'production' }
 const mockPlay = mock(async () => undefined)
 type TapEvent = { actionId?: unknown; notification?: { id?: unknown } }
 let actionListener: ((event: TapEvent) => void) | null = null
@@ -49,6 +55,7 @@ mock.module('@tauri-apps/api/core', () => ({
 }))
 
 import { listenForNotificationTaps, sendDesktopNotification } from '../../lib/desktop-notifications'
+import { phoneCloudPushRegister, resetPhonePushRegistration } from '../../api/phone-cloud'
 
 const payload = {
   kind: 'assistant_done' as const,
@@ -70,6 +77,9 @@ beforeEach(() => {
   shellResult = undefined
   actionListener = null
   phoneCloud = { state: 'guest', notice: null, supported: true }
+  backendStatus = null
+  pushRegistration = { provider: 'apns', token: 't', environment: 'production' }
+  resetPhonePushRegistration()
   setVisibility('visible')
   mockRequestPermission.mockClear()
   mockNotify.mockClear()
@@ -96,6 +106,12 @@ function setVisibility(state: 'visible' | 'hidden', dispatch = false) {
 }
 
 const ACCOUNT_PUSH = { state: 'connected', fingerprint: 'AB12 CD34', signer: true }
+
+/** Signed in as a signer, and this launch registered for push. */
+async function withAccountPush() {
+  phoneCloud = ACCOUNT_PUSH
+  expect(await phoneCloudPushRegister(ACCOUNT_PUSH.fingerprint)).toBe(true)
+}
 
 describe('desktop notification worker', () => {
   it('unfocused native send', async () => {
@@ -171,35 +187,51 @@ describe('desktop notification worker', () => {
     expect(mockNotify).toHaveBeenCalledTimes(2)
   })
 
-  it('mobile tap opens the notified session', async () => {
-    os = 'ios'
-    const opened: string[] = []
-    const stop = await listenForNotificationTaps((sessionId) => opened.push(sessionId))
+  it('an Android tap opens the notified session, on the server it came from', async () => {
+    os = 'android'
+    backendStatus = { base_url: 'http://192.168.1.20:4082/', external: true, sidecar_running: false, supports_bundled: false, servers: [] }
+    const opened: unknown[] = []
+    const stop = await listenForNotificationTaps((target) => opened.push(target))
 
     await sendDesktopNotification(payload)
-    const [, args] = mockNotify.mock.calls[0] as unknown as [string, { options: { id: number } }]
+    const sent = mockNotify.mock.calls.find((call) => (call as unknown[])[0] === 'plugin:notification|notify')
+    const [, args] = sent as unknown as [string, { options: { id: number } }]
     const id = args.options.id
 
     actionListener?.({ actionId: 'dismiss', notification: { id } })
     actionListener?.({ actionId: 'tap', notification: { id: id + 1 } })
     actionListener?.({ actionId: 'tap', notification: { id } })
-    expect(opened).toEqual(['session-123'])
+    expect(opened).toEqual([{ sessionId: 'session-123', baseUrl: 'http://192.168.1.20:4082' }])
 
     stop()
     expect(actionListener).toBeNull()
   })
 
-  it('desktop tap listener is a no-op', async () => {
-    const stop = await listenForNotificationTaps(() => {})
+  it('remembers what a notification opens across a reload, with the account computer it was on', async () => {
+    os = 'ios'
+    backendStatus = { base_url: 'http://127.0.0.1:5999', external: true, sidecar_running: false, supports_bundled: false, servers: [], account_device: { device_id: 'dev-mac', fingerprint: '3F9A', kind: 'macos' } }
+    await sendDesktopNotification(payload)
+    const sent = mockNotify.mock.calls.find((call) => (call as unknown[])[0] === 'plugin:notification|notify')
+    const id = (sent as unknown as [string, { options: { id: number } }])[1].options.id
 
-    expect(actionListener).toBeNull()
-    stop()
+    // Read back from storage, as a fresh page would.
+    const { notificationTarget } = await import('../../lib/notification-taps')
+    expect(notificationTarget(id)).toEqual({ sessionId: 'session-123', baseUrl: 'http://127.0.0.1:5999', deviceId: 'dev-mac' })
+  })
+
+  it('listens to the plugin only on Android (iOS and desktop taps come from the shell)', async () => {
+    for (const platform of ['macos', 'ios']) {
+      os = platform
+      const stop = await listenForNotificationTaps(() => {})
+      expect(actionListener).toBeNull()
+      stop()
+    }
   })
 
   describe('iPhone with account push', () => {
     it('leaves Done and Needs you to the push while the app is hidden', async () => {
       os = 'ios'
-      phoneCloud = ACCOUNT_PUSH
+      await withAccountPush()
       setVisibility('hidden', true)
 
       expect((await sendDesktopNotification(payload)).status).toBe('disabled')
@@ -210,7 +242,7 @@ describe('desktop notification worker', () => {
 
     it('skips events handled just after the app comes back, which the push already showed', async () => {
       os = 'ios'
-      phoneCloud = ACCOUNT_PUSH
+      await withAccountPush()
       setNow('2020-01-01T00:00:00Z')
       setVisibility('hidden', true)
       setVisibility('visible', true)
@@ -226,7 +258,7 @@ describe('desktop notification worker', () => {
 
     it('still notifies from the open app, where iOS hides the push', async () => {
       os = 'ios'
-      phoneCloud = ACCOUNT_PUSH
+      await withAccountPush()
 
       expect((await sendDesktopNotification(payload, { sessionOnScreen: false })).status).toBe('sent')
       const question = { ...payload, kind: 'input_needed' as const, title: 'Needs you · openagentd' }
@@ -236,11 +268,36 @@ describe('desktop notification worker', () => {
 
     it('keeps kinds the computer does not push', async () => {
       os = 'ios'
-      phoneCloud = ACCOUNT_PUSH
+      await withAccountPush()
       setVisibility('hidden', true)
 
       expect((await sendDesktopNotification({ ...payload, kind: 'reminder_fired' })).status).toBe('sent')
       expect(mockNotify).toHaveBeenCalledTimes(1)
+    })
+
+    it('skips its own only when push really reaches this phone', async () => {
+      os = 'ios'
+      setVisibility('hidden', true)
+      // Signed in as a signer, but notifications not allowed: no token.
+      phoneCloud = ACCOUNT_PUSH
+      pushRegistration = null
+      expect(await phoneCloudPushRegister(ACCOUNT_PUSH.fingerprint)).toBe(false)
+      expect((await sendDesktopNotification(payload)).status).toBe('sent')
+
+      pushRegistration = { provider: 'apns', token: 't', environment: 'production' }
+      await withAccountPush()
+      expect((await sendDesktopNotification(payload)).status).toBe('disabled')
+    })
+
+    it('leaves a replayed Done or question to the push even while the app is open', async () => {
+      os = 'ios'
+      await withAccountPush()
+      expect((await sendDesktopNotification(payload, { replayed: true })).status).toBe('disabled')
+      const question = { ...payload, kind: 'input_needed' as const, title: 'Needs you · openagentd' }
+      expect((await sendDesktopNotification(question, { force: true, replayed: true })).status).toBe('disabled')
+      // Without push it still shows.
+      resetPhonePushRegistration()
+      expect((await sendDesktopNotification(question, { force: true, replayed: true })).status).toBe('sent')
     })
   })
 

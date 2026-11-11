@@ -59,12 +59,26 @@ pub fn check_contract(stream: Stream, name: &str) {
 pub struct WireEvent {
     pub event: String,
     pub data: String,
+    /// The SSE `id:` line: set on global events, which a reconnecting client
+    /// can resume from (`GET /events/stream?since=`). Clients that ignore it
+    /// see the same frames as before.
+    pub id: Option<String>,
 }
 
 impl WireEvent {
+    /// An event with no id (session streams, side questions, mux frames).
+    pub fn new(event: impl Into<String>, data: impl Into<String>) -> Self {
+        WireEvent { event: event.into(), data: data.into(), id: None }
+    }
+
     /// `event: X\ndata: Y\n\n` (sse_starlette framing, `\r\n` normalised to `\n`).
     pub fn to_sse(&self) -> String {
-        let mut s = String::with_capacity(self.data.len() + self.event.len() + 16);
+        let mut s = String::with_capacity(self.data.len() + self.event.len() + 16 + self.id.as_ref().map_or(0, |id| id.len() + 6));
+        if let Some(id) = &self.id {
+            s.push_str("id: ");
+            s.push_str(id);
+            s.push_str("\r\n");
+        }
         s.push_str("event: ");
         s.push_str(&self.event);
         s.push_str("\r\n");
@@ -112,7 +126,7 @@ impl Envelope {
     /// Serializes the map by reference: this runs once per token while a
     /// client is attached, so a clone of the payload here is pure overhead.
     pub fn to_wire(&self) -> Arc<WireEvent> {
-        Arc::new(WireEvent { event: self.event.clone(), data: serde_json::to_string(&self.data).unwrap_or_else(|_| "{}".into()) })
+        Arc::new(WireEvent::new(self.event.clone(), serde_json::to_string(&self.data).unwrap_or_else(|_| "{}".into())))
     }
 }
 

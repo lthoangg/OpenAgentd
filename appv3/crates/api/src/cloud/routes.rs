@@ -234,6 +234,15 @@ fn signer_error(e: super::signer::SignerError) -> ApiError {
         SignerError::NoApproval => ApiError::new(409, "Start the approval again."),
         SignerError::Flow(f) => {
             tracing::info!("cloud_signer_route_failed reason={}", super::engine::reason(&f));
+            // Refusals with their own wording (account full, rate limited, …).
+            if let Some(text) = super::engine::message(&f) {
+                let status = match &f {
+                    FlowError::Api(a) if a.status == 429 => 429,
+                    FlowError::Api(a) if a.status == 0 => 502,
+                    _ => 409,
+                };
+                return ApiError::new(status, text);
+            }
             match f {
                 FlowError::NotSigner => ApiError::new(403, "This computer cannot approve devices."),
                 FlowError::Roles => ApiError::new(400, "A device can only get the roles it asked for, and needs at least one."),

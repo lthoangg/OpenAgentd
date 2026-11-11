@@ -57,6 +57,20 @@ pub enum Notice {
     EmptyAccount,
     /// A device needs at least one role, and gets only the ones it asked for.
     Roles,
+    /// Too many requests from this network; `retry_after` says how long to wait.
+    RateLimited,
+    /// The account has 3 devices waiting to join already.
+    TooManyPending,
+    /// The account has the most devices it may have (10).
+    DeviceLimit,
+    /// This device is already in the account or waiting to join.
+    DeviceExists,
+    /// The account waits to be deleted (Keep account on the account pages undoes it).
+    AccountClosing,
+    /// The cloud cannot serve the account for now.
+    AccountUnavailable,
+    /// No answer from the cloud.
+    Unreachable,
     Failed,
 }
 
@@ -70,6 +84,10 @@ pub enum RelayState {
     Paused {
         until: Option<u64>,
     },
+    /// Another copy of this computer (the same keys, for example a copied
+    /// state folder) took the relay connection over. This one tries again
+    /// now and then rather than taking it back every second.
+    TakenOver,
     Offline,
     /// This device is not a server in its roster: it runs no connector.
     Off,
@@ -82,6 +100,9 @@ pub enum RelayState {
 pub enum Status {
     Guest {
         notice: Option<Notice>,
+        /// Seconds to wait before trying again (`rate_limited`).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        retry_after: Option<u64>,
     },
     SigningIn {
         user_code: String,
@@ -146,7 +167,7 @@ struct Host {
 fn host() -> &'static Host {
     static HOST: OnceLock<Host> = OnceLock::new();
     HOST.get_or_init(|| Host {
-        status: Mutex::new(Status::Guest { notice: None }),
+        status: Mutex::new(guest(None)),
         run: Mutex::new(None),
         sign_in: Mutex::new(None),
         genesis: Mutex::new(None),
@@ -184,6 +205,15 @@ fn set_status(s: Status) {
     *host().status.lock().expect("cloud status") = s;
 }
 
+fn guest(notice: Option<Notice>) -> Status {
+    Status::Guest { notice, retry_after: None }
+}
+
+/// Back to guest after a sign-in or join that ended with `e`.
+fn guest_after(e: &FlowError) -> Status {
+    Status::Guest { notice: Some(engine::notice(e)), retry_after: engine::retry_after(e) }
+}
+
 fn fingerprint_of(identity: &Identity) -> String {
     identity.keys().map(|k| k.fingerprint()).unwrap_or_default()
 }
@@ -198,10 +228,10 @@ pub async fn start() -> anyhow::Result<()> {
     let store = identity_store();
     match idstore::load(&store) {
         Ok(Some(id)) if id.account_id.is_some() && id.roster.is_some() => spawn_run(id),
-        Ok(_) => set_status(Status::Guest { notice: None }),
+        Ok(_) => set_status(guest(None)),
         Err(e) => {
             tracing::warn!("cloud_identity_unreadable error={e}");
-            set_status(Status::Guest { notice: Some(Notice::Failed) });
+            set_status(guest(Some(Notice::Failed)));
         }
     }
     Ok(())
@@ -280,7 +310,7 @@ fn finish_join(outcome: Result<engine::Outcome, FlowError>) {
         Ok(engine::Outcome::Joined(identity)) => {
             if let Err(e) = idstore::save(&identity_store(), &identity) {
                 tracing::warn!("cloud_identity_save_failed error={e}");
-                set_status(Status::Guest { notice: Some(Notice::Failed) });
+                set_status(guest(Some(Notice::Failed)));
                 return;
             }
             tracing::info!("cloud_joined");
@@ -295,7 +325,7 @@ fn finish_join(outcome: Result<engine::Outcome, FlowError>) {
         }
         Err(e) => {
             tracing::info!("cloud_sign_in_ended reason={}", engine::reason(&e));
-            set_status(Status::Guest { notice: Some(engine::notice(&e)) });
+            set_status(guest_after(&e));
         }
     }
 }
@@ -331,7 +361,7 @@ pub async fn confirm_recovery(first: &str, second: &str) -> Result<Status, Recov
         }
         Err(e) => {
             tracing::info!("cloud_genesis_failed reason={}", engine::reason(&e));
-            set_status(Status::Guest { notice: Some(engine::notice(&e)) });
+            set_status(guest_after(&e));
             Err(RecoveryError::Failed(e))
         }
     }
@@ -343,7 +373,7 @@ pub fn cancel_sign_in() -> Status {
     }
     host().genesis.lock().expect("cloud genesis").take();
     if matches!(status(), Status::SigningIn { .. } | Status::Joining { .. } | Status::Invited { .. } | Status::Recovery { .. }) {
-        set_status(Status::Guest { notice: None });
+        set_status(guest(None));
     }
     status()
 }
@@ -366,7 +396,7 @@ pub async fn sign_out() -> Status {
     if let Err(e) = store.clear() {
         tracing::warn!("cloud_identity_clear_failed error={e}");
     }
-    set_status(Status::Guest { notice: Some(Notice::SignedOut) });
+    set_status(guest(Some(Notice::SignedOut)));
     status()
 }
 
@@ -462,7 +492,7 @@ fn forget(notice: Notice) {
     if let Err(e) = identity_store().clear() {
         tracing::warn!("cloud_identity_clear_failed error={e}");
     }
-    set_status(Status::Guest { notice: Some(notice) });
+    set_status(guest(Some(notice)));
 }
 
 /// Applies an account problem. Returns whether to keep going.
@@ -525,6 +555,44 @@ fn backoff(attempt: u32) -> Duration {
     let base = 1u64 << attempt.min(6);
     let jitter: [u8; 1] = openagentd_cloud::keys::random_bytes();
     Duration::from_millis(base.min(60) * 1000 + (jitter[0] as u64) * 4)
+}
+
+/// How long a host whose presence another copy took over (4000) waits
+/// before it connects again (plus a backoff's jitter).
+const TAKEN_OVER_WAIT: Duration = Duration::from_secs(120);
+
+const DAY_MS: u64 = 86_400_000;
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+/// What the connection loop does once presence ended (account problems
+/// aside, which come first).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Next {
+    /// The daily relay allowance is used up until `until` (Unix ms): wait
+    /// `wait`.
+    Paused { until: u64, wait: Duration },
+    /// Another copy of this host took presence over (4000).
+    TakenOver,
+    /// Anything else: reconnect after a backoff.
+    Retry,
+}
+
+/// Reads how presence ended. Over the allowance, the relay says until when
+/// on a refused token or upgrade; a 4010 close does not, and the allowance
+/// resets at the next 00:00 UTC, so that is the time shown and waited for.
+fn after_presence(ended: &RelayError, now_ms: u64) -> Next {
+    if let Some(until) = ended.paused() {
+        let until = until.unwrap_or((now_ms / DAY_MS + 1) * DAY_MS);
+        let wait = Duration::from_millis(until.saturating_sub(now_ms).clamp(60_000, DAY_MS));
+        return Next::Paused { until, wait };
+    }
+    if ended.replaced() {
+        return Next::TakenOver;
+    }
+    Next::Retry
 }
 
 /// Saves a newly verified roster as the host's `K`.
@@ -689,19 +757,24 @@ async fn run(identity: Identity) {
             tokio::time::sleep(Duration::from_secs(UNAVAILABLE_RETRY_SECS)).await;
             continue;
         }
-        if let RelayError::Refused(e) = &ended {
-            if e.is("quota_exhausted") {
-                let until = e.body.as_ref().and_then(|b| b.get("paused_until")).and_then(|v| v.as_u64());
-                set_relay(RelayState::Paused { until }, &member, &fingerprint);
-                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
-                let wait = until.map(|u| u.saturating_sub(now)).unwrap_or(3_600_000);
-                tokio::time::sleep(Duration::from_millis(wait.clamp(60_000, 86_400_000))).await;
-                continue;
+        match after_presence(&ended, now_ms()) {
+            Next::Paused { until, wait } => {
+                set_relay(RelayState::Paused { until: Some(until) }, &member, &fingerprint);
+                tokio::time::sleep(wait).await;
+            }
+            Next::TakenOver => {
+                // Another copy with these keys holds presence. Taking it
+                // back at once would make the two replace each other every
+                // second; wait long, and keep waiting long while it lasts.
+                set_relay(RelayState::TakenOver, &member, &fingerprint);
+                tokio::time::sleep(TAKEN_OVER_WAIT + backoff(0)).await;
+            }
+            Next::Retry => {
+                set_relay(RelayState::Offline, &member, &fingerprint);
+                tokio::time::sleep(backoff(attempt)).await;
+                attempt += 1;
             }
         }
-        set_relay(RelayState::Offline, &member, &fingerprint);
-        tokio::time::sleep(backoff(attempt)).await;
-        attempt += 1;
     }
 }
 
@@ -767,5 +840,53 @@ mod tests {
         assert_eq!(read_roster_note("me", 3, 3, &ids(&["left"])), RosterNote::Nothing);
         assert_eq!(read_roster_note("me", 3, 3, &ids(&["left"])), RosterNote::Nothing);
         assert_eq!(read_roster_note("me", 4, 3, &[]), RosterNote::Nothing);
+    }
+
+    #[test]
+    fn a_4010_close_pauses_at_once_until_the_next_utc_midnight() {
+        // 2026-01-02 22:00 UTC.
+        let now = 1_767_391_200_000;
+        let midnight = 1_767_398_400_000;
+        assert_eq!(after_presence(&RelayError::Closed(4010), now), Next::Paused { until: midnight, wait: Duration::from_secs(2 * 3600) });
+    }
+
+    #[test]
+    fn a_refused_token_pauses_until_the_time_the_cloud_gave() {
+        let now = 1_767_391_200_000;
+        let quota = |until: u64| {
+            RelayError::Refused(openagentd_cloud::api::ApiError {
+                status: 429,
+                code: "quota_exhausted".into(),
+                body: Some(serde_json::json!({"error": "quota_exhausted", "paused_until": until})),
+                retry_after: None,
+            })
+        };
+        assert_eq!(after_presence(&quota(now + 600_000), now), Next::Paused { until: now + 600_000, wait: Duration::from_secs(600) });
+        // A time already past (a skewed clock) still waits a minute.
+        assert_eq!(after_presence(&quota(now - 1), now), Next::Paused { until: now - 1, wait: Duration::from_secs(60) });
+    }
+
+    #[test]
+    fn presence_taken_over_by_another_copy_backs_off_long() {
+        assert_eq!(after_presence(&RelayError::Closed(4000), 0), Next::TakenOver);
+        assert!(TAKEN_OVER_WAIT >= Duration::from_secs(60));
+    }
+
+    #[test]
+    fn other_presence_ends_retry_soon() {
+        for ended in [RelayError::Closed(4008), RelayError::Closed(1006), RelayError::Network, RelayError::TimedOut] {
+            assert_eq!(after_presence(&ended, 0), Next::Retry, "{ended:?}");
+        }
+    }
+
+    #[test]
+    fn a_guest_status_carries_the_wait_only_when_there_is_one() {
+        let v = serde_json::to_value(guest(Some(Notice::TooManyPending))).unwrap();
+        assert_eq!(v, serde_json::json!({"state": "guest", "notice": "too_many_pending"}));
+        let e = FlowError::Api(openagentd_cloud::api::ApiError { status: 429, code: "rate_limited".into(), body: None, retry_after: Some(60) });
+        let v = serde_json::to_value(guest_after(&e)).unwrap();
+        assert_eq!(v, serde_json::json!({"state": "guest", "notice": "rate_limited", "retry_after": 60}));
+        let v = serde_json::to_value(RelayState::TakenOver).unwrap();
+        assert_eq!(v, serde_json::json!({"state": "taken_over"}));
     }
 }

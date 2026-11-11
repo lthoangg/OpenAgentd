@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.51.2 · November 10, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.51.2)
+**Latest release:** v3.51.3 · November 11, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.51.3)
 
 ---
 
@@ -2500,6 +2500,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Copy the recovery code** `[v3.51.1]`. The recovery step has **Copy code** and says to keep the code in a password manager; the copied code is cleared from the clipboard after two minutes.
   - **A computer's relay connection recovers by itself** `[v3.51.1]`. A computer gives up a relay connection that has not answered for 60 seconds, or at once after waking from sleep, and reconnects; **Settings → Account** says online only once the connection is really open. It also sends a small keepalive the relay can see, so phones can show a sleeping computer as offline once the relay supports it; with an older relay it falls back to how it worked before.
   - **A quiet chat stays connected away from home** `[v3.51.2]`. A session opened from the phone through the relay no longer drops and reconnects every minute or two while nothing is happening: both ends send the relay's keepalive on the session too, and with an older relay they fall back after one reconnect. A connection that really died is still noticed within about a minute. After a drop the chat reattaches once, not twice, and the computer's server log says why each phone session ended (`cloud_session_ended`).
+  - **Joining and staying connected are more reliable** `[v3.51.3]`. A join that fails, times out or is cancelled (closing the sheet, Ctrl-C in `agentd cloud login`) withdraws its request, so a few abandoned joins no longer block new ones for 10 minutes. Waiting for the sign-in code rides out rate limits, server errors and network blips until the code expires. A refused sign-in or join says why: too many requests (and how long to wait), 3 devices already waiting to join, an account with 10 devices, a device already in the account, an account scheduled for deletion or unavailable, or no connection. Phone sessions on a computer stay open when its relay connection drops for a moment or is renewed after 24 hours; only removing the computer or a locked account ends them. Two copies of a computer with the same account keys no longer take the connection from each other every second: the one taken over says so and tries again every few minutes. A used-up daily relay allowance shows as paused at once, and connecting never sits on "Connecting" for more than about 30 seconds.
   - **Keys stay on the device:** the iPhone keeps them in the Keychain (the approval key behind Face ID); computers keep them in `cloud/identity.json` in the server's state folder, readable only by your user. Signing out leaves the account and erases the keys; sessions and settings stay. Removed, deleted, closing and unavailable accounts each say so; in every state the app keeps working on its own, and only reaching other devices through the relay and notifications stop.
   - Not yet: Android, changing a device's roles after it joined. Approving from a computer arrived in `[v3.51.0]`. The protocol is in `appv3/contract/tunnel.md`, its threat model in `appv3/contract/tunnel-threats.md`.
 

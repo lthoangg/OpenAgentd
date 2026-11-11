@@ -20,18 +20,28 @@ export type CloudNotice =
   | 'signed_out'
   | 'empty_account'
   | 'roles'
+  | 'rate_limited'
+  | 'too_many_pending'
+  | 'device_limit'
+  | 'device_exists'
+  | 'account_closing'
+  | 'account_unavailable'
+  | 'unreachable'
   | 'failed'
 
 export type RelayState =
   | { state: 'connecting' }
   | { state: 'online' }
   | { state: 'paused'; until: number | null }
+  /** Another copy of this computer (the same account keys) took the relay connection over. */
+  | { state: 'taken_over' }
   | { state: 'offline' }
   /** Not used as a server: this computer runs no connector. */
   | { state: 'off' }
 
 export type CloudStatus =
-  | { state: 'guest'; notice: CloudNotice | null }
+  /** `retry_after`: seconds to wait, with `rate_limited`. */
+  | { state: 'guest'; notice: CloudNotice | null; retry_after?: number }
   | { state: 'signing_in'; user_code: string; url: string; fingerprint: string; expires_in: number }
   /** A new account: the recovery code is shown once, then groups `check` (1-based) are asked back. */
   | { state: 'recovery'; code?: string; check?: [number, number] }

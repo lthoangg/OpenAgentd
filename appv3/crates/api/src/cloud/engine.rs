@@ -6,9 +6,10 @@
 //! with the session unspent: the caller shows the recovery code and runs
 //! genesis (spec 4.1), so any computer can be the first device.
 
-use openagentd_cloud::api::{Cloud, DeviceCode};
+use openagentd_cloud::account_state::AccountProblem;
+use openagentd_cloud::api::{Cloud, DeviceCode, Refusal};
 use openagentd_cloud::endpoints::Endpoints;
-use openagentd_cloud::flows::{self, FlowError, Member, Pace, Session};
+use openagentd_cloud::flows::{self, FlowError, JoinStep, Member, Pace, Session, Withdraw};
 use openagentd_cloud::keys::{DeviceKeys, Roles};
 use openagentd_cloud::store::Identity;
 
@@ -53,8 +54,56 @@ pub fn notice(e: &FlowError) -> Notice {
         FlowError::Protocol(openagentd_cloud::Error::Invite) => Notice::InviteInvalid,
         FlowError::EmptyAccount => Notice::EmptyAccount,
         FlowError::Roles => Notice::Roles,
-        FlowError::Problem(openagentd_cloud::account_state::AccountProblem::Deleted) => Notice::Deleted,
+        FlowError::Problem(AccountProblem::Deleted) => Notice::Deleted,
+        FlowError::Problem(AccountProblem::Closing { .. }) => Notice::AccountClosing,
+        FlowError::Problem(AccountProblem::Unavailable) => Notice::AccountUnavailable,
+        FlowError::Api(a) => match a.refusal() {
+            Some(Refusal::RateLimited { .. }) => Notice::RateLimited,
+            Some(Refusal::TooManyPending) => Notice::TooManyPending,
+            Some(Refusal::DeviceLimit) => Notice::DeviceLimit,
+            Some(Refusal::DeviceExists) => Notice::DeviceExists,
+            Some(Refusal::Unreachable) => Notice::Unreachable,
+            None => Notice::Failed,
+        },
         _ => Notice::Failed,
+    }
+}
+
+/// Seconds the cloud asked to wait (`rate_limited`), for the notice.
+pub fn retry_after(e: &FlowError) -> Option<u64> {
+    match e {
+        FlowError::Api(a) => match a.refusal() {
+            Some(Refusal::RateLimited { retry_after }) => retry_after,
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// What the person reads when signing in or joining ended with `e`, for
+/// the CLI (the web UI words the same notices in `account-copy.tsx`). No
+/// em or en dashes.
+pub fn message(e: &FlowError) -> Option<String> {
+    Some(match notice(e) {
+        Notice::RateLimited => match retry_after(e) {
+            Some(s) => format!("OpenAgentd is getting too many requests from this network. Try again in {}.", wait_text(s)),
+            None => "OpenAgentd is getting too many requests from this network. Try again in a few minutes.".to_string(),
+        },
+        Notice::TooManyPending => "3 devices are already waiting to join; wait a few minutes or reject them on a device that approves.".to_string(),
+        Notice::DeviceLimit => "Your account has 10 devices; remove one first.".to_string(),
+        Notice::DeviceExists => "This device is already in your account or waiting to join. Sign in again to start over.".to_string(),
+        Notice::Unreachable => "Could not reach OpenAgentd. Check your network and try again.".to_string(),
+        _ => return None,
+    })
+}
+
+/// `45` → `45 seconds`, `60` → `1 minute`, `600` → `10 minutes`.
+pub fn wait_text(secs: u64) -> String {
+    match secs {
+        0..=1 => "a moment".to_string(),
+        2..=59 => format!("{secs} seconds"),
+        60..=119 => "1 minute".to_string(),
+        _ => format!("{} minutes", secs.div_ceil(60)),
     }
 }
 
@@ -69,15 +118,18 @@ pub async fn sign_in(endpoints: Endpoints, http: reqwest::Client, roles: Roles, 
     on(Event::Code(&code));
     let session = flows::wait_for_session(&cloud, &code).await?;
     let mut member = Member::new(cloud, None);
-    let req = match flows::request_to_join(&mut member, &session).await {
+    // A request that does not end in joining is withdrawn (also when this
+    // future is dropped: the person closed the sheet).
+    let joined = flows::join_with_code(&mut member, &session, Pace::default(), |step| match step {
+        JoinStep::Requested => on(Event::Joining { fingerprint: fingerprint.clone(), code: None }),
+        JoinStep::Code(code) => on(Event::Joining { fingerprint: fingerprint.clone(), code: Some(code.to_string()) }),
+    })
+    .await;
+    let roster = match joined {
         Ok(r) => r,
         Err(FlowError::EmptyAccount) => return Ok(Outcome::EmptyAccount { member: Box::new(member), session }),
         Err(e) => return Err(e),
     };
-    on(Event::Joining { fingerprint: fingerprint.clone(), code: None });
-    let join = flows::await_signer(&mut member, &req, Pace::default()).await?;
-    on(Event::Joining { fingerprint, code: Some(join.code.clone()) });
-    let roster = flows::await_added(&mut member, join, &req, Pace::default()).await?;
     Ok(Outcome::Joined(identity_of(&member, &roster)))
 }
 
@@ -89,9 +141,18 @@ pub async fn join_invite(endpoints: Endpoints, http: reqwest::Client, link: &str
     let mut member = Member::new(Cloud::new(http, endpoints, keys, None), None);
     member.cloud.roles = roles;
     let claim = flows::claim_invite(&mut member, link).await?;
+    let withdraw = Withdraw::arm(&member.cloud, &claim.enrollment_id);
     on(Event::Invited { fingerprint, kind: openagentd_cloud::api::this_kind() });
-    let roster = flows::await_invited(&mut member, claim, Pace::default()).await?;
-    Ok(Outcome::Joined(identity_of(&member, &roster)))
+    match flows::await_invited(&mut member, claim, Pace::default()).await {
+        Ok(roster) => {
+            withdraw.keep();
+            Ok(Outcome::Joined(identity_of(&member, &roster)))
+        }
+        Err(e) => {
+            withdraw.now().await;
+            Err(e)
+        }
+    }
 }
 
 /// The identity to store for an enrolled member.
@@ -100,4 +161,47 @@ pub fn identity_of(member: &Member, roster: &openagentd_cloud::roster::Roster) -
     id.account_id = member.cloud.account_id.clone();
     id.roster = Some(roster.blob.clone());
     id
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use openagentd_cloud::api::ApiError;
+
+    fn refused(status: u16, code: &str, retry_after: Option<u64>) -> FlowError {
+        FlowError::Api(ApiError { status, code: code.into(), body: None, retry_after })
+    }
+
+    #[test]
+    fn each_refusal_has_its_own_notice_and_message() {
+        let cases = [
+            (refused(429, "rate_limited", Some(120)), Notice::RateLimited, "Try again in 2 minutes."),
+            (refused(409, "too_many_pending", None), Notice::TooManyPending, "3 devices are already waiting to join"),
+            (refused(403, "device_limit", None), Notice::DeviceLimit, "Your account has 10 devices; remove one first."),
+            (refused(409, "device_exists", None), Notice::DeviceExists, "already in your account"),
+            (refused(0, "network", None), Notice::Unreachable, "Check your network"),
+        ];
+        for (e, n, text) in cases {
+            assert_eq!(notice(&e), n, "{e:?}");
+            let m = message(&e).unwrap();
+            assert!(m.contains(text), "{m}");
+            assert!(!m.contains('\u{2014}') && !m.contains('\u{2013}'), "no em or en dash: {m}");
+        }
+        assert_eq!(retry_after(&refused(429, "rate_limited", Some(30))), Some(30));
+        assert_eq!(message(&refused(429, "rate_limited", None)).unwrap(), "OpenAgentd is getting too many requests from this network. Try again in a few minutes.");
+        assert_eq!(notice(&FlowError::Problem(AccountProblem::Closing { deletes_at: None })), Notice::AccountClosing);
+        assert_eq!(notice(&FlowError::Problem(AccountProblem::Unavailable)), Notice::AccountUnavailable);
+        assert_eq!(notice(&refused(400, "invalid_request", None)), Notice::Failed);
+        assert_eq!(message(&refused(400, "invalid_request", None)), None);
+    }
+
+    #[test]
+    fn waits_read_naturally() {
+        assert_eq!(wait_text(1), "a moment");
+        assert_eq!(wait_text(45), "45 seconds");
+        assert_eq!(wait_text(60), "1 minute");
+        assert_eq!(wait_text(61), "1 minute");
+        assert_eq!(wait_text(600), "10 minutes");
+        assert_eq!(wait_text(601), "11 minutes");
+    }
 }

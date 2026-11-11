@@ -18,7 +18,7 @@ import { ChevronRight } from 'lucide-react'
 
 import { pendingLabel, type DeviceRow, type PendingRow, type PhoneCloudStatus } from '@/api/phone-cloud'
 import { ApprovalSheet } from '@/components/phone/ApprovalSheet'
-import { Body, groupCode, NOTICES } from '@/components/settings/pages/account-copy'
+import { Body, groupCode, noticeCopy } from '@/components/settings/pages/account-copy'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { PanelSection } from '@/components/ui/panel-section'
@@ -87,7 +87,7 @@ function SheetRow({ title, line, onOpen }: { title: string; line: string; onOpen
 
 function Notice({ status }: { status: PhoneCloudStatus }) {
   if (status.state !== 'guest' || !status.notice) return null
-  const notice = NOTICES[status.notice]
+  const notice = noticeCopy(status.notice, status.retry_after)
   return <Callout tone={notice.tone ?? 'info'} title={notice.title} role="status">{notice.body}</Callout>
 }
 

@@ -201,10 +201,15 @@ async fn pair(relay: Shared, controller: WebSocket, host: WebSocket) {
                             r.data_old
                         };
                         if old {
+                            // Close like a real relay: send the close and keep
+                            // reading until the peer's close comes back. Dropping
+                            // the socket with bytes still unread makes Windows
+                            // reset the connection, and the client then sees 1006
+                            // instead of this 1003.
                             let close = || Message::Close(Some(CloseFrame { code: 1003, reason: "".into() }));
                             let _ = back.send(close());
                             let _ = tx.send(close());
-                            break;
+                            continue;
                         }
                         // The real relay's auto-response, on any socket.
                         let _ = back.send(Message::Text("pong".into()));
@@ -233,8 +238,7 @@ async fn pair(relay: Shared, controller: WebSocket, host: WebSocket) {
     };
     let one = forward(c_rx, to_h.clone(), to_c.clone(), false);
     let two = forward(h_rx, to_c, to_h, true);
-    tokio::select! {
-        _ = one => {}
-        _ = two => {}
-    }
+    // Wait for both sides to finish their close handshake (see above); the
+    // timeout only bounds a peer that never answers a close.
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(30), async { tokio::join!(one, two) }).await;
 }

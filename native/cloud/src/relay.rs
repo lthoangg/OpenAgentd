@@ -47,6 +47,21 @@ const UNSUPPORTED_DATA: u16 = 1003;
 pub const DEAD_AFTER: Duration = Duration::from_secs(60);
 /// Largest WebSocket message the relay forwards.
 const MAX_WS_MESSAGE: usize = 1024 * 1024;
+/// Longest wait to open a relay socket: the relay token, the upgrade
+/// request and its answer. A network that swallows packets would otherwise
+/// leave the status on "Connecting" for good.
+pub const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
+/// Longest wait for `paired`. The relay ends an offer nobody joins after 30
+/// seconds (4004); a little more lets that answer arrive first.
+pub const PAIR_TIMEOUT: Duration = Duration::from_secs(35);
+/// Longest wait for the Noise handshake once paired.
+pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Presence replaced by a newer socket: another copy of this host (same
+/// keys) connected.
+pub const CLOSE_REPLACED: u16 = 4000;
+/// The host's daily relay allowance is used up.
+pub const CLOSE_QUOTA: u16 = 4010;
 
 type Ws = WebSocketStream<reqwest::Upgraded>;
 
@@ -61,6 +76,8 @@ pub enum RelayError {
     /// in the verified roster.
     Handshake,
     Network,
+    /// Opening, pairing or the handshake took too long.
+    TimedOut,
 }
 
 impl RelayError {
@@ -69,6 +86,22 @@ impl RelayError {
         match self {
             RelayError::Refused(e) => e.problem(),
             RelayError::Closed(code) => account_state::from_close_code(*code),
+            _ => None,
+        }
+    }
+
+    /// Another copy of this host took its presence over (close 4000).
+    pub fn replaced(&self) -> bool {
+        *self == RelayError::Closed(CLOSE_REPLACED)
+    }
+
+    /// The host's daily relay allowance is used up: `Some(paused_until)`
+    /// (Unix ms, `None` when the relay did not say), from a refused upgrade
+    /// or token (`quota_exhausted`) or a close with 4010.
+    pub fn paused(&self) -> Option<Option<u64>> {
+        match self {
+            RelayError::Refused(e) if e.is("quota_exhausted") => Some(e.body.as_ref().and_then(|b| b.get("paused_until")).and_then(|v| v.as_u64())),
+            RelayError::Closed(CLOSE_QUOTA) => Some(None),
             _ => None,
         }
     }
@@ -81,6 +114,7 @@ impl std::fmt::Display for RelayError {
             RelayError::Closed(c) => write!(f, "relay closed ({c})"),
             RelayError::Handshake => f.write_str("relay handshake failed"),
             RelayError::Network => f.write_str("relay unreachable"),
+            RelayError::TimedOut => f.write_str("relay timed out"),
         }
     }
 }
@@ -93,8 +127,16 @@ pub fn http1_client() -> reqwest::Client {
 }
 
 /// Opens a relay WebSocket at `path` with a fresh relay token (in the
-/// `Authorization` header, never the URL).
+/// `Authorization` header, never the URL), within [`OPEN_TIMEOUT`].
 pub async fn open_socket(cloud: &Cloud, http1: &reqwest::Client, path: &str) -> Result<Ws, RelayError> {
+    open_socket_within(cloud, http1, path, OPEN_TIMEOUT).await
+}
+
+async fn open_socket_within(cloud: &Cloud, http1: &reqwest::Client, path: &str, limit: Duration) -> Result<Ws, RelayError> {
+    tokio::time::timeout(limit, open_socket_now(cloud, http1, path)).await.unwrap_or(Err(RelayError::TimedOut))
+}
+
+async fn open_socket_now(cloud: &Cloud, http1: &reqwest::Client, path: &str) -> Result<Ws, RelayError> {
     let token = cloud.relay_token().await.map_err(RelayError::Refused)?;
     let key = generate_key();
     let resp = http1
@@ -125,6 +167,11 @@ pub async fn open_socket(cloud: &Cloud, http1: &reqwest::Client, path: &str) -> 
 
 fn close_code(frame: Option<&CloseFrame>) -> u16 {
     frame.map(|f| u16::from(f.code)).unwrap_or(1005)
+}
+
+/// `step`, or [`RelayError::TimedOut`] once `limit` passes.
+async fn within<T>(limit: Duration, step: impl std::future::Future<Output = Result<T, RelayError>>) -> Result<T, RelayError> {
+    tokio::time::timeout(limit, step).await.unwrap_or(Err(RelayError::TimedOut))
 }
 
 async fn close(ws: &mut Ws, code: u16, reason: &'static str) {
@@ -206,11 +253,13 @@ pub struct HostOptions {
     /// Set to true once the presence socket is open, and back to false when
     /// presence ends: what a status can say "online" from.
     pub opened: Option<watch::Sender<bool>>,
+    /// Longest wait to open the presence socket ([`OPEN_TIMEOUT`]).
+    pub open_timeout: Duration,
 }
 
 impl Default for HostOptions {
     fn default() -> Self {
-        HostOptions { join: Join::default(), keepalive: Keepalive::default(), wall_clock: SystemTime::now, opened: None }
+        HostOptions { join: Join::default(), keepalive: Keepalive::default(), wall_clock: SystemTime::now, opened: None, open_timeout: OPEN_TIMEOUT }
     }
 }
 
@@ -535,12 +584,15 @@ pub async fn connect_with(cloud: &Cloud, http1: &reqwest::Client, host_id: &str,
     let account = cloud.account_id.clone().ok_or(RelayError::Handshake)?;
     let session_id = b64(&random_bytes::<16>());
     let mut ws = open_socket(cloud, http1, &format!("/v1/relay/host/{host_id}/data/{session_id}")).await?;
-    await_paired(&mut ws).await?;
+    within(PAIR_TIMEOUT, await_paired(&mut ws)).await?;
     let prologue = noise::prologue(&account, &session_id, &cloud.device_id(), host_id);
     let mut init = Initiator::new(cloud.keys.r#box.seed(), host_box, &prologue, None).map_err(|_| RelayError::Handshake)?;
     let m1 = init.write_message1().map_err(|_| RelayError::Handshake)?;
-    ws.send(Message::Binary(m1.into())).await.map_err(|_| RelayError::Network)?;
-    let m2 = next_binary(&mut ws).await?;
+    let m2 = within(HANDSHAKE_TIMEOUT, async {
+        ws.send(Message::Binary(m1.into())).await.map_err(|_| RelayError::Network)?;
+        next_binary(&mut ws).await
+    })
+    .await?;
     match init.read_message2(&m2) {
         Ok(t) => Ok(Tunnel::start(ws, t, true, join, keepalive, cloud.text_keepalive_switch())),
         Err(_) => {
@@ -610,32 +662,41 @@ impl Sessions {
 const MAX_REVOKED: usize = 16;
 
 /// The device ids of a presence message's `revoked` list: id-shaped
-/// entries only, and the first [`MAX_REVOKED`] of the list (the rest is
-/// ignored).
+/// entries only, from the newest [`MAX_REVOKED`] entries of the list (the
+/// rest is ignored). The relay sends at most [`MAX_REVOKED`], newest first;
+/// a relay from before that sent every recent one, oldest first, so from a
+/// longer list the last [`MAX_REVOKED`] are the newest.
 fn revoked_list(v: &Value) -> Vec<String> {
     let Some(list) = v.as_array() else { return Vec::new() };
-    list.iter().take(MAX_REVOKED).filter_map(Value::as_str).filter(|s| crate::keys::is_device_id(s)).map(String::from).collect()
+    let newest = &list[list.len().saturating_sub(MAX_REVOKED)..];
+    newest.iter().filter_map(Value::as_str).filter(|s| crate::keys::is_device_id(s)).map(String::from).collect()
 }
 
 /// The host side: holds the presence socket and serves each offer until
 /// presence closes. Returns how it ended.
+///
+/// Paired sessions do not depend on presence: the relay keeps them open
+/// when presence drops (it only ends offers nobody joined yet, with 4005),
+/// so a presence blip or the daily presence recycle (4008) leaves them up,
+/// and only new offers wait until presence is back. Presence ending closes
+/// the sessions too only when every socket of this host is done for: this
+/// host removed (4001), the account locked (4011, 4012), a stop, or a
+/// machine that slept past the keepalive deadline (the other ends gave up).
 pub async fn host(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<dyn HostHandler>, sessions: Sessions, join: Join, stop: oneshot::Receiver<()>) -> RelayError {
     host_with(cloud, http1, handler, sessions, stop, HostOptions { join, ..HostOptions::default() }).await
 }
 
-/// The presence socket went quiet, or the machine slept: give it up, so the
-/// caller's reconnect loop opens a fresh one.
-fn dead(sessions: &Sessions) -> RelayError {
-    sessions.close_all(1006);
-    RelayError::Network
+/// Whether a presence close with `code` ends this host's sessions too.
+fn ends_sessions(code: u16) -> bool {
+    matches!(code, 4001 | 4011 | 4012)
 }
 
 /// [`host`] with its timings and clock chosen.
 pub async fn host_with(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<dyn HostHandler>, sessions: Sessions, stop: oneshot::Receiver<()>, opts: HostOptions) -> RelayError {
-    let HostOptions { join, keepalive, wall_clock, opened } = opts;
+    let HostOptions { join, keepalive, wall_clock, opened, open_timeout } = opts;
     let opened = OpenFlag(opened);
     let path = format!("/v1/relay/host/{}/presence", cloud.device_id());
-    let mut ws = match open_socket(&cloud, &http1, &path).await {
+    let mut ws = match open_socket_within(&cloud, &http1, &path, open_timeout).await {
         Ok(ws) => ws,
         Err(e) => return e,
     };
@@ -653,7 +714,10 @@ pub async fn host_with(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<d
         // wall-clock gap is a sleep the monotonic clock did not count.
         let now = wall_clock();
         if now.duration_since(wall).is_ok_and(|gap| gap > keepalive.dead_after) {
-            return dead(&sessions);
+            // The machine slept past the deadline: the controllers have
+            // given these sessions up already.
+            sessions.close_all(1006);
+            return RelayError::Network;
         }
         wall = now;
         tokio::select! {
@@ -662,7 +726,9 @@ pub async fn host_with(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<d
                 sessions.close_all(1000);
                 return RelayError::Closed(1000);
             }
-            _ = tokio::time::sleep_until(last_in + keepalive.dead_after) => return dead(&sessions),
+            // Presence went quiet: give it up so the caller opens a fresh
+            // one. Paired sessions have their own keepalive.
+            _ = tokio::time::sleep_until(last_in + keepalive.dead_after) => return RelayError::Network,
             _ = ping.tick() => {
                 // The protocol ping keeps the socket alive on any relay.
                 if ws.send(Message::Ping(Vec::new().into())).await.is_err() { return RelayError::Network; }
@@ -702,14 +768,13 @@ pub async fn host_with(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<d
                     if code == UNSUPPORTED_DATA && text_keepalive && !ponged {
                         cloud.turn_off_text_keepalive();
                     }
-                    sessions.close_all(code);
+                    if ends_sessions(code) {
+                        sessions.close_all(code);
+                    }
                     return RelayError::Closed(code);
                 }
                 Some(Ok(_)) => {}
-                Some(Err(_)) | None => {
-                    sessions.close_all(1006);
-                    return RelayError::Network;
-                }
+                Some(Err(_)) | None => return RelayError::Network,
             }
             }
         }
@@ -728,10 +793,10 @@ async fn join_session(
     let known = handler.controller_box(from);
     let account = cloud.account_id.clone().ok_or(RelayError::Handshake)?;
     let mut ws = open_socket(cloud, http1, &format!("/v1/relay/host/{}/data/{session_id}", cloud.device_id())).await?;
-    await_paired(&mut ws).await?;
+    within(PAIR_TIMEOUT, await_paired(&mut ws)).await?;
     let prologue = noise::prologue(&account, session_id, from, &cloud.device_id());
     let mut resp = Responder::new(cloud.keys.r#box.seed(), &prologue, None).map_err(|_| RelayError::Handshake)?;
-    let m1 = next_binary(&mut ws).await?;
+    let m1 = within(HANDSHAKE_TIMEOUT, next_binary(&mut ws)).await?;
     // The initiator must be the offer's device, with the box key our
     // roster lists, and still active.
     match (resp.read_message1(&m1), known) {
@@ -742,7 +807,7 @@ async fn join_session(
         }
     }
     let (m2, transport) = resp.write_message2().map_err(|_| RelayError::Handshake)?;
-    ws.send(Message::Binary(m2.into())).await.map_err(|_| RelayError::Network)?;
+    within(HANDSHAKE_TIMEOUT, async { ws.send(Message::Binary(m2.into())).await.map_err(|_| RelayError::Network) }).await?;
     let mut tunnel = Tunnel::start(ws, transport, false, join, keepalive, cloud.text_keepalive_switch());
     let closer = tunnel.closer();
     sessions.add(from, closer.clone());
@@ -778,16 +843,44 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn the_revoked_list_keeps_id_shaped_entries_and_at_most_16() {
+    fn the_revoked_list_keeps_id_shaped_entries_from_the_newest_16() {
         let id = |i: u8| crate::encoding::b64(&[i; 16]);
         let mixed = json!([id(1), "not-an-id", 7, "x\ny", crate::encoding::b64(&[2; 17]), id(2)]);
         assert_eq!(revoked_list(&mixed), vec![id(1), id(2)]);
+        // A relay that sends newest first sends at most 16: all are read.
+        let newest_first: Vec<String> = (0..16).rev().map(id).collect();
+        assert_eq!(revoked_list(&json!(newest_first)), newest_first);
+        // A longer list comes from a relay that sends every recent one,
+        // oldest first: its last 16 are the newest.
         let long: Vec<String> = (0..40).map(id).collect();
-        assert_eq!(revoked_list(&json!(long)), long[..16].to_vec());
-        // Junk entries count towards the cap: the rest of the list is ignored.
-        let mut padded = vec![json!("junk"); 16];
-        padded.push(json!(id(3)));
+        assert_eq!(revoked_list(&json!(long)), long[24..].to_vec());
+        // Junk entries count towards the cap: older entries are ignored.
+        let mut padded = vec![json!(id(3))];
+        padded.extend(vec![json!("junk"); 16]);
         assert!(revoked_list(&json!(padded)).is_empty());
         assert!(revoked_list(&json!({"a": 1})).is_empty());
+    }
+
+    #[test]
+    fn only_removal_and_a_locked_account_end_the_sessions_with_presence() {
+        for code in [4001, 4011, 4012] {
+            assert!(ends_sessions(code), "{code}");
+        }
+        // Replaced, recycled after 24 h, over the allowance (the relay
+        // closes those sessions itself), and any blip: sessions stay.
+        for code in [1000, 1001, 1003, 1006, 4000, 4008, 4009, 4010] {
+            assert!(!ends_sessions(code), "{code}");
+        }
+    }
+
+    #[test]
+    fn presence_ends_say_replaced_and_paused() {
+        assert!(RelayError::Closed(4000).replaced());
+        assert!(!RelayError::Closed(4001).replaced() && !RelayError::Network.replaced());
+        assert_eq!(RelayError::Closed(4010).paused(), Some(None));
+        let refused = |code: &str, body: serde_json::Value| RelayError::Refused(ApiError { status: 429, code: code.into(), body: Some(body), retry_after: None });
+        assert_eq!(refused("quota_exhausted", json!({"error": "quota_exhausted", "paused_until": 1_800_000_000_000u64})).paused(), Some(Some(1_800_000_000_000)));
+        assert_eq!(refused("rate_limited", json!({"error": "rate_limited"})).paused(), None);
+        assert_eq!(RelayError::Closed(4008).paused(), None);
     }
 }

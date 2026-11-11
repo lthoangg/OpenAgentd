@@ -19,7 +19,7 @@ import {
   ClosingCopy,
   GUEST_DESCRIPTION,
   groupCode,
-  NOTICES,
+  noticeCopy,
   OfferCopy,
   SigningInCopy,
   UnavailableCopy,
@@ -179,7 +179,7 @@ export function PhoneAccountContent() {
     case 'guest': {
       // No keys on this build (Android for now): no account UI at all.
       if (!status.supported) break
-      const notice = status.notice ? NOTICES[status.notice] : null
+      const notice = status.notice ? noticeCopy(status.notice, status.retry_after) : null
       content = (
         <>
           {notice && (

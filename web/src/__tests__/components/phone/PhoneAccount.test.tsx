@@ -172,6 +172,21 @@ describe('Account page', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
+  it('says why a join was refused, with the wait the cloud asked for', async () => {
+    shell({ state: 'guest', notice: 'rate_limited', supported: true, retry_after: 45 })
+    render(<PhoneAccountContent />)
+
+    expect(await screen.findByText('OpenAgentd is getting too many requests from this network. Try again in 45 seconds.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy()
+  })
+
+  it('says the account already has 3 devices waiting', async () => {
+    shell({ state: 'guest', notice: 'too_many_pending', supported: true })
+    render(<PhoneAccountContent />)
+
+    expect(await screen.findByText('3 devices are already waiting to join; wait a few minutes or reject them on a device that approves.')).toBeTruthy()
+  })
+
   it('signs a phone in as a client only: Use as server shows, disabled', async () => {
     shell({ state: 'guest', notice: null, supported: true })
     render(<PhoneAccountContent />)

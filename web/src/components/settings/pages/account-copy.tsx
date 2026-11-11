@@ -10,7 +10,13 @@ import type { CloudNotice } from '@/api/cloud'
 
 export const GUEST_DESCRIPTION = 'Optional. Everything works without an account.'
 
-export const NOTICES: Record<CloudNotice, { title?: string; body: string; tone?: 'info' | 'warning' }> = {
+export interface NoticeCopy {
+  title?: string
+  body: string
+  tone?: 'info' | 'warning'
+}
+
+export const NOTICES: Record<CloudNotice, NoticeCopy> = {
   expired: {
     title: 'The sign-in code expired.',
     body: 'If your browser said you are on the waitlist, you can finish once you are approved. Everything on this device keeps working.',
@@ -36,10 +42,48 @@ export const NOTICES: Record<CloudNotice, { title?: string; body: string; tone?:
   invite_invalid: { body: 'That is not an invitation link. Copy it again from your phone.' },
   join_ended: { body: 'The request to join ended: it was cancelled, expired, or the invitation was used.' },
   signed_out: { body: 'Signed out. Local sessions and settings are unchanged.' },
+  rate_limited: {
+    body: 'OpenAgentd is getting too many requests from this network. Try again in a few minutes.',
+    tone: 'warning',
+  },
+  too_many_pending: {
+    body: '3 devices are already waiting to join; wait a few minutes or reject them on a device that approves.',
+    tone: 'warning',
+  },
+  device_limit: { body: 'Your account has 10 devices; remove one first.', tone: 'warning' },
+  device_exists: { body: 'This device is already in your account or waiting to join. Sign in again to start over.' },
+  account_closing: {
+    title: 'Account scheduled for deletion.',
+    body: 'To keep it, sign in at account.openagentd.dev and choose Keep account, then sign in here again.',
+    tone: 'warning',
+  },
+  account_unavailable: {
+    title: 'Account unavailable.',
+    body: 'Contact OpenAgentd if this continues. Everything on this device keeps working.',
+    tone: 'warning',
+  },
+  unreachable: { body: 'Could not reach OpenAgentd. Check your network and try again.', tone: 'warning' },
   failed: {
     body: "Something went wrong with this computer's account keys. Sign in again to start over.",
     tone: 'warning',
   },
+}
+
+/** `45` → `45 seconds`, `60` → `1 minute`, `600` → `10 minutes`. */
+export function waitText(seconds: number): string {
+  if (seconds <= 1) return 'a moment'
+  if (seconds < 60) return `${Math.round(seconds)} seconds`
+  if (seconds < 120) return '1 minute'
+  return `${Math.ceil(seconds / 60)} minutes`
+}
+
+/** A guest's notice, with the wait the cloud asked for when it said one. */
+export function noticeCopy(notice: CloudNotice, retryAfter?: number | null): NoticeCopy {
+  const copy = NOTICES[notice]
+  if (notice === 'rate_limited' && typeof retryAfter === 'number' && Number.isFinite(retryAfter) && retryAfter >= 0) {
+    return { ...copy, body: `OpenAgentd is getting too many requests from this network. Try again in ${waitText(retryAfter)}.` }
+  }
+  return copy
 }
 
 /** `https://account.openagentd.dev/device?x=1` → `account.openagentd.dev/device`. */

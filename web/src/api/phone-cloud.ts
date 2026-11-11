@@ -18,11 +18,18 @@ export type PhoneNotice =
   | 'confirm_mismatch'
   | 'invite_invalid'
   | 'signed_out'
+  | 'rate_limited'
+  | 'too_many_pending'
+  | 'device_limit'
+  | 'device_exists'
+  | 'account_closing'
+  | 'account_unavailable'
+  | 'unreachable'
   | 'failed'
 
 export type PhoneCloudStatus =
   /** `supported: false` (Android for now): hide every account control. */
-  | { state: 'guest'; notice: PhoneNotice | null; supported: boolean }
+  | { state: 'guest'; notice: PhoneNotice | null; supported: boolean; retry_after?: number }
   | { state: 'signing_in'; user_code: string; url: string; fingerprint: string; expires_in: number }
   /** A new account: the code is shown once, then groups `check` (1-based) are asked back. */
   | { state: 'recovery'; code: string; check: [number, number] }

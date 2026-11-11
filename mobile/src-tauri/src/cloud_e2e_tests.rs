@@ -98,7 +98,8 @@ fn phone_account_end_to_end() {
                 cloud::cloud_status(),
                 Status::Guest {
                     notice: None,
-                    supported: true
+                    supported: true,
+                    ..
                 }
             ),
             "a guest by default"

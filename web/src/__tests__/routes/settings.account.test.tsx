@@ -15,6 +15,7 @@ mock.module('@/hooks/use-mobile', () => ({
 }))
 
 import { AccountSettingsPage } from '@/components/settings/pages/settings.account'
+import { NOTICES } from '@/components/settings/pages/account-copy'
 import type { CloudStatus } from '@/api/cloud'
 import { cloudPollInterval } from '@/queries/cloud'
 
@@ -199,6 +200,7 @@ describe('AccountSettingsPage', () => {
     ['connecting', { state: 'connecting' }, 'Connecting…'],
     ['offline', { state: 'offline' }, 'Offline, retrying'],
     ['paused', { state: 'paused', until: null }, "Paused: today's relay allowance is used up"],
+    ['taken over', { state: 'taken_over' }, 'Taken over: another copy of this computer uses its account keys. Retrying every few minutes'],
   ] as const)('shows a connected account that is %s', async (_name, relay, text) => {
     serveStatus({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, relay, sessions: 3 })
     renderPage()
@@ -272,6 +274,13 @@ describe('AccountSettingsPage', () => {
     ['confirm_mismatch', /did not match the invitation/, 'Sign in'],
     ['invite_invalid', 'That is not an invitation link. Copy it again from your phone.', 'Sign in'],
     ['signed_out', 'Signed out. Local sessions and settings are unchanged.', 'Sign in'],
+    ['rate_limited', 'OpenAgentd is getting too many requests from this network. Try again in a few minutes.', 'Sign in'],
+    ['too_many_pending', '3 devices are already waiting to join; wait a few minutes or reject them on a device that approves.', 'Sign in'],
+    ['device_limit', 'Your account has 10 devices; remove one first.', 'Sign in'],
+    ['device_exists', /already in your account or waiting to join/, 'Sign in'],
+    ['account_closing', 'Account scheduled for deletion.', 'Sign in'],
+    ['account_unavailable', 'Account unavailable.', 'Sign in'],
+    ['unreachable', 'Could not reach OpenAgentd. Check your network and try again.', 'Sign in'],
     ['failed', /Something went wrong with this computer's account keys/, 'Sign in'],
   ] as const)('shows the %s notice to a guest', async (notice, text, button) => {
     serveStatus({ state: 'guest', notice })
@@ -279,6 +288,19 @@ describe('AccountSettingsPage', () => {
 
     expect(await screen.findByText(text)).toBeTruthy()
     expect(screen.getByRole('button', { name: button })).toBeTruthy()
+  })
+
+  it('says how long to wait when the cloud asked for a wait', async () => {
+    serveStatus({ state: 'guest', notice: 'rate_limited', retry_after: 120 })
+    renderPage()
+
+    expect(await screen.findByText('OpenAgentd is getting too many requests from this network. Try again in 2 minutes.')).toBeTruthy()
+  })
+
+  it('words every notice without em or en dashes', () => {
+    for (const copy of Object.values(NOTICES)) {
+      expect(`${copy.title ?? ''} ${copy.body}`).not.toMatch(/[\u2013\u2014]/)
+    }
   })
 
   it('shows the hint and no buttons when this computer cannot change the account', async () => {

@@ -38,6 +38,32 @@ fn runtime() -> Result<tokio::runtime::Runtime> {
     Ok(tokio::runtime::Builder::new_multi_thread().enable_all().build()?)
 }
 
+/// Runs a sign-in or join until it ends or the person presses Ctrl-C. On
+/// Ctrl-C the flow is dropped, which withdraws a request to join it posted
+/// (so it does not hold one of the account's 3 pending places), and this
+/// waits a few seconds for that to be sent. `None`: cancelled.
+fn until_ctrl_c<T>(rt: &tokio::runtime::Runtime, flow: impl std::future::Future<Output = T>) -> Option<T> {
+    let out = rt.block_on(async {
+        tokio::select! {
+            r = flow => Some(r),
+            _ = tokio::signal::ctrl_c() => None,
+        }
+    });
+    // Tokio keeps the Ctrl-C handler for the life of the process: from here
+    // on (the questions that may follow) Ctrl-C quits, as it did before.
+    rt.spawn(async {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            println!();
+            std::process::exit(130);
+        }
+    });
+    out.or_else(|| {
+        println!("\n  Cancelling…");
+        rt.block_on(flows::settle_withdrawals(Duration::from_secs(5)));
+        None
+    })
+}
+
 fn http() -> reqwest::Client {
     reqwest::Client::builder().connect_timeout(Duration::from_secs(15)).timeout(Duration::from_secs(30)).build().unwrap_or_default()
 }
@@ -129,16 +155,23 @@ fn join(roles: CloudRoles) -> Result<ExitCode> {
         return Ok(ExitCode::FAILURE);
     }
     let rt = runtime()?;
-    let outcome = rt.block_on(engine::join_invite(Endpoints::current(), http(), &link, roles.roles(), |event| {
-        if let engine::Event::Invited { fingerprint, kind } = event {
-            println!();
-            field("Device", &format!("{}   {}", bold(&fingerprint), dim(kind.unwrap_or("computer"))));
-            println!();
-            println!("  On the device that invited it, check it shows this device, then tap Add.");
-            println!("  {}", dim("Waiting… (Ctrl-C to cancel)"));
-        }
-    }));
+    let outcome = until_ctrl_c(
+        &rt,
+        engine::join_invite(Endpoints::current(), http(), &link, roles.roles(), |event| {
+            if let engine::Event::Invited { fingerprint, kind } = event {
+                println!();
+                field("Device", &format!("{}   {}", bold(&fingerprint), dim(kind.unwrap_or("computer"))));
+                println!();
+                println!("  On the device that invited it, check it shows this device, then tap Add.");
+                println!("  {}", dim("Waiting… (Ctrl-C to cancel)"));
+            }
+        }),
+    );
     drop(link);
+    let Some(outcome) = outcome else {
+        println!("  Cancelled.\n");
+        return Ok(ExitCode::FAILURE);
+    };
     match outcome {
         Ok(engine::Outcome::Joined(identity)) => {
             idstore::save(&store, &identity)?;
@@ -153,7 +186,7 @@ fn join(roles: CloudRoles) -> Result<ExitCode> {
                 appv3_api::cloud::Notice::JoinEnded => "The invitation ended: it expired, was cancelled, or was used.\n    Ask your phone for a new one.".to_string(),
                 appv3_api::cloud::Notice::ConfirmMismatch => "The account's answer did not match the invitation. Nothing was changed.".to_string(),
                 appv3_api::cloud::Notice::InviteInvalid => "That is not an invitation link. Copy it again from your phone.".to_string(),
-                _ => problem_message(&e),
+                _ => engine::message(&e).unwrap_or_else(|| problem_message(&e)),
             };
             println!("\n  {} {msg}\n", yellow("!"));
             Ok(ExitCode::FAILURE)
@@ -180,27 +213,34 @@ fn login(roles: CloudRoles) -> Result<ExitCode> {
     field("Use as", roles_line(roles));
     println!();
     let rt = runtime()?;
-    let outcome = rt.block_on(engine::sign_in(Endpoints::current(), http(), roles, |event| match event {
-        engine::Event::Code(c) => {
-            field("Open", &cyan(&c.url));
-            field("Code", &bold(&c.user_code));
-            field("Device", &format!("{}   {}", bold(&c.fingerprint), dim("check the page shows the same")));
-            println!();
-            println!("  Waiting for approval… {}", dim(&format!("(Ctrl-C to cancel, expires in {} min)", c.expires_in / 60)));
-            println!("  {}", dim("If your browser says you are on the waitlist, you can finish once you are approved."));
-        }
-        engine::Event::Joining { code: None, .. } => {
-            println!("  {} Signed in.", green("✓"));
-            println!();
-            println!("  Approve this computer on a device already in your account:");
-            println!("  OpenAgentd → Settings → Account → Pending approvals.");
-            println!("  {}", dim("Waiting for approval…"));
-        }
-        engine::Event::Joining { code: Some(c), .. } => {
-            field("Code to compare", &bold(&code::display(&c)));
-        }
-        engine::Event::Invited { .. } => {}
-    }));
+    let outcome = until_ctrl_c(
+        &rt,
+        engine::sign_in(Endpoints::current(), http(), roles, |event| match event {
+            engine::Event::Code(c) => {
+                field("Open", &cyan(&c.url));
+                field("Code", &bold(&c.user_code));
+                field("Device", &format!("{}   {}", bold(&c.fingerprint), dim("check the page shows the same")));
+                println!();
+                println!("  Waiting for approval… {}", dim(&format!("(Ctrl-C to cancel, expires in {} min)", c.expires_in / 60)));
+                println!("  {}", dim("If your browser says you are on the waitlist, you can finish once you are approved."));
+            }
+            engine::Event::Joining { code: None, .. } => {
+                println!("  {} Signed in.", green("✓"));
+                println!();
+                println!("  Approve this computer on a device already in your account:");
+                println!("  OpenAgentd → Settings → Account → Pending approvals.");
+                println!("  {}", dim("Waiting for approval…"));
+            }
+            engine::Event::Joining { code: Some(c), .. } => {
+                field("Code to compare", &bold(&code::display(&c)));
+            }
+            engine::Event::Invited { .. } => {}
+        }),
+    );
+    let Some(outcome) = outcome else {
+        println!("  Cancelled.\n");
+        return Ok(ExitCode::FAILURE);
+    };
     match outcome {
         Ok(engine::Outcome::Joined(identity)) => {
             idstore::save(&store, &identity)?;
@@ -243,7 +283,7 @@ fn login(roles: CloudRoles) -> Result<ExitCode> {
                 }
                 appv3_api::cloud::Notice::JoinEnded => "The request to join was cancelled or expired.".to_string(),
                 appv3_api::cloud::Notice::CommitMismatch => "The request was cancelled: the codes did not match.".to_string(),
-                _ => problem_message(&e),
+                _ => engine::message(&e).unwrap_or_else(|| problem_message(&e)),
             };
             println!("\n  {} {msg}\n", yellow("!"));
             Ok(ExitCode::FAILURE)
@@ -327,6 +367,7 @@ pub fn relay_line(v: &Value) -> String {
         Some("connected") => match v["relay"]["state"].as_str() {
             Some("online") => green("online"),
             Some("paused") => yellow("paused: today's relay allowance is used up"),
+            Some("taken_over") => yellow("taken over: another copy of this computer uses its account keys; retrying every few minutes"),
             Some("connecting") => dim("connecting"),
             Some("off") => dim("off: not used as a server"),
             _ => yellow("offline, retrying"),
@@ -367,7 +408,7 @@ fn approve() -> Result<ExitCode> {
             signer::SignerError::Flow(flows::FlowError::NotSigner) => "This computer cannot approve devices.".to_string(),
             signer::SignerError::Flow(flows::FlowError::JoinEnded) => "The request was cancelled or expired.".to_string(),
             signer::SignerError::Flow(flows::FlowError::CommitMismatch) => "Request cancelled. If you didn't start it, someone may be trying to join your account.".to_string(),
-            signer::SignerError::Flow(f) => problem_message(&f),
+            signer::SignerError::Flow(f) => engine::message(&f).unwrap_or_else(|| problem_message(&f)),
             other => format!("{other:?}"),
         };
         println!("\n  {} {msg}\n", yellow("!"));

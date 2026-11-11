@@ -27,7 +27,7 @@ import {
   ClosingCopy,
   GUEST_DESCRIPTION,
   groupCode,
-  NOTICES,
+  noticeCopy,
   OfferCopy,
   SigningInCopy,
   UnavailableCopy,
@@ -61,6 +61,8 @@ function relayText(relay: RelayState): string {
       return 'Offline, retrying'
     case 'off':
       return 'Not used as a server: your other devices do not reach this one'
+    case 'taken_over':
+      return 'Taken over: another copy of this computer uses its account keys. Retrying every few minutes'
     case 'paused': {
       const until = relay.until === null
         ? ''
@@ -175,7 +177,7 @@ export function AccountSettingsPage() {
   let content: ReactNode = null
   switch (status?.state) {
     case 'guest': {
-      const notice = status.notice ? NOTICES[status.notice] : null
+      const notice = status.notice ? noticeCopy(status.notice, status.retry_after) : null
       content = (
         <>
           {notice && (

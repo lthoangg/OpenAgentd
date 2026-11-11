@@ -18,9 +18,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use openagentd_cloud::account_state::AccountProblem;
-use openagentd_cloud::api::Cloud;
+use openagentd_cloud::api::{Cloud, Refusal};
 use openagentd_cloud::endpoints::Endpoints;
-use openagentd_cloud::flows::{self, Approval, FlowError, GenesisDraft, Member, Pace, Session};
+use openagentd_cloud::flows::{
+    self, Approval, FlowError, GenesisDraft, JoinStep, Member, Pace, Session, Withdraw,
+};
 use openagentd_cloud::keys::{self, DeviceKeys, Ed25519, Roles, Seed};
 use openagentd_cloud::recovery;
 use openagentd_cloud::relay::{self, Join, RelayError, Tunnel};
@@ -177,6 +179,20 @@ pub enum Notice {
     /// The scanned or pasted text is not an invitation link.
     InviteInvalid,
     SignedOut,
+    /// Too many requests from this network; `retry_after` says how long to wait.
+    RateLimited,
+    /// The account has 3 devices waiting to join already.
+    TooManyPending,
+    /// The account has the most devices it may have (10).
+    DeviceLimit,
+    /// This device is already in the account or waiting to join.
+    DeviceExists,
+    /// The account waits to be deleted.
+    AccountClosing,
+    /// The cloud cannot serve the account for now.
+    AccountUnavailable,
+    /// No answer from the cloud.
+    Unreachable,
     Failed,
 }
 
@@ -188,6 +204,9 @@ pub enum Status {
     Guest {
         notice: Option<Notice>,
         supported: bool,
+        /// Seconds to wait before trying again (`rate_limited`).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        retry_after: Option<u64>,
     },
     SigningIn {
         user_code: String,
@@ -301,10 +320,7 @@ pub fn init(data_dir: std::path::PathBuf) {
     )));
     let phone = Phone {
         keys,
-        status: Mutex::new(Status::Guest {
-            notice: None,
-            supported: supported(),
-        }),
+        status: Mutex::new(guest(None)),
         member: tokio::sync::Mutex::new(None),
         sign_in: Mutex::new(None),
         genesis: Mutex::new(None),
@@ -346,7 +362,25 @@ fn status() -> Status {
         .unwrap_or(Status::Guest {
             notice: None,
             supported: false,
+            retry_after: None,
         })
+}
+
+fn guest(notice: Option<Notice>) -> Status {
+    Status::Guest {
+        notice,
+        supported: supported(),
+        retry_after: None,
+    }
+}
+
+/// Back to guest after a sign-in or join that ended with `e`.
+fn guest_after(e: &FlowError) -> Status {
+    Status::Guest {
+        notice: Some(notice_of(e)),
+        supported: supported(),
+        retry_after: retry_after(e),
+    }
 }
 
 fn http() -> reqwest::Client {
@@ -448,10 +482,7 @@ async fn restore() {
         Ok(_) => return,
         Err(e) => {
             eprintln!("cloud: stored account unreadable: {e}");
-            set_status(Status::Guest {
-                notice: Some(Notice::Failed),
-                supported: supported(),
-            });
+            set_status(guest(Some(Notice::Failed)));
             return;
         }
     };
@@ -546,10 +577,7 @@ async fn erase(problem: AccountProblem) -> String {
     } else {
         Notice::Revoked
     };
-    set_status(Status::Guest {
-        notice: Some(notice),
-        supported: supported(),
-    });
+    set_status(guest(Some(notice)));
     if problem == AccountProblem::Deleted {
         "Account deleted. This phone was signed out; servers on your network still work.".into()
     } else {
@@ -577,6 +605,9 @@ async fn flow_error(e: FlowError) -> String {
         }
         FlowError::Roster(rule) => {
             format!("The account's device list failed a check ({rule}). Nothing was changed.")
+        }
+        FlowError::Api(a) if refusal_message(&a).is_some() => {
+            refusal_message(&a).unwrap_or_default()
         }
         FlowError::Api(a) if a.status == 0 => {
             "No connection to OpenAgentd. Check your network.".into()
@@ -644,8 +675,46 @@ fn notice_of(e: &FlowError) -> Notice {
         FlowError::ConfirmMismatch => Notice::ConfirmMismatch,
         FlowError::Protocol(openagentd_cloud::Error::Invite) => Notice::InviteInvalid,
         FlowError::Problem(AccountProblem::Deleted) => Notice::Deleted,
+        FlowError::Problem(AccountProblem::Closing { .. }) => Notice::AccountClosing,
+        FlowError::Problem(AccountProblem::Unavailable) => Notice::AccountUnavailable,
+        FlowError::Api(a) => match a.refusal() {
+            Some(Refusal::RateLimited { .. }) => Notice::RateLimited,
+            Some(Refusal::TooManyPending) => Notice::TooManyPending,
+            Some(Refusal::DeviceLimit) => Notice::DeviceLimit,
+            Some(Refusal::DeviceExists) => Notice::DeviceExists,
+            Some(Refusal::Unreachable) => Notice::Unreachable,
+            None => Notice::Failed,
+        },
         _ => Notice::Failed,
     }
+}
+
+/// Seconds the cloud asked to wait (`rate_limited`), for the notice.
+fn retry_after(e: &FlowError) -> Option<u64> {
+    match e {
+        FlowError::Api(a) => match a.refusal() {
+            Some(Refusal::RateLimited { retry_after }) => retry_after,
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// What a refusal says on the phone's sheets (approving, adding). No em
+/// or en dashes.
+fn refusal_message(a: &openagentd_cloud::api::ApiError) -> Option<String> {
+    Some(match a.refusal()? {
+        Refusal::RateLimited { .. } => {
+            "OpenAgentd is getting too many requests from this network. Try again in a few minutes."
+                .into()
+        }
+        Refusal::TooManyPending => "3 devices are already waiting to join; wait a few minutes or reject them on a device that approves.".into(),
+        Refusal::DeviceLimit => "Your account has 10 devices; remove one first.".into(),
+        Refusal::DeviceExists => {
+            "This device is already in your account or waiting to join.".into()
+        }
+        Refusal::Unreachable => "No connection to OpenAgentd. Check your network.".into(),
+    })
 }
 
 /// Joins with an invitation another phone shows (scanned or pasted). The
@@ -654,30 +723,27 @@ fn spawn_join(link: Zeroizing<String>) {
     let task = tauri::async_runtime::spawn(async move {
         let (cloud, fingerprint) = new_cloud();
         let mut member = Member::new(cloud, None);
-        let end = |e: FlowError| {
-            set_status(Status::Guest {
-                notice: Some(notice_of(&e)),
-                supported: supported(),
-            })
-        };
+        let end = |e: FlowError| set_status(guest_after(&e));
         let claim = match flows::claim_invite(&mut member, &link).await {
             Ok(c) => c,
             Err(e) => return end(e),
         };
         drop(link);
+        // Withdrawn unless this phone ends up in the account (also when
+        // the sheet closes and this task is aborted).
+        let withdraw = Withdraw::arm(&member.cloud, &claim.enrollment_id);
         set_status(Status::Invited {
             fingerprint,
             kind: openagentd_cloud::api::this_kind().map(String::from),
         });
         if let Err(e) = flows::await_invited(&mut member, claim, Pace::default()).await {
+            withdraw.now().await;
             return end(e);
         }
+        withdraw.keep();
         if let Err(e) = finish(member).await {
             eprintln!("cloud: could not store the account keys: {e}");
-            set_status(Status::Guest {
-                notice: Some(Notice::Failed),
-                supported: supported(),
-            });
+            set_status(guest(Some(Notice::Failed)));
         }
     });
     if let Ok(p) = phone() {
@@ -710,12 +776,7 @@ pub fn cloud_join_invite(link: String) -> Result<Status, String> {
 fn spawn_sign_in() {
     let task = tauri::async_runtime::spawn(async move {
         let (cloud, fingerprint) = new_cloud();
-        let end = |e: FlowError| {
-            set_status(Status::Guest {
-                notice: Some(notice_of(&e)),
-                supported: supported(),
-            });
-        };
+        let end = |e: FlowError| set_status(guest_after(&e));
         let code = match cloud.device_code().await {
             Ok(c) => c,
             Err(e) => return end(e.into()),
@@ -731,8 +792,20 @@ fn spawn_sign_in() {
             Err(e) => return end(e),
         };
         let mut member = Member::new(cloud, None);
-        let req = match flows::request_to_join(&mut member, &session).await {
-            Ok(r) => r,
+        // A request that does not end in joining is withdrawn (also when
+        // the sheet closes and this task is aborted).
+        let joined = flows::join_with_code(&mut member, &session, Pace::default(), |step| {
+            set_status(Status::Joining {
+                fingerprint: fingerprint.clone(),
+                code: match step {
+                    JoinStep::Requested => None,
+                    JoinStep::Code(c) => Some(c.to_string()),
+                },
+            })
+        })
+        .await;
+        match joined {
+            Ok(_) => {}
             Err(FlowError::EmptyAccount) => {
                 // This phone sets the account up: show the recovery code first.
                 let draft = GenesisDraft::new();
@@ -751,28 +824,10 @@ fn spawn_sign_in() {
                 return;
             }
             Err(e) => return end(e),
-        };
-        set_status(Status::Joining {
-            fingerprint: fingerprint.clone(),
-            code: None,
-        });
-        let join = match flows::await_signer(&mut member, &req, Pace::default()).await {
-            Ok(j) => j,
-            Err(e) => return end(e),
-        };
-        set_status(Status::Joining {
-            fingerprint,
-            code: Some(join.code.clone()),
-        });
-        if let Err(e) = flows::await_added(&mut member, join, &req, Pace::default()).await {
-            return end(e);
         }
         if let Err(e) = finish(member).await {
             eprintln!("cloud: could not store the account keys: {e}");
-            set_status(Status::Guest {
-                notice: Some(Notice::Failed),
-                supported: supported(),
-            });
+            set_status(guest(Some(Notice::Failed)));
         }
     });
     if let Ok(p) = phone() {
@@ -829,10 +884,7 @@ pub fn cloud_cancel() -> Result<Status, String> {
             | Status::Invited { .. }
             | Status::Recovery { .. }
     ) {
-        set_status(Status::Guest {
-            notice: None,
-            supported: supported(),
-        });
+        set_status(guest(None));
     }
     Ok(status())
 }
@@ -864,10 +916,7 @@ pub async fn cloud_confirm_recovery(first: String, second: String) -> Result<Sta
             Ok(status())
         }
         Err(e) => {
-            set_status(Status::Guest {
-                notice: Some(Notice::Failed),
-                supported: supported(),
-            });
+            set_status(guest(Some(Notice::Failed)));
             Err(flow_error(e).await)
         }
     }
@@ -1364,10 +1413,7 @@ pub async fn cloud_sign_out() -> Result<Status, String> {
         .await
         .map_err(|e| e.to_string())??;
     publish_push_context(None);
-    set_status(Status::Guest {
-        notice: Some(Notice::SignedOut),
-        supported: supported(),
-    });
+    set_status(guest(Some(Notice::SignedOut)));
     Ok(status())
 }
 
@@ -1420,6 +1466,9 @@ fn relay_message(e: &RelayError) -> String {
         }
         RelayError::Handshake => {
             "This computer did not prove its identity. Nothing was sent.".into()
+        }
+        RelayError::TimedOut => {
+            "This computer did not answer in time. Check that it is awake and online.".into()
         }
         _ => "This computer cannot be reached through your account right now.".into(),
     }
@@ -1540,6 +1589,7 @@ mod tests {
         let s = serde_json::to_value(Status::Guest {
             notice: Some(Notice::SignedOut),
             supported: true,
+            retry_after: None,
         })
         .unwrap();
         assert_eq!(
@@ -1555,6 +1605,54 @@ mod tests {
             s,
             serde_json::json!({"state": "recovery", "code": "X", "check": [2, 9]})
         );
+    }
+
+    #[test]
+    fn each_refusal_gets_its_own_notice_and_the_wait() {
+        let refused = |status: u16, code: &str, retry_after: Option<u64>| {
+            FlowError::Api(openagentd_cloud::api::ApiError {
+                status,
+                code: code.into(),
+                body: None,
+                retry_after,
+            })
+        };
+        let cases = [
+            (refused(429, "rate_limited", Some(60)), Notice::RateLimited),
+            (
+                refused(409, "too_many_pending", None),
+                Notice::TooManyPending,
+            ),
+            (refused(403, "device_limit", None), Notice::DeviceLimit),
+            (refused(409, "device_exists", None), Notice::DeviceExists),
+            (refused(0, "network", None), Notice::Unreachable),
+            (
+                FlowError::Problem(AccountProblem::Closing { deletes_at: None }),
+                Notice::AccountClosing,
+            ),
+            (
+                FlowError::Problem(AccountProblem::Unavailable),
+                Notice::AccountUnavailable,
+            ),
+            (refused(400, "invalid_request", None), Notice::Failed),
+        ];
+        for (e, n) in cases {
+            assert_eq!(notice_of(&e), n, "{e:?}");
+        }
+        let s = serde_json::to_value(guest_after(&refused(429, "rate_limited", Some(60)))).unwrap();
+        assert_eq!(s["notice"], "rate_limited");
+        assert_eq!(s["retry_after"], 60);
+        let s = serde_json::to_value(guest_after(&refused(409, "too_many_pending", None))).unwrap();
+        assert_eq!(s["notice"], "too_many_pending");
+        assert!(s.get("retry_after").is_none());
+        let text = refusal_message(&openagentd_cloud::api::ApiError {
+            status: 403,
+            code: "device_limit".into(),
+            body: None,
+            retry_after: None,
+        })
+        .unwrap();
+        assert_eq!(text, "Your account has 10 devices; remove one first.");
     }
 
     #[test]

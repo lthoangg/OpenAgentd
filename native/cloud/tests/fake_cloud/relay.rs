@@ -47,8 +47,19 @@ pub struct Relay {
     /// Control messages the test sends to the host side of a paired
     /// session (pause / resume), newest session last.
     pub to_host: Vec<mpsc::UnboundedSender<Message>>,
+    /// Control messages the test sends to the controller side of a paired
+    /// session (a close), newest session last.
+    pub to_controller: Vec<mpsc::UnboundedSender<Message>>,
+    /// Data socket upgrades asked for by controllers, refused ones included.
+    pub data_opens: usize,
+    /// Holds each controller's data upgrade this long before answering it.
+    pub data_delay: Option<std::time::Duration>,
     /// Sizes of the binary messages the host side sent, in order.
     pub host_frames: Vec<usize>,
+    /// Sizes of the binary messages the controller side sent, in order.
+    pub controller_frames: Vec<usize>,
+    /// Text `ping`s received on data sockets from the host side.
+    pub host_text_pings: usize,
     /// Text `ping`s received on data sockets (either side).
     pub data_text_pings: usize,
     /// A relay from before the text keepalive: a text `ping` on a data
@@ -144,6 +155,16 @@ pub async fn data(State(f): State<Fake>, Path((host, session)): Path<(String, St
     }
     let relay = f.1.clone();
     let waiting = relay.lock().unwrap().waiting.remove(&session);
+    if waiting.is_none() {
+        let delay = {
+            let mut r = relay.lock().unwrap();
+            r.data_opens += 1;
+            r.data_delay
+        };
+        if let Some(d) = delay {
+            tokio::time::sleep(d).await;
+        }
+    }
     if let Some(slot) = waiting {
         // The host joining an offered session.
         return ws.on_upgrade(move |socket| async move {
@@ -185,6 +206,7 @@ async fn pair(relay: Shared, controller: WebSocket, host: WebSocket) {
     let to_c = writer(c_tx);
     let to_h = writer(h_tx);
     relay.lock().unwrap().to_host.push(to_h.clone());
+    relay.lock().unwrap().to_controller.push(to_c.clone());
     let paired = || Message::Text(json!({"type":"paired"}).to_string().into());
     let _ = to_c.send(paired());
     let _ = to_h.send(paired());
@@ -198,6 +220,9 @@ async fn pair(relay: Shared, controller: WebSocket, host: WebSocket) {
                         let old = {
                             let mut r = relay.lock().unwrap();
                             r.data_text_pings += 1;
+                            if from_host {
+                                r.host_text_pings += 1;
+                            }
                             r.data_old
                         };
                         if old {
@@ -215,8 +240,13 @@ async fn pair(relay: Shared, controller: WebSocket, host: WebSocket) {
                         let _ = back.send(Message::Text("pong".into()));
                     }
                     Message::Binary(ref b) => {
-                        if from_host {
-                            relay.lock().unwrap().host_frames.push(b.len());
+                        {
+                            let mut r = relay.lock().unwrap();
+                            if from_host {
+                                r.host_frames.push(b.len());
+                            } else {
+                                r.controller_frames.push(b.len());
+                            }
                         }
                         if tx.send(m).is_err() {
                             break;
@@ -239,6 +269,13 @@ async fn pair(relay: Shared, controller: WebSocket, host: WebSocket) {
     let one = forward(c_rx, to_h.clone(), to_c.clone(), false);
     let two = forward(h_rx, to_c, to_h, true);
     // Wait for both sides to finish their close handshake (see above); the
-    // timeout only bounds a peer that never answers a close.
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(30), async { tokio::join!(one, two) }).await;
+    // timeout only bounds a peer that never answers a close, once the other
+    // side is done.
+    tokio::pin!(one);
+    tokio::pin!(two);
+    let limit = std::time::Duration::from_secs(30);
+    tokio::select! {
+        _ = &mut one => { let _ = tokio::time::timeout(limit, two).await; }
+        _ = &mut two => { let _ = tokio::time::timeout(limit, one).await; }
+    }
 }

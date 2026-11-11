@@ -75,6 +75,11 @@ pub struct Inner {
     /// Most pending enrollments per account (`too_many_pending` past it),
     /// as the cloud does with 3. `None`: no cap.
     pub pending_cap: Option<usize>,
+    /// Relay tokens issued so far.
+    pub relay_tokens_issued: usize,
+    /// The server's own time for a relay token (the real one writes to the
+    /// account's Durable Object).
+    pub relay_token_delay: Option<std::time::Duration>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -628,11 +633,16 @@ async fn leave(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderM
 }
 
 async fn relay_token(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, body: axum::body::Bytes) -> Response {
+    let delay = f.0.lock().unwrap().relay_token_delay;
+    if let Some(d) = delay {
+        tokio::time::sleep(d).await;
+    }
     let mut s = f.0.lock().unwrap();
     let (account, device, _, h) = signed_or_return!(s, method, uri, headers, &body, false);
     let v = s.accounts[&account].version;
     let token = format!("t1.{}.{}", rand_id(24), rand_id(24));
     s.tokens.insert(token.clone(), (account, device));
+    s.relay_tokens_issued += 1;
     (h, Json(json!({ "token": token, "expires_in": 900, "roster_version": v }))).into_response()
 }
 
@@ -684,7 +694,9 @@ async fn invite_claim(State(f): State<Fake>, method: Method, uri: Uri, headers: 
         Err(r) => return r,
     };
     let h = next_nonce(&mut s, &account, &device);
-    let Some(row) = s.invites.get(&slot).cloned() else { return err(404, "not_found") };
+    let Some(row) = s.invites.get(&slot).cloned() else {
+        return err(404, "not_found");
+    };
     if row.account != account {
         return err(404, "not_found");
     }
@@ -728,7 +740,9 @@ async fn invite_claim(State(f): State<Fake>, method: Method, uri: Uri, headers: 
 async fn invite_get(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, Path(slot): Path<String>) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, device, _, h) = signed_or_return!(s, method, uri, headers, b"", true);
-    let Some(row) = s.invites.get(&slot).cloned().filter(|r| r.account == account) else { return err(404, "not_found") };
+    let Some(row) = s.invites.get(&slot).cloned().filter(|r| r.account == account) else {
+        return err(404, "not_found");
+    };
     if row.used_by.as_deref() == Some(device.as_str()) {
         return (h, Json(json!({ "status": "added", "roster_version": row.used_version, "confirm": row.confirm, "expires_at": 600_000 }))).into_response();
     }
@@ -759,7 +773,9 @@ async fn invite_confirm(State(f): State<Fake>, method: Method, uri: Uri, headers
     let mut s = f.0.lock().unwrap();
     let (account, _, _, h) = signed_or_return!(s, method, uri, headers, &body, false);
     let v: Value = serde_json::from_slice(&body).unwrap();
-    let Some(row) = s.invites.get_mut(&slot).filter(|r| r.account == account) else { return err(404, "not_found") };
+    let Some(row) = s.invites.get_mut(&slot).filter(|r| r.account == account) else {
+        return err(404, "not_found");
+    };
     if row.used_by.as_ref().map(|d| json!(d)) != Some(v["device_id"].clone()) {
         return err(404, "not_found");
     }

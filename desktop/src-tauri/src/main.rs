@@ -22,6 +22,7 @@ mod shell_prefs;
 mod badge;
 mod context_menu;
 mod app_menu;
+mod account;
 mod approval;
 mod presence;
 mod share;
@@ -680,6 +681,10 @@ fn main() {
             commands::app_use_external_backend,
             commands::app_use_bundled_backend,
             commands::app_stop_bundled_backend,
+            commands::app_start_bundled_backend,
+            account::cloud_open_computer,
+            account::desktop_cloud_call,
+            account::cloud_poke,
             commands::app_new_window,
             commands::app_network_access_status,
             commands::app_set_network_access,
@@ -823,6 +828,7 @@ fn main() {
                             .unwrap()
                             .remove(label.as_str());
                         preview_relay::close_window(app, label.as_str());
+                        account::release_unused(app);
                         island::forget_window(label.as_str());
                         state
                             .window_zoom_factors

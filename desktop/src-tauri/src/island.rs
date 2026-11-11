@@ -1676,6 +1676,8 @@ async fn follow(
         .context("event stream returned an error status")?;
     // Seed after connecting, so nothing that happens in between is missed.
     memo.chat_root = chat_root(client, base, token).await;
+    // Which computer this is: one reached at two addresses is followed once.
+    crate::servers::learn_identity(server, crate::servers::server_fingerprint(client, base, token).await);
     refresh(app, client, server, base, token, memo).await?;
     log::info!("island: {} {base}", if *failures > 0 { "reconnected to" } else { "following" });
     *failures = 0;

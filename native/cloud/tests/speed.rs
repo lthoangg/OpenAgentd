@@ -200,12 +200,23 @@ async fn speed() {
     tokio::time::sleep(Duration::from_millis(300)).await;
     let send_msgs = since(&fake, before);
 
-    // A streamed reply: an event of 200 bytes every 40 ms.
+    // A streamed reply as the server sends one stream: it joins a stream's
+    // deltas for up to `DELTA_FLUSH_WINDOW` (50 ms, appv3/crates/agent/src/
+    // stream_store.rs) before fan-out, so with the wait for the next provider
+    // chunk one reply reaches the connector as an event every 50 to 60 ms.
+    let before = sent(&fake);
+    let count = reply.as_millis() as u64 / 60;
+    ask(&tunnel, &format!("S {count} 60 200"), 0).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let one_stream_msgs = since(&fake, before);
+
+    // Two streams at once (a reply and a tool's output, or two agents): an
+    // event of 200 bytes every 40 ms.
     let before = sent(&fake);
     let count = reply.as_millis() as u64 / 40;
     ask(&tunnel, &format!("S {count} 40 200"), 0).await;
     tokio::time::sleep(Duration::from_millis(300)).await;
-    let reply_msgs = since(&fake, before);
+    let two_streams_msgs = since(&fake, before);
     let tokens = fake.0.lock().unwrap().relay_tokens_issued - tokens_before;
 
     let ms = |d: Duration| format!("{:.0} ms", d.as_secs_f64() * 1000.0);
@@ -216,6 +227,7 @@ async fn speed() {
     println!("open the app (8 requests at once): {} in {}", app_msgs, ms(app_time));
     println!("relay messages, open a session: {open_msgs}");
     println!("relay messages, send a message: {send_msgs}");
-    println!("relay messages, streamed reply of {} s: {reply_msgs}", reply.as_secs());
+    println!("relay messages, streamed reply of {} s, one stream (an event every 60 ms): {one_stream_msgs}", reply.as_secs());
+    println!("relay messages, streamed reply of {} s, two streams at once (an event every 40 ms): {two_streams_msgs}", reply.as_secs());
     println!("relay tokens fetched while the phone opened two sessions (phone and computer): {tokens}");
 }

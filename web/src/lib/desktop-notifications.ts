@@ -1,4 +1,5 @@
 import { getPlatform } from '@/hooks/use-platform'
+import { currentServerRef, notificationTarget, rememberNotificationTarget, type NotificationTarget } from '@/lib/notification-taps'
 
 /**
  * ``input_needed`` — the lead is suspended on ``ask_user`` and cannot
@@ -29,15 +30,6 @@ const ENABLED_KEY = 'oa-desktop-notifications-enabled'
 let permissionRequested = false
 
 /**
- * Session each mobile notification opens when tapped, by notification id.
- * The mobile shell has no click-aware notification command, and the iOS
- * plugin reports a tap with the notification's id but not its ``extra`` data,
- * so the session is remembered here. Capped; the oldest entry goes first.
- */
-const tapSessions = new Map<number, string>()
-const MAX_TAP_SESSIONS = 50
-
-/**
  * Kinds a computer also sends to its account's phones as an APNs push
  * (``appv3/crates/api/src/cloud/letters.rs``). On such an iPhone the push
  * covers the app in the background and iOS hides it while the app is open,
@@ -63,6 +55,11 @@ export interface DesktopNotificationOptions {
   force?: boolean
   /** The notification is about the session on screen; mobile skips it while visible. */
   sessionOnScreen?: boolean
+  /**
+   * Raised while the app was away and replayed when it reconnected. On an
+   * iPhone with the account's push, the push already showed it.
+   */
+  replayed?: boolean
 }
 
 function formatNotificationError(err: unknown): string {
@@ -90,15 +87,16 @@ function appOpenOnScreen(): boolean {
 }
 
 /**
- * Whether this phone gets the account's pushes: signed in as a signer, the
- * devices a computer sends them to. Unknown counts as no, so a failure can
- * repeat a notification but never lose one.
+ * Whether this phone gets the account's pushes: signed in as a signer (the
+ * devices a computer sends them to) and registered for push this launch
+ * (notifications allowed, token handed to the account). Unknown counts as
+ * no, so a failure can repeat a notification but never lose one.
  */
 async function phoneReceivesPush(): Promise<boolean> {
   try {
-    const { getPhoneCloudStatus } = await import('@/api/phone-cloud')
+    const { getPhoneCloudStatus, phonePushRegistered } = await import('@/api/phone-cloud')
     const status = await getPhoneCloudStatus()
-    return status.state === 'connected' && status.signer
+    return status.state === 'connected' && status.signer && phonePushRegistered(status.fingerprint)
   } catch {
     return false
   }
@@ -126,7 +124,7 @@ async function shouldNotify(
   }
   // Before ``force``: a question would otherwise arrive twice, once from here
   // and once as the push.
-  if (getPlatform().os === 'ios' && PUSHED_KINDS.has(kind) && !appOpenOnScreen() && (await phoneReceivesPush())) {
+  if (getPlatform().os === 'ios' && PUSHED_KINDS.has(kind) && (options.replayed || !appOpenOnScreen()) && (await phoneReceivesPush())) {
     return { status: 'disabled', message: 'The account push shows this while the app is in the background.' }
   }
   if (options.force) return null
@@ -155,15 +153,17 @@ async function shouldNotify(
   }
 }
 
-/** Plugin options for a mobile notification, remembering the session it opens. */
-function mobileNotificationOptions(payload: DesktopNotificationPayload) {
+/**
+ * Plugin options for a mobile notification. The session it opens, and the
+ * server the app is on, are remembered by its id in storage that outlives
+ * the page (`notification-taps.ts`): a tap can come after a relaunch or a
+ * server switch, and the plugin reports only the id.
+ */
+async function mobileNotificationOptions(payload: DesktopNotificationPayload) {
   // Random rather than counted: iOS replaces a delivered notification that
   // reuses an identifier, and a counter would restart at every launch.
   const id = 1 + Math.floor(Math.random() * 0x7ffffffe)
-  if (payload.sessionId) {
-    tapSessions.set(id, payload.sessionId)
-    if (tapSessions.size > MAX_TAP_SESSIONS) tapSessions.delete(tapSessions.keys().next().value!)
-  }
+  if (payload.sessionId) rememberNotificationTarget(id, { sessionId: payload.sessionId, ...(await currentServerRef()) })
   return { id, title: payload.title, body: payload.body, group: `openagentd-${payload.kind}` }
 }
 
@@ -180,6 +180,8 @@ export async function sendDesktopNotification(
     if (!granted && !permissionRequested) {
       permissionRequested = true
       granted = (await requestPermission()) === 'granted'
+      // Push needs the same permission: the account can register now.
+      if (granted && typeof window !== 'undefined') window.dispatchEvent(new Event('openagentd:notifications-allowed'))
     }
     if (!granted) {
       return { status: 'permission-denied', message: 'OS notification permission was not granted.' }
@@ -187,7 +189,7 @@ export async function sendDesktopNotification(
     const { invoke } = await import('@tauri-apps/api/core')
     if (isMobileTauriRuntime()) {
       // show_desktop_notification exists only in the desktop shell.
-      await invoke('plugin:notification|notify', { options: mobileNotificationOptions(payload) })
+      await invoke('plugin:notification|notify', { options: await mobileNotificationOptions(payload) })
     } else {
       const shown = await invoke<boolean | null>('show_desktop_notification', {
         payload: {
@@ -214,19 +216,21 @@ export async function sendDesktopNotification(
 }
 
 /**
- * Call ``onSession`` with the session of a tapped mobile notification.
- * Desktop clicks arrive from the shell as ``desktop-notification-clicked``,
- * so this listens only in the mobile app. Resolves to an unsubscribe.
+ * Call ``onTarget`` with what a tapped Android notification opens, while the
+ * app runs. Desktop clicks arrive from the shell as
+ * ``desktop-notification-clicked``; iOS taps, and the Android tap that
+ * launched the app, come from the shell's queue (``takeNativeTaps``).
+ * Resolves to an unsubscribe.
  */
-export async function listenForNotificationTaps(onSession: (sessionId: string) => void): Promise<() => void> {
-  if (!isMobileTauriRuntime()) return () => {}
+export async function listenForNotificationTaps(onTarget: (target: NotificationTarget) => void): Promise<() => void> {
+  if (!isMobileTauriRuntime() || getPlatform().os !== 'android') return () => {}
   const { onAction } = await import('@tauri-apps/plugin-notification')
   const listener = await onAction((event) => {
-    // Typed upstream as the send options; iOS sends { actionId, notification: { id, ... } }.
+    // Typed upstream as the send options; the plugin sends { actionId, notification: { id, ... } }.
     const { actionId, notification } = event as unknown as { actionId?: unknown; notification?: { id?: unknown } }
     if (actionId !== 'tap' || typeof notification?.id !== 'number') return
-    const sessionId = tapSessions.get(notification.id)
-    if (sessionId) onSession(sessionId)
+    const target = notificationTarget(notification.id)
+    if (target) onTarget(target)
   })
   return () => {
     void listener.unregister()

@@ -16,7 +16,6 @@ import { getPlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, dispatchAppShortcut } from '@/lib/app-shortcuts'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { needsYouSessions } from '@/lib/active-sessions'
-import { listenForNotificationTaps } from '@/lib/desktop-notifications'
 import { isDesktopShell } from '@/lib/desktop-shell'
 import { desktopWindowId } from '@/lib/desktop-window-identity'
 import { queryClient } from '@/lib/query-client'
@@ -29,6 +28,8 @@ interface NotificationClickPayload {
   mode?: unknown
   /** Opened from a desktop widget (the island, the pet): leave focus alone. */
   quiet?: unknown
+  /** One per click; the shell resends it while the window loads. */
+  id?: unknown
 }
 
 /** View → Text Size items, as the shell names them. */
@@ -121,10 +122,18 @@ function runDesktopCommand(command: unknown, router: AnyRouter): void {
   }
 }
 
+/** Click ids already opened: the shell resends each click while a window loads. */
+const openedClickIds: number[] = []
+
 export function openNotificationSession(payload: unknown, router: AnyRouter): void {
   if (!payload || typeof payload !== 'object') return
   const notification = payload as NotificationClickPayload
   if (typeof notification.sessionId !== 'string') return
+  if (typeof notification.id === 'number') {
+    if (openedClickIds.includes(notification.id)) return
+    openedClickIds.push(notification.id)
+    if (openedClickIds.length > 32) openedClickIds.shift()
+  }
   if (notification.quiet === true) markQuietOpen(notification.sessionId)
   const to = '/$sessionId'
   void router.navigate({ to, params: { sessionId: notification.sessionId } })
@@ -176,20 +185,16 @@ export function useDesktopCommands(): void {
         const unlistenNotification = await listen<NotificationClickPayload>('desktop-notification-clicked', (event) => {
           openNotificationSession(event.payload, router)
         }, windowId ? { target: windowId } : undefined)
-        // The mobile shell reports taps through the notification plugin instead.
-        const stopTaps = await listenForNotificationTaps((sessionId) => {
-          openNotificationSession({ sessionId }, router)
-        })
+        // Phone taps go through PhoneCloudSync (`use-phone-cloud-sync.tsx`),
+        // which can switch to the server a notification came from.
         if (cancelled) {
           unlisten()
           unlistenNotification()
-          stopTaps()
           return
         }
         cleanup = () => {
           unlisten()
           unlistenNotification()
-          stopTaps()
         }
       } catch {
         // Browser build: no Tauri event bus.

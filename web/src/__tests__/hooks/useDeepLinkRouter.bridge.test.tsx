@@ -43,6 +43,7 @@ beforeEach(() => {
   startNewSession.mockClear()
   requestSchedulerOpen.mockClear()
   localStorage.clear()
+  sessionStorage.clear()
   globalThis.fetch = mock(async () => new Response(null, { status: 200 }))
 })
 
@@ -168,6 +169,29 @@ describe('useDeepLinkRouter Tauri deep-link bridge', () => {
 
     await waitFor(() => expect(requestSchedulerOpen).toHaveBeenCalledWith('task-7'))
     expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('runs a link the plugin replays after a reload once, but a new tap on it again', async () => {
+    let openUrls: ((urls: string[]) => void) | undefined
+    getCurrent.mockImplementation(() => Promise.resolve(['openagentd://new?workspace=%2Fsrv%2Frepo']))
+    onOpenUrl.mockImplementation(async (handler) => {
+      openUrls = handler as (urls: string[]) => void
+      return () => {}
+    })
+    const first = render(<DeepLinkRouter />)
+    await waitFor(() => expect(startNewSession).toHaveBeenCalledTimes(1))
+    first.unmount()
+
+    // The page reloaded (a server switch, or iOS ended it): getCurrent()
+    // still reports the link that launched the app.
+    render(<DeepLinkRouter />)
+    await waitFor(() => expect(openUrls).toBeDefined())
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(startNewSession).toHaveBeenCalledTimes(1)
+
+    // Tapping the widget again is a new request.
+    await act(async () => openUrls?.(['openagentd://new?workspace=%2Fsrv%2Frepo']))
+    await waitFor(() => expect(startNewSession).toHaveBeenCalledTimes(2))
   })
 })
 

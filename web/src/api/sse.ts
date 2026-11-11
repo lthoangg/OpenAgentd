@@ -16,7 +16,8 @@
  */
 
 export interface SSECallbacks {
-  onEvent: (type: string, data: unknown) => void
+  /** `id` is the event's SSE id, when the server sent one (global events). */
+  onEvent: (type: string, data: unknown, id?: string) => void
   onError?: (err: Error) => void
   onParseError?: (err: Error) => void
   onDone?: () => void
@@ -38,9 +39,13 @@ export function readSSE(response: Response, callbacks: SSECallbacks): void {
   // Current event fields being accumulated
   let currentEvent = ''
   let currentData = ''
+  let currentId = ''
 
   const dispatchEvent = () => {
-    if (!currentData) return
+    if (!currentData) {
+      currentId = ''
+      return
+    }
     let parsed: unknown
     try {
       parsed = JSON.parse(currentData)
@@ -48,14 +53,18 @@ export function readSSE(response: Response, callbacks: SSECallbacks): void {
       callbacks.onParseError?.(new Error(`SSE parse error: ${currentData}`))
       currentEvent = ''
       currentData = ''
+      currentId = ''
       return
     }
     const embeddedType = parsed && typeof parsed === 'object' && 'type' in parsed && typeof parsed.type === 'string'
       ? parsed.type : 'unknown'
     const type = currentEvent || embeddedType
+    const id = currentId
     currentEvent = ''
     currentData = ''
-    callbacks.onEvent(type, parsed)
+    currentId = ''
+    if (id) callbacks.onEvent(type, parsed, id)
+    else callbacks.onEvent(type, parsed)
   }
 
   const processLine = (line: string) => {
@@ -66,12 +75,14 @@ export function readSSE(response: Response, callbacks: SSECallbacks): void {
     }
     if (line.startsWith('event:')) {
       currentEvent = line.slice(6).trim()
+    } else if (line.startsWith('id:')) {
+      currentId = line.slice(3).trim()
     } else if (line.startsWith('data:')) {
       const chunk = line.slice(5).trim()
       // Concatenate multi-line data (rare, but spec-compliant)
       currentData = currentData ? currentData + '\n' + chunk : chunk
     }
-    // id: and retry: lines are intentionally ignored
+    // retry: lines are intentionally ignored
   }
 
   const pump = async () => {

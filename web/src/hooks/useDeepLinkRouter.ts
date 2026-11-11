@@ -9,10 +9,22 @@ import { useToastStore } from '@/stores/useToastStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { startNewSession } from '@/lib/new-session'
 import { loadLastWorkspace } from '@/utils/workspace'
+import { getPlatform } from '@/hooks/use-platform'
+
+/**
+ * The server a session link names: `srv` (the app's own opaque token, from
+ * a home-screen widget), or `device` (an account computer) and `server` (an
+ * address). Without one the link opens on the server in use.
+ */
+export interface DeepLinkServer {
+  token?: string
+  deviceId?: string
+  baseUrl?: string
+}
 
 export type DeepLinkParsed =
   | { kind: 'auth_callback'; provider: string; code: string }
-  | { kind: 'navigate'; path: string }
+  | { kind: 'navigate'; path: string; server?: DeepLinkServer }
   /** A new-session draft (home-screen widget); in the last folder when ``workspace`` is null. */
   | { kind: 'new_session'; workspace: string | null }
   /** The scheduler, on one task when ``task`` is set (home-screen widget). */
@@ -22,6 +34,27 @@ export type DeepLinkParsed =
 function nonEmptyParam(url: URL, name: string): string | null {
   const value = url.searchParams.get(name)?.trim()
   return value ? value : null
+}
+
+function linkServer(url: URL): DeepLinkServer | undefined {
+  const token = nonEmptyParam(url, 'srv')
+  const deviceId = nonEmptyParam(url, 'device')
+  const server = nonEmptyParam(url, 'server')
+  let baseUrl: string | null = null
+  if (server) {
+    try {
+      const parsed = new URL(server)
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') baseUrl = `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, '')
+    } catch {
+      baseUrl = null
+    }
+  }
+  if (!token && !deviceId && !baseUrl) return undefined
+  return {
+    ...(token ? { token } : {}),
+    ...(deviceId ? { deviceId } : {}),
+    ...(baseUrl ? { baseUrl } : {}),
+  }
 }
 
 /**
@@ -61,7 +94,8 @@ export function parseDeepLinkUrl(urlStr: string): DeepLinkParsed {
 
     if (host === 'cockpit' || host === 'coding' || host === 'session') {
       const target = `/${pathname}`.replace(/\/+$/, '')
-      return { kind: 'navigate', path: target || '/' }
+      const server = target ? linkServer(url) : undefined
+      return server ? { kind: 'navigate', path: target, server } : { kind: 'navigate', path: target || '/' }
     }
 
     // `/` reopens the last session, so a widget's "New session" needs its own host.
@@ -92,13 +126,69 @@ export async function processOAuthCallback(provider: string, code: string): Prom
   }
 }
 
-async function listenToDeepLinks(onUrls: (urls: string[]) => void): Promise<(() => void) | undefined> {
+const DELIVERED_STORAGE_KEY = 'openagentd.deepLink.delivered'
+
+/**
+ * Links already handled in this app run. The plugin keeps reporting the last
+ * opened URL from `getCurrent()` for the life of the app, so after a reload
+ * (a server switch, or iOS ending the page in the background) it would open
+ * the session again, start another draft, or repeat a one-time OAuth code.
+ * sessionStorage survives those reloads; live `onOpenUrl` links always run.
+ */
+function loadDelivered(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(window.sessionStorage.getItem(DELIVERED_STORAGE_KEY) ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function rememberDelivered(url: string): void {
+  const delivered = loadDelivered().filter((known) => known !== url)
+  delivered.push(url)
+  try {
+    window.sessionStorage.setItem(DELIVERED_STORAGE_KEY, JSON.stringify(delivered.slice(-8)))
+  } catch {
+    // Storage unavailable: a reload may run the link again.
+  }
+}
+
+async function listenToDeepLinks(onUrls: (urls: string[], replayed: boolean) => void): Promise<(() => void) | undefined> {
   const { getCurrentWindow } = await import('@tauri-apps/api/window')
   if (getCurrentWindow().label !== 'main') return undefined
-  const stopListening = await onOpenUrl((urls) => { void onUrls(urls) })
+  const stopListening = await onOpenUrl((urls) => { void onUrls(urls, false) })
   const initial = await getCurrent()
-  if (initial) void onUrls(initial)
+  if (initial) void onUrls(initial, true)
   return stopListening
+}
+
+function isPhoneShell(): boolean {
+  const { isTauri, os } = getPlatform()
+  return isTauri && (os === 'ios' || os === 'android')
+}
+
+/**
+ * Open a session link that names its server on that server (phone: switch
+ * first when needed). Returns false when the link is not for that, so the
+ * caller navigates as usual.
+ */
+async function openOnLinkServer(path: string, server: DeepLinkServer | undefined): Promise<boolean> {
+  if (!server || !isPhoneShell()) return false
+  const sessionId = /^\/([^/]+)$/.exec(path)?.[1]
+  if (!sessionId) return false
+  const [{ serverForToken }, { openSessionOnServer }] = await Promise.all([
+    import('@/lib/server-refs'),
+    import('@/lib/open-on-server'),
+  ])
+  const ref = server.token ? serverForToken(server.token) : { deviceId: server.deviceId, baseUrl: server.baseUrl }
+  if (!ref || (!ref.deviceId && !ref.baseUrl)) return false
+  await openSessionOnServer({
+    sessionId: decodeURIComponent(sessionId),
+    ...(ref.deviceId ? { deviceId: ref.deviceId } : {}),
+    ...(ref.baseUrl ? { baseUrl: ref.baseUrl } : {}),
+  })
+  return true
 }
 
 export function useDeepLinkRouter(): void {
@@ -121,6 +211,7 @@ export function useDeepLinkRouter(): void {
           useToastStore.getState().push({ tone: 'error', title: 'Authentication failed' })
         }
       } else if (parsed.kind === 'navigate') {
+        if (await openOnLinkServer(parsed.path, parsed.server).catch(() => false)) return
         void router.navigate({ href: parsed.path })
       } else if (parsed.kind === 'new_session') {
         const workspace = parsed.workspace ?? loadLastWorkspace()?.path ?? null
@@ -133,12 +224,14 @@ export function useDeepLinkRouter(): void {
 
     let unlisten: (() => void) | undefined
     let disposed = false
-    const handleUrls = async (urls: string[]) => {
-      await Promise.all(urls.map(handleUrl))
+    const handleUrls = async (urls: string[], replayed: boolean) => {
+      const fresh = replayed ? urls.filter((url) => !loadDelivered().includes(url)) : urls
+      for (const url of fresh) rememberDelivered(url)
+      await Promise.all(fresh.map(handleUrl))
     }
 
-    void listenToDeepLinks((urls) => {
-      void handleUrls(urls)
+    void listenToDeepLinks((urls, replayed) => {
+      void handleUrls(urls, replayed)
     }).then((stop) => {
       if (disposed) {
         stop?.()

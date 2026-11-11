@@ -426,6 +426,24 @@ run from the terminal (the native Rust binary since v3.0.0).
   show once `[v3.51.2]`: the app shows them itself only while it is open, and
   the account's push covers the background, the lock screen, and events
   caught up on in the first seconds after reopening the app.
+  Taps open the right session on the right computer `[v3.52.0]`: tapping a
+  Done, Needs you or Failed notification (the account's push or the app's
+  own, from a running or a closed app) opens that session, first switching
+  to the computer it came from when that is not the one the app is on
+  (over its LAN address when it answers, else through the account), or the
+  Servers screen when that computer is offline. A notification the app
+  showed still opens its session after the app was reloaded or switched
+  servers. The iPhone shows its own notification instead of the push's
+  whenever push is off or not registered yet, and registers again once
+  notifications are allowed.
+  Nothing is missed after a reconnect `[v3.52.0]`: a phone, laptop or window
+  that was in the background, asleep or offline catches up on what happened
+  meanwhile when it reconnects (unread dots, session states, question cards),
+  quietly: only a Needs you that is still waiting shows a notification, and
+  on an iPhone only when the account's push did not. No notification shows
+  twice on a device, across reloads too. On desktop, a click that opens a
+  window that is still loading is no longer lost, and a notification that
+  failed to show can still show from another window.
 - **Home-screen widgets on iPhone and Android** `[v3.31.0]` — three widgets
   for the mobile app: **Quick start** (start a new session, or continue the
   last one), **Sessions** (up to three sessions, the ones that need you first,
@@ -438,6 +456,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   and `openagentd://scheduler?task=<id>` links they use work from anywhere,
   and links into the Android app now also work on older Android System
   WebView versions.
+  A widget's session opens on the server the widget synced from
+  `[v3.52.0]`, switching to it first when the app is on another one, and a
+  link is handled once even when iOS reloads the app in the background.
 - **Command palette and Find file** `[v2.3.0, updated v3.40.0]` — `⌘K`/`Ctrl+K`
   opens one search over app actions, sessions and workspace files; `⌘P`/`Ctrl+P`
   (Find file) opens the same palette scoped to files. It uses the compact
@@ -2501,6 +2522,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **A computer's relay connection recovers by itself** `[v3.51.1]`. A computer gives up a relay connection that has not answered for 60 seconds, or at once after waking from sleep, and reconnects; **Settings → Account** says online only once the connection is really open. It also sends a small keepalive the relay can see, so phones can show a sleeping computer as offline once the relay supports it; with an older relay it falls back to how it worked before.
   - **A quiet chat stays connected away from home** `[v3.51.2]`. A session opened from the phone through the relay no longer drops and reconnects every minute or two while nothing is happening: both ends send the relay's keepalive on the session too, and with an older relay they fall back after one reconnect. A connection that really died is still noticed within about a minute. After a drop the chat reattaches once, not twice, and the computer's server log says why each phone session ended (`cloud_session_ended`).
   - **Joining and staying connected are more reliable** `[v3.51.3]`. A join that fails, times out or is cancelled (closing the sheet, Ctrl-C in `agentd cloud login`) withdraws its request, so a few abandoned joins no longer block new ones for 10 minutes. Waiting for the sign-in code rides out rate limits, server errors and network blips until the code expires. A refused sign-in or join says why: too many requests (and how long to wait), 3 devices already waiting to join, an account with 10 devices, a device already in the account, an account scheduled for deletion or unavailable, or no connection. Phone sessions on a computer stay open when its relay connection drops for a moment or is renewed after 24 hours; only removing the computer or a locked account ends them. Two copies of a computer with the same account keys no longer take the connection from each other every second: the one taken over says so and tries again every few minutes. A used-up daily relay allowance shows as paused at once, and connecting never sits on "Connecting" for more than about 30 seconds.
+  - **Pushes survive a network blip** `[v3.52.0]`. A Done, Needs you or Failed push the computer could not send (no network, the cloud busy) is retried for up to 10 minutes, and a newer one for the same session replaces it. Tapping a push opens its session on the computer that sent it (see Native app notifications). When the phone opens the same computer twice at once (a tap while it reconnects), both share one connection instead of the second cutting off the first.
   - **Keys stay on the device:** the iPhone keeps them in the Keychain (the approval key behind Face ID); computers keep them in `cloud/identity.json` in the server's state folder, readable only by your user. Signing out leaves the account and erases the keys; sessions and settings stay. Removed, deleted, closing and unavailable accounts each say so; in every state the app keeps working on its own, and only reaching other devices through the relay and notifications stop.
   - Not yet: Android, changing a device's roles after it joined. Approving from a computer arrived in `[v3.51.0]`. The protocol is in `appv3/contract/tunnel.md`, its threat model in `appv3/contract/tunnel-threats.md`.
 
@@ -3527,6 +3549,7 @@ agnostic by design.
   Settings, with Anthropic runtime mapping those levels to proportional token
   budgets.
 - **`openagentd://` deep links and OAuth callback handoff** `[v1.116.0]` — system protocol registration for desktop and mobile apps, with cold- and warm-start routing. Navigation links (`openagentd://cockpit/...`, `openagentd://coding/...`) open the requested session. OAuth providers that implement a callback exchange can use `openagentd://auth/callback?provider=...&code=...`; OpenAgentd validates the link shape and forwards the opaque callback payload to the active backend, while the provider remains responsible for state and PKCE verification. Isolated desktop development bundles and physical-device iOS development builds use `openagentd-dev://` so they do not claim the production protocol.
+  - A session link can name its server `[v3.52.0]`: `?device=<account device id>` and/or `?server=<base URL>` (and `?srv=`, the app's own token in widget links). The phone opens it on that computer, switching first (the account computer over its LAN address when it answers, else through the account); a link without them opens on the server in use, as before. Each link is handled once, so a reload (a server switch, or iOS reloading the app in the background) no longer opens it again, starts another draft, or repeats an OAuth callback.
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
   built-in OAuth helper. Codex models automatically prioritize extended context
   window limits (up to 872k/1M tokens) where supported by the catalog

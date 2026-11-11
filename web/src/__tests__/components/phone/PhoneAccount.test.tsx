@@ -345,6 +345,29 @@ describe('connected account', () => {
     expect(ran('cloud_push_register')[0].args).toEqual({ prompt: false })
   })
 
+  it('tries push again when the app comes back or notifications get allowed, until it really registers', async () => {
+    const { phonePushRegistered } = await import('@/api/phone-cloud')
+    let registration: unknown = null
+    shell(CONNECTED, { cloud_push_register: () => ({ status: 'denied', registration }) })
+    render(<PhoneAccountContent />)
+    await screen.findByText('Approves devices')
+    await waitFor(() => expect(ran('cloud_push_register')).toHaveLength(1))
+    expect(phonePushRegistered(CONNECTED.state === 'connected' ? CONNECTED.fingerprint : '')).toBe(false)
+
+    // Back in the app, notifications still off: another try.
+    document.dispatchEvent(new Event('visibilitychange'))
+    await waitFor(() => expect(ran('cloud_push_register')).toHaveLength(2))
+
+    // Allowed from the app's own prompt: registers, and stops trying.
+    registration = { provider: 'apns', token: 't', environment: 'production' }
+    window.dispatchEvent(new Event('openagentd:notifications-allowed'))
+    await waitFor(() => expect(ran('cloud_push_register')).toHaveLength(3))
+    await waitFor(() => expect(phonePushRegistered('AA11 BB22')).toBe(true))
+    document.dispatchEvent(new Event('visibilitychange'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(ran('cloud_push_register')).toHaveLength(3)
+  })
+
   it('warns before the only approver signs out', async () => {
     shell(CONNECTED, { cloud_sign_out: () => { status = { state: 'guest', notice: 'signed_out', supported: true }; return status } })
     render(<PhoneAccountContent />)
@@ -497,7 +520,7 @@ describe('approval push', () => {
   it('opens the sheet for the newest request when the push was tapped', async () => {
     const { PhoneCloudSync } = await import('@/hooks/use-phone-cloud-sync')
     shell(CONNECTED, {
-      cloud_take_notification: () => 'approval',
+      notification_take_taps: () => [{ kind: 'approval' }],
       cloud_pending: () => [OLD, NEW],
       cloud_approve_begin: () => new Promise(() => {}),
     })
@@ -511,19 +534,20 @@ describe('approval push', () => {
 
   it('opens nothing when the app opened without a tap, or the phone does not approve', async () => {
     const { PhoneCloudSync } = await import('@/hooks/use-phone-cloud-sync')
-    shell(CONNECTED, { cloud_take_notification: () => null, cloud_pending: () => [NEW] })
+    shell(CONNECTED, { notification_take_taps: () => [], cloud_pending: () => [NEW] })
     const first = render(<PhoneCloudSync />)
-    await waitFor(() => expect(ran('cloud_take_notification')).toHaveLength(1))
+    await waitFor(() => expect(ran('notification_take_taps')).toHaveLength(1))
     expect(ran('cloud_pending')).toHaveLength(0)
     expect(screen.queryByRole('dialog')).toBeNull()
     first.unmount()
     queryClient.clear()
     calls = []
 
-    shell({ ...CONNECTED, signer: false }, { cloud_take_notification: () => 'approval' })
+    shell({ ...CONNECTED, signer: false }, { notification_take_taps: () => [{ kind: 'approval' }] })
     render(<PhoneCloudSync />)
     await waitFor(() => expect(ran('cloud_status')).not.toHaveLength(0))
     await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(ran('cloud_take_notification')).toHaveLength(0)
+    expect(ran('cloud_pending')).toHaveLength(0)
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })

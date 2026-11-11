@@ -46,21 +46,36 @@ export function phoneCloudPollInterval(status: PhoneCloudStatus | undefined): nu
 
 /** The fingerprint whose push token this launch already handed to the account. */
 let pushedFor: string | null = null
+/** A registration in flight, so a resume during it does not send another. */
+let registering: string | null = null
 
+/**
+ * Hand this phone's push token to the account once per launch. Only a call
+ * that really registered counts: with notifications not allowed yet (or no
+ * token from APNs) it tries again when the app comes back or notifications
+ * get allowed, instead of waiting for the next launch.
+ */
 function registerPushOnce(fingerprint: string | null) {
   if (!fingerprint) {
     pushedFor = null
     return
   }
-  if (pushedFor === fingerprint) return
-  pushedFor = fingerprint
+  if (pushedFor === fingerprint || registering === fingerprint) return
+  registering = fingerprint
   // Quiet by design: push is a bonus, and a guest never sees this.
-  void phoneCloudPushRegister().catch(() => undefined)
+  void phoneCloudPushRegister(fingerprint)
+    .then((registered) => { if (registered) pushedFor = fingerprint })
+    .catch(() => undefined)
+    .finally(() => { if (registering === fingerprint) registering = null })
 }
+
+/** Fired by the notification setup when the person allows notifications. */
+export const NOTIFICATIONS_ALLOWED_EVENT = 'openagentd:notifications-allowed'
 
 /** Test seam. */
 export function resetPhoneCloudPush(): void {
   pushedFor = null
+  registering = null
 }
 
 export function usePhoneCloudStatus() {
@@ -76,7 +91,18 @@ export function usePhoneCloudStatus() {
   const known = data !== undefined
   // Once connected (and again on each launch), the phone registers for push.
   useEffect(() => {
-    if (known) registerPushOnce(fingerprint)
+    if (!known) return
+    registerPushOnce(fingerprint)
+    if (!fingerprint) return
+    // Not registered yet (notifications not allowed, no token): try again
+    // when the app comes back, or right after notifications are allowed.
+    const retry = () => { if (document.visibilityState === 'visible') registerPushOnce(fingerprint) }
+    document.addEventListener('visibilitychange', retry)
+    window.addEventListener(NOTIFICATIONS_ALLOWED_EVENT, retry)
+    return () => {
+      document.removeEventListener('visibilitychange', retry)
+      window.removeEventListener(NOTIFICATIONS_ALLOWED_EVENT, retry)
+    }
   }, [known, fingerprint])
   return query
 }

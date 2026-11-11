@@ -413,20 +413,28 @@ A controller (for example the phone) opens a session to a host (a computer
 or server running agents) as the API, section 6 describes. After
 `paired`, every binary WebSocket message is one Noise message.
 
-**Draft: text keepalive.** Besides WebSocket pings, every device sends the
-text `ping` (those four characters, not JSON) every 25 seconds on each of
-its relay sockets: the host's presence socket and both ends of every data
-socket. The relay answers with the text `pong` on the same socket (it is
-never forwarded to the other end), which the device does not parse as a
-message. The relay reports a host that sends it on presence offline 70
-seconds after the last one. A socket that has had no frame at all (`pong`,
-protocol pong, or data) for 60 seconds is dead: presence reconnects, and a
-data socket ends its session. A quiet session's only frames are these
+**Text keepalive.** Besides WebSocket pings, every device sends the text
+`ping` (those four characters, not JSON) on each of its relay sockets: the
+host's presence socket and both ends of every data socket. It sends the
+first as soon as the socket is open and then one every 25 seconds, also
+while the relay has it paused (the API, "Flow control"). The relay answers
+with the text `pong` on the same socket (it is never forwarded to the other
+end), which the device does not parse as a message. The relay acts on the
+time of the last `ping`: 70 seconds after it, a host is reported offline
+(its presence socket), and a session is closed on both sides with 4013 (a
+data socket). A device whose session closes with 4013 opens a new one at
+once; `host_offline` then means the host is offline. A socket that has had
+no frame at all (`pong`, protocol pong, or data) for 60 seconds is dead:
+presence reconnects, and a data socket ends its session. A device also
+ends a socket when the wall clock moved more than 60 seconds between two
+of its checks (the machine slept), and, when the app comes back to the
+front or the network changes, pings at once and ends a socket that does
+not answer within 3 seconds. A quiet session's only frames are these
 answers, so the text `pong` keeps it up where protocol pongs do not come
-back. A relay from before this draft closes the socket with 1003 (a data
-socket: the whole session): when that happens before any `pong` came, the
-device reconnects and sends protocol pings only from then on, on every
-socket.
+back. A relay from before the text keepalive closes the socket with 1003
+(a data socket: the whole session): when that happens before any `pong`
+came, the device reconnects and sends protocol pings only from then on, on
+every socket.
 
 ### 5.1 Handshake
 
@@ -494,7 +502,16 @@ server, byte for byte:
 - The controller answers CORS preflights (`OPTIONS`) itself.
 - The connector drops SSE comment lines (`: ping`) instead of forwarding
   them; the controller keeps the event source alive on its side.
-- Writes are joined for 50 ms or up to 65,519 bytes, whichever comes first.
+- Writes are joined into one message: a sender waits 2 ms after the first
+  waiting byte, or until 65,519 bytes wait, whichever comes first.
+  Messages smaller than 65,519 bytes are limited to 20 a second with a
+  burst of 8: once the burst is spent, the sender keeps joining until the
+  next message is allowed (at most 50 ms later). A full message is sent at
+  once and does not count. The rule is local to the sender, so devices
+  with and without it work together.
+- The controller's streams are taken in turn: frames without data
+  (opens, window updates) go first, then one frame of each stream with
+  data waiting, so a large transfer does not hold a small request back.
 - The connector sends requests only to its own local server. A request it
   cannot parse, or one for another host, gets `400` and the stream closes.
 

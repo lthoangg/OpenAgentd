@@ -165,10 +165,47 @@ struct OpenedComputer {
     via: &'static str,
 }
 
+/// How long the saved LAN address has to answer before the relay is used.
+const LAN_ANSWER_WITHIN: Duration = Duration::from_millis(400);
+
+/// Whether the saved LAN address answers within [`LAN_ANSWER_WITHIN`] and
+/// accepts the access key stored for it (a server whose key changed
+/// refuses every call, so the account is the better route then).
+async fn lan_answers(lan: &str) -> bool {
+    let base = lan.trim_end_matches('/');
+    let live = shared_client()
+        .get(format!("{base}/api/health/live"))
+        .timeout(LAN_ANSWER_WITHIN)
+        .send()
+        .await
+        .is_ok_and(|r| r.status().is_success());
+    if !live {
+        return false;
+    }
+    let origin = lan.to_string();
+    let key = off_main_thread(move || openagentd_shell_core::get_access_key(&origin))
+        .await
+        .ok()
+        .flatten();
+    let mut check = shared_client()
+        .get(format!("{base}/api/auth/check"))
+        .timeout(Duration::from_secs(2));
+    if let Some(key) = key {
+        check = check.bearer_auth(key);
+    }
+    // A server from before `/api/auth/check` answers 404: it answered.
+    check
+        .send()
+        .await
+        .is_ok_and(|r| r.status().is_success() || r.status().as_u16() == 404)
+}
+
 /// Opens a computer of the person's account (plan decision D8): its saved
-/// LAN address first, when there is one and it answers within 1.5 s, else
-/// the end-to-end encrypted relay through a loopback bridge. A bridge is
-/// never saved as a server: its port and key last one launch.
+/// LAN address and the end-to-end encrypted relay at the same time. The
+/// address wins when it answers within 400 ms and accepts its key;
+/// otherwise the relay, through a loopback bridge. A bridge is never saved
+/// as a server: its port and key last one launch. The computer is
+/// remembered by its device id, so a relaunch returns to it.
 #[tauri::command]
 async fn cloud_open_computer(
     app: AppHandle,
@@ -177,20 +214,25 @@ async fn cloud_open_computer(
     device_id: String,
     lan_base_url: Option<String>,
 ) -> Result<OpenedComputer, String> {
+    // The link starts connecting now, while the address is tried.
+    let (origin, link) = cloud::start_bridge(&device_id).await?;
     if let Some(lan) = lan_base_url.and_then(|u| normalize_base_url(&u).ok()) {
-        let live = shared_client()
-            .get(format!("{}/api/health/live", lan.trim_end_matches('/')))
-            .timeout(Duration::from_millis(1500))
-            .send()
-            .await
-            .is_ok_and(|r| r.status().is_success());
-        if live {
-            let status =
-                app_use_external_backend(app, state, relays, lan, None, Some(true)).await?;
-            return Ok(OpenedComputer { status, via: "lan" });
+        if lan_answers(&lan).await {
+            if let Ok(status) = use_external_backend(&app, &state, &relays, lan, None, true).await {
+                cloud::drop_bridge(&device_id).await;
+                save_last_account_device(&app, Some(&device_id));
+                let status = AppBackendStatus {
+                    last_account_device: Some(device_id),
+                    ..status
+                };
+                return Ok(OpenedComputer { status, via: "lan" });
+            }
         }
     }
-    let origin = cloud::open_bridge(&device_id).await?;
+    if let Err(e) = cloud::wait_up(&link, cloud::OPEN_WAIT).await {
+        cloud::drop_bridge(&device_id).await;
+        return Err(e);
+    }
     let previous = state
         .active_base_url
         .lock()
@@ -199,10 +241,35 @@ async fn cloud_open_computer(
     if previous.as_deref() != Some(origin.as_str()) {
         relays.0.close_all();
     }
+    save_last_account_device(&app, Some(&device_id));
     Ok(OpenedComputer {
         status: app_backend_status(app, state)?,
         via: "account",
     })
+}
+
+/// Where the account computer last opened is remembered (its device id,
+/// not a secret; never sent anywhere).
+fn last_account_device_path(app: &AppHandle) -> Option<PathBuf> {
+    config_path(app)
+        .ok()
+        .map(|p| p.with_file_name("last-account-computer"))
+}
+
+fn load_last_account_device(app: &AppHandle) -> Option<String> {
+    let text = std::fs::read_to_string(last_account_device_path(app)?).ok()?;
+    let id = text.trim();
+    openagentd_cloud::keys::is_device_id(id).then(|| id.to_string())
+}
+
+fn save_last_account_device(app: &AppHandle, device_id: Option<&str>) {
+    let Some(path) = last_account_device_path(app) else {
+        return;
+    };
+    let _ = match device_id {
+        Some(id) => std::fs::write(path, id),
+        None => std::fs::remove_file(path),
+    };
 }
 
 /// Registers this phone's APNs token with the account, so its computers
@@ -266,6 +333,11 @@ struct AppBackendStatus {
     /// on any other server, so the web UI names the server as before.
     #[serde(skip_serializing_if = "Option::is_none")]
     account_device: Option<cloud::AccountDevice>,
+    /// The account computer last opened with `cloud_open_computer` (over
+    /// its LAN address or the account), until another server is chosen:
+    /// a relaunch opens it again.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_account_device: Option<String>,
 }
 
 #[derive(Default)]
@@ -291,7 +363,7 @@ fn app_backend_status(
         .lock()
         .map_err(|_| "backend state unavailable".to_string())?
         .clone();
-    Ok(backend_status(config, runtime_base_url, cloud::account_device))
+    Ok(backend_status(config, runtime_base_url, load_last_account_device(&app), cloud::account_device))
 }
 
 /// The status for a config and the runtime server. `bridge` names the
@@ -299,6 +371,7 @@ fn app_backend_status(
 fn backend_status(
     config: AppBackendConfig,
     runtime_base_url: Option<String>,
+    last_account_device: Option<String>,
     bridge: impl Fn(&str) -> Option<cloud::AccountDevice>,
 ) -> AppBackendStatus {
     // Only the runtime base can be a bridge: a bridge is never persisted.
@@ -310,6 +383,7 @@ fn backend_status(
         supports_bundled: false,
         servers: config.servers,
         account_device,
+        last_account_device,
     }
 }
 
@@ -340,15 +414,31 @@ async fn app_use_external_backend(
     name: Option<String>,
     persist: Option<bool>,
 ) -> Result<AppBackendStatus, String> {
+    let persist = persist.unwrap_or(true);
+    if persist {
+        // Another server chosen: a relaunch opens it, not the account computer.
+        save_last_account_device(&app, None);
+    }
+    use_external_backend(&app, &state, &relays, base_url, name, persist).await
+}
+
+async fn use_external_backend(
+    app: &AppHandle,
+    state: &tauri::State<'_, MobileBackendState>,
+    relays: &tauri::State<'_, PreviewRelays>,
+    base_url: String,
+    name: Option<String>,
+    persist: bool,
+) -> Result<AppBackendStatus, String> {
     let normalized = normalize_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
     // Confirm the server answers *before* persisting it. Without this a
     // mistyped host became the persisted startup backend, and the app
     // reopened onto a loading screen on every launch with no in-app route
     // back. The desktop shell has always health-checked here.
     ensure_backend_reachable(&normalized).await?;
-    if persist.unwrap_or(true) {
+    if persist {
         save_backend_config(
-            &app,
+            app,
             Some(&normalized),
             normalize_server_name(name).as_deref(),
             true,
@@ -364,7 +454,7 @@ async fn app_use_external_backend(
     if previous.as_deref() != Some(normalized.as_str()) {
         relays.0.close_all();
     }
-    app_backend_status(app, state)
+    app_backend_status(app.clone(), state.clone())
 }
 
 #[tauri::command]
@@ -710,6 +800,7 @@ pub fn run() {
             cloud::cloud_invite_cancel,
             cloud::cloud_remove_device,
             cloud::cloud_sign_out,
+            cloud::cloud_poke,
             taps::notification_take_taps,
             cloud_open_computer,
             cloud_push_register,
@@ -736,17 +827,20 @@ mod tests {
         let config = || AppBackendConfig { active_base_url: Some(lan.base_url.clone()), servers: vec![lan.clone()] };
 
         // Opened through the account: the status says which computer.
-        let on_bridge = backend_status(config(), Some(BRIDGE.into()), bridge);
+        let on_bridge = backend_status(config(), Some(BRIDGE.into()), None, bridge);
         assert_eq!(on_bridge.base_url, BRIDGE);
         assert_eq!(on_bridge.account_device.as_ref(), Some(&mac));
         let json = serde_json::to_value(&on_bridge).unwrap();
         assert_eq!(json["account_device"], serde_json::json!({"device_id": "dev-mac", "fingerprint": "3F9A 21C4 0000 0000", "kind": "macos"}));
 
         // Switched to another server, or only the persisted one: no field.
-        let on_lan = backend_status(config(), Some(lan.base_url.clone()), bridge);
+        let on_lan = backend_status(config(), Some(lan.base_url.clone()), Some("dev-mac".into()), bridge);
         assert!(on_lan.account_device.is_none());
         assert!(serde_json::to_value(&on_lan).unwrap().get("account_device").is_none());
-        assert!(backend_status(config(), None, bridge).account_device.is_none());
+        assert!(backend_status(config(), None, None, bridge).account_device.is_none());
+        // The account computer to return to after a relaunch.
+        assert_eq!(serde_json::to_value(&on_lan).unwrap()["last_account_device"], "dev-mac");
+        assert!(serde_json::to_value(&on_bridge).unwrap().get("last_account_device").is_none());
     }
 
     #[test]

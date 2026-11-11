@@ -238,7 +238,14 @@ async fn handle(mut req: Request<Incoming>, key: &str, opener: Opener) -> Respon
         .then(|| hyper::upgrade::on(&mut req));
     let mut resp = match forward(req, opener).await {
         Ok(r) => r,
-        Err(_) => {
+        Err(Failed::Link(e)) => {
+            // No session to the computer within the link's wait: 503 with
+            // a JSON error, which the web UI shows as "Can't reach …".
+            let mut r = link_down(&e.to_string());
+            cors(&mut r, allowed);
+            return r;
+        }
+        Err(Failed::Exchange) => {
             let mut r = text(
                 StatusCode::BAD_GATEWAY,
                 "This computer cannot be reached through your account right now.",
@@ -264,13 +271,37 @@ async fn handle(mut req: Request<Incoming>, key: &str, opener: Opener) -> Respon
     resp
 }
 
-async fn forward(req: Request<Incoming>, opener: Opener) -> io::Result<Response<Incoming>> {
-    let stream = opener().await?;
+/// Why a request did not get an answer from the computer.
+enum Failed {
+    /// No stream: the link to the computer is down.
+    Link(io::Error),
+    /// The stream failed during the exchange.
+    Exchange,
+}
+
+/// `503` with `{"detail": message, "error": "link_down"}`.
+fn link_down(message: &str) -> Response<Body> {
+    let body = serde_json::json!({ "detail": message, "error": "link_down" }).to_string();
+    let mut r = Response::new(
+        Full::new(Bytes::from(body))
+            .map_err(|never| match never {})
+            .boxed(),
+    );
+    *r.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
+    r.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    r
+}
+
+async fn forward(req: Request<Incoming>, opener: Opener) -> Result<Response<Incoming>, Failed> {
+    let stream = opener().await.map_err(Failed::Link)?;
     let (mut sender, conn) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
         .await
-        .map_err(io::Error::other)?;
+        .map_err(|_| Failed::Exchange)?;
     tokio::spawn(conn.with_upgrades());
-    sender.send_request(req).await.map_err(io::Error::other)
+    sender.send_request(req).await.map_err(|_| Failed::Exchange)
 }
 
 #[cfg(test)]
@@ -372,11 +403,59 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_closed_session_answers_bad_gateway() {
-        let gone: Opener = Arc::new(|| Box::pin(async { Err(io::Error::other("closed")) }));
+    async fn a_link_that_stays_down_answers_503_with_json() {
+        let gone: Opener = Arc::new(|| {
+            Box::pin(async {
+                Err(io::Error::new(
+                    io::ErrorKind::NotConnected,
+                    "This computer is offline, or not signed in to your account.",
+                ))
+            })
+        });
         let b = Bridge::start(gone).await.unwrap();
         let key = b.key().to_string();
-        let out = raw(&b.origin, format!("GET / HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {key}\r\nConnection: close\r\n\r\n")).await;
-        assert!(out.starts_with("HTTP/1.1 502"), "{out}");
+        let out = raw(&b.origin, format!("GET / HTTP/1.1\r\nHost: x\r\nOrigin: tauri://localhost\r\nAuthorization: Bearer {key}\r\nConnection: close\r\n\r\n")).await;
+        assert!(out.starts_with("HTTP/1.1 503"), "{out}");
+        assert!(out.contains(r#""error":"link_down""#), "{out}");
+        assert!(out.contains("This computer is offline"), "{out}");
+        assert!(
+            out.to_ascii_lowercase()
+                .contains("access-control-allow-origin: tauri://localhost"),
+            "{out}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_request_into_a_down_link_answers_503_within_10_s() {
+        use openagentd_cloud::link::{DownReason, Link, LinkDeps, Target};
+        // A link with nothing to connect with: it never comes up.
+        struct Nothing;
+        impl LinkDeps for Nothing {
+            fn target(&self, _: &str) -> Result<Target, DownReason> {
+                Err(DownReason::Network)
+            }
+            fn on_problem(&self, _: openagentd_cloud::account_state::AccountProblem) {}
+        }
+        let link = Link::start(Arc::new(Nothing), "computer".into());
+        let opener: Opener = Arc::new(move || {
+            let link = link.clone();
+            Box::pin(async move {
+                link.open_stream(std::time::Duration::from_secs(10))
+                    .await
+                    .map(|s| Box::new(s) as Box<dyn Io>)
+                    .map_err(|e| io::Error::new(io::ErrorKind::NotConnected, e.to_string()))
+            })
+        });
+        let b = Bridge::start(opener).await.unwrap();
+        let key = b.key().to_string();
+        let t = std::time::Instant::now();
+        let out = tokio::time::timeout(
+            std::time::Duration::from_secs(11),
+            raw(&b.origin, format!("GET /api/health HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {key}\r\nConnection: close\r\n\r\n")),
+        )
+        .await
+        .expect("an answer within 10 s");
+        assert!(out.starts_with("HTTP/1.1 503"), "{out}");
+        assert!(t.elapsed() < std::time::Duration::from_secs(10));
     }
 }

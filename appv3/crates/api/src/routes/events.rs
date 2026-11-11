@@ -1,4 +1,7 @@
-//! Live global event stream (no replay).
+//! Live global event stream. It starts with a `stream_resume` event; with
+//! `?since=<id>` (the last event id a client saw) it then replays the
+//! events after that one, when the server still has them (see
+//! `appv3_agent::broadcaster`), so a reconnecting client misses nothing.
 //!
 //! With `?client_id=` the stream also carries the session streams the client
 //! subscribes to (see `crate::mux`).
@@ -24,13 +27,22 @@ pub fn router() -> Router<AppState> {
     Router::new().route("/stream", get(stream)).route("/subscriptions/{client_id}", put(subscribe))
 }
 
+/// An id this server hands out: `<boot>-<seq>`. Anything else is ignored.
+fn since_param(qs: &Qs) -> Option<&str> {
+    qs.get("since").filter(|s| (3..=40).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
+}
+
 async fn stream(qs: Qs) -> ApiResult<Response> {
+    let since = since_param(&qs);
     let events: BoxStream<'static, Arc<WireEvent>> = match qs.get("client_id") {
         None => {
             // The notch island's feed (and API clients): global events only.
-            tracing::info!("events_stream_open kind=plain");
-            let mut sub = broadcaster().attach();
+            let (mut sub, resume) = broadcaster().attach_since(since);
+            tracing::info!("events_stream_open kind=plain resumed={} replayed={} resync={}", since.is_some(), resume.replayed, resume.resync);
             async_stream::stream! {
+                for ev in resume.head {
+                    yield ev;
+                }
                 while let Some(ev) = sub.next().await {
                     yield ev;
                 }
@@ -39,11 +51,14 @@ async fn stream(qs: Qs) -> ApiResult<Response> {
         }
         Some(id) if mux::valid_id(id) => {
             // An app window's shared feed, which also carries session streams.
-            tracing::info!("events_stream_open kind=app client_id={}", id);
             let (client, guard) = mux::register(id);
-            let mut global = broadcaster().attach();
+            let (mut global, resume) = broadcaster().attach_since(since);
+            tracing::info!("events_stream_open kind=app client_id={} resumed={} replayed={} resync={}", id, since.is_some(), resume.replayed, resume.resync);
             async_stream::stream! {
                 let _guard = guard;
+                for ev in resume.head {
+                    yield ev;
+                }
                 loop {
                     tokio::select! {
                         ev = global.next() => match ev {
@@ -101,4 +116,48 @@ async fn subscribe(State(st): State<AppState>, AxPath(client_id): AxPath<String>
     }
     client.sync(&wanted);
     Ok(json(json!({"status": "ok", "active": client.active()})))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The stream's first write: `stream_resume`, then any replayed events.
+    async fn first_write(query: &str) -> String {
+        let resp = stream(Qs::parse(query)).await.unwrap();
+        let mut body = resp.into_body().into_data_stream();
+        String::from_utf8(body.next().await.unwrap().unwrap().to_vec()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_reconnecting_client_gets_what_it_missed() {
+        let (mut seen, _) = broadcaster().attach_since(None);
+        broadcaster().publish("title_update", json!({"session_id": "replay-a", "title": "one"}));
+        broadcaster().publish("title_update", json!({"session_id": "replay-b", "title": "two"}));
+        let first = seen.next().await.unwrap();
+        while seen.next().await.unwrap().data.contains("replay-a") {}
+        let since = first.id.clone().unwrap();
+
+        let frame = first_write(&format!("since={since}")).await;
+        assert!(frame.starts_with("event: stream_resume\r\ndata: {\"replay\":"), "{frame}");
+        assert!(frame.contains("\"resync\":false"), "{frame}");
+        assert!(frame.contains("\"session_id\":\"replay-b\""), "{frame}");
+        assert!(!frame.contains("\"session_id\":\"replay-a\""), "{frame}");
+
+        // The app's shared feed resumes the same way.
+        let frame = first_write(&format!("client_id=resume-test&since={since}")).await;
+        assert!(frame.contains("\"session_id\":\"replay-b\""), "{frame}");
+    }
+
+    #[tokio::test]
+    async fn a_position_the_server_cannot_serve_asks_for_a_refresh() {
+        let frame = first_write("since=deadbeef-1").await;
+        assert!(frame.contains("\"resync\":true"), "{frame}");
+        // A new stream, or a malformed position, just says where it starts.
+        for query in ["", "since=a%2Fb"] {
+            let frame = first_write(query).await;
+            assert!(frame.starts_with("id: "), "{frame}");
+            assert!(frame.contains("\"resync\":false"), "{frame}");
+        }
+    }
 }

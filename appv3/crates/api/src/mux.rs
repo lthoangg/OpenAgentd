@@ -84,11 +84,11 @@ fn json_str(s: &str) -> String {
 /// re-encoding every token delta would cost more than the framing.
 fn wrap(sub_id: &str, ev: &WireEvent) -> Arc<WireEvent> {
     let data = format!("{{\"sub_id\":{},\"type\":{},\"data\":{}}}", json_str(sub_id), json_str(&ev.event), ev.data);
-    Arc::new(WireEvent { event: "session_event".into(), data })
+    Arc::new(WireEvent::new("session_event", data))
 }
 
 fn end_frame(sub_id: &str) -> Arc<WireEvent> {
-    Arc::new(WireEvent { event: "session_stream_end".into(), data: format!("{{\"sub_id\":{}}}", json_str(sub_id)) })
+    Arc::new(WireEvent::new("session_stream_end", format!("{{\"sub_id\":{}}}", json_str(sub_id))))
 }
 
 async fn forward(queue: Queue, client_id: String, sub_id: String, session_id: String) {

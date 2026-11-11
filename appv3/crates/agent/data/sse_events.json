@@ -39,6 +39,7 @@
     "config_changed",
     "mcp_status_changed",
     "lsp_install_required",
+    "stream_resume",
     "session_event",
     "session_stream_end"
   ],

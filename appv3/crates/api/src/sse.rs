@@ -173,7 +173,7 @@ mod tests {
     }
 
     fn ev(name: &str, data: &str) -> Arc<WireEvent> {
-        Arc::new(WireEvent { event: name.into(), data: data.into() })
+        Arc::new(WireEvent::new(name, data))
     }
 
     #[tokio::test]

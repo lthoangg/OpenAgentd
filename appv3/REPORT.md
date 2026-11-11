@@ -1258,6 +1258,25 @@ explicitly.
   as soon as it arrives (`middleware::gzip_event_stream`); `sse_gzip_closed`
   logs bytes in and out. A 24 s streamed reply: 51.6 KB → 5.9 KB. Loopback
   stays identity. Tests: `middleware.rs`. v2 sends identity.
+- **The global event stream resumes (v3 only):** every global event has an
+  SSE `id:` (`<boot>-<seq>`; `boot` is new on each server start), and the
+  server keeps the last 500 of them, at most 15 minutes old
+  (`agent/src/broadcaster.rs`). `GET /api/events/stream` (plain or with
+  `client_id=`) starts with a `stream_resume` event,
+  `{"replay": n, "resync": bool}`. With `?since=<id>` (the last id a client
+  saw) the `n` events after it follow; when that id is from another boot or
+  older than what is kept, `resync` is true and nothing is replayed (the
+  client refreshes as it did on every reconnect). Without `since` the
+  `stream_resume` carries the current position as its id. A `since` that is
+  not shaped like an id is ignored. Session streams are not replayed here
+  (they have their own replay). `events_stream_open` logs `resumed`,
+  `replayed` and `resync`. Tests: `agent/src/broadcaster.rs`,
+  `api/src/routes/events.rs`. v2 sends no ids and no `stream_resume`.
+- **Cloud pushes are retried (v3 only):** a push letter whose send fails on
+  the network, a 429 or a 5xx is retried (5 s, doubling to 60 s, honouring
+  `retry_after`) for up to 10 minutes; a newer push for the same device and
+  session replaces a queued one. Other errors drop it, as before
+  (`api/src/cloud/letters.rs`). v2 has no Cloud.
 - **No `permission_asked` (v3 only):** tools are always allowed, so the
   per-call announcement after `tool_start` is gone from the stream and the
   event contract. Test: `agent/tests/session_turn.rs`. v2 sends it.

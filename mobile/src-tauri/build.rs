@@ -41,6 +41,8 @@ fn main() {
                 "cloud_sign_out",
                 "notification_take_taps",
                 "cloud_open_computer",
+                "cloud_poke",
+                "cloud_link_route",
                 "cloud_push_register",
                 "updater_check",
                 "updater_download",

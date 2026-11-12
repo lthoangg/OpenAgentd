@@ -65,11 +65,9 @@ describe('formatBackendConnectionLabel', () => {
       expect(formatBackendConnectionLabel(bridge(), '/api')).toBe('macOS · 3F9A 21C4')
     })
 
-    it('uses the name typed for the saved LAN server that is this computer', () => {
+    it('never borrows a saved server\'s name: the account computer is a separate thing', () => {
       window.localStorage.setItem('openagentd.cloud.lanComputers', JSON.stringify({ '3F9A21C4': 'http://192.168.1.20:4082' }))
-      expect(formatBackendConnectionLabel(bridge([{ base_url: 'http://192.168.1.20:4082/', name: 'Studio Mac' }]), '/api')).toBe('Studio Mac')
-      // Saved without a name: kind and fingerprint.
-      expect(formatBackendConnectionLabel(bridge([{ base_url: 'http://192.168.1.20:4082', name: null }]), '/api')).toBe('macOS · 3F9A 21C4')
+      expect(formatBackendConnectionLabel(bridge([{ base_url: 'http://192.168.1.20:4082/', name: 'Studio Mac' }]), '/api')).toBe('macOS · 3F9A 21C4')
     })
 
     it('shows only the fingerprint for a kind outside the known set', () => {

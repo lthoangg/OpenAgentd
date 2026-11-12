@@ -177,6 +177,20 @@ export type CloudPokeReason = 'resumed' | 'network_changed' | 'user_retry' | 'ba
 export function cloudPoke(why: CloudPokeReason): void {
   void call<void>('cloud_poke', { why }).catch(() => {})
 }
+
+/** The route an account computer's link is on (`cloud_link_route`). */
+export type LinkRoute = 'direct' | 'relay' | 'connecting' | 'down' | 'none'
+
+/** Where the shell's link to `deviceId` is; `none` from a shell without it. */
+export async function getLinkRoute(deviceId: string): Promise<LinkRoute> {
+  try {
+    const r = await call<{ route?: string }>('cloud_link_route', { deviceId })
+    const route = r?.route
+    return route === 'direct' || route === 'relay' || route === 'connecting' || route === 'down' ? route : 'none'
+  } catch {
+    return 'none'
+  }
+}
 /** What `cloud_push_register` answers (`mobile/src-tauri/src/push.rs`). */
 export interface PushState {
   status: string

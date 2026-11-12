@@ -47,7 +47,7 @@ export function ServersScreen({ active, onOpenSessions }: {
   const { barRef, titleRef, onScroll } = useLargeTitleCollapse(false)
   const panel = useRef<AppBackendPanelControl>(null)
   const [accountOpen, setAccountOpen] = useState(false)
-  const { computers, devices, connected, hiddenServerUrls, app, currentAlive, refresh: refreshComputers } = useAccountComputers(active)
+  const { computers, devices, connected, app, route, refresh: refreshComputers } = useAccountComputers(active)
   // A connect link's address and key, kept while the screen is up.
   const pending = useServersScreenStore((state) => state.prefill)
   const [prefill, setPrefill] = useState<AppBackendPrefill | null>(null)
@@ -104,8 +104,8 @@ export function ServersScreen({ active, onOpenSessions }: {
         <div className="space-y-8 px-4 pb-6">
           {scanner.error && <Callout tone="error" role="alert">{scanner.error}</Callout>}
           <AccountSection active={active} devices={devices} onOpen={() => setAccountOpen(true)} onScan={scan} />
-          {connected && <AccountComputersSection computers={computers} loaded={devices !== undefined} app={app} currentAlive={currentAlive} onOpenSessions={onOpenSessions} />}
-          <AppBackendPanel active={active} prefill={prefill} sectionTitle="Your servers" onOpenInUse={onOpenSessions} controlRef={panel} hiddenServerUrls={hiddenServerUrls} onScanQr={scan} />
+          {connected && <AccountComputersSection computers={computers} loaded={devices !== undefined} app={app} route={route} onOpenSessions={onOpenSessions} />}
+          <AppBackendPanel active={active} prefill={prefill} sectionTitle="Your servers" onOpenInUse={onOpenSessions} controlRef={panel} onScanQr={scan} />
         </div>
       </PullToRefresh>
       <AccountSheet open={accountOpen} onClose={() => setAccountOpen(false)} />

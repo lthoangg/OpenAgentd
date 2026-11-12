@@ -40,8 +40,6 @@ export interface AppBackendStatus {
   last_account_device?: string | null
 }
 
-/** Where the phone remembers which saved LAN server is which account computer. */
-export const LAN_COMPUTERS_KEY = 'openagentd.cloud.lanComputers'
 
 const KIND_LABELS: Record<string, string> = {
   macos: 'macOS',
@@ -66,31 +64,12 @@ export function deviceLabel(device: { kind: string | null | undefined; fingerpri
 /** `3f9a 21c4` and `3F9A-21C4` are the same fingerprint. */
 export const normalizeFingerprint = (fingerprint: string) => fingerprint.replace(/[\s-]+/g, '').toUpperCase()
 
-function readLanComputers(): Record<string, unknown> {
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(LAN_COMPUTERS_KEY) ?? '{}')
-    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}
-  } catch {
-    return {}
-  }
-}
-
 /**
- * What an account computer is called: the name the person gave the saved
- * LAN server that is this computer (same remembered fingerprint), else its
- * kind and fingerprint. The Servers row and the connection label agree.
+ * An account computer's title: from the account (its kind and
+ * fingerprint), never from a saved server's name, which belongs to a
+ * different thing even on the same machine.
  */
-export function accountComputerTitle(
-  device: { kind: string | null | undefined; fingerprint: string },
-  servers: SavedAppServer[],
-  lanComputers: Record<string, unknown> = readLanComputers(),
-): string {
-  const lan = lanComputers[normalizeFingerprint(device.fingerprint)]
-  if (typeof lan === 'string') {
-    const url = normalizeServerOrigin(lan)
-    const name = servers.find((server) => normalizeServerOrigin(server.base_url) === url)?.name?.trim()
-    if (name) return name
-  }
+export function accountComputerTitle(device: { kind: string | null | undefined; fingerprint: string }): string {
   return deviceLabel(device)
 }
 
@@ -125,7 +104,7 @@ export function formatBackendConnectionLabel(
   if (status.mode === 'bundled' || (!status.external && status.mode !== 'external')) {
     return 'built-in'
   }
-  if (status.account_device) return accountComputerTitle(status.account_device, status.servers)
+  if (status.account_device) return accountComputerTitle(status.account_device)
   const current = normalizeServerOrigin(status.base_url)
   const named = status.servers.find((server) => normalizeServerOrigin(server.base_url) === current)
   const name = named?.name?.trim()

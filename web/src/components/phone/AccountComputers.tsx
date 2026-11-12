@@ -2,74 +2,73 @@
  * The account's computers on the phone's Servers screen (decision D8).
  *
  * One row per server of the account (spec 3.4: the phone opens sessions
- * only on devices with the server role; itself and clients left out). A saved LAN server that is known to be the same computer (its
- * remembered fingerprint matches, see `lib/computer-fingerprints`) is that
- * row, titled with the name the person gave it, and no longer appears again
- * in the saved list. Opening a row asks the shell to try the LAN address and
- * the account's relay together (the LAN wins when it answers fast and takes
- * the stored key), then switches to it like choosing a saved server.
+ * only on devices with the server role; itself and clients left out). A
+ * computer is its device, not an address: opening a row starts its link in
+ * the shell, which reaches it directly on the home network or through the
+ * account's relay and moves between the two by itself, with no reload.
+ * Saved servers (address and access key) are a separate list and a
+ * separate thing, even when one is the same machine: they are never merged
+ * into these rows.
  *
- * The line under a computer follows the route in use: "Through your account"
- * on its bridge, "via LAN" on its LAN address while that answers. A computer
- * not in use never claims "via LAN": a row with a saved LAN address says
- * "Home network or account", one without says what the account knows
- * (online, offline). On its bridge, a row with a saved LAN address also
- * offers "Use home network" (touch and pointer alike); the route re-check
- * (`lib/account-route`) adds "Home network available" to the line when it
- * answers but the phone did not move by itself (a reply is running, or the
- * composer holds text). A failed switch shows the error below the list.
+ * The line under a computer in use names the route its link is on: "On
+ * your network" or "Through your account" (`cloud_link_route`, polled while
+ * the screen is up). Otherwise it says what the account knows (online,
+ * offline). A failed open shows the error below the list.
  *
  * The dot is the cloud's word on whether the computer holds its relay
  * connection (`online`; none when it could not say). It can be stale, so an
  * offline computer can still be tapped. The list refreshes every 30 s while
- * the screen is up and visible. A row is In use when the app is on it, over
- * its LAN address or its account bridge.
+ * the screen is up and visible. A row is In use when the app is on its
+ * bridge.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { isServer, type DeviceRow } from '@/api/phone-cloud'
+import { getLinkRoute, isServer, type DeviceRow, type LinkRoute } from '@/api/phone-cloud'
 import { ServerRow } from '@/components/AppBackendPanel'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { PanelSection } from '@/components/ui/panel-section'
 import { useTouchFirst } from '@/hooks/use-touch-first'
 import { accountComputerTitle, getAppBackendStatus, type AppBackendStatus } from '@/lib/app-backend'
-import {
-  connectAccountComputer,
-  currentBackendOrigin,
-  normalizeServerBaseUrl,
-  reloadForBackendSwitch,
-} from '@/lib/backend-switch'
-import { normalizeFingerprint, useLanComputers } from '@/lib/computer-fingerprints'
-import { pingServer } from '@/lib/server-probe'
+import { connectAccountComputer, currentBackendOrigin, reloadForBackendSwitch } from '@/lib/backend-switch'
 import { usePhoneCloudDevices, usePhoneCloudStatus } from '@/queries/phone-cloud'
-import { setLanAvailable, useAccountRouteStore } from '@/stores/useAccountRouteStore'
 
 /** How often the computers (and their dots) refresh while the screen is up. */
 export const ACCOUNT_COMPUTERS_REFRESH_MS = 30_000
+/** How often the route of the computer in use is read while the screen is up. */
+export const LINK_ROUTE_REFRESH_MS = 2_000
 
 export interface AccountComputer {
   device: DeviceRow
   label: string
-  /** The saved LAN server that is this computer, normalized; null: only the account reaches it. */
-  lanUrl: string | null
+}
+
+/** The route of the link to `deviceId` while `active`, read now and then. */
+export function useLinkRoute(deviceId: string | null, active: boolean): LinkRoute {
+  const [route, setRoute] = useState<LinkRoute>('none')
+  useEffect(() => {
+    if (!deviceId || !active) return
+    let cancelled = false
+    const read = () => {
+      if (document.visibilityState !== 'visible') return
+      void getLinkRoute(deviceId).then((r) => { if (!cancelled) setRoute(r) })
+    }
+    read()
+    const timer = window.setInterval(read, LINK_ROUTE_REFRESH_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [deviceId, active])
+  return deviceId && active ? route : 'none'
 }
 
 export function useAccountComputers(active: boolean) {
   const connected = usePhoneCloudStatus().data?.state === 'connected'
   const devicesQ = usePhoneCloudDevices(connected && active)
-  const lan = useLanComputers()
   const [app, setApp] = useState<AppBackendStatus | null>(null)
-  // Whether the server the app is on answers now: a computer is In use over
-  // its LAN address only while it does (its listener can be turned off).
-  const [current, setCurrent] = useState<{ url: string; alive: boolean } | null>(null)
   const loadApp = useCallback(async () => {
-    const next = await getAppBackendStatus()
-    setApp(next)
-    if (!next?.base_url || next.account_device) return
-    const url = normalizeServerBaseUrl(next.base_url)
-    const alive = await pingServer(url)
-    setCurrent({ url, alive })
+    setApp(await getAppBackendStatus())
   }, [])
   const { refetch } = devicesQ
 
@@ -88,40 +87,33 @@ export function useAccountComputers(active: boolean) {
 
   const computers = useMemo<AccountComputer[]>(() => {
     if (!connected) return []
-    const servers = app?.servers ?? []
-    const saved = new Set(servers.map((server) => normalizeServerBaseUrl(server.base_url)))
     return (devicesQ.data ?? [])
       .filter((device) => !device.me && isServer(device))
-      .map((device) => {
-        const remembered = lan[normalizeFingerprint(device.fingerprint)]
-        const lanUrl = remembered ? normalizeServerBaseUrl(remembered) : null
-        return { device, label: accountComputerTitle(device, servers, lan), lanUrl: lanUrl && saved.has(lanUrl) ? lanUrl : null }
-      })
-  }, [connected, devicesQ.data, app, lan])
+      .map((device) => ({ device, label: accountComputerTitle(device) }))
+  }, [connected, devicesQ.data])
 
-  const hiddenServerUrls = useMemo(
-    () => new Set(computers.flatMap((computer) => (computer.lanUrl ? [computer.lanUrl] : []))),
-    [computers],
-  )
   const refresh = useCallback(async () => {
     await Promise.all([connected ? refetch() : undefined, loadApp()])
   }, [connected, refetch, loadApp])
 
-  const currentAlive = app && current?.url === normalizeServerBaseUrl(app.base_url) ? current.alive : null
-  return { computers, devices: connected ? devicesQ.data : undefined, connected, hiddenServerUrls, app, currentAlive, refresh }
+  const route = useLinkRoute(app?.account_device?.device_id ?? null, active && connected)
+  return { computers, devices: connected ? devicesQ.data : undefined, connected, app, route, refresh }
 }
 
 /**
- * The line under a computer: the route in use when the app is on it, else
- * what could reach it (and whether it is up).
+ * The line under a computer: the route its link is on when the app is on
+ * it, else what the account knows.
  */
-function computerLine(computer: AccountComputer, route: 'bridge' | 'lan' | null, lanAvailable: boolean): string {
-  if (route === 'bridge') return lanAvailable ? 'Through your account · Home network available' : 'Through your account'
-  if (route === 'lan') return 'via LAN'
-  if (computer.lanUrl) return 'Home network or account'
-  if (computer.device.online === true) return 'Online · via account'
+export function computerLine(computer: AccountComputer, inUse: boolean, route: LinkRoute): string {
+  if (inUse) {
+    if (route === 'direct') return 'On your network'
+    if (route === 'relay') return 'Through your account'
+    if (route === 'connecting') return 'Connecting…'
+    if (route === 'down') return "Can't reach it · Retrying…"
+  }
+  if (computer.device.online === true) return 'Online'
   if (computer.device.online === false) return 'Offline'
-  return 'via account'
+  return 'Your account'
 }
 
 function computerHealth(device: DeviceRow): 'online' | 'offline' | null {
@@ -134,15 +126,15 @@ export function AccountComputersSection({
   computers,
   loaded,
   app,
-  currentAlive,
+  route,
   onOpenSessions,
 }: {
   computers: AccountComputer[]
   /** The account's devices have loaded (else an empty list says nothing yet). */
   loaded: boolean
   app: AppBackendStatus | null
-  /** The app's current server answered its last ping (null: not checked). */
-  currentAlive: boolean | null
+  /** The route of the link to the computer in use. */
+  route: LinkRoute
   /** Back to the Sessions of the server in use; absent while no server is connected. */
   onOpenSessions?: () => void
 }) {
@@ -150,7 +142,6 @@ export function AccountComputersSection({
   const [opening, setOpening] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState<string | null>(null)
-  const lanAvailable = useAccountRouteStore((state) => state.lanAvailable)
   if (computers.length === 0) {
     if (!loaded) return null
     return (
@@ -169,7 +160,6 @@ export function AccountComputersSection({
     setOpened(null)
     const result = await connectAccountComputer({
       deviceId: computer.device.device_id,
-      lanBaseUrl: computer.lanUrl,
       label: computer.label,
       currentBaseUrl: currentBackendOrigin(app),
     })
@@ -178,38 +168,9 @@ export function AccountComputersSection({
       setError(result.error)
       return
     }
-    setOpened(result.via === 'lan' ? 'Opened over your network.' : 'Opened through your account.')
+    setOpened('Opened.')
     if (result.reload) reloadForBackendSwitch()
     // The same server, answering again: go on to its Sessions.
-    else onOpenSessions?.()
-  }
-
-  // From the account bridge to the computer's saved home-network address.
-  const switchToHomeNetwork = async (computer: AccountComputer) => {
-    if (!computer.lanUrl) return
-    setOpening(computer.device.device_id)
-    setError(null)
-    setOpened(null)
-    const result = await connectAccountComputer({
-      deviceId: computer.device.device_id,
-      lanBaseUrl: computer.lanUrl,
-      label: computer.label,
-      currentBaseUrl: currentBackendOrigin(app),
-    })
-    setOpening(null)
-    if (!result.ok) {
-      setError(result.error)
-      return
-    }
-    if (result.via !== 'lan') {
-      // The shell found the home network slower or its key refused: still on the account.
-      setError("Your home network didn't answer, or doesn't accept this phone's key. Still using your account.")
-      if (result.reload) reloadForBackendSwitch()
-      return
-    }
-    setLanAvailable(computer.device.device_id, false)
-    setOpened('Opened over your network.')
-    if (result.reload) reloadForBackendSwitch()
     else onOpenSessions?.()
   }
 
@@ -222,28 +183,20 @@ export function AccountComputersSection({
         flush
       >
         {computers.map((computer) => {
-          // In use only while the app reaches it: on its account bridge, or
-          // on its LAN address while that answers. Otherwise a tap opens it
-          // again (LAN first, then the account) rather than a dead Sessions.
+          // In use while the app is on its bridge; the link under it picks
+          // the route.
           const onBridge = app?.account_device?.device_id === computer.device.device_id
-          const onLan = Boolean(computer.lanUrl && app && normalizeServerBaseUrl(app.base_url) === computer.lanUrl && currentAlive === true)
-          const inUse = Boolean(onOpenSessions) && onExternal && (onBridge || onLan)
+          const inUse = Boolean(onOpenSessions) && onExternal && onBridge
           const idle = opening === null
-          const homeNetwork = onBridge && computer.lanUrl ? (
-            <Button type="button" variant="subtle" size="sm" aria-label={`Use home network for ${computer.label}`} onClick={() => { void switchToHomeNetwork(computer) }} disabled={!idle}>
-              Use home network
-            </Button>
-          ) : null
           return (
             <ServerRow
               key={computer.device.device_id}
               health={computerHealth(computer.device)}
               title={computer.label}
-              subtitle={computerLine(computer, onBridge ? 'bridge' : onLan ? 'lan' : null, Boolean(lanAvailable[computer.device.device_id]))}
+              subtitle={computerLine(computer, onBridge, route)}
               inUse={inUse}
               onOpen={touch && idle ? (inUse ? onOpenSessions : () => { void open(computer) }) : undefined}
             >
-              {homeNetwork}
               {inUse ? (
                 touch ? null : (
                   <Button type="button" variant="subtle" size="sm" aria-label={`Open sessions on ${computer.label}`} onClick={onOpenSessions}>

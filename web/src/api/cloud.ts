@@ -143,6 +143,18 @@ export const cloudRemoveDevice = (deviceId: string, proof: string) =>
 export const cloudLoginCancel = () => cloudRequest('/login/cancel', 'POST')
 export const cloudLogout = () => cloudRequest('/logout', 'POST')
 
+/**
+ * The switch for direct sessions (spec 5.5): the account's devices connect
+ * to this computer over the home network with their account keys. `port`
+ * is set while it accepts them. Separate from network access (access key).
+ */
+export interface DirectSetting {
+  on: boolean
+  port: number | null
+}
+export const getDirectSetting = () => cloudCall<DirectSetting>('/direct/setting', 'GET')
+export const setDirectSetting = (on: boolean) => cloudCall<DirectSetting>('/direct/setting', 'POST', { on })
+
 /** An open invitation this computer shows. `link` is a bearer secret: [REDACTED] QR code's content. */
 export interface CloudInviteView {
   link: string

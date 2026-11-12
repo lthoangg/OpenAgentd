@@ -1,9 +1,9 @@
 /**
- * The phone's route to an account computer: the launch check (the computer
- * last opened, or the older LAN-address fallback), the re-check on resume and
- * network change (two failed checks leave a LAN address; a working home
- * network is taken only when no reply runs and the composer is empty, else
- * offered), one re-check at a time, and the `cloud_poke` events.
+ * The phone and its account computers: at launch the computer last opened
+ * is opened again (through its link, never a saved address), and resume,
+ * background and network changes reach the shell as `cloud_poke`. A saved
+ * server is a separate thing: nothing here moves between it and an account
+ * computer.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
@@ -31,10 +31,8 @@ mock.module('@tauri-apps/api/core', () => ({
   },
 }))
 
-const { checkRouteAtLaunch, recheckAccountRoute, resetAccountRoute, startAccountRouteWatch } = await import('@/lib/account-route')
+const { checkRouteAtLaunch, resetAccountRoute, startAccountRouteWatch } = await import('@/lib/account-route')
 const { useServersScreenStore } = await import('@/stores/useServersScreenStore')
-const { useAccountRouteStore } = await import('@/stores/useAccountRouteStore')
-const { useAgentStore } = await import('@/stores/useAgentStore')
 
 const LAN = 'http://192.168.1.20:4082'
 const BRIDGE = 'http://127.0.0.1:5999'
@@ -44,8 +42,6 @@ const SERVERS = [{ base_url: LAN, name: 'Studio Mac' }]
 const onLan = { base_url: LAN, mode: 'external', sidecar_running: false, external: true, supports_bundled: false, servers: SERVERS }
 const onBridge = { ...onLan, base_url: BRIDGE, account_device: { device_id: 'dev-mac', fingerprint: '3F9A 21C4', kind: 'macos' } }
 
-/** What the saved LAN address does: does it answer, and does it take the stored key. */
-let lan = { ping: true, key: true }
 let probes: string[] = []
 const originalFetch = globalThis.fetch
 const realLocation = window.location
@@ -63,8 +59,6 @@ function shell(extra: Record<string, Handler> = {}) {
   }
 }
 
-/** Pings of the LAN address so far. */
-const pings = () => probes.filter((url) => url === `${LAN}/api/health/live`).length
 const ran = (command: string) => calls.filter((call) => call.command === command)
 
 function setVisibility(value: 'visible' | 'hidden') {
@@ -77,26 +71,18 @@ function restoreVisibility() {
 beforeEach(() => {
   calls = []
   probes = []
-  lan = { ping: true, key: true }
   platform = phone
   resetAccountRoute()
   window.localStorage.clear()
-  window.localStorage.setItem('openagentd.cloud.lanComputers', JSON.stringify({ '3F9A21C4': LAN }))
   window.__OAD_API_BASE_URL__ = LAN
   globalThis.fetch = mock(async (input: unknown) => {
     const url = String(input)
     probes.push(url)
-    if (url.startsWith(LAN)) {
-      if (url.endsWith('/api/health/live') && !lan.ping) throw new TypeError('Load failed')
-      if (url.endsWith('/api/auth/check')) return new Response(null, { status: lan.key ? 204 : 401 })
-    }
     return new Response(null, { status: 204 })
   }) as unknown as typeof fetch
   reload = mock(() => {})
   Object.defineProperty(window, 'location', { configurable: true, value: fakeLocation(realLocation, reload) })
   useServersScreenStore.setState({ request: 0, prefill: null })
-  useAccountRouteStore.setState({ lanAvailable: {} })
-  useAgentStore.setState({ isAgentWorking: false, _pendingMessages: [] })
   shell()
 })
 
@@ -107,28 +93,26 @@ afterEach(() => {
 })
 
 describe('at launch', () => {
-  it('opens the computer last opened, with its saved LAN address, and reloads onto it', async () => {
-    shell({ app_backend_status: () => ({ ...onLan, last_account_device: 'dev-mac', base_url: BRIDGE, account_device: { device_id: 'dev-other', fingerprint: 'F00D 0001', kind: 'linux' } }), cloud_open_computer: () => ({ status: onLan, via: 'lan' }) })
+  it('opens the computer last opened through its link, never a saved address, and reloads onto it', async () => {
+    shell({ app_backend_status: () => ({ ...onLan, last_account_device: 'dev-mac' }) })
     expect(await checkRouteAtLaunch()).toBe('switched')
     expect(ran('cloud_open_computer')).toHaveLength(1)
-    expect(ran('cloud_open_computer')[0].args).toEqual({ deviceId: 'dev-mac', lanBaseUrl: LAN })
-    expect(reload).toHaveBeenCalledTimes(1)
-  })
-
-  it('opens it through the account (no LAN address) when none is saved for it', async () => {
-    window.localStorage.clear()
-    shell({ app_backend_status: () => ({ ...onLan, last_account_device: 'dev-mac' }) })
-    expect(await checkRouteAtLaunch()).toBe('switched')
     expect(ran('cloud_open_computer')[0].args).toEqual({ deviceId: 'dev-mac', lanBaseUrl: null })
+    expect(reload).toHaveBeenCalledTimes(1)
+    // Nothing was sent to, or asked of, the saved server's address.
+    expect(probes.filter((url) => url.startsWith(LAN))).toEqual([])
   })
 
-  it('does nothing when the app is already on that computer\'s bridge, or on its LAN address that answers', async () => {
+  it('does nothing when the app is already on that computer', async () => {
     shell({ app_backend_status: () => ({ ...onBridge, last_account_device: 'dev-mac' }) })
     expect(await checkRouteAtLaunch()).toBe('skipped')
-    resetAccountRoute()
-    shell({ app_backend_status: () => ({ ...onLan, last_account_device: 'dev-mac' }) })
+    expect(ran('cloud_open_computer')).toHaveLength(0)
+  })
+
+  it('leaves a saved server alone when no account computer was last used', async () => {
     expect(await checkRouteAtLaunch()).toBe('skipped')
     expect(ran('cloud_open_computer')).toHaveLength(0)
+    expect(ran('cloud_devices')).toHaveLength(0)
   })
 
   it('shows the Servers screen when the computer cannot be opened', async () => {
@@ -142,130 +126,9 @@ describe('at launch', () => {
     expect(ran('cloud_open_computer')).toHaveLength(1)
   })
 
-  it('without last_account_device, opens a LAN address that does not answer through the account', async () => {
-    lan = { ping: false, key: true }
-    expect(await checkRouteAtLaunch()).toBe('switched')
-    expect(ran('cloud_open_computer')[0].args).toEqual({ deviceId: 'dev-mac', lanBaseUrl: null })
-    expect(reload).toHaveBeenCalledTimes(1)
-  })
-
-  it('without last_account_device, leaves a LAN address that answers, and a server that is no account computer', async () => {
+  it('skips a computer no longer in the account', async () => {
+    shell({ app_backend_status: () => ({ ...onLan, last_account_device: 'dev-gone' }) })
     expect(await checkRouteAtLaunch()).toBe('skipped')
-    resetAccountRoute()
-    lan = { ping: false, key: true }
-    window.localStorage.clear()
-    expect(await checkRouteAtLaunch()).toBe('skipped')
-    expect(ran('cloud_open_computer')).toHaveLength(0)
-  })
-})
-
-describe('on a LAN address of an account computer', () => {
-  it('moves to the account after two failed checks in a row', async () => {
-    lan = { ping: false, key: true }
-    expect(await recheckAccountRoute('resumed', { recheckDelayMs: 0 })).toBe('switched')
-    expect(pings()).toBe(2)
-    expect(ran('cloud_open_computer')).toHaveLength(1)
-    expect(ran('cloud_open_computer')[0].args).toEqual({ deviceId: 'dev-mac', lanBaseUrl: null })
-    expect(reload).toHaveBeenCalledTimes(1)
-  })
-
-  it('counts a refused key as a failed check, too', async () => {
-    lan = { ping: true, key: false }
-    expect(await recheckAccountRoute('network_changed', { recheckDelayMs: 0 })).toBe('switched')
-    expect(ran('cloud_open_computer')).toHaveLength(1)
-  })
-
-  it('stays when it answers at once, or answers on the second check', async () => {
-    expect(await recheckAccountRoute('resumed', { recheckDelayMs: 0 })).toBe('skipped')
-    expect(pings()).toBe(1)
-    // First check fails; the address is back by the second.
-    lan = { ping: false, key: true }
-    let seen = 0
-    handlers.app_backend_status = () => {
-      seen += 1
-      if (seen === 2) lan = { ping: true, key: true }
-      return onLan
-    }
-    expect(await recheckAccountRoute('resumed', { recheckDelayMs: 0 })).toBe('skipped')
-    expect(ran('cloud_open_computer')).toHaveLength(0)
-  })
-
-  it('does nothing for a server that is no account computer, or while the app is in the background', async () => {
-    lan = { ping: false, key: true }
-    window.localStorage.clear()
-    expect(await recheckAccountRoute('resumed', { recheckDelayMs: 0 })).toBe('skipped')
-    window.localStorage.setItem('openagentd.cloud.lanComputers', JSON.stringify({ '3F9A21C4': LAN }))
-    setVisibility('hidden')
-    try {
-      expect(await recheckAccountRoute('network_changed', { recheckDelayMs: 0 })).toBe('skipped')
-    } finally {
-      restoreVisibility()
-    }
-    expect(ran('cloud_open_computer')).toHaveLength(0)
-  })
-
-  it('runs one re-check at a time', async () => {
-    lan = { ping: false, key: true }
-    const [first, second] = await Promise.all([
-      recheckAccountRoute('resumed', { recheckDelayMs: 5 }),
-      recheckAccountRoute('network_changed', { recheckDelayMs: 5 }),
-    ])
-    expect(first).toBe('switched')
-    expect(second).toBe('skipped')
-    expect(ran('cloud_open_computer')).toHaveLength(1)
-    expect(pings()).toBe(2)
-  })
-})
-
-describe('on an account bridge whose computer has a saved LAN address', () => {
-  beforeEach(() => {
-    window.__OAD_API_BASE_URL__ = BRIDGE
-    shell({ app_backend_status: () => onBridge, cloud_open_computer: () => ({ status: onLan, via: 'lan' }) })
-  })
-
-  it('moves back to the LAN when it answers and accepts the key, and nothing is in the way', async () => {
-    expect(await recheckAccountRoute('network_changed')).toBe('switched')
-    expect(ran('cloud_open_computer')).toHaveLength(1)
-    expect(ran('cloud_open_computer')[0].args).toEqual({ deviceId: 'dev-mac', lanBaseUrl: LAN })
-    expect(reload).toHaveBeenCalledTimes(1)
-    expect(useAccountRouteStore.getState().lanAvailable).toEqual({})
-  })
-
-  it('stays on the account while the LAN does not answer, or refuses the stored key', async () => {
-    lan = { ping: false, key: true }
-    expect(await recheckAccountRoute('resumed')).toBe('skipped')
-    lan = { ping: true, key: false }
-    expect(await recheckAccountRoute('resumed')).toBe('skipped')
-    expect(ran('cloud_open_computer')).toHaveLength(0)
-    expect(useAccountRouteStore.getState().lanAvailable).toEqual({})
-  })
-
-  it('only offers it while a reply is running', async () => {
-    useAgentStore.setState({ isAgentWorking: true })
-    expect(await recheckAccountRoute('resumed')).toBe('offered')
-    expect(ran('cloud_open_computer')).toHaveLength(0)
-    expect(reload).not.toHaveBeenCalled()
-    expect(useAccountRouteStore.getState().lanAvailable).toEqual({ 'dev-mac': true })
-  })
-
-  it('only offers it while the composer holds text', async () => {
-    window.localStorage.setItem('oa.drafts.composer.v1', JSON.stringify([['session-1', { value: 'half a thought' }]]))
-    expect(await recheckAccountRoute('resumed')).toBe('offered')
-    expect(ran('cloud_open_computer')).toHaveLength(0)
-    expect(useAccountRouteStore.getState().lanAvailable).toEqual({ 'dev-mac': true })
-  })
-
-  it('takes back the offer once the LAN stops answering', async () => {
-    useAgentStore.setState({ isAgentWorking: true })
-    await recheckAccountRoute('resumed')
-    lan = { ping: false, key: true }
-    expect(await recheckAccountRoute('network_changed')).toBe('skipped')
-    expect(useAccountRouteStore.getState().lanAvailable).toEqual({})
-  })
-
-  it('has no LAN to go to when the computer has no saved server', async () => {
-    window.localStorage.clear()
-    expect(await recheckAccountRoute('resumed')).toBe('skipped')
     expect(ran('cloud_open_computer')).toHaveLength(0)
   })
 })
@@ -275,7 +138,7 @@ describe('telling the shell', () => {
   let stop = () => {}
   afterEach(() => stop())
 
-  it('pokes on resume, going to the background, and a network change', async () => {
+  it('pokes on resume, going to the background, and a network change; nothing else runs', async () => {
     stop = startAccountRouteWatch()
     try {
       setVisibility('hidden')
@@ -288,6 +151,10 @@ describe('telling the shell', () => {
       restoreVisibility()
     }
     expect(pokes()).toEqual([{ why: 'background' }, { why: 'resumed' }, { why: 'network_changed' }])
+    // The link moves between routes by itself: no switch, no probe, no reload.
+    expect(ran('cloud_open_computer')).toHaveLength(0)
+    expect(probes).toEqual([])
+    expect(reload).not.toHaveBeenCalled()
   })
 
   it('ignores a shell without cloud_poke', async () => {

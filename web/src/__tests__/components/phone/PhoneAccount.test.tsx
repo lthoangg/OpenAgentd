@@ -26,7 +26,6 @@ const { ServersScreen } = await import('@/components/phone/ServersScreen')
 const { PhoneAccountContent } = await import('@/components/settings/pages/settings.account.phone')
 const { queryClient } = await import('@/lib/query-client')
 const { resetPhoneCloudPush, phoneCloudPollInterval } = await import('@/queries/phone-cloud')
-const { rememberLanFingerprint, parseLanComputers } = await import('@/lib/computer-fingerprints')
 
 import type { DeviceRow, PendingRow, PhoneCloudStatus } from '@/api/phone-cloud'
 import type { ApprovalView } from '@/api/cloud'
@@ -89,30 +88,7 @@ const ran = (command: string) => calls.filter((call) => call.command === command
 // The Account section on the Servers screen: ServersScreen.account.test.tsx.
 
 describe('computers on the Servers screen', () => {
-  it('shows a saved LAN server that is an account computer once, as "Home network or account", and opens it by its address', async () => {
-    window.localStorage.setItem('openagentd.cloud.lanComputers', JSON.stringify({ '3F9A21C4': LAN }))
-    shell(CONNECTED, {
-      cloud_devices: () => [ME, MAC],
-      cloud_open_computer: () => ({ status: appStatus, via: 'lan' }),
-    })
-    render(<ServersScreen active onOpenSessions={() => {}} />)
-
-    expect(await screen.findByText('Home network or account')).toBeTruthy()
-    // One row for the computer, titled with the name typed for its saved
-    // server: the saved server is not listed again.
-    expect(screen.getAllByText('Studio Mac')).toHaveLength(1)
-    expect(screen.queryByText('macOS · 3F9A 21C4')).toBeNull()
-    expect(screen.getByText('Home Mac')).toBeTruthy()
-    // This phone is not a computer.
-    expect(screen.queryByText(/iOS · AA11 BB22/)).toBeNull()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Use Studio Mac' }))
-    await waitFor(() => expect(ran('cloud_open_computer')).toHaveLength(1))
-    expect(ran('cloud_open_computer')[0].args).toEqual({ deviceId: 'dev-mac', lanBaseUrl: LAN })
-    expect(await screen.findByText('Opened over your network.')).toBeTruthy()
-  })
-
-  it('opens a computer with no known LAN address through the account', async () => {
+  it('lists an account computer apart from the saved servers, and opens it through its link', async () => {
     shell(CONNECTED, {
       cloud_devices: () => [ME, MAC, { device_id: 'dev-phone', fingerprint: 'D00D 0001', signer: false, me: false, kind: 'android' }],
       cloud_open_computer: () => ({ status: appStatus, via: 'account' }),
@@ -120,15 +96,17 @@ describe('computers on the Servers screen', () => {
     render(<ServersScreen active onOpenSessions={() => {}} />)
 
     expect(await screen.findByText('macOS · 3F9A 21C4')).toBeTruthy()
-    expect(screen.getByText('via account')).toBeTruthy()
+    expect(screen.getByText('Your account')).toBeTruthy()
     expect(screen.queryByText(/Android/)).toBeNull()
-    // Not the same computer as any saved server, so both stay listed.
+    // This phone is not a computer.
+    expect(screen.queryByText(/iOS · AA11 BB22/)).toBeNull()
+    // Saved servers stay listed as they are.
     expect(screen.getByText('Studio Mac')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Use macOS · 3F9A 21C4' }))
     await waitFor(() => expect(ran('cloud_open_computer')).toHaveLength(1))
     expect(ran('cloud_open_computer')[0].args).toEqual({ deviceId: 'dev-mac', lanBaseUrl: null })
-    expect(await screen.findByText('Opened through your account.')).toBeTruthy()
+    expect(await screen.findByText('Opened.')).toBeTruthy()
   })
 
   it('shows what the shell says when a computer cannot be opened', async () => {
@@ -142,23 +120,6 @@ describe('computers on the Servers screen', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('That computer is offline.')
   })
 
-  it('remembers which server a fingerprint belongs to', async () => {
-    shell(CONNECTED)
-    globalThis.fetch = mock(async (input: unknown) => {
-      expect(String(input)).toBe(`${LAN}/api/cloud/status`)
-      return Response.json({ state: 'connected', fingerprint: '3f9a 21c4' })
-    }) as unknown as typeof fetch
-
-    await rememberLanFingerprint(`${LAN}/`)
-    expect(parseLanComputers(window.localStorage.getItem('openagentd.cloud.lanComputers') ?? '')).toEqual({ '3F9A21C4': LAN })
-  })
-
-  it('ignores a server that has no account route', async () => {
-    shell(CONNECTED)
-    globalThis.fetch = mock(async () => new Response('{}', { status: 404 })) as unknown as typeof fetch
-    await rememberLanFingerprint(LAN)
-    expect(window.localStorage.getItem('openagentd.cloud.lanComputers')).toBeNull()
-  })
 })
 
 describe('Account page', () => {

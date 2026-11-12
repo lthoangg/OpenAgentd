@@ -403,6 +403,32 @@ async fn a_network_change_on_a_dead_tunnel_brings_the_link_back() {
     round_trip(&link, "back").await;
 }
 
+/// A page that reloads tells the link `Background` and never `Resumed`
+/// (fault 4 of the 3.53.1 brief). The person's own retry, and the app's
+/// return, still bring a lost tunnel back.
+#[tokio::test]
+async fn a_user_retry_or_a_return_brings_back_a_tunnel_lost_in_the_background() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (phone, server) = account(&fake, &base).await;
+    let _host = start_host(&server, &base).await;
+    let link = Link::start_with(deps(&phone, &server, &base), server.cloud.device_id(), quick(Duration::from_millis(100)));
+    wait_for(&link, Duration::from_secs(5), up).await;
+    link.poke(Poke::Background);
+    close_controller(&fake, 1011);
+    wait_for(&link, Duration::from_secs(2), |s| matches!(s, LinkState::Down { retry_at: None, .. })).await;
+    link.poke(Poke::UserRetry);
+    wait_for(&link, Duration::from_secs(5), up).await;
+    round_trip(&link, "retried").await;
+
+    link.poke(Poke::Background);
+    close_controller(&fake, 1011);
+    wait_for(&link, Duration::from_secs(2), |s| matches!(s, LinkState::Down { retry_at: None, .. })).await;
+    link.poke(Poke::Resumed);
+    wait_for(&link, Duration::from_secs(5), up).await;
+    round_trip(&link, "resumed").await;
+}
+
 /// A direct listener for `server` on one of this machine's private
 /// addresses (port `port`, 0 for any), serving like the host; `None` when
 /// the machine has no private address. Abort the handle and close the

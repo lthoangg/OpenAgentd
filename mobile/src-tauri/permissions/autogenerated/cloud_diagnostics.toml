@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-diagnostics"
+description = "Enables the cloud_diagnostics command without any pre-configured scope."
+commands.allow = ["cloud_diagnostics"]
+
+[[permission]]
+identifier = "deny-cloud-diagnostics"
+description = "Denies the cloud_diagnostics command without any pre-configured scope."
+commands.deny = ["cloud_diagnostics"]

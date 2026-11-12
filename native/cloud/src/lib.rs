@@ -19,6 +19,7 @@
 //! - [`relay`]: relay sockets, the send rule, and tunnels.
 //! - [`link`]: one self-healing link per computer, on top of [`relay`].
 //! - `bridge` (feature `bridge`): a loopback HTTP origin in front of a link.
+//! - [`diag`]: connection diagnostics an app can show, with no secret in them.
 
 pub mod account_state;
 pub mod address_book;
@@ -27,6 +28,7 @@ pub mod approval;
 #[cfg(feature = "bridge")]
 pub mod bridge;
 pub mod code;
+pub mod diag;
 pub mod direct;
 pub mod encoding;
 pub mod endpoints;

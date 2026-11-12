@@ -2825,7 +2825,7 @@ dependencies = [
 
 [[package]]
 name = "openagentd-mobile"
-version = "3.53.0"
+version = "3.53.1"
 dependencies = [
  "anyhow",
  "axum",

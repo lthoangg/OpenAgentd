@@ -6,8 +6,9 @@
  * screen (`BackendSwitchScreen`) the same way from either.
  */
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
-import { getStoredAccessKey, installDesktopAuth, primeStoredAccessKey, setStoredAccessKey } from '@/api/auth'
+import { getStoredAccessKey, installDesktopAuth, primeStoredAccessKey, refreshStoredAccessKey, setStoredAccessKey } from '@/api/auth'
 import { queryClient } from '@/lib/query-client'
+import { markPageUnloading } from '@/lib/page-unload'
 import { forgetRouteForBackendSwitch } from '@/lib/route-restore'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
 import { queryKeys } from '@/queries/keys'
@@ -66,6 +67,7 @@ export function currentBackendOrigin(status: AppBackendStatus | null): string {
 /** Reload the window onto a new backend, forgetting the route of the old one. */
 export function reloadForBackendSwitch(): void {
   forgetRouteForBackendSwitch()
+  markPageUnloading()
   window.location.reload()
 }
 
@@ -168,7 +170,10 @@ export async function connectAccountComputer(options: {
     try {
       const opened = await openPhoneCloudComputer(options.deviceId, null)
       const next = opened.status
-      await primeStoredAccessKey(next.base_url)
+      // The bridge's key now: it may differ from the one cached for this
+      // origin (the bridge started again), or a miss may be cached for it
+      // (a cold launch primed this origin before the bridge was open).
+      await refreshStoredAccessKey(next.base_url)
       delete window.__OAD_TOKEN__
       setApiBaseUrl(next.base_url)
       installDesktopAuth()

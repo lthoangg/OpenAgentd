@@ -10,7 +10,7 @@
 mod fake_cloud;
 
 use std::convert::Infallible;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -34,6 +34,23 @@ const FAST: Pace = Pace {
     every: Duration::from_millis(50),
     timeout: Duration::from_secs(20),
 };
+
+/// The phone's state is one per process (`cloud::init`): the tests that
+/// use it take turns, on one data directory.
+static SERIAL: Mutex<()> = Mutex::new(());
+static DATA_DIR: OnceLock<tempfile::TempDir> = OnceLock::new();
+
+/// Starts the phone once per process; whether this call started it.
+fn init_phone() -> (&'static std::path::Path, bool) {
+    let mut fresh = false;
+    let dir = DATA_DIR.get_or_init(|| {
+        fresh = true;
+        let dir = tempfile::tempdir().unwrap();
+        cloud::init(dir.path().to_path_buf());
+        dir
+    });
+    (dir.path(), fresh)
+}
 
 /// A computer that answers every request with the headers it received.
 struct Computer {
@@ -85,22 +102,22 @@ async fn wait(what: &str, ok: impl Fn(&Status) -> bool) -> Status {
 
 #[test]
 fn phone_account_end_to_end() {
+    let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     tauri::async_runtime::block_on(async {
-        let dir = tempfile::tempdir().unwrap();
         let fake = fake_cloud::Fake::new();
         let base = fake.serve().await;
         // Debug builds only: point the phone at the fake cloud.
         std::env::set_var("OPENAGENTD_CLOUD_API", &base);
         std::env::set_var("OPENAGENTD_CLOUD_ACCOUNT", "https://account.openagentd.dev");
-        cloud::init(dir.path().to_path_buf());
+        let (dir, fresh) = init_phone();
         assert!(
             matches!(
                 cloud::cloud_status(),
                 Status::Guest {
-                    notice: None,
+                    notice,
                     supported: true,
                     ..
-                }
+                } if notice.is_none() || !fresh
             ),
             "a guest by default"
         );
@@ -139,7 +156,7 @@ fn phone_account_end_to_end() {
         .await
         .unwrap();
         assert!(matches!(s, Status::Connected { signer: true, .. }), "{s:?}");
-        assert!(dir.path().join("cloud").join("identity.json").exists());
+        assert!(dir.join("cloud").join("identity.json").exists());
 
         // A computer asks to join; the phone approves after comparing codes.
         let mut computer = Member::new(
@@ -278,7 +295,7 @@ fn phone_account_end_to_end() {
             "{:?}",
             cloud::cloud_status()
         );
-        assert!(dir.path().join("cloud").join("identity.json").exists());
+        assert!(dir.join("cloud").join("identity.json").exists());
         assert!(cloud::bridge_key(&origin).is_none(), "its links are closed");
 
         // Remove the computer: its session ends and the bridge goes away.
@@ -300,6 +317,256 @@ fn phone_account_end_to_end() {
             ),
             "{s:?}"
         );
-        assert!(!dir.path().join("cloud").join("identity.json").exists());
+        assert!(!dir.join("cloud").join("identity.json").exists());
+    });
+}
+
+/// Signs the phone in to a new account of `fake` and adds a computer to
+/// it; the computer's member.
+async fn signed_in_with_a_computer(fake: &fake_cloud::Fake, base: &str) -> Member {
+    let account = fake.new_account();
+    cloud::cloud_sign_in().unwrap();
+    let Status::SigningIn { user_code, .. } =
+        wait("the user code", |s| matches!(s, Status::SigningIn { .. })).await
+    else {
+        unreachable!()
+    };
+    fake.approve(&user_code, &account);
+    let Status::Recovery {
+        code,
+        check: [a, b],
+    } = wait("the recovery code", |s| {
+        matches!(s, Status::Recovery { .. })
+    })
+    .await
+    else {
+        unreachable!()
+    };
+    cloud::cloud_confirm_recovery(
+        recovery::group(&code, a).unwrap().into(),
+        recovery::group(&code, b).unwrap().into(),
+    )
+    .await
+    .unwrap();
+    let mut computer = Member::new(
+        Cloud::new(
+            reqwest::Client::new(),
+            Endpoints::custom(base, "https://account.openagentd.dev"),
+            DeviceKeys::generate(),
+            None,
+        ),
+        None,
+    );
+    computer.cloud.roles = openagentd_cloud::keys::Roles::BOTH;
+    let dc = computer.cloud.device_code().await.unwrap();
+    fake.approve(&dc.user_code, &account);
+    let session = flows::wait_for_session(&computer.cloud, &dc).await.unwrap();
+    let req = flows::request_to_join(&mut computer, &session)
+        .await
+        .unwrap();
+    let pending = cloud::cloud_pending().await.unwrap();
+    let (_, joined) = tokio::join!(
+        cloud::cloud_approve_begin(pending[0].enrollment_id.clone()),
+        flows::await_signer(&mut computer, &req, FAST)
+    );
+    let joined = joined.unwrap();
+    let (confirmed, added) = tokio::join!(
+        cloud::cloud_approve_confirm(pending[0].enrollment_id.clone(), Some(false), None, None),
+        flows::await_added(&mut computer, joined, &req, FAST)
+    );
+    confirmed.unwrap();
+    added.unwrap();
+    computer
+}
+
+/// Puts the computer online (its presence socket); drop or fire the
+/// sender to take it offline.
+async fn computer_online(computer: &Member) -> tokio::sync::oneshot::Sender<()> {
+    let host = Arc::new(Cloud::new(
+        reqwest::Client::new(),
+        computer.cloud.endpoints.clone(),
+        computer.cloud.keys.clone(),
+        computer.cloud.account_id.clone(),
+    ));
+    let handler = Arc::new(Computer {
+        roster: Mutex::new(computer.roster.clone().unwrap()),
+        me: computer.cloud.device_id(),
+    });
+    let (stop, stop_rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(relay::host(
+        host,
+        relay::http1_client(),
+        handler,
+        Sessions::default(),
+        Join::default(),
+        stop_rx,
+    ));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    stop
+}
+
+/// The phone's relay socket to the computer ends (the relay closes it).
+fn session_lost(fake: &fake_cloud::Fake) {
+    let to_phone = fake.1.lock().unwrap().to_controller.last().unwrap().clone();
+    let _ = to_phone.send(axum::extract::ws::Message::Close(Some(
+        axum::extract::ws::CloseFrame {
+            code: 1011,
+            reason: "".into(),
+        },
+    )));
+}
+
+/// What the page sends through a bridge: the status line it gets back, or
+/// `None` without an answer.
+async fn page_request(origin: &str, key: &str) -> Option<String> {
+    let exchange = async {
+        let mut tcp = tokio::net::TcpStream::connect(origin.trim_start_matches("http://"))
+            .await
+            .ok()?;
+        tcp.write_all(format!("GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: tauri://localhost\r\nAuthorization: Bearer {key}\r\nConnection: close\r\n\r\n").as_bytes())
+            .await
+            .ok()?;
+        let mut out = Vec::new();
+        tcp.read_to_end(&mut out).await.ok()?;
+        String::from_utf8_lossy(&out)
+            .lines()
+            .next()
+            .map(str::to_string)
+    };
+    tokio::time::timeout(Duration::from_secs(10), exchange)
+        .await
+        .ok()
+        .flatten()
+}
+
+async fn link_state(
+    link: &openagentd_cloud::link::Link,
+    what: &str,
+    ok: impl Fn(&openagentd_cloud::link::LinkState) -> bool,
+) {
+    let mut rx = link.state();
+    if tokio::time::timeout(Duration::from_secs(10), rx.wait_for(|s| ok(s)))
+        .await
+        .is_err()
+    {
+        panic!("timed out waiting for {what}: {:?}", *link.state().borrow());
+    }
+}
+
+/// Faults 2 and 4 of the 3.53.1 brief: an open that fails must not close
+/// the bridge the page is on, a bridge started again keeps its origin and
+/// key, and an open ends a link's background mode.
+#[test]
+fn the_page_keeps_its_bridge_and_key_through_failed_opens_restarts_and_the_background() {
+    use openagentd_cloud::link::{DownReason, LinkState, Poke};
+    let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    tauri::async_runtime::block_on(async {
+        let fake = fake_cloud::Fake::new();
+        let base = fake.serve().await;
+        std::env::set_var("OPENAGENTD_CLOUD_API", &base);
+        std::env::set_var("OPENAGENTD_CLOUD_ACCOUNT", "https://account.openagentd.dev");
+        init_phone();
+        let computer = signed_in_with_a_computer(&fake, &base).await;
+        let id = computer.cloud.device_id();
+        let stop = computer_online(&computer).await;
+
+        let origin = cloud::open_bridge(&id).await.unwrap();
+        let key = cloud::bridge_key(&origin).expect("the page's key");
+        assert_eq!(
+            page_request(&origin, &key).await.as_deref(),
+            Some("HTTP/1.1 200 OK")
+        );
+        let (_, link) = cloud::start_bridge(&id).await.unwrap();
+
+        // The computer goes offline and the session ends: an open fails,
+        // and the bridge the page is on stays, with its key.
+        let _ = stop.send(());
+        session_lost(&fake);
+        link_state(&link, "host offline", |s| {
+            matches!(
+                s,
+                LinkState::Down {
+                    reason: DownReason::HostOffline,
+                    ..
+                }
+            )
+        })
+        .await;
+        assert!(
+            cloud::open_bridge(&id).await.is_err(),
+            "the computer is offline"
+        );
+        assert_eq!(
+            cloud::bridge_key(&origin).as_deref(),
+            Some(key.as_str()),
+            "a failed open leaves the bridge in use alone"
+        );
+        // Back online: the next open succeeds on the same origin and key.
+        let stop = computer_online(&computer).await;
+        assert_eq!(cloud::open_bridge(&id).await.unwrap(), origin);
+        assert_eq!(cloud::bridge_key(&origin).as_deref(), Some(key.as_str()));
+        assert_eq!(
+            page_request(&origin, &key).await.as_deref(),
+            Some("HTTP/1.1 200 OK")
+        );
+
+        // Closed and started again in the same run: same origin, same key.
+        cloud::drop_bridge(&id).await;
+        assert_eq!(cloud::open_bridge(&id).await.unwrap(), origin);
+        assert_eq!(cloud::bridge_key(&origin).as_deref(), Some(key.as_str()));
+        assert_eq!(
+            page_request(&origin, &key).await.as_deref(),
+            Some("HTTP/1.1 200 OK")
+        );
+
+        // The page reloaded (its last word was "background") and the
+        // session ended: an open brings the link up again, on the same
+        // bridge and key.
+        let (_, link) = cloud::start_bridge(&id).await.unwrap();
+        link.poke(Poke::Background);
+        session_lost(&fake);
+        link_state(&link, "down in the background", |s| {
+            matches!(s, LinkState::Down { retry_at: None, .. })
+        })
+        .await;
+        assert_eq!(cloud::open_bridge(&id).await.unwrap(), origin);
+        assert_eq!(cloud::bridge_key(&origin).as_deref(), Some(key.as_str()));
+        assert_eq!(
+            page_request(&origin, &key).await.as_deref(),
+            Some("HTTP/1.1 200 OK")
+        );
+
+        // The app goes away: the bridge stops listening, and a request is
+        // refused at once. Back in front, it answers on the same origin
+        // with the same key.
+        cloud::cloud_poke("background".into()).await.unwrap();
+        assert_eq!(page_request(&origin, &key).await, None);
+        let moved = cloud::cloud_poke("resumed".into()).await.unwrap();
+        assert!(moved.is_empty(), "{moved:?}");
+        assert_eq!(cloud::bridge_key(&origin).as_deref(), Some(key.as_str()));
+        assert_eq!(
+            page_request(&origin, &key).await.as_deref(),
+            Some("HTTP/1.1 200 OK")
+        );
+
+        // What "Copy diagnostics" shows: the return, the bridge's check
+        // and reopening, named by fingerprint; never the key or the id.
+        let lines: Vec<String> = cloud::cloud_diagnostics()
+            .into_iter()
+            .map(|l| l.text)
+            .collect();
+        let fp = computer.cloud.keys.fingerprint();
+        assert!(lines.iter().any(|l| l == "app back"), "{lines:#?}");
+        assert!(
+            lines
+                .iter()
+                .any(|l| *l == format!("bridge {fp}: reopened on the same address")),
+            "{lines:#?}"
+        );
+        let all = lines.join("\n");
+        assert!(!all.contains(&key) && !all.contains(&id), "{all}");
+
+        drop(stop);
+        cloud::cloud_sign_out().await.unwrap();
     });
 }

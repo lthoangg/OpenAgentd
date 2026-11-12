@@ -182,11 +182,7 @@ async fn cloud_open_computer(
     lan_base_url: Option<String>,
 ) -> Result<OpenedComputer, String> {
     let _ = lan_base_url;
-    let (origin, link) = cloud::start_bridge(&device_id).await?;
-    if let Err(e) = cloud::wait_up(&link, cloud::OPEN_WAIT).await {
-        cloud::drop_bridge(&device_id).await;
-        return Err(e);
-    }
+    let origin = cloud::open_computer(&device_id).await?;
     let previous = state
         .active_base_url
         .lock()
@@ -200,6 +196,34 @@ async fn cloud_open_computer(
         status: app_backend_status(app, state)?,
         via: "account",
     })
+}
+
+/// Tells the account's bridges and links that the app came back, went
+/// away, or the network changed (`cloud::cloud_poke`); answers once the
+/// bridges are listening again. A bridge that had to move to another port
+/// takes the active base URL with it, so the page, comparing its own with
+/// the status, reloads onto it.
+#[tauri::command]
+async fn cloud_poke(
+    state: tauri::State<'_, MobileBackendState>,
+    relays: tauri::State<'_, PreviewRelays>,
+    why: String,
+) -> Result<(), String> {
+    let moved = cloud::cloud_poke(why).await?;
+    let mut active = state
+        .active_base_url
+        .lock()
+        .map_err(|_| "backend state unavailable".to_string())?;
+    let now = active
+        .as_deref()
+        .and_then(|cur| moved.iter().find(|(old, _)| old == cur))
+        .map(|(_, new)| new.clone());
+    if let Some(new) = now {
+        *active = Some(new);
+        drop(active);
+        relays.0.close_all();
+    }
+    Ok(())
 }
 
 /// Where the account computer last opened is remembered (its device id,
@@ -754,8 +778,9 @@ pub fn run() {
             cloud::cloud_invite_cancel,
             cloud::cloud_remove_device,
             cloud::cloud_sign_out,
-            cloud::cloud_poke,
+            cloud_poke,
             cloud::cloud_link_route,
+            cloud::cloud_diagnostics,
             taps::notification_take_taps,
             cloud_open_computer,
             cloud_push_register,

@@ -43,6 +43,7 @@ fn main() {
                 "cloud_open_computer",
                 "cloud_poke",
                 "cloud_link_route",
+                "cloud_diagnostics",
                 "cloud_push_register",
                 "updater_check",
                 "updater_download",

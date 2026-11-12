@@ -175,7 +175,22 @@ export type CloudPokeReason = 'resumed' | 'network_changed' | 'user_retry' | 'ba
  * an older shell has no `cloud_poke`, and nothing depends on the answer.
  */
 export function cloudPoke(why: CloudPokeReason): void {
-  void call<void>('cloud_poke', { why }).catch(() => {})
+  void cloudPokeAndWait(why)
+}
+
+/**
+ * `cloudPoke`, resolved once the shell has answered: on `resumed` the phone
+ * shell has made its bridges listen again by then, so a request the page
+ * retries now gets through. False when the shell did not answer (an older
+ * shell without `cloud_poke`).
+ */
+export async function cloudPokeAndWait(why: CloudPokeReason): Promise<boolean> {
+  try {
+    await call<void>('cloud_poke', { why })
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** The route an account computer's link is on (`cloud_link_route`). */

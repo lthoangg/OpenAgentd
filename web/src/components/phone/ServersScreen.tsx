@@ -20,6 +20,10 @@
  * the guest's Account card and under Your servers) reads both an account
  * invitation and a server's connect code (`useScanAnyCode`).
  *
+ * Last, in the phone app signed in to an account, **Copy diagnostics**
+ * (`ConnectionDiagnosticsRow`): the shell's last connection events, for a
+ * problem report.
+ *
  * It is the phone's only server picker: the connection banner, the server
  * chip and a scanned connect link open it (``useServersScreenStore``), and
  * before any server answers the app shows it in place of the loading screen.
@@ -30,11 +34,13 @@ import { AppBackendPanel, type AppBackendPanelControl, type AppBackendPrefill } 
 import { AccountComputersSection, useAccountComputers } from '@/components/phone/AccountComputers'
 import { AccountSection } from '@/components/phone/AccountSection'
 import { AccountSheet } from '@/components/phone/AccountSheet'
+import { ConnectionDiagnosticsRow } from '@/components/phone/ConnectionDiagnostics'
 import { PullToRefresh } from '@/components/phone/PullToRefresh'
 import { QrScanOverlay } from '@/components/phone/QrScanOverlay'
 import { useScanAnyCode } from '@/components/phone/useScanAnyCode'
 import { Callout } from '@/components/ui/callout'
 import { cancelQrScan, canScanQr } from '@/lib/qr-scan'
+import { isPhoneCloudShell } from '@/api/phone-cloud'
 import { usePhoneCloudStatus } from '@/queries/phone-cloud'
 import { useLargeTitleCollapse } from '@/components/Sidebar/useLargeTitleCollapse'
 import { takeServersPrefill, useServersScreenStore } from '@/stores/useServersScreenStore'
@@ -106,6 +112,7 @@ export function ServersScreen({ active, onOpenSessions }: {
           <AccountSection active={active} devices={devices} onOpen={() => setAccountOpen(true)} onScan={scan} />
           {connected && <AccountComputersSection computers={computers} loaded={devices !== undefined} app={app} route={route} onOpenSessions={onOpenSessions} />}
           <AppBackendPanel active={active} prefill={prefill} sectionTitle="Your servers" onOpenInUse={onOpenSessions} controlRef={panel} onScanQr={scan} />
+          {connected && isPhoneCloudShell() && <ConnectionDiagnosticsRow />}
         </div>
       </PullToRefresh>
       <AccountSheet open={accountOpen} onClose={() => setAccountOpen(false)} />

@@ -16,7 +16,9 @@ use std::convert::Infallible;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use bytes::Bytes;
 use http_body_util::combinators::BoxBody;
@@ -26,8 +28,9 @@ use hyper::header::{self, HeaderValue};
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use subtle::ConstantTimeEq;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::sync::Notify;
 use zeroize::Zeroizing;
 
 /// The query parameter the web UI uses where it cannot set a header
@@ -46,11 +49,50 @@ pub type Opener = Arc<dyn Fn() -> OpenFuture + Send + Sync>;
 
 type Body = BoxBody<Bytes, hyper::Error>;
 
+/// What every connection of a bridge shares, across its listeners.
+struct Shared {
+    key: Zeroizing<String>,
+    opener: Opener,
+    allowed: OriginCheck,
+    served: AtomicU64,
+    unauthorized: AtomicU64,
+    forbidden: AtomicU64,
+    hooks: Hooks,
+}
+
+/// Test seams: a listener the system took (it stops accepting, the port
+/// stays bound), and `accept` errors.
+#[derive(Default)]
+struct Hooks {
+    stall: Notify,
+    fail_accepts: AtomicUsize,
+    accepts: AtomicUsize,
+}
+
+/// Requests a bridge answered since it started.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Counts {
+    /// Requests other than preflights (so not the self-check), refused or not.
+    pub served: u64,
+    /// Refused for a missing or wrong key (401).
+    pub unauthorized: u64,
+    /// Refused for another page's origin (403).
+    pub forbidden: u64,
+}
+
 /// A running bridge. Dropping it stops accepting connections.
+///
+/// iOS reclaims the listening sockets of a suspended app and may not tell
+/// it (Apple TN2277): the listener then never accepts again. The phone
+/// pauses a bridge in the background ([`Bridge::pause`]) and makes it
+/// listen again in front ([`Bridge::listen_again`]): the same port, key,
+/// opener and origin check. [`Bridge::check`] tells whether it still
+/// answers. Connections already accepted are not touched by either.
 pub struct Bridge {
     pub origin: String,
-    key: Arc<Zeroizing<String>>,
-    task: tokio::task::JoinHandle<()>,
+    port: u16,
+    shared: Arc<Shared>,
+    task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl std::fmt::Debug for Bridge {
@@ -58,6 +100,18 @@ impl std::fmt::Debug for Bridge {
         write!(f, "Bridge({}, key [redacted])", self.origin)
     }
 }
+
+/// How long [`Bridge::listen_again`] tries for the same port before it
+/// takes another (a reclaimed socket may hold it for a moment).
+const REBIND_TRIES: u32 = 10;
+const REBIND_WAIT: Duration = Duration::from_millis(50);
+/// The same at a start: a bridge closed a moment ago may still hold it.
+const START_TRIES: u32 = 4;
+/// `accept` errors in a row (not of one connection) before the accept loop
+/// opens a new listener on the same port; it waits between them.
+const ACCEPT_FAILURES_BEFORE_RELISTEN: u32 = 4;
+const ACCEPT_RETRY_FIRST: Duration = Duration::from_millis(100);
+const ACCEPT_RETRY_MAX: Duration = Duration::from_secs(1);
 
 impl Bridge {
     /// Listens on a new loopback port. `allowed`: the page origins that may
@@ -70,49 +124,223 @@ impl Bridge {
     /// the system picks: one computer keeps one origin across launches
     /// (and routes), so the page never reloads and its web storage stays.
     pub async fn start_on(opener: Opener, allowed: OriginCheck, port: Option<u16>) -> io::Result<Bridge> {
+        Bridge::start_keyed(opener, allowed, port, None).await
+    }
+
+    /// Like [`Bridge::start_on`], with `key` when given (a bridge that
+    /// starts again for the same computer in the same app run keeps the key
+    /// the page already holds), else a new random one.
+    pub async fn start_keyed(opener: Opener, allowed: OriginCheck, port: Option<u16>, key: Option<&str>) -> io::Result<Bridge> {
         let listener = match port {
-            Some(p) => match TcpListener::bind(("127.0.0.1", p)).await {
-                Ok(l) => l,
-                Err(_) => TcpListener::bind("127.0.0.1:0").await?,
+            Some(p) => match bind_same(p, START_TRIES).await {
+                Some(l) => l,
+                None => TcpListener::bind("127.0.0.1:0").await?,
             },
             None => TcpListener::bind("127.0.0.1:0").await?,
         };
-        let origin = format!("http://127.0.0.1:{}", listener.local_addr()?.port());
-        let raw: [u8; 32] = crate::keys::random_bytes();
-        let key = Arc::new(Zeroizing::new(raw.iter().map(|b| format!("{b:02x}")).collect::<String>()));
-        let k = key.clone();
-        let task = tokio::spawn(async move {
-            loop {
-                let Ok((tcp, peer)) = listener.accept().await else {
-                    continue;
-                };
-                if !peer.ip().is_loopback() {
-                    continue;
-                }
-                let _ = tcp.set_nodelay(true);
-                let key = k.clone();
-                let opener = opener.clone();
-                tokio::spawn(async move {
-                    let svc = hyper::service::service_fn(move |req| {
-                        let key = key.clone();
-                        let opener = opener.clone();
-                        async move { Ok::<_, Infallible>(handle(req, &key, opener, allowed).await) }
-                    });
-                    let _ = hyper::server::conn::http1::Builder::new().serve_connection(TokioIo::new(tcp), svc).with_upgrades().await;
-                });
+        let port = listener.local_addr()?.port();
+        let key = match key.filter(|k| !k.is_empty()) {
+            Some(k) => k.to_string(),
+            None => {
+                let raw: [u8; 32] = crate::keys::random_bytes();
+                raw.iter().map(|b| format!("{b:02x}")).collect::<String>()
             }
+        };
+        let shared = Arc::new(Shared {
+            key: Zeroizing::new(key),
+            opener,
+            allowed,
+            served: AtomicU64::new(0),
+            unauthorized: AtomicU64::new(0),
+            forbidden: AtomicU64::new(0),
+            hooks: Hooks::default(),
         });
-        Ok(Bridge { origin, key, task })
+        let task = tokio::spawn(serve(listener, port, shared.clone()));
+        Ok(Bridge { origin: origin_of(port), port, shared, task: Some(task) })
     }
 
     pub fn key(&self) -> &str {
-        self.key.as_str()
+        self.shared.key.as_str()
+    }
+
+    /// Whether it has a listener (it is not paused).
+    pub fn is_listening(&self) -> bool {
+        self.task.is_some()
+    }
+
+    /// Requests answered since it started.
+    pub fn counts(&self) -> Counts {
+        Counts {
+            served: self.shared.served.load(Ordering::Relaxed),
+            unauthorized: self.shared.unauthorized.load(Ordering::Relaxed),
+            forbidden: self.shared.forbidden.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Stops listening (the app went to the background): a connection is
+    /// refused at once instead of waiting on a socket the system may take.
+    /// [`Bridge::listen_again`] listens again.
+    pub async fn pause(&mut self) {
+        if let Some(task) = self.task.take() {
+            task.abort();
+            // Once it has finished, its listener is closed.
+            let _ = task.await;
+        }
+    }
+
+    /// Closes the listener, whatever state it is in, and listens again on
+    /// the same port with the same key, opener and origin check. If the
+    /// port cannot be had again within about half a second, it listens on
+    /// another one and `origin` changes: `Ok(true)`, and the caller must
+    /// tell the page.
+    pub async fn listen_again(&mut self) -> io::Result<bool> {
+        self.pause().await;
+        let (listener, moved) = match bind_same(self.port, REBIND_TRIES).await {
+            Some(l) => (l, false),
+            None => (TcpListener::bind("127.0.0.1:0").await?, true),
+        };
+        self.port = listener.local_addr()?.port();
+        self.origin = origin_of(self.port);
+        self.task = Some(tokio::spawn(serve(listener, self.port, self.shared.clone())));
+        Ok(moved)
+    }
+
+    /// Whether the bridge answers a request on its own port within
+    /// `within`: a preflight, which it answers itself, so nothing enters
+    /// the tunnel. A bare connect proves nothing: the kernel accepts for a
+    /// listener nobody reads.
+    pub async fn check(&self, within: Duration) -> bool {
+        let addr = ("127.0.0.1", self.port);
+        let probe = async {
+            let mut tcp = tokio::net::TcpStream::connect(addr).await.ok()?;
+            tcp.write_all(b"OPTIONS /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").await.ok()?;
+            let mut head = [0u8; 12];
+            tcp.read_exact(&mut head).await.ok()?;
+            Some(head.starts_with(b"HTTP/1.1 204"))
+        };
+        matches!(tokio::time::timeout(within, probe).await, Ok(Some(true)))
+    }
+
+    /// Stops listening, and returns once the listener is closed, so a
+    /// bridge started next for the same computer gets the same port.
+    pub async fn close(mut self) {
+        self.pause().await;
+    }
+
+    /// Test seam: the system takes the listener underneath the bridge. It
+    /// stays bound (the kernel still accepts connections) but is never read.
+    #[doc(hidden)]
+    pub fn stall_for_test(&self) {
+        self.shared.hooks.stall.notify_one();
+    }
+
+    /// Test seam: the next `n` accepts fail with an error that is not of
+    /// one connection (`usize::MAX`: all of them; 0 ends it).
+    #[doc(hidden)]
+    pub fn fail_accepts_for_test(&self, n: usize) {
+        self.shared.hooks.fail_accepts.store(n, Ordering::SeqCst);
+    }
+
+    /// Test seam: accepts tried so far.
+    #[doc(hidden)]
+    pub fn accepts_for_test(&self) -> usize {
+        self.shared.hooks.accepts.load(Ordering::SeqCst)
     }
 }
 
 impl Drop for Bridge {
     fn drop(&mut self) {
-        self.task.abort();
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
+    }
+}
+
+/// Binds `port` on loopback, trying `tries` times `REBIND_WAIT` apart.
+async fn bind_same(port: u16, tries: u32) -> Option<TcpListener> {
+    for i in 0..tries {
+        if i > 0 {
+            tokio::time::sleep(REBIND_WAIT).await;
+        }
+        if let Ok(l) = TcpListener::bind(("127.0.0.1", port)).await {
+            return Some(l);
+        }
+    }
+    None
+}
+
+fn origin_of(port: u16) -> String {
+    format!("http://127.0.0.1:{port}")
+}
+
+/// Errors that end one pending connection, not the listener.
+fn connection_error(e: &io::Error) -> bool {
+    matches!(e.kind(), io::ErrorKind::ConnectionAborted | io::ErrorKind::ConnectionRefused | io::ErrorKind::ConnectionReset | io::ErrorKind::Interrupted)
+}
+
+async fn accept(listener: &TcpListener, hooks: &Hooks) -> io::Result<(tokio::net::TcpStream, std::net::SocketAddr)> {
+    hooks.accepts.fetch_add(1, Ordering::SeqCst);
+    let failing = hooks.fail_accepts.load(Ordering::SeqCst);
+    if failing > 0 {
+        if failing != usize::MAX {
+            hooks.fail_accepts.store(failing - 1, Ordering::SeqCst);
+        }
+        return Err(io::Error::other("accept failed (test)"));
+    }
+    listener.accept().await
+}
+
+/// The accept loop. It never spins: an error of one connection goes on at
+/// once; any other waits, longer each time, and a few in a row replace the
+/// listener with a new one on the same port (iOS may have taken it).
+async fn serve(listener: TcpListener, port: u16, shared: Arc<Shared>) {
+    let mut listener = Some(listener);
+    let mut failures = 0u32;
+    loop {
+        let Some(l) = listener.as_ref() else {
+            // Listen again on the same port; it never moves by itself (the
+            // page would not know), so it keeps trying.
+            match TcpListener::bind(("127.0.0.1", port)).await {
+                Ok(l) => listener = Some(l),
+                Err(_) => tokio::time::sleep(ACCEPT_RETRY_MAX).await,
+            }
+            continue;
+        };
+        let got = tokio::select! {
+            got = accept(l, &shared.hooks) => got,
+            _ = shared.hooks.stall.notified() => {
+                std::future::pending::<()>().await;
+                continue;
+            }
+        };
+        let (tcp, peer) = match got {
+            Ok(c) => {
+                failures = 0;
+                c
+            }
+            Err(e) if connection_error(&e) => continue,
+            Err(_) => {
+                failures += 1;
+                if failures % ACCEPT_FAILURES_BEFORE_RELISTEN == 0 {
+                    listener = None;
+                }
+                let wait = ACCEPT_RETRY_FIRST.saturating_mul(1 << (failures - 1).min(4)).min(ACCEPT_RETRY_MAX);
+                tokio::time::sleep(wait).await;
+                continue;
+            }
+        };
+        if !peer.ip().is_loopback() {
+            continue;
+        }
+        let _ = tcp.set_nodelay(true);
+        let shared = shared.clone();
+        tokio::spawn(async move {
+            let svc = hyper::service::service_fn(move |req| {
+                let shared = shared.clone();
+                async move { Ok::<_, Infallible>(handle(req, &shared).await) }
+            });
+            let _ = hyper::server::conn::http1::Builder::new().serve_connection(TokioIo::new(tcp), svc).with_upgrades().await;
+        });
     }
 }
 
@@ -182,25 +410,29 @@ fn strip(req: &mut Request<Incoming>) {
     }
 }
 
-async fn handle(mut req: Request<Incoming>, key: &str, opener: Opener, allowed_origin: OriginCheck) -> Response<Body> {
+async fn handle(mut req: Request<Incoming>, shared: &Shared) -> Response<Body> {
     let origin = req.headers().get(header::ORIGIN).and_then(|v| v.to_str().ok()).map(str::to_string);
-    let allowed = origin.as_deref().filter(|o| allowed_origin(o));
+    let allowed = origin.as_deref().filter(|o| (shared.allowed)(o));
     if origin.is_some() && allowed.is_none() {
         // Another page on this device: never forwarded, whatever it sends.
+        shared.forbidden.fetch_add(1, Ordering::Relaxed);
         return text(StatusCode::FORBIDDEN, "Forbidden");
     }
     if req.method() == Method::OPTIONS {
         return preflight(allowed, &req);
     }
+    shared.served.fetch_add(1, Ordering::Relaxed);
+    let key = shared.key.as_str();
     let ok = presented(&req).is_some_and(|p| bool::from(p.as_bytes().ct_eq(key.as_bytes())));
     if !ok {
+        shared.unauthorized.fetch_add(1, Ordering::Relaxed);
         let mut r = text(StatusCode::UNAUTHORIZED, "Unauthorized");
         cors(&mut r, allowed);
         return r;
     }
     strip(&mut req);
     let upgrade = req.headers().contains_key(header::UPGRADE).then(|| hyper::upgrade::on(&mut req));
-    let mut resp = match forward(req, opener).await {
+    let mut resp = match forward(req, shared.opener.clone()).await {
         Ok(r) => r,
         Err(Failed::Link(e)) => {
             // No session to the computer within the link's wait: 503 with

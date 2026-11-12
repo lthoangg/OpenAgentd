@@ -204,7 +204,8 @@ describe('Account section', () => {
     shell(CONNECTED, { cloud_devices: () => [ME, MAC, LINUX] })
     render(<ServersScreen active onOpenSessions={() => {}} />)
     expect(await screen.findByText('3 devices')).toBeTruthy()
-    expect(headings()).toEqual(['Account', 'Your computers', 'Your servers'])
+    // Copy diagnostics comes last, for the account's connections.
+    expect(headings()).toEqual(['Account', 'Your computers', 'Your servers', 'Connection'])
   })
 
   it('says when the account is closing or unavailable', async () => {

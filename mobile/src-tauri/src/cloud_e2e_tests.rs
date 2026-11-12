@@ -549,6 +549,23 @@ fn the_page_keeps_its_bridge_and_key_through_failed_opens_restarts_and_the_backg
             Some("HTTP/1.1 200 OK")
         );
 
+        // What "Copy diagnostics" shows: the return, the bridge's check
+        // and reopening, named by fingerprint; never the key or the id.
+        let lines: Vec<String> = cloud::cloud_diagnostics()
+            .into_iter()
+            .map(|l| l.text)
+            .collect();
+        let fp = computer.cloud.keys.fingerprint();
+        assert!(lines.iter().any(|l| l == "app back"), "{lines:#?}");
+        assert!(
+            lines
+                .iter()
+                .any(|l| *l == format!("bridge {fp}: reopened on the same address")),
+            "{lines:#?}"
+        );
+        let all = lines.join("\n");
+        assert!(!all.contains(&key) && !all.contains(&id), "{all}");
+
         drop(stop);
         cloud::cloud_sign_out().await.unwrap();
     });

@@ -25,6 +25,7 @@ use openagentd_cloud::flows::{
 };
 use openagentd_cloud::keys::{self, DeviceKeys, Ed25519, Roles, Seed};
 use openagentd_cloud::address_book::AddressBook;
+use openagentd_cloud::diag::{Diagnostics, Event};
 use openagentd_cloud::link::{DownReason, Link, LinkDeps, LinkError, LinkState, Poke, Route, Target};
 use openagentd_cloud::recovery;
 use openagentd_cloud::relay::{self, TunnelEnd};
@@ -290,6 +291,8 @@ struct Phone {
     bridge_secrets: Mutex<HashMap<String, Zeroizing<String>>>,
     /// The kind the cloud last reported for each device, for labels.
     kinds: Mutex<HashMap<String, Option<String>>>,
+    /// The last connection events, for "Copy diagnostics" (no secrets).
+    diag: Diagnostics,
 }
 
 struct BridgeEntry {
@@ -366,6 +369,7 @@ pub fn init(data_dir: std::path::PathBuf) {
         bridge_keys: Mutex::new(HashMap::new()),
         bridge_secrets: Mutex::new(HashMap::new()),
         kinds: Mutex::new(HashMap::new()),
+        diag: Diagnostics::default(),
     };
     if PHONE.set(phone).is_err() {
         return;
@@ -1651,9 +1655,13 @@ impl LinkDeps for PhoneDeps {
         });
     }
 
-    fn on_end(&self, _device_id: &str, end: &TunnelEnd) {
+    fn on_end(&self, device_id: &str, end: &TunnelEnd) {
         // `cause=deadline` is this phone giving up a socket that went quiet.
         eprintln!("cloud: session ended {end}");
+        record(Event::SessionEnded {
+            device_id: device_id.to_string(),
+            end: *end,
+        });
     }
 }
 
@@ -1705,16 +1713,39 @@ pub async fn cloud_poke(why: String) -> Result<Vec<(String, String)>, String> {
     let Some(p) = PHONE.get() else {
         return Ok(Vec::new());
     };
+    match why {
+        Poke::Resumed => record(Event::AppBack),
+        Poke::Background => record(Event::AppAway),
+        _ => {}
+    }
     let mut moved = Vec::new();
     let mut links = p.links.lock().await;
     for (device_id, l) in links.iter_mut() {
+        let id = || device_id.clone();
         match why {
-            Poke::Background => l.bridge.pause().await,
-            Poke::Resumed => listen_again(p, device_id, &mut l.bridge, &mut moved).await,
-            Poke::UserRetry | Poke::NetworkChanged => {
-                if !l.bridge.check(BRIDGE_CHECK_WITHIN).await {
+            Poke::Background => {
+                l.bridge.pause().await;
+                record(Event::BridgePaused { device_id: id() });
+            }
+            Poke::Resumed | Poke::UserRetry | Poke::NetworkChanged => {
+                // Whether it answered before it listens again: what tells
+                // a listener iOS took from one that was fine.
+                let answering =
+                    l.bridge.is_listening() && l.bridge.check(BRIDGE_CHECK_WITHIN).await;
+                record(Event::BridgeChecked {
+                    device_id: id(),
+                    answering,
+                });
+                if why == Poke::Resumed || !answering {
                     listen_again(p, device_id, &mut l.bridge, &mut moved).await;
                 }
+                let c = l.bridge.counts();
+                record(Event::BridgeRequests {
+                    device_id: id(),
+                    served: c.served,
+                    unauthorized: c.unauthorized,
+                    forbidden: c.forbidden,
+                });
             }
         }
         l.link.poke(why);
@@ -1731,7 +1762,17 @@ async fn listen_again(
     moved: &mut Vec<(String, String)>,
 ) {
     let old = bridge.origin.clone();
-    match bridge.listen_again().await {
+    let result = bridge.listen_again().await;
+    record(match result {
+        Ok(moved) => Event::BridgeReopened {
+            device_id: device_id.to_string(),
+            moved,
+        },
+        Err(_) => Event::BridgeFailed {
+            device_id: device_id.to_string(),
+        },
+    });
+    match result {
         Ok(false) => {}
         Ok(true) => {
             let new = bridge.origin.clone();
@@ -1759,6 +1800,10 @@ async fn ensure_listening(device_id: &str) -> Option<String> {
     let mut links = p.links.lock().await;
     let l = links.get_mut(device_id)?;
     if !l.bridge.check(BRIDGE_CHECK_WITHIN).await {
+        record(Event::BridgeChecked {
+            device_id: device_id.to_string(),
+            answering: false,
+        });
         let mut moved = Vec::new();
         listen_again(p, device_id, &mut l.bridge, &mut moved).await;
     }
@@ -1792,6 +1837,7 @@ async fn start(device_id: &str) -> Result<(String, Link, bool), String> {
         return Ok((l.bridge.origin.clone(), l.link.clone(), false));
     }
     let link = Link::start(Arc::new(PhoneDeps), device_id.to_string());
+    watch_link(device_id, &link);
     let for_bridge = link.clone();
     let opener: Opener = Arc::new(move || {
         let link = for_bridge.clone();
@@ -1849,6 +1895,49 @@ async fn start(device_id: &str) -> Result<(String, Link, bool), String> {
     Ok((origin, link, true))
 }
 
+/// Writes a link's state changes into the diagnostics, until it closes.
+/// A link sends `Down` again while it waits; only a change is written.
+fn watch_link(device_id: &str, link: &Link) {
+    fn kind(s: &LinkState) -> (u8, Option<DownReason>, bool) {
+        match s {
+            LinkState::Connecting => (0, None, false),
+            LinkState::Up { route, .. } => (1, None, matches!(route, Route::Direct { .. })),
+            LinkState::Down { reason, retry_at } => (2, Some(reason.clone()), retry_at.is_some()),
+        }
+    }
+    let mut state = link.state();
+    let device_id = device_id.to_string();
+    tauri::async_runtime::spawn(async move {
+        let mut last = None;
+        loop {
+            let now = state.borrow_and_update().clone();
+            if last.as_ref() != Some(&kind(&now)) {
+                last = Some(kind(&now));
+                record(Event::Link {
+                    device_id: device_id.clone(),
+                    state: now,
+                });
+            }
+            if state.changed().await.is_err() {
+                return;
+            }
+        }
+    });
+}
+
+fn record(event: Event) {
+    if let Some(p) = PHONE.get() {
+        p.diag.record(event);
+    }
+}
+
+/// The last connection events, oldest first, for "Copy diagnostics" on the
+/// Servers screen: plain lines with no key, token, id, address or URL.
+#[tauri::command]
+pub fn cloud_diagnostics() -> Vec<openagentd_cloud::diag::Line> {
+    PHONE.get().map(|p| p.diag.lines()).unwrap_or_default()
+}
+
 /// Forgets the bridge keys kept for this app run: one computer's, or
 /// (`None`) all of them, with the account.
 fn forget_bridge_secrets(device_id: Option<&str>) {
@@ -1884,11 +1973,17 @@ pub async fn open_computer(device_id: &str) -> Result<String, String> {
         }
     }
     if let Err(e) = wait_up(&link, OPEN_WAIT).await {
+        record(Event::OpenFailed {
+            device_id: device_id.to_string(),
+        });
         if created {
             drop_bridge(device_id).await;
         }
         return Err(e);
     }
+    record(Event::Opened {
+        device_id: device_id.to_string(),
+    });
     Ok(origin)
 }
 
@@ -1925,6 +2020,9 @@ pub async fn wait_up(link: &Link, wait: Duration) -> Result<(), String> {
 pub async fn drop_bridge(device_id: &str) {
     let Ok(p) = phone() else { return };
     if let Some(l) = p.links.lock().await.remove(device_id) {
+        record(Event::BridgeClosed {
+            device_id: device_id.to_string(),
+        });
         l.link.close();
         p.bridge_keys
             .lock()

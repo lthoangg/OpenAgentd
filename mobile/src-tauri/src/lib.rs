@@ -780,6 +780,7 @@ pub fn run() {
             cloud::cloud_sign_out,
             cloud_poke,
             cloud::cloud_link_route,
+            cloud::cloud_diagnostics,
             taps::notification_take_taps,
             cloud_open_computer,
             cloud_push_register,

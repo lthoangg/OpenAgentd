@@ -30,6 +30,14 @@ pub struct Identity {
     /// The account problem last seen, so it survives a restart.
     #[serde(default)]
     pub problem: Option<AccountProblem>,
+    /// Devices the cloud said were removed or left while the roster still
+    /// lists them (spec section 3.3). Not secret; kept with `K`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub departed: Vec<String>,
+    /// When this host last heard from the cloud (Unix ms): a verified
+    /// roster fetch and the device list (spec section 5.5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_contact: Option<u64>,
 }
 
 impl fmt::Debug for Identity {
@@ -57,6 +65,8 @@ impl Identity {
             account_id: None,
             roster: None,
             problem: None,
+            departed: Vec::new(),
+            last_contact: None,
         }
     }
 

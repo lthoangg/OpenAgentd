@@ -20,17 +20,29 @@
 //! close; the link reconnects at once, and a `host_offline` refusal after
 //! it means the host is offline.
 //!
-//! Routes: the relay only, for now. A direct route can be added as another
-//! [`Route`] without changing callers.
+//! Routes (spec 5.5): the relay, and a direct session on the home network.
+//! Each connect races the two; direct wins. When the relay came up first,
+//! the direct try goes on and takes over when it lands; on the relay, the
+//! link tries direct again on a poke and every [`LinkOptions::direct_retry`].
+//! New streams take the newest route; the old route's streams finish, and
+//! it closes once idle or after [`LinkOptions::drain_within`]. A direct
+//! route that dies falls back to the race at once. The addresses come from
+//! the app ([`Target::direct`], which keeps them per device and network)
+//! and are learned again over every session that comes up
+//! ([`LinkDeps::learned`]), so an address that changed fixes itself.
 
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, watch};
+use tokio::task::JoinHandle;
 
 use crate::account_state::{self, AccountProblem};
 use crate::api::Cloud;
+use crate::direct::{self, DialTarget, DirectAnswer};
 use crate::mux::{MuxError, Session, Stream};
 use crate::relay::{self, Join, Keepalive, RelayError, Tunnel, TunnelEnd, Waits};
 
@@ -39,6 +51,8 @@ use crate::relay::{self, Join, Keepalive, RelayError, Tunnel, TunnelEnd, Waits};
 pub enum Route {
     /// Through the account's relay.
     Relay,
+    /// A direct session on the home network (spec 5.5).
+    Direct { addr: SocketAddr },
 }
 
 /// Where a link is.
@@ -126,6 +140,9 @@ pub struct Target {
     pub http1: reqwest::Client,
     /// The host's `box` key, from the verified roster.
     pub host_box: [u8; 32],
+    /// Where the host may be reached directly, from the app's address book
+    /// for the network this device is on now (empty: relay only).
+    pub direct: Vec<SocketAddr>,
 }
 
 /// What a link asks of the app.
@@ -139,6 +156,10 @@ pub trait LinkDeps: Send + Sync + 'static {
     fn on_problem(&self, problem: AccountProblem);
     /// A tunnel ended (for the logs).
     fn on_end(&self, _device_id: &str, _end: &TunnelEnd) {}
+    /// The host said where it can be reached directly (asked over a
+    /// session that just came up). The app keeps it per device id and the
+    /// network it is on now.
+    fn learned(&self, _device_id: &str, _answer: DirectAnswer) {}
 }
 
 /// A link's timings.
@@ -156,6 +177,16 @@ pub struct LinkOptions {
     pub check_within: Duration,
     /// The wait after a paused relay that did not say until when.
     pub paused_wait: Duration,
+    /// How long a direct try may take (spec 5.5: 2 s).
+    pub direct_wait: Duration,
+    /// On the relay, how often to try direct again.
+    pub direct_retry: Duration,
+    /// After a route change, the old route closes once its streams end, or
+    /// after this long.
+    pub drain_within: Duration,
+    /// Tests only: dial direct addresses on loopback too.
+    #[doc(hidden)]
+    pub direct_loopback: bool,
 }
 
 impl Default for LinkOptions {
@@ -169,6 +200,10 @@ impl Default for LinkOptions {
             steady_after: Duration::from_secs(60),
             check_within: relay::CHECK_WITHIN,
             paused_wait: Duration::from_secs(300),
+            direct_wait: direct::DIAL_WAIT,
+            direct_retry: Duration::from_secs(120),
+            drain_within: Duration::from_secs(30),
+            direct_loopback: false,
         }
     }
 }
@@ -311,12 +346,19 @@ impl Task {
             };
             self.state.send_replace(LinkState::Connecting);
             let device_id = self.device_id.clone();
-            let connect = relay::connect_within(&target.cloud, &target.http1, &device_id, &target.host_box, self.opts.join, self.opts.keepalive, self.opts.waits);
-            let Some(result) = self.unless_closed(connect).await else { return };
+            let mut pending = spawn_direct(&target, &device_id, &self.opts);
+            let relay = relay::connect_within(&target.cloud, &target.http1, &device_id, &target.host_box, self.opts.join, self.opts.keepalive, self.opts.waits);
+            let Some(raced) = self.unless_closed(race(relay, &mut pending)).await else {
+                if let Some(p) = pending {
+                    p.abort();
+                }
+                return;
+            };
             drop(target);
-            let next = match result {
-                Ok(tunnel) => self.hold(tunnel).await,
-                Err(e) => self.refused(e).await,
+            let next = match raced {
+                Raced::Direct(tunnel, addr) => self.hold(tunnel, Route::Direct { addr }, None).await,
+                Raced::Relay(Ok(tunnel)) => self.hold(tunnel, Route::Relay, pending.take()).await,
+                Raced::Relay(Err(e)) => self.refused(e).await,
             };
             if let Next::Exit = next {
                 return;
@@ -341,17 +383,67 @@ impl Task {
         }
     }
 
-    /// Keeps a tunnel until it ends; what to do then.
-    async fn hold(&mut self, mut tunnel: Tunnel) -> Next {
-        *self.session.lock().expect("link session") = Some(tunnel.session.clone());
-        self.state.send_replace(LinkState::Up { route: Route::Relay, since: SystemTime::now() });
-        let up_at = tokio::time::Instant::now();
+    /// Keeps a tunnel until it ends; what to do then. On the relay, a
+    /// direct try (`pending`, or a new one on a poke or now and then) takes
+    /// over when it lands; the relay then drains.
+    async fn hold(&mut self, mut tunnel: Tunnel, mut route: Route, mut pending: Option<JoinHandle<Option<(Tunnel, SocketAddr)>>>) -> Next {
+        self.up(&tunnel, &route);
+        let mut up_at = tokio::time::Instant::now();
+        let mut draining: Option<(Tunnel, tokio::time::Instant)> = None;
+        let mut retry_at = tokio::time::Instant::now() + self.opts.direct_retry;
         let end = loop {
+            let on_relay = route == Route::Relay;
+            let retry_due = on_relay && pending.is_none();
+            let direct_try = async {
+                match pending.as_mut() {
+                    Some(h) => h.await.ok().flatten(),
+                    None => std::future::pending().await,
+                }
+            };
+            let drain_tick = async {
+                match draining {
+                    Some(_) => tokio::time::sleep(Duration::from_millis(500)).await,
+                    None => std::future::pending().await,
+                }
+            };
             tokio::select! {
                 end = tunnel.wait_ended() => break end,
+                got = direct_try => {
+                    pending = None;
+                    if let Some((direct_tunnel, addr)) = got {
+                        if on_relay {
+                            // Direct wins: new streams go direct, the relay drains.
+                            let old = std::mem::replace(&mut tunnel, direct_tunnel);
+                            draining = Some((old, tokio::time::Instant::now() + self.opts.drain_within));
+                            route = Route::Direct { addr };
+                            self.up(&tunnel, &route);
+                            up_at = tokio::time::Instant::now();
+                        } else {
+                            direct_tunnel.end(1000);
+                        }
+                    }
+                }
+                _ = drain_tick => {
+                    if let Some((old, until)) = &draining {
+                        if old.is_closed() || old.session.open_streams() == 0 || tokio::time::Instant::now() >= *until {
+                            old.end(1000);
+                            draining = None;
+                        }
+                    }
+                }
+                _ = tokio::time::sleep_until(retry_at), if retry_due => {
+                    retry_at = tokio::time::Instant::now() + self.opts.direct_retry;
+                    pending = self.try_direct();
+                }
                 cmd = self.cmds.recv() => match cmd {
                     None | Some(Cmd::Close) => {
                         tunnel.end(1000);
+                        if let Some((old, _)) = draining.take() {
+                            old.end(1000);
+                        }
+                        if let Some(p) = pending.take() {
+                            p.abort();
+                        }
                         self.session.lock().expect("link session").take();
                         self.state.send_replace(LinkState::Down { reason: DownReason::Network, retry_at: None });
                         return Next::Exit;
@@ -362,10 +454,21 @@ impl Task {
                             self.background = false;
                         }
                         tunnel.check(self.opts.check_within);
+                        // Back home, or a new network: try the direct route now.
+                        if on_relay && pending.is_none() && matches!(why, Poke::Resumed | Poke::NetworkChanged) {
+                            pending = self.try_direct();
+                        }
                     }
                 },
             }
         };
+        if let Some(p) = pending.take() {
+            p.abort();
+        }
+        if let Some((old, _)) = draining.take() {
+            // The newer route died first; the old one still drains nothing.
+            old.end(1000);
+        }
         self.session.lock().expect("link session").take();
         if up_at.elapsed() >= self.opts.steady_after {
             self.attempt = 0;
@@ -386,7 +489,31 @@ impl Task {
             let wait = self.opts.paused_wait;
             return self.wait(DownReason::Paused { until: None }, Some(wait), true).await;
         }
+        if matches!(route, Route::Direct { .. }) {
+            // The direct route died (left home, Wi-Fi off): race again at
+            // once, so the relay takes over within seconds.
+            return Next::Retry;
+        }
         self.back_off(DownReason::Network).await
+    }
+
+    /// The link is up on `route`: new streams use `tunnel`, and the host is
+    /// asked where it can be reached directly.
+    fn up(&self, tunnel: &Tunnel, route: &Route) {
+        *self.session.lock().expect("link session") = Some(tunnel.session.clone());
+        self.state.send_replace(LinkState::Up { route: route.clone(), since: SystemTime::now() });
+        let (session, deps, device) = (tunnel.session.clone(), self.deps.clone(), self.device_id.clone());
+        tokio::spawn(async move {
+            if let Some(answer) = ask_direct(&session).await {
+                deps.learned(&device, answer);
+            }
+        });
+    }
+
+    /// A direct try with what the app has now, if it has addresses.
+    fn try_direct(&self) -> Option<JoinHandle<Option<(Tunnel, SocketAddr)>>> {
+        let target = self.deps.target(&self.device_id).ok()?;
+        spawn_direct(&target, &self.device_id, &self.opts)
     }
 
     async fn refused(&mut self, e: RelayError) -> Next {
@@ -462,9 +589,124 @@ impl Task {
     }
 }
 
+/// How a race between the routes ended.
+enum Raced {
+    Direct(Tunnel, SocketAddr),
+    Relay(Result<Tunnel, RelayError>),
+}
+
+/// Races the relay connect against a direct try: a direct session that
+/// lands first wins (the relay connect is dropped). When the relay lands
+/// first, `pending` keeps going for the caller.
+async fn race(relay: impl std::future::Future<Output = Result<Tunnel, RelayError>>, pending: &mut Option<JoinHandle<Option<(Tunnel, SocketAddr)>>>) -> Raced {
+    tokio::pin!(relay);
+    loop {
+        let direct_try = async {
+            match pending.as_mut() {
+                Some(h) => h.await.ok().flatten(),
+                None => std::future::pending().await,
+            }
+        };
+        tokio::select! {
+            biased;
+            got = direct_try => {
+                *pending = None;
+                if let Some((t, addr)) = got {
+                    return Raced::Direct(t, addr);
+                }
+            }
+            r = &mut relay => return Raced::Relay(r),
+        }
+    }
+}
+
+/// Dials every address in `target.direct` at once (spec 5.5); the first
+/// handshake that completes wins. `None` when there is no address.
+fn spawn_direct(target: &Target, device_id: &str, opts: &LinkOptions) -> Option<JoinHandle<Option<(Tunnel, SocketAddr)>>> {
+    if target.direct.is_empty() {
+        return None;
+    }
+    let account = target.cloud.account_id.clone()?;
+    let own_box = target.cloud.keys.r#box.seed().clone();
+    let (host_id, host_box, addrs) = (device_id.to_string(), target.host_box, target.direct.clone());
+    let (join, keepalive, wait, loopback_ok) = (opts.join, opts.keepalive, opts.direct_wait, opts.direct_loopback);
+    Some(tokio::spawn(async move {
+        let mut tries = futures_util::stream::FuturesUnordered::new();
+        for addr in addrs {
+            let (account, host_id, own_box) = (account.clone(), host_id.clone(), own_box.clone());
+            tries.push(async move {
+                let t = DialTarget { addr, account_id: &account, host_id: &host_id, host_box: &host_box, own_box: &own_box, loopback_ok };
+                direct::dial(t, join, keepalive, wait).await.map(|tunnel| (tunnel, addr))
+            });
+        }
+        use futures_util::StreamExt;
+        while let Some(r) = tries.next().await {
+            if let Ok(won) = r {
+                return Some(won);
+            }
+        }
+        None
+    }))
+}
+
+/// Asks the host where it can be reached directly (`GET
+/// /api/cloud/direct`, spec 5.5), over one stream of `session`.
+pub async fn ask_direct(session: &Session) -> Option<DirectAnswer> {
+    let mut stream = session.open().ok()?;
+    let req = b"GET /api/cloud/direct HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+    let exchange = async {
+        stream.write_all(req).await.ok()?;
+        stream.shutdown().await.ok()?;
+        let mut out = Vec::new();
+        (&mut stream).take(64 * 1024).read_to_end(&mut out).await.ok()?;
+        Some(out)
+    };
+    let out = tokio::time::timeout(Duration::from_secs(10), exchange).await.ok()??;
+    parse_direct_response(&out)
+}
+
+/// The answer in an HTTP/1.1 response to `GET /api/cloud/direct`: a 200
+/// with a JSON body (plain, or chunked as the host's server may send it).
+pub fn parse_direct_response(raw: &[u8]) -> Option<DirectAnswer> {
+    let text = std::str::from_utf8(raw).ok()?;
+    let (head, body) = text.split_once("\r\n\r\n")?;
+    if !head.starts_with("HTTP/1.1 200") {
+        return None;
+    }
+    let chunked = head.lines().any(|l| l.to_ascii_lowercase().starts_with("transfer-encoding:") && l.to_ascii_lowercase().contains("chunked"));
+    let json = if chunked {
+        let mut out = String::new();
+        let mut rest = body;
+        loop {
+            let (size, after) = rest.split_once("\r\n")?;
+            let n = usize::from_str_radix(size.trim(), 16).ok()?;
+            if n == 0 {
+                break;
+            }
+            out.push_str(after.get(..n)?);
+            rest = after.get(n + 2..)?;
+        }
+        out
+    } else {
+        body.to_string()
+    };
+    serde_json::from_str(&json).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_direct_answer_is_read_from_plain_and_chunked_responses() {
+        let body = r#"{"v":1,"on":true,"port":4181,"addrs":["192.168.1.20"]}"#;
+        let plain = format!("HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}", body.len());
+        let a = parse_direct_response(plain.as_bytes()).unwrap();
+        assert_eq!(a.targets(), vec!["192.168.1.20:4181".parse().unwrap()]);
+        let chunked = format!("HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n{:x}\r\n{body}\r\n0\r\n\r\n", body.len());
+        assert_eq!(parse_direct_response(chunked.as_bytes()), Some(a));
+        assert_eq!(parse_direct_response(b"HTTP/1.1 403 Forbidden\r\n\r\n{}"), None);
+    }
 
     #[test]
     fn the_backoff_doubles_to_its_cap_with_jitter() {

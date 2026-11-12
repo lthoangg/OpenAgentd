@@ -20,6 +20,7 @@
 //! - [`link`]: one self-healing link per computer, on top of [`relay`].
 
 pub mod account_state;
+pub mod address_book;
 pub mod api;
 pub mod approval;
 pub mod code;

@@ -16,7 +16,7 @@ use openagentd_cloud::api::Cloud;
 use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{self, GenesisDraft, Member, Pace};
 use openagentd_cloud::keys::{DeviceKeys, Roles};
-use openagentd_cloud::link::{DownReason, Link, LinkDeps, LinkOptions, LinkState, Poke, Target};
+use openagentd_cloud::link::{DownReason, Link, LinkDeps, LinkOptions, LinkState, Poke, Route, Target};
 use openagentd_cloud::mux::Stream;
 use openagentd_cloud::relay::{self, EndCause, HostHandler, HostOptions, Join, Keepalive, Sessions, Waits};
 use openagentd_cloud::roster::Roster;
@@ -87,6 +87,10 @@ impl HostHandler for Echo {
         });
     }
     fn on_roster(&self, _: u64, _: Vec<String>) {}
+    fn admit_direct(&self, key: &[u8; 32]) -> Option<String> {
+        let id = self.roster.lock().unwrap().body.devices.iter().find(|d| d.box_key() == *key)?.id.clone();
+        self.controller_box(&id).map(|_| id)
+    }
 }
 
 async fn start_host_via(server: &Member, base: &str, opts: HostOptions) -> oneshot::Sender<()> {
@@ -117,11 +121,11 @@ impl LinkDeps for Deps {
 
 fn deps(phone: &Member, server: &Member, base: &str) -> Arc<Deps> {
     let host_box = phone.box_of(&server.cloud.device_id()).unwrap();
-    Arc::new(Deps { target: Target { cloud: Arc::new(cloud_via(phone, base)), http1: relay::http1_client(), host_box }, problems: Mutex::new(vec![]) })
+    Arc::new(Deps { target: Target { cloud: Arc::new(cloud_via(phone, base)), http1: relay::http1_client(), host_box, direct: vec![] }, problems: Mutex::new(vec![]) })
 }
 
 fn quick(backoff_first: Duration) -> LinkOptions {
-    LinkOptions { backoff_first, backoff_max: backoff_first * 8, ..LinkOptions::default() }
+    LinkOptions { backoff_first, backoff_max: backoff_first * 8, direct_loopback: true, ..LinkOptions::default() }
 }
 
 async fn wait_for(link: &Link, within: Duration, what: impl Fn(&LinkState) -> bool) -> LinkState {
@@ -398,3 +402,99 @@ async fn a_network_change_on_a_dead_tunnel_brings_the_link_back() {
     wait_for(&link, Duration::from_secs(5), up).await;
     round_trip(&link, "back").await;
 }
+
+/// A direct listener for `server` on one of this machine's private
+/// addresses (port `port`, 0 for any), serving like the host; `None` when
+/// the machine has no private address. Abort the handle and close the
+/// sessions to take it down.
+async fn direct_host(server: &Member, port: u16) -> Option<(std::net::SocketAddr, tokio::task::JoinHandle<()>, Sessions)> {
+    use openagentd_cloud::direct::{self, HostKeys};
+    // Loopback: the macOS application firewall holds incoming connections
+    // on a LAN address for an unsigned test binary. The link dials it only
+    // with `direct_loopback` (tests); the route logic is the same.
+    let _ = direct::local_subnets;
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await.ok()?;
+    let addr = listener.local_addr().ok()?;
+    let handler: Arc<dyn HostHandler> = Arc::new(Echo { roster: Mutex::new(server.roster.clone().unwrap()), me: server.cloud.device_id() });
+    let keys = Arc::new(HostKeys { account_id: server.cloud.account_id.clone().unwrap(), host_id: server.cloud.device_id(), own_box: server.cloud.keys.r#box.seed().clone() });
+    let sessions = Sessions::default();
+    let s2 = sessions.clone();
+    let task = tokio::spawn(async move {
+        loop {
+            let Ok((tcp, _)) = listener.accept().await else { return };
+            let (k, h, s) = (keys.clone(), handler.clone(), s2.clone());
+            tokio::spawn(async move {
+                let _ = direct::serve_host(tcp, k, h, s, Join::default(), Keepalive::default()).await;
+            });
+        }
+    });
+    Some((addr, task, sessions))
+}
+
+fn direct_deps(phone: &Member, server: &Member, base: &str, addr: std::net::SocketAddr) -> Arc<Deps> {
+    let d = deps(phone, server, base);
+    let mut target = d.target.clone();
+    target.direct = vec![addr];
+    Arc::new(Deps { target, problems: Mutex::new(vec![]) })
+}
+
+fn on_direct(s: &LinkState) -> bool {
+    matches!(s, LinkState::Up { route: Route::Direct { .. }, .. })
+}
+
+fn on_relay(s: &LinkState) -> bool {
+    matches!(s, LinkState::Up { route: Route::Relay, .. })
+}
+
+#[tokio::test]
+async fn direct_wins_falls_back_to_the_relay_and_comes_back_on_a_poke() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (phone, server) = account(&fake, &base).await;
+    let _host = start_host(&server, &base).await;
+    let Some((addr, task, sessions)) = direct_host(&server, 0).await else {
+        eprintln!("no reachable private address on this machine: skipped");
+        return;
+    };
+    let link = Link::start_with(direct_deps(&phone, &server, &base, addr), server.cloud.device_id(), quick(Duration::from_millis(200)));
+    // Direct wins the race.
+    wait_for(&link, Duration::from_secs(5), on_direct).await;
+    round_trip(&link, "at home").await;
+    // Wi-Fi off, in effect: the direct host goes away. The relay takes over
+    // within seconds, and the same link serves the next request.
+    task.abort();
+    sessions.close_all(1001);
+    let t = Instant::now();
+    wait_for(&link, Duration::from_secs(5), on_relay).await;
+    eprintln!("direct to relay in {:?}", t.elapsed());
+    round_trip(&link, "away").await;
+    // Back home: a poke tries direct again and it takes over; the relay
+    // drains.
+    let (_addr2, _task2, _s2) = direct_host(&server, addr.port()).await.expect("the same port again");
+    link.poke(Poke::NetworkChanged);
+    let t = Instant::now();
+    wait_for(&link, Duration::from_secs(5), on_direct).await;
+    eprintln!("relay to direct in {:?}", t.elapsed());
+    round_trip(&link, "home again").await;
+}
+
+#[tokio::test]
+async fn a_dead_address_does_not_delay_the_relay() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (phone, server) = account(&fake, &base).await;
+    let _host = start_host(&server, &base).await;
+    // An address where nothing answers any more.
+    let Some((addr, task, _)) = direct_host(&server, 0).await else {
+        eprintln!("no reachable private address on this machine: skipped");
+        return;
+    };
+    task.abort();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let link = Link::start_with(direct_deps(&phone, &server, &base, addr), server.cloud.device_id(), quick(Duration::from_millis(200)));
+    let t = Instant::now();
+    wait_for(&link, Duration::from_secs(5), on_relay).await;
+    assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+    round_trip(&link, "relay").await;
+}
+

@@ -165,13 +165,17 @@ pub struct DialTarget<'a> {
     /// The host's `box` key from the controller's verified roster.
     pub host_box: &'a [u8; 32],
     pub own_box: &'a Seed,
+    /// Tests only: also dial a loopback address (hosts never listen there,
+    /// and an app never sets this).
+    #[doc(hidden)]
+    pub loopback_ok: bool,
 }
 
 /// The controller side: connects, greets, and runs the handshake within
 /// `wait` (spec section 5.5). A close before message 2 is
 /// [`DirectError::Refused`]: not reachable directly.
 pub async fn dial(t: DialTarget<'_>, join: Join, keepalive: Keepalive, wait: Duration) -> Result<Tunnel, DirectError> {
-    if !is_private(t.addr.ip()) {
+    if !is_private(t.addr.ip()) && !(t.loopback_ok && t.addr.ip().is_loopback()) {
         return Err(DirectError::Network);
     }
     let addr = t.addr;
@@ -248,8 +252,17 @@ pub async fn serve_host<S>(io: S, keys: Arc<HostKeys>, handler: Arc<dyn HostHand
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let (tcp, transport, from) = accept(io, &keys, handler.as_ref()).await?;
-    let mut tunnel = start(tcp, transport, false, join, keepalive, Some(MAX_LIFETIME));
+    let (io, transport, from) = accept(io, &keys, handler.as_ref()).await?;
+    serve_accepted(io, transport, from, handler, sessions, join, keepalive).await
+}
+
+/// [`serve_host`] after [`accept`]: the caller may hold a place in a
+/// [`Gate`] only for the handshake.
+pub async fn serve_accepted<S>(io: S, transport: Transport, from: String, handler: Arc<dyn HostHandler>, sessions: Sessions, join: Join, keepalive: Keepalive) -> Result<(), DirectError>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let mut tunnel = start(io, transport, false, join, keepalive, Some(MAX_LIFETIME));
     let closer = tunnel.closer();
     if !sessions.add_capped(&from, closer.clone(), MAX_PER_CONTROLLER, MAX_SESSIONS, 1000) {
         tunnel.end(1000);
@@ -488,4 +501,70 @@ impl Drop for Pass {
 /// private (spec section 5.5).
 pub fn acceptable(local: SocketAddr, peer: SocketAddr) -> bool {
     is_private(local.ip()) && is_private(peer.ip())
+}
+
+/// One private network this device is on: an address and its prefix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Subnet {
+    pub ip: IpAddr,
+    pub prefix: u8,
+}
+
+impl Subnet {
+    /// The network part only, so two devices on one network compare equal.
+    pub fn network(self) -> Subnet {
+        Subnet { ip: mask(self.ip, self.prefix), prefix: self.prefix }
+    }
+
+    pub fn contains(self, ip: IpAddr) -> bool {
+        let ip = canonical(ip);
+        ip.is_ipv4() == self.ip.is_ipv4() && mask(ip, self.prefix) == mask(self.ip, self.prefix)
+    }
+}
+
+fn canonical(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(ip),
+        v4 => v4,
+    }
+}
+
+fn mask(ip: IpAddr, prefix: u8) -> IpAddr {
+    match canonical(ip) {
+        IpAddr::V4(v4) => {
+            let bits = u32::from(v4);
+            let m = if prefix == 0 { 0 } else { u32::MAX << (32 - prefix.min(32) as u32) };
+            IpAddr::V4((bits & m).into())
+        }
+        IpAddr::V6(v6) => {
+            let bits = u128::from(v6);
+            let m = if prefix == 0 { 0 } else { u128::MAX << (128 - prefix.min(128) as u32) };
+            IpAddr::V6((bits & m).into())
+        }
+    }
+}
+
+/// This device's private networks, from its interfaces (no loopback, no
+/// link-local, no public address).
+pub fn local_subnets() -> Vec<Subnet> {
+    let Ok(ifaces) = if_addrs::get_if_addrs() else { return Vec::new() };
+    let mut out: Vec<Subnet> = Vec::new();
+    for i in ifaces {
+        let (ip, prefix) = match &i.addr {
+            if_addrs::IfAddr::V4(a) => (IpAddr::V4(a.ip), a.prefixlen),
+            if_addrs::IfAddr::V6(a) => (IpAddr::V6(a.ip), a.prefixlen),
+        };
+        if is_private(ip) && !out.iter().any(|s| s.ip == ip) {
+            out.push(Subnet { ip, prefix });
+        }
+    }
+    out
+}
+
+/// Whether a controller on `current` networks may try `addr`, learned
+/// while it was on `learned` (spec section 5.5, "only on that network"):
+/// `addr` lies in one of the current networks, and that network is one it
+/// learned the address on.
+pub fn may_try(addr: IpAddr, current: &[Subnet], learned: &[Subnet]) -> bool {
+    current.iter().any(|c| c.contains(addr) && learned.iter().any(|l| l.network() == c.network()))
 }

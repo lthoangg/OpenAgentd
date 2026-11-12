@@ -78,7 +78,7 @@ async fn connect(s: &Setup, keepalive: Keepalive) -> Result<Tunnel, DirectError>
     let tcp = TcpStream::connect(s.addr).await.unwrap();
     let host_box = s.server.r#box.public();
     let host_id = s.server.id();
-    let t = DialTarget { addr: s.addr, account_id: ACCOUNT, host_id: &host_id, host_box: &host_box, own_box: s.phone.r#box.seed() };
+    let t = DialTarget { addr: s.addr, account_id: ACCOUNT, host_id: &host_id, host_box: &host_box, own_box: s.phone.r#box.seed(), loopback_ok: false };
     let (tcp, transport) = direct::handshake(tcp, &t).await?;
     Ok(direct::start(tcp, transport, true, Join::default(), keepalive, None))
 }
@@ -137,6 +137,25 @@ fn unfinished_handshakes_are_limited() {
     assert!(direct::acceptable("192.168.1.2:4181".parse().unwrap(), "192.168.1.3:5000".parse().unwrap()));
     assert!(!direct::acceptable("192.168.1.2:4181".parse().unwrap(), "8.8.8.8:5000".parse().unwrap()));
     assert!(!direct::acceptable("203.0.113.1:4181".parse().unwrap(), "192.168.1.3:5000".parse().unwrap()));
+}
+
+#[test]
+fn addresses_are_tried_only_on_the_network_they_were_learned_on() {
+    use openagentd_cloud::direct::{may_try, Subnet};
+    let sub = |s: &str, p: u8| Subnet { ip: s.parse().unwrap(), prefix: p };
+    let home = [sub("192.168.1.30", 24)];
+    let addr: IpAddr = "192.168.1.20".parse().unwrap();
+    assert!(may_try(addr, &home, &home));
+    // Same network, another address of the phone (DHCP): still home.
+    assert!(may_try(addr, &[sub("192.168.1.77", 24)], &home));
+    // Mobile data (no private network), or a café on another subnet.
+    assert!(!may_try(addr, &[], &home));
+    assert!(!may_try(addr, &[sub("10.0.0.5", 8)], &home));
+    // An address outside the network it claims to be on.
+    assert!(!may_try("192.168.2.20".parse().unwrap(), &home, &home));
+    // Learned on another network that happens to look the same is still
+    // tried (the handshake decides), but only inside the subnet.
+    assert!(may_try(addr, &[sub("192.168.1.9", 24)], &[sub("192.168.1.200", 24)]));
 }
 
 #[tokio::test]
@@ -216,7 +235,7 @@ async fn the_keepalive_holds_a_quiet_session_and_catches_a_silent_peer() {
     });
     let tcp = TcpStream::connect(addr).await.unwrap();
     let (hb, hid) = (s.server.r#box.public(), s.server.id());
-    let target = DialTarget { addr, account_id: ACCOUNT, host_id: &hid, host_box: &hb, own_box: s.phone.r#box.seed() };
+    let target = DialTarget { addr, account_id: ACCOUNT, host_id: &hid, host_box: &hb, own_box: s.phone.r#box.seed(), loopback_ok: false };
     let (tcp, tr) = direct::handshake(tcp, &target).await.unwrap();
     let mut silent = direct::start(tcp, tr, true, Join::default(), fast(), None);
     let end = tokio::time::timeout(Duration::from_secs(3), silent.wait_ended()).await.unwrap().unwrap();
@@ -271,7 +290,7 @@ async fn the_host_lifetime_ends_with_a_normal_go_away() {
     });
     let tcp = TcpStream::connect(addr).await.unwrap();
     let (hb, hid) = (server.r#box.public(), server.id());
-    let target = DialTarget { addr, account_id: ACCOUNT, host_id: &hid, host_box: &hb, own_box: phone.r#box.seed() };
+    let target = DialTarget { addr, account_id: ACCOUNT, host_id: &hid, host_box: &hb, own_box: phone.r#box.seed(), loopback_ok: false };
     let (tcp, tr) = direct::handshake(tcp, &target).await.unwrap();
     let mut t = direct::start(tcp, tr, true, Join::default(), Keepalive::default(), None);
     let end = tokio::time::timeout(Duration::from_secs(3), t.wait_ended()).await.unwrap().unwrap();
@@ -285,7 +304,7 @@ async fn another_host_at_the_address_cannot_answer() {
     let other = DeviceKeys::generate();
     let tcp = TcpStream::connect(s.addr).await.unwrap();
     let (ob, oid) = (other.r#box.public(), other.id());
-    let target = DialTarget { addr: s.addr, account_id: ACCOUNT, host_id: &oid, host_box: &ob, own_box: s.phone.r#box.seed() };
+    let target = DialTarget { addr: s.addr, account_id: ACCOUNT, host_id: &oid, host_box: &ob, own_box: s.phone.r#box.seed(), loopback_ok: false };
     let r = direct::handshake(tcp, &target).await;
     assert!(matches!(r, Err(DirectError::Refused) | Err(DirectError::Handshake)), "{:?}", r.err());
 }
@@ -294,7 +313,7 @@ async fn another_host_at_the_address_cannot_answer() {
 async fn dial_refuses_a_public_address() {
     let k = DeviceKeys::generate();
     let hb = k.r#box.public();
-    let t = DialTarget { addr: "8.8.8.8:4181".parse().unwrap(), account_id: ACCOUNT, host_id: "x", host_box: &hb, own_box: k.r#box.seed() };
+    let t = DialTarget { addr: "8.8.8.8:4181".parse().unwrap(), account_id: ACCOUNT, host_id: "x", host_box: &hb, own_box: k.r#box.seed(), loopback_ok: false };
     assert_eq!(direct::dial(t, Join::default(), Keepalive::default(), Duration::from_secs(1)).await.err(), Some(DirectError::Network));
 }
 

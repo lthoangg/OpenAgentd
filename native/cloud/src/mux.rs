@@ -15,6 +15,9 @@
 //! stream, taken in turn, so a large transfer does not hold a small request
 //! up behind it, and frames without data (opens, window updates, pings, Go
 //! Away) ahead of all of them. A stream's FIN and reset stay behind its data.
+//! A frame split at the end of one take is finished first in the next,
+//! before anything else: the peer reads the bytes that follow as the rest
+//! of its body.
 
 use std::collections::{HashMap, VecDeque};
 use std::io;
@@ -116,6 +119,10 @@ struct OutState {
     streams: HashMap<u32, VecDeque<Vec<u8>>>,
     /// Streams with something queued, in the order they take turns.
     turn: VecDeque<u32>,
+    /// The stream whose front frame the last take split: its rest is the
+    /// next bytes out. A split control frame needs no mark, as control
+    /// frames go first anyway.
+    split: Option<u32>,
     bytes: usize,
     closed: bool,
 }
@@ -191,11 +198,22 @@ impl Outbound {
         st.closed && st.bytes == 0
     }
 
-    /// Up to `max` bytes: frames without data first, then one frame from
-    /// each stream in turn. A frame may be split; the rest goes next.
+    /// Up to `max` bytes: the rest of a frame the last take split, then
+    /// frames without data, then one frame from each stream in turn. A
+    /// frame may be split; its rest is the first thing the next take sends.
     pub fn take(&self, max: usize) -> Vec<u8> {
         let mut st = self.outbox.state.lock().expect("outbox lock");
         let mut out = Vec::with_capacity(st.bytes.min(max));
+        if let Some(id) = st.split.take() {
+            let st = &mut *st;
+            let queue = st.streams.get_mut(&id).expect("a split stream is queued");
+            if !take_front(queue, &mut out, max) {
+                st.split = Some(id);
+            } else if queue.is_empty() {
+                st.streams.remove(&id);
+                st.turn.retain(|&t| t != id);
+            }
+        }
         while out.len() < max && !st.control.is_empty() {
             take_front(&mut st.control, &mut out, max);
         }
@@ -203,7 +221,9 @@ impl Outbound {
             let Some(id) = st.turn.pop_front() else { break };
             let st = &mut *st;
             let queue = st.streams.get_mut(&id).expect("a queued stream");
-            take_front(queue, &mut out, max);
+            if !take_front(queue, &mut out, max) {
+                st.split = Some(id);
+            }
             if queue.is_empty() {
                 st.streams.remove(&id);
             } else {

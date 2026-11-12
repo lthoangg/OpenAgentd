@@ -529,6 +529,9 @@ server, byte for byte:
 - The controller's streams are taken in turn: frames without data
   (opens, window updates) go first, then one frame of each stream with
   data waiting, so a large transfer does not hold a small request back.
+  A frame split at the end of a message is finished at the start of the
+  next one, before any other frame: yamux has no frame boundary but the
+  length in each header.
 - The connector sends requests only to its own local server. A request it
   cannot parse, or one for another host, gets `400` and the stream closes.
 

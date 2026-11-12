@@ -271,6 +271,8 @@ pub struct SendRule {
     hold: Duration,
     tokens: f64,
     at: tokio::time::Instant,
+    /// No rate limit (a direct session: there is no relay allowance).
+    unlimited: bool,
 }
 
 /// What a sender does with the bytes that wait.
@@ -288,7 +290,12 @@ pub enum Flush {
 
 impl SendRule {
     pub fn new(join: Join, now: tokio::time::Instant) -> SendRule {
-        SendRule { hold: join.0, tokens: SMALL_BURST as f64, at: now }
+        SendRule { hold: join.0, tokens: SMALL_BURST as f64, at: now, unlimited: false }
+    }
+
+    /// The hold of `join` without the rate limit (spec section 5.5).
+    pub fn unlimited(join: Join, now: tokio::time::Instant) -> SendRule {
+        SendRule { unlimited: true, ..SendRule::new(join, now) }
     }
 
     fn refill(&mut self, now: tokio::time::Instant) {
@@ -304,6 +311,10 @@ impl SendRule {
         }
         if queued == 0 {
             return Flush::Idle;
+        }
+        if self.unlimited {
+            let held = since + self.hold;
+            return if now >= held { Flush::Small } else { Flush::At(held) };
         }
         self.refill(now);
         let held = since + self.hold;
@@ -384,22 +395,24 @@ pub struct Tunnel {
     pub ended: watch::Receiver<Option<TunnelEnd>>,
     ping_now: mpsc::UnboundedSender<()>,
     probe: Arc<Probe>,
+    /// Go Away carries the close reason (a direct session, spec 5.5).
+    go_away_reasons: bool,
 }
 
 /// A check in progress ([`Tunnel::check`]): the reader ends the tunnel
 /// unless a frame comes in by the deadline.
 #[derive(Default)]
-struct Probe {
+pub(crate) struct Probe {
     deadline: Mutex<Option<tokio::time::Instant>>,
-    changed: tokio::sync::Notify,
+    pub(crate) changed: tokio::sync::Notify,
 }
 
 impl Probe {
-    fn deadline(&self) -> Option<tokio::time::Instant> {
+    pub(crate) fn deadline(&self) -> Option<tokio::time::Instant> {
         *self.deadline.lock().expect("probe lock")
     }
 
-    fn expect_by(&self, by: tokio::time::Instant) {
+    pub(crate) fn expect_by(&self, by: tokio::time::Instant) {
         let mut d = self.deadline.lock().expect("probe lock");
         if d.is_none_or(|old| by < old) {
             *d = Some(by);
@@ -408,7 +421,7 @@ impl Probe {
         self.changed.notify_one();
     }
 
-    fn answered(&self) {
+    pub(crate) fn answered(&self) {
         self.deadline.lock().expect("probe lock").take();
     }
 }
@@ -690,7 +703,7 @@ impl Tunnel {
             let _ = closed_tx.send(Some(code));
             writer.abort();
         });
-        Tunnel { session, closer, closed, ended, ping_now, probe }
+        Tunnel { session, closer, closed, ended, ping_now, probe, go_away_reasons: false }
     }
 
     /// Pings now, and ends the tunnel (as a missed deadline) unless a frame
@@ -706,9 +719,27 @@ impl Tunnel {
         self.closed.borrow().is_some() || self.session.is_closed()
     }
 
-    /// Go Away, then close the socket with `code`.
+    /// A tunnel over another carrier (spec section 5.5): its own tasks
+    /// feed these channels.
+    pub(crate) fn from_parts(
+        session: Session,
+        closer: mpsc::UnboundedSender<u16>,
+        closed: watch::Receiver<Option<u16>>,
+        ended: watch::Receiver<Option<TunnelEnd>>,
+        ping_now: mpsc::UnboundedSender<()>,
+        probe: Arc<Probe>,
+    ) -> Tunnel {
+        Tunnel { session, closer, closed, ended, ping_now, probe, go_away_reasons: true }
+    }
+
+    /// Go Away, then close the socket with `code`. On a direct session the
+    /// Go Away carries the reason (spec section 5.5).
     pub fn end(&self, code: u16) {
-        self.session.go_away();
+        if self.go_away_reasons {
+            self.session.go_away_with(go_away_reason(code));
+        } else {
+            self.session.go_away();
+        }
         let _ = self.closer.send(code);
     }
 
@@ -731,6 +762,27 @@ impl Tunnel {
     /// How the tunnel ended, once it has.
     pub async fn wait_ended(&mut self) -> Option<TunnelEnd> {
         self.ended.wait_for(Option::is_some).await.ok().and_then(|e| *e)
+    }
+}
+
+/// The Go Away reason of a direct session for a close code (spec section
+/// 5.5): removed and account closing keep their code; anything else is a
+/// normal end.
+pub fn go_away_reason(code: u16) -> u32 {
+    match code {
+        4001 | 4011 => code as u32,
+        _ => 0,
+    }
+}
+
+/// The close code a direct session's Go Away reason stands for.
+pub fn close_code_of(reason: u32) -> u16 {
+    match reason {
+        0 => 1000,
+        1 | 2 => 4002,
+        4001 => 4001,
+        4011 => 4011,
+        _ => 1000,
     }
 }
 
@@ -820,6 +872,13 @@ pub trait HostHandler: Send + Sync + 'static {
     fn on_roster(&self, version: u64, revoked: Vec<String>);
     /// A session from `from` ended (for the logs).
     fn on_session_end(&self, _from: &str, _end: &TunnelEnd) {}
+    /// Direct sessions (spec section 5.5): the device whose `box` key is
+    /// `static_key`, if it may open a session now (active, `client`, not
+    /// departed, and direct sessions allowed on this host). The host's one
+    /// admission question for a key it did not expect.
+    fn admit_direct(&self, _static_key: &[u8; 32]) -> Option<String> {
+        None
+    }
 }
 
 /// Open sessions by controller, so a removed device loses them at once.
@@ -827,12 +886,29 @@ pub trait HostHandler: Send + Sync + 'static {
 pub struct Sessions(Arc<Mutex<HashMap<String, Vec<Closer>>>>);
 
 impl Sessions {
-    fn add(&self, device: &str, closer: Closer) {
+    pub(crate) fn add(&self, device: &str, closer: Closer) {
         self.0.lock().expect("sessions lock").entry(device.to_string()).or_default().push(closer);
     }
 
+    /// Adds a session within limits: at most `per_device` for `device`
+    /// (the oldest is closed with `close_oldest`) and `total` in all.
+    /// Returns false, adding nothing, when `total` is reached.
+    pub(crate) fn add_capped(&self, device: &str, closer: Closer, per_device: usize, total: usize, close_oldest: u16) -> bool {
+        let mut map = self.0.lock().expect("sessions lock");
+        let list = map.entry(device.to_string()).or_default();
+        if list.len() >= per_device {
+            list.remove(0).close(close_oldest);
+        }
+        let count: usize = map.values().map(Vec::len).sum();
+        if count >= total {
+            return false;
+        }
+        map.entry(device.to_string()).or_default().push(closer);
+        true
+    }
+
     /// Forgets a session that ended.
-    fn remove(&self, device: &str, closer: &Closer) {
+    pub(crate) fn remove(&self, device: &str, closer: &Closer) {
         let mut map = self.0.lock().expect("sessions lock");
         if let Some(list) = map.get_mut(device) {
             list.retain(|c| !c.0.same_channel(&closer.0));

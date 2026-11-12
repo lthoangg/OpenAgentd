@@ -23,6 +23,7 @@ pub mod account_state;
 pub mod api;
 pub mod approval;
 pub mod code;
+pub mod direct;
 pub mod encoding;
 pub mod endpoints;
 pub mod flows;

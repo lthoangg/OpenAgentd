@@ -83,6 +83,11 @@ struct State {
     buf: Vec<u8>,
     closed: bool,
     accept: VecDeque<u32>,
+    /// Whether this side sent Go Away already (it is sent once).
+    went_away: bool,
+    /// The reason in the Go Away the peer sent, once it did. On a direct
+    /// session (spec section 5.5) it carries the close reason.
+    peer_go_away: Option<u32>,
 }
 
 struct Shared {
@@ -252,7 +257,8 @@ impl Session {
     /// queue of the bytes it wants sent.
     pub fn new(client: bool) -> (Session, Outbound) {
         let outbox = Arc::new(Outbox::default());
-        let state = State { streams: HashMap::new(), next_id: if client { 1 } else { 2 }, client, buf: Vec::new(), closed: false, accept: VecDeque::new() };
+        let state =
+            State { streams: HashMap::new(), next_id: if client { 1 } else { 2 }, client, buf: Vec::new(), closed: false, accept: VecDeque::new(), went_away: false, peer_go_away: None };
         (Session { shared: Arc::new(Shared { state: Mutex::new(state), accept_ready: Notify::new(), out: outbox.clone() }) }, Outbound { outbox })
     }
 
@@ -300,7 +306,29 @@ impl Session {
 
     /// Go Away: we will open no more streams (normal termination).
     pub fn go_away(&self) {
-        self.shared.send(header(TYPE_GO_AWAY, 0, 0, 0).to_vec());
+        self.go_away_with(0);
+    }
+
+    /// Go Away carrying `reason` in its length field (spec section 5.5),
+    /// once: a later call sends nothing.
+    pub fn go_away_with(&self, reason: u32) {
+        let mut st = self.shared.state.lock().expect("mux lock");
+        if st.went_away {
+            return;
+        }
+        st.went_away = true;
+        drop(st);
+        self.shared.send(header(TYPE_GO_AWAY, 0, 0, reason).to_vec());
+    }
+
+    /// The reason of the Go Away the peer sent, if it sent one.
+    pub fn peer_go_away(&self) -> Option<u32> {
+        self.shared.state.lock().expect("mux lock").peer_go_away
+    }
+
+    /// A ping (SYN) carrying `value`; the peer answers with an ACK.
+    pub fn ping(&self, value: u32) {
+        self.shared.send(header(TYPE_PING, SYN, 0, value).to_vec());
     }
 
     /// Ends the session: every stream sees an error.
@@ -384,6 +412,7 @@ impl Session {
             }
             TYPE_GO_AWAY => {
                 st.closed = true;
+                st.peer_go_away.get_or_insert(length);
                 for s in st.streams.values_mut() {
                     s.reset = true;
                     if let Some(w) = s.read_waker.take() {

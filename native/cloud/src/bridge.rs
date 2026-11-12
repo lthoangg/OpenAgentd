@@ -105,6 +105,8 @@ impl std::fmt::Debug for Bridge {
 /// takes another (a reclaimed socket may hold it for a moment).
 const REBIND_TRIES: u32 = 10;
 const REBIND_WAIT: Duration = Duration::from_millis(50);
+/// The same at a start: a bridge closed a moment ago may still hold it.
+const START_TRIES: u32 = 4;
 /// `accept` errors in a row (not of one connection) before the accept loop
 /// opens a new listener on the same port; it waits between them.
 const ACCEPT_FAILURES_BEFORE_RELISTEN: u32 = 4;
@@ -130,9 +132,9 @@ impl Bridge {
     /// the page already holds), else a new random one.
     pub async fn start_keyed(opener: Opener, allowed: OriginCheck, port: Option<u16>, key: Option<&str>) -> io::Result<Bridge> {
         let listener = match port {
-            Some(p) => match TcpListener::bind(("127.0.0.1", p)).await {
-                Ok(l) => l,
-                Err(_) => TcpListener::bind("127.0.0.1:0").await?,
+            Some(p) => match bind_same(p, START_TRIES).await {
+                Some(l) => l,
+                None => TcpListener::bind("127.0.0.1:0").await?,
             },
             None => TcpListener::bind("127.0.0.1:0").await?,
         };
@@ -193,17 +195,7 @@ impl Bridge {
     /// tell the page.
     pub async fn listen_again(&mut self) -> io::Result<bool> {
         self.pause().await;
-        let mut bound = None;
-        for i in 0..REBIND_TRIES {
-            if i > 0 {
-                tokio::time::sleep(REBIND_WAIT).await;
-            }
-            if let Ok(l) = TcpListener::bind(("127.0.0.1", self.port)).await {
-                bound = Some(l);
-                break;
-            }
-        }
-        let (listener, moved) = match bound {
+        let (listener, moved) = match bind_same(self.port, REBIND_TRIES).await {
             Some(l) => (l, false),
             None => (TcpListener::bind("127.0.0.1:0").await?, true),
         };
@@ -227,6 +219,12 @@ impl Bridge {
             Some(head.starts_with(b"HTTP/1.1 204"))
         };
         matches!(tokio::time::timeout(within, probe).await, Ok(Some(true)))
+    }
+
+    /// Stops listening, and returns once the listener is closed, so a
+    /// bridge started next for the same computer gets the same port.
+    pub async fn close(mut self) {
+        self.pause().await;
     }
 
     /// Test seam: the system takes the listener underneath the bridge. It
@@ -256,6 +254,19 @@ impl Drop for Bridge {
             task.abort();
         }
     }
+}
+
+/// Binds `port` on loopback, trying `tries` times `REBIND_WAIT` apart.
+async fn bind_same(port: u16, tries: u32) -> Option<TcpListener> {
+    for i in 0..tries {
+        if i > 0 {
+            tokio::time::sleep(REBIND_WAIT).await;
+        }
+        if let Ok(l) = TcpListener::bind(("127.0.0.1", port)).await {
+            return Some(l);
+        }
+    }
+    None
 }
 
 fn origin_of(port: u16) -> String {

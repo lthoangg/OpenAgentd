@@ -2028,6 +2028,8 @@ pub async fn drop_bridge(device_id: &str) {
             .lock()
             .expect("bridge keys")
             .remove(&l.bridge.origin);
+        // Its port is free once this returns: the next start keeps it.
+        l.bridge.close().await;
     }
 }
 

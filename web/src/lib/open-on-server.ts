@@ -3,16 +3,18 @@
  * link may name a computer other than the one the app is on.
  *
  * - The same server: open it at once.
- * - An account computer (`deviceId`): open that computer, over its saved LAN
- *   address when that answers, else through the account, as a tap on its row
- *   under "Your computers" does.
+ * - An account computer (`deviceId`): open that computer through its link
+ *   (directly at home, through the account away), as a tap on its row under
+ *   "Your computers" does. Its address never enters into it.
  * - A saved server (`baseUrl`): switch to it, as choosing it in Servers does.
+ *   A saved server and an account computer are two different things, even
+ *   on one machine: neither stands in for the other.
  *
  * A switch reloads the page; the session to open waits in sessionStorage and
  * is opened by `usePendingSessionOpen` once the new server is up. A failure
  * says why and shows the Servers screen, where the person can retry.
  */
-import { accountComputerTitle, getAppBackendStatus, LAN_COMPUTERS_KEY, normalizeFingerprint, type AppBackendStatus } from '@/lib/app-backend'
+import { accountComputerTitle, getAppBackendStatus, type AppBackendStatus } from '@/lib/app-backend'
 import type { NotificationTarget } from '@/lib/notification-taps'
 import { requestSessionOpen } from '@/lib/pending-session-open'
 
@@ -20,17 +22,6 @@ export type OpenOutcome = 'opened' | 'switching' | 'failed'
 
 function normalize(url: string): string {
   return url.trim().replace(/\/+$/, '').replace(/\/api$/i, '')
-}
-
-function lanUrlForFingerprint(fingerprint: string): string | null {
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(LAN_COMPUTERS_KEY) ?? '{}')
-    if (!parsed || typeof parsed !== 'object') return null
-    const url = (parsed as Record<string, unknown>)[normalizeFingerprint(fingerprint)]
-    return typeof url === 'string' ? normalize(url) : null
-  } catch {
-    return null
-  }
 }
 
 async function fail(error: string): Promise<OpenOutcome> {
@@ -60,51 +51,20 @@ async function openOnDevice(target: NotificationTarget & { deviceId: string }, s
   const { getPhoneCloudDevices } = await import('@/api/phone-cloud')
   const devices = await getPhoneCloudDevices().catch(() => [])
   const device = devices.find((d) => d.device_id === target.deviceId)
-  const lanUrl = device ? lanUrlForFingerprint(device.fingerprint) : null
-  // On that computer over its LAN address already.
-  if (lanUrl && lanUrl === current) {
-    requestSessionOpen(target.sessionId)
-    return 'opened'
-  }
   const { connectAccountComputer } = await import('@/lib/backend-switch')
   const result = await connectAccountComputer({
     deviceId: target.deviceId,
-    lanBaseUrl: lanUrl,
-    label: device ? accountComputerTitle(device, status.servers) : 'your computer',
+    label: device ? accountComputerTitle(device) : 'your computer',
     currentBaseUrl: current,
   })
   return afterSwitch(target.sessionId, result)
 }
 
-/** The fingerprint of the account computer whose LAN address is `baseUrl`. */
-function fingerprintForLanUrl(baseUrl: string): string | null {
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(LAN_COMPUTERS_KEY) ?? '{}')
-    if (!parsed || typeof parsed !== 'object') return null
-    const hit = Object.entries(parsed).find(([, url]) => typeof url === 'string' && normalize(url) === baseUrl)
-    return hit ? normalizeFingerprint(hit[0]) : null
-  } catch {
-    return null
-  }
-}
-
 async function openOnServer(target: NotificationTarget & { baseUrl: string }, status: AppBackendStatus, current: string): Promise<OpenOutcome> {
   const baseUrl = normalize(target.baseUrl)
-  const fingerprint = fingerprintForLanUrl(baseUrl)
-  // The same server, or the same computer reached through the account.
-  const onIt = baseUrl === current
-    || (fingerprint !== null && status.account_device !== undefined && status.account_device !== null
-      && normalizeFingerprint(status.account_device.fingerprint) === fingerprint)
-  if (onIt) {
+  if (baseUrl === current) {
     requestSessionOpen(target.sessionId)
     return 'opened'
-  }
-  // An account computer: its LAN address when it answers, else the account.
-  if (fingerprint !== null) {
-    const { getPhoneCloudDevices } = await import('@/api/phone-cloud')
-    const devices = await getPhoneCloudDevices().catch(() => [])
-    const device = devices.find((d) => !d.me && normalizeFingerprint(d.fingerprint) === fingerprint)
-    if (device) return openOnDevice({ sessionId: target.sessionId, deviceId: device.device_id }, status, current)
   }
   const saved = status.servers.find((server) => normalize(server.base_url) === baseUrl)
   if (!saved) return fail('That server is no longer in your list.')

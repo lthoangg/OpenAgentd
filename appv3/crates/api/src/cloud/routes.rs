@@ -15,6 +15,10 @@
 //! candidates. Creating the account (`recovery`, the genesis roster of an
 //! empty account) does not, and neither do the other routes that sign
 //! nothing (cancelling is always safe).
+//!
+//! `open`, `close` and `poke` drive this computer's links to the account's
+//! other computers ([`super::controller`]). Local only too: a relayed device
+//! never hops on to another computer through this one.
 
 use axum::extract::ConnectInfo;
 use axum::http::{Extensions, HeaderMap};
@@ -46,6 +50,12 @@ pub fn router() -> Router<AppState> {
         .route("/invite/poll", post(invite_poll))
         .route("/invite/add", post(invite_add))
         .route("/invite/cancel", post(invite_cancel))
+        .route("/direct", get(direct_answer))
+        .route("/direct/setting", get(direct_setting).post(set_direct_setting))
+        .route("/open", post(open))
+        .route("/close", post(close))
+        .route("/poke", post(poke))
+        .route("/link/route", post(link_route))
 }
 
 /// The roles a computer asks for when it signs in or joins (spec 4):
@@ -268,6 +278,41 @@ async fn devices(ext: Extensions) -> ApiResult<Response> {
     json_of(&super::signer::devices().await.map_err(signer_error)?)
 }
 
+/// Where a session's device reaches this host directly (spec 5.5). Only
+/// a device of the account, inside a session (relay or direct), gets it:
+/// never a local, LAN or browser caller, so addresses reach nobody else.
+async fn direct_answer(ext: Extensions) -> ApiResult<Response> {
+    if ext.get::<RelayPeer>().is_none() {
+        return Err(ApiError::new(403, "Only devices of the account can ask."));
+    }
+    json_of(&super::direct::answer())
+}
+
+/// The switch in Settings → Server: `{ "on": bool, "port": u16 | null }`,
+/// `port` while direct sessions are accepted. Only this computer reads or
+/// changes it.
+async fn direct_setting(ext: Extensions) -> ApiResult<Response> {
+    local_only(&ext)?;
+    json_of(&direct_setting_view(super::direct::setting().on))
+}
+
+fn direct_setting_view(on: bool) -> serde_json::Value {
+    let port = super::direct::listening_port().filter(|_| on);
+    serde_json::json!({ "on": on, "port": port })
+}
+
+#[derive(serde::Deserialize)]
+struct DirectSettingBody {
+    on: bool,
+}
+
+async fn set_direct_setting(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    let b: DirectSettingBody = body_of(&body)?;
+    let s = super::direct::set_enabled(b.on);
+    json_of(&direct_setting_view(s.on))
+}
+
 async fn pending(ext: Extensions) -> ApiResult<Response> {
     local_only(&ext)?;
     json_of(&super::signer::pending().await.map_err(signer_error)?)
@@ -389,6 +434,68 @@ async fn remove_device(ext: Extensions, headers: HeaderMap, body: axum::body::By
     super::approval::require(&headers, openagentd_cloud::approval::Action::Remove, &b.device_id)?;
     super::signer::remove(&b.device_id).await.map_err(signer_error)?;
     status_json()
+}
+
+#[derive(serde::Deserialize)]
+struct DeviceBody {
+    device_id: String,
+}
+
+fn device_id(body: &[u8]) -> ApiResult<String> {
+    let b: DeviceBody = body_of(body)?;
+    if !openagentd_cloud::keys::is_device_id(&b.device_id) {
+        return Err(ApiError::new(400, "Malformed request."));
+    }
+    Ok(b.device_id)
+}
+
+/// `{ device_id }`: opens a computer of the account through its link and
+/// answers `{ origin, key, device }`, the loopback bridge the desktop app
+/// switches a window to. `key` is a bearer secret for that origin.
+async fn open(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    let id = device_id(&body)?;
+    if !matches!(super::status(), super::Status::Connected { .. }) {
+        return Err(ApiError::new(409, "This computer is not signed in."));
+    }
+    let opened = super::controller::open(&id).await.map_err(|text| ApiError::new(409, text))?;
+    json_of(&opened)
+}
+
+/// `{ device_id }`: no window uses that computer any more.
+async fn close(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    let id = device_id(&body)?;
+    super::controller::close(&id).await;
+    Ok(json(serde_json::json!({ "ok": true })))
+}
+
+/// `{ device_id }`: the route this computer's link to it is on, for its
+/// row (`{ "route": "direct" | "relay" | "connecting" | "down" | "none" }`).
+async fn link_route(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    let id = device_id(&body)?;
+    Ok(json(serde_json::json!({ "route": super::controller::route(&id).await })))
+}
+
+/// `{ why: "resumed" | "network_changed" | "user_retry" }`: the app came
+/// back or the network changed; every link checks itself now. (A desktop
+/// app in the background still shows its notch, so it never stops them.)
+async fn poke(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    #[derive(serde::Deserialize)]
+    struct Body {
+        why: String,
+    }
+    let b: Body = body_of(&body)?;
+    let why = match b.why.as_str() {
+        "resumed" => openagentd_cloud::link::Poke::Resumed,
+        "network_changed" => openagentd_cloud::link::Poke::NetworkChanged,
+        "user_retry" => openagentd_cloud::link::Poke::UserRetry,
+        _ => return Err(ApiError::new(400, "Unknown reason.")),
+    };
+    super::controller::poke(why);
+    Ok(json(serde_json::json!({ "ok": true })))
 }
 
 #[cfg(test)]

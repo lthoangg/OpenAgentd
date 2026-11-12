@@ -17,10 +17,28 @@ export interface HealthResponse {
   capabilities?: string[]
 }
 
-export async function health(): Promise<HealthResponse> {
-  const res = await fetch(`${apiBaseUrl()}/health/ready`)
-  if (!res.ok) await parseDetailOrThrow(res, 'health')
-  return res.json()
+/**
+ * How long a health check waits. A server (or an account bridge whose relay
+ * link is down) that never answers must fail the check, so the connection
+ * banner shows instead of the dot staying green on a hung request.
+ */
+export const HEALTH_TIMEOUT_MS = 5_000
+
+/** `health` with its own timeout (the seam tests use; `useQuery` passes a context, so `health` takes no argument). */
+export async function healthWithin(timeoutMs: number): Promise<HealthResponse> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(`${apiBaseUrl()}/health/ready`, { signal: controller.signal })
+    if (!res.ok) await parseDetailOrThrow(res, 'health')
+    return await res.json()
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export function health(): Promise<HealthResponse> {
+  return healthWithin(HEALTH_TIMEOUT_MS)
 }
 
 // ── Plugins (v3 only: `capabilities` includes "api.plugins") ────────────────

@@ -52,6 +52,10 @@ pub struct DeviceRow {
     pub me: bool,
     /// Self-reported by the device ("macos", "ios", …); a label only.
     pub kind: Option<String>,
+    /// For a server: whether its presence socket is open now (the cloud's
+    /// relay usage view; a server it does not list is offline). `None` for
+    /// other devices, or when the cloud could not say.
+    pub online: Option<bool>,
 }
 
 /// A device asking to join, with the roles it asked for.
@@ -103,6 +107,8 @@ pub(super) async fn synced() -> Result<Member, SignerError> {
     }
     match sync {
         Ok(s) => {
+            // Links out see a computer added a moment ago.
+            super::controller::publish(Some(&m));
             if s.changed {
                 super::poke_roster();
             }
@@ -121,7 +127,7 @@ pub(super) fn wrote(r: &roster::Roster) {
     super::poke_roster();
 }
 
-pub fn device_rows(r: &roster::Roster, me: &str, kinds: &HashMap<String, Option<String>>) -> Vec<DeviceRow> {
+pub fn device_rows(r: &roster::Roster, me: &str, kinds: &HashMap<String, Option<String>>, online: Option<&HashMap<String, bool>>) -> Vec<DeviceRow> {
     r.body
         .devices
         .iter()
@@ -133,15 +139,22 @@ pub fn device_rows(r: &roster::Roster, me: &str, kinds: &HashMap<String, Option<
             client: d.client,
             me: d.id == me,
             kind: kinds.get(&d.id).cloned().flatten(),
+            online: if d.server { online.map(|o| o.get(&d.id).copied().unwrap_or(false)) } else { None },
         })
         .collect()
 }
 
-/// The account's devices, from the verified roster (kinds from the cloud).
+/// The account's devices, from the verified roster (kinds and whether each
+/// server is online from the cloud; a failed call there never fails the
+/// list, the dots are only a hint). The cloud allows 60 usage reads per
+/// device per 10 minutes: the desktop reads every 30 s while the list shows.
 pub async fn devices() -> Result<Vec<DeviceRow>, SignerError> {
     let m = synced().await?;
-    let kinds: HashMap<String, Option<String>> = m.cloud.devices().await.map(|ds| ds.into_iter().map(|d| (d.device_id, d.kind)).collect()).unwrap_or_default();
-    Ok(m.roster.as_ref().map(|r| device_rows(r, &m.cloud.device_id(), &kinds)).unwrap_or_default())
+    let (devices, usage) = tokio::join!(m.cloud.devices(), m.cloud.relay_usage());
+    let kinds: HashMap<String, Option<String>> = devices.map(|ds| ds.into_iter().map(|d| (d.device_id, d.kind)).collect()).unwrap_or_default();
+    super::controller::set_kinds(&kinds);
+    let online = usage.ok().and_then(|u| u.online());
+    Ok(m.roster.as_ref().map(|r| device_rows(r, &m.cloud.device_id(), &kinds, online.as_ref())).unwrap_or_default())
 }
 
 /// Requests to join that a signer can approve: sign-ins that committed

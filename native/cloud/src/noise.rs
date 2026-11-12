@@ -15,6 +15,13 @@ pub fn prologue(account_id: &str, session_id: &str, controller_id: &str, host_id
     lines!["agentd-tunnel-v1", account_id, session_id, controller_id, host_id]
 }
 
+/// `lines("agentd-direct-v1", account_id, host id)`: a direct session's
+/// prologue (spec section 5.5). There is no offer, so the controller is
+/// known only from its static key in message 1.
+pub fn direct_prologue(account_id: &str, host_id: &str) -> Vec<u8> {
+    lines!["agentd-direct-v1", account_id, host_id]
+}
+
 fn builder<'a>(own_box: &'a Seed, prologue: &'a [u8], ephemeral: Option<&'a Seed>) -> snow::Builder<'a> {
     let b =
         snow::Builder::new(PROTOCOL.parse().expect("a valid Noise pattern")).local_private_key(own_box.expose()).expect("a 32-byte key").prologue(prologue).expect("a prologue");

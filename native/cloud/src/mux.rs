@@ -10,6 +10,11 @@
 //! Received data beyond the window we advertised is a protocol error that
 //! ends the session, so a peer cannot make us buffer more than
 //! [`GROWN_WINDOW`] per stream.
+//!
+//! What a session sends waits in an [`Outbound`] queue: one queue per
+//! stream, taken in turn, so a large transfer does not hold a small request
+//! up behind it, and frames without data (opens, window updates, pings, Go
+//! Away) ahead of all of them. A stream's FIN and reset stay behind its data.
 
 use std::collections::{HashMap, VecDeque};
 use std::io;
@@ -18,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::sync::{mpsc, Notify};
+use tokio::sync::Notify;
 
 pub const INITIAL_WINDOW: u32 = 256 * 1024;
 pub const GROWN_WINDOW: u32 = 2 * 1024 * 1024;
@@ -78,17 +83,165 @@ struct State {
     buf: Vec<u8>,
     closed: bool,
     accept: VecDeque<u32>,
+    /// Whether this side sent Go Away already (it is sent once).
+    went_away: bool,
+    /// The reason in the Go Away the peer sent, once it did. On a direct
+    /// session (spec section 5.5) it carries the close reason.
+    peer_go_away: Option<u32>,
 }
 
 struct Shared {
     state: Mutex<State>,
     accept_ready: Notify,
-    out: mpsc::UnboundedSender<Vec<u8>>,
+    out: Arc<Outbox>,
 }
 
 impl Shared {
     fn send(&self, bytes: Vec<u8>) {
-        let _ = self.out.send(bytes);
+        self.out.push(bytes);
+    }
+}
+
+impl Drop for Shared {
+    fn drop(&mut self) {
+        self.out.close();
+    }
+}
+
+#[derive(Default)]
+struct OutState {
+    /// Frames without data, and Go Away: sent first.
+    control: VecDeque<Vec<u8>>,
+    /// Each stream's data frames, with its FIN or reset after them.
+    streams: HashMap<u32, VecDeque<Vec<u8>>>,
+    /// Streams with something queued, in the order they take turns.
+    turn: VecDeque<u32>,
+    bytes: usize,
+    closed: bool,
+}
+
+/// The send queue a session's frames wait in.
+#[derive(Default)]
+struct Outbox {
+    state: Mutex<OutState>,
+    ready: Notify,
+}
+
+impl Outbox {
+    fn push(&self, frame: Vec<u8>) {
+        let mut st = self.state.lock().expect("outbox lock");
+        if st.closed {
+            return;
+        }
+        let flags = u16::from_be_bytes([frame[2], frame[3]]);
+        let id = u32::from_be_bytes([frame[4], frame[5], frame[6], frame[7]]);
+        let has_data = frame.len() > 12;
+        st.bytes += frame.len();
+        if id == 0 || (!has_data && flags & (FIN | RST) == 0) {
+            st.control.push_back(frame);
+        } else {
+            let queue = st.streams.entry(id).or_default();
+            if queue.is_empty() {
+                queue.push_back(frame);
+                st.turn.push_back(id);
+            } else {
+                queue.push_back(frame);
+            }
+        }
+        drop(st);
+        self.ready.notify_one();
+    }
+
+    fn close(&self) {
+        self.state.lock().expect("outbox lock").closed = true;
+        self.ready.notify_one();
+    }
+}
+
+/// Takes up to `max - out.len()` bytes from the front of `queue` into `out`;
+/// whether the front frame was taken whole.
+fn take_front(queue: &mut VecDeque<Vec<u8>>, out: &mut Vec<u8>, max: usize) -> bool {
+    let room = max - out.len();
+    let Some(front) = queue.front_mut() else { return true };
+    if front.len() <= room {
+        out.extend_from_slice(front);
+        queue.pop_front();
+        true
+    } else {
+        out.extend_from_slice(&front[..room]);
+        front.drain(..room);
+        false
+    }
+}
+
+/// The bytes a session wants sent, in fair order (see the module docs).
+pub struct Outbound {
+    outbox: Arc<Outbox>,
+}
+
+impl Outbound {
+    /// Bytes waiting.
+    pub fn queued(&self) -> usize {
+        self.outbox.state.lock().expect("outbox lock").bytes
+    }
+
+    /// Whether the session is gone and nothing is left to send.
+    pub fn is_done(&self) -> bool {
+        let st = self.outbox.state.lock().expect("outbox lock");
+        st.closed && st.bytes == 0
+    }
+
+    /// Up to `max` bytes: frames without data first, then one frame from
+    /// each stream in turn. A frame may be split; the rest goes next.
+    pub fn take(&self, max: usize) -> Vec<u8> {
+        let mut st = self.outbox.state.lock().expect("outbox lock");
+        let mut out = Vec::with_capacity(st.bytes.min(max));
+        while out.len() < max && !st.control.is_empty() {
+            take_front(&mut st.control, &mut out, max);
+        }
+        while out.len() < max {
+            let Some(id) = st.turn.pop_front() else { break };
+            let st = &mut *st;
+            let queue = st.streams.get_mut(&id).expect("a queued stream");
+            take_front(queue, &mut out, max);
+            if queue.is_empty() {
+                st.streams.remove(&id);
+            } else {
+                st.turn.push_back(id);
+            }
+        }
+        st.bytes -= out.len();
+        out
+    }
+
+    /// Waits until something is queued, or the session is done.
+    pub async fn ready(&self) {
+        loop {
+            let notified = self.outbox.ready.notified();
+            {
+                let st = self.outbox.state.lock().expect("outbox lock");
+                if st.bytes > 0 || st.closed {
+                    return;
+                }
+            }
+            notified.await;
+        }
+    }
+
+    /// Waits for the next push (or the end): wakes a sender that keeps
+    /// joining, to see whether a full message waits now.
+    pub async fn pushed(&self) {
+        self.outbox.ready.notified().await;
+    }
+
+    /// Everything queued, once there is something; `None` once the session
+    /// is done.
+    pub async fn recv(&mut self) -> Option<Vec<u8>> {
+        self.ready().await;
+        if self.is_done() {
+            return None;
+        }
+        Some(self.take(usize::MAX))
     }
 }
 
@@ -101,11 +254,20 @@ pub struct Session {
 
 impl Session {
     /// `client`: the controller (odd ids). Returns the session and the
-    /// bytes it wants sent, in order.
-    pub fn new(client: bool) -> (Session, mpsc::UnboundedReceiver<Vec<u8>>) {
-        let (tx, rx) = mpsc::unbounded_channel();
-        let state = State { streams: HashMap::new(), next_id: if client { 1 } else { 2 }, client, buf: Vec::new(), closed: false, accept: VecDeque::new() };
-        (Session { shared: Arc::new(Shared { state: Mutex::new(state), accept_ready: Notify::new(), out: tx }) }, rx)
+    /// queue of the bytes it wants sent.
+    pub fn new(client: bool) -> (Session, Outbound) {
+        let outbox = Arc::new(Outbox::default());
+        let state = State {
+            streams: HashMap::new(),
+            next_id: if client { 1 } else { 2 },
+            client,
+            buf: Vec::new(),
+            closed: false,
+            accept: VecDeque::new(),
+            went_away: false,
+            peer_go_away: None,
+        };
+        (Session { shared: Arc::new(Shared { state: Mutex::new(state), accept_ready: Notify::new(), out: outbox.clone() }) }, Outbound { outbox })
     }
 
     fn new_stream(window_grown: bool) -> StreamState {
@@ -152,7 +314,29 @@ impl Session {
 
     /// Go Away: we will open no more streams (normal termination).
     pub fn go_away(&self) {
-        self.shared.send(header(TYPE_GO_AWAY, 0, 0, 0).to_vec());
+        self.go_away_with(0);
+    }
+
+    /// Go Away carrying `reason` in its length field (spec section 5.5),
+    /// once: a later call sends nothing.
+    pub fn go_away_with(&self, reason: u32) {
+        let mut st = self.shared.state.lock().expect("mux lock");
+        if st.went_away {
+            return;
+        }
+        st.went_away = true;
+        drop(st);
+        self.shared.send(header(TYPE_GO_AWAY, 0, 0, reason).to_vec());
+    }
+
+    /// The reason of the Go Away the peer sent, if it sent one.
+    pub fn peer_go_away(&self) -> Option<u32> {
+        self.shared.state.lock().expect("mux lock").peer_go_away
+    }
+
+    /// A ping (SYN) carrying `value`; the peer answers with an ACK.
+    pub fn ping(&self, value: u32) {
+        self.shared.send(header(TYPE_PING, SYN, 0, value).to_vec());
     }
 
     /// Ends the session: every stream sees an error.
@@ -236,6 +420,7 @@ impl Session {
             }
             TYPE_GO_AWAY => {
                 st.closed = true;
+                st.peer_go_away.get_or_insert(length);
                 for s in st.streams.values_mut() {
                     s.reset = true;
                     if let Some(w) = s.read_waker.take() {
@@ -356,7 +541,7 @@ impl AsyncRead for Stream {
                 let credit = s.consumed;
                 s.recv_window += credit;
                 s.consumed = 0;
-                let _ = self.shared.out.send(header(TYPE_WINDOW, 0, id, credit).to_vec());
+                self.shared.out.push(header(TYPE_WINDOW, 0, id, credit).to_vec());
             }
             return Poll::Ready(Ok(()));
         }
@@ -392,7 +577,7 @@ impl AsyncWrite for Stream {
         s.send_window -= n as u32;
         let mut frame = header(TYPE_DATA, 0, self.id, n as u32).to_vec();
         frame.extend_from_slice(&data[..n]);
-        let _ = self.shared.out.send(frame);
+        self.shared.out.push(frame);
         Poll::Ready(Ok(n))
     }
 
@@ -406,7 +591,7 @@ impl AsyncWrite for Stream {
         if let Some(s) = st.streams.get_mut(&id) {
             if !s.local_fin && !s.reset {
                 s.local_fin = true;
-                let _ = self.shared.out.send(header(TYPE_WINDOW, FIN, id, 0).to_vec());
+                self.shared.out.push(header(TYPE_WINDOW, FIN, id, 0).to_vec());
             }
             if s.remote_fin && s.recv.is_empty() {
                 st.streams.remove(&id);
@@ -430,7 +615,7 @@ impl Drop for Stream {
             // the host's writer would wait on a window that never reopens.
             let abandoned = !s.local_fin || (st.client && !s.remote_fin);
             if abandoned && !s.reset && !st.closed {
-                let _ = self.shared.out.send(header(TYPE_WINDOW, RST, self.id, 0).to_vec());
+                self.shared.out.push(header(TYPE_WINDOW, RST, self.id, 0).to_vec());
             }
         }
     }
@@ -567,5 +752,60 @@ mod tests {
         let mut got = String::new();
         s.read_to_string(&mut got).await.unwrap();
         assert_eq!(got, "abc");
+    }
+
+    /// The stream ids of the data frames in `bytes`, in order.
+    fn data_ids(bytes: &[u8]) -> Vec<u32> {
+        let mut ids = Vec::new();
+        let mut at = 0;
+        while at + 12 <= bytes.len() {
+            let h = &bytes[at..at + 12];
+            let id = u32::from_be_bytes([h[4], h[5], h[6], h[7]]);
+            let len = u32::from_be_bytes([h[8], h[9], h[10], h[11]]) as usize;
+            if h[1] == TYPE_DATA {
+                ids.push(id);
+                at += 12 + len;
+            } else {
+                at += 12;
+            }
+        }
+        ids
+    }
+
+    #[tokio::test]
+    async fn a_small_request_does_not_wait_behind_a_large_transfer() {
+        let (ctl, out) = Session::new(true);
+        let mut big = ctl.open().unwrap();
+        big.write_all(&vec![1u8; 200 * 1024]).await.unwrap();
+        let mut small = ctl.open().unwrap();
+        small.write_all(b"GET /api/health").await.unwrap();
+        small.shutdown().await.unwrap();
+        // One message's worth: both opens first, and the small request is
+        // in it although 200 KiB were queued before it.
+        let first = out.take(crate::noise::MAX_PLAINTEXT);
+        assert_eq!(first[1], TYPE_WINDOW, "an open goes first");
+        let ids = data_ids(&first);
+        assert!(ids.contains(&3), "{ids:?}");
+        assert_eq!(ids.iter().filter(|&&i| i == 3).count(), 1);
+        // The rest of the transfer follows, in order, and nothing is lost.
+        let mut rest = first.len();
+        while out.queued() > 0 {
+            rest += out.take(crate::noise::MAX_PLAINTEXT).len();
+        }
+        let frames = (200 * 1024usize).div_ceil(MAX_FRAME_DATA);
+        assert_eq!(rest, 12 * 2 + (200 * 1024 + 12 * frames) + (12 + 15) + 12);
+    }
+
+    #[tokio::test]
+    async fn a_streams_fin_stays_behind_its_data() {
+        let (ctl, out) = Session::new(true);
+        let mut s = ctl.open().unwrap();
+        s.write_all(&vec![2u8; 40 * 1024]).await.unwrap();
+        s.shutdown().await.unwrap();
+        let all = out.take(usize::MAX);
+        // The open, three data frames, then the FIN last.
+        let fin = &all[all.len() - 12..];
+        assert_eq!(u16::from_be_bytes([fin[2], fin[3]]), FIN);
+        assert_eq!(data_ids(&all), vec![1, 1, 1]);
     }
 }

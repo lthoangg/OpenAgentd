@@ -8,7 +8,7 @@ export interface SavedAppServer {
 /** Where the desktop shell's background connection to a followed server stands. */
 export type ServerWatchState = 'connecting' | 'connected' | 'reconnecting' | 'key_rejected'
 
-/** The account computer an account bridge reaches (phone shell only). */
+/** The account computer an account bridge reaches (phone and desktop shells). */
 export interface AccountBridgeDevice {
   device_id: string
   fingerprint: string
@@ -28,14 +28,19 @@ export interface AppBackendStatus {
   supports_bundled: boolean
   servers: SavedAppServer[]
   /**
-   * Phone shell: set while the app is on an account bridge (a loopback
-   * origin that relays to this computer of the account). Absent elsewhere.
+   * Set while the window is on an account bridge (a loopback origin that
+   * relays to this computer of the account): the phone shell's, or the
+   * desktop's built-in server's. Absent elsewhere.
    */
   account_device?: AccountBridgeDevice | null
+  /**
+   * Phone shell: the account computer last opened with `cloud_open_computer`
+   * (over its LAN address or the account); cleared when the person switches
+   * to some other server. Absent from an older shell.
+   */
+  last_account_device?: string | null
 }
 
-/** Where the phone remembers which saved LAN server is which account computer. */
-export const LAN_COMPUTERS_KEY = 'openagentd.cloud.lanComputers'
 
 const KIND_LABELS: Record<string, string> = {
   macos: 'macOS',
@@ -60,31 +65,12 @@ export function deviceLabel(device: { kind: string | null | undefined; fingerpri
 /** `3f9a 21c4` and `3F9A-21C4` are the same fingerprint. */
 export const normalizeFingerprint = (fingerprint: string) => fingerprint.replace(/[\s-]+/g, '').toUpperCase()
 
-function readLanComputers(): Record<string, unknown> {
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(LAN_COMPUTERS_KEY) ?? '{}')
-    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}
-  } catch {
-    return {}
-  }
-}
-
 /**
- * What an account computer is called: the name the person gave the saved
- * LAN server that is this computer (same remembered fingerprint), else its
- * kind and fingerprint. The Servers row and the connection label agree.
+ * An account computer's title: from the account (its kind and
+ * fingerprint), never from a saved server's name, which belongs to a
+ * different thing even on the same machine.
  */
-export function accountComputerTitle(
-  device: { kind: string | null | undefined; fingerprint: string },
-  servers: SavedAppServer[],
-  lanComputers: Record<string, unknown> = readLanComputers(),
-): string {
-  const lan = lanComputers[normalizeFingerprint(device.fingerprint)]
-  if (typeof lan === 'string') {
-    const url = normalizeServerOrigin(lan)
-    const name = servers.find((server) => normalizeServerOrigin(server.base_url) === url)?.name?.trim()
-    if (name) return name
-  }
+export function accountComputerTitle(device: { kind: string | null | undefined; fingerprint: string }): string {
   return deviceLabel(device)
 }
 
@@ -119,7 +105,7 @@ export function formatBackendConnectionLabel(
   if (status.mode === 'bundled' || (!status.external && status.mode !== 'external')) {
     return 'built-in'
   }
-  if (status.account_device) return accountComputerTitle(status.account_device, status.servers)
+  if (status.account_device) return accountComputerTitle(status.account_device)
   const current = normalizeServerOrigin(status.base_url)
   const named = status.servers.find((server) => normalizeServerOrigin(server.base_url) === current)
   const name = named?.name?.trim()
@@ -174,6 +160,12 @@ export async function switchToBundledAppBackend(): Promise<void> {
 export async function stopBundledAppBackend(): Promise<void> {
   const { invoke } = await import('@tauri-apps/api/core')
   await invoke('app_stop_bundled_backend')
+}
+
+/** Desktop: start the built-in server without switching this window to it. */
+export async function startBundledAppBackend(): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  await invoke('app_start_bundled_backend')
 }
 
 export async function getBundledBackendLogPath(): Promise<string | null> {

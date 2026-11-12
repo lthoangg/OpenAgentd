@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-poke"
+description = "Enables the cloud_poke command without any pre-configured scope."
+commands.allow = ["cloud_poke"]
+
+[[permission]]
+identifier = "deny-cloud-poke"
+description = "Denies the cloud_poke command without any pre-configured scope."
+commands.deny = ["cloud_poke"]

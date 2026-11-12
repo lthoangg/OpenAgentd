@@ -1,6 +1,6 @@
 //! OpenAgentd Cloud accounts on a host (the desktop sidecar or a CLI
-//! server): sign-in, the presence socket, and relay sessions into this
-//! server.
+//! server): sign-in, the presence socket, relay sessions into this server,
+//! and links out to the account's other computers ([`controller`]).
 //!
 //! Guest use never touches this module's network side: with no stored
 //! identity it only answers `GET /api/cloud/status` with `guest`. The
@@ -9,13 +9,16 @@
 
 pub mod approval;
 pub mod connector;
+pub mod controller;
+pub mod direct;
 pub mod engine;
 pub mod invite;
+pub mod ledger;
 pub mod letters;
 pub mod routes;
 pub mod signer;
 
-use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
@@ -161,7 +164,16 @@ struct Host {
     poke: Mutex<Option<mpsc::UnboundedSender<RosterNote>>>,
     router: OnceLock<Router>,
     private_port: OnceLock<u16>,
+    /// Relay sessions, by controller.
     sessions: Sessions,
+    /// Direct sessions on the home network (spec 5.5), by controller.
+    direct_sessions: Sessions,
+    /// Whether the account lets this host take direct sessions now: synced,
+    /// a server, and no account problem or removal signal pending.
+    direct_ok: AtomicBool,
+    /// The last contact with the cloud (Unix ms, 0: never), as the ledger
+    /// has it: direct sessions need it within 7 days.
+    last_contact: AtomicU64,
 }
 
 fn host() -> &'static Host {
@@ -175,7 +187,50 @@ fn host() -> &'static Host {
         router: OnceLock::new(),
         private_port: OnceLock::new(),
         sessions: Sessions::default(),
+        direct_sessions: Sessions::default(),
+        direct_ok: AtomicBool::new(false),
+        last_contact: AtomicU64::new(0),
     })
+}
+
+pub(crate) fn direct_sessions() -> &'static Sessions {
+    &host().direct_sessions
+}
+
+/// Whether the account side lets direct sessions in now: synced, a
+/// server, no account problem, and heard from the cloud within 7 days
+/// (spec 5.5). The switch is checked apart. The listener, the address
+/// answer and live sessions all follow this.
+pub(crate) fn direct_admits() -> bool {
+    host().direct_ok.load(Ordering::Relaxed) && contact_fresh(host().last_contact.load(Ordering::Relaxed), now_ms())
+}
+
+/// Whether a contact at `last_ms` (0: never) still counts at `now_ms`.
+fn contact_fresh(last_ms: u64, now_ms: u64) -> bool {
+    last_ms != 0 && now_ms.saturating_sub(last_ms) < openagentd_cloud::direct::CONTACT_VALID.as_millis() as u64
+}
+
+fn note_contact(l: &ledger::Ledger) {
+    host().last_contact.store(l.last_contact().unwrap_or(0), Ordering::Relaxed);
+}
+
+fn set_direct_ok(ok: bool) {
+    host().direct_ok.store(ok, Ordering::Relaxed);
+    if !ok {
+        host().direct_sessions.close_all(1000);
+    }
+}
+
+/// Closes `device`'s sessions on every route with 4001.
+fn revoke_everywhere(device: &str) {
+    host().sessions.revoke(device);
+    host().direct_sessions.revoke(device);
+}
+
+/// Closes every session on every route with `code`.
+fn close_everywhere(code: u16) {
+    host().sessions.close_all(code);
+    host().direct_sessions.close_all(code);
 }
 
 /// Hands this module the server's router (relay streams are served by it,
@@ -196,7 +251,7 @@ pub(crate) fn private_port() -> Option<u16> {
 pub fn status() -> Status {
     let mut s = host().status.lock().expect("cloud status").clone();
     if let Status::Connected { sessions, .. } = &mut s {
-        *sessions = host().sessions.count();
+        *sessions = host().sessions.count() + host().direct_sessions.count();
     }
     s
 }
@@ -245,7 +300,11 @@ pub async fn stop() {
     if let Some(h) = host().sign_in.lock().expect("cloud sign-in").take() {
         h.abort();
     }
-    host().sessions.close_all(1000);
+    set_direct_ok(false);
+    close_everywhere(1000);
+    // Links out need this host's account: they end with it.
+    controller::close_all().await;
+    controller::publish(None);
     // An open invitation must not outlive the server that shows it.
     invite::cancel().await;
 }
@@ -413,13 +472,18 @@ fn spawn_run(identity: Identity) {
 struct Handler {
     roster: Arc<RwLock<Roster>>,
     me: String,
-    /// Devices the relay listed as revoked or left. A device that left
+    /// Devices the cloud said were removed or left, and the last contact
+    /// with the cloud ([`ledger::Ledger`], spec 3.3). A device that left
     /// stays in the signed roster until a signer rewrites it, so the roster
-    /// alone would still admit it. Only ids the verified roster still lists
-    /// are kept (the roster refuses the others anyway), so the set never
-    /// holds more than the roster's devices.
-    revoked: RwLock<HashSet<String>>,
+    /// alone would still admit it. Saved on disk with `K`.
+    ledger: Arc<RwLock<ledger::Ledger>>,
     resync: mpsc::UnboundedSender<RosterNote>,
+}
+
+impl Handler {
+    fn departed(&self, device_id: &str) -> bool {
+        self.ledger.read().map(|l| l.is_departed(device_id)).unwrap_or(true)
+    }
 }
 
 /// What a presence `roster` message asks of the host.
@@ -432,6 +496,8 @@ enum RosterNote {
     Fetch,
     /// Nothing new to fetch (a repeat, or a leave, which changes no version).
     Nothing,
+    /// Check in with the cloud (the device list) if a minute has passed.
+    Contact,
 }
 
 /// Reads a presence `roster` message. `revoked` repeats devices for about
@@ -446,17 +512,35 @@ fn read_roster_note(me: &str, known_version: u64, version: u64, revoked: &[Strin
     }
 }
 
-/// Updates the set of departed devices from a presence `revoked` list:
-/// drops ids the verified roster no longer lists, then adds the listed
-/// ones it still does (never this host).
-fn note_revoked(set: &mut HashSet<String>, roster: &Roster, me: &str, revoked: &[String]) {
-    set.retain(|d| roster.body.device(d).is_some());
-    set.extend(revoked.iter().filter(|d| *d != me && roster.body.device(d).is_some()).cloned());
+/// Saves the ledger next to `K`.
+fn persist_ledger(l: &ledger::Ledger) {
+    let store = identity_store();
+    if let Ok(Some(mut id)) = idstore::load(&store) {
+        l.write_into(&mut id);
+        if let Err(e) = idstore::save(&store, &id) {
+            tracing::warn!("cloud_ledger_save_failed error={e}");
+        }
+    }
+}
+
+/// Notes departed devices (from the relay or the device list), saves the
+/// ledger when it changed, and closes the new ones' sessions everywhere.
+fn note_departed(ledger: &RwLock<ledger::Ledger>, roster: &RwLock<Roster>, me: &str, ids: &[String]) {
+    let (Ok(mut l), Ok(r)) = (ledger.write(), roster.read()) else { return };
+    let before = l.clone();
+    let added = l.note(&r, me, ids);
+    if *l != before {
+        persist_ledger(&l);
+    }
+    drop((l, r));
+    for d in added {
+        revoke_everywhere(&d);
+    }
 }
 
 impl HostHandler for Handler {
     fn controller_box(&self, device_id: &str) -> Option<[u8; 32]> {
-        if device_id == self.me || self.revoked.read().ok()?.contains(device_id) {
+        if device_id == self.me || self.departed(device_id) {
             return None;
         }
         // Only a device the roster lets open sessions (`client`, spec 3.4).
@@ -467,6 +551,25 @@ impl HostHandler for Handler {
         tokio::spawn(connector::serve(stream, from));
     }
 
+    fn admit_direct(&self, static_key: &[u8; 32]) -> Option<String> {
+        if !direct_admits() || !direct::setting().on {
+            return None;
+        }
+        if !self.ledger.read().ok()?.fresh(now_ms()) {
+            return None;
+        }
+        let roster = self.roster.read().ok()?;
+        // This host takes sessions only while its own entry is a server.
+        if !roster.body.device(&self.me).is_some_and(|d| d.server) {
+            return None;
+        }
+        let d = roster.body.by_box(static_key)?;
+        let id = d.id.clone();
+        drop(roster);
+        // The same question as a relay offer: active, `client`, not departed.
+        self.controller_box(&id).map(|_| id)
+    }
+
     fn on_session_end(&self, _from: &str, end: &TunnelEnd) {
         // Why a phone's session ended: `cause=deadline` is this host giving
         // up a socket that went quiet; `cause=closed` came from the relay.
@@ -474,10 +577,12 @@ impl HostHandler for Handler {
     }
 
     fn on_roster(&self, version: u64, revoked: Vec<String>) {
-        // The relay already closed the listed devices' sessions.
-        if let (Ok(mut set), Ok(roster)) = (self.revoked.write(), self.roster.read()) {
-            note_revoked(&mut set, &roster, &self.me, &revoked);
-        }
+        // The relay already closed the listed devices' relay sessions; the
+        // ledger closes their direct ones and keeps them out.
+        note_departed(&self.ledger, &self.roster, &self.me, &revoked);
+        // A roster message is a reason to check in with the cloud (the
+        // contact is limited to once a minute).
+        let _ = self.resync.send(RosterNote::Contact);
         let known = self.roster.read().map(|r| r.version()).unwrap_or(0);
         let note = read_roster_note(&self.me, known, version, &revoked);
         if note != RosterNote::Nothing {
@@ -488,7 +593,10 @@ impl HostHandler for Handler {
 
 /// Ends the account on this host: keys erased, back to guest.
 fn forget(notice: Notice) {
-    host().sessions.close_all(4001);
+    set_direct_ok(false);
+    close_everywhere(4001);
+    controller::publish(None);
+    controller::forget_addresses();
     if let Err(e) = identity_store().clear() {
         tracing::warn!("cloud_identity_clear_failed error={e}");
     }
@@ -500,12 +608,15 @@ fn on_problem(p: AccountProblem, fingerprint: &str) -> bool {
     tracing::info!("cloud_account_problem problem={p:?}");
     match p {
         AccountProblem::Closing { deletes_at } => {
-            host().sessions.close_all(4011);
+            set_direct_ok(false);
+            close_everywhere(4011);
+            close_links();
             set_status(Status::Closing { fingerprint: fingerprint.to_string(), deletes_at });
             true
         }
         AccountProblem::Unavailable => {
             host().sessions.close_all(4012);
+            close_links();
             set_status(Status::Unavailable { fingerprint: fingerprint.to_string() });
             true
         }
@@ -520,7 +631,8 @@ fn on_problem(p: AccountProblem, fingerprint: &str) -> bool {
         AccountProblem::RemovalSignal => {
             // Unsigned: close sessions and keep the keys. The next signed
             // roster fetch decides (`Revoked` only on a signed answer).
-            host().sessions.close_all(1001);
+            set_direct_ok(false);
+            close_everywhere(1001);
             true
         }
     }
@@ -536,6 +648,13 @@ fn set_relay(relay_state: RelayState, member: &Member, fingerprint: &str) {
         relay: relay_state,
         sessions: 0,
     });
+}
+
+/// Closes the links out to other computers (the account cannot be used now).
+fn close_links() {
+    if let Ok(rt) = tokio::runtime::Handle::try_current() {
+        rt.spawn(controller::close_all());
+    }
 }
 
 /// Tells the running connection loop to fetch the roster again (a signer
@@ -555,6 +674,20 @@ fn backoff(attempt: u32) -> Duration {
     let base = 1u64 << attempt.min(6);
     let jitter: [u8; 1] = openagentd_cloud::keys::random_bytes();
     Duration::from_millis(base.min(60) * 1000 + (jitter[0] as u64) * 4)
+}
+
+/// Presence that stayed up this long starts the backoff over. One that
+/// opens and dies sooner keeps backing off, so a socket the relay drops at
+/// once is not reopened in a tight loop.
+const STEADY_AFTER: Duration = Duration::from_secs(60);
+
+/// The backoff attempt after a presence socket that was up for `up_for`
+/// (`None`: it never opened).
+fn attempt_after(attempt: u32, up_for: Option<Duration>) -> u32 {
+    match up_for {
+        Some(d) if d >= STEADY_AFTER => 0,
+        _ => attempt,
+    }
 }
 
 /// How long a host whose presence another copy took over (4000) waits
@@ -608,15 +741,42 @@ pub(crate) fn persist_roster(r: &Roster) {
 }
 
 /// Takes a changed roster as `K`: stores it and closes the sessions of the
-/// devices it removed.
+/// devices it removed. Links out follow the roster too.
 fn apply_sync(member: &Member, shared: &RwLock<Roster>, sync: openagentd_cloud::flows::Sync) {
     if sync.changed {
         let r = member.roster.clone().expect("synced");
         persist_roster(&r);
         *shared.write().expect("roster lock") = r;
         for d in sync.removed {
-            host().sessions.revoke(&d);
+            revoke_everywhere(&d);
         }
+    }
+    controller::publish(Some(member));
+}
+
+/// The least time between two check-ins with the cloud.
+const CONTACT_EVERY: Duration = Duration::from_secs(60);
+
+/// After a verified roster fetch: reads the device list, notes the devices
+/// it shows as revoked, and records the contact (spec 5.5, "Last contact
+/// with the cloud"). At most once a minute.
+async fn contact(member: &Member, shared: &RwLock<Roster>, ledger: &RwLock<ledger::Ledger>, me: &str, last: &mut Option<tokio::time::Instant>) {
+    if last.is_some_and(|t| t.elapsed() < CONTACT_EVERY) {
+        return;
+    }
+    match member.cloud.devices().await {
+        Ok(devices) => {
+            *last = Some(tokio::time::Instant::now());
+            let revoked: Vec<String> = devices.iter().filter(|d| d.revoked_at.is_some()).map(|d| d.device_id.clone()).collect();
+            note_departed(ledger, shared, me, &revoked);
+            if let (Ok(mut l), Ok(r)) = (ledger.write(), shared.read()) {
+                l.prune(&r);
+                l.contacted(now_ms());
+                persist_ledger(&l);
+                note_contact(&l);
+            }
+        }
+        Err(e) => tracing::info!("cloud_contact_failed code={}", e.code),
     }
 }
 
@@ -637,16 +797,30 @@ async fn run(identity: Identity) {
     let shared = Arc::new(RwLock::new(known));
     let (resync_tx, mut resync_rx) = mpsc::unbounded_channel();
     *host().poke.lock().expect("cloud poke") = Some(resync_tx.clone());
-    let handler: Arc<dyn HostHandler> = Arc::new(Handler { roster: shared.clone(), me: me.clone(), revoked: RwLock::new(HashSet::new()), resync: resync_tx });
+    let ledger = Arc::new(RwLock::new(ledger::Ledger::from_identity(&identity)));
+    // A restart without internet keeps the 7 days counted from before.
+    note_contact(&ledger.read().expect("ledger"));
+    let handler: Arc<dyn HostHandler> = Arc::new(Handler { roster: shared.clone(), me: me.clone(), ledger: ledger.clone(), resync: resync_tx });
+    let mut last_contact: Option<tokio::time::Instant> = None;
+    // Direct sessions on the home network, while this host runs.
+    let direct_keys = Arc::new(openagentd_cloud::direct::HostKeys { account_id: account.clone(), host_id: me.clone(), own_box: presence_cloud.keys.r#box.seed().clone() });
+    let _direct = AbortOnDrop(tokio::spawn(direct::run(direct_keys, handler.clone(), host().direct_sessions.clone())));
     // Notifications go to the phone while this host is signed in; the task
     // ends with this one (dropped when `run` is aborted or returns). Its own
     // client: signed requests each use a fresh nonce from one sequence.
     let _letters = AbortOnDrop(tokio::spawn(letters::run(Arc::new(Cloud::new(http(), Endpoints::current(), presence_cloud.keys.clone(), Some(account.clone()))), shared.clone())));
     let mut attempt = 0u32;
+    // One HTTP/1.1 client for every presence and data socket: its TLS
+    // sessions and connections are reused.
+    let http1 = relay::http1_client();
     loop {
         // Bring K up to date (and learn whether the account is usable).
         match member.sync().await {
-            Ok(sync) => apply_sync(&member, &shared, sync),
+            Ok(sync) => {
+                apply_sync(&member, &shared, sync);
+                contact(&member, &shared, &ledger, &me, &mut last_contact).await;
+                set_direct_ok(member.is_server());
+            }
             Err(FlowError::Problem(p)) => {
                 if !on_problem(p, &fingerprint) {
                     return;
@@ -675,7 +849,7 @@ async fn run(identity: Identity) {
             // Not a server in the roster (spec 3.4): no presence socket and
             // no relay sessions. Check the roster now and then, and at once
             // when a signer route here wrote one.
-            host().sessions.close_all(4001);
+            close_everywhere(4001);
             set_relay(RelayState::Off, &member, &fingerprint);
             attempt = 0;
             tokio::select! {
@@ -690,14 +864,15 @@ async fn run(identity: Identity) {
         let (opened_tx, mut opened) = watch::channel(false);
         let options = HostOptions { opened: Some(opened_tx), ..HostOptions::default() };
         let mut watching = true;
-        let mut presence = tokio::spawn(relay::host_with(presence_cloud.clone(), relay::http1_client(), handler.clone(), host().sessions.clone(), stop_rx, options));
+        let mut presence = tokio::spawn(relay::host_with(presence_cloud.clone(), http1.clone(), handler.clone(), host().sessions.clone(), stop_rx, options));
+        let mut opened_at: Option<tokio::time::Instant> = None;
         let ended = loop {
             tokio::select! {
                 r = &mut presence => break r.unwrap_or(RelayError::Network),
                 changed = opened.changed(), if watching => match changed {
                     Ok(()) if *opened.borrow_and_update() => {
                         set_relay(RelayState::Online, &member, &fingerprint);
-                        attempt = 0;
+                        opened_at = Some(tokio::time::Instant::now());
                     }
                     Ok(()) => {}
                     // Presence ended; its result is next.
@@ -709,7 +884,8 @@ async fn run(identity: Identity) {
                         // Unsigned: stop relaying and close sessions, then
                         // ask with one signed request. Only that erases keys.
                         let _ = stop_tx.send(());
-                        host().sessions.close_all(1001);
+                        set_direct_ok(false);
+                        close_everywhere(1001);
                         match member.confirm_removal().await {
                             Removal::Removed => {
                                 forget(Notice::Revoked);
@@ -726,8 +902,16 @@ async fn run(identity: Identity) {
                         // Keys kept: reconnect after a backoff.
                         break RelayError::Closed(1001);
                     }
+                    // A contact is a signed roster fetch, then the device
+                    // list (spec 5.5), at most once a minute.
+                    if note == RosterNote::Contact && last_contact.is_some_and(|t| t.elapsed() < CONTACT_EVERY) {
+                        continue;
+                    }
                     match member.sync().await {
-                        Ok(sync) => apply_sync(&member, &shared, sync),
+                        Ok(sync) => {
+                            apply_sync(&member, &shared, sync);
+                            contact(&member, &shared, &ledger, &me, &mut last_contact).await;
+                        }
                         Err(FlowError::Problem(p)) => {
                             let _ = stop_tx.send(());
                             if !on_problem(p, &fingerprint) {
@@ -741,6 +925,7 @@ async fn run(identity: Identity) {
             }
         };
         tracing::info!("cloud_presence_ended reason={ended}");
+        attempt = attempt_after(attempt, opened_at.map(|t| t.elapsed()));
         if ended.problem() == Some(AccountProblem::RemovalSignal) {
             // Close 4001 or a refused relay token: unsigned. The signed
             // roster fetch at the top of the loop decides; keys stay.
@@ -795,6 +980,15 @@ pub fn verify_after(blob: &str, account: &str, known: &Roster) -> Result<Roster,
 mod tests {
     use super::*;
 
+    #[test]
+    fn the_backoff_starts_over_only_after_presence_stayed_up_a_minute() {
+        assert_eq!(attempt_after(4, None), 4, "never opened");
+        assert_eq!(attempt_after(4, Some(Duration::from_secs(5))), 4, "opened and died at once");
+        assert_eq!(attempt_after(4, Some(Duration::from_secs(59))), 4);
+        assert_eq!(attempt_after(4, Some(STEADY_AFTER)), 0);
+        assert_eq!(attempt_after(4, Some(Duration::from_secs(3600))), 0);
+    }
+
     fn ids(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
     }
@@ -813,25 +1007,58 @@ mod tests {
     }
 
     #[test]
-    fn the_departed_set_holds_only_devices_the_roster_still_lists() {
+    fn direct_admission_asks_the_same_question_as_the_relay_plus_contact() {
         use openagentd_cloud::keys::DeviceKeys;
         use openagentd_cloud::roster::{sign, Body, Device};
         let both = Roles::BOTH;
-        let (me, a, b) = (DeviceKeys::generate(), DeviceKeys::generate(), DeviceKeys::generate());
+        let (me, phone, left, ci) = (DeviceKeys::generate(), DeviceKeys::generate(), DeviceKeys::generate(), DeviceKeys::generate());
+        let server_only = Roles { server: true, client: false };
         let body = Body::genesis("acct", &[7; 32], Device::of(&me, true, both));
-        let one = sign(&Body { devices: vec![Device::of(&me, true, both), Device::of(&a, false, both), Device::of(&b, false, both)], ..body }, &me.id(), &me.sign);
-        let mut set = HashSet::new();
-        // Ids the roster does not list, and this host, are not kept.
-        note_revoked(&mut set, &one, &me.id(), &ids(&[a.id().as_str(), me.id().as_str(), "stranger"]));
-        assert_eq!(set, HashSet::from([a.id()]));
-        // A later roster without `a` (a signer rewrote it): `a` leaves the set.
-        let two = sign(&one.next_body(vec![Device::of(&me, true, both), Device::of(&b, false, both)]), &me.id(), &me.sign);
-        note_revoked(&mut set, &two, &me.id(), &ids(&[b.id().as_str()]));
-        assert_eq!(set, HashSet::from([b.id()]));
-        // A long list cannot grow it past the roster.
-        let many: Vec<String> = (0..1000).map(|i| format!("d{i}")).collect();
-        note_revoked(&mut set, &two, &me.id(), &many);
-        assert_eq!(set.len(), 1);
+        let devices = vec![Device::of(&me, true, both), Device::of(&phone, true, both), Device::of(&left, false, both), Device::of(&ci, false, server_only)];
+        let r = sign(&Body { devices, ..body }, &me.id(), &me.sign);
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut l = ledger::Ledger::default();
+        l.note(&r, &me.id(), &[left.id()]);
+        l.contacted(now_ms());
+        let h = Handler { roster: Arc::new(RwLock::new(r)), me: me.id(), ledger: Arc::new(RwLock::new(l)), resync: tx };
+        host().direct_ok.store(true, Ordering::Relaxed);
+        note_contact(&h.ledger.read().unwrap());
+        assert_eq!(h.admit_direct(&phone.r#box.public()), Some(phone.id()), "an active client");
+        assert_eq!(h.admit_direct(&left.r#box.public()), None, "left the account: still in the roster, refused");
+        assert_eq!(h.controller_box(&left.id()), None, "on the relay too");
+        assert_eq!(h.admit_direct(&ci.r#box.public()), None, "no client role");
+        assert_eq!(h.admit_direct(&me.r#box.public()), None, "not itself");
+        assert_eq!(h.admit_direct(&DeviceKeys::generate().r#box.public()), None, "a stranger");
+        // Two entries with one `box` key: the host refuses rather than pick.
+        {
+            let mut twin = Device::of(&DeviceKeys::generate(), false, both);
+            twin.r#box = Device::of(&phone, false, both).r#box;
+            let mut r = h.roster.write().unwrap();
+            r.body.devices.push(twin);
+        }
+        assert_eq!(h.admit_direct(&phone.r#box.public()), None, "a shared box key names no one");
+        h.roster.write().unwrap().body.devices.pop();
+        assert_eq!(h.admit_direct(&phone.r#box.public()), Some(phone.id()));
+        // Eight days without the cloud: no direct sessions until it hears again.
+        h.ledger.write().unwrap().contacted(0);
+        let mut stale = ledger::Ledger::default();
+        stale.contacted(now_ms() - 8 * DAY_MS);
+        *h.ledger.write().unwrap() = stale;
+        assert_eq!(h.admit_direct(&phone.r#box.public()), None, "7-day rule");
+        h.ledger.write().unwrap().contacted(now_ms());
+        assert_eq!(h.admit_direct(&phone.r#box.public()), Some(phone.id()));
+        // An account problem or a removal signal turns it off.
+        host().direct_ok.store(false, Ordering::Relaxed);
+        assert_eq!(h.admit_direct(&phone.r#box.public()), None);
+    }
+
+    #[test]
+    fn direct_sessions_stop_seven_days_after_the_last_contact() {
+        let now = 100 * DAY_MS;
+        assert!(!contact_fresh(0, now), "never heard from the cloud");
+        assert!(contact_fresh(now - DAY_MS, now));
+        assert!(contact_fresh(now - 7 * DAY_MS + 1, now));
+        assert!(!contact_fresh(now - 7 * DAY_MS, now), "the listener, the answer and live sessions stop");
     }
 
     #[test]

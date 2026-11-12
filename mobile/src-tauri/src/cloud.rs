@@ -24,14 +24,16 @@ use openagentd_cloud::flows::{
     self, Approval, FlowError, GenesisDraft, JoinStep, Member, Pace, Session, Withdraw,
 };
 use openagentd_cloud::keys::{self, DeviceKeys, Ed25519, Roles, Seed};
+use openagentd_cloud::address_book::AddressBook;
+use openagentd_cloud::link::{DownReason, Link, LinkDeps, LinkError, LinkState, Poke, Route, Target};
 use openagentd_cloud::recovery;
-use openagentd_cloud::relay::{self, Join, RelayError, Tunnel};
+use openagentd_cloud::relay::{self, TunnelEnd};
 use openagentd_cloud::roster;
 use openagentd_cloud::store::Identity;
 use serde::Serialize;
 use zeroize::Zeroizing;
 
-use crate::cloud_bridge::{Bridge, Io, Opener};
+use crate::cloud_bridge::{app_origin, Bridge, Io, Opener};
 
 // ---- Key storage ---------------------------------------------------------
 
@@ -259,8 +261,23 @@ struct Phone {
     approvals: tokio::sync::Mutex<HashMap<String, Approval>>,
     /// The one open invitation, while the Add a device sheet shows it.
     invite: tokio::sync::Mutex<Option<flows::Invite>>,
-    /// Relay sessions and their bridges, by computer device id.
-    links: tokio::sync::Mutex<HashMap<String, Link>>,
+    /// Relay links and their bridges, by computer device id.
+    links: tokio::sync::Mutex<HashMap<String, AccountLink>>,
+    /// Where each computer may be reached directly (spec 5.5), by device
+    /// id and network; kept in `cloud/direct.json`. Never filled from a
+    /// saved server.
+    addresses: Mutex<AddressBook>,
+    /// Each computer's bridge port, kept in `cloud/bridges.json`, so its
+    /// origin stays the same across launches.
+    bridge_ports: Mutex<HashMap<String, u16>>,
+    /// Where those two files live.
+    data_dir: std::path::PathBuf,
+    /// What a link needs to connect, copied from the member whenever its
+    /// roster changes, so no link waits on `member` (held across network
+    /// calls, up to minutes while an approval waits).
+    relay: Mutex<Option<RelayContext>>,
+    /// The one HTTP/1.1 client for relay sockets: its TLS sessions resume.
+    http1: reqwest::Client,
     /// Held per computer while its bridge opens, so two opens at once
     /// share one (and a slow computer doesn't hold up the others).
     opening: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
@@ -298,9 +315,18 @@ fn new_cloud() -> (Cloud, String) {
     (cloud, fingerprint)
 }
 
-struct Link {
-    tunnel: Arc<tokio::sync::Mutex<Option<Tunnel>>>,
+/// A computer's relay link and the loopback bridge in front of it.
+struct AccountLink {
+    link: Link,
     bridge: Bridge,
+}
+
+/// The member's relay client and the box keys of the account's servers,
+/// from its verified roster.
+struct RelayContext {
+    cloud: Arc<Cloud>,
+    client: bool,
+    servers: HashMap<String, [u8; 32]>,
 }
 
 static PHONE: OnceLock<Phone> = OnceLock::new();
@@ -313,10 +339,7 @@ fn supported() -> bool {
 /// Called once at startup with the app's data directory.
 pub fn init(data_dir: std::path::PathBuf) {
     #[cfg(target_os = "ios")]
-    let keys: Box<dyn PhoneKeys> = {
-        let _ = data_dir;
-        Box::new(ios_keys::Keychain)
-    };
+    let keys: Box<dyn PhoneKeys> = Box::new(ios_keys::Keychain);
     #[cfg(not(target_os = "ios"))]
     let keys: Box<dyn PhoneKeys> = Box::new(FileKeys(openagentd_cloud::store::FileStore::new(
         data_dir.join("cloud").join("identity.json"),
@@ -330,6 +353,11 @@ pub fn init(data_dir: std::path::PathBuf) {
         approvals: tokio::sync::Mutex::new(HashMap::new()),
         invite: tokio::sync::Mutex::new(None),
         links: tokio::sync::Mutex::new(HashMap::new()),
+        addresses: Mutex::new(read_json(&data_dir.join("cloud").join("direct.json"))),
+        bridge_ports: Mutex::new(read_json(&data_dir.join("cloud").join("bridges.json"))),
+        data_dir: data_dir.clone(),
+        relay: Mutex::new(None),
+        http1: relay::http1_client(),
         opening: Mutex::new(HashMap::new()),
         bridge_keys: Mutex::new(HashMap::new()),
         kinds: Mutex::new(HashMap::new()),
@@ -450,8 +478,64 @@ fn push_context(member: &Member) -> Option<serde_json::Value> {
     Some(serde_json::json!({ "account_id": member.account_id()?, "me": me, "senders": senders }))
 }
 
-/// Shares the push context with the extension (`None`: remove it).
+/// Copies what links need from `member` (`None`: signed out). The relay
+/// client is a separate one for the same device, so its token is shared
+/// by every link and dropped with the account.
+fn publish_relay(member: Option<&Member>) {
+    let Some(p) = PHONE.get() else { return };
+    let mut slot = p.relay.lock().expect("relay context");
+    let old = slot.take();
+    *slot = member.map(|m| {
+        let servers = m
+            .roster
+            .as_ref()
+            .map(|r| {
+                r.body
+                    .servers()
+                    .map(|d| (d.id.clone(), d.box_key()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        // Keep the client (and its token) while the account is the same.
+        let cloud = match old {
+            Some(old)
+                if old.cloud.device_id() == m.cloud.device_id()
+                    && old.cloud.account_id == m.cloud.account_id =>
+            {
+                old.cloud
+            }
+            _ => Arc::new(Cloud::new(
+                http(),
+                m.cloud.endpoints.clone(),
+                m.cloud.keys.clone(),
+                m.cloud.account_id.clone(),
+            )),
+        };
+        RelayContext {
+            cloud,
+            client: m.is_client(),
+            servers,
+        }
+    });
+    // Addresses only for computers still in the account (none signed out;
+    // a member without a verified roster yet changes nothing).
+    if member.is_some_and(|m| m.roster.is_none()) {
+        return;
+    }
+    let keep: Vec<String> = slot.as_ref().map(|c| c.servers.keys().cloned().collect()).unwrap_or_default();
+    drop(slot);
+    let mut book = p.addresses.lock().expect("addresses");
+    let before = book.clone();
+    book.retain(|d| keep.iter().any(|k| k == d));
+    if *book != before {
+        write_json(&p.data_dir.join("cloud").join("direct.json"), &*book);
+    }
+}
+
+/// Shares the push context with the extension (`None`: remove it), and
+/// the relay context with the links.
 fn publish_push_context(member: Option<&Member>) {
+    publish_relay(member);
     #[cfg(target_os = "ios")]
     {
         extern "C" {
@@ -630,7 +714,13 @@ async fn refresh() -> Result<(), String> {
                 drop(guard);
                 let mut links = p.links.lock().await;
                 for d in removed {
-                    links.remove(&d);
+                    if let Some(l) = links.remove(&d) {
+                        l.link.close();
+                        p.bridge_keys
+                            .lock()
+                            .expect("bridge keys")
+                            .remove(&l.bridge.origin);
+                    }
                 }
                 guard = p.member.lock().await;
             }
@@ -650,9 +740,7 @@ async fn close_links() {
     if let Ok(p) = phone() {
         let mut links = p.links.lock().await;
         for (_, link) in links.drain() {
-            if let Some(t) = link.tunnel.lock().await.take() {
-                t.end(1000);
-            }
+            link.link.close();
             p.bridge_keys
                 .lock()
                 .expect("bridge keys")
@@ -1209,9 +1297,7 @@ pub async fn cloud_remove_device(device_id: String) -> Result<Status, String> {
     .await?;
     let p = phone()?;
     if let Some(link) = p.links.lock().await.remove(&device_id) {
-        if let Some(t) = link.tunnel.lock().await.take() {
-            t.end(1000);
-        }
+        link.link.close();
         p.bridge_keys
             .lock()
             .expect("bridge keys")
@@ -1435,96 +1521,181 @@ pub fn signed_in() -> bool {
 }
 
 // ---- The relay bridge to a computer --------------------------------------
+//
+// One `Link` per computer (`openagentd_cloud::link`) keeps its relay session
+// up by itself: it reconnects with a backoff, checks itself when the app
+// comes back or the network changes (`cloud_poke`), and stops trying in the
+// background. The bridge in front of it waits at most `LINK_WAIT` per
+// request, then answers 503, which the web UI shows as its "Can't reach …
+// · Retrying…" banner.
 
-fn relay_message(e: &RelayError) -> String {
-    match e {
-        RelayError::Refused(a) if a.is("host_offline") => {
+/// Longest a bridged request waits for its computer's link.
+pub const LINK_WAIT: Duration = Duration::from_secs(10);
+/// Longest opening a computer waits for its link to come up.
+pub const OPEN_WAIT: Duration = Duration::from_secs(15);
+
+/// Why a link has nothing to connect with (`DownReason::Refused`).
+const SIGNED_OUT: &str = "signed_out";
+const NOT_CLIENT: &str = "not_client";
+const NOT_IN_ACCOUNT: &str = "not_in_account";
+const UNREACHABLE: &str = "This computer cannot be reached through your account right now.";
+
+fn down_message(reason: &DownReason) -> String {
+    match reason {
+        DownReason::HostOffline => {
             "This computer is offline, or not signed in to your account.".into()
         }
-        RelayError::Refused(a) if a.is("quota_exhausted") => {
+        DownReason::Paused { .. } => {
             "Today's relay allowance is used up. It resets tomorrow.".into()
         }
-        RelayError::Handshake => {
+        DownReason::Refused(r) if r == "handshake" => {
             "This computer did not prove its identity. Nothing was sent.".into()
         }
-        RelayError::TimedOut => {
+        DownReason::Refused(r) if r == NOT_CLIENT => {
+            "This phone cannot open computers through your account.".into()
+        }
+        DownReason::Refused(r) if r == NOT_IN_ACCOUNT => {
+            "This computer is not in your account.".into()
+        }
+        DownReason::Refused(r) if r == SIGNED_OUT => "Not signed in.".into(),
+        DownReason::Account(AccountProblem::Closing { .. }) => {
+            "Account scheduled for deletion. Remote access is paused; servers on your network still work.".into()
+        }
+        DownReason::Account(AccountProblem::Unavailable) => {
+            "Account unavailable. Remote access is paused; servers on your network still work."
+                .into()
+        }
+        _ => UNREACHABLE.into(),
+    }
+}
+
+fn link_message(e: &LinkError) -> String {
+    match e {
+        LinkError::Down(reason) => down_message(reason),
+        LinkError::TimedOut => {
             "This computer did not answer in time. Check that it is awake and online.".into()
         }
-        _ => "This computer cannot be reached through your account right now.".into(),
+        _ => UNREACHABLE.into(),
     }
 }
 
-async fn connect(device_id: &str) -> Result<Tunnel, String> {
-    let p = phone()?;
-    let guard = p.member.lock().await;
-    let member = guard.as_ref().ok_or("Not signed in.")?;
-    // Only a server, from a client (spec 3.4).
-    if !member.is_client() {
-        return Err("This phone cannot open computers through your account.".into());
+/// A small JSON file of the app's own (not secret), or the default.
+fn read_json<T: serde::de::DeserializeOwned + Default>(path: &std::path::Path) -> T {
+    std::fs::read(path)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+fn write_json<T: serde::Serialize>(path: &std::path::Path, value: &T) {
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
     }
-    let host_box = member
-        .roster
-        .as_ref()
-        .and_then(|r| r.body.servers().find(|d| d.id == device_id))
-        .map(|d| d.box_key())
-        .ok_or("This computer is not in your account.")?;
-    let r = relay::connect(
-        &member.cloud,
-        &relay::http1_client(),
-        device_id,
-        &host_box,
-        Join::default(),
-    )
-    .await;
-    drop(guard);
-    match r {
-        Ok(t) => {
-            // Why the session ended, in the device log: `cause=deadline` is
-            // this phone giving up a socket that went quiet.
-            let mut ended = t.ended.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Ok(end) = ended.wait_for(Option::is_some).await {
-                    if let Some(end) = *end {
-                        eprintln!("cloud: session ended {end}");
-                    }
-                }
-            });
-            Ok(t)
+    if let Ok(bytes) = serde_json::to_vec(value) {
+        let _ = std::fs::write(path, bytes);
+    }
+}
+
+/// What a computer's link asks of the phone: no lock is held once
+/// `target` returns.
+struct PhoneDeps;
+
+impl LinkDeps for PhoneDeps {
+    fn target(&self, device_id: &str) -> Result<Target, DownReason> {
+        let refused = |r: &str| DownReason::Refused(r.to_string());
+        let p = PHONE.get().ok_or_else(|| refused(SIGNED_OUT))?;
+        let ctx = p.relay.lock().expect("relay context");
+        let ctx = ctx.as_ref().ok_or_else(|| refused(SIGNED_OUT))?;
+        // Only a server, from a client (spec 3.4).
+        if !ctx.client {
+            return Err(refused(NOT_CLIENT));
         }
-        Err(e) => {
-            if let Some(problem) = e.problem() {
-                return Err(on_problem(problem).await);
-            }
-            Err(relay_message(&e))
+        let host_box = *ctx
+            .servers
+            .get(device_id)
+            .ok_or_else(|| refused(NOT_IN_ACCOUNT))?;
+        // Direct addresses only for the network the phone is on now.
+        let direct = p
+            .addresses
+            .lock()
+            .expect("addresses")
+            .candidates(device_id, &openagentd_cloud::direct::local_subnets());
+        Ok(Target {
+            cloud: ctx.cloud.clone(),
+            http1: p.http1.clone(),
+            host_box,
+            direct,
+        })
+    }
+
+    fn learned(&self, device_id: &str, answer: openagentd_cloud::direct::DirectAnswer) {
+        let Some(p) = PHONE.get() else { return };
+        let mut book = p.addresses.lock().expect("addresses");
+        if book.learned(device_id, &answer, &openagentd_cloud::direct::local_subnets()) {
+            write_json(&p.data_dir.join("cloud").join("direct.json"), &*book);
         }
     }
-}
 
-/// One stream to the computer; reconnects a session that ended.
-async fn stream_to(
-    device_id: String,
-    slot: Arc<tokio::sync::Mutex<Option<Tunnel>>>,
-) -> std::io::Result<Box<dyn Io>> {
-    let mut guard = slot.lock().await;
-    let alive = guard.as_ref().is_some_and(|t| !t.session.is_closed());
-    if !alive {
-        *guard = Some(connect(&device_id).await.map_err(std::io::Error::other)?);
+    fn on_problem(&self, problem: AccountProblem) {
+        tauri::async_runtime::spawn(async move {
+            let _ = on_problem(problem).await;
+        });
     }
-    let stream = guard
-        .as_ref()
-        .expect("connected")
-        .session
-        .open()
-        .map_err(|e| std::io::Error::other(e.to_string()))?;
-    Ok(Box::new(stream))
+
+    fn on_end(&self, _device_id: &str, end: &TunnelEnd) {
+        // `cause=deadline` is this phone giving up a socket that went quiet.
+        eprintln!("cloud: session ended {end}");
+    }
 }
 
-/// Opens (or reuses) the bridge to an account computer: its loopback origin.
-pub async fn open_bridge(device_id: &str) -> Result<String, String> {
+/// The route an account computer's link is on, for its row: `direct` ("On
+/// your network"), `relay` ("Through your account"), `connecting`, or
+/// `down`. `none` when the phone has no link to it.
+#[tauri::command]
+pub async fn cloud_link_route(device_id: String) -> Result<serde_json::Value, String> {
+    let Some(p) = PHONE.get() else {
+        return Ok(serde_json::json!({ "route": "none" }));
+    };
+    let links = p.links.lock().await;
+    let Some(l) = links.get(&device_id) else {
+        return Ok(serde_json::json!({ "route": "none" }));
+    };
+    let route = match &*l.link.state().borrow() {
+        LinkState::Up { route: Route::Direct { .. }, .. } => "direct",
+        LinkState::Up { route: Route::Relay, .. } => "relay",
+        LinkState::Connecting => "connecting",
+        LinkState::Down { .. } => "down",
+    };
+    Ok(serde_json::json!({ "route": route }))
+}
+
+/// Tells every link that the app came back, went away, or the network
+/// changed. From the web UI (`visibilitychange`, `online`).
+#[tauri::command]
+pub fn cloud_poke(why: String) -> Result<(), String> {
+    let why = match why.as_str() {
+        "resumed" => Poke::Resumed,
+        "network_changed" => Poke::NetworkChanged,
+        "user_retry" => Poke::UserRetry,
+        "background" => Poke::Background,
+        _ => return Err("Unknown reason.".into()),
+    };
+    let Some(p) = PHONE.get() else { return Ok(()) };
+    tauri::async_runtime::spawn(async move {
+        for l in p.links.lock().await.values() {
+            l.link.poke(why);
+        }
+    });
+    Ok(())
+}
+
+/// Starts (or finds) the link and bridge to an account computer, without
+/// waiting for the link: its loopback origin and its link.
+pub async fn start_bridge(device_id: &str) -> Result<(String, Link), String> {
     let p = phone()?;
     // One open at a time: two at once (a tapped notification while the
-    // launch falls back to the account) both connected, and the second
-    // replaced the first's bridge under a caller already using its origin.
+    // launch falls back to the account) must share one bridge, or the
+    // second replaces the first under a caller already using its origin.
     let gate = p
         .opening
         .lock()
@@ -1533,40 +1704,105 @@ pub async fn open_bridge(device_id: &str) -> Result<String, String> {
         .or_default()
         .clone();
     let _opening = gate.lock().await;
-    if let Some(link) = p.links.lock().await.get(device_id) {
-        return Ok(link.bridge.origin.clone());
+    if let Some(l) = p.links.lock().await.get(device_id) {
+        return Ok((l.bridge.origin.clone(), l.link.clone()));
     }
-    // Not holding `links` here: an account problem found while connecting
-    // closes every link.
-    let tunnel = connect(device_id).await?;
-    let slot = Arc::new(tokio::sync::Mutex::new(Some(tunnel)));
-    let (id, s) = (device_id.to_string(), slot.clone());
-    let opener: Opener = Arc::new(move || Box::pin(stream_to(id.clone(), s.clone())));
-    let bridge = Bridge::start(opener)
-        .await
-        .map_err(|e| format!("Could not open the local bridge: {e}"))?;
+    let link = Link::start(Arc::new(PhoneDeps), device_id.to_string());
+    let for_bridge = link.clone();
+    let opener: Opener = Arc::new(move || {
+        let link = for_bridge.clone();
+        Box::pin(async move {
+            match link.open_stream(LINK_WAIT).await {
+                Ok(stream) => Ok(Box::new(stream) as Box<dyn Io>),
+                Err(e) => Err(std::io::Error::new(
+                    std::io::ErrorKind::NotConnected,
+                    link_message(&e),
+                )),
+            }
+        })
+    });
+    let port = p.bridge_ports.lock().expect("bridge ports").get(device_id).copied();
+    let bridge = match Bridge::start_on(opener, app_origin, port).await {
+        Ok(b) => b,
+        Err(e) => {
+            link.close();
+            return Err(format!("Could not open the local bridge: {e}"));
+        }
+    };
     let origin = bridge.origin.clone();
-    p.bridge_keys
-        .lock()
-        .expect("bridge keys")
-        .insert(
-            origin.clone(),
-            BridgeEntry {
-                key: bridge.key().to_string(),
-                device_id: device_id.to_string(),
-            },
-        );
-    if let Some(old) = p.links.lock().await.insert(
+    if let Some(bound) = origin.rsplit(':').next().and_then(|p| p.parse::<u16>().ok()) {
+        let mut ports = p.bridge_ports.lock().expect("bridge ports");
+        if ports.get(device_id) != Some(&bound) {
+            ports.insert(device_id.to_string(), bound);
+            write_json(&p.data_dir.join("cloud").join("bridges.json"), &*ports);
+        }
+    }
+    p.bridge_keys.lock().expect("bridge keys").insert(
+        origin.clone(),
+        BridgeEntry {
+            key: bridge.key().to_string(),
+            device_id: device_id.to_string(),
+        },
+    );
+    p.links.lock().await.insert(
         device_id.to_string(),
-        Link {
-            tunnel: slot,
+        AccountLink {
+            link: link.clone(),
             bridge,
         },
-    ) {
+    );
+    Ok((origin, link))
+}
+
+/// Waits until `link` is up. Fails at once on a refusal that will not
+/// change by itself (offline, refused, the account), and after `wait` on
+/// a network that does not answer.
+pub async fn wait_up(link: &Link, wait: Duration) -> Result<(), String> {
+    let mut state = link.state();
+    let r = tokio::time::timeout(wait, async {
+        loop {
+            match &*state.borrow_and_update() {
+                LinkState::Up { .. } => return Ok(()),
+                LinkState::Down { reason, .. } if *reason != DownReason::Network => {
+                    return Err(down_message(reason))
+                }
+                LinkState::Down {
+                    retry_at: None,
+                    reason,
+                } => return Err(down_message(reason)),
+                _ => {}
+            }
+            if state.changed().await.is_err() {
+                return Err(UNREACHABLE.to_string());
+            }
+        }
+    })
+    .await;
+    r.unwrap_or_else(|_| {
+        Err("This computer did not answer in time. Check that it is awake and online.".into())
+    })
+}
+
+/// Closes a computer's link and bridge (opened for nothing, or failed).
+pub async fn drop_bridge(device_id: &str) {
+    let Ok(p) = phone() else { return };
+    if let Some(l) = p.links.lock().await.remove(device_id) {
+        l.link.close();
         p.bridge_keys
             .lock()
             .expect("bridge keys")
-            .remove(&old.bridge.origin);
+            .remove(&l.bridge.origin);
+    }
+}
+
+/// Opens (or reuses) the bridge to an account computer and waits for its
+/// link: its loopback origin.
+#[cfg(test)]
+pub async fn open_bridge(device_id: &str) -> Result<String, String> {
+    let (origin, link) = start_bridge(device_id).await?;
+    if let Err(e) = wait_up(&link, OPEN_WAIT).await {
+        drop_bridge(device_id).await;
+        return Err(e);
     }
     Ok(origin)
 }

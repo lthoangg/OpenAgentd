@@ -165,7 +165,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "appv3-agent"
-version = "3.52.0"
+version = "3.53.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -199,7 +199,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-api"
-version = "3.52.0"
+version = "3.53.0"
 dependencies = [
  "anyhow",
  "appv3-agent",
@@ -256,7 +256,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-cli"
-version = "3.52.0"
+version = "3.53.0"
 dependencies = [
  "anyhow",
  "appv3-agent",
@@ -294,7 +294,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-core"
-version = "3.52.0"
+version = "3.53.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -317,7 +317,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-db"
-version = "3.52.0"
+version = "3.53.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -336,7 +336,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-jsplugin"
-version = "3.52.0"
+version = "3.53.0"
 dependencies = [
  "appv3-core",
  "appv3-plugins",
@@ -367,7 +367,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-kernel"
-version = "3.52.0"
+version = "3.53.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -377,7 +377,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-mcp"
-version = "3.52.0"
+version = "3.53.0"
 dependencies = [
  "anyhow",
  "appv3-agent",
@@ -406,7 +406,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-memory"
-version = "3.52.0"
+version = "3.53.0"
 dependencies = [
  "appv3-core",
  "dunce",
@@ -420,7 +420,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-plugins"
-version = "3.52.0"
+version = "3.53.0"
 dependencies = [
  "dunce",
  "serde",
@@ -431,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-preview"
-version = "3.52.0"
+version = "3.53.0"
 dependencies = [
  "appv3-core",
  "appv3-tools",
@@ -453,7 +453,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-providers"
-version = "3.52.0"
+version = "3.53.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -484,7 +484,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-terminal"
-version = "3.52.0"
+version = "3.53.0"
 dependencies = [
  "appv3-core",
  "appv3-tools",
@@ -497,7 +497,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-tools"
-version = "3.52.0"
+version = "3.53.0"
 dependencies = [
  "anydoc",
  "appv3-core",
@@ -3280,6 +3280,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "if-addrs"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69b2eeee38fef3aa9b4cc5f1beea8a2444fc00e7377cafae396de3f5c2065e24"
+dependencies = [
+ "libc",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "ignore"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3997,12 +4007,18 @@ name = "openagentd-cloud"
 version = "0.0.0"
 dependencies = [
  "aes-gcm",
+ "bytes",
  "data-encoding",
  "ed25519-dalek",
+ "form_urlencoded",
  "futures-util",
  "getrandom 0.2.17",
  "hkdf 0.12.4",
  "hmac 0.12.1",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "if-addrs",
  "reqwest",
  "serde",
  "serde_json",
@@ -6792,6 +6808,15 @@ name = "windows-sys"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
+dependencies = [
+ "windows-targets",
+]
+
+[[package]]
+name = "windows-sys"
+version = "0.59.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets",
 ]

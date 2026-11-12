@@ -93,3 +93,88 @@ fn frame_len(b: &[u8]) -> Option<usize> {
     }
     (b.len() >= at + len).then_some(at + len)
 }
+
+/// Serves a TCP proxy for `upstream` that holds every chunk `one_way`
+/// before passing it on, each way: a network with a round trip of twice
+/// `one_way`, order kept. Returns its own base URL.
+#[allow(dead_code)]
+pub async fn with_latency(upstream: &str, one_way: std::time::Duration) -> String {
+    let target = upstream.trim_start_matches("http://").to_string();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        while let Ok((client, _)) = listener.accept().await {
+            let target = target.clone();
+            tokio::spawn(async move {
+                let Ok(server) = TcpStream::connect(&target).await else {
+                    return;
+                };
+                let _ = client.set_nodelay(true);
+                let _ = server.set_nodelay(true);
+                let (cr, cw) = client.into_split();
+                let (sr, sw) = server.into_split();
+                tokio::join!(delayed(cr, sw, one_way, None), delayed(sr, cw, one_way, None));
+            });
+        }
+    });
+    format!("http://{addr}")
+}
+
+/// Serves a TCP proxy for `upstream` that drops every byte, both ways,
+/// while the returned switch is on, and keeps the connections open: a
+/// network that went away without a word (Wi-Fi gone, a sleep).
+#[allow(dead_code)]
+pub async fn freezable(upstream: &str) -> (String, std::sync::Arc<std::sync::atomic::AtomicBool>) {
+    let target = upstream.trim_start_matches("http://").to_string();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let frozen = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let f = frozen.clone();
+    tokio::spawn(async move {
+        while let Ok((client, _)) = listener.accept().await {
+            let (target, f) = (target.clone(), f.clone());
+            tokio::spawn(async move {
+                let Ok(server) = TcpStream::connect(&target).await else {
+                    return;
+                };
+                let (cr, cw) = client.into_split();
+                let (sr, sw) = server.into_split();
+                let none = std::time::Duration::ZERO;
+                tokio::join!(delayed(cr, sw, none, Some(f.clone())), delayed(sr, cw, none, Some(f)));
+            });
+        }
+    });
+    (format!("http://{addr}"), frozen)
+}
+
+async fn delayed(
+    mut from: tokio::net::tcp::OwnedReadHalf,
+    mut to: tokio::net::tcp::OwnedWriteHalf,
+    one_way: std::time::Duration,
+    frozen: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+) {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(tokio::time::Instant, Vec<u8>)>();
+    let writer = tokio::spawn(async move {
+        while let Some((at, bytes)) = rx.recv().await {
+            tokio::time::sleep_until(at + one_way).await;
+            if to.write_all(&bytes).await.is_err() {
+                return;
+            }
+        }
+        let _ = to.shutdown().await;
+    });
+    let mut chunk = vec![0u8; 64 * 1024];
+    loop {
+        match from.read(&mut chunk).await {
+            Ok(0) | Err(_) => break,
+            Ok(_) if frozen.as_ref().is_some_and(|f| f.load(std::sync::atomic::Ordering::Relaxed)) => {}
+            Ok(n) => {
+                if tx.send((tokio::time::Instant::now(), chunk[..n].to_vec())).is_err() {
+                    break;
+                }
+            }
+        }
+    }
+    drop(tx);
+    let _ = writer.await;
+}

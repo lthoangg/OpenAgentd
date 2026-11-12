@@ -426,7 +426,7 @@ async fn pause_holds_the_hosts_writes_until_resume() {
 }
 
 /// Keepalive timings a test can wait out: ping every 30 ms, dead after 150 ms.
-const QUICK: Keepalive = Keepalive { every: Duration::from_millis(30), dead_after: Duration::from_millis(150) };
+const QUICK: Keepalive = Keepalive { every: Duration::from_millis(30), dead_after: Duration::from_millis(150), wall_clock: SystemTime::now };
 
 /// The client a host's presence runs with (one per process in the app).
 fn presence_cloud(server: &Member) -> Arc<Cloud> {
@@ -481,7 +481,7 @@ async fn presence_reconnects_at_once_when_the_wall_clock_says_the_machine_slept(
     let base = fake.serve().await;
     let (_phone, server) = account(&fake, &base).await;
     // A long deadline: only the clock jump can end it within the test.
-    let keepalive = Keepalive { every: Duration::from_millis(30), dead_after: Duration::from_secs(60) };
+    let keepalive = Keepalive { every: Duration::from_millis(30), dead_after: Duration::from_secs(60), wall_clock: SystemTime::now };
     let (presence, _stop) = spawn_presence(&server, HostOptions { keepalive, wall_clock: slept_clock, ..HostOptions::default() });
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert!(!presence.is_finished());

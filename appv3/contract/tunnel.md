@@ -237,10 +237,16 @@ the cloud derived.
 A device that left by itself (`POST /v1/devices/self/leave`) is revoked
 in the cloud's registry at once but stays in the signed roster until a
 signer publishes one without it. Its listing in the meantime grants
-nothing through the cloud; devices should treat a device id in the
-`revoked` list of the relay's presence `roster` message (or a session
-closed with 4001) as removed. A removal entry signed by the
-leaving device is later work (section 9).
+nothing. Every device keeps a set of **departed** devices: the ids in the
+`revoked` list of the relay's presence `roster` message, and the ids that
+`GET /v1/devices` shows with `revoked_at`. It keeps only ids its verified
+roster still lists (at most 9), stores the set on disk with its `K`, and
+treats each as removed (section 3.2) on every route: it refuses new
+sessions and closes live ones with 4001. An id leaves the set only when a
+verified roster no longer lists it. A device that joins again has new keys
+and a new id, so a departed id never comes back. Trusting the cloud here
+is safe, because it can only take access away. A removal entry signed by
+the leaving device is later work (section 9).
 
 ### 3.4 Roles in use
 
@@ -413,20 +419,37 @@ A controller (for example the phone) opens a session to a host (a computer
 or server running agents) as the API, section 6 describes. After
 `paired`, every binary WebSocket message is one Noise message.
 
-**Draft: text keepalive.** Besides WebSocket pings, every device sends the
-text `ping` (those four characters, not JSON) every 25 seconds on each of
-its relay sockets: the host's presence socket and both ends of every data
-socket. The relay answers with the text `pong` on the same socket (it is
-never forwarded to the other end), which the device does not parse as a
-message. The relay reports a host that sends it on presence offline 70
-seconds after the last one. A socket that has had no frame at all (`pong`,
-protocol pong, or data) for 60 seconds is dead: presence reconnects, and a
-data socket ends its session. A quiet session's only frames are these
+Sections 5.1 to 5.4 define the **session**: handshake, transport and
+streams. They are the same whatever carries the Noise messages. A relay
+session carries them in binary WebSocket messages through the relay; a
+direct session (section 5.5) carries them over TCP. Each carrier sets the
+prologue label, keepalive and flow control. Nothing else differs. Sessions
+are separate from any other way a device's server may be reached (such as
+a LAN listener with an access key): no credential of one is accepted by
+the other.
+
+**Text keepalive.** Besides WebSocket pings, every device sends the text
+`ping` (those four characters, not JSON) on each of its relay sockets: the
+host's presence socket and both ends of every data socket. It sends the
+first as soon as the socket is open and then one every 25 seconds, also
+while the relay has it paused (the API, "Flow control"). The relay answers
+with the text `pong` on the same socket (it is never forwarded to the other
+end), which the device does not parse as a message. The relay acts on the
+time of the last `ping`: 70 seconds after it, a host is reported offline
+(its presence socket), and a session is closed on both sides with 4013 (a
+data socket). A device whose session closes with 4013 opens a new one at
+once; `host_offline` then means the host is offline. A socket that has had
+no frame at all (`pong`, protocol pong, or data) for 60 seconds is dead:
+presence reconnects, and a data socket ends its session. A device also
+ends a socket when the wall clock moved more than 60 seconds between two
+of its checks (the machine slept), and, when the app comes back to the
+front or the network changes, pings at once and ends a socket that does
+not answer within 3 seconds. A quiet session's only frames are these
 answers, so the text `pong` keeps it up where protocol pongs do not come
-back. A relay from before this draft closes the socket with 1003 (a data
-socket: the whole session): when that happens before any `pong` came, the
-device reconnects and sends protocol pings only from then on, on every
-socket.
+back. A relay from before the text keepalive closes the socket with 1003
+(a data socket: the whole session): when that happens before any `pong`
+came, the device reconnects and sends protocol pings only from then on, on
+every socket.
 
 ### 5.1 Handshake
 
@@ -466,8 +489,10 @@ The plaintext is a **yamux** stream (version 0, the hashicorp/yamux spec):
   none in version 1.
 - The initial window is 256 KiB. After a stream opens, each side grows its
   receive window to 2 MiB with one window update.
-- No yamux pings: WebSocket pings keep the connection alive. Go Away
-  (normal termination) before closing the socket on purpose.
+- Relay sessions send no yamux pings: WebSocket pings and the text
+  keepalive keep them alive. Direct sessions send them (section 5.5).
+  Every session answers a ping. Send Go Away before closing the session on
+  purpose.
 - One yamux frame may span several Noise messages and one Noise message may
   carry several yamux frames; joining writes is what keeps the message
   count low.
@@ -494,9 +519,141 @@ server, byte for byte:
 - The controller answers CORS preflights (`OPTIONS`) itself.
 - The connector drops SSE comment lines (`: ping`) instead of forwarding
   them; the controller keeps the event source alive on its side.
-- Writes are joined for 50 ms or up to 65,519 bytes, whichever comes first.
+- Writes are joined into one message: a sender waits 2 ms after the first
+  waiting byte, or until 65,519 bytes wait, whichever comes first.
+  Messages smaller than 65,519 bytes are limited to 20 a second with a
+  burst of 8: once the burst is spent, the sender keeps joining until the
+  next message is allowed (at most 50 ms later). A full message is sent at
+  once and does not count. The rule is local to the sender, so devices
+  with and without it work together.
+- The controller's streams are taken in turn: frames without data
+  (opens, window updates) go first, then one frame of each stream with
+  data waiting, so a large transfer does not hold a small request back.
 - The connector sends requests only to its own local server. A request it
   cannot parse, or one for another host, gets `400` and the stream closes.
+
+### 5.5 Direct sessions
+
+A controller and a host on the same private network may run a session
+over TCP instead of the relay: a **direct session**. Keys, roles,
+handshake pattern and streams are those of a relay session. Only the
+carrier changes, and what belonged to the relay goes away. The cloud
+takes no part in it and learns nothing about it.
+
+**Who.** The controller dials a host only when the host has
+`server: true` in its verified roster and is not departed (section 3.3),
+and its own entry has `client: true`. The host accepts a controller only
+when that controller's static key is the `box` key of an entry in its
+verified roster with `client: true`, that is not the host itself and is
+not departed.
+
+**Addresses.** A host tells controllers where to reach it only inside an
+established session, relay or direct. Its server answers
+`GET /api/cloud/direct` for the session's device, and for no other
+caller, with
+
+```json
+{"v":1,"on":true,"port":4181,"addrs":["192.168.1.20","fd12:3456::20"]}
+```
+
+or `{"v":1,"on":false}`. `addrs` are the host's private addresses: at
+most 8, IPv4 in dotted form, IPv6 with no zone. **Private** means
+10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 and fc00::/7, with IPv4-mapped
+IPv6 read as IPv4. The controller accepts only private addresses, stores
+the answer under the host's device id together with the network it was
+on, replaces it on every answer, and dials those addresses only for that
+host, and only while it is on that network again (for example, the same
+local subnet). Addresses are never taken from anywhere else, such as a
+saved server.
+
+**Listener.** The host listens on `port`, on its private addresses only.
+It accepts a connection only when both the local and the peer address are
+private. It holds at most 16 connections that have not finished the
+handshake, at most 4 from one peer address, and closes new ones beyond
+that. It closes a connection that has not delivered message 1 within 5
+seconds of accepting it. It listens only while all of these hold: the
+person's setting is on (the default for a device with `server: true`),
+its own entry has `server: true`, the account is neither closing nor
+deleted, the device has no unconfirmed removal signal, and its last
+contact with the cloud (below) is less than 7 days old.
+
+**Greeting and framing.** The controller connects and sends the 17 ASCII
+bytes `agentd-direct-v1\n` (ending in 0x0A). The host closes the
+connection at once on any other bytes, before any key work. After the
+greeting, every message in either direction is a 2-byte big-endian length
+`L` followed by one Noise message of `L` bytes. Message 1 has `L = 96`,
+message 2 has `L = 48`, and transport messages have `16 ≤ L ≤ 65,535`.
+Any other length closes the connection.
+
+**Handshake.** As in section 5.1, with the prologue
+
+```
+lines("agentd-direct-v1", account_id, host id)
+```
+
+There is no offer. The host finds the controller by the static key in
+message 1: the roster entry whose `box` equals it. If more than one entry
+has that `box`, the host refuses. It runs the checks of section 5.1 on
+that entry, plus the departed set. If a check fails, or message 1 does
+not decrypt, the host closes the connection without sending anything.
+After message 2 the connection is still an unfinished handshake (it
+counts toward the listener's limits) until the host has decrypted a
+transport message on it; the host closes it, with nothing sent, if none
+arrives within 5 seconds of message 2. The controller's first ping
+(below) is that message. A controller treats a close or a timeout (2 seconds)
+before message 2 as "not reachable directly", and stays on or moves to
+the relay. Only the host whose `box` key the controller used can read
+message 1 or write message 2, so a different machine at a remembered
+address learns nothing and gets nothing.
+
+**Transport and streams.** Sections 5.2 to 5.4 apply, with these changes.
+There are no acks, pause or resume (the API's "Flow control"): TCP holds
+back a fast sender. The 2 ms join of section 5.4 applies, but not its
+limit of 20 messages a second, which protects the relay's allowance. Both
+sides turn Nagle off (`TCP_NODELAY`). There is no rekey: a host ends a
+direct session after 24 hours (Go Away 0), and the controller opens a new
+one.
+
+**Keepalive.** Each side sends a yamux ping (type 2, flag SYN, stream 0,
+a counter in the length field) as soon as the handshake ends and then
+every 25 seconds. The other side answers with ACK and the same value. A
+side closes the session when it has received no message for 60 seconds,
+or when its wall clock has moved more than 60 seconds further than its
+monotonic clock since the last message (the device slept). When a
+controller comes back to the foreground or its network changes, it pings
+at once and closes the session if nothing arrives within 3 seconds.
+
+**Closing.** Before it closes on purpose, a side sends a yamux Go Away
+whose length field carries the reason: `0` normal (including the setting
+turned off, the 24 hours, the 7-day rule, a shutdown, or a newer session
+replacing this one), `4001` the controller was removed (section 3.2), or
+`4011` the host's account is closing. Then it closes the TCP connection.
+A transport message that does not decrypt, or whose plaintext is not
+valid yamux, closes the connection at once with nothing sent (what 4002
+is on the relay). Reasons `1` (protocol error) and `2` (internal error)
+are accepted from a peer but not sent in this version. A controller
+handles Go Away 4001 as it handles a relay 4001, and any other reason,
+4011 included, as a lost route: on a direct session 4011 is one device's
+word, and only the cloud says the account is closing ("Account state",
+section 1). No new
+close code is added on the relay.
+
+**Limits.** A host keeps at most 8 direct sessions per controller and 32
+in all. A session counts toward these limits, and can replace an older
+one, only once the host has decrypted a transport message on it, so a
+replayed message 1 neither counts nor replaces anything. When a 9th
+session from one controller gets that far, the host closes that
+controller's oldest session (Go Away 0), because a phone that changed
+networks leaves dead sessions behind.
+
+**Last contact with the cloud.** A host records the wall-clock time of
+its last contact with the cloud: a signed roster fetch that returned a
+roster it verified (or no newer one), followed by a successful
+`GET /v1/devices`. It makes that contact at every (re)connection to the
+relay and on every presence `roster` message, at most once a minute.
+After 7 days with no contact, it stops accepting direct sessions and ends
+live ones with Go Away 0, until the next contact. That limits how long a
+device removed while the host was cut off can still reach it.
 
 ## 6. Mailbox letters
 
@@ -546,6 +703,7 @@ outputs:
 | `code` | Commit and the 6-digit code, from both sides |
 | `invite` | `proof` and `confirm` |
 | `noise` | A full IK handshake and two transport messages each way |
+| `direct` | The greeting bytes; the direct prologue; a full IK handshake with that prologue, as framed bytes (length prefix included); two framed transport messages each way; a yamux ping SYN and its ACK, and a Go Away 4001, as plaintext and as framed ciphertext; framing that must be refused: lengths 0, 15 and 97 for message 1, 0, 47 and 49 for message 2, and 0 and 15 for a transport message |
 | `letter` | A sealed letter at each size, and its plaintext |
 
 An X25519 or Ed25519 private key is given as its 32-byte seed. In
@@ -563,3 +721,7 @@ WebCrypto it is imported as PKCS#8: the 16 bytes
 - Changing a device's roles without removing and adding it again.
 - Host-opened streams (for example the host asking the controller for a
   file).
+- Direct sessions across the internet.
+- Finding hosts without the relay (mDNS).
+- A controller handing a host a newer signed roster when the host cannot
+  reach the cloud.

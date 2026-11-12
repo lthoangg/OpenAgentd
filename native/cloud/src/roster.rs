@@ -132,6 +132,15 @@ impl Body {
         self.device(id).filter(|d| d.client)
     }
 
+    /// The one device whose `box` key is `key` (a direct session's
+    /// controller, spec section 5.5). Two entries with that key name no
+    /// one: the list's order carries no meaning (section 3.1).
+    pub fn by_box(&self, key: &[u8; 32]) -> Option<&Device> {
+        let mut found = self.devices.iter().filter(|d| from_b64_array::<32>(&d.r#box).is_ok_and(|k| k == *key));
+        let one = found.next()?;
+        found.next().is_none().then_some(one)
+    }
+
     /// The devices other devices may open sessions to (`server: true`).
     pub fn servers(&self) -> impl Iterator<Item = &Device> {
         self.devices.iter().filter(|d| d.server)

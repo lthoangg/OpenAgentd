@@ -1,6 +1,6 @@
 [package]
 name = "openagentd-mobile"
-version = "3.52.0"
+version = "3.53.0"
 description = "OpenAgentd mobile shell"
 authors = ["openagentd contributors"]
 license = "Apache-2.0"
@@ -37,16 +37,11 @@ keyring = { version = "3.6.3", default-features = false, features = ["apple-nati
 # OpenAgentd Cloud accounts (optional): the protocol, the API client, and the
 # relay session. Its crypto dependencies are reviewed in
 # appv3/contract/tunnel-threats.md.
-openagentd-cloud = { path = "../../native/cloud" }
-# The loopback bridge that carries the web UI's requests over the relay.
-hyper = { version = "1", features = ["server", "client", "http1"] }
-hyper-util = { version = "0.1", features = ["tokio"] }
-http-body-util = "0.1"
-bytes = "1"
+# `bridge`: the loopback bridge that carries the web UI's requests over the
+# relay.
+openagentd-cloud = { path = "../../native/cloud", features = ["bridge"] }
 tokio = { version = "1", features = ["net", "io-util", "sync", "time", "macros", "rt"] }
-subtle = "2.6"
 zeroize = "1.8"
-form_urlencoded = "1"
 
 # The QR scanner for connect links (Servers → Scan QR code). Mobile only.
 [target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
@@ -77,6 +72,11 @@ tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
 # The fake cloud of native/cloud/tests, for the account end-to-end test.
 axum = { version = "0.8", features = ["ws"] }
 futures-util = { version = "0.3", features = ["sink"] }
+# The stand-in computer of the account end-to-end test.
+hyper = { version = "1", features = ["server", "client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

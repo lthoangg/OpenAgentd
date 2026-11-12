@@ -47,7 +47,6 @@ import { useTouchFirst } from '@/hooks/use-touch-first'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { shake } from '@/lib/shake'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
-import { rememberLanFingerprint } from '@/lib/computer-fingerprints'
 import { cn } from '@/lib/utils'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
@@ -127,11 +126,6 @@ interface AppBackendPanelProps {
   /** Lets a host reload the list (the phone's pull to refresh). */
   controlRef?: Ref<AppBackendPanelControl>
   /**
-   * Saved servers (normalized addresses) the host lists itself, as one row
-   * with the account computer they are: the phone's merged Servers list.
-   */
-  hiddenServerUrls?: ReadonlySet<string>
-  /**
    * The phone's Servers screen scans with one scanner for both kinds of
    * code (an account invitation, or a connect code it hands back as
    * `prefill`): Scan QR code calls this instead of the panel's own.
@@ -153,7 +147,7 @@ type ServerFormTarget =
   | { kind: 'add' }
   | { kind: 'edit'; baseUrl: string; label: string; inUse: boolean }
 
-export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, sectionTitle = 'Servers', onOpenInUse, controlRef, hiddenServerUrls, onScanQr }: AppBackendPanelProps) {
+export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, sectionTitle = 'Servers', onOpenInUse, controlRef, onScanQr }: AppBackendPanelProps) {
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
   // Nothing is listed until the shell has answered once: before that a
   // phone with no server would flash the browser build's placeholder rows.
@@ -223,8 +217,6 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
         void pingServer(normalized).then((online) => {
           if (cancelled) return
           setServerHealth((prev) => ({ ...prev, [normalized]: online ? 'online' : 'offline' }))
-          // An answering server may be an account computer: learn which.
-          if (online) void rememberLanFingerprint(normalized)
         })
       }
       if (prefill) void testConnection(prefill.baseUrl, prefill.accessKey)
@@ -244,7 +236,6 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       await Promise.all(toCheck.map(async (normalized) => {
         const online = await pingServer(normalized)
         setServerHealth((prev) => ({ ...prev, [normalized]: online ? 'online' : 'offline' }))
-        if (online) void rememberLanFingerprint(normalized)
       }))
     },
   }), [])
@@ -577,7 +568,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             {openInUse(status ? unlistedUrl : 'This server')}
           </ServerRow>
         ) : null}
-        {servers.filter((server) => !hiddenServerUrls?.has(normalizeServerBaseUrl(server.base_url))).map((server) => {
+        {servers.map((server) => {
           const normalizedServerUrl = normalizeServerBaseUrl(server.base_url)
           const active = onExternal && normalizeServerBaseUrl(currentUrl) === normalizedServerUrl
           const label = server.name || server.base_url

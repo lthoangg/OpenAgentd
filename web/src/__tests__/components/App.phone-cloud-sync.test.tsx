@@ -26,7 +26,12 @@ const realRouter = await import('@tanstack/react-router')
 mock.module('@tanstack/react-router', () => ({ ...realRouter, RouterProvider: () => null }))
 mock.module('@/hooks/use-phone-cloud-sync', () => ({ PhoneCloudSync: () => <div data-testid="phone-cloud-sync" /> }))
 let fallbacks = 0
-mock.module('@/lib/account-lan-fallback', () => ({ fallBackToAccountOnce: async () => { fallbacks += 1; return 'skipped' } }))
+let watches = 0
+let stops = 0
+mock.module('@/lib/account-route', () => ({
+  checkRouteAtLaunch: async () => { fallbacks += 1; return 'skipped' },
+  startAccountRouteWatch: () => { watches += 1; return () => { stops += 1 } },
+}))
 
 const { default: App } = await import('@/App')
 
@@ -49,12 +54,17 @@ describe('the account sync on the phone', () => {
   })
 })
 
-describe('the launch fallback to the account', () => {
-  it('is asked for once when the app starts on the phone', async () => {
+describe('the route to an account computer', () => {
+  it('is checked once, and watched, when the app starts on the phone', async () => {
     fallbacks = 0
+    watches = 0
+    stops = 0
     ready = false
-    render(<App />)
+    const view = render(<App />)
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(fallbacks).toBe(1)
+    expect(watches).toBe(1)
+    view.unmount()
+    expect(stops).toBe(1)
   })
 })

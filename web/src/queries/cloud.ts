@@ -19,21 +19,12 @@ import {
   type Roles,
 } from '@/api/cloud'
 import { approvalProof, canApproveHere } from '@/lib/approval-proof'
+import { cloudPollInterval } from './cloud-light'
 import { queryKeys } from './keys'
 
-/** How often the status is refetched while a sign-in is waiting on the user. */
-export const CLOUD_POLL_MS = 2000
+export { CLOUD_POLL_MS, cloudPollInterval, useDesktopCloudDevices, useDesktopCloudStatus } from './cloud-light'
 /** How often a signer asks for pending requests (the desktop notifies on a new one). */
 export const CLOUD_PENDING_POLL_MS = 30_000
-
-/**
- * Poll only while something is in progress (`signing_in`, `joining`).
- * Otherwise the status refetches on mount and window focus, so nothing runs
- * unless the screen is open.
- */
-export function cloudPollInterval(status: CloudStatus | undefined): number | false {
-  return status?.state === 'signing_in' || status?.state === 'joining' || status?.state === 'invited' ? CLOUD_POLL_MS : false
-}
 
 export function useCloudStatusQuery() {
   return useQuery({

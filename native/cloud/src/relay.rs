@@ -56,12 +56,28 @@ pub const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
 pub const PAIR_TIMEOUT: Duration = Duration::from_secs(35);
 /// Longest wait for the Noise handshake once paired.
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long a socket has to answer a ping sent because the app came back
+/// to the front or the network changed ([`Tunnel::check`]).
+pub const CHECK_WITHIN: Duration = Duration::from_secs(3);
+
+/// How long a sender holds the first waiting byte for more to join it
+/// (spec section 5.4).
+pub const JOIN_HOLD: Duration = Duration::from_millis(2);
+/// Small messages (below a full Noise message) a sender may send back to
+/// back before [`SMALL_PER_SECOND`] applies (spec section 5.4).
+pub const SMALL_BURST: u32 = 8;
+/// Small messages a second once the burst is spent.
+pub const SMALL_PER_SECOND: u32 = 20;
 
 /// Presence replaced by a newer socket: another copy of this host (same
 /// keys) connected.
 pub const CLOSE_REPLACED: u16 = 4000;
 /// The host's daily relay allowance is used up.
 pub const CLOSE_QUOTA: u16 = 4010;
+/// The relay ended the session because the other side sent text pings and
+/// then none for 70 seconds: it went away without a close. Reconnect at
+/// once; a relay from before this code never sends it.
+pub const CLOSE_SILENT: u16 = 4013;
 
 type Ws = WebSocketStream<reqwest::Upgraded>;
 
@@ -122,11 +138,13 @@ impl std::fmt::Display for RelayError {
 impl std::error::Error for RelayError {}
 
 /// An HTTP/1.1-only client: a WebSocket upgrade cannot happen on HTTP/2.
+/// Keep one per process (or per account) and pass clones, so the TLS
+/// sessions and connections it pools are reused.
 pub fn http1_client() -> reqwest::Client {
     reqwest::Client::builder().http1_only().connect_timeout(Duration::from_secs(15)).build().expect("an HTTP client")
 }
 
-/// Opens a relay WebSocket at `path` with a fresh relay token (in the
+/// Opens a relay WebSocket at `path` with the client's relay token (in the
 /// `Authorization` header, never the URL), within [`OPEN_TIMEOUT`].
 pub async fn open_socket(cloud: &Cloud, http1: &reqwest::Client, path: &str) -> Result<Ws, RelayError> {
     open_socket_within(cloud, http1, path, OPEN_TIMEOUT).await
@@ -138,6 +156,19 @@ async fn open_socket_within(cloud: &Cloud, http1: &reqwest::Client, path: &str, 
 
 async fn open_socket_now(cloud: &Cloud, http1: &reqwest::Client, path: &str) -> Result<Ws, RelayError> {
     let token = cloud.relay_token().await.map_err(RelayError::Refused)?;
+    match upgrade(cloud, http1, path, &token.token).await {
+        // The token in use was refused (expired early, invalidated, or this
+        // device revoked): drop it and try once more with a new one.
+        Err(RelayError::Refused(e)) if e.status == 401 => {
+            cloud.forget_relay_token_if(&token.token);
+            let token = cloud.relay_token().await.map_err(RelayError::Refused)?;
+            upgrade(cloud, http1, path, &token.token).await
+        }
+        other => other,
+    }
+}
+
+async fn upgrade(cloud: &Cloud, http1: &reqwest::Client, path: &str, token: &crate::api::Secret) -> Result<Ws, RelayError> {
     let key = generate_key();
     let resp = http1
         .get(format!("{}{}", cloud.endpoints.api, path))
@@ -145,16 +176,17 @@ async fn open_socket_now(cloud: &Cloud, http1: &reqwest::Client, path: &str) -> 
         .header(UPGRADE, "websocket")
         .header(SEC_WEBSOCKET_VERSION, "13")
         .header(SEC_WEBSOCKET_KEY, &key)
-        .bearer_auth(token.token.expose())
+        .bearer_auth(token.expose())
         .send()
         .await
         .map_err(|_| RelayError::Network)?;
     if resp.status().as_u16() != 101 {
         let status = resp.status().as_u16();
+        let retry_after = resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok());
         // An error body is read up to the API's cap; a larger one is dropped.
         let body: Option<Value> = crate::api::read_body(resp).await.ok().and_then(|b| serde_json::from_slice(&b).ok());
         let code = body.as_ref().and_then(|b| b.get("error")).and_then(|e| e.as_str()).unwrap_or("unknown").to_string();
-        return Err(RelayError::Refused(ApiError { status, code, body, retry_after: None }));
+        return Err(RelayError::Refused(ApiError { status, code, body, retry_after }));
     }
     let expected = derive_accept_key(key.as_bytes());
     if resp.headers().get(SEC_WEBSOCKET_ACCEPT).and_then(|v| v.to_str().ok()) != Some(expected.as_str()) {
@@ -216,14 +248,82 @@ async fn next_binary(ws: &mut Ws) -> Result<Vec<u8>, RelayError> {
     }
 }
 
-/// How a tunnel joins its writes (spec section 5.4: 50 ms or up to 65,519
-/// bytes, whichever comes first).
+/// How long a tunnel holds the first waiting byte for more writes to join
+/// it (spec section 5.4: [`JOIN_HOLD`], or until 65,519 bytes wait,
+/// whichever comes first). Small messages are also kept to
+/// [`SMALL_PER_SECOND`] after a burst of [`SMALL_BURST`]; see [`SendRule`].
 #[derive(Debug, Clone, Copy)]
 pub struct Join(pub Duration);
 
 impl Default for Join {
     fn default() -> Self {
-        Join(Duration::from_millis(50))
+        Join(JOIN_HOLD)
+    }
+}
+
+/// When a sender sends what waits (spec section 5.4): after the hold, a
+/// small message only when the rate allows it (a token bucket of
+/// [`SMALL_BURST`], refilled at [`SMALL_PER_SECOND`]); a full message at
+/// once, without counting. The rule is local to the sender, so devices with
+/// and without it work together.
+#[derive(Debug, Clone, Copy)]
+pub struct SendRule {
+    hold: Duration,
+    tokens: f64,
+    at: tokio::time::Instant,
+    /// No rate limit (a direct session: there is no relay allowance).
+    unlimited: bool,
+}
+
+/// What a sender does with the bytes that wait.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Flush {
+    /// A full message: send it now.
+    Full,
+    /// A small message: send it now (a token was spent).
+    Small,
+    /// Keep joining until then.
+    At(tokio::time::Instant),
+    /// Nothing waits.
+    Idle,
+}
+
+impl SendRule {
+    pub fn new(join: Join, now: tokio::time::Instant) -> SendRule {
+        SendRule { hold: join.0, tokens: SMALL_BURST as f64, at: now, unlimited: false }
+    }
+
+    /// The hold of `join` without the rate limit (spec section 5.5).
+    pub fn unlimited(join: Join, now: tokio::time::Instant) -> SendRule {
+        SendRule { unlimited: true, ..SendRule::new(join, now) }
+    }
+
+    fn refill(&mut self, now: tokio::time::Instant) {
+        let gained = now.saturating_duration_since(self.at).as_secs_f64() * SMALL_PER_SECOND as f64;
+        self.tokens = (self.tokens + gained).min(SMALL_BURST as f64);
+        self.at = now;
+    }
+
+    /// `queued` bytes wait, the oldest since `since`.
+    pub fn decide(&mut self, now: tokio::time::Instant, queued: usize, since: tokio::time::Instant) -> Flush {
+        if queued >= MAX_PLAINTEXT {
+            return Flush::Full;
+        }
+        if queued == 0 {
+            return Flush::Idle;
+        }
+        if self.unlimited {
+            let held = since + self.hold;
+            return if now >= held { Flush::Small } else { Flush::At(held) };
+        }
+        self.refill(now);
+        let held = since + self.hold;
+        if now >= held && self.tokens >= 1.0 {
+            self.tokens -= 1.0;
+            return Flush::Small;
+        }
+        let allowed = if self.tokens >= 1.0 { now } else { now + Duration::from_secs_f64((1.0 - self.tokens) / SMALL_PER_SECOND as f64) };
+        Flush::At(held.max(allowed))
     }
 }
 
@@ -231,15 +331,17 @@ impl Default for Join {
 /// it died.
 #[derive(Debug, Clone, Copy)]
 pub struct Keepalive {
-    /// How often it pings.
+    /// How often it pings (the first ping goes out as soon as it opens).
     pub every: Duration,
     /// No frame for this long, or a wall-clock jump this long, ends it.
     pub dead_after: Duration,
+    /// The wall clock a tunnel checks for a sleep (see [`HostOptions`]).
+    pub wall_clock: fn() -> SystemTime,
 }
 
 impl Default for Keepalive {
     fn default() -> Self {
-        Keepalive { every: PING_EVERY, dead_after: DEAD_AFTER }
+        Keepalive { every: PING_EVERY, dead_after: DEAD_AFTER, wall_clock: SystemTime::now }
     }
 }
 
@@ -291,6 +393,51 @@ pub struct Tunnel {
     pub closed: watch::Receiver<Option<u16>>,
     /// How it ended, once it has (for the logs).
     pub ended: watch::Receiver<Option<TunnelEnd>>,
+    ping_now: mpsc::UnboundedSender<()>,
+    probe: Arc<Probe>,
+    /// Go Away carries the close reason (a direct session, spec 5.5).
+    go_away_reasons: bool,
+}
+
+/// A check in progress ([`Tunnel::check`]): the reader ends the tunnel
+/// unless a frame comes in by the deadline.
+#[derive(Default)]
+pub(crate) struct Probe {
+    deadline: Mutex<Option<tokio::time::Instant>>,
+    pub(crate) changed: tokio::sync::Notify,
+}
+
+impl Probe {
+    pub(crate) fn deadline(&self) -> Option<tokio::time::Instant> {
+        *self.deadline.lock().expect("probe lock")
+    }
+
+    pub(crate) fn expect_by(&self, by: tokio::time::Instant) {
+        let mut d = self.deadline.lock().expect("probe lock");
+        if d.is_none_or(|old| by < old) {
+            *d = Some(by);
+        }
+        drop(d);
+        self.changed.notify_one();
+    }
+
+    pub(crate) fn answered(&self) {
+        self.deadline.lock().expect("probe lock").take();
+    }
+}
+
+/// The keepalive: a protocol ping, which keeps the socket open on any
+/// relay, and the text ping the relay answers itself (a frame to count
+/// while the session has nothing to say), unless an older relay refused it.
+async fn send_pings<S>(sink: &mut S, text_off: &AtomicBool) -> Result<(), ()>
+where
+    S: futures_util::Sink<Message> + Unpin,
+{
+    sink.send(Message::Ping(Vec::new().into())).await.map_err(|_| ())?;
+    if !text_off.load(Ordering::Relaxed) {
+        sink.send(Message::Text(TEXT_PING.into())).await.map_err(|_| ())?;
+    }
+    Ok(())
 }
 
 /// Why a tunnel ended.
@@ -344,10 +491,12 @@ impl Tunnel {
     /// `text_off` is the client's text keepalive switch
     /// ([`Cloud::turn_off_text_keepalive`]).
     fn start(ws: Ws, transport: Transport, client: bool, join: Join, keepalive: Keepalive, text_off: Arc<AtomicBool>) -> Tunnel {
-        let (session, mut outbound) = Session::new(client);
+        let (session, outbound) = Session::new(client);
         let (closer, mut close_rx) = mpsc::unbounded_channel::<u16>();
         let (closed_tx, closed) = watch::channel(None);
         let (ended_tx, ended) = watch::channel(None);
+        let (ping_now, mut ping_rx) = mpsc::unbounded_channel::<()>();
+        let probe = Arc::new(Probe::default());
         // The code this side closed with, if it did (0: it did not).
         let local = Arc::new(AtomicU16::new(0));
         let started = Instant::now();
@@ -356,20 +505,52 @@ impl Tunnel {
         let (ctl_tx, mut ctl_rx) = mpsc::unbounded_channel::<Message>();
         let (pause_tx, mut pause_rx) = watch::channel(false);
 
-        // Writer: joins yamux frames, encrypts, honours pause, sends acks.
+        // Writer: sends what the session queued by the send rule, encrypted;
+        // holds data while paused, but still pings, acks and closes.
         let t_out = transport.clone();
         let local_out = local.clone();
         let text_out = text_off.clone();
         let writer = tokio::spawn(async move {
+            // The first tick is at once: a socket pings as soon as it is up.
             let mut ping = tokio::time::interval(keepalive.every);
-            ping.tick().await;
-            let mut pending: Vec<u8> = Vec::new();
-            let mut deadline: Option<tokio::time::Instant> = None;
+            ping.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            let mut rule = SendRule::new(join, tokio::time::Instant::now());
+            // When the oldest waiting byte started waiting.
+            let mut since: Option<tokio::time::Instant> = None;
+            let mut paused = false;
             loop {
-                let flush_now = pending.len() >= MAX_PLAINTEXT;
+                let mut wake = None;
+                if !paused {
+                    let now = tokio::time::Instant::now();
+                    let queued = outbound.queued();
+                    if queued == 0 {
+                        since = None;
+                        if outbound.is_done() {
+                            return;
+                        }
+                    }
+                    let first = *since.get_or_insert(now);
+                    match rule.decide(now, queued, first) {
+                        Flush::Full | Flush::Small => {
+                            let plain = outbound.take(MAX_PLAINTEXT);
+                            let msg = match t_out.lock().expect("noise lock").encrypt(&plain) {
+                                Ok(m) => m,
+                                Err(_) => return,
+                            };
+                            if sink.send(Message::Binary(msg.into())).await.is_err() {
+                                return;
+                            }
+                            // What is left waited already; it goes by the rate.
+                            since = (outbound.queued() > 0).then_some(first);
+                            continue;
+                        }
+                        Flush::At(at) => wake = Some(at),
+                        Flush::Idle => since = None,
+                    }
+                }
                 let sleep = async {
-                    match deadline {
-                        Some(d) => tokio::time::sleep_until(d).await,
+                    match wake {
+                        Some(at) => tokio::time::sleep_until(at).await,
                         None => std::future::pending().await,
                     }
                 };
@@ -383,64 +564,27 @@ impl Tunnel {
                     }
                     Some(msg) = ctl_rx.recv() => {
                         if sink.send(msg).await.is_err() { return; }
-                        continue;
+                    }
+                    r = pause_rx.changed() => {
+                        if r.is_err() { return; }
+                        paused = *pause_rx.borrow_and_update();
+                    }
+                    Some(()) = ping_rx.recv() => {
+                        if send_pings(&mut sink, &text_out).await.is_err() { return; }
                     }
                     _ = ping.tick() => {
-                        // The protocol ping keeps the socket open on any relay.
-                        if sink.send(Message::Ping(Vec::new().into())).await.is_err() { return; }
-                        // The text ping is answered by the relay itself: a
-                        // frame to count while the session has nothing to say.
-                        if !text_out.load(Ordering::Relaxed) && sink.send(Message::Text(TEXT_PING.into())).await.is_err() { return; }
-                        continue;
+                        if send_pings(&mut sink, &text_out).await.is_err() { return; }
                     }
-                    bytes = outbound.recv(), if !flush_now => {
-                        match bytes {
-                            Some(b) => {
-                                pending.extend_from_slice(&b);
-                                deadline.get_or_insert_with(|| tokio::time::Instant::now() + join.0);
-                                if pending.len() < MAX_PLAINTEXT { continue; }
-                            }
-                            None => return,
-                        }
-                    }
+                    _ = outbound.pushed(), if !paused => {}
                     _ = sleep => {}
                 }
-                // Flush what is pending, in messages of at most MAX_PLAINTEXT.
-                deadline = None;
-                let mut at = 0;
-                while at < pending.len() {
-                    // Paused: hold data, but still send acks and honour a close.
-                    while *pause_rx.borrow() {
-                        tokio::select! {
-                            r = pause_rx.changed() => if r.is_err() { return; },
-                            code = close_rx.recv() => {
-                                let code = code.unwrap_or(1000);
-                                local_out.store(code, Ordering::Relaxed);
-                                let _ = sink.send(Message::Close(Some(CloseFrame { code: CloseCode::from(code), reason: "".into() }))).await;
-                                return;
-                            }
-                            Some(msg) = ctl_rx.recv() => {
-                                if sink.send(msg).await.is_err() { return; }
-                            }
-                        }
-                    }
-                    let end = (at + MAX_PLAINTEXT).min(pending.len());
-                    let msg = match t_out.lock().expect("noise lock").encrypt(&pending[at..end]) {
-                        Ok(m) => m,
-                        Err(_) => return,
-                    };
-                    if sink.send(Message::Binary(msg.into())).await.is_err() {
-                        return;
-                    }
-                    at = end;
-                }
-                pending.clear();
             }
         });
 
         // Reader: decrypts into the session, counts bytes for acks.
         let s_in = session.clone();
         let closer_in = closer.clone();
+        let probe_in = probe.clone();
         tokio::spawn(async move {
             let mut unacked = 0usize;
             let mut code = 1006u16;
@@ -450,22 +594,49 @@ impl Tunnel {
             // Pings go out every `keepalive.every` (the writer); with no
             // frame back for `keepalive.dead_after` the socket is dead.
             let mut last_in = tokio::time::Instant::now();
+            // The monotonic clock stands still while the machine sleeps; a
+            // wall-clock gap longer than the deadline says it slept, and the
+            // other side (and the relay) gave the session up meanwhile.
+            let mut wall = (keepalive.wall_clock)();
             loop {
+                let now_wall = (keepalive.wall_clock)();
+                if now_wall.duration_since(wall).is_ok_and(|gap| gap > keepalive.dead_after) {
+                    cause = EndCause::Deadline;
+                    break;
+                }
+                wall = now_wall;
+                let now = tokio::time::Instant::now();
                 let dead_at = last_in + keepalive.dead_after;
-                let wake = if unacked > 0 { dead_at.min(tokio::time::Instant::now() + ACK_IDLE) } else { dead_at };
-                let next = match tokio::time::timeout_at(wake, stream.next()).await {
+                let checked_by = probe_in.deadline();
+                let mut wake = dead_at.min(now + keepalive.every);
+                if unacked > 0 {
+                    wake = wake.min(last_in + ACK_IDLE);
+                }
+                if let Some(by) = checked_by {
+                    wake = wake.min(by);
+                }
+                let changed = probe_in.changed.notified();
+                let next = tokio::select! {
+                    n = tokio::time::timeout_at(wake, stream.next()) => n,
+                    _ = changed => continue,
+                };
+                let next = match next {
                     Ok(n) => n,
-                    Err(_) if tokio::time::Instant::now() >= dead_at => {
-                        cause = EndCause::Deadline;
-                        break;
-                    }
                     Err(_) => {
-                        let _ = ctl_tx.send(Message::Text(json!({"type":"ack","bytes":unacked}).to_string().into()));
-                        unacked = 0;
+                        let now = tokio::time::Instant::now();
+                        if now >= dead_at || checked_by.is_some_and(|by| now >= by) {
+                            cause = EndCause::Deadline;
+                            break;
+                        }
+                        if unacked > 0 && now >= last_in + ACK_IDLE {
+                            let _ = ctl_tx.send(Message::Text(json!({"type":"ack","bytes":unacked}).to_string().into()));
+                            unacked = 0;
+                        }
                         continue;
                     }
                 };
                 last_in = tokio::time::Instant::now();
+                probe_in.answered();
                 match next {
                     // The keepalive's answer: not a JSON message.
                     Some(Ok(Message::Text(t))) if t.as_str() == TEXT_PONG => ponged = true,
@@ -532,12 +703,43 @@ impl Tunnel {
             let _ = closed_tx.send(Some(code));
             writer.abort();
         });
-        Tunnel { session, closer, closed, ended }
+        Tunnel { session, closer, closed, ended, ping_now, probe, go_away_reasons: false }
     }
 
-    /// Go Away, then close the socket with `code`.
+    /// Pings now, and ends the tunnel (as a missed deadline) unless a frame
+    /// comes back within `within`: after the app came back to the front or
+    /// the network changed, a socket can be dead with nothing to say so.
+    pub fn check(&self, within: Duration) {
+        self.probe.expect_by(tokio::time::Instant::now() + within);
+        let _ = self.ping_now.send(());
+    }
+
+    /// Whether the tunnel ended.
+    pub fn is_closed(&self) -> bool {
+        self.closed.borrow().is_some() || self.session.is_closed()
+    }
+
+    /// A tunnel over another carrier (spec section 5.5): its own tasks
+    /// feed these channels.
+    pub(crate) fn from_parts(
+        session: Session,
+        closer: mpsc::UnboundedSender<u16>,
+        closed: watch::Receiver<Option<u16>>,
+        ended: watch::Receiver<Option<TunnelEnd>>,
+        ping_now: mpsc::UnboundedSender<()>,
+        probe: Arc<Probe>,
+    ) -> Tunnel {
+        Tunnel { session, closer, closed, ended, ping_now, probe, go_away_reasons: true }
+    }
+
+    /// Go Away, then close the socket with `code`. On a direct session the
+    /// Go Away carries the reason (spec section 5.5).
     pub fn end(&self, code: u16) {
-        self.session.go_away();
+        if self.go_away_reasons {
+            self.session.go_away_with(go_away_reason(code));
+        } else {
+            self.session.go_away();
+        }
         let _ = self.closer.send(code);
     }
 
@@ -563,6 +765,27 @@ impl Tunnel {
     }
 }
 
+/// The Go Away reason of a direct session for a close code (spec section
+/// 5.5): removed and account closing keep their code; anything else is a
+/// normal end.
+pub fn go_away_reason(code: u16) -> u32 {
+    match code {
+        4001 | 4011 => code as u32,
+        _ => 0,
+    }
+}
+
+/// The close code a direct session's Go Away reason stands for.
+/// 4011 on a direct session is one device's word, not the cloud's: the
+/// controller takes it as a lost route, never as the account closing.
+pub fn close_code_of(reason: u32) -> u16 {
+    match reason {
+        1 | 2 => 4002,
+        4001 => 4001,
+        _ => 1000,
+    }
+}
+
 /// Closes a tunnel.
 #[derive(Clone)]
 pub struct Closer(mpsc::UnboundedSender<u16>);
@@ -581,14 +804,50 @@ pub async fn connect(cloud: &Cloud, http1: &reqwest::Client, host_id: &str, host
 
 /// [`connect`] with the keepalive timings chosen.
 pub async fn connect_with(cloud: &Cloud, http1: &reqwest::Client, host_id: &str, host_box: &[u8; 32], join: Join, keepalive: Keepalive) -> Result<Tunnel, RelayError> {
+    connect_within(cloud, http1, host_id, host_box, join, keepalive, Waits::default()).await
+}
+
+/// How long each step of opening a session may take.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Waits {
+    /// The relay token and the upgrade.
+    pub open: Duration,
+    /// `paired`.
+    pub pair: Duration,
+    /// The Noise handshake.
+    pub handshake: Duration,
+}
+
+impl Waits {
+    /// While someone waits for the session: 10 s at most per step, and the
+    /// caller tries again by itself (a [`crate::link::Link`]).
+    pub const INTERACTIVE: Waits = Waits { open: Duration::from_secs(10), pair: Duration::from_secs(10), handshake: Duration::from_secs(10) };
+}
+
+impl Default for Waits {
+    fn default() -> Self {
+        Waits { open: OPEN_TIMEOUT, pair: PAIR_TIMEOUT, handshake: HANDSHAKE_TIMEOUT }
+    }
+}
+
+/// [`connect_with`] with the waits chosen.
+pub async fn connect_within(
+    cloud: &Cloud,
+    http1: &reqwest::Client,
+    host_id: &str,
+    host_box: &[u8; 32],
+    join: Join,
+    keepalive: Keepalive,
+    waits: Waits,
+) -> Result<Tunnel, RelayError> {
     let account = cloud.account_id.clone().ok_or(RelayError::Handshake)?;
     let session_id = b64(&random_bytes::<16>());
-    let mut ws = open_socket(cloud, http1, &format!("/v1/relay/host/{host_id}/data/{session_id}")).await?;
-    within(PAIR_TIMEOUT, await_paired(&mut ws)).await?;
+    let mut ws = open_socket_within(cloud, http1, &format!("/v1/relay/host/{host_id}/data/{session_id}"), waits.open).await?;
+    within(waits.pair, await_paired(&mut ws)).await?;
     let prologue = noise::prologue(&account, &session_id, &cloud.device_id(), host_id);
     let mut init = Initiator::new(cloud.keys.r#box.seed(), host_box, &prologue, None).map_err(|_| RelayError::Handshake)?;
     let m1 = init.write_message1().map_err(|_| RelayError::Handshake)?;
-    let m2 = within(HANDSHAKE_TIMEOUT, async {
+    let m2 = within(waits.handshake, async {
         ws.send(Message::Binary(m1.into())).await.map_err(|_| RelayError::Network)?;
         next_binary(&mut ws).await
     })
@@ -613,6 +872,13 @@ pub trait HostHandler: Send + Sync + 'static {
     fn on_roster(&self, version: u64, revoked: Vec<String>);
     /// A session from `from` ended (for the logs).
     fn on_session_end(&self, _from: &str, _end: &TunnelEnd) {}
+    /// Direct sessions (spec section 5.5): the device whose `box` key is
+    /// `static_key`, if it may open a session now (active, `client`, not
+    /// departed, and direct sessions allowed on this host). The host's one
+    /// admission question for a key it did not expect.
+    fn admit_direct(&self, _static_key: &[u8; 32]) -> Option<String> {
+        None
+    }
 }
 
 /// Open sessions by controller, so a removed device loses them at once.
@@ -620,12 +886,29 @@ pub trait HostHandler: Send + Sync + 'static {
 pub struct Sessions(Arc<Mutex<HashMap<String, Vec<Closer>>>>);
 
 impl Sessions {
-    fn add(&self, device: &str, closer: Closer) {
+    pub(crate) fn add(&self, device: &str, closer: Closer) {
         self.0.lock().expect("sessions lock").entry(device.to_string()).or_default().push(closer);
     }
 
+    /// Adds a session within limits: at most `per_device` for `device`
+    /// (the oldest is closed with `close_oldest`) and `total` in all.
+    /// Returns false, adding nothing, when `total` is reached.
+    pub(crate) fn add_capped(&self, device: &str, closer: Closer, per_device: usize, total: usize, close_oldest: u16) -> bool {
+        let mut map = self.0.lock().expect("sessions lock");
+        let list = map.entry(device.to_string()).or_default();
+        if list.len() >= per_device {
+            list.remove(0).close(close_oldest);
+        }
+        let count: usize = map.values().map(Vec::len).sum();
+        if count >= total {
+            return false;
+        }
+        map.entry(device.to_string()).or_default().push(closer);
+        true
+    }
+
     /// Forgets a session that ended.
-    fn remove(&self, device: &str, closer: &Closer) {
+    pub(crate) fn remove(&self, device: &str, closer: &Closer) {
         let mut map = self.0.lock().expect("sessions lock");
         if let Some(list) = map.get_mut(device) {
             list.retain(|c| !c.0.same_channel(&closer.0));
@@ -694,6 +977,8 @@ fn ends_sessions(code: u16) -> bool {
 /// [`host`] with its timings and clock chosen.
 pub async fn host_with(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<dyn HostHandler>, sessions: Sessions, stop: oneshot::Receiver<()>, opts: HostOptions) -> RelayError {
     let HostOptions { join, keepalive, wall_clock, opened, open_timeout } = opts;
+    // The host's sessions watch the same clock for a sleep.
+    let keepalive = Keepalive { wall_clock, ..keepalive };
     let opened = OpenFlag(opened);
     let path = format!("/v1/relay/host/{}/presence", cloud.device_id());
     let mut ws = match open_socket_within(&cloud, &http1, &path, open_timeout).await {
@@ -704,8 +989,9 @@ pub async fn host_with(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<d
     // Text pings unless an older relay already refused one (once per client).
     let text_keepalive = cloud.text_keepalive();
     let mut ponged = false;
+    // The first tick is at once: presence pings as soon as it is up.
     let mut ping = tokio::time::interval(keepalive.every);
-    ping.tick().await;
+    ping.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut stop = stop;
     let mut last_in = tokio::time::Instant::now();
     let mut wall = wall_clock();
@@ -751,6 +1037,9 @@ pub async fn host_with(cloud: Arc<Cloud>, http1: reqwest::Client, handler: Arc<d
                             tokio::spawn(async move { let _ = join_session(&cloud, &http1, &sid, &from, handler, sessions, (join, keepalive)).await; });
                         }
                         Some("roster") => {
+                            // The roster changed: the next socket gets a
+                            // token for the new one.
+                            cloud.forget_relay_token();
                             let revoked = revoked_list(&v["revoked"]);
                             for d in &revoked {
                                 sessions.revoke(d);
@@ -842,6 +1131,86 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// Runs the send rule over `writes` (times after the start, in ms, of
+    /// writes of `size` bytes each), as the writer does; returns the times
+    /// at which messages leave.
+    fn simulate(writes: &[f64], size: usize, until_ms: f64) -> Vec<f64> {
+        let start = tokio::time::Instant::now();
+        let at = |ms: f64| start + Duration::from_secs_f64(ms / 1000.0);
+        let mut rule = SendRule::new(Join::default(), start);
+        let (mut queued, mut since, mut sent) = (0usize, None::<f64>, Vec::new());
+        let mut next = 0;
+        let mut now = 0.0;
+        while now <= until_ms {
+            while next < writes.len() && writes[next] <= now {
+                queued += size;
+                since.get_or_insert(writes[next]);
+                next += 1;
+            }
+            match since.map(|s| rule.decide(at(now), queued, at(s))) {
+                Some(Flush::Full) => {
+                    queued -= MAX_PLAINTEXT;
+                    sent.push(now);
+                    continue;
+                }
+                Some(Flush::Small) => {
+                    queued = 0;
+                    since = None;
+                    sent.push(now);
+                    continue;
+                }
+                _ => {}
+            }
+            now += 0.1;
+        }
+        sent
+    }
+
+    #[test]
+    fn a_lone_write_leaves_after_the_hold() {
+        let sent = simulate(&[0.0], 100, 100.0);
+        assert_eq!(sent.len(), 1);
+        assert!((2.0..2.2).contains(&sent[0]), "{sent:?}");
+    }
+
+    #[test]
+    fn a_burst_of_small_writes_makes_at_most_nine_messages_in_50_ms() {
+        // 20 writes, one every 2.5 ms: each would leave on its own.
+        let writes: Vec<f64> = (0..20).map(|i| i as f64 * 2.5).collect();
+        let sent = simulate(&writes, 100, 1000.0);
+        let first_50 = sent.iter().filter(|&&t| t < 50.0).count();
+        assert!(first_50 <= 9, "{sent:?}");
+        assert!(first_50 >= 8, "the burst is spent first: {sent:?}");
+    }
+
+    #[test]
+    fn a_long_run_of_small_writes_makes_20_messages_a_second() {
+        let writes: Vec<f64> = (0..10_000).map(|i| i as f64).collect();
+        let sent = simulate(&writes, 50, 10_000.0);
+        // 8 at once, then 20 a second.
+        let per_second = (sent.len() - SMALL_BURST as usize) as f64 / 10.0;
+        assert!((19.0..=21.0).contains(&per_second), "{} messages", sent.len());
+    }
+
+    #[test]
+    fn a_full_message_leaves_at_once_and_does_not_count() {
+        let start = tokio::time::Instant::now();
+        let mut rule = SendRule::new(Join::default(), start);
+        for _ in 0..SMALL_BURST {
+            assert_eq!(rule.decide(start + JOIN_HOLD, 10, start), Flush::Small);
+        }
+        assert!(matches!(rule.decide(start + JOIN_HOLD, 10, start), Flush::At(_)), "the burst is spent");
+        for _ in 0..100 {
+            assert_eq!(rule.decide(start, MAX_PLAINTEXT, start), Flush::Full);
+        }
+        // The next small one waits at most 50 ms.
+        match rule.decide(start + JOIN_HOLD, 10, start) {
+            Flush::At(at) => assert!(at - start <= Duration::from_millis(50) + JOIN_HOLD, "{:?}", at - start),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(rule.decide(start, 0, start), Flush::Idle);
+    }
+
     #[test]
     fn the_revoked_list_keeps_id_shaped_entries_from_the_newest_16() {
         let id = |i: u8| crate::encoding::b64(&[i; 16]);
@@ -871,6 +1240,17 @@ mod tests {
         for code in [1000, 1001, 1003, 1006, 4000, 4008, 4009, 4010] {
             assert!(!ends_sessions(code), "{code}");
         }
+    }
+
+    #[test]
+    fn a_direct_go_away_maps_to_a_close_code() {
+        assert_eq!(close_code_of(0), 1000);
+        assert_eq!(close_code_of(4001), 4001);
+        assert_eq!(close_code_of(1), 4002);
+        assert_eq!(close_code_of(2), 4002);
+        // Only the cloud says the account is closing.
+        assert_eq!(close_code_of(4011), 1000);
+        assert_eq!(close_code_of(77), 1000);
     }
 
     #[test]

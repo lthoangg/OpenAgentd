@@ -303,6 +303,10 @@ async fn off_main_thread<T: Send + 'static>(
 
 #[tauri::command]
 pub async fn secure_get_access_key(origin: String) -> Result<Option<String>, String> {
+    // An account bridge: its key lives in memory for this launch only.
+    if let Some(key) = crate::account::bridge_key(&origin) {
+        return Ok(Some(key));
+    }
     off_main_thread(move || openagentd_shell_core::get_access_key(&origin)).await
 }
 
@@ -458,6 +462,7 @@ pub async fn app_backend_status_for_window(
     } else {
         state.desktop_token.lock().await.clone()
     };
+    let account_device = if external { crate::account::account_device(&base_url) } else { None };
     Ok(AppBackendStatus {
         base_url,
         token,
@@ -473,6 +478,7 @@ pub async fn app_backend_status_for_window(
         external: mode == BackendMode::External,
         supports_bundled: true,
         servers,
+        account_device,
     })
 }
 
@@ -523,17 +529,6 @@ pub async fn app_use_external_backend(
     persist: Option<bool>,
 ) -> Result<AppBackendStatus, String> {
     let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
-    let state: tauri::State<'_, AppState> = app.state();
-    let previous = state
-        .window_backend_base_urls
-        .lock()
-        .unwrap()
-        .insert(window.label().to_string(), normalized.clone());
-    // Previews of the previous server must not stay reachable.
-    if previous.as_deref() != Some(normalized.as_str()) {
-        crate::preview_relay::close_window(&app, window.label());
-    }
-
     if persist.unwrap_or(true) {
         // Keep it in the server list only. It never becomes a server the app
         // connects to on its own (`active_base_url` is left alone): the next
@@ -548,12 +543,32 @@ pub async fn app_use_external_backend(
         crate::island::servers_changed(&app);
     }
 
+    point_window_at(&app, &window, &normalized).await
+}
+
+/// Switches `window` to the external server at `normalized` (a saved
+/// server, or an account computer's bridge): its frontend gets the new base
+/// URL without the built-in server's token. Bridges no window uses any
+/// more are closed.
+pub async fn point_window_at(app: &AppHandle, window: &tauri::WebviewWindow, normalized: &str) -> Result<AppBackendStatus, String> {
+    let normalized = normalized.to_string();
+    let state: tauri::State<'_, AppState> = app.state();
+    let previous = state
+        .window_backend_base_urls
+        .lock()
+        .unwrap()
+        .insert(window.label().to_string(), normalized.clone());
+    // Previews of the previous server must not stay reachable.
+    if previous.as_deref() != Some(normalized.as_str()) {
+        crate::preview_relay::close_window(app, window.label());
+    }
+    crate::account::release_unused(app);
     let init_script = frontend_init_script(None, &normalized);
     window
         .eval(&init_script)
         .map_err(|e| format!("inject external backend config: {e:#}"))?;
-    update_tray_status(&app, "Status: Running");
-    
+    update_tray_status(app, "Status: Running");
+
     #[derive(Clone, Serialize)]
     struct BackendReady {
         port: u16,
@@ -610,6 +625,7 @@ pub async fn app_remove_backend_server(
     for label in detached {
         crate::preview_relay::close_window(&app, &label);
     }
+    crate::account::release_unused(&app);
     crate::island::servers_changed(&app);
     app_backend_status_for_window(app.clone(), app.state(), window.label())
         .await
@@ -653,6 +669,7 @@ pub async fn app_use_bundled_backend(
         .unwrap()
         .remove(window.label());
     crate::preview_relay::close_window(&app, window.label());
+    crate::account::release_unused(&app);
     let init_script = frontend_init_script(backend_ready.token.as_deref(), &backend_ready.base_url);
     window
         .eval(&init_script)
@@ -766,6 +783,16 @@ pub async fn start_bundled_sidecar(app: &AppHandle) -> Result<BackendReady, Stri
 #[tauri::command]
 pub async fn app_stop_bundled_backend(app: AppHandle) -> Result<(), String> {
     shutdown_sidecar_now(&app).await;
+    Ok(())
+}
+
+/// Starts the built-in server without switching any window to it ("Your
+/// computers" offers Start: the account keys live there). Windows on it
+/// get it back.
+#[tauri::command]
+pub async fn app_start_bundled_backend(app: AppHandle) -> Result<(), String> {
+    let ready = start_bundled_sidecar(&app).await?;
+    crate::watchdog::notify_bundled_windows(&app, ready);
     Ok(())
 }
 

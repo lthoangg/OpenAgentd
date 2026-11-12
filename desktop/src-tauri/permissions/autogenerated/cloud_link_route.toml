@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-link-route"
+description = "Enables the cloud_link_route command without any pre-configured scope."
+commands.allow = ["cloud_link_route"]
+
+[[permission]]
+identifier = "deny-cloud-link-route"
+description = "Denies the cloud_link_route command without any pre-configured scope."
+commands.deny = ["cloud_link_route"]

@@ -1,10 +1,12 @@
 //! Every case of `appv3/contract/tunnel_vectors.json`, byte for byte.
 
 use openagentd_cloud::code::{self, CodeInput, Joiner, Signer};
+use openagentd_cloud::direct::{self, Expect};
 use openagentd_cloud::encoding::{b64, from_b64, from_b64_array};
 use openagentd_cloud::invite::{self, Candidate, Confirmation};
 use openagentd_cloud::keys::{device_id, fingerprint, parse_pubs, pubs_bytes, Ed25519, Roles, Seed, X25519};
 use openagentd_cloud::letter::{self, Context, Kind};
+use openagentd_cloud::mux;
 use openagentd_cloud::noise::{self, Initiator, Responder};
 use openagentd_cloud::recovery;
 use openagentd_cloud::roster::{self, Chain, Roster};
@@ -250,6 +252,90 @@ fn noise_handshake_and_transport() {
         let other = noise::prologue(s(c, "account_id"), "another-session-id", s(ctl, "id"), s(host, "id"));
         let mut r2 = Responder::new(&seed(host, "static_seed"), &other, Some(&he)).unwrap();
         assert!(r2.read_message1(&m1).is_err());
+    }
+}
+
+fn read_one(bytes: &[u8], expect: Expect) -> Result<Vec<u8>, direct::DirectError> {
+    let mut r = bytes;
+    tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(direct::read_frame(&mut r, expect))
+}
+
+#[test]
+fn direct_greeting_handshake_framing_and_refusals() {
+    let v = vectors();
+    for c in v["direct"].as_array().unwrap() {
+        assert_eq!(s(c, "protocol"), noise::PROTOCOL);
+        assert_eq!(s(c, "greeting").as_bytes(), direct::GREETING);
+        let ctl = &c["controller"];
+        let host = &c["host"];
+        let prologue = noise::direct_prologue(s(c, "account_id"), s(host, "id"));
+        assert_eq!(String::from_utf8(prologue.clone()).unwrap(), s(c, "prologue"));
+        let host_box = X25519::from_seed(seed(host, "static_seed")).public();
+        let ctl_box = X25519::from_seed(seed(ctl, "static_seed")).public();
+        let (ce, he) = (seed(ctl, "ephemeral_seed"), seed(host, "ephemeral_seed"));
+
+        let mut init = Initiator::new(&seed(ctl, "static_seed"), &host_box, &prologue, Some(&ce)).unwrap();
+        let m1 = init.write_message1().unwrap();
+        assert_eq!(b64(&m1), s(c, "message1"));
+        assert_eq!(b64(&direct::frame(&m1)), s(c, "message1_framed"));
+        assert_eq!(read_one(&from_b64(s(c, "message1_framed")).unwrap(), Expect::Message1).unwrap(), m1);
+        let mut resp = Responder::new(&seed(host, "static_seed"), &prologue, Some(&he)).unwrap();
+        assert_eq!(resp.read_message1(&m1).unwrap(), ctl_box);
+        let (m2, mut host_t) = resp.write_message2().unwrap();
+        assert_eq!(b64(&m2), s(c, "message2"));
+        assert_eq!(b64(&direct::frame(&m2)), s(c, "message2_framed"));
+        assert_eq!(read_one(&from_b64(s(c, "message2_framed")).unwrap(), Expect::Message2).unwrap(), m2);
+        let mut ctl_t = init.read_message2(&m2).unwrap();
+        assert_eq!(b64(&ctl_t.handshake_hash), s(c, "handshake_hash"));
+        assert_eq!(b64(&host_t.handshake_hash), s(c, "handshake_hash"));
+
+        // A relay prologue for the same keys does not open this message 1.
+        let relay = noise::prologue(s(c, "account_id"), "a-session", s(ctl, "id"), s(host, "id"));
+        assert!(Responder::new(&seed(host, "static_seed"), &relay, Some(&he)).unwrap().read_message1(&m1).is_err());
+
+        // One connection: transport, then yamux, nonces running on.
+        let mut step = |from: &str, plain: &[u8], message: &str, framed: &str| {
+            let (send, recv) = if from == "controller" { (&mut ctl_t, &mut host_t) } else { (&mut host_t, &mut ctl_t) };
+            let msg = send.encrypt(plain).unwrap();
+            assert_eq!(b64(&msg), message);
+            assert_eq!(b64(&direct::frame(&msg)), framed);
+            let read = read_one(&from_b64(framed).unwrap(), Expect::Transport).unwrap();
+            assert_eq!(recv.decrypt(&read).unwrap(), plain);
+        };
+        for t in c["transport"].as_array().unwrap() {
+            step(s(t, "from"), s(t, "plaintext").as_bytes(), s(t, "message"), s(t, "framed"));
+        }
+        for y in c["yamux"].as_array().unwrap() {
+            let header =
+                mux::header(y["type"].as_u64().unwrap() as u8, y["flags"].as_u64().unwrap() as u16, y["stream"].as_u64().unwrap() as u32, y["length"].as_u64().unwrap() as u32);
+            assert_eq!(b64(&header), s(y, "header"), "{}", s(y, "name"));
+            step(s(y, "from"), &header, s(y, "message"), s(y, "framed"));
+        }
+
+        // The session reads the frames as the spec says: a ping SYN is
+        // answered with the ACK of the vectors, and Go Away carries 4001.
+        let by_name = |n: &str| c["yamux"].as_array().unwrap().iter().find(|y| y["name"] == n).unwrap_or_else(|| panic!("{n}"));
+        let ping = by_name("ping");
+        let (host_mux, host_out) = mux::Session::new(false);
+        host_mux.receive(&from_b64(s(ping, "header")).unwrap()).unwrap();
+        let ack = c["yamux"].as_array().unwrap().iter().find(|y| y["from"] == "host" && y["type"] == 2).unwrap();
+        assert_eq!(b64(&host_out.take(usize::MAX)), s(ack, "header"));
+        let bye = c["yamux"].as_array().unwrap().iter().find(|y| y["type"] == 3).unwrap();
+        let (ctl_mux, _out) = mux::Session::new(true);
+        ctl_mux.receive(&from_b64(s(bye, "header")).unwrap()).unwrap();
+        assert_eq!(ctl_mux.peer_go_away(), Some(4001));
+
+        for r in c["refused"].as_array().unwrap() {
+            let expect = match s(r, "expect") {
+                "message1" => Expect::Message1,
+                "message2" => Expect::Message2,
+                "transport" => Expect::Transport,
+                other => panic!("unknown expect {other}"),
+            };
+            assert!(!expect.allows(r["length"].as_u64().unwrap() as usize), "{}", s(r, "name"));
+            let bytes = from_b64(s(r, "bytes")).unwrap();
+            assert!(read_one(&bytes, expect).is_err(), "{} is refused", s(r, "name"));
+        }
     }
 }
 

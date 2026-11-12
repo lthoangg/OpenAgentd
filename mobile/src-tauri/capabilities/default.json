@@ -52,6 +52,8 @@
     "allow-cloud-sign-out",
     "allow-notification-take-taps",
     "allow-cloud-open-computer",
+    "allow-cloud-poke",
+    "allow-cloud-link-route",
     "allow-cloud-push-register",
     "allow-updater-check",
     "allow-updater-download",

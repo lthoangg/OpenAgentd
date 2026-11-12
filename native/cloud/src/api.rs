@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime};
 
 use reqwest::{Method, StatusCode};
 use serde::de::DeserializeOwned;
@@ -280,6 +280,39 @@ pub struct RelayToken {
     pub roster_version: u64,
 }
 
+/// A relay token is reused until this long before it expires.
+pub const RELAY_TOKEN_MARGIN: Duration = Duration::from_secs(60);
+
+/// The relay token in use, and when it stops being reused: by the wall
+/// clock and by the monotonic one (which stands still while a phone
+/// sleeps), whichever says so first.
+struct CachedToken {
+    token: RelayToken,
+    until_wall: SystemTime,
+    until: Instant,
+}
+
+impl CachedToken {
+    fn fresh(&self) -> bool {
+        Instant::now() < self.until && SystemTime::now() < self.until_wall
+    }
+}
+
+/// The relay token every socket of one client shares (memory only).
+#[derive(Default)]
+struct TokenCache {
+    token: Mutex<Option<CachedToken>>,
+    /// One fetch at a time: sockets that open together share it.
+    fetching: tokio::sync::Mutex<()>,
+}
+
+impl TokenCache {
+    fn get(&self) -> Option<RelayToken> {
+        let held = self.token.lock().expect("relay token lock");
+        held.as_ref().filter(|c| c.fresh()).map(|c| c.token.clone())
+    }
+}
+
 /// One host in `GET /v1/relay/usage`. Only what a device shows is read.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct HostUsage {
@@ -342,6 +375,8 @@ pub struct Cloud {
     /// sockets alike (`relay::host`, `relay::connect`). Shared with the
     /// tunnels this client opened.
     text_keepalive_off: Arc<AtomicBool>,
+    /// The relay token in use (never on disk, never printed).
+    relay_tokens: Arc<TokenCache>,
 }
 
 impl fmt::Debug for Cloud {
@@ -356,7 +391,16 @@ fn sha256_b64(data: &[u8]) -> String {
 
 impl Cloud {
     pub fn new(http: reqwest::Client, endpoints: Endpoints, keys: DeviceKeys, account_id: Option<String>) -> Self {
-        Cloud { http, endpoints, keys, roles: Roles::platform_default(), account_id, nonce: Mutex::new(None), text_keepalive_off: Arc::new(AtomicBool::new(false)) }
+        Cloud {
+            http,
+            endpoints,
+            keys,
+            roles: Roles::platform_default(),
+            account_id,
+            nonce: Mutex::new(None),
+            text_keepalive_off: Arc::new(AtomicBool::new(false)),
+            relay_tokens: Arc::new(TokenCache::default()),
+        }
     }
 
     /// The `pubs` bytes this device sends: its keys and [`Cloud::roles`].
@@ -375,6 +419,7 @@ impl Cloud {
         let mut c = Cloud::new(self.http.clone(), self.endpoints.clone(), self.keys.clone(), self.account_id.clone());
         c.roles = self.roles;
         c.text_keepalive_off = self.text_keepalive_off.clone();
+        c.relay_tokens = self.relay_tokens.clone();
         c
     }
 
@@ -684,7 +729,42 @@ impl Cloud {
 
     // ---- 5. Relay tokens ------------------------------------------------
 
+    /// The relay token for this client's sockets: the one in use until
+    /// [`RELAY_TOKEN_MARGIN`] before it expires, else a new one. Sockets
+    /// that open together share one fetch. A token is valid for 15 minutes
+    /// and may be used for many sockets; fetching one per socket spent the
+    /// device's token allowance on retries.
     pub async fn relay_token(&self) -> ApiResult<RelayToken> {
+        if let Some(t) = self.relay_tokens.get() {
+            return Ok(t);
+        }
+        let _one = self.relay_tokens.fetching.lock().await;
+        if let Some(t) = self.relay_tokens.get() {
+            return Ok(t);
+        }
+        let token = self.fetch_relay_token().await?;
+        let life = Duration::from_secs(token.expires_in).saturating_sub(RELAY_TOKEN_MARGIN);
+        let cached = (!life.is_zero()).then(|| CachedToken { token: token.clone(), until_wall: SystemTime::now() + life, until: Instant::now() + life });
+        *self.relay_tokens.token.lock().expect("relay token lock") = cached;
+        Ok(token)
+    }
+
+    /// Drops the relay token in use, so the next socket fetches a new one:
+    /// after a roster change, and on sign-out.
+    pub fn forget_relay_token(&self) {
+        self.relay_tokens.token.lock().expect("relay token lock").take();
+    }
+
+    /// Drops `used` if it is still the token in use (the relay refused it).
+    pub fn forget_relay_token_if(&self, used: &Secret) {
+        let mut held = self.relay_tokens.token.lock().expect("relay token lock");
+        if held.as_ref().is_some_and(|c| &c.token.token == used) {
+            held.take();
+        }
+    }
+
+    /// A new relay token from the cloud, bypassing the one in use.
+    pub async fn fetch_relay_token(&self) -> ApiResult<RelayToken> {
         #[derive(Deserialize)]
         struct Raw {
             token: String,

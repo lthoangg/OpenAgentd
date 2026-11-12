@@ -165,6 +165,32 @@ export const phoneCloudRemoveDevice = (deviceId: string) => call<PhoneCloudStatu
 export const phoneCloudSignOut = () => call<PhoneCloudStatus>('cloud_sign_out')
 export const openPhoneCloudComputer = (deviceId: string, lanBaseUrl: string | null) =>
   call<OpenedComputer>('cloud_open_computer', { deviceId, lanBaseUrl })
+
+/** Why the shell is told to look at its relay link now (`cloud_poke`). */
+export type CloudPokeReason = 'resumed' | 'network_changed' | 'user_retry' | 'background'
+
+/**
+ * Tells the shell the app came back, went away, or the network changed, so it
+ * checks its relay link at once instead of on its own clock. Fire and forget:
+ * an older shell has no `cloud_poke`, and nothing depends on the answer.
+ */
+export function cloudPoke(why: CloudPokeReason): void {
+  void call<void>('cloud_poke', { why }).catch(() => {})
+}
+
+/** The route an account computer's link is on (`cloud_link_route`). */
+export type LinkRoute = 'direct' | 'relay' | 'connecting' | 'down' | 'none'
+
+/** Where the link to `deviceId` is (the phone shell's, or the desktop's built-in server's); `none` from a shell without it. */
+export async function getLinkRoute(deviceId: string): Promise<LinkRoute> {
+  try {
+    const r = await call<{ route?: string }>('cloud_link_route', { deviceId })
+    const route = r?.route
+    return route === 'direct' || route === 'relay' || route === 'connecting' || route === 'down' ? route : 'none'
+  } catch {
+    return 'none'
+  }
+}
 /** What `cloud_push_register` answers (`mobile/src-tauri/src/push.rs`). */
 export interface PushState {
   status: string

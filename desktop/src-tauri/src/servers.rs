@@ -10,8 +10,14 @@
 //! Connect in that window (or opened a new window from one that is). The one
 //! exception is watching: the island also follows saved servers the user
 //! enabled, with or without a window (`followed_servers`).
+//!
+//! One computer can be reached at two addresses (saved twice, or saved and
+//! opened through the account). The island follows it once: a server that
+//! answers with the account fingerprint of one already followed is dropped
+//! (`followed_servers`, from what `learn_identity` heard).
 
 use std::collections::HashMap;
+use std::sync::{Mutex as StdMutex, OnceLock};
 
 use tauri::{AppHandle, Manager};
 
@@ -45,10 +51,14 @@ impl ServerId {
     }
 
     /// The name the user saved it under (else its host and port), or
-    /// `bundled_name` for the builtin.
+    /// `bundled_name` for the builtin. A computer opened through the account
+    /// is named as its row under "Your computers" is.
     pub fn display_name(&self, bundled_name: &str, saved: &[crate::config::SavedAppServer]) -> String {
         match self {
             Self::Bundled => bundled_name.to_string(),
+            Self::External(base) if crate::account::account_device(base).is_some() => {
+                crate::account::account_device(base).map(|d| d.label()).unwrap_or_default()
+            }
             Self::External(base) => crate::usage::resolve_server_display_name(base, saved),
         }
     }
@@ -78,24 +88,87 @@ pub fn current_server(
 /// builtin is local and always reachable, so its sessions show whatever
 /// windows are open (none, or only windows on an external server). A
 /// disabled saved server is followed only while a window is on it.
+///
+/// Each computer once, too: `identity` gives the account fingerprint a
+/// server answered with (when known); a second server with the same one is
+/// left out, keeping the builtin, then a window's server, then an enabled
+/// one, so a session opens in the window that shows its computer.
 pub fn followed_servers(
     app_windows: &[String],
     external: &HashMap<String, String>,
     bundled_running: bool,
     enabled: &[ServerId],
+    identity: &HashMap<ServerId, String>,
 ) -> Vec<ServerId> {
-    let mut servers: Vec<ServerId> = app_windows
+    let mut windows: Vec<ServerId> = app_windows
         .iter()
         .map(|label| window_server(label, external))
         .filter(|server| *server != ServerId::Bundled)
         .collect();
-    if bundled_running {
-        servers.push(ServerId::Bundled);
+    windows.sort();
+    let mut enabled: Vec<ServerId> = enabled.iter().filter(|server| **server != ServerId::Bundled).cloned().collect();
+    enabled.sort();
+    // In order of preference.
+    let candidates = bundled_running.then_some(ServerId::Bundled).into_iter().chain(windows).chain(enabled);
+    let mut servers: Vec<ServerId> = Vec::new();
+    let mut computers: Vec<&String> = Vec::new();
+    for server in candidates {
+        if servers.contains(&server) {
+            continue;
+        }
+        if let Some(computer) = identity.get(&server) {
+            if computers.contains(&computer) {
+                continue;
+            }
+            computers.push(computer);
+        }
+        servers.push(server);
     }
-    servers.extend(enabled.iter().filter(|server| **server != ServerId::Bundled).cloned());
     servers.sort();
-    servers.dedup();
     servers
+}
+
+/// Account fingerprints servers answered with, normalized (`3F9A21C4`).
+fn identities() -> &'static StdMutex<HashMap<ServerId, String>> {
+    static IDS: OnceLock<StdMutex<HashMap<ServerId, String>>> = OnceLock::new();
+    IDS.get_or_init(|| StdMutex::new(HashMap::new()))
+}
+
+/// What `server` answered when the island connected: the account
+/// fingerprint of its computer, or `None` (not signed in, an older server).
+pub fn learn_identity(server: &ServerId, fingerprint: Option<String>) {
+    let mut ids = identities().lock().unwrap();
+    match fingerprint.map(|f| normalize_fingerprint(&f)).filter(|f| !f.is_empty()) {
+        Some(f) => ids.insert(server.clone(), f),
+        None => ids.remove(server),
+    };
+}
+
+/// `3f9a 21c4` and `3F9A-21C4` are the same fingerprint.
+pub fn normalize_fingerprint(fingerprint: &str) -> String {
+    fingerprint.chars().filter(|c| !c.is_whitespace() && *c != '-').collect::<String>().to_uppercase()
+}
+
+/// The known computer of each server: what each answered, and the computer
+/// behind each account bridge.
+fn known_identities() -> HashMap<ServerId, String> {
+    let mut ids = identities().lock().unwrap().clone();
+    for (origin, device) in crate::account::bridged_devices() {
+        ids.insert(ServerId::external(&origin), normalize_fingerprint(&device.fingerprint));
+    }
+    ids
+}
+
+/// The account fingerprint a server's computer is signed in with, from its
+/// `GET /api/cloud/status`. `None` when it is not signed in or does not say.
+pub async fn server_fingerprint(client: &reqwest::Client, base: &str, token: Option<&str>) -> Option<String> {
+    let mut request = client.get(format!("{}/api/cloud/status", base.trim_end_matches('/'))).timeout(std::time::Duration::from_secs(5));
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let body: serde_json::Value = request.send().await.ok()?.error_for_status().ok()?.json().await.ok()?;
+    let enrolled = matches!(body["state"].as_str(), Some("connected" | "closing" | "unavailable"));
+    enrolled.then(|| body["fingerprint"].as_str().map(str::to_string)).flatten()
 }
 
 /// The saved servers marked enabled, as server ids.
@@ -203,7 +276,7 @@ pub async fn app_current_server(app: &AppHandle) -> Option<ServerId> {
 /// [`followed_servers`] for the running app, with `enabled` saved servers.
 pub async fn app_followed_servers(app: &AppHandle, enabled: &[ServerId]) -> Vec<ServerId> {
     let running = bundled_running(app).await;
-    followed_servers(&app_window_labels(app), &external_map(app), running, enabled)
+    followed_servers(&app_window_labels(app), &external_map(app), running, enabled, &known_identities())
 }
 
 /// Base URL and bearer token for `server`: the builtin's desktop token, or
@@ -235,6 +308,10 @@ mod tests {
 
     const REMOTE: &str = "http://192.168.1.30:4082";
     const LAB: &str = "http://192.168.1.20:4082";
+
+    fn follow(windows: &[String], map: &HashMap<String, String>, running: bool, enabled: &[ServerId]) -> Vec<ServerId> {
+        followed_servers(windows, map, running, enabled, &HashMap::new())
+    }
 
     fn labels(list: &[&str]) -> Vec<String> {
         list.iter().map(|l| l.to_string()).collect()
@@ -282,43 +359,43 @@ mod tests {
     #[test]
     fn windows_on_two_servers_are_each_followed_once() {
         let map = external(&[("main-2", REMOTE), ("main-3", REMOTE)]);
-        let followed = followed_servers(&labels(&["main", "main-2", "main-3"]), &map, true, &[]);
+        let followed = follow(&labels(&["main", "main-2", "main-3"]), &map, true, &[]);
         assert_eq!(followed, [ServerId::Bundled, ServerId::External(REMOTE.into())]);
     }
 
     #[test]
     fn a_stopped_builtin_is_not_followed() {
         let map = external(&[("main-2", REMOTE)]);
-        let followed = followed_servers(&labels(&["main", "main-2"]), &map, false, &[]);
+        let followed = follow(&labels(&["main", "main-2"]), &map, false, &[]);
         assert_eq!(followed, [ServerId::External(REMOTE.into())]);
-        assert!(followed_servers(&[], &map, false, &[]).is_empty(), "no window, no builtin: nothing");
-        assert_eq!(followed_servers(&[], &map, true, &[]), [ServerId::Bundled]);
+        assert!(follow(&[], &map, false, &[]).is_empty(), "no window, no builtin: nothing");
+        assert_eq!(follow(&[], &map, true, &[]), [ServerId::Bundled]);
     }
 
     #[test]
     fn the_builtin_is_followed_while_it_runs_with_only_external_windows_open() {
         let map = external(&[("main-2", REMOTE)]);
         let remote = ServerId::External(REMOTE.into());
-        let followed = followed_servers(&labels(&["main-2"]), &map, true, &[]);
+        let followed = follow(&labels(&["main-2"]), &map, true, &[]);
         assert_eq!(followed, [ServerId::Bundled, remote.clone()]);
         let enabled = std::slice::from_ref(&remote);
-        assert_eq!(followed_servers(&labels(&["main-2"]), &map, true, enabled), [ServerId::Bundled, remote.clone()]);
-        assert_eq!(followed_servers(&labels(&["main-2"]), &map, false, enabled), [remote]);
+        assert_eq!(follow(&labels(&["main-2"]), &map, true, enabled), [ServerId::Bundled, remote.clone()]);
+        assert_eq!(follow(&labels(&["main-2"]), &map, false, enabled), [remote]);
     }
 
     #[test]
     fn an_enabled_saved_server_is_followed_with_no_window_open() {
         let lab = ServerId::External(LAB.into());
         let enabled = std::slice::from_ref(&lab);
-        assert_eq!(followed_servers(&[], &HashMap::new(), false, enabled), std::slice::from_ref(&lab));
-        assert_eq!(followed_servers(&[], &HashMap::new(), true, enabled), [ServerId::Bundled, lab.clone()]);
+        assert_eq!(follow(&[], &HashMap::new(), false, enabled), std::slice::from_ref(&lab));
+        assert_eq!(follow(&[], &HashMap::new(), true, enabled), [ServerId::Bundled, lab.clone()]);
     }
 
     #[test]
     fn an_enabled_server_with_a_window_on_it_is_followed_once() {
         let map = external(&[("main-2", REMOTE)]);
         let remote = ServerId::External(REMOTE.into());
-        let followed = followed_servers(&labels(&["main", "main-2"]), &map, true, std::slice::from_ref(&remote));
+        let followed = follow(&labels(&["main", "main-2"]), &map, true, std::slice::from_ref(&remote));
         assert_eq!(followed, [ServerId::Bundled, remote.clone()]);
     }
 
@@ -328,10 +405,38 @@ mod tests {
         assert!(enabled_servers(&saved(false)).is_empty());
         assert_eq!(enabled_servers(&saved(true)), [ServerId::External(REMOTE.into())]);
         let map = external(&[("main-2", REMOTE)]);
-        let with_window = followed_servers(&labels(&["main", "main-2"]), &map, true, &enabled_servers(&saved(false)));
+        let with_window = follow(&labels(&["main", "main-2"]), &map, true, &enabled_servers(&saved(false)));
         assert!(with_window.contains(&ServerId::External(REMOTE.into())));
-        let closed = followed_servers(&labels(&["main"]), &HashMap::new(), true, &enabled_servers(&saved(false)));
+        let closed = follow(&labels(&["main"]), &HashMap::new(), true, &enabled_servers(&saved(false)));
         assert_eq!(closed, [ServerId::Bundled]);
+    }
+
+    // home-away item 14: one machine saved under two addresses showed its
+    // sessions twice in the notch.
+    #[test]
+    fn one_computer_at_two_addresses_is_followed_once() {
+        let lab = ServerId::External(LAB.into());
+        let remote = ServerId::External(REMOTE.into());
+        let same: HashMap<ServerId, String> = [(lab.clone(), "3F9A21C4".to_string()), (remote.clone(), "3F9A21C4".to_string())].into();
+        let both = [lab.clone(), remote.clone()];
+        // Both enabled: one is kept.
+        assert_eq!(followed_servers(&[], &HashMap::new(), false, &both, &same).len(), 1);
+        // A window on one of them: that one is kept.
+        let map = external(&[("main-2", REMOTE)]);
+        assert_eq!(followed_servers(&labels(&["main-2"]), &map, false, &both, &same), std::slice::from_ref(&remote));
+        // The builtin is this computer: a saved address of it is not followed again.
+        let me: HashMap<ServerId, String> = [(ServerId::Bundled, "AAAA".to_string()), (lab.clone(), "AAAA".to_string())].into();
+        assert_eq!(followed_servers(&[], &HashMap::new(), true, std::slice::from_ref(&lab), &me), [ServerId::Bundled]);
+        // Different computers, or one not known yet: each is followed.
+        let apart: HashMap<ServerId, String> = [(lab.clone(), "AAAA".to_string()), (remote.clone(), "BBBB".to_string())].into();
+        assert_eq!(followed_servers(&[], &HashMap::new(), false, &both, &apart), both);
+        let one: HashMap<ServerId, String> = [(lab.clone(), "AAAA".to_string())].into();
+        assert_eq!(followed_servers(&[], &HashMap::new(), false, &both, &one), both);
+    }
+
+    #[test]
+    fn fingerprints_compare_without_spaces_dashes_or_case() {
+        assert_eq!(normalize_fingerprint("3f9a 21c4"), normalize_fingerprint("3F9A-21C4"));
     }
 
     #[test]

@@ -21,7 +21,7 @@ members = [
 exclude = ["vendor/anydoc"]
 
 [workspace.package]
-version = "3.52.0"
+version = "3.53.0"
 edition = "2021"
 license = "Apache-2.0"
 homepage = "https://openagentd.dev"
@@ -75,7 +75,7 @@ appv3-mcp = { path = "crates/mcp" }
 appv3-api = { path = "crates/api" }
 appv3-preview = { path = "crates/preview" }
 # OpenAgentd Cloud accounts: the protocol crate shared with the mobile shell.
-openagentd-cloud = { path = "../native/cloud" }
+openagentd-cloud = { path = "../native/cloud", features = ["bridge"] }
 
 [profile.release]
 lto = "thin"

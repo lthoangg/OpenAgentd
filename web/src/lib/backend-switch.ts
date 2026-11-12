@@ -12,7 +12,6 @@ import { forgetRouteForBackendSwitch } from '@/lib/route-restore'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
 import { queryKeys } from '@/queries/keys'
 import { beginBackendSwitch, endBackendSwitch, type BackendSwitchTarget } from '@/stores/useBackendSwitchStore'
-import { rememberLanFingerprint } from '@/lib/computer-fingerprints'
 import { openPhoneCloudComputer, type OpenedComputer } from '@/api/phone-cloud'
 import {
   getAppBackendStatus,
@@ -141,7 +140,6 @@ async function switchExternal(target: string, options: Parameters<typeof connect
     installDesktopAuth()
     const reload = normalizeServerBaseUrl(next.base_url) !== options.currentBaseUrl
     await refreshBackendQueries()
-    void rememberLanFingerprint(target)
     return { ok: true, status: next, reload }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -153,23 +151,22 @@ export type AccountSwitchResult =
   | { ok: false; error: string }
 
 /**
- * Open a computer of the phone's account and switch this window to it: over
- * its saved LAN address when `lanBaseUrl` answers, else through the account's
- * relay. The shell activates the server (as it does for a saved one); the
- * rest is the same as after choosing a saved server. The caller reloads when
- * `reload` is true.
+ * Open a computer of the phone's account and switch this window to it,
+ * through its link: directly on the home network or through the account's
+ * relay, whichever the shell's link has (and it moves between them by
+ * itself, under the same origin). A saved server is never used for it: that
+ * is a separate thing. The caller reloads when `reload` is true (only the
+ * first time, from another server).
  */
 export async function connectAccountComputer(options: {
   deviceId: string
-  lanBaseUrl: string | null
   /** What the switching screen calls it. */
   label: string
   currentBaseUrl: string
 }): Promise<AccountSwitchResult> {
-  const detail = options.lanBaseUrl ?? 'Through your account'
-  return withSwitchScreen({ name: options.label, detail }, async (): Promise<AccountSwitchResult> => {
+  return withSwitchScreen({ name: options.label, detail: 'Your computer' }, async (): Promise<AccountSwitchResult> => {
     try {
-      const opened = await openPhoneCloudComputer(options.deviceId, options.lanBaseUrl)
+      const opened = await openPhoneCloudComputer(options.deviceId, null)
       const next = opened.status
       await primeStoredAccessKey(next.base_url)
       delete window.__OAD_TOKEN__

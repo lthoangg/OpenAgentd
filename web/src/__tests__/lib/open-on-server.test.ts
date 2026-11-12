@@ -71,48 +71,38 @@ describe('openSessionOnServer', () => {
     expect(takePendingSessionOpen()).toBe('s1')
   })
 
-  it('opens at once on the account computer the app is on, by bridge or by its LAN address', async () => {
+  it('opens at once on the account computer the app is on', async () => {
     status = onServer(BRIDGE, { account_device: { device_id: 'dev-mac', fingerprint: '3F9A 21C4', kind: 'macos' } })
     expect(await openSessionOnServer({ sessionId: 's1', deviceId: 'dev-mac' })).toBe('opened')
-
-    // A push from the Mac while the app is on the Mac's LAN address.
-    window.localStorage.setItem('openagentd.cloud.lanComputers', JSON.stringify({ '3F9A21C4': LAN_A }))
-    status = onServer(LAN_A)
-    expect(await openSessionOnServer({ sessionId: 's2', deviceId: 'dev-mac' })).toBe('opened')
-
-    // An app notification raised on the Mac's LAN address, the app now on its bridge.
-    status = onServer(BRIDGE, { account_device: { device_id: 'dev-mac', fingerprint: '3F9A 21C4', kind: 'macos' } })
-    expect(await openSessionOnServer({ sessionId: 's3', baseUrl: LAN_A })).toBe('opened')
     expect(connectAccountComputer).not.toHaveBeenCalled()
-    expect(takePendingSessionOpen()).toBe('s3')
+  })
+
+  it('keeps a saved server and an account computer apart, even on one machine', async () => {
+    // On the Mac's saved address, a push from the Mac (the account
+    // computer) opens it through its link, not over the saved server.
+    status = onServer(LAN_A)
+    expect(await openSessionOnServer({ sessionId: 's2', deviceId: 'dev-mac' })).toBe('switching')
+    expect(connectAccountComputer.mock.calls[0][0]).toEqual({ deviceId: 'dev-mac', label: 'macOS · 3F9A 21C4', currentBaseUrl: LAN_A })
+    // On the Mac's bridge, a notification raised on the saved server
+    // switches to that saved server.
+    status = onServer(BRIDGE, { account_device: { device_id: 'dev-mac', fingerprint: '3F9A 21C4', kind: 'macos' } })
+    expect(await openSessionOnServer({ sessionId: 's3', baseUrl: LAN_A })).toBe('switching')
+    expect(connectExternalBackend.mock.calls[0][0]).toMatchObject({ baseUrl: LAN_A })
   })
 
   it('switches to the computer a push came from, then opens the session after the reload', async () => {
-    window.localStorage.setItem('openagentd.cloud.lanComputers', JSON.stringify({ '9C02E1B7': LAN_B }))
     expect(await openSessionOnServer({ sessionId: 's-linux', deviceId: 'dev-linux' })).toBe('switching')
     expect(connectAccountComputer).toHaveBeenCalledTimes(1)
-    expect(connectAccountComputer.mock.calls[0][0]).toMatchObject({ deviceId: 'dev-linux', lanBaseUrl: LAN_B, label: 'Linux box', currentBaseUrl: LAN_A })
+    expect(connectAccountComputer.mock.calls[0][0]).toEqual({ deviceId: 'dev-linux', label: 'Linux · 9C02 E1B7', currentBaseUrl: LAN_A })
     expect(reloadForBackendSwitch).toHaveBeenCalledTimes(1)
     // What the reloaded page reads.
     expect(takePendingSessionOpen()).toBe('s-linux')
-  })
-
-  it('reaches an account computer with no LAN address through the account', async () => {
-    expect(await openSessionOnServer({ sessionId: 's1', deviceId: 'dev-linux' })).toBe('switching')
-    expect(connectAccountComputer.mock.calls[0][0]).toMatchObject({ deviceId: 'dev-linux', lanBaseUrl: null })
   })
 
   it('switches to the saved server an app notification was raised on', async () => {
     expect(await openSessionOnServer({ sessionId: 's1', baseUrl: LAN_B })).toBe('switching')
     expect(connectExternalBackend.mock.calls[0][0]).toMatchObject({ baseUrl: LAN_B, name: 'Linux box', persist: true, currentBaseUrl: LAN_A })
     expect(takePendingSessionOpen()).toBe('s1')
-  })
-
-  it('opens an account computer\'s LAN notification through the account when the app is elsewhere', async () => {
-    window.localStorage.setItem('openagentd.cloud.lanComputers', JSON.stringify({ '9C02E1B7': LAN_B }))
-    expect(await openSessionOnServer({ sessionId: 's1', baseUrl: LAN_B })).toBe('switching')
-    expect(connectExternalBackend).not.toHaveBeenCalled()
-    expect(connectAccountComputer.mock.calls[0][0]).toMatchObject({ deviceId: 'dev-linux', lanBaseUrl: LAN_B })
   })
 
   it('opens without a reload when the switch lands on the same origin', async () => {

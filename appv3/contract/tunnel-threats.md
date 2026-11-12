@@ -18,8 +18,9 @@ has (spec §3.1, `server` and `client`).
 
 - **Host** (`server: true`): a computer that runs agents, which is the
   `agentd` server running as the desktop sidecar or from the CLI. It holds
-  a presence socket and answers relay sessions. A device without `server`
-  runs no connector.
+  a presence socket, answers relay sessions, and, when its setting is on,
+  listens for direct sessions on its private addresses (spec §5.5). A
+  device without `server` runs no connector.
 - **Controller** (`client: true`): the phone (it has no backend, so it is
   never a server), or a computer used to reach the others. It opens relay
   sessions to hosts.
@@ -44,6 +45,8 @@ has (spec §3.1, `server` and `client`).
 | Verified roster `K`, account id, account state | app data; not secret, but integrity matters | the account id goes to the cloud |
 | APNs token | memory, then the cloud | to the cloud |
 | Everything a host can do (shell, files, agents) | the host | reachable through relay sessions |
+| A host's private addresses and direct port | the host; each controller stores them per device id and network | only inside an established session, to devices of the account |
+| Departed set and last contact time | `cloud/identity.json`, next to `K` | never |
 
 The account id identifies a person, so logs carry only a short hash of it.
 
@@ -187,7 +190,10 @@ when formatted. The HTTP trace layer drops `Authorization` and every
   asks with one signed `GET /v1/roster` (`Member::confirm_removal`); any
   other answer keeps the keys for a later retry. A host keeps at most 16
   id-shaped entries of a `revoked` list, and its set of departed devices
-  only ids its verified roster still lists. Response bodies from the cloud
+  only ids its verified roster still lists. That set is kept on disk with
+  `K` (spec §3.3), filled from the relay's `revoked` list and from
+  `GET /v1/devices`, and applied to direct sessions as well as relay
+  ones. Response bodies from the cloud
   are read up to 1 MiB, and ids and nonces from the cloud are checked
   before they go into a URL path or `lines(...)`. Local data is never
   touched, and no state stops local use (spec §1,
@@ -330,6 +336,68 @@ The connector therefore must never look like a loopback caller.
   registered and before each stream; a controller removed in between is
   closed with 4001.
 
+### 3a. Direct sessions on the home network
+
+The home network is untrusted: other people's devices, a guest, a
+compromised smart plug, or someone else's network that reuses the same
+addresses.
+
+- **Spoofing the host.** The controller encrypts message 1 to the host's
+  `box` key from its verified roster, and the prologue names the host. A
+  machine that took over a remembered address can't read message 1 or
+  answer it, so the controller moves to the relay. Nothing is sent before
+  the handshake except the greeting and message 1, which carries no
+  readable identity (the controller's static key is encrypted). No
+  credential ever goes to an address.
+- **Spoofing a controller.** The host admits only a static key that its
+  verified roster lists with `client: true`, that is not departed, and
+  only within 7 days of its last contact with the cloud. A replayed
+  message 1 gets a message 2 but no usable keys. The host acts on nothing
+  until a transport message decrypts: until then the connection is an
+  unfinished handshake, so a replay neither counts toward the session
+  limits nor replaces a live session. Two roster entries with one `box`
+  key name no one, and the host refuses.
+- **A host speaking for the cloud.** A Go Away 4011 on a direct session
+  is a lost route to the controller, never "account closing": only the
+  cloud says that.
+- **Removed devices.** A roster removal or a departed id closes live
+  direct sessions (Go Away 4001) and refuses new ones. A device that left
+  by itself is refused through the departed set, which the host saves on
+  disk, so a restart without internet still refuses it. **What remains:**
+  a device removed while the host is cut off from the cloud keeps access
+  until the host hears from the cloud again, at most 7 days.
+- **Tampering.** AES-GCM on every message. Any failure closes the
+  connection. Lengths are checked before anything is read into memory.
+- **Information disclosure.** On the home network, an observer sees that
+  two devices talk, how much and when (as the relay does), and the
+  OpenAgentd greeting. Nothing is compressed. On another network with the
+  same subnet, an observer sees one greeting and one message 1, which
+  identify neither the device nor the account. Addresses travel only
+  inside sessions, so the cloud never learns them.
+- **Denial of service.** The greeting is checked before any key work.
+  Message 1 has a fixed length. There are at most 16 unfinished
+  handshakes, 4 per peer address. Each has 5 s to deliver message 1 and
+  then 5 s to deliver a transport message, so a replayed message 1 holds
+  a place for at most about 10 s. The worst a local
+  attacker achieves is pushing the phone onto the relay.
+- **Exposure.** The listener is bound to private addresses only, and
+  refuses peers that aren't on private addresses. It speaks only this
+  protocol, never HTTP, so nothing of the server can be reached without a
+  finished handshake. A computer with no private address has no listener.
+- **Elevation.** Direct streams go through the connector exactly as relay
+  streams do (§4): `RelayPeer` marker, headers stripped, account routes
+  refused, never loopback.
+- **Kept apart from LAN access.** The direct listener and the LAN listener
+  ("Allow devices on your network to connect") are separate sockets on
+  separate ports, with separate switches. The direct listener accepts no
+  access key, and the LAN listener accepts no device key. An account
+  computer is never reached through a saved address, and its addresses
+  are never saved as a server.
+- **The switch.** Settings → Server turns direct sessions on and off
+  through a route that answers local callers only, never relayed, direct
+  or LAN ones. Turning it on admits only the account's devices. Turning it
+  off closes live direct sessions.
+
 ### 5. Phone bridge → web UI
 
 The mobile shell serves `http://127.0.0.1:<port>` so the web UI can use
@@ -372,12 +440,10 @@ connect to that port.
 
 ## What this model does not cover
 
-- The LAN path. When a computer of the account also has a saved LAN
-  address, the phone tries it first and uses the access key saved for it,
-  as it does when that saved server is chosen by hand. Whoever answers at a
-  remembered LAN address receives that key over plain HTTP; this is the
-  existing LAN pairing's risk, not the relay's.
-
+- LAN access with an access key (saved servers). It is a separate
+  feature, not part of the account: whoever answers at a saved address
+  receives that key over plain HTTP, and the key works for whoever holds
+  it, in the account or not. Account computers do not use it (§3a).
 - A compromised host or phone. Its keys act as that device until a signer
   removes it.
 - A cloud that hides a roster update from an isolated device. Version 1
@@ -421,5 +487,14 @@ files of `native/cloud`, `appv3` and `mobile/src-tauri`, and checked with
       constants.
 - [ ] Relayed requests cannot reach the account routes, cannot carry
       client credentials, and never count as loopback.
+- [ ] Direct sessions admit the same devices as relay sessions (roster
+      `client`, not departed) through one admission check, and apply the
+      7-day contact rule. The listener refuses non-private peers and
+      limits unfinished handshakes.
+- [ ] No address or route information goes to the cloud. Addresses are
+      answered only to a session's device.
+- [ ] Nothing crosses between account sessions and LAN access: no access
+      key on the direct listener, no device key on the LAN listener, no
+      saved address used for an account computer.
 - [ ] Errors shown to people use the copy in the plan. Errors sent to logs
       carry no keys or tokens.

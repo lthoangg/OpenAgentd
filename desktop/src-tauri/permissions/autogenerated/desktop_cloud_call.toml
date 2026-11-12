@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-cloud-call"
+description = "Enables the desktop_cloud_call command without any pre-configured scope."
+commands.allow = ["desktop_cloud_call"]
+
+[[permission]]
+identifier = "deny-desktop-cloud-call"
+description = "Denies the desktop_cloud_call command without any pre-configured scope."
+commands.deny = ["desktop_cloud_call"]

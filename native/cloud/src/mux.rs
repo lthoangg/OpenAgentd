@@ -808,4 +808,116 @@ mod tests {
         assert_eq!(u16::from_be_bytes([fin[2], fin[3]]), FIN);
         assert_eq!(data_ids(&all), vec![1, 1, 1]);
     }
+
+    /// Reads what the peer has for `stream` now, without waiting for more.
+    async fn read_now(s: &mut Stream) -> Vec<u8> {
+        use futures_util::FutureExt;
+        let mut got = Vec::new();
+        let mut buf = vec![0u8; 64 * 1024];
+        while let Some(Ok(n)) = s.read(&mut buf).now_or_never() {
+            if n == 0 {
+                break;
+            }
+            got.extend_from_slice(&buf[..n]);
+        }
+        got
+    }
+
+    #[tokio::test]
+    async fn the_rest_of_a_split_frame_goes_out_before_a_new_stream_opens() {
+        let (ctl, out) = Session::new(true);
+        let (host, _host_out) = Session::new(false);
+        let big: Vec<u8> = (0..200 * 1024).map(|i| (i % 251) as u8).collect();
+        let mut first = ctl.open().unwrap();
+        first.write_all(&big).await.unwrap();
+        first.shutdown().await.unwrap();
+        // One message: the open and three frames, and the fourth split.
+        let message = out.take(crate::noise::MAX_PLAINTEXT);
+        assert_eq!(message.len(), crate::noise::MAX_PLAINTEXT);
+        host.receive(&message).unwrap();
+        // A second request opens while the rest of that frame waits.
+        let mut second = ctl.open().unwrap();
+        second.write_all(b"GET /api/health").await.unwrap();
+        second.shutdown().await.unwrap();
+        while out.queued() > 0 {
+            host.receive(&out.take(crate::noise::MAX_PLAINTEXT)).expect("no protocol error");
+        }
+        let mut a = host.accept().await.unwrap();
+        let mut b = host.accept().await.unwrap();
+        assert_eq!(read_now(&mut a).await, big);
+        assert_eq!(read_now(&mut b).await, b"GET /api/health");
+    }
+
+    /// A small deterministic generator (xorshift64*).
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 >> 12;
+            self.0 ^= self.0 << 25;
+            self.0 ^= self.0 >> 27;
+            self.0.wrapping_mul(0x2545_F491_4F6C_DD1D)
+        }
+        fn below(&mut self, n: u64) -> u64 {
+            self.next() % n
+        }
+    }
+
+    #[tokio::test]
+    async fn any_mix_of_writes_opens_and_control_frames_arrives_unchanged() {
+        for seed in 1..=40u64 {
+            let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+            let (ctl, out) = Session::new(true);
+            let (host, host_out) = Session::new(false);
+            let mut streams: Vec<(Stream, Vec<u8>)> = Vec::new();
+            let mut accepted: Vec<(u32, Stream)> = Vec::new();
+            let mut got: HashMap<u32, Vec<u8>> = HashMap::new();
+            for _ in 0..60 {
+                // Between takes: opens, writes on any stream, pings, and
+                // the peer's own frames (acks, window updates) coming back.
+                for _ in 0..rng.below(4) {
+                    match rng.below(4) {
+                        0 if streams.len() < 8 => streams.push((ctl.open().unwrap(), Vec::new())),
+                        1 => ctl.ping(rng.below(1000) as u32),
+                        _ if !streams.is_empty() => {
+                            let i = rng.below(streams.len() as u64) as usize;
+                            let (s, sent) = &mut streams[i];
+                            if sent.len() < 200 * 1024 {
+                                let n = 1 + rng.below(40 * 1024) as usize;
+                                let data: Vec<u8> = (0..n).map(|_| rng.below(256) as u8).collect();
+                                s.write_all(&data).await.unwrap();
+                                sent.extend_from_slice(&data);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let max = 1 + rng.below(70_000) as usize;
+                let bytes = out.take(max);
+                assert!(bytes.len() <= max);
+                host.receive(&bytes).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
+                ctl.receive(&host_out.take(usize::MAX)).unwrap();
+                while let Some(Some(s)) = futures_util::FutureExt::now_or_never(host.accept()) {
+                    accepted.push((s.id(), s));
+                }
+                for (id, s) in accepted.iter_mut() {
+                    let more = read_now(s).await;
+                    got.entry(*id).or_default().extend(more);
+                }
+            }
+            while out.queued() > 0 {
+                host.receive(&out.take(1 + rng.below(70_000) as usize)).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
+            }
+            while let Some(Some(s)) = futures_util::FutureExt::now_or_never(host.accept()) {
+                accepted.push((s.id(), s));
+            }
+            for (id, s) in accepted.iter_mut() {
+                let more = read_now(s).await;
+                got.entry(*id).or_default().extend(more);
+            }
+            for (s, sent) in &streams {
+                assert_eq!(got.get(&s.id()).map(Vec::len).unwrap_or(0), sent.len(), "seed {seed}, stream {}", s.id());
+                assert!(got.get(&s.id()).map(|g| g == sent).unwrap_or(sent.is_empty()), "seed {seed}, stream {}", s.id());
+            }
+        }
+    }
 }

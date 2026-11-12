@@ -32,6 +32,9 @@ mock.module('@tauri-apps/api/core', () => ({
 }))
 
 const { checkRouteAtLaunch, resetAccountRoute, startAccountRouteWatch } = await import('@/lib/account-route')
+const { reloadForBackendSwitch } = await import('@/lib/backend-switch')
+const { queryClient } = await import('@/lib/query-client')
+const { queryKeys } = await import('@/queries/keys')
 const { useServersScreenStore } = await import('@/stores/useServersScreenStore')
 
 const LAN = 'http://192.168.1.20:4082'
@@ -140,6 +143,8 @@ describe('telling the shell', () => {
 
   it('pokes on resume, going to the background, and a network change; nothing else runs', async () => {
     stop = startAccountRouteWatch()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    calls = []
     try {
       setVisibility('hidden')
       document.dispatchEvent(new Event('visibilitychange'))
@@ -162,7 +167,8 @@ describe('telling the shell', () => {
     stop = startAccountRouteWatch()
     window.dispatchEvent(new Event('online'))
     await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(ran('cloud_poke')).toHaveLength(1)
+    // The one at start (the page is visible), and the network change.
+    expect(ran('cloud_poke')).toHaveLength(2)
   })
 
   it('does nothing off the phone, and stops listening when stopped', async () => {
@@ -172,10 +178,86 @@ describe('telling the shell', () => {
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(ran('cloud_poke')).toHaveLength(0)
     platform = phone
-    stop = startAccountRouteWatch()
-    stop()
-    window.dispatchEvent(new Event('online'))
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    setVisibility('hidden')
+    try {
+      stop = startAccountRouteWatch()
+      stop()
+      window.dispatchEvent(new Event('online'))
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    } finally {
+      restoreVisibility()
+    }
     expect(ran('cloud_poke')).toHaveLength(0)
+  })
+
+  it('pokes resumed once when the page starts visible, so a reload never leaves the links in the background', async () => {
+    setVisibility('visible')
+    try {
+      stop = startAccountRouteWatch()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    } finally {
+      restoreVisibility()
+    }
+    expect(pokes()).toEqual([{ why: 'resumed' }])
+  })
+
+  it('does not poke background for the visibilitychange of its own reload onto another server', async () => {
+    stop = startAccountRouteWatch()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    calls = []
+    reloadForBackendSwitch()
+    expect(reload).toHaveBeenCalledTimes(1)
+    setVisibility('hidden')
+    try {
+      document.dispatchEvent(new Event('visibilitychange'))
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    } finally {
+      restoreVisibility()
+    }
+    expect(pokes()).toEqual([])
+  })
+
+  it('reloads onto the bridge when the shell moved it while the app was away', async () => {
+    window.__OAD_API_BASE_URL__ = BRIDGE
+    shell({ app_backend_status: () => ({ ...onBridge, base_url: 'http://127.0.0.1:6001' }) })
+    stop = startAccountRouteWatch()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('on an account computer, a failed health check pokes user_retry once and checks again', async () => {
+    window.__OAD_API_BASE_URL__ = BRIDGE
+    shell({ app_backend_status: () => onBridge })
+    stop = startAccountRouteWatch()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    calls = []
+    const failing = async () => {
+      throw new Error('link_down')
+    }
+    try {
+      await queryClient.fetchQuery({ queryKey: queryKeys.health(), queryFn: failing, retry: false, staleTime: 0 }).catch(() => {})
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      // The check that follows fails too: still one poke for this failure.
+      await queryClient.fetchQuery({ queryKey: queryKeys.health(), queryFn: failing, retry: false, staleTime: 0 }).catch(() => {})
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      expect(pokes()).toEqual([{ why: 'user_retry' }])
+      // Once it answers, the next failure gets its own poke.
+      await queryClient.fetchQuery({ queryKey: queryKeys.health(), queryFn: async () => ({ status: 'ok' }), retry: false, staleTime: 0 })
+      await queryClient.fetchQuery({ queryKey: queryKeys.health(), queryFn: failing, retry: false, staleTime: 0 }).catch(() => {})
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      expect(pokes()).toEqual([{ why: 'user_retry' }, { why: 'user_retry' }])
+    } finally {
+      queryClient.removeQueries({ queryKey: queryKeys.health() })
+    }
+  })
+
+  it('off an account computer, a failed health check pokes nothing', async () => {
+    stop = startAccountRouteWatch()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    calls = []
+    await queryClient.fetchQuery({ queryKey: queryKeys.health(), queryFn: async () => { throw new Error('down') }, retry: false }).catch(() => {})
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(pokes()).toEqual([])
+    queryClient.removeQueries({ queryKey: queryKeys.health() })
   })
 })

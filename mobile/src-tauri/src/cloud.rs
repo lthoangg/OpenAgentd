@@ -24,7 +24,8 @@ use openagentd_cloud::flows::{
     self, Approval, FlowError, GenesisDraft, JoinStep, Member, Pace, Session, Withdraw,
 };
 use openagentd_cloud::keys::{self, DeviceKeys, Ed25519, Roles, Seed};
-use openagentd_cloud::link::{DownReason, Link, LinkDeps, LinkError, LinkState, Poke, Target};
+use openagentd_cloud::address_book::AddressBook;
+use openagentd_cloud::link::{DownReason, Link, LinkDeps, LinkError, LinkState, Poke, Route, Target};
 use openagentd_cloud::recovery;
 use openagentd_cloud::relay::{self, TunnelEnd};
 use openagentd_cloud::roster;
@@ -262,6 +263,15 @@ struct Phone {
     invite: tokio::sync::Mutex<Option<flows::Invite>>,
     /// Relay links and their bridges, by computer device id.
     links: tokio::sync::Mutex<HashMap<String, AccountLink>>,
+    /// Where each computer may be reached directly (spec 5.5), by device
+    /// id and network; kept in `cloud/direct.json`. Never filled from a
+    /// saved server.
+    addresses: Mutex<AddressBook>,
+    /// Each computer's bridge port, kept in `cloud/bridges.json`, so its
+    /// origin stays the same across launches.
+    bridge_ports: Mutex<HashMap<String, u16>>,
+    /// Where those two files live.
+    data_dir: std::path::PathBuf,
     /// What a link needs to connect, copied from the member whenever its
     /// roster changes, so no link waits on `member` (held across network
     /// calls, up to minutes while an approval waits).
@@ -329,10 +339,7 @@ fn supported() -> bool {
 /// Called once at startup with the app's data directory.
 pub fn init(data_dir: std::path::PathBuf) {
     #[cfg(target_os = "ios")]
-    let keys: Box<dyn PhoneKeys> = {
-        let _ = data_dir;
-        Box::new(ios_keys::Keychain)
-    };
+    let keys: Box<dyn PhoneKeys> = Box::new(ios_keys::Keychain);
     #[cfg(not(target_os = "ios"))]
     let keys: Box<dyn PhoneKeys> = Box::new(FileKeys(openagentd_cloud::store::FileStore::new(
         data_dir.join("cloud").join("identity.json"),
@@ -346,6 +353,9 @@ pub fn init(data_dir: std::path::PathBuf) {
         approvals: tokio::sync::Mutex::new(HashMap::new()),
         invite: tokio::sync::Mutex::new(None),
         links: tokio::sync::Mutex::new(HashMap::new()),
+        addresses: Mutex::new(read_json(&data_dir.join("cloud").join("direct.json"))),
+        bridge_ports: Mutex::new(read_json(&data_dir.join("cloud").join("bridges.json"))),
+        data_dir: data_dir.clone(),
         relay: Mutex::new(None),
         http1: relay::http1_client(),
         opening: Mutex::new(HashMap::new()),
@@ -1556,6 +1566,23 @@ fn link_message(e: &LinkError) -> String {
     }
 }
 
+/// A small JSON file of the app's own (not secret), or the default.
+fn read_json<T: serde::de::DeserializeOwned + Default>(path: &std::path::Path) -> T {
+    std::fs::read(path)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+fn write_json<T: serde::Serialize>(path: &std::path::Path, value: &T) {
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(bytes) = serde_json::to_vec(value) {
+        let _ = std::fs::write(path, bytes);
+    }
+}
+
 /// What a computer's link asks of the phone: no lock is held once
 /// `target` returns.
 struct PhoneDeps;
@@ -1574,11 +1601,26 @@ impl LinkDeps for PhoneDeps {
             .servers
             .get(device_id)
             .ok_or_else(|| refused(NOT_IN_ACCOUNT))?;
+        // Direct addresses only for the network the phone is on now.
+        let direct = p
+            .addresses
+            .lock()
+            .expect("addresses")
+            .candidates(device_id, &openagentd_cloud::direct::local_subnets());
         Ok(Target {
             cloud: ctx.cloud.clone(),
             http1: p.http1.clone(),
             host_box,
+            direct,
         })
+    }
+
+    fn learned(&self, device_id: &str, answer: openagentd_cloud::direct::DirectAnswer) {
+        let Some(p) = PHONE.get() else { return };
+        let mut book = p.addresses.lock().expect("addresses");
+        if book.learned(device_id, &answer, &openagentd_cloud::direct::local_subnets()) {
+            write_json(&p.data_dir.join("cloud").join("direct.json"), &*book);
+        }
     }
 
     fn on_problem(&self, problem: AccountProblem) {
@@ -1591,6 +1633,27 @@ impl LinkDeps for PhoneDeps {
         // `cause=deadline` is this phone giving up a socket that went quiet.
         eprintln!("cloud: session ended {end}");
     }
+}
+
+/// The route an account computer's link is on, for its row: `direct` ("On
+/// your network"), `relay` ("Through your account"), `connecting`, or
+/// `down`. `none` when the phone has no link to it.
+#[tauri::command]
+pub async fn cloud_link_route(device_id: String) -> Result<serde_json::Value, String> {
+    let Some(p) = PHONE.get() else {
+        return Ok(serde_json::json!({ "route": "none" }));
+    };
+    let links = p.links.lock().await;
+    let Some(l) = links.get(&device_id) else {
+        return Ok(serde_json::json!({ "route": "none" }));
+    };
+    let route = match &*l.link.state().borrow() {
+        LinkState::Up { route: Route::Direct { .. }, .. } => "direct",
+        LinkState::Up { route: Route::Relay, .. } => "relay",
+        LinkState::Connecting => "connecting",
+        LinkState::Down { .. } => "down",
+    };
+    Ok(serde_json::json!({ "route": route }))
 }
 
 /// Tells every link that the app came back, went away, or the network
@@ -1645,7 +1708,8 @@ pub async fn start_bridge(device_id: &str) -> Result<(String, Link), String> {
             }
         })
     });
-    let bridge = match Bridge::start(opener).await {
+    let port = p.bridge_ports.lock().expect("bridge ports").get(device_id).copied();
+    let bridge = match Bridge::start_on(opener, port).await {
         Ok(b) => b,
         Err(e) => {
             link.close();
@@ -1653,6 +1717,13 @@ pub async fn start_bridge(device_id: &str) -> Result<(String, Link), String> {
         }
     };
     let origin = bridge.origin.clone();
+    if let Some(bound) = origin.rsplit(':').next().and_then(|p| p.parse::<u16>().ok()) {
+        let mut ports = p.bridge_ports.lock().expect("bridge ports");
+        if ports.get(device_id) != Some(&bound) {
+            ports.insert(device_id.to_string(), bound);
+            write_json(&p.data_dir.join("cloud").join("bridges.json"), &*ports);
+        }
+    }
     p.bridge_keys.lock().expect("bridge keys").insert(
         origin.clone(),
         BridgeEntry {

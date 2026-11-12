@@ -62,8 +62,22 @@ impl std::fmt::Debug for Bridge {
 }
 
 impl Bridge {
+    #[cfg(test)]
     pub async fn start(opener: Opener) -> io::Result<Bridge> {
-        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        Bridge::start_on(opener, None).await
+    }
+
+    /// Starts the bridge on `port` when it is free, else on a port the
+    /// system picks: one computer keeps one origin across launches (and
+    /// routes), so the page never reloads and its web storage stays.
+    pub async fn start_on(opener: Opener, port: Option<u16>) -> io::Result<Bridge> {
+        let listener = match port {
+            Some(p) => match TcpListener::bind(("127.0.0.1", p)).await {
+                Ok(l) => l,
+                Err(_) => TcpListener::bind("127.0.0.1:0").await?,
+            },
+            None => TcpListener::bind("127.0.0.1:0").await?,
+        };
         let origin = format!("http://127.0.0.1:{}", listener.local_addr()?.port());
         let raw: [u8; 32] = openagentd_cloud::keys::random_bytes();
         let key = Arc::new(Zeroizing::new(
@@ -353,6 +367,19 @@ mod tests {
         assert!(none.starts_with("HTTP/1.1 401"), "{none}");
         let wrong = raw(&b.origin, "GET /api/health HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer nope\r\nConnection: close\r\n\r\n".into()).await;
         assert!(wrong.starts_with("HTTP/1.1 401"), "{wrong}");
+    }
+
+    #[tokio::test]
+    async fn keeps_its_port_across_restarts_and_moves_only_when_taken() {
+        let first = Bridge::start(echo_computer()).await.unwrap();
+        let port: u16 = first.origin.rsplit(':').next().unwrap().parse().unwrap();
+        drop(first);
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let again = Bridge::start_on(echo_computer(), Some(port)).await.unwrap();
+        assert_eq!(again.origin, format!("http://127.0.0.1:{port}"));
+        // Taken by the bridge still running: another one gets a new port.
+        let other = Bridge::start_on(echo_computer(), Some(port)).await.unwrap();
+        assert_ne!(other.origin, again.origin);
     }
 
     #[tokio::test]

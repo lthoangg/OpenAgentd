@@ -161,51 +161,18 @@ fn preview_relay_close(relays: tauri::State<'_, PreviewRelays>, preview_id: Stri
 #[derive(Clone, Serialize)]
 struct OpenedComputer {
     status: AppBackendStatus,
-    /// "lan" when the saved LAN address answered, else "account".
+    /// Always "account": the link picks the route itself.
     via: &'static str,
 }
 
-/// How long the saved LAN address has to answer before the relay is used.
-const LAN_ANSWER_WITHIN: Duration = Duration::from_millis(400);
-
-/// Whether the saved LAN address answers within [`LAN_ANSWER_WITHIN`] and
-/// accepts the access key stored for it (a server whose key changed
-/// refuses every call, so the account is the better route then).
-async fn lan_answers(lan: &str) -> bool {
-    let base = lan.trim_end_matches('/');
-    let live = shared_client()
-        .get(format!("{base}/api/health/live"))
-        .timeout(LAN_ANSWER_WITHIN)
-        .send()
-        .await
-        .is_ok_and(|r| r.status().is_success());
-    if !live {
-        return false;
-    }
-    let origin = lan.to_string();
-    let key = off_main_thread(move || openagentd_shell_core::get_access_key(&origin))
-        .await
-        .ok()
-        .flatten();
-    let mut check = shared_client()
-        .get(format!("{base}/api/auth/check"))
-        .timeout(Duration::from_secs(2));
-    if let Some(key) = key {
-        check = check.bearer_auth(key);
-    }
-    // A server from before `/api/auth/check` answers 404: it answered.
-    check
-        .send()
-        .await
-        .is_ok_and(|r| r.status().is_success() || r.status().as_u16() == 404)
-}
-
-/// Opens a computer of the person's account (plan decision D8): its saved
-/// LAN address and the end-to-end encrypted relay at the same time. The
-/// address wins when it answers within 400 ms and accepts its key;
-/// otherwise the relay, through a loopback bridge. A bridge is never saved
-/// as a server: its port and key last one launch. The computer is
-/// remembered by its device id, so a relaunch returns to it.
+/// Opens a computer of the person's account through its link: directly on
+/// the home network or through the account's relay (spec 5.5), under one
+/// loopback origin per computer that stays the same across routes and
+/// launches. The link moves between routes by itself. A saved server
+/// (address and access key) is a separate thing and is never used for an
+/// account computer: `lan_base_url` is accepted from older pages and
+/// ignored. The computer is remembered by its device id, so a relaunch
+/// returns to it.
 #[tauri::command]
 async fn cloud_open_computer(
     app: AppHandle,
@@ -214,21 +181,8 @@ async fn cloud_open_computer(
     device_id: String,
     lan_base_url: Option<String>,
 ) -> Result<OpenedComputer, String> {
-    // The link starts connecting now, while the address is tried.
+    let _ = lan_base_url;
     let (origin, link) = cloud::start_bridge(&device_id).await?;
-    if let Some(lan) = lan_base_url.and_then(|u| normalize_base_url(&u).ok()) {
-        if lan_answers(&lan).await {
-            if let Ok(status) = use_external_backend(&app, &state, &relays, lan, None, true).await {
-                cloud::drop_bridge(&device_id).await;
-                save_last_account_device(&app, Some(&device_id));
-                let status = AppBackendStatus {
-                    last_account_device: Some(device_id),
-                    ..status
-                };
-                return Ok(OpenedComputer { status, via: "lan" });
-            }
-        }
-    }
     if let Err(e) = cloud::wait_up(&link, cloud::OPEN_WAIT).await {
         cloud::drop_bridge(&device_id).await;
         return Err(e);
@@ -801,6 +755,7 @@ pub fn run() {
             cloud::cloud_remove_device,
             cloud::cloud_sign_out,
             cloud::cloud_poke,
+            cloud::cloud_link_route,
             taps::notification_take_taps,
             cloud_open_computer,
             cloud_push_register,

@@ -70,6 +70,13 @@ impl Bridge {
     /// the system picks: one computer keeps one origin across launches
     /// (and routes), so the page never reloads and its web storage stays.
     pub async fn start_on(opener: Opener, allowed: OriginCheck, port: Option<u16>) -> io::Result<Bridge> {
+        Bridge::start_keyed(opener, allowed, port, None).await
+    }
+
+    /// Like [`Bridge::start_on`], with `key` when given (a bridge that
+    /// starts again for the same computer in the same app run keeps the key
+    /// the page already holds), else a new random one.
+    pub async fn start_keyed(opener: Opener, allowed: OriginCheck, port: Option<u16>, key: Option<&str>) -> io::Result<Bridge> {
         let listener = match port {
             Some(p) => match TcpListener::bind(("127.0.0.1", p)).await {
                 Ok(l) => l,
@@ -78,8 +85,14 @@ impl Bridge {
             None => TcpListener::bind("127.0.0.1:0").await?,
         };
         let origin = format!("http://127.0.0.1:{}", listener.local_addr()?.port());
-        let raw: [u8; 32] = crate::keys::random_bytes();
-        let key = Arc::new(Zeroizing::new(raw.iter().map(|b| format!("{b:02x}")).collect::<String>()));
+        let key = match key.filter(|k| !k.is_empty()) {
+            Some(k) => k.to_string(),
+            None => {
+                let raw: [u8; 32] = crate::keys::random_bytes();
+                raw.iter().map(|b| format!("{b:02x}")).collect::<String>()
+            }
+        };
+        let key = Arc::new(Zeroizing::new(key));
         let k = key.clone();
         let task = tokio::spawn(async move {
             loop {

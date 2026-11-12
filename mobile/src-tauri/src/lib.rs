@@ -182,11 +182,7 @@ async fn cloud_open_computer(
     lan_base_url: Option<String>,
 ) -> Result<OpenedComputer, String> {
     let _ = lan_base_url;
-    let (origin, link) = cloud::start_bridge(&device_id).await?;
-    if let Err(e) = cloud::wait_up(&link, cloud::OPEN_WAIT).await {
-        cloud::drop_bridge(&device_id).await;
-        return Err(e);
-    }
+    let origin = cloud::open_computer(&device_id).await?;
     let previous = state
         .active_base_url
         .lock()

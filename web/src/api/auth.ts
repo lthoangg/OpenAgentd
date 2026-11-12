@@ -37,6 +37,8 @@ const ACTIVE_BACKEND_URL_STORAGE = 'openagentd.activeBackendUrl'
 const nativeAccessKeys = new Map<string, string>()
 const nativeAccessKeyMisses = new Set<string>()
 const nativeAccessKeyReads = new Map<string, Promise<string | undefined>>()
+/** Bumped by `refreshStoredAccessKey`: a read from before it keeps out of the caches. */
+const nativeAccessKeyEpochs = new Map<string, number>()
 
 function normalizeAccessKeyScope(baseUrl: string | undefined): string | null {
   const trimmed = baseUrl?.trim()
@@ -129,9 +131,12 @@ export async function getStoredAccessKey(baseUrl?: string): Promise<string | und
   const pending = nativeAccessKeyReads.get(origin)
   if (pending) return pending
 
+  const epoch = nativeAccessKeyEpochs.get(origin) ?? 0
+  const current = () => (nativeAccessKeyEpochs.get(origin) ?? 0) === epoch
   const read = (async () => {
     const { invoke } = await import('@tauri-apps/api/core')
     const stored = await invoke<string | null>('secure_get_access_key', { origin })
+    if (!current()) return stored || undefined
     if (stored) {
       nativeAccessKeys.set(origin, stored)
       nativeAccessKeyMisses.delete(origin)
@@ -158,8 +163,26 @@ export async function getStoredAccessKey(baseUrl?: string): Promise<string | und
   try {
     return await read
   } finally {
+    if (nativeAccessKeyReads.get(origin) === read) nativeAccessKeyReads.delete(origin)
+  }
+}
+
+/**
+ * Reads the shell's key for `baseUrl` again, past the cached key, a cached
+ * miss and a read in flight, and installs the request interceptor. For an
+ * account computer's bridge, whose key the shell may replace under the same
+ * origin (a bridge that started again, the desktop's built-in server after
+ * a restart): called on every successful open.
+ */
+export async function refreshStoredAccessKey(baseUrl: string): Promise<void> {
+  const origin = normalizeAccessKeyScope(baseUrl)
+  if (origin && typeof window !== 'undefined' && getPlatform().isTauri) {
+    nativeAccessKeyEpochs.set(origin, (nativeAccessKeyEpochs.get(origin) ?? 0) + 1)
+    nativeAccessKeys.delete(origin)
+    nativeAccessKeyMisses.delete(origin)
     nativeAccessKeyReads.delete(origin)
   }
+  await primeStoredAccessKey(baseUrl)
 }
 
 /** Load the active shell credential before application requests begin.

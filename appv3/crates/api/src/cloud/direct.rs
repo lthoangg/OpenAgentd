@@ -191,12 +191,17 @@ async fn accept_loop(l: TcpListener, keys: Arc<HostKeys>, handler: Arc<dyn HostH
         let _ = tcp.set_nodelay(true);
         let (keys, handler, sessions) = (keys.clone(), handler.clone(), sessions.clone());
         tokio::spawn(async move {
-            let accepted = direct::accept(tcp, &keys, handler.as_ref()).await;
+            // The place is held until a transport message decrypts: a
+            // replayed message 1 never counts as a session.
+            let accepted = match direct::accept(tcp, &keys, handler.as_ref()).await {
+                Ok((io, transport, from)) => direct::confirm(io, transport).await.map(|(io, t, first)| (io, t, first, from)),
+                Err(e) => Err(e),
+            };
             drop(pass);
             match accepted {
-                Ok((io, transport, from)) => {
+                Ok((io, transport, first, from)) => {
                     tracing::info!("cloud_direct_session_opened");
-                    let _ = direct::serve_accepted(io, transport, from, handler, sessions, Join::default(), Keepalive::default()).await;
+                    let _ = direct::serve_accepted(io, transport, first, from, handler, sessions, Join::default(), Keepalive::default()).await;
                 }
                 Err(e) => tracing::debug!("cloud_direct_refused reason={e}"),
             }

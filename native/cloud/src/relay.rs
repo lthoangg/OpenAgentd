@@ -776,12 +776,12 @@ pub fn go_away_reason(code: u16) -> u32 {
 }
 
 /// The close code a direct session's Go Away reason stands for.
+/// 4011 on a direct session is one device's word, not the cloud's: the
+/// controller takes it as a lost route, never as the account closing.
 pub fn close_code_of(reason: u32) -> u16 {
     match reason {
-        0 => 1000,
         1 | 2 => 4002,
         4001 => 4001,
-        4011 => 4011,
         _ => 1000,
     }
 }
@@ -1240,6 +1240,17 @@ mod tests {
         for code in [1000, 1001, 1003, 1006, 4000, 4008, 4009, 4010] {
             assert!(!ends_sessions(code), "{code}");
         }
+    }
+
+    #[test]
+    fn a_direct_go_away_maps_to_a_close_code() {
+        assert_eq!(close_code_of(0), 1000);
+        assert_eq!(close_code_of(4001), 4001);
+        assert_eq!(close_code_of(1), 4002);
+        assert_eq!(close_code_of(2), 4002);
+        // Only the cloud says the account is closing.
+        assert_eq!(close_code_of(4011), 1000);
+        assert_eq!(close_code_of(77), 1000);
     }
 
     #[test]

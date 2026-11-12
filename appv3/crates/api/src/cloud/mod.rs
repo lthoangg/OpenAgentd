@@ -563,7 +563,7 @@ impl HostHandler for Handler {
         if !roster.body.device(&self.me).is_some_and(|d| d.server) {
             return None;
         }
-        let d = roster.body.devices.iter().find(|d| d.box_key() == *static_key)?;
+        let d = roster.body.by_box(static_key)?;
         let id = d.id.clone();
         drop(roster);
         // The same question as a relay offer: active, `client`, not departed.
@@ -1029,6 +1029,16 @@ mod tests {
         assert_eq!(h.admit_direct(&ci.r#box.public()), None, "no client role");
         assert_eq!(h.admit_direct(&me.r#box.public()), None, "not itself");
         assert_eq!(h.admit_direct(&DeviceKeys::generate().r#box.public()), None, "a stranger");
+        // Two entries with one `box` key: the host refuses rather than pick.
+        {
+            let mut twin = Device::of(&DeviceKeys::generate(), false, both);
+            twin.r#box = Device::of(&phone, false, both).r#box;
+            let mut r = h.roster.write().unwrap();
+            r.body.devices.push(twin);
+        }
+        assert_eq!(h.admit_direct(&phone.r#box.public()), None, "a shared box key names no one");
+        h.roster.write().unwrap().body.devices.pop();
+        assert_eq!(h.admit_direct(&phone.r#box.public()), Some(phone.id()));
         // Eight days without the cloud: no direct sessions until it hears again.
         h.ledger.write().unwrap().contacted(0);
         let mut stale = ledger::Ledger::default();

@@ -331,6 +331,38 @@ async fn eight_sessions_per_controller_the_oldest_makes_way() {
 }
 
 #[tokio::test]
+async fn a_replayed_message_1_neither_counts_nor_replaces_a_session() {
+    let s = setup(Keepalive::default()).await;
+    let mut live = connect(&s, Keepalive::default()).await.unwrap();
+    // Someone on the network recorded one message 1 of the phone and
+    // replays it more often than the per-controller cap.
+    let prologue = openagentd_cloud::noise::direct_prologue(ACCOUNT, &s.server.id());
+    let mut init = openagentd_cloud::noise::Initiator::new(s.phone.r#box.seed(), &s.server.r#box.public(), &prologue, None).unwrap();
+    let mut hello = direct::GREETING.to_vec();
+    hello.extend_from_slice(&direct::frame(&init.write_message1().unwrap()));
+    let mut replays = Vec::new();
+    for _ in 0..direct::MAX_PER_CONTROLLER + 1 {
+        let mut tcp = TcpStream::connect(s.addr).await.unwrap();
+        tcp.write_all(&hello).await.unwrap();
+        // The host answers message 2 (IK cannot tell a replay), then waits
+        // for a transport message the replayer cannot write.
+        let mut m2 = [0u8; 50];
+        tcp.read_exact(&mut m2).await.unwrap();
+        replays.push(tcp);
+    }
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!live.is_closed(), "no replay took the live session's place");
+    assert_eq!(echo(&live, "still").await, "STILL");
+    // The replays are unfinished handshakes: closed when the deadline passes.
+    let mut buf = [0u8; 1];
+    let n = tokio::time::timeout(direct::HELLO_DEADLINE + Duration::from_secs(2), replays[0].read(&mut buf)).await.unwrap().unwrap_or(0);
+    assert_eq!(n, 0);
+    assert!(!live.is_closed());
+    live.end(1000);
+    let _ = live.wait_ended().await;
+}
+
+#[tokio::test]
 async fn a_check_in_the_middle_of_a_frame_does_not_lose_bytes() {
     // The controller's side is driven by hand; the host runs the real
     // session. A check (a poke) arrives while half a frame is in.

@@ -592,10 +592,15 @@ lines("agentd-direct-v1", account_id, host id)
 ```
 
 There is no offer. The host finds the controller by the static key in
-message 1: the roster entry whose `box` equals it. It runs the checks of
-section 5.1 on that entry, plus the departed set. If a check fails, or
-message 1 does not decrypt, the host closes the connection without
-sending anything. A controller treats a close or a timeout (2 seconds)
+message 1: the roster entry whose `box` equals it. If more than one entry
+has that `box`, the host refuses. It runs the checks of section 5.1 on
+that entry, plus the departed set. If a check fails, or message 1 does
+not decrypt, the host closes the connection without sending anything.
+After message 2 the connection is still an unfinished handshake (it
+counts toward the listener's limits) until the host has decrypted a
+transport message on it; the host closes it, with nothing sent, if none
+arrives within 5 seconds of message 2. The controller's first ping
+(below) is that message. A controller treats a close or a timeout (2 seconds)
 before message 2 as "not reachable directly", and stays on or moves to
 the relay. Only the host whose `box` key the controller used can read
 message 1 or write message 2, so a different machine at a remembered
@@ -621,18 +626,25 @@ at once and closes the session if nothing arrives within 3 seconds.
 **Closing.** Before it closes on purpose, a side sends a yamux Go Away
 whose length field carries the reason: `0` normal (including the setting
 turned off, the 24 hours, the 7-day rule, a shutdown, or a newer session
-replacing this one), `1` protocol error, `2` internal error, `4001` the
-controller was removed (section 3.2), or `4011` the account is closing.
-Then it closes the TCP connection. A transport message that does not
-decrypt closes the connection at once, with nothing sent (what 4002 is on
-the relay). A controller handles Go Away 4001 as it handles a relay 4001,
-and any other reason as a lost route. No new close code is added on the
-relay.
+replacing this one), `4001` the controller was removed (section 3.2), or
+`4011` the host's account is closing. Then it closes the TCP connection.
+A transport message that does not decrypt, or whose plaintext is not
+valid yamux, closes the connection at once with nothing sent (what 4002
+is on the relay). Reasons `1` (protocol error) and `2` (internal error)
+are accepted from a peer but not sent in this version. A controller
+handles Go Away 4001 as it handles a relay 4001, and any other reason,
+4011 included, as a lost route: on a direct session 4011 is one device's
+word, and only the cloud says the account is closing ("Account state",
+section 1). No new
+close code is added on the relay.
 
 **Limits.** A host keeps at most 8 direct sessions per controller and 32
-in all. When a 9th session from one controller finishes its handshake,
-the host closes that controller's oldest session (Go Away 0), because a
-phone that changed networks leaves dead sessions behind.
+in all. A session counts toward these limits, and can replace an older
+one, only once the host has decrypted a transport message on it, so a
+replayed message 1 neither counts nor replaces anything. When a 9th
+session from one controller gets that far, the host closes that
+controller's oldest session (Go Away 0), because a phone that changed
+networks leaves dead sessions behind.
 
 **Last contact with the cloud.** A host records the wall-clock time of
 its last contact with the cloud: a signed roster fetch that returned a
@@ -691,7 +703,7 @@ outputs:
 | `code` | Commit and the 6-digit code, from both sides |
 | `invite` | `proof` and `confirm` |
 | `noise` | A full IK handshake and two transport messages each way |
-| `direct` | The greeting bytes; the direct prologue; a full IK handshake with that prologue, as framed bytes (length prefix included); two framed transport messages each way; a yamux ping SYN and its ACK, and a Go Away 4001, as plaintext and as framed ciphertext; framing that must be refused (lengths 0, 15, 97 for message 1) |
+| `direct` | The greeting bytes; the direct prologue; a full IK handshake with that prologue, as framed bytes (length prefix included); two framed transport messages each way; a yamux ping SYN and its ACK, and a Go Away 4001, as plaintext and as framed ciphertext; framing that must be refused: lengths 0, 15 and 97 for message 1, 0, 47 and 49 for message 2, and 0 and 15 for a transport message |
 | `letter` | A sealed letter at each size, and its plaintext |
 
 An X25519 or Ed25519 private key is given as its 32-byte seed. In

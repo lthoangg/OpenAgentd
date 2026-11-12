@@ -353,7 +353,13 @@ addresses.
   verified roster lists with `client: true`, that is not departed, and
   only within 7 days of its last contact with the cloud. A replayed
   message 1 gets a message 2 but no usable keys. The host acts on nothing
-  until a transport message decrypts.
+  until a transport message decrypts: until then the connection is an
+  unfinished handshake, so a replay neither counts toward the session
+  limits nor replaces a live session. Two roster entries with one `box`
+  key name no one, and the host refuses.
+- **A host speaking for the cloud.** A Go Away 4011 on a direct session
+  is a lost route to the controller, never "account closing": only the
+  cloud says that.
 - **Removed devices.** A roster removal or a departed id closes live
   direct sessions (Go Away 4001) and refuses new ones. A device that left
   by itself is refused through the departed set, which the host saves on

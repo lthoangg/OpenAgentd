@@ -247,25 +247,41 @@ where
     Ok((io, transport, device))
 }
 
+/// The host side after [`accept`], still an unfinished handshake: waits
+/// [`HELLO_DEADLINE`] for the first transport message and decrypts it. A
+/// replayed message 1 gets a message 2 but never gets here, so it counts
+/// toward no limit and replaces no session (spec section 5.5). Returns the
+/// plaintext for [`serve_accepted`].
+pub async fn confirm<S>(mut io: S, mut transport: Transport) -> Result<(S, Transport, Vec<u8>), DirectError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    let msg = tokio::time::timeout(HELLO_DEADLINE, read_frame(&mut io, Expect::Transport)).await.map_err(|_| DirectError::TimedOut)??;
+    let plain = transport.decrypt(&msg).map_err(|_| DirectError::Protocol)?;
+    Ok((io, transport, plain))
+}
+
 /// Serves one accepted TCP connection as a direct session until it ends:
-/// the handshake ([`accept`]), the limits, then every stream through
-/// `handler.serve`, re-checking the controller before each one as relay
-/// sessions do. `sessions` holds direct sessions only.
+/// the handshake ([`accept`], [`confirm`]), the limits, then every stream
+/// through `handler.serve`, re-checking the controller before each one as
+/// relay sessions do. `sessions` holds direct sessions only.
 pub async fn serve_host<S>(io: S, keys: Arc<HostKeys>, handler: Arc<dyn HostHandler>, sessions: Sessions, join: Join, keepalive: Keepalive) -> Result<(), DirectError>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     let (io, transport, from) = accept(io, &keys, handler.as_ref()).await?;
-    serve_accepted(io, transport, from, handler, sessions, join, keepalive).await
+    let (io, transport, first) = confirm(io, transport).await?;
+    serve_accepted(io, transport, first, from, handler, sessions, join, keepalive).await
 }
 
-/// [`serve_host`] after [`accept`]: the caller may hold a place in a
-/// [`Gate`] only for the handshake.
-pub async fn serve_accepted<S>(io: S, transport: Transport, from: String, handler: Arc<dyn HostHandler>, sessions: Sessions, join: Join, keepalive: Keepalive) -> Result<(), DirectError>
+/// [`serve_host`] after [`accept`] and [`confirm`]: the caller may hold a
+/// place in a [`Gate`] only until then. `first` is what [`confirm`] read.
+#[allow(clippy::too_many_arguments)]
+pub async fn serve_accepted<S>(io: S, transport: Transport, first: Vec<u8>, from: String, handler: Arc<dyn HostHandler>, sessions: Sessions, join: Join, keepalive: Keepalive) -> Result<(), DirectError>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let mut tunnel = start(io, transport, false, join, keepalive, Some(MAX_LIFETIME));
+    let mut tunnel = start_with(io, transport, false, join, keepalive, Some(MAX_LIFETIME), Some(first));
     let closer = tunnel.closer();
     if !sessions.add_capped(&from, closer.clone(), MAX_PER_CONTROLLER, MAX_SESSIONS, 1000) {
         tunnel.end(1000);
@@ -302,6 +318,14 @@ where
 /// reader decrypts into the session and watches the keepalive. `lifetime`
 /// ends it with Go Away 0 (the host's 24 hours).
 pub fn start<S>(io: S, transport: Transport, client: bool, join: Join, keepalive: Keepalive, lifetime: Option<Duration>) -> Tunnel
+where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
+    start_with(io, transport, client, join, keepalive, lifetime, None)
+}
+
+/// [`start`], with a first plaintext already read and decrypted.
+fn start_with<S>(io: S, transport: Transport, client: bool, join: Join, keepalive: Keepalive, lifetime: Option<Duration>, first: Option<Vec<u8>>) -> Tunnel
 where
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
@@ -414,7 +438,19 @@ where
         let mut cause = EndCause::Network;
         let mut last_in = tokio::time::Instant::now();
         let mut wall = (keepalive.wall_clock)();
+        let mut first = first;
         loop {
+            if let Some(p) = first.take() {
+                let ok = s_in.receive(&p).is_ok();
+                if let Some(reason) = s_in.peer_go_away() {
+                    (code, cause) = (close_code_of(reason), EndCause::Closed);
+                    break;
+                }
+                if !ok {
+                    (code, cause) = (4002, EndCause::Protocol);
+                    break;
+                }
+            }
             let now_wall = (keepalive.wall_clock)();
             if now_wall.duration_since(wall).is_ok_and(|gap| gap > keepalive.dead_after) {
                 cause = EndCause::Deadline;

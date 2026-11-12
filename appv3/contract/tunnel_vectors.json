@@ -422,6 +422,149 @@
 			]
 		}
 	],
+	"direct": [
+		{
+			"note": "One connection, in this order: greeting, message1_framed, message2_framed, then transport and yamux from top to bottom, so each side's nonce counts on through both lists. A framed value is the bytes on the wire: the length of the Noise message in 2 bytes, big-endian, then the message. The transport plaintexts are text, as in noise: they check the encryption and the framing, and are not yamux frames. A yamux header is the whole plaintext of its message. Each refused case arrives, on a connection of its own, where a framed message of the kind in expect is due: the reader closes the connection and sends nothing.",
+			"protocol": "Noise_IK_25519_AESGCM_SHA256",
+			"greeting": "agentd-direct-v1\n",
+			"account_id": "wFuhTNq3Ra-EVe24nCtFWcuYs76uT37NoTBSwQ",
+			"controller": {
+				"id": "J-LrF5flUGXDGZBCUzqGRA",
+				"static_seed": "Tg1Ov-lapUOo3Ld7ECnmMjNopLO6WwN57uQh8kNf0l0",
+				"ephemeral_seed": "xfTbRUKOdeioaYKG70NYsh3qxBXTdahdhKunR7XkAAw"
+			},
+			"host": {
+				"id": "XB98rfvfbasp0iVT7IiGeg",
+				"static_seed": "bBN5Z8rEu0CZ6VoF5ggly0yRrmkHJT8nPppkndySGGs",
+				"ephemeral_seed": "ckRuZEmdSshbEs2KctgsCkg2gcUZJYE0qAVnUwqm-i8"
+			},
+			"prologue": "agentd-direct-v1\nwFuhTNq3Ra-EVe24nCtFWcuYs76uT37NoTBSwQ\nXB98rfvfbasp0iVT7IiGeg",
+			"message1": "p-87SV0idSAw6fwenwaHE78CEFmsHiM44wJFHJwIuVxyXafQHRF0mwmogPKXBmPDQPmaaMXR_ZEE9IXm_7XfsYh4UXDQZ8_hbZGrasXJZGDDycYx3j5-oIgL4ucwRsl1",
+			"message1_framed": "AGCn7ztJXSJ1IDDp_B6fBocTvwIQWaweIzjjAkUcnAi5XHJdp9AdEXSbCaiA8pcGY8NA-ZpoxdH9kQT0heb_td-xiHhRcNBnz-FtkatqxclkYMPJxjHePn6giAvi5zBGyXU",
+			"message2": "40dBneQer6ila9SdnkpfEcMIA-KBs3rVWK0Rsi8u3VZLyZuY6TgVEUjeqsnKbkAd",
+			"message2_framed": "ADDjR0Gd5B6vqKVr1J2eSl8RwwgD4oGzetVYrRGyLy7dVkvJm5jpOBURSN6qycpuQB0",
+			"handshake_hash": "qP0-aBWpQnuFdE_qOrJrThEeerYT2jPw-WnlxLQ94vo",
+			"transport": [
+				{
+					"from": "controller",
+					"plaintext": "GET /api/health HTTP/1.1",
+					"message": "AX0fLPwNSXf61D9tOUWYFS86h25Ubq2EeCbLz_-ueLxG39n6LojENg",
+					"framed": "ACgBfR8s_A1Jd_rUP205RZgVLzqHblRurYR4JsvP_654vEbf2fouiMQ2"
+				},
+				{
+					"from": "host",
+					"plaintext": "HTTP/1.1 200 OK",
+					"message": "7vBJ_bTuOR7VEDQyW0B_AXhf6Rf8GGLScpix5T6GTg",
+					"framed": "AB_u8En9tO45HtUQNDJbQH8BeF_pF_wYYtJymLHlPoZO"
+				},
+				{
+					"from": "controller",
+					"plaintext": "",
+					"message": "5LCo2mqif7J1RlgPlpWbCg",
+					"framed": "ABDksKjaaqJ_snVGWA-WlZsK"
+				},
+				{
+					"from": "host",
+					"plaintext": "a second message",
+					"message": "qicd-0IBw9AsPrKVr2faufFD7jvkBJrAkGdCudfMCiY",
+					"framed": "ACCqJx37QgHD0Cw-spWvZ9q58UPuO-QEmsCQZ0K518wKJg"
+				}
+			],
+			"yamux": [
+				{
+					"name": "ping",
+					"from": "controller",
+					"type": 2,
+					"flags": 1,
+					"stream": 0,
+					"length": 7,
+					"header": "AAIAAQAAAAAAAAAH",
+					"message": "XKE3yzuEa1xpOCGoo7Y5dHbMQ803bwHtur2X3Q",
+					"framed": "ABxcoTfLO4RrXGk4Iaijtjl0dsxDzTdvAe26vZfd"
+				},
+				{
+					"name": "ping_ack",
+					"from": "host",
+					"type": 2,
+					"flags": 2,
+					"stream": 0,
+					"length": 7,
+					"header": "AAIAAgAAAAAAAAAH",
+					"message": "4GiMbuDIhmdqLXrnG5K41XTzY7aTI34TzHpxCA",
+					"framed": "ABzgaIxu4MiGZ2oteucbkrjVdPNjtpMjfhPMenEI"
+				},
+				{
+					"name": "go_away_removed",
+					"from": "host",
+					"type": 3,
+					"flags": 0,
+					"stream": 0,
+					"length": 4001,
+					"header": "AAMAAAAAAAAAAA-h",
+					"message": "YTQm5hia0qRP8Ao1ZsBmsSygwcuTBYK4CFuzwg",
+					"framed": "ABxhNCbmGJrSpE_wCjVmwGaxLKDBy5MFgrgIW7PC"
+				}
+			],
+			"refused": [
+				{
+					"name": "message1_length_0",
+					"expect": "message1",
+					"length": 0,
+					"bytes": "AAAAYKfvO0ldInUgMOn8Hp8GhxO_AhBZrB4jOOMCRRycCLlccl2n0B0RdJsJqIDylwZjw0D5mmjF0f2RBPSF5v-137GIeFFw0GfP4W2Rq2rFyWRgw8nGMd4-fqCIC-LnMEbJdQ",
+					"note": "An empty message, then the real message 1. It is not skipped: the host sends no message 2."
+				},
+				{
+					"name": "message1_length_15",
+					"expect": "message1",
+					"length": 15,
+					"bytes": "AA-n7ztJXSJ1IDDp_B6fBoc",
+					"note": "Message 1 cut to 15 bytes."
+				},
+				{
+					"name": "message1_length_97",
+					"expect": "message1",
+					"length": 97,
+					"bytes": "AGGn7ztJXSJ1IDDp_B6fBocTvwIQWaweIzjjAkUcnAi5XHJdp9AdEXSbCaiA8pcGY8NA-ZpoxdH9kQT0heb_td-xiHhRcNBnz-FtkatqxclkYAMG4kd4vLwbAB3OS2RZGVzL",
+					"note": "A real message 1 with one byte of payload (0x00), from the same keys. It decrypts: the length refuses it."
+				},
+				{
+					"name": "message2_length_0",
+					"expect": "message2",
+					"length": 0,
+					"bytes": "AAAAMONHQZ3kHq-opWvUnZ5KXxHDCAPigbN61VitEbIvLt1WS8mbmOk4FRFI3qrJym5AHQ",
+					"note": "An empty message, then the real message 2. It is not skipped: the controller starts no session."
+				},
+				{
+					"name": "message2_length_47",
+					"expect": "message2",
+					"length": 47,
+					"bytes": "AC_jR0Gd5B6vqKVr1J2eSl8RwwgD4oGzetVYrRGyLy7dVkvJm5jpOBURSN6qycpuQA",
+					"note": "Message 2 cut to 47 bytes."
+				},
+				{
+					"name": "message2_length_49",
+					"expect": "message2",
+					"length": 49,
+					"bytes": "ADHjR0Gd5B6vqKVr1J2eSl8RwwgD4oGzetVYrRGyLy7dVtFx7BsByoGsOZ7EN1oUC4sc",
+					"note": "A real message 2 with one byte of payload (0x00), from the same keys. It decrypts: the length refuses it."
+				},
+				{
+					"name": "transport_length_0",
+					"expect": "transport",
+					"length": 0,
+					"bytes": "AAA",
+					"note": "No transport message is shorter than its 16-byte tag."
+				},
+				{
+					"name": "transport_length_15",
+					"expect": "transport",
+					"length": 15,
+					"bytes": "AA8BfR8s_A1Jd_rUP205RZg",
+					"note": "The first transport message cut to 15 bytes."
+				}
+			]
+		}
+	],
 	"letter": [
 		{
 			"account_id": "wFuhTNq3Ra-EVe24nCtFWcuYs76uT37NoTBSwQ",

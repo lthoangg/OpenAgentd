@@ -1,14 +1,20 @@
 /**
- * The account's computers on the phone's Servers screen (decision D8).
+ * The account's computers: the phone's Servers screen (decision D8), and the
+ * desktop app's Settings → Server (one component for both).
  *
- * One row per server of the account (spec 3.4: the phone opens sessions
- * only on devices with the server role; itself and clients left out). A
- * computer is its device, not an address: opening a row starts its link in
- * the shell, which reaches it directly on the home network or through the
- * account's relay and moves between the two by itself, with no reload.
- * Saved servers (address and access key) are a separate list and a
- * separate thing, even when one is the same machine: they are never merged
- * into these rows.
+ * One row per server of the account (spec 3.4: sessions open only on
+ * devices with the server role; this device and clients left out). A
+ * computer is its device, not an address: opening a row starts its link,
+ * which reaches it directly on the home network or through the account's
+ * relay and moves between the two by itself, with no reload. Saved servers
+ * (address and access key) are a separate list and a separate thing, even
+ * when one is the same machine: they are never merged into these rows.
+ *
+ * The phone's account lives in its shell; the desktop's in the built-in
+ * server (`api/cloud.ts` always calls that one). So on the desktop a
+ * stopped built-in server leaves nothing to list: the section says so and
+ * offers Start. A desktop signed in without the client role cannot open
+ * other computers, and the section says that instead of listing them.
  *
  * The line under a computer in use names the route its link is on: "On
  * your network" or "Through your account" (`cloud_link_route`, polled while
@@ -21,100 +27,35 @@
  * the screen is up and visible. A row is In use when the app is on its
  * bridge.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 
-import { getLinkRoute, isServer, type DeviceRow, type LinkRoute } from '@/api/phone-cloud'
+import type { DeviceRow, LinkRoute } from '@/api/phone-cloud'
 import { ServerRow } from '@/components/AppBackendPanel'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { PanelSection } from '@/components/ui/panel-section'
 import { useTouchFirst } from '@/hooks/use-touch-first'
-import { accountComputerTitle, getAppBackendStatus, type AppBackendStatus } from '@/lib/app-backend'
+import {
+  BUILTIN_STOPPED_COMPUTERS,
+  CANNOT_OPEN_COMPUTERS,
+  computerLine,
+  type AccountComputer,
+} from '@/lib/account-computers'
+import type { AppBackendStatus } from '@/lib/app-backend'
 import { connectAccountComputer, currentBackendOrigin, reloadForBackendSwitch } from '@/lib/backend-switch'
-import { usePhoneCloudDevices, usePhoneCloudStatus } from '@/queries/phone-cloud'
+import { isDesktopShell } from '@/lib/desktop-shell'
 
-/** How often the computers (and their dots) refresh while the screen is up. */
-export const ACCOUNT_COMPUTERS_REFRESH_MS = 30_000
-/** How often the route of the computer in use is read while the screen is up. */
-export const LINK_ROUTE_REFRESH_MS = 2_000
-
-export interface AccountComputer {
-  device: DeviceRow
-  label: string
-}
-
-/** The route of the link to `deviceId` while `active`, read now and then. */
-export function useLinkRoute(deviceId: string | null, active: boolean): LinkRoute {
-  const [route, setRoute] = useState<LinkRoute>('none')
-  useEffect(() => {
-    if (!deviceId || !active) return
-    let cancelled = false
-    const read = () => {
-      if (document.visibilityState !== 'visible') return
-      void getLinkRoute(deviceId).then((r) => { if (!cancelled) setRoute(r) })
-    }
-    read()
-    const timer = window.setInterval(read, LINK_ROUTE_REFRESH_MS)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [deviceId, active])
-  return deviceId && active ? route : 'none'
-}
-
-export function useAccountComputers(active: boolean) {
-  const connected = usePhoneCloudStatus().data?.state === 'connected'
-  const devicesQ = usePhoneCloudDevices(connected && active)
-  const [app, setApp] = useState<AppBackendStatus | null>(null)
-  const loadApp = useCallback(async () => {
-    setApp(await getAppBackendStatus())
-  }, [])
-  const { refetch } = devicesQ
-
-  useEffect(() => {
-    if (active && connected) void loadApp()
-  }, [active, connected, loadApp])
-
-  // The dots go stale: refresh while the screen is up and the app visible.
-  useEffect(() => {
-    if (!active || !connected) return
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refetch()
-    }, ACCOUNT_COMPUTERS_REFRESH_MS)
-    return () => window.clearInterval(timer)
-  }, [active, connected, refetch])
-
-  const computers = useMemo<AccountComputer[]>(() => {
-    if (!connected) return []
-    return (devicesQ.data ?? [])
-      .filter((device) => !device.me && isServer(device))
-      .map((device) => ({ device, label: accountComputerTitle(device) }))
-  }, [connected, devicesQ.data])
-
-  const refresh = useCallback(async () => {
-    await Promise.all([connected ? refetch() : undefined, loadApp()])
-  }, [connected, refetch, loadApp])
-
-  const route = useLinkRoute(app?.account_device?.device_id ?? null, active && connected)
-  return { computers, devices: connected ? devicesQ.data : undefined, connected, app, route, refresh }
-}
-
-/**
- * The line under a computer: the route its link is on when the app is on
- * it, else what the account knows.
- */
-export function computerLine(computer: AccountComputer, inUse: boolean, route: LinkRoute): string {
-  if (inUse) {
-    if (route === 'direct') return 'On your network'
-    if (route === 'relay') return 'Through your account'
-    if (route === 'connecting') return 'Connecting…'
-    if (route === 'down') return "Can't reach it · Retrying…"
-  }
-  if (computer.device.online === true) return 'Online'
-  if (computer.device.online === false) return 'Offline'
-  return 'Your account'
-}
+export {
+  ACCOUNT_COMPUTERS_REFRESH_MS,
+  LINK_ROUTE_REFRESH_MS,
+  BUILTIN_STOPPED_COMPUTERS,
+  CANNOT_OPEN_COMPUTERS,
+  accountComputerLine,
+  computerLine,
+  useAccountComputers,
+  useLinkRoute,
+  type AccountComputer,
+} from '@/lib/account-computers'
 
 function computerHealth(device: DeviceRow): 'online' | 'offline' | null {
   if (device.online === true) return 'online'
@@ -128,6 +69,9 @@ export function AccountComputersSection({
   app,
   route,
   onOpenSessions,
+  builtinStopped = false,
+  onStartBuiltin,
+  cannotOpen = false,
 }: {
   computers: AccountComputer[]
   /** The account's devices have loaded (else an empty list says nothing yet). */
@@ -137,18 +81,64 @@ export function AccountComputersSection({
   route: LinkRoute
   /** Back to the Sessions of the server in use; absent while no server is connected. */
   onOpenSessions?: () => void
+  /** Desktop: the built-in server, which holds the account, is stopped. */
+  builtinStopped?: boolean
+  /** Desktop: starts the built-in server (without switching to it). */
+  onStartBuiltin?: () => Promise<void>
+  /** Desktop: signed in without the client role, so it cannot open others. */
+  cannotOpen?: boolean
 }) {
   const touch = useTouchFirst()
   const [opening, setOpening] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState<string | null>(null)
+  const [starting, setStarting] = useState(false)
+  const desktop = isDesktopShell()
+  if (builtinStopped) {
+    const start = async () => {
+      if (!onStartBuiltin) return
+      setStarting(true)
+      setError(null)
+      try {
+        await onStartBuiltin()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        setStarting(false)
+      }
+    }
+    return (
+      <>
+        <PanelSection title="Your computers">
+          <div className="flex items-center gap-3">
+            <p className="min-w-0 flex-1 text-xs leading-relaxed text-(--color-text-2)">{BUILTIN_STOPPED_COMPUTERS}</p>
+            {onStartBuiltin ? (
+              <Button type="button" variant="subtle" size="sm" onClick={() => { void start() }} disabled={starting}>
+                Start
+              </Button>
+            ) : null}
+          </div>
+        </PanelSection>
+        {error && <Callout tone="error" role="alert">{error}</Callout>}
+      </>
+    )
+  }
+  if (cannotOpen) {
+    return (
+      <PanelSection title="Your computers">
+        <p className="text-xs leading-relaxed text-(--color-text-2)">{CANNOT_OPEN_COMPUTERS}</p>
+      </PanelSection>
+    )
+  }
   if (computers.length === 0) {
     if (!loaded) return null
     return (
       <PanelSection title="Your computers">
         <div className="space-y-1 text-xs leading-relaxed text-(--color-text-2)">
           <p className="font-medium text-(--color-text)">No computers yet</p>
-          <p>On your computer, open OpenAgentd, go to Settings → Account and sign in. You approve it here.</p>
+          <p>{desktop
+            ? 'On another computer, open OpenAgentd, go to Settings → Account and sign in to your account.'
+            : 'On your computer, open OpenAgentd, go to Settings → Account and sign in. You approve it here.'}</p>
         </div>
       </PanelSection>
     )

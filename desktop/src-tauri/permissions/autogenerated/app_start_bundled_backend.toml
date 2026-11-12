@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-start-bundled-backend"
+description = "Enables the app_start_bundled_backend command without any pre-configured scope."
+commands.allow = ["app_start_bundled_backend"]
+
+[[permission]]
+identifier = "deny-app-start-bundled-backend"
+description = "Denies the app_start_bundled_backend command without any pre-configured scope."
+commands.deny = ["app_start_bundled_backend"]

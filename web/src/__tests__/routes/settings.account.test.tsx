@@ -339,10 +339,25 @@ let proofCalls: Array<Record<string, unknown>> = []
 let proofAnswer: string | null = 'app-proof'
 const realPlatform = Object.getOwnPropertyDescriptor(window.navigator, 'platform')
 
-/** Runs the page as the desktop app on a Mac would. */
+/**
+ * Runs the page as the desktop app on a Mac would. Its account calls go
+ * through the shell (`desktop_cloud_call`), which passes them, with the
+ * app's proof, to the built-in server: here, the same fake routes.
+ */
 function inDesktopApp() {
   ;(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
     invoke: async (command: string, args: Record<string, unknown>) => {
+      if (command === 'desktop_cloud_call') {
+        const headers: Record<string, string> = {}
+        if (args.body !== null && args.body !== undefined) headers['Content-Type'] = 'application/json'
+        if (typeof args.proof === 'string') headers['X-Agentd-Approval'] = args.proof
+        const res = await fetch(`http://localhost/api/cloud${String(args.path)}`, {
+          method: String(args.method),
+          headers,
+          body: args.body === null || args.body === undefined ? undefined : JSON.stringify(args.body),
+        })
+        return { status: res.status, body: await res.text() }
+      }
       if (command !== 'cloud_approval_proof') throw new Error(`unexpected command: ${command}`)
       proofCalls.push(args)
       return proofAnswer

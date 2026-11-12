@@ -18,11 +18,14 @@
 //! - [`account_state`]: what the cloud's account errors mean for a device.
 //! - [`relay`]: relay sockets, the send rule, and tunnels.
 //! - [`link`]: one self-healing link per computer, on top of [`relay`].
+//! - `bridge` (feature `bridge`): a loopback HTTP origin in front of a link.
 
 pub mod account_state;
 pub mod address_book;
 pub mod api;
 pub mod approval;
+#[cfg(feature = "bridge")]
+pub mod bridge;
 pub mod code;
 pub mod direct;
 pub mod encoding;

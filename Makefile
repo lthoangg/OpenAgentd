@@ -91,8 +91,8 @@ verify-native: verify-shell-core verify-desktop verify-mobile ## Run shared-crat
 
 verify-cloud: ## Format-check, lint, and test the OpenAgentd Cloud protocol crate (vectors, flows, release host pin)
 	cd native/cloud && cargo fmt --check
-	cd native/cloud && cargo clippy --all-targets -- -D warnings
-	cd native/cloud && cargo test
+	cd native/cloud && cargo clippy --all-targets --all-features -- -D warnings
+	cd native/cloud && cargo test --all-features
 
 verify-shell-core: ## Format-check, lint, and test the Rust crate shared by both native shells (no Tauri deps)
 	cd native/shell-core && cargo fmt --check

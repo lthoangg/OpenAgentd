@@ -1,6 +1,6 @@
 //! OpenAgentd Cloud accounts on a host (the desktop sidecar or a CLI
-//! server): sign-in, the presence socket, and relay sessions into this
-//! server.
+//! server): sign-in, the presence socket, relay sessions into this server,
+//! and links out to the account's other computers ([`controller`]).
 //!
 //! Guest use never touches this module's network side: with no stored
 //! identity it only answers `GET /api/cloud/status` with `guest`. The
@@ -9,6 +9,7 @@
 
 pub mod approval;
 pub mod connector;
+pub mod controller;
 pub mod direct;
 pub mod engine;
 pub mod invite;
@@ -286,6 +287,9 @@ pub async fn stop() {
     }
     set_direct_ok(false);
     close_everywhere(1000);
+    // Links out need this host's account: they end with it.
+    controller::close_all().await;
+    controller::publish(None);
     // An open invitation must not outlive the server that shows it.
     invite::cancel().await;
 }
@@ -576,6 +580,7 @@ impl HostHandler for Handler {
 fn forget(notice: Notice) {
     set_direct_ok(false);
     close_everywhere(4001);
+    controller::publish(None);
     if let Err(e) = identity_store().clear() {
         tracing::warn!("cloud_identity_clear_failed error={e}");
     }
@@ -589,11 +594,13 @@ fn on_problem(p: AccountProblem, fingerprint: &str) -> bool {
         AccountProblem::Closing { deletes_at } => {
             set_direct_ok(false);
             close_everywhere(4011);
+            close_links();
             set_status(Status::Closing { fingerprint: fingerprint.to_string(), deletes_at });
             true
         }
         AccountProblem::Unavailable => {
             host().sessions.close_all(4012);
+            close_links();
             set_status(Status::Unavailable { fingerprint: fingerprint.to_string() });
             true
         }
@@ -625,6 +632,13 @@ fn set_relay(relay_state: RelayState, member: &Member, fingerprint: &str) {
         relay: relay_state,
         sessions: 0,
     });
+}
+
+/// Closes the links out to other computers (the account cannot be used now).
+fn close_links() {
+    if let Ok(rt) = tokio::runtime::Handle::try_current() {
+        rt.spawn(controller::close_all());
+    }
 }
 
 /// Tells the running connection loop to fetch the roster again (a signer
@@ -711,7 +725,7 @@ pub(crate) fn persist_roster(r: &Roster) {
 }
 
 /// Takes a changed roster as `K`: stores it and closes the sessions of the
-/// devices it removed.
+/// devices it removed. Links out follow the roster too.
 fn apply_sync(member: &Member, shared: &RwLock<Roster>, sync: openagentd_cloud::flows::Sync) {
     if sync.changed {
         let r = member.roster.clone().expect("synced");
@@ -721,6 +735,7 @@ fn apply_sync(member: &Member, shared: &RwLock<Roster>, sync: openagentd_cloud::
             revoke_everywhere(&d);
         }
     }
+    controller::publish(Some(member));
 }
 
 /// The least time between two check-ins with the cloud.

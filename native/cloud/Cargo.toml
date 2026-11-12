@@ -47,6 +47,16 @@ zeroize = { version = "1.8", features = ["derive"] }
 # The host's private addresses and the controller's own subnet (direct
 # sessions, spec 5.5): getifaddrs / GetAdaptersAddresses, no unsafe here.
 if-addrs = "0.13"
+# The loopback bridge (`bridge`, feature `bridge`): the phone shell and a
+# computer's server put one in front of each computer they open.
+bytes = { version = "1", optional = true }
+form_urlencoded = { version = "1", optional = true }
+http-body-util = { version = "0.1", optional = true }
+hyper = { version = "1", features = ["server", "client", "http1"], optional = true }
+hyper-util = { version = "0.1", features = ["tokio"], optional = true }
+
+[features]
+bridge = ["dep:bytes", "dep:form_urlencoded", "dep:http-body-util", "dep:hyper", "dep:hyper-util"]
 
 [dev-dependencies]
 axum = { version = "0.8", features = ["ws"] }

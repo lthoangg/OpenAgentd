@@ -181,7 +181,7 @@ export function cloudPoke(why: CloudPokeReason): void {
 /** The route an account computer's link is on (`cloud_link_route`). */
 export type LinkRoute = 'direct' | 'relay' | 'connecting' | 'down' | 'none'
 
-/** Where the shell's link to `deviceId` is; `none` from a shell without it. */
+/** Where the link to `deviceId` is (the phone shell's, or the desktop's built-in server's); `none` from a shell without it. */
 export async function getLinkRoute(deviceId: string): Promise<LinkRoute> {
   try {
     const r = await call<{ route?: string }>('cloud_link_route', { deviceId })

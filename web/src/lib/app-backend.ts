@@ -8,7 +8,7 @@ export interface SavedAppServer {
 /** Where the desktop shell's background connection to a followed server stands. */
 export type ServerWatchState = 'connecting' | 'connected' | 'reconnecting' | 'key_rejected'
 
-/** The account computer an account bridge reaches (phone shell only). */
+/** The account computer an account bridge reaches (phone and desktop shells). */
 export interface AccountBridgeDevice {
   device_id: string
   fingerprint: string
@@ -28,8 +28,9 @@ export interface AppBackendStatus {
   supports_bundled: boolean
   servers: SavedAppServer[]
   /**
-   * Phone shell: set while the app is on an account bridge (a loopback
-   * origin that relays to this computer of the account). Absent elsewhere.
+   * Set while the window is on an account bridge (a loopback origin that
+   * relays to this computer of the account): the phone shell's, or the
+   * desktop's built-in server's. Absent elsewhere.
    */
   account_device?: AccountBridgeDevice | null
   /**
@@ -159,6 +160,12 @@ export async function switchToBundledAppBackend(): Promise<void> {
 export async function stopBundledAppBackend(): Promise<void> {
   const { invoke } = await import('@tauri-apps/api/core')
   await invoke('app_stop_bundled_backend')
+}
+
+/** Desktop: start the built-in server without switching this window to it. */
+export async function startBundledAppBackend(): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  await invoke('app_start_bundled_backend')
 }
 
 export async function getBundledBackendLogPath(): Promise<string | null> {

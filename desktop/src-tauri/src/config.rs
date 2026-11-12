@@ -96,6 +96,10 @@ pub struct AppBackendStatus {
     pub external: bool,
     pub supports_bundled: bool,
     pub servers: Vec<SavedAppServer>,
+    /// Set while the window is on an account bridge: the computer it
+    /// reaches (`account.rs`). Absent on any other server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_device: Option<crate::account::AccountDevice>,
 }
 
 pub fn app_config_file(app: &AppHandle, name: &str) -> Result<PathBuf> {

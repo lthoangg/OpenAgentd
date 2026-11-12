@@ -3,10 +3,16 @@
  * sees it. Guest is the default; every state here is read from
  * `GET /api/cloud/status`, and the POST routes only work from the computer
  * the server runs on (anyone else gets 403).
+ *
+ * In the desktop app the account is the built-in server's, whatever server
+ * the window shows: every call goes there through the shell
+ * (`desktop_cloud_call`), which adds that server's token. Elsewhere it is
+ * the page's own server.
  */
 import { apiBaseUrl } from './base-url'
 import { parseDetailOrThrow } from './client/_shared'
 import type { InvitePoll } from './phone-cloud'
+import { isDesktopShell } from '@/lib/desktop-shell'
 
 export type CloudNotice =
   | 'denied'
@@ -76,6 +82,11 @@ export interface CloudDevice {
   client: boolean
   me: boolean
   kind: string | null
+  /**
+   * A server's relay connection is open now (the cloud's word, may be a
+   * little stale). null or absent: not a server, or the cloud did not say.
+   */
+  online?: boolean | null
 }
 
 /** A device asking to join, with the roles it asked for. */
@@ -98,8 +109,32 @@ export interface ApprovalView {
   client: boolean
 }
 
+/** What the shell's `desktop_cloud_call` answers: the built-in server's reply. */
+interface DesktopCloudAnswer {
+  status: number
+  body: string
+}
+
+/** An account call through the desktop shell, to the built-in server. */
+async function desktopCloudFetch(path: string, method: 'GET' | 'POST', body: unknown, proof: string | undefined): Promise<Response> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  let answer: DesktopCloudAnswer
+  try {
+    answer = await invoke<DesktopCloudAnswer>('desktop_cloud_call', { path, method, body: body ?? null, proof: proof ?? null })
+  } catch (error) {
+    throw error instanceof Error ? error : new Error(String(error))
+  }
+  const text = answer.body === '' && answer.status === 204 ? null : answer.body
+  return new Response(text, { status: answer.status, headers: { 'Content-Type': 'application/json' } })
+}
+
 async function cloudCall<T>(path: string, method: 'GET' | 'POST', body?: unknown, proof?: string): Promise<T> {
   const label = `${method} /cloud${path}`
+  if (isDesktopShell()) {
+    const res = await desktopCloudFetch(path, method, body, proof)
+    if (!res.ok) await parseDetailOrThrow(res, label)
+    return res.json()
+  }
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (proof) headers[APPROVAL_HEADER] = proof

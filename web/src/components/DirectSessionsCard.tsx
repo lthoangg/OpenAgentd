@@ -30,17 +30,19 @@ export function DirectSessionsCard() {
   const [setting, setSetting] = useState<DirectSetting | null>(null)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // An older server without the route: nothing to show.
+  const [unsupported, setUnsupported] = useState(false)
 
   useEffect(() => {
     if (!server) return
     let cancelled = false
     getDirectSetting()
       .then((next) => { if (!cancelled) setSetting(next) })
-      .catch((err: unknown) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Couldn\u2019t read the setting.') })
+      .catch(() => { if (!cancelled) setUnsupported(true) })
     return () => { cancelled = true }
   }, [server])
 
-  if (!server) return null
+  if (!server || unsupported) return null
 
   function toggle(on: boolean) {
     setPending(true)

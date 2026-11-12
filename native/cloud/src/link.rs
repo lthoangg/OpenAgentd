@@ -324,6 +324,17 @@ struct Task {
     attempt: u32,
 }
 
+/// Gives up a direct try: stops it, and ends the tunnel if it had already
+/// come up (a finished task's tunnel would otherwise run on unclaimed).
+fn discard(p: JoinHandle<Option<(Tunnel, SocketAddr)>>) {
+    p.abort();
+    tokio::spawn(async move {
+        if let Ok(Some((t, _))) = p.await {
+            t.end(1000);
+        }
+    });
+}
+
 impl Task {
     async fn run(mut self) {
         loop {
@@ -350,7 +361,7 @@ impl Task {
             let relay = relay::connect_within(&target.cloud, &target.http1, &device_id, &target.host_box, self.opts.join, self.opts.keepalive, self.opts.waits);
             let Some(raced) = self.unless_closed(race(relay, &mut pending)).await else {
                 if let Some(p) = pending {
-                    p.abort();
+                    discard(p);
                 }
                 return;
             };
@@ -442,7 +453,7 @@ impl Task {
                             old.end(1000);
                         }
                         if let Some(p) = pending.take() {
-                            p.abort();
+                            discard(p);
                         }
                         self.session.lock().expect("link session").take();
                         self.state.send_replace(LinkState::Down { reason: DownReason::Network, retry_at: None });
@@ -463,7 +474,7 @@ impl Task {
             }
         };
         if let Some(p) = pending.take() {
-            p.abort();
+            discard(p);
         }
         if let Some((old, _)) = draining.take() {
             // The newer route died first; the old one still drains nothing.

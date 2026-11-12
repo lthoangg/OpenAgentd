@@ -517,6 +517,19 @@ fn publish_relay(member: Option<&Member>) {
             servers,
         }
     });
+    // Addresses only for computers still in the account (none signed out;
+    // a member without a verified roster yet changes nothing).
+    if member.is_some_and(|m| m.roster.is_none()) {
+        return;
+    }
+    let keep: Vec<String> = slot.as_ref().map(|c| c.servers.keys().cloned().collect()).unwrap_or_default();
+    drop(slot);
+    let mut book = p.addresses.lock().expect("addresses");
+    let before = book.clone();
+    book.retain(|d| keep.iter().any(|k| k == d));
+    if *book != before {
+        write_json(&p.data_dir.join("cloud").join("direct.json"), &*book);
+    }
 }
 
 /// Shares the push context with the extension (`None`: remove it), and

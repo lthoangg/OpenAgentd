@@ -45,7 +45,17 @@ fn setting_path() -> PathBuf {
 }
 
 pub fn setting() -> Setting {
-    std::fs::read(setting_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    setting_from(std::fs::read(setting_path()))
+}
+
+/// No file: the default (on). A file that can't be read or parsed: off, so
+/// a switch the person turned off never comes back on by itself.
+fn setting_from(read: std::io::Result<Vec<u8>>) -> Setting {
+    match read {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Setting::default(),
+        Err(_) => Setting { on: false, port: None },
+        Ok(b) => serde_json::from_slice(&b).unwrap_or(Setting { on: false, port: None }),
+    }
 }
 
 fn save_setting(s: Setting) {
@@ -124,7 +134,9 @@ pub async fn run(keys: Arc<HostKeys>, handler: Arc<dyn HostHandler>, sessions: S
                 bound.insert(ip, Listening(task));
             }
             *listening().lock().expect("direct port") = if bound.is_empty() { None } else { port };
-        } else if !bound.is_empty() {
+        } else {
+            // Off, or the account says no (including 7 days without the
+            // cloud): stop listening and end live sessions (Go Away 0).
             bound.clear();
             *listening().lock().expect("direct port") = None;
             sessions.close_all(1000);
@@ -195,6 +207,15 @@ async fn accept_loop(l: TcpListener, keys: Arc<HostKeys>, handler: Arc<dyn HostH
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_file_means_on_and_a_broken_one_off() {
+        let missing = Err(std::io::Error::from(std::io::ErrorKind::NotFound));
+        assert!(setting_from(missing).on);
+        assert!(!setting_from(Ok(b"{not json".to_vec())).on);
+        assert!(!setting_from(Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))).on);
+        assert_eq!(setting_from(Ok(br#"{"on":false,"port":4181}"#.to_vec())), Setting { on: false, port: Some(4181) });
+    }
 
     #[test]
     fn the_setting_is_on_by_default_and_reads_old_files() {

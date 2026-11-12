@@ -64,6 +64,11 @@ impl Ledger {
         self.last_contact = Some(self.last_contact.map_or(now_ms, |t| t.max(now_ms)));
     }
 
+    /// When the host last heard from the cloud (Unix ms).
+    pub fn last_contact(&self) -> Option<u64> {
+        self.last_contact
+    }
+
     /// Whether the last contact is recent enough for direct sessions: at
     /// most [`CONTACT_VALID`] ago. Never contacted: not fresh.
     pub fn fresh(&self, now_ms: u64) -> bool {

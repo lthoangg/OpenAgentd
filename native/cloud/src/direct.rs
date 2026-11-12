@@ -30,6 +30,9 @@ pub const GREETING: &[u8; 17] = b"agentd-direct-v1\n";
 pub const DEFAULT_PORT: u16 = 4181;
 /// A connection must deliver the greeting and message 1 within this long.
 pub const HELLO_DEADLINE: Duration = Duration::from_secs(5);
+/// How long the Go Away of our own close may take to leave before the
+/// connection is dropped anyway.
+const CLOSE_FLUSH: Duration = Duration::from_secs(5);
 /// A controller waits this long for message 2 before using the relay.
 pub const DIAL_WAIT: Duration = Duration::from_secs(2);
 /// Unfinished handshakes a host holds at once, in all and per peer address.
@@ -268,6 +271,11 @@ where
         tunnel.end(1000);
         return Err(DirectError::Refused);
     }
+    // A removal between the admission and the registration found nothing
+    // to close: ask again now that a removal would reach this session.
+    if handler.controller_box(&from).is_none() {
+        closer.close(4001);
+    }
     let session = tunnel.session.clone();
     let h = handler.clone();
     let from_owned = from.clone();
@@ -388,6 +396,19 @@ where
     let s_in = session.clone();
     let closer_in = closer.clone();
     let probe_in = probe.clone();
+    // Frames are read by a task of their own that is never cancelled: a
+    // half-read frame must not be dropped when the keepalive or a check
+    // wakes the loop below (read_exact is not cancel-safe).
+    let (frames_tx, mut frames) = mpsc::channel::<Result<Vec<u8>, DirectError>>(4);
+    let pump = tokio::spawn(async move {
+        loop {
+            let r = read_frame(&mut rd, Expect::Transport).await;
+            let failed = r.is_err();
+            if frames_tx.send(r).await.is_err() || failed {
+                return;
+            }
+        }
+    });
     tokio::spawn(async move {
         let mut code = 1006u16;
         let mut cause = EndCause::Network;
@@ -409,7 +430,7 @@ where
             }
             let changed = probe_in.changed.notified();
             let next = tokio::select! {
-                n = tokio::time::timeout_at(wake, read_frame(&mut rd, Expect::Transport)) => n,
+                n = tokio::time::timeout_at(wake, frames.recv()) => n,
                 _ = changed => continue,
             };
             let msg = match next {
@@ -421,12 +442,12 @@ where
                     }
                     continue;
                 }
-                Ok(Err(DirectError::Protocol)) => {
+                Ok(Some(Err(DirectError::Protocol))) => {
                     (code, cause) = (4002, EndCause::Protocol);
                     break;
                 }
-                Ok(Err(_)) => break,
-                Ok(Ok(m)) => m,
+                Ok(None) | Ok(Some(Err(_))) => break,
+                Ok(Some(Ok(m))) => m,
             };
             last_in = tokio::time::Instant::now();
             probe_in.answered();
@@ -450,11 +471,19 @@ where
             (cause, code) = (EndCause::Local, by_us);
         }
         s_in.close();
+        pump.abort();
         let end = TunnelEnd { cause, code, lived: started.elapsed(), quiet: last_in.elapsed(), ponged: false };
         let _ = ended_tx.send(Some(end));
         let _ = closed_tx.send(Some(code));
         if cause != EndCause::Local {
             writer.abort();
+        } else {
+            // Our own close: the writer flushes the Go Away, but a peer that
+            // stops reading must not hold it (and the socket) open.
+            tokio::spawn(async move {
+                tokio::time::sleep(CLOSE_FLUSH).await;
+                writer.abort();
+            });
         }
         drop(closer_in);
     });

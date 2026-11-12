@@ -329,3 +329,47 @@ async fn eight_sessions_per_controller_the_oldest_makes_way() {
     assert_eq!(end.code, 1000);
     assert_eq!(echo(rest.last().unwrap(), "n").await, "N");
 }
+
+#[tokio::test]
+async fn a_check_in_the_middle_of_a_frame_does_not_lose_bytes() {
+    // The controller's side is driven by hand; the host runs the real
+    // session. A check (a poke) arrives while half a frame is in.
+    let phone = DeviceKeys::generate();
+    let server = DeviceKeys::generate();
+    let host = Arc::new(Host::default());
+    host.clients.lock().unwrap().insert(phone.r#box.public(), phone.id());
+    let keys = HostKeys { account_id: ACCOUNT.into(), host_id: server.id(), own_box: server.r#box.seed().clone() };
+    let (ours, theirs) = tokio::io::duplex(64 * 1024);
+    let host_box = server.r#box.public();
+    let host_id = server.id();
+    let t = DialTarget { addr: "10.0.0.1:4181".parse().unwrap(), account_id: ACCOUNT, host_id: &host_id, host_box: &host_box, own_box: phone.r#box.seed(), loopback_ok: false };
+    let (ctrl, acc) = tokio::join!(direct::handshake(ours, &t), direct::accept(theirs, &keys, host.as_ref()));
+    let (mut io, mut transport) = ctrl.unwrap();
+    let (hio, htransport, _) = acc.unwrap();
+    let slow = Keepalive { every: Duration::from_secs(600), dead_after: Duration::from_secs(1200), wall_clock: SystemTime::now };
+    let tunnel = direct::start(hio, htransport, false, Join::default(), slow, None);
+
+    // A yamux ping (type 2, SYN, stream 0, value 7), framed.
+    let plain = [0u8, 2, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7];
+    let framed = direct::frame(&transport.encrypt(&plain).unwrap());
+    io.write_all(&framed[..5]).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    tunnel.check(Duration::from_secs(5));
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    io.write_all(&framed[5..]).await.unwrap();
+
+    // The host answers with the ACK for 7 (after its own first ping).
+    let found = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let m = direct::read_frame(&mut io, Expect::Transport).await.expect("the session stays up");
+            let p = transport.decrypt(&m).unwrap();
+            for h in p.chunks(12) {
+                if h.len() == 12 && h[1] == 2 && h[3] == 2 && h[11] == 7 {
+                    return true;
+                }
+            }
+        }
+    })
+    .await;
+    assert_eq!(found, Ok(true));
+}

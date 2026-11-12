@@ -18,7 +18,7 @@ pub mod letters;
 pub mod routes;
 pub mod signer;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
@@ -171,6 +171,9 @@ struct Host {
     /// Whether the account lets this host take direct sessions now: synced,
     /// a server, and no account problem or removal signal pending.
     direct_ok: AtomicBool,
+    /// The last contact with the cloud (Unix ms, 0: never), as the ledger
+    /// has it: direct sessions need it within 7 days.
+    last_contact: AtomicU64,
 }
 
 fn host() -> &'static Host {
@@ -186,6 +189,7 @@ fn host() -> &'static Host {
         sessions: Sessions::default(),
         direct_sessions: Sessions::default(),
         direct_ok: AtomicBool::new(false),
+        last_contact: AtomicU64::new(0),
     })
 }
 
@@ -193,10 +197,21 @@ pub(crate) fn direct_sessions() -> &'static Sessions {
     &host().direct_sessions
 }
 
-/// Whether the account side lets direct sessions in now (the switch and
-/// the 7-day rule are checked apart).
+/// Whether the account side lets direct sessions in now: synced, a
+/// server, no account problem, and heard from the cloud within 7 days
+/// (spec 5.5). The switch is checked apart. The listener, the address
+/// answer and live sessions all follow this.
 pub(crate) fn direct_admits() -> bool {
-    host().direct_ok.load(Ordering::Relaxed)
+    host().direct_ok.load(Ordering::Relaxed) && contact_fresh(host().last_contact.load(Ordering::Relaxed), now_ms())
+}
+
+/// Whether a contact at `last_ms` (0: never) still counts at `now_ms`.
+fn contact_fresh(last_ms: u64, now_ms: u64) -> bool {
+    last_ms != 0 && now_ms.saturating_sub(last_ms) < openagentd_cloud::direct::CONTACT_VALID.as_millis() as u64
+}
+
+fn note_contact(l: &ledger::Ledger) {
+    host().last_contact.store(l.last_contact().unwrap_or(0), Ordering::Relaxed);
 }
 
 fn set_direct_ok(ok: bool) {
@@ -581,6 +596,7 @@ fn forget(notice: Notice) {
     set_direct_ok(false);
     close_everywhere(4001);
     controller::publish(None);
+    controller::forget_addresses();
     if let Err(e) = identity_store().clear() {
         tracing::warn!("cloud_identity_clear_failed error={e}");
     }
@@ -757,6 +773,7 @@ async fn contact(member: &Member, shared: &RwLock<Roster>, ledger: &RwLock<ledge
                 l.prune(&r);
                 l.contacted(now_ms());
                 persist_ledger(&l);
+                note_contact(&l);
             }
         }
         Err(e) => tracing::info!("cloud_contact_failed code={}", e.code),
@@ -781,6 +798,8 @@ async fn run(identity: Identity) {
     let (resync_tx, mut resync_rx) = mpsc::unbounded_channel();
     *host().poke.lock().expect("cloud poke") = Some(resync_tx.clone());
     let ledger = Arc::new(RwLock::new(ledger::Ledger::from_identity(&identity)));
+    // A restart without internet keeps the 7 days counted from before.
+    note_contact(&ledger.read().expect("ledger"));
     let handler: Arc<dyn HostHandler> = Arc::new(Handler { roster: shared.clone(), me: me.clone(), ledger: ledger.clone(), resync: resync_tx });
     let mut last_contact: Option<tokio::time::Instant> = None;
     // Direct sessions on the home network, while this host runs.
@@ -883,8 +902,9 @@ async fn run(identity: Identity) {
                         // Keys kept: reconnect after a backoff.
                         break RelayError::Closed(1001);
                     }
-                    if note == RosterNote::Contact {
-                        contact(&member, &shared, &ledger, &me, &mut last_contact).await;
+                    // A contact is a signed roster fetch, then the device
+                    // list (spec 5.5), at most once a minute.
+                    if note == RosterNote::Contact && last_contact.is_some_and(|t| t.elapsed() < CONTACT_EVERY) {
                         continue;
                     }
                     match member.sync().await {
@@ -1002,6 +1022,7 @@ mod tests {
         l.contacted(now_ms());
         let h = Handler { roster: Arc::new(RwLock::new(r)), me: me.id(), ledger: Arc::new(RwLock::new(l)), resync: tx };
         host().direct_ok.store(true, Ordering::Relaxed);
+        note_contact(&h.ledger.read().unwrap());
         assert_eq!(h.admit_direct(&phone.r#box.public()), Some(phone.id()), "an active client");
         assert_eq!(h.admit_direct(&left.r#box.public()), None, "left the account: still in the roster, refused");
         assert_eq!(h.controller_box(&left.id()), None, "on the relay too");
@@ -1019,6 +1040,15 @@ mod tests {
         // An account problem or a removal signal turns it off.
         host().direct_ok.store(false, Ordering::Relaxed);
         assert_eq!(h.admit_direct(&phone.r#box.public()), None);
+    }
+
+    #[test]
+    fn direct_sessions_stop_seven_days_after_the_last_contact() {
+        let now = 100 * DAY_MS;
+        assert!(!contact_fresh(0, now), "never heard from the cloud");
+        assert!(contact_fresh(now - DAY_MS, now));
+        assert!(contact_fresh(now - 7 * DAY_MS + 1, now));
+        assert!(!contact_fresh(now - 7 * DAY_MS, now), "the listener, the answer and live sessions stop");
     }
 
     #[test]

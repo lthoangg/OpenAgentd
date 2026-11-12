@@ -162,8 +162,10 @@ pub fn publish(member: Option<&Member>) {
     });
     let keep: Option<Vec<String>> = slot.as_ref().map(|ctx| if ctx.client { ctx.servers.keys().cloned().collect() } else { Vec::new() });
     drop(slot);
-    // Addresses of computers that left the account (or stopped serving) go too.
-    if let Some(keep) = &keep {
+    // Addresses of computers that left the account (or stopped serving) go
+    // too; a member without a verified roster yet changes nothing.
+    let verified = member.is_some_and(|m| m.roster.is_some());
+    if let (true, Some(keep)) = (verified, &keep) {
         with_addresses(|book| {
             let before = book.clone();
             book.retain(|d| keep.iter().any(|k| k == d));
@@ -182,6 +184,14 @@ pub fn publish(member: Option<&Member>) {
             }
             kept
         });
+    });
+}
+
+/// Signed out or removed: forget where the account's computers were.
+pub fn forget_addresses() {
+    with_addresses(|book| {
+        *book = AddressBook::default();
+        save_addresses(book);
     });
 }
 

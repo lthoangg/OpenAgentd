@@ -28,7 +28,7 @@ export function ConnectionDiagnosticsRow() {
     await copy(diagnosticsText(lines, { version: version ?? 'unknown', platform: platformName(), now: new Date() }))
   }
   return (
-    <PanelSection title="Connection" description="For a problem report: what the app saw of its connection to your computers. No keys or addresses." flush>
+    <PanelSection title="Connection" description="For a problem report: what the app saw of its connection to your computers. No keys, tokens or addresses." flush>
       <button
         type="button"
         aria-label="Copy diagnostics"

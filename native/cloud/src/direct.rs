@@ -277,7 +277,16 @@ where
 /// [`serve_host`] after [`accept`] and [`confirm`]: the caller may hold a
 /// place in a [`Gate`] only until then. `first` is what [`confirm`] read.
 #[allow(clippy::too_many_arguments)]
-pub async fn serve_accepted<S>(io: S, transport: Transport, first: Vec<u8>, from: String, handler: Arc<dyn HostHandler>, sessions: Sessions, join: Join, keepalive: Keepalive) -> Result<(), DirectError>
+pub async fn serve_accepted<S>(
+    io: S,
+    transport: Transport,
+    first: Vec<u8>,
+    from: String,
+    handler: Arc<dyn HostHandler>,
+    sessions: Sessions,
+    join: Join,
+    keepalive: Keepalive,
+) -> Result<(), DirectError>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {

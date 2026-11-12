@@ -48,7 +48,9 @@ async fn proxy_one(client: TcpStream, server: TcpStream) -> std::io::Result<()> 
             break i + 4;
         }
     };
-    let upgrade = String::from_utf8_lossy(&buf[..head_end]).to_ascii_lowercase().contains("upgrade: websocket");
+    let upgrade = String::from_utf8_lossy(&buf[..head_end])
+        .to_ascii_lowercase()
+        .contains("upgrade: websocket");
     to_server.write_all(&buf[..head_end]).await?;
     let mut rest = buf.split_off(head_end);
     if !upgrade {
@@ -84,7 +86,10 @@ fn frame_len(b: &[u8]) -> Option<usize> {
     }
     let (len, mut at) = match b[1] & 0x7f {
         126 if b.len() >= 4 => (u16::from_be_bytes([b[2], b[3]]) as usize, 4),
-        127 if b.len() >= 10 => (u64::from_be_bytes(b[2..10].try_into().unwrap()) as usize, 10),
+        127 if b.len() >= 10 => (
+            u64::from_be_bytes(b[2..10].try_into().unwrap()) as usize,
+            10,
+        ),
         126 | 127 => return None,
         n => (n as usize, 2),
     };
@@ -113,7 +118,10 @@ pub async fn with_latency(upstream: &str, one_way: std::time::Duration) -> Strin
                 let _ = server.set_nodelay(true);
                 let (cr, cw) = client.into_split();
                 let (sr, sw) = server.into_split();
-                tokio::join!(delayed(cr, sw, one_way, None), delayed(sr, cw, one_way, None));
+                tokio::join!(
+                    delayed(cr, sw, one_way, None),
+                    delayed(sr, cw, one_way, None)
+                );
             });
         }
     });
@@ -140,7 +148,10 @@ pub async fn freezable(upstream: &str) -> (String, std::sync::Arc<std::sync::ato
                 let (cr, cw) = client.into_split();
                 let (sr, sw) = server.into_split();
                 let none = std::time::Duration::ZERO;
-                tokio::join!(delayed(cr, sw, none, Some(f.clone())), delayed(sr, cw, none, Some(f)));
+                tokio::join!(
+                    delayed(cr, sw, none, Some(f.clone())),
+                    delayed(sr, cw, none, Some(f))
+                );
             });
         }
     });
@@ -167,9 +178,15 @@ async fn delayed(
     loop {
         match from.read(&mut chunk).await {
             Ok(0) | Err(_) => break,
-            Ok(_) if frozen.as_ref().is_some_and(|f| f.load(std::sync::atomic::Ordering::Relaxed)) => {}
+            Ok(_)
+                if frozen
+                    .as_ref()
+                    .is_some_and(|f| f.load(std::sync::atomic::Ordering::Relaxed)) => {}
             Ok(n) => {
-                if tx.send((tokio::time::Instant::now(), chunk[..n].to_vec())).is_err() {
+                if tx
+                    .send((tokio::time::Instant::now(), chunk[..n].to_vec()))
+                    .is_err()
+                {
                     break;
                 }
             }

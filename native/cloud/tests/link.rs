@@ -497,4 +497,3 @@ async fn a_dead_address_does_not_delay_the_relay() {
     assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
     round_trip(&link, "relay").await;
 }
-

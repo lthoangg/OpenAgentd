@@ -257,8 +257,16 @@ impl Session {
     /// queue of the bytes it wants sent.
     pub fn new(client: bool) -> (Session, Outbound) {
         let outbox = Arc::new(Outbox::default());
-        let state =
-            State { streams: HashMap::new(), next_id: if client { 1 } else { 2 }, client, buf: Vec::new(), closed: false, accept: VecDeque::new(), went_away: false, peer_go_away: None };
+        let state = State {
+            streams: HashMap::new(),
+            next_id: if client { 1 } else { 2 },
+            client,
+            buf: Vec::new(),
+            closed: false,
+            accept: VecDeque::new(),
+            went_away: false,
+            peer_go_away: None,
+        };
         (Session { shared: Arc::new(Shared { state: Mutex::new(state), accept_ready: Notify::new(), out: outbox.clone() }) }, Outbound { outbox })
     }
 

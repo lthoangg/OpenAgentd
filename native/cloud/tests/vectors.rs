@@ -306,7 +306,8 @@ fn direct_greeting_handshake_framing_and_refusals() {
             step(s(t, "from"), s(t, "plaintext").as_bytes(), s(t, "message"), s(t, "framed"));
         }
         for y in c["yamux"].as_array().unwrap() {
-            let header = mux::header(y["type"].as_u64().unwrap() as u8, y["flags"].as_u64().unwrap() as u16, y["stream"].as_u64().unwrap() as u32, y["length"].as_u64().unwrap() as u32);
+            let header =
+                mux::header(y["type"].as_u64().unwrap() as u8, y["flags"].as_u64().unwrap() as u16, y["stream"].as_u64().unwrap() as u32, y["length"].as_u64().unwrap() as u32);
             assert_eq!(b64(&header), s(y, "header"), "{}", s(y, "name"));
             step(s(y, "from"), &header, s(y, "message"), s(y, "framed"));
         }

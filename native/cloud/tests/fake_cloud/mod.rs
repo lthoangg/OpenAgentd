@@ -97,7 +97,11 @@ pub const INVITE_CANDIDATES: usize = 8;
 pub struct Fake(pub Arc<Mutex<Inner>>, pub relay::Shared);
 
 fn err(status: u16, code: &str) -> Response {
-    (StatusCode::from_u16(status).unwrap(), Json(json!({ "error": code }))).into_response()
+    (
+        StatusCode::from_u16(status).unwrap(),
+        Json(json!({ "error": code })),
+    )
+        .into_response()
 }
 
 fn rand_id(n: usize) -> String {
@@ -117,7 +121,10 @@ impl Fake {
             .route("/v1/device/token", post(device_token))
             .route("/v1/enroll/genesis", post(genesis))
             .route("/v1/enroll/pending", post(pending_create).get(pending_list))
-            .route("/v1/enroll/pending/{id}", get(pending_get).delete(pending_delete))
+            .route(
+                "/v1/enroll/pending/{id}",
+                get(pending_get).delete(pending_delete),
+            )
             .route("/v1/enroll/pending/{id}/na", post(pending_na))
             .route("/v1/enroll/pending/{id}/nn", post(pending_nn))
             .route("/v1/auth/nonce", post(nonce))
@@ -144,24 +151,42 @@ impl Fake {
 
     pub fn new_account(&self) -> String {
         let id = rand_id(28);
-        self.0.lock().unwrap().accounts.insert(id.clone(), Account::default());
+        self.0
+            .lock()
+            .unwrap()
+            .accounts
+            .insert(id.clone(), Account::default());
         id
     }
 
     /// The person approves `user_code` for `account` on the account pages.
     pub fn approve(&self, user_code: &str, account: &str) {
         let mut s = self.0.lock().unwrap();
-        let row = s.codes.values_mut().find(|r| r.user_code == user_code).expect("a code");
+        let row = s
+            .codes
+            .values_mut()
+            .find(|r| r.user_code == user_code)
+            .expect("a code");
         row.status = CodeStatus::Approved(account.to_string());
     }
 
     pub fn set_code(&self, user_code: &str, status: CodeStatus) {
         let mut s = self.0.lock().unwrap();
-        s.codes.values_mut().find(|r| r.user_code == user_code).expect("a code").status = status;
+        s.codes
+            .values_mut()
+            .find(|r| r.user_code == user_code)
+            .expect("a code")
+            .status = status;
     }
 
     pub fn set_problem(&self, account: &str, problem: Option<(u16, Value)>) {
-        self.0.lock().unwrap().accounts.get_mut(account).unwrap().problem = problem;
+        self.0
+            .lock()
+            .unwrap()
+            .accounts
+            .get_mut(account)
+            .unwrap()
+            .problem = problem;
     }
 
     pub fn account(&self, id: &str) -> Account {
@@ -180,7 +205,12 @@ impl Fake {
     /// Closes every host's presence socket with `code`.
     pub fn close_presence(&self, code: u16) {
         for out in self.1.lock().unwrap().presence.values() {
-            let _ = out.send(axum::extract::ws::Message::Close(Some(axum::extract::ws::CloseFrame { code, reason: "".into() })));
+            let _ = out.send(axum::extract::ws::Message::Close(Some(
+                axum::extract::ws::CloseFrame {
+                    code,
+                    reason: "".into(),
+                },
+            )));
         }
     }
 
@@ -210,13 +240,24 @@ fn user_code() -> String {
 }
 
 async fn device_code(State(f): State<Fake>, Form(form): Form<HashMap<String, String>>) -> Response {
-    let Some(auth) = form.get("auth_pub").and_then(|a| from_b64_array::<32>(a).ok()) else {
+    let Some(auth) = form
+        .get("auth_pub")
+        .and_then(|a| from_b64_array::<32>(a).ok())
+    else {
         return err(400, "invalid_request");
     };
     let code = user_code();
     let device_code = format!("{code}.{}", rand_id(24));
     let id = device_id(&auth);
-    f.0.lock().unwrap().codes.insert(device_code.clone(), DeviceCodeRow { user_code: code.clone(), device_id: id.clone(), status: CodeStatus::Pending, redeemed: false });
+    f.0.lock().unwrap().codes.insert(
+        device_code.clone(),
+        DeviceCodeRow {
+            user_code: code.clone(),
+            device_id: id.clone(),
+            status: CodeStatus::Pending,
+            redeemed: false,
+        },
+    );
     Json(json!({
         "device_code": device_code, "user_code": code, "device_id": id,
         // A malicious-looking URL: clients must ignore it.
@@ -227,16 +268,24 @@ async fn device_code(State(f): State<Fake>, Form(form): Form<HashMap<String, Str
     .into_response()
 }
 
-async fn device_token(State(f): State<Fake>, Form(form): Form<HashMap<String, String>>) -> Response {
+async fn device_token(
+    State(f): State<Fake>,
+    Form(form): Form<HashMap<String, String>>,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     if let Some((status, code, retry_after)) = s.token_failures.pop_front() {
         let mut r = err(status, code);
         if let Some(secs) = retry_after {
-            r.headers_mut().insert("retry-after", secs.to_string().parse().unwrap());
+            r.headers_mut()
+                .insert("retry-after", secs.to_string().parse().unwrap());
         }
         return r;
     }
-    let Some(row) = form.get("device_code").and_then(|c| s.codes.get(c)).cloned() else {
+    let Some(row) = form
+        .get("device_code")
+        .and_then(|c| s.codes.get(c))
+        .cloned()
+    else {
         return err(400, "invalid_grant");
     };
     match row.status {
@@ -249,7 +298,10 @@ async fn device_token(State(f): State<Fake>, Form(form): Form<HashMap<String, St
             }
             s.codes.get_mut(&form["device_code"]).unwrap().redeemed = true;
             let token = format!("e1.{}.{}", rand_id(24), rand_id(24));
-            s.sessions.insert(token.clone(), (account.clone(), row.device_id.clone(), false));
+            s.sessions.insert(
+                token.clone(),
+                (account.clone(), row.device_id.clone(), false),
+            );
             Json(json!({ "access_token": token, "token_type": "Bearer", "expires_in": 900, "account_id": account, "device_id": row.device_id })).into_response()
         }
     }
@@ -257,7 +309,11 @@ async fn device_token(State(f): State<Fake>, Form(form): Form<HashMap<String, St
 
 /// Checks an enrollment session; returns (account, device).
 fn session_of(s: &Inner, headers: &HeaderMap) -> Result<(String, String), Response> {
-    let token = headers.get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer ")).ok_or_else(|| err(401, "unauthorized"))?;
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| err(401, "unauthorized"))?;
     match s.sessions.get(token) {
         Some((_, _, true)) => Err(err(401, "session_used")),
         Some((a, d, false)) => Ok((a.clone(), d.clone())),
@@ -266,12 +322,19 @@ fn session_of(s: &Inner, headers: &HeaderMap) -> Result<(String, String), Respon
 }
 
 fn spend(s: &mut Inner, headers: &HeaderMap) {
-    let token = headers.get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer ")).unwrap().to_string();
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .unwrap()
+        .to_string();
     s.sessions.get_mut(&token).unwrap().2 = true;
 }
 
 pub(crate) fn problem(a: &Account) -> Option<Response> {
-    a.problem.as_ref().map(|(status, body)| (StatusCode::from_u16(*status).unwrap(), Json(body.clone())).into_response())
+    a.problem.as_ref().map(|(status, body)| {
+        (StatusCode::from_u16(*status).unwrap(), Json(body.clone())).into_response()
+    })
 }
 
 async fn genesis(State(f): State<Fake>, headers: HeaderMap, Json(body): Json<Value>) -> Response {
@@ -289,26 +352,52 @@ async fn genesis(State(f): State<Fake>, headers: HeaderMap, Json(body): Json<Val
     if s.accounts[&account].roster.is_some() {
         return err(409, "roster_exists");
     }
-    let Ok(r) = roster::verify(body["roster"].as_str().unwrap_or(""), &account, None, Chain::Linked) else {
+    let Ok(r) = roster::verify(
+        body["roster"].as_str().unwrap_or(""),
+        &account,
+        None,
+        Chain::Linked,
+    ) else {
         return err(400, "invalid_roster");
     };
     let rpub: [u8; 32] = from_b64_array(body["recovery_pub"].as_str().unwrap()).unwrap();
     let rsig: [u8; 64] = from_b64_array(body["recovery_sig"].as_str().unwrap()).unwrap();
-    if !keys::verify(&rpub, &rsig, &lines!["agentd-cloud-recovery-key-v1", &account, body["recovery_pub"].as_str().unwrap()]) {
+    if !keys::verify(
+        &rpub,
+        &rsig,
+        &lines![
+            "agentd-cloud-recovery-key-v1",
+            &account,
+            body["recovery_pub"].as_str().unwrap()
+        ],
+    ) {
         return err(400, "invalid_recovery_sig");
     }
-    if r.body.recovery_pub != body["recovery_pub"].as_str().unwrap() || r.body.devices[0].auth != body["auth_pub"].as_str().unwrap() {
+    if r.body.recovery_pub != body["recovery_pub"].as_str().unwrap()
+        || r.body.devices[0].auth != body["auth_pub"].as_str().unwrap()
+    {
         return err(400, "invalid_roster");
     }
     spend(&mut s, &headers);
     let a = s.accounts.get_mut(&account).unwrap();
     a.roster = Some(r.blob.clone());
     a.version = 1;
-    a.devices.insert(device, (body["auth_pub"].as_str().unwrap().to_string(), true, true));
-    (StatusCode::CREATED, Json(json!({ "account_id": account, "version": 1 }))).into_response()
+    a.devices.insert(
+        device,
+        (body["auth_pub"].as_str().unwrap().to_string(), true, true),
+    );
+    (
+        StatusCode::CREATED,
+        Json(json!({ "account_id": account, "version": 1 })),
+    )
+        .into_response()
 }
 
-async fn pending_create(State(f): State<Fake>, headers: HeaderMap, Json(body): Json<Value>) -> Response {
+async fn pending_create(
+    State(f): State<Fake>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, device) = match session_of(&s, &headers) {
         Ok(v) => v,
@@ -323,7 +412,14 @@ async fn pending_create(State(f): State<Fake>, headers: HeaderMap, Json(body): J
     if body["device_id"] != json!(device) {
         return err(403, "wrong_device");
     }
-    if s.pending_cap.is_some_and(|cap| s.accounts[&account].pending.values().filter(|p| p["invite_slot"].is_null()).count() >= cap) {
+    if s.pending_cap.is_some_and(|cap| {
+        s.accounts[&account]
+            .pending
+            .values()
+            .filter(|p| p["invite_slot"].is_null())
+            .count()
+            >= cap
+    }) {
         return err(409, "too_many_pending");
     }
     spend(&mut s, &headers);
@@ -338,23 +434,49 @@ async fn pending_create(State(f): State<Fake>, headers: HeaderMap, Json(body): J
         a.kinds.insert(device.clone(), k.to_string());
     }
     a.pending.insert(id.clone(), obj);
-    a.devices.insert(device, (body["auth_pub"].as_str().unwrap().to_string(), false, false));
-    (StatusCode::CREATED, Json(json!({ "account_id": account, "enrollment_id": id, "expires_at": 0 }))).into_response()
+    a.devices.insert(
+        device,
+        (body["auth_pub"].as_str().unwrap().to_string(), false, false),
+    );
+    (
+        StatusCode::CREATED,
+        Json(json!({ "account_id": account, "enrollment_id": id, "expires_at": 0 })),
+    )
+        .into_response()
 }
 
 /// Checks a signed request like the cloud does. `allow_pending`: the
 /// routes a pending device may call.
-fn signed(s: &mut Inner, method: &Method, uri: &Uri, headers: &HeaderMap, body: &[u8], allow_pending: bool) -> Result<(String, String, bool, HeaderMap), Response> {
+fn signed(
+    s: &mut Inner,
+    method: &Method,
+    uri: &Uri,
+    headers: &HeaderMap,
+    body: &[u8],
+    allow_pending: bool,
+) -> Result<(String, String, bool, HeaderMap), Response> {
     let (account, device, auth) = signature(s, method, uri, headers, body)?;
-    let a = s.accounts.get(&account).ok_or_else(|| err(401, "unauthorized"))?;
-    let (stored_auth, active, signer) = a.devices.get(&device).cloned().ok_or_else(|| err(401, "unauthorized"))?;
+    let a = s
+        .accounts
+        .get(&account)
+        .ok_or_else(|| err(401, "unauthorized"))?;
+    let (stored_auth, active, signer) = a
+        .devices
+        .get(&device)
+        .cloned()
+        .ok_or_else(|| err(401, "unauthorized"))?;
     // Like the cloud: a removed or departed device signing with its own
     // registered key gets device_revoked (nonce spent), ahead of any lock.
     let removed = stored_auth == auth && a.revoked.contains(&device);
     let locked = problem(a);
     let out = next_nonce(s, &account, &device);
     if removed {
-        return Err((StatusCode::FORBIDDEN, out, Json(json!({ "error": "device_revoked" }))).into_response());
+        return Err((
+            StatusCode::FORBIDDEN,
+            out,
+            Json(json!({ "error": "device_revoked" })),
+        )
+            .into_response());
     }
     if let Some(r) = locked {
         return Err(r);
@@ -367,17 +489,36 @@ fn signed(s: &mut Inner, method: &Method, uri: &Uri, headers: &HeaderMap, body: 
 
 fn next_nonce(s: &mut Inner, account: &str, device: &str) -> HeaderMap {
     let next = format!("n1.{}.{}", rand_id(24), rand_id(24));
-    s.nonces.insert(next.clone(), (account.to_string(), device.to_string()));
+    s.nonces
+        .insert(next.clone(), (account.to_string(), device.to_string()));
     let mut out = HeaderMap::new();
     out.insert("x-agentd-next-nonce", next.parse().unwrap());
     out
 }
 
 /// The signature and nonce checks alone: (account, device, auth_pub b64).
-fn signature(s: &mut Inner, method: &Method, uri: &Uri, headers: &HeaderMap, body: &[u8]) -> Result<(String, String, String), Response> {
+fn signature(
+    s: &mut Inner,
+    method: &Method,
+    uri: &Uri,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> Result<(String, String, String), Response> {
     s.signed_requests += 1;
-    let h = |n: &str| headers.get(n).and_then(|v| v.to_str().ok()).map(str::to_string).ok_or_else(|| err(401, "unauthorized"));
-    let (account, device, auth, nonce, sig) = (h("x-agentd-account")?, h("x-agentd-device")?, h("x-agentd-auth-pub")?, h("x-agentd-nonce")?, h("x-agentd-signature")?);
+    let h = |n: &str| {
+        headers
+            .get(n)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+            .ok_or_else(|| err(401, "unauthorized"))
+    };
+    let (account, device, auth, nonce, sig) = (
+        h("x-agentd-account")?,
+        h("x-agentd-device")?,
+        h("x-agentd-auth-pub")?,
+        h("x-agentd-nonce")?,
+        h("x-agentd-signature")?,
+    );
     let auth_pub: [u8; 32] = from_b64_array(&auth).map_err(|_| err(401, "unauthorized"))?;
     if device_id(&auth_pub) != device {
         return Err(err(401, "unauthorized"));
@@ -387,7 +528,15 @@ fn signature(s: &mut Inner, method: &Method, uri: &Uri, headers: &HeaderMap, bod
         _ => return Err(err(401, "unauthorized")),
     }
     let path = uri.path_and_query().map(|p| p.as_str()).unwrap_or("/");
-    let message = lines!["agentd-cloud-request-v1", method.as_str(), path, &account, &device, &nonce, &b64(&Sha256::digest(body))];
+    let message = lines![
+        "agentd-cloud-request-v1",
+        method.as_str(),
+        path,
+        &account,
+        &device,
+        &nonce,
+        &b64(&Sha256::digest(body))
+    ];
     let sig: [u8; 64] = from_b64_array(&sig).map_err(|_| err(401, "unauthorized"))?;
     if !keys::verify(&auth_pub, &sig, &message) {
         return Err(err(401, "unauthorized"));
@@ -407,11 +556,23 @@ macro_rules! signed_or_return {
 async fn nonce(State(f): State<Fake>, Json(body): Json<Value>) -> Response {
     let mut s = f.0.lock().unwrap();
     let n = format!("n1.{}.{}", rand_id(24), rand_id(24));
-    s.nonces.insert(n.clone(), (body["account_id"].as_str().unwrap_or("").into(), body["device_id"].as_str().unwrap_or("").into()));
+    s.nonces.insert(
+        n.clone(),
+        (
+            body["account_id"].as_str().unwrap_or("").into(),
+            body["device_id"].as_str().unwrap_or("").into(),
+        ),
+    );
     Json(json!({ "nonce": n, "expires_in": 120, "expires_at": 0 })).into_response()
 }
 
-async fn pending_get(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, Path(id): Path<String>) -> Response {
+async fn pending_get(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, device, signer, h) = signed_or_return!(s, method, uri, headers, b"", true);
     let tamper = s.tamper_pending;
@@ -429,7 +590,12 @@ async fn pending_get(State(f): State<Fake>, method: Method, uri: Uri, headers: H
     (h, Json(p)).into_response()
 }
 
-async fn pending_list(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap) -> Response {
+async fn pending_list(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, _, signer, h) = signed_or_return!(s, method, uri, headers, b"", false);
     if !signer {
@@ -443,7 +609,13 @@ async fn pending_list(State(f): State<Fake>, method: Method, uri: Uri, headers: 
     (h, Json(json!({ "pending": list }))).into_response()
 }
 
-async fn pending_delete(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, Path(id): Path<String>) -> Response {
+async fn pending_delete(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, _, _, h) = signed_or_return!(s, method, uri, headers, b"", true);
     let a = s.accounts.get_mut(&account).unwrap();
@@ -458,7 +630,14 @@ async fn pending_delete(State(f): State<Fake>, method: Method, uri: Uri, headers
     (h, Json(json!({}))).into_response()
 }
 
-async fn pending_na(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, Path(id): Path<String>, body: axum::body::Bytes) -> Response {
+async fn pending_na(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, device, signer, h) = signed_or_return!(s, method, uri, headers, &body, false);
     if !signer {
@@ -476,7 +655,14 @@ async fn pending_na(State(f): State<Fake>, method: Method, uri: Uri, headers: He
     (h, Json(json!({}))).into_response()
 }
 
-async fn pending_nn(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, Path(id): Path<String>, body: axum::body::Bytes) -> Response {
+async fn pending_nn(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, _, _, h) = signed_or_return!(s, method, uri, headers, &body, true);
     let v: Value = serde_json::from_slice(&body).unwrap();
@@ -490,20 +676,38 @@ async fn pending_nn(State(f): State<Fake>, method: Method, uri: Uri, headers: He
     (h, Json(json!({}))).into_response()
 }
 
-async fn roster_get(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap) -> Response {
+async fn roster_get(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, device, _, h) = signed_or_return!(s, method, uri, headers, b"", true);
     let a = &s.accounts[&account];
-    if a.pending.values().any(|p| p["device_id"] == json!(device) && !p["invite_slot"].is_null()) {
+    if a.pending
+        .values()
+        .any(|p| p["device_id"] == json!(device) && !p["invite_slot"].is_null())
+    {
         return err(403, "not_enrolled");
     }
     match &a.roster {
-        Some(blob) => (h, Json(json!({ "version": a.version, "blob": blob, "revocation_floor": 0 }))).into_response(),
+        Some(blob) => (
+            h,
+            Json(json!({ "version": a.version, "blob": blob, "revocation_floor": 0 })),
+        )
+            .into_response(),
         None => err(409, "no_roster"),
     }
 }
 
-async fn roster_put(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, body: axum::body::Bytes) -> Response {
+async fn roster_put(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, _, signer, h) = signed_or_return!(s, method, uri, headers, &body, false);
     if !signer {
@@ -515,28 +719,50 @@ async fn roster_put(State(f): State<Fake>, method: Method, uri: Uri, headers: He
         return err(409, "version_conflict");
     }
     let known = roster::parse(a.roster.as_deref().unwrap()).unwrap();
-    let Ok(next) = roster::verify(v["roster"].as_str().unwrap_or(""), &account, Some(&known), Chain::Linked) else {
+    let Ok(next) = roster::verify(
+        v["roster"].as_str().unwrap_or(""),
+        &account,
+        Some(&known),
+        Chain::Linked,
+    ) else {
         return err(400, "invalid_roster");
     };
     let change = roster::diff(&known.body, &next.body);
     for added in &change.added {
-        let ok = a.pending.values().any(|p| p["device_id"] == json!(added) && (!p["n_n"].is_null() || !p["invite_slot"].is_null()));
+        let ok = a.pending.values().any(|p| {
+            p["device_id"] == json!(added) && (!p["n_n"].is_null() || !p["invite_slot"].is_null())
+        });
         if !ok {
             return err(409, "enrollment_not_ready");
         }
         // Spec 3.3: the added entry has the keys of its pubs, and only the
         // roles its pubs asked for (or fewer).
-        let p = a.pending.values().find(|p| p["device_id"] == json!(added)).unwrap();
-        let asked = openagentd_cloud::keys::parse_pubs(&from_b64(p["pubs"].as_str().unwrap_or("")).unwrap_or_default());
+        let p = a
+            .pending
+            .values()
+            .find(|p| p["device_id"] == json!(added))
+            .unwrap();
+        let asked = openagentd_cloud::keys::parse_pubs(
+            &from_b64(p["pubs"].as_str().unwrap_or("")).unwrap_or_default(),
+        );
         let entry = next.body.device(added).unwrap();
-        let fits = asked.is_ok_and(|asked| entry.box_key() == asked.r#box && entry.sign_key() == asked.sign && entry.roles().within(asked.roles));
+        let fits = asked.is_ok_and(|asked| {
+            entry.box_key() == asked.r#box
+                && entry.sign_key() == asked.sign
+                && entry.roles().within(asked.roles)
+        });
         if !fits {
             return err(400, "invalid_roster");
         }
     }
     let mut used = Vec::new();
     for added in &change.added {
-        let id = a.pending.iter().find(|(_, p)| p["device_id"] == json!(added)).map(|(k, _)| k.clone()).unwrap();
+        let id = a
+            .pending
+            .iter()
+            .find(|(_, p)| p["device_id"] == json!(added))
+            .map(|(k, _)| k.clone())
+            .unwrap();
         let p = a.pending.remove(&id).unwrap();
         if let Some(slot) = p["invite_slot"].as_str() {
             used.push((slot.to_string(), added.clone()));
@@ -544,15 +770,22 @@ async fn roster_put(State(f): State<Fake>, method: Method, uri: Uri, headers: He
     }
     // Adding a candidate spends the invitation and drops its other candidates.
     for (slot, _) in &used {
-        let others: Vec<(String, String)> =
-            a.pending.iter().filter(|(_, p)| p["invite_slot"] == json!(slot)).map(|(k, p)| (k.clone(), p["device_id"].as_str().unwrap().to_string())).collect();
+        let others: Vec<(String, String)> = a
+            .pending
+            .iter()
+            .filter(|(_, p)| p["invite_slot"] == json!(slot))
+            .map(|(k, p)| (k.clone(), p["device_id"].as_str().unwrap().to_string()))
+            .collect();
         for (k, d) in others {
             a.pending.remove(&k);
             a.devices.remove(&d);
         }
     }
     for d in &next.body.devices {
-        let e = a.devices.entry(d.id.clone()).or_insert((d.auth.clone(), true, d.signer));
+        let e = a
+            .devices
+            .entry(d.id.clone())
+            .or_insert((d.auth.clone(), true, d.signer));
         e.1 = true;
         e.2 = d.signer;
     }
@@ -575,7 +808,11 @@ async fn roster_put(State(f): State<Fake>, method: Method, uri: Uri, headers: He
     }
     drop(s);
     f.notify_roster(version, revoked);
-    (h, Json(json!({ "version": version, "revocation_floor": version }))).into_response()
+    (
+        h,
+        Json(json!({ "version": version, "revocation_floor": version })),
+    )
+        .into_response()
 }
 
 async fn devices(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap) -> Response {
@@ -586,16 +823,30 @@ async fn devices(State(f): State<Fake>, method: Method, uri: Uri, headers: Heade
         .iter()
         .map(|(id, (_, active, signer))| json!({ "device_id": id, "signer": signer, "added_at": 0, "revoked_at": if *active { Value::Null } else { json!(1) }, "kind": s.accounts[&account].kinds.get(id) }))
         .collect();
-    (h, Json(json!({ "devices": list, "device_cap": openagentd_cloud::roster::MAX_DEVICES }))).into_response()
+    (
+        h,
+        Json(json!({ "devices": list, "device_cap": openagentd_cloud::roster::MAX_DEVICES })),
+    )
+        .into_response()
 }
 
 /// Today's relay use: the account's active devices that ever opened presence,
 /// `online` while the socket is open.
-async fn relay_usage(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap) -> Response {
+async fn relay_usage(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+) -> Response {
     let (devices, without_online, h) = {
         let mut s = f.0.lock().unwrap();
         let (account, _, _, h) = signed_or_return!(s, method, uri, headers, b"", false);
-        let devices: Vec<String> = s.accounts[&account].devices.iter().filter(|(_, (_, active, _))| *active).map(|(id, _)| id.clone()).collect();
+        let devices: Vec<String> = s.accounts[&account]
+            .devices
+            .iter()
+            .filter(|(_, (_, active, _))| *active)
+            .map(|(id, _)| id.clone())
+            .collect();
         (devices, s.usage_without_online, h)
     };
     let relay = f.1.lock().unwrap();
@@ -603,7 +854,8 @@ async fn relay_usage(State(f): State<Fake>, method: Method, uri: Uri, headers: H
         .into_iter()
         .filter(|id| relay.seen.contains(id))
         .map(|id| {
-            let mut host = json!({ "device_id": id, "percent": 0, "relay_messages": 0, "paused_until": null });
+            let mut host =
+                json!({ "device_id": id, "percent": 0, "relay_messages": 0, "paused_until": null });
             if !without_online {
                 host["online"] = json!(relay.presence.contains_key(&id));
             }
@@ -613,11 +865,21 @@ async fn relay_usage(State(f): State<Fake>, method: Method, uri: Uri, headers: H
     (h, Json(json!({ "resets_at": 0, "hosts": hosts }))).into_response()
 }
 
-async fn leave(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, body: axum::body::Bytes) -> Response {
+async fn leave(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, device, _, h) = signed_or_return!(s, method, uri, headers, &body, false);
     let a = s.accounts.get_mut(&account).unwrap();
-    let active_signers = a.devices.values().filter(|(_, act, sig)| *act && *sig).count();
+    let active_signers = a
+        .devices
+        .values()
+        .filter(|(_, act, sig)| *act && *sig)
+        .count();
     if a.devices[&device].2 && active_signers <= 1 {
         return err(409, "last_signer");
     }
@@ -632,7 +894,13 @@ async fn leave(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderM
     (h, Json(json!({}))).into_response()
 }
 
-async fn relay_token(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, body: axum::body::Bytes) -> Response {
+async fn relay_token(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
     let delay = f.0.lock().unwrap().relay_token_delay;
     if let Some(d) = delay {
         tokio::time::sleep(d).await;
@@ -643,51 +911,116 @@ async fn relay_token(State(f): State<Fake>, method: Method, uri: Uri, headers: H
     let token = format!("t1.{}.{}", rand_id(24), rand_id(24));
     s.tokens.insert(token.clone(), (account, device));
     s.relay_tokens_issued += 1;
-    (h, Json(json!({ "token": token, "expires_in": 900, "roster_version": v }))).into_response()
+    (
+        h,
+        Json(json!({ "token": token, "expires_in": 900, "roster_version": v })),
+    )
+        .into_response()
 }
 
-async fn mailbox_send(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, Path(to): Path<String>, body: axum::body::Bytes) -> Response {
+async fn mailbox_send(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    Path(to): Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, from, _, h) = signed_or_return!(s, method, uri, headers, &body, false);
     let mut v: Value = serde_json::from_slice(&body).unwrap();
     v["from"] = json!(from);
     v["to"] = json!(to);
     v["id"] = json!(rand_id(16));
-    s.accounts.get_mut(&account).unwrap().letters.push(v.clone());
+    s.accounts
+        .get_mut(&account)
+        .unwrap()
+        .letters
+        .push(v.clone());
     (StatusCode::CREATED, h, Json(json!({ "id": v["id"] }))).into_response()
 }
 
-async fn mailbox_get(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap) -> Response {
+async fn mailbox_get(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, me, _, h) = signed_or_return!(s, method, uri, headers, b"", false);
-    let letters: Vec<Value> = s.accounts[&account].letters.iter().filter(|l| l["to"] == json!(me)).cloned().collect();
+    let letters: Vec<Value> = s.accounts[&account]
+        .letters
+        .iter()
+        .filter(|l| l["to"] == json!(me))
+        .cloned()
+        .collect();
     (h, Json(json!({ "letters": letters }))).into_response()
 }
 
-async fn push_register(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, body: axum::body::Bytes) -> Response {
+async fn push_register(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (_, _, _, h) = signed_or_return!(s, method, uri, headers, &body, false);
     (h, Json(json!({}))).into_response()
 }
 
-async fn invite_create(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, body: axum::body::Bytes) -> Response {
+async fn invite_create(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, _, signer, h) = signed_or_return!(s, method, uri, headers, &body, false);
     if !signer {
         return err(403, "not_signer");
     }
-    if s.accounts[&account].devices.values().filter(|d| d.1).count() >= openagentd_cloud::roster::MAX_DEVICES {
+    if s.accounts[&account]
+        .devices
+        .values()
+        .filter(|d| d.1)
+        .count()
+        >= openagentd_cloud::roster::MAX_DEVICES
+    {
         return err(403, "device_limit");
     }
     let slot = rand_id(16);
-    s.invites.insert(slot.clone(), InviteRow { account, ..Default::default() });
+    s.invites.insert(
+        slot.clone(),
+        InviteRow {
+            account,
+            ..Default::default()
+        },
+    );
     // Unix ms, ten minutes from now, as the cloud answers.
-    let expires_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64 + 600_000;
-    (StatusCode::CREATED, h, Json(json!({ "slot_id": slot, "expires_at": expires_at }))).into_response()
+    let expires_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 600_000;
+    (
+        StatusCode::CREATED,
+        h,
+        Json(json!({ "slot_id": slot, "expires_at": expires_at })),
+    )
+        .into_response()
 }
 
 /// A device not yet in the account claims with its own key.
-async fn invite_claim(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, Path(slot): Path<String>, body: axum::body::Bytes) -> Response {
+async fn invite_claim(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    Path(slot): Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, device, auth) = match signature(&mut s, &method, &uri, &headers, &body) {
         Ok(v) => v,
@@ -708,14 +1041,35 @@ async fn invite_claim(State(f): State<Fake>, method: Method, uri: Uri, headers: 
     if let Some(r) = problem(a) {
         return r;
     }
-    if let Some((id, p)) = a.pending.iter().find(|(_, p)| p["device_id"] == json!(device)) {
-        let same = p["invite_slot"] == json!(slot) && p["auth_pub"] == json!(auth) && p["pubs"] == v["pubs"] && p["proof"] == v["proof"];
-        return if same { (StatusCode::CREATED, h, Json(json!({ "enrollment_id": id, "expires_at": 600_000 }))).into_response() } else { err(409, "device_exists") };
+    if let Some((id, p)) = a
+        .pending
+        .iter()
+        .find(|(_, p)| p["device_id"] == json!(device))
+    {
+        let same = p["invite_slot"] == json!(slot)
+            && p["auth_pub"] == json!(auth)
+            && p["pubs"] == v["pubs"]
+            && p["proof"] == v["proof"];
+        return if same {
+            (
+                StatusCode::CREATED,
+                h,
+                Json(json!({ "enrollment_id": id, "expires_at": 600_000 })),
+            )
+                .into_response()
+        } else {
+            err(409, "device_exists")
+        };
     }
     if a.devices.contains_key(&device) {
         return err(409, "device_exists");
     }
-    if a.pending.values().filter(|p| p["invite_slot"] == json!(slot)).count() >= INVITE_CANDIDATES {
+    if a.pending
+        .values()
+        .filter(|p| p["invite_slot"] == json!(slot))
+        .count()
+        >= INVITE_CANDIDATES
+    {
         return err(409, "invite_busy");
     }
     if a.devices.values().filter(|d| d.1).count() >= openagentd_cloud::roster::MAX_DEVICES {
@@ -734,25 +1088,55 @@ async fn invite_claim(State(f): State<Fake>, method: Method, uri: Uri, headers: 
     if let Some(k) = v["kind"].as_str() {
         a.kinds.insert(device, k.to_string());
     }
-    (StatusCode::CREATED, h, Json(json!({ "enrollment_id": id, "expires_at": 600_000 }))).into_response()
+    (
+        StatusCode::CREATED,
+        h,
+        Json(json!({ "enrollment_id": id, "expires_at": 600_000 })),
+    )
+        .into_response()
 }
 
-async fn invite_get(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, Path(slot): Path<String>) -> Response {
+async fn invite_get(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    Path(slot): Path<String>,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, device, _, h) = signed_or_return!(s, method, uri, headers, b"", true);
-    let Some(row) = s.invites.get(&slot).cloned().filter(|r| r.account == account) else {
+    let Some(row) = s
+        .invites
+        .get(&slot)
+        .cloned()
+        .filter(|r| r.account == account)
+    else {
         return err(404, "not_found");
     };
     if row.used_by.as_deref() == Some(device.as_str()) {
         return (h, Json(json!({ "status": "added", "roster_version": row.used_version, "confirm": row.confirm, "expires_at": 600_000 }))).into_response();
     }
-    if s.accounts[&account].pending.values().any(|p| p["device_id"] == json!(device) && p["invite_slot"] == json!(slot)) {
-        return (h, Json(json!({ "status": "waiting", "expires_at": 600_000 }))).into_response();
+    if s.accounts[&account]
+        .pending
+        .values()
+        .any(|p| p["device_id"] == json!(device) && p["invite_slot"] == json!(slot))
+    {
+        return (
+            h,
+            Json(json!({ "status": "waiting", "expires_at": 600_000 })),
+        )
+            .into_response();
     }
     err(404, "not_found")
 }
 
-async fn invite_delete(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, Path(slot): Path<String>) -> Response {
+async fn invite_delete(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    Path(slot): Path<String>,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, _, _, h) = signed_or_return!(s, method, uri, headers, b"", false);
     if !s.invites.get(&slot).is_some_and(|r| r.account == account) {
@@ -760,8 +1144,12 @@ async fn invite_delete(State(f): State<Fake>, method: Method, uri: Uri, headers:
     }
     s.invites.remove(&slot);
     let a = s.accounts.get_mut(&account).unwrap();
-    let gone: Vec<(String, String)> =
-        a.pending.iter().filter(|(_, p)| p["invite_slot"] == json!(slot)).map(|(k, p)| (k.clone(), p["device_id"].as_str().unwrap().to_string())).collect();
+    let gone: Vec<(String, String)> = a
+        .pending
+        .iter()
+        .filter(|(_, p)| p["invite_slot"] == json!(slot))
+        .map(|(k, p)| (k.clone(), p["device_id"].as_str().unwrap().to_string()))
+        .collect();
     for (k, d) in gone {
         a.pending.remove(&k);
         a.devices.remove(&d);
@@ -769,7 +1157,14 @@ async fn invite_delete(State(f): State<Fake>, method: Method, uri: Uri, headers:
     (h, Json(json!({}))).into_response()
 }
 
-async fn invite_confirm(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, Path(slot): Path<String>, body: axum::body::Bytes) -> Response {
+async fn invite_confirm(
+    State(f): State<Fake>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    Path(slot): Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
     let mut s = f.0.lock().unwrap();
     let (account, _, _, h) = signed_or_return!(s, method, uri, headers, &body, false);
     let v: Value = serde_json::from_slice(&body).unwrap();
@@ -797,7 +1192,11 @@ pub fn tamper_raise_roles(p: &mut Value) {
     // same keys.
     let pubs = from_b64(p["pubs"].as_str().unwrap()).unwrap();
     let parsed = openagentd_cloud::keys::parse_pubs(&pubs).unwrap();
-    p["pubs"] = json!(b64(&openagentd_cloud::keys::pubs_bytes(&parsed.r#box, &parsed.sign, openagentd_cloud::keys::Roles::BOTH)));
+    p["pubs"] = json!(b64(&openagentd_cloud::keys::pubs_bytes(
+        &parsed.r#box,
+        &parsed.sign,
+        openagentd_cloud::keys::Roles::BOTH
+    )));
 }
 
 pub fn decoded(s: &str) -> Vec<u8> {

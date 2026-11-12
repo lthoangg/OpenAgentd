@@ -70,11 +70,19 @@ pub struct Relay {
 pub type Shared = Arc<Mutex<Relay>>;
 
 fn token_of(f: &Fake, headers: &HeaderMap) -> Option<(String, String)> {
-    let t = headers.get("authorization").and_then(|v| v.to_str().ok())?.strip_prefix("Bearer ")?;
+    let t = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())?
+        .strip_prefix("Bearer ")?;
     f.0.lock().unwrap().tokens.get(t).cloned()
 }
 
-pub async fn presence(State(f): State<Fake>, Path(host): Path<String>, headers: HeaderMap, ws: WebSocketUpgrade) -> Response {
+pub async fn presence(
+    State(f): State<Fake>,
+    Path(host): Path<String>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Response {
     let delay = f.1.lock().unwrap().presence_delay;
     if let Some(d) = delay {
         tokio::time::sleep(d).await;
@@ -122,9 +130,13 @@ pub async fn presence(State(f): State<Fake>, Path(host): Path<String>, headers: 
                     if t.as_str() == "ping" {
                         relay.lock().unwrap().text_pings += 1;
                     }
-                    let reject = serde_json::from_str::<serde_json::Value>(t.as_str()).is_ok_and(|v| v["type"] == "reject");
+                    let reject = serde_json::from_str::<serde_json::Value>(t.as_str())
+                        .is_ok_and(|v| v["type"] == "reject");
                     if mode == PresenceMode::Old && !reject {
-                        let _ = reply.send(Message::Close(Some(CloseFrame { code: 1003, reason: "".into() })));
+                        let _ = reply.send(Message::Close(Some(CloseFrame {
+                            code: 1003,
+                            reason: "".into(),
+                        })));
                         refused = true;
                         break;
                     }
@@ -146,7 +158,12 @@ pub async fn presence(State(f): State<Fake>, Path(host): Path<String>, headers: 
     .into_response()
 }
 
-pub async fn data(State(f): State<Fake>, Path((host, session)): Path<(String, String)>, headers: HeaderMap, ws: WebSocketUpgrade) -> Response {
+pub async fn data(
+    State(f): State<Fake>,
+    Path((host, session)): Path<(String, String)>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Response {
     let Some((account, from)) = token_of(&f, &headers) else {
         return err(401, "invalid_token");
     };
@@ -178,8 +195,14 @@ pub async fn data(State(f): State<Fake>, Path((host, session)): Path<(String, St
     ws.on_upgrade(move |controller| async move {
         let (slot, host_socket) = oneshot::channel();
         relay.lock().unwrap().waiting.insert(session.clone(), slot);
-        let _ = presence.send(Message::Text(json!({"type":"offer","session_id":session,"from":from}).to_string().into()));
-        let Ok(Ok(host_ws)) = tokio::time::timeout(std::time::Duration::from_secs(5), host_socket).await else {
+        let _ = presence.send(Message::Text(
+            json!({"type":"offer","session_id":session,"from":from})
+                .to_string()
+                .into(),
+        ));
+        let Ok(Ok(host_ws)) =
+            tokio::time::timeout(std::time::Duration::from_secs(5), host_socket).await
+        else {
             return;
         };
         pair(relay, controller, host_ws).await;
@@ -211,7 +234,10 @@ async fn pair(relay: Shared, controller: WebSocket, host: WebSocket) {
     let _ = to_c.send(paired());
     let _ = to_h.send(paired());
     // `tx` is the other side, `back` the sender's own side.
-    let forward = |mut rx: futures_util::stream::SplitStream<WebSocket>, tx: mpsc::UnboundedSender<Message>, back: mpsc::UnboundedSender<Message>, from_host: bool| {
+    let forward = |mut rx: futures_util::stream::SplitStream<WebSocket>,
+                   tx: mpsc::UnboundedSender<Message>,
+                   back: mpsc::UnboundedSender<Message>,
+                   from_host: bool| {
         let relay = relay.clone();
         async move {
             while let Some(Ok(m)) = rx.next().await {
@@ -231,7 +257,12 @@ async fn pair(relay: Shared, controller: WebSocket, host: WebSocket) {
                             // the socket with bytes still unread makes Windows
                             // reset the connection, and the client then sees 1006
                             // instead of this 1003.
-                            let close = || Message::Close(Some(CloseFrame { code: 1003, reason: "".into() }));
+                            let close = || {
+                                Message::Close(Some(CloseFrame {
+                                    code: 1003,
+                                    reason: "".into(),
+                                }))
+                            };
                             let _ = back.send(close());
                             let _ = tx.send(close());
                             continue;
@@ -257,8 +288,14 @@ async fn pair(relay: Shared, controller: WebSocket, host: WebSocket) {
                         // code, and answers the sender's close (as any
                         // WebSocket server does).
                         let code = frame.as_ref().map(|f| f.code).unwrap_or(1000);
-                        let _ = tx.send(Message::Close(Some(CloseFrame { code, reason: "".into() })));
-                        let _ = back.send(Message::Close(Some(CloseFrame { code, reason: "".into() })));
+                        let _ = tx.send(Message::Close(Some(CloseFrame {
+                            code,
+                            reason: "".into(),
+                        })));
+                        let _ = back.send(Message::Close(Some(CloseFrame {
+                            code,
+                            reason: "".into(),
+                        })));
                         break;
                     }
                     _ => {} // acks and pings are the relay's business

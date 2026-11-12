@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getLinkRoute, isServer, type DeviceRow, type LinkRoute } from '@/api/phone-cloud'
 import { accountComputerTitle, getAppBackendStatus, type AppBackendStatus } from '@/lib/app-backend'
 import { isDesktopShell } from '@/lib/desktop-shell'
-import { useDesktopCloudDevices, useDesktopCloudStatus } from '@/queries/cloud'
+import { useDesktopCloudDevices, useDesktopCloudStatus } from '@/queries/cloud-light'
 import { usePhoneCloudDevices, usePhoneCloudStatus } from '@/queries/phone-cloud'
 
 /** How often the computers (and their dots) refresh while the screen is up. */

@@ -97,7 +97,12 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // tokens, used only once a notification or widget is written or tapped, load
 // on first use (2.112 MB / 685.5 kB). The rest (resuming the event feed and
 // reading the link that launched the app) runs at startup, so the limit rose.
-export const LIMITS = { eagerBytes: 2_115_000, eagerGzipBytes: 692_000, largestChunkBytes: 1_180_000 }
+// v3.53.0 (your computers in ⌘K, the route watch at launch, the health
+// check's timeout, the old access key kept to its own server) went 12 kB
+// over eagerBytes; the palette's account reads stopped pulling the account
+// API and approval code into startup (`queries/cloud-light`, 2.120 MB /
+// 688.8 kB). The rest runs when the app starts, so the limit rose.
+export const LIMITS = { eagerBytes: 2_122_000, eagerGzipBytes: 692_000, largestChunkBytes: 1_180_000 }
 
 /** Each lazy surface must have a chunk of its own, outside the startup path. */
 export function lazySurfaceFailures(directory, names = LAZY_SURFACES) {

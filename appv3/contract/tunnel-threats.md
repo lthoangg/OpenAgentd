@@ -376,7 +376,9 @@ addresses.
   inside sessions, so the cloud never learns them.
 - **Denial of service.** The greeting is checked before any key work.
   Message 1 has a fixed length. There are at most 16 unfinished
-  handshakes, 4 per peer address, with a 5 s deadline. The worst a local
+  handshakes, 4 per peer address. Each has 5 s to deliver message 1 and
+  then 5 s to deliver a transport message, so a replayed message 1 holds
+  a place for at most about 10 s. The worst a local
   attacker achieves is pushing the phone onto the relay.
 - **Exposure.** The listener is bound to private addresses only, and
   refuses peers that aren't on private addresses. It speaks only this

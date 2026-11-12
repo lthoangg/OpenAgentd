@@ -106,6 +106,13 @@ describe('at launch', () => {
     expect(probes.filter((url) => url.startsWith(LAN))).toEqual([])
   })
 
+  it('opens it too on a phone with no saved server (nothing to be on yet)', async () => {
+    shell({ app_backend_status: () => ({ ...onLan, base_url: '', servers: [], last_account_device: 'dev-mac' }) })
+    expect(await checkRouteAtLaunch()).toBe('switched')
+    expect(ran('cloud_open_computer')).toHaveLength(1)
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
   it('does nothing when the app is already on that computer', async () => {
     shell({ app_backend_status: () => ({ ...onBridge, last_account_device: 'dev-mac' }) })
     expect(await checkRouteAtLaunch()).toBe('skipped')

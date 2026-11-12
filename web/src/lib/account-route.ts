@@ -12,7 +12,7 @@
  * account computer.
  *
  * - At launch: the computer last opened (`last_account_device`) is opened
- *   again, unless the app is on it already.
+ *   again, unless the app is on it already, also when no server is saved.
  * - On resume and on a network change: `cloud_poke`, so each link checks its
  *   session and tries the direct route again. On resume the shell first
  *   makes its bridges listen again (iOS may take a suspended app's
@@ -70,7 +70,9 @@ async function connectedAccount(): Promise<boolean> {
 
 async function runLaunch(): Promise<RouteOutcome> {
   const status = await getAppBackendStatus()
-  if (!status?.base_url || !status.external) return 'skipped'
+  // A phone with only account computers has no server to be on at launch
+  // (a bridge is never saved): it opens the last one all the same.
+  if (!status?.external) return 'skipped'
   const last = status.last_account_device
   if (!last || status.account_device?.device_id === last) return 'skipped'
   if (!(await connectedAccount())) return 'skipped'

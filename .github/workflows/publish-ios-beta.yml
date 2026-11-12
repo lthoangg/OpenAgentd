@@ -1,0 +1,82 @@
+name: Publish iOS Public Beta
+
+# Sends an iOS build that App Store Connect already has to the TestFlight
+# "Public Beta" group and to Beta App Review (mobile/scripts/asc-public-beta.py).
+# It builds, signs and uploads nothing.
+#
+# For a public ``release-ios.yml`` run that uploaded its build and then failed
+# in its last step: running that workflow again would upload another build.
+# Start this one on ``main`` with the version and the build number (the run
+# number of the ``release-ios.yml`` run that uploaded it):
+#   gh workflow run publish-ios-beta.yml --ref main -f version=3.53.1 -f build=31 -f confirm=release-ios
+#
+# Like a public build it needs the typed confirmation and the ``release-ios``
+# environment approval. It reads the App Store Connect API key and no
+# certificate or profile. Runbook: .agents/skills/oad/ios-store.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version of the uploaded build, e.g. 3.53.1"
+        required: true
+      build:
+        description: "Its build number (the release-ios run number)"
+        required: true
+      confirm:
+        description: "Type 'release-ios' to confirm"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  publish:
+    name: Add to the Public Beta group and submit for Beta App Review
+    if: inputs.confirm == 'release-ios'
+    # The runner release-ios.yml runs the same script on.
+    runs-on: macos-26
+    environment: release-ios
+    # Processing (45 min at most) and two waits for Apple to know the build.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check the version and the build number
+        env:
+          VERSION: ${{ inputs.version }}
+          BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version must look like 3.53.1"; exit 1; }
+          [[ "$BUILD" =~ ^[0-9]+$ ]] || { echo "::error::build must be a number, the release-ios run number"; exit 1; }
+
+      - name: Add to the Public Beta group and submit for Beta App Review
+        env:
+          ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
+          ASC_API_ISSUER: ${{ secrets.ASC_API_ISSUER }}
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+          VERSION: ${{ inputs.version }}
+          BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          for v in ASC_API_KEY ASC_API_ISSUER ASC_API_KEY_P8; do
+            [ -n "${!v}" ] || { echo "::error::secret $v is not set in the release-ios environment (see mobile/AGENTS.md)"; exit 1; }
+          done
+          umask 077
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s' "$ASC_API_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey_${ASC_API_KEY}.p8"
+          # The runner's Homebrew Python refuses global installs (PEP 668).
+          python3 -m venv "$RUNNER_TEMP/asc-venv"
+          "$RUNNER_TEMP/asc-venv/bin/pip" install --quiet --disable-pip-version-check 'pyjwt[crypto]==2.10.1'
+          "$RUNNER_TEMP/asc-venv/bin/python" mobile/scripts/asc-public-beta.py \
+            --key-file "$RUNNER_TEMP/asc/AuthKey_${ASC_API_KEY}.p8" \
+            --version "$VERSION" --build "$BUILD"
+          echo "Sent build $BUILD of $VERSION to the Public Beta and to Beta App Review." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove the key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/asc"

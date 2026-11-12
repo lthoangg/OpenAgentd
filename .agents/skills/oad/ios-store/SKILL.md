@@ -58,6 +58,21 @@ A build that uploaded but is missing from TestFlight: check its processing
 state and the tester's invitation (an internal tester stays `INVITED` until
 they accept the email) through the App Store Connect API before changing code.
 
+A public run that uploaded its build and then failed in
+`Add to the Public Beta group and submit for Beta App Review`: do not dispatch
+`release-ios.yml` again, since every run uploads another build. Send the build
+that is already there (its build number is that run's number), then approve
+`release-ios`:
+
+```bash
+gh workflow run publish-ios-beta.yml --ref main -f version=<X.Y.Z> -f build=<run number> -f confirm=release-ios
+```
+
+Apple can list a build as processed minutes before its TestFlight calls know
+it, and answers 404 for the build until then. `asc-public-beta.py` waits up
+to 15 minutes for that; a failure after it prints the state Apple has the
+build in.
+
 ## 3. App Store Connect calls
 
 - Read state first; for anything that changes it (groups, review submission,

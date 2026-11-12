@@ -25,6 +25,9 @@ SIGNING_JOBS = {
     "release-ios.yml": {
         "sign": "${{ inputs.channel == 'public' && 'release-ios' || 'testflight-internal' }}"
     },
+    # sends a build that is already uploaded to the Public Beta: it reads the
+    # App Store Connect key only, behind the same approval as a public build.
+    "publish-ios-beta.yml": {"publish": "release-ios"},
 }
 
 

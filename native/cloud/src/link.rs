@@ -10,6 +10,7 @@
 //! paused relay allowance, `Retry-After`), and makes a live tunnel prove
 //! itself within [`relay::CHECK_WITHIN`]. While the app is in the
 //! background the link stops trying; the tunnel it has stays until it dies.
+//! `Resumed` and `UserRetry` both end the background mode.
 //!
 //! No lock is held across a network call: [`LinkDeps::target`] copies what
 //! a connect needs (the cloud client, the host's `box` key from the
@@ -96,10 +97,19 @@ pub enum Poke {
     Resumed,
     /// The network changed: try again now, check the tunnel.
     NetworkChanged,
-    /// The person asked: try again now.
+    /// The person asked: try again now. Only an app in front asks, so it
+    /// also ends the background mode.
     UserRetry,
     /// The app went to the background: stop trying until it is back.
     Background,
+}
+
+impl Poke {
+    /// Whether the poke says the app is in front: a page that reloaded
+    /// never says `Resumed`, but the person's own retry still counts.
+    pub fn in_front(self) -> bool {
+        matches!(self, Poke::Resumed | Poke::UserRetry)
+    }
 }
 
 /// Why a stream could not be opened.
@@ -387,7 +397,7 @@ impl Task {
                 cmd = self.cmds.recv() => match cmd {
                     None | Some(Cmd::Close) => return None,
                     Some(Cmd::Poke(Poke::Background)) => self.background = true,
-                    Some(Cmd::Poke(Poke::Resumed)) => self.background = false,
+                    Some(Cmd::Poke(p)) if p.in_front() => self.background = false,
                     Some(Cmd::Poke(_)) => {}
                 },
             }
@@ -461,7 +471,7 @@ impl Task {
                     }
                     Some(Cmd::Poke(Poke::Background)) => self.background = true,
                     Some(Cmd::Poke(why)) => {
-                        if why == Poke::Resumed {
+                        if why.in_front() {
                             self.background = false;
                         }
                         tunnel.check(self.opts.check_within);
@@ -585,7 +595,7 @@ impl Task {
                 None | Some(Cmd::Close) => return Next::Exit,
                 Some(Cmd::Poke(Poke::Background)) => self.background = true,
                 Some(Cmd::Poke(why)) => {
-                    if why == Poke::Resumed {
+                    if why.in_front() {
                         self.background = false;
                     }
                     if self.background {

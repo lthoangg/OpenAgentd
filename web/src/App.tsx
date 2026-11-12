@@ -54,12 +54,11 @@ function App() {
   // A phone has one server picker, its Servers screen: shown in place of the
   // loading logo once connecting takes a moment, or at once for a link.
   const [phoneServers, setPhoneServers] = useState(false)
-  // The phone's route to an account computer (`lib/account-route`): at launch
-  // the computer last opened is opened again (LAN or account, whichever the
-  // shell finds), and a LAN address that stopped answering moves to the
-  // account; on resume and on a network change it re-checks, and tells the
-  // shell (`cloud_poke`) the app came back or went away. A failed launch
-  // attempt shows Servers.
+  // The phone and its account computers (`lib/account-route`): at launch
+  // the computer last opened is opened again through its link; the shell
+  // is told (`cloud_poke`) when the app comes back (also when this page
+  // starts), goes away, or the network changes, and once when health fails
+  // on an account computer. A failed launch attempt shows Servers.
   useEffect(() => {
     if (!phoneAppShell()) return
     let cancelled = false

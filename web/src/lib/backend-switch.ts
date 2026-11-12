@@ -8,6 +8,7 @@
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
 import { getStoredAccessKey, installDesktopAuth, primeStoredAccessKey, setStoredAccessKey } from '@/api/auth'
 import { queryClient } from '@/lib/query-client'
+import { markPageUnloading } from '@/lib/page-unload'
 import { forgetRouteForBackendSwitch } from '@/lib/route-restore'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
 import { queryKeys } from '@/queries/keys'
@@ -66,6 +67,7 @@ export function currentBackendOrigin(status: AppBackendStatus | null): string {
 /** Reload the window onto a new backend, forgetting the route of the old one. */
 export function reloadForBackendSwitch(): void {
   forgetRouteForBackendSwitch()
+  markPageUnloading()
   window.location.reload()
 }
 

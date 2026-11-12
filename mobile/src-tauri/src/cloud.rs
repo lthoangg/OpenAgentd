@@ -1678,10 +1678,23 @@ pub async fn cloud_link_route(device_id: String) -> Result<serde_json::Value, St
     Ok(serde_json::json!({ "route": route }))
 }
 
-/// Tells every link that the app came back, went away, or the network
-/// changed. From the web UI (`visibilitychange`, `online`).
-#[tauri::command]
-pub fn cloud_poke(why: String) -> Result<(), String> {
+/// How long a bridge has to answer its own self-check.
+const BRIDGE_CHECK_WITHIN: Duration = Duration::from_millis(300);
+
+/// Tells every bridge and link that the app came back, went away, or the
+/// network changed. From the web UI (`visibilitychange`, `online`, a failed
+/// health check), answered once the bridges are done, so the page can retry
+/// at once. iOS may take a suspended app's listening sockets without a word
+/// (Apple TN2277), so:
+/// - `resumed`: every bridge listens again, whether or not it looks dead;
+/// - `background`: every bridge stops listening, so a request is refused at
+///   once instead of hanging on a socket the system may take;
+/// - `user_retry`, `network_changed`: a bridge that fails its self-check
+///   listens again.
+///
+/// Then each link is poked. The bridges that had to move to another port:
+/// (old origin, new origin), for the shell's active base URL.
+pub async fn cloud_poke(why: String) -> Result<Vec<(String, String)>, String> {
     let why = match why.as_str() {
         "resumed" => Poke::Resumed,
         "network_changed" => Poke::NetworkChanged,
@@ -1689,13 +1702,67 @@ pub fn cloud_poke(why: String) -> Result<(), String> {
         "background" => Poke::Background,
         _ => return Err("Unknown reason.".into()),
     };
-    let Some(p) = PHONE.get() else { return Ok(()) };
-    tauri::async_runtime::spawn(async move {
-        for l in p.links.lock().await.values() {
-            l.link.poke(why);
+    let Some(p) = PHONE.get() else {
+        return Ok(Vec::new());
+    };
+    let mut moved = Vec::new();
+    let mut links = p.links.lock().await;
+    for (device_id, l) in links.iter_mut() {
+        match why {
+            Poke::Background => l.bridge.pause().await,
+            Poke::Resumed => listen_again(p, device_id, &mut l.bridge, &mut moved).await,
+            Poke::UserRetry | Poke::NetworkChanged => {
+                if !l.bridge.check(BRIDGE_CHECK_WITHIN).await {
+                    listen_again(p, device_id, &mut l.bridge, &mut moved).await;
+                }
+            }
         }
-    });
-    Ok(())
+        l.link.poke(why);
+    }
+    Ok(moved)
+}
+
+/// Makes `bridge` listen again; when it had to move to another port, keeps
+/// the new one (`bridges.json`, the key map) and adds the move to `moved`.
+async fn listen_again(
+    p: &Phone,
+    device_id: &str,
+    bridge: &mut Bridge,
+    moved: &mut Vec<(String, String)>,
+) {
+    let old = bridge.origin.clone();
+    match bridge.listen_again().await {
+        Ok(false) => {}
+        Ok(true) => {
+            let new = bridge.origin.clone();
+            let port = new.rsplit(':').next().and_then(|p| p.parse::<u16>().ok());
+            if let Some(port) = port {
+                let mut ports = p.bridge_ports.lock().expect("bridge ports");
+                ports.insert(device_id.to_string(), port);
+                write_json(&p.data_dir.join("cloud").join("bridges.json"), &*ports);
+            }
+            let mut keys = p.bridge_keys.lock().expect("bridge keys");
+            if let Some(entry) = keys.remove(&old) {
+                keys.insert(new.clone(), entry);
+            }
+            moved.push((old, new));
+        }
+        // Not listening now; the next poke or open tries again.
+        Err(_) => {}
+    }
+}
+
+/// The origin of `device_id`'s bridge, after making sure it answers (it
+/// listens again if not, possibly on another port).
+async fn ensure_listening(device_id: &str) -> Option<String> {
+    let p = PHONE.get()?;
+    let mut links = p.links.lock().await;
+    let l = links.get_mut(device_id)?;
+    if !l.bridge.check(BRIDGE_CHECK_WITHIN).await {
+        let mut moved = Vec::new();
+        listen_again(p, device_id, &mut l.bridge, &mut moved).await;
+    }
+    Some(l.bridge.origin.clone())
 }
 
 /// Starts (or finds) the link and bridge to an account computer, without
@@ -1802,8 +1869,12 @@ fn forget_bridge_secrets(device_id: Option<&str>) {
 /// left by a page that reloaded), and a failure closes only a bridge this
 /// call created. The page may be on an existing one.
 pub async fn open_computer(device_id: &str) -> Result<String, String> {
-    let (origin, link, created) = start(device_id).await?;
+    let (mut origin, link, created) = start(device_id).await?;
     if !created {
+        // Paused, or its listener taken while the app was away.
+        if let Some(now) = ensure_listening(device_id).await {
+            origin = now;
+        }
         let mut state = link.state();
         let was_down = matches!(*state.borrow_and_update(), LinkState::Down { .. });
         link.poke(Poke::UserRetry);

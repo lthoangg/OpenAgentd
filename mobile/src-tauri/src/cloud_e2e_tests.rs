@@ -536,6 +536,19 @@ fn the_page_keeps_its_bridge_and_key_through_failed_opens_restarts_and_the_backg
             Some("HTTP/1.1 200 OK")
         );
 
+        // The app goes away: the bridge stops listening, and a request is
+        // refused at once. Back in front, it answers on the same origin
+        // with the same key.
+        cloud::cloud_poke("background".into()).await.unwrap();
+        assert_eq!(page_request(&origin, &key).await, None);
+        let moved = cloud::cloud_poke("resumed".into()).await.unwrap();
+        assert!(moved.is_empty(), "{moved:?}");
+        assert_eq!(cloud::bridge_key(&origin).as_deref(), Some(key.as_str()));
+        assert_eq!(
+            page_request(&origin, &key).await.as_deref(),
+            Some("HTTP/1.1 200 OK")
+        );
+
         drop(stop);
         cloud::cloud_sign_out().await.unwrap();
     });

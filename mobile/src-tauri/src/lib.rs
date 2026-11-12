@@ -198,6 +198,34 @@ async fn cloud_open_computer(
     })
 }
 
+/// Tells the account's bridges and links that the app came back, went
+/// away, or the network changed (`cloud::cloud_poke`); answers once the
+/// bridges are listening again. A bridge that had to move to another port
+/// takes the active base URL with it, so the page, comparing its own with
+/// the status, reloads onto it.
+#[tauri::command]
+async fn cloud_poke(
+    state: tauri::State<'_, MobileBackendState>,
+    relays: tauri::State<'_, PreviewRelays>,
+    why: String,
+) -> Result<(), String> {
+    let moved = cloud::cloud_poke(why).await?;
+    let mut active = state
+        .active_base_url
+        .lock()
+        .map_err(|_| "backend state unavailable".to_string())?;
+    let now = active
+        .as_deref()
+        .and_then(|cur| moved.iter().find(|(old, _)| old == cur))
+        .map(|(_, new)| new.clone());
+    if let Some(new) = now {
+        *active = Some(new);
+        drop(active);
+        relays.0.close_all();
+    }
+    Ok(())
+}
+
 /// Where the account computer last opened is remembered (its device id,
 /// not a secret; never sent anywhere).
 fn last_account_device_path(app: &AppHandle) -> Option<PathBuf> {
@@ -750,7 +778,7 @@ pub fn run() {
             cloud::cloud_invite_cancel,
             cloud::cloud_remove_device,
             cloud::cloud_sign_out,
-            cloud::cloud_poke,
+            cloud_poke,
             cloud::cloud_link_route,
             taps::notification_take_taps,
             cloud_open_computer,

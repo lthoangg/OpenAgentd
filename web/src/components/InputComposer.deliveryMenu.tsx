@@ -3,6 +3,9 @@
  * turn runs. Loaded on demand, since it only appears mid-turn.
  */
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
+import type { OS } from '@/hooks/use-platform'
+import { formatChord } from '@/lib/keyboard/chord'
+import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 import type { SendDelivery } from './InputComposer'
 
 const DELIVERIES: ReadonlyArray<{ id: SendDelivery; label: string; hint: string }> = [
@@ -11,16 +14,18 @@ const DELIVERIES: ReadonlyArray<{ id: SendDelivery; label: string; hint: string 
   { id: 'interrupt', label: 'Stop & send', hint: 'Stops this turn, then sends' },
 ]
 
-/** The key hint and ``aria-keyshortcuts`` value for each delivery. */
-function deliveryShortcut(delivery: SendDelivery, mac: boolean): { keys: string; aria: string } {
-  if (delivery === 'after-turn') return { keys: mac ? '⌥↵' : 'Alt+↵', aria: 'Alt+Enter' }
-  if (delivery === 'interrupt') return { keys: mac ? '⌘↵' : 'Ctrl+↵', aria: mac ? 'Meta+Enter' : 'Control+Enter' }
-  return { keys: '↵', aria: 'Enter' }
+/** The key hint (as the Keyboard Shortcuts sheet spells it) and ``aria-keyshortcuts`` value for each delivery. */
+function deliveryShortcut(delivery: SendDelivery, os: OS): { keys: string; aria: string } {
+  if (delivery === 'after-turn') return { keys: formatChord({ key: 'Enter', alt: true }, os), aria: 'Alt+Enter' }
+  if (delivery === 'interrupt') {
+    return { keys: formatChord({ key: 'Enter', mod: true }, os), aria: isPrimaryModifierOS(os) ? 'Meta+Enter' : 'Control+Enter' }
+  }
+  return { keys: formatChord({ key: 'Enter' }, os), aria: 'Enter' }
 }
 
-export function DeliveryMenu({ className, mac, showShortcuts, onPick }: {
+export function DeliveryMenu({ className, os, showShortcuts, onPick }: {
   className: string
-  mac: boolean
+  os: OS
   showShortcuts: boolean
   onPick: (delivery: SendDelivery) => void
 }) {
@@ -33,7 +38,7 @@ export function DeliveryMenu({ className, mac, showShortcuts, onPick }: {
       panelClassName="w-64"
     >
       {DELIVERIES.map(({ id, label, hint }) => {
-        const shortcut = deliveryShortcut(id, mac)
+        const shortcut = deliveryShortcut(id, os)
         return (
           <DropdownItem
             key={id}

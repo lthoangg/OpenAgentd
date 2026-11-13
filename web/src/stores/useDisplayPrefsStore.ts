@@ -47,7 +47,7 @@ export const TEXT_SIZES: readonly { value: TextSize; label: string }[] = [
 
 export const PREVIEW_OPENS: readonly { value: PreviewOpen; label: string }[] = [
   { value: 'panel', label: 'Review panel' },
-  { value: 'click', label: 'On click' },
+  { value: 'click', label: 'Manually' },
 ]
 
 /** UI text px at each size over the 12px design size (mirrors index.css). */

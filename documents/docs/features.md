@@ -725,8 +725,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     (Compact, Default, Large) remembered per device. Default is 1px larger than
     before (13px interface text, 12px captions); Compact keeps the old density.
     On iOS the system text size multiplies on top. **Previews** chooses whether
-    a page the agent previews opens in the Review panel by itself or waits for
-    a click on its card.
+    a page the agent previews opens in the Review panel by itself or waits
+    until you open it from its card (**Manually**).
   - Every text colour pair reaches WCAG AA with the existing palette: subtle
     text moves to the muted tone on washes and cards, coloured words and light
     mode status dots use their darker text tone, and checkbox and radio
@@ -1269,7 +1269,7 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **The agent can use a preview without the Preview tab open** `[v3.42.0]`:
   while the app is open on desktop, a page the agent opened stays loaded out
   of sight when no Preview tab shows it (the tab was closed, or **Previews**
-  waits for a click), so snapshot, click, fill and the console keep working. It is
+  is set to Manually), so snapshot, click, fill and the console keep working. It is
   dropped after 15 minutes without agent use, and opening the Preview tab
   takes over from it. Focus the page takes (a fill) goes back to where you
   were typing. A page action right after `open` waits up to 8 seconds for the

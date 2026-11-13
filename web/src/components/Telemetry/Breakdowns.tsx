@@ -224,7 +224,7 @@ export function SessionsCard({
   ]
   return (
     <SectionCard>
-      <Header title="Sessions" aside={`${SORTED(byCost, 'turns')} · click to filter`} />
+      <Header title="Sessions" aside={`${SORTED(byCost, 'turns')} · select to filter`} />
       <BreakdownTable nameHeader="Session" columns={columns} filterable>
         {visible.map(({ row, depth }) => {
           const metrics: Metric[] = [
@@ -278,7 +278,7 @@ export function WorkspacesCard({
   ]
   return (
     <SectionCard>
-      <Header title="Workspaces" aside={`${SORTED(byCost, 'turns')} · click to filter`} />
+      <Header title="Workspaces" aside={`${SORTED(byCost, 'turns')} · select to filter`} />
       <BreakdownTable nameHeader="Workspace" columns={columns} filterable>
         {rows.map((row) => {
           const path = row.workspace

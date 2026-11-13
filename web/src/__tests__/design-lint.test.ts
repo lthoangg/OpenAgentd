@@ -334,13 +334,11 @@ const RULES: Rule[] = [
     why: 'keys are spelled for the platform (shortcutLabel, chord labels), so Windows and Linux read Ctrl+K; a literal ⌘ belongs only in the helpers that switch on the OS',
     pattern: /⌘/g,
     allow: {
-      // OS-aware label helpers: each returns ⌘ only on a Mac.
+      // The shortcut formatters: each returns ⌘ only on a Mac. Every other
+      // label is built with them, never typed by hand.
       'lib/keyboard-shortcut.ts': 1,
       'lib/keyboard/chord.ts': 1,
       'tray/shortcuts.ts': 1,
-      'components/Sidebar/row-keys.ts': 1,
-      'components/Terminal/terminal-keys.ts': 1,
-      'components/InputComposer.deliveryMenu.tsx': 1,
       // The second line of a JSX comment (the comment filter sees only the first).
       'components/AgentChatView/AgentChatHeader.tsx': 1,
       'components/WorkspacePanel/CloseTerminalDialog.tsx': 1,

@@ -1,5 +1,6 @@
 import type { OS } from '@/hooks/use-platform'
 import { isDeleteKey, isRenameKey } from '@/lib/focus/item-keys'
+import { formatChord } from '@/lib/keyboard/chord'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 
 type KeyLike = Parameters<typeof isRenameKey>[0]
@@ -34,7 +35,7 @@ export const ROW_KEYS: Record<RowKeyName, RowKey> = {
   delete: {
     matches: isDeleteKey,
     // ⌘⌫ on the Mac as its menus spell it; the Delete key works everywhere.
-    label: (os) => (isPrimaryModifierOS(os) ? '⌘⌫' : 'Del'),
+    label: (os) => (isPrimaryModifierOS(os) ? formatChord({ key: 'Backspace', mod: true }, os) : 'Del'),
     aria: (os) => (isPrimaryModifierOS(os) ? 'Delete Meta+Backspace' : 'Delete Control+Backspace'),
     sample: (os) => (isPrimaryModifierOS(os)
       ? { ...NO_MODIFIERS, key: 'Backspace', metaKey: true }

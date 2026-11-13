@@ -112,13 +112,13 @@ describe('InputComposer — split Send', () => {
     expect(screen.getByText('Sends when this turn ends')).toBeTruthy()
   })
 
-  it('spells the shortcuts out off macOS', async () => {
+  it('spells the shortcuts out off macOS, as the Keyboard Shortcuts sheet does', async () => {
     mockOS = 'linux'
     const { user } = await typeWhileStreaming()
     await user.click(await moreWaysToSend())
 
     const items = screen.getAllByRole('menuitem')
-    expect(items.map((item) => item.querySelector('kbd')?.textContent)).toEqual(['↵', 'Alt+↵', 'Ctrl+↵'])
+    expect(items.map((item) => item.querySelector('kbd')?.textContent)).toEqual(['Enter', 'Alt+Enter', 'Ctrl+Enter'])
     expect(items[2].getAttribute('aria-keyshortcuts')).toBe('Control+Enter')
   })
 

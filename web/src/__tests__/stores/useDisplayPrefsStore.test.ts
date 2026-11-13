@@ -41,7 +41,7 @@ describe('useDisplayPrefsStore — removed new session composer setting', () => 
 })
 
 describe('useDisplayPrefsStore — where previews open', () => {
-  it('opens in the Review panel by default, remembers On click, and reads an unknown value as the default', async () => {
+  it('opens in the Review panel by default, remembers Manually, and reads an unknown value as the default', async () => {
     expect(useDisplayPrefsStore.getState().previewOpen).toBe('panel')
     useDisplayPrefsStore.getState().setPreviewOpen('click')
     expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state.previewOpen).toBe('click')

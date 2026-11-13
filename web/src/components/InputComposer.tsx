@@ -20,7 +20,6 @@ import { composeWithDesignFeedback, designFeedbackMentions, splitDesignFeedback,
 import { buildHistoryEntries } from './InputComposer.menus'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
-import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 import { focusQuietly } from '@/lib/focus/quiet'
 import { mediumHapticFeedback, selectionHapticFeedback, softHapticFeedback } from '@/lib/haptics'
 import { useIsPhone } from '@/hooks/use-is-phone'
@@ -859,7 +858,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const sendPillClass = 'bg-(--bg-send) text-(--color-text-on-accent) hover:opacity-90'
 
   // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.
-  const mac = isPrimaryModifierOS(os)
   const splitSend = isStreaming && hasMessage && !disabled && !sendBlockedReason
   // A phone keeps one pill: a tap steers, a long press opens the ways to
   // send as an action sheet (the gesture's own medium haptic). The release
@@ -939,7 +937,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       >
         <ArrowUp size={14} aria-hidden="true" className={iconIn} />
       </button>
-      <DeliveryMenu className={DELIVERY_TRIGGER_CLASS} mac={mac} showShortcuts={!isMobile} onPick={submit} />
+      <DeliveryMenu className={DELIVERY_TRIGGER_CLASS} os={os} showShortcuts={!isMobile} onPick={submit} />
     </div>
   ) : (
     <button

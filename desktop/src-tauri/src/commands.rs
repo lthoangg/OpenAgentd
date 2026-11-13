@@ -234,6 +234,9 @@ pub fn show_desktop_notification(
     // may not be: that is where the session, and its question, live.
     let sender = window.label().to_string();
     let server = crate::servers::window_server(&sender, &crate::servers::external_map(&app));
+    // The OS notification alone says which computer: the pet's bubble and
+    // the island keep the title as the server sent it.
+    let summary = crate::servers::notification_title(&app, &server, &crate::pet::display_title(&payload.kind, &payload.title));
     std::thread::spawn(move || {
         #[cfg(target_os = "macos")]
         ensure_notification_application(&app);
@@ -245,7 +248,7 @@ pub fn show_desktop_notification(
         let asks = payload.kind == "input_needed" && payload.session_id.is_some();
         let mut notification = notify_rust::Notification::new();
         notification
-            .summary(&crate::pet::display_title(&payload.kind, &payload.title))
+            .summary(&summary)
             .body(&payload.body);
         if routes_clicks {
             for (id, label) in notification_actions(&choices, asks, cfg!(target_os = "macos")) {

@@ -1077,7 +1077,11 @@ explicitly.
   the user stopped sends nothing, where v2
   sends `Session completed`. A turn that ends while its subagents still run
   also sends nothing: their reports start another lead turn, and the last
-  one notifies.
+  one notifies. The event never names the computer. Each surface adds it
+  where it shows the title: a push to the account's phones ends with the
+  name this computer gives for itself (`Done · api · studio-mini`,
+  `api/src/cloud/letters.rs`, from `routes::server_name::current_name`), and
+  the apps add the name their server lists show (`DESIGN.md`, Companions).
 - **Active sessions filter:** `GET /api/agent/sessions?active=true` returns
   every top-level session that is running or waiting on a question, as one
   page (`next_cursor: null`, `has_more: false`), newest first. `limit` and

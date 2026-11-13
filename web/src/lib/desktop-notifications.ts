@@ -155,7 +155,9 @@ async function shouldNotify(
  * Plugin options for a mobile notification. The session it opens, and the
  * server the app is on, are remembered by its id in storage that outlives
  * the page (`notification-taps.ts`): a tap can come after a relaunch or a
- * server switch, and the plugin reports only the id.
+ * server switch, and the plugin reports only the id. The title says which
+ * computer it came from when that tells servers apart
+ * (`notificationServerName`); the desktop shell does the same for its own.
  */
 async function mobileNotificationOptions(payload: DesktopNotificationPayload) {
   // Random rather than counted: iOS replaces a delivered notification that
@@ -165,7 +167,17 @@ async function mobileNotificationOptions(payload: DesktopNotificationPayload) {
     const { currentServerRef, rememberNotificationTarget } = await import('@/lib/notification-taps')
     rememberNotificationTarget(id, { sessionId: payload.sessionId, ...(await currentServerRef()) })
   }
-  return { id, title: payload.title, body: payload.body, group: `openagentd-${payload.kind}` }
+  return { id, title: await titleNamingServer(payload.title), body: payload.body, group: `openagentd-${payload.kind}` }
+}
+
+/** `title`, with the name of the server in use when a notification names it. */
+async function titleNamingServer(title: string): Promise<string> {
+  try {
+    const { getAppBackendStatus, notificationServerName, titleWithServer } = await import('@/lib/app-backend')
+    return titleWithServer(title, notificationServerName(await getAppBackendStatus()))
+  } catch {
+    return title
+  }
 }
 
 export async function sendDesktopNotification(

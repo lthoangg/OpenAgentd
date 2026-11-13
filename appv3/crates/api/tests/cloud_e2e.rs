@@ -174,6 +174,9 @@ async fn phone_and_server_through_the_account() {
     assert_eq!(v["sessions"], 1, "one relay session is open");
 
     // 4. A notification on the server reaches the phone, sealed.
+    // Its title says which computer of the account it came from.
+    let (s, _) = local_with(&app, "PUT", "/api/server/name", Some(json!({"name": "studio-mini"}))).await;
+    assert_eq!(s, StatusCode::OK);
     let session_id = "0e6c5a0c-1f7e-4a3c-9a55-3b7a2c1d9e10";
     appv3_agent::broadcaster::publish(
         "desktop_notification",
@@ -192,7 +195,7 @@ async fn phone_and_server_through_the_account() {
     let me = phone.cloud.device_id();
     let ctx = Context { account_id: &account, sender_id: &server_id, recipient_id: &me, kind: Kind::Done };
     let text = letter::open(&phone.cloud.keys.r#box, &host_box, &ctx, &sealed).unwrap();
-    assert_eq!((text.title.as_str(), text.body.as_str(), text.session.as_deref()), ("Done · api", "Tests pass.", Some(session_id)));
+    assert_eq!((text.title.as_str(), text.body.as_str(), text.session.as_deref()), ("Done · api · studio-mini", "Tests pass.", Some(session_id)));
     // Another device's key cannot open it.
     let stranger = DeviceKeys::generate();
     assert!(letter::open(&stranger.r#box, &host_box, &ctx, &sealed).is_err());

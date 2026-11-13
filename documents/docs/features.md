@@ -459,6 +459,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   twice on a device, across reloads too. On desktop, a click that opens a
   window that is still loading is no longer lost, and a notification that
   failed to show can still show from another window.
+  A notification says which computer it came from `[v3.55.0]`: the title
+  ends with the computer's name (`Done · web · studio-mini`), always for a
+  computer of your OpenAgentd Cloud account (the app's own notification and
+  the push alike), and for the built-in and saved servers once the app knows
+  more than one server. It is the name the server lists show: the one you
+  saved a server under, else the name its computer gives for itself.
 - **Home-screen widgets on iPhone and Android** `[v3.31.0]` — three widgets
   for the mobile app: **Quick start** (start a new session, or continue the
   last one), **Sessions** (up to three sessions, the ones that need you first,

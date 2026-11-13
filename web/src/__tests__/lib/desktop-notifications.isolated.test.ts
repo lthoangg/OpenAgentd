@@ -59,6 +59,10 @@ describe('desktop notification library integration', () => {
     await runWorker('listens to the plugin only on Android')
   })
 
+  it('adds the computer\'s name to a phone notification when it tells servers apart', async () => {
+    await runWorker('a phone notification says which computer')
+  })
+
   it('reports unsupported runtime before touching native APIs', async () => {
     await runWorker('unsupported runtime')
   })

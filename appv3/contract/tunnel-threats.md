@@ -468,7 +468,10 @@ connect to that port.
 ### 6. Notifications
 
 - Hosts send only what a local notification shows (status, workspace name,
-  session title, clamped), sealed to each signer of the verified roster.
+  the computer's own name, session title, clamped), sealed to each signer
+  of the verified roster. The name is text a computer says about itself:
+  it reaches the lock screen under the same Show Previews rule as the rest,
+  and never the cloud.
   The `collapse` key the cloud sees is a hash of the sender and session
   id, so it groups one session's notifications without naming the session.
 - The cloud stores only sealed letters. A push carries the sealed letter

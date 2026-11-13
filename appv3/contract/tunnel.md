@@ -769,6 +769,12 @@ or whose `kind` does not match the outer one. The static-static term binds
 the sender, so the cloud cannot forge a letter. The text shown in a
 notification comes from `J`, never from the outer fields.
 
+A host ends `title` with the name it gives for itself, after the status and
+the workspace (`Done · api · studio-mini`): a phone hears from every computer
+of the account, and the title is all it shows without opening the app. The
+name is inside `J`, so the cloud never sees it. `title` stays within 120
+characters; a long one is cut before the name.
+
 ## 7. Device kind
 
 Optional and self-reported (the API, "Conventions"). It never enters

@@ -182,6 +182,51 @@ export function formatBackendConnectionLabel(
   return status.computer_names?.[current]?.trim() || hostFromBaseUrl(status.base_url)
 }
 
+/** What a notification calls the built-in server until its computer's name is known (the desktop shell's word). */
+const BUILT_IN_NOTIFICATION_NAME = 'Built-in server'
+/** The longest server name a notification title carries, in characters. */
+const NOTIFICATION_NAME_MAX_CHARS = 40
+
+/**
+ * The name a notification raised from the server in use carries, or null
+ * when it names none. A computer of the account is always named, as its
+ * pushes are. Any other server is named once the app knows more than one:
+ * the built-in (desktop), the saved servers, and the account computers the
+ * app has been on. The name is the one the server lists show.
+ */
+export function notificationServerName(status: AppBackendStatus | null): string | null {
+  if (!status) return null
+  if (status.account_device) return accountComputerTitle(status.account_device, status.computer_names)
+  const builtIn = status.mode === 'bundled' || (!status.external && status.mode !== 'external')
+  const current = normalizeServerOrigin(status.base_url)
+  const saved = new Set(status.servers.map((server) => normalizeServerOrigin(server.base_url)))
+  if (!builtIn && current) saved.add(current)
+  // Names are kept under a server's address, the built-in's key, or an account device id.
+  const accountComputers = Object.keys(status.computer_names ?? {})
+    .filter((key) => key !== BUILT_IN_NAME_KEY && !key.includes('://')).length
+  const known = (status.supports_bundled ? 1 : 0) + saved.size + accountComputers
+  // Opened over its LAN address, it is still the account's computer.
+  if (known <= 1 && !(status.last_account_device && !builtIn)) return null
+  if (builtIn) return status.computer_names?.[BUILT_IN_NAME_KEY]?.trim() || BUILT_IN_NOTIFICATION_NAME
+  return formatBackendConnectionLabel(status, '')
+}
+
+/**
+ * `title` with the server's `name` after it ("Done · web · studio-mini").
+ * A long name is the part that is cut, so the status and the workspace stay
+ * whole; without a name the title is unchanged.
+ */
+export function titleWithServer(title: string, name: string | null | undefined): string {
+  const clean = (name ?? '').split(/\s+/).filter(Boolean).join(' ')
+  if (!clean) return title
+  // Whole characters: a cut never splits an emoji or an accented letter.
+  const chars = Array.from(new Intl.Segmenter().segment(clean), (part) => part.segment)
+  const shown = chars.length > NOTIFICATION_NAME_MAX_CHARS
+    ? `${chars.slice(0, NOTIFICATION_NAME_MAX_CHARS - 1).join('').trimEnd()}…`
+    : clean
+  return title.trim() ? `${title} · ${shown}` : shown
+}
+
 export async function getAppBackendStatus(): Promise<AppBackendStatus | null> {
   try {
     const { invoke } = await import('@tauri-apps/api/core')

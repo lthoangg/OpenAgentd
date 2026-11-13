@@ -228,6 +228,25 @@ describe('desktop notification worker', () => {
     }
   })
 
+  it('a phone notification says which computer when there are several, or it is an account computer', async () => {
+    const titleSent = async () => {
+      mockNotify.mockClear()
+      await sendDesktopNotification(payload)
+      const sent = mockNotify.mock.calls.find((call) => (call as unknown[])[0] === 'plugin:notification|notify')
+      return (sent as unknown as [string, { options: { title: string } }])[1].options.title
+    }
+    os = 'android'
+    const lan = { base_url: 'http://192.168.1.20:4082', mode: 'external', external: true, sidecar_running: false, supports_bundled: false, servers: [{ base_url: 'http://192.168.1.20:4082', name: 'Studio Mac' }] }
+    backendStatus = lan
+    expect(await titleSent()).toBe('Done · openagentd')
+
+    backendStatus = { ...lan, servers: [...lan.servers, { base_url: 'http://192.168.1.30:4082', name: 'Lab' }] }
+    expect(await titleSent()).toBe('Done · openagentd · Studio Mac')
+
+    backendStatus = { ...lan, base_url: 'http://127.0.0.1:5999', servers: [], account_device: { device_id: 'dev-mac', fingerprint: '3F9A', kind: 'macos' }, computer_names: { 'dev-mac': 'studio-mini' } }
+    expect(await titleSent()).toBe('Done · openagentd · studio-mini')
+  })
+
   describe('iPhone with account push', () => {
     it('leaves Done and Needs you to the push while the app is hidden', async () => {
       os = 'ios'

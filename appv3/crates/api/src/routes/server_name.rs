@@ -70,6 +70,14 @@ fn body(custom: Option<String>) -> serde_json::Value {
     j!({"name": custom.clone().or_else(|| default.clone()), "default": default, "custom": custom.is_some()})
 }
 
+/// The name in use: the one someone gave, else the host name. `None` when
+/// the computer has neither (or its settings cannot be read and it has no
+/// host name).
+pub fn current_name() -> Option<String> {
+    let custom = rs::load_runtime_settings().ok().and_then(|cfg| cfg.computer_name.as_deref().and_then(clean_name));
+    custom.or_else(|| hostname().as_deref().and_then(host_label))
+}
+
 async fn get_name() -> ApiResult<Response> {
     let cfg = rs::load_runtime_settings().map_err(ApiError::internal)?;
     Ok(json(body(cfg.computer_name.as_deref().and_then(clean_name))))

@@ -1707,6 +1707,16 @@ answered in place (island, pet, notification buttons); anything else says
 way of opening a session goes through one router, which focuses the window
 that already shows it.
 
+**A notification says which computer.** Its title is the status, the
+workspace, then the computer: `Done · web · studio-mini`. The computer is
+there when it tells you something: always for a computer of your account
+(the app's own notification and the push read the same), and for the
+built-in and saved servers once the app knows more than one server. The
+name is the one the server lists show: the name you saved a server under,
+else the name its computer gives for itself; a push uses the computer's own
+name. A long name is cut, never the status or the workspace. The notch, the
+pet and the tray keep their own text.
+
 The macOS tray popup (`web/tray.html`) lists no sessions, only provider limits
 and actions. The Windows and Linux tray menu lists none either, and shows its
 status row only while the backend is not running normally. The popup is a

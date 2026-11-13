@@ -180,9 +180,19 @@ function PhoneGoalRow({ kind, outcomeLabel, tone, dot, reason, evidence, animate
           <div id={bodyId} className="flex flex-col px-3 pb-2">
             {reason && <p className="py-1 text-sm leading-relaxed break-words text-(--color-text) selectable-text"><InlineCodeText text={reason} /></p>}
             {evidence.length > 0 && (
-              <ul data-evidence-list="phone" aria-label="Evidence" className="divide-y divide-(--color-border) text-sm text-(--color-text-2) selectable-text">
-                {evidence.map((item, i) => <li key={i} className="flex min-h-11 items-center py-2 break-words"><InlineCodeText text={item} /></li>)}
-              </ul>
+              <>
+                <span aria-hidden className={cn('label-caps text-(--color-text-muted)', reason ? 'pt-2 pb-1' : 'pb-1')}>{`Evidence · ${evidence.length}`}</span>
+                <ul data-evidence-list="phone" aria-label="Evidence" className="divide-y divide-(--color-border) text-sm text-(--color-text-2) selectable-text">
+                  {/* The row is a flex box only to centre a one-line row in its
+                    * 44pt; the text and its code spans share one block, or each
+                    * would become a column of its own. */}
+                  {evidence.map((item, i) => (
+                    <li key={i} className="flex min-h-11 items-center py-2">
+                      <span className="min-w-0 flex-1 leading-relaxed break-words"><InlineCodeText text={item} /></span>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </div>
         </Collapsible>

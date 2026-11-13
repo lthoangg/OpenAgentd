@@ -1941,7 +1941,8 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
 - **Sheets over menus.** View options and other choice menus open as
   sheets: a segmented control for one-of-few, a switch for on/off.
 - **Folded cards.** A goal check is one 44pt row, "Goal · achieved ›";
-  evidence opens as 44pt rows.
+  evidence opens as 44pt rows under an "Evidence · N" label, each row one
+  wrapped sentence with its code inline.
 - **Lists read like iOS.** The Workspace page (Changes, Files, Terminal,
   Preview) and the worktree sheet are grouped 44pt rows with counts; a
   scheduled task has an on/off switch and its schedule as a sentence;

@@ -86,6 +86,27 @@ function queuedAttachmentMetas(files?: File[]) {
   }))
 }
 
+/**
+ * The server accepted or queued a send, so it is running a turn: say so now.
+ * The transcript's dots follow the lead's status and the sidebar row follows
+ * a `session_running` patch, and otherwise only a live `agent_status` frame
+ * sets either. With that frame late (a feed restart, a slow attach) the
+ * session looked finished while the composer offered Stop.
+ *
+ * A message held behind an open question changes nothing: the lead is still
+ * waiting, and a `session_running` patch would clear the row's needs-input
+ * mark.
+ */
+function markTurnConfirmed(draft: AgentStore, leadName: string, answer: 'accepted' | 'queued') {
+  const stream = draft.agentStreams[leadName]
+  if (answer === 'queued' && stream?.status === 'waiting_input') return
+  if (stream) stream.status = 'working'
+  if (draft.sessionId && draft._runningPatchedFor !== draft.sessionId) {
+    draft._runningPatchedFor = draft.sessionId
+    draft.cacheInvalidations.push({ kind: 'session_running', sessionId: draft.sessionId, running: true })
+  }
+}
+
 /** Whether ``queued_turn_start`` already put the queued message ``id`` in a
  *  stream (it can beat the POST response). By id only: matching text hid
  *  every steer whose text the session had already sent once. */
@@ -188,6 +209,7 @@ export const createPendingSlice: StateCreator<
               attachments: optimisticAttachmentMetas(files),
               options,
             })
+            markTurnConfirmed(draft, draft.leadName ?? effectiveLead, 'accepted')
           })
           get().connectStream()
           return true
@@ -237,6 +259,12 @@ export const createPendingSlice: StateCreator<
     const submittedAt = Date.now()
     const optimisticId = `user-${submittedAt}`
     const turnStartedBefore = leadName ? agentStreams[leadName]?._turnStartedAt ?? null : null
+    // What this client showed when the message left, for the warning below.
+    const shownBefore = {
+      working: get().isAgentWorking,
+      lead: agentStreams[effectiveLead]?.status ?? 'none',
+      connected: get().isConnected,
+    }
     set((draft) => {
         draft.isAgentWorking = true
         draft.error = null
@@ -272,6 +300,14 @@ export const createPendingSlice: StateCreator<
         draftCredentialId(get()),
         options?.holdUntilTurnEnd ?? false,
       )
+      if (result.status === 'queued' && !options?.holdUntilTurnEnd) {
+        // The server was mid-turn and this client did not show it: the trace
+        // of a session that looked finished while it ran.
+        console.warn(
+          `[agent-send] session ${result.session_id}: the server queued a message this client sent as a new turn ` +
+          `(working=${shownBefore.working}, lead=${shownBefore.lead}, connected=${shownBefore.connected})`,
+        )
+      }
       set((draft) => {
         draft.sessionId = result.session_id
         applyQuestionResolution(draft, null, null, 'superseded')
@@ -308,6 +344,9 @@ export const createPendingSlice: StateCreator<
               makePendingMessage(result.message_id, result.session_id, content, submittedAt, files, options),
             )
           }
+          // Read as working from here on, so the next send steers (the branch
+          // above) instead of dropping the stream to start a turn again.
+          markTurnConfirmed(draft, draft.leadName ?? effectiveLead, 'queued')
           return
         }
         // Adopt the server's id for the optimistic bubble the moment it's
@@ -319,6 +358,7 @@ export const createPendingSlice: StateCreator<
           const block = draft.agentStreams[effectiveLead]?.currentBlocks.find((b) => b.id === optimisticId)
           if (block) block.id = result.message_id
         }
+        markTurnConfirmed(draft, draft.leadName ?? effectiveLead, 'accepted')
       })
       get().connectStream()
       return true

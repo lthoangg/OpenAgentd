@@ -664,6 +664,9 @@ async function loadSessionImpl(
       // Drop them up front; everything downstream then sees only genuinely
       // newer content and needs no special casing.
       const turnStillRunning = history.lead.running === true
+      // Read before this page overwrites it; a switch to another session
+      // cleared it when the request went out.
+      const believedRunning = draft.isAgentWorking
       // What each stream showed before this page lands (before the covered
       // live blocks are dropped), so a just-finished turn keeps its ids.
       const shownBefore = new Map<string, readonly ContentBlock[]>()
@@ -758,6 +761,15 @@ async function loadSessionImpl(
             )
           }
           removePersistedOptimisticUserBlocks(leadStream)
+          // The page may have just committed the bubble that showed the send
+          // was pending. When the server says the turn runs and this client
+          // still expects it to, the lead reads as working without waiting
+          // for a stream frame; otherwise the transcript looks finished.
+          // Only from idle: a live frame that failed or parked the lead since
+          // the page was read is newer than the page.
+          if (turnStillRunning && !awaitingAnswer && draft.isAgentWorking && leadStream.status === 'idle') {
+            leadStream.status = 'working'
+          }
         }
         if (!leadHadNewerActivity) {
           leadStream.currentBlocks = []
@@ -919,6 +931,21 @@ async function loadSessionImpl(
       draft._workspace = workspace ?? null
       draft._loadingOlder = false
       draft._resolvedSessionReadyId = null
+      // The sidebar row follows the same verdict as the transcript, so a
+      // session opened mid-turn (or reloaded before a stream frame) is marked
+      // running, and one this store took for running is cleared when the page
+      // says the turn is over: with the event feed down, this page is the
+      // only word of that. A session waiting on an answer is left alone: the
+      // patch would clear the row's needs-input mark.
+      if (!awaitingAnswer) {
+        if (turnStillRunning && draft._runningPatchedFor !== sessionId) {
+          draft._runningPatchedFor = sessionId
+          draft.cacheInvalidations.push({ kind: 'session_running', sessionId, running: true })
+        } else if (!turnStillRunning && !leadHadNewerActivity && believedRunning) {
+          draft._runningPatchedFor = null
+          draft.cacheInvalidations.push({ kind: 'session_running', sessionId, running: false })
+        }
+      }
     })
 
     if (liveNames === null && get()._sessionGeneration === gen) {

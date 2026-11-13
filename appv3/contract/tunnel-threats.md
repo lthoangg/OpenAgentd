@@ -240,6 +240,48 @@ when formatted. The HTTP trace layer drops `Authorization` and every
   The invitation lives in the server's memory only, and is cancelled when
   the sheet closes, after 10 minutes, when another one starts, and when the
   server stops or signs out; the link is answered once and never logged.
+- **Scan to add (spec §4.3.1): the new computer shows the code.** A
+  computer cannot scan, so it shows `agentd://add?…` (its sign-in code,
+  its device id and a secret it made) and a signer's phone scans it. The
+  join is an invitation with that secret, so the cloud still cannot
+  produce `proof` or `confirm`. What the direction adds:
+  - *The code is on a computer screen*, where a screen share, a recording
+    or a person behind the chair can read it. Whoever scans first chooses
+    the account the computer is offered to: with an account of their own
+    they could make it a host of *their* account and run commands on it.
+    The computer therefore joins nothing until the person at it picks the
+    2-digit number that the signer who added it shows (three choices in
+    the app, typed in a terminal, one answer). Until then it keeps the
+    roster in memory only, stores no identity and starts no connector
+    (`engine::sign_in` returns the identity only after the number). A
+    wrong number, Cancel or two minutes without an answer makes it leave
+    the account and drop its keys, also when the leave is refused or gets
+    no answer. The number is a MAC under the secret
+    over both device ids and the roster, so neither the cloud nor a
+    signer that did not add the computer can show it.
+  - *A guess is the residual risk.* With three choices, a person who
+    picks one although their phone shows none gives the stranger one
+    chance in three. So the computer's prompt says to cancel when no
+    phone shows a number, and the owner's phone, whose offer is refused
+    with `already_decided`, says that someone else answered this code and
+    to cancel on the computer.
+  - *The signer adds exactly the device it scanned.* The code carries the
+    new device's id; the signer drops every candidate with another id,
+    even with a valid proof, so a second device that learned the secret is
+    not added and does not cancel the add.
+  - *Scanning a stranger's code* would add the stranger's device to the
+    person's own account, where a device with `client` reaches every
+    host. The phone's sheet names what the device will be able to do and
+    says to add only a computer the person is sitting at; adding needs
+    Face ID, as every roster write on the phone. The code is read by the
+    in-app scanner only: `agentd://add` is registered as a link on no
+    platform, so a link in a message, a page or another app's scanner
+    cannot open the sheet.
+  - *The code is a secret until it is used.* The computer shows it only
+    on the sign-in step and while that step is open; it ends with the
+    device code (10 minutes), on Cancel, and when the server stops. The
+    desktop app's server answers it only to local callers and never logs
+    it; the CLI draws it in the terminal and prints no link.
 - With the 6-digit code (glance and tap, the default for a device that
   signs in), a new device joins only after the
   person compares the code on both screens (spec §4.2). The cloud commits
@@ -472,6 +514,10 @@ files of `native/cloud`, `appv3` and `mobile/src-tauri`, and checked with
       roster.
 - [ ] No invitation candidate is added without a person's tap, and two
       valid proofs add nobody.
+- [ ] A device that showed a scan-to-add code stores no identity and
+      starts no connector before the person picked the number; a wrong or
+      missing answer makes it leave. The signer adds only the device id it
+      scanned. No platform registers `agentd://add` as a link.
 - [ ] An added device gets the roles its `pubs` asked for or fewer, never
       more. Hosts refuse sessions from devices without `client`, devices
       dial only `server` devices, and a device without `server` runs no

@@ -289,6 +289,11 @@ disabled. Then:
 - **Invitation** (4.3), the alternative: a signer shows a QR code or a
   link and the new device takes it. The new device needs no sign-in, and
   nobody compares a code.
+- **Scan to add** (4.3.1), for a new device without a camera when a signer
+  has one: the new device shows a QR code next to its sign-in code, a
+  signer scans it, and the join is an invitation whose secret the new
+  device made. The new device needs no sign-in; the person picks a
+  2-digit number on it at the end.
 
 The first device and glance and tap start with the device code flow,
 which ends in a one-time enrollment session for this device. An
@@ -393,6 +398,84 @@ valid `proof`. So the signer:
 - adds no candidate when more than one `proof` checks out, since someone
   else has the secret: it cancels the invitation (`DELETE
   /v1/invite/{slot_id}`), tells the user, and offers a new one.
+
+### 4.3.1 An invitation the new device asks for (scan to add)
+
+A computer has no camera, so it cannot take an invitation from a phone's
+screen. Here the new device `N` shows the code and a signer `A` scans it.
+The join itself is section 4.3 with the secret made by `N`; what is new is
+how `N` learns which invitation to claim, and a last check on `N`.
+
+1. **N** asks for a device code as for a sign-in (the API, section 1) and
+   makes a random 16-byte `secret`. It shows
+   `agentd://add?c=<user_code>&d=<N.id>&k=<b64(secret)>` as a QR code,
+   next to the sign-in link and code from the same answer, so the person
+   may use either. `user_code` is the 8 letters without the dash. The
+   secret never goes to the cloud.
+2. **A** scans it, opens an invitation (`POST /v1/invite`) for a `slot_id`,
+   and tells the cloud which one answers that code:
+   `POST /v1/device/offer` with `user_code`, `N.id`, and `slot_id` (the
+   API, section 1). The first of an offer and an approval on the account
+   page decides a device code; the other is refused.
+3. **N**, polling for its token, gets `account_id` and `slot_id` instead of
+   an enrollment session. With its own `secret` that is a whole
+   invitation: it claims the slot with `proof` (section 4.3, step 2).
+4. **A** keeps the candidate whose `proof` checks out **and** whose device
+   id is the `d` it scanned, and drops every other one. It shows the
+   candidate's kind, fingerprint, and roles; when the person confirms, it
+   writes the roster and posts `confirm` (section 4.3, step 3).
+5. **N** checks `confirm` and the roster (section 4.3, step 4) and takes
+   `A.id` from the envelope's `by`. Both compute
+
+   ```
+   mac    = HMAC-SHA256(secret, lines("agentd-add-number-v1", account_id, slot_id,
+                                      A.id, N.id, version, b64(SHA-256(envelope bytes))))
+   number = (the first 4 bytes of mac as a big-endian uint32) mod 100, as 2 digits with a leading zero
+   ```
+
+   for the roster that added `N`.
+6. **A** shows the number. **N** asks the person for it: it shows the
+   number among two others chosen at random, or has it typed. One answer
+   only. If it is right, the roster is N's `K` and N connects. If it is
+   wrong, the person cancels, or two minutes pass, N leaves the account
+   (`POST /v1/devices/self/leave`) and erases its keys. It erases them
+   even when the leave is refused or unanswered (`last_signer`, when the
+   signer that added it is gone; no network), so N never stays in.
+   N's prompt says to cancel when no phone shows a number, so a person
+   whose code a stranger answered does not guess one of the three.
+
+When an offer is refused with `already_decided`, another signer or the
+account page answered the code first: the signer's screen says so and
+tells the person to cancel on the new device, which then shows a new code.
+A device that showed no scan code and gets an `invite` answer to its poll
+treats it as the end of the sign-in: it has no secret to claim with.
+
+**Until the person has picked the number, N is in no account.** It keeps
+the roster in memory only, stores no identity, opens no presence socket,
+and accepts no direct session, so nothing in the account it was added to
+can reach it.
+
+Why the number: the QR code is on a computer screen, and whoever scans it
+first decides which account `N` is offered to. Someone who saw the code
+and has an account of their own can make `N` a device of *their* account,
+and a host in an account can be told to run commands. The secret cannot
+tell that person's signer from the owner's, since both scanned it. The
+number can: it is shown by the signer that added `N`, so a stranger's
+phone shows it to the stranger, and the person at `N` has no number to
+pick. The MAC covers `A.id`, so the cloud cannot make another signer's
+number match.
+
+What the rest of section 4.3 still gives: the cloud never has the secret,
+so it cannot produce `proof` (to add a device of its own) or `confirm` (to
+hand `N` another roster). And because `A` adds only the device id it
+scanned, a second device that proves the same secret is dropped, not
+added.
+
+The QR code is a secret until it is used, like an invitation's: `N` shows
+it only while the person is signing in, and it ends with the device code
+(10 minutes). `agentd://add` is read by the app's own scanner only; no
+device registers it as a link, so a link in a message cannot start an
+add.
 
 ### 4.4 Recovery
 
@@ -704,7 +787,7 @@ outputs:
 | `pubs` | The `pubs` bytes, with each device's roles |
 | `roster` | Genesis, an add, a removal, a recovery; envelopes, hashes, signatures; and invalid rosters with the rule they break (including a device with no role, missing or non-boolean roles, and a version 1 body) |
 | `code` | Commit and the 6-digit code, from both sides |
-| `invite` | `proof` and `confirm` |
+| `invite` | `proof` and `confirm`; the scan-to-add link and number (section 4.3.1) |
 | `noise` | A full IK handshake and two transport messages each way |
 | `direct` | The greeting bytes; the direct prologue; a full IK handshake with that prologue, as framed bytes (length prefix included); two framed transport messages each way; a yamux ping SYN and its ACK, and a Go Away 4001, as plaintext and as framed ciphertext; framing that must be refused: lengths 0, 15 and 97 for message 1, 0, 47 and 49 for message 2, and 0 and 15 for a transport message |
 | `letter` | A sealed letter at each size, and its plaintext |

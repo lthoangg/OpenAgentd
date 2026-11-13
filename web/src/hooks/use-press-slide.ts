@@ -12,7 +12,10 @@
  *
  * Only touch and pen go through here: a mouse and a keyboard keep the
  * buttons' own clicks. The click a touch release raises afterwards is
- * swallowed, since the release already did the work.
+ * swallowed, since the release already did the work. It is swallowed at the
+ * document, wherever it lands: a release that opens a sheet puts the sheet's
+ * backdrop under the finger, and Chromium sends the click there, which
+ * would close the sheet again.
  */
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
@@ -42,7 +45,6 @@ export interface PressSlideHandlers {
   onPointerMove: (event: React.PointerEvent<HTMLElement>) => void
   onPointerUp: (event: React.PointerEvent<HTMLElement>) => void
   onPointerCancel: (event: React.PointerEvent<HTMLElement>) => void
-  onClickCapture: (event: React.MouseEvent<HTMLElement>) => void
   onContextMenu: (event: React.MouseEvent<HTMLElement>) => void
 }
 
@@ -72,7 +74,8 @@ export function usePressSlide(options: PressSlideOptions): { active: string | nu
     held: boolean
   } | null>(null)
   const holdTimer = useRef<number | null>(null)
-  const swallowClick = useRef<number | null>(null)
+  // Undoes the pending click swallow (its listener and its timeout).
+  const stopSwallow = useRef<(() => void) | null>(null)
 
   const clearHold = () => {
     if (holdTimer.current !== null) window.clearTimeout(holdTimer.current)
@@ -80,7 +83,7 @@ export function usePressSlide(options: PressSlideOptions): { active: string | nu
   }
   useEffect(() => () => {
     clearHold()
-    if (swallowClick.current !== null) window.clearTimeout(swallowClick.current)
+    stopSwallow.current?.()
   }, [])
 
   const point = (id: string | null) => {
@@ -136,10 +139,27 @@ export function usePressSlide(options: PressSlideOptions): { active: string | nu
     if (!current || event.pointerId !== current.pointerId) return
     const id = slideTargetAt(current.container, event.clientX, event.clientY)
     const info = { moved: current.moved, held: current.held }
+    const { container } = current
     end()
-    // The release did the work; the click it raises next must not again.
-    if (swallowClick.current !== null) window.clearTimeout(swallowClick.current)
-    swallowClick.current = window.setTimeout(() => { swallowClick.current = null }, 600)
+    // The release did the work; the click it raises next must not again,
+    // on this container or on whatever the release put under the finger. A
+    // hold's release opens nothing new (its menu is already up, inside the
+    // container), so after one only a click in the container is the echo:
+    // one outside is a new tap (on the menu's scrim) and goes through.
+    stopSwallow.current?.()
+    const swallow = (click: MouseEvent) => {
+      stopSwallow.current?.()
+      if (info.held && !(click.target instanceof Node && container.contains(click.target))) return
+      click.preventDefault()
+      click.stopPropagation()
+    }
+    const timer = window.setTimeout(() => stopSwallow.current?.(), 600)
+    stopSwallow.current = () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('click', swallow, true)
+      stopSwallow.current = null
+    }
+    document.addEventListener('click', swallow, true)
     optionsRef.current.onRelease(id, info)
   }
 
@@ -150,18 +170,10 @@ export function usePressSlide(options: PressSlideOptions): { active: string | nu
     optionsRef.current.onCancel?.()
   }
 
-  const onClickCapture = (event: React.MouseEvent<HTMLElement>) => {
-    if (swallowClick.current === null) return
-    window.clearTimeout(swallowClick.current)
-    swallowClick.current = null
-    event.preventDefault()
-    event.stopPropagation()
-  }
-
   // A held touch can raise the system's context menu (Android); the hold is ours.
   const onContextMenu = (event: React.MouseEvent<HTMLElement>) => {
     if (press.current) event.preventDefault()
   }
 
-  return { active, handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onClickCapture, onContextMenu } }
+  return { active, handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onContextMenu } }
 }

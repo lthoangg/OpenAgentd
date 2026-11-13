@@ -84,6 +84,27 @@ describe('usePressSlide', () => {
     expect(onClick).toHaveBeenCalledTimes(1)
   })
 
+  it('swallows that click when it lands outside the container, on what the release opened', () => {
+    // A release that opens a sheet: Chromium then sends the click to whatever
+    // is under the finger by then, the sheet's backdrop, which would close it.
+    const onBackdrop = mock(() => {})
+    render(
+      <>
+        <Harness onRelease={() => {}} />
+        <div data-testid="backdrop" onClick={onBackdrop} />
+      </>,
+    )
+    const a = screen.getByText('a')
+
+    fireEvent.pointerDown(a, touch(20))
+    fireEvent.pointerUp(a, touch(20))
+    fireEvent.click(screen.getByTestId('backdrop'))
+    expect(onBackdrop).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByTestId('backdrop'))
+    expect(onBackdrop).toHaveBeenCalledTimes(1)
+  })
+
   it('leaves the mouse to the buttons', () => {
     const onRelease = mock(() => {})
     const onClick = mock(() => {})

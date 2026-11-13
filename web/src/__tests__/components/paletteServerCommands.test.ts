@@ -52,13 +52,21 @@ describe('Switch Server…', () => {
     const { rows, handlers } = build({ health: { [REMOTE]: 'online', [LAB]: 'offline' } })
     expect(rows[0].description?.startsWith('Current')).toBe(true)
     expect(rows[1].label).toBe('Work laptop')
-    expect(rows[1].description).toBe(`${REMOTE} · Online`)
+    // A name and one status line; the address still finds the row when typed.
+    expect(rows[1].description).toBe('Online')
+    expect(rows[1].keywords).toContain(REMOTE)
     expect(rows[2].label).toBe(LAB)
     expect(rows[2].description).toBe('Offline')
     rows[1].action()
     expect(handlers.useExternal).toHaveBeenCalledWith({ base_url: REMOTE, name: 'Work laptop' })
     rows[0].action()
     expect(handlers.useBundled).not.toHaveBeenCalled()
+  })
+
+  it('names an unnamed saved server by its computer', () => {
+    const { rows } = build({ status: status({ computer_names: { [LAB]: 'lab-mini' } }), health: { [LAB]: 'online' } })
+    expect(rows[2].label).toBe('lab-mini')
+    expect(rows[2].description).toBe('Online')
   })
 
   it('marks the connected remote server as current and offers the builtin', () => {

@@ -7,11 +7,14 @@
  * Servers UI.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
 import { getLinkRoute, isServer, type DeviceRow, type LinkRoute } from '@/api/phone-cloud'
-import { accountComputerTitle, getAppBackendStatus, type AppBackendStatus } from '@/lib/app-backend'
+import { deviceTitles, getAppBackendStatus, type AppBackendStatus } from '@/lib/app-backend'
 import { isDesktopShell } from '@/lib/desktop-shell'
+import { queryClient } from '@/lib/query-client'
 import { useDesktopCloudDevices, useDesktopCloudStatus } from '@/queries/cloud-light'
+import { queryKeys } from '@/queries/keys'
 import { usePhoneCloudDevices, usePhoneCloudStatus } from '@/queries/phone-cloud'
 
 /** How often the computers (and their dots) refresh while the screen is up. */
@@ -30,7 +33,18 @@ export const BUILTIN_STOPPED_COMPUTERS = 'The built-in server is stopped. Your a
  */
 export interface AccountComputer {
   device: DeviceRow
+  /** Its name, once the app has been on it; until then its system and key. */
   label: string
+}
+
+/**
+ * The app's status with the names it remembers, for a Devices list. It
+ * reads the app's own `queryClient` (a phone's Account sheet shows before
+ * the router's provider exists), so a rename shows at once. `null` until
+ * the shell answers, and outside one.
+ */
+export function useAppStatusWithNames(): AppBackendStatus | null {
+  return useQuery({ queryKey: queryKeys.backendStatus(), queryFn: getAppBackendStatus, staleTime: 10_000 }, queryClient).data ?? null
 }
 
 /** The route of the link to `deviceId` while `active`, read now and then. */
@@ -90,12 +104,13 @@ export function useAccountComputers(active: boolean, { poll = true }: { poll?: b
     return () => window.clearInterval(timer)
   }, [active, connected, poll, refetch])
 
+  const names = app?.computer_names
   const computers = useMemo<AccountComputer[]>(() => {
     if (!connected || !canOpen) return []
-    return (devicesData ?? [])
-      .filter((device) => !device.me && isServer(device))
-      .map((device) => ({ device, label: accountComputerTitle(device) }))
-  }, [connected, canOpen, devicesData])
+    const servers = (devicesData ?? []).filter((device) => !device.me && isServer(device))
+    const titles = deviceTitles(servers, names)
+    return servers.map((device) => ({ device, label: titles.get(device.device_id) ?? device.fingerprint }))
+  }, [connected, canOpen, devicesData, names])
 
   const refresh = useCallback(async () => {
     await Promise.all([connected ? refetch() : undefined, loadApp()])

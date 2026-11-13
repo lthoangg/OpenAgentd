@@ -29,6 +29,7 @@ import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
 import { isMobileApp } from '@/lib/mobile-app'
 import { FloatingNotices } from '@/components/FloatingNotices'
 import { AiDataConsent } from '@/components/AiDataConsent'
+import { ComputerNameSync } from '@/components/ComputerNameSync'
 import { CAPABILITY, useServerCapability } from '@/queries'
 import { takeQuietOpenFromRoute } from '@/lib/quiet-open'
 
@@ -173,6 +174,8 @@ export function Root() {
           <DesktopApprovalWatcher />
         </Suspense>
       )}
+      {/* Only an app shell keeps names; a browser has nowhere to put one. */}
+      {(isDesktopShell() || isMobileApp()) && <ComputerNameSync />}
       <PluginNoticeGate />
       <SkipLink />
       <MacTitleBar />

@@ -81,7 +81,7 @@ async function runLaunch(): Promise<RouteOutcome> {
   if (!device) return 'skipped'
   const result = await connectAccountComputer({
     deviceId: device.device_id,
-    label: accountComputerTitle(device),
+    label: accountComputerTitle(device, status.computer_names),
     currentBaseUrl: normalizeServerBaseUrl(status.base_url),
   })
   if (!result.ok) {

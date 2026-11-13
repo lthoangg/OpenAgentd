@@ -5,6 +5,7 @@ Run by ``release-ios.yml`` (channel ``public``) after ``altool`` uploads the
 build. It waits until App Store Connect has processed the build, adds it to
 the external TestFlight group (default "Public Beta"), and submits it for
 Beta App Review. A build already in review or approved is not an error.
+``publish-ios-beta.yml`` runs it alone for a build that is already uploaded.
 
 Usage:
   asc-public-beta.py --key-file AuthKey_<id>.p8 --version 3.50.0 --build 123
@@ -27,6 +28,9 @@ from typing import Any, Callable
 
 API = "https://api.appstoreconnect.apple.com"
 BUNDLE_ID = "com.openagentd.mobile"
+# Apple can list a build as processed minutes before its TestFlight calls
+# know it; until then they answer 404 for the build.
+KNOWN_TIMEOUT = 15 * 60
 
 Request = Callable[[str, str, Any], tuple[int, Any]]
 
@@ -39,11 +43,26 @@ def token(key_id: str, issuer: str, private_key: str, now: float | None = None) 
     return jwt.encode(claims, private_key, algorithm="ES256", headers={"kid": key_id, "typ": "JWT"})
 
 
-def http(bearer: str) -> Request:
+def renewed_token(key_id: str, issuer: str, pem: str,
+                  clock: Callable[[], float] = time.time) -> Callable[[], str]:
+    """A token for each request, made anew every 10 minutes: one lives 15,
+    and Apple can take longer than that to process a build."""
+    held: dict[str, Any] = {"token": None, "at": 0.0}
+
+    def bearer() -> str:
+        now = clock()
+        if held["token"] is None or now - held["at"] >= 10 * 60:
+            held["token"], held["at"] = token(key_id, issuer, pem, now), now
+        return held["token"]
+
+    return bearer
+
+
+def http(bearer: Callable[[], str]) -> Request:
     def request(method: str, path: str, body: Any = None) -> tuple[int, Any]:
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(API + path, data=data, method=method)
-        req.add_header("Authorization", f"Bearer {bearer}")
+        req.add_header("Authorization", f"Bearer {bearer()}")
         req.add_header("Content-Type", "application/json")
         try:
             with urllib.request.urlopen(req, timeout=60) as response:
@@ -87,22 +106,52 @@ def wait_for_build(request: Request, app_id: str, version: str, build: str,
         waited += 30
 
 
+def when_known(send: Callable[[], tuple[int, Any]], timeout: float,
+                sleep: Callable[[float], None]) -> tuple[int, Any]:
+    """The answer to ``send``, sent again every 30 s while Apple answers 404."""
+    waited = 0.0
+    while True:
+        status, body = send()
+        if status != 404 or waited >= timeout:
+            return status, body
+        print("asc-public-beta: Apple does not know the build yet (HTTP 404); again in 30s", flush=True)
+        sleep(30)
+        waited += 30
+
+
+def build_state(request: Request, build_id: str) -> str:
+    """What Apple says about the build, for an error message; empty if it does not say."""
+    status, body = request("GET", query(f"/v1/builds/{build_id}", **{
+        "include": "buildBetaDetail",
+        "fields[builds]": "processingState,expired,buildAudienceType",
+        "fields[buildBetaDetails]": "internalBuildState,externalBuildState",
+    }), None)
+    if status != 200 or not body:
+        return ""
+    parts = [(body.get("data") or {}).get("attributes") or {}]
+    parts += [item.get("attributes") or {} for item in body.get("included") or []]
+    return ", ".join(f"{key}={value}" for part in parts for key, value in part.items())
+
+
 def publish(request: Request, version: str, build: str, group: str,
-            timeout: float = 45 * 60, sleep: Callable[[float], None] = time.sleep) -> None:
+            timeout: float = 45 * 60, sleep: Callable[[float], None] = time.sleep,
+            known_timeout: float = KNOWN_TIMEOUT) -> None:
     app_id = first_id(*request("GET", query("/v1/apps", **{"filter[bundleId]": BUNDLE_ID}), None), f"app {BUNDLE_ID}")
     group_id = first_id(*request("GET", query("/v1/betaGroups", **{"filter[app]": app_id, "filter[name]": group}), None),
                         f'TestFlight group "{group}"')
     build_id = wait_for_build(request, app_id, version, build, timeout, sleep)
 
-    status, body = request("POST", f"/v1/betaGroups/{group_id}/relationships/builds",
-                           {"data": [{"type": "builds", "id": build_id}]})
+    build_ref = {"type": "builds", "id": build_id}
+    add = f"/v1/betaGroups/{group_id}/relationships/builds"
+    status, body = when_known(lambda: request("POST", add, {"data": [build_ref]}), known_timeout, sleep)
     if status not in (200, 201, 204):
-        raise SystemExit(f"asc-public-beta: error: adding the build to {group} failed (HTTP {status}): {body}")
-    print(f"asc-public-beta: build {version} ({build}) added to {group}")
+        state = build_state(request, build_id)
+        raise SystemExit(f"asc-public-beta: error: adding the build to {group} failed (HTTP {status}): {body}"
+                         + (f"; Apple has the build as: {state}" if state else ""))
+    print(f"asc-public-beta: build {version} ({build}) added to {group}", flush=True)
 
-    status, body = request("POST", "/v1/betaAppReviewSubmissions",
-                           {"data": {"type": "betaAppReviewSubmissions",
-                                     "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
+    submission = {"data": {"type": "betaAppReviewSubmissions", "relationships": {"build": {"data": build_ref}}}}
+    status, body = when_known(lambda: request("POST", "/v1/betaAppReviewSubmissions", submission), known_timeout, sleep)
     if status in (200, 201):
         print("asc-public-beta: submitted for Beta App Review")
     elif status == 409:
@@ -123,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
     if not key_id or not issuer:
         raise SystemExit("asc-public-beta: error: ASC_API_KEY and ASC_API_ISSUER are required")
     with open(args.key_file) as handle:
-        bearer = token(key_id, issuer, handle.read())
+        bearer = renewed_token(key_id, issuer, handle.read())
     publish(http(bearer), args.version, args.build, args.group)
     return 0
 

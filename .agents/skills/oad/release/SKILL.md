@@ -160,6 +160,8 @@ gh workflow run release-ios.yml --ref v<version> -f channel=public -f confirm=re
 - If the build broke only after tagging, fix it on `main` and dispatch the public run
   from that commit's tag after a patch bump. Leave the tag alone: the CLI, desktop and
   Homebrew assets are already published from it, so moving it breaks them.
+- If the build uploaded and only the Public Beta step failed, do not dispatch again:
+  `publish-ios-beta.yml` sends the uploaded build (`oad/ios-store`, section 2).
 - Failed runs, App Store Connect setup and App Review: `oad/ios-store`.
 
 Build and upload the Android APK locally the same way. CI does not build

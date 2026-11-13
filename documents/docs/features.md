@@ -840,15 +840,13 @@ run from the terminal (the native Rust binary since v3.0.0).
   - On desktop the sidebar and the Review panel run up to the top of the
     window, as in a native app: the header splits where they do, with the
     sidebar toggle (and, on macOS, the window buttons, with a native gap
-    before the toggle) over the sidebar, the title over the chat, and the
+    before the toggle) over the sidebar, the title right after the toggle
+    (it stays put when the sidebar opens or closes `[v3.43.0]`), and the
     Task list and Review panel buttons over the panel. The header reads as
     one bar: no lines between those parts, and one line under all of it,
     over the sidebar too. The split follows a drag or a slide. The
     Review panel's tab strip shares the sidebar's tone, and its open tab is
     marked the way the sidebar marks the open session.
-    *(The title over the chat is deprecated; since v3.43.0 the title sits
-    right after the sidebar toggle and stays put when the sidebar opens or
-    closes.)*
   - **Split Review Panel Right** (`⌘\`/`Ctrl+\`) and **Split Review Panel
     Down** (`⌘⇧\`/`Ctrl+Shift+\`) split the pane you are in, as often as
     there is room; each pane has its own tabs. The new pane is empty and lists
@@ -920,16 +918,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     smooth fold; the chosen segment of a segmented control (Code / Plan,
     Changes / History…) slides to the new choice, and switches ease their
     thumb to a soft stop.
-  - **Focus Mode** (`⌘⇧F`/`Ctrl+Shift+F`) hides the sidebar and the Review
-    panel; press it again to bring both back *(deprecated; removed in
-    v3.46.0: hide the sidebar with `⌘B` and the Review panel with `⌘D`)*.
   - **Find in Session** (`⌘F`/`Ctrl+F` while in the chat) searches the
     loaded conversation, with the match count and ↑/↓ to step through.
   - `F6` / `Shift+F6` move between the sidebar, the transcript, the composer,
     each Review panel group and the status bar.
-  - Code blocks, tables, diagrams and an expanded tool's output can widen to
-    960px when the chat has room; prose keeps its reading width *(deprecated;
-    removed in v3.42.0: they stay at the column width)*.
 - **Sidebar and header: fewer steps** `[v3.40.0]`:
   - **New session** sits at the top of the sidebar at all times (it does what
     `⌘N`/`Ctrl+N` does).
@@ -948,24 +940,18 @@ run from the terminal (the native Rust binary since v3.0.0).
   - While the workspace list first loads it shows placeholder rows, and if it
     fails, **Retry**; "No workspaces yet" only means there are none.
   - A session's menu (⋯, right-click, long-press) has **Open in new window**
-    (desktop app), **Rename**, **Pin**, **Copy link** and **Share…**
-    *(both deprecated; removed in v3.41.0)*, and **Delete session…**. Touch
+    (desktop app), **Rename**, **Pin** and **Delete session…**. Touch
     keeps the pin mark on pinned rows.
-  - Double-click the session title in the header (or press F2 or Enter on
-    it) to rename it there *(deprecated; removed in v3.44.0: rename from the
-    sidebar)*.
   - The status bar's items are all reachable with Tab, the fast mode pill too.
   - One name for each thing: **Review panel**, **New session**, **Side
     questions**, **Open workspace…**, **Workspace** and **Worktree** (never
     folder or checkout), **Remove**, **Undo** / **Redo**, the **Built-in
     server**.
-  - The header has no command palette button (`⌘K`/`Ctrl+K`, the View menu
-    and the phone's More sheet open it; *the More sheet deprecated; removed
-    in v3.45.0: on a phone the drawer footer's icon opens it*), and a hidden
+  - The header has no command palette button (`⌘K`/`Ctrl+K` and the View
+    menu open it), and a hidden
     sidebar leaves no hairline at the window's edge.
 - **Transcript: act where you read** `[v3.40.0]`:
-  - Under the last finished answer, **Copy · Edit prompt · Undo** *(Undo
-    deprecated; removed in v3.42.0)* show at
+  - Under the last finished answer, **Copy · Edit prompt** show at
     rest as icons, each named in its tooltip, then the files
     changed (a file icon, the count and `+added -removed`). While a turn
     runs, Edit prompt shows dimmed and says it is available when the turn
@@ -981,9 +967,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     offers **Choose model** beside **Open Providers**, instead of asking for
     "a model provider" as if none were set up.
   - Each answer's footer names the account it ran on.
-  - A long thinking trace scrolls inside a capped box; **Show full
-    reasoning** lifts the cap *(deprecated; removed in v3.41.0: a trace
-    always shows in full)*.
+  - A thinking trace always shows in full.
     Runs of blank lines in a trace (Gemini sends three between paragraphs)
     show as one paragraph break.
   - Scrolling up shows a **Loading earlier messages…** row while older
@@ -1008,29 +992,20 @@ run from the terminal (the native Rust binary since v3.0.0).
     Tool section headers are real buttons.
   - On touch, a long press on a message, a code block or a link opens its
     menu as the app's bottom sheet, the iOS app included. A tool row has
-    a menu too (right-click or long-press): **Copy arguments** and **Copy
-    result** *(deprecated; removed in v3.48.0: the menu opens files, and
-    Copy is on each section of the open row)*.
+    a menu too (right-click or long-press) that opens its files; Copy is on
+    each section of the open row.
   - The plan tool's chip reads **Open plan**, like every other way to the
     plan.
-  - A question card always ends in **Send**, dimmed with its reason until
-    something is answered; **Skip this question** is its own button. Keys
-    1–9 pick an option (the next number is "Type your own answer"), Enter
-    sends, and Back / Next page through several questions. Double-clicking
-    an answer picks it and sends (or goes to the next question).
-    *(Send always showing, **Skip this question** and Dismiss deprecated;
-    replaced in v3.42.0 by Back / Next, with Send on the last question.)*
-  - An open tool row's arguments and output show in full, widened past the
-    text column, no longer cut at its edges *(widening deprecated; removed
-    in v3.42.0)*.
-  - A plan review is decided on its card: **Approve** (or **Approve and keep
-    going (N turns)** when a goal would start, with the real count),
-    **Request changes**, which opens a comment box straight away, and **Open
-    plan**. In the Plan tab every paragraph, list item and heading has a
-    **Comment** action *(deprecated; removed in v3.42.0: select text and
-    comment)*, and the tab and the card share one draft. *(Deciding on the
-    card deprecated; removed in v3.43.0: the card only shows the outcome and
-    **Open plan**; Approve and Request changes are in the Plan tab.)*
+  - A question card pages through several questions with Back / Next, with
+    **Send** on the last one. Keys 1–9 pick an option (the next number is
+    "Type your own answer") and Enter sends. Double-clicking an answer
+    picks it and sends (or goes to the next question).
+  - An open tool row's arguments and output show in full, no longer cut at
+    its edges.
+  - A plan review is decided in the Plan tab: **Approve** (or **Approve and
+    keep going (N turns)** when a goal would start, with the real count) and
+    **Request changes**; select text there to comment on it. Its card in
+    the chat shows the outcome and **Open plan**.
   - Each queued message has **Remove**, and the notice that follows has
     **Undo**.
   - The undo notice is one card: "Last 2 messages undone. Redo brings them
@@ -1042,9 +1017,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     were plain text, and `###` was fainter than the text under it. A task
     list shows its checkboxes in place of bullets, in the theme's colour.
 - **Review panel views** `[v3.40.0]`:
-  - **Changes**: clicking a row opens its diff as a preview tab, and the
-    chevron peeks at it in place *(deprecated; since v3.43.0 a click on the
-    row shows the diff in place, and **Open diff in tab** is in its menu)*.
+  - **Changes**: a click on a row shows its diff in place, and **Open diff
+    in tab** is in its menu.
     Every row has **⋯** with the same items as right-click and the
     long-press sheet.
     Each row leads with the file name, its folder after it in muted text,
@@ -1115,7 +1089,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - On Windows and Linux the menu bar is hidden: **☰** at the left of the
     header, or tapping Alt, opens the application menu. Its View menu has
     Sidebar, Review Panel, Split Review Panel Right and Down, Open Terminal,
-    Maximize Review Panel, Focus Mode *(deprecated; removed in v3.46.0)*,
+    Maximize Review Panel,
     Model and Thinking…, Text Size and Reset Layout
     (macOS has them in its menu bar), and Quick Open is now **Find File…**.
     Its shortcuts (`Ctrl+Q`, `Ctrl+=`, `Ctrl+Shift+N`…) work in every
@@ -1131,10 +1105,6 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The number of sessions that need you shows on the Dock (macOS), the
     taskbar (Windows) and the launcher (Linux), and in a browser tab's
     title.
-  - **Share…** on a session opens the system share sheet: the macOS share
-    menu, the Windows Share window, the iOS and Android share sheets, or
-    Web Share in a browser that has it. Linux copies the link
-    *(deprecated; removed in v3.41.0)*.
   - Zoom is remembered, and a new window opens at the zoom and in the theme
     of the window it came from; Text size is shared by every window. On
     macOS it opens one step down and right of that window, as Mac windows
@@ -1155,12 +1125,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The notch status, the pet, the tray and system notifications share one
     feed and one set of words: **Needs you**, **Running**, **Done**,
     **Failed** and **Can't reach**. "Builtin" is now "Built-in server".
-  - A question with a few choices can be answered from the notch list, the
-    pet's bubble or the notification's buttons; anything else offers **Open
-    to answer**. Answering anywhere clears it everywhere. *(Answering from the
-    notch and the pet deprecated; removed in v3.43.0: they only show the
-    notification, and a click on it opens the session. System notifications
-    keep their buttons.)*
+  - A question with a few choices can be answered from a system
+    notification's buttons; anything else offers **Open to answer**.
+    Answering anywhere clears it everywhere. The notch and the pet show the
+    notification, and a click on it opens the session.
   - The notch status opens on click; pointing at it opens it only with
     **Expand on hover** on. Its × means Later. When a server stops
     answering, a **Can't reach** row offers Retry *(since v3.43.0 a click on
@@ -1179,11 +1147,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     answer recorded** with what was asked, and a card closed from another
     window (or by a stop this window missed) reads "Already resolved from
     another window or device" after the next load.
-  - The tray popup lists the sessions that need you and the running ones,
-    says **No server connected** when there is none, and its usage section
-    is **Provider limits**. On Windows and Linux the tray menu starts with
-    the sessions that need you *(both session lists deprecated; removed in
-    v3.42.0)*.
+  - The tray popup says **No server connected** when there is none, and its
+    usage section is **Provider limits**.
   - Opening a session from anywhere (notch, pet, tray, a notification, Open
     in new window) focuses the window that already shows it. When one
     session is open in two windows anyway, the window in the background
@@ -1210,8 +1175,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     stays on one line, with its buttons under it.
   - A segmented control that wraps onto two lines (the Providers status
     filter) fills only the chosen segment.
-  - The More sheet no longer lists Model and thinking; the run chip under
-    the composer opens it *(the More sheet deprecated; removed in v3.45.0)*.
+  - The run chip under the composer opens Model and thinking.
 - **Quieter and simpler** `[v3.41.0]`:
   - In dark mode a chosen segment or tab (Code / Plan, the thinking level)
     fills more softly.
@@ -1350,10 +1314,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     description and the tooltip the command.)*
 - **Shell rows say what they do; phone header padding** `[v3.46.0]`:
   - A shell row shows the agent's description of the command (`shell  Run
-    the unit tests`), and hovering it shows the whole command; the expanded
-    row still shows the command and its output. A call without a
-    description shows its command as before. *(Hovering for the command
-    deprecated; removed in v3.48.0: open the row.)*
+    the unit tests`); the expanded row shows the command and its output. A
+    call without a description shows its command as before.
   - On a phone the Review panel button sits as far from the right edge as
     the sidebar button does from the left.
 - **Readable contrast everywhere** `[v3.46.0]`:
@@ -1489,12 +1451,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   chrome no longer highlights it (chat, code, diffs and the terminal still
   select), buttons use the arrow cursor, links and images cannot be dragged
   out, and a window in the background dims its highlights. The webview's
-  Reload / Back / Inspect menu is gone: right-click in the chat offers **Open
-  link** / **Copy link**, **Copy code**, **Copy response** / **Copy as
-  Markdown** *(the last three deprecated; removed in v3.42.0)* and, on your
-  messages, **Copy** / **Edit** *(also removed in v3.42.0)*; text fields and
-  selected text keep the native menu. Shift+F10 opens the same menus in the
-  browser too.
+  Reload / Back / Inspect menu is gone: right-click on a link in the chat
+  offers **Open link** / **Copy link**; text fields and
+  selected text keep the native menu.
   - Tooltips wait half a second before appearing, then show at once while you
     move along a toolbar, and only open on keyboard focus, not after a click.
   - Search, palette, find, title and worktree fields, and the desktop
@@ -1699,32 +1658,13 @@ run from the terminal (the native Rust binary since v3.0.0).
     notifications use the bubble, whether it climbs on windows, and
     whether it shows while OpenAgentd is in front (it always
     steps aside for full-screen apps); the tray turns it on and off too.
-  - **Desktop pet: ladders, balloons and falls** `[v3.42.0]` — the pet now
-    changes height on its own, in three small animations (same pixel art for
-    the cat, duck and crab: the walking frames climb, the standing frame
-    floats and falls). A **ladder** grows from the pet's surface up to the top
-    edge of another window (or down from it to the ground), the pet climbs it
-    with its walking steps, and the ladder folds away; a jump is kept for
-    rises of up to twice the pet's height, a ladder takes anything taller. A
-    **balloon** (red) lifts it up to 360 px with a slight sideways drift and a
-    gentle bob, sometimes to a window edge it steps onto; otherwise it hovers
-    3-6 s, then the balloon pops and it falls. Clicking the balloon pops it
-    early (the balloon is part of the pet's clickable area; clicks elsewhere
-    still pass through). *(Ladders and balloons are deprecated; removed in
-    v3.43.0, along with their setting: the pet jumps instead.)* A **fall**
+  - **Desktop pet: falls** `[v3.42.0]` — a **fall**
     has gravity (eases in, capped speed), a
-    squash on landing and a tiny dust puff; it is also how the pet comes down
+    squash on landing and a tiny dust puff; it is how the pet comes down
     when its window closes, and when you drop it in mid-air: with climbing on
     it falls to the window edge or the ground below, and the saved spot is
     the ground it stands on (with climbing off it stays at the height you
-    dropped it). They come after a sit, with the jump's decision: ladders
-    only when playful or chaotic and a window is in reach (12% / 25% of
-    sits), balloons 4% when calm (never climbing windows), 10% playful, 20%
-    chaotic. None starts when movement is stay put, with reduced motion,
-    while the pet is dragged or its menu is open, while a bubble is up or a
-    question waits (one under way is cut short), nor ladders and balloons
-    while an agent runs. Settings → Desktop → Desktop pet → **Ladders and
-    balloons** (on by default) turns the first two off; falls stay.
+    dropped it).
   - **Desktop pet: throws** `[v3.47.0]` — fling the pet and let go mid-move
     and it flies on with the pointer's speed instead of dropping straight
     down: an arc under gravity, a bounce off the sides and the top of the
@@ -2254,9 +2194,6 @@ run from the terminal (the native Rust binary since v3.0.0).
     destructive action last; so does the Review panel's **+**.
   - In Settings, the filter of Providers, Agents, Skills and MCP servers
     stays pinned at the top while the list scrolls.
-  - The chat's ⋯ always lists Tasks: **Tasks · 3/5** with progress, or
-    **No tasks** before the agent makes any. *(Deprecated; replaced in
-    v3.49.0 by direct Tasks and Review panel buttons.)*
 - **Controls you can hit** `[v3.54.0]` — the controls that measured smaller
   than the app's own sizes now meet them:
   - Phone: rows of the **+** menu, the model picker and the folder picker,
@@ -2430,7 +2367,6 @@ run from the terminal (the native Rust binary since v3.0.0).
     to the other, as Tab in the message field does. Plan is filled, so it
     shows at a glance. It takes half the room the two segments did, which
     goes to the model chip.
-    *(The Code | Plan segmented control is deprecated; removed in v3.48.0.)*
 - **Jump to latest shows only when you have left the end** `[v3.48.0]`:
   - Opening and closing a tool row or a reader fold at the end of the chat
     no longer shows **Jump to latest**, and the chat keeps following new
@@ -2491,13 +2427,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - List rows darken while your finger is on them.
   - On an Android phone turned sideways, the drawers and the review dock
     stay usable and keep clear of the camera cutout.
-- **Sideloadable iOS app** `[v3.7.0]` *(deprecated in v3.49.0: no longer
-  published; install from TestFlight)* — each release included an ad-hoc-signed
-  `OpenAgentd_<version>_iOS.ipa` with a checksum. A SideStore/AltStore source at
-  `releases/download/latest-ios/source.json` installs the app and offers new
-  versions as updates. See [Install the iOS app](../../mobile/INSTALL-IOS.md).
-  The launch screen follows the system appearance: dark paper in dark mode,
-  where it used to be light paper in both `[v3.25.0]`.
+- **iOS launch screen** `[v3.25.0]` — follows the system appearance: dark
+  paper in dark mode.
 - **iOS app on TestFlight** `[v3.49.0]` — releases are built, signed and
   uploaded to TestFlight by CI. Install from the public TestFlight link in the
   release notes: no computer, VPN or 7-day refresh, automatic updates, and the
@@ -3340,10 +3271,7 @@ agent against it.
   debounced SIGWINCH resizing, and mobile key bar ergonomics (touch-and-hold arrow repeat,
   soft-keyboard focus preservation, quick symbol row).
   Terminal font is a best-guess Nerd Font stack (MesloLGS NF and similar)
-  for correct Powerlevel10k/Starship glyph rendering, at 13 px. A custom
-  terminal font and size *(deprecated; removed in v3.46.0, with the Terminal
-  settings page that set them)* no longer apply, and their stored values are
-  cleared.
+  for correct Powerlevel10k/Starship glyph rendering, at 13 px.
   App shortcuts work from a focused terminal: on macOS every `⌘` shortcut,
   including `⌘K` for the palette, and on
   Windows/Linux `Ctrl+K` and `Ctrl+P` skip the shell to open the palette and
@@ -3735,10 +3663,9 @@ MCP.
   carries up to 5 options with optional descriptions, single- or multi-select,
   a "Recommended" badge on the agent's preferred choice, and a free-text
   answer. **Type your own answer** is on every question `[v3.4.0]`; the agent
-  can no longer turn it off. Multi-question cards are stepped through one at a time —
-  **Back** replaces **Dismiss** past the first question — and the whole set is
-  submitted together at the end *(Dismiss deprecated; removed in v3.42.0: the
-  card has only Back and Next / Send)*. The card renders **inline in the transcript**, in place of
+  can no longer turn it off. Multi-question cards are stepped through one at a time
+  with **Back** and **Next**, and the whole set is
+  submitted together with **Send** at the end. The card renders **inline in the transcript**, in place of
   the tool call that raised it, with exactly two states: waiting (the questions
   and their suggested answers) and resolved (your answer, or the dismissal).
   The suspension is **durable, not in-memory**: the pending question and the
@@ -4158,11 +4085,6 @@ Single-user trust model. The host is trusted. The operator is the user.
   Credentials (`OPENAGENTD_CACHE_DIR`), the SQLite DB, undo/redo snapshots, and
   other sessions' artifacts stay denied. This is what makes the
   `oad/debug-prod` log/telemetry workflow usable without disabling the path denylist.
-- **Permission system: allow / deny / ask** `[since v1.0]` *(deprecated: not
-  in v3)* — v2 matched wildcard rules per tool to auto-allow a call, block on
-  the user's reply, or save a rule. v3 runs every tool call without asking;
-  what limits the agent is the path denylist, Plan mode, and the secret-free
-  shell environment below.
 - **Shell command pre-scan** `[since v1.0]` — best-effort path-token scan
   inside shell commands.
 - **Secret-free shell environment** `[v3.11.1]` — the agent's shell tool and
@@ -4510,7 +4432,7 @@ Desktop is primary. CLI / server is the developer path.
 
 ## 12. Embed and API
 
-The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed it elsewhere with no extra work.
+The same HTTP + SSE API drives the desktop and mobile apps. Embed it elsewhere with no extra work.
 
 - **REST + SSE chat API** `[since v1.0]` — `POST /api/agent/chat` is
   fire-and-forget (returns 202 in <50ms); the agent streams events on
@@ -4551,8 +4473,6 @@ The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed i
   `events_stream_open kind=app|plain`.
 - **Multi-client streaming** `[since v1.0]` — multiple tabs can watch the same
   session simultaneously.
-- **Embeddable web UI** `[since v1.0]` — the wheel-bundled UI can be served
-  from the API process or behind your own reverse proxy.
 
 ---
 

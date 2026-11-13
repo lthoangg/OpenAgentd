@@ -80,6 +80,8 @@ describe('Update the server from its row', () => {
     const block = button.closest('[data-server-update-on-row]') as HTMLElement
     expect(block.previousElementSibling).toBe(rowOf('Mac mini'))
     expect(block.textContent).toContain('Updates OpenAgentd on that computer and restarts it.')
+    // One row: the list's hairline (the row's bottom edge) is dropped above the update.
+    expect(rowOf('Mac mini').className).toContain('has-[+[data-server-update-on-row]]:border-b-0!')
 
     fireEvent.click(button)
     expect(start).toHaveBeenCalledTimes(1)

@@ -964,6 +964,9 @@ export function ServerRow({
       className={cn(
         'flex min-h-(--phone-control) flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 md:min-h-14',
         ROW_PAD,
+        // The server's update (`ServerUpdateOnRow`) is part of this row: the
+        // list's hairline, this row's bottom edge, goes under the update.
+        'has-[+[data-server-update-on-row]]:border-b-0!',
         // Touch: one line, the button beside the name; no iOS callout on a hold.
         onMore && 'flex-row! items-center gap-3 [-webkit-touch-callout:none] select-none',
       )}

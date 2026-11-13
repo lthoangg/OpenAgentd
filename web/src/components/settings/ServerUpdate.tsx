@@ -205,8 +205,8 @@ function OnRow() {
   const offered = Boolean(data?.available && data.can_upgrade && data.latest)
   if (phase.kind === 'idle' && !offered) return null
   return (
-    // Part of the row above it: no hairline between them in a divided list.
-    <div data-server-update-on-row="" className="border-t-0!">
+    // Part of the row above it, which drops the list's hairline between them.
+    <div data-server-update-on-row="">
       <div className="flex justify-end px-4 pb-2 empty:hidden sm:px-5">
         <ServerUpdateButton onRequest={flow.request} />
       </div>

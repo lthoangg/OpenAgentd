@@ -10,6 +10,13 @@
  * (address and access key) are a separate list and a separate thing, even
  * when one is the same machine: they are never merged into these rows.
  *
+ * A row is titled by the name its computer gave for itself (its host name,
+ * or what you called it), once the app has been on it; until then by its
+ * system and key. The system, the key and the role are under **Details**
+ * (a button, or the row's ⋯ on touch), where the computer in use is also
+ * renamed: the name lives on the computer, so it is changed over the
+ * connection to it.
+ *
  * The phone's account lives in its shell; the desktop's in the built-in
  * server (`api/cloud.ts` always calls that one). So on the desktop a
  * stopped built-in server leaves nothing to list: the section says so and
@@ -28,10 +35,13 @@
  * bridge.
  */
 import { Fragment, useState } from 'react'
+import { Info } from 'lucide-react'
 
-import type { DeviceRow, LinkRoute } from '@/api/phone-cloud'
+import { isServer, type DeviceRow, type LinkRoute } from '@/api/phone-cloud'
 import { ServerRow } from '@/components/AppBackendPanel'
+import { ComputerDetailsDialog, deviceFacts } from '@/components/ComputerDetails'
 import { ServerUpdateOnRow } from '@/components/settings/ServerUpdate'
+import { ActionSheet } from '@/components/ui/action-sheet'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { PanelSection } from '@/components/ui/panel-section'
@@ -44,6 +54,7 @@ import {
 } from '@/lib/account-computers'
 import type { AppBackendStatus } from '@/lib/app-backend'
 import { connectAccountComputer, currentBackendOrigin, reloadForBackendSwitch } from '@/lib/backend-switch'
+import { NAME_NEEDS_UPDATE, renameComputerInUse, serverInUseKeepsName } from '@/lib/computer-rename'
 import { isDesktopShell } from '@/lib/desktop-shell'
 
 export {
@@ -73,6 +84,7 @@ export function AccountComputersSection({
   builtinStopped = false,
   onStartBuiltin,
   cannotOpen = false,
+  onRenamed,
 }: {
   computers: AccountComputer[]
   /** The account's devices have loaded (else an empty list says nothing yet). */
@@ -88,12 +100,18 @@ export function AccountComputersSection({
   onStartBuiltin?: () => Promise<void>
   /** Desktop: signed in without the client role, so it cannot open others. */
   cannotOpen?: boolean
+  /** A computer was renamed: the host reads the app's status again. */
+  onRenamed?: () => void | Promise<void>
 }) {
   const touch = useTouchFirst()
   const [opening, setOpening] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
+  // Details stays on its computer while the dialog closes.
+  const [detailsId, setDetailsId] = useState<string | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [sheet, setSheet] = useState<AccountComputer | null>(null)
   const desktop = isDesktopShell()
   if (builtinStopped) {
     const start = async () => {
@@ -166,6 +184,14 @@ export function AccountComputersSection({
   }
 
   const onExternal = app?.mode === 'external' || Boolean(app?.external)
+  const showDetails = (computer: AccountComputer) => {
+    setDetailsId(computer.device.device_id)
+    setDetailsOpen(true)
+  }
+  const detailed = computers.find((computer) => computer.device.device_id === detailsId) ?? null
+  // Renamed over the connection to it: only the computer the app is on.
+  const detailedOnBridge = detailed !== null && onExternal && app?.account_device?.device_id === detailed.device.device_id
+  const detailedName = detailed ? app?.computer_names?.[detailed.device.device_id] ?? null : null
   return (
     <>
       <PanelSection
@@ -187,6 +213,7 @@ export function AccountComputersSection({
               subtitle={computerLine(computer, onBridge, route)}
               inUse={inUse}
               onOpen={touch && idle ? (inUse ? onOpenSessions : () => { void open(computer) }) : undefined}
+              onMore={touch ? () => setSheet(computer) : undefined}
             >
               {inUse ? (
                 touch ? null : (
@@ -199,6 +226,11 @@ export function AccountComputersSection({
                   Use
                 </Button>
               )}
+              {touch ? null : (
+                <Button type="button" variant="ghost" size="sm" aria-label={`Details of ${computer.label}`} onClick={() => showDetails(computer)}>
+                  Details
+                </Button>
+              )}
             </ServerRow>
             {inUse ? <ServerUpdateOnRow /> : null}
             </Fragment>
@@ -207,6 +239,34 @@ export function AccountComputersSection({
       </PanelSection>
       {error && <Callout tone="error" role="alert">{error}</Callout>}
       {opened && !error && <Callout tone="info" role="status">{opened}</Callout>}
+      <ActionSheet
+        open={sheet !== null}
+        onClose={() => setSheet(null)}
+        title={sheet?.label ?? 'Computer'}
+        // No Open or Use here: a tap on the row already does it.
+        items={sheet ? [{ id: 'details', label: 'Details', icon: Info, afterClose: true, run: () => showDetails(sheet) }] : []}
+      />
+      <ComputerDetailsDialog
+        open={detailsOpen && detailed !== null}
+        onOpenChange={setDetailsOpen}
+        title={detailed?.label ?? ''}
+        name={detailedName}
+        facts={detailed ? deviceFacts({
+          kind: detailed.device.kind,
+          fingerprint: detailed.device.fingerprint,
+          signer: detailed.device.signer,
+          server: isServer(detailed.device),
+          client: detailed.device.client ?? false,
+        }) : []}
+        rename={detailedOnBridge && serverInUseKeepsName() ? {
+          name: detailedName ?? '',
+          save: async (name) => {
+            await renameComputerInUse(app, name)
+            await onRenamed?.()
+          },
+        } : null}
+        renameHint={detailedOnBridge ? NAME_NEEDS_UPDATE : 'Open this computer to rename it.'}
+      />
     </>
   )
 }

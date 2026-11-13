@@ -17,7 +17,10 @@ mock.module('@/hooks/use-mobile', () => ({
 import { AccountSettingsPage } from '@/components/settings/pages/settings.account'
 import { NOTICES } from '@/components/settings/pages/account-copy'
 import type { CloudStatus } from '@/api/cloud'
+import type { AppBackendStatus } from '@/lib/app-backend'
+import { queryClient as appQueryClient } from '@/lib/query-client'
 import { cloudPollInterval } from '@/queries/cloud'
+import { queryKeys } from '@/queries/keys'
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
@@ -54,6 +57,9 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  cleanup()
+  // The names a list shows come from the app's own client.
+  appQueryClient.clear()
   server.resetHandlers()
   if (originalFetch) globalThis.fetch = originalFetch
   originalFetch = undefined
@@ -337,6 +343,9 @@ describe('AccountSettingsPage', () => {
 /** Calls to the desktop app's `cloud_approval_proof`, and what it answers. */
 let proofCalls: Array<Record<string, unknown>> = []
 let proofAnswer: string | null = 'app-proof'
+/** What the shell answers `app_backend_status` with; null: a shell that does not say. */
+let backendStatus: AppBackendStatus | null = null
+let rememberedNames: Array<Record<string, unknown>> = []
 const realPlatform = Object.getOwnPropertyDescriptor(window.navigator, 'platform')
 
 /**
@@ -358,6 +367,12 @@ function inDesktopApp() {
         })
         return { status: res.status, body: await res.text() }
       }
+      if (command === 'app_backend_status' && backendStatus) return backendStatus
+      if (command === 'app_remember_computer_name' && backendStatus) {
+        rememberedNames.push(args)
+        backendStatus = { ...backendStatus, computer_names: { ...backendStatus.computer_names, [String(args.key)]: String(args.name) } }
+        return backendStatus
+      }
       if (command !== 'cloud_approval_proof') throw new Error(`unexpected command: ${command}`)
       proofCalls.push(args)
       return proofAnswer
@@ -371,6 +386,8 @@ describe('a computer that creates the account or approves devices', () => {
   beforeEach(() => {
     proofCalls = []
     proofAnswer = 'app-proof'
+    backendStatus = null
+    rememberedNames = []
   })
 
   afterEach(() => {
@@ -404,7 +421,7 @@ describe('a computer that creates the account or approves devices', () => {
     expect(await screen.findByText(/setting up a new account/)).toBeTruthy()
   })
 
-  it('lists the devices with their roles, and the requests waiting', async () => {
+  it('lists the devices and the requests waiting, with a device’s key and role under Details', async () => {
     inDesktopApp()
     serveStatus({ state: 'connected', fingerprint: 'AA11 BB22', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
     server.use(
@@ -419,12 +436,100 @@ describe('a computer that creates the account or approves devices', () => {
     renderPage()
 
     expect(await screen.findByText('Linux · C1C1 0000')).toBeTruthy()
-    expect(screen.getByText('Server')).toBeTruthy()
+    // A row is a title and one status line.
+    expect(screen.getByText('This computer')).toBeTruthy()
+    expect(screen.queryByText('Server')).toBeNull()
+    expect(screen.queryByText('Approver')).toBeNull()
     expect(screen.getByText('Used as')).toBeTruthy()
     expect(screen.getAllByText('Server and client').length).toBeGreaterThan(0)
     expect(await screen.findByText('Pending approvals')).toBeTruthy()
     expect(screen.getByText('Asks to be: client')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Remove Linux · C1C1 0000' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Details of Linux · C1C1 0000' }))
+    const details = await screen.findByRole('dialog', { name: 'Linux · C1C1 0000' })
+    expect(details.textContent).toContain('SystemLinux')
+    expect(details.textContent).toContain('KeyC1C1 0000')
+    expect(details.textContent).toContain('RoleServer')
+  })
+
+  it('titles each computer by its name, and still asks to remove one by its system and key', async () => {
+    inDesktopApp()
+    backendStatus = {
+      base_url: 'http://127.0.0.1:49545', mode: 'bundled', sidecar_running: true, external: false, supports_bundled: true, servers: [],
+      computer_names: { 'built-in': 'studio-mini', ci: 'build-box' },
+    }
+    serveStatus({ state: 'connected', fingerprint: 'AA11 BB22', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+    server.use(http.get(DEVICES_URL, () => HttpResponse.json([
+      { device_id: 'me', fingerprint: 'AA11 BB22', signer: true, server: true, client: true, me: true, kind: 'macos' },
+      { device_id: 'ci', fingerprint: 'C1C1 0000', signer: false, server: true, client: false, me: false, kind: 'linux', online: true },
+      { device_id: 'ph', fingerprint: 'D00D 0001', signer: false, server: false, client: true, me: false, kind: 'ios' },
+    ])))
+    renderPage()
+
+    expect(await screen.findByText('build-box')).toBeTruthy()
+    expect(screen.getByText('studio-mini')).toBeTruthy()
+    expect(screen.getByText('Online')).toBeTruthy()
+    // A phone has no name to give: its system and key.
+    expect(screen.getByText('iOS · D00D 0001')).toBeTruthy()
+    expect(screen.queryByText(/C1C1 0000/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove build-box' }))
+    const confirm = await screen.findByRole('dialog', { name: 'Remove this device?' })
+    expect(confirm.textContent).toContain('Linux · C1C1 0000')
+    expect(confirm.textContent).toContain('It stops reaching your devices through your account.')
+  })
+
+  it('renames this computer from its Details while the app is on its own server', async () => {
+    inDesktopApp()
+    backendStatus = {
+      base_url: 'http://localhost', mode: 'bundled', sidecar_running: true, external: false, supports_bundled: true, servers: [],
+      computer_names: { 'built-in': 'studio-mini' },
+    }
+    appQueryClient.setQueryData(queryKeys.health(), { status: 'ok', version: '3.54.0', capabilities: ['api.server_name'] })
+    let sent: unknown = null
+    serveStatus({ state: 'connected', fingerprint: 'AA11 BB22', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+    server.use(
+      http.get(DEVICES_URL, () => HttpResponse.json([
+        { device_id: 'me', fingerprint: 'AA11 BB22', signer: true, server: true, client: true, me: true, kind: 'macos' },
+      ])),
+      http.put('http://localhost/api/server/name', async ({ request }) => {
+        sent = await request.json()
+        return HttpResponse.json({ name: 'Work', default: 'studio-mini', custom: true })
+      }),
+    )
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Details of studio-mini' }))
+    const details = await screen.findByRole('dialog', { name: 'studio-mini' })
+    expect(details.textContent).toContain('KeyAA11 BB22')
+    expect(details.textContent).toContain('RoleServer and client · approves devices')
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Work' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(rememberedNames).toEqual([{ key: 'built-in', name: 'Work' }]))
+    expect(sent).toEqual({ name: 'Work' })
+    expect(await screen.findByRole('button', { name: 'Details of Work' })).toBeTruthy()
+  })
+
+  it('says where this computer is renamed while the window is on another server', async () => {
+    inDesktopApp()
+    backendStatus = {
+      base_url: 'http://192.168.1.30:4082', mode: 'external', sidecar_running: true, external: true, supports_bundled: true, servers: [],
+      computer_names: { 'built-in': 'studio-mini' },
+    }
+    appQueryClient.setQueryData(queryKeys.health(), { status: 'ok', version: '3.54.0', capabilities: ['api.server_name'] })
+    serveStatus({ state: 'connected', fingerprint: 'AA11 BB22', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+    server.use(http.get(DEVICES_URL, () => HttpResponse.json([
+      { device_id: 'me', fingerprint: 'AA11 BB22', signer: true, server: true, client: true, me: true, kind: 'macos' },
+    ])))
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Details of studio-mini' }))
+    const details = await screen.findByRole('dialog', { name: 'studio-mini' })
+    expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull()
+    expect(details.textContent).toContain('Use the built-in server to rename this computer.')
   })
 
   it('approves a request with the code, never adding a role it did not ask for', async () => {

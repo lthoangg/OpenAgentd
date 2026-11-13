@@ -298,6 +298,34 @@ describe('connected account', () => {
     expect(ran('cloud_remove_device')[0].args).toEqual({ deviceId: 'dev-linux' })
   })
 
+  it('titles a computer by its name, keeps its key and role under Details, and removes it by system and key', async () => {
+    shell(CONNECTED, {
+      cloud_devices: () => [ME, { ...LINUX, server: true, client: false, online: true }],
+      app_backend_status: () => ({ ...appStatus, computer_names: { 'dev-linux': 'build-box' } }),
+    })
+    render(<PhoneAccountContent />)
+
+    const row = (await screen.findByText('build-box')).closest('div[class*="min-h"]') as HTMLElement
+    expect(within(row).getByText('Online')).toBeTruthy()
+    // The row: a name and one status line.
+    expect(row.textContent).not.toContain('9C02')
+    expect(screen.queryByText('Approver')).toBeNull()
+    expect(screen.queryByText('Server')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Details of build-box' }))
+    const details = await screen.findByRole('dialog', { name: 'build-box' })
+    expect(details.textContent).toContain('SystemLinux')
+    expect(details.textContent).toContain('Key9C02 E1B7')
+    expect(details.textContent).toContain('RoleServer')
+    // Renamed over a connection to it, not from this list.
+    expect(within(details).queryByRole('button', { name: 'Rename' })).toBeNull()
+    fireEvent.keyDown(details, { key: 'Escape' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove build-box' }))
+    const confirm = await screen.findByRole('dialog', { name: 'Remove this device?' })
+    expect(confirm.textContent).toContain('Linux · 9C02 E1B7')
+  })
+
   it('registers for push quietly once connected', async () => {
     shell(CONNECTED)
     render(<PhoneAccountContent />)

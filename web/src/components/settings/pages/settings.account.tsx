@@ -11,6 +11,10 @@
  * phone scans to join, added only after Add and Touch ID. Only this
  * computer may change its account; anyone else (a phone viewing a remote
  * server) sees the status and a hint.
+ *
+ * A device's row is its name and one status line (`DeviceRows`); its
+ * system, key and role are under Details, where this computer is renamed
+ * while the app is on its own server.
  */
 import { useState, type ReactNode } from 'react'
 
@@ -18,6 +22,7 @@ import { APPROVE_ELSEWHERE, REMOVE_ELSEWHERE, type CloudPending, type CloudStatu
 import { deviceLabel, pendingLabel } from '@/api/phone-cloud'
 import { DesktopAddDeviceSheet } from '@/components/account/DesktopAddDeviceSheet'
 import { DesktopApprovalSheet } from '@/components/account/DesktopApprovalSheet'
+import { DeviceRows } from '@/components/account/DeviceRows'
 import { RecoveryStep } from '@/components/account/RecoveryStep'
 import { COMPUTER_ROLES, RolesChoice, rolesLabel } from '@/components/account/RolesChoice'
 import { ApiValidationError } from '@/api/client/_shared'
@@ -38,7 +43,11 @@ import { Callout } from '@/components/ui/callout'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
+import { useAppStatusWithNames } from '@/lib/account-computers'
+import { BUILT_IN_NAME_KEY, computerNameKey } from '@/lib/app-backend'
 import { canApproveHere } from '@/lib/approval-proof'
+import { NAME_NEEDS_UPDATE, renameComputerInUse, serverInUseKeepsName } from '@/lib/computer-rename'
+import { isDesktopShell } from '@/lib/desktop-shell'
 import {
   useCloudCancelMutation,
   useCloudConfirmRecovery,
@@ -78,11 +87,18 @@ const isForbidden = (error: unknown) => error instanceof ApiValidationError && e
 function DevicesSection({ canRemove, onAdd }: { canRemove: boolean; onAdd?: () => void }) {
   const devicesQ = useCloudDevicesQuery(true)
   const remove = useCloudRemoveDevice()
-  const [removing, setRemoving] = useState<string | null>(null)
+  const app = useAppStatusWithNames()
   // Removing signs the account's device list: only the desktop app can prove the person asked.
   const here = canApproveHere()
   // A remote viewer: these routes answer only this computer.
   if (isForbidden(devicesQ.error)) return null
+  const devices = devicesQ.data ?? []
+  // In the desktop app the account is the built-in server's: this computer's
+  // name is the one remembered for it.
+  const me = isDesktopShell() ? devices.find((device) => device.me) : undefined
+  const ownName = app?.computer_names?.[BUILT_IN_NAME_KEY]
+  const names = me && ownName ? { ...app?.computer_names, [me.device_id]: ownName } : app?.computer_names
+  const onOwnServer = me !== undefined && computerNameKey(app) === BUILT_IN_NAME_KEY
   return (
     <>
       <PanelSection
@@ -92,37 +108,22 @@ function DevicesSection({ canRemove, onAdd }: { canRemove: boolean; onAdd?: () =
         actions={onAdd && here && <Button size="sm" variant="primary" onClick={onAdd}>Add a device</Button>}
       >
         {devicesQ.isLoading && <PanelRow label="Loading devices…" />}
-        {devicesQ.data?.map((device) => (
-          <PanelRow
-            key={device.device_id}
-            label={deviceLabel(device)}
-            description={(
-              <span className="flex flex-wrap gap-x-2">
-                {device.me && <span>This computer</span>}
-                <span>{rolesLabel(device)}</span>
-                {device.signer && <span>Approver</span>}
-              </span>
-            )}
-          >
-            {canRemove && here && !device.me && (
-              <Button size="sm" variant="danger-subtle" aria-label={`Remove ${deviceLabel(device)}`} onClick={() => setRemoving(device.device_id)}>
-                Remove
-              </Button>
-            )}
-          </PanelRow>
-        ))}
+        <DeviceRows
+          devices={devices}
+          names={names}
+          selfLabel="This computer"
+          onRemove={canRemove && here ? (deviceId) => remove.mutateAsync(deviceId) : undefined}
+          removeEffect="It stops reaching your devices through your account."
+          renameSelf={onOwnServer && serverInUseKeepsName() ? {
+            name: ownName ?? '',
+            save: async (name) => { await renameComputerInUse(app, name) },
+          } : null}
+          selfRenameHint={me === undefined ? undefined : onOwnServer ? NAME_NEEDS_UPDATE : 'Use the built-in server to rename this computer.'}
+        />
       </PanelSection>
       {(devicesQ.error ?? remove.error) && (
         <Callout tone="error" role="alert">{(devicesQ.error ?? remove.error)?.message}</Callout>
       )}
-      <ConfirmDialog
-        open={removing !== null}
-        onOpenChange={(open) => { if (!open) setRemoving(null) }}
-        title="Remove this device?"
-        description="It stops reaching your devices through your account."
-        confirmLabel="Remove"
-        onConfirm={() => (removing ? remove.mutateAsync(removing).catch(() => undefined) : undefined)}
-      />
     </>
   )
 }

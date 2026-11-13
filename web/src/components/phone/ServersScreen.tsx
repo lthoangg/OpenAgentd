@@ -110,7 +110,7 @@ export function ServersScreen({ active, onOpenSessions }: {
         <div className="space-y-8 px-4 pb-6">
           {scanner.error && <Callout tone="error" role="alert">{scanner.error}</Callout>}
           <AccountSection active={active} devices={devices} onOpen={() => setAccountOpen(true)} onScan={scan} />
-          {connected && <AccountComputersSection computers={computers} loaded={devices !== undefined} app={app} route={route} onOpenSessions={onOpenSessions} />}
+          {connected && <AccountComputersSection computers={computers} loaded={devices !== undefined} app={app} route={route} onOpenSessions={onOpenSessions} onRenamed={refreshComputers} />}
           <AppBackendPanel active={active} prefill={prefill} sectionTitle="Your servers" onOpenInUse={onOpenSessions} controlRef={panel} onScanQr={scan} />
           {connected && isPhoneCloudShell() && <ConnectionDiagnosticsRow />}
         </div>

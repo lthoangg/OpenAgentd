@@ -203,7 +203,7 @@ const HighlightedCode = memo(function HighlightedCode({
   }, [code, language, isStreaming])
 
   return (
-    <CodeBlock language={language} rawText={code}>
+    <CodeBlock language={language} rawText={code} runnable={!isStreaming}>
       {content}
     </CodeBlock>
   )

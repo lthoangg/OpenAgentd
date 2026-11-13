@@ -28,6 +28,7 @@ interface FakeTerm {
   dispose: ReturnType<typeof mock>
   focus: ReturnType<typeof mock>
   onData: ReturnType<typeof mock>
+  paste: ReturnType<typeof mock>
   options: { theme?: unknown; fontFamily?: string; fontSize?: number }
   rows: number
   cols: number
@@ -43,6 +44,7 @@ const onDataHandlers: Array<(data: string) => void> = []
 const fitSize = { rows: 24, cols: 80 }
 
 function makeFakeTerm(): FakeTerm {
+  let typed: ((data: string) => void) | null = null
   return {
     write: fn(() => {}),
     dispose: fn(() => {}),
@@ -50,7 +52,10 @@ function makeFakeTerm(): FakeTerm {
     // Capture the handler so tests can drive real keystrokes through it.
     onData: fn((handler: (data: string) => void) => {
       onDataHandlers.push(handler)
+      typed = handler
     }),
+    // Like xterm: pasted text reaches the shell through the `onData` handler.
+    paste: fn((text: string) => typed?.(text)),
     options: {},
     rows: 24,
     cols: 80,
@@ -1194,6 +1199,93 @@ describe('terminal protocol v2', () => {
       useTerminalStore.getState().rename(id, 'Fine')
       expect(stored()['sess-1']?.title).toBe('Fine')
     })
+  })
+})
+
+describe('run in terminal', () => {
+  const sent = () => lastSocket!.sendInput.mock.calls.map((call) => call[0])
+
+  it('pastes the command into a connected shell, then presses Enter', async () => {
+    const id = open()
+    await settle()
+
+    useTerminalStore.getState().runCommand(id, 'echo hi\n')
+
+    expect(createdTerms[0].paste).toHaveBeenCalledWith('echo hi')
+    expect(sent()).toEqual(['echo hi', '\r'])
+  })
+
+  it('sends a multi-line block as one paste', async () => {
+    const id = open()
+    await settle()
+
+    useTerminalStore.getState().runCommand(id, 'cd web\nbun test\n')
+
+    expect(sent()).toEqual(['cd web\nbun test', '\r'])
+  })
+
+  it('holds the command for a shell that is still connecting', async () => {
+    const id = open()
+    useTerminalStore.getState().runCommand(id, 'ls')
+    expect(lastSocket).toBeNull()
+
+    await settle()
+
+    expect(meta(id)?.status).toBe('connected')
+    expect(sent()).toEqual(['ls', '\r'])
+  })
+
+  it('runs a held command once, however often the session changes after', async () => {
+    const id = open()
+    useTerminalStore.getState().runCommand(id, 'ls')
+    await settle()
+
+    useTerminalStore.getState().rename(id, 'Build')
+    lastCallbacks!.onBusy!(true)
+
+    expect(sent()).toEqual(['ls', '\r'])
+  })
+
+  it('drops the command when the shell fails to start', async () => {
+    connectFailures = [failure(undefined, 'no shell')]
+    const id = open()
+    useTerminalStore.getState().runCommand(id, 'ls')
+    await settle()
+    expect(meta(id)?.status).toBe('error')
+
+    useTerminalStore.getState().reconnect(id)
+    await settle()
+
+    expect(meta(id)?.status).toBe('connected')
+    expect(sent()).toEqual([])
+  })
+
+  it('ignores a blank command and an unknown session', async () => {
+    const id = open()
+    await settle()
+
+    useTerminalStore.getState().runCommand(id, '  \n')
+    useTerminalStore.getState().runCommand('nope', 'ls')
+
+    expect(sent()).toEqual([])
+  })
+
+  it('counts a shell as idle only once the server says no command is running', async () => {
+    const id = open()
+    expect(useTerminalStore.getState().isIdleShell(id)).toBe(false) // connecting
+    await settle()
+    // Connected, but the server has not reported `busy` (Windows): unknown.
+    expect(useTerminalStore.getState().isIdleShell(id)).toBe(false)
+
+    lastCallbacks!.onBusy!(false)
+    expect(useTerminalStore.getState().isIdleShell(id)).toBe(true)
+
+    lastCallbacks!.onBusy!(true)
+    expect(useTerminalStore.getState().isIdleShell(id)).toBe(false)
+
+    lastCallbacks!.onBusy!(false)
+    lastCallbacks!.onExit!()
+    expect(useTerminalStore.getState().isIdleShell(id)).toBe(false)
   })
 })
 

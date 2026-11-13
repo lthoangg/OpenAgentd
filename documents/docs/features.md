@@ -1006,6 +1006,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Copy buttons on code blocks, tool arguments, commands and output are
     always visible and say "Copied"; a bare code fence gets the same header.
     Tool section headers are real buttons.
+  - **Run in terminal** `[v3.55.0]`: a `bash`, `sh`, `shell`, `zsh` or `fish`
+    code block has a second header button, beside Copy, that runs the block
+    in the workspace's terminal and shows that tab. It uses the last terminal
+    sitting at its prompt, or a new one when there is none or each is busy,
+    so a command never reaches a running program. The button is absent
+    without a workspace and while the block is still being written.
   - On touch, a long press on a message, a code block or a link opens its
     menu as the app's bottom sheet, the iOS app included. A tool row has
     a menu too (right-click or long-press) that opens its files; Copy is on

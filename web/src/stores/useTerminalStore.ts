@@ -65,6 +65,8 @@ export const TERMINAL_TITLES_KEY = 'oad:terminal-titles'
 export const TERMINAL_LAYOUT_KEY = 'oad:terminal-layout'
 /** How long "Open terminal" waits for a restore that is still listing shells. */
 export const TERMINAL_RESTORE_WAIT_MS = 2000
+/** How long a command waits for the shell it was sent to before it is dropped. */
+export const TERMINAL_RUN_WAIT_MS = 10_000
 
 export type TerminalSessionStatus = 'connecting' | 'connected' | 'exited' | 'error'
 /**
@@ -283,6 +285,18 @@ interface TerminalStore {
    */
   noteTerminalOrder: (contextKey: string, sessionIds: readonly string[]) => void
   sendInput: (id: string, data: string) => void
+  /**
+   * Run in terminal: paste ``command`` into the shell and press Enter. A
+   * session that is still connecting gets it once connected; one that ends
+   * first (or takes longer than `TERMINAL_RUN_WAIT_MS`) never does.
+   */
+  runCommand: (id: string, command: string) => void
+  /**
+   * True for a connected shell known to sit at its prompt. A server that
+   * never reports `busy` (Windows, the old protocol) cannot say, so its
+   * shells count as busy: a command must never reach a running program.
+   */
+  isIdleShell: (id: string) => boolean
   sendResize: (id: string, rows: number, cols: number) => void
   /** Visible ↔ hidden — attached sessions are exempt from idle reaping. */
   setAttached: (id: string, attached: boolean) => void
@@ -758,6 +772,37 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     if (!rt?.socket) return
     rt.lastActivityAt = Date.now()
     rt.socket.sendInput(rt.inputTransform(data))
+  },
+
+  runCommand: (id, command) => {
+    const text = command.replace(/\s+$/, '')
+    if (text.trim() === '') return
+    /** Sent, or the session can no longer take it: either way, stop waiting. */
+    const settle = (): boolean => {
+      const meta = get().sessions[id]
+      const rt = runtimes.get(id)
+      if (!meta || !rt || meta.status === 'exited' || meta.status === 'error') return true
+      if (meta.status !== 'connected' || !rt.socket || !rt.handle) return false
+      // xterm's paste honours bracketed-paste mode (a multi-line block goes
+      // in whole) and feeds `onData`, the same path as typing.
+      rt.handle.term.paste(text)
+      get().sendInput(id, '\r')
+      return true
+    }
+    if (settle()) return
+    const stop = () => {
+      clearTimeout(timer)
+      unsubscribe()
+    }
+    const timer = setTimeout(stop, TERMINAL_RUN_WAIT_MS)
+    const unsubscribe = useTerminalStore.subscribe(() => {
+      if (settle()) stop()
+    })
+  },
+
+  isIdleShell: (id) => {
+    const meta = get().sessions[id]
+    return meta?.status === 'connected' && meta.busy !== true && runtimes.get(id)?.busySupported === true
   },
 
   sendResize: (id, rows, cols) => {

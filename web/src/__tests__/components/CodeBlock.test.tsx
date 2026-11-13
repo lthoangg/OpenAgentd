@@ -3,8 +3,21 @@ import "@testing-library/jest-dom"
 import { act, render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react"
 
 import { CodeBlock } from "@/components/CodeBlock"
+import { registerTerminalRunner } from "@/lib/terminal-run"
 
-afterEach(cleanup)
+let withdrawRunner: (() => void) | null = null
+/** Stand in for the chat shell with a workspace: a terminal can take commands. */
+function offerTerminal() {
+  const commands: string[] = []
+  withdrawRunner = registerTerminalRunner((command) => commands.push(command))
+  return commands
+}
+
+afterEach(() => {
+  cleanup()
+  withdrawRunner?.()
+  withdrawRunner = null
+})
 
 describe("CodeBlock", () => {
   it("renders code content inside pre and code tags", () => {
@@ -110,5 +123,66 @@ describe("CodeBlock", () => {
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Copy code" })) })
     expect(header.querySelector('[aria-live="polite"]')?.textContent).toBe("Copied")
     expect(screen.getByRole("button", { name: "Copy code" }).querySelector("svg.lucide-check")).toBeTruthy()
+  })
+})
+
+describe("CodeBlock: Run in terminal", () => {
+  const runButton = () => screen.queryByRole("button", { name: "Run in terminal" })
+
+  it.each(["bash", "sh", "shell", "zsh", "fish", "Bash"])("offers it on a %s block", (language) => {
+    offerTerminal()
+    render(<CodeBlock language={language} rawText="ls">ls</CodeBlock>)
+    expect(runButton()).toBeTruthy()
+  })
+
+  it.each(["typescript", "python", "console", "powershell", undefined])("leaves a %s block with Copy alone", (language) => {
+    offerTerminal()
+    render(<CodeBlock language={language} rawText="ls">ls</CodeBlock>)
+    expect(runButton()).toBeNull()
+    expect(screen.getByRole("button", { name: "Copy code" })).toBeTruthy()
+  })
+
+  it("is absent where no terminal can open (no workspace)", () => {
+    render(<CodeBlock language="bash" rawText="ls">ls</CodeBlock>)
+    expect(runButton()).toBeNull()
+    expect(screen.getByRole("button", { name: "Copy code" })).toBeTruthy()
+  })
+
+  it("appears and goes as a terminal becomes available", () => {
+    render(<CodeBlock language="bash" rawText="ls">ls</CodeBlock>)
+    act(() => { offerTerminal() })
+    expect(runButton()).toBeTruthy()
+    act(() => { withdrawRunner?.(); withdrawRunner = null })
+    expect(runButton()).toBeNull()
+  })
+
+  it("is absent while the block is still being written", () => {
+    offerTerminal()
+    render(<CodeBlock language="bash" rawText="rm -rf bui" runnable={false}>rm -rf bui</CodeBlock>)
+    expect(runButton()).toBeNull()
+  })
+
+  it("is absent on an empty block", () => {
+    offerTerminal()
+    render(<CodeBlock language="bash" rawText={"\n"}>{"\n"}</CodeBlock>)
+    expect(runButton()).toBeNull()
+  })
+
+  it("runs the block's text, without the fence's trailing newline", () => {
+    const commands = offerTerminal()
+    render(<CodeBlock language="bash" rawText={"cd web\nbun test\n"}>cd web</CodeBlock>)
+    fireEvent.click(runButton()!)
+    expect(commands).toEqual(["cd web\nbun test"])
+  })
+
+  it("sits before Copy in the header, the same control", () => {
+    offerTerminal()
+    render(<CodeBlock language="bash" rawText="ls">ls</CodeBlock>)
+    const run = runButton()!
+    const copy = screen.getByRole("button", { name: "Copy code" })
+    expect(run.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(run.closest("pre")).toBeNull()
+    expect(run.className).toBe(copy.className)
+    expect(run.getAttribute("title")).toBe("Run in terminal")
   })
 })

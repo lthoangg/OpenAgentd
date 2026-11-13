@@ -803,7 +803,10 @@ drawer and full-screen sheet.
   a diff and a shell side by side. There is no terminal pane and nothing
   hides one. Terminals have no key: Open Terminal (the palette, the View
   menu) and the strip's "+" menu or launcher start one, and a focused
-  terminal keeps Control+backquote for its shell. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`, `Mod+Shift+[`/`]`) act on the focused
+  terminal keeps Control+backquote for its shell. A shell code block's
+  header has Run in terminal before Copy (the same muted icon control, the
+  terminal glyph): it runs the block in the last shell at its prompt, or a
+  new one, never a busy one, and shows that tab. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`, `Mod+Shift+[`/`]`) act on the focused
   pane; with several panes, the open tab of a pane without focus steps back
   (a lighter wash, `text-2`), so the focused pane reads at a glance; the
   labels never fade (a strip at 50% left them at 2.1–2.3:1). A click into a preview page focuses its pane too (the window's

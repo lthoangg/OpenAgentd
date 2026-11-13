@@ -132,6 +132,7 @@ const RULES: Rule[] = [
       // Live dots and marks, not text.
       'components/ui/goal-ring.tsx': 1,
       'components/AgentChatView/index.tsx': 1,
+      'components/AgentView/WaitingForLine.tsx': 1,
       'components/AppBackendPanel.tsx': 1,
       'components/ConnectionBanner.tsx': 1,
       'components/WorkSummary.tsx': 1,

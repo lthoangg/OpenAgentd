@@ -590,6 +590,7 @@ describe('handleGlobalEvent', () => {
   it('patches subagent running state and invalidates subagents on subagent_status', async () => {
     const client = new QueryClient()
     client.setQueryData(queryKeys.session.subagents('lead-1'), { live_members: [] })
+    client.setQueryData(queryKeys.session.waiting('lead-1'), { items: [] })
     client.setQueryData(queryKeys.session.sessions.infinite(), {
       pages: [{
         data: [{
@@ -627,6 +628,18 @@ describe('handleGlobalEvent', () => {
     }
     expect(data.pages[0].data[0].subagents?.[0].running).toBe(false)
     expect(client.getQueryState(queryKeys.session.subagents('lead-1'))?.isInvalidated).toBe(true)
+    expect(client.getQueryState(queryKeys.session.waiting('lead-1'))?.isInvalidated).toBe(true)
+  })
+
+  it('rereads what a session waits for when any session starts or ends a turn', async () => {
+    // The session it waits for runs in another workspace: only its turn
+    // events say that it started, stopped or finished.
+    for (const type of ['session_turn_started', 'session_turn_completed']) {
+      const client = new QueryClient()
+      client.setQueryData(queryKeys.session.waiting('lead-1'), { items: [] })
+      await handleGlobalEvent(client, type, { session_id: 'other-1', workspace: '/r/infra' }, 1, () => 1)
+      expect(client.getQueryState(queryKeys.session.waiting('lead-1'))?.isInvalidated).toBe(true)
+    }
   })
 
   it('appends subagent and invalidates queries on subagent_spawned', async () => {

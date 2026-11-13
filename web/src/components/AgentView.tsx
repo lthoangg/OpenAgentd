@@ -28,6 +28,7 @@ import { TimelineScrubber } from './AgentView/TimelineScrubber'
 import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn, type AssistantTurnProps } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
+import { WaitingForLine } from './AgentView/WaitingForLine'
 import { JumpToLatest } from './JumpToLatestChip'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns, promptModels, type TurnItem } from '@/utils/turns'
 import { countBlocksAfter, liveBlockTail } from '@/utils/blocks'
@@ -915,6 +916,15 @@ export function AgentView({
     </div>
   ), [activeQuotaWaitBlockId, activeRetryBlockId, endingErrorId, errorRetry, errorSwitchModel, latestMCPAppBlockIds, leadSessionId, onMentionFileOpen, onOpenSession, sessionId])
 
+  // Under the last answer once its turn has closed: the sessions this one
+  // still waits for. A subagent's own session waits for nothing.
+  const waitingLine = useMemo(() => (leadSessionId ? undefined : <WaitingForLine sessionId={sessionId} />), [leadSessionId, sessionId])
+  // It sits in the last answer's footer; when the transcript ends on
+  // something else (a report, a summary divider), under that instead. Not
+  // under a prompt just typed: its turn is about to open.
+  const waitingLineAfterTurns = !isTurnOpen && lastTurnItem !== undefined
+    && (lastTurnItem.kind === 'compaction' || (lastTurnItem.kind === 'user' && !isTypedPromptBlock(lastTurnItem.block)))
+
   const lastBlock = liveTail.length > 0 ? liveTail[liveTail.length - 1] : blocks[blocks.length - 1]
   // A change key for auto-follow, not the content itself: the streamed fields
   // only grow, so their lengths move whenever they do.
@@ -1490,9 +1500,12 @@ export function AgentView({
                      reader={readerTranscript}
                      startedAt={turnStartedAt}
                       renderBlock={renderTurnBlock}
+                     afterFooter={isTrailingTurn ? waitingLine : undefined}
                    />
                  )
                 })}
+
+            {waitingLineAfterTurns && waitingLine}
 
             {restoredQuotaWait && (
               <QuotaWaitNotice wait={restoredQuotaWait} sessionId={sessionId} persist={false} />

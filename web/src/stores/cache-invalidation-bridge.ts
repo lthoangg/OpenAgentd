@@ -51,6 +51,8 @@ export function applyCacheInvalidations(
         break
       case 'subagents':
         invalidate(queryKeys.session.subagents(event.sessionId))
+        // A subagent starting or ending changes what its lead waits for.
+        invalidate(queryKeys.session.waiting(event.sessionId))
         break
       case 'session_running':
         // Patch in place; only fall back to a refetch when the session is not

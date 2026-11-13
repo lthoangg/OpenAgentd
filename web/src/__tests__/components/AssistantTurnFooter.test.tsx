@@ -20,6 +20,25 @@ afterEach(cleanup)
  * call is running, when nothing in the transcript is changing at all.
  */
 describe("AssistantTurn — which blocks count as streaming", () => {
+  it("shows what follows the footer only once the turn has closed", () => {
+    const turn = (isWorking: boolean) => (
+      <AssistantTurn
+        blocks={[{ id: "t1", type: "text", content: "Delegated." }]}
+        startIndex={0}
+        finalizedCount={1}
+        isWorking={isWorking}
+        isTrailingTurn
+        totalBlocks={1}
+        renderBlock={() => null}
+        afterFooter={<p>Waiting for 2 sessions</p>}
+      />
+    )
+    const { rerender } = render(turn(true))
+    expect(screen.queryByText("Waiting for 2 sessions")).toBeNull()
+    rerender(turn(false))
+    expect(screen.getByText("Waiting for 2 sessions")).toBeTruthy()
+  })
+
   const blocks: ContentBlock[] = [
     { id: "text-1", type: "text", content: "Let me run the tests." },
     {

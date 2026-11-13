@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery, type InfiniteData } from '@tanstack/react-query'
-import { listSessions, deleteSession, updateSessionTitle, listSubagents, setSessionPinned } from '@/api/client'
+import { listSessions, deleteSession, updateSessionTitle, listSubagents, listWaiting, setSessionPinned } from '@/api/client'
 import type { SessionPageResponse, SessionResponse } from '@/api/types'
 import { queryKeys } from './keys'
 import { applyOptimisticTitle, applySessionRename } from './session-rename'
@@ -290,4 +290,25 @@ export function useSessionSubagentsQuery(sessionId: string | null | undefined, e
     enabled: Boolean(sessionId) && enabled,
     staleTime: 5000,
   })
+}
+
+/**
+ * The sessions a finished turn still waits for. Turn and subagent events
+ * invalidate it (`use-global-event-stream`, `cache-invalidation-bridge`), so
+ * it is never polled. A server too old to have the route answers 404: no
+ * retry, and the line it feeds stays hidden.
+ */
+export function sessionWaitingQuery(sessionId: string | null | undefined) {
+  return {
+    queryKey: queryKeys.session.waiting(sessionId ?? ''),
+    queryFn: () => listWaiting(sessionId!),
+    enabled: Boolean(sessionId),
+    staleTime: 5000,
+    retry: false,
+  } as const
+}
+
+export function useSessionWaitingQuery(sessionId: string | null | undefined, enabled = true) {
+  const options = sessionWaitingQuery(sessionId)
+  return useQuery({ ...options, enabled: options.enabled && enabled })
 }

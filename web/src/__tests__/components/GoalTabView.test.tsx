@@ -54,7 +54,7 @@ const TODOS: TodoItem[] = [
 function renderTab(goal: SessionGoal | null, sessionId: string | null = 's1', extra: { plan?: SessionPlan; todos?: TodoItem[]; onOpenPlan?: () => void } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   client.setQueryData(queryKeys.goal('s1'), { goal })
-  client.setQueryData(queryKeys.session.subagents('s1'), { available_profiles: [], live_members: [] })
+  client.setQueryData(queryKeys.session.waiting('s1'), { items: [] })
   render(<QueryClientProvider client={client}><GoalTabView sessionId={sessionId} {...extra} /></QueryClientProvider>)
   return client
 }
@@ -184,13 +184,15 @@ describe('GoalTabView', () => {
     expect(screen.getByRole('region', { name: 'Plan' }).textContent).toContain('Done')
   })
 
-  it('waits for working subagents between turns', async () => {
+  it('waits for subagents and other workspaces between turns', async () => {
     const client = renderTab(makeGoal())
-    client.setQueryData(queryKeys.session.subagents('s1'), {
-      available_profiles: [],
-      live_members: [{ member_id: 'm', profile: 'explorer', status: 'working', session_id: 'c1', has_pending_question: false }],
+    client.setQueryData(queryKeys.session.waiting('s1'), {
+      items: [
+        { kind: 'subagent', session_id: 'c1', title: 'Map the code', label: 'explorer#1', workspace: '', state: 'working' },
+        { kind: 'session', session_id: 'o1', title: 'Add the route', label: 'agentd-cloud', workspace: '/r/agentd-cloud', state: 'working' },
+      ],
     })
-    await waitFor(() => expect(now()?.textContent).toContain('Waiting for 1 subagent'))
+    await waitFor(() => expect(now()?.textContent).toContain('Waiting for 2 sessions'))
   })
 
   it('says why a goal stopped and what the last check found', () => {
@@ -229,7 +231,7 @@ describe('GoalTabView', () => {
       fail ? new Response('down', { status: 500 }) : Response.json({ goal: makeGoal() })
     )) as unknown as typeof fetch
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    client.setQueryData(queryKeys.session.subagents('s1'), { available_profiles: [], live_members: [] })
+    client.setQueryData(queryKeys.session.waiting('s1'), { items: [] })
     const user = userEvent.setup()
     render(<QueryClientProvider client={client}><GoalTabView sessionId="s1" /></QueryClientProvider>)
 
@@ -245,7 +247,7 @@ describe('GoalTabView', () => {
   it('shows text lines named "Loading the goal" while it loads, instead of saying there is none', () => {
     globalThis.fetch = mock(() => new Promise<Response>(() => {})) as unknown as typeof fetch
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    client.setQueryData(queryKeys.session.subagents('s1'), { available_profiles: [], live_members: [] })
+    client.setQueryData(queryKeys.session.waiting('s1'), { items: [] })
     const { container } = render(<QueryClientProvider client={client}><GoalTabView sessionId="s1" /></QueryClientProvider>)
 
     const loading = screen.getByRole('status', { name: 'Loading the goal' })

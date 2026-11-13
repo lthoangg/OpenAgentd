@@ -2587,6 +2587,20 @@ executes tools, manages its task list, and inspects workspace repositories.
   - Session titles in Vietnamese, Chinese, Japanese, Korean, and other scripts are no
     longer cut mid-word.
   - `/init` sends a quarter of the instructions it did (8 KB instead of 32 KB).
+- **What a finished answer still waits for** `[v3.55.0]` — when the main agent's turn
+  ends while work it started is still running (subagents, or sessions it asked in
+  other workspaces for a reply), a line under the answer says **Waiting for 3
+  sessions**, with **· 1 needs you** when one of them is stopped on a question or a
+  plan review. Click it (a sheet on a phone) for the list: each session's title,
+  whether it is a subagent (with its handle) or which workspace it runs in, and
+  **Running**, **Needs you** or **Idle**. A row opens that session, in this workspace
+  or the other one. The line follows sessions as they start and finish and goes when
+  nothing is left; a subagent's own session has none. The Goal tab's "Waiting for…"
+  line counts the same sessions, so it includes other workspaces now. The server
+  reads which replies it is still owed back from its database when it starts (it
+  kept them in memory only), so the line, the sidebar's active list and the
+  held-back "Done" notification stay right across a restart. Deleting a session
+  that owed a reply ends the wait for it.
 - **Cross-workspace messages** `[v3.9.0, updated v3.35.0]` — the lead agent's `send_to_workspace`
   tool sends a request to an agent session in another workspace you have opened
   that shares a workspace group (see **Workspace groups** below) with its own (a related

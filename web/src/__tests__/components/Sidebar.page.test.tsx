@@ -390,7 +390,8 @@ describe('Sidebar page mode: search', () => {
     const { view } = await renderPage()
     const field = screen.getByRole('button', { name: 'Search' })
     expect(field.className).toContain('bg-(--bg-key)')
-    expect(field.className).toContain('h-9')
+    // The phone's control step, like the real field it opens.
+    expect(field.className).toContain('h-(--phone-control)')
 
     fireEvent.click(field)
 

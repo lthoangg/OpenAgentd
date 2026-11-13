@@ -10,7 +10,7 @@ import { SidebarHeading } from './SidebarHeading'
 import { cn } from '@/lib/utils'
 
 const ACTION_CLASS =
-  'flex h-8 w-8 items-center justify-center rounded-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 pointer-coarse:size-9'
+  'flex h-8 w-8 items-center justify-center rounded-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 pointer-coarse:size-9 phone:size-(--phone-control)'
 
 function HeaderAction({
   label,

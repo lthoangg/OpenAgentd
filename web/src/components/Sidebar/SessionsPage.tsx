@@ -97,8 +97,8 @@ function SessionsServerLine({ onOpenServers }: { onOpenServers: () => void }) {
 /**
  * The large title, the server it lists, and the search field under them, at
  * the top of the scroller. The field only looks like one: a tap opens
- * ``SessionSearch``, which has the real input. It is a plain button, not
- * ``Button``: a search field is 36px (iOS's), under the phone's button floor.
+ * ``SessionSearch``, which has the real input. It is a plain button, sized
+ * from the phone's control step like the real field (``SearchBar filled``).
  */
 export function SessionsPageHeader({
   titleRef,
@@ -121,7 +121,7 @@ export function SessionsPageHeader({
         ref={searchRef}
         type="button"
         onClick={onSearch}
-        className="flex h-9 w-full items-center gap-1.5 rounded-md bg-(--bg-key) px-2.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--color-fill-key-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+        className="flex h-(--phone-control) w-full items-center gap-1.5 rounded-md bg-(--bg-key) px-2.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--color-fill-key-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
       >
         <Search size={16} aria-hidden="true" className="shrink-0" />
         <span className="min-w-0 truncate">Search</span>
@@ -271,7 +271,7 @@ export function SessionsPageToolbar({
         aria-label="Sessions"
         {...pill.handlers}
         className={cn(
-          'relative flex touch-none select-none items-center gap-0.5 rounded-full border border-(--color-border) bg-(--bg-card)/90 p-1 shadow-(--shadow-depth) backdrop-blur-md transition-opacity duration-(--motion-fast) [-webkit-touch-callout:none]',
+          'relative flex touch-none select-none items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card)/90 p-1 shadow-(--shadow-depth) backdrop-blur-md transition-opacity duration-(--motion-fast) [-webkit-touch-callout:none]',
           menuOpen ? 'pointer-events-none opacity-50' : 'pointer-events-auto',
         )}
       >
@@ -299,7 +299,8 @@ export function SessionsPageToolbar({
                 data-sessions-toolbar-item=""
                 data-slide-id={label}
                 data-active={active ? '' : undefined}
-                className="rounded-full! text-(--color-text-2) transition-transform duration-(--motion-fast) data-active:scale-105 data-active:bg-(--color-fill-key-hover) data-active:text-(--color-text)"
+                // ``touch-hit``: 44px around the 40px circle; the 4px gap keeps neighbours apart.
+                className="relative touch-hit rounded-full! text-(--color-text-2) transition-transform duration-(--motion-fast) data-active:scale-105 data-active:bg-(--color-fill-key-hover) data-active:text-(--color-text)"
               >
                 <Icon className="size-5" aria-hidden="true" />
               </Button>

@@ -93,8 +93,9 @@ function SearchBar({
         className={cn(
           // Shape
           filled
-            ? 'flex h-9 items-center gap-1.5 rounded-md border border-transparent bg-(--bg-key)'
-            : 'flex min-h-10 items-center gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-input) md:min-h-8',
+            ? 'flex h-(--phone-control) items-center gap-1.5 rounded-md border border-transparent bg-(--bg-key)'
+            // 32px; 36px on touch, the phone's control step on a phone.
+            : 'flex min-h-10 items-center gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-input) md:min-h-8 pointer-coarse:min-h-9 phone:min-h-(--phone-control)',
           // Focus strengthens the edge, as on the Input primitive
           'transition-colors',
           'focus-within:border-(--color-text-subtle)',
@@ -122,7 +123,9 @@ function SearchBar({
           spellCheck={false}
           enterKeyHint="search"
           className={cn(
-            'min-w-0 flex-1 bg-transparent py-2 text-xs text-(--color-text) md:py-1.5',
+            // As tall as its frame, the 1px edge included (``-my-px``), so a
+            // tap anywhere down the frame lands in the field.
+            '-my-px min-w-0 flex-1 self-stretch bg-transparent py-2 text-xs text-(--color-text) md:py-1.5',
             'placeholder:text-(--color-text-muted)',
             'border-none outline-none ring-0 focus:border-none focus:outline-none focus:ring-0 focus-visible:border-none focus-visible:outline-none focus-visible:ring-0',
             // Remove browser-default search cancel button — we render our own

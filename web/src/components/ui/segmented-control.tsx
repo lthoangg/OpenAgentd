@@ -35,13 +35,13 @@ const TRACK_SIZE: Record<SegmentedSize, string> = {
   // 24px dense toolbar variant; 28px on touch so it still fits the 32px
   // toolbar (like ``TabsList size="sm"``).
   sm: 'h-6 pointer-coarse:h-7',
-  // 32px; on touch each segment is a 44px target.
+  // 32px; on touch each segment is 36px, and the phone's control step on a phone.
   default: 'h-8 pointer-coarse:h-auto',
 }
 
 const ITEM_SIZE: Record<SegmentedSize, string> = {
   sm: 'px-2 text-xs pointer-coarse:min-w-9 [&_svg:not([class*=size-])]:size-3',
-  default: 'px-2.5 text-xs pointer-coarse:min-h-9 pointer-coarse:min-w-9 [&_svg:not([class*=size-])]:size-3.5',
+  default: 'px-2.5 text-xs pointer-coarse:min-h-9 pointer-coarse:min-w-9 phone:min-h-(--phone-control) [&_svg:not([class*=size-])]:size-3.5',
 }
 
 /** Track (container) classes. */

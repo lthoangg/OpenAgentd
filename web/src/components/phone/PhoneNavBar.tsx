@@ -77,7 +77,9 @@ export function PhoneNavBar({ title, subtitle, back, leading, trailing, separato
   const start = android || titleAlign === 'start'
 
   const titleBlock = (
-    <div data-phone-nav-title="" className={cn('min-w-0', start ? 'flex-1 text-left' : 'shrink text-center')}>
+    // The bar's full height and positioned, so a title that is a button (the
+    // chat's) can spread its target over the whole block.
+    <div data-phone-nav-title="" className={cn('relative flex min-w-0 flex-col justify-center self-stretch', start ? 'flex-1 text-left' : 'shrink text-center')}>
       {/* With a second line, both sit tight as an iOS two-line title: the
           pair centres in the bar instead of crowding its edges. */}
       <h1 className={cn('truncate text-base font-semibold text-(--color-text)', subtitle != null && 'leading-tight')}>{title}</h1>

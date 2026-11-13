@@ -1116,7 +1116,11 @@ hovered; `danger` is the soft error fill.
 
 - `Button` gets this automatically: a coarse-pointer rule sets `min-height`/`min-width: 36px` on `[data-slot="button"]` (40px in the Android app). Prefer `Button` over a bare `<button>` for icon actions.
 - `--spacing-list-row` becomes 36px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-9`. Inline row actions add `pointer-coarse:size-9` (36px) to fill the row. Every touch target is 36px on a tablet; a phone takes its own step (Phone scale above), with a 44px touch area on bar buttons and Send.
-- `--spacing-tab-bar` (the review panel's tab strip) grows to 45px on coarse pointers, so each tab and its close control are 36px pills with 4px around them and a 1px hairline.
+- `--spacing-tab-bar` (the review panel's tab strip) grows to 45px on coarse pointers, so each tab and its close control are 36px pills with 4px around them and a 1px hairline. On a phone the pills take the phone's step (`--phone-control` + 9px).
+- `--spacing-status-bar` grows to 37px on coarse pointers, so the server, the branch, spend and Settings are 36px targets. With a mouse the bar stays 28px with 24px items, and the server's target runs to the bar's edges, so the pointer can rest on the window's bottom edge.
+- **A phone reads one step everywhere.** Whatever is a row or a control on a phone takes `--phone-control` (40px, 44px in the Android app), not the tablet's 36px: menu and sheet rows (`MENU_ITEM_CLASS`), default segmented controls, search and filter fields, row actions and chips (`ROW_ACTION`, `rowChipClass`), the Git view's tabs (their toolbar grows around them). Put the phone height in the shared class with `phone:`, after its `pointer-coarse:` one: `cn` does not merge, so a caller's plain `min-h-*` loses to the shared class.
+- **A target is what a finger can reach, not what is drawn.** Nothing may lie over a control's box: a sheet's bar buttons sit above its grabber strip (`z-20` over `z-10`), and two 28px icons side by side need 16px between them, or reach away from each other (Edit and Copy under a prompt), so their 44px targets do not overlap. A title that opens something takes the bar's whole title block as its target.
+- **No name may depend on a tooltip on touch.** Settings' sidebar is an icon rail only in a narrow mouse window (`settings-rail:`); every touch screen keeps the labelled list (`settings-list:`).
 - Line height tightens on coarse pointers: `leading-relaxed` is 1.5 (1.625 on desktop) and chat/plan prose (`.oa-prose`) is 1.6 (1.75 on desktop), so phone screens read denser. Text sizes do not change.
 - On phones the header is 40px with 36px controls (`max-md:pointer-coarse:size-9`). On wider touch screens, controls inside the 36px header stay within that height (`pointer-coarse:size-9`), because overlays are positioned from `--spacing-app-header`.
 - Tabs (`ui/tabs`) are 36px per trigger on touch: the list grows to 42px around them.
@@ -1564,8 +1568,9 @@ Settings adds its own shell on top:
   is a Callout with Retry.
 - **Search.** "Search settings" finds single settings (`settings-index.ts`),
   not only pages; a hit opens the page, scrolls to the setting and focuses
-  it. The phone section list has the same field. Below 900px the nav is an
-  icon rail whose search opens in a dialog.
+  it. The phone section list has the same field. In a mouse window below
+  900px the nav is an icon rail whose search opens in a dialog; a touch
+  screen keeps the labelled list at every width.
 - **Long lists are rows, not cards.** Providers is one bordered list of
   rows (name, a subline such as "API key · 1 key · 13 models", a status
   chip); a row opens in place. Secondary row actions go in a "More" menu.
@@ -1856,8 +1861,9 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   idle is hollow. Sessions puts Needs you and Running above the
   workspaces. The connection dot is never green while the server does not
   answer.
-- **One thumb.** Touch targets are 44pt; the primary action of a screen sits
-  in its lower half; nothing depends on hover.
+- **One thumb.** Rows and controls are 40px (44px in the Android app), and
+  bar buttons and Send keep a 44px touch area (Phone scale); the primary
+  action of a screen sits in its lower half; nothing depends on hover.
 - **Motion.** Screens, sheets and pushes move on `--ease-sheet` or the
   critically damped spring of `lib/drawer-motion.ts`, carrying the finger's
   speed and never crossing their target. The overshooting

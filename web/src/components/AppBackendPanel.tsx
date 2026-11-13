@@ -902,7 +902,9 @@ export function ServerRow({
       )}
     >
       <div
-        className={cn('flex min-w-0 flex-1 items-center gap-3', onOpen && 'cursor-pointer')}
+        // The tap target is the row's full height: it takes over the row's
+        // own vertical padding (``ROW_PAD``).
+        className={cn('flex min-w-0 flex-1 items-center gap-3', onOpen && '-my-2.5 cursor-pointer self-stretch py-2.5 md:-my-3.5 md:py-3.5')}
         {...(onOpen ? {
           role: 'button',
           tabIndex: 0,

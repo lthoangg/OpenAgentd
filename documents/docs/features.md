@@ -2258,6 +2258,27 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The chat's ⋯ always lists Tasks: **Tasks · 3/5** with progress, or
     **No tasks** before the agent makes any. *(Deprecated; replaced in
     v3.49.0 by direct Tasks and Review panel buttons.)*
+- **Controls you can hit** `[v3.54.0]` — the controls that measured smaller
+  than the app's own sizes now meet them:
+  - Phone: rows of the **+** menu, the model picker and the folder picker,
+    the Sessions search field and **View options**, the worktree chip,
+    segmented controls, Settings' search and filter fields, row actions (⋯)
+    and the Git view's **Changes** and **History** tabs are 40px (44px in
+    the Android app), up from 28 to 36px.
+  - Phone: **Back** and **Done** in a sheet's bar, the chat title (which
+    opens Session info), **Edit prompt** and **Copy prompt**, and the
+    Sessions toolbar's icons each have a 44px touch area. The sheet's
+    grabber no longer covers the top of Back and Done, and Edit and Copy no
+    longer share part of theirs.
+  - iPad: the status bar is 37px, so the server, the branch, spend and
+    Settings are 36px targets (they were 20 to 24px); the model picker's
+    thinking levels and search field are 36px.
+  - iPad held upright: Settings lists its sections by name. The icon-only
+    rail is for a narrow mouse window, where a tooltip names each icon.
+  - Desktop: the server in the status bar is 24px and its target runs to the
+    window's bottom edge; the worktree chip has a 24px target.
+  - Phone: a tap on the Sessions toolbar (Settings, Scheduled, Usage) no
+    longer sometimes closes the sheet it has just opened.
 - **Phone chat bar, lighter shell rows** `[v3.49.0]`:
   - The phone chat bar's title and workspace sit on the left, with **Tasks**
     (open-task badge) and **Review panel** as one-tap buttons instead of ⋯.

@@ -27,6 +27,13 @@ import { DURATIONS_S, EASINGS, cssEasing } from '@/lib/motion'
 import { replyLabel, type ReplyFrom, type SentFrom } from '@/utils/workspace-messages'
 import { TurnActionButton } from './TurnActionButton'
 
+/**
+ * A phone's Edit and Copy sit side by side at 28px: each keeps a 44px target
+ * by reaching away from the other (see the prompt's row below).
+ */
+const EDIT_HIT_CLASS = 'phone:before:-left-4! phone:before:right-0!'
+const COPY_HIT_CLASS = 'phone:before:left-0! phone:before:-right-4!'
+
 /** Matches http:// and https:// URLs (greedy, stops at whitespace or common trailing punctuation). */
 const URL_RE = /https?:\/\/[^\s<>"')\]]+/g
 
@@ -619,7 +626,10 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
              focus; touch has no hover, so it always shows there. This row is where
              a turn's model, time and Edit live: the answer's footer repeats none. */}
             {/* A phone draws Edit and Copy 28px and close together, as the
-                answer's footer does; ``touch-hit`` keeps each a 36px target. */}
+                answer's footer does; ``touch-hit`` keeps each a 44px target.
+                Side by side their targets would overlap (Copy's took 8px of
+                Edit), so Edit's reaches left and Copy's right (``!``: the
+                ``touch-hit`` rule is unlayered). */}
             <div className={cn('flex items-center gap-1 transition-opacity duration-(--motion-fast) focus-within:opacity-100 pointer-coarse:opacity-100 max-md:pointer-coarse:gap-0', rowShown ? 'opacity-100' : 'opacity-0')}>
               {modelId && (
                 // One tooltip for the whole line: the model name draws none of
@@ -638,17 +648,18 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                   locked
                   title="Available when this turn ends"
                   aria-label="Edit prompt, available when this turn ends"
+                  className={EDIT_HIT_CLASS}
                 >
                   <Pencil size={14} aria-hidden="true" />
                 </TurnActionButton>
               )}
               {onEdit && !editLocked && (
                 // Undo, so later turns come back with Redo.
-                <TurnActionButton onClick={onEdit} title="Edit prompt" aria-label="Edit prompt">
+                <TurnActionButton onClick={onEdit} title="Edit prompt" aria-label="Edit prompt" className={EDIT_HIT_CLASS}>
                   <Pencil size={14} aria-hidden="true" />
                 </TurnActionButton>
               )}
-              <TurnActionButton onClick={handleCopy} title="Copy prompt" aria-label="Copy prompt">
+              <TurnActionButton onClick={handleCopy} title="Copy prompt" aria-label="Copy prompt" className={onEdit ? COPY_HIT_CLASS : undefined}>
                 {copied ? (
                   <Check size={14} aria-hidden="true" className="text-(--accent-green-text)" />
                 ) : (

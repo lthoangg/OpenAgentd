@@ -70,6 +70,6 @@ export const DOCK_TAB_CLOSE_CLASS = 'mr-1 pointer-coarse:mr-0 pointer-coarse:siz
 export const DOCK_ACTION_BUTTON_CLASS =
   'relative touch-hit flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-7 md:w-7 pointer-coarse:size-7'
 
-/** Hover-revealed row action inside a list row (28px, 44px on touch). */
+/** Hover-revealed row action inside a list row (24px; 36px on touch, the phone's control step on a phone). */
 export const DOCK_ROW_ACTION_CLASS =
-  'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) hover:bg-(--bg-card) hover:text-(--color-text) pointer-coarse:size-9'
+  'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) hover:bg-(--bg-card) hover:text-(--color-text) pointer-coarse:size-9 phone:size-(--phone-control)'

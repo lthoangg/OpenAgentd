@@ -31,6 +31,7 @@ import { hoverIntent } from '@/hooks/use-hover-intent'
 import { useProvidersQuery, useProviderUsageQuery } from '@/queries/useProvidersQuery'
 import { useUpdateAgentMutation } from '@/queries/useAgentSettingsQueries'
 import { selectionHapticFeedback } from '@/lib/haptics'
+import { hasFinePointer } from '@/lib/pointer'
 import {
   quotaSegments,
   setFrontmatterScalars,
@@ -251,8 +252,9 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
           className={cn(
             'min-w-0 flex-1 bg-transparent text-(--color-text) placeholder-(--color-text-muted) outline-none',
             // A touch row's height; the shell's maximum-scale=1 keeps iOS
-            // from zooming on focus at the phone's 15px.
-            touch ? 'h-(--phone-control) text-base' : 'h-7 text-sm',
+            // from zooming on focus at the phone's 15px. A tablet's popover
+            // takes the 36px touch size.
+            touch ? 'h-(--phone-control) text-base' : 'h-7 text-sm pointer-coarse:h-9',
           )}
         />
       </div>
@@ -321,7 +323,9 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
                 const full = thinkingLevelLabel(level)
                 return { value: level, label: short, ariaLabel: short === full ? undefined : full, tooltip: short === full ? undefined : full }
               })}
-              size={touch ? 'default' : 'sm'}
+              // ``sm`` stays 28px on touch (it is the toolbar size), so a
+              // tablet's popover takes the default, 36px there.
+              size={touch || !hasFinePointer() ? 'default' : 'sm'}
               fill
               className="min-w-0 flex-1"
             />

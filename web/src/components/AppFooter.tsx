@@ -93,11 +93,11 @@ export interface AppFooterProps {
   className?: string
 }
 
-/** Shared status-bar item: 24px tall in the 28px bar, meta text, keycap hover. */
+/** Shared status-bar item: 24px tall in the 28px bar (36px in the 37px touch bar), meta text, keycap hover. */
 const ITEM =
-  'flex h-6 min-w-0 items-center gap-1 rounded-xs px-1.5 text-meta text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)'
+  'flex h-6 min-w-0 items-center gap-1 rounded-xs px-1.5 text-meta text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring) pointer-coarse:h-9'
 const ICON_ITEM =
-  'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)'
+  'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring) pointer-coarse:size-9'
 
 function Divider() {
   return <div className="mx-0.5 h-3 w-px shrink-0 bg-(--color-border-subtle)" aria-hidden="true" />
@@ -180,8 +180,9 @@ export const AppFooter = memo(function AppFooter({
       aria-label="Status bar"
       data-focus-region="status"
     >
-      {/* Left cluster — workspace scope: connection, repository state. */}
-      <div className="flex min-w-0 items-center gap-1 overflow-hidden">
+      {/* Left cluster — workspace scope: connection, repository state. The
+          bar's full height, so the server's target reaches the window edge. */}
+      <div className="flex min-w-0 items-center gap-1 self-stretch overflow-hidden">
         <HealthDot labeled />
 
         {isProject && isGit && branch && (

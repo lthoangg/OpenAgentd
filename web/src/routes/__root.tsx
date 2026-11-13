@@ -29,7 +29,6 @@ import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
 import { isMobileApp } from '@/lib/mobile-app'
 import { FloatingNotices } from '@/components/FloatingNotices'
 import { AiDataConsent } from '@/components/AiDataConsent'
-import { ComputerNameSync } from '@/components/ComputerNameSync'
 import { CAPABILITY, useServerCapability } from '@/queries'
 import { takeQuietOpenFromRoute } from '@/lib/quiet-open'
 
@@ -45,6 +44,11 @@ const PhoneCloudSync = lazy(() =>
 // A computer that approves devices hears about new requests (desktop app only).
 const DesktopApprovalWatcher = lazy(() =>
   import('@/components/account/DesktopApprovalWatcher').then((module) => ({ default: module.DesktopApprovalWatcher })),
+)
+// The name of the computer in use is read once the app is up; nothing on the
+// first screen waits for it.
+const ComputerNameSync = lazy(() =>
+  import('@/components/ComputerNameSync').then((module) => ({ default: module.ComputerNameSync })),
 )
 
 // Settings and Telemetry stay out of the startup bundle; they load while the
@@ -175,7 +179,11 @@ export function Root() {
         </Suspense>
       )}
       {/* Only an app shell keeps names; a browser has nowhere to put one. */}
-      {(isDesktopShell() || isMobileApp()) && <ComputerNameSync />}
+      {(isDesktopShell() || isMobileApp()) && (
+        <Suspense fallback={null}>
+          <ComputerNameSync />
+        </Suspense>
+      )}
       <PluginNoticeGate />
       <SkipLink />
       <MacTitleBar />

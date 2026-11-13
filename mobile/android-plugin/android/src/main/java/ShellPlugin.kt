@@ -4,7 +4,6 @@
 package app.openagentd.shell
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.ClipData
 import android.content.Intent
 import android.content.res.Configuration
@@ -30,26 +29,6 @@ import kotlin.math.roundToInt
 @InvokeArg
 class ShareArgs {
     lateinit var path: String
-}
-
-@InvokeArg
-class ShareTextArgs {
-    var text: String? = null
-    var url: String? = null
-    var title: String? = null
-}
-
-@InvokeArg
-class PickOptionArgs {
-    lateinit var id: String
-    lateinit var label: String
-}
-
-@InvokeArg
-class PickArgs {
-    lateinit var title: String
-    lateinit var options: Array<PickOptionArgs>
-    var selected: String? = null
 }
 
 @InvokeArg
@@ -121,10 +100,6 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
     /** The boot page's paper tone (web/index.html) for an appearance. */
     private fun paper(dark: Boolean): Int =
         if (dark) 0xFF15110D.toInt() else 0xFFFAF6EC.toInt()
-
-    /** The web UI's accent (Bark) for an appearance, as `--color-accent`. */
-    private fun accent(dark: Boolean): Int =
-        if (dark) 0xFFF5EBD8.toInt() else 0xFF3F3429.toInt()
 
     private fun systemIsDark(): Boolean =
         (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -257,100 +232,6 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
             }
         } catch (ex: Exception) {
             invoke.reject(ex.message ?: "Could not share the file")
-        }
-    }
-
-    /**
-     * Share a link and/or text through the system chooser. The URL goes in
-     * the body (after any text) so every target app gets it; the title is the
-     * subject for mail-like targets and the chooser's heading.
-     */
-    @Command
-    fun shareText(invoke: Invoke) {
-        try {
-            val args = invoke.parseArgs(ShareTextArgs::class.java)
-            val body = listOfNotNull(args.text, args.url)
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .joinToString("\n")
-            if (body.isEmpty()) {
-                invoke.reject("Nothing to share")
-                return
-            }
-            val title = args.title?.trim()?.takeIf { it.isNotEmpty() }
-            val send = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, body)
-                if (title != null) {
-                    putExtra(Intent.EXTRA_SUBJECT, title)
-                    // Heading of the share sheet's preview on Android 10+.
-                    putExtra(Intent.EXTRA_TITLE, title)
-                }
-            }
-            activity.runOnUiThread {
-                try {
-                    activity.startActivity(Intent.createChooser(send, title))
-                    invoke.resolve()
-                } catch (ex: Exception) {
-                    invoke.reject(ex.message ?: "Could not open the share sheet")
-                }
-            }
-        } catch (ex: Exception) {
-            invoke.reject(ex.message ?: "Could not share the link")
-        }
-    }
-
-    /**
-     * Ask the user to pick one of a few options in a system single-choice
-     * dialog. Resolves with `{ id }` for a choice and `{}` when the dialog is
-     * dismissed (Cancel, Back, or a tap outside). A tap on a row picks it at
-     * once; there is no separate confirm step.
-     */
-    @Command
-    fun pickOne(invoke: Invoke) {
-        val args = try {
-            invoke.parseArgs(PickArgs::class.java)
-        } catch (ex: Exception) {
-            invoke.reject(ex.message ?: "Invalid options")
-            return
-        }
-        if (args.options.isEmpty()) {
-            invoke.reject("A picker needs at least one option")
-            return
-        }
-        activity.runOnUiThread {
-            try {
-                var chosen: String? = null
-                // -1 checks no row.
-                val checked = args.options.indexOfFirst { it.id == args.selected }
-                // Follow the app's own light/dark pick, as the status bar and
-                // webview do, not only the system's.
-                val dark = isDark(themePrefs.getString("preference", null))
-                val theme = if (dark) R.style.OpenAgentdDialog_Dark else R.style.OpenAgentdDialog
-                val dialog = AlertDialog.Builder(activity, theme)
-                    .setTitle(args.title)
-                    .setSingleChoiceItems(
-                        args.options.map { it.label }.toTypedArray(),
-                        checked,
-                    ) { dialog, which ->
-                        chosen = args.options[which].id
-                        // Single-choice rows do not dismiss on their own.
-                        dialog.dismiss()
-                    }
-                    .setNegativeButton(android.R.string.cancel, null)
-                    // Every way out ends here, so this resolves exactly once.
-                    .setOnDismissListener {
-                        val answer = JSObject()
-                        chosen?.let { answer.put("id", it) }
-                        invoke.resolve(answer)
-                    }
-                    .show()
-                // The button takes its colour from the theme's text colours,
-                // not only the accent, on some system versions: set it too.
-                dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(accent(dark))
-            } catch (ex: Exception) {
-                invoke.reject(ex.message ?: "Could not show the picker")
-            }
         }
     }
 

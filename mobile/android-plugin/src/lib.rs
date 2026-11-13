@@ -12,10 +12,8 @@
 //!   Android (it fires `ACTION_VIEW` with a bare path); [`AndroidShell::share_file`]
 //!   shares a cached file through a `FileProvider` and the system chooser,
 //!   matching the iOS share sheet.
-//! * **Native sheets and WebView text size.** A link share
-//!   ([`AndroidShell::share_text`]), a single-choice dialog
-//!   ([`AndroidShell::pick_one`]), and the WebView following the system font
-//!   size (capped like iOS Dynamic Type) are all Kotlin-side.
+//! * **WebView text size.** The WebView follows the system font size
+//!   (capped like iOS Dynamic Type), Kotlin-side.
 //! * **Cleartext LAN servers.** The library manifest ships a network
 //!   security config that permits `http://` origins (the server has no
 //!   built-in TLS), which the release APK otherwise blocks in the WebView.
@@ -29,7 +27,7 @@ use tauri::{
 mod android;
 
 #[cfg(target_os = "android")]
-pub use android::{AndroidShell, AndroidShellExt, PickChoice};
+pub use android::{AndroidShell, AndroidShellExt};
 
 /// Build the plugin. On Android this registers the Kotlin `ShellPlugin`,
 /// manages an [`AndroidShell`] handle, and installs the Keystore-backed

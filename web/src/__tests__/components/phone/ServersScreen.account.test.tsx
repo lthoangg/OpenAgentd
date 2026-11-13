@@ -388,7 +388,7 @@ describe('the route in use', () => {
   })
 })
 
-describe('one QR scanner for both kinds of code', () => {
+describe('one QR scanner for all three kinds of code', () => {
   const INVITE = 'agentd://invite?a=test-account-0000000000&s=test-slot-000000000&k=test-only'
   const INVITED: PhoneCloudStatus = { state: 'invited', fingerprint: 'AA11 BB22', kind: 'ios' }
 
@@ -434,7 +434,7 @@ describe('one QR scanner for both kinds of code', () => {
     await waitFor(() => expect(ran('cloud_join_invite')).toHaveLength(1))
   })
 
-  it('names both kinds when the code is neither', async () => {
+  it('names all three kinds when the code is none of them', async () => {
     scanned = 'https://example.com/not-a-code'
     shell(GUEST)
     render(<ServersScreen active onOpenSessions={() => {}} />)
@@ -443,6 +443,36 @@ describe('one QR scanner for both kinds of code', () => {
     expect((await screen.findByRole('alert')).textContent).toBe(NOT_A_CODE)
     expect(NOT_A_CODE).toContain('invitation')
     expect(NOT_A_CODE).toContain('connect code')
+    expect(NOT_A_CODE).toContain('sign-in code')
+  })
+
+  it('opens Add this computer for a sign-in code when this phone approves', async () => {
+    scanned = 'agentd://add?c=BCDFGHJK&d=test-device-000000000&k=test-only'
+    shell(CONNECTED, {
+      cloud_add_scanned: () => null,
+      cloud_invite_poll: () => ({ state: 'waiting' }),
+      cloud_invite_cancel: () => null,
+    })
+    render(<ServersScreen active onOpenSessions={() => {}} />)
+    await screen.findByText('Home NAS')
+    fireEvent.click(screen.getByRole('button', { name: 'Scan QR code' }))
+    expect(await screen.findByRole('dialog', { name: 'Add this computer?' })).toBeTruthy()
+    await waitFor(() => expect(ran('cloud_add_scanned')).toHaveLength(1))
+    expect(ran('cloud_add_scanned')[0].args).toEqual({ link: scanned })
+    expect(ran('cloud_join_invite')).toHaveLength(0)
+  })
+
+  it.each<{ initial: PhoneCloudStatus; message: string }>([
+    { initial: GUEST, message: 'Sign in on this phone before adding a computer' },
+    { initial: { ...CONNECTED, signer: false }, message: 'This phone cannot approve devices' },
+  ])('explains why a phone that cannot approve cannot add a computer (%o)', async ({ initial, message }) => {
+    scanned = 'agentd://add?c=BCDFGHJK&d=test-device-000000000&k=test-only'
+    shell(initial)
+    render(<ServersScreen active onOpenSessions={() => {}} />)
+    await screen.findByText('Home NAS')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[0])
+    expect((await screen.findByRole('alert')).textContent).toContain(message)
+    expect(ran('cloud_add_scanned')).toHaveLength(0)
   })
 
   it('does not join a second account from a phone already in one', async () => {

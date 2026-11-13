@@ -282,6 +282,11 @@ when formatted. The HTTP trace layer drops `Authorization` and every
     device code (10 minutes), on Cancel, and when the server stops. The
     desktop app's server answers it only to local callers and never logs
     it; the CLI draws it in the terminal and prints no link.
+  - *Who answers the number.* `POST /api/cloud/number` answers only this
+    computer's own callers, as signing in and joining by link do, and
+    takes one answer. The CLI asks for it only at a terminal with no
+    agent driving it (`not_for_a_person`); without one it shows no scan
+    code at all, so nobody can be asked a number they cannot see.
 - With the 6-digit code (glance and tap, the default for a device that
   signs in), a new device joins only after the
   person compares the code on both screens (spec §4.2). The cloud commits

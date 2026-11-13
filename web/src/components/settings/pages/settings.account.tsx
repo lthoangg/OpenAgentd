@@ -2,9 +2,11 @@
  * Settings → Account — this computer's optional OpenAgentd Cloud account.
  * Guest is the default and is never blocked or nagged. **Sign in** is the
  * way in, with **Use as server** and **Use as client** (both on): on an
- * empty account this computer creates it (after the recovery code), and
- * otherwise a device already in the account approves it after comparing a
- * 6-digit code. An invitation link is the alternative. Once connected, a
+ * empty account this computer creates it (after the recovery code);
+ * otherwise a phone of the account scans the QR code the sign-in step
+ * shows and the person picks the phone's number here, or a device already
+ * in the account approves it after comparing a 6-digit code (the browser
+ * way, under the QR code). An invitation link is the alternative. Once connected, a
  * computer that approves devices lists the account's devices and the
  * pending requests, and approves one with the code and Touch ID; in the
  * desktop app it also shows an invitation QR code (**Add a device**) that a
@@ -26,6 +28,7 @@ import { DeviceRows } from '@/components/account/DeviceRows'
 import { RecoveryStep } from '@/components/account/RecoveryStep'
 import { COMPUTER_ROLES, RolesChoice, rolesLabel } from '@/components/account/RolesChoice'
 import { ApiValidationError } from '@/api/client/_shared'
+import { ConnectQrCode } from '@/components/ConnectQrCode'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import {
   Body,
@@ -34,6 +37,9 @@ import {
   groupCode,
   noticeCopy,
   OfferCopy,
+  PICK_NUMBER,
+  SCANNED_COPY,
+  ScanCodeCopy,
   SigningInCopy,
   UnavailableCopy,
 } from '@/components/settings/pages/account-copy'
@@ -56,6 +62,7 @@ import {
   useCloudLoginMutation,
   useCloudLogoutMutation,
   useCloudPendingQuery,
+  useCloudPickNumber,
   useCloudRemoveDevice,
   useCloudStatusQuery,
 } from '@/queries/cloud'
@@ -153,6 +160,7 @@ export function AccountSettingsPage() {
   const join = useCloudJoinMutation()
   const cancel = useCloudCancelMutation()
   const logout = useCloudLogoutMutation()
+  const pickNumber = useCloudPickNumber()
   const confirmRecovery = useCloudConfirmRecovery()
   const [confirmingSignOut, setConfirmingSignOut] = useState(false)
   const [roles, setRoles] = useState<Roles>(COMPUTER_ROLES)
@@ -161,7 +169,7 @@ export function AccountSettingsPage() {
   const [adding, setAdding] = useState(false)
 
   const status: CloudStatus | undefined = statusQ.data
-  const mutations = [login, join, cancel, logout]
+  const mutations = [login, join, cancel, logout, pickNumber]
   const noRole = !roles.server && !roles.client
   // Not this computer: the status stays visible, the buttons give way to a hint.
   const readOnly = mutations.some((m) => isForbidden(m.error))
@@ -196,14 +204,14 @@ export function AccountSettingsPage() {
                     {status.notice === 'expired' ? 'Sign in again' : 'Sign in'}
                   </Button>
                   <p>
-                    If your account has devices already, one of them approves this computer after you compare a
-                    6-digit code. Otherwise this computer sets the account up.
+                    If your account has a phone, it scans a code to add this computer; a computer in your account
+                    approves it after you compare a 6-digit code. Otherwise this computer sets the account up.
                   </p>
                   {withLink ? (
                     <JoinWithLink
                       busy={busy || noRole}
                       onJoin={(link) => join.mutate({ link, roles })}
-                      hint="On a device in your account, open Settings → Account → Add a device, choose Can't scan? Use a link, and paste the link here."
+                      hint="On another computer in your account, open Settings → Account → Add a device, choose Can't scan? Use a link, and paste the link here."
                     />
                   ) : (
                     <p>
@@ -225,6 +233,17 @@ export function AccountSettingsPage() {
       content = (
         <PanelSection title="Signing in">
           <Body>
+            {status.add_link && (
+              <>
+                <div className="flex flex-wrap items-start gap-4">
+                  <ConnectQrCode value={status.add_link} size={168} label="Sign-in QR code" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <ScanCodeCopy minutes={Math.max(1, Math.round(status.expires_in / 60))} />
+                  </div>
+                </div>
+                <p className="font-medium text-(--color-text)">No phone in your account yet?</p>
+              </>
+            )}
             <SigningInCopy url={status.url} userCode={status.user_code} fingerprint={status.fingerprint} />
             {!readOnly && (
               <div className="flex flex-wrap gap-2">
@@ -284,6 +303,46 @@ export function AccountSettingsPage() {
           <Body>
             <InvitedCopy label={deviceLabel({ kind: status.kind, fingerprint: status.fingerprint })} />
             {!readOnly && cancelButton}
+          </Body>
+        </PanelSection>
+      )
+      break
+    case 'scanned':
+      content = (
+        <PanelSection title="Joining">
+          <Body>
+            <p>{SCANNED_COPY}</p>
+            <p>
+              This device: <strong className="font-mono text-(--color-text)">{status.fingerprint}</strong>
+            </p>
+            {!readOnly && cancelButton}
+          </Body>
+        </PanelSection>
+      )
+      break
+    case 'confirming':
+      content = (
+        <PanelSection title="Joining">
+          <Body>
+            {status.choices && !readOnly ? (
+              <>
+                <p className="font-medium text-(--color-text)">{PICK_NUMBER}</p>
+                <div className="flex gap-2">
+                  {status.choices.map((n) => (
+                    <Button key={n} size="lg" className="min-w-14 font-mono text-base tabular-nums" disabled={busy} onClick={() => pickNumber.mutate(n)}>
+                      {n}
+                    </Button>
+                  ))}
+                </div>
+                <p>
+                  No number on your phone?{' '}
+                  <Button variant="link" size="sm" className="h-auto p-0" disabled={busy} onClick={() => cancel.mutate()}>Cancel</Button>
+                  : this computer joins nothing.
+                </p>
+              </>
+            ) : (
+              <p>This computer is joining an account. Finish on its own screen.</p>
+            )}
           </Body>
         </PanelSection>
       )

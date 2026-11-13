@@ -4,7 +4,9 @@
 //! person's other devices reach this computer from anywhere through the
 //! end-to-end encrypted relay. `login` signs in: on an empty account this
 //! computer creates it (after the recovery code), otherwise a device already
-//! in the account approves it with a 6-digit code. `join` takes an
+//! in the account approves it with a 6-digit code, or a phone in the account
+//! scans the QR code `login` draws and the person types the number the
+//! phone shows (only at a terminal, where someone can type). `join` takes an
 //! invitation link instead. `approve` lets this computer, when it is the
 //! one that approves devices, add a device that signed in.
 
@@ -147,11 +149,11 @@ fn join(roles: CloudRoles) -> Result<ExitCode> {
     }
     println!();
     println!("  Join your account to reach this computer from your devices. {}", dim("(optional; local use needs no account)"));
-    println!("  On a device in your account: OpenAgentd → Settings → Account → Add a device → Can't scan? Use a link.");
+    println!("  On another computer in your account: OpenAgentd → Settings → Account → Add a device → Can't scan? Use a link.");
     println!();
     let link = zeroize::Zeroizing::new(crate::ui::read_secret("  Invitation link (hidden): ")?);
     if openagentd_cloud::invite::parse_link(&link).is_err() {
-        println!("\n  {} That is not an invitation link. Copy it again from your phone.\n", yellow("!"));
+        println!("\n  {} That is not an invitation link. Copy it again from the inviting computer.\n", yellow("!"));
         return Ok(ExitCode::FAILURE);
     }
     let rt = runtime()?;
@@ -183,9 +185,9 @@ fn join(roles: CloudRoles) -> Result<ExitCode> {
         Ok(engine::Outcome::EmptyAccount { .. }) => Ok(ExitCode::FAILURE),
         Err(e) => {
             let msg = match engine::notice(&e) {
-                appv3_api::cloud::Notice::JoinEnded => "The invitation ended: it expired, was cancelled, or was used.\n    Ask your phone for a new one.".to_string(),
+                appv3_api::cloud::Notice::JoinEnded => "The invitation ended: it expired, was cancelled, or was used.\n    Ask the inviting computer for a new one.".to_string(),
                 appv3_api::cloud::Notice::ConfirmMismatch => "The account's answer did not match the invitation. Nothing was changed.".to_string(),
-                appv3_api::cloud::Notice::InviteInvalid => "That is not an invitation link. Copy it again from your phone.".to_string(),
+                appv3_api::cloud::Notice::InviteInvalid => "That is not an invitation link. Copy it again from the inviting computer.".to_string(),
                 _ => engine::message(&e).unwrap_or_else(|| problem_message(&e)),
             };
             println!("\n  {} {msg}\n", yellow("!"));
@@ -213,10 +215,29 @@ fn login(roles: CloudRoles) -> Result<ExitCode> {
     field("Use as", roles_line(roles));
     println!();
     let rt = runtime()?;
+    // The scan code needs someone to type the phone's number back.
+    let person = not_for_a_person(std::io::stdin().is_terminal(), std::io::stdout().is_terminal(), appv3_core::auth::is_agent_process()).is_none();
+    let (pick, number) = tokio::sync::oneshot::channel::<String>();
+    let mut pick = Some(pick);
     let outcome = until_ctrl_c(
         &rt,
-        engine::sign_in(Endpoints::current(), http(), roles, |event| match event {
-            engine::Event::Code(c) => {
+        engine::sign_in(Endpoints::current(), http(), roles, person.then_some(number), |event| match event {
+            engine::Event::Code { code: c, add_link } => {
+                if let Some(link) = add_link {
+                    match crate::qr::render(link, crate::ui::color()) {
+                        Ok(qr) => {
+                            println!("  Scan with OpenAgentd on your phone {}", dim("(Servers → Scan QR code)"));
+                            println!();
+                            for line in qr.lines() {
+                                println!("  {line}");
+                            }
+                            println!("  No phone in your account yet? Sign in in the browser:");
+                            println!();
+                        }
+                        // The browser way below still works.
+                        Err(_) => pick = None,
+                    }
+                }
                 field("Open", &cyan(&c.url));
                 field("Code", &bold(&c.user_code));
                 field("Device", &format!("{}   {}", bold(&c.fingerprint), dim("check the page shows the same")));
@@ -235,6 +256,23 @@ fn login(roles: CloudRoles) -> Result<ExitCode> {
                 field("Code to compare", &bold(&code::display(&c)));
             }
             engine::Event::Invited { .. } => {}
+            engine::Event::Scanned { .. } => {
+                println!();
+                println!("  {} Your phone scanned this computer. Tap Add on your phone.", green("✓"));
+                println!("  {}", dim("Waiting…"));
+            }
+            engine::Event::Number { .. } => {
+                // Read on its own thread: the sign-in keeps running (and
+                // times out) while the person types.
+                if let Some(pick) = pick.take() {
+                    println!();
+                    println!("  {} A phone of your account added this computer.", green("✓"));
+                    std::thread::spawn(move || {
+                        let typed = prompt("  Number on your phone (Ctrl-C if it shows none): ").unwrap_or_default();
+                        let _ = pick.send(typed);
+                    });
+                }
+            }
         }),
     );
     let Some(outcome) = outcome else {
@@ -283,6 +321,9 @@ fn login(roles: CloudRoles) -> Result<ExitCode> {
                 }
                 appv3_api::cloud::Notice::JoinEnded => "The request to join was cancelled or expired.".to_string(),
                 appv3_api::cloud::Notice::CommitMismatch => "The request was cancelled: the codes did not match.".to_string(),
+                appv3_api::cloud::Notice::WrongNumber => {
+                    "That is not the number your phone showed, so this computer left the account.\n    Run agentd cloud login to try again.".to_string()
+                }
                 _ => engine::message(&e).unwrap_or_else(|| problem_message(&e)),
             };
             println!("\n  {} {msg}\n", yellow("!"));

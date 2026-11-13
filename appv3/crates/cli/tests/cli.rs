@@ -115,6 +115,45 @@ fn cloud_approve_refuses_without_a_terminal_or_under_an_agent() {
     assert!(stderr(&o).contains("An agent cannot approve devices"), "{}", stderr(&o));
 }
 
+/// A cloud that hands out one device code and denies it on the first poll.
+fn denying_cloud() -> String {
+    use axum::routing::post;
+    use axum::{Form, Json};
+    use std::collections::HashMap;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        rt.block_on(async move {
+            let code = |Form(form): Form<HashMap<String, String>>| async move {
+                let auth: [u8; 32] = openagentd_cloud::encoding::from_b64_array(&form["auth_pub"]).unwrap();
+                Json(serde_json::json!({
+                    "device_code": "dc", "user_code": "BCDF-GHJK", "device_id": openagentd_cloud::keys::device_id(&auth),
+                    "expires_in": 600, "interval": 1
+                }))
+            };
+            let token = || async { (axum::http::StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "access_denied" }))) };
+            let app = axum::Router::new().route("/v1/device/code", post(code)).route("/v1/device/token", post(token));
+            axum::serve(tokio::net::TcpListener::from_std(listener).unwrap(), app).await.unwrap();
+        });
+    });
+    base
+}
+
+#[test]
+fn cloud_login_without_a_terminal_offers_only_the_browser_way() {
+    let sb = Sandbox::new();
+    let cloud = denying_cloud();
+    let o = sb.run_with(&["cloud", "login"], &[("OPENAGENTD_CLOUD_API", &cloud), ("OPENAGENTD_CLOUD_ACCOUNT", "https://account.openagentd.dev")]);
+    let out = stdout(&o);
+    assert!(out.contains("https://account.openagentd.dev/device?code=BCDF-GHJK"), "{out}");
+    // Nobody could type the phone's number back, so no scan code is drawn.
+    assert!(!out.contains("Scan with OpenAgentd on your phone") && !out.contains('▀'), "{out}");
+    assert!(out.contains("denied"), "{out}");
+    assert_eq!(code(&o), 1);
+}
+
 #[test]
 fn an_unknown_mode_is_refused() {
     let o = Sandbox::new().run_with(&["doctor"], &[("OPENAGENTD_ENV", "staging")]);

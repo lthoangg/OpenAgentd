@@ -25,6 +25,8 @@ import {
   type PhoneCloudStatus,
   phoneCloudInviteAdd,
   phoneCloudJoinInvite,
+  phoneCloudAddScanned,
+  phoneCloudScannedAdd,
 } from '@/api/phone-cloud'
 import type { Roles } from '@/api/cloud'
 import { queryClient } from '@/lib/query-client'
@@ -163,3 +165,10 @@ export const usePhoneApproveReject = () =>
 
 export const usePhoneJoinInvite = () => useStatusMutation((link: string) => phoneCloudJoinInvite(link))
 export const usePhoneInviteAdd = () => useStatusMutation((enrollmentId: string) => phoneCloudInviteAdd(enrollmentId))
+// The variables contain the scanned bearer secret; never retain a finished
+// mutation in the cache after its sheet is gone.
+export const usePhoneAddScanned = () => useMutation({ mutationFn: phoneCloudAddScanned, gcTime: 0 }, queryClient)
+export const usePhoneScannedAdd = () => useMutation({
+  mutationFn: ({ enrollmentId, approver, roles }: { enrollmentId: string; approver: boolean; roles: Roles }) => phoneCloudScannedAdd(enrollmentId, approver, roles),
+  onSuccess: refreshLists,
+}, queryClient)

@@ -799,6 +799,7 @@ pub fn run() {
             cloud::cloud_approve_confirm,
             cloud::cloud_approve_reject,
             cloud::cloud_invite_start,
+            cloud::cloud_add_scanned,
             cloud::cloud_invite_poll,
             cloud::cloud_invite_add,
             cloud::cloud_invite_cancel,

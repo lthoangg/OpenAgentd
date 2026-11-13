@@ -1,6 +1,6 @@
 /**
- * Adding a device from the phone: the invitation QR code first, the link
- * only behind a password-style warning, a candidate added only on a tap,
+ * Adding a device from the phone: the invitation QR code, no copied link,
+ * a candidate added only on a tap,
  * the two-proofs notice, and the invitation cancelled when the sheet goes.
  * The shell's commands are faked at `invoke`.
  */
@@ -75,18 +75,13 @@ afterEach(async () => {
 })
 
 describe('AddDeviceSheet', () => {
-  it('shows the QR code first, and the link only after the warning', async () => {
+  it('shows a QR for a new phone, and tells how to scan a computer instead of copying a link', async () => {
     render(<AddDeviceSheet onClose={() => {}} />)
     expect(await screen.findByRole('img', { name: 'Invitation QR code' })).toBeTruthy()
     expect(screen.queryByText(LINK)).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: "Can't scan? Use a link" }))
-    expect(screen.getByText('This link works like a password')).toBeTruthy()
-    expect(screen.getByText(/Send it only to the device you are adding/)).toBeTruthy()
-    expect(screen.queryByText(LINK)).toBeNull()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Show link' }))
-    expect(screen.getByText(LINK)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: "Can't scan? Use a link" })).toBeNull()
+    expect(screen.getByText(/To add a computer, choose Sign in on it/)).toBeTruthy()
   })
 
   it('adds a candidate only when the person taps Add', async () => {
@@ -200,7 +195,7 @@ describe('AddDeviceSheet', () => {
     render(<AddDeviceSheet onClose={() => {}} />)
     await screen.findByRole('img', { name: 'Invitation QR code' })
     fireEvent.click(screen.getByRole('button', { name: 'Use a 6-digit code instead' }))
-    expect(screen.getByText('Sign in with a code instead')).toBeTruthy()
+    expect(screen.getByText('Sign in')).toBeTruthy()
     expect(screen.getByText(/compare the 6-digit code on both screens/)).toBeTruthy()
   })
 })

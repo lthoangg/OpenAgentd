@@ -14,6 +14,18 @@ v3 shares v2's DB and config files. What still behaves differently is
 listed in §3. macOS/Linux/Windows support, the in-process `gix` snapshot
 engine, the new grep and live workspace refresh are in §6.
 
+### Scan to add (v3.55.0)
+
+`POST /api/cloud/login` now also shows a QR code for a phone that approves
+devices (tunnel spec 4.3.1). `GET /api/cloud/status` gains `add_link` on
+`signing_in`, `scanned {fingerprint}`, and `confirming {fingerprint, choices}`.
+`add_link` and `choices` are omitted for remote callers. Local-only
+`POST /api/cloud/number {number}` accepts one answer; the identity is saved
+and the connector starts only after the correct number. Cancel, a wrong
+number, or the two-minute limit leaves the account and drops the keys, also
+when the leave fails. `wrong_number` is a new guest notice. There is no
+on-disk format change.
+
 ## 1. How parity was verified
 
 **The differential harnesses (`appv3/scripts/`) and their Rust probe

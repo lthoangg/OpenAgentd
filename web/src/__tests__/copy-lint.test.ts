@@ -91,7 +91,6 @@ const POINTER_VERBS: Record<string, { count: number; why: string }> = {
   'components/AppBackendPanel.tsx': { count: 1, why: 'the touch branch of the list description; the other branch names the Use button' },
   'components/phone/AccountComputers.tsx': { count: 1, why: 'the touch branch of the list description' },
   'components/PendingMessageQueue.tsx': { count: 1, why: 'the phone-only queued bubble' },
-  'components/settings/pages/join-with-link.tsx': { count: 1, why: 'says what to do on the phone that shows the invitation' },
   'components/account/InviteSheet.tsx': { count: 1, why: 'says what to do on the phone that scans the code' },
   'components/settings/pages/settings.desktop.tsx': { count: 1, why: 'the notch setting: macOS desktop only' },
   'components/settings/settings-index.ts': { count: 1, why: 'a search keyword, never shown' },

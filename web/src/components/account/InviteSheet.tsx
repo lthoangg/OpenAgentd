@@ -41,11 +41,13 @@ export interface InviteSheetActions {
   reject: (candidate: InviteCandidate) => Promise<unknown>
 }
 
-export function InviteSheet({ actions, description, onClose }: {
+export function InviteSheet({ actions, description, onClose, allowLink = true }: {
   actions: InviteSheetActions
   /** Under the title: who checks the device. */
   description: string
   onClose: () => void
+  /** A phone scans the computer instead; it never copies an invitation link. */
+  allowLink?: boolean
 }) {
   const [invite, setInvite] = useState<InviteView | null>(null)
   const [step, setStep] = useState<Step>('qr')
@@ -204,7 +206,7 @@ export function InviteSheet({ actions, description, onClose }: {
   } else if (step === 'code') {
     body = (
       <p>
-        On the new device, choose <strong className="text-(--color-text)">Sign in with a code instead</strong>.
+        On the new device, choose <strong className="text-(--color-text)">Sign in</strong> and use the browser way.
         Its request shows up under Pending approvals; review it there and compare the 6-digit code on both screens.
       </p>
     )
@@ -243,11 +245,12 @@ export function InviteSheet({ actions, description, onClose }: {
           <ConnectQrCode value={invite.link} size={200} label="Invitation QR code" />
         </div>
         <p>
-          On your phone, open OpenAgentd and tap Scan QR code on the Servers screen. A computer uses the link
-          instead. It works for 10 minutes, and only while this screen is open.
+          On the new phone, open OpenAgentd and tap Scan QR code on the Servers screen.
+          {allowLink ? ' A computer uses the link instead.' : ' To add a computer, choose Sign in on it, then scan its code from Servers on this phone.'}
+          {' '}It works for 10 minutes, and only while this screen is open.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => setStep('link-warning')}>Can&apos;t scan? Use a link</Button>
+          {allowLink && <Button size="sm" onClick={() => setStep('link-warning')}>Can&apos;t scan? Use a link</Button>}
           <Button size="sm" onClick={() => setStep('code')}>Use a 6-digit code instead</Button>
         </div>
       </div>

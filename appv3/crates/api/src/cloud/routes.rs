@@ -36,6 +36,7 @@ pub fn router() -> Router<AppState> {
         .route("/status", get(status))
         .route("/login", post(login))
         .route("/login/cancel", post(cancel))
+        .route("/number", post(number))
         .route("/join", post(join))
         .route("/logout", post(logout))
         .route("/reload", post(reload))
@@ -126,7 +127,8 @@ fn status_json() -> ApiResult<Response> {
 
 /// Anyone who may use the API sees the state; only this computer sees a
 /// sign-in code in progress (it would let another device finish it) or
-/// the 6-digit code of a join (a relayed device must not read it off).
+/// the 6-digit code of a join (a relayed device must not read it off), and
+/// the scan code (a bearer secret) and the numbers to pick from.
 async fn status(ext: Extensions) -> ApiResult<Response> {
     let mut v = serde_json::to_value(super::status()).map_err(ApiError::internal)?;
     redact_for_remote(&mut v, is_local_caller(&ext));
@@ -146,6 +148,7 @@ fn redact_for_remote(v: &mut serde_json::Value, local: bool) {
             "joining" => {
                 o.remove("code");
             }
+            "confirming" => o.retain(|k, _| k == "state" || k == "fingerprint"),
             _ => {}
         }
     }
@@ -200,7 +203,29 @@ async fn join(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
 
 async fn cancel(ext: Extensions) -> ApiResult<Response> {
     local_only(&ext)?;
-    super::cancel_sign_in();
+    super::cancel_sign_in().await;
+    status_json()
+}
+
+/// `{ "number": "47" }`: the number the person picked on the confirming
+/// step (scan to add). One answer: the right one keeps the account, any
+/// other leaves it. Answers once the sign-in has ended either way.
+async fn number(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    #[derive(serde::Deserialize)]
+    struct Body {
+        number: String,
+    }
+    let b: Body = body_of(&body)?;
+    if b.number.len() > 8 || !super::pick_number(b.number) {
+        return Err(ApiError::new(409, "This computer is not asking for a number."));
+    }
+    for _ in 0..50 {
+        if !matches!(super::status(), super::Status::Confirming { .. }) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
     status_json()
 }
 
@@ -516,10 +541,20 @@ mod tests {
         let v = seen(joining(), false);
         assert!(v.get("code").is_none(), "{v}");
         assert_eq!((v["state"].as_str(), v["fingerprint"].as_str()), (Some("joining"), Some("3F9A 21C4")));
-        let signing =
-            Status::SigningIn { user_code: "ABCD-EFGH".into(), url: "https://account.openagentd.dev/device?code=ABCD-EFGH".into(), fingerprint: "3F9A".into(), expires_in: 600 };
-        let v = seen(signing, false);
-        assert!(v.get("user_code").is_none() && v.get("url").is_none(), "{v}");
+        let signing = || Status::SigningIn {
+            user_code: "ABCD-EFGH".into(),
+            url: "https://account.openagentd.dev/device?code=ABCD-EFGH".into(),
+            fingerprint: "3F9A".into(),
+            expires_in: 600,
+            add_link: Some("agentd://add?c=ABCDEFGH&d=x&k=y".into()),
+        };
+        assert_eq!(seen(signing(), true)["add_link"], "agentd://add?c=ABCDEFGH&d=x&k=y");
+        let v = seen(signing(), false);
+        assert!(v.get("user_code").is_none() && v.get("url").is_none() && v.get("add_link").is_none(), "{v}");
+        // The numbers to pick from stay on this computer too.
+        let confirming = || Status::Confirming { fingerprint: "3F9A".into(), choices: ["12".into(), "47".into(), "83".into()] };
+        assert_eq!(seen(confirming(), true)["choices"], serde_json::json!(["12", "47", "83"]));
+        assert_eq!(seen(confirming(), false), serde_json::json!({"state": "confirming", "fingerprint": "3F9A"}));
         // Other states are unchanged.
         let connected = Status::Connected { fingerprint: "3F9A".into(), signer: false, server: true, client: true, relay: RelayState::Online, sessions: 1 };
         assert_eq!(seen(connected.clone(), false), serde_json::to_value(connected).unwrap());

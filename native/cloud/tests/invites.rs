@@ -299,14 +299,13 @@ async fn a_wrong_number_makes_the_computer_leave_the_account() {
     let invite = flows::offer_scanned(&mut phone, &link).await.unwrap();
     let c = one_candidate(&phone, &invite).await;
     flows::add_scanned(&mut phone, invite, &c.enrollment_id, BOTH).await.unwrap();
-    let (mut computer, scanned) = joined.await.unwrap();
+    let (computer, scanned) = joined.await.unwrap();
     scanned.unwrap();
     assert!(fake.account(&account).devices[&id].1, "added");
 
-    flows::leave_unconfirmed(&mut computer).await.unwrap();
+    flows::Withdraw::leave(&computer.cloud).now().await;
     assert!(!fake.account(&account).devices[&id].1, "the computer left");
     assert!(fake.account(&account).revoked.contains(&id));
-    assert!(computer.roster.is_none(), "it keeps no roster");
 }
 
 #[tokio::test]
@@ -343,10 +342,10 @@ async fn a_code_a_strangers_phone_answered_leaves_the_computer_in_no_account() {
     let (_, their_number) = flows::add_scanned(&mut stranger, invite, &c.enrollment_id, BOTH).await.unwrap();
     // The owner's phone is told the code was already answered.
     assert!(matches!(flows::offer_scanned(&mut owner, &link).await, Err(FlowError::Api(e)) if e.is("already_decided")));
-    let (mut computer, scanned) = joined.await.unwrap();
+    let (computer, scanned) = joined.await.unwrap();
     assert_eq!(scanned.unwrap().number, their_number, "only the stranger's phone shows the number");
     // The owner sees no number on their phone and cancels.
-    flows::leave_unconfirmed(&mut computer).await.unwrap();
+    flows::Withdraw::leave(&computer.cloud).now().await;
     assert!(!fake.account(&strangers).devices[&id].1);
     assert!(!fake.account(&owners).devices.contains_key(&id));
 }
@@ -429,4 +428,25 @@ async fn the_scan_code_never_shows_its_secret_in_debug_output() {
     for text in [format!("{scan:?}"), format!("{:?}", invite::parse_add_link(&link).unwrap())] {
         assert!(!text.contains(&k), "{text}");
     }
+}
+
+#[tokio::test]
+async fn cancelling_a_scanned_claim_already_added_but_not_confirmed_leaves_the_account() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, account) = phone_with_account(&fake, &base).await;
+    let (mut computer, code, scan) = computer_showing_code(&base).await;
+    let invite = flows::offer_scanned(&mut phone, &scan.link()).await.unwrap();
+    let flows::SignIn::Offered(offer) = flows::wait_for_sign_in(&computer.cloud, &code).await.unwrap() else { panic!("offered") };
+    let claim = flows::claim_offer(&mut computer, &scan, offer).await.unwrap();
+    let withdraw = flows::Withdraw::scanned(&computer.cloud, &claim.enrollment_id);
+    let c = one_candidate(&phone, &invite).await;
+    flows::add_scanned(&mut phone, invite, &c.enrollment_id, BOTH).await.unwrap();
+    // The device is added, but its task is dropped before it reads confirm.
+    let id = computer.cloud.device_id();
+    assert!(fake.account(&account).devices[&id].1);
+    drop(withdraw);
+    flows::settle_withdrawals(Duration::from_secs(5)).await;
+    assert!(!fake.account(&account).devices[&id].1);
+    assert!(computer.roster.is_none());
 }

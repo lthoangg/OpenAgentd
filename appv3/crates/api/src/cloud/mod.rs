@@ -52,6 +52,9 @@ pub enum Notice {
     CommitMismatch,
     /// The cloud's answer did not match the invitation's `confirm`.
     ConfirmMismatch,
+    /// Scan to add: the number picked was not the one the phone showed, so
+    /// this computer left the account the phone added it to.
+    WrongNumber,
     /// The text pasted is not an invitation link.
     InviteInvalid,
     SignedOut,
@@ -112,6 +115,10 @@ pub enum Status {
         url: String,
         fingerprint: String,
         expires_in: u64,
+        /// The scan code (spec 4.3.1), shown as a QR code: a bearer secret,
+        /// for this computer's own callers only (`routes::status`).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        add_link: Option<String>,
     },
     /// A new account (no device in it yet): show the recovery code once,
     /// then ask two of its groups (1-based) back. Only this computer sees it.
@@ -128,6 +135,16 @@ pub enum Status {
     Invited {
         fingerprint: String,
         kind: Option<String>,
+    },
+    /// A phone scanned the code; the person taps Add on it.
+    Scanned {
+        fingerprint: String,
+    },
+    /// The phone added this computer: the person picks the number it shows
+    /// (`POST /api/cloud/number`). Nothing is stored until then.
+    Confirming {
+        fingerprint: String,
+        choices: [String; 3],
     },
     Connected {
         fingerprint: String,
@@ -159,6 +176,8 @@ struct Host {
     status: Mutex<Status>,
     run: Mutex<Option<JoinHandle<()>>>,
     sign_in: Mutex<Option<JoinHandle<()>>>,
+    /// Where the person's pick goes while the sign-in asks for the number.
+    number: Mutex<Option<oneshot::Sender<String>>>,
     genesis: Mutex<Option<Genesis>>,
     /// Tells the running connection loop that a signer route wrote a roster.
     poke: Mutex<Option<mpsc::UnboundedSender<RosterNote>>>,
@@ -182,6 +201,7 @@ fn host() -> &'static Host {
         status: Mutex::new(guest(None)),
         run: Mutex::new(None),
         sign_in: Mutex::new(None),
+        number: Mutex::new(None),
         genesis: Mutex::new(None),
         poke: Mutex::new(None),
         router: OnceLock::new(),
@@ -327,8 +347,10 @@ pub fn begin_sign_in(roles: Roles) -> Status {
     if !matches!(status(), Status::Guest { .. }) {
         return status();
     }
+    let (pick, number) = oneshot::channel();
+    *host().number.lock().expect("cloud number") = Some(pick);
     *slot = Some(tokio::spawn(async move {
-        let outcome = engine::sign_in(Endpoints::current(), http(), roles, on_event).await;
+        let outcome = engine::sign_in(Endpoints::current(), http(), roles, Some(number), on_event).await;
         finish_join(outcome);
     }));
     drop(slot);
@@ -338,11 +360,36 @@ pub fn begin_sign_in(roles: Roles) -> Status {
 
 fn on_event(event: engine::Event<'_>) {
     match event {
-        engine::Event::Code(code) => {
-            set_status(Status::SigningIn { user_code: code.user_code.clone(), url: code.url.clone(), fingerprint: code.fingerprint.clone(), expires_in: code.expires_in })
-        }
+        engine::Event::Code { code, add_link } => set_status(Status::SigningIn {
+            user_code: code.user_code.clone(),
+            url: code.url.clone(),
+            fingerprint: code.fingerprint.clone(),
+            expires_in: code.expires_in,
+            add_link: add_link.map(String::from),
+        }),
         engine::Event::Joining { fingerprint, code } => set_status(Status::Joining { fingerprint, code }),
         engine::Event::Invited { fingerprint, kind } => set_status(Status::Invited { fingerprint, kind: kind.map(String::from) }),
+        engine::Event::Scanned { fingerprint } => set_status(Status::Scanned { fingerprint }),
+        engine::Event::Number { choices } => {
+            let fingerprint = match status() {
+                Status::Scanned { fingerprint } => fingerprint,
+                _ => String::new(),
+            };
+            set_status(Status::Confirming { fingerprint, choices })
+        }
+    }
+}
+
+/// The person picked `number` on the confirming step (`POST
+/// /api/cloud/number`). One answer only: a wrong one leaves the account.
+/// `false` when the step is not open.
+pub fn pick_number(number: String) -> bool {
+    if !matches!(status(), Status::Confirming { .. }) {
+        return false;
+    }
+    match host().number.lock().expect("cloud number").take() {
+        Some(pick) => pick.send(number).is_ok(),
+        None => false,
     }
 }
 
@@ -426,12 +473,18 @@ pub async fn confirm_recovery(first: &str, second: &str) -> Result<Status, Recov
     }
 }
 
-pub fn cancel_sign_in() -> Status {
-    if let Some(h) = host().sign_in.lock().expect("cloud sign-in").take() {
+pub async fn cancel_sign_in() -> Status {
+    let task = host().sign_in.lock().expect("cloud sign-in").take();
+    if let Some(h) = task {
         h.abort();
+        // An event already running on another worker must finish before
+        // guest is published, or it could leave a step with no task behind it.
+        let _ = h.await;
     }
+    host().number.lock().expect("cloud number").take();
     host().genesis.lock().expect("cloud genesis").take();
-    if matches!(status(), Status::SigningIn { .. } | Status::Joining { .. } | Status::Invited { .. } | Status::Recovery { .. }) {
+    if matches!(status(), Status::SigningIn { .. } | Status::Joining { .. } | Status::Invited { .. } | Status::Scanned { .. } | Status::Confirming { .. } | Status::Recovery { .. })
+    {
         set_status(guest(None));
     }
     status()

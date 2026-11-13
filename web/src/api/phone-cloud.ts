@@ -156,10 +156,15 @@ export type InvitePoll =
   | { state: 'ended' }
 
 export const phoneCloudInviteStart = () => call<InviteView>('cloud_invite_start')
+/** Offers the scanned computer an invitation. The secret stays in the shell until Add or Cancel. */
+export const phoneCloudAddScanned = (link: string) => call<number>('cloud_add_scanned', { link })
 export const phoneCloudInvitePoll = () => call<InvitePoll>('cloud_invite_poll')
 /** Face ID happens natively. */
 export const phoneCloudInviteAdd = (enrollmentId: string) => call<PhoneCloudStatus>('cloud_invite_add', { enrollmentId })
-export const phoneCloudInviteCancel = () => call<void>('cloud_invite_cancel')
+/** Same Add command, with the person's grants and the number to pick on the scanned computer. */
+export const phoneCloudScannedAdd = (enrollmentId: string, approver: boolean, roles: Roles) =>
+  call<PhoneCloudStatus & { number: string }>('cloud_invite_add', { enrollmentId, approver, ...roles })
+export const phoneCloudInviteCancel = (generation?: number) => call<void>('cloud_invite_cancel', generation === undefined ? undefined : { generation })
 export const phoneCloudRemoveDevice = (deviceId: string) => call<PhoneCloudStatus>('cloud_remove_device', { deviceId })
 export const phoneCloudSignOut = () => call<PhoneCloudStatus>('cloud_sign_out')
 export const openPhoneCloudComputer = (deviceId: string, lanBaseUrl: string | null) =>

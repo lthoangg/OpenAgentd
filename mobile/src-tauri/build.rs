@@ -31,6 +31,7 @@ fn main() {
                 "cloud_approve_confirm",
                 "cloud_approve_reject",
                 "cloud_invite_start",
+                "cloud_add_scanned",
                 "cloud_invite_poll",
                 "cloud_invite_add",
                 "cloud_invite_cancel",

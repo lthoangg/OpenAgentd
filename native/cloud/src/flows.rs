@@ -51,6 +51,10 @@ pub enum FlowError {
     /// The signer's `confirm` does not match the roster the cloud served.
     #[error("the invitation's confirmation did not match the roster")]
     ConfirmMismatch,
+    /// Scan to add: the person picked a number the signer did not show.
+    /// The device left the account it was added to.
+    #[error("the number did not match; this device left the account")]
+    WrongNumber,
     #[error("{0}")]
     Protocol(crate::Error),
 }
@@ -515,21 +519,37 @@ pub async fn await_added(member: &mut Member, join: JoinCode, req: &JoinRequest,
 /// sends it and waits; [`Withdraw::keep`] disarms it once the device is in.
 /// Best effort either way: a request that is already gone answers
 /// `not_found`, which is fine.
+///
+/// [`Withdraw::leave`] arms a leave of the account instead: for a device
+/// a scan added that the person has not kept yet (spec 4.3.1).
 pub struct Withdraw {
     cloud: Option<Cloud>,
-    enrollment_id: String,
+    /// `None`: leave the account.
+    enrollment_id: Option<String>,
+    /// A scanned claim may already be added when its confirm is lost.
+    leave_after_cancel: bool,
 }
 
 impl std::fmt::Debug for Withdraw {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Withdraw({}, armed: {})", self.enrollment_id, self.cloud.is_some())
+        write!(f, "Withdraw({:?}, armed: {})", self.enrollment_id, self.cloud.is_some())
     }
 }
 
 impl Withdraw {
     /// Arms a cancel of `enrollment_id`, signed by `cloud`'s device.
     pub fn arm(cloud: &Cloud, enrollment_id: &str) -> Self {
-        Withdraw { cloud: Some(cloud.detached()), enrollment_id: enrollment_id.to_string() }
+        Withdraw { cloud: Some(cloud.detached()), enrollment_id: Some(enrollment_id.to_string()), leave_after_cancel: false }
+    }
+
+    /// Cancels a scanned claim, or leaves if the signer already added it.
+    pub fn scanned(cloud: &Cloud, enrollment_id: &str) -> Self {
+        Withdraw { cloud: Some(cloud.detached()), enrollment_id: Some(enrollment_id.to_string()), leave_after_cancel: true }
+    }
+
+    /// Arms a leave of the account `cloud`'s device was just added to.
+    pub fn leave(cloud: &Cloud) -> Self {
+        Withdraw { cloud: Some(cloud.detached()), enrollment_id: None, leave_after_cancel: false }
     }
 
     /// The device is in: nothing to cancel.
@@ -540,21 +560,33 @@ impl Withdraw {
     /// Cancels the request now and waits for the answer (ignored).
     pub async fn now(mut self) {
         if let Some(cloud) = self.cloud.take() {
-            let _ = cloud.cancel_pending(&self.enrollment_id).await;
+            send_withdraw(&cloud, self.enrollment_id.as_deref(), self.leave_after_cancel).await;
         }
+    }
+}
+
+async fn send_withdraw(cloud: &Cloud, enrollment_id: Option<&str>, leave_after_cancel: bool) {
+    let _ = match enrollment_id {
+        Some(id) => cloud.cancel_pending(id).await,
+        None => cloud.leave().await,
+    };
+    if leave_after_cancel {
+        let _ = cloud.leave().await;
     }
 }
 
 impl Drop for Withdraw {
     fn drop(&mut self) {
         let Some(cloud) = self.cloud.take() else { return };
-        let id = std::mem::take(&mut self.enrollment_id);
+        let id = self.enrollment_id.take();
+        let leave = self.leave_after_cancel;
         // Outside a runtime there is nothing to send it with: the request
-        // then expires on its own.
+        // then expires on its own (a device that should have left stays
+        // listed, with its keys erased, until a signer removes it).
         if let Ok(rt) = tokio::runtime::Handle::try_current() {
             let sending = Sending::start();
             rt.spawn(async move {
-                let _ = cloud.cancel_pending(&id).await;
+                send_withdraw(&cloud, id.as_deref(), leave).await;
                 drop(sending);
             });
         }
@@ -1075,8 +1107,8 @@ async fn await_confirmed(member: &mut Member, claim: &InviteClaim, pace: Pace) -
 // and the join is an invitation with that secret. The device is in no
 // account until the person picks the number the signer shows: until then
 // the caller stores no identity and starts no connector, and on a wrong
-// pick, Cancel or a timeout it calls [`leave_unconfirmed`] and erases the
-// keys.
+// pick, Cancel or a timeout it leaves ([`Withdraw::leave`], armed as soon
+// as the roster is in) and erases the keys, also when the leave fails.
 
 /// How long the person has to pick the number.
 pub const NUMBER_TIMEOUT: Duration = Duration::from_secs(120);
@@ -1138,14 +1170,4 @@ pub async fn await_scanned(member: &mut Member, claim: InviteClaim, pace: Pace) 
         },
     );
     Ok(Scanned { signer_id: r.by.clone(), number, roster: r })
-}
-
-/// The person picked a wrong number, cancelled, or did not answer: leaves
-/// the account the scan added this device to and forgets its roster. The
-/// caller erases the keys whatever this returns, so a refused leave (the
-/// cloud's `last_signer`, or no answer) cannot keep the device in.
-pub async fn leave_unconfirmed(member: &mut Member) -> FlowResult<()> {
-    member.roster = None;
-    member.cloud.leave().await?;
-    Ok(())
 }

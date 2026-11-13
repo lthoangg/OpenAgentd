@@ -82,6 +82,8 @@ pub struct Inner {
     /// The server's own time for a relay token (the real one writes to the
     /// account's Durable Object).
     pub relay_token_delay: Option<std::time::Duration>,
+    /// Holds an offer until the test releases it: (seen, release).
+    pub offer_barrier: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -799,6 +801,11 @@ async fn invite_confirm(State(f): State<Fake>, method: Method, uri: Uri, headers
 /// A signer offers a device code one of its account's open invitations
 /// (scan to add), in the cloud's order of checks.
 async fn device_offer(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, body: axum::body::Bytes) -> Response {
+    let barrier = f.0.lock().unwrap().offer_barrier.clone();
+    if let Some((seen, release)) = barrier {
+        seen.notify_one();
+        release.notified().await;
+    }
     let mut s = f.0.lock().unwrap();
     let (account, _, signer, h) = signed_or_return!(s, method, uri, headers, &body, false);
     if !signer {

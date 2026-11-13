@@ -37,8 +37,11 @@ const BEGIN_URL = 'http://localhost/api/cloud/approve/begin'
 const CONFIRM_URL = 'http://localhost/api/cloud/approve/confirm'
 const REJECT_URL = 'http://localhost/api/cloud/approve/reject'
 const REMOVE_URL = 'http://localhost/api/cloud/devices/remove'
+const NUMBER_URL = 'http://localhost/api/cloud/number'
 /** Synthetic: not a real account, slot, or secret. */
 const INVITE = 'agentd://invite?a=test-account-0000000000&s=test-slot-000000000&k=test-only'
+/** Synthetic: not a real device or secret. */
+const ADD_LINK = 'agentd://add?c=BCDFGHJK&d=test-device-000000000&k=test-only'
 
 beforeEach(() => {
   server.listen()
@@ -159,13 +162,13 @@ describe('AccountSettingsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Join with a link instead' }))
     const field = await screen.findByLabelText('Invitation link')
     fireEvent.change(field, { target: { value: 'https://example.invalid/x' } })
-    expect(screen.getByText('That is not an invitation link. Copy it again from your phone.')).toBeTruthy()
+    expect(screen.getByText('That is not an invitation link. Copy it again from the inviting device.')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Join' }) as HTMLButtonElement).disabled).toBe(true)
 
     fireEvent.change(field, { target: { value: `  ${INVITE}  ` } })
     fireEvent.click(screen.getByRole('button', { name: 'Join' }))
     expect(await screen.findByText('Linux · 9C02 E1B7')).toBeTruthy()
-    expect(screen.getByText(/Then tap Add\./)).toBeTruthy()
+    expect(screen.getByText(/Then choose Add\./)).toBeTruthy()
     expect(sent).toEqual({ link: INVITE, server: true, client: true })
   })
 
@@ -174,6 +177,64 @@ describe('AccountSettingsPage', () => {
     renderPage()
     expect(await screen.findByText('9C02 E1B7')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
+  })
+
+  it('shows the scan code first, and the browser way under it for an account without a phone', async () => {
+    serveStatus({
+      state: 'signing_in', user_code: 'BCDF-GHJK', url: 'https://account.openagentd.dev/device?code=BCDF-GHJK', fingerprint: '3F9A 21C4', expires_in: 600, add_link: ADD_LINK,
+    })
+    renderPage()
+
+    expect(await screen.findByText('Scan with your phone')).toBeTruthy()
+    expect(await screen.findByRole('img', { name: 'Sign-in QR code' })).toBeTruthy()
+    expect(screen.getByText(/On Servers, choose/)).toBeTruthy()
+    expect(screen.getByText('No phone in your account yet?')).toBeTruthy()
+    expect(screen.getByText('BCDF-GHJK')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Open page' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
+  })
+
+  it('shows no scan code to a server that did not make one', async () => {
+    serveStatus({ state: 'signing_in', user_code: 'BCDF-GHJK', url: 'https://account.openagentd.dev/device', fingerprint: 'f', expires_in: 600 })
+    renderPage()
+
+    expect(await screen.findByText('BCDF-GHJK')).toBeTruthy()
+    expect(screen.queryByText('Scan with your phone')).toBeNull()
+    expect(screen.queryByText('No phone in your account yet?')).toBeNull()
+  })
+
+  it('asks to tap Add on the phone once it scanned', async () => {
+    serveStatus({ state: 'scanned', fingerprint: '3F9A 21C4' })
+    renderPage()
+
+    expect(await screen.findByText(/Your phone scanned this computer/)).toBeTruthy()
+    expect(screen.getByText(/choose Add/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
+  })
+
+  it('sends the number the person picks, once', async () => {
+    let sent: unknown = null
+    serveStatus({ state: 'confirming', fingerprint: '3F9A 21C4', choices: ['12', '47', '83'] })
+    server.use(http.post(NUMBER_URL, async ({ request }) => {
+      sent = await request.json()
+      return HttpResponse.json({ state: 'connected', fingerprint: '3F9A 21C4', signer: false, server: true, client: true, relay: { state: 'connecting' }, sessions: 0 })
+    }))
+    renderPage()
+
+    expect(await screen.findByText('Which number does your phone show?')).toBeTruthy()
+    expect(screen.getByText(/No number on your phone\?/)).toBeTruthy()
+    expect(screen.getAllByRole('button').filter((b) => /^\d\d$/.test(b.textContent ?? '')).map((b) => b.textContent)).toEqual(['12', '47', '83'])
+    fireEvent.click(screen.getByRole('button', { name: '47' }))
+    await waitFor(() => expect(sent).toEqual({ number: '47' }))
+    expect(await screen.findByText('Remote sessions')).toBeTruthy()
+  })
+
+  it('shows another device viewing this server that a number is asked, without the numbers', async () => {
+    serveStatus({ state: 'confirming', fingerprint: '3F9A 21C4' })
+    renderPage()
+
+    expect(await screen.findByText(/Finish on its own screen/)).toBeTruthy()
+    expect(screen.queryByText('Which number does your phone show?')).toBeNull()
   })
 
   it('hides Open page for a url that is not https', async () => {
@@ -278,7 +339,7 @@ describe('AccountSettingsPage', () => {
     ['commit_mismatch', 'The request was cancelled: the codes did not match.', 'Sign in'],
     ['join_ended', 'The request to join ended: it was cancelled, expired, or the invitation was used.', 'Sign in'],
     ['confirm_mismatch', /did not match the invitation/, 'Sign in'],
-    ['invite_invalid', 'That is not an invitation link. Copy it again from your phone.', 'Sign in'],
+    ['invite_invalid', 'That is not an invitation link. Copy it again from the inviting device.', 'Sign in'],
     ['signed_out', 'Signed out. Local sessions and settings are unchanged.', 'Sign in'],
     ['rate_limited', 'OpenAgentd is getting too many requests from this network. Try again in a few minutes.', 'Sign in'],
     ['too_many_pending', '3 devices are already waiting to join; wait a few minutes or reject them on a device that approves.', 'Sign in'],
@@ -288,6 +349,7 @@ describe('AccountSettingsPage', () => {
     ['account_unavailable', 'Account unavailable.', 'Sign in'],
     ['unreachable', 'Could not reach OpenAgentd. Check your network and try again.', 'Sign in'],
     ['failed', /Something went wrong with this computer's account keys/, 'Sign in'],
+    ['wrong_number', /not the number your phone showed/, 'Sign in'],
   ] as const)('shows the %s notice to a guest', async (notice, text, button) => {
     serveStatus({ state: 'guest', notice })
     renderPage()
@@ -786,6 +848,8 @@ describe('cloudPollInterval', () => {
     expect(cloudPollInterval(signingIn)).toBe(2000)
     expect(cloudPollInterval({ state: 'joining', fingerprint: 'f', code: null })).toBe(2000)
     expect(cloudPollInterval({ state: 'invited', fingerprint: 'f', kind: null })).toBe(2000)
+    expect(cloudPollInterval({ state: 'scanned', fingerprint: 'f' })).toBe(2000)
+    expect(cloudPollInterval({ state: 'confirming', fingerprint: 'f', choices: ['1', '2', '3'] })).toBe(2000)
   })
 
   it.each<CloudStatus | undefined>([

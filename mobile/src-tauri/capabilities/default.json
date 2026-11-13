@@ -42,6 +42,7 @@
     "allow-cloud-approve-confirm",
     "allow-cloud-approve-reject",
     "allow-cloud-invite-start",
+    "allow-cloud-add-scanned",
     "allow-cloud-invite-poll",
     "allow-cloud-invite-add",
     "allow-cloud-invite-cancel",

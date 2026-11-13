@@ -1914,9 +1914,8 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   The root reads like iOS Settings: a large title, one neutral icon tile per
   row (`--bg-key`, `--color-text-2`; per-section hues read as noise), no
   descriptions; each section's page carries its own.
-- **The chat bar.** ‹ Sessions, the title, one ⋯. A tap on the title opens
-  Session info; ⋯ holds Tasks · n/m (or "No tasks", so the list is always
-  findable) and Workspace.
+- **The chat bar.** ‹ Sessions, the title, Tasks and Review panel (Mobile
+  shell). A tap on the title opens Session info.
 - **Long press is the context menu.** A prompt, a session row, a server row
   and a workspace row open an action sheet on a hold, with one medium
   haptic. Destructive items sit last, in red, behind a separator.

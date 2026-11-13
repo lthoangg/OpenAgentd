@@ -1088,7 +1088,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     Settings.
   - On Windows and Linux the menu bar is hidden: **☰** at the left of the
     header, or tapping Alt, opens the application menu. Its View menu has
-    Sidebar, Review Panel, Split Review Panel Right and Down, Open Terminal,
+    Toggle Sidebar, Review Panel, Split Review Panel Right and Down, Open Terminal,
     Maximize Review Panel,
     Model and Thinking…, Text Size and Reset Layout
     (macOS has them in its menu bar), and Quick Open is now **Find File…**.
@@ -2215,6 +2215,38 @@ run from the terminal (the native Rust binary since v3.0.0).
     window's bottom edge; the worktree chip has a 24px target.
   - Phone: a tap on the Sessions toolbar (Settings, Scheduled, Usage) no
     longer sometimes closes the sheet it has just opened.
+- **Each platform is offered what it can do, in one wording** `[v3.54.0]`:
+  - iPad: a long press in the terminal opens Select All, Copy, Paste, Find
+    and Add to chat, as on a phone. Before, only a phone-sized window had it.
+  - Linux: the tray no longer offers **Desktop Pet**, which Linux cannot
+    show. The app menu has no **Check for Updates…**, and the automatic
+    check, which could never find a Linux release, no longer runs. Settings
+    → About OpenAgentd says how to update (install the newer `.deb`) and
+    opens the releases page.
+  - An app older than its server is told where its update comes from:
+    TestFlight or the App Store on iPhone and iPad, the newer `.deb` on
+    Linux, the app's own updater elsewhere.
+  - The installers say what they install and what to do when they cannot:
+    `install.sh` lists the CLI for Apple Silicon Macs and x86_64 Linux only
+    (it never installed on Intel Macs or arm64 Linux), sends a machine with
+    no release to the build instructions, sends Linux without `apt-get` to
+    `--cli`, and writes its PATH hint for the shell in use (`~/.zshrc` on a
+    Mac, not `~/.profile`). `install.ps1` says the app runs under emulation
+    on Windows on ARM, refuses 32-bit Windows, and says what happened when
+    the permission prompt is declined or the install is cancelled.
+  - One name each: **Toggle Sidebar** in the View menu, the palette, the
+    header and the shortcuts list (the menu said "Sidebar"); **Undo to
+    here** on a prompt (it said "Revert to here"); "main agent" in `agentd
+    doctor` and in the server's messages (they said "lead agent").
+  - No pointer verb where there is no pointer: the theme button reads
+    "Theme: Dark. Switch to System." and the update and TypeScript tools
+    pills "Show … details", in place of "Click to …".
+  - A provider that is not signed in says so and names the screen that
+    fixes it ("Sign in under Settings → Providers"), with the `agentd auth`
+    command after it. A server that does not answer names the setting to
+    turn on (**Access from other devices**), not a server flag.
+  - A crash screen's **Copy error details** reads **Could not copy** when
+    the clipboard refuses. Before, it did nothing.
 - **Phone chat bar, lighter shell rows** `[v3.49.0]`:
   - The phone chat bar's title and workspace sit on the left, with **Tasks**
     (open-task badge) and **Review panel** as one-tap buttons instead of ⋯.
@@ -2546,7 +2578,7 @@ executes tools, manages its task list, and inspects workspace repositories.
   continues one of its top-level sessions (queued when that session is busy). It
   arrives as a prompt with a **From <workspace> · <session>**
   chip that opens the sending session. Since `[v3.50.0]` it is the sending
-  agent's, not yours: it has no Edit, Revert or Retry, and undo and redo step
+  agent's, not yours: it has no Edit, Undo or Retry, and undo and redo step
   over it. A session a send started shows **Handled by the agent in
   <workspace> · <session>** above its composer, which opens the sender; you can
   still type into it and steer as usual. `mode: "plan"` makes a new session plan
@@ -4280,7 +4312,9 @@ Desktop is primary. CLI / server is the developer path.
   bundled Python sidecar, WebView2 shell, Job Object process cleanup, native
   PowerShell/cmd shell execution, and signed in-app updates. Interactive PTY
   terminal tabs were unavailable until v3.0.0, which bundles the native backend
-  and opens terminals through ConPTY.
+  and opens terminals through ConPTY. Quitting the app on Windows ends the
+  built-in server at once: Windows has no equivalent of the stop signal that
+  lets the server finish its requests first on macOS and Linux.
 - **Windows one-command install** `[v1.107.0]` — the `install.ps1` PowerShell
   installer resolves the latest GitHub release, downloads its x64 MSI, rejects
   a non-MSI download before elevation, and invokes Windows Installer.

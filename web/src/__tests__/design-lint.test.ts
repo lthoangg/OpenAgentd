@@ -277,10 +277,9 @@ const RULES: Rule[] = [
     why: 'screens, sheets and pushes move on --ease-sheet or the critically damped spring (no overshoot); the overshooting springs are for small controls only (DESIGN.md → Phone system)',
     pattern: /ease-spring-(?:soft|snappy)|EASINGS\.spring(?:Soft|Snappy)/g,
     allow: {
-      // Small controls: a switch thumb, a radio dot, a swapped icon, a dropped tab, the Sessions ✎ press.
+      // Small controls: a switch thumb, a swapped icon, a dropped tab, the Sessions ✎ press.
       'components/Sidebar/SessionsPage.tsx': 1,
       'components/ui/switch.tsx': 1,
-      'components/ui/radio-group.tsx': 1,
       'components/ui/swap.tsx': 1,
       'components/WorkspacePanel/useTabDrag.ts': 1,
     },

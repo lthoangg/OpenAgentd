@@ -640,8 +640,11 @@ explicitly.
     with the binary's directory as cwd, and passes it this process's mode as
     `OPENAGENTD_ENV` (a release build defaults to `production`). The
     daemon keeps log records off stderr, since its stderr is appended to
-    `app.log` next to the JSON sink. `--wait` exits 1 if the server dies or
-    is not ready within 30 s.
+    `app.log` next to the JSON sink. It always waits for the server to
+    answer `/api/health/ready` before printing the stop hint and the `--qr`
+    code, and exits 1 if the server dies (it prints the end of the log) or
+    is not ready within 30 s; a port something else holds is refused before
+    anything starts. `--wait` is accepted and changes nothing.
   - `server logs` prints each JSON record's `text` field instead of the raw
     record, and follows the file in-process on every OS (no `tail`).
   - `run` adds `-C/--cd`, `-c/--continue`, `--session ID` and `--json`
@@ -1361,9 +1364,6 @@ explicitly.
   is `{removed, branch, branch_deleted, unmerged_commits}`, and `dry_run:
   true` in the body reports the same without removing anything (the web
   dialog asks first). Tests: `agent/tests/worktree_remove.rs`.
-- **Desktop network access (v3 only):** `GET`/`PUT /api/desktop/network-access`
-  (`api/src/routes/desktop.rs`, `api/src/network_access.rs`) lets the desktop
-  shell open and close a second listener on `0.0.0.0:<port>`. The listener
 - **A provider that keeps failing ends the turn with `provider_unavailable`
   (v3 only):** when the HTTP retry budget is spent on an error other than
   429, or the request can never be completed
@@ -1374,6 +1374,9 @@ explicitly.
   message). `agent_status` carries the same `details` in its metadata. v2
   and earlier v3 sent the transport text as the message under "Agent
   Execution Error" (`agent_execution_failed`). Tests: `agent/src/streaming.rs`.
+- **Desktop network access (v3 only):** `GET`/`PUT /api/desktop/network-access`
+  (`api/src/routes/desktop.rs`, `api/src/network_access.rs`) lets the desktop
+  shell open and close a second listener on `0.0.0.0:<port>`. The listener
   serves the same router, prefers 4082, and falls back to `4083..=4099` and
   then to a port the OS picks. Its access key is accepted alongside the
   desktop token only while the listener is open (`Policy::network_key`).
@@ -1499,7 +1502,7 @@ blocked; a critical one still stops the server.
   502 when the release feed fails. It starts `agentd upgrade --from-server`,
   which leaves the server's process tree (`setsid`; a new process group
   outside the job on Windows), stops the server, installs the release the
-  same way `agentd upgrade` does, and starts it again with `--wait`. Its
+  same way `agentd upgrade` does, and starts it again. Its
   output goes to `state/logs/upgrade.log`. The feed is
   `OPENAGENTD_RELEASES_URL` on the server, never the client's
   (`cli/tests/server_update.rs` runs the whole flow against a fake feed).

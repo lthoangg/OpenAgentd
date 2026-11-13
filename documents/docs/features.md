@@ -4381,7 +4381,7 @@ Desktop is primary. CLI / server is the developer path.
   `server status` prints a QR code in the terminal with the LAN addresses and
   the access key: the same `openagentd://connect` link as the desktop
   **Show QR**, so scanning it with a phone opens the mobile app's **Backend
-  connection** dialog with the address and key filled in. With `--wait` the code
+  connection** dialog with the address and key filled in. The code
   appears once the server is ready. It is skipped with a warning when the
   server is loopback-only, no LAN address is found, or the access key is
   unknown in that shell.
@@ -4398,6 +4398,11 @@ Desktop is primary. CLI / server is the developer path.
   starts the background server and polls `/api/health/ready` until the database
   connection and the agent session are fully ready; since v3.1.0 it exits 1 when
   the server dies or is not ready within 30 seconds.
+  Since `[v3.54.0]` `server start` always waits, so `--wait` is accepted and
+  changes nothing. It refuses a port that is already in use ("port 8000 is
+  already in use") instead of reporting a start, shows the end of the log when
+  the server dies, and prints **Stop** and the QR code only once the server
+  answers.
 - **CLI upgrade** `[v1.41.0, self-update v3.0.0]` — `agentd upgrade` in v3 stops the
   background server, downloads the latest prebuilt release archive from GitHub, verifies
   its SHA-256 checksum, swaps the binaries in place, and restarts the server if it was

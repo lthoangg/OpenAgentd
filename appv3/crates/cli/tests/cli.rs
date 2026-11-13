@@ -190,6 +190,22 @@ fn public_needs_an_access_key_and_conflicts_with_host() {
     assert!(stderr(&o).contains("cannot be used with"), "{}", stderr(&o));
 }
 
+/// `server start` used to print "Stop: agentd server stop" (and, with
+/// `--qr`, the pairing code) and exit 0 while the server it spawned died on
+/// a port something else already had.
+#[test]
+fn start_says_why_the_server_did_not_start() {
+    let sb = Sandbox::new();
+    let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = taken.local_addr().unwrap().port().to_string();
+    let o = sb.run(&["server", "start", "--port", &port, "--qr"]);
+    assert_eq!(code(&o), 1, "{}{}", stdout(&o), stderr(&o));
+    assert!(stderr(&o).contains(&format!("port {port} is already in use")), "{}", stderr(&o));
+    let out = stdout(&o);
+    assert!(!out.contains("agentd server stop") && !out.contains("--qr needs"), "nothing started, so nothing to stop or scan:\n{out}");
+    assert!(!sb.path("state/openagentd.pid").exists(), "no daemon may start");
+}
+
 fn provider_line(out: &str, id: &str) -> String {
     out.lines().find(|l| l.trim_start().starts_with(id)).unwrap_or_else(|| panic!("no {id} line in:\n{out}")).to_string()
 }

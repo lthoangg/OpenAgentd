@@ -38,6 +38,27 @@ fn pid_list(pids: &[i32]) -> String {
     pids.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", ")
 }
 
+/// Something else already listens on `host:port`, so the server would die
+/// at bind after this command had said where it runs.
+fn port_in_use(host: &str, port: u16) -> bool {
+    matches!(std::net::TcpListener::bind((host, port)), Err(e) if e.kind() == std::io::ErrorKind::AddrInUse)
+}
+
+/// The last lines the server wrote to `log` after byte `from`: why it stopped.
+fn log_tail(log: &std::path::Path, from: u64) -> Vec<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut text = String::new();
+    let read = std::fs::File::open(log).and_then(|mut f| {
+        f.seek(SeekFrom::Start(from))?;
+        f.read_to_string(&mut text)
+    });
+    if read.is_err() {
+        return vec![];
+    }
+    let lines: Vec<String> = text.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()).map(String::from).collect();
+    lines[lines.len().saturating_sub(5)..].to_vec()
+}
+
 fn prompt_access_key() -> Result<String> {
     let key = crate::ui::read_secret("OpenAgentd LAN access key: ").context("read the access key")?.trim().to_string();
     if key.is_empty() {
@@ -54,7 +75,8 @@ pub fn start(args: &StartArgs) -> Result<ExitCode> {
     start_daemon(args).map(code)
 }
 
-/// `Ok(false)` when `--wait` saw the server die or time out.
+/// Starts the server and waits for it to answer. `Ok(false)` when it died
+/// or timed out.
 fn start_daemon(args: &StartArgs) -> Result<bool> {
     let running = find_pids();
     if !running.is_empty() {
@@ -85,6 +107,9 @@ fn start_daemon(args: &StartArgs) -> Result<bool> {
     let (host, port) = resolve_addr(None, None, &cfg);
     let has_key = cfg.access_key.as_deref().is_some_and(|k| !k.is_empty());
     require_loopback_or_auth(&host, env_set("OPENAGENTD_DESKTOP_TOKEN") || env_set("OPENAGENTD_ACCESS_KEY") || has_key)?;
+    if port_in_use(&host, port) {
+        return Err(crate::ui::hinted(format!("port {port} is already in use"), "stop what is using it, or start on another port: `agentd server start --port <port>`"));
+    }
     if host_arg.is_some() || args.addr.port.is_some() || args.key {
         appv3_core::runtime_settings::save_server_settings(&cfg).context("save server.yaml")?;
     }
@@ -95,6 +120,7 @@ fn start_daemon(args: &StartArgs) -> Result<bool> {
         std::fs::create_dir_all(p).with_context(|| format!("create {}", p.display()))?;
     }
     let log = std::fs::OpenOptions::new().create(true).append(true).open(&srv_log).with_context(|| format!("open {}", srv_log.display()))?;
+    let log_from = log.metadata().map(|m| m.len()).unwrap_or(0);
     let mut cmd = std::process::Command::new(exe());
     // Pass the mode on, so the daemon uses the same state dir as this
     // process's PID file and log.
@@ -126,6 +152,10 @@ fn start_daemon(args: &StartArgs) -> Result<bool> {
     let mut child = cmd.spawn().context("start the server process")?;
     let _ = write_pids(&[child.id()]);
     field("Logs:", &srv_log.display().to_string());
+    // Nothing below is true until the server answers.
+    if !wait_ready(&mut child, &host, port, &srv_log, log_from) {
+        return Ok(false);
+    }
     if all_interfaces(&host) {
         if let Some(lan) = server_addresses(&host, port).lan.first() {
             field("LAN:", &bold(lan));
@@ -134,11 +164,10 @@ fn start_daemon(args: &StartArgs) -> Result<bool> {
     }
     field("Stop:", &bold("agentd server stop"));
     println!();
-    let ready = !args.wait || wait_ready(&mut child, &host, port);
-    if args.qr && ready {
+    if args.qr {
         show_connect_qr(&host, port);
     }
-    Ok(ready)
+    Ok(true)
 }
 
 const MOBILE_HINT: &str = "scan with --qr, or enter the LAN address in the mobile app";
@@ -176,13 +205,19 @@ fn show_connect_qr(bind_host: &str, port: u16) {
     }
 }
 
-fn wait_ready(child: &mut Child, host: &str, port: u16) -> bool {
+/// Wait for the server to answer. `false` when it stopped (the reason is the
+/// end of its log, from byte `log_from`) or did not answer in time.
+fn wait_ready(child: &mut Child, host: &str, port: u16, log: &std::path::Path, log_from: u64) -> bool {
     let poll_host = display_host(host);
-    field("Status:", "waiting for the server to become ready...");
     let started = Instant::now();
     let ready = loop {
         if matches!(child.try_wait(), Ok(Some(_))) {
-            println!("  {}: the server process exited; see {}", bold(&red("error")), bold("agentd server logs"));
+            clear_pids();
+            println!("  {}: the server stopped while starting", bold(&red("error")));
+            for line in log_tail(log, log_from) {
+                println!("     {}", dim(&line));
+            }
+            println!("  More: {}", bold("agentd server logs"));
             break false;
         }
         if matches!(http_get(&poll_host, port, "/api/health/ready", Duration::from_secs(1)), Some((200, _))) {
@@ -193,9 +228,11 @@ fn wait_ready(child: &mut Child, host: &str, port: u16) -> bool {
             println!("  {}: the server was not ready within {}s; see {}", bold(&yellow("warning")), READY_TIMEOUT.as_secs(), bold("agentd server logs"));
             break false;
         }
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(Duration::from_millis(200));
     };
-    println!();
+    if !ready {
+        println!();
+    }
     ready
 }
 

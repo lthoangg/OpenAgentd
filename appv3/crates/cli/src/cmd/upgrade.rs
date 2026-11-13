@@ -5,7 +5,7 @@
 //! `--from-server` is the server's update API (`/api/server/update`) asking:
 //! the first stage starts a second one outside the server's process tree
 //! (which `server stop` may end) and exits; the second waits for the API's
-//! answer to go out, upgrades, starts the server with `--wait`, and records
+//! answer to go out, upgrades, starts the server and waits for it, and records
 //! the outcome in `upgrade-status.json` for the server that comes back.
 
 use crate::cli::UpgradeArgs;
@@ -40,12 +40,12 @@ pub fn upgrade(args: &UpgradeArgs) -> Result<ExitCode> {
         println!();
         return Ok(ExitCode::SUCCESS);
     }
-    let report = run(&exe, false)?;
+    let report = run(&exe)?;
     Ok(if report.ok { ExitCode::SUCCESS } else { ExitCode::FAILURE })
 }
 
 /// Stop (if running), update, start again. Prints each step.
-fn run(exe: &Path, wait_ready: bool) -> Result<Report> {
+fn run(exe: &Path) -> Result<Report> {
     let from = appv3_core::VERSION.to_string();
     let method = release::install_method(exe);
     let via = if method == InstallMethod::Brew { "Homebrew" } else { "GitHub releases" };
@@ -63,7 +63,7 @@ fn run(exe: &Path, wait_ready: bool) -> Result<Report> {
     };
 
     if was_running {
-        let restart = restart_command(exe, method, wait_ready);
+        let restart = restart_command(exe, method);
         match run_captured(&restart) {
             Ok((0, _)) => {
                 let addr = crate::net::server_settings().map(|cfg| crate::net::resolve_addr(None, None, &cfg)).ok();
@@ -150,17 +150,13 @@ fn installed_version() -> Option<String> {
 
 /// `agentd server start` with the new binary: the same path for a release
 /// install (it was replaced in place), the one on PATH for Homebrew (the
-/// Cellar path carries the old version).
-fn restart_command(exe: &Path, method: InstallMethod, wait_ready: bool) -> Vec<String> {
+/// Cellar path carries the old version). It returns once the server answers.
+fn restart_command(exe: &Path, method: InstallMethod) -> Vec<String> {
     let bin: PathBuf = match method {
         InstallMethod::Brew => which("agentd").unwrap_or_else(|| exe.to_path_buf()),
         _ => exe.to_path_buf(),
     };
-    let mut cmd = vec![bin.to_string_lossy().into_owned(), "server".into(), "start".into()];
-    if wait_ready {
-        cmd.push("--wait".into());
-    }
-    cmd
+    vec![bin.to_string_lossy().into_owned(), "server".into(), "start".into()]
 }
 
 /// Run → `(exit code, stdout + stderr)`; 1 when killed by a signal.
@@ -183,7 +179,7 @@ fn from_server() -> Result<ExitCode> {
     println!("── {} upgrade requested by the server (pid {}) ──", chrono::Utc::now().to_rfc3339(), std::process::id());
     let started_at = read_status().and_then(|s| s["started_at"].as_str().map(String::from)).unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
     let exe = release::current_exe();
-    let report = run(&exe, true).unwrap_or_else(|e| Report { from: appv3_core::VERSION.into(), to: None, ok: false, message: format!("{e:#}") });
+    let report = run(&exe).unwrap_or_else(|e| Report { from: appv3_core::VERSION.into(), to: None, ok: false, message: format!("{e:#}") });
     write_status(&json!({
         "state": "finished",
         "ok": report.ok,

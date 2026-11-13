@@ -212,7 +212,8 @@ pub struct StartArgs {
     /// Prompt for the access key clients must send (required beyond loopback)
     #[arg(long)]
     pub key: bool,
-    /// Wait until the server is ready (up to 30 s); exit 1 if it is not
+    /// Accepted for older scripts: start always waits until the server is
+    /// ready (up to 30 s) and exits 1 if it is not
     #[arg(long)]
     pub wait: bool,
     /// Print a QR code the OpenAgentd mobile app can scan to connect (needs a

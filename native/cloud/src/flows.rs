@@ -133,14 +133,32 @@ pub struct Session {
     pub account_id: String,
 }
 
-/// Polls until the person approves the device code, denies it, or it
-/// expires. A person on the waitlist cannot approve, so this ends in
-/// [`FlowError::Expired`] for them; the UI says so.
+/// What answered a device code.
+#[derive(Debug)]
+pub enum SignIn {
+    /// The person approved it on the account pages.
+    Session(Session),
+    /// A signer scanned this device's [`ScanCode`] (spec section 4.3.1):
+    /// the invitation to claim with [`claim_offer`].
+    Offered(Offer),
+}
+
+/// The invitation a signer offered a scanned device code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Offer {
+    pub account_id: String,
+    pub slot_id: String,
+}
+
+/// Polls until the person approves the device code, a signer offers it an
+/// invitation, the person denies it, or it expires. A person on the
+/// waitlist cannot approve, so this ends in [`FlowError::Expired`] for
+/// them; the UI says so.
 ///
 /// A poll that gets no answer, `429 rate_limited` or a 5xx is tried again
 /// (after `Retry-After` when the cloud sends one) until the code expires;
 /// then the last such error is returned.
-pub async fn wait_for_session(cloud: &Cloud, code: &DeviceCode) -> FlowResult<Session> {
+pub async fn wait_for_sign_in(cloud: &Cloud, code: &DeviceCode) -> FlowResult<SignIn> {
     let deadline = Instant::now() + Duration::from_secs(code.expires_in);
     let mut interval = Duration::from_secs(code.interval);
     loop {
@@ -158,7 +176,8 @@ pub async fn wait_for_session(cloud: &Cloud, code: &DeviceCode) -> FlowResult<Se
             Err(e) => return Err(e.into()),
         };
         match &poll {
-            TokenPoll::Session { session, account_id } => return Ok(Session { session: session.clone(), account_id: account_id.clone() }),
+            TokenPoll::Session { session, account_id } => return Ok(SignIn::Session(Session { session: session.clone(), account_id: account_id.clone() })),
+            TokenPoll::Offered { account_id, slot_id } => return Ok(SignIn::Offered(Offer { account_id: account_id.clone(), slot_id: slot_id.clone() })),
             TokenPoll::Denied => return Err(FlowError::Denied),
             TokenPoll::Expired => return Err(FlowError::Expired),
             TokenPoll::Pending | TokenPoll::SlowDown => {}
@@ -168,6 +187,15 @@ pub async fn wait_for_session(cloud: &Cloud, code: &DeviceCode) -> FlowResult<Se
             return Err(FlowError::Expired);
         }
         tokio::time::sleep(interval).await;
+    }
+}
+
+/// [`wait_for_sign_in`] for a device that showed no scan code. An offer
+/// ends the sign-in: without the code's secret there is nothing to claim.
+pub async fn wait_for_session(cloud: &Cloud, code: &DeviceCode) -> FlowResult<Session> {
+    match wait_for_sign_in(cloud, code).await? {
+        SignIn::Session(s) => Ok(s),
+        SignIn::Offered(_) => Err(FlowError::JoinEnded),
     }
 }
 
@@ -743,6 +771,8 @@ pub struct Invite {
     /// Unix ms.
     pub expires_at: u64,
     secret: Zeroizing<[u8; 16]>,
+    /// Scan to add: the only device this invitation may add.
+    scanned: Option<String>,
 }
 
 impl std::fmt::Debug for Invite {
@@ -756,6 +786,12 @@ impl Invite {
     /// the person is adding a device.
     pub fn link(&self) -> Zeroizing<String> {
         invite::link(&self.account_id, &self.slot_id, self.secret.as_ref())
+    }
+
+    /// The device id of the scanned code, for an invitation from
+    /// [`offer_scanned`]; its fingerprint can be shown before it claims.
+    pub fn scanned(&self) -> Option<&str> {
+        self.scanned.as_deref()
     }
 }
 
@@ -826,7 +862,31 @@ pub async fn start_invite(member: &mut Member) -> FlowResult<Invite> {
     }
     let account_id = member.account_id().ok_or(FlowError::EmptyAccount)?.to_string();
     let slot = member.cloud.invite_create().await?;
-    Ok(Invite { account_id, slot_id: slot.slot_id, expires_at: slot.expires_at, secret: Zeroizing::new(random_bytes::<16>()) })
+    Ok(Invite { account_id, slot_id: slot.slot_id, expires_at: slot.expires_at, secret: Zeroizing::new(random_bytes::<16>()), scanned: None })
+}
+
+/// Scan to add on the signer (spec section 4.3.1): opens an invitation
+/// keyed by the scanned code's secret and offers it to that code. The
+/// invitation then takes the scanned device only: [`check_candidates`]
+/// drops every other, even with a valid proof. A refused offer
+/// (`already_decided` when another phone or the browser answered first)
+/// cancels the invitation.
+pub async fn offer_scanned(member: &mut Member, link: &str) -> FlowResult<Invite> {
+    let code = invite::parse_add_link(link)?;
+    member.sync().await?;
+    if !member.is_signer() {
+        return Err(FlowError::NotSigner);
+    }
+    let account_id = member.account_id().ok_or(FlowError::EmptyAccount)?.to_string();
+    let slot = member.cloud.invite_create().await?;
+    let mut secret = Zeroizing::new([0u8; 16]);
+    secret.copy_from_slice(&code.secret);
+    let invite = Invite { account_id, slot_id: slot.slot_id, expires_at: slot.expires_at, secret, scanned: Some(code.device_id.clone()) };
+    if let Err(e) = member.cloud.device_offer(&code.user_code, &code.device_id, &invite.slot_id).await {
+        let _ = member.cloud.invite_cancel(&invite.slot_id).await;
+        return Err(e.into());
+    }
+    Ok(invite)
 }
 
 /// Looks at the invitation's candidates. Drops those whose proof fails.
@@ -838,7 +898,14 @@ pub async fn check_candidates(member: &Member, invite: &Invite) -> FlowResult<Ca
         Err(e) if e.is("not_found") => return Err(FlowError::JoinEnded),
         Err(e) => return Err(e.into()),
     };
-    let (valid, invalid) = sort_candidates(invite.secret.as_ref(), &invite.account_id, &invite.slot_id, &pending);
+    let (mut valid, mut invalid) = sort_candidates(invite.secret.as_ref(), &invite.account_id, &invite.slot_id, &pending);
+    // Scan to add: someone else who read the code could prove the secret
+    // too; only the device that was scanned counts.
+    if let Some(only) = &invite.scanned {
+        let (keep, others): (Vec<_>, Vec<_>) = valid.into_iter().partition(|c| &c.device_id == only);
+        invalid.extend(others.into_iter().map(|c| c.enrollment_id));
+        valid = keep;
+    }
     for id in invalid {
         let _ = member.cloud.cancel_pending(&id).await;
     }
@@ -856,7 +923,32 @@ pub async fn check_candidates(member: &Member, invite: &Invite) -> FlowResult<Ca
 /// new device's screen): checks every candidate again, writes the roster
 /// that adds it with `grant`, and posts `confirm`. Consumes the invitation.
 pub async fn add_invited(member: &mut Member, invite: Invite, enrollment_id: &str, grant: Grant) -> FlowResult<Roster> {
-    let chosen = match check_candidates(member, &invite).await? {
+    add_candidate(member, &invite, enrollment_id, grant).await
+}
+
+/// Scan to add: [`add_invited`] for the scanned device, and the number the
+/// person then picks on it.
+pub async fn add_scanned(member: &mut Member, invite: Invite, enrollment_id: &str, grant: Grant) -> FlowResult<(Roster, String)> {
+    let Some(device_id) = invite.scanned.clone() else {
+        return Err(FlowError::JoinEnded);
+    };
+    let r = add_candidate(member, &invite, enrollment_id, grant).await?;
+    let number = invite::add_number(
+        invite.secret.as_ref(),
+        &invite::NumberInput {
+            account_id: &invite.account_id,
+            slot_id: &invite.slot_id,
+            signer_id: &member.cloud.device_id(),
+            device_id: &device_id,
+            version: r.version(),
+            roster_hash: &r.hash,
+        },
+    );
+    Ok((r, number))
+}
+
+async fn add_candidate(member: &mut Member, invite: &Invite, enrollment_id: &str, grant: Grant) -> FlowResult<Roster> {
+    let chosen = match check_candidates(member, invite).await? {
         Candidates::One(c) if c.enrollment_id == enrollment_id => c,
         // The person's choice is gone or no longer the only valid one.
         _ => return Err(FlowError::JoinEnded),
@@ -899,7 +991,17 @@ impl std::fmt::Debug for InviteClaim {
 /// then compares this device's fingerprint and kind with the signer's
 /// screen.
 pub async fn claim_invite(member: &mut Member, link: &str) -> FlowResult<InviteClaim> {
-    let invitation = invite::parse_link(link)?;
+    claim_invitation(member, invite::parse_link(link)?).await
+}
+
+/// Scan to add on the new device: claims the offered invitation with the
+/// secret of the code it showed.
+pub async fn claim_offer(member: &mut Member, scan: &ScanCode, offer: Offer) -> FlowResult<InviteClaim> {
+    let invitation = invite::Invitation { account_id: offer.account_id, slot_id: offer.slot_id, secret: Zeroizing::new(scan.secret.to_vec()) };
+    claim_invitation(member, invitation).await
+}
+
+async fn claim_invitation(member: &mut Member, invitation: invite::Invitation) -> FlowResult<InviteClaim> {
     member.cloud.account_id = Some(invitation.account_id.clone());
     let auth_pub = member.cloud.keys.auth.public();
     if !member.cloud.roles.is_valid() {
@@ -921,6 +1023,10 @@ pub async fn claim_invite(member: &mut Member, link: &str) -> FlowResult<InviteC
 /// Waits until a signer added this device, checks `confirm` with the
 /// secret, and takes the roster as `K`.
 pub async fn await_invited(member: &mut Member, claim: InviteClaim, pace: Pace) -> FlowResult<Roster> {
+    await_confirmed(member, &claim, pace).await
+}
+
+async fn await_confirmed(member: &mut Member, claim: &InviteClaim, pace: Pace) -> FlowResult<Roster> {
     let inv = &claim.invitation;
     let cloud = &member.cloud;
     let confirm: Vec<u8> = poll(pace, || async {
@@ -961,4 +1067,85 @@ pub async fn await_invited(member: &mut Member, claim: InviteClaim, pace: Pace) 
     }
     member.roster = Some(r.clone());
     Ok(r)
+}
+
+// ---- Scan to add, on the new device (spec section 4.3.1) ------------------
+//
+// The device shows a code with a secret it made; a signer's phone scans it
+// and the join is an invitation with that secret. The device is in no
+// account until the person picks the number the signer shows: until then
+// the caller stores no identity and starts no connector, and on a wrong
+// pick, Cancel or a timeout it calls [`leave_unconfirmed`] and erases the
+// keys.
+
+/// How long the person has to pick the number.
+pub const NUMBER_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// The code a device without a camera shows next to its sign-in link. A
+/// bearer secret until it is used: show it only on the sign-in step.
+/// Dropping it zeroizes the secret.
+pub struct ScanCode {
+    user_code: String,
+    device_id: String,
+    secret: Zeroizing<[u8; 16]>,
+}
+
+impl std::fmt::Debug for ScanCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ScanCode({}, [redacted])", self.user_code)
+    }
+}
+
+impl ScanCode {
+    /// The QR code's content.
+    pub fn link(&self) -> Zeroizing<String> {
+        invite::add_link(&self.user_code, &self.device_id, self.secret.as_ref())
+    }
+}
+
+/// Makes the scan code for a device code this device asked for.
+pub fn scan_code(cloud: &Cloud, code: &DeviceCode) -> ScanCode {
+    ScanCode { user_code: code.user_code.clone(), device_id: cloud.device_id(), secret: Zeroizing::new(random_bytes::<16>()) }
+}
+
+/// What a scanned device knows once a signer added it.
+#[derive(Debug)]
+pub struct Scanned {
+    /// The roster that added it, checked with `confirm`. Not this device's
+    /// to keep until the person picked the number.
+    pub roster: Roster,
+    /// The signer that added it (the envelope's `by`).
+    pub signer_id: String,
+    /// The 2-digit number that signer shows.
+    pub number: String,
+}
+
+/// Waits until the signer added this device, checks `confirm` and the
+/// roster as [`await_invited`] does, and computes the number. The roster
+/// stays in memory, on `member` only.
+pub async fn await_scanned(member: &mut Member, claim: InviteClaim, pace: Pace) -> FlowResult<Scanned> {
+    let r = await_confirmed(member, &claim, pace).await?;
+    let inv = &claim.invitation;
+    let number = invite::add_number(
+        inv.secret.as_ref(),
+        &invite::NumberInput {
+            account_id: &inv.account_id,
+            slot_id: &inv.slot_id,
+            signer_id: &r.by,
+            device_id: &member.cloud.device_id(),
+            version: r.version(),
+            roster_hash: &r.hash,
+        },
+    );
+    Ok(Scanned { signer_id: r.by.clone(), number, roster: r })
+}
+
+/// The person picked a wrong number, cancelled, or did not answer: leaves
+/// the account the scan added this device to and forgets its roster. The
+/// caller erases the keys whatever this returns, so a refused leave (the
+/// cloud's `last_signer`, or no answer) cannot keep the device in.
+pub async fn leave_unconfirmed(member: &mut Member) -> FlowResult<()> {
+    member.roster = None;
+    member.cloud.leave().await?;
+    Ok(())
 }

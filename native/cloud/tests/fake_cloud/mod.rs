@@ -26,6 +26,8 @@ use sha2::{Digest, Sha256};
 pub enum CodeStatus {
     Pending,
     Approved(String),
+    /// A signer offered the code an invitation (spec 4.3.1): (account, slot).
+    Offered(String, String),
     Denied,
     Expired,
 }
@@ -115,6 +117,7 @@ impl Fake {
         let app = Router::new()
             .route("/v1/device/code", post(device_code))
             .route("/v1/device/token", post(device_token))
+            .route("/v1/device/offer", post(device_offer))
             .route("/v1/enroll/genesis", post(genesis))
             .route("/v1/enroll/pending", post(pending_create).get(pending_list))
             .route("/v1/enroll/pending/{id}", get(pending_get).delete(pending_delete))
@@ -243,6 +246,13 @@ async fn device_token(State(f): State<Fake>, Form(form): Form<HashMap<String, St
         CodeStatus::Pending => err(400, "authorization_pending"),
         CodeStatus::Denied => err(400, "access_denied"),
         CodeStatus::Expired => err(400, "expired_token"),
+        CodeStatus::Offered(account, slot) => {
+            if row.redeemed {
+                return err(400, "invalid_grant");
+            }
+            s.codes.get_mut(&form["device_code"]).unwrap().redeemed = true;
+            Json(json!({ "invite": { "account_id": account, "slot_id": slot }, "device_id": row.device_id })).into_response()
+        }
         CodeStatus::Approved(account) => {
             if row.redeemed {
                 return err(400, "invalid_grant");
@@ -783,6 +793,39 @@ async fn invite_confirm(State(f): State<Fake>, method: Method, uri: Uri, headers
         return err(409, "already_set");
     }
     row.confirm = v["confirm"].as_str().map(String::from);
+    (h, Json(json!({}))).into_response()
+}
+
+/// A signer offers a device code one of its account's open invitations
+/// (scan to add), in the cloud's order of checks.
+async fn device_offer(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, body: axum::body::Bytes) -> Response {
+    let mut s = f.0.lock().unwrap();
+    let (account, _, signer, h) = signed_or_return!(s, method, uri, headers, &body, false);
+    if !signer {
+        return err(403, "not_signer");
+    }
+    let v: Value = serde_json::from_slice(&body).unwrap();
+    let (Some(code), Some(device), Some(slot)) = (v["user_code"].as_str(), v["device_id"].as_str(), v["slot_id"].as_str()) else {
+        return err(400, "invalid_request");
+    };
+    if !s.invites.get(slot).is_some_and(|r| r.account == account && r.used_by.is_none()) {
+        return err(404, "not_found");
+    }
+    let code = code.replace('-', "");
+    let Some(row) = s.codes.values_mut().find(|r| r.user_code.replace('-', "") == code) else {
+        return err(404, "not_found");
+    };
+    if row.status == CodeStatus::Expired {
+        return err(404, "not_found");
+    }
+    if row.device_id != device {
+        return err(403, "wrong_device");
+    }
+    match &row.status {
+        CodeStatus::Offered(a, sl) if *a == account && sl == slot => {}
+        CodeStatus::Pending => row.status = CodeStatus::Offered(account, slot.to_string()),
+        _ => return err(409, "already_decided"),
+    }
     (h, Json(json!({}))).into_response()
 }
 

@@ -155,6 +155,12 @@ pub enum TokenPoll {
     Pending,
     /// Poll more slowly.
     SlowDown,
+    /// A signer scanned this device's code (spec section 4.3.1) and offered
+    /// it this invitation to claim, instead of an enrollment session.
+    Offered {
+        account_id: String,
+        slot_id: String,
+    },
     Denied,
     /// The code expired before it was approved.
     Expired,
@@ -497,8 +503,15 @@ impl Cloud {
     pub async fn device_token(&self, code: &DeviceCode) -> ApiResult<TokenPoll> {
         #[derive(Deserialize)]
         struct Raw {
-            access_token: String,
+            access_token: Option<String>,
+            account_id: Option<String>,
+            invite: Option<Offer>,
+            device_id: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct Offer {
             account_id: String,
+            slot_id: String,
         }
         let resp = self
             .http
@@ -508,7 +521,14 @@ impl Cloud {
             .await
             .map_err(|e| ApiError::network(&e))?;
         match Self::answer::<Raw>(resp).await {
-            Ok(raw) => Ok(TokenPoll::Session { session: Secret::new(raw.access_token), account_id: raw.account_id }),
+            Ok(Raw { access_token: Some(t), account_id: Some(account_id), invite: None, .. }) => Ok(TokenPoll::Session { session: Secret::new(t), account_id }),
+            // The offer must name this device and well-formed ids.
+            Ok(Raw { access_token: None, invite: Some(o), device_id: Some(d), .. })
+                if d == self.device_id() && valid_slot_id(&o.slot_id) && crate::invite::id_ok(&o.account_id) =>
+            {
+                Ok(TokenPoll::Offered { account_id: o.account_id, slot_id: o.slot_id })
+            }
+            Ok(_) => Err(ApiError::bad_response()),
             Err(e) if e.status == 400 => match e.code.as_str() {
                 "authorization_pending" => Ok(TokenPoll::Pending),
                 "slow_down" => Ok(TokenPoll::SlowDown),
@@ -857,6 +877,14 @@ impl Cloud {
     /// Cancels the invitation and its candidates (signer).
     pub async fn invite_cancel(&self, slot_id: &str) -> ApiResult<()> {
         let _: Value = self.signed(Method::DELETE, &Self::slot_path(slot_id, "")?, None).await?;
+        Ok(())
+    }
+
+    /// Scan to add (spec section 4.3.1): offers the device code `user_code`
+    /// of `device_id` the open invitation `slot_id` (signer).
+    pub async fn device_offer(&self, user_code: &str, device_id: &str, slot_id: &str) -> ApiResult<()> {
+        let body = json!({ "user_code": user_code, "device_id": device_id, "slot_id": slot_id });
+        let _: Value = self.signed(Method::POST, "/v1/device/offer", Some(body)).await?;
         Ok(())
     }
 }

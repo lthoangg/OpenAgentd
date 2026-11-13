@@ -216,6 +216,28 @@ fn invitations() {
         // The roster it names is the one the vectors call by that name.
         let named = v["roster"].as_array().unwrap().iter().find(|r| r["name"] == c["roster"]).unwrap();
         assert_eq!(s(named, "hash"), s(c, "roster_hash"));
+        // Scan to add (section 4.3.1): the same invitation, with the secret
+        // made by the new device and shown next to its user code.
+        if c.get("add_link").is_some() {
+            let add = invite::add_link(s(c, "user_code"), s(c, "device_id"), &secret);
+            assert_eq!(add.as_str(), s(c, "add_link"));
+            let scanned = invite::parse_add_link(&add).unwrap();
+            assert_eq!(scanned.user_code.replace('-', ""), s(c, "user_code"));
+            assert_eq!(scanned.device_id, s(c, "device_id"));
+            assert_eq!(scanned.secret.as_slice(), secret.as_slice());
+            let number = invite::add_number(
+                &secret,
+                &invite::NumberInput {
+                    account_id: s(c, "account_id"),
+                    slot_id: s(c, "slot_id"),
+                    signer_id: s(c, "signer_id"),
+                    device_id: s(c, "device_id"),
+                    version: c["version"].as_u64().unwrap(),
+                    roster_hash: s(c, "roster_hash"),
+                },
+            );
+            assert_eq!(number, s(c, "number"));
+        }
     }
 }
 

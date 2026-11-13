@@ -1364,6 +1364,16 @@ explicitly.
 - **Desktop network access (v3 only):** `GET`/`PUT /api/desktop/network-access`
   (`api/src/routes/desktop.rs`, `api/src/network_access.rs`) lets the desktop
   shell open and close a second listener on `0.0.0.0:<port>`. The listener
+- **A provider that keeps failing ends the turn with `provider_unavailable`
+  (v3 only):** when the HTTP retry budget is spent on an error other than
+  429, or the request can never be completed
+  (`ProviderError::NetworkPermanent`), the `error` event has code
+  `provider_unavailable`, category `provider`, the title "{provider:model}
+  is unavailable", a message in plain words, and a new optional `details`
+  field holding the transport's own text (status line, URL, the provider's
+  message). `agent_status` carries the same `details` in its metadata. v2
+  and earlier v3 sent the transport text as the message under "Agent
+  Execution Error" (`agent_execution_failed`). Tests: `agent/src/streaming.rs`.
   serves the same router, prefers 4082, and falls back to `4083..=4099` and
   then to a port the OS picks. Its access key is accepted alongside the
   desktop token only while the listener is open (`Policy::network_key`).

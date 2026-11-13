@@ -39,7 +39,11 @@ export function switchedAccount(extra: Extra | undefined): { account?: string; r
   }
 }
 
-/** An error's title, message, code, status and model as lines of plain text, for support. */
+/**
+ * An error's title, message, code, status and model as lines of plain text,
+ * for support. The transport's own text (``details``: the URL, the status
+ * line) comes last; the card never shows it.
+ */
 export function providerErrorDetails({ title, message, extra }: {
   title?: string
   message: string
@@ -55,5 +59,6 @@ export function providerErrorDetails({ title, message, extra }: {
     .filter(([, value]) => value !== undefined && value !== null && value !== '')
     .map(([label, value]) => `${label}: ${String(value)}`)
   const head = title && title.trim() !== message.trim() ? [title, message] : [message]
-  return [...head, ...meta].join('\n')
+  const raw = text(extra?.details)
+  return [...head, ...meta, ...(raw ? [raw] : [])].join('\n')
 }

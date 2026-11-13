@@ -2798,6 +2798,11 @@ executes tools, manages its task list, and inspects workspace repositories.
   blank "Model error" card. An account spend cap (such as Anthropic's monthly
   spend limit) is not waited out: the turn fails at once and says to raise
   the limit or switch model `[v3.30.0]`.
+  Since `[v3.54.0]` a provider that still fails after its retries ends in a
+  "*model* is unavailable" card that says how often it failed and that your
+  messages and changed files are kept, with the same Retry, Switch model and
+  Open Providers buttons. The provider's own error text is no longer the
+  card's message: it is in **Copy details**.
   With several keys or accounts for the provider, a limit first switches to
   the next one; the wait (for the earliest reset of any of them) and the
   spend-cap failure apply only once every credential is unavailable `[v3.30.0]`.

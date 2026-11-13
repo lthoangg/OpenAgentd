@@ -1363,6 +1363,9 @@ impl AgentSession {
                 for k in ["message", "title", "code", "category"] {
                     data.insert(k.into(), info[k].clone());
                 }
+                if let Some(details) = info.get("details") {
+                    data.insert("details".into(), details.clone());
+                }
                 let mut with_meta = data.clone();
                 with_meta.insert("metadata".into(), Value::Object(data.clone()));
                 self.emit("agent_status", Some("error"), Some(with_meta));

@@ -12,6 +12,11 @@ pub enum AgentError {
     Auth { message: String, status: Option<u16>, provider: Option<String> },
     #[error("{message}")]
     Request { message: String, status: Option<u16>, provider: Option<String> },
+    /// The provider kept failing, or the request could never be completed.
+    /// `details` is the transport's own text (URL, status line, the
+    /// provider's message): for Copy details, never the card's sentence.
+    #[error("{message}")]
+    Unavailable { message: String, details: String, status: Option<u16>, provider: Option<String> },
     /// The model's safety classifier declined (`stop_reason: "refusal"`).
     #[error("{message}")]
     Refusal { message: String, provider: Option<String> },
@@ -32,6 +37,7 @@ pub fn python_exception_names(e: &AgentError) -> (&'static str, String) {
         AgentError::Connection { .. } => ("ProviderConnectionError", "app.agent.errors"),
         AgentError::Auth { .. } => ("ProviderAuthenticationError", "app.agent.errors"),
         AgentError::Request { .. } => ("ProviderRequestError", "app.agent.errors"),
+        AgentError::Unavailable { .. } => ("ProviderUnavailableError", "app.agent.errors"),
         AgentError::Refusal { .. } => ("ModelRefusalError", "app.agent.errors"),
         AgentError::Unconfigured(_) => ("UnconfiguredProviderError", "app.agent.providers.unconfigured"),
         AgentError::Other(_) => ("RuntimeError", "builtins"),
@@ -46,7 +52,7 @@ impl AgentError {
     }
 }
 
-/// Format an agent error as `{message, title, code, category[, agent]}`.
+/// Format an agent error as `{message, title, code, category[, details][, agent]}`.
 pub fn format_agent_error(e: &AgentError, agent: Option<&str>) -> Value {
     let (title, code, category) = match e {
         AgentError::Auth { .. } => ("Provider Authentication Failed".to_string(), "provider_auth_failed", "provider"),
@@ -60,11 +66,24 @@ pub fn format_agent_error(e: &AgentError, agent: Option<&str>) -> Value {
             "network",
         ),
         AgentError::Request { .. } => ("Provider Request Error".to_string(), "provider_request_failed", "provider"),
+        AgentError::Unavailable { provider, .. } => (
+            match provider {
+                Some(p) if !p.is_empty() => format!("{p} is unavailable"),
+                _ => "The provider is unavailable".to_string(),
+            },
+            "provider_unavailable",
+            "provider",
+        ),
         AgentError::Refusal { .. } => ("Model Declined to Continue".to_string(), "model_refusal", "provider"),
         AgentError::Unconfigured(_) => ("Agent Not Configured".to_string(), "agent_not_configured", "provider"),
         AgentError::Other(_) | AgentError::Cancelled => ("Agent Execution Error".to_string(), "agent_execution_failed", "system"),
     };
     let mut v = json!({"message": e.to_string(), "title": title, "code": code, "category": category});
+    if let AgentError::Unavailable { details, .. } = e {
+        if !details.is_empty() {
+            v["details"] = json!(details);
+        }
+    }
     if let Some(a) = agent.filter(|a| !a.is_empty()) {
         v["agent"] = json!(a);
     }

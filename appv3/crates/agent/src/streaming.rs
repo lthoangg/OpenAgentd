@@ -153,12 +153,23 @@ impl Plan {
     }
 }
 
-/// Error raised after the retry loop gives up on an HTTP error.
-fn final_error(err: &ProviderError) -> ModelError {
+/// What a failed turn keeps, said on every "unavailable" card.
+const KEPT: &str = "Your messages and the files changed so far are kept.";
+
+/// Error raised after the retry loop gives up on an HTTP error. The card
+/// says what happened in plain words; the transport's text goes to its
+/// details.
+fn final_error(err: &ProviderError, label: &str) -> ModelError {
     if err.status() == Some(429) {
         return AgentError::RateLimit("The configured LLM provider is rate-limited or quota-exhausted.".into()).into();
     }
-    AgentError::Other(err.to_string()).into()
+    let status = err.status();
+    let http = status.map(|s| format!(" (HTTP {s})")).unwrap_or_default();
+    let details = match extract_provider_error_message(err.body()) {
+        Some(said) => format!("{err}\n{said}"),
+        None => err.to_string(),
+    };
+    AgentError::Unavailable { message: format!("It answered with an error {MAX_RETRIES} times in a row{http}. {KEPT}"), details, status, provider: Some(label.to_string()) }.into()
 }
 
 /// Decides how a call recovers from `err`, given what it has `spent`. Pure
@@ -200,13 +211,13 @@ fn plan_recovery(err: &ProviderError, spent: Spent, network_limit: Option<i64>, 
                         );
                     }
                     if spent.quota_waits >= MAX_QUOTA_WAITS {
-                        return Plan::fail(final_error(err));
+                        return Plan::fail(final_error(err, label));
                     }
                     let wait = reset as f64 + CLOCK_SKEW_BUFFER_SECONDS;
                     return Plan { rate_limit: None, recovery: Recovery::Wait(Wait::Quota { status, reset, wait, every_account: every_account.is_some() }) };
                 }
                 if is_non_retryable_429(status, body) && reset == 0 {
-                    return Plan::fail(final_error(err));
+                    return Plan::fail(final_error(err, label));
                 }
                 rate_limit = Some(reset);
                 reset
@@ -214,11 +225,12 @@ fn plan_recovery(err: &ProviderError, spent: Spent, network_limit: Option<i64>, 
                 parse_retry_after(err)
             };
             if spent.http + 1 >= MAX_RETRIES {
-                let recovery = Recovery::Exhausted { error_type: "HTTPStatusError".into(), status_code: Some(status as i64), max_attempts: MAX_RETRIES, error: final_error(err) };
+                let recovery =
+                    Recovery::Exhausted { error_type: "HTTPStatusError".into(), status_code: Some(status as i64), max_attempts: MAX_RETRIES, error: final_error(err, label) };
                 return Plan { rate_limit, recovery };
             }
             if status == 429 && required_delay(spent.http, retry_after) >= MAX_DELAY {
-                return Plan { rate_limit, recovery: Recovery::Fail(final_error(err)) };
+                return Plan { rate_limit, recovery: Recovery::Fail(final_error(err, label)) };
             }
             let delay = backoff_delay(spent.http, retry_after);
             Plan { rate_limit, recovery: Recovery::Wait(Wait::Http { status, retry_after, delay }) }
@@ -233,6 +245,16 @@ fn plan_recovery(err: &ProviderError, spent: Spent, network_limit: Option<i64>, 
         }
         ProviderError::Unconfigured(m) => Plan::fail(AgentError::Unconfigured(m.clone()).into()),
         ProviderError::Auth(m) => Plan::fail(AgentError::Auth { message: m.clone(), status: None, provider: None }.into()),
+        // A bad address, a refused certificate, an answer that cannot be read.
+        ProviderError::NetworkPermanent(m) => Plan::fail(
+            AgentError::Unavailable {
+                message: format!("The request could not be completed, and trying again will not help. Check the provider's base URL in Settings → Providers. {KEPT}"),
+                details: m.clone(),
+                status: None,
+                provider: Some(label.to_string()),
+            }
+            .into(),
+        ),
         other => Plan::fail(AgentError::Other(other.to_string()).into()),
     }
 }
@@ -1167,6 +1189,37 @@ mod tests {
         assert_eq!(plan(&http(429, "{}", Some("120")), Spent::default(), None).rate_limit, None, "a quota wait is announced as such");
     }
 
+    /// The card a turn ends on says what failed and what is kept. The
+    /// transport's own text (the request URL, a link to MDN) is for Copy
+    /// details only.
+    #[test]
+    fn a_provider_that_keeps_failing_is_reported_in_plain_words() {
+        let overloaded = http(503, r#"{"error":{"type":"overloaded_error","message":"Overloaded"}}"#, None);
+        let Recovery::Exhausted { error: ModelError::Agent(error), .. } = plan(&overloaded, Spent { http: MAX_RETRIES - 1, ..Spent::default() }, None).recovery else {
+            panic!("not exhausted")
+        };
+        let info = crate::errors::format_agent_error(&error, None);
+        assert_eq!(info["title"], "mock:mock is unavailable");
+        assert_eq!(info["message"], format!("It answered with an error {MAX_RETRIES} times in a row (HTTP 503). Your messages and the files changed so far are kept."));
+        assert_eq!((info["code"].as_str(), info["category"].as_str()), (Some("provider_unavailable"), Some("provider")));
+        let details = info["details"].as_str().unwrap_or_default();
+        assert!(details.contains("Server error '503 Service Unavailable' for url 'https://example.test/v1/chat'"), "{details}");
+        assert!(details.contains("overloaded_error: Overloaded"), "{details}");
+
+        // A request that can never be sent (a bad address, a refused certificate).
+        let Recovery::Fail(ModelError::Agent(error)) = plan(&ProviderError::NetworkPermanent("builder error: relative URL without a base".into()), Spent::default(), None).recovery
+        else {
+            panic!("not final")
+        };
+        let info = crate::errors::format_agent_error(&error, None);
+        assert_eq!(info["title"], "mock:mock is unavailable");
+        assert_eq!(
+            info["message"],
+            "The request could not be completed, and trying again will not help. Check the provider's base URL in Settings → Providers. Your messages and the files changed so far are kept."
+        );
+        assert_eq!(info["details"], "builder error: relative URL without a base");
+    }
+
     #[test]
     fn final_failures_do_not_retry() {
         let fails = |err: ProviderError| matches!(plan(&err, Spent::default(), None).recovery, Recovery::Fail(_));
@@ -1245,7 +1298,8 @@ mod tests {
         let mut rs = RetryStream::new(provider, "mock:mock", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None).retry_network_indefinitely();
 
         let err = drain(&mut rs).await.unwrap_err();
-        assert!(matches!(err, ModelError::Agent(AgentError::Other(_))), "{err:?}");
+        // The card names the provider and keeps the transport's text for its details.
+        assert!(matches!(&err, ModelError::Agent(AgentError::Unavailable { status: Some(500), provider: Some(p), .. }) if p == "mock:mock"), "{err:?}");
         assert_eq!(mock.calls.lock().unwrap().len() as i64, MAX_RETRIES);
         {
             let statuses = log.0.lock().unwrap();

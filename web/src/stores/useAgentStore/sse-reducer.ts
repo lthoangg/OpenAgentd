@@ -808,6 +808,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             const errTitle = (meta?.title as string) ?? (d.title as string) ?? undefined
             const errCode = (meta?.code as string) ?? (d.code as string) ?? undefined
             const errCategory = (meta?.category as AgentError['category']) ?? (d.category as AgentError['category']) ?? undefined
+            const errDetails = (meta?.details as string) ?? (d.details as string) ?? undefined
 
             draft.agentStreams[agent].status = 'error'
             draft.agentStreams[agent].lastError = lastErr
@@ -858,6 +859,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                       title: errTitle || 'Model error',
                       message: lastErr,
                       code: errCode,
+                      details: errDetails,
                       category: 'provider',
                     },
                     timestamp: new Date(),
@@ -964,6 +966,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const code = d.code as string | undefined
         const category = d.category as AgentError['category'] | undefined
         const agent = d.agent as string | undefined
+        const details = d.details as string | undefined
 
         set((draft) => {
           draft.error = title || code || category || agent
@@ -1005,6 +1008,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                     title: title || 'Model error',
                     message,
                     code,
+                    details,
                     category: 'provider',
                   },
                   timestamp: new Date(),

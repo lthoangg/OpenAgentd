@@ -1793,7 +1793,13 @@ Back at a time.
   left anywhere on Servers pulls Sessions in (the reverse of Back); with
   none connected it gives a little and springs back with an error tick. On
   touch a saved server's row keeps one button (Use, or Sessions ›); Edit and
-  Remove are in its action sheet, from ⋯ or a long press.
+  Remove are in its action sheet, from ⋯ or a long press. A row is a name
+  and one status line, on every platform: a computer's own name (its host
+  name until it is renamed), never its key or address. Those are under
+  **Details** (a computer's sheet on touch, a button with a pointer), where
+  the computer in use is renamed. A key shows on a row only for a device
+  the app has never been on, and after a name while two share it; it always
+  shows in full where a device is approved or removed.
 - **Sessions** (`/sessions`, the sidebar's `page` mode) is the first screen
   the app opens on: ‹ Servers in the bar, a 28px
   **Sessions** title (`text-large-title`) that hands over to the bar's small
@@ -2017,6 +2023,29 @@ this file wins.
   {folder}".
 
 ### Native per platform
+
+**Touch behaviour follows the input; layout follows the size.** What a
+gesture does (a tap opens a row, a long press opens its menu, a tooltip
+never shows, the keyboard is handled) is decided by the pointer
+(`useTouchFirst`, `pointer-coarse:`), so an iPad in landscape behaves like
+the iPhone beside it. How much is on screen (a stack or columns, a sheet or
+a panel) is decided by the window (`useIsMobile`, `useIsPhone`, `md:`). A
+feature gated on size alone goes missing on a wide tablet; one gated on the
+pointer alone gets a phone layout in a desktop window. Text follows the
+same rule: it says "open", "choose" or "select", and names a click or a tap
+only where one kind of device reads it (`copy-lint.test.ts`).
+
+Left out on purpose, each a feature of its own and not a gap to patch:
+
+- **The command palette and Find in session on touch.** Both are keyboard
+  surfaces; a hardware keyboard opens them (⌘K, ⌘F), and nothing on screen
+  does.
+- **Push notifications on Android.** The Android app notifies while it runs;
+  it has no account yet, which push needs.
+- **Unread marks for sessions that finished while the app was closed.** The
+  mark is kept by the running app, so it starts from what it sees.
+- **Updating a Linux desktop app from another device.** The `.deb` has no
+  updater: the row says to update on the computer.
 
 | | macOS | Windows | Linux | iOS / iPadOS | Android |
 |---|---|---|---|---|---|

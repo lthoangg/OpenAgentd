@@ -1934,9 +1934,10 @@ through the cloud connector (v3.55.0): its request carries no key and is
 authenticated by its relay session (`AuthenticatedBy::RelayDevice`), so it
 works on a keyless server too. On the device, the relay tunnels to the
 computer's loopback bridge with the bridge's key. The connector's hyper
-server runs with `keep_alive(false)`, so the 101 says
-`connection: upgrade, close`; the relay's HTTP client accepts that, a strict
-WebSocket client library may not.
+server runs with `keep_alive(false)`, so its 101 says
+`connection: upgrade, close`; the bridge (`native/cloud/src/bridge.rs`)
+answers its own client with a plain `connection: upgrade`, which WebSocket
+clients that compare the whole value expect.
 
 `wss://` upstreams are relayed (v3.55.0): an `https` dev server's WebSocket
 goes over TLS with whatever certificate the server presents, as its page

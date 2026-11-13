@@ -405,22 +405,10 @@ pub async fn save_workspace_file(
 }
 
 #[tauri::command]
-pub async fn backend_health(state: tauri::State<'_, AppState>) -> Result<bool, String> {
-    Ok(state.sidecar.alive().await)
-}
-
-#[tauri::command]
 pub fn backend_logs_path(app: AppHandle) -> Result<String, String> {
     backend_log_path(&app)
         .map(|path| path.to_string_lossy().into_owned())
         .map_err(|e| format!("backend log path unavailable: {e}"))
-}
-
-#[tauri::command]
-pub fn desktop_logs_path(app: AppHandle) -> Result<String, String> {
-    crate::desktop_log_path(&app)
-        .map(|p| p.to_string_lossy().into_owned())
-        .map_err(|e| format!("desktop log path unavailable: {e}"))
 }
 
 #[tauri::command]

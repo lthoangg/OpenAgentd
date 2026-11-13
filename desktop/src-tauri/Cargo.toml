@@ -76,11 +76,9 @@ objc2 = "0.6"
 # The reply block of LAContext's evaluatePolicy (src/presence.rs: Touch ID
 # before the account adds a device). Already built by Tauri's objc2 stack.
 block2 = "0.6"
-# NSString/NSURL/NSObject: the share sheet (src/share.rs) builds an NSURL item.
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSArray", "NSString", "NSURL", "NSObject", "objc2-core-foundation"] }
-# NSView/NSSharingService: the share sheet (src/share.rs).
 # NSHapticFeedback: the alignment tick on a snapping drag (src/haptics.rs).
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSEvent", "NSResponder", "NSScreen", "NSWindow", "NSView", "NSSharingService", "NSHapticFeedback", "objc2-core-foundation"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSEvent", "NSResponder", "NSScreen", "NSWindow", "NSView", "NSHapticFeedback", "objc2-core-foundation"] }
 # The desktop pet reads where other apps' windows are (CGWindowListCopyWindowInfo:
 # frames only, no window titles, so no Screen Recording permission).
 objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGWindow", "CGGeometry"] }
@@ -105,10 +103,6 @@ windows = { version = "0.62", features = [
     # src/caption.rs).
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_Graphics_Dwm",
-    # The share UI (src/share.rs): DataTransferManager through its window
-    # interop, with a Uri/TypedEventHandler for the data request.
-    "ApplicationModel_DataTransfer",
-    "Foundation",
 ] }
 
 [features]

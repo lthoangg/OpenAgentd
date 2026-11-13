@@ -2208,14 +2208,6 @@ fn show_session_menu(app: &AppHandle, window: &WebviewWindow, session_id: &str, 
     result.context("Show session menu")
 }
 
-/// The × on an unread row: forget it without opening it.
-#[tauri::command]
-pub fn island_dismiss(app: AppHandle, window: WebviewWindow, session_id: String) {
-    if window.label() == ISLAND_WINDOW {
-        mark_session_read(&app, &session_id, None);
-    }
-}
-
 /// An app window read a session (its sidebar cleared the unread mark): the
 /// island, the pet and the other windows clear it too.
 #[tauri::command]

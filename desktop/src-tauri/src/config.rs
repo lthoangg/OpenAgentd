@@ -100,6 +100,11 @@ pub struct AppBackendStatus {
     /// reaches (`account.rs`). Absent on any other server.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub account_device: Option<crate::account::AccountDevice>,
+    /// What each computer called itself when the app was last on it, by
+    /// account device id or saved server base URL (shell-core
+    /// `computer_names`). Shown in place of a key or an address.
+    #[serde(skip_serializing_if = "openagentd_shell_core::ComputerNames::is_empty")]
+    pub computer_names: openagentd_shell_core::ComputerNames,
 }
 
 pub fn app_config_file(app: &AppHandle, name: &str) -> Result<PathBuf> {
@@ -113,6 +118,17 @@ pub fn app_config_file(app: &AppHandle, name: &str) -> Result<PathBuf> {
 
 pub fn app_backend_config_path(app: &AppHandle) -> Result<PathBuf> {
     app_config_file(app, "desktop-backend.json")
+}
+
+pub fn computer_names_path(app: &AppHandle) -> Result<PathBuf> {
+    app_config_file(app, "computer-names.json")
+}
+
+/// The remembered names; none when the file cannot be read.
+pub fn load_computer_names(app: &AppHandle) -> openagentd_shell_core::ComputerNames {
+    computer_names_path(app)
+        .map(|path| openagentd_shell_core::load_computer_names_from(&path))
+        .unwrap_or_default()
 }
 
 pub fn window_state_path(app: &AppHandle) -> Result<PathBuf> {

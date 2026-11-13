@@ -22,6 +22,7 @@
     "allow-secure-delete-access-key",
     "allow-app-backend-status",
     "allow-app-save-backend-server",
+    "allow-app-remember-computer-name",
     "allow-app-use-external-backend",
     "allow-app-remove-backend-server",
     "allow-save-workspace-file",

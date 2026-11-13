@@ -4,9 +4,10 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use openagentd_shell_core::{
-    load_backend_config_from, normalize_base_url, normalize_server_name, remove_backend_server_at,
-    resolve_download_bytes, safe_download_filename, save_backend_config_to, unique_cache_path,
-    AppBackendConfig, DownloadSource, RelayInfo, RelayRegistry, SavedAppServer,
+    load_backend_config_from, load_computer_names_from, normalize_base_url, normalize_server_name,
+    remember_computer_name_at, remove_backend_server_at, resolve_download_bytes, safe_download_filename,
+    save_backend_config_to, unique_cache_path, AppBackendConfig, ComputerNames, DownloadSource, RelayInfo,
+    RelayRegistry, SavedAppServer,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
@@ -315,6 +316,11 @@ struct AppBackendStatus {
     /// a relaunch opens it again.
     #[serde(skip_serializing_if = "Option::is_none")]
     last_account_device: Option<String>,
+    /// What each computer called itself when the app was last on it, by
+    /// account device id or saved server base URL (shell-core
+    /// `computer_names`). Shown in place of a key or an address.
+    #[serde(skip_serializing_if = "ComputerNames::is_empty")]
+    computer_names: ComputerNames,
 }
 
 #[derive(Default)]
@@ -340,7 +346,9 @@ fn app_backend_status(
         .lock()
         .map_err(|_| "backend state unavailable".to_string())?
         .clone();
-    Ok(backend_status(config, runtime_base_url, load_last_account_device(&app), cloud::account_device))
+    let mut status = backend_status(config, runtime_base_url, load_last_account_device(&app), cloud::account_device);
+    status.computer_names = computer_names_path(&app).map(|path| load_computer_names_from(&path)).unwrap_or_default();
+    Ok(status)
 }
 
 /// The status for a config and the runtime server. `bridge` names the
@@ -361,7 +369,25 @@ fn backend_status(
         servers: config.servers,
         account_device,
         last_account_device,
+        computer_names: ComputerNames::new(),
     }
+}
+
+/// Remember what the computer behind `key` (an account device id, or a
+/// saved server's base URL) calls itself; an empty name forgets it. The web
+/// UI reads the name from the server the app is on.
+#[tauri::command]
+fn app_remember_computer_name(
+    app: AppHandle,
+    state: tauri::State<'_, MobileBackendState>,
+    key: String,
+    name: Option<String>,
+) -> Result<AppBackendStatus, String> {
+    // A saved server is remembered under the address the server list uses.
+    let key = normalize_base_url(&key).unwrap_or(key);
+    let path = computer_names_path(&app).map_err(|e| format!("{e:#}"))?;
+    remember_computer_name_at(&path, &key, name.as_deref()).map_err(|e| format!("{e:#}"))?;
+    app_backend_status(app, state)
 }
 
 #[tauri::command]
@@ -483,6 +509,10 @@ fn config_path(app: &AppHandle) -> Result<PathBuf> {
         .context("resolve app config directory")?;
     std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
     Ok(dir.join("app-backend.json"))
+}
+
+fn computer_names_path(app: &AppHandle) -> Result<PathBuf> {
+    Ok(config_path(app)?.with_file_name("computer-names.json"))
 }
 
 fn load_backend_config(app: &AppHandle) -> Result<AppBackendConfig> {
@@ -749,6 +779,7 @@ pub fn run() {
             secure_delete_access_key,
             app_backend_status,
             app_save_backend_server,
+            app_remember_computer_name,
             app_use_external_backend,
             app_remove_backend_server,
             save_workspace_file,
@@ -816,6 +847,14 @@ mod tests {
         // The account computer to return to after a relaunch.
         assert_eq!(serde_json::to_value(&on_lan).unwrap()["last_account_device"], "dev-mac");
         assert!(serde_json::to_value(&on_bridge).unwrap().get("last_account_device").is_none());
+    }
+
+    #[test]
+    fn the_status_carries_the_names_the_app_remembers_and_none_before_it_has_any() {
+        let mut status = backend_status(AppBackendConfig { active_base_url: None, servers: vec![] }, None, None, |_| None);
+        assert!(serde_json::to_value(&status).unwrap().get("computer_names").is_none(), "an older UI sees no new field");
+        status.computer_names.insert("dev-mac".into(), "Work".into());
+        assert_eq!(serde_json::to_value(&status).unwrap()["computer_names"], serde_json::json!({"dev-mac": "Work"}));
     }
 
     #[test]

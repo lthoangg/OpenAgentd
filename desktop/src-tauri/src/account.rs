@@ -51,6 +51,14 @@ impl AccountDevice {
             .collect::<Vec<_>>()
             .join(" · ")
     }
+
+    /// What lists and the tray call it: the name the computer gave for
+    /// itself once the app has seen it (`computer_names`), else [`label`].
+    ///
+    /// [`label`]: Self::label
+    pub fn title(&self, names: &openagentd_shell_core::ComputerNames) -> String {
+        names.get(&self.device_id).cloned().unwrap_or_else(|| self.label())
+    }
 }
 
 struct BridgeEntry {
@@ -403,6 +411,21 @@ mod tests {
             "free text is never shown"
         );
         assert_eq!(d(None).label(), "3F9A 21C4");
+    }
+
+    #[test]
+    fn a_computer_is_called_by_the_name_it_gave_once_the_app_has_seen_it() {
+        let device = AccountDevice {
+            device_id: "dev-mac".into(),
+            fingerprint: "3F9A 21C4".into(),
+            kind: Some("macos".into()),
+        };
+        let mut names = openagentd_shell_core::ComputerNames::new();
+        assert_eq!(device.title(&names), "macOS · 3F9A 21C4", "never connected: system and key");
+        names.insert("dev-other".into(), "Personal".into());
+        assert_eq!(device.title(&names), "macOS · 3F9A 21C4");
+        names.insert("dev-mac".into(), "Work".into());
+        assert_eq!(device.title(&names), "Work");
     }
 
     #[test]

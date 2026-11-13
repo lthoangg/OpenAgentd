@@ -467,7 +467,29 @@ pub async fn app_backend_status_for_window(
         supports_bundled: true,
         servers,
         account_device,
+        computer_names: crate::config::load_computer_names(&app),
     })
+}
+
+/// Remember what the computer behind `key` (an account device id, or a
+/// saved server's base URL) calls itself; an empty name forgets it. The web
+/// UI reads the name from the server the window is on. The notch follows
+/// the change at once.
+#[tauri::command]
+pub async fn app_remember_computer_name(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    key: String,
+    name: Option<String>,
+) -> Result<AppBackendStatus, String> {
+    // A saved server is remembered under the address the server list uses.
+    let key = normalize_external_base_url(&key).unwrap_or(key);
+    let path = crate::config::computer_names_path(&app).map_err(|e| format!("{e:#}"))?;
+    openagentd_shell_core::remember_computer_name_at(&path, &key, name.as_deref()).map_err(|e| format!("{e:#}"))?;
+    crate::island::servers_changed(&app);
+    app_backend_status_for_window(app.clone(), app.state(), window.label())
+        .await
+        .map_err(|e| format!("{e:#}"))
 }
 
 #[tauri::command]

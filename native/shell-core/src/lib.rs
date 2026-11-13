@@ -9,6 +9,7 @@
 
 pub mod access_key;
 pub mod backend_config;
+pub mod computer_names;
 pub mod download;
 pub mod preview_relay;
 pub mod private_file;
@@ -18,6 +19,9 @@ pub use backend_config::{
     apply_backend_config_update, load_backend_config_from, normalize_base_url,
     normalize_server_name, remove_backend_server_at, save_backend_config_to,
     save_backend_server_to, set_backend_server_enabled_at, AppBackendConfig, SavedAppServer,
+};
+pub use computer_names::{
+    clean_computer_name, load_computer_names_from, remember_computer_name_at, ComputerNames,
 };
 pub use download::{
     decode_base64, ensure_content_length_limit, ensure_max_download_size, resolve_download_bytes,

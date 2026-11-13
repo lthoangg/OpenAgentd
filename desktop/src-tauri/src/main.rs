@@ -676,6 +676,7 @@ fn main() {
             commands::app_remove_backend_server,
             commands::app_save_backend_server,
             commands::app_set_backend_server_enabled,
+            commands::app_remember_computer_name,
             commands::app_use_external_backend,
             commands::app_use_bundled_backend,
             commands::app_stop_bundled_backend,

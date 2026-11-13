@@ -38,6 +38,7 @@
     "allow-app-remove-backend-server",
     "allow-app-save-backend-server",
     "allow-app-set-backend-server-enabled",
+    "allow-app-remember-computer-name",
     "allow-app-use-external-backend",
     "allow-app-use-bundled-backend",
     "allow-app-new-window",

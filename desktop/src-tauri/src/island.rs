@@ -1206,6 +1206,8 @@ struct Shared {
     /// The saved servers, as last read from the config file: which are
     /// enabled, and their names. Refreshed by [`servers_changed`].
     saved: Vec<crate::config::SavedAppServer>,
+    /// What each computer calls itself, read with `saved`.
+    names: openagentd_shell_core::ComputerNames,
     /// Servers whose list should be fetched again soon (an answer was sent),
     /// without waiting for an event.
     refresh_requested: HashSet<ServerId>,
@@ -1243,6 +1245,7 @@ fn shared() -> &'static Mutex<Shared> {
             menu_open: false,
             viewing: HashMap::new(),
             saved: Vec::new(),
+            names: Default::default(),
             refresh_requested: HashSet::new(),
         })
     })
@@ -1546,7 +1549,10 @@ async fn pause(duration: Duration) {
 async fn run_feed(app: AppHandle) {
     let mut tasks: HashMap<ServerId, tauri::async_runtime::JoinHandle<()>> = HashMap::new();
     loop {
-        let saved = shared().lock().unwrap().saved.clone();
+        let (saved, names) = {
+            let shared = shared().lock().unwrap();
+            (shared.saved.clone(), shared.names.clone())
+        };
         let wanted = if is_enabled() {
             crate::servers::app_followed_servers(&app, &crate::servers::enabled_servers(&saved)).await
         } else {
@@ -1567,7 +1573,7 @@ async fn run_feed(app: AppHandle) {
             log::info!("island: stopped following {}", server.key());
         }
         for server in wanted {
-            let name = server.display_name(BUILTIN_NAME, &saved);
+            let name = server.display_name(BUILTIN_NAME, &saved, &names);
             if tasks.contains_key(&server) {
                 // Renamed in Settings since it was joined.
                 edit_feeds(&app, |feeds| feeds.rename(&server, &name));
@@ -1580,11 +1586,15 @@ async fn run_feed(app: AppHandle) {
     }
 }
 
-/// Re-read the saved servers (kept in memory so the supervisor does not
-/// read the file every tick). An unreadable file keeps what was there.
+/// Re-read the saved servers and the computers' names (kept in memory so
+/// the supervisor does not read the files every tick). An unreadable server
+/// list keeps what was there.
 fn refresh_saved(app: &AppHandle) {
+    let names = crate::config::load_computer_names(app);
+    let mut shared = shared().lock().unwrap();
+    shared.names = names;
     if let Ok(config) = crate::config::load_app_backend_config(app) {
-        shared().lock().unwrap().saved = config.servers;
+        shared.saved = config.servers;
     }
 }
 
@@ -3130,6 +3140,7 @@ mod tests {
             menu_open: false,
             viewing: HashMap::new(),
             saved: Vec::new(),
+            names: Default::default(),
             refresh_requested: HashSet::new(),
         };
         assert!(shared.rebuild().is_some());

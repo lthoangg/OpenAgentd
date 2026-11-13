@@ -13,6 +13,7 @@ fn main() {
                 "app_remove_backend_server",
                 "app_save_backend_server",
                 "app_set_backend_server_enabled",
+                "app_remember_computer_name",
                 "app_use_external_backend",
                 "app_use_bundled_backend",
                 "app_new_window",

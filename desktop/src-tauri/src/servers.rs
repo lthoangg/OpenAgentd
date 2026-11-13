@@ -52,14 +52,29 @@ impl ServerId {
 
     /// The name the user saved it under (else its host and port), or
     /// `bundled_name` for the builtin. A computer opened through the account
-    /// is named as its row under "Your computers" is.
-    pub fn display_name(&self, bundled_name: &str, saved: &[crate::config::SavedAppServer]) -> String {
+    /// is named as its row under "Your computers" is. `names`: what each
+    /// computer called itself when the app was last on it, used where the
+    /// user gave no name.
+    pub fn display_name(
+        &self,
+        bundled_name: &str,
+        saved: &[crate::config::SavedAppServer],
+        names: &openagentd_shell_core::ComputerNames,
+    ) -> String {
         match self {
             Self::Bundled => bundled_name.to_string(),
             Self::External(base) if crate::account::account_device(base).is_some() => {
-                crate::account::account_device(base).map(|d| d.label()).unwrap_or_default()
+                crate::account::account_device(base).map(|d| d.title(names)).unwrap_or_default()
             }
-            Self::External(base) => crate::usage::resolve_server_display_name(base, saved),
+            Self::External(base) => {
+                let named = crate::usage::resolve_server_display_name(base, saved);
+                // No name of the user's: the address came back.
+                if named == crate::usage::extract_host_port(base) {
+                    names.get(base).cloned().unwrap_or(named)
+                } else {
+                    named
+                }
+            }
         }
     }
 }
@@ -305,6 +320,20 @@ pub async fn endpoint(app: &AppHandle, server: &ServerId) -> Option<(String, Opt
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_saved_server_is_called_by_your_name_then_its_own_then_its_address() {
+        let saved = |name: Option<&str>| {
+            vec![crate::config::SavedAppServer { base_url: "http://192.168.1.30:4082".into(), name: name.map(String::from), enabled: false }]
+        };
+        let server = ServerId::external("http://192.168.1.30:4082/");
+        let mut names = openagentd_shell_core::ComputerNames::new();
+        assert_eq!(server.display_name("Built-in", &saved(None), &names), "192.168.1.30:4082");
+        names.insert("http://192.168.1.30:4082".into(), "office-nas".into());
+        assert_eq!(server.display_name("Built-in", &saved(None), &names), "office-nas", "the computer's own name");
+        assert_eq!(server.display_name("Built-in", &saved(Some("Office NAS")), &names), "Office NAS", "the name you gave wins");
+        assert_eq!(ServerId::Bundled.display_name("Built-in", &saved(None), &names), "Built-in");
+    }
 
     const REMOTE: &str = "http://192.168.1.30:4082";
     const LAB: &str = "http://192.168.1.20:4082";

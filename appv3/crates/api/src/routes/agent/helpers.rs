@@ -182,7 +182,17 @@ pub async fn persist_queued_user_message(pool: &DbPool, a: QueueArgs<'_>) -> Api
         e.insert("mention_context".into(), json!(true));
         db::save_message(pool, a.session_id, NewMessage { extra: Some(e), ..NewMessage::user(block.clone()) }).await?;
     }
-    tracing::info!("agent_chat_queued session_id={} message_id={} attachments={}", a.session_id, qid, metas.len());
+    // `state` and `stream_running` are what a client is shown; a message
+    // queued while they read idle is one sent to a session that looked finished.
+    tracing::info!(
+        "agent_chat_queued session_id={} message_id={} attachments={} state={} stream_running={} held={}",
+        a.session_id,
+        qid,
+        metas.len(),
+        a.agent.state(),
+        appv3_agent::store().is_running(a.session_id),
+        a.hold_until_turn_end
+    );
     Ok(qid)
 }
 

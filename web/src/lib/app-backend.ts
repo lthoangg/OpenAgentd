@@ -53,6 +53,37 @@ export interface AppBackendStatus {
 /** Remembered computer names, by `computerNameKey`. */
 export type ComputerNames = Record<string, string>
 
+/** Origins (`http://127.0.0.1:<port>`) known to be account bridges. */
+const accountBridgeOrigins = new Set<string>()
+
+function originOfBaseUrl(value: string): string | null {
+  try {
+    return new URL(value, typeof window === 'undefined' ? undefined : window.location.href).origin
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Remember whether the server a status names is an account bridge. A bridge
+ * has a loopback address but relays to another computer, so code that asks
+ * "is the server on this device?" cannot go by the address alone. Every
+ * status read from the shell passes through here.
+ */
+export function noteBackendStatus<T extends Pick<AppBackendStatus, 'base_url' | 'account_device'> | null>(status: T): T {
+  const origin = status?.base_url ? originOfBaseUrl(status.base_url) : null
+  if (!origin) return status
+  if (status?.account_device) accountBridgeOrigins.add(origin)
+  else accountBridgeOrigins.delete(origin)
+  return status
+}
+
+/** Whether `baseUrl` is an account bridge: on this device's loopback, serving another computer. */
+export function isAccountBridgeUrl(baseUrl: string): boolean {
+  const origin = originOfBaseUrl(baseUrl)
+  return origin !== null && accountBridgeOrigins.has(origin)
+}
+
 /** The key the desktop's built-in server's name is remembered under. */
 export const BUILT_IN_NAME_KEY = 'built-in'
 
@@ -230,7 +261,7 @@ export function titleWithServer(title: string, name: string | null | undefined):
 export async function getAppBackendStatus(): Promise<AppBackendStatus | null> {
   try {
     const { invoke } = await import('@tauri-apps/api/core')
-    return await invoke<AppBackendStatus>('app_backend_status')
+    return noteBackendStatus(await invoke<AppBackendStatus>('app_backend_status'))
   } catch {
     return null
   }
@@ -238,17 +269,17 @@ export async function getAppBackendStatus(): Promise<AppBackendStatus | null> {
 
 export async function saveAppBackendServer(baseUrl: string, name: string): Promise<AppBackendStatus> {
   const { invoke } = await import('@tauri-apps/api/core')
-  return await invoke<AppBackendStatus>('app_save_backend_server', { baseUrl, name })
+  return noteBackendStatus(await invoke<AppBackendStatus>('app_save_backend_server', { baseUrl, name }))
 }
 
 export async function removeAppBackendServer(baseUrl: string): Promise<AppBackendStatus> {
   const { invoke } = await import('@tauri-apps/api/core')
-  return await invoke<AppBackendStatus>('app_remove_backend_server', { baseUrl })
+  return noteBackendStatus(await invoke<AppBackendStatus>('app_remove_backend_server', { baseUrl }))
 }
 
 export async function setAppBackendServerEnabled(baseUrl: string, enabled: boolean): Promise<AppBackendStatus> {
   const { invoke } = await import('@tauri-apps/api/core')
-  return await invoke<AppBackendStatus>('app_set_backend_server_enabled', { baseUrl, enabled })
+  return noteBackendStatus(await invoke<AppBackendStatus>('app_set_backend_server_enabled', { baseUrl, enabled }))
 }
 
 /**
@@ -258,7 +289,7 @@ export async function setAppBackendServerEnabled(baseUrl: string, enabled: boole
 export async function rememberComputerName(key: string, name: string): Promise<AppBackendStatus | null> {
   try {
     const { invoke } = await import('@tauri-apps/api/core')
-    return await invoke<AppBackendStatus>('app_remember_computer_name', { key, name })
+    return noteBackendStatus(await invoke<AppBackendStatus>('app_remember_computer_name', { key, name }))
   } catch {
     return null
   }
@@ -276,7 +307,7 @@ export async function getServerWatchStates(): Promise<Record<string, ServerWatch
 
 export async function switchToExternalAppBackend(baseUrl: string, name: string, persist: boolean): Promise<AppBackendStatus> {
   const { invoke } = await import('@tauri-apps/api/core')
-  return await invoke<AppBackendStatus>('app_use_external_backend', { baseUrl, name, persist })
+  return noteBackendStatus(await invoke<AppBackendStatus>('app_use_external_backend', { baseUrl, name, persist }))
 }
 
 export async function switchToBundledAppBackend(): Promise<void> {

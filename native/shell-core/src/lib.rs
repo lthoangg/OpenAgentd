@@ -27,4 +27,4 @@ pub use download::{
     decode_base64, ensure_content_length_limit, ensure_max_download_size, resolve_download_bytes,
     safe_download_filename, unique_cache_path, DownloadSource, MAX_DOWNLOAD_BYTES,
 };
-pub use preview_relay::{RelayInfo, RelayRegistry};
+pub use preview_relay::{RelayInfo, RelayRegistry, Via};

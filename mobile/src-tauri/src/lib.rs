@@ -7,7 +7,7 @@ use openagentd_shell_core::{
     load_backend_config_from, load_computer_names_from, normalize_base_url, normalize_server_name,
     remember_computer_name_at, remove_backend_server_at, resolve_download_bytes, safe_download_filename,
     save_backend_config_to, unique_cache_path, AppBackendConfig, ComputerNames, DownloadSource, RelayInfo,
-    RelayRegistry, SavedAppServer,
+    RelayRegistry, SavedAppServer, Via,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
@@ -18,6 +18,8 @@ mod cloud_bridge;
 mod cloud_e2e_tests;
 #[cfg(target_os = "ios")]
 mod keyboard_bar;
+#[cfg(test)]
+mod preview_account_tests;
 mod push;
 mod taps;
 mod theme;
@@ -82,8 +84,10 @@ async fn secure_delete_access_key(origin: String) -> Result<(), String> {
 // A server's preview listeners bind *its* loopback, which the phone cannot
 // reach. The relay (`openagentd_shell_core::preview_relay`) listens on the
 // phone's own 127.0.0.1 and tunnels each connection to the server with the
-// access key, which never reaches the previewed page. The server URL and key
-// come from native state, never from the webview.
+// access key, which never reaches the previewed page. For a computer of the
+// account the "server" is its loopback bridge and the key is the bridge's:
+// the bridge is on the phone, the preview listeners are not. The server URL
+// and key come from native state, never from the webview.
 
 /// Open preview relays. The phone has one window, so one scope.
 #[derive(Default)]
@@ -117,6 +121,19 @@ fn relay_base_url(
     normalize_base_url(&base).map_err(|e| format!("{e:#}"))
 }
 
+/// What the relay tunnels to, and the key for it: an account bridge's key
+/// (in memory, this app run only), else the server's saved access key.
+/// `Ok(None)` when the server has no saved key.
+fn relay_upstream(
+    bridge_key: Option<String>,
+    saved_key: impl FnOnce() -> Result<Option<String>, String>,
+) -> Result<Option<(Via, String)>, String> {
+    match bridge_key {
+        Some(key) => Ok(Some((Via::Account, key))),
+        None => Ok(saved_key()?.map(|key| (Via::Server, key))),
+    }
+}
+
 #[tauri::command]
 async fn preview_relay_open(
     app: AppHandle,
@@ -135,12 +152,18 @@ async fn preview_relay_open(
         .active_base_url;
     let base_url = relay_base_url(runtime_base_url, persisted)?;
     let origin = base_url.clone();
-    let key = off_main_thread(move || openagentd_shell_core::get_access_key(&origin))
-        .await?
-        .ok_or_else(|| "Previews on this device need this server's access key.".to_string())?;
+    let bridge_key = cloud::bridge_key(&origin);
+    let (via, key) = off_main_thread(move || {
+        relay_upstream(bridge_key, || {
+            openagentd_shell_core::get_access_key(&origin)
+        })
+    })
+    .await?
+    .ok_or_else(|| "Previews on this device need this server's access key.".to_string())?;
     relays
         .0
-        .open(
+        .open_via(
+            via,
             RELAY_SCOPE,
             relay_client(),
             &base_url,
@@ -822,7 +845,11 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{backend_status, cloud, ensure_backend_reachable, relay_base_url, resolve_active_base_url, without_loopback_default};
+    use super::{
+        backend_status, cloud, ensure_backend_reachable, relay_base_url, relay_upstream, resolve_active_base_url,
+        without_loopback_default,
+    };
+    use openagentd_shell_core::Via;
     use openagentd_shell_core::{AppBackendConfig, SavedAppServer};
 
     #[test]
@@ -900,6 +927,20 @@ mod tests {
             "https://box.example/oad",
         );
         assert!(relay_base_url(None, None).is_err());
+    }
+
+    #[test]
+    fn an_account_bridge_uses_its_own_key_and_a_server_its_saved_one() {
+        assert_eq!(
+            relay_upstream(Some("bridge".into()), || panic!("a bridge has no saved key")).unwrap(),
+            Some((Via::Account, "bridge".to_string()))
+        );
+        assert_eq!(
+            relay_upstream(None, || Ok(Some("saved".to_string()))).unwrap(),
+            Some((Via::Server, "saved".to_string()))
+        );
+        assert_eq!(relay_upstream(None, || Ok(None)).unwrap(), None);
+        assert!(relay_upstream(None, || Err("locked".into())).is_err());
     }
 
     /// The webview loads the bundled UI (or devUrl, which Tauri counts as

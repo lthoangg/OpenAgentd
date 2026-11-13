@@ -6,7 +6,7 @@
  */
 import type { ApprovalView, Roles } from '@/api/cloud'
 import { isMobileApp } from '@/lib/mobile-app'
-import { deviceKindLabel, type AppBackendStatus } from '@/lib/app-backend'
+import { deviceKindLabel, noteBackendStatus, type AppBackendStatus } from '@/lib/app-backend'
 
 export type PhoneNotice =
   | 'denied'
@@ -167,8 +167,11 @@ export const phoneCloudScannedAdd = (enrollmentId: string, approver: boolean, ro
 export const phoneCloudInviteCancel = (generation?: number) => call<void>('cloud_invite_cancel', generation === undefined ? undefined : { generation })
 export const phoneCloudRemoveDevice = (deviceId: string) => call<PhoneCloudStatus>('cloud_remove_device', { deviceId })
 export const phoneCloudSignOut = () => call<PhoneCloudStatus>('cloud_sign_out')
-export const openPhoneCloudComputer = (deviceId: string, lanBaseUrl: string | null) =>
-  call<OpenedComputer>('cloud_open_computer', { deviceId, lanBaseUrl })
+export const openPhoneCloudComputer = async (deviceId: string, lanBaseUrl: string | null) => {
+  const opened = await call<OpenedComputer>('cloud_open_computer', { deviceId, lanBaseUrl })
+  noteBackendStatus(opened.status)
+  return opened
+}
 
 /** Why the shell is told to look at its relay link now (`cloud_poke`). */
 export type CloudPokeReason = 'resumed' | 'network_changed' | 'user_retry' | 'background'

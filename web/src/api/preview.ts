@@ -10,12 +10,17 @@
  * another device, the native shell (mobile app, desktop window on a remote
  * server) runs a relay on this device's loopback that tunnels to it
  * (`preview_relay_open`), and the dock frames the relay's origin instead.
+ * A computer of the account counts as another device too: the app reaches
+ * it through a bridge on this device's loopback, so its address looks local
+ * while its preview listeners are not.
  * A plain browser on another device has no relay, so it cannot preview.
  */
 
 import { apiBaseUrl } from './base-url'
 import { parseDetailOrThrow } from './client/_shared'
 import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
+import { isAccountBridgeUrl } from '@/lib/app-backend'
 
 /** What a preview tab shows: a local dev server URL or a workspace file. */
 export type PreviewTarget = { kind: 'url'; url: string } | { kind: 'file'; path: string }
@@ -42,13 +47,18 @@ export function isLoopbackHost(host: string): boolean {
   return LOOPBACK_HOSTS.has(host) || /^127\.\d+\.\d+\.\d+$/.test(host)
 }
 
-/** True when the backend runs on this computer, so its preview listeners are reachable. */
+/**
+ * True when the backend runs on this computer, so its preview listeners are
+ * reachable. Never in the phone app (no server runs on a phone), nor on an
+ * account bridge (a loopback address that relays to another computer).
+ */
 export function isLocalBackend(): boolean {
   if (typeof window === 'undefined') return false
+  if (isMobileApp(getPlatform())) return false
   try {
     const base = new URL(apiBaseUrl(), window.location.href)
     if (base.protocol !== 'http:' && base.protocol !== 'https:') return false
-    return isLoopbackHost(base.hostname)
+    return isLoopbackHost(base.hostname) && !isAccountBridgeUrl(base.href)
   } catch {
     return false
   }

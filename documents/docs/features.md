@@ -3046,6 +3046,17 @@ agent against it.
     access key. That needs a server with an access key, and a reverse proxy
     in front of it must pass WebSocket upgrades. **Open in browser** is off
     there, and a plain browser on another device shows a notice instead.
+    A computer opened through your OpenAgentd account shows previews the
+    same way `[v3.55.0]`, on the phone apps and in a desktop window, over
+    the account link and with no access key; before, the tab stayed blank
+    there. When the app cannot reach the preview (the server restarted, the
+    preview was closed, the link dropped, too many connections), the tab
+    says why and offers **Retry** in place of a blank page `[v3.55.0]`.
+    After the app was in the background or the computer slept, the tab
+    reconnects by itself `[v3.55.0]`: a page that still answers keeps its
+    scroll position and form input, and only a page that no longer answers
+    loads again. Hot reload also works for a dev server on
+    `https://localhost` with a self-signed certificate `[v3.55.0]`.
     Since `[v3.29.0]` the address bar also opens workspace files from any
     Preview tab: type a path from the workspace root (`docs/mockup.html`,
     `./docs/mockup.html`) or paste a full path or `file://` link inside the

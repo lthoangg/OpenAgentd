@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import { closePreview, isLocalBackend, isLoopbackHost, lastPreviewUrl, openPreview, previewMode, previewTargetKey } from '@/api/preview'
+import { type AppBackendStatus, noteBackendStatus } from '@/lib/app-backend'
 
 const invokeMock = mock(async (..._args: unknown[]) => ({ port: 61000, origin: 'http://127.0.0.1:61000' }))
 mock.module('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
@@ -123,5 +124,68 @@ describe('preview helpers', () => {
     expect(previewTargetKey({ kind: 'url', url: 'http://localhost:5173/a?b' })).toBe('url:http://localhost:5173')
     expect(previewTargetKey({ kind: 'url', url: 'localhost:3000' })).toBe('url:http://localhost:3000')
     expect(previewTargetKey({ kind: 'file', path: 'a.html' })).toBe('file:a.html')
+  })
+})
+
+describe('previews on a computer of the account', () => {
+  const BRIDGE = 'http://127.0.0.1:5999'
+  const win = window as { __OAD_API_BASE_URL__?: string; __TAURI_INTERNALS__?: unknown }
+  const status = (overrides: Partial<AppBackendStatus>): AppBackendStatus => ({
+    base_url: BRIDGE,
+    mode: 'external',
+    sidecar_running: false,
+    external: true,
+    supports_bundled: true,
+    servers: [],
+    ...overrides,
+  })
+  const platform = Object.getOwnPropertyDescriptor(navigator, 'platform')
+
+  beforeEach(() => {
+    win.__TAURI_INTERNALS__ = {}
+    invokeMock.mockClear()
+  })
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+    noteBackendStatus(status({ account_device: null }))
+    delete win.__OAD_API_BASE_URL__
+    delete win.__TAURI_INTERNALS__
+    if (platform) Object.defineProperty(navigator, 'platform', platform)
+  })
+
+  it('relays an account bridge, although its address is on this computer', () => {
+    win.__OAD_API_BASE_URL__ = BRIDGE
+    expect(previewMode()).toBe('direct')
+    noteBackendStatus(status({ account_device: { device_id: 'dev-mac', fingerprint: '3F9A 21C4', kind: 'macos' } }))
+    expect(previewMode()).toBe('relay')
+    expect(isLocalBackend()).toBe(false)
+  })
+
+  it('frames a server on this computer directly while a bridge is open elsewhere', () => {
+    noteBackendStatus(status({ account_device: { device_id: 'dev-mac', fingerprint: '3F9A 21C4', kind: 'macos' } }))
+    win.__OAD_API_BASE_URL__ = 'http://127.0.0.1:4082'
+    expect(previewMode()).toBe('direct')
+  })
+
+  it('frames the address directly again once it is no longer a bridge', () => {
+    win.__OAD_API_BASE_URL__ = `${BRIDGE}/api`
+    noteBackendStatus(status({ account_device: { device_id: 'dev-mac', fingerprint: '3F9A 21C4', kind: 'macos' } }))
+    noteBackendStatus(status({ mode: 'bundled', external: false, account_device: null }))
+    expect(previewMode()).toBe('direct')
+  })
+
+  it('always relays in the phone app, where no server runs on the device', () => {
+    Object.defineProperty(navigator, 'platform', { value: 'iPhone', configurable: true })
+    win.__OAD_API_BASE_URL__ = BRIDGE
+    expect(previewMode()).toBe('relay')
+  })
+
+  it('opens the native relay for a preview on an account bridge', async () => {
+    win.__OAD_API_BASE_URL__ = BRIDGE
+    noteBackendStatus(status({ account_device: { device_id: 'dev-mac', fingerprint: '3F9A 21C4', kind: 'macos' } }))
+    globalThis.fetch = mock(async () => new Response(JSON.stringify(info(52011)), { status: 200 })) as typeof fetch
+    const opened = await openPreview('/ws', { kind: 'url', url: 'http://localhost:5173/' })
+    expect(invokeMock).toHaveBeenCalledWith('preview_relay_open', { previewId: 'p1', port: 52011 })
+    expect(opened.origin).toBe('http://127.0.0.1:61000')
   })
 })

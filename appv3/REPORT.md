@@ -1928,5 +1928,20 @@ for an unknown preview, 400 without an upgrade, and 422 for a `port` at or
 below 1024. `port` becomes a `Host` alias on the listener (4 at most), so
 pages on the relay origin pass the loopback `Host` guard; foreign names
 are still refused. The listener itself still binds loopback only.
-Not done: `wss://` dev-server upstreams, previews from a plain browser on
-another device, and headless capture.
+
+A device of the server's OpenAgentd Cloud account opens the same route
+through the cloud connector (v3.55.0): its request carries no key and is
+authenticated by its relay session (`AuthenticatedBy::RelayDevice`), so it
+works on a keyless server too. On the device, the relay tunnels to the
+computer's loopback bridge with the bridge's key. The connector's hyper
+server runs with `keep_alive(false)`, so the 101 says
+`connection: upgrade, close`; the relay's HTTP client accepts that, a strict
+WebSocket client library may not.
+
+`wss://` upstreams are relayed (v3.55.0): an `https` dev server's WebSocket
+goes over TLS with whatever certificate the server presents, as its page
+requests already do. Targets are loopback only, so there is no network path
+to impersonate one.
+
+Not done: previews from a plain browser on another device, and headless
+capture.

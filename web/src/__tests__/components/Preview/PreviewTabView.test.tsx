@@ -16,10 +16,13 @@ const ORIGIN = 'http://127.0.0.1:52011'
 const RELAY_ORIGIN = 'http://127.0.0.1:61000'
 // The native relay (`preview_relay_open`) when the app talks to a remote server.
 let relayError: string | null = null
+// Where the relay listens; it moves when its port was taken meanwhile.
+let relayOrigin = RELAY_ORIGIN
+const MOVED_RELAY_ORIGIN = 'http://127.0.0.1:61001'
 const invokeMock = mock(async (..._args: unknown[]) => {
   // Tauri rejects with the command's error string.
   if (relayError) throw relayError
-  return { port: 61000, origin: RELAY_ORIGIN }
+  return { port: Number(relayOrigin.split(':')[2]), origin: relayOrigin }
 })
 mock.module('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
 let isMobile = false
@@ -36,7 +39,7 @@ type Interceptor = { beforeAsyncRequest?: (args: { request: Request }) => Promis
 const happyDOM = (window as unknown as { happyDOM?: { settings: { fetch: { interceptor: Interceptor | null } } } }).happyDOM
 if (happyDOM) {
   happyDOM.settings.fetch.interceptor = {
-    beforeAsyncRequest: async ({ request }) => (request.url.startsWith(ORIGIN) || request.url.startsWith(RELAY_ORIGIN) ? new Response('<!doctype html><html><head></head><body></body></html>', { headers: { 'content-type': 'text/html' } }) : undefined),
+    beforeAsyncRequest: async ({ request }) => (request.url.startsWith(ORIGIN) || request.url.startsWith(RELAY_ORIGIN) || request.url.startsWith(MOVED_RELAY_ORIGIN) ? new Response('<!doctype html><html><head></head><body></body></html>', { headers: { 'content-type': 'text/html' } }) : undefined),
   }
 }
 
@@ -70,6 +73,7 @@ afterEach(() => {
   delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
   invokeMock.mockClear()
   relayError = null
+  relayOrigin = RELAY_ORIGIN
 })
 
 async function renderView(
@@ -680,5 +684,126 @@ describe('PreviewTabView', () => {
     )
     expect((await screen.findByRole('alert')).textContent).toContain("need this server's access key")
     expect(document.querySelector('iframe')).toBeNull()
+  })
+
+  describe('through the relay, when a connection cannot be tunnelled', () => {
+    beforeEach(() => {
+      ;(window as { __OAD_API_BASE_URL__?: string }).__OAD_API_BASE_URL__ = 'http://192.168.1.20:4082'
+      ;(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {}
+    })
+
+    it('shows the reason the relay page gives, with Retry, and loads the page afresh on Retry', async () => {
+      const { iframe, frameWindow } = await renderView()
+      fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' }, RELAY_ORIGIN)
+      expect(screen.queryByRole('alert')).toBeNull()
+
+      fromPage(frameWindow, { type: 'relay-error', message: 'The server has no such preview, or is too old to share previews with this device (404). Update the server, then retry.' }, RELAY_ORIGIN)
+      expect(screen.getByRole('alert').textContent).toContain('The server has no such preview')
+      // The relay's page has no preview script; that is not the news here.
+      expect(screen.queryByText(/did not load the preview script/)).toBeNull()
+
+      const opens = previewBodies.length
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      await waitFor(() => expect(previewBodies.length).toBe(opens + 1))
+      // A fresh frame, not a message to a page that cannot hear it.
+      await waitFor(() => expect(document.querySelector('iframe')).not.toBe(iframe))
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('ignores a reason from another origin, or with no text', async () => {
+      const { frameWindow } = await renderView()
+      fromPage(frameWindow, { type: 'relay-error', message: 'Not from the relay' }, 'http://127.0.0.1:9')
+      fromPage(frameWindow, { type: 'relay-error' }, RELAY_ORIGIN)
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+  })
+
+  describe('when the app comes back', () => {
+    const comeBack = () => act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    const hellos = (commands: Record<string, unknown>[]) => commands.filter((c) => c.type === 'hello').length
+
+    it('checks the listener again and leaves a page that still answers alone', async () => {
+      const { iframe, frameWindow, commands } = await renderView()
+      fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+      const opens = previewBodies.length
+      const asked = hellos(commands)
+
+      comeBack()
+      await waitFor(() => expect(previewBodies.length).toBe(opens + 1))
+      await waitFor(() => expect(hellos(commands)).toBe(asked + 1))
+      fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+      expect(document.querySelector('iframe')).toBe(iframe)
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('loads the page afresh, once, when it no longer answers', async () => {
+      const { iframe, frameWindow, commands } = await renderView()
+      fromPage(frameWindow, { type: 'ready', path: '/pricing?plan=pro', title: 'Pricing', status: 'ok' })
+      const asked = hellos(commands)
+
+      comeBack()
+      await waitFor(() => expect(hellos(commands)).toBe(asked + 1))
+      const fresh = await waitFor(() => {
+        const el = document.querySelector('iframe')
+        if (!el || el === iframe) throw new Error('not reloaded yet')
+        return el
+      }, { timeout: 5000 })
+      // Where the person was, not where the tab first opened.
+      expect(fresh.getAttribute('src')).toBe(`${ORIGIN}/pricing?plan=pro`)
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      expect(document.querySelector('iframe')).toBe(fresh)
+    })
+
+    it('leaves a page without the preview script alone: it could not answer before either', async () => {
+      const { iframe } = await renderView()
+      expect(await screen.findByText(/did not load the preview script/, undefined, { timeout: 2000 })).toBeTruthy()
+      const opens = previewBodies.length
+
+      comeBack()
+      await waitFor(() => expect(previewBodies.length).toBe(opens + 1))
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+      expect(document.querySelector('iframe')).toBe(iframe)
+    })
+
+    it('follows a relay that had to move to another port', async () => {
+      ;(window as { __OAD_API_BASE_URL__?: string }).__OAD_API_BASE_URL__ = 'http://192.168.1.20:4082'
+      ;(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {}
+      const { iframe, frameWindow } = await renderView()
+      fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' }, RELAY_ORIGIN)
+
+      relayOrigin = MOVED_RELAY_ORIGIN
+      comeBack()
+      const fresh = await waitFor(() => {
+        const el = document.querySelector('iframe')
+        if (!el || el === iframe) throw new Error('not reloaded yet')
+        return el
+      })
+      expect(fresh.getAttribute('src')).toBe(`${MOVED_RELAY_ORIGIN}/pricing`)
+    })
+
+    it('does nothing while the app is still hidden, or for a tab that never loaded', async () => {
+      const { frameWindow } = await renderView()
+      fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+      const opens = previewBodies.length
+      const visibility = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState')
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+      try {
+        comeBack()
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        expect(previewBodies.length).toBe(opens)
+      } finally {
+        if (visibility) Object.defineProperty(document, 'visibilityState', visibility)
+        else delete (document as { visibilityState?: string }).visibilityState
+      }
+    })
+
+    it('checks again when the network returns', async () => {
+      const { frameWindow } = await renderView()
+      fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+      const opens = previewBodies.length
+      act(() => { window.dispatchEvent(new Event('online')) })
+      await waitFor(() => expect(previewBodies.length).toBe(opens + 1))
+    })
   })
 })

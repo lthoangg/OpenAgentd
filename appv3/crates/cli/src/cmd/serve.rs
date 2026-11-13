@@ -129,6 +129,8 @@ pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
     appv3_api::routes::server_update::set_launch(appv3_api::routes::server_update::Launch {
         cli_daemon: daemon,
         desktop_sidecar: args.generate_token || args.parent_pid.is_some() || token.is_some(),
+        // Set by a desktop app that installs its own updates (macOS, Windows).
+        desktop_updates: std::env::var("OPENAGENTD_DESKTOP_UPDATES").is_ok_and(|v| v == "1"),
         access_key: std::env::var(appv3_core::auth::ACCESS_KEY_ENV).ok().filter(|k| !k.is_empty()),
     });
     appv3_core::auth::scrub_child_env_secrets();

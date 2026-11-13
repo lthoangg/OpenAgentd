@@ -2,12 +2,20 @@
 //! from a client (v3 only; `api.server_update` in the health capabilities).
 //!
 //! Only a server `agentd server start` launched (the CLI background server)
-//! updates itself: the CLI knows how to stop, upgrade and start that one.
-//! The desktop app updates its own sidecar, and a foreground server (`server
-//! serve`, systemd, Docker) has nobody to start it again, so those report a
-//! `reason` and the client says what to do instead.
+//! updates itself: the CLI knows how to stop, upgrade and start that one. A
+//! foreground server (`server serve`, systemd, Docker) has nobody to start it
+//! again, so it reports a `reason` and the client says what to do instead.
 //!
-//! POST takes no input. It starts `agentd upgrade --from-server`, which
+//! The desktop app's sidecar is updated by the app, never by this server. An
+//! app that installs its own updates (macOS, Windows) says so at launch;
+//! POST then only records the request, the app collects it on its private
+//! route (`/api/desktop/update-request`) and runs the updater it already
+//! has, which installs the signed release from the app's own feed. Nothing
+//! in the request chooses what is installed. An app that cannot (Linux)
+//! reports `desktop_sidecar`.
+//!
+//! POST takes no input. For the CLI background server it starts `agentd
+//! upgrade --from-server`, which
 //! leaves this server's process tree, stops the server, installs the
 //! release (`brew upgrade`, or the sha256-verified archive) and starts the
 //! server again; restart-resume then continues the turns it cut off. The
@@ -38,6 +46,8 @@ pub struct Launch {
     pub cli_daemon: bool,
     /// The desktop app's sidecar (session token or parent watch).
     pub desktop_sidecar: bool,
+    /// The desktop app said it installs its own updates.
+    pub desktop_updates: bool,
     /// The access key from the environment, read before the child-env
     /// scrub: the restarted server needs it when server.yaml lacks it.
     pub access_key: Option<String>,
@@ -58,6 +68,12 @@ impl Drop for StartGuard {
 }
 
 pub fn set_launch(launch: Launch) {
+    if launch.desktop_sidecar {
+        // The app started this server, so an update it was running is over.
+        if let Some(settled) = last_upgrade().and_then(|last| settled_after_restart(&last, VERSION)) {
+            write_status(&settled);
+        }
+    }
     let _ = LAUNCH.set(launch);
 }
 
@@ -65,9 +81,16 @@ fn launch() -> Launch {
     LAUNCH.get().cloned().unwrap_or_default()
 }
 
+/// The desktop app updates this server, by updating itself.
+fn by_desktop_app(launch: &Launch) -> bool {
+    launch.desktop_sidecar && launch.desktop_updates
+}
+
 /// Why this server cannot update itself, if it cannot.
 fn blocker(launch: &Launch, method: InstallMethod, target: &str) -> Option<&'static str> {
-    if launch.desktop_sidecar || method == InstallMethod::DesktopBundled {
+    if by_desktop_app(launch) {
+        None
+    } else if launch.desktop_sidecar || method == InstallMethod::DesktopBundled {
         Some("desktop_sidecar")
     } else if !launch.cli_daemon {
         Some("foreground")
@@ -144,7 +167,65 @@ fn write_status(v: &Value) {
     let _ = std::fs::write(&path, serde_json::to_vec_pretty(v).unwrap_or_default());
 }
 
+// ── the desktop app's update ────────────────────────────────────────────────
+
+const BY_DESKTOP_APP: &str = "desktop_app";
+/// The longest outcome message kept from the app.
+const MESSAGE_MAX_CHARS: usize = 500;
+
+/// The request the app has not collected yet: `{target, started_at}`.
+fn desktop_request() -> &'static Mutex<Option<Value>> {
+    static R: OnceLock<Mutex<Option<Value>>> = OnceLock::new();
+    R.get_or_init(|| Mutex::new(None))
+}
+
+/// Hand the pending request to the desktop app, once.
+pub fn take_desktop_request() -> Option<Value> {
+    desktop_request().lock().unwrap().take()
+}
+
+/// The desktop app says how its update went. It only ever reports a failure
+/// in practice: after an install the app restarts, and the next server
+/// settles the run ([`settled_after_restart`]).
+pub fn finish_desktop_update(ok: bool, message: &str) -> bool {
+    let Some(mut last) = last_upgrade().filter(|l| l["by"] == BY_DESKTOP_APP) else { return false };
+    last["state"] = j!("finished");
+    last["ok"] = j!(ok);
+    last["message"] = j!(message.chars().filter(|c| !c.is_control()).take(MESSAGE_MAX_CHARS).collect::<String>());
+    last["finished_at"] = j!(chrono::Utc::now().to_rfc3339());
+    write_status(&last);
+    tracing::info!("server_update_desktop_finished ok={}", ok);
+    true
+}
+
+/// A desktop-app update that was still `running` when the app started this
+/// server: it worked when this version is newer than the one it began on.
+fn settled_after_restart(last: &Value, version: &str) -> Option<Value> {
+    if last["state"] != "running" || last["by"] != BY_DESKTOP_APP {
+        return None;
+    }
+    let ok = last["from"].as_str().is_some_and(|from| release::is_newer(version, from));
+    let mut done = last.clone();
+    done["state"] = j!("finished");
+    done["ok"] = j!(ok);
+    done["finished_at"] = j!(chrono::Utc::now().to_rfc3339());
+    if ok {
+        done["to"] = j!(version);
+    } else {
+        done["message"] = j!("The app on the computer restarted without installing the update.");
+    }
+    Some(done)
+}
+
 // ── handlers ────────────────────────────────────────────────────────────────
+
+fn method_name(launch: &Launch, method: InstallMethod) -> Option<&'static str> {
+    if by_desktop_app(launch) {
+        Some(BY_DESKTOP_APP)
+    } else {
+        (method != InstallMethod::DesktopBundled).then(|| method.as_str())
+    }
+}
 
 fn body(launch: &Launch, method: InstallMethod, latest: &Result<String, String>, last: Option<Value>) -> Value {
     let reason = blocker(launch, method, release::target_triple());
@@ -156,7 +237,9 @@ fn body(launch: &Launch, method: InstallMethod, latest: &Result<String, String>,
         "latest": latest_v,
         "available": available,
         "can_upgrade": reason.is_none(),
-        "method": (method != InstallMethod::DesktopBundled).then(|| method.as_str()),
+        "method": method_name(launch, method),
+        // A Windows installer may wait for someone at the computer.
+        "confirm_on_computer": by_desktop_app(launch) && cfg!(windows),
         "reason": reason,
         "check_error": latest.as_ref().err(),
         "in_progress": in_progress,
@@ -191,6 +274,12 @@ async fn start() -> ApiResult<Response> {
         return Err(ApiError::conflict("An update is already running."));
     }
     let started_at = chrono::Utc::now().to_rfc3339();
+    if by_desktop_app(&launch) {
+        write_status(&j!({"state": "running", "by": BY_DESKTOP_APP, "from": VERSION, "to": target, "started_at": started_at}));
+        *desktop_request().lock().unwrap() = Some(j!({"target": target, "started_at": started_at}));
+        tracing::info!("server_update_requested from={} to={} method={}", VERSION, target, BY_DESKTOP_APP);
+        return Ok(json_code(202, j!({"status": "started", "from": VERSION, "target": target, "started_at": started_at, "method": BY_DESKTOP_APP})));
+    }
     write_status(&j!({"state": "running", "from": VERSION, "to": target, "started_at": started_at}));
     if let Err(e) = spawn_helper(&launch) {
         let message = format!("could not start the updater: {e}");
@@ -200,7 +289,7 @@ async fn start() -> ApiResult<Response> {
         return Err(ApiError::internal(message));
     }
     tracing::info!("server_update_started from={} to={} method={}", VERSION, target, method.as_str());
-    Ok(json_code(202, j!({"status": "started", "from": VERSION, "target": target, "started_at": started_at})))
+    Ok(json_code(202, j!({"status": "started", "from": VERSION, "target": target, "started_at": started_at, "method": method.as_str()})))
 }
 
 /// Start stage one of `agentd upgrade --from-server`, which starts stage two
@@ -248,6 +337,43 @@ mod tests {
         assert_eq!(blocker(&daemon(), InstallMethod::DesktopBundled, target), Some("desktop_sidecar"));
         assert_eq!(blocker(&daemon(), InstallMethod::Release, "unsupported"), Some("unsupported_platform"));
         assert_eq!(blocker(&daemon(), InstallMethod::Brew, "unsupported"), None, "brew builds from source");
+    }
+
+    #[test]
+    fn the_desktop_apps_server_updates_only_through_an_app_that_can() {
+        let target = "aarch64-apple-darwin";
+        let app = |desktop_updates| Launch { desktop_sidecar: true, desktop_updates, ..Default::default() };
+        assert_eq!(blocker(&app(true), InstallMethod::DesktopBundled, target), None);
+        assert_eq!(blocker(&app(false), InstallMethod::DesktopBundled, target), Some("desktop_sidecar"), "Linux: a .deb has no updater");
+        let by_hand = Launch { desktop_updates: true, ..daemon() };
+        assert_eq!(blocker(&by_hand, InstallMethod::DesktopBundled, target), Some("desktop_sidecar"), "the app is not running it");
+
+        let v = body(&app(true), InstallMethod::DesktopBundled, &Ok("99.0.0".into()), None);
+        assert_eq!((v["can_upgrade"].as_bool(), v["method"].as_str(), v["reason"].is_null()), (Some(true), Some("desktop_app"), true));
+        assert_eq!(v["confirm_on_computer"], cfg!(windows));
+        let v = body(&app(false), InstallMethod::DesktopBundled, &Ok("99.0.0".into()), None);
+        assert_eq!((v["can_upgrade"].as_bool(), v["method"].is_null(), v["confirm_on_computer"].as_bool()), (Some(false), true, Some(false)));
+    }
+
+    #[test]
+    fn an_app_restart_settles_the_update_it_was_running() {
+        let running = |from: &str| j!({"state": "running", "by": "desktop_app", "from": from, "to": "3.2.0", "started_at": "2026-01-01T00:00:00Z"});
+
+        let done = settled_after_restart(&running("3.1.0"), "3.2.0").expect("settled");
+        assert_eq!((done["state"].as_str(), done["ok"].as_bool(), done["to"].as_str()), (Some("finished"), Some(true), Some("3.2.0")));
+        assert_eq!(done["started_at"], "2026-01-01T00:00:00Z", "the device that asked recognises its run");
+
+        let done = settled_after_restart(&running("3.1.0"), "3.3.0").expect("settled");
+        assert_eq!((done["ok"].as_bool(), done["to"].as_str()), (Some(true), Some("3.3.0")), "the feed moved on meanwhile");
+
+        let done = settled_after_restart(&running("3.2.0"), "3.2.0").expect("settled");
+        assert_eq!(done["ok"], false, "same version: nothing was installed");
+        assert!(done["message"].as_str().unwrap().contains("without installing"));
+
+        let cli = j!({"state": "running", "from": "3.1.0", "to": "3.2.0"});
+        assert_eq!(settled_after_restart(&cli, "3.2.0"), None, "the CLI helper writes its own outcome");
+        let finished = j!({"state": "finished", "by": "desktop_app", "ok": false, "from": "3.1.0"});
+        assert_eq!(settled_after_restart(&finished, "3.2.0"), None);
     }
 
     #[test]

@@ -1521,6 +1521,22 @@ blocked; a critical one still stops the server.
   output goes to `state/logs/upgrade.log`. The feed is
   `OPENAGENTD_RELEASES_URL` on the server, never the client's
   (`cli/tests/server_update.rs` runs the whole flow against a fake feed).
+- **The desktop app's server (v3.54.0):** a sidecar whose app sets
+  `OPENAGENTD_DESKTOP_UPDATES=1` (macOS and Windows; not Linux, whose `.deb`
+  has no updater) answers `can_upgrade: true`, `method: "desktop_app"` and
+  `confirm_on_computer` (true on Windows, where the installer may wait for
+  someone). `POST` then starts no helper: it records `{state: "running", by:
+  "desktop_app", …}` and keeps the request for the app, and the 202 body
+  gains `method`. The app collects it once with `GET
+  /api/desktop/update-request` (`{request: {target, started_at} | null}`)
+  and reports a failure with `PUT` `{ok, message}`; both answer 404 to
+  anything but the desktop token on the private loopback listener, like
+  `/api/desktop/network-access`. The app runs its own updater (signed
+  release from its own feed; `target` is not passed to it). After an install
+  the app restarts, and the next sidecar settles a run still `running`:
+  `ok` when its version is newer than `from`, otherwise a failure. Without
+  the variable a sidecar still answers `reason: "desktop_sidecar"`. An older
+  client shows the button and follows the run as it does a CLI server's.
 
 ## 4. Layout
 

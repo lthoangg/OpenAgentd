@@ -16,7 +16,7 @@ use axum::Router;
 use serde::Deserialize;
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/network-access", get(status).put(apply))
+    Router::new().route("/network-access", get(status).put(apply)).route("/update-request", get(update_request).put(update_result))
 }
 
 fn desktop_controller(ext: &Extensions) -> ApiResult<&'static Controller> {
@@ -78,6 +78,29 @@ async fn apply(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> 
     };
     let s = c.apply(body.enabled, body.port, key).await;
     Ok(json(serde_json::to_value(s).map_err(ApiError::internal)?))
+}
+
+/// The update another device asked this computer's app to install, handed
+/// over once (`routes::server_update`): `{request: {target, started_at}}`,
+/// or `{request: null}`.
+async fn update_request(ext: Extensions) -> ApiResult<Response> {
+    desktop_controller(&ext)?;
+    Ok(json(serde_json::json!({"request": super::server_update::take_desktop_request()})))
+}
+
+#[derive(Deserialize)]
+struct UpdateResult {
+    ok: bool,
+    #[serde(default)]
+    message: String,
+}
+
+/// How the app's update went, for the device that asked.
+async fn update_result(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
+    desktop_controller(&ext)?;
+    let body: UpdateResult = serde_json::from_slice(&body).map_err(|e| ApiError::unprocessable(format!("Invalid request body: {e}")))?;
+    let recorded = super::server_update::finish_desktop_update(body.ok, &body.message);
+    Ok(json(serde_json::json!({"recorded": recorded})))
 }
 
 #[cfg(test)]

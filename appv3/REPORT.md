@@ -1352,6 +1352,15 @@ explicitly.
   the assembled message keeps it in `extra.stop_details`. v2 treated a
   refusal as `end_turn`: the turn ended silently and any partial tool call
   ran. Tests: `agent/tests/refusal.rs`, `providers/src/anthropic.rs`.
+- **Removing a managed worktree keeps unmerged commits (v3 only):**
+  `DELETE /api/agent/workspace/worktrees` deletes the worktree's branch only
+  when OpenAgentd made it (`openagentd/`, `oad/`) and every commit on it is
+  on another local or remote-tracking branch (`git rev-list --count <branch>
+  --not --exclude=<branch> --branches --remotes` is 0). A branch with
+  commits of its own is kept; v2 and earlier v3 force-deleted it. The answer
+  is `{removed, branch, branch_deleted, unmerged_commits}`, and `dry_run:
+  true` in the body reports the same without removing anything (the web
+  dialog asks first). Tests: `agent/tests/worktree_remove.rs`.
 - **Desktop network access (v3 only):** `GET`/`PUT /api/desktop/network-access`
   (`api/src/routes/desktop.rs`, `api/src/network_access.rs`) lets the desktop
   shell open and close a second listener on `0.0.0.0:<port>`. The listener

@@ -86,7 +86,7 @@ import {
 } from '@/queries/useSessionsQuery'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
-import { getCodingWorkspaceTree, listSessions, listWorktrees, setCodingWorkspaceVisibility } from '@/api/client'
+import { getCodingWorkspaceTree, listSessions, listWorktrees, removeWorktree, setCodingWorkspaceVisibility } from '@/api/client'
 import { WORKSPACES_KEY, renameSavedWorkspace, workspaceLabel } from '@/utils/workspace'
 import { RelocateWorkspaceDialog } from '@/components/LazyRelocateWorkspaceDialog'
 import type { WorkspaceRelocateResponse } from '@/api/types'
@@ -123,7 +123,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import type { CodingWorkspaceTreeRepository, SessionResponse, WorkspaceGroup, WorktreeInfo } from '@/api/types'
+import type { CodingWorkspaceTreeRepository, SessionResponse, WorkspaceGroup, WorktreeInfo, WorktreeRemoveResponse } from '@/api/types'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { WorkspaceSessionList } from './Sidebar/WorkspaceSessionList'
 import { NeedsYouSection, RunningSection } from './Sidebar/NeedsYouSection'
@@ -472,7 +472,21 @@ export function Sidebar({
   // Removing a managed worktree deletes it from disk (git worktree remove),
   // which can drop uncommitted work, so it must be confirmed (error
   // prevention) like session-delete and workspace-removal already are.
-  const [removeWorktreeTarget, setRemoveWorktreeTarget] = useState<WorktreeInfo | null>(null)
+  const [removeWorktreeTarget, setRemoveWorktreeTargetState] = useState<WorktreeInfo | null>(null)
+  // What the removal does to the worktree's branch (a dry run), for the dialog.
+  const [removeWorktreePreview, setRemoveWorktreePreview] = useState<WorktreeRemoveResponse | null>(null)
+  const removeWorktreeAsked = useRef<string | null>(null)
+  const setRemoveWorktreeTarget = (item: WorktreeInfo | null) => {
+    setRemoveWorktreeTargetState(item)
+    setRemoveWorktreePreview(null)
+    removeWorktreeAsked.current = item?.directory ?? null
+    const source = item?.managed ? worktreeSourceByDirectory.get(item.directory) ?? worktreeTarget : null
+    if (!item || !source) return
+    // The dialog stands without the answer; it only loses the branch line.
+    removeWorktree(source, item.directory, { dryRun: true })
+      .then((preview) => { if (removeWorktreeAsked.current === item.directory) setRemoveWorktreePreview(preview) })
+      .catch(() => {})
+  }
 
   const loadBrowser = useCallback(async (path?: string | null) => {
     setLoading(true)
@@ -2457,6 +2471,7 @@ export function Sidebar({
         setDeleteTarget={setDeleteTarget}
         onConfirmSessionDelete={confirmSessionDelete}
         removeWorktreeTarget={removeWorktreeTarget}
+        removeWorktreePreview={removeWorktreePreview}
         setRemoveWorktreeTarget={setRemoveWorktreeTarget}
         onConfirmRemoveWorktree={confirmRemoveWorktree}
       />

@@ -217,6 +217,7 @@ mock.module('@/lib/app-backend', () => ({
 const Icon = () => null
 mock.module('lucide-react', () => ({
   SlidersHorizontal: Icon, Activity: Icon,
+  AlertCircle: Icon, AlertTriangle: Icon, CheckCircle2: Icon, Info: Icon,
   AppWindow: Icon,
   ArrowLeft: Icon,
   ArrowUpRight: Icon,
@@ -2450,6 +2451,65 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.getByLabelText('Collapse workspace project')).toBeTruthy()
     expect(screen.queryByLabelText('Collapse workspace task-a')).toBeNull()
     expect(screen.queryByLabelText('Expand workspace task-a')).toBeNull()
+  })
+
+  describe('what deleting a worktree does to its branch', () => {
+    /** Open the Delete worktree dialog for task-a, whose dry run answers `preview`. */
+    async function openDeleteDialog(preview: Record<string, unknown>) {
+      const user = userEvent.setup()
+      sessionsData = []
+      workspaceSessionsData = []
+      const deletes: Array<Record<string, unknown>> = []
+      globalThis.fetch = mock(async (input: unknown, init: unknown) => {
+        const url = String(input)
+        const request = init as RequestInit | undefined
+        if (url.includes('/api/agent/workspace/tree')) {
+          return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
+        }
+        if (url.includes('/api/agent/workspace/worktrees')) {
+          if (request?.method !== 'DELETE') return new Response(JSON.stringify([]))
+          const body = JSON.parse(String(request.body)) as Record<string, unknown>
+          deletes.push(body)
+          return new Response(JSON.stringify(body.dry_run ? { removed: false, ...preview } : { removed: true, ...preview }))
+        }
+        return new Response(null, { status: 404 })
+      }) as typeof fetch
+      localStorage.setItem('oa-coding-workspaces', JSON.stringify([
+        { id: 'main', path: '/repo/project', createdAt: '2026-05-01T00:00:00Z' },
+        { id: 'worktree', path: '/data/worktrees/project/task-a', createdAt: '2026-05-02T00:00:00Z' },
+      ]))
+      await renderSidebarWithProps({ workspace: '/repo/project' })
+      await user.click(await screen.findByRole('button', WORKTREE_CHIP))
+      await user.click(screen.getByRole('menuitemradio', { name: 'task-a' }))
+      await user.click(worktreeChip())
+      await user.click(screen.getByRole('menuitem', { name: 'Delete worktree task-a…' }))
+      return { user, deletes }
+    }
+
+    it('says the branch is kept when its commits are on no other branch', async () => {
+      const { user, deletes } = await openDeleteDialog({ branch: 'oad/task-a', branch_deleted: false, unmerged_commits: 2 })
+
+      expect(await screen.findByText('Branch oad/task-a has 2 commits that are on no other branch, so the branch is kept.')).toBeTruthy()
+      // Asking is not deleting.
+      expect(deletes).toEqual([{ source_workspace: '/repo/project', directory: '/data/worktrees/project/task-a', dry_run: true }])
+
+      await user.click(screen.getByRole('button', { name: 'Delete worktree' }))
+      await waitFor(() => expect(deletes.at(-1)).toEqual({ source_workspace: '/repo/project', directory: '/data/worktrees/project/task-a' }))
+    })
+
+    it('says a merged branch is deleted too', async () => {
+      await openDeleteDialog({ branch: 'oad/task-a', branch_deleted: true, unmerged_commits: 0 })
+
+      expect(await screen.findByText('Branch oad/task-a is merged and is deleted too.')).toBeTruthy()
+    })
+
+    it('says nothing about a branch it leaves alone', async () => {
+      const { deletes } = await openDeleteDialog({ branch: 'feature/login', branch_deleted: false, unmerged_commits: 0 })
+
+      await waitFor(() => expect(deletes).toHaveLength(1))
+      expect(screen.getByText(/will be deleted from disk/)).toBeTruthy()
+      expect(screen.queryByText(/feature\/login/)).toBeNull()
+    })
   })
 
   it('keeps the source repository visible when the active session is a worktree', async () => {

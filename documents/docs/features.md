@@ -2885,6 +2885,10 @@ agent against it.
   list existing worktrees, edit sidebar titles without renaming git directories,
   and remove OpenAgentd-managed worktrees. Removing a worktree asks for confirmation
   first, warning that uncommitted changes will be lost `[v1.101.0]`.
+  Since `[v3.54.0]` removing a worktree keeps its branch when the branch has
+  commits that are on no other branch, and the confirmation says so before
+  you confirm ("Branch X has 2 commits that are on no other branch, so the
+  branch is kept."). A merged branch is still deleted with its worktree.
   Since `[v3.50.0]` new worktrees go to `~/.openagentd/worktrees/<repo>-<key>/<name>`
   (`OPENAGENTD_WORKTREES_DIR` moves them) instead of the data folder, which
   agents may not read, so a lead can read the worktree it sent work to.

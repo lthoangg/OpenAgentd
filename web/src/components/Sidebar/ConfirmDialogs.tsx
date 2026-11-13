@@ -17,16 +17,28 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Callout } from '@/components/ui/callout'
 import { workspaceLabel } from '@/utils/workspace'
-import type { SessionResponse, WorktreeInfo } from '@/api/types'
+import type { SessionResponse, WorktreeInfo, WorktreeRemoveResponse } from '@/api/types'
 
 interface SidebarConfirmDialogsProps {
   deleteTarget: SessionResponse | null
   setDeleteTarget: (value: SessionResponse | null) => void
   onConfirmSessionDelete: () => void
   removeWorktreeTarget: WorktreeInfo | null
+  /** What deleting it does to its branch, once the server has said. */
+  removeWorktreePreview: WorktreeRemoveResponse | null
   setRemoveWorktreeTarget: (value: WorktreeInfo | null) => void
   onConfirmRemoveWorktree: () => void
+}
+
+/** The branch line of the Delete worktree dialog; null when the branch is left alone. */
+function branchNote(preview: WorktreeRemoveResponse | null): string | null {
+  if (!preview?.branch) return null
+  if (preview.branch_deleted) return `Branch ${preview.branch} is merged and is deleted too.`
+  const commits = preview.unmerged_commits ?? 0
+  if (commits < 1) return null
+  return `Branch ${preview.branch} has ${commits} ${commits === 1 ? 'commit that is' : 'commits that are'} on no other branch, so the branch is kept.`
 }
 
 export function SidebarConfirmDialogs({
@@ -34,9 +46,11 @@ export function SidebarConfirmDialogs({
   setDeleteTarget,
   onConfirmSessionDelete,
   removeWorktreeTarget,
+  removeWorktreePreview,
   setRemoveWorktreeTarget,
   onConfirmRemoveWorktree,
 }: SidebarConfirmDialogsProps) {
+  const note = branchNote(removeWorktreePreview)
   return (
     <>
       <Dialog
@@ -69,6 +83,7 @@ export function SidebarConfirmDialogs({
               deleted from disk. Any uncommitted changes in this worktree will be lost. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
+          {note && <Callout tone="info" role="status">{note}</Callout>}
           <DialogFooter>
             <Button type="button" variant="default" onClick={() => setRemoveWorktreeTarget(null)}>Cancel</Button>
             <Button type="button" variant="danger" onClick={onConfirmRemoveWorktree}>Delete worktree</Button>

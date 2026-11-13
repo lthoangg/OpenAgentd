@@ -145,8 +145,55 @@ fn validate_name(v: Option<&str>) -> GitResult<String> {
 }
 
 /// Branch prefixes OpenAgentd creates; removing a managed worktree deletes
-/// its branch only when it carries one of them.
+/// its branch only when it carries one of them (see [`remove_worktree`]).
 pub const OWN_BRANCH_PREFIXES: [&str; 2] = ["openagentd/", "oad/"];
+
+/// What removing a worktree did, or (dry run) would do.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RemovedWorktree {
+    /// The branch the worktree was on.
+    pub branch: Option<String>,
+    /// Commits on an OpenAgentd branch that no other branch holds.
+    pub unmerged_commits: u64,
+    pub branch_deleted: bool,
+}
+
+/// Commits on `branch` that no other local or remote-tracking branch holds.
+async fn unmerged_commits(source: &Path, branch: &str) -> GitResult<u64> {
+    let exclude = format!("--exclude={branch}");
+    let r = run_git(source, &["rev-list", "--count", &format!("refs/heads/{branch}"), "--not", &exclude, "--branches", "--remotes"]).await?;
+    if r.code != 0 {
+        return Err(GitError::new(500, fail_detail(&r, "Failed to count the branch's commits.")));
+    }
+    r.stdout.trim().parse().map_err(|_| GitError::new(500, "Failed to count the branch's commits."))
+}
+
+/// Remove the worktree `directory` of `source` (a folder git no longer lists
+/// is already gone). Its branch goes with it only when OpenAgentd made the
+/// branch and no commit would be lost: a branch whose commits are on no
+/// other branch is kept. `dry_run` only reports what would happen.
+pub async fn remove_worktree(source: &Path, directory: &Path, dry_run: bool) -> GitResult<RemovedWorktree> {
+    let target = resolve(directory);
+    let entry = list_entries(source).await?.into_iter().find(|(d, _)| !d.is_empty() && canonical(Path::new(d)) == target);
+    let Some((_, branch)) = entry else { return Ok(RemovedWorktree::default()) };
+    let own = branch.as_deref().filter(|b| OWN_BRANCH_PREFIXES.iter().any(|p| b.starts_with(p)));
+    let unmerged = match own {
+        Some(b) => unmerged_commits(source, b).await?,
+        None => 0,
+    };
+    let delete = own.is_some() && unmerged == 0;
+    if !dry_run {
+        let dstr = directory.display().to_string();
+        let removed = run_git(source, &["worktree", "remove", "--force", &dstr]).await?;
+        if removed.code != 0 {
+            return Err(GitError::new(500, fail_detail(&removed, "Failed to remove git worktree.")));
+        }
+        if let Some(b) = own.filter(|_| delete) {
+            run_git(source, &["branch", "-D", b]).await?;
+        }
+    }
+    Ok(RemovedWorktree { branch: branch.clone(), unmerged_commits: unmerged, branch_deleted: delete })
+}
 
 async fn validate_branch(source: &Path, v: Option<&str>, name: &str, detached: bool) -> GitResult<Option<String>> {
     if detached {

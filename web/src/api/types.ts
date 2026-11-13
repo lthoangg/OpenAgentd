@@ -912,6 +912,12 @@ export interface TaskTriggerResponse {
 
 export interface WorktreeRemoveResponse {
   removed: boolean
+  /** The branch the worktree is on. */
+  branch?: string | null
+  /** Only a branch OpenAgentd made is deleted, and only when no commit would be lost. */
+  branch_deleted?: boolean
+  /** Commits on an OpenAgentd branch that no other branch holds. */
+  unmerged_commits?: number
 }
 
 

@@ -107,22 +107,14 @@ async fn remove_worktree(State(st): State<AppState>, raw: Bytes) -> ApiResult<Re
     if !is_managed_for(&directory, &source) {
         return Err(ApiError::new(403, "Only OpenAgentd-managed worktrees can be removed."));
     }
-    let target = resolve(&directory);
-    let entry = list_entries(&source).await?.into_iter().find(|(d, _)| !d.is_empty() && canonical(Path::new(d)) == target);
-    let Some((_, branch)) = entry else {
+    // `dry_run` reports what the removal would do to the branch, for the
+    // confirmation dialog.
+    let dry_run = opt_bool_field(&b, "dry_run")?.unwrap_or(false);
+    let done = wt::remove_worktree(&source, &directory, dry_run).await?;
+    if !dry_run {
         db::mark_coding_workspace_deleted(&st.pool, &directory.display().to_string()).await?;
-        return Ok(json(json!({"removed": true})));
-    };
-    let dstr = directory.display().to_string();
-    let removed = run_git(&source, &["worktree", "remove", "--force", &dstr]).await?;
-    if removed.code != 0 {
-        return Err(ApiError::new(500, wt::fail_detail(&removed, "Failed to remove git worktree.")));
     }
-    if let Some(b) = branch.filter(|b| OWN_BRANCH_PREFIXES.iter().any(|p| b.starts_with(p))) {
-        run_git(&source, &["branch", "-D", &b]).await?;
-    }
-    db::mark_coding_workspace_deleted(&st.pool, &dstr).await?;
-    Ok(json(json!({"removed": true})))
+    Ok(json(json!({"removed": !dry_run, "branch": done.branch, "branch_deleted": done.branch_deleted, "unmerged_commits": done.unmerged_commits})))
 }
 
 async fn rename_worktree(State(st): State<AppState>, raw: Bytes) -> ApiResult<Response> {

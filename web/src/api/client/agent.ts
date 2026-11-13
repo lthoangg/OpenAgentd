@@ -335,11 +335,12 @@ export async function listWorktrees(sourceWorkspace: string): Promise<WorktreeIn
   return res.json()
 }
 
-export async function removeWorktree(sourceWorkspace: string, directory: string): Promise<WorktreeRemoveResponse> {
+/** Delete a managed worktree; `dryRun` only reports what would happen to its branch. */
+export async function removeWorktree(sourceWorkspace: string, directory: string, options?: { dryRun?: boolean }): Promise<WorktreeRemoveResponse> {
   const res = await fetch(`${apiBaseUrl()}/agent/workspace/worktrees`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ source_workspace: sourceWorkspace, directory }),
+    body: JSON.stringify({ source_workspace: sourceWorkspace, directory, ...(options?.dryRun ? { dry_run: true } : {}) }),
   })
   if (!res.ok) await parseDetailOrThrow(res, 'removeWorktree')
   return res.json()

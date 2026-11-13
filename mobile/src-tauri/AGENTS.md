@@ -12,7 +12,8 @@ integration for the mobile shell.
   fields refused), limits, and the hand-off to the iOS Swift bridge
   (`../ios-widget/App/`) or the Android plugin.
 - `src/push.rs`: APNs registration (iOS only; elsewhere `unsupported`):
-  `push_status` (no prompt) and `push_register` (prompts once) resolve to
+  `push_status` (no prompt) and `push_register` (prompts once), which the
+  `cloud_push_register` command calls, resolve to
   `{ status, registration, error? }`, where `registration` is agentd-cloud's
   `POST /v1/push/register` body. The environment comes from the bundle's
   `embedded.mobileprovision` (none: production), never a guess. The Swift
@@ -27,14 +28,6 @@ integration for the mobile shell.
   the notification plugin's events. The web UI routes them all in
   `web/src/lib/notification-taps.ts`; on iOS the notification plugin's own
   tap events are not used.
-- `src/native_ui.rs`: `share_text` (the system share sheet for a link) and
-  `pick_one` (a native single-choice picker: iOS action sheet, Android
-  dialog). Input is validated and bounded once, for both platforms; the iOS
-  UIKit code runs on the main queue and answers over a channel, the Android
-  half is `ShellPlugin.kt`'s `shareText`/`pickOne`. The web no longer calls
-  `pick_one`: menus and pickers are the app's own on every platform. The web
-  command `share_text` has no web caller yet; keep errors as `Err`, never a
-  silent success.
 - `src/keyboard_bar.rs` (iOS): hides the WebView's form accessory bar
   (`< > ✓` above the keyboard) at setup by moving WKWebView's content view to
   a subclass whose `inputAccessoryView` is nil. On iOS 26 the floating bar is

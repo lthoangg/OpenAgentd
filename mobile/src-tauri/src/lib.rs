@@ -17,7 +17,6 @@ mod cloud_bridge;
 mod cloud_e2e_tests;
 #[cfg(target_os = "ios")]
 mod keyboard_bar;
-mod native_ui;
 mod push;
 mod taps;
 mod theme;
@@ -758,10 +757,6 @@ pub fn run() {
             widget_update_snapshot,
             app_move_to_background,
             theme::set_app_theme,
-            native_ui::share_text,
-            native_ui::pick_one,
-            push::push_status,
-            push::push_register,
             cloud::cloud_status,
             cloud::cloud_sign_in,
             cloud::cloud_join_invite,

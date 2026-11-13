@@ -48,7 +48,7 @@ pub struct PushRegistration {
     pub environment: ApnsEnvironment,
 }
 
-/// What both commands resolve to. `registration` is set only when the app
+/// What both calls resolve to. `registration` is set only when the app
 /// is authorized, signed for push, and APNs gave a token; `error` says why
 /// not when something failed (a denied or undetermined status is not an
 /// error).
@@ -114,14 +114,12 @@ fn plist_string(plist: &str, key: &str) -> Option<String> {
 
 /// Current status without prompting. When already authorized, also
 /// registers with APNs (that never prompts) to return the current token.
-#[tauri::command]
 pub async fn push_status() -> PushState {
     run_blocking(|| platform::state(false)).await
 }
 
 /// Prompt for notification permission if it was never asked, then register
 /// with APNs when authorized.
-#[tauri::command]
 pub async fn push_register() -> PushState {
     run_blocking(|| platform::state(true)).await
 }

@@ -2829,7 +2829,6 @@ version = "3.53.1"
 dependencies = [
  "anyhow",
  "axum",
- "block2",
  "bytes",
  "dispatch2",
  "futures-util",
@@ -2860,7 +2859,6 @@ dependencies = [
  "tempfile",
  "time",
  "tokio",
- "url",
  "zeroize",
 ]
 

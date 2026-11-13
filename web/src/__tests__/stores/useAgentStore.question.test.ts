@@ -107,6 +107,32 @@ describe("useAgentStore — ask_user", () => {
     expect(useAgentStore.getState().pendingQuestion).toBeNull()
   })
 
+  /**
+   * A question opens before the reply's other tool calls finish, so it can
+   * be asked, and answered, while the lead is still working.
+   */
+  it("opens a question while a sibling tool runs, and an answer leaves the turn working", () => {
+    const { _handleSSEEvent: emit } = useAgentStore.getState()
+    emit("agent_status", { agent: "openagentd", status: "working" })
+    emit("tool_call", { agent: "openagentd", name: "ask_user", tool_call_id: "call-1" })
+    emit("tool_call", { agent: "openagentd", name: "shell", tool_call_id: "call-shell" })
+    ask()
+
+    const asked = useAgentStore.getState()
+    expect(asked.pendingQuestion?.toolCallId).toBe("call-1")
+    expect(asked.agentStreams.openagentd.status).toBe("working")
+
+    emit("question_answered", { question_id: QUESTION_ID, session_id: SESSION_ID, answers: [["pnpm"]] })
+
+    const answered = useAgentStore.getState()
+    expect(answered.pendingQuestion).toBeNull()
+    expect(answered.resolvedQuestions["call-1"]?.answers).toEqual([["pnpm"]])
+    expect(answered.isAgentWorking).toBe(true)
+    expect(answered.agentStreams.openagentd.status).toBe("working")
+    const shell = answered.agentStreams.openagentd.currentBlocks.find((b) => b.toolCallId === "call-shell")
+    expect(shell?.toolDone).not.toBe(true)
+  })
+
   it("records the outcome against the tool call so the card can resolve at once", () => {
     ask()
 

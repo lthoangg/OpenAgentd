@@ -274,7 +274,7 @@ describe('AskUser — resolved state', () => {
 
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
-    expect(screen.getByText(/asks once the running tools finish/i)).toBeInTheDocument()
+    expect(screen.getByText('Asking…')).toBeInTheDocument()
     expect(screen.queryByText('Needs your input')).toBeNull()
     useAgentStore.setState({ isAgentWorking: false, agentStreams: {} })
   })
@@ -611,11 +611,38 @@ describe('AskUser — card label', () => {
   })
 
   /**
-   * The loop runs a reply's other tool calls before it opens the question,
-   * so a live call can sit with no result for minutes while the agent works.
-   * Only an open question asks for input.
+   * The question opens as soon as it is asked, while the reply's other tool
+   * calls still run: the form is there to answer, not a note to wait.
    */
-  it('does not ask for input while the call waits on its sibling tools', () => {
+  it('shows the form while the reply\'s other tool calls still run', () => {
+    useAgentStore.setState({
+      isAgentWorking: true,
+      agentStreams: {
+        lead: {
+          status: 'working',
+          blocks: [],
+          currentBlocks: [
+            { id: 'b-shell', type: 'tool', content: '', toolName: 'shell', toolCallId: 'call-shell', toolDone: false },
+            { id: 'b-ask', type: 'tool', content: '', toolName: 'ask_user', toolCallId: 'call-1' },
+          ],
+        },
+      } as unknown as ReturnType<typeof useAgentStore.getState>['agentStreams'],
+    })
+
+    render(<AskUser toolCallId="call-1" />)
+
+    expect(screen.getByText('Needs your input')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /pnpm/ })).toBeInTheDocument()
+    expect(screen.queryByText('Asking…')).toBeNull()
+    useAgentStore.setState({ isAgentWorking: false, agentStreams: {} })
+  })
+
+  /**
+   * Between the call appearing and its question opening (a moment: the loop
+   * asks before it runs the reply's other tool calls), nothing asks for
+   * input yet. Only an open question does.
+   */
+  it('does not ask for input before the call\'s question has opened', () => {
     useAgentStore.setState({
       pendingQuestion: null,
       resolvedQuestions: {},
@@ -626,7 +653,7 @@ describe('AskUser — card label', () => {
     render(<AskUser toolCallId="call-1" />)
 
     expect(screen.queryByText(/needs your input/i)).toBeNull()
-    expect(screen.getByText(/asks once the running tools finish/i)).toBeInTheDocument()
+    expect(screen.getByText('Asking…')).toBeInTheDocument()
     useAgentStore.setState({ isAgentWorking: false, agentStreams: {} })
   })
 

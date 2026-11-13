@@ -106,7 +106,7 @@ fn end_turn(sid: &str) {
     broadcaster::publish("session_turn_completed", json!({"session_id": sid, "status": "completed"}));
 }
 
-async fn resume_agent(pool: &DbPool, sid: &str) -> bool {
+async fn resume_agent(pool: &DbPool, sid: &str, qid: &str) -> bool {
     // Resume only a live session in the row's workspace; another one bound
     // to this id would run the resumed turn's tools in the wrong directory.
     let row = db::get_session(pool, sid).await.ok().flatten();
@@ -147,7 +147,9 @@ async fn resume_agent(pool: &DbPool, sid: &str) -> bool {
             return false;
         }
     }
-    agent.resume_after_question_answer().await;
+    // A turn still running (the question opened beside other tool calls)
+    // takes the answer itself; it counts as resumed.
+    agent.resume_after_answer(qid).await;
     true
 }
 
@@ -170,7 +172,7 @@ async fn answer(State(st): State<AppState>, AxPath((sid_raw, qid_raw)): AxPath<(
         return Err(ApiError::conflict("Question already resolved."));
     }
     store().push_event(&sid, &events::question_answered(&qid, &sid, &av), true);
-    let resumed = resume_agent(&st.pool, &sid).await;
+    let resumed = resume_agent(&st.pool, &sid, &qid).await;
     if !resumed {
         end_turn(&sid);
     }
@@ -186,7 +188,7 @@ async fn answer_confirm_change(pool: &DbPool, sid: &str, qid: &str, row: &db::Pe
         return Err(ApiError::conflict("Question already resolved."));
     };
     store().push_event(sid, &events::question_answered(qid, sid, &json!(answers)), true);
-    let resumed = resume_agent(pool, sid).await;
+    let resumed = resume_agent(pool, sid, qid).await;
     if !resumed {
         end_turn(sid);
     }
@@ -252,7 +254,7 @@ async fn answer_plan_review(pool: &DbPool, sid: &str, qid: &str, row: &db::Pendi
         }
         None => None,
     };
-    let resumed = resume_agent(pool, sid).await;
+    let resumed = resume_agent(pool, sid, qid).await;
     if !resumed {
         end_turn(sid);
         // No turn to resume (the server restarted during the review): the

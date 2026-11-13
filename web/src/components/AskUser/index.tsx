@@ -9,7 +9,10 @@
  *
  * Two states, decided by the store rather than by the persisted tool result:
  *
- * 1. **Waiting** — this tool call is the open question. Show the form.
+ * 1. **Waiting** — this tool call is the open question. Show the form. The
+ *    question opens as soon as it is asked, so the reply's other tool calls
+ *    may still be running beside it; an answer given then is used when they
+ *    finish.
  * 2. **Resolved** — show what the user chose (or that they dismissed it).
  *
  * The persisted result is only rewritten server-side, so immediately after
@@ -116,10 +119,11 @@ export function useShowsConfirmationCard(enabled: boolean, toolCallId: string | 
 /**
  * Whether a user-gated block (``ask_user``, plan review, confirmation) still
  * waits on the user: it holds the open question, or it belongs to the running
- * turn and nothing has closed it yet (the loop opens the question only after
- * the reply's other tool calls finish). Reader mode keeps such a card out of
- * the work fold and folds it once it settles. A call from an earlier turn is
- * never waiting — that turn could not have ended with it open.
+ * turn and nothing has closed it yet (an ``ask_user`` opens at once, beside
+ * the reply's other tool calls; a plan review or confirmation opens after
+ * them). Reader mode keeps such a card out of the work fold and folds it once
+ * it settles. A call from an earlier turn is never waiting — that turn could
+ * not have ended with it open.
  */
 export function useQuestionAwaitsUser(): (block: ContentBlock) => boolean {
   const openCallId = useAgentStore(selectOpenQuestionCallId)
@@ -307,13 +311,14 @@ function describeResolution(
   }
 
   // The row still holds the placeholder (or nothing) and no question is open
-  // here. Only an open question asks for input. A call in the running turn may
-  // still open one — the loop asks after the reply's other tool calls finish —
-  // so it says so without claiming the user's attention. Any other call closed
+  // here. Only an open question asks for input. A call in the running turn is
+  // about to open one (the loop asks before it runs the reply's other tool
+  // calls, so this lasts a moment), and says so without claiming the user's
+  // attention. Any other call closed
   // in a way that left no outcome here (an open question would be in the
   // store: a load or reattach restores it), so say so instead of waiting.
   if (isUnsettledResult(result)) {
-    if (inLiveTurn) return { waiting: false, body: <QuestionNote text="Asks once the running tools finish" /> }
+    if (inLiveTurn) return { waiting: false, body: <QuestionNote text="Asking…" /> }
     return { waiting: false, body: <ClosedQuestions reason="unrecorded" questions={parseAskedQuestions(args)} /> }
   }
 

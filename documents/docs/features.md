@@ -3765,6 +3765,11 @@ MCP.
   Question text can be up to 1,000 characters, option descriptions up to 400,
   and a `submit_plan` summary up to 600, so long questions and summaries are
   no longer rejected and retried `[v3.28.0]`.
+  Since `[v3.54.0]` a question asked in the same reply as other tool calls
+  opens at once, while those tools still run, where it used to wait for the
+  slowest of them. Answer it then and the agent continues as soon as the
+  tools finish, without pausing; leave it and the turn pauses on it as
+  before. Sending a message instead supersedes it, and Stop dismisses it.
   Failed scheduled tasks remain eligible to retry until their run limit is met `[v2.13.0]`.
   Every session lists the same tools on every turn, whoever started it, so a
   scheduled run never invalidates the prompt cache. A task that runs in your

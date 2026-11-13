@@ -231,6 +231,14 @@ pub struct AgentSession {
     config_dirty: AtomicBool,
     question_suspended: Mutex<Option<Value>>,
     lead_suspended: Mutex<Option<Value>>,
+    /// Held while a turn that asked a question decides how it ends, and
+    /// while an answer decides whether to start the resumed turn: a question
+    /// opens before the reply's other tool calls finish, so its answer can
+    /// arrive while that turn still runs.
+    question_gate: tokio::sync::Mutex<()>,
+    /// The question (on-disk id) whose answer the turn that asked it already
+    /// continued with; that answer's own resume call must start nothing.
+    continued_question: Mutex<Option<String>>,
     last_error: Mutex<Option<String>>,
     /// The last failed turn's `format_agent_error` (message, title, code,
     /// category), which a member's failure report hands to its lead.
@@ -319,6 +327,8 @@ impl AgentSession {
             config_dirty: AtomicBool::new(false),
             question_suspended: Mutex::new(None),
             lead_suspended: Mutex::new(None),
+            question_gate: tokio::sync::Mutex::new(()),
+            continued_question: Mutex::new(None),
             last_error: Mutex::new(None),
             last_error_info: Mutex::new(None),
             pending_interaction_mode: Mutex::new(None),
@@ -1100,9 +1110,30 @@ impl AgentSession {
 
     pub async fn handle_question_answer(&self, question_id: &str, answers: &Value) -> anyhow::Result<()> {
         if db::resolve_pending_question(&self.pool, question_id, "answered", Some(answers)).await?.is_some() {
-            self.resume_after_question_answer().await;
+            self.resume_after_answer(question_id).await;
         }
         Ok(())
+    }
+
+    /// Continue the turn after `question_id` was answered. A turn that is
+    /// still running (the question opened beside other tool calls) picks the
+    /// answer up itself when those calls finish, so nothing starts here.
+    pub async fn resume_after_answer(&self, question_id: &str) {
+        let _gate = self.question_gate.lock().await;
+        let qid = db::codec::db_id(question_id);
+        let continued = {
+            let mut slot = self.continued_question.lock().unwrap();
+            let hit = slot.as_deref() == Some(qid.as_str());
+            if hit {
+                *slot = None;
+            }
+            hit
+        };
+        if continued || self.owns_turn() {
+            tracing::info!("question_answer_left_to_running_turn session_id={} question_id={}", self.session_id(), question_id);
+            return;
+        }
+        self.resume_after_question_answer().await;
     }
 
     pub async fn resume_after_question_answer(&self) {
@@ -1376,10 +1407,32 @@ impl AgentSession {
         // ── finally ──
         let mut activated = false;
         let status = self.status();
-        let qs = self.question_suspended.lock().unwrap().clone();
+        // Held to the end, so an answer arriving now either finds this turn
+        // still running (and is read below) or finds it paused (and resumes it).
+        let _gate = self.question_gate.lock().await;
+        let mut qs = self.question_suspended.lock().unwrap().clone();
+        // The question opened before the reply's other tool calls finished,
+        // so it may be closed already: answered (the turn continues with the
+        // answer) or superseded or dismissed (the turn ends without pausing).
+        let mut answered_question = None;
+        if let Some(qid) = qs.as_ref().and_then(|q| q.get("question_id")).and_then(Value::as_str).map(String::from) {
+            if let Ok(Some(row)) = db::get_question(&self.pool, &qid).await {
+                if row.status != "pending" {
+                    tracing::info!("question_closed_before_pause session_id={} question_id={} status={}", sid, qid, row.status);
+                    qs = None;
+                    *self.question_suspended.lock().unwrap() = None;
+                    if row.status == "answered" {
+                        answered_question = Some(row.id);
+                    }
+                }
+            }
+        }
         let ls = self.lead_suspended.lock().unwrap().clone();
         let exit = TurnExit::decide(status == SessionStatus::Error, qs, ls);
-        let suspended = exit.is_suspended();
+        // A turn that continues with an early answer is accounted like one
+        // that paused and resumed.
+        let continues = matches!(exit, TurnExit::Ready) && answered_question.is_some() && !self.cancel.is_set();
+        let suspended = exit.is_suspended() || continues;
         if !suspended {
             self.apply_pending_interaction_mode().await;
         }
@@ -1420,7 +1473,14 @@ impl AgentSession {
                 }
             }
             TurnExit::Ready => {
-                if exit.may_activate_queue(self.cancel.is_set(), !sid.is_empty()) {
+                if continues {
+                    // The answer's own resume call may still be on its way.
+                    *self.continued_question.lock().unwrap() = answered_question.take();
+                    self.clear_cancel();
+                    self.transition(Transition::ClaimTurn);
+                    self.spawn_turn(TurnOptions { question_resume: true, ..Default::default() });
+                    activated = true;
+                } else if exit.may_activate_queue(self.cancel.is_set(), !sid.is_empty()) {
                     activated = self.activate_queued_user_messages(&sid).await;
                 }
                 if !activated {

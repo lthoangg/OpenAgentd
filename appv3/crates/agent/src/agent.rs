@@ -727,12 +727,14 @@ impl Agent {
 
             // ── _dispatch_tools ──
             tracing::info!("tool_dispatch agent={} count={}", self.name, tc_list.len());
-            // Calls that pause the turn run last, one at a time. In a turn
-            // nobody is watching, `ask_user` refuses and a submitting `plan`
-            // only saves, so they run with the rest.
+            // Calls that pause the turn run one at a time: `ask_user` first,
+            // so its card is open while the others work, and the rest last.
+            // In a turn nobody is watching, `ask_user` refuses and a
+            // submitting `plan` only saves, so they run with the others.
             let unattended = state.metadata.lock().unwrap().get(UNATTENDED_META).and_then(Value::as_bool).unwrap_or(false);
             let (pausing_calls, other_calls): (Vec<ToolCall>, Vec<ToolCall>) =
                 tc_list.iter().cloned().partition(|tc| tc.function.name == ASK_LEAD || (!unattended && waits_on_a_person(tc)));
+            let (user_asks, pausing_calls): (Vec<ToolCall>, Vec<ToolCall>) = pausing_calls.into_iter().partition(|tc| tc.function.name == ASK_USER);
             let meta = state.metadata.clone();
             let mut base_ctx = base_ctx.clone();
             // `skill` reads the conversation; `update_goal` hands it to the
@@ -741,6 +743,18 @@ impl Agent {
                 base_ctx.messages = Some(Arc::new(state.messages_for_llm()));
             }
             let base_ctx = &base_ctx;
+            // The question opens now and the turn pauses on it only after the
+            // other calls finish; an answer given meanwhile is in its row by
+            // then. Saved first, so the assistant row precedes the row the
+            // question writes.
+            let mut asked_early: Option<(ToolCall, Result<ToolRunResult, Suspension>)> = None;
+            if let Some(first) = user_asks.first() {
+                let mut primary = first.clone();
+                merge_question_calls(&mut primary, &user_asks[1..]);
+                Self::sync(opts.checkpointer, &ctx, &mut state).await;
+                let asked = self.run_tool(&ctx, &meta, &hooks, &run_tools, base_ctx, &primary, &sem, None).await;
+                asked_early = Some((primary, asked));
+            }
             let mut results: Vec<Option<Result<ToolRunResult, Suspension>>> = (0..other_calls.len()).map(|_| None).collect();
             let progress: Vec<Arc<ToolProgress>> = other_calls.iter().map(|_| Arc::default()).collect();
             {
@@ -807,8 +821,12 @@ impl Agent {
                 }
             }
             let dispatch = if interrupted() {
+                // A question that opened is dismissed by the stop itself.
+                if let Some((primary, Ok(r))) = &asked_early {
+                    state.messages.push(tool_msg(primary, &r.text));
+                }
                 Dispatch::Cancelled
-            } else if pausing_calls.is_empty() {
+            } else if pausing_calls.is_empty() && asked_early.is_none() {
                 Dispatch::Ok
             } else {
                 // ── _dispatch_question ──
@@ -819,7 +837,12 @@ impl Agent {
                 let (submit_calls, rest): (Vec<ToolCall>, Vec<ToolCall>) = pausing_calls.into_iter().partition(submits_plan);
                 let (confirm_calls, ask_calls): (Vec<ToolCall>, Vec<ToolCall>) = rest.into_iter().partition(opens_confirm);
                 let mut confirm_calls = confirm_calls.into_iter();
-                let (held, held_reason, primary) = if let Some(first) = ask_calls.first() {
+                let (held, held_reason, primary, asked) = if let Some((primary, asked)) = asked_early {
+                    for tc in &user_asks[1..] {
+                        state.messages.push(tool_msg(tc, ASK_MERGED_INTO_PRIMARY));
+                    }
+                    (submit_calls, SUBMIT_DEFERRED, primary, Some(asked))
+                } else if let Some(first) = ask_calls.first() {
                     let mut primary = first.clone();
                     let dups = &ask_calls[1..];
                     if !dups.is_empty() {
@@ -828,13 +851,13 @@ impl Agent {
                             state.messages.push(tool_msg(tc, ASK_MERGED_INTO_PRIMARY));
                         }
                     }
-                    (submit_calls, SUBMIT_DEFERRED, primary)
+                    (submit_calls, SUBMIT_DEFERRED, primary, None)
                 } else if let Some(first) = confirm_calls.next() {
-                    (submit_calls, SUBMIT_DEFERRED, first)
+                    (submit_calls, SUBMIT_DEFERRED, first, None)
                 } else {
                     let mut submits = submit_calls;
                     let last = submits.pop().expect("a pausing call");
-                    (submits, SUBMIT_MERGED, last)
+                    (submits, SUBMIT_MERGED, last, None)
                 };
                 for tc in confirm_calls {
                     state.messages.push(tool_msg(&tc, crate::confirm::CONFIRM_DEFERRED));
@@ -849,7 +872,11 @@ impl Agent {
                     state.messages.push(tool_msg(tc, &text));
                 }
                 Self::sync(opts.checkpointer, &ctx, &mut state).await;
-                match self.run_tool(&ctx, &meta, &hooks, &run_tools, base_ctx, &primary, &sem, None).await {
+                let outcome = match asked {
+                    Some(asked) => asked,
+                    None => self.run_tool(&ctx, &meta, &hooks, &run_tools, base_ctx, &primary, &sem, None).await,
+                };
+                match outcome {
                     Err(Suspension::Question { question_id, session_id }) => {
                         let s = json!({"question_id": question_id, "session_id": session_id, "tool_call_id": primary.id});
                         state.meta_set("question_suspended", s);

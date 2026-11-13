@@ -276,6 +276,12 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
         db::cleanup_reverted_tail(&st.pool, &sid).await?;
     }
     if resolved.existed_id.is_some() && waits_behind_turn(agent.has_active_user_turn(), agent.is_awaiting_question_answer(), hold_until_turn_end) {
+        // A question can be open while the turn still runs (it opens before
+        // the reply's other tool calls finish). A steer replaces it there
+        // too; a held message leaves it for the answer.
+        if !hold_until_turn_end {
+            agent.dismiss_pending_question("superseded", Some(&sid)).await;
+        }
         let qid = persist_queued_user_message(
             &st.pool,
             QueueArgs {

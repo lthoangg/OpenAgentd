@@ -995,6 +995,19 @@ explicitly.
     `pending_questions` row. Same event and payload as the live one; clients
     that missed the live frame (a reattach, a feed that went quiet) otherwise
     showed the agent waiting with no card.
+  - **A question opens before the reply's other tool calls (v3.54.0).** An
+    attended `ask_user` runs first, so its `pending_questions` row, its
+    placeholder tool row and `question_asked` come before the sibling calls'
+    `tool_end` frames and rows (the placeholder sits right after the
+    assistant row), and `agent_status` stays `working` until those calls
+    finish. The turn then pauses (`waiting_input`) only if the question is
+    still open. An answer that arrives while the turn runs starts no turn:
+    the route still returns `resumed: true`, and the running turn continues
+    with the answer when its calls finish (no `waiting_input` frame). A
+    question superseded or dismissed meanwhile ends the turn without a
+    pause. A message queued behind a running turn (not "Queue until done")
+    supersedes a question that is open beside it. Plan reviews and
+    confirmation cards still open after the other calls.
   - **Mode notes.** The Plan-mode note is versioned (`version 3` since
     v3.21.0: reviewer-shaped plans with an Appendix and visuals; `version 4`
     since v3.32.0: submit with `plan` and `submit: true`); a session

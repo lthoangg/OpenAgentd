@@ -643,6 +643,7 @@ async fn http_api_end_to_end() {
     preview_routes(&c, root.path()).await;
     preview_tunnel(&c, &pool, root.path()).await;
     first_chat_mode_flow(&c, root.path()).await;
+    server_name_flow(&c).await;
     provider_credentials_flow(&c, &pool, root.path()).await;
     goal_flow(&c, &pool, root.path()).await;
 
@@ -651,6 +652,38 @@ async fn http_api_end_to_end() {
 
 /// Several keys per provider: add, list (no secret values), reorder,
 /// disable, remove. Stored in `credentials.yaml`, never the process env.
+/// This computer's name: its hostname until someone names it, from any
+/// client that may use the server.
+async fn server_name_flow(c: &Client) {
+    let (s, v) = c.json("GET", "/api/health/live", None).await;
+    assert_eq!(s, 200);
+    assert!(v["capabilities"].as_array().unwrap().iter().any(|c| c == "api.server_name"), "{v}");
+
+    let (s, v) = c.json("GET", "/api/server/name", None).await;
+    assert_eq!(s, 200, "{v}");
+    let hostname = v["default"].as_str().expect("a hostname").to_string();
+    assert!(!hostname.is_empty() && !hostname.contains('.'), "the short host name, no domain: {v}");
+    assert_eq!((v["name"].as_str(), v["custom"].as_bool()), (Some(hostname.as_str()), Some(false)), "{v}");
+
+    let (s, v) = c.json("PUT", "/api/server/name", Some(json!({"name": "  Work\u{7}  Mac\n"}))).await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!((v["name"].as_str(), v["custom"].as_bool()), (Some("Work Mac"), Some(true)), "trimmed, no control characters: {v}");
+    let (_, v) = c.json("GET", "/api/server/name", None).await;
+    assert_eq!(v["name"], "Work Mac", "it is kept: {v}");
+
+    let (s, v) = c.json("PUT", "/api/server/name", Some(json!({"name": "x".repeat(200)}))).await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!(v["name"].as_str().unwrap().chars().count(), 40, "capped: {v}");
+
+    let (s, v) = c.json("PUT", "/api/server/name", Some(json!({"name": 7}))).await;
+    assert_eq!(s, 422, "{v}");
+
+    // An empty name gives the computer its own name back.
+    let (s, v) = c.json("PUT", "/api/server/name", Some(json!({"name": "  "}))).await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!((v["name"].as_str(), v["custom"].as_bool()), (Some(hostname.as_str()), Some(false)), "{v}");
+}
+
 async fn provider_credentials_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) {
     std::env::remove_var("OPENROUTER_API_KEY");
     let base = "/api/settings/providers/openrouter/credentials";

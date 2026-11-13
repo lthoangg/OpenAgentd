@@ -72,6 +72,15 @@ async fn account_routes_answer_only_this_computer() {
     // Desktop-token-only routes never answer a relayed device.
     let (s, _) = relayed(&open, "GET", "/api/desktop/network-access", None).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
+    let (s, _) = relayed(&open, "GET", "/api/desktop/update-request", None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    // A computer signed in from the terminal has no window of its own: a
+    // device of the account reads and changes its name through the relay.
+    let rename = Request::builder().method("PUT").uri("/api/server/name").header("host", "localhost").header("content-type", "application/json");
+    let resp = connector::handle(open.clone(), "D-relayed".into(), rename.body(Body::from(r#"{"name":"Build box"}"#)).unwrap()).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let (s, v) = relayed(&open, "GET", "/api/server/name", None).await;
+    assert_eq!((s, v["name"].as_str(), v["custom"].as_bool()), (StatusCode::OK, Some("Build box"), Some(true)), "{v}");
 
     // A server with an access key: the LAN client presenting it, and a
     // relayed device presenting it, still cannot change the account.

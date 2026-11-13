@@ -205,6 +205,10 @@ pub struct RuntimeSettings {
     pub goals: GoalSettings,
     #[serde(skip_serializing_if = "TelemetrySettings::is_default")]
     pub telemetry: TelemetrySettings,
+    /// What this computer is called in the apps' lists; its host name when
+    /// unset (`GET|PUT /api/server/name`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub computer_name: Option<String>,
 }
 
 pub fn load_runtime_settings_from(path: &Path) -> Result<RuntimeSettings> {

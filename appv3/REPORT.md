@@ -1538,6 +1538,23 @@ blocked; a critical one still stops the server.
   the variable a sidecar still answers `reason: "desktop_sidecar"`. An older
   client shows the button and follows the run as it does a CLI server's.
 
+### Computer name (v3 only)
+
+- **`GET /api/server/name`** (new in v3.54.0, capability `api.server_name`):
+  `{name, default, custom}`. `default` is the host name without its domain
+  (null when the system gives none) and `name` is the custom name, else the
+  default.
+- **`PUT /api/server/name`** `{name}` sets it for any client that may use
+  the server, including a device of the account through the relay (how a
+  computer signed in from the terminal is renamed). The name is kept in
+  `settings.yaml` (`computer_name`) as one line of plain text: control
+  characters and runs of whitespace become single spaces, text-direction
+  characters (U+202A–202E, U+2066–2069, U+200E, U+200F, U+061C) are dropped,
+  and it is cut at 40
+  characters. An empty name restores the default. 422 when `name` is not a
+  string. The apps remember the name per computer; the cloud service never
+  receives it, and it decides nothing (the device key does).
+
 ## 4. Layout
 
 - Workspace crates: `core`, `db`, `kernel`, `tools`, `terminal`, `providers`,

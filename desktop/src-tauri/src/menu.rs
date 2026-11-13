@@ -201,7 +201,7 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let view_toggle_sidebar = MenuItem::with_id(
         app,
         MENU_TOGGLE_SIDEBAR,
-        "Sidebar",
+        "Toggle Sidebar",
         true,
         Some("CmdOrCtrl+B"),
     )?;

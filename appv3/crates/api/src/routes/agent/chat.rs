@@ -1382,7 +1382,7 @@ async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<Stri
     let pool = &st.pool;
     if let Some(since) = since {
         let since_id = py_uuid(&since).ok_or_else(|| ApiError::unprocessable(format!("Invalid since cursor: {since}")))?;
-        let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("Lead session not found.")) };
+        let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("The main agent's session was not found.")) };
         const LIMIT: i64 = 100;
         let (lead_rows, truncated) = db::history_since(pool, &sid, &since_id, LIMIT).await?;
         let subs = db::list_child_sessions(pool, std::slice::from_ref(&sid)).await?;
@@ -1408,7 +1408,7 @@ async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<Stri
         };
         cursor = Some((head.trim().parse::<i64>().map_err(|_| invalid())?, before_id));
     }
-    let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("Lead session not found.")) };
+    let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("The main agent's session was not found.")) };
     if !first_page {
         let ((rows, has_more, boundary), ()) =
             futures::future::try_join(async { Ok::<_, ApiError>(db::history_page(pool, &sid, cursor.clone()).await?) }, ensure_agent_ready(&root)).await?;

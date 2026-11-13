@@ -275,7 +275,7 @@ export function UpdateCard() {
               type="button"
               className="flex items-center gap-1.5 text-xs text-(--color-text) hover:text-(--color-text-2) transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) rounded-xs px-1"
               onClick={() => setMinimized(false)}
-              title="Click to expand update details"
+              title="Show update details"
             >
               {statusIcon(status)}
               <span className="font-medium">{minimizedLabel(status)}</span>

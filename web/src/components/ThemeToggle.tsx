@@ -27,6 +27,7 @@ export function ThemeToggle({
 
   if (collapsed) {
     const current = THEME_OPTIONS.find((o) => o.value === preference) ?? THEME_OPTIONS[0]
+    const next = THEME_OPTIONS.find((o) => o.value === NEXT_THEME[preference]) ?? THEME_OPTIONS[0]
     const Icon = current.Icon
     return (
       <Tooltip>
@@ -35,7 +36,7 @@ export function ThemeToggle({
             <button
               type="button"
               onClick={() => setPreference(NEXT_THEME[preference])}
-              aria-label={`Theme: ${current.label}. Click to cycle.`}
+              aria-label={`Theme: ${current.label}. Switch to ${next.label}.`}
               className={cn(
                 'interactive-weight flex text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
                 compact
@@ -48,7 +49,7 @@ export function ThemeToggle({
             </button>
           }
         />
-        <TooltipContent>{`Theme: ${current.label} (click to cycle)`}</TooltipContent>
+        <TooltipContent>{`Theme: ${current.label}`}</TooltipContent>
       </Tooltip>
     )
   }

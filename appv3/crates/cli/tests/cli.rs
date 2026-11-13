@@ -244,7 +244,7 @@ fn doctor_reads_provider_keys_from_the_config_env() {
     let out = stdout(&o);
     assert_eq!(code(&o), 0, "{out}");
     assert!(out.contains("API key: OPENAI_API_KEY"), "{out}");
-    assert!(out.contains("Lead agent key is set: OPENAI_API_KEY"), "{out}");
+    assert!(out.contains("Main agent key is set: OPENAI_API_KEY"), "{out}");
 }
 
 #[test]
@@ -257,7 +257,7 @@ fn doctor_fails_an_oauth_lead_provider_without_a_login() {
     sb.write("cache/codex_oauth.json", "{}");
     let o = sb.run(&["doctor"]);
     assert_eq!(code(&o), 0, "{}", stdout(&o));
-    assert!(stdout(&o).contains("Lead agent provider 'codex' is logged in"));
+    assert!(stdout(&o).contains("Main agent provider 'codex' is logged in"));
 }
 
 #[test]

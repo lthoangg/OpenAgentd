@@ -1381,6 +1381,14 @@ explicitly.
   another method). The first two were stubs since tool approvals were
   removed (an empty list, and a 404 for every reply); the third was an
   alias of `/api/settings/denied-paths`. No client called them.
+- **Message wording (v3 only):** an OAuth provider with no sign-in, or one
+  whose refresh fails, says "… is not signed in. Sign in under Settings →
+  Providers, or run `agentd auth <provider>`." where v2 said "… credentials
+  not found. Run: agentd auth <provider>" (Copilot, Codex, Grok, and the
+  Codex image backend). The 400s for chatting with or running a command on
+  a subagent's session, and the 404 for a missing parent session, say "main
+  agent" where v2 said "lead agent" / "Lead session". Nothing matches on
+  these texts.
 - **Desktop network access (v3 only):** `GET`/`PUT /api/desktop/network-access`
   (`api/src/routes/desktop.rs`, `api/src/network_access.rs`) lets the desktop
   shell open and close a second listener on `0.0.0.0:<port>`. The listener

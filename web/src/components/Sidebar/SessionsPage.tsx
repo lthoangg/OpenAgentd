@@ -192,7 +192,7 @@ export function SessionsPageToolbar({
       label: `Theme: ${theme.label}`,
       icon: theme.Icon,
       onClick: () => setPreference(NEXT_THEME[preference]),
-      ariaLabel: `Theme: ${theme.label}. Tap for ${nextTheme}.`,
+      ariaLabel: `Theme: ${theme.label}. Switch to ${nextTheme}.`,
     },
   ]
 

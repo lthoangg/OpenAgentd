@@ -36,7 +36,7 @@ pub fn upgrade(args: &UpgradeArgs) -> Result<ExitCode> {
     let exe = release::current_exe();
     if release::is_desktop_bundled(&exe) {
         ui::header("Upgrade agentd", &format!("v{}", appv3_core::VERSION));
-        ui::mark_line(&ui::idle_mark(), "This agentd ships inside the desktop app, which updates it: Settings → About → Check for updates.");
+        ui::mark_line(&ui::idle_mark(), "This agentd ships inside the desktop app, which updates it: Settings → About OpenAgentd → Check for updates.");
         println!();
         return Ok(ExitCode::SUCCESS);
     }

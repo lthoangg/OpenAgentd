@@ -267,7 +267,7 @@ mock.module('lucide-react', () => ({
 }))
 
 mock.module('@/components/ThemeToggle', () => ({
-  ThemeToggle: () => <button aria-label="Theme: System. Click to cycle." />,
+  ThemeToggle: () => <button aria-label="Theme: System. Switch to Light." />,
 }))
 
 mock.module('@/components/HealthDot', () => ({

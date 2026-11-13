@@ -405,7 +405,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   const actionItems: ActionSheetItem[] = [
     ...(onEdit ? [{ id: 'edit', label: 'Edit and resend', icon: Pencil, disabled: editLocked, run: onEdit }] : []),
     { id: 'copy', label: 'Copy', icon: Copy, run: handleCopy },
-    ...(onRevert ? [{ id: 'revert', label: 'Revert to here', icon: Undo2, danger: true, separatorBefore: true, disabled: editLocked, run: onRevert }] : []),
+    ...(onRevert ? [{ id: 'revert', label: 'Undo to here', icon: Undo2, danger: true, separatorBefore: true, disabled: editLocked, run: onRevert }] : []),
   ]
   const longPress = useLongPress(isPhone && !fromAgent, () => {
     mediumHapticFeedback()
@@ -681,7 +681,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
           open={actionsOpen}
           onClose={() => setActionsOpen(false)}
           title="Prompt"
-          description={editLocked ? 'Edit and Revert are available when this turn ends.' : undefined}
+          description={editLocked ? 'Edit and Undo are available when this turn ends.' : undefined}
           items={actionItems}
         />
       )}

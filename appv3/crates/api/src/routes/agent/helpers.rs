@@ -67,7 +67,7 @@ pub async fn resolve_agent_for_existing_session(pool: &DbPool, session_id: &str)
     let existing = db::get_session(pool, &sid).await?;
     let Some(existing) = existing.filter(|s| !s.workspace.is_empty()) else { return Err(ApiError::not_found("Session not found.")) };
     if existing.parent_session_id.is_some() {
-        return Err(ApiError::bad_request("Cannot run commands directly on a subagent session. Subagents are orchestrated exclusively by the lead agent."));
+        return Err(ApiError::bad_request("Cannot run commands directly on a subagent session. Subagents are orchestrated exclusively by the main agent."));
     }
     let ws = validate_workspace_or_422(&existing.workspace, true)?;
     require_started(&ws, Some(session_id)).await
@@ -83,7 +83,7 @@ pub async fn resolve_chat_agent(pool: &DbPool, session_id: Option<String>, works
         existed_id = Some(canon);
     }
     if existing.as_ref().map(|e| e.parent_session_id.is_some()).unwrap_or(false) {
-        return Err(ApiError::bad_request("Cannot chat directly with a subagent session. Subagents are orchestrated exclusively by the lead agent."));
+        return Err(ApiError::bad_request("Cannot chat directly with a subagent session. Subagents are orchestrated exclusively by the main agent."));
     }
     let (sid, ws) = match existing.as_ref().filter(|e| !e.workspace.is_empty()) {
         Some(e) => {

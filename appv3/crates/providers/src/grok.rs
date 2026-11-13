@@ -20,6 +20,8 @@ pub const DEFAULT_MODEL: &str = "grok-4.7";
 const MODELS_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
 const SCOPES: [&str; 6] = ["openid", "profile", "email", "offline_access", "grok-cli:access", "api:access"];
 const DEVICE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
+const NOT_SIGNED_IN: &str = "Grok is not signed in. Sign in under Settings → Providers, or run `agentd auth grok`.";
+const SIGN_IN_EXPIRED: &str = "The Grok sign-in could not be renewed. Sign in again under Settings → Providers, or run `agentd auth grok`.";
 
 /// The Grok account currently serving requests.
 pub fn oauth_slot() -> TokenSlot {
@@ -254,10 +256,10 @@ pub fn make_inner(model: &str, token: &str, kw: &Kwargs) -> Arc<OpenAiProvider> 
 async fn load_access_token(slot: &TokenSlot) -> Result<String, String> {
     let path = slot;
     let Some(mut auth) = GrokAuth::load(path) else {
-        return Err("Grok Build OAuth credentials not found. Run:\n  agentd auth grok\nto authenticate with your Grok subscription.".into());
+        return Err(NOT_SIGNED_IN.into());
     };
     if auth.is_expired() {
-        auth = auth.refresh(path).await.map_err(|_| "Grok Build token refresh failed. Run: agentd auth grok".to_string())?;
+        auth = auth.refresh(path).await.map_err(|_| SIGN_IN_EXPIRED.to_string())?;
     }
     Ok(auth.access_token)
 }
@@ -287,10 +289,10 @@ impl GrokProvider {
     async fn current(&self) -> ProviderResult<Arc<OpenAiProvider>> {
         let path = &self.slot;
         let Some(mut auth) = GrokAuth::load(path) else {
-            return Err(ProviderError::Invalid("Grok Build OAuth credentials not found. Run: agentd auth grok".into()));
+            return Err(ProviderError::Invalid(NOT_SIGNED_IN.into()));
         };
         if auth.is_expired() {
-            auth = auth.refresh(path).await.map_err(|_| ProviderError::Invalid("Grok Build token refresh failed. Run: agentd auth grok".into()))?;
+            auth = auth.refresh(path).await.map_err(|_| ProviderError::Invalid(SIGN_IN_EXPIRED.into()))?;
         }
         {
             let g = self.inner.read().unwrap();

@@ -885,6 +885,25 @@ pub async fn pending_reply_requests(pool: &DbPool, session_id: &str) -> Result<V
     .await?)
 }
 
+/// Every request for a reply that has had neither its answer nor a failure
+/// notice, as `(target session, sender session)`, the target as an API id.
+/// What a server that just started is still owed; a request still queued
+/// counts, since it runs once the target is free.
+pub async fn reply_requests_in_flight(pool: &DbPool) -> Result<Vec<(String, String)>> {
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT session_id, json_extract(extra, '$.sent_from.session_id') FROM session_messages \
+         WHERE role = 'user' AND kind IN ('chat', 'queued') \
+         AND extra LIKE '%\"sent_from\"%' \
+         AND json_extract(extra, '$.sent_from.reply') = 1 \
+         AND json_extract(extra, '$.sent_from.replied_at') IS NULL \
+         AND json_extract(extra, '$.sent_from.error_notified_at') IS NULL \
+         ORDER BY session_id ASC, seq ASC, id ASC",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().filter_map(|(target, source)| Some((crate::codec::api_uuid(&target), source?))).collect())
+}
+
 /// `extra.sent_from` of the newest user row that came from another
 /// workspace (for hop counting), queued rows included.
 pub async fn latest_sent_from(pool: &DbPool, session_id: &str) -> Result<Option<Value>> {
@@ -1062,5 +1081,10 @@ mod tests {
         let rows = pending_reply_requests(&pool, &sid).await.unwrap();
         assert_eq!(rows.iter().map(|r| r.id.clone()).collect::<Vec<_>>(), vec![pending.id]);
         assert_eq!(latest_sent_from(&pool, &sid).await.unwrap().unwrap()["session_id"], "d", "queued rows count for hops");
+        // Who still waits on whom, for a server that just started: a request
+        // still queued counts, one already told of a failure does not.
+        save_message(&pool, &sid, with(serde_json::json!({"session_id": "e", "reply": true, "error_notified_at": "x", "hops": 1}))).await.unwrap();
+        let target = crate::codec::api_uuid(&sid);
+        assert_eq!(reply_requests_in_flight(&pool).await.unwrap(), vec![(target.clone(), "b".to_string()), (target, "d".to_string())]);
     }
 }

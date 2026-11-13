@@ -542,6 +542,7 @@ async fn http_api_end_to_end() {
     files_revalidate_flow(&c, &pool, &ws).await;
     plan_review_flow(&c, &pool, &ws).await;
     linked_sessions_flow(&c, &pool).await;
+    waiting_flow(&c, &pool).await;
     confirm_change_flow(&c, &pool, &ws).await;
     workspace_isolation_flow(&c, &pool, &ws, &root.path().join("other-ws")).await;
     worktree_tree_flow(&c, root.path()).await;
@@ -1471,6 +1472,48 @@ async fn workspace_isolation_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std:
     assert_eq!(serving(), vec![ws_a], "exactly one session serves {sid}");
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{sid}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
+}
+
+/// What a session whose turn ended still waits for (v3 addition): the
+/// sessions in other workspaces that owe it a reply, each with where it runs
+/// and whether it works or needs the user.
+async fn waiting_flow(c: &Client, pool: &appv3_db::DbPool) {
+    let new = |ws: &str, title: &str| appv3_db::NewSession { workspace: ws.into(), title: Some(title.into()), ..Default::default() };
+    let lead = appv3_db::create_session(pool, new("/r/waiting-app", "Orders API")).await.unwrap();
+    let target = appv3_db::create_session(pool, new("/r/waiting-infra", "Orders table")).await.unwrap();
+    let id = |s: &appv3_db::ChatSession| appv3_db::codec::api_uuid(&s.id);
+    let uri = format!("/api/agent/sessions/{}/waiting", id(&lead));
+
+    let (st, v) = c.json("GET", &uri, None).await;
+    assert_eq!((st, &v), (StatusCode::OK, &json!({"items": []})), "nothing owed");
+
+    let mut extra = serde_json::Map::new();
+    extra.insert("sent_from".into(), json!({"session_id": id(&lead), "reply": true, "hops": 1}));
+    appv3_db::save_message(pool, &target.id, appv3_db::NewMessage { extra: Some(extra), ..appv3_db::NewMessage::user("Create the table.") }).await.unwrap();
+    appv3_agent::workspace_messages::restore_outstanding(pool).await;
+    let (st, v) = c.json("GET", &uri, None).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(
+        v,
+        json!({"items": [{"kind": "session", "session_id": id(&target), "title": "Orders table", "label": "waiting-infra", "workspace": "/r/waiting-infra", "state": "idle"}]}),
+        "{v}"
+    );
+    // The list names it on the session row too, as before.
+    let (_, list) = c.json("GET", "/api/agent/sessions?active=true", None).await;
+    assert!(list["data"].as_array().unwrap().iter().any(|r| r["id"] == json!(id(&lead)) && r["background_work"] == json!(true)), "{list}");
+
+    // A session that was deleted answers nobody: the lead stops waiting.
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{}", id(&target)), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    let (_, v) = c.json("GET", &uri, None).await;
+    assert_eq!(v, json!({"items": []}), "{v}");
+    let (_, list) = c.json("GET", "/api/agent/sessions?active=true", None).await;
+    assert!(list["data"].as_array().unwrap().iter().all(|r| r["id"] != json!(id(&lead))), "{list}");
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{}", id(&lead)), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+
+    let (st, _) = c.json("GET", "/api/agent/sessions/not-a-uuid/waiting", None).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 /// Plan routes and plan-review answers on a Plan-mode session in `ws`.

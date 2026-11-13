@@ -233,6 +233,16 @@ pub fn leads_with_working_subagents() -> HashSet<String> {
     r.live.iter().filter(|(_, m)| m.values().any(|i| i.status == MemberStatus::Working && i.session.is_busy())).map(|(lead, _)| db::codec::api_uuid(lead)).collect()
 }
 
+/// The subagents of `lead` still running ([`has_working_subagents`]), as
+/// `(handle, session id)` in handle order.
+pub fn working_members(lead: &str) -> Vec<(String, String)> {
+    let r = reg().lock().unwrap();
+    r.live
+        .get(lead)
+        .map(|m| m.values().filter(|i| i.status == MemberStatus::Working && i.session.is_busy()).map(|i| (i.handle.clone(), db::codec::api_uuid(&i.session_id))).collect())
+        .unwrap_or_default()
+}
+
 /// Whether a lead whose turn ended still has work coming back to it: a
 /// subagent still running, or a reply another workspace still owes it.
 /// Either starts another lead turn, so the lead is not finished yet.

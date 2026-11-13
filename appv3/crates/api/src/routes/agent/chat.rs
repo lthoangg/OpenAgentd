@@ -41,6 +41,7 @@ pub fn router() -> Router<AppState> {
         .route("/workspace/tree", get(workspace_tree))
         .route("/sessions/{session_id}", get(session_detail).patch(update_session).delete(delete_session_route))
         .route("/sessions/{session_id}/subagents", get(session_subagents))
+        .route("/sessions/{session_id}/waiting", get(session_waiting))
         .route("/{session_id}/history", get(agent_history))
         .route("/{session_id}/tool-results/{tool_call_id}", get(tool_result))
         .route("/{session_id}/tool-calls/{tool_call_id}/arguments", get(tool_call_arguments))
@@ -1140,6 +1141,8 @@ pub async fn delete_session(pool: &DbPool, session_id: &str) -> ApiResult<bool> 
         appv3_agent::subagents::remove_subagent(sid);
         appv3_agent::subagents::cleanup_lead_session(sid);
         appv3_agent::side_question::stop_session(sid);
+        // A deleted session answers nobody: its senders stop waiting on it.
+        appv3_agent::workspace_messages::forget_outstanding_target(sid);
     }
     db::delete_session_rows(pool, session_id).await?;
     let s = settings();
@@ -1176,6 +1179,43 @@ async fn delete_session_route(State(st): State<AppState>, AxPath(raw): AxPath<St
 async fn session_subagents(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {
     let sid = path_uuid("session_id", &raw)?;
     Ok(json(appv3_agent::subagents::list_subagents(&sid, &st.pool).await))
+}
+
+/// What a session whose turn ended still waits for (v3 addition): its
+/// subagents still running, then the sessions in other workspaces that owe
+/// it a reply. The same work `background_work` reports as one flag, as rows
+/// a person can open. `state` is `working`, `needs_input` (stopped on a
+/// question or a plan review) or `idle` (not running: stopped, failed, or
+/// not started yet).
+async fn session_waiting(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {
+    let sid = path_uuid("session_id", &raw)?;
+    let members = appv3_agent::subagents::working_members(&sid);
+    let targets = appv3_agent::workspace_messages::outstanding_targets(&sid);
+    let ids: Vec<String> = members.iter().map(|(_, id)| id.clone()).chain(targets.iter().cloned()).collect();
+    let rows = db::get_sessions_by_ids(&st.pool, &ids).await?;
+    let row = |id: &str| rows.iter().find(|r| db::codec::api_uuid(&r.id) == id);
+    let title = |id: &str| row(id).and_then(|r| r.title.clone()).filter(|t| !t.trim().is_empty());
+    let mut items: Vec<Value> = members
+        .iter()
+        .map(|(handle, id)| json!({"kind": "subagent", "session_id": id, "title": title(id).unwrap_or_else(|| handle.clone()), "label": handle, "workspace": "", "state": "working"}))
+        .collect();
+    if !targets.is_empty() {
+        let running = running_set();
+        let awaiting = db::sessions_awaiting_input(&st.pool).await?;
+        for id in &targets {
+            let Some(r) = row(id) else { continue };
+            let state = if awaiting.contains(&r.id) || awaiting.contains(id) {
+                "needs_input"
+            } else if running.contains(id) || appv3_agent::subagents::has_pending_work(id) {
+                "working"
+            } else {
+                "idle"
+            };
+            let label = appv3_agent::workspace_messages::workspace_name(&st.pool, &r.workspace).await;
+            items.push(json!({"kind": "session", "session_id": id, "title": title(id), "label": label, "workspace": r.workspace, "state": state}));
+        }
+    }
+    Ok(json(json!({"items": items})))
 }
 
 /// A tool call's output, which history and the live feed leave out for most

@@ -92,6 +92,7 @@ async fn a_lead_that_delegated_mid_turn_stays_busy_until_its_subagent_reports() 
     assert!(!store().is_running(&sid), "the lead's own turn is over");
     assert!(subagents::has_working_subagents(&sid), "the member is still working");
     assert!(subagents::sessions_with_pending_work().contains(&sid), "the active list drops a lead whose member still works");
+    assert_eq!(subagents::working_members(&sid), vec![("worker#1".to_string(), child.clone())], "the lead can say which member it waits for");
 
     // The member's turn streams under its own id, so its view can attach.
     assert!(store().is_running(&child), "the member's turn is not streaming under {child}");
@@ -110,4 +111,5 @@ async fn a_lead_that_delegated_mid_turn_stays_busy_until_its_subagent_reports() 
     wait_until("the lead to read the member's report", report_read).await;
     tokio::time::timeout(Duration::from_secs(20), lead.wait_turn_finished()).await.expect("lead turn on the report finishes");
     assert!(!subagents::sessions_with_pending_work().contains(&sid));
+    assert!(subagents::working_members(&sid).is_empty());
 }

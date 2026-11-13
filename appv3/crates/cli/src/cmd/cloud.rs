@@ -27,7 +27,7 @@ use std::time::Duration;
 pub fn cloud(cmd: &CloudCmd) -> Result<ExitCode> {
     match cmd {
         CloudCmd::Join { roles } => join(*roles),
-        CloudCmd::Login { roles, .. } => login(*roles),
+        CloudCmd::Login { roles } => login(*roles),
         CloudCmd::Approve => approve(),
         CloudCmd::Status => status(),
         CloudCmd::Logout { yes } => logout(*yes),

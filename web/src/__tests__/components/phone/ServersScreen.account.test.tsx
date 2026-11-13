@@ -282,6 +282,21 @@ describe('Your computers', () => {
     expect(onOpenSessions).toHaveBeenCalledTimes(1)
   })
 
+  it('titles a computer by its own name as soon as the app has read it, while the screen is up', async () => {
+    const onMac = app({ base_url: BRIDGE, account_device: { device_id: 'dev-mac', fingerprint: '3F9A 21C4', kind: 'macos' } })
+    shell(CONNECTED, { cloud_devices: () => [ME, MAC], cloud_link_route: () => ({ route: 'relay' }) }, onMac)
+    window.__OAD_API_BASE_URL__ = BRIDGE
+    render(<ServersScreen active onOpenSessions={() => {}} />)
+    await screen.findByText('macOS · 3F9A 21C4')
+
+    // What reading the name does (`ComputerNameSync`): the shell remembers it,
+    // and the app's status carries it.
+    act(() => { queryClient.setQueryData(['app-backend-status'], { ...onMac, computer_names: { 'dev-mac': 'Work' } }) })
+
+    expect(await screen.findByText('Work')).toBeTruthy()
+    expect(screen.queryByText('macOS · 3F9A 21C4')).toBeNull()
+  })
+
   it('keeps a saved server and the account computer on one machine apart: two rows, never merged', async () => {
     window.localStorage.setItem('openagentd.cloud.lanComputers', JSON.stringify({ '3F9A21C4': LAN }))
     shell(CONNECTED, { cloud_devices: () => [ME, MAC] }, app({ servers: [{ base_url: NAS, name: 'Home NAS' }, { base_url: LAN, name: 'Studio Mac' }] }))

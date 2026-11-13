@@ -84,6 +84,7 @@ import {
   type AppBackendStatus,
   type ServerWatchState,
 } from '@/lib/app-backend'
+import { useAppStatusWithNames } from '@/lib/account-computers'
 
 const DEFAULT_SERVERS: SavedAppServer[] = [{ base_url: 'http://127.0.0.1:4082', name: 'Local server' }]
 
@@ -168,6 +169,9 @@ type ServerFormTarget =
 
 export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, sectionTitle = 'Servers', onOpenInUse, controlRef, onScanQr }: AppBackendPanelProps) {
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
+  // The names the app remembers, kept current while the list is shown: one
+  // read after this list loaded (a server just added) reaches its row.
+  const names = useAppStatusWithNames()?.computer_names ?? status?.computer_names
   // Nothing is listed until the shell has answered once: before that a
   // phone with no server would flash the browser build's placeholder rows.
   const [loaded, setLoaded] = useState(false)
@@ -281,7 +285,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   /** A row's Edit: the server's details in a form right under it. */
   function openEdit(server: SavedAppServer, inUse: boolean) {
     const normalized = normalizeServerBaseUrl(server.base_url)
-    const label = savedServerTitle(server, status?.computer_names)
+    const label = savedServerTitle(server, names)
     setOriginal({ baseUrl: normalized, accessKey: '' })
     fillForm({ kind: 'edit', baseUrl: normalized, label, inUse }, normalized, server.name ?? '', '')
     void getStoredAccessKey(normalized).then((storedKey) => {
@@ -499,7 +503,6 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   // A connected server that is not in the saved list still gets a row. Without
   // shell status (a browser) the one server is the page's own.
   const unlistedUrl = !loaded ? null : status ? unlistedConnectedUrl(status, servers) : normalizeServerBaseUrl(currentUrl)
-  const names = status?.computer_names
   const onBuiltin = status !== null && !status.external
   const builtinName = names?.[BUILT_IN_NAME_KEY] ?? null
   const unlistedName = unlistedUrl ? names?.[unlistedUrl] ?? null : null

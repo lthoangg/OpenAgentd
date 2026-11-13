@@ -104,7 +104,9 @@ export function useAccountComputers(active: boolean, { poll = true }: { poll?: b
     return () => window.clearInterval(timer)
   }, [active, connected, poll, refetch])
 
-  const names = app?.computer_names
+  // Kept current while the list is shown: a name read after `app` loaded
+  // (a computer just opened) reaches its row.
+  const names = useAppStatusWithNames()?.computer_names ?? app?.computer_names
   const computers = useMemo<AccountComputer[]>(() => {
     if (!connected || !canOpen) return []
     const servers = (devicesData ?? []).filter((device) => !device.me && isServer(device))

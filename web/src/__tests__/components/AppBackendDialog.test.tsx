@@ -113,6 +113,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   queryClient.removeQueries({ queryKey: queryKeys.health() })
+  queryClient.removeQueries({ queryKey: queryKeys.backendStatus() })
   window.localStorage.clear()
   delete window.__OAD_TOKEN__
   globalThis.fetch = originalFetch
@@ -700,6 +701,19 @@ describe('the server list: select, use, in use, one close', () => {
     await user.click(within(row).getByRole('button', { name: 'Details of build-box' }))
     const details = await screen.findByRole('dialog', { name: 'build-box' })
     expect(details.textContent).toContain('Addresshttp://10.0.0.9:4082')
+  })
+
+  it('titles a saved server by its computer as soon as the name is learned, while the list is shown', async () => {
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+    // Just added and never named: all the app has is its address.
+    const row = (await screen.findByText('http://127.0.0.1:4999')).closest('[data-server-row]') as HTMLElement
+
+    // What reading the name does (`ComputerNameSync`): the shell remembers it,
+    // and the app's status carries it.
+    queryClient.setQueryData(queryKeys.backendStatus(), { ...statusPayload, computer_names: { 'http://127.0.0.1:4999': 'build-box' } })
+
+    await waitFor(() => expect(within(row).getByText('build-box')).toBeTruthy())
+    expect(screen.queryByText('http://127.0.0.1:4999')).toBeNull()
   })
 
   it('says "Start and use" for a stopped built-in server, and switches to it', async () => {

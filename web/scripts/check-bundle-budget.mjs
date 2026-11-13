@@ -109,7 +109,11 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // nothing on the first screen waits for, loads after startup (2.126 MB /
 // 691.2 kB). The rest is drawn on the first screen or decides what it
 // shows, so the limit rose.
-export const LIMITS = { eagerBytes: 2_127_000, eagerGzipBytes: 692_000, largestChunkBytes: 1_180_000 }
+// The limits then stopped sitting just above the measured size: a few
+// hundred bytes of headroom failed the build on ordinary changes. They now
+// leave about 3.5% (2.125 MB / 690.4 kB measured), so the check catches a
+// surface pulled back into startup, not a reworded string.
+export const LIMITS = { eagerBytes: 2_200_000, eagerGzipBytes: 715_000, largestChunkBytes: 1_180_000 }
 
 /** Each lazy surface must have a chunk of its own, outside the startup path. */
 export function lazySurfaceFailures(directory, names = LAZY_SURFACES) {

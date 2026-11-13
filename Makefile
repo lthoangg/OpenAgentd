@@ -1,7 +1,7 @@
 # Makefile for openagentd
 
 .PHONY: all run dev kill-dev-ports verify verify-scripts verify-web verify-docs verify-version verify-native verify-cloud verify-shell-core verify-desktop verify-mobile health health-json build-web icons clean help
-.PHONY: run-v3 dev-v3 run3 dev3 build-v3 verify-v3
+.PHONY: build-v3 verify-v3
 
 # Default target
 all: help
@@ -18,19 +18,11 @@ WEB_PORT = 5173
 run: ## Start the API server only (v3 Rust backend, no frontend; :8000, PORT=…)
 	OPENAGENTD_ENV=development cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- server serve --port $(PORT)
 
-run-v3: run ## Alias for run
-
-run3: run
-
 dev: kill-dev-ports ## Start the v3 backend (:8000) and Vite (:5173) together; PORT=… WEB_PORT=… to run more
 	@trap 'kill 0' INT TERM EXIT; \
 	(OPENAGENTD_ENV=development cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- server serve --port $(PORT) 2>&1 | sed 's/^/[api] /') & \
 	(while ! nc -z 127.0.0.1 $(PORT) 2>/dev/null; do sleep 0.1; done; cd web && VITE_API_PROXY_TARGET=http://localhost:$(PORT) bun run dev --port $(WEB_PORT) --strictPort 2>&1 | sed 's/^/[web] /') & \
 	wait
-
-dev-v3: dev ## Alias for dev
-
-dev3: dev
 
 build-v3: ## Build optimized OpenAgentd v3 release binary
 	cargo build --release --manifest-path appv3/Cargo.toml -p appv3-cli

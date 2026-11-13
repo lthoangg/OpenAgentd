@@ -31,7 +31,6 @@ import { getPlatform } from '@/hooks/use-platform'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { lazySurface } from '@/lib/lazy-surface'
-import { clearRetiredTerminalFontPrefs } from '@/lib/terminal-font'
 import { getTerminalRuntime, terminalClosedMessage, useTerminalStore } from '@/stores/useTerminalStore'
 import { TerminalActionSheet } from './TerminalActionSheet'
 import { addToChatShortcutLabel } from './terminal-keys'
@@ -75,11 +74,6 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   useEffect(() => {
     useTerminalStore.getState().syncTheme(resolved)
   }, [resolved])
-
-  // The retired Terminal settings page's font and size: nothing reads them.
-  useEffect(() => {
-    clearRetiredTerminalFontPrefs()
-  }, [])
 
   // Sticky-Ctrl transform: single character → control code.
   // Handles a–z (0x01–0x1a), plus [, \, ], ^, _, ?, @.

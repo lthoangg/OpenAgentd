@@ -1,20 +1,12 @@
 import { afterEach, expect, it, mock } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { parentSection, useSettingsStore, type SettingsSection } from '@/stores/useSettingsStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 afterEach(() => {
   cleanup()
   useSettingsStore.setState({ open: false, section: 'about', dirtyDrafts: {}, pendingNavigation: null })
-})
-
-it('sends the retired sandbox section, still in persisted state, to About', () => {
-  expect(parentSection('sandbox' as SettingsSection)).toBe('about')
-})
-
-it('sends the split Automation section, still in persisted state, to Workspaces', () => {
-  expect(parentSection('automation' as SettingsSection)).toBe('workspaces')
 })
 
 it('does not close or navigate away from unsaved work until discarded', () => {

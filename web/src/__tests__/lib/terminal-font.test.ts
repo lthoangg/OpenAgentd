@@ -1,18 +1,12 @@
 /**
- * terminal-font — the terminal's fixed font stack and size. The custom font
- * and size went with the Terminal settings page; what it stored is cleared.
+ * terminal-font — the terminal's fixed font stack and size.
  */
-import { afterEach, describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 import {
   BUNDLED_ICONS_FAMILY,
   TERMINAL_FONT_FAMILY,
   TERMINAL_FONT_SIZE,
-  clearRetiredTerminalFontPrefs,
 } from '@/lib/terminal-font'
-
-afterEach(() => {
-  localStorage.clear()
-})
 
 describe('TERMINAL_FONT_FAMILY', () => {
   it('starts with the Nerd Font guesses, MesloLGS NF first', () => {
@@ -30,17 +24,5 @@ describe('TERMINAL_FONT_FAMILY', () => {
 
   it('is 13 px', () => {
     expect(TERMINAL_FONT_SIZE).toBe(13)
-  })
-})
-
-describe('clearRetiredTerminalFontPrefs', () => {
-  it('drops the font and size the retired settings page stored, and nothing else', () => {
-    localStorage.setItem('oa-terminal-font', 'Hack Nerd Font')
-    localStorage.setItem('oa-terminal-font-size', '20')
-    localStorage.setItem('oa-unrelated', 'keep')
-    clearRetiredTerminalFontPrefs()
-    expect(localStorage.getItem('oa-terminal-font')).toBeNull()
-    expect(localStorage.getItem('oa-terminal-font-size')).toBeNull()
-    expect(localStorage.getItem('oa-unrelated')).toBe('keep')
   })
 })

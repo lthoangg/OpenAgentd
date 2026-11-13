@@ -250,7 +250,6 @@ function SectionContent({
     case 'desktop':
       return <DesktopSettingsPage />
     case 'connection':
-    case 'network':
       return <ConnectionSettingsPage />
     case 'account':
       // On the phone the account is the phone's own, not a server's.

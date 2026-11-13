@@ -1,7 +1,5 @@
 /**
- * terminal-font — the terminal's font stack and size. Both are fixed: the
- * custom font and size went with the Terminal settings page, and the
- * values that page stored are cleared (``clearRetiredTerminalFontPrefs``).
+ * terminal-font — the terminal's font stack and size. Both are fixed.
  *
  * Browsers and webviews do not expose the OS's installed font list (it is a
  * fingerprinting vector), so the stack guesses: the most common Nerd Font
@@ -45,18 +43,3 @@ const GENERIC_TAIL = 'ui-monospace, SFMono-Regular, Menlo, monospace'
 export const TERMINAL_FONT_FAMILY = [...GUESS_STACK, BUNDLED_ICONS_FAMILY].map((name) => `"${name}"`).concat(GENERIC_TAIL).join(', ')
 
 export const TERMINAL_FONT_SIZE = 13
-
-/** What the retired Terminal settings page stored. */
-const RETIRED_KEYS = ['oa-terminal-font', 'oa-terminal-font-size'] as const
-
-/**
- * Drop the font and size the retired Terminal settings page stored: nothing
- * reads them, and nothing could change them any more.
- */
-export function clearRetiredTerminalFontPrefs(): void {
-  try {
-    for (const key of RETIRED_KEYS) localStorage.removeItem(key)
-  } catch {
-    // localStorage unavailable (SSR, privacy mode): nothing to clear.
-  }
-}

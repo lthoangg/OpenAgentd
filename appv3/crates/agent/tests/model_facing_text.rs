@@ -164,7 +164,9 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// Delegating rule to give each independent feature its own worktree.
 /// Raised by 62 for the `workspace` tool to say a reply may be a question to
 /// answer with a follow-up (the other session's user is not there to ask).
-const LEAD_ALWAYS_ON_CHARS: usize = 39_783;
+/// Raised by 1186 for the app guide (what the app renders, opens and runs in
+/// a reply), which took over the .md and .html link rule from Replying.
+const LEAD_ALWAYS_ON_CHARS: usize = 40_969;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

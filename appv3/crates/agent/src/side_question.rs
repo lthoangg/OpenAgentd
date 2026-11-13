@@ -90,8 +90,9 @@ pub(crate) async fn rebuild_frame(session: &AgentSession, agent: &Agent, sid: &s
     let agent_mode = settings().workspace_mode(ws.as_deref().map(Path::new));
     let ctx = RunContext { session_id: Some(sid.to_string()), run_id: "side_question".into(), agent_name: agent.name.clone(), workspace: ws.clone() };
     let mut state = AgentState::new(vec![], agent.system_prompt.clone());
-    RuntimeProtocolHook.before_agent(&ctx, &mut state).await;
-    MemoryContextHook { content: session.memory_context().await, lead: session.parent_session_id.is_none() }.before_agent(&ctx, &mut state).await;
+    let lead = session.parent_session_id.is_none();
+    RuntimeProtocolHook { lead }.before_agent(&ctx, &mut state).await;
+    MemoryContextHook { content: session.memory_context().await, lead }.before_agent(&ctx, &mut state).await;
     let mut prompt = state.system_prompt.clone();
     prompt = CurrentDateHook.wrap_system_prompt(&ctx, &state, prompt).await;
     prompt = WorkspaceInstructionsHook::new(Some(workspace), agent_mode == "coding").wrap_system_prompt(&ctx, &state, prompt).await;

@@ -184,12 +184,20 @@ fn same_file(a: &Path, b: &Path) -> bool {
 /// Appends the runtime protocol (instruction sources, secrets, workspace and
 /// git safety) to every agent. It lives here, not in the built-in prompt,
 /// because an agent file's own prompt replaces that prompt entirely.
-pub struct RuntimeProtocolHook;
+///
+/// A lead also gets the app guide, since the user reads its replies in the
+/// app; a delegated agent writes for its lead.
+pub struct RuntimeProtocolHook {
+    pub lead: bool,
+}
 
 #[async_trait]
 impl Hook for RuntimeProtocolHook {
     async fn before_agent(&self, _ctx: &RunContext, state: &mut AgentState) {
         append_block(&mut state.system_prompt, prompts::runtime_protocol());
+        if self.lead {
+            append_block(&mut state.system_prompt, prompts::app_guide());
+        }
     }
 }
 

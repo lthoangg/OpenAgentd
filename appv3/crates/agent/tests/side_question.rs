@@ -129,6 +129,7 @@ async fn side_questions_answer_from_the_turn_frame_and_stay_out_of_the_transcrip
     let (turn_msgs, turn_tools, _) = &calls[0];
     let (btw_msgs, btw_tools, btw_kw) = &calls[1];
     assert_eq!(btw_msgs[0].content(), turn_msgs[0].content(), "system prompt differs from the turn's");
+    assert!(btw_msgs[0].content().is_some_and(|p| p.contains(appv3_agent::prompts::app_guide())), "a side answer is read in the app too");
     assert!(matches!(btw_msgs[0], ChatMessage::System { .. }));
     assert_eq!(btw_tools, turn_tools, "tools differ from the turn's");
     assert!(btw_tools.as_ref().is_some_and(|t| !t.is_empty()));

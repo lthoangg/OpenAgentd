@@ -1012,6 +1012,14 @@ run from the terminal (the native Rust binary since v3.0.0).
     sitting at its prompt, or a new one when there is none or each is busy,
     so a command never reaches a running program. The button is absent
     without a workspace and while the block is still being written.
+  - **The agent writes for the app** `[v3.55.0]`: every main agent, custom
+    ones included, is told what the app does with a reply, so it uses it
+    instead of working around it. A command only you can run (a login, a
+    password prompt) comes alone in a shell block with **Run in terminal**
+    rather than "copy and paste this"; a document comes as a link that opens
+    in the viewer; local pages, images, diagrams and math are written the way
+    the app shows them. Subagents, which write for the main agent, are not
+    told.
   - On touch, a long press on a message, a code block or a link opens its
     menu as the app's bottom sheet, the iOS app included. A tool row has
     a menu too (right-click or long-press) that opens its files; Copy is on

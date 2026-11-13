@@ -1519,7 +1519,7 @@ impl AgentSession {
             Arc::new(StreamPublisherHook::new(&sid, &name, true)),
             Arc::new(otel_hook),
             Arc::new(crate::hooks::lsp::LspHook { enabled: agent_mode == "coding", denied: denied.clone() }),
-            Arc::new(RuntimeProtocolHook),
+            Arc::new(RuntimeProtocolHook { lead: is_lead }),
             Arc::new(MemoryContextHook { content: memory, lead: is_lead }),
         ];
         if is_lead {

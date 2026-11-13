@@ -746,7 +746,7 @@
     "type": "function",
     "function": {
       "name": "generate_image",
-      "description": "Create or edit an image in the session workspace. Returns `![alt](file.ext)` markdown; include it verbatim so it renders inline. On failure returns `Error: ...`.",
+      "description": "Create or edit an image in the session workspace. Returns `![alt](file.ext)` markdown; include it verbatim in your reply. On failure returns `Error: ...`.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -823,7 +823,7 @@
     "type": "function",
     "function": {
       "name": "generate_video",
-      "description": "Generate a video clip in the session workspace using Veo. Use first_frame for image-to-video, last_frame for interpolation, reference_images for subject consistency, or extend_video to extend a clip. Returns `![alt](file.mp4)` markdown; include it verbatim so it renders inline. On failure returns `Error: ...`.",
+      "description": "Generate a video clip in the session workspace using Veo. Use first_frame for image-to-video, last_frame for interpolation, reference_images for subject consistency, or extend_video to extend a clip. Returns `![alt](file.mp4)` markdown; include it verbatim in your reply. On failure returns `Error: ...`.",
       "parameters": {
         "type": "object",
         "properties": {

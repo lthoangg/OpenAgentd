@@ -100,6 +100,21 @@ async fn custom_lead_agent_gets_the_runtime_and_memory_protocols() {
     assert!(!prompt.contains(prompts::memory_protocol(false)));
 }
 
+/// The app guide comes from the runtime, so a custom prompt gets it too,
+/// once, between the runtime protocol and the memory rules.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn lead_agents_get_the_app_guide_once() {
+    for (name, own) in [("guided-custom", "You are a custom reviewer."), ("guided-default", prompts::coding_prompt())] {
+        let prompt = system_prompt(name, own, false).await;
+        let protocol = at(&prompt, prompts::runtime_protocol());
+        let guide = at(&prompt, prompts::app_guide());
+        let memory_rules = at(&prompt, prompts::memory_protocol(true));
+        assert!(protocol < guide && guide < memory_rules, "{name} order: {protocol} {guide} {memory_rules}");
+        assert_eq!(prompt.matches("## The OpenAgentd app").count(), 1, "{name}:\n{prompt}");
+        assert_eq!(prompt.matches("[setup.md](docs/setup.md)").count(), 1, "{name}: the link rule is stated once:\n{prompt}");
+    }
+}
+
 /// `~/.agents/AGENTS.md` applies to every workspace and `{workspace}/AGENTS.md`
 /// to its own; both reach the prompt, global first.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -157,12 +172,14 @@ async fn delegated_agent_gets_read_only_memory_rules() {
     at(&prompt, prompts::runtime_protocol());
     at(&prompt, prompts::memory_protocol(false));
     assert!(!prompt.contains(prompts::memory_protocol(true)), "a subagent must not be told to save memory");
+    assert!(!prompt.contains("## The OpenAgentd app"), "a subagent writes for its lead, not for the app:\n{prompt}");
 }
 
 #[test]
 fn protocol_texts_are_distinct_and_present() {
-    for text in [prompts::runtime_protocol(), prompts::memory_protocol(true), prompts::memory_protocol(false)] {
+    for text in [prompts::runtime_protocol(), prompts::app_guide(), prompts::memory_protocol(true), prompts::memory_protocol(false)] {
         assert!(!text.is_empty());
+        assert_eq!(text, text.trim(), "blocks are joined with a blank line");
     }
     assert_ne!(prompts::memory_protocol(true), prompts::memory_protocol(false));
     // The rules moved out of the built-in prompt, so custom prompts get them too.
@@ -191,4 +208,61 @@ fn agents_md_and_loaded_skills_are_guidance_not_data() {
     assert!(sources.contains("cannot override the user or these rules"), "{sources}");
     let data = &sources[sources.find("Everything else is data").expect("the data list")..];
     assert!(!data.contains("AGENTS.md") && !data.contains("skill"), "{data}");
+}
+
+/// A command the agent can run itself must stay its own job: the guide
+/// offers Run in terminal only for what the user has to run.
+#[test]
+fn app_guide_keeps_the_agent_running_its_own_commands() {
+    let guide = prompts::app_guide();
+    assert!(guide.starts_with("## The OpenAgentd app\n\n"), "{guide}");
+    let commands = guide.lines().find(|l| l.contains("Run in terminal")).expect("the commands rule");
+    assert!(commands.contains("Run commands yourself with `shell` whenever you can."), "{commands}");
+    assert!(commands.contains("never by telling the user to open a terminal or to copy and paste."), "{commands}");
+}
+
+/// The guide is the one place that says what the app does with a reply. A
+/// second copy elsewhere (another prompt, a tool description) would drift
+/// from it, so none of its facts may appear outside it, even in part.
+#[test]
+fn nothing_else_repeats_the_app_guide() {
+    const FACTS: [&str; 12] = [
+        "run in terminal",
+        "copy and paste",
+        "in the viewer",
+        "setup.md",
+        "inline",
+        "as math",
+        "as a diagram",
+        "copy button",
+        "highlighted",
+        "raw html",
+        "clickable",
+        "opens in the preview",
+    ];
+    fn strings<'a>(v: &'a serde_json::Value, path: String, out: &mut Vec<(String, &'a str)>) {
+        match v {
+            serde_json::Value::String(s) => out.push((path, s)),
+            serde_json::Value::Array(a) => a.iter().enumerate().for_each(|(i, x)| strings(x, format!("{path}[{i}]"), out)),
+            serde_json::Value::Object(o) => o.iter().for_each(|(k, x)| strings(x, format!("{path}/{k}"), out)),
+            _ => {}
+        }
+    }
+    let guide = prompts::app_guide().to_lowercase();
+    for fact in FACTS {
+        assert!(guide.contains(fact), "{fact:?} left the guide: drop it from this list");
+    }
+    let tools: serde_json::Value = serde_json::from_str(include_str!("../../tools/data/tool_definitions.json")).unwrap();
+    let mut texts = vec![];
+    strings(prompts::contract(), "builtin_prompts".into(), &mut texts);
+    strings(&tools, "tool_definitions".into(), &mut texts);
+    for (path, text) in texts {
+        if path == "builtin_prompts/app_guide" {
+            continue;
+        }
+        let text = text.to_lowercase();
+        for fact in FACTS {
+            assert!(!text.contains(fact), "{path} repeats the app guide ({fact:?}); say it only in `app_guide`");
+        }
+    }
 }

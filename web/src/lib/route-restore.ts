@@ -14,12 +14,9 @@ export function closestRestorableRoute(route: string): string {
   const pathOnly = pathMatch?.[0] ?? trimmed
   const suffix = trimmed.slice(pathOnly.length)
   if (pathOnly === '/index.html') return `/${suffix}`
-  if (pathOnly === '/cockpit' || pathOnly.startsWith('/cockpit/')) return `/${suffix}`
-  // Saved by builds that served sessions under /coding.
-  if (pathOnly === '/coding' || pathOnly.startsWith('/coding/')) {
-    return `/${pathOnly.slice('/coding/'.length)}${suffix}`
-  }
-  if (pathOnly.startsWith('/settings')) return '/'
+  // Settings is a modal, and no page sits deeper than one segment: a deeper
+  // path was saved by an older build and has no page to open.
+  if (pathOnly.startsWith('/settings') || pathOnly.includes('/', 1)) return '/'
   // The phone's Servers screen: a launch opens on Sessions, as it always has.
   if (pathOnly === '/servers') return '/'
   return trimmed

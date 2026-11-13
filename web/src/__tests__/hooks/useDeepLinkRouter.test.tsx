@@ -40,23 +40,19 @@ describe('parseDeepLinkUrl', () => {
     }
   })
 
-  it('normalizes legacy cockpit deep links to coding', () => {
-    const res = parseDeepLinkUrl('openagentd://cockpit/sess-999')
-    expect(res).toEqual({
-      kind: 'navigate',
-      path: '/sess-999',
-    })
+  it('ignores the link hosts of builds before v3.0.0', () => {
+    expect(parseDeepLinkUrl('openagentd://cockpit/sess-999')).toEqual({ kind: 'unknown' })
+    expect(parseDeepLinkUrl('openagentd://coding/sess-999')).toEqual({ kind: 'unknown' })
   })
 
   it('accepts the isolated development app scheme', () => {
-    expect(parseDeepLinkUrl('openagentd-dev://coding/dev-session')).toEqual({
+    expect(parseDeepLinkUrl('openagentd-dev://session/dev-session')).toEqual({
       kind: 'navigate',
       path: '/dev-session',
     })
   })
 
   it('opens a new session for a link without a session id', () => {
-    expect(parseDeepLinkUrl('openagentd://coding')).toEqual({ kind: 'navigate', path: '/' })
     expect(parseDeepLinkUrl('openagentd://session/')).toEqual({ kind: 'navigate', path: '/' })
   })
 

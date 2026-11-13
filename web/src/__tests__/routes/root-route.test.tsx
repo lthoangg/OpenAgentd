@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'bun:test'
-import { isRedirect } from '@tanstack/react-router'
 import {
   closestRestorableRoute,
   forgetRouteForBackendSwitch,
@@ -15,21 +14,9 @@ describe('closestRestorableRoute', () => {
     expect(closestRestorableRoute('/')).toBe('/')
   })
 
-  it('rewrites saved /coding routes from older builds', () => {
-    expect(closestRestorableRoute('/coding/session-123')).toBe('/session-123')
-    expect(closestRestorableRoute('/coding')).toBe('/')
-    expect(closestRestorableRoute('/coding/')).toBe('/')
-    expect(closestRestorableRoute('/coding/session-123?tab=files#diff')).toBe('/session-123?tab=files#diff')
-  })
-
-  it('normalizes legacy cockpit routes to a new session', () => {
-    expect(closestRestorableRoute('/cockpit/session-123')).toBe('/')
-    expect(closestRestorableRoute('/cockpit')).toBe('/')
-  })
-
-  it('keeps query and hash state when normalizing legacy cockpit routes', () => {
-    expect(closestRestorableRoute('/cockpit/session-123?tab=files#diff')).toBe('/?tab=files#diff')
-    expect(closestRestorableRoute('/cockpit?notice=ready#status')).toBe('/?notice=ready#status')
+  it('opens a new session for a saved path no page has', () => {
+    expect(closestRestorableRoute('/coding/session-123')).toBe('/')
+    expect(closestRestorableRoute('/coding/session-123?tab=files#diff')).toBe('/')
   })
 
   it('preserves stable top-level routes', () => {
@@ -154,20 +141,5 @@ describe('root route', () => {
     expect(validate!({}).workspace).toBeUndefined()
     expect(validate!({ workspace: 42 }).workspace).toBeUndefined()
     expect(validate!({ workspace: '' }).workspace).toBeUndefined()
-  })
-
-  it('redirects old /coding links without a page of their own', () => {
-    const redirectOf = (path: string, params: Record<string, string>) => {
-      try {
-        leaf(path)?.options.beforeLoad?.({ params } as never)
-      } catch (error) {
-        if (isRedirect(error)) return error.options
-      }
-      return null
-    }
-    expect(redirectOf('/coding', {})).toMatchObject({ to: '/', replace: true })
-    expect(redirectOf('/coding/abc-123', { sessionId: 'abc-123' }))
-      .toMatchObject({ to: '/$sessionId', params: { sessionId: 'abc-123' }, replace: true })
-    expect(leaf('/coding/abc-123')?.options.component).toBeUndefined()
   })
 })

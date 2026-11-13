@@ -171,8 +171,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   connect closes it and shows the error where you started.
 - **Workspace-required architecture and root redirect** `[v2.4.0, updated v2.19.0]` — OpenAgentd runs on one
   screen built around workspaces. Since `[v3.0.0]` that screen is the root:
-  `/` is a new session and `/{session_id}` a session; old `/coding` and
-  Cockpit URLs redirect there, and the app's labels no longer call it
+  `/` is a new session and `/{session_id}` a session, and the app's labels no longer call it
   "coding" (the composer reads "Ask anything in <workspace>…", the palette
   "Toggle Sidebar", the tray just the workspace name),
   workspaces are required across chat, scheduler, and terminals, and database
@@ -3250,7 +3249,7 @@ agent against it.
     its path in the workspace; right-click (or long-press, or Shift+F10) the
     name of an open file in its tab's toolbar for the same two `[v3.50.2]`.
 - **Persisted coding sessions per workspace** `[v1.18.0]` — `/{session_id}`
-  (`/coding/{session_id}` before v3.0.0) restores workspace context from the
+  restores workspace context from the
   saved session. Bare `/` is the launcher or last-workspace restore. New empty sessions exist before the
   first message.
 - **Workspace sidebar pagination** `[v1.18.0]` — each main/worktree list shows
@@ -3582,7 +3581,7 @@ agnostic by design.
   effort levels now surface standard `none/low/medium/high` thinking choices in
   Settings, with Anthropic runtime mapping those levels to proportional token
   budgets.
-- **`openagentd://` deep links and OAuth callback handoff** `[v1.116.0]` — system protocol registration for desktop and mobile apps, with cold- and warm-start routing. Navigation links (`openagentd://cockpit/...`, `openagentd://coding/...`) open the requested session. OAuth providers that implement a callback exchange can use `openagentd://auth/callback?provider=...&code=...`; OpenAgentd validates the link shape and forwards the opaque callback payload to the active backend, while the provider remains responsible for state and PKCE verification. Isolated desktop development bundles and physical-device iOS development builds use `openagentd-dev://` so they do not claim the production protocol.
+- **`openagentd://` deep links and OAuth callback handoff** `[v1.116.0]` — system protocol registration for desktop and mobile apps, with cold- and warm-start routing. Navigation links (`openagentd://session/<id>`) open the requested session; the `cockpit` and `coding` hosts and the `/coding` paths of builds before v3.0.0 are no longer read `[v3.54.0]`. OAuth providers that implement a callback exchange can use `openagentd://auth/callback?provider=...&code=...`; OpenAgentd validates the link shape and forwards the opaque callback payload to the active backend, while the provider remains responsible for state and PKCE verification. Isolated desktop development bundles and physical-device iOS development builds use `openagentd-dev://` so they do not claim the production protocol.
   - A session link can name its server `[v3.52.0]`: `?device=<account device id>` and/or `?server=<base URL>` (and `?srv=`, the app's own token in widget links). The phone opens it on that computer, switching first (the account computer directly on the home network when it can, else through the account); a link without them opens on the server in use, as before. Each link is handled once, so a reload (a server switch, or iOS reloading the app in the background) no longer opens it again, starts another draft, or repeats an OAuth callback.
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
   built-in OAuth helper. Codex models automatically prioritize extended context

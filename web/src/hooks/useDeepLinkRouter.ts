@@ -92,7 +92,7 @@ export function parseDeepLinkUrl(urlStr: string): DeepLinkParsed {
       return { kind: 'auth_callback', provider, code }
     }
 
-    if (host === 'cockpit' || host === 'coding' || host === 'session') {
+    if (host === 'session') {
       const target = `/${pathname}`.replace(/\/+$/, '')
       const server = target ? linkServer(url) : undefined
       return server ? { kind: 'navigate', path: target, server } : { kind: 'navigate', path: target || '/' }

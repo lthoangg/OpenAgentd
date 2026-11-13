@@ -27,6 +27,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { MessageSquarePlus } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useTouchFirst } from '@/hooks/use-touch-first'
 import { getPlatform } from '@/hooks/use-platform'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { mediumHapticFeedback } from '@/lib/haptics'
@@ -57,6 +58,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const [ctrlArmed, setCtrlArmed] = useState(false)
   const ctrlArmedRef = useRef(false)
   const isMobile = useIsMobile()
+  const touchFirst = useTouchFirst()
   const { resolved } = useThemePreference()
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
@@ -216,11 +218,11 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     useTerminalStore.getState().reconnect(sessionId)
   }, [sessionId])
 
-  // Mobile long-press on the terminal surface itself: Select All / Copy /
-  // Paste. xterm's own touch handling covers scroll + drag-to-select, but
-  // there's no native context menu on touch, so this fills the gap the
-  // same way TerminalKeyBar fills the missing soft-keyboard keys.
-  const surfaceLongPress = useLongPressSurface(isMobile, () => {
+  // Long-press on the terminal surface itself: Select All / Copy / Paste.
+  // xterm's own touch handling covers scroll + drag-to-select, but there's
+  // no native context menu on touch, so this fills the gap on a phone and
+  // on a tablet however wide (a mouse press never counts as a hold).
+  const surfaceLongPress = useLongPressSurface(isMobile || touchFirst, () => {
     mediumHapticFeedback()
     setActionSheetOpen(true)
   })

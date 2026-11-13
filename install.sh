@@ -8,8 +8,8 @@
 #
 # Default: installs the macOS Apple Silicon app into /Applications or the
 # Linux x86_64 .deb package through apt.
-# --cli: installs the `agentd` command-line binary (macOS arm64/x86_64,
-# Linux x86_64/arm64) into ~/.local/bin, verified against its .sha256, and
+# --cli: installs the `agentd` command-line binary (macOS arm64, Linux
+# x86_64) into ~/.local/bin, verified against its .sha256, and
 # removes an OpenAgentd v2 (Python) install made with uv or pipx. Releases
 # also ship `openagentd`, the binary's former name, as an alias.
 #
@@ -20,6 +20,8 @@ set -eu
 
 REPO="lthoangg/openagentd"
 RELEASES_URL="${OPENAGENTD_RELEASES_URL:-https://github.com/${REPO}/releases}"
+# Where a refusal sends a machine no release is built for.
+SOURCE_HINT="To build it yourself, see https://github.com/${REPO}/blob/main/CONTRIBUTING.md#quick-start"
 VERSION=""
 MODE="desktop"
 INSTALL_DIR="${OPENAGENTD_INSTALL_DIR:-$HOME/.local/bin}"
@@ -41,7 +43,7 @@ Options:
 
 Supported platforms:
     Desktop app: macOS 11+ on Apple Silicon, Debian/Ubuntu Linux on x86_64
-    CLI:         macOS on Apple Silicon or Intel, Linux (glibc) on x86_64 or arm64
+    CLI:         macOS on Apple Silicon, Linux (glibc) on x86_64
 EOF
 }
 
@@ -116,7 +118,7 @@ resolve_version() {
 
 install_macos() {
     arch="$(uname -m)"
-    [ "$arch" = "arm64" ] || fail "macOS desktop releases require Apple Silicon (found $arch)"
+    [ "$arch" = "arm64" ] || fail "macOS desktop releases require Apple Silicon (found $arch). $SOURCE_HINT"
     command -v tar >/dev/null 2>&1 || fail "tar is required"
 
     asset="OpenAgentd.app.tar.gz"
@@ -146,10 +148,10 @@ install_linux() {
     arch="$(uname -m)"
     case "$arch" in
         x86_64|amd64) ;;
-        *) fail "Linux desktop releases require x86_64 (found $arch)" ;;
+        *) fail "Linux desktop releases require x86_64 (found $arch). $SOURCE_HINT" ;;
     esac
     command -v apt-get >/dev/null 2>&1 \
-        || fail "Linux desktop installation currently requires Debian/Ubuntu (apt-get)"
+        || fail "the Linux desktop app is a .deb package and needs Debian or Ubuntu (apt-get). For the command-line tool, run this installer with --cli"
 
     asset="OpenAgentd_${VERSION}_amd64.deb"
     url="${RELEASES_URL}/download/v${VERSION}/${asset}"
@@ -183,19 +185,19 @@ cli_target() {
             fi
             case "$arch" in
                 arm64|aarch64) TARGET="aarch64-apple-darwin" ;;
-                *) fail "Intel Macs are not supported; prebuilt CLI releases are Apple Silicon only" ;;
+                *) fail "Intel Macs are not supported; prebuilt CLI releases are Apple Silicon only. $SOURCE_HINT" ;;
             esac
             ;;
         Linux)
             if ldd --version 2>&1 | grep -qi musl; then
-                fail "musl-based Linux (e.g. Alpine) is not supported yet; the CLI needs glibc"
+                fail "musl-based Linux (e.g. Alpine) is not supported yet; the CLI needs glibc. $SOURCE_HINT"
             fi
             case "$arch" in
                 x86_64|amd64) TARGET="x86_64-unknown-linux-gnu" ;;
-                *) fail "unsupported Linux architecture: $arch (prebuilt CLI releases are x86_64 only)" ;;
+                *) fail "unsupported Linux architecture: $arch (prebuilt CLI releases are x86_64 only). $SOURCE_HINT" ;;
             esac
             ;;
-        *) fail "unsupported platform: $os" ;;
+        *) fail "unsupported platform: $os. On Windows, use install.ps1" ;;
     esac
 }
 
@@ -271,12 +273,22 @@ install_cli() {
     note "    $("$INSTALL_DIR/$BIN_NAME" --version)"
 }
 
+# The file the user's login shell reads on start. zsh (the macOS default)
+# never reads ~/.profile.
+shell_rc() {
+    case "${SHELL##*/}" in
+        zsh)  printf '%s' "~/.zshrc" ;;
+        bash) if [ "$(uname -s)" = "Darwin" ]; then printf '%s' "~/.bash_profile"; else printf '%s' "~/.bashrc"; fi ;;
+        *)    printf '%s' "~/.profile" ;;
+    esac
+}
+
 cli_path_hints() {
     case ":$PATH:" in
         *":$INSTALL_DIR:"*) ;;
         *)
-            say "Add ${BOLD}${INSTALL_DIR}${RESET} to your PATH, for example:"
-            say "    echo 'export PATH=\"$INSTALL_DIR:\$PATH\"' >> ~/.profile"
+            say "Add ${BOLD}${INSTALL_DIR}${RESET} to your PATH, then open a new terminal:"
+            say "    echo 'export PATH=\"$INSTALL_DIR:\$PATH\"' >> $(shell_rc)"
             return
             ;;
     esac
@@ -302,7 +314,7 @@ if [ "$MODE" = "cli" ]; then
     say ""
     step "${BOLD}Installed ${BIN_NAME} ${VERSION}!${RESET}"
     cli_path_hints
-    say "Next: run ${BOLD}${BIN_NAME} --help${RESET}, or ${BOLD}${BIN_NAME} server start --wait${RESET}."
+    say "Next: run ${BOLD}${BIN_NAME} --help${RESET}, or ${BOLD}${BIN_NAME} server start${RESET}."
     note "      It uses the same config and data as OpenAgentd v2 and the desktop app."
     say ""
     exit 0
@@ -311,7 +323,7 @@ fi
 case "$(uname -s)" in
     Darwin) install_macos ;;
     Linux) install_linux ;;
-    *) fail "unsupported platform: $(uname -s)" ;;
+    *) fail "unsupported platform: $(uname -s). On Windows, use install.ps1" ;;
 esac
 
 say ""

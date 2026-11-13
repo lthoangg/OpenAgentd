@@ -9,6 +9,11 @@ repository = "https://github.com/lthoangg/openagentd"
 edition = "2021"
 rust-version = "1.85"
 
+# Not unused: `time` is an MSRV pin; `keyring` turns on the apple-native backend
+# for shell-core's keyring.
+[package.metadata.cargo-machete]
+ignored = ["time", "keyring"]
+
 [lib]
 name = "openagentd_mobile_lib"
 # staticlib: iOS links it into the Xcode app. cdylib: Android loads it as
@@ -31,7 +36,6 @@ serde_json = "1"
 anyhow = "1"
 url = "2"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-base64 = "0.23"
 sha2 = "0.10"
 keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
 # OpenAgentd Cloud accounts (optional): the protocol, the API client, and the

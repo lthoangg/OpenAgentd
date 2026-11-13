@@ -9,6 +9,10 @@ repository = "https://github.com/lthoangg/openagentd"
 edition = "2021"
 rust-version = "1.77.2"
 
+# Not unused: `image` is an MSRV pin (see the comment on it below).
+[package.metadata.cargo-machete]
+ignored = ["image"]
+
 # https://crates.io/crates/tauri-build
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -2829,7 +2829,6 @@ version = "3.53.1"
 dependencies = [
  "anyhow",
  "axum",
- "base64 0.23.1",
  "block2",
  "bytes",
  "dispatch2",

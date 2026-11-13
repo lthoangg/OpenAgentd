@@ -423,7 +423,6 @@ name = "appv3-plugins"
 version = "3.53.1"
 dependencies = [
  "dunce",
- "serde",
  "serde_json",
  "tempfile",
  "tracing",

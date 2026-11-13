@@ -26,7 +26,7 @@ import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardSho
 import { useDeepLinkRouter } from '@/hooks/useDeepLinkRouter'
 import { GlobalEventStream } from '@/hooks/use-global-event-stream'
 import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
-import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 import { FloatingNotices } from '@/components/FloatingNotices'
 import { AiDataConsent } from '@/components/AiDataConsent'
 import { CAPABILITY, useServerCapability } from '@/queries'
@@ -54,11 +54,6 @@ const PluginNotice = lazySurface(() => import('@/components/settings/pages/setti
 // Keyboard shortcuts (⌘/), with the help text for every shortcut: opened on
 // demand, never on the first screen.
 const KeyboardShortcutsSheet = lazySurface(() => import('@/components/KeyboardShortcutsSheet'), 'KeyboardShortcutsSheet')
-
-function widgetsSupported(): boolean {
-  const { isTauri, os } = getPlatform()
-  return isTauri && (os === 'ios' || os === 'android')
-}
 
 // Only v3 backends can answer the plugin status request the notice makes.
 function PluginNoticeGate() {
@@ -163,12 +158,12 @@ export function Root() {
     <QueryClientProvider client={queryClient}>
       <GlobalEventStream />
       <NeedsYouBadgeSync />
-      {widgetsSupported() && (
+      {isMobileApp() && (
         <Suspense fallback={null}>
           <WidgetSnapshotSync />
         </Suspense>
       )}
-      {widgetsSupported() && (
+      {isMobileApp() && (
         <Suspense fallback={null}>
           <PhoneCloudSync />
         </Suspense>

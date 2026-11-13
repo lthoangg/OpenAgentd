@@ -11,7 +11,7 @@ import { useConnectLink } from '@/hooks/useConnectLink'
 import { useDynamicType } from '@/hooks/use-dynamic-type'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
-import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 import { getAppBackendStatus, getBundledBackendLogPath } from '@/lib/app-backend'
 import { isDesktopShell } from '@/lib/desktop-shell'
 import { clearBackendSwitchHandoff, pendingBackendSwitch, type BackendSwitchTarget } from '@/stores/useBackendSwitchStore'
@@ -37,11 +37,6 @@ const PhoneCloudSync = lazy(() =>
   import('@/hooks/use-phone-cloud-sync').then((module) => ({ default: module.PhoneCloudSync })),
 )
 
-function phoneAppShell(): boolean {
-  const { isTauri, os } = getPlatform()
-  return isTauri && (os === 'ios' || os === 'android')
-}
-
 function App() {
   // Mounted here, not in the root route, so the loading screen and the
   // first-run server dialog already get the mobile shell's viewport guards
@@ -60,7 +55,7 @@ function App() {
   // starts), goes away, or the network changes, and once when health fails
   // on an account computer. A failed launch attempt shows Servers.
   useEffect(() => {
-    if (!phoneAppShell()) return
+    if (!isMobileApp()) return
     let cancelled = false
     let stop: (() => void) | undefined
     void import('@/lib/account-route')
@@ -139,7 +134,7 @@ function App() {
             </div>
           )}
           <BackendSwitchScreen />
-          {phoneAppShell() && (
+          {isMobileApp() && (
             <Suspense fallback={null}>
               <PhoneCloudSync />
             </Suspense>

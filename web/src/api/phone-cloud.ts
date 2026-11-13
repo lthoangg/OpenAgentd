@@ -5,7 +5,7 @@
  * Guest is the default; nothing here may block a guest.
  */
 import type { ApprovalView, Roles } from '@/api/cloud'
-import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 import { deviceKindLabel, type AppBackendStatus } from '@/lib/app-backend'
 
 export type PhoneNotice =
@@ -96,8 +96,7 @@ export function pendingLabel(row: PendingRow, now?: number): string {
 
 /** The iOS and Android apps: the only shells that hold a phone account. */
 export function isPhoneCloudShell(): boolean {
-  const { isTauri, os } = getPlatform()
-  return isTauri && (os === 'ios' || os === 'android')
+  return isMobileApp()
 }
 
 /** Tauri rejects with a bare string; callers want an `Error` with that message. */

@@ -4,7 +4,7 @@ import { AlertCircle, Download, GripVertical, Loader2, Maximize2, Minus } from '
 import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, hasInAppUpdates, installUpdate as invokeInstallUpdate, type UpdateStatus } from '@/lib/updater'
 import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
 import { Button } from '@/components/ui/button'
-import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { sessionsSpending } from '@/lib/active-sessions'
 import { dragSettle, noticePresence } from '@/lib/motion'
@@ -14,11 +14,6 @@ import { cn } from '@/lib/utils'
 import { errorMessage } from '@/utils/errors'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
-
-function isMobileShell(): boolean {
-  const { isTauri, os } = getPlatform()
-  return isTauri && (os === 'ios' || os === 'android')
-}
 
 /**
  * Whether any agent is mid-turn. Restarting stops the built-in backend, which
@@ -50,7 +45,7 @@ export function UpdateCard() {
   const [status, setStatus] = useState<UpdateStatus>({ status: 'idle' })
   const [tauriReady, setTauriReady] = useState(false)
   // A phone starts with the one-line banner (mockup J11): the card opens on a tap.
-  const [minimized, setMinimized] = useState(isMobileShell)
+  const [minimized, setMinimized] = useState(() => isMobileApp())
   const [busyWarning, setBusyWarning] = useState(false)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const dragControls = useDragControls()
@@ -100,7 +95,7 @@ export function UpdateCard() {
 
   const installUpdate = useCallback(async () => {
     setStatus((current) => ({ ...current, status: 'installing' }))
-    if (isMobileShell()) {
+    if (isMobileApp()) {
       // Android hands off to the system installer and returns; the system
       // replaces the app if the user confirms.
       try {
@@ -140,7 +135,7 @@ export function UpdateCard() {
   // Install asks once while agents are working; "Restart anyway" goes on.
   const requestInstall = useCallback(() => {
     // Mobile agents run on the server, so installing interrupts nothing.
-    if (!isMobileShell() && agentsWorking()) {
+    if (!isMobileApp() && agentsWorking()) {
       setBusyWarning(true)
       setMinimized(false)
       return
@@ -265,7 +260,7 @@ export function UpdateCard() {
       >
         {minimized ? (
           <div className="flex items-center gap-2">
-            {!isMobileShell() && <button
+            {!isMobileApp() && <button
               type="button"
               aria-label="Drag update notification (double-click to reset position)"
               title="Drag to move · Double-click to reset"
@@ -407,7 +402,7 @@ export function UpdateCard() {
                   </Button>
                 ) : (
                   <Button type="button" variant="primary" size="sm" onClick={requestInstall}>
-                    {isMobileShell() ? 'Install' : 'Install and restart'}
+                    {isMobileApp() ? 'Install' : 'Install and restart'}
                   </Button>
                 )
               ) : null}
@@ -455,7 +450,7 @@ function titleForStatus(status: UpdateStatus): string {
 
 function descriptionForStatus(status: UpdateStatus): string {
   if (status.message) return status.message
-  const mobile = isMobileShell()
+  const mobile = isMobileApp()
   if (status.status === 'available') {
     return `Current version: ${status.current_version}.`
   }

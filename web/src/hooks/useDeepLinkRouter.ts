@@ -9,7 +9,7 @@ import { useToastStore } from '@/stores/useToastStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { startNewSession } from '@/lib/new-session'
 import { loadLastWorkspace } from '@/utils/workspace'
-import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 
 /**
  * The server a session link names: `srv` (the app's own opaque token, from
@@ -163,18 +163,13 @@ async function listenToDeepLinks(onUrls: (urls: string[], replayed: boolean) => 
   return stopListening
 }
 
-function isPhoneShell(): boolean {
-  const { isTauri, os } = getPlatform()
-  return isTauri && (os === 'ios' || os === 'android')
-}
-
 /**
  * Open a session link that names its server on that server (phone: switch
  * first when needed). Returns false when the link is not for that, so the
  * caller navigates as usual.
  */
 async function openOnLinkServer(path: string, server: DeepLinkServer | undefined): Promise<boolean> {
-  if (!server || !isPhoneShell()) return false
+  if (!server || !isMobileApp()) return false
   const sessionId = /^\/([^/]+)$/.exec(path)?.[1]
   if (!sessionId) return false
   const [{ serverForToken }, { openSessionOnServer }] = await Promise.all([

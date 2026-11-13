@@ -1,4 +1,5 @@
 import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 
 /**
  * Best-effort haptic feedback for touch shells.
@@ -10,11 +11,6 @@ import { getPlatform } from '@/hooks/use-platform'
  * Vibration API. Long-press behavior must never depend on haptics
  * succeeding, so every path swallows errors.
  */
-
-function isTouchShell(): boolean {
-  const { isTauri, os } = getPlatform()
-  return isTauri && (os === 'ios' || os === 'android')
-}
 
 function webVibrate(durationMs: number): void {
   try {
@@ -36,7 +32,7 @@ async function nativeImpact(style: 'soft' | 'medium'): Promise<boolean> {
 
 /** Light tick — selection changes, toggles, minor confirmations. */
 export function softHapticFeedback(): void {
-  if (!isTouchShell()) return
+  if (!isMobileApp()) return
   void nativeImpact('soft').then((ok) => {
     if (!ok) webVibrate(10)
   })
@@ -44,7 +40,7 @@ export function softHapticFeedback(): void {
 
 /** Stronger thump — long-press activation, destructive confirms. */
 export function mediumHapticFeedback(): void {
-  if (!isTouchShell()) return
+  if (!isMobileApp()) return
   void nativeImpact('medium').then((ok) => {
     if (!ok) webVibrate(20)
   })
@@ -52,7 +48,7 @@ export function mediumHapticFeedback(): void {
 
 /** The system's selection tick — a switch flips, a segment changes. */
 export function selectionHapticFeedback(): void {
-  if (!isTouchShell()) return
+  if (!isMobileApp()) return
   void import('@tauri-apps/plugin-haptics')
     .then(({ selectionFeedback }) => selectionFeedback())
     .catch(() => webVibrate(10))
@@ -78,7 +74,7 @@ export function alignmentHapticFeedback(): void {
 
 /** The system's success or error pattern for an action's result. */
 export function outcomeHapticFeedback(outcome: 'success' | 'error'): void {
-  if (!isTouchShell()) return
+  if (!isMobileApp()) return
   void import('@tauri-apps/plugin-haptics')
     .then(({ notificationFeedback }) => notificationFeedback(outcome))
     .catch(() => webVibrate(20))

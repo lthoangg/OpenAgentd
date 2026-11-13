@@ -1,6 +1,7 @@
 import { useEffect, type RefObject } from 'react'
 
 import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 import { MOBILE_QUERY } from '@/hooks/use-mobile'
 import { dismissKeyboard } from '@/lib/soft-keyboard'
 
@@ -104,7 +105,7 @@ export function useMobileViewportGuards() {
     const isMobileViewport = window.matchMedia(MOBILE_QUERY).matches
     const isTouchFirst = window.matchMedia('(pointer: coarse)').matches
     const isMobileShell =
-      (isTauri && (os === 'ios' || os === 'android')) ||
+      isMobileApp({ isTauri, os }) ||
       (isTouch && !!window.visualViewport && (isMobileViewport || isTouchFirst))
     if (!isMobileShell) return
 

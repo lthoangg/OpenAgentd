@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SectionCard } from '@/components/ui/section-card'
 import { Seal, Wordmark } from '@/components/brand/Logo'
-import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 import { clientLabel, clientVersion, versionSkew, WEB_BUILD_VERSION } from '@/lib/app-version'
 import { checkForUpdates, downloadUpdate, hasInAppUpdates, installUpdate, type UpdateStatus } from '@/lib/updater'
 import { apiBaseUrl } from '@/api/base-url'
@@ -119,7 +119,7 @@ function UpdatesSection() {
   const [status, setStatus] = useState<UpdateStatus | null>(null)
   const [pending, setPending] = useState(false)
   const [confirmRestart, setConfirmRestart] = useState(false)
-  const mobile = isMobileShell()
+  const mobile = isMobileApp()
 
   async function onCheck() {
     setPending(true)
@@ -226,11 +226,6 @@ function UpdatesSection() {
       />
     </PanelSection>
   )
-}
-
-function isMobileShell(): boolean {
-  const { isTauri, os } = getPlatform()
-  return isTauri && (os === 'ios' || os === 'android')
 }
 
 function statusTitle(status: UpdateStatus | null): string {

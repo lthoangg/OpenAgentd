@@ -3,12 +3,11 @@
  * `openagentd://connect` code the desktop's Network access card shows.
  * The Servers list fills its own add form from the code.
  */
-import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 
 /** The iOS and Android apps: the only shells with the scanner plugin. */
 export function canScanQr(): boolean {
-  const { isTauri, os } = getPlatform()
-  return isTauri && (os === 'ios' || os === 'android')
+  return isMobileApp()
 }
 
 export type ScanOutcome =

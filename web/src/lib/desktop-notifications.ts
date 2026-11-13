@@ -1,4 +1,5 @@
 import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 // Type only: the tap bookkeeping loads with the first mobile notification,
 // outside the startup bundle.
 import type { NotificationTarget } from '@/lib/notification-taps'
@@ -79,11 +80,6 @@ function isTauriRuntime(): boolean {
   return getPlatform().isTauri
 }
 
-function isMobileTauriRuntime(): boolean {
-  const platform = getPlatform()
-  return platform.isTauri && (platform.os === 'ios' || platform.os === 'android')
-}
-
 function appOpenOnScreen(): boolean {
   return document.visibilityState === 'visible' && Date.now() - visibleSince >= RESUME_GRACE_MS
 }
@@ -130,7 +126,7 @@ async function shouldNotify(
     return { status: 'disabled', message: 'The account push shows this while the app is in the background.' }
   }
   if (options.force) return null
-  if (isMobileTauriRuntime()) {
+  if (isMobileApp()) {
     // iOS pauses a backgrounded app's JavaScript, so most mobile notifications
     // are sent while the app is open. Skip only the one repeating the screen.
     return options.sessionOnScreen && document.visibilityState === 'visible'
@@ -192,7 +188,7 @@ export async function sendDesktopNotification(
       return { status: 'permission-denied', message: 'OS notification permission was not granted.' }
     }
     const { invoke } = await import('@tauri-apps/api/core')
-    if (isMobileTauriRuntime()) {
+    if (isMobileApp()) {
       // show_desktop_notification exists only in the desktop shell.
       await invoke('plugin:notification|notify', { options: await mobileNotificationOptions(payload) })
     } else {
@@ -228,7 +224,7 @@ export async function sendDesktopNotification(
  * Resolves to an unsubscribe.
  */
 export async function listenForNotificationTaps(onTarget: (target: NotificationTarget) => void): Promise<() => void> {
-  if (!isMobileTauriRuntime() || getPlatform().os !== 'android') return () => {}
+  if (!isMobileApp() || getPlatform().os !== 'android') return () => {}
   const [{ onAction }, { notificationTarget }] = await Promise.all([
     import('@tauri-apps/plugin-notification'),
     import('@/lib/notification-taps'),

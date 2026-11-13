@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { ROW_ACTION, listRowSurface } from '@/components/ui/list-row'
@@ -33,8 +34,7 @@ export function TaskListItem({
   const resumeMutation = useResumeScheduledTaskMutation()
   const triggerMutation = useTriggerScheduledTaskMutation()
   const isMobile = useIsMobile()
-  const { isTauri, os } = usePlatform()
-  const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
+  const isTauriMobile = isMobileApp(usePlatform())
   const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
   // A phone's menu is an action sheet, from ⋯ or a long press alike.
   const phoneSheet = useTouchFirst() && isMobile

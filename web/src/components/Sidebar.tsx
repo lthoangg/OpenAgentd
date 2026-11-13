@@ -35,6 +35,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useDrawerMotion } from '@/hooks/use-drawer-motion'
 import { usePlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 import { cn } from '@/lib/utils'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
 import { PANEL_SLIDE_MS, PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
@@ -338,7 +339,7 @@ export function Sidebar({
   const isMobile = useIsMobile() || isPage
   const { isTauri, os } = usePlatform()
   const [nativeFolderPickerEnabled, setNativeFolderPickerEnabled] = useState(isTauri)
-  const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
+  const isTauriMobile = isMobileApp({ isTauri, os })
   // Held rows open the session sheet in the iOS and Android apps while the
   // drawer is open, and on the Sessions page in any phone browser (the page
   // has no inline ⋯ to fall back on). The page keeps it while a chat covers

@@ -15,6 +15,7 @@ mod tray_popup;
 mod island;
 mod pet;
 mod watchdog;
+mod remote_update;
 mod network_access;
 mod preview_relay;
 mod servers;
@@ -784,6 +785,9 @@ fn main() {
             });
             let watchdog_handle = app.handle().clone();
             tauri::async_runtime::spawn(watchdog::run(watchdog_handle));
+            if remote_update::supported() {
+                tauri::async_runtime::spawn(remote_update::run(app.handle().clone()));
+            }
             island::start(app.handle());
             pet::start(app.handle());
             Ok(())

@@ -27,10 +27,11 @@
  * the screen is up and visible. A row is In use when the app is on its
  * bridge.
  */
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 
 import type { DeviceRow, LinkRoute } from '@/api/phone-cloud'
 import { ServerRow } from '@/components/AppBackendPanel'
+import { ServerUpdateOnRow } from '@/components/settings/ServerUpdate'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { PanelSection } from '@/components/ui/panel-section'
@@ -179,8 +180,8 @@ export function AccountComputersSection({
           const inUse = Boolean(onOpenSessions) && onExternal && onBridge
           const idle = opening === null
           return (
+            <Fragment key={computer.device.device_id}>
             <ServerRow
-              key={computer.device.device_id}
               health={computerHealth(computer.device)}
               title={computer.label}
               subtitle={computerLine(computer, onBridge, route)}
@@ -199,6 +200,8 @@ export function AccountComputersSection({
                 </Button>
               )}
             </ServerRow>
+            {inUse ? <ServerUpdateOnRow /> : null}
+            </Fragment>
           )
         })}
       </PanelSection>

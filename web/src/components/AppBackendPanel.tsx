@@ -36,6 +36,7 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { NetworkAccessCard } from '@/components/NetworkAccessCard'
+import { ServerUpdateOnRow } from '@/components/settings/ServerUpdate'
 import { Callout } from '@/components/ui/callout'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Field } from '@/components/ui/field'
@@ -568,6 +569,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             {openInUse(status ? unlistedUrl : 'This server')}
           </ServerRow>
         ) : null}
+        {unlistedUrl ? <ServerUpdateOnRow /> : null}
         {servers.map((server) => {
           const normalizedServerUrl = normalizeServerBaseUrl(server.base_url)
           const active = onExternal && normalizeServerBaseUrl(currentUrl) === normalizedServerUrl
@@ -656,6 +658,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                 </>
                 )}
               </ServerRow>
+              {active ? <ServerUpdateOnRow /> : null}
               {editing && editTarget ? serverForm(editTarget) : null}
             </Fragment>
           )

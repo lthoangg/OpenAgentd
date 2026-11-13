@@ -19,6 +19,13 @@ export type ServerUpdatePhase =
 export const POLL_MS = 2_000
 /** A Homebrew upgrade can take minutes; give up after this. */
 export const GIVE_UP_MS = 5 * 60_000
+/** A desktop app downloads the whole app before it restarts. */
+const DESKTOP_APP_GIVE_UP_MS = 15 * 60_000
+
+/** How long to follow an update the server started with `method`. */
+export function giveUpAfter(method: string | undefined): number {
+  return method === 'desktop_app' ? DESKTOP_APP_GIVE_UP_MS : GIVE_UP_MS
+}
 
 interface ServerUpdateStore {
   phase: ServerUpdatePhase
@@ -39,6 +46,8 @@ export function readProgress(status: ServerUpdateStatus, started: { target: stri
   const ours = last?.started_at === started.startedAt
   if (ours && last?.state === 'finished') {
     if (last.ok === false) return { kind: 'failed', message: last.message || 'The update failed.', log: status.log }
+    // The release list moved on while it ran: it installed a newer one.
+    if (last.to && last.to === status.current) return { kind: 'done', from: '', to: status.current }
     // Finished well, yet the server still runs the old version: it came back
     // before the new one took over, or the feed moved. Say so.
     return { kind: 'failed', message: `The server is still on v${status.current}. ${last.message ?? ''}`.trim(), log: status.log }
@@ -69,7 +78,8 @@ export const useServerUpdateStore = create<ServerUpdateStore>((set, get) => ({
     }
     const { from, target } = started
     set({ phase: { kind: 'updating', from, target } })
-    const deadline = Date.now() + GIVE_UP_MS
+    const giveUp = giveUpAfter(started.method)
+    const deadline = Date.now() + giveUp
     while (Date.now() < deadline) {
       await sleep(POLL_MS)
       let status: ServerUpdateStatus
@@ -86,7 +96,7 @@ export const useServerUpdateStore = create<ServerUpdateStore>((set, get) => ({
         return
       }
     }
-    set({ phase: { kind: 'failed', message: `The server did not come back on v${target} within ${GIVE_UP_MS / 60_000} minutes.` } })
+    set({ phase: { kind: 'failed', message: `The server did not come back on v${target} within ${giveUp / 60_000} minutes.` } })
     options?.onSettled?.()
   },
 }))

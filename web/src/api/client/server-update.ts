@@ -1,7 +1,9 @@
 /**
  * The server's self-update API (v3; `capabilities` includes
- * "api.server_update"). Only a server `agentd server start` launched can
- * update itself; any other reports why not in `reason`.
+ * "api.server_update"). A server `agentd server start` launched updates
+ * itself, and a desktop app that installs its own updates (macOS, Windows)
+ * updates its server by updating itself (`method: 'desktop_app'`); any other
+ * reports why not in `reason`.
  */
 import { apiBaseUrl } from '../base-url'
 import { parseDetailOrThrow } from './_shared'
@@ -25,7 +27,9 @@ export interface ServerUpdateStatus {
   latest: string | null
   available: boolean
   can_upgrade: boolean
-  method: 'release' | 'brew' | null
+  method: 'release' | 'brew' | 'desktop_app' | null
+  /** The computer's installer may wait for someone there (Windows). Absent from an older server. */
+  confirm_on_computer?: boolean
   reason: ServerUpdateBlocker | null
   check_error: string | null
   in_progress: boolean
@@ -40,6 +44,8 @@ export interface ServerUpdateStarted {
   from: string
   target: string
   started_at: string
+  /** Absent from an older server. */
+  method?: string
 }
 
 export async function getServerUpdate(refresh = false, signal?: AbortSignal): Promise<ServerUpdateStatus> {

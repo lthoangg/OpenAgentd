@@ -14,9 +14,10 @@ mock.module('@/queries/useServerUpdateQuery', () => ({
 }))
 const start = mock(async () => {})
 
-const { ServerUpdateButton, ServerUpdateConfirm, ServerUpdateNote, blockedAdvice, useServerUpdateFlow } = await import('@/components/settings/ServerUpdate')
+const { ServerUpdateButton, ServerUpdateConfirm, ServerUpdateNote, ServerUpdateOnRow, blockedAdvice, useServerUpdateFlow } = await import('@/components/settings/ServerUpdate')
 const { useServerUpdateStore } = await import('@/stores/useServerUpdateStore')
 const { queryKeys } = await import('@/queries')
+const { queryClient: appClient } = await import('@/lib/query-client')
 
 function available(overrides: Partial<ServerUpdateStatus> = {}): ServerUpdateStatus {
   return {
@@ -26,17 +27,20 @@ function available(overrides: Partial<ServerUpdateStatus> = {}): ServerUpdateSta
 }
 
 let client: QueryClient
-function Row() {
+function Row({ ownApp = false }: { ownApp?: boolean }) {
   const flow = useServerUpdateFlow()
   return (
     <>
-      <ServerUpdateButton onRequest={flow.request} />
-      <ServerUpdateNote />
+      <ServerUpdateButton onRequest={flow.request} ownApp={ownApp} />
+      <ServerUpdateNote ownApp={ownApp} />
       <ServerUpdateConfirm flow={flow} />
     </>
   )
 }
-const show = () => render(<QueryClientProvider client={client}><Row /></QueryClientProvider>)
+const show = (ownApp = false) => render(<QueryClientProvider client={client}><Row ownApp={ownApp} /></QueryClientProvider>)
+// Bare, as the Servers screen and the Server dialog show before the router's
+// provider exists; the app's own client says what it knows of the server.
+const showOnRow = () => render(<ServerUpdateOnRow />)
 
 beforeEach(() => {
   client = new QueryClient()
@@ -97,12 +101,86 @@ describe('ServerUpdate', () => {
     show()
     expect(screen.queryByRole('button', { name: /Update to/ })).toBeNull()
     expect(screen.getByRole('alert').textContent).toContain('runs in the foreground, so update it where it runs: agentd upgrade')
-    expect(blockedAdvice({ latest: '3.51.0', reason: 'desktop_sidecar' })).toBe('v3.51.0 is out. This server comes with the desktop app: update the app to update it.')
+    expect(blockedAdvice({ latest: '3.51.0', reason: 'desktop_sidecar' })).toBe('v3.51.0 is out. This server is the desktop app on its computer: update the app there.')
   })
 
   it('shows nothing when the server is up to date', () => {
     data = available({ available: false })
     const { container } = show()
     expect(container.textContent).toBe('')
+  })
+})
+
+describe('ServerUpdate for a desktop app’s server', () => {
+  it('offers the update and says it happens on that computer', () => {
+    data = available({ method: 'desktop_app' })
+    show()
+    expect(screen.getByRole('button', { name: 'Update to v3.51.0' })).toBeTruthy()
+    const note = screen.getByRole('status').textContent
+    expect(note).toContain('Updates OpenAgentd on that computer and restarts it. Running sessions resume.')
+    expect(note).not.toContain('Windows')
+  })
+
+  it('says so when Windows may wait for someone at the computer', () => {
+    data = available({ method: 'desktop_app', confirm_on_computer: true })
+    const { unmount } = show()
+    expect(screen.getByRole('status').textContent).toContain('Windows may ask to confirm it on the computer.')
+    unmount()
+
+    useServerUpdateStore.setState({ phase: { kind: 'updating', from: '3.50.0', target: '3.51.0' } })
+    show()
+    const note = screen.getByRole('status').textContent
+    expect(note).toContain('OpenAgentd on the computer downloads it and restarts')
+    expect(note).toContain('If Windows asks, confirm the update on the computer.')
+  })
+
+  it('leaves an app that cannot update itself (Linux) as update on the computer', () => {
+    data = available({ can_upgrade: false, reason: 'desktop_sidecar', method: null })
+    show()
+    expect(screen.queryByRole('button', { name: /Update to/ })).toBeNull()
+    expect(screen.getByRole('alert').textContent).toBe('v3.51.0 is out. This server is the desktop app on its computer: update the app there.')
+  })
+
+  it('in the desktop app on its own server, leaves the update to the app’s Updates section', () => {
+    data = available({ method: 'desktop_app' })
+    show(true)
+    expect(screen.queryByRole('button', { name: /Update to/ })).toBeNull()
+    expect(screen.getByRole('status').textContent).toBe('v3.51.0 is out. This server comes with this app: update the app to update it.')
+  })
+})
+
+describe('ServerUpdateOnRow', () => {
+  beforeEach(() => {
+    appClient.setQueryData(queryKeys.health(), { status: 'ok', version: '3.50.0', capabilities: ['api.server_update'] })
+  })
+  afterEach(() => appClient.clear())
+
+  it('puts the same button and note under the row of the server in use', () => {
+    data = available({ method: 'desktop_app' })
+    showOnRow()
+    fireEvent.click(screen.getByRole('button', { name: 'Update to v3.51.0' }))
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('status').textContent).toContain('Updates OpenAgentd on that computer')
+  })
+
+  it('keeps showing the run it started', () => {
+    data = available({ current: '3.51.0', available: false })
+    useServerUpdateStore.setState({ phase: { kind: 'done', from: '3.50.0', to: '3.51.0' } })
+    showOnRow()
+    expect(screen.getByRole('status').textContent).toBe('Updated v3.50.0 → v3.51.0.')
+  })
+
+  it('adds nothing for a server the app knows nothing about yet', () => {
+    appClient.clear()
+    data = available({ method: 'desktop_app' })
+    expect(showOnRow().container.innerHTML).toBe('')
+  })
+
+  it('adds nothing to the row when there is nothing to press', () => {
+    data = available({ available: false })
+    expect(showOnRow().container.innerHTML).toBe('')
+    cleanup()
+    data = available({ can_upgrade: false, reason: 'foreground' })
+    expect(showOnRow().container.innerHTML).toBe('')
   })
 })

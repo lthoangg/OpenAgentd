@@ -398,6 +398,22 @@ run from the terminal (the native Rust binary since v3.0.0).
   path of the update log on the server). A server in the foreground, or the
   desktop app's own, says what to do instead. Servers before v3.51.0 need one
   `agentd upgrade` first.
+- **Update a computer's desktop app from another device** `[v3.54.0]` — the
+  same **Update to vX** now works when the server is the desktop app on a
+  Mac or a Windows PC, which is the usual case for a phone. One tap, and the
+  app on that computer downloads the release, verifies its signature,
+  installs it and restarts; a notification on the computer says so first.
+  Running sessions resume, and the device that asked reconnects on its own
+  and says how it went. The button is also under the row of the server in
+  use, on the phone's Servers screen and in the desktop's Server dialog. The
+  tap can only start the app's own updater: it installs the latest signed
+  release from the app's feed, never a chosen file or an older version. On
+  Windows the installer may wait for someone at the computer, and the note
+  says so. A Linux app is a `.deb`, which nothing can replace from afar: it
+  says to update the app on that computer. In the desktop app on its own
+  built-in server the row points to the app's **Updates** section, which
+  updates both. The app's install dialog now says that running agents resume
+  after the restart (they always did).
 - **Native app notifications** `[v1.19.0]` — finished assistant turns and
   scheduled reminders in the desktop app, plus local native
   notifications in the remote-backend mobile shell `[v1.34.0]`. Clicking a

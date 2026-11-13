@@ -19,6 +19,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SectionCard } from '@/components/ui/section-card'
 import { Seal, Wordmark } from '@/components/brand/Logo'
 import { isMobileApp } from '@/lib/mobile-app'
+import { isDesktopShell } from '@/lib/desktop-shell'
 import { getPlatform } from '@/hooks/use-platform'
 import { clientLabel, clientVersion, versionSkew, WEB_BUILD_VERSION } from '@/lib/app-version'
 import { checkForUpdates, downloadUpdate, hasInAppUpdates, installUpdate, updatesByPackage, type UpdateStatus } from '@/lib/updater'
@@ -91,7 +92,10 @@ function skewMessage(client: string, server: string): { warn: boolean; text: str
 }
 
 function VersionSection({ client, server }: { client?: string; server?: string }) {
-  const address = useBackendStatusQuery().data?.base_url || apiBaseUrl()
+  const backend = useBackendStatusQuery().data
+  const address = backend?.base_url || apiBaseUrl()
+  // The desktop app on its own built-in server: Updates, below, updates both.
+  const ownApp = isDesktopShell() && backend != null && !backend.external && backend.mode !== 'external'
   const skew = client && server ? skewMessage(client, server) : null
   const update = useServerUpdateFlow()
 
@@ -102,9 +106,9 @@ function VersionSection({ client, server }: { client?: string; server?: string }
       </PanelRow>
       <PanelRow label="Server" description={<span className="font-mono break-all">{address}</span>}>
         <span className="font-mono text-sm text-(--color-text)">{server ? `v${server}` : 'not connected'}</span>
-        <ServerUpdateButton onRequest={update.request} />
+        <ServerUpdateButton onRequest={update.request} ownApp={ownApp} />
       </PanelRow>
-      <ServerUpdateNote />
+      <ServerUpdateNote ownApp={ownApp} />
       <ServerUpdateConfirm flow={update} />
       {skew ? (
         <p
@@ -246,7 +250,7 @@ function UpdatesSection() {
         title={mobile ? 'Install the update?' : 'Install and restart OpenAgentd?'}
         description={mobile
           ? 'Android asks you to confirm. OpenAgentd closes while it updates; agents keep running on the server.'
-          : 'OpenAgentd restarts to finish the update. Running agents stop.'}
+          : 'OpenAgentd restarts to finish the update. Running agents stop for the restart and resume when it is back.'}
         confirmLabel={mobile ? 'Install' : 'Install and restart'}
         onConfirm={() => { void onInstall() }}
       />

@@ -19,8 +19,9 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SectionCard } from '@/components/ui/section-card'
 import { Seal, Wordmark } from '@/components/brand/Logo'
 import { isMobileApp } from '@/lib/mobile-app'
+import { getPlatform } from '@/hooks/use-platform'
 import { clientLabel, clientVersion, versionSkew, WEB_BUILD_VERSION } from '@/lib/app-version'
-import { checkForUpdates, downloadUpdate, hasInAppUpdates, installUpdate, type UpdateStatus } from '@/lib/updater'
+import { checkForUpdates, downloadUpdate, hasInAppUpdates, installUpdate, updatesByPackage, type UpdateStatus } from '@/lib/updater'
 import { apiBaseUrl } from '@/api/base-url'
 import { openExternalUrl } from '@/lib/open-external'
 import { cn } from '@/lib/utils'
@@ -31,6 +32,7 @@ import { errorMessage } from '@/utils/errors'
 
 const TAGLINE = 'The coding agent that shows its work'
 const WEBSITE_URL = 'https://openagentd.dev'
+const RELEASES_URL = 'https://github.com/lthoangg/openagentd/releases/latest'
 
 function IdentityCard({ version }: { version?: string }) {
   return (
@@ -61,6 +63,14 @@ function useClientVersion(): string | undefined {
   return version
 }
 
+/** What an app older than its server does about it, where this app gets its updates. */
+function appUpdateAdvice(): string {
+  const { isTauri, os } = getPlatform()
+  if (isTauri && os === 'ios') return 'Update it from TestFlight or the App Store'
+  if (updatesByPackage()) return 'Install the newer .deb'
+  return 'Update the app'
+}
+
 function skewMessage(client: string, server: string): { warn: boolean; text: string } | null {
   const skew = versionSkew(client, server)
   if (skew.kind === 'major-minor') {
@@ -68,7 +78,7 @@ function skewMessage(client: string, server: string): { warn: boolean; text: str
       warn: true,
       text: skew.newer === 'client'
         ? 'The server is older than this app. Update the server to use every feature.'
-        : 'This app is older than the server. Update the app to use every feature.',
+        : `This app is older than the server. ${appUpdateAdvice()} to use every feature.`,
     }
   }
   if (skew.kind === 'patch') {
@@ -114,6 +124,22 @@ function VersionSection({ client, server }: { client?: string; server?: string }
 }
 
 // ── Updates ───────────────────────────────────────────────────────────────
+
+/** Linux: the app is a .deb, which nothing inside the app can replace. */
+function PackageUpdatesSection() {
+  return (
+    <PanelSection title="Updates" flush>
+      <PanelRow
+        label={clientLabel()}
+        description="To update, install the newer .deb from the releases page, or run the install command again."
+      >
+        <Button size="sm" variant="default" onClick={() => void openExternalUrl(RELEASES_URL)}>
+          Open releases page
+        </Button>
+      </PanelRow>
+    </PanelSection>
+  )
+}
 
 function UpdatesSection() {
   const [status, setStatus] = useState<UpdateStatus | null>(null)
@@ -303,6 +329,7 @@ export function AboutSettingsPage() {
 
       {/* Updates come from the desktop and mobile shells; the browser build has none. */}
       {hasInAppUpdates() && <UpdatesSection />}
+      {updatesByPackage() && <PackageUpdatesSection />}
 
       <section aria-labelledby="settings-community-heading" className="space-y-3">
         <div className="select-none">

@@ -122,6 +122,9 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let app_about = PredefinedMenuItem::about(app, Some("About OpenAgentd"), Some(about_metadata))?;
 
     // Per Apple HIG, "Check for Updates…" sits directly below About.
+    // Not on Linux: the app is a .deb, which the updater cannot replace
+    // (Settings → About OpenAgentd says how to update there).
+    #[cfg(not(target_os = "linux"))]
     let app_check_updates = MenuItem::with_id(
         app,
         MENU_CHECK_UPDATES,
@@ -319,9 +322,10 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         None::<&str>,
     )?;
 
-    let app_menu = SubmenuBuilder::new(app, "OpenAgentd")
-        .item(&app_about)
-        .item(&app_check_updates)
+    let app_menu = SubmenuBuilder::new(app, "OpenAgentd").item(&app_about);
+    #[cfg(not(target_os = "linux"))]
+    let app_menu = app_menu.item(&app_check_updates);
+    let app_menu = app_menu
         .separator()
         .item(&app_settings)
         .item(&app_global_shortcuts)
@@ -472,15 +476,21 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
     let tray_new_window =
         MenuItem::with_id(app, MENU_NEW_WINDOW, "New Window", true, None::<&str>)?;
     let tray_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
-    let tray_pet = tauri::menu::CheckMenuItem::with_id(
-        app,
-        crate::pet::MENU_TOGGLE_PET,
-        "Desktop Pet",
-        true,
-        crate::config::load_pet_settings(app.handle()).enabled,
-        None::<&str>,
-    )?;
-    tray_pet_item().lock().unwrap().replace(tray_pet.clone());
+    // Only where the pet can show: Linux has none (``pet::supported``).
+    let tray_pet = if crate::pet::supported() {
+        let item = tauri::menu::CheckMenuItem::with_id(
+            app,
+            crate::pet::MENU_TOGGLE_PET,
+            "Desktop Pet",
+            true,
+            crate::config::load_pet_settings(app.handle()).enabled,
+            None::<&str>,
+        )?;
+        tray_pet_item().lock().unwrap().replace(item.clone());
+        Some(item)
+    } else {
+        None
+    };
     let tray_open_config_dir = MenuItem::with_id(
         app,
         MENU_OPEN_CONFIG_DIR,
@@ -547,28 +557,36 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
         .item(&usage_manage)
         .build()?;
 
-    let tray_menu = Menu::with_items(
-        app,
-        &[
-            &status,
-            &session,
-            &PredefinedMenuItem::separator(app)?,
-            &usage_submenu,
-            &PredefinedMenuItem::separator(app)?,
-            &tray_show,
-            &tray_new_window,
-            &PredefinedMenuItem::separator(app)?,
-            &tray_settings,
-            &tray_pet,
-            &tray_open_config_dir,
-            &tray_reveal_desktop_log,
-            &tray_reveal_backend_log,
-            &tray_export_diagnostics,
-            &tray_reload,
-            &PredefinedMenuItem::separator(app)?,
-            &tray_quit,
-        ],
-    )?;
+    let separators = [
+        PredefinedMenuItem::separator(app)?,
+        PredefinedMenuItem::separator(app)?,
+        PredefinedMenuItem::separator(app)?,
+        PredefinedMenuItem::separator(app)?,
+    ];
+    let mut tray_items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
+        &status,
+        &session,
+        &separators[0],
+        &usage_submenu,
+        &separators[1],
+        &tray_show,
+        &tray_new_window,
+        &separators[2],
+        &tray_settings,
+    ];
+    if let Some(pet) = &tray_pet {
+        tray_items.push(pet);
+    }
+    tray_items.extend_from_slice(&[
+        &tray_open_config_dir,
+        &tray_reveal_desktop_log,
+        &tray_reveal_backend_log,
+        &tray_export_diagnostics,
+        &tray_reload,
+        &separators[3],
+        &tray_quit,
+    ]);
+    let tray_menu = Menu::with_items(app, &tray_items)?;
     // Left-click opens the menu so the icon acts as a status surface, not
     // a launcher. We deliberately do not register ``on_menu_event`` here —
     // the app-level handler in ``main()`` already receives tray events,

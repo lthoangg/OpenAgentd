@@ -119,6 +119,24 @@ describe('AboutSettingsPage — desktop updates card', () => {
     expect(updaterCalls).not.toContain('updater_check')
   })
 
+  it('says how to update on Linux instead of a check that cannot find a release', () => {
+    platform = { isTauri: true, os: 'linux' }
+    renderHub({ status: 'ok', version: '1.2.3' })
+    expect(screen.queryByRole('button', { name: /check for updates?/i })).toBeNull()
+    expect(screen.getByText(/install the newer \.deb/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open releases page' })).toBeInTheDocument()
+    expect(updaterCalls).not.toContain('updater_check')
+  })
+
+  it('keeps the Linux update line out of every other app', () => {
+    for (const os of ['macos', 'windows', 'android', 'ios']) {
+      platform = { isTauri: true, os }
+      const { unmount } = renderHub({ status: 'ok', version: '1.2.3' })
+      expect(screen.queryByText(/install the newer \.deb/i)).toBeNull()
+      unmount()
+    }
+  })
+
   it('downloads, then asks before installing the APK on Android', async () => {
     platform = { isTauri: true, os: 'android' }
     checkResult = { status: 'available', version: '1.3.0', current_version: '1.2.3', channel: 'apk' }
@@ -151,6 +169,22 @@ describe('AboutSettingsPage — version section', () => {
     shellVersion = '1.2.0'
     renderHub({ status: 'ok', version: '2.0.0' })
     expect(await screen.findByRole('alert')).toHaveTextContent(/app is older than the server/i)
+  })
+
+  it('names where an older app gets its update, per platform', async () => {
+    const advice: Array<[string, RegExp]> = [
+      ['ios', /Update it from TestFlight or the App Store/],
+      ['linux', /Install the newer \.deb/],
+      ['macos', /Update the app/],
+      ['android', /Update the app/],
+    ]
+    for (const [os, text] of advice) {
+      platform = { isTauri: true, os }
+      shellVersion = '1.2.0'
+      const { unmount } = renderHub({ status: 'ok', version: '2.0.0' })
+      expect(await screen.findByRole('alert')).toHaveTextContent(text)
+      unmount()
+    }
   })
 
   it('only notes a patch difference', async () => {

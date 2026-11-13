@@ -4,7 +4,7 @@ name: Release Desktop
 # Produces installers for (macOS: Developer ID signed + notarized):
 #   - macOS arm64 (.dmg, .app.tar.gz)
 #   - Windows x64 (.msi)
-#   - Linux x64  (.AppImage, .deb)
+#   - Linux x64  (.deb)
 #
 # Each app bundles, as its backend sidecar (sidecar-bundle/bin/agentd),
 # the CLI archive that ``release.yml`` published for the same version, so
@@ -141,7 +141,7 @@ jobs:
           [ "$reported" = "agentd v$VERSION" ] || { echo "sidecar version mismatch: $reported"; exit 1; }
           du -sh desktop/sidecar-bundle
 
-      - name: Install Linux WebKitGTK + AppImage deps
+      - name: Install Linux WebKitGTK deps
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
@@ -151,18 +151,7 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libssl-dev \
-            libfuse2
-
-      # ``linuxdeploy`` and the AppImage runtime use a FUSE-mounted
-      # squashfs by default. GitHub-hosted ubuntu-22.04 runners don't
-      # allow FUSE mounts inside the action environment, so we tell the
-      # AppImage tools to extract-and-run instead. Without this the
-      # bundle step dies with a bare 'failed to run linuxdeploy' and
-      # Tauri swallows the actual error message.
-      - name: Configure AppImage extract-and-run mode
-        if: matrix.platform == 'linux'
-        run: echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
+            libssl-dev
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
 
@@ -372,7 +361,6 @@ jobs:
           # Updater .sig files are made by the ``sign`` job.
           find "$BUNDLE_DIR" -type f \( \
             -name 'OpenAgentd_*.msi' \
-            -o -name 'OpenAgentd_*.AppImage' \
             -o -name 'OpenAgentd_*.deb' \
           \) -print -exec cp {} "$GITHUB_WORKSPACE/_release/" \;
 

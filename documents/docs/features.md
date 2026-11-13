@@ -4351,8 +4351,9 @@ Desktop is primary. CLI / server is the developer path.
   and the cask no longer touch the quarantine flag. The first update to
   v3.49.0 asks once more for folder access (the signature changed); later
   updates keep it.
-- **Linux desktop** `[since v1.0]` — AppImage (`chmod +x`) or `.deb` for
-  Debian/Ubuntu.
+- **Linux desktop** `[since v1.0]` — a `.deb` for Debian/Ubuntu on x86_64.
+  The AppImage has not been built since v1.0.4, and its settings and
+  release steps are gone `[v3.54.0]`.
 - **Windows desktop** `[v1.106.0]` — native x64 `.msi` installer with the
   bundled Python sidecar, WebView2 shell, Job Object process cleanup, native
   PowerShell/cmd shell execution, and signed in-app updates. Interactive PTY

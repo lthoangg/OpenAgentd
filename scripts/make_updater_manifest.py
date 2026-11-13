@@ -13,10 +13,6 @@ The Tauri updater hits the URL configured in ``tauri.conf.json``'s
           "signature": "<contents of .sig file>",
           "url": "https://.../OpenAgentd.app.tar.gz"
         },
-        "linux-x86_64": {
-          "signature": "<.sig contents>",
-          "url": "https://.../OpenAgentd_0.6.0_amd64.AppImage"
-        },
         "windows-x86_64": {
           "signature": "<.sig contents>",
           "url": "https://.../OpenAgentd_0.6.0_x64-setup.exe"
@@ -43,11 +39,10 @@ import sys
 from pathlib import Path
 
 # (filename-suffix → platform-key) priority order: pick the FIRST match
-# because we want .app.tar.gz on macOS (the Tauri updater format) and
-# .AppImage on Linux, not the .dmg / .deb.
+# because we want .app.tar.gz on macOS (the Tauri updater format), not the
+# .dmg. Linux ships a .deb, which the updater cannot install.
 PLATFORM_RULES: list[tuple[str, str]] = [
     (".app.tar.gz", "darwin-aarch64"),
-    (".AppImage", "linux-x86_64"),
     ("-setup.exe", "windows-x86_64"),
     (".msi", "windows-x86_64"),
 ]

@@ -68,8 +68,7 @@
       "dmg",
       "app",
       "msi",
-      "deb",
-      "appimage"
+      "deb"
     ],
     "icon": [
       "icons/32x32.png",
@@ -112,9 +111,6 @@
           "libwebkit2gtk-4.1-0",
           "libgtk-3-0"
         ]
-      },
-      "appimage": {
-        "bundleMediaFramework": false
       }
     }
   },

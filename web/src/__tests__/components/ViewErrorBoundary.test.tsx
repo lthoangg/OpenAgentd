@@ -5,7 +5,7 @@
  * a crash anywhere else in a route, in the app's own words and buttons.
  */
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { ViewErrorBoundary } from '@/components/ViewErrorBoundary'
@@ -80,6 +80,16 @@ describe('RouteErrorPage', () => {
     expect(screen.getByText('boom')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(reset).toHaveBeenCalledTimes(1)
+  })
+
+  it('says so when the clipboard refuses the error details', async () => {
+    for (const clipboard of [{ writeText: () => Promise.reject(new Error('denied')) }, undefined]) {
+      Object.defineProperty(navigator, 'clipboard', { value: clipboard, configurable: true })
+      const { unmount } = render(<RouteErrorPage error={new Error('boom')} reset={() => {}} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Copy error details' }))
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Could not copy' })).toBeTruthy())
+      unmount()
+    }
   })
 
   it('is the router’s page for an error in any route', async () => {

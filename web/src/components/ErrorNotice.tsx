@@ -11,14 +11,19 @@ export function errorOf(value: unknown): Error {
   return value instanceof Error ? value : new Error(typeof value === 'string' ? value : 'Unknown error')
 }
 
+/** What the copy button reads after a press; the error's message stays on screen either way. */
+const COPY_LABEL = { idle: 'Copy error details', copied: 'Copied', failed: 'Could not copy' } as const
+
 function CopyErrorButton({ error }: { error: Error }) {
-  const [copied, setCopied] = useState(false)
-  const copy = () => {
-    void navigator.clipboard?.writeText(`${error.message}\n\n${error.stack ?? ''}`.trim()).then(() => setCopied(true))
+  const [copy, setCopy] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const onCopy = () => {
+    // No clipboard, or it refused (a webview without focus or permission).
+    const written = navigator.clipboard?.writeText(`${error.message}\n\n${error.stack ?? ''}`.trim()) ?? Promise.reject(new Error('no clipboard'))
+    void written.then(() => setCopy('copied'), () => setCopy('failed'))
   }
   return (
-    <Button variant="ghost" onClick={copy}>
-      {copied ? 'Copied' : 'Copy error details'}
+    <Button variant="ghost" onClick={onCopy}>
+      {COPY_LABEL[copy]}
     </Button>
   )
 }

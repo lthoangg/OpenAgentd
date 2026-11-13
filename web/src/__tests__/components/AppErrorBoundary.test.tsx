@@ -74,4 +74,20 @@ describe('AppErrorBoundary', () => {
     const copied = (writeText.mock.calls[0] as unknown as [string])[0]
     expect(copied).toContain('kaboom: render failed')
   })
+
+  it('says so when the clipboard refuses, instead of doing nothing', async () => {
+    for (const clipboard of [{ writeText: () => Promise.reject(new Error('denied')) }, undefined]) {
+      Object.defineProperty(navigator, 'clipboard', { value: clipboard, configurable: true })
+      const { unmount } = render(
+        <AppErrorBoundary>
+          <Bomb />
+        </AppErrorBoundary>,
+      )
+      fireEvent.click(screen.getByRole('button', { name: /copy error details/i }))
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Could not copy' })).toBeInTheDocument()
+      })
+      unmount()
+    }
+  })
 })

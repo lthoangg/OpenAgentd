@@ -1,4 +1,4 @@
-//! `questions.py`, `todos.py`, `permissions.py`, and the v3 session plan.
+//! `questions.py`, `todos.py`, and the v3 session plan.
 
 use super::helpers::{get_or_start, goal_err, resolve_agent_for_existing_session};
 use crate::error::{loc, verr, ApiError, ApiResult};
@@ -22,8 +22,6 @@ pub fn router() -> Router<AppState> {
         .route("/{session_id}/question/{question_id}/answer", post(answer))
         .route("/sessions/{session_id}/todos", get(todos))
         .route("/sessions/{session_id}/plan", get(get_plan).put(put_plan).delete(delete_plan))
-        .route("/{session_id}/permissions", get(list_permissions))
-        .route("/{session_id}/permissions/{request_id}/reply", post(reply_permission))
 }
 
 async fn get_question(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {
@@ -353,26 +351,6 @@ async fn delete_plan(State(st): State<AppState>, AxPath(sid): AxPath<String>) ->
     }
     let deleted = plan::detach(&appv3_tools::denied::session_artifacts_dir(Some(&sid)))?;
     Ok(json(json!({"deleted": deleted})))
-}
-
-/// The v2 route sees the process-default `AutoAllowPermissionService`
-/// (session `"default"`), which never holds pending requests.
-async fn list_permissions(AxPath(_sid): AxPath<String>) -> Response {
-    json(json!({"permissions": []}))
-}
-
-async fn reply_permission(AxPath((_sid, rid)): AxPath<(String, String)>, body: Bytes) -> ApiResult<Response> {
-    let b = body_value(&body)?;
-    let reply = match b.get("reply") {
-        Some(Value::String(s)) => s.clone(),
-        None => return Err(ApiError::validation(vec![verr("missing", &loc(&["body", "reply"]), "Field required", b.clone())])),
-        Some(o) => return Err(ApiError::validation(vec![verr("string_type", &loc(&["body", "reply"]), "Input should be a valid string", o.clone())])),
-    };
-    opt_str_field(&b, "message")?;
-    if !["once", "always", "reject"].contains(&reply.as_str()) {
-        return Err(ApiError::unprocessable(format!("Invalid reply '{reply}'. Must be one of: ['always', 'once', 'reject']")));
-    }
-    Err(ApiError::not_found(format!("Permission request '{rid}' not found or already resolved.")))
 }
 
 #[cfg(test)]

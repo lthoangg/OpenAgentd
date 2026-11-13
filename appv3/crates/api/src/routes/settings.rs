@@ -22,7 +22,6 @@ use std::path::{Path, PathBuf};
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/denied-paths", get(get_denied).put(put_denied))
-        .route("/sandbox", get(get_denied).put(put_denied))
         .route("/lsp", get(get_lsp))
         .route("/lsp/typescript/install", post(install_typescript))
         .route("/summarization", get(get_summarization).put(put_summarization))

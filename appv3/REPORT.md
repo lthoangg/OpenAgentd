@@ -1374,6 +1374,13 @@ explicitly.
   message). `agent_status` carries the same `details` in its metadata. v2
   and earlier v3 sent the transport text as the message under "Agent
   Execution Error" (`agent_execution_failed`). Tests: `agent/src/streaming.rs`.
+- **Three v2 routes are gone (v3 only):** `GET
+  /api/agent/{session_id}/permissions`, `POST
+  /api/agent/{session_id}/permissions/{request_id}/reply` and `GET`/`PUT
+  /api/settings/sandbox` now answer 404 (405 where the path still matches
+  another method). The first two were stubs since tool approvals were
+  removed (an empty list, and a 404 for every reply); the third was an
+  alias of `/api/settings/denied-paths`. No client called them.
 - **Desktop network access (v3 only):** `GET`/`PUT /api/desktop/network-access`
   (`api/src/routes/desktop.rs`, `api/src/network_access.rs`) lets the desktop
   shell open and close a second listener on `0.0.0.0:<port>`. The listener

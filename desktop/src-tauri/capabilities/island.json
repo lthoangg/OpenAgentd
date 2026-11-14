@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "island",
-  "description": "The macOS notch island (web/island.html): events, reading its snapshot, sizing its pill, and opening, showing a native action menu for, or dismissing a session it shows, and asking to retry a server it can't reach. It answers no questions; the island has no backend access, no settings changes, and no general window commands.",
+  "description": "The macOS notch island (web/island.html): events, reading its snapshot, sizing its pill, and opening, showing a native action menu for, or dismissing a session it shows, asking to retry a server it can't reach, and asking the app to show Settings → Server for one that refused its access key. It answers no questions; the island has no backend access, no settings changes, and no general window commands.",
   "windows": [
     "island"
   ],
@@ -12,6 +12,7 @@
     "allow-island-fit",
     "allow-island-open-session",
     "allow-island-retry",
+    "allow-island-fix-key",
     "allow-island-context-menu"
   ]
 }

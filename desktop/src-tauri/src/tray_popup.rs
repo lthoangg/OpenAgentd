@@ -70,7 +70,8 @@ const USAGE_OPEN_REFRESH_GAP: Duration = Duration::from_secs(30);
 struct TrayCache {
     /// Saved server base URL → (reachable, when that was decided).
     availability: HashMap<String, (bool, Instant)>,
-    last_usage_refresh: Option<Instant>,
+    /// Server key → when a popup open last started a refresh of its usage.
+    last_usage_refresh: HashMap<String, Instant>,
 }
 
 #[derive(Debug, Default)]
@@ -108,13 +109,15 @@ impl TrayCache {
         self.availability.get(url).is_some_and(|(alive, _)| *alive)
     }
 
-    /// True (and the slot taken) when a popup open may refresh usage now.
-    fn claim_usage_refresh(&mut self, now: Instant) -> bool {
+    /// True (and the slot taken) when a popup open may refresh `server`'s
+    /// usage now.
+    fn claim_usage_refresh(&mut self, server: &str, now: Instant) -> bool {
         let due = self
             .last_usage_refresh
-            .map_or(true, |last| now.duration_since(last) >= USAGE_OPEN_REFRESH_GAP);
+            .get(server)
+            .map_or(true, |last| now.duration_since(*last) >= USAGE_OPEN_REFRESH_GAP);
         if due {
-            self.last_usage_refresh = Some(now);
+            self.last_usage_refresh.insert(server.to_string(), now);
         }
         due
     }
@@ -125,8 +128,8 @@ fn tray_cache() -> &'static Mutex<TrayCache> {
     CACHE.get_or_init(Default::default)
 }
 
-/// Whether two snapshots show the same numbers. The backend's ``cached``
-/// flag flips between identical bodies, so it doesn't count.
+/// Whether two snapshots show the same numbers: read at the same time, with
+/// the same items.
 fn same_reading(
     a: Option<&crate::usage::UsageSummaryBody>,
     b: Option<&crate::usage::UsageSummaryBody>,
@@ -143,6 +146,13 @@ type Reading = (Option<crate::usage::UsageSummaryBody>, Option<String>);
 /// Whether the popup would show the same thing for two readings.
 fn same_view(a: &Reading, b: &Reading) -> bool {
     same_reading(a.0.as_ref(), b.0.as_ref()) && a.1 == b.1
+}
+
+/// What the popup calls a saved server, in the picker and above its numbers
+/// once picked: the name Auto gives it (`ServerId::display_name`), so one
+/// server never reads under two names.
+fn saved_server_name(base_url: &str, saved: &[crate::config::SavedAppServer], names: &openagentd_shell_core::ComputerNames) -> String {
+    ServerId::external(base_url).display_name(BUNDLED_NAME, saved, names)
 }
 
 /// The picker's options. "Auto" leads when there is a choice to make, and
@@ -297,8 +307,6 @@ pub async fn get_tray_usage_summary(
 ) -> Result<crate::usage::TrayUsageResult, String> {
     let state: tauri::State<'_, AppState> = app.state();
     let saved_config = crate::config::load_app_backend_config(&app).unwrap_or_default();
-    let bundled_base = state.backend_base_url.lock().await.clone();
-    let desktop_token = state.desktop_token.lock().await.clone();
     let sidecar_alive = state.sidecar.alive().await;
 
     // Keep only saved servers that are online. Only a server never probed
@@ -330,9 +338,10 @@ pub async fn get_tray_usage_summary(
 
     // "Auto": the server the app is on, named and read from the same place.
     let auto = crate::servers::app_current_server(&app).await;
+    let computer_names = crate::config::load_computer_names(&app);
     let (active_name, active_id) = match &auto {
         Some(server) => (
-            server.display_name(BUNDLED_NAME, &saved_config.servers, &crate::config::load_computer_names(&app)),
+            server.display_name(BUNDLED_NAME, &saved_config.servers, &computer_names),
             server.key().to_string(),
         ),
         None => (NO_SERVER_NAME.to_string(), AUTO_ID.to_string()),
@@ -350,11 +359,10 @@ pub async fn get_tray_usage_summary(
 
     for server in &saved_config.servers {
         if available_urls.contains(&server.base_url) {
-            let name = server.name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| crate::usage::extract_host_port(&server.base_url));
             let host_port = crate::usage::extract_host_port(&server.base_url);
             available_servers.push(crate::usage::TrayServerOption {
                 id: server.base_url.clone(),
-                name,
+                name: saved_server_name(&server.base_url, &saved_config.servers, &computer_names),
                 detail: Some(host_port),
             });
         }
@@ -367,8 +375,10 @@ pub async fn get_tray_usage_summary(
         selected = AUTO_ID.to_string();
     }
 
-    if selected == AUTO_ID {
-        let Some(server) = auto else {
+    // The server the popup shows, the name above its numbers, and its id
+    // for the page.
+    let (server, server_name, server_id) = if selected == AUTO_ID {
+        let Some(server) = auto.clone() else {
             return Ok(crate::usage::TrayUsageResult {
                 summary: None,
                 server_name: active_name,
@@ -378,97 +388,44 @@ pub async fn get_tray_usage_summary(
                 error: Some("No server is connected.".to_string()),
             });
         };
-        let force = force.unwrap_or(false);
-        let cached = state.usage.lock().await.reading(&server);
-        let (summary, error) = match cached {
-            // Answer with the snapshot now; refresh behind it at most every
-            // USAGE_OPEN_REFRESH_GAP and reload the popup if it changed.
-            (Some(_), _) if !force => {
-                if tray_cache().lock().unwrap().claim_usage_refresh(Instant::now()) {
-                    let app = app.clone();
-                    let before = cached.clone();
-                    let server = server.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let _ = crate::menu::refresh_server_usage(&app, &server, false).await;
-                        let after = app.state::<AppState>().usage.lock().await.reading(&server);
-                        if !same_view(&before, &after) {
-                            notify_popup(&app);
-                        }
-                    });
-                }
-                cached
-            }
-            // Nothing to show yet, or the Refresh button: wait for the fetch.
-            _ => {
-                tray_cache().lock().unwrap().claim_usage_refresh(Instant::now());
-                let _ = crate::menu::refresh_server_usage(&app, &server, force).await;
-                state.usage.lock().await.reading(&server)
-            }
-        };
-        return Ok(crate::usage::TrayUsageResult {
-            summary,
-            server_name: active_name,
-            server_id: active_id,
-            servers,
-            selected_server_id: AUTO_ID.to_string(),
-            error,
-        });
-    }
-
-    if selected == BUNDLED_KEY {
-        let name = BUNDLED_NAME.to_string();
-        if let Some(base) = bundled_base {
-            match crate::usage::fetch_usage_summary(&base, desktop_token.as_deref(), force.unwrap_or(false)).await {
-                Ok(summary) => Ok(crate::usage::TrayUsageResult {
-                    summary: Some(summary),
-                    server_name: name,
-                    server_id: BUNDLED_KEY.to_string(),
-                    servers,
-                    selected_server_id: BUNDLED_KEY.to_string(),
-                    error: None,
-                }),
-                Err(err) => Ok(crate::usage::TrayUsageResult {
-                    summary: None,
-                    server_name: name,
-                    server_id: BUNDLED_KEY.to_string(),
-                    servers,
-                    selected_server_id: BUNDLED_KEY.to_string(),
-                    error: Some(format!("{err:#}")),
-                }),
-            }
-        } else {
-            Ok(crate::usage::TrayUsageResult {
-                summary: None,
-                server_name: name,
-                server_id: BUNDLED_KEY.to_string(),
-                servers,
-                selected_server_id: BUNDLED_KEY.to_string(),
-                error: Some("Local bundled backend is not running".to_string()),
-            })
-        }
+        (server, active_name, active_id)
+    } else if selected == BUNDLED_KEY {
+        (ServerId::Bundled, BUNDLED_NAME.to_string(), BUNDLED_KEY.to_string())
     } else {
-        let base_url = selected.clone();
-        let name = crate::usage::resolve_server_display_name(&base_url, &saved_config.servers);
-        let access_key = crate::menu::external_usage_access_key(
-            crate::commands::secure_get_access_key(base_url.clone()).await,
-        );
-        match crate::usage::fetch_usage_summary(&base_url, access_key.as_deref(), force.unwrap_or(false)).await {
-            Ok(summary) => Ok(crate::usage::TrayUsageResult {
-                summary: Some(summary),
-                server_name: name,
-                server_id: base_url.clone(),
-                servers,
-                selected_server_id: base_url,
-                error: None,
-            }),
-            Err(err) => Ok(crate::usage::TrayUsageResult {
-                summary: None,
-                server_name: name,
-                server_id: base_url.clone(),
-                servers,
-                selected_server_id: base_url,
-                error: Some(format!("{err:#}")),
-            }),
+        (ServerId::external(&selected), saved_server_name(&selected, &saved_config.servers, &computer_names), selected.clone())
+    };
+    // The app's own server also drives the tray's badge, picked or not.
+    let of = if auto.as_ref() == Some(&server) { crate::menu::UsageOf::AppServer } else { crate::menu::UsageOf::Picked };
+    let (summary, error) = popup_reading(&app, &server, force.unwrap_or(false), of).await;
+    Ok(crate::usage::TrayUsageResult { summary, server_name, server_id, servers, selected_server_id: selected, error })
+}
+
+/// `server`'s numbers for the popup, Auto's server and a picked one alike:
+/// its last reading at once, refreshed behind it at most every
+/// [`USAGE_OPEN_REFRESH_GAP`] (the popup reloads if that changed anything).
+/// The fetch is waited for only when there is nothing to show yet, or on
+/// Refresh. A fetch that fails keeps the last reading beside its error.
+async fn popup_reading(app: &AppHandle, server: &ServerId, force: bool, of: crate::menu::UsageOf) -> Reading {
+    let state: tauri::State<'_, AppState> = app.state();
+    let cached = state.usage.lock().await.reading(server);
+    match cached {
+        (Some(_), _) if !force => {
+            if tray_cache().lock().unwrap().claim_usage_refresh(server.key(), Instant::now()) {
+                let (app, before, server) = (app.clone(), cached.clone(), server.clone());
+                tauri::async_runtime::spawn(async move {
+                    let _ = crate::menu::refresh_server_usage(&app, &server, false, of).await;
+                    let after = app.state::<AppState>().usage.lock().await.reading(&server);
+                    if !same_view(&before, &after) {
+                        notify_popup(&app);
+                    }
+                });
+            }
+            cached
+        }
+        _ => {
+            tray_cache().lock().unwrap().claim_usage_refresh(server.key(), Instant::now());
+            crate::menu::refresh_server_usage_or_wait(app, server, force, of).await;
+            state.usage.lock().await.reading(server)
         }
     }
 }
@@ -527,6 +484,21 @@ mod cache_tests {
     use super::*;
     use std::time::{Duration, Instant};
 
+    // Auto named an unnamed server by what its computer calls itself, the
+    // list by its address, and the header by its address once picked.
+    #[test]
+    fn a_saved_server_has_one_name_wherever_the_popup_shows_it() {
+        let base = "http://192.168.1.30:4082";
+        let saved = |name: Option<&str>| vec![crate::config::SavedAppServer { base_url: format!("{base}/"), name: name.map(String::from), enabled: false }];
+        let mut names = openagentd_shell_core::ComputerNames::new();
+        names.insert(base.into(), "studio-mini".into());
+        let auto = ServerId::external(base).display_name(BUNDLED_NAME, &saved(None), &names);
+        assert_eq!(auto, "studio-mini");
+        assert_eq!(saved_server_name(&format!("{base}/"), &saved(None), &names), auto);
+        assert_eq!(saved_server_name(base, &saved(Some("Studio")), &names), "Studio", "the name you gave wins");
+        assert_eq!(saved_server_name(base, &saved(None), &openagentd_shell_core::ComputerNames::new()), "192.168.1.30:4082");
+    }
+
     fn urls(list: &[&str]) -> Vec<String> {
         list.iter().map(|u| u.to_string()).collect()
     }
@@ -579,15 +551,28 @@ mod cache_tests {
     fn background_usage_refreshes_are_spaced_out() {
         let mut cache = TrayCache::default();
         let t0 = Instant::now();
-        assert!(cache.claim_usage_refresh(t0));
-        assert!(!cache.claim_usage_refresh(t0 + Duration::from_secs(10)));
-        assert!(cache.claim_usage_refresh(t0 + USAGE_OPEN_REFRESH_GAP));
+        assert!(cache.claim_usage_refresh("bundled", t0));
+        assert!(!cache.claim_usage_refresh("bundled", t0 + Duration::from_secs(10)));
+        assert!(cache.claim_usage_refresh("bundled", t0 + USAGE_OPEN_REFRESH_GAP));
+    }
+
+    // A picked server is answered from its last reading too, so each server
+    // needs its own turn: one shared slot would leave the second server
+    // looked at within 30 s on its old numbers.
+    #[test]
+    fn each_server_has_its_own_background_refresh_slot() {
+        let mut cache = TrayCache::default();
+        let t0 = Instant::now();
+        assert!(cache.claim_usage_refresh("bundled", t0));
+        assert!(cache.claim_usage_refresh("http://nas:4082", t0 + Duration::from_secs(1)), "another server");
+        assert!(!cache.claim_usage_refresh("http://nas:4082", t0 + Duration::from_secs(5)));
+        assert!(!cache.claim_usage_refresh("bundled", t0 + Duration::from_secs(5)));
     }
 
     #[test]
-    fn a_reading_ignores_the_backend_cached_flag() {
-        let a = crate::usage::UsageSummaryBody { items: vec![], checked_at: 5, cached: false };
-        let b = crate::usage::UsageSummaryBody { cached: true, ..a.clone() };
+    fn a_reading_is_the_same_when_its_time_and_items_are() {
+        let a = crate::usage::UsageSummaryBody { items: vec![], checked_at: 5 };
+        let b = a.clone();
         let c = crate::usage::UsageSummaryBody { checked_at: 6, ..a.clone() };
         assert!(same_reading(Some(&a), Some(&b)));
         assert!(!same_reading(Some(&a), Some(&c)));
@@ -645,7 +630,7 @@ mod cache_tests {
 
     #[test]
     fn the_popup_reloads_when_only_the_error_changed() {
-        let body = crate::usage::UsageSummaryBody { items: vec![], checked_at: 5, cached: false };
+        let body = crate::usage::UsageSummaryBody { items: vec![], checked_at: 5 };
         let ok: Reading = (Some(body.clone()), None);
         let failed: Reading = (Some(body), Some("timed out".into()));
         assert!(same_view(&ok, &ok.clone()));

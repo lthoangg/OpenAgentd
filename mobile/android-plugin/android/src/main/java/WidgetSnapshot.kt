@@ -55,7 +55,9 @@ internal object WidgetStore {
     private fun parse(root: JSONObject): WidgetSnapshot {
         val inbox = root.optJSONArray("inbox")
         return WidgetSnapshot(
-            updatedAt = parseIsoMillis(root.optString("updatedAt")) ?: 0L,
+            // A time that does not parse is no snapshot (as on iOS), not 1970:
+            // "as of 20000d ago" over rows of unknown age helps nobody.
+            updatedAt = parseIsoMillis(root.optString("updatedAt")) ?: throw IllegalArgumentException("Bad updatedAt"),
             lastSession = root.optJSONObject("lastSession")?.let(::parseSession),
             inbox = (0 until (inbox?.length() ?: 0)).mapNotNull { inbox?.optJSONObject(it)?.let(::parseSession) },
             nextTask = root.optJSONObject("nextTask")?.let(::parseTask),

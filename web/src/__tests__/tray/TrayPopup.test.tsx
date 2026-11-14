@@ -16,7 +16,6 @@ const usageResult: TrayUsageResult = {
   ],
   summary: {
     checked_at: NOW - 120,
-    cached: false,
     items: [
       {
         provider: 'openai',
@@ -73,12 +72,18 @@ const { TrayPopup } = await import('@/tray/TrayPopup')
 const actions = () => calls.filter(([cmd]) => cmd === 'tray_action').map(([, args]) => args?.action)
 const usageCalls = () => calls.filter(([cmd]) => cmd === 'get_tray_usage_summary').map(([, args]) => args)
 
+// The popup exists only on macOS, so its tests read it as a Mac does.
+const realPlatform = navigator.platform
 beforeEach(() => {
   calls = []
   answer = async () => usageResult
   listeners.clear()
+  Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })
 })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  Object.defineProperty(navigator, 'platform', { value: realPlatform, configurable: true })
+})
 
 describe('TrayPopup', () => {
   it('names each provider once and labels its limits by window', async () => {
@@ -97,7 +102,7 @@ describe('TrayPopup', () => {
     await screen.findByRole('group', { name: 'OpenAI Codex' })
     expect(screen.getByText('Provider limits')).toBeInTheDocument()
     expect(screen.queryByText('Usage')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Refresh provider limits' })).toHaveAttribute('aria-keyshortcuts', 'Meta+R Control+R')
+    expect(screen.getByRole('button', { name: 'Refresh provider limits' })).toBeInTheDocument()
   })
 
   it('exposes each limit as a meter', async () => {
@@ -113,7 +118,6 @@ describe('TrayPopup', () => {
       ...usageResult,
       summary: {
         checked_at: NOW,
-        cached: false,
         items: [
           {
             provider: 'openai',
@@ -149,7 +153,6 @@ describe('TrayPopup', () => {
       ...usageResult,
       summary: {
         checked_at: NOW,
-        cached: false,
         items: [{
           provider: 'openai',
           label: 'OpenAI Codex',
@@ -242,7 +245,7 @@ describe('TrayPopup', () => {
   })
 
   it('offers Settings → Providers when no provider is connected', async () => {
-    answer = async () => ({ ...usageResult, summary: { checked_at: NOW, cached: false, items: [] } })
+    answer = async () => ({ ...usageResult, summary: { checked_at: NOW, items: [] } })
     render(<TrayPopup />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Open Providers' }))
@@ -299,6 +302,19 @@ describe('TrayPopup', () => {
     expect(actions()).toEqual(['settings', 'quit'])
   })
 
+  // The popup is a Mac window: Ctrl+Q there is not Quit, and no hint shows it.
+  it('leaves a key held with another modifier alone', async () => {
+    render(<TrayPopup />)
+    await screen.findByText('5-hour')
+    const before = usageCalls().length
+
+    for (const key of ['r', ',', 'q']) fireEvent.keyDown(document, { key, ctrlKey: true })
+    for (const key of ['r', ',', 'q']) fireEvent.keyDown(document, { key, metaKey: true, ctrlKey: true })
+    expect(actions()).toEqual([])
+    expect(usageCalls().length).toBe(before)
+    expect(screen.getByRole('button', { name: 'Refresh provider limits' })).toHaveAttribute('aria-keyshortcuts', 'Meta+R')
+  })
+
   it('picks a server from the keyboard and reads its usage', async () => {
     render(<TrayPopup />)
     fireEvent.click(await screen.findByRole('button', { name: /^Server/ }))
@@ -314,6 +330,90 @@ describe('TrayPopup', () => {
     await waitFor(() => expect(usageCalls().at(-1)).toMatchObject({ targetServer: 'http://192.168.1.10:4082' }))
   })
 
+  const MAC_STUDIO = 'http://192.168.1.10:4082'
+  const studioResult: TrayUsageResult = {
+    ...usageResult,
+    server_name: 'Mac Studio',
+    server_id: MAC_STUDIO,
+    selected_server_id: MAC_STUDIO,
+    summary: { checked_at: NOW, items: [{ provider: 'copilot', label: 'GitHub Copilot', status: 'credentials_missing', stale: false, usage: null }] },
+  }
+
+  async function pick(name: RegExp) {
+    fireEvent.click(screen.getByRole('button', { name: /^Server/ }))
+    fireEvent.click(within(screen.getByRole('listbox', { name: 'Server' })).getByRole('option', { name }))
+  }
+
+  // The numbers on screen always belong to the server named above them.
+  it('shows placeholders under the picked server, not the last server\'s numbers', async () => {
+    answer = (args) => (args?.targetServer === MAC_STUDIO ? new Promise(() => {}) : Promise.resolve(usageResult))
+    render(<TrayPopup />)
+    await screen.findByText('5-hour')
+
+    await pick(/Mac Studio/)
+
+    expect(screen.getByRole('button', { name: 'Server: Mac Studio' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Loading usage')).toBeInTheDocument()
+    expect(screen.queryByText('5-hour')).toBeNull()
+    expect(screen.getByText('Checking')).toBeInTheDocument()
+  })
+
+  it('reads a picked server once', async () => {
+    answer = async (args) => (args?.targetServer === MAC_STUDIO ? studioResult : usageResult)
+    render(<TrayPopup />)
+    await screen.findByText('5-hour')
+    const before = usageCalls().length
+
+    await pick(/Mac Studio/)
+    await screen.findByRole('button', { name: 'Reconnect GitHub Copilot' })
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+
+    expect(usageCalls().slice(before)).toEqual([{ force: false, targetServer: MAC_STUDIO }])
+  })
+
+  it('drops an answer for a server that is no longer the picked one', async () => {
+    let answerStudio: (result: TrayUsageResult) => void = () => {}
+    answer = (args) => (args?.targetServer === MAC_STUDIO
+      ? new Promise((resolve) => { answerStudio = resolve })
+      : Promise.resolve({ ...usageResult, selected_server_id: String(args?.targetServer) }))
+    render(<TrayPopup />)
+    await screen.findByText('5-hour')
+
+    await pick(/Mac Studio/)
+    await pick(/^Built-in server/)
+    await screen.findByText('5-hour')
+    await act(async () => answerStudio(studioResult))
+
+    expect(screen.getByRole('button', { name: 'Server: Built-in server' })).toBeInTheDocument()
+    expect(screen.getByText('5-hour')).toBeInTheDocument()
+  })
+
+  it('says it cannot reach the picked server when reading it fails outright', async () => {
+    answer = (args) => (args?.targetServer === MAC_STUDIO ? Promise.reject(new Error('ipc closed')) : Promise.resolve(usageResult))
+    render(<TrayPopup />)
+    await screen.findByText('5-hour')
+
+    await pick(/Mac Studio/)
+
+    expect(await screen.findByText("Can't reach Mac Studio")).toBeInTheDocument()
+    expect(screen.queryByText('5-hour')).toBeNull()
+  })
+
+  // The shell falls back to Auto when the picked server went away.
+  it('follows the shell when the picked server is gone', async () => {
+    answer = async () => usageResult
+    render(<TrayPopup />)
+    await screen.findByText('5-hour')
+
+    await pick(/Mac Studio/)
+    await screen.findByText('5-hour')
+    fireEvent.keyDown(document, { key: 'r', metaKey: true })
+
+    await waitFor(() => expect(usageCalls().at(-1)).toEqual({ force: true, targetServer: 'auto' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Server/ }))
+    expect(within(screen.getByRole('listbox', { name: 'Server' })).getByRole('option', { name: /Auto/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
   it('keeps showing the last reading when a refresh fails', async () => {
     let fail = false
     answer = async () => (fail ? { ...usageResult, error: 'timeout' } : usageResult)
@@ -325,6 +425,56 @@ describe('TrayPopup', () => {
 
     expect(await screen.findByText("Couldn't refresh")).toBeInTheDocument()
     expect(screen.getByText('5-hour')).toBeInTheDocument()
+  })
+
+  // The numbers left on screen are old: the failure used to take the place
+  // of the one line that said how old.
+  it('still says how old the last reading is when a refresh fails', async () => {
+    let fail = false
+    answer = async () => (fail ? { ...usageResult, error: 'timeout' } : usageResult)
+    render(<TrayPopup />)
+    expect(await screen.findByText('Checked 2m ago')).toBeInTheDocument()
+
+    fail = true
+    fireEvent.keyDown(document, { key: 'r', metaKey: true })
+
+    const alert = await screen.findByRole('alert')
+    expect(within(alert).getByText("Couldn't refresh")).toBeInTheDocument()
+    expect(within(alert).getByText('· checked 2m ago')).toBeInTheDocument()
+  })
+
+  // The popup is one webview kept for the whole run of the app, hidden
+  // nearly all of it: the 30 s clock used to wake it the whole time.
+  it('runs the "Checked" clock only while the popup is up', async () => {
+    const alive = new Set<unknown>()
+    const timers = globalThis as unknown as {
+      setInterval: (handler: () => void, delay?: number) => unknown
+      clearInterval: (id: unknown) => void
+    }
+    const { setInterval: realSet, clearInterval: realClear } = timers
+    timers.setInterval = (handler, delay) => {
+      const id = realSet(handler, delay)
+      if (delay === 30_000) alive.add(id)
+      return id
+    }
+    timers.clearInterval = (id) => {
+      alive.delete(id)
+      realClear(id)
+    }
+    try {
+      render(<TrayPopup />)
+      await screen.findByText('5-hour')
+
+      act(() => { window.dispatchEvent(new Event('focus')) })
+      expect(alive.size).toBe(1)
+      act(() => { window.dispatchEvent(new Event('blur')) })
+      expect(alive.size).toBe(0)
+      act(() => { window.dispatchEvent(new Event('focus')) })
+      expect(alive.size).toBe(1)
+    } finally {
+      timers.setInterval = realSet
+      timers.clearInterval = realClear
+    }
   })
 
   it('drops the refresh listener when unmounted before listen resolves', async () => {

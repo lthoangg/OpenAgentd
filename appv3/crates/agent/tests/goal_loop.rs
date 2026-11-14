@@ -232,11 +232,12 @@ async fn a_goal_notifies_once_with_its_outcome() {
     while let Ok(Some(e)) = tokio::time::timeout(Duration::from_millis(300), global.next()).await {
         if e.event == "desktop_notification" && e.data.contains(&h.sid) {
             let v = serde_json::from_str::<Value>(&e.data).unwrap();
-            seen.push((v["title"].as_str().unwrap_or_default().to_string(), v["goal"].clone()));
+            seen.push((v["title"].as_str().unwrap_or_default().to_string(), v["goal"].clone(), v["outcome"].clone()));
         }
     }
-    // `goal` lets the notch mark the outcome without reading the title.
-    assert_eq!(seen, [("Goal paused · notify".to_string(), json!("paused"))], "one notification, after the last turn");
+    // `goal` lets the notch mark the outcome without reading the title, and
+    // `outcome` says the same to every client that tells done from failed.
+    assert_eq!(seen, [("Goal paused · notify".to_string(), json!("paused"), json!("goal_paused"))], "one notification, after the last turn");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

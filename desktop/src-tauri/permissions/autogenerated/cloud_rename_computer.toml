@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-rename-computer"
+description = "Enables the cloud_rename_computer command without any pre-configured scope."
+commands.allow = ["cloud_rename_computer"]
+
+[[permission]]
+identifier = "deny-cloud-rename-computer"
+description = "Denies the cloud_rename_computer command without any pre-configured scope."
+commands.deny = ["cloud_rename_computer"]

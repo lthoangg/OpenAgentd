@@ -91,7 +91,8 @@ const BAR_EVERY: Duration = Duration::from_secs(15);
 const MAX_SEEN: usize = 64;
 const MAX_ROUTES: usize = 50;
 /// How long a question's bubble waits for the server to say what its
-/// options are; past it the bubble shows with "Open to answer" only.
+/// options are; past it the bubble shows without them, and a click on it
+/// opens the session to answer there.
 const QUESTION_WAIT: Duration = Duration::from_secs(3);
 
 // ── Settings ────────────────────────────────────────────────────────────────
@@ -137,17 +138,18 @@ pub enum PetMovement {
 }
 
 /// Which notification kinds use the bubble; the others keep the banner.
+/// Settings saved before v3.55.0 also hold `reminderFired`, a kind no
+/// server ever sent: it is ignored on read and no longer written.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BubbleKinds {
     pub input_needed: bool,
     pub assistant_done: bool,
-    pub reminder_fired: bool,
 }
 
 impl Default for BubbleKinds {
     fn default() -> Self {
-        Self { input_needed: true, assistant_done: true, reminder_fired: true }
+        Self { input_needed: true, assistant_done: true }
     }
 }
 
@@ -156,7 +158,6 @@ impl BubbleKinds {
         match kind {
             "input_needed" => self.input_needed,
             "assistant_done" => self.assistant_done,
-            "reminder_fired" => self.reminder_fired,
             _ => false,
         }
     }
@@ -177,7 +178,7 @@ fn bottom_edge() -> f64 {
     1.0
 }
 
-/// What the user chose in Settings → General (`desktop-pet.json`).
+/// What the user chose in Settings → Desktop (`desktop-pet.json`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PetSettings {
@@ -271,13 +272,16 @@ pub fn claims(settings: &PetSettings, visible: bool, kind: &str) -> bool {
     settings.enabled && visible && settings.bubbles && settings.bubble_kinds.allows(kind)
 }
 
-/// How the bubble looks: a question, a reminder, a failed turn, or done.
-pub fn bubble_tone(kind: &str, title: &str) -> &'static str {
+/// How the bubble looks: a question, a failed turn (or a goal that cannot
+/// go on), or done. `outcome` is the notification's own word for how the
+/// turn ended (see [`crate::island::Finish`]).
+pub fn bubble_tone(kind: &str, outcome: Option<&str>, title: &str) -> &'static str {
     match kind {
         "input_needed" => "input",
-        "reminder_fired" => "remind",
-        _ if title.starts_with("Failed") => "failed",
-        _ => "done",
+        _ => match crate::island::Finish::of(outcome, title) {
+            crate::island::Finish::Failed | crate::island::Finish::GoalBlocked => "failed",
+            crate::island::Finish::Done => "done",
+        },
     }
 }
 
@@ -351,6 +355,22 @@ pub fn pet_status(status: &IslandStatus) -> PetStatus {
 /// The session key a bubble id from [`PetStatus::waiting`] is about.
 fn waiting_route(notification_id: &str) -> Option<&str> {
     notification_id.strip_prefix(WAITING_PREFIX)?.split(':').next().filter(|key| !key.is_empty())
+}
+
+/// Where the bubble `notification_id` opens: the route its notification
+/// left, else, for a question the status listed (not a notification), the
+/// session `session_of` finds for its key.
+fn bubble_route(routes: &[Route], notification_id: &str, session_of: impl Fn(&str) -> Option<(String, ServerId)>) -> Option<Route> {
+    routes.iter().find(|r| r.notification_id == notification_id).cloned().or_else(|| {
+        let (session_id, server) = session_of(waiting_route(notification_id)?)?;
+        Some(Route { notification_id: notification_id.to_string(), session_id, server, kind: "input_needed".into() })
+    })
+}
+
+/// Whether the menu can open the row for `notification_id`: exactly when a
+/// click on its bubble would.
+fn menu_openable(routes: &[Route], notification_id: &str, session_of: impl Fn(&str) -> Option<(String, ServerId)>) -> bool {
+    bubble_route(routes, notification_id, session_of).is_some()
 }
 
 /// A display's work area (without the Dock or taskbar), in physical pixels.
@@ -547,6 +567,17 @@ pub fn hidden_dock_height(autohide: Option<&str>, orientation: Option<&str>, til
     }
     let tile = tilesize.and_then(|t| t.trim().parse::<f64>().ok()).filter(|t| t.is_finite()).unwrap_or(DEFAULT_TILE);
     Some(tile.clamp(16.0, 128.0) + PADDING)
+}
+
+/// [`hidden_dock_height`] from a reader of the Dock's preferences (`read`
+/// runs one `defaults` process a key), asking only as far as the answer
+/// needs: a Dock that stays up, as most do, is asked one thing.
+pub fn read_hidden_dock_height(mut read: impl FnMut(&str) -> Option<String>) -> Option<f64> {
+    let autohide = read("autohide");
+    hidden_dock_height(autohide.as_deref(), None, None)?;
+    let orientation = read("orientation");
+    hidden_dock_height(autohide.as_deref(), orientation.as_deref(), None)?;
+    hidden_dock_height(autohide.as_deref(), orientation.as_deref(), read("tilesize").as_deref())
 }
 
 /// The self-hiding bar's height, as last read off the main thread
@@ -1092,7 +1123,7 @@ pub fn bubble_from_event(data: &str) -> Option<PetBubble> {
     let title = display_title(&kind, v["title"].as_str()?);
     let body = v["body"].as_str().unwrap_or_default().to_string();
     let session_id = v["session_id"].as_str().map(str::to_string);
-    Some(PetBubble { tone: bubble_tone(&kind, &title), id, kind, session_id, title, body, question_id: None })
+    Some(PetBubble { tone: bubble_tone(&kind, v["outcome"].as_str(), &title), id, kind, session_id, title, body, question_id: None })
 }
 
 /// The feed saw a notification on `server`: show it in the bubble when the
@@ -1158,7 +1189,7 @@ fn evict_route(routes: &mut VecDeque<Route>) {
 }
 
 /// `bubble` with the options and the id of the question its session holds.
-/// Best effort: without them the bubble offers "Open to answer" alone.
+/// Best effort: without them the bubble only opens its session.
 async fn with_question(app: &AppHandle, server: &ServerId, bubble: PetBubble) -> PetBubble {
     let Some(session_id) = bubble.session_id.clone() else {
         return bubble;
@@ -1184,14 +1215,15 @@ pub fn with_open_question(mut bubble: PetBubble, question: &crate::answers::Open
     bubble
 }
 
-/// A bubble for a notification an app window asked to show.
-pub fn bubble_from_request(kind: &str, notification_id: Option<&str>, session_id: Option<&str>, title: &str, body: &str) -> PetBubble {
+/// A bubble for a notification an app window asked to show. `outcome` is
+/// the event's, passed on by the window.
+pub fn bubble_from_request(kind: &str, notification_id: Option<&str>, session_id: Option<&str>, title: &str, body: &str, outcome: Option<&str>) -> PetBubble {
     PetBubble {
         // Backend notifications always carry an id; without one, the text
         // stands in so a repeat is still shown once.
         id: notification_id.map(str::to_string).unwrap_or_else(|| format!("{kind}\n{title}\n{body}")),
         kind: kind.to_string(),
-        tone: bubble_tone(kind, title),
+        tone: bubble_tone(kind, outcome, title),
         session_id: session_id.map(str::to_string),
         title: display_title(kind, title),
         body: body.to_string(),
@@ -1210,6 +1242,15 @@ pub fn pet_state(window: WebviewWindow) -> Result<PetView, String> {
     Ok(view())
 }
 
+/// Whether a `pet_fit` needs the pointer read at once instead of at the
+/// next poll: it is the first to name a clickable area, a drag started or
+/// ended, or the window moved. A walking pet reports its place about ten
+/// times a second; that alone waits for the poll (at most [`POLL_FAR`]
+/// away, [`POLL_NEAR`] with the pointer close).
+pub fn fit_needs_poll(first: bool, was_capture: bool, capture: bool, frame_moved: bool) -> bool {
+    first || was_capture != capture || frame_moved
+}
+
 /// The page's clickable areas (the pet and its bubbles) in area pixels,
 /// whether a drag is under way, and the frame (area pixels) the window
 /// should have now: the lane the pet needs, or the whole area while it is
@@ -1221,11 +1262,14 @@ pub fn pet_fit(app: AppHandle, window: WebviewWindow, rects: Vec<HitRect>, captu
     }
     let next = {
         let mut s = shared().lock().unwrap();
+        let (first, was_capture) = (s.hits.is_empty(), s.capture);
         s.hits = rects.into_iter().filter(HitRect::is_valid).take(16).collect();
         s.capture = capture;
         let next = s.strip.filter(|_| frame.is_some()).map(|work| window_frame(frame.as_ref(), &work, capture));
-        next.filter(|next| s.window.is_some_and(|now| now != *next)).inspect(|next| s.window = Some(*next))
+        let next = next.filter(|next| s.window.is_some_and(|now| now != *next)).inspect(|next| s.window = Some(*next));
+        (next, fit_needs_poll(first && !s.hits.is_empty(), was_capture, capture, next.is_some()))
     };
+    let (next, poll) = next;
     if let Some(next) = next {
         let handle = app.clone();
         let _ = app.run_on_main_thread(move || {
@@ -1235,7 +1279,9 @@ pub fn pet_fit(app: AppHandle, window: WebviewWindow, rects: Vec<HitRect>, captu
             emit_frame(&handle);
         });
     }
-    wake().notify_one();
+    if poll {
+        wake().notify_one();
+    }
 }
 
 /// Open the session a bubble is about, in an app window on its server.
@@ -1248,14 +1294,9 @@ pub fn pet_open(app: AppHandle, window: WebviewWindow, notification_id: String) 
 }
 
 fn open_notification(app: &AppHandle, notification_id: &str) {
-    let route = shared().lock().unwrap().routes.iter().find(|r| r.notification_id == notification_id).cloned();
-    // A question the status listed (not a notification): its session's row says where it lives.
-    let route = route.or_else(|| {
-        let key = waiting_route(notification_id)?;
-        let (session_id, server) = crate::island::session_server(key)?;
-        Some(Route { notification_id: notification_id.to_string(), session_id, server, kind: "input_needed".into() })
-    });
-    let Some(route) = route else {
+    // The routes are copied out first: the island's lock is never taken under the pet's.
+    let routes: Vec<Route> = shared().lock().unwrap().routes.iter().cloned().collect();
+    let Some(route) = bubble_route(&routes, notification_id, crate::island::session_server) else {
         log::warn!("pet: no session for bubble {notification_id}");
         return;
     };
@@ -1473,11 +1514,12 @@ pub async fn pet_menu(
 fn show_menu(app: &AppHandle, window: &WebviewWindow, x: f64, y: f64, questions: &[MenuUnread], unread: &[MenuUnread]) -> Result<()> {
     use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 
-    let (movement, character, question_rows, rows) = {
+    let (movement, character, routes) = {
         let s = shared().lock().unwrap();
-        let openable = |id: &str| s.routes.iter().any(|r| r.notification_id == id);
-        (s.settings.movement, s.settings.character, unread_rows(questions, openable), unread_rows(unread, openable))
+        (s.settings.movement, s.settings.character, s.routes.iter().cloned().collect::<Vec<Route>>())
     };
+    let openable = |id: &str| menu_openable(&routes, id, crate::island::session_server);
+    let (question_rows, rows) = (unread_rows(questions, openable), unread_rows(unread, openable));
     let menu = Menu::new(app)?;
     // What waits on the user comes first.
     if !question_rows.is_empty() {
@@ -1728,17 +1770,17 @@ mod native {
     }
 
     /// The Dock's height while it hides itself at the bottom. Blocking:
-    /// runs `defaults`, so call it off the main thread.
+    /// runs `defaults` (once for a Dock that stays up), so call it off the
+    /// main thread.
     pub fn hidden_bar_height() -> Option<f64> {
-        let read = |key: &str| {
+        super::read_hidden_dock_height(|key| {
             std::process::Command::new("/usr/bin/defaults")
                 .args(["read", "com.apple.dock", key])
                 .output()
                 .ok()
                 .filter(|out| out.status.success())
                 .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
-        };
-        super::hidden_dock_height(read("autohide").as_deref(), read("orientation").as_deref(), read("tilesize").as_deref())
+        })
     }
 }
 
@@ -1909,7 +1951,7 @@ mod tests {
         let defaults = PetSettings::default();
         assert!(!defaults.enabled);
         assert!(defaults.bubbles);
-        assert_eq!(defaults.bubble_kinds, BubbleKinds { input_needed: true, assistant_done: true, reminder_fired: true });
+        assert_eq!(defaults.bubble_kinds, BubbleKinds { input_needed: true, assistant_done: true });
         assert!(!defaults.show_when_frontmost);
         assert_eq!(defaults.position, None);
     }
@@ -1929,9 +1971,21 @@ mod tests {
         assert_eq!(old, PetSettings { enabled: true, colour: PetColour::Blue, ..PetSettings::default() });
     }
 
+    // The Reminders switch controlled nothing: no server sends a
+    // `reminder_fired` notification.
+    #[test]
+    fn the_pet_has_no_reminder_bubbles_and_still_reads_settings_saved_with_them() {
+        let saved: PetSettings =
+            serde_json::from_str(r#"{"enabled": true, "bubbleKinds": {"inputNeeded": true, "assistantDone": false, "reminderFired": false}}"#).unwrap();
+        assert!(saved.bubble_kinds.input_needed && !saved.bubble_kinds.assistant_done);
+        let written = serde_json::to_value(&saved).unwrap();
+        assert_eq!(written["bubbleKinds"], serde_json::json!({"inputNeeded": true, "assistantDone": false}), "the key is no longer written");
+        assert!(!claims(&on(), true, "reminder_fired"), "a kind nothing sends keeps the banner");
+    }
+
     #[test]
     fn it_takes_a_notification_only_while_on_screen_with_bubbles_for_that_kind() {
-        for kind in ["input_needed", "assistant_done", "reminder_fired"] {
+        for kind in ["input_needed", "assistant_done"] {
             assert!(claims(&on(), true, kind), "{kind}");
             assert!(!claims(&on(), false, kind), "{kind}: hidden pets fall back to the banner");
             assert!(!claims(&PetSettings::default(), true, kind), "{kind}: pet off");
@@ -1944,12 +1998,13 @@ mod tests {
     }
 
     #[test]
-    fn bubble_tones_follow_the_kind_and_a_failed_title() {
-        assert_eq!(bubble_tone("input_needed", "Needs input · web"), "input");
-        assert_eq!(bubble_tone("reminder_fired", "Reminder"), "remind");
-        assert_eq!(bubble_tone("assistant_done", "Failed · web"), "failed");
-        assert_eq!(bubble_tone("assistant_done", "Done · web"), "done");
-        assert_eq!(bubble_tone("assistant_done", "Goal achieved · web"), "done");
+    fn bubble_tones_follow_the_kind_and_for_an_older_server_a_failed_title() {
+        assert_eq!(bubble_tone("input_needed", None, "Needs input · web"), "input");
+        // A server before v3.55.0 sends no outcome: the title's first words say it.
+        assert_eq!(bubble_tone("assistant_done", None, "Failed · web"), "failed");
+        assert_eq!(bubble_tone("assistant_done", None, "Done · web"), "done");
+        assert_eq!(bubble_tone("assistant_done", None, "Goal achieved · web"), "done");
+        assert_eq!(bubble_tone("assistant_done", None, "Goal blocked · web"), "failed");
     }
 
     #[test]
@@ -1971,13 +2026,31 @@ mod tests {
         assert_eq!(bubble_from_event("not json"), None);
     }
 
+    // The server says how the turn ended; the title's words are for people.
+    #[test]
+    fn a_bubble_s_tone_is_the_outcome_the_server_sent_not_the_title_s_first_word() {
+        let tone = |title: &str, outcome: &str| {
+            let data = serde_json::json!({"notification_id": "n", "kind": "assistant_done", "title": title, "body": "", "outcome": outcome});
+            bubble_from_event(&data.to_string()).unwrap().tone
+        };
+        assert_eq!(tone("Could not finish · web", "failed"), "failed");
+        assert_eq!(tone("Failed to launch · web", "done"), "done", "a workspace or wording that starts with Failed");
+        // A goal that cannot go on droops like a failure; one that ended or paused does not.
+        assert_eq!(tone("Goal blocked · web", "goal_blocked"), "failed");
+        assert_eq!(tone("Goal achieved · web", "goal_achieved"), "done");
+        assert_eq!(tone("Goal paused · web", "goal_paused"), "done");
+    }
+
     #[test]
     fn a_window_request_becomes_the_same_bubble_as_the_event() {
         let event = r#"{"notification_id":"n1","kind":"input_needed","session_id":"s1","title":"Needs input · api","body":"Keep v1?"}"#;
-        let request = bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs input · api", "Keep v1?");
+        let request = bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs input · api", "Keep v1?", None);
         assert_eq!(Some(request), bubble_from_event(event), "same id, so it shows once");
-        let no_id = bubble_from_request("assistant_done", None, None, "Done", "x");
-        assert_eq!(no_id.id, bubble_from_request("assistant_done", None, None, "Done", "x").id);
+        let no_id = bubble_from_request("assistant_done", None, None, "Done", "x", None);
+        assert_eq!(no_id.id, bubble_from_request("assistant_done", None, None, "Done", "x", None).id);
+        // The window passes on how the turn ended, so both bubbles look alike.
+        let blocked = bubble_from_request("assistant_done", Some("n2"), Some("s1"), "Goal blocked · api", "x", Some("goal_blocked"));
+        assert_eq!(blocked.tone, "failed");
     }
 
     #[test]
@@ -1988,7 +2061,7 @@ mod tests {
         assert_eq!(display_title("assistant_done", "Needs input · api"), "Needs input · api", "only a question's title is renamed");
         let event = r#"{"notification_id":"n1","kind":"input_needed","session_id":"s1","title":"Needs input · api","body":"Keep v1?"}"#;
         assert_eq!(bubble_from_event(event).unwrap().title, "Needs you · api");
-        assert_eq!(bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs input · api", "Keep v1?").title, "Needs you · api");
+        assert_eq!(bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs input · api", "Keep v1?", None).title, "Needs you · api");
     }
 
     #[test]
@@ -2013,7 +2086,6 @@ mod tests {
             server: None,
             server_id: None,
             goal: None,
-            account: None,
             sent_from: None,
             finished_seq: None,
         };
@@ -2043,7 +2115,6 @@ mod tests {
             server: None,
             server_id: Some(ServerId::Bundled),
             goal: None,
-            account: None,
             sent_from: None,
             finished_seq: None,
         };
@@ -2361,6 +2432,33 @@ mod tests {
         assert_eq!(hidden_dock_height(Some("1"), None, Some("999")), Some(146.0), "clamped");
     }
 
+    // Every report used to run a poll on the main thread: ten a second
+    // while the pet walked, with the pointer nowhere near it.
+    #[test]
+    fn a_walking_pets_reports_wait_for_the_next_poll() {
+        assert!(!fit_needs_poll(false, false, false, false), "the pet only moved along its lane");
+        assert!(fit_needs_poll(true, false, false, false), "the first clickable area");
+        assert!(fit_needs_poll(false, false, true, false), "a drag started: take clicks everywhere now");
+        assert!(fit_needs_poll(false, true, false, false), "a drag ended");
+        assert!(fit_needs_poll(false, false, false, true), "the window moved under the pointer");
+    }
+
+    #[test]
+    fn the_hidden_docks_height_reads_only_what_it_needs() {
+        // Most Docks stay up: that used to cost three processes every 15 s.
+        let read_with = |prefs: &[(&str, &str)]| {
+            let mut asked = Vec::new();
+            let height = read_hidden_dock_height(|key| {
+                asked.push(key.to_string());
+                prefs.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string())
+            });
+            (height, asked)
+        };
+        assert_eq!(read_with(&[("autohide", "0"), ("tilesize", "35")]), (None, vec!["autohide".to_string()]), "a Dock that stays up is asked one thing");
+        assert_eq!(read_with(&[("autohide", "1"), ("orientation", "left")]).1, ["autohide", "orientation"], "at a side its size does not matter");
+        assert_eq!(read_with(&[("autohide", "1"), ("tilesize", "35")]), (Some(53.0), vec!["autohide".to_string(), "orientation".to_string(), "tilesize".to_string()]));
+    }
+
     #[test]
     fn a_drop_far_out_is_kept_on_the_edge() {
         assert_eq!(edge_fraction(-50.0, 1440.0), 0.0);
@@ -2421,13 +2519,13 @@ mod tests {
     fn a_question_bubble_carries_the_id_the_server_holds() {
         let body = serde_json::json!({ "question": { "id": "q-1", "questions": [{ "question": "Use which account?", "options": [{ "label": "Work" }, { "label": "Auto" }] }] } });
         let question = crate::answers::parse_question(&body).unwrap();
-        let bubble = bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs you · api", "Use which account?");
+        let bubble = bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs you · api", "Use which account?", None);
         let asked = with_open_question(bubble, &question);
         assert_eq!(asked.question_id.as_deref(), Some("q-1"));
         assert_eq!(asked.body, "Use which account?");
 
         // An empty notification body takes the question's own text.
-        let silent = with_open_question(bubble_from_request("input_needed", Some("n2"), Some("s1"), "Needs you", ""), &question);
+        let silent = with_open_question(bubble_from_request("input_needed", Some("n2"), Some("s1"), "Needs you", "", None), &question);
         assert_eq!(silent.body, "Use which account?");
 
         let json = serde_json::to_value(&asked).unwrap();
@@ -2477,5 +2575,22 @@ mod tests {
         assert_eq!(rows[0].1.chars().count(), 48);
         assert!(rows[0].1.ends_with('…'));
         assert_eq!(rows[1].1, "Notification");
+    }
+
+    // A question the status listed while the pet was hidden has no
+    // notification route; the bubble opened it and the menu greyed it out.
+    #[test]
+    fn the_menu_opens_every_question_the_bubble_opens() {
+        let session_of = |key: &str| (key == "s1").then(|| ("session-1".to_string(), ServerId::Bundled));
+        let listed = format!("{WAITING_PREFIX}s1:q1");
+        assert_eq!(bubble_route(&[], &listed, session_of).map(|r| r.session_id).as_deref(), Some("session-1"));
+        assert!(menu_openable(&[], &listed, session_of), "the bubble opens it, so the menu must too");
+
+        let notified = [Route { notification_id: "n1".into(), session_id: "session-2".into(), server: ServerId::Bundled, kind: "assistant_done".into() }];
+        assert!(menu_openable(&notified, "n1", session_of));
+        // Its session is gone from the list: neither can open it.
+        let gone = format!("{WAITING_PREFIX}s9:q1");
+        assert!(bubble_route(&[], &gone, session_of).is_none());
+        assert!(!menu_openable(&[], &gone, session_of));
     }
 }

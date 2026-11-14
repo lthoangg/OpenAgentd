@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const CSS = readFileSync(fileURLToPath(new URL('../../pet/pet.css', import.meta.url)), 'utf8')
+const PET = readFileSync(fileURLToPath(new URL('../../pet/Pet.tsx', import.meta.url)), 'utf8')
 
 const START = '/* ── Pet-only values'
 const END = '/* ── End pet-only values'
@@ -37,6 +38,17 @@ describe('pet.css', () => {
 
   it('has a reduced-motion fallback', () => {
     expect(CSS).toContain('@media (prefers-reduced-motion: reduce)')
+  })
+
+  it('has a rule for every fixed class the pet can carry, and a use for every variable it sets a default for', () => {
+    const root = PET.split('\n').find((line) => line.includes('className={`pet pet--${pose}')) ?? ''
+    const classes = [...root.matchAll(/' (pet--[a-z-]+)'/g)].map((m) => m[1])
+    expect(classes).toContain('pet--moving')
+    expect(classes.filter((name) => !CSS.includes(`.${name}`))).toEqual([])
+    // A variable the page always sets where it is read needs no default here.
+    const inline = [...PET.matchAll(/\['(--pet-[a-z-]+)' as string\]/g)].map((m) => m[1])
+    expect(inline).toContain('--pet-move-ms')
+    expect(inline.filter((name) => new RegExp(`^\\s*${name}:`, 'm').test(CSS))).toEqual([])
   })
 
   it('has no balloon left, and no glide for a jump (the page moves it along an arc)', () => {
@@ -102,8 +114,8 @@ describe('pet.css sizes', () => {
 
   // The marks sit on solid bright hues in both themes. Dark mode's text tone
   // is cream, which was 1.5:1 on the orange and 1.6:1 on the blue.
-  it('sets the alert, look and pant marks in dark ink on their bright fills in both themes', () => {
-    for (const mark of ['.pet-mark--alert', '.pet-mark--look', '.pet-mark--pant']) {
+  it('sets the alert and pant marks in dark ink on their bright fills in both themes', () => {
+    for (const mark of ['.pet-mark--alert', '.pet-mark--pant']) {
       expect({ mark, light: block(mark) }).toMatchObject({ light: expect.stringContaining('color: var(--color-text)') })
       expect({ mark, dark: block(`:root.dark ${mark}`) }).toMatchObject({ dark: expect.stringContaining('color: var(--bg-page)') })
     }

@@ -1,3 +1,5 @@
+import { isMobileApp } from '@/lib/mobile-app'
+
 export interface SavedAppServer {
   base_url: string
   name?: string | null
@@ -274,7 +276,12 @@ export async function saveAppBackendServer(baseUrl: string, name: string): Promi
 
 export async function removeAppBackendServer(baseUrl: string): Promise<AppBackendStatus> {
   const { invoke } = await import('@tauri-apps/api/core')
-  return noteBackendStatus(await invoke<AppBackendStatus>('app_remove_backend_server', { baseUrl }))
+  const status = noteBackendStatus(await invoke<AppBackendStatus>('app_remove_backend_server', { baseUrl }))
+  // The phone's home-screen widgets must not keep that server's sessions.
+  if (isMobileApp()) {
+    await import('@/lib/widget-snapshot').then((widgets) => widgets.forgetWidgetServer({ baseUrl })).catch(() => {})
+  }
+  return status
 }
 
 export async function setAppBackendServerEnabled(baseUrl: string, enabled: boolean): Promise<AppBackendStatus> {

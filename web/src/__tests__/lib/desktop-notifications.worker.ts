@@ -141,6 +141,23 @@ describe('desktop notification worker', () => {
     expect((await sendDesktopNotification({ ...payload, notificationId: 'n-1' })).status).toBe('disabled')
   })
 
+  // The Notifications settings page is gone, so nothing can turn the switch
+  // back on: a stored "off" must not keep notifications off for good.
+  it('an off switch left by the removed settings page is ignored', async () => {
+    window.localStorage.setItem('oa-desktop-notifications-enabled', 'false')
+
+    expect((await sendDesktopNotification(payload)).status).toBe('sent')
+    expect(mockNotify).toHaveBeenCalledTimes(1)
+  })
+
+  it('how the turn ended reaches the desktop shell', async () => {
+    await sendDesktopNotification({ ...payload, title: 'Goal blocked · openagentd', outcome: 'goal_blocked' })
+
+    expect(mockNotify).toHaveBeenCalledWith('show_desktop_notification', {
+      payload: expect.objectContaining({ title: 'Goal blocked · openagentd', outcome: 'goal_blocked' }),
+    })
+  })
+
   it('focused skip and forced send', async () => {
     focused = true
 
@@ -290,7 +307,7 @@ describe('desktop notification worker', () => {
       await withAccountPush()
       setVisibility('hidden', true)
 
-      expect((await sendDesktopNotification({ ...payload, kind: 'reminder_fired' })).status).toBe('sent')
+      expect((await sendDesktopNotification({ ...payload, kind: 'device_approval' })).status).toBe('sent')
       expect(mockNotify).toHaveBeenCalledTimes(1)
     })
 

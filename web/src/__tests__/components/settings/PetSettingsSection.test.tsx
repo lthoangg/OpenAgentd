@@ -84,7 +84,7 @@ describe('PetSettingsSection', () => {
         { movement: 'chaotic' },
         { showWhenFrontmost: true },
         { climb: false },
-        { bubbleKinds: { inputNeeded: true, assistantDone: false, reminderFired: true } },
+        { bubbleKinds: { inputNeeded: true, assistantDone: false } },
       ]),
     )
   })
@@ -100,7 +100,32 @@ describe('PetSettingsSection', () => {
     stored = { ...DEFAULT_PET_SETTINGS, enabled: true, bubbles: false }
     render(<PetSettingsSection />)
     expect(await toggle('Questions')).toBeDisabled()
-    expect(await toggle('Reminders')).toBeDisabled()
+    expect(await toggle('Finished replies')).toBeDisabled()
+  })
+
+  // A greyed-out row said nothing about how to get it back; the notch's rows do.
+  it('says why an option is off', async () => {
+    render(<PetSettingsSection />)
+    await toggle('Show a desktop pet')
+    // Character, Color, Size, Movement, bubble, two kinds, in front, climb.
+    expect(screen.getAllByText('Turn on the desktop pet to change this.').length).toBe(9)
+    cleanup()
+
+    stored = { ...DEFAULT_PET_SETTINGS, enabled: true, bubbles: false }
+    render(<PetSettingsSection />)
+    await toggle('Questions')
+    expect(screen.queryByText('Turn on the desktop pet to change this.')).toBeNull()
+    expect(screen.getAllByText('Turn on Show notifications in its bubble to change this.').length).toBe(2)
+    expect(screen.getByText('Each walks its own way.')).toBeInTheDocument()
+  })
+
+  // No server sends a reminder notification: the switch controlled nothing.
+  it('offers no Reminders switch', async () => {
+    stored = { ...DEFAULT_PET_SETTINGS, enabled: true }
+    render(<PetSettingsSection />)
+    await toggle('Questions')
+    expect(screen.queryByRole('switch', { name: 'Reminders' })).toBeNull()
+    expect(screen.queryByText(/reminder/i)).toBeNull()
   })
 
   it('follows a change made from the tray', async () => {

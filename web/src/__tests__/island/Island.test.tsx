@@ -17,12 +17,20 @@ type Call = [string, Record<string, unknown> | undefined]
 let calls: Call[] = []
 let view: IslandView
 let closeMenu: (() => void) | undefined
+/** How many more times the shell refuses `island_state` (it is not up yet). */
+let stateFailures = 0
 const handlers = new Map<string, (event: { payload: unknown }) => void>()
 
 mock.module('@tauri-apps/api/core', () => ({
   invoke: async (cmd: string, args?: Record<string, unknown>) => {
     calls.push([cmd, args])
-    if (cmd === 'island_state') return view
+    if (cmd === 'island_state') {
+      if (stateFailures > 0) {
+        stateFailures -= 1
+        throw new Error('state not managed yet')
+      }
+      return view
+    }
     if (cmd === 'island_context_menu') return new Promise<void>((resolve) => { closeMenu = resolve })
     return undefined
   },
@@ -62,7 +70,8 @@ const point = (inside: boolean) => emit('island-pointer', { inside, x: 10, y: 10
 const fits = () => calls.filter(([cmd]) => cmd === 'island_fit').map(([, args]) => args)
 const lastFit = () => fits().at(-1)
 const opened = () => calls.filter(([cmd]) => cmd === 'island_open_session').map(([, args]) => args?.sessionId)
-const dismissed = () => calls.filter(([cmd]) => cmd === 'island_dismiss').map(([, args]) => args?.sessionId)
+/** Every command the page sent besides reading its state and sizing its window. */
+const asked = () => calls.map(([cmd]) => cmd).filter((cmd) => cmd !== 'island_state' && cmd !== 'island_fit')
 const pill = () => document.querySelector('.island') as HTMLElement
 /** The number in the compact pill's right wing. */
 const trail = () => document.querySelector('.island-trail')?.textContent
@@ -82,6 +91,7 @@ async function mount(settings: Partial<IslandSettings> = {}) {
 beforeEach(() => {
   calls = []
   closeMenu = undefined
+  stateFailures = 0
   handlers.clear()
   view = { status: status(1, []), geometry: { hasNotch: true, width: 188, height: 38 }, settings: DEFAULT_ISLAND_SETTINGS }
 })
@@ -91,6 +101,33 @@ describe('Island', () => {
   it('asks to stay hidden while nothing is active', async () => {
     await mount()
     expect(lastFit()).toMatchObject({ visible: false })
+  })
+
+  // One failed read used to leave the notch empty until the next status change.
+  it('asks the shell for its state again when the first read fails', async () => {
+    stateFailures = 2
+    view = { ...view, status: status(5, [running('a', 'Refactor auth')]) }
+    const timers = useFakeTimers()
+    try {
+      render(<Island />)
+      const reads = () => calls.filter(([cmd]) => cmd === 'island_state').length
+      await act(async () => { for (let i = 0; i < 10; i += 1) await Promise.resolve() })
+      expect(reads()).toBe(1)
+      expect(lastFit()).toBeUndefined()
+
+      for (const expected of [2, 3]) {
+        act(() => timers.tick(1000))
+        await act(async () => { for (let i = 0; i < 10; i += 1) await Promise.resolve() })
+        expect(reads()).toBe(expected)
+      }
+      expect(lastFit()).toMatchObject({ visible: true })
+
+      // Read: nothing more is asked.
+      act(() => timers.tick(10_000))
+      expect(reads()).toBe(3)
+    } finally {
+      timers.restore()
+    }
   })
 
   it('shows a running session without a word, then grows out of the notch evenly on both sides', async () => {
@@ -223,14 +260,12 @@ describe('Island', () => {
     point(true)
     expect(fireEvent.contextMenu(screen.getByRole('button', { name: /Docs/ }), { clientX: 120, clientY: 80 })).toBe(false)
     await waitFor(() => expect(calls).toContainEqual(['island_context_menu', { sessionId: 'b', x: 120, y: 80 }]))
-    expect(opened()).toEqual([])
-    expect(dismissed()).toEqual([])
+    expect(asked()).toEqual(['island_context_menu'])
     point(false)
     expect(list()).toBeInTheDocument()
     await act(async () => closeMenu?.())
     expect(screen.queryByRole('list')).toBeNull()
-    expect(opened()).toEqual([])
-    expect(dismissed()).toEqual([])
+    expect(asked()).toEqual(['island_context_menu'])
   })
 
   it('uses the same priority for right-clicking the pill as for opening it', async () => {
@@ -272,8 +307,7 @@ describe('Island', () => {
     await act(async () => closeMenu?.())
     expect(screen.queryByRole('list')).toBeNull()
     expect(pill().dataset.open).toBe('false')
-    expect(opened()).toEqual([])
-    expect(dismissed()).toEqual([])
+    expect(asked()).toEqual(['island_context_menu'])
   })
 
   it('keeps a finished session up until it is read, then shrinks away', async () => {
@@ -292,7 +326,11 @@ describe('Island', () => {
       expect(lastFit()).toMatchObject({ visible: true })
       expect(screen.getByText('Done')).toBeInTheDocument()
 
-      act(() => timers.tick(400))
+      // The pill takes 240 ms to shrink in (--motion-base in island.css);
+      // the window used to stay up, empty, for 400.
+      act(() => timers.tick(239))
+      expect(lastFit()).toMatchObject({ visible: true })
+      act(() => timers.tick(1))
       expect(lastFit()).toMatchObject({ visible: false })
     } finally {
       timers.restore()
@@ -319,9 +357,7 @@ describe('Island', () => {
     expect(later).not.toHaveAttribute('title')
     fireEvent.click(later)
     expect(rowTitles()).toEqual(['Docs'])
-    expect(dismissed()).toEqual([])
-    expect(opened()).toEqual([])
-    expect(calls.some(([cmd]) => cmd === 'session_read')).toBe(false)
+    expect(asked()).toEqual([])
 
     // Something new about that session (it runs again, then finishes) brings it back.
     push(status(3, [running('d', 'Fix tooltip slide'), running('a', 'Docs')]))
@@ -425,5 +461,18 @@ describe('Island', () => {
     expect(lastFit()).toMatchObject({ visible: true })
     openList()
     expect(within(list()).getByText('Access key rejected')).toBeInTheDocument()
+  })
+
+  // Trying again with the same key gets the same refusal: the row used to
+  // offer that and nothing on screen changed.
+  it('opens Settings to fix a refused key instead of trying the same key again', async () => {
+    await mount()
+    push(status(2, [], [], [{ ...lost, reason: 'key_rejected' }]))
+    openList()
+    const row = within(list()).getByText('NAS').closest('li')!
+    expect(within(row).queryByRole('button', { name: /Try again/ })).toBeNull()
+    fireEvent.click(within(row).getByRole('button', { name: "Can't reach NAS: Access key rejected. Fix in Settings" }))
+    expect(calls.some(([cmd]) => cmd === 'island_fix_key')).toBe(true)
+    expect(calls.some(([cmd]) => cmd === 'island_retry')).toBe(false)
   })
 })

@@ -7,7 +7,7 @@ import { PET_SETTINGS_EVENT } from '@/lib/pet-setting'
 import { ProviderCard, ProviderSkeleton } from './ProviderCard'
 import { ServerPicker } from './ServerPicker'
 import { TRAY_STATUS_LABEL, failureReason, providerView, trayStatus } from './providerView'
-import { shortcutLabel } from './shortcuts'
+import { ariaShortcut, holdsShortcutModifier, shortcutLabel } from './shortcuts'
 import { type TrayServerOption, type TrayUsageResult, formatCheckedAt } from './usage'
 
 const USAGE_COMMAND = 'get_tray_usage_summary'
@@ -19,6 +19,8 @@ const PET_SETTINGS_COMMAND = 'pet_settings'
 const CHECKED_TICK_MS = 30_000
 /** Stable empty list, so hooks keyed on the servers don't rerun every render. */
 const NO_SERVERS: TrayServerOption[] = []
+/** The picker's first option: the server the app is on. */
+const AUTO_SERVER = 'auto'
 
 /** Native menu commands (desktop/src-tauri/src/menu.rs), plus the popup's own ``hide``. */
 type TrayAction = 'show' | 'settings' | 'quit' | 'usage_manage' | 'toggle_pet' | 'hide'
@@ -36,6 +38,11 @@ function runAction(action: TrayAction) {
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+/** What the popup calls a picker option: Auto goes by the server it stands for. */
+function optionName(option: TrayServerOption): string {
+  return option.id === AUTO_SERVER ? option.detail ?? option.name : option.name
 }
 
 /** Listen to a shell event; the cleanup also works if it runs before `listen` resolves. */
@@ -84,30 +91,62 @@ export function TrayPopup() {
   const [result, setResult] = useState<TrayUsageResult | null>(null)
   /** The IPC call itself failed (the command answers server errors in ``result.error``). */
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [selectedServer, setSelectedServer] = useState('auto')
+  const [selectedServer, setSelectedServer] = useState(AUTO_SERVER)
+  /**
+   * The name of a server just picked, until its reading arrives. Meanwhile
+   * the popup shows placeholders under it: never the last server's numbers.
+   */
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [activeOption, setActiveOption] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
   const [, setClock] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
+  /** The server to read, for `load`, which must not change with it (one read per pick). */
+  const selectedRef = useRef(AUTO_SERVER)
+  /** The newest request; an answer to an older one is dropped. */
+  const requestRef = useRef(0)
+  /** `switchingTo`, for `load`. */
+  const switchRef = useRef<string | null>(null)
   const petEnabled = usePetEnabled()
 
-  const load = useCallback(async (force = false, targetServer?: string) => {
+  const load = useCallback(async (force = false) => {
+    const request = ++requestRef.current
+    const targetServer = selectedRef.current
     try {
-      const data = await invoke<TrayUsageResult>(USAGE_COMMAND, { force, targetServer: targetServer ?? selectedServer })
+      const data = await invoke<TrayUsageResult>(USAGE_COMMAND, { force, targetServer })
+      if (request !== requestRef.current) return
       setResult(data)
       setLoadError(null)
+      // The shell reads Auto instead when the picked server is gone.
+      if (data.selected_server_id && data.selected_server_id !== targetServer) {
+        selectedRef.current = data.selected_server_id
+        setSelectedServer(data.selected_server_id)
+      }
     } catch (err) {
-      setLoadError(errorText(err))
+      if (request !== requestRef.current) return
+      const reason = errorText(err)
+      const name = switchRef.current
+      // Nothing was read from the picked server: say so under its name,
+      // with nothing left of the last one's reading.
+      if (name !== null) {
+        setResult((last) => last && {
+          ...last,
+          summary: null,
+          error: reason,
+          server_name: name,
+          server_id: targetServer === AUTO_SERVER ? last.server_id : targetServer,
+        })
+      }
+      setLoadError(reason)
     }
-  }, [selectedServer])
+    switchRef.current = null
+    setSwitchingTo(null)
+  }, [])
 
   useEffect(() => {
     void load()
   }, [load])
-  // `listen` resolves after an IPC round trip; a cleanup that runs first
-  // (unmount, or a server switch changing `load`) must still remove it, or
-  // stale listeners keep reloading for the previous server.
   const reload = useCallback(() => void load(), [load])
   useShellEvent(TRAY_REFRESH_EVENT, reload)
 
@@ -125,10 +164,16 @@ export function TrayPopup() {
   }, [selectedServer, servers])
 
   const chooseServer = useCallback((id: string) => {
-    setSelectedServer(id)
     setMenuOpen(false)
-    void load(false, id)
-  }, [load])
+    if (id === selectedRef.current) return
+    const option = servers.find((server) => server.id === id)
+    selectedRef.current = id
+    setSelectedServer(id)
+    switchRef.current = option ? optionName(option) : '…'
+    setSwitchingTo(switchRef.current)
+    setLoadError(null)
+    void load()
+  }, [load, servers])
 
   // The popup owns its keys, so the hints it shows are true wherever focus
   // sits. Claiming a key here also keeps the native menu's accelerator for
@@ -161,7 +206,7 @@ export function TrayPopup() {
         else runAction('hide')
         return
       }
-      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
+      if (!holdsShortcutModifier(event)) return
       const key = event.key.toLowerCase()
       if (key === 'r') {
         event.preventDefault()
@@ -197,9 +242,30 @@ export function TrayPopup() {
     }
   }, [])
 
+  // The "Checked 2m ago" clock, only while the popup is up: the webview
+  // lives as long as the app and is hidden nearly all of that. A show
+  // focuses the window and a hide follows its blur.
   useEffect(() => {
-    const timer = setInterval(() => setClock((n) => n + 1), CHECKED_TICK_MS)
-    return () => clearInterval(timer)
+    let timer: ReturnType<typeof setInterval> | undefined
+    const tick = () => setClock((n) => n + 1)
+    const stop = () => {
+      clearInterval(timer)
+      timer = undefined
+    }
+    const start = () => {
+      stop()
+      // Right away too: the age shown is from when the popup was last up.
+      tick()
+      timer = setInterval(tick, CHECKED_TICK_MS)
+    }
+    if (document.hasFocus()) start()
+    window.addEventListener('focus', start)
+    window.addEventListener('blur', stop)
+    return () => {
+      stop()
+      window.removeEventListener('focus', start)
+      window.removeEventListener('blur', stop)
+    }
   }, [])
 
   // The window follows the popup's height (tray_fit clamps and re-anchors
@@ -227,12 +293,15 @@ export function TrayPopup() {
     }
   }, [])
 
-  const summary = result?.summary ?? null
-  const failed = result?.error ?? loadError
-  const status = trayStatus(result, loadError)
+  const summary = switchingTo === null ? result?.summary ?? null : null
+  const failed = switchingTo === null ? result?.error ?? loadError : null
+  const status = switchingTo === null ? trayStatus(result, loadError) : 'loading'
   const noServer = status === 'no-server'
-  const serverName = result?.server_name ?? 'the server'
+  const serverLabel = switchingTo ?? result?.server_name
+  const serverName = serverLabel ?? 'the server'
   const views = summary?.items.map((item) => providerView(item)) ?? []
+  /** "checked 2m ago", for the middle of a line. */
+  const checkedAge = summary ? formatCheckedAt(summary.checked_at)?.replace(/^C/, 'c') : null
   const manage = () => runAction('usage_manage')
 
   return (
@@ -241,7 +310,7 @@ export function TrayPopup() {
         <span className="brand">
           <Wordmark height={14} title="OpenAgentd" />
         </span>
-        {!noServer && result && <span className="head-server">{result.server_name}</span>}
+        {!noServer && serverLabel && <span className="head-server">{serverLabel}</span>}
       </header>
 
       {noServer ? (
@@ -263,14 +332,14 @@ export function TrayPopup() {
               <ServerPicker
                 servers={servers}
                 selected={selectedServer}
-                label={result?.server_name ?? '…'}
+                label={serverLabel ?? '…'}
                 open={menuOpen}
                 active={activeOption}
                 onOpenChange={openMenu}
                 onActiveChange={setActiveOption}
                 onChoose={chooseServer}
               />
-              <button type="button" className="icon-btn" onClick={refresh} disabled={refreshing} aria-label="Refresh provider limits" aria-keyshortcuts="Meta+R Control+R">
+              <button type="button" className="icon-btn" onClick={refresh} disabled={refreshing} aria-label="Refresh provider limits" aria-keyshortcuts={ariaShortcut('r')}>
                 <RefreshCw size={14} strokeWidth={2} className={refreshing ? 'spin' : undefined} aria-hidden="true" />
               </button>
             </span>
@@ -301,7 +370,11 @@ export function TrayPopup() {
           {summary && (failed ? (
             <div className="callout" role="alert">
               <span className="callout-text">
-                <strong>Couldn't refresh</strong>
+                {/* The numbers above are the last reading: say how old. */}
+                <span>
+                  <strong>Couldn't refresh</strong>
+                  {checkedAge && <span className="callout-age"> · {checkedAge}</span>}
+                </span>
                 <span>{failureReason(failed)}</span>
               </span>
               <button type="button" className="small-btn" onClick={refresh} disabled={refreshing}>Retry</button>

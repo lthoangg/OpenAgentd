@@ -47,7 +47,9 @@ find "$app" -name '*.a' -type f -delete
 
 # Entitlements of a profile, with the keychain group narrowed from the
 # profile's "TEAM.*" wildcard to the bundle's own application identifier,
-# as Xcode does.
+# as Xcode does. Game Center is dropped: Apple adds it to App Store profiles
+# by default, the app does not use it, and a build that claims it cannot be
+# submitted for App Store review without a Game Center configuration.
 profile_entitlements() {
   local profile=$1 out=$2 plist="$stage/profile.plist"
   security cms -D -i "$profile" > "$plist" || die "cannot decode $profile"
@@ -55,6 +57,8 @@ profile_entitlements() {
   local app_id
   app_id=$(plutil -extract application-identifier raw "$out")
   plutil -replace keychain-access-groups -json "[\"$app_id\"]" "$out"
+  # plutil key paths split on ".", so the dots in the key are escaped.
+  plutil -remove 'com\.apple\.developer\.game-center' "$out" 2>/dev/null || true
   [ "$(plutil -extract get-task-allow raw "$out" 2>/dev/null || echo false)" = "false" ] \
     || die "$profile is not a distribution profile (get-task-allow is true)"
 }
@@ -98,8 +102,8 @@ sign_bundle "$app" "$app_profile"
 codesign --verify --deep --strict "$app" || die "signature verification failed"
 for b in "$app" "${appexes[@]}"; do
   codesign -d --entitlements - --xml "$b" 2>/dev/null | plutil -convert json -o - - \
-    | python3 -c 'import json,sys; e=json.load(sys.stdin); assert e.get("com.apple.security.application-groups"), "no App Group"' \
-    || die "$(basename "$b") is missing the App Group entitlement"
+    | python3 -c 'import json,sys; e=json.load(sys.stdin); assert e.get("com.apple.security.application-groups"), "no App Group"; assert "com.apple.developer.game-center" not in e, "Game Center"' \
+    || die "$(basename "$b") is missing the App Group entitlement or claims Game Center"
 done
 
 mkdir -p "$(dirname "$out")"

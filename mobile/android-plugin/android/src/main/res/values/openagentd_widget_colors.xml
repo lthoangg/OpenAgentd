@@ -8,7 +8,11 @@
     <color name="openagentd_widget_button_bg">#2D241B</color>
     <color name="openagentd_widget_button_text">#FFFDF7</color>
     <color name="openagentd_widget_needs_bg">#FFF1D8</color>
+    <color name="openagentd_widget_needs_text">#873E05</color>
     <color name="openagentd_widget_running_bg">#DCEEFB</color>
+    <color name="openagentd_widget_running_text">#174A73</color>
     <color name="openagentd_widget_idle_bg">#F0E9D4</color>
+    <color name="openagentd_widget_idle_text">#6E604F</color>
     <color name="openagentd_widget_failed_bg">#FBE3EC</color>
+    <color name="openagentd_widget_failed_text">#A21D52</color>
 </resources>

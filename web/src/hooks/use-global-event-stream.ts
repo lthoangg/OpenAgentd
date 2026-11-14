@@ -423,7 +423,7 @@ async function handleEvent(
     const kind = event.kind
     if (
       !id ||
-      (kind !== 'assistant_done' && kind !== 'reminder_fired' && kind !== 'input_needed')
+      (kind !== 'assistant_done' && kind !== 'input_needed')
     ) return false
     if (!rememberNotification(id)) return true
     if (typeof event.title !== 'string' || typeof event.body !== 'string') return false
@@ -433,7 +433,7 @@ async function handleEvent(
     // A question stops the agent until it is answered, so it must reach the user
     // even in a focused window — unless they are already looking at the session
     // that asked, where the card itself is the notification. ``force`` skips the
-    // window-focus check only; the user's notification setting still applies.
+    // window-focus check only; the operating system's permission still applies.
     // Badge the row in every window's session list. The question card itself
     // only reaches clients attached to that session's stream; this is what tells
     // someone working elsewhere that a session is stopped and waiting on them.
@@ -455,8 +455,9 @@ async function handleEvent(
     }
     // Mobile has no window focus to check, so it skips by this instead.
     const sessionOnScreen = sessionId !== undefined && useAgentStore.getState().sessionId === sessionId
+    const outcome = typeof event.outcome === 'string' ? event.outcome : undefined
     await sendDesktopNotification(
-      { kind, notificationId: id, sessionId, title: event.title, body: event.body },
+      { kind, notificationId: id, sessionId, title: event.title, body: event.body, ...(outcome ? { outcome } : {}) },
       { force: kind === 'input_needed' && !sessionOnScreen, sessionOnScreen },
     )
     return true

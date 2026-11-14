@@ -30,17 +30,22 @@ final class NotificationService: UNNotificationServiceExtension {
         content.userInfo.removeValue(forKey: "session")
         content.userInfo.removeValue(forKey: "sender")
         UNUserNotificationCenter.current().getNotificationSettings { settings in
-            // Show Previews off: keep the placeholder (PreviewPolicy.swift).
-            if PreviewPolicy.opensLetter(settings.showPreviewsSetting),
-               let opened = Self.open(info), let text = LetterOpener.text(opened.json) {
-                content.title = String(text.title.prefix(120))
-                content.body = String(text.body.prefix(600))
-                if let session = text.session, !session.isEmpty {
-                    content.threadIdentifier = session
-                    content.userInfo["session"] = session
-                    content.userInfo["sender"] = opened.sender
+            if let opened = Self.open(info), let text = LetterOpener.text(opened.json) {
+                // Show Previews off: the placeholder stays, the tap still
+                // opens the session (PreviewPolicy.swift).
+                let fill = PreviewPolicy.fill(
+                    title: text.title, body: text.body, session: text.session, sender: opened.sender,
+                    setting: settings.showPreviewsSetting
+                )
+                if let shown = fill.text {
+                    content.title = String(shown.title.prefix(120))
+                    content.body = String(shown.body.prefix(600))
                 }
-                content.userInfo["kind"] = opened.kind
+                if let route = fill.route {
+                    content.threadIdentifier = route.session
+                    content.userInfo["session"] = route.session
+                    content.userInfo["sender"] = route.sender
+                }
                 content.userInfo.removeValue(forKey: "l")
             }
             contentHandler(content)

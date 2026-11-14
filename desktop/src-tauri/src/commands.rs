@@ -189,11 +189,14 @@ fn open_from_notification(app: &AppHandle, sender: &str, server: ServerId, sessi
 pub struct DesktopNotificationPayload {
     kind: String,
     session_id: Option<String>,
-    mode: Option<String>,
     title: String,
     body: String,
     #[serde(default)]
     notification_id: Option<String>,
+    /// How the turn ended, as the server's event said it (`done`, `failed`,
+    /// `goal_blocked`, …); absent from older pages and servers.
+    #[serde(default)]
+    outcome: Option<String>,
 }
 
 /// Shows the notification and returns true, or returns false when another
@@ -220,6 +223,7 @@ pub fn show_desktop_notification(
         payload.session_id.as_deref(),
         &payload.title,
         &payload.body,
+        payload.outcome.as_deref(),
     );
     if crate::pet::take_banner(&app, window.label(), bubble) {
         return Ok(false);
@@ -640,6 +644,7 @@ pub async fn app_remove_backend_server(
     }
     crate::account::release_unused(&app);
     crate::island::servers_changed(&app);
+    state.usage.lock().await.forget(&crate::servers::ServerId::external(&normalized));
     app_backend_status_for_window(app.clone(), app.state(), window.label())
         .await
         .map_err(|e| format!("{e:#}"))

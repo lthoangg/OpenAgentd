@@ -214,7 +214,12 @@ fn identities() -> &'static StdMutex<HashMap<ServerId, String>> {
 
 /// What `server` answered when the island connected: the account
 /// fingerprint of its computer, or `None` (not signed in, an older server).
-pub fn learn_identity(server: &ServerId, fingerprint: Option<String>) {
+/// `Err` when it could not be asked (a timeout, a server error): what it
+/// answered before still holds.
+pub fn learn_identity<E>(server: &ServerId, read: Result<Option<String>, E>) {
+    let Ok(fingerprint) = read else {
+        return;
+    };
     let mut ids = identities().lock().unwrap();
     match fingerprint.map(|f| normalize_fingerprint(&f)).filter(|f| !f.is_empty()) {
         Some(f) => ids.insert(server.clone(), f),
@@ -239,14 +244,14 @@ fn known_identities() -> HashMap<ServerId, String> {
 
 /// The account fingerprint a server's computer is signed in with, from its
 /// `GET /api/cloud/status`. `None` when it is not signed in or does not say.
-pub async fn server_fingerprint(client: &reqwest::Client, base: &str, token: Option<&str>) -> Option<String> {
+pub async fn server_fingerprint(client: &reqwest::Client, base: &str, token: Option<&str>) -> reqwest::Result<Option<String>> {
     let mut request = client.get(format!("{}/api/cloud/status", base.trim_end_matches('/'))).timeout(std::time::Duration::from_secs(5));
     if let Some(token) = token {
         request = request.bearer_auth(token);
     }
-    let body: serde_json::Value = request.send().await.ok()?.error_for_status().ok()?.json().await.ok()?;
+    let body: serde_json::Value = request.send().await?.error_for_status()?.json().await?;
     let enrolled = matches!(body["state"].as_str(), Some("connected" | "closing" | "unavailable"));
-    enrolled.then(|| body["fingerprint"].as_str().map(str::to_string)).flatten()
+    Ok(enrolled.then(|| body["fingerprint"].as_str().map(str::to_string)).flatten())
 }
 
 /// The saved servers marked enabled, as server ids.
@@ -564,6 +569,23 @@ mod tests {
         assert!(with_window.contains(&ServerId::External(REMOTE.into())));
         let closed = follow(&labels(&["main"]), &HashMap::new(), true, &enabled_servers(&saved(false)));
         assert_eq!(closed, [ServerId::Bundled]);
+    }
+
+    // A reconnect whose status read timed out used to forget which computer
+    // the server is: one reached at two addresses was then followed twice.
+    #[test]
+    fn a_computer_that_could_not_be_asked_is_still_the_one_it_was() {
+        let server = ServerId::external("http://identity-test.invalid:4082");
+        let known = || identities().lock().unwrap().get(&server).cloned();
+        learn_identity::<()>(&server, Ok(Some("3f9a 21c4".into())));
+        assert_eq!(known().as_deref(), Some("3F9A21C4"));
+
+        learn_identity(&server, Err("timed out"));
+        assert_eq!(known().as_deref(), Some("3F9A21C4"), "not asked is not an answer");
+
+        // Signed out of the account: it said so.
+        learn_identity::<()>(&server, Ok(None));
+        assert_eq!(known(), None);
     }
 
     // home-away item 14: one machine saved under two addresses showed its

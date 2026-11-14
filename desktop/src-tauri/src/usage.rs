@@ -62,8 +62,6 @@ pub struct UsageSpend {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct UsageLimit {
     #[serde(default)]
-    pub limit_id: Option<String>,
-    #[serde(default)]
     pub limit_name: Option<String>,
     #[serde(default)]
     pub primary: Option<UsageWindow>,
@@ -119,8 +117,6 @@ pub struct UsageSummaryItem {
     pub label: String,
     pub status: String,
     #[serde(default)]
-    pub error: Option<String>,
-    #[serde(default)]
     pub usage: Option<UsageResponse>,
     /// True when the backend substituted this provider's last-known-good
     /// payload because the live fetch failed transiently.
@@ -145,8 +141,6 @@ pub struct UsageSummaryBody {
     pub items: Vec<UsageSummaryItem>,
     #[serde(default)]
     pub checked_at: i64,
-    #[serde(default)]
-    pub cached: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -978,6 +972,72 @@ pub fn format_notification_body(labels: &[String]) -> String {
     )
 }
 
+/// One usage fetch per server at a time: overlapping triggers (the
+/// background poll, a manual refresh, the tray opening) share it, and a slow
+/// server does not hold up another's.
+#[derive(Default)]
+pub struct InflightFetches {
+    /// Each running fetch, and whether it reads past the backend's cache.
+    running: std::sync::Mutex<HashMap<ServerId, (tokio::sync::watch::Receiver<()>, bool)>>,
+}
+
+/// What a caller that wants to fetch from a server gets.
+pub enum FetchTurn {
+    /// Nobody else is fetching: fetch, then drop the guard.
+    Mine(FetchGuard),
+    /// A fetch is already running.
+    Running(RunningFetch),
+}
+
+/// Held for the length of a fetch. Dropping it frees the server, also when
+/// the fetch is cancelled, so one lost task never blocks later refreshes.
+pub struct FetchGuard {
+    fetches: std::sync::Arc<InflightFetches>,
+    server: ServerId,
+    _running: tokio::sync::watch::Sender<()>,
+}
+
+impl Drop for FetchGuard {
+    fn drop(&mut self) {
+        // Never panic in a drop: a poisoned map is still the map.
+        self.fetches.running.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).remove(&self.server);
+    }
+}
+
+/// Another caller's fetch.
+pub struct RunningFetch {
+    ended: tokio::sync::watch::Receiver<()>,
+    forced: bool,
+}
+
+impl RunningFetch {
+    /// Whether its reading is as fresh as a caller with `force_refresh`
+    /// wants: a fetch that may answer from the backend's cache is not a
+    /// refresh.
+    pub fn covers(&self, force_refresh: bool) -> bool {
+        self.forced || !force_refresh
+    }
+
+    /// Resolves once that fetch is over and its reading is recorded.
+    pub async fn ended(mut self) {
+        // Nothing is ever sent: the channel closes when the guard drops.
+        while self.ended.changed().await.is_ok() {}
+    }
+}
+
+impl InflightFetches {
+    /// `forced`: the caller's fetch would read past the backend's cache.
+    pub fn claim(self: &std::sync::Arc<Self>, server: &ServerId, forced: bool) -> FetchTurn {
+        let mut running = self.running.lock().unwrap();
+        if let Some((ended, forced)) = running.get(server) {
+            return FetchTurn::Running(RunningFetch { ended: ended.clone(), forced: *forced });
+        }
+        let (sender, receiver) = tokio::sync::watch::channel(());
+        running.insert(server.clone(), (receiver, forced));
+        FetchTurn::Mine(FetchGuard { fetches: self.clone(), server: server.clone(), _running: sender })
+    }
+}
+
 /// The tray's usage readings, kept per server: what one server reported is
 /// never shown, or alerted on, as another's.
 #[derive(Debug, Default)]
@@ -1021,14 +1081,66 @@ impl UsageCache {
     pub fn reading(&self, server: &ServerId) -> (Option<UsageSummaryBody>, Option<String>) {
         (self.snapshots.get(server).cloned(), self.errors.get(server).cloned())
     }
+
+    /// `server` was removed: nothing of it is kept.
+    pub fn forget(&mut self, server: &ServerId) {
+        self.snapshots.remove(server);
+        self.errors.remove(server);
+        self.notified.remove(server);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // The popup used to answer with nothing (and sit on its placeholders)
+    // when it asked while the background poll was fetching.
+    #[tokio::test]
+    async fn a_second_caller_waits_for_the_fetch_that_is_running() {
+        let fetches = std::sync::Arc::new(InflightFetches::default());
+        let server = ServerId::Bundled;
+        let FetchTurn::Mine(guard) = fetches.claim(&server, false) else { panic!("the first caller fetches") };
+        let FetchTurn::Running(running) = fetches.claim(&server, false) else { panic!("the second finds a fetch running") };
+        let mut ended = Box::pin(running.ended());
+        let still_running = tokio::select! {
+            biased;
+            _ = &mut ended => false,
+            _ = std::future::ready(()) => true,
+        };
+        assert!(still_running, "the wait ended while the fetch was still running");
+
+        drop(guard);
+        ended.await;
+        assert!(matches!(fetches.claim(&server, false), FetchTurn::Mine(_)), "the server is free again");
+    }
+
+    // Refresh used to wait for a background fetch that may have answered
+    // from the backend's cache, and then show that.
+    #[test]
+    fn a_refresh_is_not_answered_by_a_fetch_that_may_read_the_cache() {
+        let fetches = std::sync::Arc::new(InflightFetches::default());
+        let server = ServerId::Bundled;
+        let covers = |forced: bool, wanted: bool| {
+            let _fetching = fetches.claim(&server, forced);
+            let FetchTurn::Running(running) = fetches.claim(&server, wanted) else { panic!("a fetch is running") };
+            running.covers(wanted)
+        };
+        assert!(!covers(false, true), "a background fetch is not a refresh");
+        assert!(covers(true, true), "another refresh is");
+        assert!(covers(false, false));
+        assert!(covers(true, false));
+    }
+
+    #[test]
+    fn a_fetch_on_one_server_does_not_hold_up_another() {
+        let fetches = std::sync::Arc::new(InflightFetches::default());
+        let _studio = fetches.claim(&ServerId::External("http://studio:4082".into()), false);
+        assert!(matches!(fetches.claim(&ServerId::Bundled, false), FetchTurn::Mine(_)));
+    }
+
     fn body(items: Vec<UsageSummaryItem>, checked_at: i64) -> UsageSummaryBody {
-        UsageSummaryBody { items, checked_at, cached: false }
+        UsageSummaryBody { items, checked_at }
     }
 
     #[test]
@@ -1039,6 +1151,21 @@ mod tests {
 
         assert_eq!(cache.reading(&ServerId::Bundled), (None, None));
         assert_eq!(cache.reading(&remote).0.map(|b| b.checked_at), Some(100));
+    }
+
+    #[test]
+    fn a_removed_server_leaves_no_reading_behind() {
+        let remote = ServerId::External("http://192.168.1.30:4082".into());
+        let mut cache = UsageCache::default();
+        cache.record(&remote, body(vec![item_ok("codex", "Codex", 95.0, None)], 100));
+        cache.record(&ServerId::Bundled, body(vec![], 200));
+        cache.record_failure(&remote, "timeout".into());
+
+        cache.forget(&remote);
+        assert_eq!(cache.reading(&remote), (None, None));
+        assert_eq!(cache.reading(&ServerId::Bundled).0.map(|b| b.checked_at), Some(200));
+        // Added again and still critical: that is news once more.
+        assert_eq!(cache.record(&remote, body(vec![item_ok("codex", "Codex", 95.0, None)], 300)), ["codex"]);
     }
 
     #[test]
@@ -1095,7 +1222,6 @@ mod tests {
             provider: provider.to_string(),
             label: label.to_string(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1104,7 +1230,6 @@ mod tests {
                 provider: provider.to_string(),
                 updated_at: None,
                 limits: vec![UsageLimit {
-                    limit_id: Some(provider.to_string()),
                     limit_name: None,
                     primary: Some(UsageWindow {
                         used_percent,
@@ -1154,7 +1279,6 @@ mod tests {
     #[test]
     fn format_window_suffix_includes_the_bar_between_percent_and_reset() {
         let limit = UsageLimit {
-            limit_id: Some("codex".to_string()),
             limit_name: None,
             primary: Some(UsageWindow {
                 used_percent: 50.0,
@@ -1185,7 +1309,6 @@ mod tests {
                 item_ok("agy", "Antigravity Gemini Auth", 91.0, None),
             ],
             checked_at: 1_000,
-            cached: false,
         };
         let rows = format_summary_rows(&body, 1_000);
         assert_eq!(rows.len(), 2);
@@ -1200,7 +1323,6 @@ mod tests {
             provider: "grok".to_string(),
             label: "Grok".to_string(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1209,7 +1331,6 @@ mod tests {
                 provider: "grok".to_string(),
                 updated_at: None,
                 limits: vec![UsageLimit {
-                    limit_id: None,
                     limit_name: Some("Weekly usage period".to_string()),
                     primary: None,
                     secondary: None,
@@ -1240,7 +1361,6 @@ mod tests {
             provider: "copilot".to_string(),
             label: "GitHub Copilot".to_string(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1249,7 +1369,6 @@ mod tests {
                 provider: "copilot".to_string(),
                 updated_at: None,
                 limits: vec![UsageLimit {
-                    limit_id: Some("premium_interactions".to_string()),
                     limit_name: Some("Premium requests".to_string()),
                     primary: None,
                     secondary: None,
@@ -1285,7 +1404,6 @@ mod tests {
                     provider: "claude".to_string(),
                     label: "Claude OAuth".to_string(),
                     status: "credentials_missing".to_string(),
-                    error: Some("token missing".to_string()),
                     stale: false,
                     retry_at: None,
                     retry_after: None,
@@ -1296,7 +1414,6 @@ mod tests {
                     provider: "copilot".to_string(),
                     label: "GitHub Copilot".to_string(),
                     status: "unavailable".to_string(),
-                    error: Some("timeout".to_string()),
                     stale: false,
                     retry_at: None,
                     retry_after: None,
@@ -1305,7 +1422,6 @@ mod tests {
                 },
             ],
             checked_at: 1_000,
-            cached: false,
         };
         let rows = format_summary_rows(&body, 1_000);
         assert!(rows[0].text.contains("reconnect"));
@@ -1323,7 +1439,6 @@ mod tests {
         let body = UsageSummaryBody {
             items: vec![],
             checked_at: 1_000,
-            cached: true,
         };
         // "(cached)" is deliberately not surfaced — implementation detail.
         assert_eq!(format_footer(&body, 1_000), "Checked just now");
@@ -1352,12 +1467,10 @@ mod tests {
         let hot = UsageSummaryBody {
             items: vec![item_ok("codex", "OpenAI Codex", 92.0, None)],
             checked_at: 1_000,
-            cached: false,
         };
         let cool = UsageSummaryBody {
             items: vec![item_ok("codex", "OpenAI Codex", 10.0, None)],
             checked_at: 1_000,
-            cached: false,
         };
         assert!(has_critical_usage(&hot));
         assert!(!has_critical_usage(&cool));
@@ -1385,7 +1498,6 @@ mod tests {
         let body = UsageSummaryBody {
             items: vec![],
             checked_at: 1_000,
-            cached: false,
         };
         let footer = format_failed_footer(Some(&body), 1_130, "connection refused");
         assert_eq!(footer, "\u{26A0} Checked 2m ago \u{00B7} refresh failed");
@@ -1415,7 +1527,6 @@ mod tests {
                 item_ok("claude", "Claude OAuth", 90.0, None), // exactly at threshold
             ],
             checked_at: 1_000,
-            cached: false,
         };
         let critical = critical_providers(&body);
         assert!(!critical.contains("codex"));
@@ -1475,7 +1586,6 @@ mod tests {
             provider: "codex".to_string(),
             label: "OpenAI Codex".to_string(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1484,7 +1594,6 @@ mod tests {
                 provider: "codex".to_string(),
                 updated_at: None,
                 limits: vec![UsageLimit {
-                    limit_id: Some("codex".to_string()),
                     limit_name: None,
                     primary: Some(UsageWindow {
                         used_percent: 100.0,
@@ -1518,7 +1627,6 @@ mod tests {
             provider: "codex".to_string(),
             label: very_long_name.clone(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1527,7 +1635,6 @@ mod tests {
                 provider: "codex".to_string(),
                 updated_at: None,
                 limits: vec![UsageLimit {
-                    limit_id: Some("codex".to_string()),
                     limit_name: Some(very_long_name),
                     primary: Some(UsageWindow {
                         used_percent: 10.0,
@@ -1554,7 +1661,6 @@ mod tests {
         let mut limits = Vec::new();
         for i in 0..5 {
             limits.push(UsageLimit {
-                limit_id: Some(format!("limit-{i}")),
                 limit_name: Some(format!("Limit {i}")),
                 primary: Some(UsageWindow {
                     used_percent: 10.0,
@@ -1574,7 +1680,6 @@ mod tests {
             provider: "codex".to_string(),
             label: "OpenAI Codex".to_string(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1643,7 +1748,6 @@ mod tests {
     #[test]
     fn multi_limit_provider_groups_under_a_header_with_worst_glyph() {
         let make_limit = |name: &str, used: f64| UsageLimit {
-            limit_id: Some(name.to_string()),
             limit_name: Some(name.to_string()),
             primary: Some(UsageWindow {
                 used_percent: used,
@@ -1662,7 +1766,6 @@ mod tests {
             provider: "agy".to_string(),
             label: "Antigravity Gemini".to_string(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1716,7 +1819,6 @@ mod tests {
             provider: "codex".to_string(),
             label: "OpenAI Codex".to_string(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1725,7 +1827,6 @@ mod tests {
                 provider: "codex".to_string(),
                 updated_at: None,
                 limits: vec![UsageLimit {
-                    limit_id: Some("codex".to_string()),
                     limit_name: None,
                     primary: None,
                     secondary: None,
@@ -1788,7 +1889,6 @@ mod tests {
         let body = UsageSummaryBody {
             items: vec![codex_spend_capped_item()],
             checked_at: 1_000,
-            cached: false,
         };
         assert!(has_critical_usage(&body));
         assert!(critical_providers(&body).contains("codex"));
@@ -1885,7 +1985,6 @@ mod tests {
             None => UsageSummaryItem { usage: None, ..item_ok("codex", "OpenAI Codex", 0.0, None) },
         };
         item.status = "rate_limited".to_string();
-        item.error = Some("HTTP 429".to_string());
         item.stale = stale;
         item.retry_at = retry_at;
         item.retry_after = retry_after;
@@ -1973,7 +2072,6 @@ mod tests {
     fn unavailable_with_last_good(percent: f64) -> UsageSummaryItem {
         let mut item = item_ok("codex", "OpenAI Codex", percent, Some(10_000));
         item.status = "unavailable".to_string();
-        item.error = Some("timeout".to_string());
         item.stale = true;
         item
     }
@@ -2068,7 +2166,6 @@ mod tests {
         let body = UsageSummaryBody {
             items: vec![rate_limited(Some(97.0), true, None, Some(300))],
             checked_at: 1_000,
-            cached: false,
         };
         assert!(!has_critical_usage(&body));
         assert!(critical_providers(&body).is_empty());

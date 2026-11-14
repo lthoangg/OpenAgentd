@@ -38,6 +38,7 @@ const STATE_COMMAND = 'island_state'
 const FIT_COMMAND = 'island_fit'
 const OPEN_COMMAND = 'island_open_session'
 const RETRY_COMMAND = 'island_retry'
+const FIX_KEY_COMMAND = 'island_fix_key'
 const MENU_COMMAND = 'island_context_menu'
 const STATUS_EVENT = 'island-status'
 const GEOMETRY_EVENT = 'island-geometry'
@@ -48,10 +49,16 @@ const NO_SESSIONS: IslandSession[] = []
 const NO_SERVERS: UnreachableServer[] = []
 /** The canvas shows with the pill still inside the notch; it grows out after this. */
 const ENTER_DELAY_MS = 34
-/** The canvas stays up this long after the pill starts shrinking back in. */
-const EXIT_MS = DURATIONS_S.slow * 1000
+/**
+ * The canvas stays up this long after the pill starts shrinking back in:
+ * as long as that takes (`--motion-base` on the closed pill in island.css).
+ */
+const EXIT_MS = DURATIONS_S.base * 1000
 /** A list opened by a click closes once the pointer has been away this long. */
 const PINNED_LEAVE_MS = 2500
+/** A failed first read of the shell's state is tried again this often, this many times. */
+const STATE_RETRY_MS = 1000
+const STATE_RETRIES = 5
 
 function openSession(sessionId: string | null) {
   if (sessionId) void invoke(OPEN_COMMAND, { sessionId }).catch(() => {})
@@ -156,16 +163,22 @@ function SessionRow({ session, actions }: { session: IslandSession; actions: Row
   )
 }
 
-/** A server that dropped off: a click on the row tries to reach it again. */
-function ServerRow({ server, hit, onRetry, onLater }: {
+/**
+ * A server that dropped off: a click on the row tries to reach it again.
+ * One that refused the saved access key would refuse it again, so its row
+ * opens Settings → Server, where the key is fixed.
+ */
+function ServerRow({ server, hit, onRetry, onFixKey, onLater }: {
   server: UnreachableServer
   hit: string | null
   onRetry: () => void
+  onFixKey: () => void
   onLater: (server: UnreachableServer) => void
 }) {
   const retry = `retry:${server.id}`
   const later = `later:server:${server.id}`
-  const reason = server.reason === 'key_rejected' ? 'Access key rejected' : 'Not answering'
+  const rejected = server.reason === 'key_rejected'
+  const reason = rejected ? 'Access key rejected' : 'Not answering'
   return (
     <li className="island-row-item island-row-item--server" data-state="offline">
       <button
@@ -173,8 +186,8 @@ function ServerRow({ server, hit, onRetry, onLater }: {
         className="island-row"
         data-hit={retry}
         data-hover={hit === retry ? '' : undefined}
-        aria-label={`Can't reach ${server.name}: ${reason}. Try again`}
-        onClick={onRetry}
+        aria-label={`Can't reach ${server.name}: ${reason}. ${rejected ? 'Fix in Settings' : 'Try again'}`}
+        onClick={rejected ? onFixKey : onRetry}
       >
         <span className="island-chip" data-state="offline">Can't reach</span>
         <span className="island-row-title">{server.name}</span>
@@ -238,17 +251,25 @@ export function Island() {
 
   useEffect(() => {
     let cancelled = false
-    void invoke<IslandView>(STATE_COMMAND).then((view) => {
-      if (cancelled) return
-      setGeometry(view.geometry)
-      setSettings(view.settings)
-      if (seenSeq.current === null) {
-        seenSeq.current = view.status.seq
-        setStatus(view.status)
-      }
-    }).catch(() => {})
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const read = (retriesLeft: number) => {
+      void invoke<IslandView>(STATE_COMMAND).then((view) => {
+        if (cancelled) return
+        setGeometry(view.geometry)
+        setSettings(view.settings)
+        if (seenSeq.current === null) {
+          seenSeq.current = view.status.seq
+          setStatus(view.status)
+        }
+      }).catch(() => {
+        // Without it the notch has no size and stays empty: ask again.
+        if (!cancelled && retriesLeft > 0) timer = setTimeout(() => read(retriesLeft - 1), STATE_RETRY_MS)
+      })
+    }
+    read(STATE_RETRIES)
     return () => {
       cancelled = true
+      clearTimeout(timer)
     }
   }, [])
 
@@ -407,6 +428,7 @@ export function Island() {
                   server={server}
                   hit={hit}
                   onRetry={() => void invoke(RETRY_COMMAND).catch(() => {})}
+                  onFixKey={() => void invoke(FIX_KEY_COMMAND).catch(() => {})}
                   onLater={(item) => putOff(`server:${item.id}`, serverSignature(item))}
                 />
               ))}

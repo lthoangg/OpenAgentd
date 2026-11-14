@@ -2,7 +2,7 @@
  * Settings → Desktop: the macOS notch status settings (moved off General).
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { DEFAULT_ISLAND_SETTINGS, type IslandSettings } from '@/island/status'
 
@@ -10,6 +10,8 @@ let supported = true
 let stored: IslandSettings = DEFAULT_ISLAND_SETTINGS
 let patches: Partial<IslandSettings>[] = []
 let failWrite = false
+/** What the shell's settings event calls, while the page listens. */
+let onExternalChange: ((settings: IslandSettings) => void) | undefined
 
 mock.module('@/lib/island-setting', () => ({
   ISLAND_SETTINGS_EVENT: 'island-settings-changed',
@@ -20,6 +22,12 @@ mock.module('@/lib/island-setting', () => ({
     if (failWrite) throw new Error('Could not save the setting.')
     stored = { ...stored, ...patch }
     return stored
+  },
+  listenIslandSettings: async (onChange: (settings: IslandSettings) => void) => {
+    onExternalChange = onChange
+    return () => {
+      onExternalChange = undefined
+    }
   },
 }))
 
@@ -90,5 +98,19 @@ describe('DesktopSettingsPage notch status', () => {
     render(<DesktopSettingsPage />)
     await toggle('Expand on hover')
     expect(screen.getAllByText('Turn on Agent status to change this.').length).toBe(3)
+  })
+
+  // The notch's own menu, or Settings in another window, changes them too.
+  it('follows a change made elsewhere, and stops listening when it closes', async () => {
+    const { unmount } = render(<DesktopSettingsPage />)
+    expect(await toggle('Agent status in the notch')).toHaveAttribute('aria-checked', 'true')
+    await waitFor(() => expect(onExternalChange).toBeDefined())
+
+    act(() => onExternalChange?.({ ...DEFAULT_ISLAND_SETTINGS, enabled: false }))
+    expect(await toggle('Agent status in the notch')).toHaveAttribute('aria-checked', 'false')
+    expect(await toggle('Expand on hover')).toBeDisabled()
+
+    unmount()
+    expect(onExternalChange).toBeUndefined()
   })
 })

@@ -31,7 +31,7 @@ describe("decideFrame", () => {
 })
 
 describe("decideStreamError", () => {
-  const base = { ...live, transient: false, working: true, message: "boom" }
+  const base = { ...live, transient: false, working: true, hidden: false, message: "boom" }
   const cases: Case<typeof decideStreamError>[] = [
     [base, { kind: "fail", message: "boom" }],
     [{ ...base, working: false }, { kind: "detach" }],
@@ -40,6 +40,9 @@ describe("decideStreamError", () => {
     [{ ...base, aborted: true }, { kind: "ignore", reason: "superseded" }],
     [{ ...base, unloading: true }, { kind: "ignore", reason: "unloading" }],
     [{ ...base, sameSession: false, aborted: true }, { kind: "ignore", reason: "session_changed" }],
+    // In the background: coming back reattaches, so nothing is shown.
+    [{ ...base, hidden: true }, { kind: "detach" }],
+    [{ ...base, hidden: true, transient: true }, { kind: "back_off" }],
   ]
   it.each(cases)("%o -> %o", (input, expected) => {
     expect(decideStreamError(input)).toEqual(expected)

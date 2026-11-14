@@ -12,7 +12,7 @@ import type { NotificationTarget } from '@/lib/notification-taps'
  * ``device_approval`` — a device signed in to the account and waits for this
  * computer (a signer) to approve it; its text is fixed and names no device.
  */
-export type DesktopNotificationKind = 'assistant_done' | 'reminder_fired' | 'input_needed' | 'device_approval'
+export type DesktopNotificationKind = 'assistant_done' | 'input_needed' | 'device_approval'
 export type DesktopNotificationStatus = 'sent' | 'disabled' | 'unsupported' | 'permission-denied' | 'error'
 
 export interface DesktopNotificationPayload {
@@ -22,6 +22,12 @@ export interface DesktopNotificationPayload {
   sessionId?: string
   title: string
   body: string
+  /**
+   * How a finished turn ended, as the server said it (`done`, `failed`,
+   * `goal_blocked`, …). The desktop shell marks a failure by it; absent
+   * from servers before v3.55.0, where the title's first word says it.
+   */
+  outcome?: string
 }
 
 export interface DesktopNotificationResult {
@@ -29,7 +35,6 @@ export interface DesktopNotificationResult {
   message: string
 }
 
-const ENABLED_KEY = 'oa-desktop-notifications-enabled'
 let permissionRequested = false
 
 /**
@@ -54,7 +59,7 @@ if (typeof document !== 'undefined') {
 }
 
 export interface DesktopNotificationOptions {
-  /** Skip the window-focus check; the user's notification setting still applies. */
+  /** Skip the window-focus check; the operating system's permission still applies. */
   force?: boolean
   /** The notification is about the session on screen; mobile skips it while visible. */
   sessionOnScreen?: boolean
@@ -100,25 +105,15 @@ async function phoneReceivesPush(): Promise<boolean> {
   }
 }
 
-export function areDesktopNotificationsEnabled(): boolean {
-  if (typeof window === 'undefined') return true
-  return window.localStorage.getItem(ENABLED_KEY) !== 'false'
-}
-
-export function setDesktopNotificationsEnabled(enabled: boolean): void {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(ENABLED_KEY, String(enabled))
-}
-
+// There is no in-app switch: the operating system's notification permission
+// is the one place to turn these off. (A switch the old Notifications page
+// stored is not read, since nothing could turn it back on.)
 async function shouldNotify(
   kind: DesktopNotificationKind,
   options: DesktopNotificationOptions = {},
 ): Promise<DesktopNotificationResult | null> {
   if (!isTauriRuntime()) {
     return { status: 'unsupported', message: 'Native app notifications only work in the Tauri app.' }
-  }
-  if (!areDesktopNotificationsEnabled()) {
-    return { status: 'disabled', message: 'App notifications are disabled.' }
   }
   // Before ``force``: a question would otherwise arrive twice, once from here
   // and once as the push.
@@ -211,6 +206,7 @@ export async function sendDesktopNotification(
           ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
           title: payload.title,
           body: payload.body,
+          ...(payload.outcome ? { outcome: payload.outcome } : {}),
         },
       })
       // Every window gets the event; the shell shows it from one of them.

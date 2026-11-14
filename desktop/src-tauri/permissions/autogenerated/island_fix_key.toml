@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-island-fix-key"
+description = "Enables the island_fix_key command without any pre-configured scope."
+commands.allow = ["island_fix_key"]
+
+[[permission]]
+identifier = "deny-island-fix-key"
+description = "Denies the island_fix_key command without any pre-configured scope."
+commands.deny = ["island_fix_key"]

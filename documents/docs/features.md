@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.54.0 · November 14, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.54.0)
+**Latest release:** v3.55.0 · November 14, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.55.0)
 
 ---
 
@@ -414,10 +414,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   built-in server the row points to the app's **Updates** section, which
   updates both. The app's install dialog now says that running agents resume
   after the restart (they always did).
-- **Native app notifications** `[v1.19.0]` — finished assistant turns and
-  scheduled reminders in the desktop app, plus local native
+- **Native app notifications** `[v1.19.0]` — finished assistant turns in
+  the desktop app, plus local native
   notifications in the remote-backend mobile shell `[v1.34.0]`. Clicking a
-  desktop completion or reminder notification restores OpenAgentd and opens
+  desktop completion notification restores OpenAgentd and opens
   its linked coding session `[v1.113.4]`. Per-session context
   (coding workspace name when available). Notification sounds are handled by
   the operating system;
@@ -465,14 +465,32 @@ run from the terminal (the native Rust binary since v3.0.0).
   the push alike), and for the built-in and saved servers once the app knows
   more than one server. It is the name the server lists show: the one you
   saved a server under, else the name its computer gives for itself.
+  Notifications no longer stay off for good `[v3.55.0]`: the app has had no
+  Notifications page since v2.9.0, yet a switch turned off there was still
+  obeyed, with no way to turn it back on. The switch is no longer read; the
+  operating system's notification settings are the one place to turn them
+  off. On an iPhone with **Show Previews** set to **Never**, tapping a push
+  now opens its session (the text stays hidden, as before).
+  A goal that ends blocked no longer reads as a finished turn `[v3.55.0]`:
+  the phone push used to file it under Done and the pet hopped. The push now
+  files it as a failure and the pet droops; the notch keeps the row under
+  Done and marks it with the blocked goal, as it did. The notification
+  carries how the turn ended (`outcome`: done, failed, goal achieved, goal
+  blocked, goal paused), and the notch, the pet and the phone push read
+  that instead of the first word of the title. A server older than v3.55.0
+  sends no outcome and is read by its title, as before.
+  Reminder notifications are gone `[v3.55.0]` *(removed)*: no part of the
+  server has sent one since the v3 rewrite, so the pet's **Reminders**
+  switch controlled nothing and is removed with them. A pet settings file
+  saved with that switch still loads.
 - **Home-screen widgets on iPhone and Android** `[v3.31.0]` — three widgets
   for the mobile app: **Quick start** (start a new session, or continue the
   last one), **Sessions** (up to three sessions, the ones that need you first,
-  then the ones still working) and **Next task** (the next scheduled task,
+  then the ones still running) and **Next task** (the next scheduled task,
   with a countdown on iOS, and whether its last run passed). Tapping one opens
   that session, a new session in your last folder, or the scheduler on that
   task. The widgets show what the app last synced, with an "as of" time;
-  after 30 minutes the "Needs you" and "Working" labels turn into plain ages.
+  after 30 minutes the "Needs you" and "Running" labels turn into plain ages.
   They never hold the server address or access key. The `openagentd://new`
   and `openagentd://scheduler?task=<id>` links they use work from anywhere,
   and links into the Android app now also work on older Android System
@@ -480,6 +498,19 @@ run from the terminal (the native Rust binary since v3.0.0).
   A widget's session opens on the server the widget synced from
   `[v3.52.0]`, switching to it first when the app is on another one, and a
   link is handled once even when iOS reloads the app in the background.
+  Since `[v3.55.0]` a widget never opens a session on the wrong server: a
+  row whose server the app no longer knows opens nothing, says so, and shows
+  Servers. Removing the server the widgets show, or signing out of the
+  account whose computer they show, empties them. A Chat session is named
+  "Chat" (it used to show your login name), and a snapshot the phone could
+  not save is sent again with the next change. A snapshot read from one
+  server is not saved once the app has moved to another (it would have
+  filed the first server's sessions under the second).
+  A session at work reads **Running**, the word the sidebar uses (it read
+  "Working"). On Android each label has its own text colour, as on iPhone;
+  a widget placed before the app has synced says to open OpenAgentd instead
+  of "Nothing needs you right now"; and a snapshot whose time cannot be
+  read counts as not synced instead of showing "as of 20000d ago".
 - **Command palette and Find file** `[v2.3.0, updated v3.40.0]` — `⌘K`/`Ctrl+K`
   opens one search over app actions, sessions and workspace files; `⌘P`/`Ctrl+P`
   (Find file) opens the same palette scoped to files. It uses the compact
@@ -1178,6 +1209,37 @@ run from the terminal (the native Rust binary since v3.0.0).
     within moments of starting, and one that finished while its server
     could not be reached once it is back; a finish put off with Later comes
     back when the session finishes again.
+    Since `[v3.55.0]` the pet's right-click menu opens every question its
+    bubble opens: a question asked while the pet was hidden used to be
+    greyed out there.
+  - Notch and pet flows that went nowhere or worked too hard `[v3.55.0]`:
+    a notch row for a server that refused its access key opens **Settings →
+    Server**, where the key is fixed (a click used to try the same key
+    again, and nothing changed on screen). A notch that is showing moves
+    within 2 s when a display is plugged in, unplugged or rearranged; it
+    used to stay put until the next status change. The notch reads each
+    waiting session's question from the server once, not on every event of
+    any session, and when the session asks again it drops the answered
+    question's id until the new one is read. The pet asks the Dock one thing instead of three every
+    15 s when the Dock stays up, and a walking pet no longer makes the app
+    read the pointer ten times a second while the pointer is elsewhere.
+  - Dead parts removed `[v3.55.0]`: the notch row no longer receives the
+    pinned account it never drew, the tray popup no longer receives three
+    usage fields it never read, the phone widgets no longer store a task's
+    last run time (none showed it), and the app no longer ships an unused
+    notification sound. On macOS the app no longer tells the tray which
+    session is open (the Mac tray has no row for it) or writes menu rows
+    for a usage submenu that does not exist there.
+  - Smaller notch and pet fixes `[v3.55.0]`: **Settings → Desktop** follows
+    a notch setting changed in another window, as it already did for the
+    pet, and a pet option that is greyed out says what to turn on to change
+    it. A server whose account status could not be read on a reconnect
+    keeps the computer it was known as, so one computer saved under two
+    addresses is not listed twice after a timeout. The notch's window
+    leaves as soon as the pill has shrunk away (240 ms; it stayed up,
+    empty, for 400), and a notch that could not read its state on start
+    asks again (up to five times, a second apart) instead of staying empty
+    until the next status change.
   - A question card in the transcript no longer sticks on "Waiting for an
     answer…": once the turn is over and no question is open, it says **No
     answer recorded** with what was asked, and a card closed from another
@@ -1571,27 +1633,55 @@ run from the terminal (the native Rust binary since v3.0.0).
     **Can't reach** groups, no "N need(s) you" chip in the header): it shows
     provider limits and actions only. The count mark on the tray icon is
     unchanged.
+    Since `[v3.55.0]` the numbers always belong to the server named above
+    them: picking another server shows placeholders under its name until
+    its reading arrives (it used to keep the last server's numbers for up to
+    10 s), reads it once, and drops an answer that arrives for a server you
+    have already left. A server that went away while picked falls back to
+    Auto in the list too, and a server you remove leaves no reading behind.
+    Opening the popup while a check is already running
+    waits for that check instead of sitting on placeholders; **Refresh**
+    that meets a background check waits for it and then reads past the
+    server's cache itself. A limit the
+    provider reports as reached reads **Limit reached** below 100% as well,
+    as it does in Settings.
+    The usage period reads "Ends in 3d", as in Settings (it read "Resets in
+    3d", the wording for a limit). A saved server has one name in the
+    popup: the list and the header use the name Auto shows for it (the one
+    you saved it under, else the name its computer gives for itself, else
+    its address); the list used to show the address for a server Auto
+    called by its computer's name.
+    A refresh that fails over the last reading still says how old that
+    reading is ("Couldn't refresh · checked 40m ago"). A server you pick
+    is answered from its last reading and refreshed behind it, as Auto is,
+    so picking it no longer waits on the network every time, and a failed
+    read keeps its last numbers instead of "Can't reach". The "Checked"
+    clock runs only while the popup is up.
     Since `[v3.25.0]` it looks and moves like the app:
     - **Layout.** It shares the app's colours and type. A provider with
       several limits gets one card, with rows named by window ("5-hour",
       "Weekly"); a provider with one limit is one row. The window fits its
       content up to 600px, and the list scrolls past that.
     - **States.** Loading shows placeholder cards. An unreachable server
-      reads "Can't reach ‹server›" with Retry, and the status says Offline.
+      reads "Can't reach ‹server›" with Retry, and the status says Offline
+      ("Can't reach" since `[v3.40.0]`).
       With no providers it offers Open Providers, and Reconnect goes to
       Settings → Providers.
     - **Keys.** Esc closes it, or the server menu first, which also takes
-      ↑ ↓ Enter. ⌘R refreshes, and ⌘, and ⌘Q run Settings and Quit. Since
+      ↑ ↓ Enter. ⌘R refreshes, and ⌘, and ⌘Q run Settings and Quit; since
+      `[v3.55.0]` only ⌘ does (Ctrl+Q used to quit the app too). Since
       `[v3.26.0]` the popup no longer offers New session; that lives in the
       app window (⌘N).
   - **Agent status in the notch** `[v3.26.0]` — on macOS, while you work in
     another app, a black pill grows out of the MacBook notch (or hangs from
     the middle of the menu bar on a display without one) whenever an agent
-    is busy. It reads "Working" with the session title or count, and a
+    is busy. It read "Working" with the session title or count (the word
+    is **Running** since `[v3.40.0]`, and the resting pill has shown a
+    spinner and a count with no word since `[v3.45.0]`), and a
     session whose own turn ended while its subagents (or another workspace)
     still work for it stays "Working" until their reports are in, so
     "Done" shows once, for the whole job `[v3.27.0]`. It turns
-    orange with "Needs input" when an agent waits on a question or a plan
+    orange with "Needs input" (**Needs you** since `[v3.40.0]`) when an agent waits on a question or a plan
     review, and keeps "Done" (or "Failed") up for a finished session until
     you open it, in the app or from the pill, or dismiss it.
     Since `[v3.28.0]` the pill ranks Needs input over Done/Failed over
@@ -1615,7 +1705,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     server as fallback): a server that is down no longer leaves it empty,
     and switching windows never turns running work into "Done" or drops
     unread sessions. With two or more servers, each row names its server
-    ("Builtin" for the bundled one), and a click opens the session in a
+    ("Builtin" for the bundled one, "Built-in server" since `[v3.40.0]`), and a click opens the session in a
     window on that server.
     Since `[v3.33.0]` a saved server can also be **enabled** in Settings →
     Connection (a switch on its row): the notch then follows it with no
@@ -1635,8 +1725,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     on a notch it grows only a narrow wing left of the notch (the state
     mark, and a count for several sessions), leaving the status icons right
     of the notch alone; without a notch it is a small pill with the same
-    mark and count. Hover still opens the full list, with titles and
-    questions.
+    mark and count. Hover still opened the full list, with titles and
+    questions (since `[v3.40.0]` only with **Expand on hover** on; a click
+    opens it).
     Since `[v3.45.0]` the resting pill is balanced again: a small wing
     either side of the notch, the state's symbol on the left (dot, spinner,
     check, alert) and the number of sessions on the right, one included
@@ -1671,7 +1762,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     its own mid-turn, and stays put at the open laptop when told to stay
     put or with reduced motion. Notifications show in its speech bubble instead of the system
     banner: a question stays until it is answered (Answer opens it), and a
-    finished turn, a failed one or a reminder hops, droops or looks up and
+    finished turn or a failed one hops or droops and
     fades after 8 s into a count badge. Click the badge to list what it
     missed; a click on the pet itself is only a poke (it hops and meows,
     quacks or snips)
@@ -1688,7 +1779,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     included) is remembered. It replaces a banner only while it is on screen: hidden
     over a full-screen app, while OpenAgentd is in front, or on the lock
     screen, the banner shows as before. It follows the same servers as the
-    notch, so it works with every window closed. Settings → General →
+    notch, so it works with every window closed. Settings → Desktop →
     Desktop pet turns it on (off by default) and sets its character,
     colour, size, movement (stay put, calm, playful or chaotic), which
     notifications use the bubble, whether it climbs on windows, and

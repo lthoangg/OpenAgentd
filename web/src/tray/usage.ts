@@ -24,7 +24,6 @@ export interface TrayUsageSpend {
 }
 
 export interface TrayUsageLimit {
-  limit_id?: string | null
   limit_name?: string | null
   primary?: TrayUsageWindow | null
   secondary?: TrayUsageWindow | null
@@ -48,7 +47,6 @@ export interface TrayUsageItem {
   label: string
   /** Known: ok, credentials_missing, unavailable, rate_limited; others are tolerated. */
   status: string
-  error?: string | null
   stale: boolean
   usage?: TrayUsageResponse | null
   /** Unix seconds before which a rate-limited provider should not be asked again. */
@@ -62,7 +60,6 @@ export interface TrayUsageItem {
 export interface TrayUsageSummary {
   items: TrayUsageItem[]
   checked_at: number
-  cached: boolean
 }
 
 export interface TrayServerOption {
@@ -82,7 +79,7 @@ export interface TrayUsageResult {
 
 export type MeterTone = 'ok' | 'warn' | 'crit'
 
-/** Same thresholds as the native badge: <70 ok, 70-89 warn, >=90 critical. */
+/** Same thresholds as the native menu's marks (`status_glyph` in usage.rs): <70 ok, 70-89 warn, >=90 critical. */
 export function meterTone(percent: number): MeterTone {
   if (percent >= 90) return 'crit'
   if (percent >= 70) return 'warn'
@@ -93,20 +90,36 @@ export function clampPercent(percent: number): number {
   return Math.max(0, Math.min(100, percent))
 }
 
-/** "Resets in 2h 05m" for a window's reset; also the Settings usage panel's. */
-export function formatResetIn(resetsAt?: number | null, now = Date.now()): string | null {
-  if (typeof resetsAt !== 'number') return null
-  const remaining = resetsAt - now / 1000
-  if (remaining <= 0) return 'Resetting now'
+/** The time left until `at` (unix seconds) as "2h 5m"; null once it has passed. */
+function timeLeft(at: number, now: number): string | null {
+  const remaining = at - now / 1000
+  if (remaining <= 0) return null
   const minutes = Math.round(remaining / 60)
-  if (minutes < 1) return 'Resets in <1m'
-  if (minutes < 60) return `Resets in ${minutes}m`
+  if (minutes < 1) return '<1m'
+  if (minutes < 60) return `${minutes}m`
   const hours = Math.floor(minutes / 60)
   const remMinutes = minutes % 60
-  if (hours < 24) return remMinutes === 0 ? `Resets in ${hours}h` : `Resets in ${hours}h ${remMinutes}m`
+  if (hours < 24) return remMinutes === 0 ? `${hours}h` : `${hours}h ${remMinutes}m`
   const days = Math.floor(hours / 24)
   const remHours = hours % 24
-  return remHours === 0 ? `Resets in ${days}d` : `Resets in ${days}d ${remHours}h`
+  return remHours === 0 ? `${days}d` : `${days}d ${remHours}h`
+}
+
+/** "Resets in 2h 5m" for a quota window's reset; also the Settings usage panel's. */
+export function formatResetIn(resetsAt?: number | null, now = Date.now()): string | null {
+  if (typeof resetsAt !== 'number') return null
+  const left = timeLeft(resetsAt, now)
+  return left ? `Resets in ${left}` : 'Resetting now'
+}
+
+/**
+ * "Ends in 3d" for a usage period's end, in the tray and in Settings: a
+ * period ends, only a quota window resets.
+ */
+export function formatEndsIn(endsAt?: number | null, now = Date.now()): string | null {
+  if (typeof endsAt !== 'number') return null
+  const left = timeLeft(endsAt, now)
+  return left ? `Ends in ${left}` : 'Ending now'
 }
 
 const amountFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })

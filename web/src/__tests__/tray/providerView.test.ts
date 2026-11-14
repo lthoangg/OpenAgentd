@@ -88,6 +88,36 @@ describe('providerView', () => {
     expect(view.rows.map((row) => row.kind === 'meter' && Math.round(row.percent))).toEqual([40])
   })
 
+  // A provider can block an account before its window says 100%; Settings
+  // and the Windows and Linux tray menu already say "limit reached" then.
+  // A usage period ends; only a quota window resets. Settings says "Ends in".
+  it('says when a usage period ends, in the words Settings uses', () => {
+    const period = item({
+      provider: 'grok',
+      label: 'Grok',
+      usage: { provider: 'grok', limits: [{ period_start_at: NOW - 86_400, period_end_at: NOW + 3 * 86_400 }] },
+    })
+
+    const view = providerView(period, NOW)
+    expect(view.rows).toEqual([{ key: 'grok-0-period', kind: 'value', label: 'Period', value: 'Ends in 3d', tone: 'ok' }])
+  })
+
+  it('reads a limit the provider reports as reached as reached, whatever its percent', () => {
+    const blocked = item({
+      provider: 'openai',
+      label: 'OpenAI Codex',
+      usage: { provider: 'openai', limits: [{ rate_limit_reached_type: 'workspace_owner_usage_limit_reached', primary: { used_percent: 62, window_minutes: 300 } }] },
+    })
+
+    const view = providerView(blocked, NOW)
+    expect(view.reached).toBe(true)
+    const popup: TrayUsageResult = { summary: { items: [blocked], checked_at: NOW }, server_name: 'Built-in server', server_id: 'bundled', servers: [], selected_server_id: 'auto' }
+    expect(trayStatus(popup, null)).toBe('reached')
+    // An empty reason is no report.
+    const open = item({ provider: 'openai', label: 'OpenAI Codex', usage: { provider: 'openai', limits: [{ rate_limit_reached_type: ' ', primary: { used_percent: 62 } }] } })
+    expect(providerView(open, NOW).reached).toBe(false)
+  })
+
   it('asks to reconnect a provider whose credentials are gone', () => {
     expect(providerView(item({ provider: 'copilot', label: 'GitHub Copilot', status: 'credentials_missing' }), NOW))
       .toMatchObject({ name: 'GitHub Copilot', status: 'reconnect', rows: [] })
@@ -104,7 +134,7 @@ describe('providerView', () => {
 
 describe('trayStatus', () => {
   const result = (items: TrayUsageItem[], error?: string): TrayUsageResult => ({
-    summary: { items, checked_at: NOW, cached: false },
+    summary: { items, checked_at: NOW },
     server_name: 'Local Bundled',
     server_id: 'bundled',
     servers: [],
@@ -179,7 +209,6 @@ describe('providerView rate limiting', () => {
     provider: 'openai',
     label: 'OpenAI Codex',
     status: 'unavailable',
-    error: 'timeout',
     stale: true,
     usage: {
       provider: 'openai',
@@ -215,7 +244,7 @@ describe('providerView rate limiting', () => {
     const stale = staleUnavailable()
     const calm = item({ provider: 'calm', label: 'Calm', usage: { provider: 'calm', limits: [{ primary: { used_percent: 10 } }] } })
     const result = (items: TrayUsageItem[]): TrayUsageResult => ({
-      summary: { items, checked_at: NOW, cached: false },
+      summary: { items, checked_at: NOW },
       server_name: 'Local Bundled',
       server_id: 'bundled',
       servers: [],
@@ -229,7 +258,6 @@ describe('providerView rate limiting', () => {
     provider: 'openai',
     label: 'OpenAI Codex',
     status: 'rate_limited',
-    error: 'HTTP 429',
     stale: true,
     retry_at: NOW + 300,
     retry_after: 300,

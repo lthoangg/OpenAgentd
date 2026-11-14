@@ -977,14 +977,12 @@ async fn update_tray_usage(app: &AppHandle, server: &ServerId, result: Result<Us
     let state: tauri::State<'_, AppState> = app.state();
 
     let now = now_unix();
-    let (rows, footer_text, critical) = match result {
+    // What to show, and the failure to report under it.
+    let (shown, failure) = match result {
         Ok(body) => {
-            let rows = format_summary_rows(&body, now);
-            let footer = format_footer(&body, now);
-            let critical = has_critical_usage(&body);
             let to_notify = state.usage.lock().await.record(server, body.clone());
             notify_critical_crossings(app, &body, &to_notify);
-            (rows, footer, critical)
+            (Some(body), None)
         }
         Err(err) => {
             // Keep the last-known-good rows on screen — users care about
@@ -996,23 +994,21 @@ async fn update_tray_usage(app: &AppHandle, server: &ServerId, result: Result<Us
                 usage.record_failure(server, err.clone());
                 usage.reading(server).0
             };
-            let rows = cached
-                .as_ref()
-                .map(|body| format_summary_rows(body, now))
-                .unwrap_or_default();
-            let critical = cached.as_ref().is_some_and(has_critical_usage);
             log::warn!("usage_summary_fetch_failed server={} error={err}", server.key());
-            let footer = format_failed_footer(cached.as_ref(), now, &err);
-            (rows, footer, critical)
+            (cached, Some(err))
         }
     };
-    update_tray_critical_badge(&state, critical).await;
+    update_tray_critical_badge(&state, shown.as_ref().is_some_and(has_critical_usage)).await;
 
-    // The rest only drives the native tray submenu (Windows/Linux). On macOS
-    // there is no native submenu — the popup reads the cached summary — so
-    // the cache/badge/notify work above still ran and we bail here.
+    // The rest draws the native tray submenu (Windows/Linux). macOS has none:
+    // the popup reads the cached summary, so no row text is built for it.
     let Some(submenu) = state.usage_submenu.lock().await.clone() else {
         return;
+    };
+    let rows = shown.as_ref().map(|body| format_summary_rows(body, now)).unwrap_or_default();
+    let footer_text = match &failure {
+        Some(err) => format_failed_footer(shown.as_ref(), now, err),
+        None => shown.as_ref().map(|body| format_footer(body, now)).unwrap_or_default(),
     };
 
     let entries: Vec<UsageRow> = if rows.is_empty() {
@@ -1088,20 +1084,35 @@ pub async fn refresh_usage_now(app: &AppHandle, force_refresh: bool) -> bool {
         log::debug!("usage_summary_skip_poll reason=no_server");
         return false;
     };
-    refresh_server_usage(app, &server, force_refresh).await
+    refresh_server_usage(app, &server, force_refresh, UsageOf::AppServer).await
+}
+
+/// Whose usage a fetch reads. The app's own server drives the tray's badge,
+/// its native submenu and the usage alerts; a server only picked in the
+/// popup is recorded under its own name and nothing else, so the badge
+/// keeps following the app's server.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UsageOf {
+    AppServer,
+    Picked,
 }
 
 /// Fetch usage from one server and record it under that server.
-pub async fn refresh_server_usage(app: &AppHandle, server: &ServerId, force_refresh: bool) -> bool {
+pub async fn refresh_server_usage(app: &AppHandle, server: &ServerId, force_refresh: bool, of: UsageOf) -> bool {
     let state: tauri::State<'_, AppState> = app.state();
     // Collapse overlapping triggers (background poll + manual refresh +
     // tray-open refresh racing after wake-from-sleep) into one in-flight
     // fetch per server; losers simply skip — the winner's redraw covers
     // them within seconds.
-    if !state.usage_fetch_inflight.lock().unwrap().insert(server.clone()) {
+    let crate::usage::FetchTurn::Mine(_fetching) = state.usage_fetch_inflight.claim(server, force_refresh) else {
         log::debug!("usage_summary_skip_poll reason=fetch_already_inflight");
         return true; // don't count a skipped poll as a failure for backoff
-    }
+    };
+    fetch_and_record_usage(app, server, force_refresh, of).await
+}
+
+/// The fetch itself. The caller holds the server's `FetchGuard` meanwhile.
+async fn fetch_and_record_usage(app: &AppHandle, server: &ServerId, force_refresh: bool, of: UsageOf) -> bool {
     let outcome = match crate::servers::endpoint(app, server).await {
         Some((base_url, token)) => fetch_usage_summary(&base_url, token.as_deref(), force_refresh)
             .await
@@ -1109,9 +1120,46 @@ pub async fn refresh_server_usage(app: &AppHandle, server: &ServerId, force_refr
         None => Err("The builtin backend is not running.".to_string()),
     };
     let success = outcome.is_ok();
-    update_tray_usage(app, server, outcome).await;
-    state.usage_fetch_inflight.lock().unwrap().remove(server);
+    match of {
+        UsageOf::AppServer => update_tray_usage(app, server, outcome).await,
+        UsageOf::Picked => {
+            let state: tauri::State<'_, AppState> = app.state();
+            let mut usage = state.usage.lock().await;
+            match outcome {
+                // Looked at in the popup: its alerts count as seen.
+                Ok(body) => drop(usage.record(server, body)),
+                Err(err) => {
+                    log::warn!("usage_summary_fetch_failed server={} error={err}", server.key());
+                    usage.record_failure(server, err);
+                }
+            }
+        }
+    }
     success
+}
+
+/// Like [`refresh_server_usage`], for a caller that reads the result right
+/// after (the tray popup): when a fetch is already running it waits for that
+/// one instead of returning before there is anything to read. A refresh
+/// that met a fetch which may have read the backend's cache then fetches
+/// again, past it.
+pub async fn refresh_server_usage_or_wait(app: &AppHandle, server: &ServerId, force_refresh: bool, of: UsageOf) {
+    let fetches = app.state::<AppState>().usage_fetch_inflight.clone();
+    loop {
+        match fetches.claim(server, force_refresh) {
+            crate::usage::FetchTurn::Running(running) => {
+                let enough = running.covers(force_refresh);
+                running.ended().await;
+                if enough {
+                    return;
+                }
+            }
+            crate::usage::FetchTurn::Mine(_fetching) => {
+                fetch_and_record_usage(app, server, force_refresh, of).await;
+                return;
+            }
+        }
+    }
 }
 
 /// Unix-seconds timestamp of the last tray-open-triggered refresh.

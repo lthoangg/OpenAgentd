@@ -10,10 +10,16 @@ const GATEWAY_STATUS_RE = /\b(50[234]|52[0-4])\b/
 const TIMEOUT_RE =
   /\btimed out\b|\berr_timed_out\b|\betimedout\b|\b(request|connection|connect|read|socket|stream|gateway)\b[^.]{0,30}\btimeout\b/
 
+const GATEWAY_STATUSES = new Set([502, 503, 504, 520, 521, 522, 523, 524])
+
 export function isTransientNetworkError(err: unknown): boolean {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return true
   }
+  // An API error keeps the server's own sentence as its message (the phone
+  // bridge's "the link did not come up in time"), and its status beside it.
+  const status = err && typeof err === 'object' ? (err as { status?: unknown }).status : undefined
+  if (typeof status === 'number' && GATEWAY_STATUSES.has(status)) return true
   const message = errorMessage(err).toLowerCase()
   if (GATEWAY_STATUS_RE.test(message) || TIMEOUT_RE.test(message)) return true
   return (
@@ -37,6 +43,11 @@ export function isTransientNetworkError(err: unknown): boolean {
     message.includes('ehostunreach') ||
     message.includes('enetdown') ||
     message.includes('socket hang up') ||
-    message.includes('fetch failed')
+    message.includes('fetch failed') ||
+    // WebKit reports a stream that dropped mid-read in the system's words.
+    message.includes('network connection was lost') ||
+    message.includes('internet connection appears to be offline') ||
+    message.includes('could not connect to the server') ||
+    message.includes('hostname could not be found')
   )
 }

@@ -32,7 +32,7 @@ describe('tray.css targets and text', () => {
     expect(CSS).not.toContain('text-decoration: underline')
   })
 
-  it('keeps its text at 12px or the small caps group heading at 11px, never below', () => {
+  it('keeps its text at 12px or 11px, never below', () => {
     const sizes = [...CSS.matchAll(/font-size:\s*([\d.]+)px/g)].map((m) => Number(m[1]))
     expect(Math.min(...sizes)).toBeGreaterThanOrEqual(11)
     expect(px('.status', 'font-size')).toBe(12)

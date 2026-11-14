@@ -14,7 +14,8 @@ import { isMobileApp } from '@/lib/mobile-app'
 /**
  * The server a session link names: `srv` (the app's own opaque token, from
  * a home-screen widget), or `device` (an account computer) and `server` (an
- * address). Without one the link opens on the server in use.
+ * address). Without one the link opens on the server in use; with a token
+ * the app no longer knows, it opens nothing and says so.
  */
 export interface DeepLinkServer {
   token?: string
@@ -172,11 +173,15 @@ async function openOnLinkServer(path: string, server: DeepLinkServer | undefined
   if (!server || !isMobileApp()) return false
   const sessionId = /^\/([^/]+)$/.exec(path)?.[1]
   if (!sessionId) return false
-  const [{ serverForToken }, { openSessionOnServer }] = await Promise.all([
+  const [{ serverForToken }, { openSessionOnServer, sessionServerUnknown }] = await Promise.all([
     import('@/lib/server-refs'),
     import('@/lib/open-on-server'),
   ])
   const ref = server.token ? serverForToken(server.token) : { deviceId: server.deviceId, baseUrl: server.baseUrl }
+  if (server.token && !ref) {
+    await sessionServerUnknown()
+    return true
+  }
   if (!ref || (!ref.deviceId && !ref.baseUrl)) return false
   await openSessionOnServer({
     sessionId: decodeURIComponent(sessionId),

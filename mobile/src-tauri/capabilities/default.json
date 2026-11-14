@@ -50,6 +50,7 @@
     "allow-cloud-sign-out",
     "allow-notification-take-taps",
     "allow-cloud-open-computer",
+    "allow-cloud-rename-computer",
     "allow-cloud-poke",
     "allow-cloud-diagnostics",
     "allow-cloud-link-route",

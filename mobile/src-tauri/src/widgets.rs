@@ -40,6 +40,9 @@ pub struct WidgetTask {
     pub id: String,
     pub name: String,
     pub next_fire_at: String,
+    /// No widget shows it. Pages before v3.55.0 send it, so it is accepted
+    /// and left out of what is stored.
+    #[serde(default, skip_serializing)]
     pub last_run_at: Option<String>,
     pub last_run_ok: Option<bool>,
 }
@@ -94,7 +97,6 @@ impl WidgetSnapshot {
             clip(&mut task.id);
             clip(&mut task.name);
             clip(&mut task.next_fire_at);
-            clip_opt(&mut task.last_run_at);
         }
         self.server = self.server.filter(|t| server_token_ok(t));
         self
@@ -178,7 +180,6 @@ mod tests {
                 "id": "t1",
                 "name": "Nightly",
                 "nextFireAt": "2026-10-26T00:00:00Z",
-                "lastRunAt": null,
                 "lastRunOk": null,
             },
         })
@@ -189,6 +190,20 @@ mod tests {
         let parsed: WidgetSnapshot = serde_json::from_value(snapshot(vec![row("a")])).unwrap();
         assert_eq!(parsed.inbox[0].state, WidgetSessionState::NeedsInput);
         assert_eq!(parsed.next_task.unwrap().name, "Nightly");
+    }
+
+    #[test]
+    fn stores_no_last_run_time_and_still_accepts_a_page_that_sends_one() {
+        let mut value = snapshot(vec![]);
+        value["nextTask"]["lastRunAt"] = json!("2026-10-25T11:30:00Z");
+        value["nextTask"]["lastRunOk"] = json!(false);
+        let stored = serde_json::from_value::<WidgetSnapshot>(value).unwrap().normalized().to_json().unwrap();
+        assert!(!stored.contains("lastRunAt"), "{stored}");
+        assert!(stored.contains(r#""lastRunOk":false"#), "{stored}");
+
+        let mut value = snapshot(vec![]);
+        value["nextTask"].as_object_mut().unwrap().remove("lastRunAt");
+        assert!(serde_json::from_value::<WidgetSnapshot>(value).is_ok(), "a page that sends none");
     }
 
     /// Widget storage is readable by another process (the widget extension);

@@ -5,7 +5,7 @@
 import SwiftUI
 import WidgetKit
 
-/// After this long, "Needs you" / "Working" may be over: show a plain age instead.
+/// After this long, "Needs you" / "Running" may be over: show a plain age instead.
 private let statusFreshFor: TimeInterval = 30 * 60
 
 // MARK: - Deep links
@@ -151,7 +151,7 @@ extension WidgetSnapshot {
             WidgetSession(id: "b", title: "Fix flaky compaction test", workspace: "openagentd", state: .running, lastMessageAt: Date()),
             WidgetSession(id: "c", title: "Release notes", workspace: "docs", state: .idle, lastMessageAt: Date().addingTimeInterval(-7200)),
         ],
-        nextTask: WidgetTask(id: "t", name: "Daily repo digest", nextFireAt: Date().addingTimeInterval(8040), lastRunAt: nil, lastRunOk: true)
+        nextTask: WidgetTask(id: "t", name: "Daily repo digest", nextFireAt: Date().addingTimeInterval(8040), lastRunOk: true)
     )
 }
 
@@ -273,7 +273,7 @@ private struct InboxRow: View {
         case (true, .needsInput):
             Pill(text: "Needs you", foreground: .needsText, background: .needsBackground)
         case (true, .running):
-            Pill(text: "Working", foreground: .runningText, background: .runningBackground)
+            Pill(text: "Running", foreground: .runningText, background: .runningBackground)
         default:
             if let at = session.lastMessageAt {
                 Text(at, style: .relative)
@@ -333,7 +333,7 @@ struct InboxWidget: Widget {
             InboxView(entry: entry)
         }
         .configurationDisplayName("Sessions")
-        .description("Sessions that need you or are still working.")
+        .description("Sessions that need you or are still running.")
         .supportedFamilies([.systemMedium])
     }
 }

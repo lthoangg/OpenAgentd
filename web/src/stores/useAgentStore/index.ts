@@ -60,7 +60,9 @@ export function inferErrorTitle(message: string, category?: string): string {
     lower.includes('load failed') ||
     lower.includes('network error')
   ) {
-    return 'Provider connection failed'
+    // The link between this app and its server; a provider's failure
+    // arrives from the server with its own title.
+    return "Can't reach the server"
   }
   if (lower.includes('cannot undo') || lower.includes('failed to undo')) return 'Undo failed'
   if (lower.includes('compact') || lower.includes('compaction')) return "Couldn't summarize earlier messages"

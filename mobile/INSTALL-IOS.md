@@ -63,13 +63,13 @@ OpenAgentd. There are three:
 - **Quick start** (small or medium): start a new session in your last folder.
   The medium size also continues your last session.
 - **Sessions** (medium): up to three sessions, the ones that need you first,
-  then the ones still working, then recent ones.
+  then the ones still running, then recent ones.
 - **Next task** (small): your next scheduled task with a countdown, and
   whether its last run passed. Tapping it opens the scheduler on that task.
 
 The widgets show what the app knew the last time it was open, with an "as of"
 time. Open the app to refresh them. After 30 minutes, "Needs you" and
-"Working" turn into plain ages, because the session may have moved on. The
+"Running" turn into plain ages, because the session may have moved on. The
 widgets never store the server address or access key.
 
 ## Troubleshooting

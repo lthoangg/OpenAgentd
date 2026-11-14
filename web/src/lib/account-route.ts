@@ -38,6 +38,7 @@ import { accountComputerTitle, getAppBackendStatus } from '@/lib/app-backend'
 import { apiBaseUrl } from '@/api/base-url'
 import { connectAccountComputer, normalizeServerBaseUrl, reloadForBackendSwitch } from '@/lib/backend-switch'
 import { markPageUnloading, pageUnloading, resetPageUnloading } from '@/lib/page-unload'
+import { noteShellResume, watchShellResume } from '@/lib/shell-resume'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/queries/keys'
 import { openServersScreen } from '@/stores/useServersScreenStore'
@@ -160,8 +161,12 @@ function watchHealthFailures(): () => void {
 export function startAccountRouteWatch(): () => void {
   if (!isPhoneCloudShell()) return () => {}
   let stopped = false
+  const unwatchResume = watchShellResume()
   const resumed = async () => {
-    await cloudPokeAndWait('resumed')
+    const poke = cloudPokeAndWait('resumed')
+    // The chat's reload waits for this answer: the bridge listens again by then.
+    noteShellResume(poke)
+    await poke
     if (!stopped) await followShell()
   }
   const onVisibility = () => {
@@ -181,6 +186,7 @@ export function startAccountRouteWatch(): () => void {
   if (document.visibilityState === 'visible') void resumed()
   return () => {
     stopped = true
+    unwatchResume()
     unwatchHealth()
     document.removeEventListener('visibilitychange', onVisibility)
     window.removeEventListener('pagehide', onPageHide)

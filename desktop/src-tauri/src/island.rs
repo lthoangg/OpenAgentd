@@ -144,6 +144,9 @@ const POINTER_POLL: Duration = Duration::from_millis(80);
 /// Far from the canvas (more than [`POINTER_NEAR`] away) the pointer needs a
 /// few readings to get there, so it is read half as often.
 const POINTER_FAR_POLL: Duration = Duration::from_millis(160);
+/// How often the shown island checks that it is still on the right display
+/// ([`display_changed`]).
+const DISPLAY_CHECK: Duration = Duration::from_secs(2);
 const POINTER_NEAR: f64 = 240.0;
 /// Unread sessions kept; older ones drop off.
 const MAX_UNREAD: usize = 6;
@@ -159,7 +162,7 @@ const BUILTIN_NAME: &str = "Built-in server";
 
 // ── Settings ────────────────────────────────────────────────────────────────
 
-/// What the user chose in Settings → General (`desktop-island.json`).
+/// What the user chose in Settings → Desktop (`desktop-island.json`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct IslandSettings {
@@ -239,8 +242,6 @@ pub struct IslandSession {
     pub goal: Option<IslandGoal>,
     /// The open question's id, while the session waits on the user.
     pub question_id: Option<String>,
-    /// The account the session is pinned to; `None` on Auto.
-    pub account: Option<String>,
     /// The session another workspace's send started it from (its id), if one did.
     #[serde(skip)]
     pub sent_from: Option<String>,
@@ -404,9 +405,6 @@ pub struct SessionRow {
     pub goal_turns_used: Option<i64>,
     #[serde(default)]
     pub goal_max_turns: Option<i64>,
-    /// The pinned account's name; missing on Auto, or from older backends.
-    #[serde(default)]
-    pub credential_label: Option<String>,
     /// Who started the session from another workspace; missing when the
     /// user did, or from older backends.
     #[serde(default)]
@@ -479,7 +477,6 @@ pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, Asked>
                 server: None,
                 server_id: None,
                 goal,
-                account: row.credential_label,
                 sent_from: row.sent_from.and_then(|s| s.session_id),
                 finished_seq: None,
             }
@@ -849,9 +846,27 @@ pub struct FeedMemo {
     late: Vec<IslandSession>,
     /// Path of the backend's Chat workspace, fetched once per connection.
     chat_root: Option<String>,
+    /// Waiting sessions whose question was read from the server on this
+    /// connection, since they last asked: it is not read again.
+    read: HashSet<String>,
 }
 
 impl FeedMemo {
+    /// The waiting sessions whose question the server is asked for now: the
+    /// ones not read yet, [`MAX_QUESTION_FETCHES`] at most.
+    fn questions_to_read<'a>(&self, rows: &'a [SessionRow]) -> Vec<&'a SessionRow> {
+        rows.iter()
+            .filter(|row| row.parent_session_id.is_none() && row.needs_input && !self.read.contains(&id_key(&row.id)))
+            .take(MAX_QUESTION_FETCHES)
+            .collect()
+    }
+
+    /// A new connection: what was read on the last one may have changed
+    /// while nothing was listening.
+    fn connected(&mut self) {
+        self.read.clear();
+    }
+
     /// Record what the event says; true when the active list may have changed.
     pub fn note(&mut self, event: &SseEvent) -> bool {
         let data = || serde_json::from_str::<serde_json::Value>(&event.data).unwrap_or_default();
@@ -935,6 +950,16 @@ impl FeedMemo {
                         self.questions.entry(id_key(id)).or_default().text = Some(body.to_string());
                     }
                 }
+                // A new question: the id read before is the last one's, so
+                // it is dropped (an answer in place would go to a question
+                // that is gone) and read again.
+                if let Some(id) = data["session_id"].as_str() {
+                    let key = id_key(id);
+                    if let Some(asked) = self.questions.get_mut(&key) {
+                        asked.id = None;
+                    }
+                    self.read.remove(&key);
+                }
                 true
             }
             _ => false,
@@ -944,25 +969,28 @@ impl FeedMemo {
     /// Take the server's copy of what `session_id` waits on (`None`: nothing
     /// is open any more, so the id from before is stale).
     fn learn(&mut self, session_id: &str, question: Option<&crate::answers::OpenQuestion>) {
-        let asked = self.questions.entry(id_key(session_id)).or_default();
+        let key = id_key(session_id);
+        let asked = self.questions.entry(key.clone()).or_default();
         match question {
             Some(question) => {
                 if let Some(text) = question.text() {
                     asked.text = Some(text.to_string());
                 }
                 asked.id = Some(question.id.clone());
+                self.read.insert(key);
             }
             None => {
                 asked.id = None;
+                self.read.remove(&key);
             }
         }
     }
 
     /// Drop what no longer applies once `sessions` is current.
     fn settle(&mut self, sessions: &[IslandSession]) {
-        self.questions.retain(|key, _| {
-            sessions.iter().any(|s| s.state == SessionState::NeedsInput && id_key(&s.id) == *key)
-        });
+        let waits = |key: &String| sessions.iter().any(|s| s.state == SessionState::NeedsInput && id_key(&s.id) == *key);
+        self.questions.retain(|key, _| waits(key));
+        self.read.retain(waits);
         self.statuses.retain(|key, _| sessions.iter().any(|s| id_key(&s.id) == *key));
         self.goals.retain(|key, _| sessions.iter().any(|s| id_key(&s.id) == *key));
     }
@@ -986,13 +1014,45 @@ impl FeedMemo {
     }
 }
 
+/// How a finished turn ended, as its `desktop_notification` says. The one
+/// place the notch and the pet learn it from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Finish {
+    Done,
+    Failed,
+    /// The goal it worked on cannot go on.
+    GoalBlocked,
+}
+
+impl Finish {
+    /// From the notification's `outcome`. A server before v3.55.0 sends
+    /// none: its title's first words say it ("Failed · web").
+    pub(crate) fn of(outcome: Option<&str>, title: &str) -> Self {
+        match outcome {
+            Some("failed") => Self::Failed,
+            Some("goal_blocked") => Self::GoalBlocked,
+            // `done`, the other goal outcomes, and any a newer server adds.
+            Some(_) => Self::Done,
+            None if title.starts_with("Failed") => Self::Failed,
+            None if title.starts_with("Goal blocked") => Self::GoalBlocked,
+            None => Self::Done,
+        }
+    }
+
+    /// The same, read from the notification's JSON.
+    pub(crate) fn of_notification(data: &serde_json::Value) -> Self {
+        Self::of(data["outcome"].as_str(), data["title"].as_str().unwrap_or_default())
+    }
+}
+
 /// The finished row a finish notification describes: its body is the
 /// session's title (or "Session 1a2b3c4d" without one), its title "Done ·
-/// workspace" (or "Failed · …", "Goal achieved · …").
+/// workspace" (or "Failed · …", "Goal achieved · …"). A blocked goal is not
+/// a failed row: its `goal` (from the notification's `goal`) marks it.
 fn notified_row(session_id: &str, data: &serde_json::Value) -> IslandSession {
     let title = data["title"].as_str().unwrap_or_default();
     let workspace = title.split_once(" · ").map(|(_, w)| w.trim().to_string()).filter(|w| !w.is_empty());
-    let state = if title.starts_with("Failed") { SessionState::Failed } else { SessionState::Done };
+    let state = if Finish::of_notification(data) == Finish::Failed { SessionState::Failed } else { SessionState::Done };
     IslandSession {
         id: session_id.to_string(),
         title: session_title(data["body"].as_str()),
@@ -1003,7 +1063,6 @@ fn notified_row(session_id: &str, data: &serde_json::Value) -> IslandSession {
         server: None,
         server_id: None,
         goal: None,
-        account: None,
         sent_from: None,
         finished_seq: None,
     }
@@ -1120,6 +1179,13 @@ pub fn notch_geometry(screen: &ScreenInfo) -> NotchGeometry {
     let menu_bar = screen.frame.y + screen.frame.height - screen.visible_top;
     let height = if menu_bar > 0.0 { menu_bar } else { FALLBACK_MENU_BAR_HEIGHT };
     NotchGeometry { has_notch: false, width: FALLBACK_PILL_WIDTH, height }
+}
+
+/// Whether the shown island is in the wrong place or the wrong shape for
+/// the displays as they are now (one was plugged in, unplugged, rearranged
+/// or changed resolution).
+pub fn display_changed(canvas: &Rect, geometry: &NotchGeometry, screens: &[ScreenInfo]) -> bool {
+    pick_screen(screens).is_some_and(|screen| island_frame(&screen, CANVAS_WIDTH, CANVAS_HEIGHT) != *canvas || notch_geometry(&screen) != *geometry)
 }
 
 /// Clamp a pill size the webview asked for to the canvas.
@@ -1251,7 +1317,8 @@ fn shared() -> &'static Mutex<Shared> {
     })
 }
 
-/// Wakes the feed when the feature is switched on or off.
+/// Wakes the feed: the servers to follow changed, a refresh or a retry was
+/// asked for.
 fn feed_wake() -> &'static tokio::sync::Notify {
     static WAKE: OnceLock<tokio::sync::Notify> = OnceLock::new();
     WAKE.get_or_init(tokio::sync::Notify::new)
@@ -1269,8 +1336,8 @@ static FOCUS_GENERATION: AtomicU64 = AtomicU64::new(0);
 // ── Lifecycle ───────────────────────────────────────────────────────────────
 
 /// Start the feed, and build the island shortly after launch (macOS only).
-/// The feed runs on every platform: the desktop pet (`pet.rs`) follows it
-/// too. It does nothing while neither the island nor the pet is on.
+/// The feed runs on every platform, whenever the app does: the desktop pet
+/// (`pet.rs`) and the tray's count mark read it too, with the island off.
 pub fn start(app: &AppHandle) {
     refresh_saved(app);
     tauri::async_runtime::spawn(run_feed(app.clone()));
@@ -1405,6 +1472,7 @@ pub fn pointer_poll_interval(canvas: &Rect, pointer: Option<PointerPayload>) -> 
 /// Poll the pointer while the canvas is up (see the module docs for why).
 #[cfg(target_os = "macos")]
 async fn run_pointer_watch(app: AppHandle) {
+    let mut displays_checked = std::time::Instant::now();
     loop {
         let (canvas, pointer) = {
             let s = shared().lock().unwrap();
@@ -1415,9 +1483,15 @@ async fn run_pointer_watch(app: AppHandle) {
             continue;
         };
         let inside = pointer.is_some_and(|p| p.inside);
+        // The same loop keeps the island on the right display: it only runs
+        // while the island is up, and a hidden one is placed when it shows.
+        let check_displays = displays_checked.elapsed() >= DISPLAY_CHECK;
+        if check_displays {
+            displays_checked = std::time::Instant::now();
+        }
         let handle = app.clone();
         let _ = app.run_on_main_thread(move || {
-            let pill = {
+            let (pill, geometry) = {
                 let s = shared().lock().unwrap();
                 if s.menu_open {
                     return;
@@ -1426,8 +1500,15 @@ async fn run_pointer_watch(app: AppHandle) {
                 if s.canvas != Some(canvas) {
                     return;
                 }
-                s.pill
+                (s.pill, s.geometry)
             };
+            if check_displays && display_changed(&canvas, &geometry, &native::screens()) {
+                // Moves the canvas, tells the webview the new notch, and
+                // starts the pointer over.
+                log::info!("island: the displays changed, placing it again");
+                apply(&handle);
+                return;
+            }
             let (Some(pill), Some((x, y))) = (pill, native::mouse_location()) else {
                 return;
             };
@@ -1515,15 +1596,8 @@ fn stream_client() -> reqwest::Client {
         .unwrap_or_default()
 }
 
-/// The feed runs whenever the app does: the tray's "Needs you" list and its
-/// mark read it even with the island and the pet off. (It used to run only
-/// while one of them was on.)
-fn is_enabled() -> bool {
-    true
-}
-
-/// The island or the pet was switched on or off, or a server asked to be
-/// retried: wake the feed now.
+/// The pet was switched on or off, or a server asked to be retried: wake
+/// the feed now.
 pub fn wake_feed() {
     feed_wake().notify_waiters();
 }
@@ -1538,7 +1612,7 @@ fn take_refresh_request(server: &ServerId) -> bool {
     shared().lock().unwrap().refresh_requested.remove(server)
 }
 
-/// Wait up to `duration`, or less if the feature is switched on or off.
+/// Wait up to `duration`, or less if the feed is woken ([`feed_wake`]).
 async fn pause(duration: Duration) {
     let _ = tokio::time::timeout(duration, feed_wake().notified()).await;
 }
@@ -1553,13 +1627,8 @@ async fn run_feed(app: AppHandle) {
             let shared = shared().lock().unwrap();
             (shared.saved.clone(), shared.names.clone())
         };
-        let wanted = if is_enabled() {
-            crate::servers::app_followed_servers(&app, &crate::servers::enabled_servers(&saved)).await
-        } else {
-            Vec::new()
-        };
-        // A feed also ends by itself when the feature is switched off; one
-        // switched straight back on is started again below.
+        let wanted = crate::servers::app_followed_servers(&app, &crate::servers::enabled_servers(&saved)).await;
+        // A feed whose task ended is started again below.
         let gone: Vec<ServerId> = tasks
             .iter()
             .filter(|(server, task)| !wanted.contains(server) || task.inner().is_finished())
@@ -1617,8 +1686,8 @@ impl std::fmt::Display for AuthRejected {
 
 impl std::error::Error for AuthRejected {}
 
-/// Follow one server's event stream, reconnecting with a backoff, until the
-/// feature is turned off (or [`run_feed`] stops it).
+/// Follow one server's event stream, reconnecting with a backoff, until
+/// [`run_feed`] stops it.
 async fn follow_server(app: AppHandle, server: ServerId) {
     let client = stream_client();
     let mut failures: u32 = 0;
@@ -1626,7 +1695,7 @@ async fn follow_server(app: AppHandle, server: ServerId) {
     // compaction) still applies to a session the next list no longer has.
     let mut memo = FeedMemo::default();
     let retry_max = if server == ServerId::Bundled { RETRY_MAX } else { RETRY_MAX_REMOTE };
-    while is_enabled() {
+    loop {
         let Some((base, token)) = crate::servers::endpoint(&app, &server).await else {
             pause(RETRY_BASE).await;
             continue;
@@ -1658,9 +1727,9 @@ async fn follow_server(app: AppHandle, server: ServerId) {
     }
 }
 
-/// Follow `server`'s event stream at `base` until it fails or the feature
-/// is turned off. Resets `failures` once connected. `memo` is the server's,
-/// kept from earlier connections.
+/// Follow `server`'s event stream at `base` until it fails. Resets
+/// `failures` once connected. `memo` is the server's, kept from earlier
+/// connections.
 async fn follow(
     app: &AppHandle,
     client: &reqwest::Client,
@@ -1686,6 +1755,7 @@ async fn follow(
         .context("event stream returned an error status")?;
     // Seed after connecting, so nothing that happens in between is missed.
     memo.chat_root = chat_root(client, base, token).await;
+    memo.connected();
     // Which computer this is: one reached at two addresses is followed once.
     crate::servers::learn_identity(server, crate::servers::server_fingerprint(client, base, token).await);
     refresh(app, client, server, base, token, memo).await?;
@@ -1719,9 +1789,6 @@ async fn follow(
             },
             _ = tokio::time::sleep(wait) => {}
             _ = feed_wake().notified() => {}
-        }
-        if !is_enabled() {
-            return Ok(());
         }
         // An answer was sent: the list changes now, not at the next event.
         if take_refresh_request(server) {
@@ -1775,11 +1842,13 @@ async fn refresh(
 }
 
 /// Ask the server what each waiting session asks (its text, id and the
-/// buttons that can answer it), a few at a time. Best effort: a session whose
-/// question can't be read keeps the notification's text and "Open to answer".
+/// buttons that can answer it), a few at a time, once per question
+/// ([`FeedMemo::questions_to_read`]). Best effort: a session whose question
+/// can't be read keeps the notification's text, and is asked again on the
+/// next refresh.
 async fn learn_questions(client: &reqwest::Client, base: &str, token: Option<&str>, rows: &[SessionRow], memo: &mut FeedMemo) {
     let mut fetches = tokio::task::JoinSet::new();
-    for row in rows.iter().filter(|row| row.parent_session_id.is_none() && row.needs_input).take(MAX_QUESTION_FETCHES) {
+    for row in memo.questions_to_read(rows) {
         let (client, base, token, id) = (client.clone(), base.to_string(), token.map(str::to_string), row.id.clone());
         fetches.spawn(async move {
             let question = crate::answers::fetch_question_at(&client, &base, token.as_deref(), &id).await;
@@ -2124,6 +2193,17 @@ pub fn island_retry(window: WebviewWindow) {
         wake_feed();
     }
 }
+
+/// A click on a server that refused the saved access key. Trying again
+/// would be refused again, so the app shows Settings → Server, where the
+/// key is fixed; saving it there wakes the feed (`servers_changed`).
+#[tauri::command]
+pub fn island_fix_key(window: WebviewWindow) {
+    if window.label() == ISLAND_WINDOW {
+        crate::window::emit_frontend_command(window.app_handle(), "settings_connection");
+    }
+}
+
 fn report_island_error(app: &AppHandle, title: &str, error: &anyhow::Error) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
     log::warn!("island: {title}: {error:#}");
@@ -2417,7 +2497,6 @@ mod tests {
             goal_status: None,
             goal_turns_used: None,
             goal_max_turns: None,
-            credential_label: None,
             sent_from: None,
         }
     }
@@ -2433,7 +2512,6 @@ mod tests {
             server: None,
             server_id: None,
             goal: None,
-            account: None,
             sent_from: None,
             finished_seq: None,
         }
@@ -2710,14 +2788,13 @@ mod tests {
     }
 
     #[test]
-    fn a_pinned_session_names_its_account() {
+    fn a_row_carries_no_account_since_the_notch_draws_none() {
         let page: SessionPage =
-            serde_json::from_str(r#"{"data": [{"id": "a", "running": true, "credential_label": "Work"}, {"id": "b", "running": true}]}"#).unwrap();
+            serde_json::from_str(r#"{"data": [{"id": "a", "running": true, "credential_label": "Work"}]}"#).unwrap();
         let sessions = active_sessions(page.data, &HashMap::new(), None);
-        assert_eq!(sessions[0].account.as_deref(), Some("Work"));
-        assert_eq!(sessions[1].account, None, "Auto names no account");
         let wire = serde_json::to_value(&sessions[0]).unwrap();
-        assert_eq!(wire["account"], "Work");
+        assert_eq!(wire["id"], "a", "a pinned session still parses");
+        assert!(wire.get("account").is_none(), "{wire}");
     }
 
     #[test]
@@ -2870,6 +2947,11 @@ mod tests {
         let unread = feeds.lists().1;
         assert_eq!(ids(&unread), ["f"]);
         assert_eq!(unread[0].server_id, Some(ServerId::Bundled));
+
+        // The server says how the turn ended; the title's words are for people.
+        let row = |title: &str, outcome: &str| notified_row("x", &serde_json::json!({"title": title, "body": "b", "outcome": outcome})).state;
+        assert_eq!(row("Could not finish · web", "failed"), SessionState::Failed);
+        assert_eq!(row("Failed to launch · web", "done"), SessionState::Done, "a workspace or wording that starts with Failed");
 
         // One the last list held is reported by `update` instead, once.
         let mut feeds = two_servers(&["f"], &[]);
@@ -3074,6 +3156,37 @@ mod tests {
         assert_eq!(asked.text.as_deref(), Some("Which branch? (main or dev)"));
     }
 
+    // Every refresh (each event of any session) used to ask the server
+    // again for the question of every waiting session, up to 8 requests.
+    #[test]
+    fn a_question_is_read_from_the_server_once_until_the_session_asks_again() {
+        let waiting = |id: &str| SessionRow { needs_input: true, ..serde_json::from_value(serde_json::json!({ "id": id })).unwrap() };
+        let rows = [waiting("a"), waiting("b")];
+        let ids = |memo: &FeedMemo| memo.questions_to_read(&rows).iter().map(|row| row.id.clone()).collect::<Vec<_>>();
+        let mut memo = FeedMemo::default();
+        assert_eq!(ids(&memo), ["a", "b"]);
+
+        memo.learn("a", Some(&open_question("q-1", "Which branch?", &["main", "dev"])));
+        assert_eq!(ids(&memo), ["b"], "a's question is known");
+        // The server had nothing for b (a race with the list): ask again.
+        memo.learn("b", None);
+        assert_eq!(ids(&memo), ["b"]);
+
+        // a was answered and asks something else: its id is another one.
+        let ask = serde_json::json!({"kind": "input_needed", "session_id": "a", "body": "Which remote?"});
+        memo.note(&event("desktop_notification", ask));
+        assert_eq!(ids(&memo), ["a", "b"]);
+        // Until it is read, the row holds no id: q-1 is answered and gone.
+        let asked = &memo.questions[&id_key("a")];
+        assert_eq!((asked.text.as_deref(), asked.id.as_deref()), (Some("Which remote?"), None));
+
+        // Events missed while disconnected may have been just that.
+        memo.learn("a", Some(&open_question("q-2", "Which remote?", &["origin"])));
+        assert_eq!(ids(&memo), ["b"]);
+        memo.connected();
+        assert_eq!(ids(&memo), ["a", "b"]);
+    }
+
     #[test]
     fn answering_clears_the_waiting_row_on_every_server_it_is_listed_on() {
         let mut feeds = two_servers(&["a"], &["r"]);
@@ -3245,6 +3358,26 @@ mod tests {
         let mut hidden_menu_bar = external();
         hidden_menu_bar.visible_top = hidden_menu_bar.frame.y + hidden_menu_bar.frame.height;
         assert_eq!(notch_geometry(&hidden_menu_bar).height, FALLBACK_MENU_BAR_HEIGHT);
+    }
+
+    // Nothing watched the displays: the island stayed where the last fit,
+    // focus change or settings change had put it.
+    #[test]
+    fn the_island_follows_a_display_that_was_plugged_in_or_unplugged() {
+        let on = |screen: &ScreenInfo| (island_frame(screen, CANVAS_WIDTH, CANVAS_HEIGHT), notch_geometry(screen));
+        let (canvas, geometry) = on(&external());
+        assert!(!display_changed(&canvas, &geometry, &[external()]), "the same display: stay put");
+        // The lid opens: the notched display is listed, and the island belongs on it.
+        assert!(display_changed(&canvas, &geometry, &[external(), notched()]));
+        // The lid closes: back to the display that is left.
+        let (canvas, geometry) = on(&notched());
+        assert!(display_changed(&canvas, &geometry, &[external()]));
+        // The same place but a taller menu bar: the pill's shape changed.
+        let (canvas, geometry) = on(&external());
+        let taller = ScreenInfo { visible_top: external().visible_top - 12.0, ..external() };
+        assert!(display_changed(&canvas, &geometry, &[taller]));
+        // No display at all (asleep): nothing to move to.
+        assert!(!display_changed(&canvas, &geometry, &[]));
     }
 
     #[test]

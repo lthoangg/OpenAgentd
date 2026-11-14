@@ -13,6 +13,7 @@ import {
   bubbleReducer,
   clampX,
   clampY,
+  fitEveryMs,
   followLedge,
   ledges,
   nextTarget,
@@ -35,7 +36,7 @@ import {
 
 const bubble = (id: string, tone: BubbleTone, sessionId: string | null = `s-${id}`): PetBubble => ({
   id,
-  kind: tone === 'input' ? 'input_needed' : tone === 'remind' ? 'reminder_fired' : 'assistant_done',
+  kind: tone === 'input' ? 'input_needed' : 'assistant_done',
   tone,
   sessionId,
   title: `Title ${id}`,
@@ -93,10 +94,9 @@ describe('petPose', () => {
     expect(petPose({ ...base, reducedMotion: true })).toBe('sit')
   })
 
-  it('hops for a finished turn, droops for a failed one, and looks up for a reminder', () => {
+  it('hops for a finished turn and droops for a failed one', () => {
     expect(reactionFor('done')).toBe('hop')
     expect(reactionFor('failed')).toBe('droop')
-    expect(reactionFor('remind')).toBe('look')
     expect(reactionFor('input')).toBeNull()
   })
 
@@ -185,7 +185,7 @@ describe('bubbleReducer', () => {
     let state = notify(EMPTY_BUBBLES, bubble('a', 'done'))
     state = notify(state, bubble('q', 'input'))
     expect(visibleBubble(state)).toMatchObject({ bubble: { id: 'q' } })
-    state = notify(state, bubble('r', 'remind'))
+    state = notify(state, bubble('r', 'failed'))
     expect(visibleBubble(state)).toMatchObject({ bubble: { id: 'q' } })
     expect(state.unread.map((u) => u.id)).toEqual(['r', 'a'])
     expect(badgeCount(state)).toBe(2)
@@ -364,7 +364,7 @@ describe('bubbleReducer', () => {
   it('drops what a session read elsewhere left, whatever form its id takes', () => {
     let state = notify(EMPTY_BUBBLES, bubble('a', 'done', 'AA-bb'))
     state = notify(state, bubble('b', 'done', 'cc'))
-    state = notify(state, bubble('r', 'remind', 'aabb'))
+    state = notify(state, bubble('r', 'failed', 'aabb'))
     state = notify(state, bubble('q', 'input', 'aabb'))
     state = bubbleReducer(state, { type: 'toggleList' })
     state = bubbleReducer(state, { type: 'readSession', key: 'aabb' })
@@ -378,8 +378,8 @@ describe('bubbleReducer', () => {
     expect(bubbleReducer(state, { type: 'readSession', key: 'zz' })).toBe(state)
   })
 
-  it('reads the sessions of dismissed finished turns and reminders, not questions', () => {
-    expect(readOnDismiss([bubble('a', 'done'), bubble('q', 'input'), bubble('r', 'remind'), bubble('x', 'failed', null)])).toEqual(['a', 'r'])
+  it('reads the sessions of dismissed finished and failed turns, not questions', () => {
+    expect(readOnDismiss([bubble('a', 'done'), bubble('q', 'input'), bubble('r', 'failed'), bubble('x', 'failed', null)])).toEqual(['a', 'r'])
   })
 })
 
@@ -476,5 +476,19 @@ describe('followLedge', () => {
 
   it('falls when its window closes, shrinks away or is covered', () => {
     expect(followLedge({ id: 1, ledgeX: 100 }, 200, [{ id: 2, x: 100, y: 300, width: 600 }], pet)).toBeNull()
+  })
+})
+
+// A walking pet sent its place ten times a second, pointer near or not; the
+// shell only looks four times a second while the pointer is far.
+describe('fitEveryMs', () => {
+  it('reports as often as the shell reads the pointer while it is far, and faster near the pet', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { fileURLToPath } = await import('node:url')
+    const rust = readFileSync(fileURLToPath(new URL('../../../../desktop/src-tauri/src/pet.rs', import.meta.url)), 'utf8')
+    const pollFar = Number(/const POLL_FAR: Duration = Duration::from_millis\((\d+)\);/.exec(rust)?.[1])
+    expect(pollFar).toBeGreaterThan(0)
+    expect(fitEveryMs(false)).toBe(pollFar)
+    expect(fitEveryMs(true)).toBe(100)
   })
 })

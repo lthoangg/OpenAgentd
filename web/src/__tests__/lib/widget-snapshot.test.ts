@@ -111,6 +111,20 @@ describe('buildWidgetSnapshot', () => {
     })
   })
 
+  // The Chat workspace's folder is the home directory, named after the login.
+  it('calls the Chat workspace Chat, as every other surface does', () => {
+    const snapshot = buildWidgetSnapshot({
+      active: pages(),
+      recent: pages(session('chat', 0, { workspace: '/Users/me/' }), session('code', 5)),
+      tasks: [],
+      now: NOW,
+      chat: { path: '/Users/me', name: 'Chat' },
+    })
+
+    expect(snapshot.inbox.map((row) => row.workspace)).toEqual(['Chat', 'openagentd'])
+    expect(snapshot.lastSession?.workspace).toBe('Chat')
+  })
+
   it('picks the most recently active session as the last session', () => {
     const snapshot = buildWidgetSnapshot({
       active: pages(session('asking', 30, { running: true, needs_input: true })),
@@ -145,7 +159,6 @@ describe('buildWidgetSnapshot', () => {
       id: 'soon',
       name: 'Task soon',
       nextFireAt: '2026-10-25T12:30:00Z',
-      lastRunAt: '2026-10-25T11:30:00Z',
       lastRunOk: false,
     })
   })

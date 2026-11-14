@@ -166,7 +166,13 @@ export const phoneCloudScannedAdd = (enrollmentId: string, approver: boolean, ro
   call<PhoneCloudStatus & { number: string }>('cloud_invite_add', { enrollmentId, approver, ...roles })
 export const phoneCloudInviteCancel = (generation?: number) => call<void>('cloud_invite_cancel', generation === undefined ? undefined : { generation })
 export const phoneCloudRemoveDevice = (deviceId: string) => call<PhoneCloudStatus>('cloud_remove_device', { deviceId })
-export const phoneCloudSignOut = () => call<PhoneCloudStatus>('cloud_sign_out')
+export const phoneCloudSignOut = async () => {
+  const status = await call<PhoneCloudStatus>('cloud_sign_out')
+  // The home-screen widgets must not keep the sessions of a computer the
+  // phone can no longer open.
+  await import('@/lib/widget-snapshot').then((widgets) => widgets.forgetWidgetServer({ account: true })).catch(() => {})
+  return status
+}
 /**
  * Renames a computer of the account without switching to it (desktop and
  * phone shells): the shell opens its link, sends `PUT /api/server/name`

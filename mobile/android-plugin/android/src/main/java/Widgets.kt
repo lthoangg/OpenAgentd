@@ -89,11 +89,11 @@ internal object Widgets {
      * the launcher, so it follows dark mode with the pill's background;
      * before that it is fixed until the next redraw.
      */
-    fun pillTextColor(context: Context, views: RemoteViews, viewId: Int, color: Int) {
+    fun pillTextColor(context: Context, views: RemoteViews, viewId: Int, colorRes: Int) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            views.setColor(viewId, "setTextColor", color)
+            views.setColor(viewId, "setTextColor", colorRes)
         } else {
-            views.setTextColor(viewId, context.getColor(color))
+            views.setTextColor(viewId, context.getColor(colorRes))
         }
     }
 }

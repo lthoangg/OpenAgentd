@@ -990,13 +990,16 @@ export function frameCovers(frame: Box, need: Box, tolerance = 1): boolean {
   )
 }
 
+/** How often the hit areas are re-sent while the pet jumps or falls. */
+export const FIT_EVERY_MS = 100
+
 /**
  * How often a walking pet re-sends where it can be clicked. The shell reads
  * the pointer every 250 ms while it is far from the pet (`POLL_FAR` in
  * `pet.rs`) and far more often near it.
  */
 export function fitEveryMs(pointerNear: boolean): number {
-  return pointerNear ? 100 : 250
+  return pointerNear ? FIT_EVERY_MS : 250
 }
 
 /** The smallest frame holding both. */

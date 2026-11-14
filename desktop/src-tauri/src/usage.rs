@@ -977,7 +977,8 @@ pub fn format_notification_body(labels: &[String]) -> String {
 /// server does not hold up another's.
 #[derive(Default)]
 pub struct InflightFetches {
-    running: std::sync::Mutex<HashMap<ServerId, tokio::sync::watch::Receiver<()>>>,
+    /// Each running fetch, and whether it reads past the backend's cache.
+    running: std::sync::Mutex<HashMap<ServerId, (tokio::sync::watch::Receiver<()>, bool)>>,
 }
 
 /// What a caller that wants to fetch from a server gets.
@@ -998,29 +999,41 @@ pub struct FetchGuard {
 
 impl Drop for FetchGuard {
     fn drop(&mut self) {
-        self.fetches.running.lock().unwrap().remove(&self.server);
+        // Never panic in a drop: a poisoned map is still the map.
+        self.fetches.running.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).remove(&self.server);
     }
 }
 
 /// Another caller's fetch.
-pub struct RunningFetch(tokio::sync::watch::Receiver<()>);
+pub struct RunningFetch {
+    ended: tokio::sync::watch::Receiver<()>,
+    forced: bool,
+}
 
 impl RunningFetch {
+    /// Whether its reading is as fresh as a caller with `force_refresh`
+    /// wants: a fetch that may answer from the backend's cache is not a
+    /// refresh.
+    pub fn covers(&self, force_refresh: bool) -> bool {
+        self.forced || !force_refresh
+    }
+
     /// Resolves once that fetch is over and its reading is recorded.
     pub async fn ended(mut self) {
         // Nothing is ever sent: the channel closes when the guard drops.
-        while self.0.changed().await.is_ok() {}
+        while self.ended.changed().await.is_ok() {}
     }
 }
 
 impl InflightFetches {
-    pub fn claim(self: &std::sync::Arc<Self>, server: &ServerId) -> FetchTurn {
+    /// `forced`: the caller's fetch would read past the backend's cache.
+    pub fn claim(self: &std::sync::Arc<Self>, server: &ServerId, forced: bool) -> FetchTurn {
         let mut running = self.running.lock().unwrap();
-        if let Some(fetch) = running.get(server) {
-            return FetchTurn::Running(RunningFetch(fetch.clone()));
+        if let Some((ended, forced)) = running.get(server) {
+            return FetchTurn::Running(RunningFetch { ended: ended.clone(), forced: *forced });
         }
         let (sender, receiver) = tokio::sync::watch::channel(());
-        running.insert(server.clone(), receiver);
+        running.insert(server.clone(), (receiver, forced));
         FetchTurn::Mine(FetchGuard { fetches: self.clone(), server: server.clone(), _running: sender })
     }
 }
@@ -1068,6 +1081,13 @@ impl UsageCache {
     pub fn reading(&self, server: &ServerId) -> (Option<UsageSummaryBody>, Option<String>) {
         (self.snapshots.get(server).cloned(), self.errors.get(server).cloned())
     }
+
+    /// `server` was removed: nothing of it is kept.
+    pub fn forget(&mut self, server: &ServerId) {
+        self.snapshots.remove(server);
+        self.errors.remove(server);
+        self.notified.remove(server);
+    }
 }
 
 #[cfg(test)]
@@ -1080,8 +1100,8 @@ mod tests {
     async fn a_second_caller_waits_for_the_fetch_that_is_running() {
         let fetches = std::sync::Arc::new(InflightFetches::default());
         let server = ServerId::Bundled;
-        let FetchTurn::Mine(guard) = fetches.claim(&server) else { panic!("the first caller fetches") };
-        let FetchTurn::Running(running) = fetches.claim(&server) else { panic!("the second finds a fetch running") };
+        let FetchTurn::Mine(guard) = fetches.claim(&server, false) else { panic!("the first caller fetches") };
+        let FetchTurn::Running(running) = fetches.claim(&server, false) else { panic!("the second finds a fetch running") };
         let mut ended = Box::pin(running.ended());
         let still_running = tokio::select! {
             biased;
@@ -1092,14 +1112,31 @@ mod tests {
 
         drop(guard);
         ended.await;
-        assert!(matches!(fetches.claim(&server), FetchTurn::Mine(_)), "the server is free again");
+        assert!(matches!(fetches.claim(&server, false), FetchTurn::Mine(_)), "the server is free again");
+    }
+
+    // Refresh used to wait for a background fetch that may have answered
+    // from the backend's cache, and then show that.
+    #[test]
+    fn a_refresh_is_not_answered_by_a_fetch_that_may_read_the_cache() {
+        let fetches = std::sync::Arc::new(InflightFetches::default());
+        let server = ServerId::Bundled;
+        let covers = |forced: bool, wanted: bool| {
+            let _fetching = fetches.claim(&server, forced);
+            let FetchTurn::Running(running) = fetches.claim(&server, wanted) else { panic!("a fetch is running") };
+            running.covers(wanted)
+        };
+        assert!(!covers(false, true), "a background fetch is not a refresh");
+        assert!(covers(true, true), "another refresh is");
+        assert!(covers(false, false));
+        assert!(covers(true, false));
     }
 
     #[test]
     fn a_fetch_on_one_server_does_not_hold_up_another() {
         let fetches = std::sync::Arc::new(InflightFetches::default());
-        let _studio = fetches.claim(&ServerId::External("http://studio:4082".into()));
-        assert!(matches!(fetches.claim(&ServerId::Bundled), FetchTurn::Mine(_)));
+        let _studio = fetches.claim(&ServerId::External("http://studio:4082".into()), false);
+        assert!(matches!(fetches.claim(&ServerId::Bundled, false), FetchTurn::Mine(_)));
     }
 
     fn body(items: Vec<UsageSummaryItem>, checked_at: i64) -> UsageSummaryBody {
@@ -1114,6 +1151,21 @@ mod tests {
 
         assert_eq!(cache.reading(&ServerId::Bundled), (None, None));
         assert_eq!(cache.reading(&remote).0.map(|b| b.checked_at), Some(100));
+    }
+
+    #[test]
+    fn a_removed_server_leaves_no_reading_behind() {
+        let remote = ServerId::External("http://192.168.1.30:4082".into());
+        let mut cache = UsageCache::default();
+        cache.record(&remote, body(vec![item_ok("codex", "Codex", 95.0, None)], 100));
+        cache.record(&ServerId::Bundled, body(vec![], 200));
+        cache.record_failure(&remote, "timeout".into());
+
+        cache.forget(&remote);
+        assert_eq!(cache.reading(&remote), (None, None));
+        assert_eq!(cache.reading(&ServerId::Bundled).0.map(|b| b.checked_at), Some(200));
+        // Added again and still critical: that is news once more.
+        assert_eq!(cache.record(&remote, body(vec![item_ok("codex", "Codex", 95.0, None)], 300)), ["codex"]);
     }
 
     #[test]

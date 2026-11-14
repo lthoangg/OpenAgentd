@@ -503,7 +503,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   Servers. Removing the server the widgets show, or signing out of the
   account whose computer they show, empties them. A Chat session is named
   "Chat" (it used to show your login name), and a snapshot the phone could
-  not save is sent again with the next change.
+  not save is sent again with the next change. A snapshot read from one
+  server is not saved once the app has moved to another (it would have
+  filed the first server's sessions under the second).
   A session at work reads **Running**, the word the sidebar uses (it read
   "Working"). On Android each label has its own text colour, as on iPhone;
   a widget placed before the app has synced says to open OpenAgentd instead
@@ -1217,7 +1219,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     within 2 s when a display is plugged in, unplugged or rearranged; it
     used to stay put until the next status change. The notch reads each
     waiting session's question from the server once, not on every event of
-    any session. The pet asks the Dock one thing instead of three every
+    any session, and when the session asks again it drops the answered
+    question's id until the new one is read. The pet asks the Dock one thing instead of three every
     15 s when the Dock stays up, and a walking pet no longer makes the app
     read the pointer ten times a second while the pointer is elsewhere.
   - Dead parts removed `[v3.55.0]`: the notch row no longer receives the
@@ -1625,8 +1628,11 @@ run from the terminal (the native Rust binary since v3.0.0).
     its reading arrives (it used to keep the last server's numbers for up to
     10 s), reads it once, and drops an answer that arrives for a server you
     have already left. A server that went away while picked falls back to
-    Auto in the list too. Opening the popup while a check is already running
-    waits for that check instead of sitting on placeholders. A limit the
+    Auto in the list too, and a server you remove leaves no reading behind.
+    Opening the popup while a check is already running
+    waits for that check instead of sitting on placeholders; **Refresh**
+    that meets a background check waits for it and then reads past the
+    server's cache itself. A limit the
     provider reports as reached reads **Limit reached** below 100% as well,
     as it does in Settings.
     The usage period reads "Ends in 3d", as in Settings (it read "Resets in

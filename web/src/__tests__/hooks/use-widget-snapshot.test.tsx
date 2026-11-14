@@ -18,6 +18,7 @@ mock.module('@tauri-apps/api/core', () => ({ invoke }))
 
 const { useWidgetSnapshot, WIDGET_PUSH_DEBOUNCE_MS } = await import('@/hooks/use-widget-snapshot')
 const { forgetWidgetServer } = await import('@/lib/widget-snapshot')
+const { setApiBaseUrl } = await import('@/api/base-url')
 const { queryKeys } = await import('@/queries')
 // The push loads these on first use; loaded here, its import settles in a few microtasks.
 await import('@/lib/notification-taps')
@@ -81,6 +82,7 @@ afterEach(() => {
   cleanup()
   timers.restore()
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+  delete window.__OAD_API_BASE_URL__
 })
 
 interface PushedSnapshot { inbox: Record<string, unknown>[]; lastSession: unknown; nextTask: unknown; updatedAt: string; server?: string }
@@ -102,6 +104,30 @@ describe('useWidgetSnapshot', () => {
     await flushImport()
 
     expect(pushes()).toHaveLength(1)
+    expect(pushed().inbox.map((row) => row.id)).toEqual(['a'])
+  })
+
+  // The lists still held the last server's sessions; the push would have
+  // filed them under the new server's token.
+  it('pushes nothing built on one server once the app is on another', async () => {
+    setApiBaseUrl('http://192.168.1.20:4082')
+    setup()
+    await flushImport()
+    setApiBaseUrl('http://192.168.1.30:4082')
+
+    timers.tick(WIDGET_PUSH_DEBOUNCE_MS)
+    await flushImport()
+    expect(pushes()).toHaveLength(0)
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushImport()
+    expect(pushes()).toHaveLength(0)
+
+    // Back on the server they are from: they are current again.
+    setApiBaseUrl('http://192.168.1.20:4082')
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushImport()
     expect(pushed().inbox.map((row) => row.id)).toEqual(['a'])
   })
 

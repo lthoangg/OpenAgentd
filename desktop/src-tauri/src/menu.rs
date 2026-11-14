@@ -1104,7 +1104,7 @@ pub async fn refresh_server_usage(app: &AppHandle, server: &ServerId, force_refr
     // tray-open refresh racing after wake-from-sleep) into one in-flight
     // fetch per server; losers simply skip — the winner's redraw covers
     // them within seconds.
-    let crate::usage::FetchTurn::Mine(_fetching) = state.usage_fetch_inflight.claim(server) else {
+    let crate::usage::FetchTurn::Mine(_fetching) = state.usage_fetch_inflight.claim(server, force_refresh) else {
         log::debug!("usage_summary_skip_poll reason=fetch_already_inflight");
         return true; // don't count a skipped poll as a failure for backoff
     };
@@ -1140,13 +1140,24 @@ async fn fetch_and_record_usage(app: &AppHandle, server: &ServerId, force_refres
 
 /// Like [`refresh_server_usage`], for a caller that reads the result right
 /// after (the tray popup): when a fetch is already running it waits for that
-/// one instead of returning before there is anything to read.
+/// one instead of returning before there is anything to read. A refresh
+/// that met a fetch which may have read the backend's cache then fetches
+/// again, past it.
 pub async fn refresh_server_usage_or_wait(app: &AppHandle, server: &ServerId, force_refresh: bool, of: UsageOf) {
-    let turn = app.state::<AppState>().usage_fetch_inflight.claim(server);
-    match turn {
-        crate::usage::FetchTurn::Running(running) => running.ended().await,
-        crate::usage::FetchTurn::Mine(_fetching) => {
-            fetch_and_record_usage(app, server, force_refresh, of).await;
+    let fetches = app.state::<AppState>().usage_fetch_inflight.clone();
+    loop {
+        match fetches.claim(server, force_refresh) {
+            crate::usage::FetchTurn::Running(running) => {
+                let enough = running.covers(force_refresh);
+                running.ended().await;
+                if enough {
+                    return;
+                }
+            }
+            crate::usage::FetchTurn::Mine(_fetching) => {
+                fetch_and_record_usage(app, server, force_refresh, of).await;
+                return;
+            }
         }
     }
 }

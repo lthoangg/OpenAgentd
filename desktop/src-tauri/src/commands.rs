@@ -644,6 +644,7 @@ pub async fn app_remove_backend_server(
     }
     crate::account::release_unused(&app);
     crate::island::servers_changed(&app);
+    state.usage.lock().await.forget(&crate::servers::ServerId::external(&normalized));
     app_backend_status_for_window(app.clone(), app.state(), window.label())
         .await
         .map_err(|e| format!("{e:#}"))

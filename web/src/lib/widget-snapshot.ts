@@ -9,6 +9,7 @@
  * this app can map back, so a tap on a session opens it on that server.
  */
 import type { InfiniteData } from '@tanstack/react-query'
+import { apiBaseUrl } from '@/api/base-url'
 import type { ScheduledTaskResponse, SessionPageResponse, SessionResponse } from '@/api/types'
 import { sessionWorking } from '@/lib/active-sessions'
 import type { ServerRef } from '@/lib/server-refs'
@@ -165,9 +166,12 @@ function sameAddress(a: string | undefined, b: string | undefined): boolean {
 
 /**
  * Hand the snapshot to the native shell; false when it did not get there.
- * Best effort: a widget is never worth an error.
+ * Best effort: a widget is never worth an error. `builtOn` is the API
+ * address the snapshot's lists were read from: if the app has moved to
+ * another server by the time the shell names the current one, nothing is
+ * sent.
  */
-export async function pushWidgetSnapshot(snapshot: WidgetSnapshot): Promise<boolean> {
+export async function pushWidgetSnapshot(snapshot: WidgetSnapshot, builtOn?: string): Promise<boolean> {
   try {
     // Loaded here, not at startup: only the phone writes widget snapshots.
     const [{ currentServerRef }, { serverToken }] = await Promise.all([
@@ -175,6 +179,7 @@ export async function pushWidgetSnapshot(snapshot: WidgetSnapshot): Promise<bool
       import('@/lib/server-refs'),
     ])
     const ref = await currentServerRef()
+    if (builtOn !== undefined && builtOn !== apiBaseUrl()) return false
     const server = serverToken(ref)
     const { invoke } = await import('@tauri-apps/api/core')
     await invoke('widget_update_snapshot', { snapshot: server ? { ...snapshot, server } : snapshot })

@@ -37,6 +37,7 @@ import {
   clampY,
   dashTarget,
   dropFalls,
+  FIT_EVERY_MS,
   fallCapped,
   fallMs,
   fallTarget,
@@ -107,8 +108,6 @@ const FRAME_EVENT = 'pet-frame'
 /** A press that moves less than this is a click, not a drag. */
 const DRAG_SLOP = 4
 const REACTION_MS: Record<PetReaction, number> = { hop: 1700, droop: 2500 }
-/** How often the hit areas are re-sent while the pet jumps or falls. */
-const FIT_EVERY_MS = 100
 /** How long the pet's reply to a poke stays up. */
 const POKE_SAY_MS = 2500
 /** Pointer samples older than this are dropped during a drag (only the last THROW_SAMPLE_MS count). */

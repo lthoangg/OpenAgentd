@@ -950,9 +950,15 @@ impl FeedMemo {
                         self.questions.entry(id_key(id)).or_default().text = Some(body.to_string());
                     }
                 }
-                // A new question: the id read before is the last one's.
+                // A new question: the id read before is the last one's, so
+                // it is dropped (an answer in place would go to a question
+                // that is gone) and read again.
                 if let Some(id) = data["session_id"].as_str() {
-                    self.read.remove(&id_key(id));
+                    let key = id_key(id);
+                    if let Some(asked) = self.questions.get_mut(&key) {
+                        asked.id = None;
+                    }
+                    self.read.remove(&key);
                 }
                 true
             }
@@ -3168,6 +3174,9 @@ mod tests {
         let ask = serde_json::json!({"kind": "input_needed", "session_id": "a", "body": "Which remote?"});
         memo.note(&event("desktop_notification", ask));
         assert_eq!(ids(&memo), ["a", "b"]);
+        // Until it is read, the row holds no id: q-1 is answered and gone.
+        let asked = &memo.questions[&id_key("a")];
+        assert_eq!((asked.text.as_deref(), asked.id.as_deref()), (Some("Which remote?"), None));
 
         // Events missed while disconnected may have been just that.
         memo.learn("a", Some(&open_question("q-2", "Which remote?", &["origin"])));

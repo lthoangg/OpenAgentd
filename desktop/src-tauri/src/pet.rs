@@ -2444,7 +2444,6 @@ mod tests {
 
     #[test]
     fn the_hidden_docks_height_reads_only_what_it_needs() {
-
         // Most Docks stay up: that used to cost three processes every 15 s.
         let read_with = |prefs: &[(&str, &str)]| {
             let mut asked = Vec::new();

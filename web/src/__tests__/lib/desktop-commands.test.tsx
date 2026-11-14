@@ -349,6 +349,22 @@ describe('useDesktopCommands', () => {
     }
   })
 
+  // The notch sends this for a server that refused its saved access key.
+  it('opens the Settings modal on the Server page for settings_connection', async () => {
+    const originalOpenSettings = useSettingsStore.getState().openSettings
+    const openSettings = mock(() => {})
+    useSettingsStore.setState({ openSettings })
+    try {
+      await renderBridge()
+
+      listener?.({ payload: 'settings_connection' })
+
+      expect(openSettings).toHaveBeenCalledWith('connection')
+    } finally {
+      useSettingsStore.setState({ openSettings: originalOpenSettings })
+    }
+  })
+
   it('unsubscribes from the Tauri event bus when the root unmounts', async () => {
     const view = await renderBridge()
 

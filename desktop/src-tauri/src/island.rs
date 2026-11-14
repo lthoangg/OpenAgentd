@@ -144,6 +144,9 @@ const POINTER_POLL: Duration = Duration::from_millis(80);
 /// Far from the canvas (more than [`POINTER_NEAR`] away) the pointer needs a
 /// few readings to get there, so it is read half as often.
 const POINTER_FAR_POLL: Duration = Duration::from_millis(160);
+/// How often the shown island checks that it is still on the right display
+/// ([`display_changed`]).
+const DISPLAY_CHECK: Duration = Duration::from_secs(2);
 const POINTER_NEAR: f64 = 240.0;
 /// Unread sessions kept; older ones drop off.
 const MAX_UNREAD: usize = 6;
@@ -849,9 +852,27 @@ pub struct FeedMemo {
     late: Vec<IslandSession>,
     /// Path of the backend's Chat workspace, fetched once per connection.
     chat_root: Option<String>,
+    /// Waiting sessions whose question was read from the server on this
+    /// connection, since they last asked: it is not read again.
+    read: HashSet<String>,
 }
 
 impl FeedMemo {
+    /// The waiting sessions whose question the server is asked for now: the
+    /// ones not read yet, [`MAX_QUESTION_FETCHES`] at most.
+    fn questions_to_read<'a>(&self, rows: &'a [SessionRow]) -> Vec<&'a SessionRow> {
+        rows.iter()
+            .filter(|row| row.parent_session_id.is_none() && row.needs_input && !self.read.contains(&id_key(&row.id)))
+            .take(MAX_QUESTION_FETCHES)
+            .collect()
+    }
+
+    /// A new connection: what was read on the last one may have changed
+    /// while nothing was listening.
+    fn connected(&mut self) {
+        self.read.clear();
+    }
+
     /// Record what the event says; true when the active list may have changed.
     pub fn note(&mut self, event: &SseEvent) -> bool {
         let data = || serde_json::from_str::<serde_json::Value>(&event.data).unwrap_or_default();
@@ -935,6 +956,10 @@ impl FeedMemo {
                         self.questions.entry(id_key(id)).or_default().text = Some(body.to_string());
                     }
                 }
+                // A new question: the id read before is the last one's.
+                if let Some(id) = data["session_id"].as_str() {
+                    self.read.remove(&id_key(id));
+                }
                 true
             }
             _ => false,
@@ -944,25 +969,28 @@ impl FeedMemo {
     /// Take the server's copy of what `session_id` waits on (`None`: nothing
     /// is open any more, so the id from before is stale).
     fn learn(&mut self, session_id: &str, question: Option<&crate::answers::OpenQuestion>) {
-        let asked = self.questions.entry(id_key(session_id)).or_default();
+        let key = id_key(session_id);
+        let asked = self.questions.entry(key.clone()).or_default();
         match question {
             Some(question) => {
                 if let Some(text) = question.text() {
                     asked.text = Some(text.to_string());
                 }
                 asked.id = Some(question.id.clone());
+                self.read.insert(key);
             }
             None => {
                 asked.id = None;
+                self.read.remove(&key);
             }
         }
     }
 
     /// Drop what no longer applies once `sessions` is current.
     fn settle(&mut self, sessions: &[IslandSession]) {
-        self.questions.retain(|key, _| {
-            sessions.iter().any(|s| s.state == SessionState::NeedsInput && id_key(&s.id) == *key)
-        });
+        let waits = |key: &String| sessions.iter().any(|s| s.state == SessionState::NeedsInput && id_key(&s.id) == *key);
+        self.questions.retain(|key, _| waits(key));
+        self.read.retain(waits);
         self.statuses.retain(|key, _| sessions.iter().any(|s| id_key(&s.id) == *key));
         self.goals.retain(|key, _| sessions.iter().any(|s| id_key(&s.id) == *key));
     }
@@ -1152,6 +1180,13 @@ pub fn notch_geometry(screen: &ScreenInfo) -> NotchGeometry {
     let menu_bar = screen.frame.y + screen.frame.height - screen.visible_top;
     let height = if menu_bar > 0.0 { menu_bar } else { FALLBACK_MENU_BAR_HEIGHT };
     NotchGeometry { has_notch: false, width: FALLBACK_PILL_WIDTH, height }
+}
+
+/// Whether the shown island is in the wrong place or the wrong shape for
+/// the displays as they are now (one was plugged in, unplugged, rearranged
+/// or changed resolution).
+pub fn display_changed(canvas: &Rect, geometry: &NotchGeometry, screens: &[ScreenInfo]) -> bool {
+    pick_screen(screens).is_some_and(|screen| island_frame(&screen, CANVAS_WIDTH, CANVAS_HEIGHT) != *canvas || notch_geometry(&screen) != *geometry)
 }
 
 /// Clamp a pill size the webview asked for to the canvas.
@@ -1437,6 +1472,7 @@ pub fn pointer_poll_interval(canvas: &Rect, pointer: Option<PointerPayload>) -> 
 /// Poll the pointer while the canvas is up (see the module docs for why).
 #[cfg(target_os = "macos")]
 async fn run_pointer_watch(app: AppHandle) {
+    let mut displays_checked = std::time::Instant::now();
     loop {
         let (canvas, pointer) = {
             let s = shared().lock().unwrap();
@@ -1447,9 +1483,15 @@ async fn run_pointer_watch(app: AppHandle) {
             continue;
         };
         let inside = pointer.is_some_and(|p| p.inside);
+        // The same loop keeps the island on the right display: it only runs
+        // while the island is up, and a hidden one is placed when it shows.
+        let check_displays = displays_checked.elapsed() >= DISPLAY_CHECK;
+        if check_displays {
+            displays_checked = std::time::Instant::now();
+        }
         let handle = app.clone();
         let _ = app.run_on_main_thread(move || {
-            let pill = {
+            let (pill, geometry) = {
                 let s = shared().lock().unwrap();
                 if s.menu_open {
                     return;
@@ -1458,8 +1500,14 @@ async fn run_pointer_watch(app: AppHandle) {
                 if s.canvas != Some(canvas) {
                     return;
                 }
-                s.pill
+                (s.pill, s.geometry)
             };
+            if check_displays && display_changed(&canvas, &geometry, &native::screens()) {
+                // Moves the canvas, tells the webview the new notch, and
+                // starts the pointer over.
+                apply(&handle);
+                return;
+            }
             let (Some(pill), Some((x, y))) = (pill, native::mouse_location()) else {
                 return;
             };
@@ -1718,6 +1766,7 @@ async fn follow(
         .context("event stream returned an error status")?;
     // Seed after connecting, so nothing that happens in between is missed.
     memo.chat_root = chat_root(client, base, token).await;
+    memo.connected();
     // Which computer this is: one reached at two addresses is followed once.
     crate::servers::learn_identity(server, crate::servers::server_fingerprint(client, base, token).await);
     refresh(app, client, server, base, token, memo).await?;
@@ -1807,11 +1856,13 @@ async fn refresh(
 }
 
 /// Ask the server what each waiting session asks (its text, id and the
-/// buttons that can answer it), a few at a time. Best effort: a session whose
-/// question can't be read keeps the notification's text and "Open to answer".
+/// buttons that can answer it), a few at a time, once per question
+/// ([`FeedMemo::questions_to_read`]). Best effort: a session whose question
+/// can't be read keeps the notification's text, and is asked again on the
+/// next refresh.
 async fn learn_questions(client: &reqwest::Client, base: &str, token: Option<&str>, rows: &[SessionRow], memo: &mut FeedMemo) {
     let mut fetches = tokio::task::JoinSet::new();
-    for row in rows.iter().filter(|row| row.parent_session_id.is_none() && row.needs_input).take(MAX_QUESTION_FETCHES) {
+    for row in memo.questions_to_read(rows) {
         let (client, base, token, id) = (client.clone(), base.to_string(), token.map(str::to_string), row.id.clone());
         fetches.spawn(async move {
             let question = crate::answers::fetch_question_at(&client, &base, token.as_deref(), &id).await;
@@ -2154,6 +2205,16 @@ pub(crate) fn mark_answered(app: &AppHandle, session_id: &str) {
 pub fn island_retry(window: WebviewWindow) {
     if window.label() == ISLAND_WINDOW {
         wake_feed();
+    }
+}
+
+/// A click on a server that refused the saved access key. Trying again
+/// would be refused again, so the app shows Settings → Server, where the
+/// key is fixed; saving it there wakes the feed (`servers_changed`).
+#[tauri::command]
+pub fn island_fix_key(window: WebviewWindow) {
+    if window.label() == ISLAND_WINDOW {
+        crate::window::emit_frontend_command(window.app_handle(), "settings_connection");
     }
 }
 fn report_island_error(app: &AppHandle, title: &str, error: &anyhow::Error) {
@@ -3111,6 +3172,34 @@ mod tests {
         assert_eq!(asked.text.as_deref(), Some("Which branch? (main or dev)"));
     }
 
+    // Every refresh (each event of any session) used to ask the server
+    // again for the question of every waiting session, up to 8 requests.
+    #[test]
+    fn a_question_is_read_from_the_server_once_until_the_session_asks_again() {
+        let waiting = |id: &str| SessionRow { needs_input: true, ..serde_json::from_value(serde_json::json!({ "id": id })).unwrap() };
+        let rows = [waiting("a"), waiting("b")];
+        let ids = |memo: &FeedMemo| memo.questions_to_read(&rows).iter().map(|row| row.id.clone()).collect::<Vec<_>>();
+        let mut memo = FeedMemo::default();
+        assert_eq!(ids(&memo), ["a", "b"]);
+
+        memo.learn("a", Some(&open_question("q-1", "Which branch?", &["main", "dev"])));
+        assert_eq!(ids(&memo), ["b"], "a's question is known");
+        // The server had nothing for b (a race with the list): ask again.
+        memo.learn("b", None);
+        assert_eq!(ids(&memo), ["b"]);
+
+        // a was answered and asks something else: its id is another one.
+        let ask = serde_json::json!({"kind": "input_needed", "session_id": "a", "body": "Which remote?"});
+        memo.note(&event("desktop_notification", ask));
+        assert_eq!(ids(&memo), ["a", "b"]);
+
+        // Events missed while disconnected may have been just that.
+        memo.learn("a", Some(&open_question("q-2", "Which remote?", &["origin"])));
+        assert_eq!(ids(&memo), ["b"]);
+        memo.connected();
+        assert_eq!(ids(&memo), ["a", "b"]);
+    }
+
     #[test]
     fn answering_clears_the_waiting_row_on_every_server_it_is_listed_on() {
         let mut feeds = two_servers(&["a"], &["r"]);
@@ -3282,6 +3371,26 @@ mod tests {
         let mut hidden_menu_bar = external();
         hidden_menu_bar.visible_top = hidden_menu_bar.frame.y + hidden_menu_bar.frame.height;
         assert_eq!(notch_geometry(&hidden_menu_bar).height, FALLBACK_MENU_BAR_HEIGHT);
+    }
+
+    // Nothing watched the displays: the island stayed where the last fit,
+    // focus change or settings change had put it.
+    #[test]
+    fn the_island_follows_a_display_that_was_plugged_in_or_unplugged() {
+        let on = |screen: &ScreenInfo| (island_frame(screen, CANVAS_WIDTH, CANVAS_HEIGHT), notch_geometry(screen));
+        let (canvas, geometry) = on(&external());
+        assert!(!display_changed(&canvas, &geometry, &[external()]), "the same display: stay put");
+        // The lid opens: the notched display is listed, and the island belongs on it.
+        assert!(display_changed(&canvas, &geometry, &[external(), notched()]));
+        // The lid closes: back to the display that is left.
+        let (canvas, geometry) = on(&notched());
+        assert!(display_changed(&canvas, &geometry, &[external()]));
+        // The same place but a taller menu bar: the pill's shape changed.
+        let (canvas, geometry) = on(&external());
+        let taller = ScreenInfo { visible_top: external().visible_top - 12.0, ..external() };
+        assert!(display_changed(&canvas, &geometry, &[taller]));
+        // No display at all (asleep): nothing to move to.
+        assert!(!display_changed(&canvas, &geometry, &[]));
     }
 
     #[test]

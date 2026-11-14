@@ -38,6 +38,7 @@ const STATE_COMMAND = 'island_state'
 const FIT_COMMAND = 'island_fit'
 const OPEN_COMMAND = 'island_open_session'
 const RETRY_COMMAND = 'island_retry'
+const FIX_KEY_COMMAND = 'island_fix_key'
 const MENU_COMMAND = 'island_context_menu'
 const STATUS_EVENT = 'island-status'
 const GEOMETRY_EVENT = 'island-geometry'
@@ -156,16 +157,22 @@ function SessionRow({ session, actions }: { session: IslandSession; actions: Row
   )
 }
 
-/** A server that dropped off: a click on the row tries to reach it again. */
-function ServerRow({ server, hit, onRetry, onLater }: {
+/**
+ * A server that dropped off: a click on the row tries to reach it again.
+ * One that refused the saved access key would refuse it again, so its row
+ * opens Settings → Server, where the key is fixed.
+ */
+function ServerRow({ server, hit, onRetry, onFixKey, onLater }: {
   server: UnreachableServer
   hit: string | null
   onRetry: () => void
+  onFixKey: () => void
   onLater: (server: UnreachableServer) => void
 }) {
   const retry = `retry:${server.id}`
   const later = `later:server:${server.id}`
-  const reason = server.reason === 'key_rejected' ? 'Access key rejected' : 'Not answering'
+  const rejected = server.reason === 'key_rejected'
+  const reason = rejected ? 'Access key rejected' : 'Not answering'
   return (
     <li className="island-row-item island-row-item--server" data-state="offline">
       <button
@@ -173,8 +180,8 @@ function ServerRow({ server, hit, onRetry, onLater }: {
         className="island-row"
         data-hit={retry}
         data-hover={hit === retry ? '' : undefined}
-        aria-label={`Can't reach ${server.name}: ${reason}. Try again`}
-        onClick={onRetry}
+        aria-label={`Can't reach ${server.name}: ${reason}. ${rejected ? 'Fix in Settings' : 'Try again'}`}
+        onClick={rejected ? onFixKey : onRetry}
       >
         <span className="island-chip" data-state="offline">Can't reach</span>
         <span className="island-row-title">{server.name}</span>
@@ -407,6 +414,7 @@ export function Island() {
                   server={server}
                   hit={hit}
                   onRetry={() => void invoke(RETRY_COMMAND).catch(() => {})}
+                  onFixKey={() => void invoke(FIX_KEY_COMMAND).catch(() => {})}
                   onLater={(item) => putOff(`server:${item.id}`, serverSignature(item))}
                 />
               ))}

@@ -119,6 +119,9 @@ function runDesktopCommand(command: unknown, router: AnyRouter): void {
     case 'settings_providers':
       useSettingsStore.getState().openSettings('providers')
       break
+    case 'settings_connection':
+      useSettingsStore.getState().openSettings('connection')
+      break
   }
 }
 

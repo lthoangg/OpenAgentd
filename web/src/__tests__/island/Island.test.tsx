@@ -426,4 +426,17 @@ describe('Island', () => {
     openList()
     expect(within(list()).getByText('Access key rejected')).toBeInTheDocument()
   })
+
+  // Trying again with the same key gets the same refusal: the row used to
+  // offer that and nothing on screen changed.
+  it('opens Settings to fix a refused key instead of trying the same key again', async () => {
+    await mount()
+    push(status(2, [], [], [{ ...lost, reason: 'key_rejected' }]))
+    openList()
+    const row = within(list()).getByText('NAS').closest('li')!
+    expect(within(row).queryByRole('button', { name: /Try again/ })).toBeNull()
+    fireEvent.click(within(row).getByRole('button', { name: "Can't reach NAS: Access key rejected. Fix in Settings" }))
+    expect(calls.some(([cmd]) => cmd === 'island_fix_key')).toBe(true)
+    expect(calls.some(([cmd]) => cmd === 'island_retry')).toBe(false)
+  })
 })

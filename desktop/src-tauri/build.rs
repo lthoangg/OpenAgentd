@@ -37,6 +37,7 @@ fn main() {
                 "island_fit",
                 "island_open_session",
                 "island_retry",
+                "island_fix_key",
                 "island_context_menu",
                 "island_viewing",
                 "session_read",

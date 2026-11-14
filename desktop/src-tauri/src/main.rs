@@ -704,6 +704,7 @@ fn main() {
             island::island_fit,
             island::island_open_session,
             island::island_retry,
+            island::island_fix_key,
             island::island_context_menu,
             island::island_viewing,
             island::session_read,

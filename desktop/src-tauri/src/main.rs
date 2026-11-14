@@ -682,6 +682,7 @@ fn main() {
             commands::app_stop_bundled_backend,
             commands::app_start_bundled_backend,
             account::cloud_open_computer,
+            account::cloud_rename_computer,
             account::desktop_cloud_call,
             account::cloud_poke,
             account::cloud_link_route,

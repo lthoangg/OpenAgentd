@@ -9,6 +9,7 @@
  */
 import { apiBaseUrl } from '@/api/base-url'
 import { setServerName } from '@/api/client/server-name'
+import { renameCloudComputer } from '@/api/phone-cloud'
 import { computerNameKey, rememberComputerName, type AppBackendStatus } from '@/lib/app-backend'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/queries/keys'
@@ -35,6 +36,22 @@ export async function renameComputerInUse(status: AppBackendStatus | null, name:
   const key = computerNameKey(status)
   if (!key) return null
   const next = await rememberComputerName(key, saved.name ?? '')
+  if (next) queryClient.setQueryData(queryKeys.backendStatus(), next)
+  return next
+}
+
+/**
+ * Name any computer of the account. The one in use is renamed over the
+ * app's own connection; any other through its link, in the background
+ * (the window stays where it is). The name is then remembered under its
+ * device id so every list shows it. Throws what the computer or the link
+ * answered when it could not.
+ */
+export async function renameAccountComputer(status: AppBackendStatus | null, deviceId: string, name: string): Promise<AppBackendStatus | null> {
+  const onIt = status?.account_device?.device_id === deviceId && (status.mode === 'external' || Boolean(status.external))
+  if (onIt) return renameComputerInUse(status, name)
+  const saved = await renameCloudComputer(deviceId, name)
+  const next = await rememberComputerName(deviceId, saved.name ?? '')
   if (next) queryClient.setQueryData(queryKeys.backendStatus(), next)
   return next
 }

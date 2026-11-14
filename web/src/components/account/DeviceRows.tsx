@@ -35,7 +35,7 @@ function statusLine(device: ListedDevice, selfLabel: string): string | undefined
   return undefined
 }
 
-export function DeviceRows({ devices, names, selfLabel, onRemove, removeEffect, renameSelf = null, selfRenameHint }: {
+export function DeviceRows({ devices, names, selfLabel, onRemove, removeEffect, renameSelf = null, selfRenameHint, onRenameComputer }: {
   devices: ListedDevice[]
   /** Remembered names, by device id. */
   names: ComputerNames | null | undefined
@@ -49,6 +49,8 @@ export function DeviceRows({ devices, names, selfLabel, onRemove, removeEffect, 
   renameSelf?: { name: string; save: (name: string) => Promise<void> } | null
   /** Shown in this device's Details where Rename would be. */
   selfRenameHint?: string
+  /** Rename another computer of the account through its link; absent where the shell cannot. */
+  onRenameComputer?: (deviceId: string, name: string) => Promise<void>
 }) {
   const [removing, setRemoving] = useState<string | null>(null)
   // Details stays on its device while the dialog closes.
@@ -83,7 +85,10 @@ export function DeviceRows({ devices, names, selfLabel, onRemove, removeEffect, 
         title={detailed ? titleOf(detailed) : ''}
         name={detailed ? names?.[detailed.device_id] ?? null : null}
         facts={detailed ? deviceFacts(detailed) : []}
-        rename={detailed?.me ? renameSelf : null}
+        rename={detailed?.me ? renameSelf : detailed?.server && onRenameComputer ? {
+          name: names?.[detailed.device_id] ?? '',
+          save: (name) => onRenameComputer(detailed.device_id, name),
+        } : null}
         renameHint={detailed?.me ? selfRenameHint : detailed?.server ? 'Open this computer to rename it.' : undefined}
       />
       <ConfirmDialog

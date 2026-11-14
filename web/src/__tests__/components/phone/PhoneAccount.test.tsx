@@ -302,6 +302,8 @@ describe('connected account', () => {
     shell(CONNECTED, {
       cloud_devices: () => [ME, { ...LINUX, server: true, client: false, online: true }],
       app_backend_status: () => ({ ...appStatus, computer_names: { 'dev-linux': 'build-box' } }),
+      cloud_rename_computer: () => ({ name: 'CI box', default: 'build-box', custom: true }),
+      app_remember_computer_name: () => ({ ...appStatus, computer_names: { 'dev-linux': 'CI box' } }),
     })
     render(<PhoneAccountContent />)
 
@@ -317,11 +319,15 @@ describe('connected account', () => {
     expect(details.textContent).toContain('SystemLinux')
     expect(details.textContent).toContain('Key9C02 E1B7')
     expect(details.textContent).toContain('RoleServer')
-    // Renamed over a connection to it, not from this list.
-    expect(within(details).queryByRole('button', { name: 'Rename' })).toBeNull()
+    // Any computer of the account is renamed here, through its link.
+    fireEvent.click(within(details).getByRole('button', { name: 'Rename' }))
+    fireEvent.change(within(details).getByRole('textbox', { name: 'Name' }), { target: { value: 'CI box' } })
+    fireEvent.click(within(details).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(ran('cloud_rename_computer').map((call) => call.args)).toEqual([{ deviceId: 'dev-linux', name: 'CI box' }]))
+    await waitFor(() => expect(ran('app_remember_computer_name').map((call) => call.args)).toEqual([{ key: 'dev-linux', name: 'CI box' }]))
     fireEvent.keyDown(details, { key: 'Escape' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove build-box' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove CI box' }))
     const confirm = await screen.findByRole('dialog', { name: 'Remove this device?' })
     expect(confirm.textContent).toContain('Linux · 9C02 E1B7')
   })

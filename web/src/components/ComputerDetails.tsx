@@ -1,12 +1,11 @@
 /**
  * Details of one computer or device of the account: what its list row no
- * longer carries (system, key, role, address), and Rename for the computer
- * the app is on.
+ * longer carries (system, key, role, address), and Rename.
  *
  * A name is what the computer calls itself (`/api/server/name`: its host
  * name until someone names it), so it is changed on the computer, through
- * the connection the app has to it, and every device of the account then
- * shows it. That is why Rename is offered only for the computer in use. The
+ * the app's connection or the account's link to it, and every device of the
+ * account then shows it. The
  * name is text from a computer: drawn as plain text, and the key stays in
  * full beside it here and wherever a device is approved or removed.
  */
@@ -68,7 +67,7 @@ export function ComputerDetailsDialog({ open, onOpenChange, title, name, facts, 
    */
   name?: string | null
   facts: ComputerFact[]
-  /** Rename the computer itself: only while the app is on it. `name` is its current name. */
+  /** Rename the computer itself. `name` is its current name. */
   rename?: { name: string; save: (name: string) => Promise<void> } | null
   /** Shown where Rename would be, when it cannot be renamed from here. */
   renameHint?: string

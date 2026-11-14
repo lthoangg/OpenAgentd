@@ -367,9 +367,97 @@ pub fn release_unused(app: &AppHandle) {
     });
 }
 
+/// Renames a computer of the account without switching the window to it:
+/// opens its link through the built-in server (direct or relay), sends
+/// `PUT /api/server/name` over the bridge, and closes the link again when
+/// no window was using it. Answers what the computer said
+/// (`{name, default, custom}`); the page remembers the name itself.
+#[tauri::command]
+pub async fn cloud_rename_computer(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    device_id: String,
+    name: String,
+) -> Result<serde_json::Value, String> {
+    if crate::window::is_overlay_window(window.label()) {
+        return Err("Only app windows can rename a computer.".into());
+    }
+    let answer = builtin_call(
+        &app,
+        "POST",
+        "/open",
+        Some(serde_json::json!({ "device_id": device_id })),
+        None,
+        Duration::from_secs(30),
+    )
+    .await?;
+    if !(200..300).contains(&answer.status) {
+        return Err(detail_of(&answer));
+    }
+    let opened: Opened = serde_json::from_str(&answer.body)
+        .map_err(|_| "The built-in server answered something unexpected.".to_string())?;
+    let origin = origin_of(&opened.origin);
+    let local = url::Url::parse(&origin)
+        .ok()
+        .is_some_and(|u| u.scheme() == "http" && u.host_str() == Some("127.0.0.1"));
+    if !local {
+        return Err("The built-in server answered something unexpected.".into());
+    }
+    let result = put_name_over_bridge(&origin, &opened.key, &name).await;
+    // A window on this bridge keeps it; otherwise the link was ours to close.
+    if !bridges().lock().unwrap().contains_key(&origin) {
+        let _ = builtin_call(
+            &app,
+            "POST",
+            "/close",
+            Some(serde_json::json!({ "device_id": device_id })),
+            None,
+            Duration::from_secs(5),
+        )
+        .await;
+    }
+    result
+}
+
+async fn put_name_over_bridge(origin: &str, key: &str, name: &str) -> Result<serde_json::Value, String> {
+    let response = client()
+        .put(format!("{origin}/api/server/name"))
+        .bearer_auth(key)
+        .json(&serde_json::json!({ "name": name }))
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|_| "That computer did not answer.".to_string())?;
+    rename_answer(response.status().as_u16(), &response.text().await.unwrap_or_default())
+}
+
+/// What a computer answered a rename: its name, or why not.
+fn rename_answer(status: u16, body: &str) -> Result<serde_json::Value, String> {
+    if status == 404 || status == 405 {
+        return Err(NAME_NEEDS_UPDATE.into());
+    }
+    let answer = CloudAnswer { status, body: body.to_string() };
+    if !(200..300).contains(&status) {
+        return Err(detail_of(&answer).replace("The built-in server", "That computer"));
+    }
+    serde_json::from_str(body).map_err(|_| "That computer answered something unexpected.".to_string())
+}
+
+/// Said for a computer whose server predates names (the web UI's `NAME_NEEDS_UPDATE`).
+pub const NAME_NEEDS_UPDATE: &str = "Update OpenAgentd on this computer to name it.";
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_rename_answers_the_name_or_why_not() {
+        let ok = rename_answer(200, r#"{"name":"Work","default":"mini","custom":true}"#).unwrap();
+        assert_eq!(ok["name"], "Work");
+        assert_eq!(rename_answer(404, "").unwrap_err(), NAME_NEEDS_UPDATE, "an older server has no names");
+        assert_eq!(rename_answer(422, r#"{"detail":"name must be a string"}"#).unwrap_err(), "name must be a string");
+        assert_eq!(rename_answer(502, "x").unwrap_err(), "That computer answered 502.");
+    }
 
     #[test]
     fn only_account_routes_go_to_the_built_in_server() {

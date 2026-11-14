@@ -167,6 +167,13 @@ export const phoneCloudScannedAdd = (enrollmentId: string, approver: boolean, ro
 export const phoneCloudInviteCancel = (generation?: number) => call<void>('cloud_invite_cancel', generation === undefined ? undefined : { generation })
 export const phoneCloudRemoveDevice = (deviceId: string) => call<PhoneCloudStatus>('cloud_remove_device', { deviceId })
 export const phoneCloudSignOut = () => call<PhoneCloudStatus>('cloud_sign_out')
+/**
+ * Renames a computer of the account without switching to it (desktop and
+ * phone shells): the shell opens its link, sends `PUT /api/server/name`
+ * and closes the link again. Answers what the computer said.
+ */
+export const renameCloudComputer = (deviceId: string, name: string) =>
+  call<{ name: string | null; default: string | null; custom: boolean }>('cloud_rename_computer', { deviceId, name })
 export const openPhoneCloudComputer = async (deviceId: string, lanBaseUrl: string | null) => {
   const opened = await call<OpenedComputer>('cloud_open_computer', { deviceId, lanBaseUrl })
   noteBackendStatus(opened.status)

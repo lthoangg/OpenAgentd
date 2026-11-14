@@ -35,6 +35,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { useAppStatusWithNames } from '@/lib/account-computers'
+import { renameAccountComputer } from '@/lib/computer-rename'
 import { openExternalUrl } from '@/lib/open-external'
 import { cancelQrScan, canScanQr, scanQrCode } from '@/lib/qr-scan'
 import {
@@ -53,7 +54,8 @@ import {
 function DevicesSection({ canRemove, onAdd }: { canRemove: boolean; onAdd?: () => void }) {
   const devicesQ = usePhoneCloudDevices(true)
   const remove = usePhoneRemoveDevice()
-  const names = useAppStatusWithNames()?.computer_names
+  const app = useAppStatusWithNames()
+  const names = app?.computer_names
   return (
     <>
       <PanelSection
@@ -69,6 +71,7 @@ function DevicesSection({ canRemove, onAdd }: { canRemove: boolean; onAdd?: () =
           selfLabel="This phone"
           onRemove={canRemove ? (deviceId) => remove.mutateAsync(deviceId) : undefined}
           removeEffect="It stops reaching your computers through your account."
+          onRenameComputer={async (deviceId, name) => { await renameAccountComputer(app ?? null, deviceId, name) }}
         />
       </PanelSection>
       {(devicesQ.error ?? remove.error) && (

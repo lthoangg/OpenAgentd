@@ -2040,6 +2040,11 @@ fn forget_bridge_secrets(device_id: Option<&str>) {
 /// left by a page that reloaded), and a failure closes only a bridge this
 /// call created. The page may be on an existing one.
 pub async fn open_computer(device_id: &str) -> Result<String, String> {
+    open_link(device_id).await.map(|(origin, _)| origin)
+}
+
+/// [`open_computer`], and whether this call created the bridge.
+async fn open_link(device_id: &str) -> Result<(String, bool), String> {
     let (mut origin, link, created) = start(device_id).await?;
     if !created {
         // Paused, or its listener taken while the app was away.
@@ -2066,7 +2071,59 @@ pub async fn open_computer(device_id: &str) -> Result<String, String> {
     record(Event::Opened {
         device_id: device_id.to_string(),
     });
-    Ok(origin)
+    Ok((origin, created))
+}
+
+/// Renames an account computer without switching the app to it
+/// (`cloud_rename_computer`): opens its link, sends `PUT /api/server/name`
+/// over the bridge, and closes a bridge this call created. Answers what
+/// the computer said (`{name, default, custom}`).
+pub async fn rename_computer(device_id: &str, name: &str) -> Result<serde_json::Value, String> {
+    let (origin, created) = open_link(device_id).await?;
+    let key = phone()?
+        .bridge_keys
+        .lock()
+        .expect("bridge keys")
+        .get(&origin)
+        .map(|b| b.key.clone());
+    let result = match key {
+        Some(key) => put_name(&origin, &key, name).await,
+        None => Err("This computer's bridge closed. Try again.".to_string()),
+    };
+    if created {
+        drop_bridge(device_id).await;
+    }
+    result
+}
+
+async fn put_name(origin: &str, key: &str, name: &str) -> Result<serde_json::Value, String> {
+    let response = reqwest::Client::new()
+        .put(format!("{origin}/api/server/name"))
+        .bearer_auth(key)
+        .json(&serde_json::json!({ "name": name }))
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|_| "That computer did not answer.".to_string())?;
+    let status = response.status().as_u16();
+    rename_answer(status, &response.text().await.unwrap_or_default())
+}
+
+/// Said for a computer whose server predates names (the web UI's `NAME_NEEDS_UPDATE`).
+pub const NAME_NEEDS_UPDATE: &str = "Update OpenAgentd on this computer to name it.";
+
+/// What a computer answered a rename: its name, or why not.
+fn rename_answer(status: u16, body: &str) -> Result<serde_json::Value, String> {
+    if status == 404 || status == 405 {
+        return Err(NAME_NEEDS_UPDATE.into());
+    }
+    if !(200..300).contains(&status) {
+        return Err(serde_json::from_str::<serde_json::Value>(body)
+            .ok()
+            .and_then(|v| v["detail"].as_str().map(str::to_string))
+            .unwrap_or_else(|| format!("That computer answered {status}.")));
+    }
+    serde_json::from_str(body).map_err(|_| "That computer answered something unexpected.".to_string())
 }
 
 /// Waits until `link` is up. Fails at once on a refusal that will not
@@ -2124,6 +2181,15 @@ pub async fn open_bridge(device_id: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_rename_answers_the_name_or_why_not() {
+        let ok = rename_answer(200, r#"{"name":"Work","default":"mini","custom":true}"#).unwrap();
+        assert_eq!(ok["name"], "Work");
+        assert_eq!(rename_answer(404, "").unwrap_err(), NAME_NEEDS_UPDATE);
+        assert_eq!(rename_answer(422, r#"{"detail":"name must be a string"}"#).unwrap_err(), "name must be a string");
+        assert_eq!(rename_answer(502, "x").unwrap_err(), "That computer answered 502.");
+    }
 
     #[test]
     fn status_serializes_for_the_web_ui() {

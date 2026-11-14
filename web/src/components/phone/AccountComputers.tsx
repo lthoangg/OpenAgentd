@@ -13,9 +13,9 @@
  * A row is titled by the name its computer gave for itself (its host name,
  * or what you called it), once the app has been on it; until then by its
  * system and key. The system, the key and the role are under **Details**
- * (a button, or the row's ⋯ on touch), where the computer in use is also
- * renamed: the name lives on the computer, so it is changed over the
- * connection to it.
+ * (a button, or the row's ⋯ on touch), where any computer is also renamed:
+ * the name lives on the computer, so it is changed over the connection to
+ * it (the computer in use) or over its link in the background (any other).
  *
  * The phone's account lives in its shell; the desktop's in the built-in
  * server (`api/cloud.ts` always calls that one). So on the desktop a
@@ -54,7 +54,7 @@ import {
 } from '@/lib/account-computers'
 import type { AppBackendStatus } from '@/lib/app-backend'
 import { connectAccountComputer, currentBackendOrigin, reloadForBackendSwitch } from '@/lib/backend-switch'
-import { NAME_NEEDS_UPDATE, renameComputerInUse, serverInUseKeepsName } from '@/lib/computer-rename'
+import { NAME_NEEDS_UPDATE, renameAccountComputer, serverInUseKeepsName } from '@/lib/computer-rename'
 import { isDesktopShell } from '@/lib/desktop-shell'
 
 export {
@@ -189,7 +189,7 @@ export function AccountComputersSection({
     setDetailsOpen(true)
   }
   const detailed = computers.find((computer) => computer.device.device_id === detailsId) ?? null
-  // Renamed over the connection to it: only the computer the app is on.
+  // The computer in use is renamed over the connection to it, any other over its link.
   const detailedOnBridge = detailed !== null && onExternal && app?.account_device?.device_id === detailed.device.device_id
   const detailedName = detailed ? app?.computer_names?.[detailed.device.device_id] ?? null : null
   return (
@@ -258,14 +258,14 @@ export function AccountComputersSection({
           server: isServer(detailed.device),
           client: detailed.device.client ?? false,
         }) : []}
-        rename={detailedOnBridge && serverInUseKeepsName() ? {
+        rename={detailed && (!detailedOnBridge || serverInUseKeepsName()) ? {
           name: detailedName ?? '',
           save: async (name) => {
-            await renameComputerInUse(app, name)
+            await renameAccountComputer(app, detailed.device.device_id, name)
             await onRenamed?.()
           },
         } : null}
-        renameHint={detailedOnBridge ? NAME_NEEDS_UPDATE : 'Open this computer to rename it.'}
+        renameHint={NAME_NEEDS_UPDATE}
       />
     </>
   )

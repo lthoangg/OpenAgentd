@@ -221,6 +221,13 @@ async fn cloud_open_computer(
     })
 }
 
+/// Renames a computer of the account without switching to it
+/// (`cloud::rename_computer`). The page remembers the name.
+#[tauri::command]
+async fn cloud_rename_computer(device_id: String, name: String) -> Result<serde_json::Value, String> {
+    cloud::rename_computer(&device_id, &name).await
+}
+
 /// Tells the account's bridges and links that the app came back, went
 /// away, or the network changed (`cloud::cloud_poke`); answers once the
 /// bridges are listening again. A bridge that had to move to another port
@@ -833,6 +840,7 @@ pub fn run() {
             cloud::cloud_diagnostics,
             taps::notification_take_taps,
             cloud_open_computer,
+            cloud_rename_computer,
             cloud_push_register,
             updater::updater_check,
             updater::updater_download,

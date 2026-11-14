@@ -2,8 +2,8 @@
  * Names on the Servers screen: a computer of the account is listed by the
  * name it gave for itself (once the app has been on it), a saved server by
  * your name or its computer's, and no row carries a key or an address. The
- * key, the system and the role are under Details, where the computer in
- * use is also renamed. The shell is faked at `invoke`.
+ * key, the system and the role are under Details, where any computer of
+ * the account is also renamed. The shell is faked at `invoke`.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -17,9 +17,16 @@ mock.module('@/hooks/use-platform', () => ({ ...realPlatform, getPlatform: () =>
 let backend: AppBackendStatus
 let devices: DeviceRow[] = []
 let remembered: Array<{ key: string; name: string }> = []
+let renamedThroughLink: Array<{ deviceId: string; name: string }> = []
+let linkRename: 'ok' | 'old' = 'ok'
 mock.module('@tauri-apps/api/core', () => ({
-  invoke: async (command: string, args?: { key: string; name: string }) => {
+  invoke: async (command: string, args?: { key: string; name: string; deviceId: string }) => {
     if (command === 'app_backend_status') return backend
+    if (command === 'cloud_rename_computer' && args) {
+      if (linkRename === 'old') throw 'Update OpenAgentd on this computer to name it.'
+      renamedThroughLink.push({ deviceId: args.deviceId, name: args.name })
+      return { name: args.name || 'mini-host', default: 'mini-host', custom: Boolean(args.name) }
+    }
     if (command === 'app_server_watch_states') return {}
     if (command === 'cloud_status') return { state: 'connected', fingerprint: 'AA11 BB22', signer: true }
     if (command === 'cloud_devices') return devices
@@ -66,6 +73,8 @@ beforeEach(() => {
   backend = app()
   devices = [ME, MAC, MINI, BOX]
   remembered = []
+  renamedThroughLink = []
+  linkRename = 'ok'
   requests = []
   renameFails = false
   window.__OAD_API_BASE_URL__ = BRIDGE
@@ -144,9 +153,35 @@ describe('names on the Servers screen', () => {
     expect(dialog.textContent).toContain('SystemmacOS')
     expect(dialog.textContent).toContain('Key81BC 77E0')
     expect(dialog.textContent).toContain('RoleServer')
-    // Not the computer in use: it is renamed from a connection to it.
-    expect(within(dialog).queryByRole('button', { name: 'Rename' })).toBeNull()
-    expect(dialog.textContent).toContain('Open this computer to rename it.')
+    expect(dialog.textContent).not.toContain('Open this computer to rename it.')
+  })
+
+  it('renames a computer that is not in use through its link, without switching to it', async () => {
+    render(<ServersScreen active onOpenSessions={() => {}} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Details of Personal' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Personal' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Rename' }))
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Name' }), { target: { value: 'Home' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(renamedThroughLink).toEqual([{ deviceId: 'dev-mini', name: 'Home' }]))
+    await waitFor(() => expect(remembered).toEqual([{ key: 'dev-mini', name: 'Home' }]))
+    // Nothing went over the connection to the computer in use.
+    expect(requests.some((request) => request.method === 'PUT')).toBe(false)
+    await waitFor(() => expect(within(rowOf('Home')).getByText('Online')).toBeTruthy())
+    expect(within(rowOf('Work')).getByText('In use')).toBeTruthy()
+  })
+
+  it('says to update a computer that predates names when renamed through its link', async () => {
+    linkRename = 'old'
+    render(<ServersScreen active onOpenSessions={() => {}} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Details of Personal' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Personal' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Rename' }))
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Name' }), { target: { value: 'Home' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('Update OpenAgentd on this computer to name it.')
+    expect(remembered).toEqual([])
   })
 
   it('renames the computer in use, on the computer, and shows the new name', async () => {

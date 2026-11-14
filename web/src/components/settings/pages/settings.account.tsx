@@ -16,7 +16,8 @@
  *
  * A device's row is its name and one status line (`DeviceRows`); its
  * system, key and role are under Details, where this computer is renamed
- * while the app is on its own server.
+ * while the app is on its own server, and (in the desktop app) any other
+ * computer of the account through its link.
  */
 import { useState, type ReactNode } from 'react'
 
@@ -52,7 +53,7 @@ import { PanelSection } from '@/components/ui/panel-section'
 import { useAppStatusWithNames } from '@/lib/account-computers'
 import { BUILT_IN_NAME_KEY, computerNameKey } from '@/lib/app-backend'
 import { canApproveHere } from '@/lib/approval-proof'
-import { NAME_NEEDS_UPDATE, renameComputerInUse, serverInUseKeepsName } from '@/lib/computer-rename'
+import { NAME_NEEDS_UPDATE, renameAccountComputer, renameComputerInUse, serverInUseKeepsName } from '@/lib/computer-rename'
 import { isDesktopShell } from '@/lib/desktop-shell'
 import {
   useCloudCancelMutation,
@@ -126,6 +127,7 @@ function DevicesSection({ canRemove, onAdd }: { canRemove: boolean; onAdd?: () =
             save: async (name) => { await renameComputerInUse(app, name) },
           } : null}
           selfRenameHint={me === undefined ? undefined : onOwnServer ? NAME_NEEDS_UPDATE : 'Use the built-in server to rename this computer.'}
+          onRenameComputer={isDesktopShell() ? async (deviceId, name) => { await renameAccountComputer(app ?? null, deviceId, name) } : undefined}
         />
       </PanelSection>
       {(devicesQ.error ?? remove.error) && (

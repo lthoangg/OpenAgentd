@@ -52,7 +52,8 @@ fn init_phone() -> (&'static std::path::Path, bool) {
     (dir.path(), fresh)
 }
 
-/// A computer that answers every request with the headers it received.
+/// A computer that answers every request with the headers it received,
+/// and a rename (`PUT /api/server/name`) with the name it now has.
 struct Computer {
     roster: Mutex<Roster>,
     me: String,
@@ -74,6 +75,10 @@ impl HostHandler for Computer {
         tokio::spawn(async move {
             let svc =
                 hyper::service::service_fn(|req: Request<hyper::body::Incoming>| async move {
+                    if req.method() == hyper::Method::PUT && req.uri().path() == "/api/server/name" {
+                        let body = r#"{"name":"Build box","default":"box","custom":true}"#;
+                        return Ok::<_, Infallible>(Response::new(Full::new(Bytes::from(body))));
+                    }
                     let mut seen = format!("{} {}\n", req.method(), req.uri());
                     for (k, v) in req.headers() {
                         seen += &format!("{}: {}\n", k, v.to_str().unwrap_or(""));
@@ -273,6 +278,12 @@ fn phone_account_end_to_end() {
             "the bridge key never reaches the computer: {out}"
         );
         assert_eq!(sessions.count(), 1);
+
+        // Renamed from the phone through the same link: the open bridge,
+        // which the page is on, stays open afterwards.
+        let renamed = cloud::rename_computer(&computer_id, "Build box").await.unwrap();
+        assert_eq!(renamed["name"], "Build box");
+        assert_eq!(cloud::bridge_key(&origin).as_deref(), Some(key.as_str()), "a bridge in use stays open");
 
         // The computer closes the phone's session with 4001. That is
         // unsigned: the phone closes its links, asks with a signed roster

@@ -206,6 +206,18 @@ fn phone_account_end_to_end() {
         )
         .await;
         assert!(none.is_err(), "a device needs a role");
+        // Face ID cancelled: nothing is added, and the same approval can
+        // be confirmed again.
+        cloud::CANCEL_NEXT_UNLOCK.store(true, std::sync::atomic::Ordering::SeqCst);
+        let cancelled = cloud::cloud_approve_confirm(
+            pending[0].enrollment_id.clone(),
+            Some(false),
+            None,
+            None,
+        )
+        .await;
+        assert_eq!(cancelled.unwrap_err(), "Cancelled.");
+        assert_eq!(cloud::cloud_devices().await.unwrap().len(), 1, "nothing added");
         let (confirmed, added) = tokio::join!(
             cloud::cloud_approve_confirm(pending[0].enrollment_id.clone(), Some(false), None, None),
             flows::await_added(&mut computer, joined, &req, FAST)
@@ -310,6 +322,11 @@ fn phone_account_end_to_end() {
         assert!(cloud::bridge_key(&origin).is_none(), "its links are closed");
 
         // Remove the computer: its session ends and the bridge goes away.
+        // Face ID cancelled first: the computer stays in the account.
+        cloud::CANCEL_NEXT_UNLOCK.store(true, std::sync::atomic::Ordering::SeqCst);
+        let cancelled = cloud::cloud_remove_device(computer.cloud.device_id()).await;
+        assert_eq!(cancelled.unwrap_err(), "Cancelled.");
+        assert_eq!(cloud::cloud_devices().await.unwrap().len(), 2, "nothing removed");
         cloud::cloud_remove_device(computer.cloud.device_id())
             .await
             .unwrap();
@@ -345,6 +362,17 @@ fn phone_account_end_to_end() {
         else {
             panic!("candidate")
         };
+        // Face ID cancelled on Add: the invitation stays open to retry.
+        cloud::CANCEL_NEXT_UNLOCK.store(true, std::sync::atomic::Ordering::SeqCst);
+        let cancelled = cloud::cloud_invite_add(
+            candidate.enrollment_id.clone(),
+            Some(false),
+            Some(true),
+            Some(true),
+        )
+        .await
+        .map(|_| ());
+        assert_eq!(cancelled.unwrap_err(), "Cancelled.");
         let added =
             cloud::cloud_invite_add(candidate.enrollment_id, Some(false), Some(true), Some(true))
                 .await

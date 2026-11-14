@@ -124,7 +124,7 @@ mod ios_keys {
             set(IDENTITY, &id.to_secret())
         }
         fn unlock_sign(&self, reason: &str) -> Result<Zeroizing<String>, String> {
-            get(SIGN, reason)?.ok_or_else(|| "This phone has no approval key.".to_string())
+            get(SIGN, reason)?.ok_or_else(|| SIGN_KEY_GONE.to_string())
         }
         fn clear(&self) -> Result<(), String> {
             for item in [SIGN, BOX, IDENTITY] {
@@ -137,6 +137,17 @@ mod ios_keys {
 
 #[cfg(not(target_os = "ios"))]
 struct FileKeys(openagentd_cloud::store::FileStore);
+
+/// The signing key is not in the Keychain. iOS deletes it when the
+/// passcode is turned off (`kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`),
+/// and it does not come back with a new passcode.
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+const SIGN_KEY_GONE: &str = "This iPhone can't approve any more: its approval key was removed when the passcode was turned off. Use another approver.";
+
+/// Tests: the next `unlock_sign` fails as if the person cancelled Face ID.
+#[cfg(all(test, not(target_os = "ios")))]
+pub(crate) static CANCEL_NEXT_UNLOCK: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(not(target_os = "ios"))]
 impl PhoneKeys for FileKeys {
@@ -156,6 +167,10 @@ impl PhoneKeys for FileKeys {
         self.save(&next)
     }
     fn unlock_sign(&self, _reason: &str) -> Result<Zeroizing<String>, String> {
+        #[cfg(test)]
+        if CANCEL_NEXT_UNLOCK.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            return Err("Cancelled.".to_string());
+        }
         let id = self.load()?.ok_or("Not signed in.")?;
         Ok(Zeroizing::new(id.sign.clone()))
     }
@@ -344,6 +359,30 @@ fn supported() -> bool {
     // Android keeps keys in its Keystore, which is a later step.
     !cfg!(target_os = "android")
 }
+
+/// Why this device cannot hold an account's keys now, if it cannot: on
+/// iOS the signing key needs a passcode (Keychain `.userPresence`, only
+/// while a passcode is set), so a phone without one is told before it
+/// signs in rather than after the recovery code.
+fn keys_unavailable() -> Option<String> {
+    if !supported() {
+        return Some("Accounts are not available on this device yet.".into());
+    }
+    #[cfg(target_os = "ios")]
+    {
+        extern "C" {
+            fn openagentd_device_has_passcode() -> bool;
+        }
+        if !unsafe { openagentd_device_has_passcode() } {
+            return Some(NO_PASSCODE.into());
+        }
+    }
+    None
+}
+
+/// Shown when a phone without a passcode tries to sign in or join.
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+const NO_PASSCODE: &str = "Set a passcode on this iPhone to use an OpenAgentd account. It protects the key that adds and removes devices.";
 
 /// Called once at startup with the app's data directory.
 pub fn init(data_dir: std::path::PathBuf) {
@@ -856,8 +895,8 @@ fn spawn_join(link: Zeroizing<String>) {
 #[tauri::command]
 pub fn cloud_join_invite(link: String) -> Result<Status, String> {
     let link = Zeroizing::new(link);
-    if !supported() {
-        return Err("Accounts are not available on this device yet.".into());
+    if let Some(why) = keys_unavailable() {
+        return Err(why);
     }
     phone()?;
     if link.len() > 512 || openagentd_cloud::invite::parse_link(&link).is_err() {
@@ -956,8 +995,8 @@ pub fn cloud_status() -> Status {
 
 #[tauri::command]
 pub fn cloud_sign_in() -> Result<Status, String> {
-    if !supported() {
-        return Err("Accounts are not available on this device yet.".into());
+    if let Some(why) = keys_unavailable() {
+        return Err(why);
     }
     phone()?;
     match status() {
@@ -1259,15 +1298,17 @@ pub async fn cloud_approve_confirm(
             .requested();
         grant_of(asked, approver, server, client)?
     };
-    let approval = p
-        .approvals
-        .lock()
-        .await
-        .remove(&enrollment_id)
-        .ok_or("Start the approval again.")?;
     with_sign_key(
         "Add this device to your account",
         async move |m: &mut Member| {
+            // Take it only after Face ID unlocked the key: cancelling
+            // authentication must leave the approval there to retry.
+            let approval = p
+                .approvals
+                .lock()
+                .await
+                .remove(&enrollment_id)
+                .ok_or(FlowError::JoinEnded)?;
             flows::confirm_approval(m, approval, grant)
                 .await
                 .map(|_| ())
@@ -2181,6 +2222,15 @@ pub async fn open_bridge(device_id: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_passcode_and_missing_key_say_what_to_do() {
+        assert!(NO_PASSCODE.starts_with("Set a passcode on this iPhone"));
+        assert!(SIGN_KEY_GONE.contains("passcode was turned off"));
+        assert!(SIGN_KEY_GONE.contains("another approver"));
+        // A build that keeps keys in a file needs no passcode.
+        assert_eq!(keys_unavailable(), None);
+    }
 
     #[test]
     fn a_rename_answers_the_name_or_why_not() {

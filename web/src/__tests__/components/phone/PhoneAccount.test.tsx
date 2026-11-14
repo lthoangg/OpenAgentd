@@ -445,6 +445,28 @@ describe('approval sheet', () => {
     expect(ran('cloud_approve_reject')).toHaveLength(0)
   })
 
+  it('keeps the sheet open after Face ID is cancelled, and Codes match asks again', async () => {
+    let tries = 0
+    const sheet = await review({
+      cloud_approve_begin: () => ({ code: '418207', server: true, client: false }),
+      cloud_approve_confirm: () => {
+        tries += 1
+        if (tries === 1) throw new Error('Cancelled.')
+        return CONNECTED
+      },
+    })
+    fireEvent.click(await within(sheet).findByRole('button', { name: 'Codes match' }))
+    expect(await within(sheet).findByText('Cancelled.')).toBeTruthy()
+    expect(ran('cloud_approve_reject')).toHaveLength(0)
+
+    const match = within(sheet).getByRole('button', { name: 'Codes match' }) as HTMLButtonElement
+    await waitFor(() => expect(match.disabled).toBe(false))
+    fireEvent.click(match)
+    await waitFor(() => expect(ran('cloud_approve_confirm')).toHaveLength(2))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(ran('cloud_approve_reject')).toHaveLength(0)
+  })
+
   it('rejects the request when the sheet is closed without confirming', async () => {
     const sheet = await review({
       cloud_approve_begin: () => ({ code: '418207', server: true, client: false }),

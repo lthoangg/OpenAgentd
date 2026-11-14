@@ -55,7 +55,7 @@ The account id identifies a person, so logs carry only a short hash of it.
 | Secret | iOS | Android (later) | macOS desktop and CLI | Linux desktop and CLI | Windows desktop |
 |---|---|---|---|---|---|
 | `auth`, `box` | Keychain, this device only, after first unlock; `box` also as its own item in the App Group's access group, for the notification extension | Keystore-wrapped | `cloud/identity.json`, mode 600 | the same file (Secret Service is a later step) | the same file, with no ACL of its own: it inherits the ACL of the user's profile folder (the user, SYSTEM and Administrators) |
-| `sign` | Keychain, user presence required | Keystore, user authentication required | the same file; used only after a click in the app plus Touch ID or the login password where available | same, after a click | same, after a click |
+| `sign` | Keychain, user presence required (Face ID, Touch ID or the passcode; only while a passcode is set, so a phone without one cannot hold an account and is told before it signs in) | Keystore, user authentication required | the same file; used only after a click in the app plus Touch ID or the login password where available | same, after a click | same, after a click |
 | Tokens, nonces, invite secret | memory only | memory only | memory only | memory only | memory only |
 
 Why the user-only file on macOS computers? The desktop app is ad hoc

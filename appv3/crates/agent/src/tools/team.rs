@@ -146,6 +146,8 @@ impl Tool for DelegateTool {
         "team"
     }
     fn definition(&self) -> Value {
+        // The JSON holds the parameters only: the description lists the
+        // member profiles on disk, so it is built here.
         let mut d = appv3_tools::contract_definition("team").unwrap_or_default();
         if let Some(x) = d.pointer_mut("/function/description") {
             *x = Value::String(delegate_description());
@@ -158,11 +160,11 @@ impl Tool for DelegateTool {
         let workspace = ctx.workspace.clone().unwrap_or_default();
         let lead = self.lead_session_id.as_str();
         let res = match action {
-            DelegateAction::List => return Ok(ToolOutput::text(subagents::describe_subagents(lead))),
-            DelegateAction::Spawn => subagents::spawn_subagent(lead, &profile, &task, None, None, None, &workspace, &self.pool, &self.provider_factory).await,
+            DelegateAction::List => return Ok(ToolOutput::text(subagents::describe_subagents(lead, &self.pool).await)),
+            DelegateAction::Spawn => subagents::spawn_subagent(lead, &profile, &task, &workspace, &self.pool, &self.provider_factory).await,
             DelegateAction::Send => subagents::send_subagent_message(lead, &target, &task, &self.pool).await,
             DelegateAction::Interrupt => subagents::interrupt_subagent(lead, &target, &task, &self.pool).await,
-            DelegateAction::Stop => subagents::stop_subagent(lead, &target).await,
+            DelegateAction::Stop => subagents::stop_subagent(lead, &target, &self.pool).await,
         };
         Ok(ToolOutput::text(match res {
             Err(e) => format!("Error delegating to subagent: {e}"),

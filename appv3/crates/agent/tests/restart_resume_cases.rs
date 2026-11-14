@@ -147,7 +147,7 @@ async fn each_kind_of_cut_off_turn_gets_its_own_outcome() {
     let report_row = rows(&pool, &lead).await.into_iter().find(|r| r.extra_json().is_some_and(|e| e["from_agent"] == "worker#1")).expect("member report");
     assert_eq!(report_row.content.as_deref(), Some(member_notice("worker#1").as_str()));
     // It is listed again, stopped, and its cut-off call says a restart stopped it.
-    assert_eq!(appv3_agent::subagents::describe_subagents(&lead), "- worker#1: stopped by a server restart (send it a task to resume)");
+    assert_eq!(appv3_agent::subagents::describe_subagents(&lead, &pool).await, "- worker#1: stopped by a server restart (send it a task to resume)");
     let member_tool = rows(&pool, &member).await.into_iter().find(|r| r.role == "tool").expect("member's cut-off call healed");
     assert_eq!(member_tool.content.as_deref(), Some(RESTART_TOOL_RESULT));
 

@@ -81,7 +81,7 @@ async fn a_lead_with_a_working_subagent_is_not_evicted() {
     lead.handle_user_message(UserMessage { content: "build it".into(), session_id: sid.clone(), origin: "user".into(), ..Default::default() }).await.unwrap();
     tokio::time::timeout(Duration::from_secs(20), lead.wait_turn_finished()).await.expect("lead turn finishes");
 
-    subagents::spawn_subagent(&sid, "worker", "run the build", None, None, None, &ws, &pool, &factory).await.expect("member spawned");
+    subagents::spawn_subagent(&sid, "worker", "run the build", &ws, &pool, &factory).await.expect("member spawned");
     // The member's first model call asked for the build, which now blocks.
     wait_until("the member's build to start", || mock.calls.lock().unwrap().len() >= 2).await;
     assert_eq!(lead.state(), "idle");

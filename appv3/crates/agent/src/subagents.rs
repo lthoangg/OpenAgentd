@@ -22,6 +22,9 @@ pub const MAX_SUBAGENT_OUTPUT_CHARS: usize = 32_000;
 /// A member that has failed to reach its model for this long tells its lead
 /// once, so the lead can go on without it instead of waiting in silence.
 pub const STALL_NOTICE_AFTER: Duration = Duration::from_secs(120);
+/// How long a member whose report reached its lead stays in memory.
+/// Follow-ups mostly come right after a report.
+pub const UNLOAD_FINISHED_AFTER: Duration = Duration::from_secs(5 * 60);
 /// How long `interrupt` waits for the member's current step to wind down.
 const INTERRUPT_SETTLE: Duration = Duration::from_secs(15);
 
@@ -58,6 +61,8 @@ pub struct SubagentInstance {
     pub working_since: Option<std::time::Instant>,
     /// A server restart cut its turn off; the next message resumes it.
     pub stopped_by_restart: bool,
+    /// When its completed turn's report reached the lead; unset while it works.
+    reported_at: Option<std::time::Instant>,
 }
 
 impl SubagentInstance {
@@ -78,6 +83,7 @@ impl SubagentInstance {
             stall: None,
             working_since: (status == MemberStatus::Working).then(std::time::Instant::now),
             stopped_by_restart: false,
+            reported_at: None,
         }
     }
 
@@ -105,6 +111,18 @@ impl SubagentInstance {
         self.last_error = None;
         self.stall = None;
         self.working_since = Some(std::time::Instant::now());
+        self.reported_at = None;
+    }
+
+    /// Whether it can leave memory at `now`: its turn completed, the report
+    /// reached the lead [`UNLOAD_FINISHED_AFTER`] ago, and nobody is sending
+    /// it a message. A member that failed, was stopped or waits on its lead
+    /// stays: only the registry holds its error, question and resume state.
+    fn unload_due(&self, now: std::time::Instant) -> bool {
+        self.status == MemberStatus::Completed
+            && self.reported_at.is_some_and(|t| now.saturating_duration_since(t) >= UNLOAD_FINISHED_AFTER)
+            && !self.session.is_busy()
+            && self.session.user_message_lock.try_lock().is_ok()
     }
 }
 
@@ -112,8 +130,8 @@ impl SubagentInstance {
 /// and report delivery; the member's `AgentSession` owns execution (whether
 /// a turn runs). [`MemberStatus::as_str`] is the string the API, SSE
 /// `subagent_status` and `team(action='list')` show.
-/// A member missing from the registry (a restart emptied it, or it was never
-/// rehydrated) is listed as [`UNREGISTERED_MEMBER_STATUS`].
+/// A member missing from the registry (it was unloaded after it finished,
+/// or a restart emptied the registry) is listed as [`UNREGISTERED_MEMBER_STATUS`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemberStatus {
     Working,
@@ -127,8 +145,8 @@ pub enum MemberStatus {
     Stopped,
 }
 
-/// What `list_subagents` shows for a child session the registry does not
-/// hold: its work is over as far as this process knows.
+/// The status of a member the registry does not hold, in every list and when
+/// it is loaded back: its work is over as far as this process knows.
 pub const UNREGISTERED_MEMBER_STATUS: MemberStatus = MemberStatus::Completed;
 
 impl MemberStatus {
@@ -266,8 +284,10 @@ pub fn subagents_waiting_on_lead() -> HashSet<String> {
     r.live.values().flat_map(|m| m.values()).filter(|i| i.status == MemberStatus::WaitingLead).map(|i| db::codec::api_uuid(&i.session_id)).collect()
 }
 
-/// `prune_subagent_output`.
-pub fn prune_subagent_output(output: &str, child_session_id: &str, max_chars: usize) -> String {
+/// A report cut to what the lead receives: its head and tail around a notice
+/// that says how to get the rest. The whole text stays in the subagent's own
+/// conversation, which the lead cannot read, so it asks `handle` for it.
+pub fn prune_subagent_output(output: &str, handle: &str, max_chars: usize) -> String {
     let n = output.chars().count();
     if n <= max_chars {
         return output.to_string();
@@ -277,7 +297,7 @@ pub fn prune_subagent_output(output: &str, child_session_id: &str, max_chars: us
     let head = crate::util::head_chars(output, head_len).trim_end();
     let tail = if tail_len > 0 { crate::util::tail_chars(output, tail_len).trim_start() } else { "" };
     format!(
-        "{head}\n\n[... Output truncated: {n} chars total exceeds lead message budget of {max_chars} chars. Full deliverable preserved in subagent session {child_session_id} ...]\n\n{tail}"
+        "{head}\n\n[... Output truncated: {n} chars total exceeds lead message budget of {max_chars} chars. {handle} still has the whole text: ask it for the part you need with team(target='{handle}', task='...') ...]\n\n{tail}"
     )
 }
 
@@ -318,16 +338,9 @@ async fn reconcile_lead_instances(lead: &str, pool: &DbPool) -> anyhow::Result<(
     Ok(())
 }
 
-fn allocate_instance_handle(lead: &str, profile: &str, explicit: Option<&str>) -> String {
+fn allocate_instance_handle(lead: &str, profile: &str) -> String {
     let mut r = reg().lock().unwrap();
     let counters = r.counters.entry(lead.to_string()).or_default();
-    if let Some(name) = explicit.map(str::trim).filter(|s| !s.is_empty()) {
-        if let Some((p, n)) = parse_instance_handle(name) {
-            let cur = *counters.get(&p).unwrap_or(&1);
-            counters.insert(p, cur.max(n + 1));
-        }
-        return name.to_string();
-    }
     let next = *counters.get(profile).unwrap_or(&1);
     counters.insert(profile.to_string(), next + 1);
     format!("{profile}#{next}")
@@ -431,10 +444,11 @@ fn build_member_session(
     Ok(AgentSession::new(agent, Some(child_sid.to_string()), Some(workspace.to_string()), pool.clone(), factory.clone(), Some(lead.to_string())))
 }
 
-/// Bring back an earlier member of `lead` that is not in the live list (a
-/// server restart empties it), from its saved session: same handle, same
-/// session, full transcript. It is listed as stopped until a message starts
-/// it. `NotFound` when the lead never had a member by that handle.
+/// Bring back an earlier member of `lead` that is not in the live list (it
+/// was unloaded after it finished, or a server restart emptied the list),
+/// from its saved session: same handle, same session, full transcript. One a
+/// restart cut off is listed as stopped until a message starts it. `NotFound`
+/// when the lead never had a member by that handle.
 pub async fn rehydrate_member(lead: &str, handle: &str, pool: &DbPool, factory: &ProviderFactory, stopped_by_restart: bool) -> Result<String, SubagentError> {
     let handle = handle.trim();
     if with_instance(lead, handle, |_| ()).is_some() {
@@ -457,6 +471,7 @@ pub async fn rehydrate_member(lead: &str, handle: &str, pool: &DbPool, factory: 
         )));
     };
     let workspace = if row.workspace.is_empty() { std::env::current_dir().unwrap_or_default().display().to_string() } else { row.workspace.clone() };
+    let status = if stopped_by_restart { MemberStatus::Stopped } else { UNREGISTERED_MEMBER_STATUS };
     let thinking = row.thinking_level.clone().filter(|s| !s.is_empty()).or_else(|| cfg.thinking_level.clone().filter(|s| !s.is_empty()));
     let saved_model = row.model.clone().filter(|m| !m.is_empty());
     let session = match saved_model.as_deref().map(|m| build_member_session(handle, &cfg, m, thinking.as_deref(), &cfg.tools, &child_sid, &workspace, lead, pool, factory)) {
@@ -474,7 +489,7 @@ pub async fn rehydrate_member(lead: &str, handle: &str, pool: &DbPool, factory: 
         if live.contains_key(handle) {
             return Ok(handle.to_string());
         }
-        let mut inst = SubagentInstance::new(handle, &profile, lead, &child_sid, session, MemberStatus::Stopped);
+        let mut inst = SubagentInstance::new(handle, &profile, lead, &child_sid, session, status);
         inst.stopped_by_restart = stopped_by_restart;
         live.insert(handle.to_string(), inst);
         let order = r.order.entry(lead.to_string()).or_default();
@@ -483,11 +498,7 @@ pub async fn rehydrate_member(lead: &str, handle: &str, pool: &DbPool, factory: 
         }
     }
     tracing::info!("subagent_rehydrated lead={} handle={} session_id={}", lead, handle, child_sid);
-    publish_both(
-        lead,
-        "subagent_status",
-        json!({"lead_session_id": lead, "session_id": child_sid, "handle": handle, "status": MemberStatus::Stopped.as_str(), "workspace": workspace}),
-    );
+    publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child_sid, "handle": handle, "status": status.as_str(), "workspace": workspace}));
     Ok(handle.to_string())
 }
 
@@ -515,19 +526,9 @@ fn from_lead_extra(lead: &str) -> Map<String, Value> {
     extra
 }
 
-/// `spawn_subagent(..., wait=False)`.
-#[allow(clippy::too_many_arguments)] // mirrors v2's spawn_subagent signature
-pub async fn spawn_subagent(
-    lead: &str,
-    profile: &str,
-    task: &str,
-    name: Option<&str>,
-    tools_override: Option<Vec<String>>,
-    model_override: Option<String>,
-    workspace: &str,
-    pool: &DbPool,
-    factory: &ProviderFactory,
-) -> Result<Value, SubagentError> {
+/// Start a new member of `lead` on `task`, in the background: its profile
+/// gives the tools, and the model when it names one (else the lead's).
+pub async fn spawn_subagent(lead: &str, profile: &str, task: &str, workspace: &str, pool: &DbPool, factory: &ProviderFactory) -> Result<Value, SubagentError> {
     let err = |e: anyhow::Error| SubagentError::General(e.to_string());
     reconcile_lead_instances(lead, pool).await.map_err(err)?;
     {
@@ -548,13 +549,12 @@ pub async fn spawn_subagent(
         Some(r) => (r.model.clone(), Some(r.interaction_mode.clone()), r.thinking_level.clone()),
         None => (None, None, None),
     };
-    let handle = allocate_instance_handle(lead, profile, name);
+    let handle = allocate_instance_handle(lead, profile);
     let child_uuid = uuid::Uuid::now_v7();
     let child_sid = child_uuid.to_string();
-    let effective_model = model_override.clone().filter(|m| !m.is_empty()).unwrap_or_else(|| member_model(&cfg, lead_model));
+    let effective_model = member_model(&cfg, lead_model);
     let effective_thinking = cfg.thinking_level.clone().filter(|s| !s.is_empty()).or(lead_thinking);
-    let allowed = tools_override.unwrap_or_else(|| cfg.tools.clone());
-    let child = build_member_session(&handle, &cfg, &effective_model, effective_thinking.as_deref(), &allowed, &child_sid, workspace, lead, pool, factory)?;
+    let child = build_member_session(&handle, &cfg, &effective_model, effective_thinking.as_deref(), &cfg.tools, &child_sid, workspace, lead, pool, factory)?;
 
     let clean_task = task.split_whitespace().collect::<Vec<_>>().join(" ");
     let title = format!("{handle}: {}", clean_task.chars().take(60).collect::<String>());
@@ -593,8 +593,6 @@ pub async fn spawn_subagent(
             content: format!("[Task from Lead]: {task}"),
             session_id: child_sid.clone(),
             workspace: Some(workspace.to_string()),
-            model: if model_override.is_some() { Some(effective_model.clone()) } else { None },
-            model_provided: model_override.is_some(),
             origin: "agent".into(),
             extra: Some(from_lead_extra(lead)),
             ..Default::default()
@@ -659,7 +657,12 @@ pub async fn send_subagent_message(lead: &str, member_id: &str, message: &str, p
     } else {
         // No turn runs, so no close can race this mark; the new turn's own
         // close comes after it.
-        with_instance(lead, &handle, SubagentInstance::start_follow_up);
+        if with_instance(lead, &handle, SubagentInstance::start_follow_up).is_none() {
+            // It left the list between the lookup and the lock (unloaded, or
+            // its session was deleted): look it up again.
+            drop(_g);
+            return Box::pin(send_subagent_message(lead, &handle, message, pool)).await;
+        }
         if let Err(e) = inst_session
             .handle_user_message(UserMessage { content, session_id: child_sid.clone(), origin: "agent".into(), extra: Some(from_lead_extra(lead)), ..Default::default() })
             .await
@@ -673,8 +676,14 @@ pub async fn send_subagent_message(lead: &str, member_id: &str, message: &str, p
 
 /// Stop one member's turn. It sends no report, and keeps its conversation:
 /// the next message sent to it resumes with full context.
-pub async fn stop_subagent(lead: &str, member_id: &str) -> Result<Value, SubagentError> {
-    let handle = resolve_instance(lead, member_id)?;
+pub async fn stop_subagent(lead: &str, member_id: &str, pool: &DbPool) -> Result<Value, SubagentError> {
+    let handle = match resolve_instance(lead, member_id) {
+        // Unloaded after it finished: nothing of it runs.
+        Err(SubagentError::NotFound(_)) if saved_handles(lead, pool).await.iter().any(|h| h == member_id.trim()) => {
+            return Ok(json!({"status": UNREGISTERED_MEMBER_STATUS.as_str(), "member_id": member_id.trim(), "was_running": false}));
+        }
+        other => other?,
+    };
     let (session, child, status) =
         with_instance(lead, &handle, |i| (i.session.clone(), i.session_id.clone(), i.status)).ok_or_else(|| SubagentError::NotFound(format!("Member '{member_id}' not found.")))?;
     let ran = session.handle_stop().await;
@@ -836,17 +845,32 @@ impl Hook for MemberStallHook {
     }
 }
 
-/// One line per member the lead can address, for `team(action='list')`.
-pub fn describe_subagents(lead: &str) -> String {
+/// The handle of every member `lead` ever had, oldest first, from their
+/// saved sessions.
+async fn saved_handles(lead: &str, pool: &DbPool) -> Vec<String> {
+    match db::list_child_sessions(pool, &[lead.to_string()]).await {
+        Ok(rows) => rows.into_iter().filter_map(|c| c.agent_name).filter(|h| parse_instance_handle(h).is_some()).collect(),
+        Err(e) => {
+            tracing::warn!("subagent_saved_handles_failed lead={} error={}", lead, e);
+            vec![]
+        }
+    }
+}
+
+/// One line per member the lead can address, for `team(action='list')`,
+/// oldest first: the loaded ones with their state, and the ones no longer in
+/// memory as done (a message to one loads it back).
+pub async fn describe_subagents(lead: &str, pool: &DbPool) -> String {
+    let saved = saved_handles(lead, pool).await;
     let r = reg().lock().unwrap();
-    let Some(live) = r.live.get(lead).filter(|m| !m.is_empty()) else {
-        return "No subagents yet.".into();
-    };
+    let none = BTreeMap::new();
+    let live = r.live.get(lead).unwrap_or(&none);
     let order = r.order.get(lead).cloned().unwrap_or_default();
-    let handles = order.iter().filter(|h| live.contains_key(*h)).chain(live.keys().filter(|h| !order.contains(h)));
+    let unsaved = order.iter().chain(live.keys().filter(|h| !order.contains(h))).filter(|h| live.contains_key(*h) && !saved.contains(h));
+    let handles = saved.iter().chain(unsaved);
     let lines: Vec<String> = handles
-        .filter_map(|h| live.get(h))
-        .map(|i| {
+        .map(|h| {
+            let Some(i) = live.get(h) else { return format!("- {h}: done (send it a task to continue)") };
             let state = match i.status {
                 MemberStatus::Working => {
                     let since = i.working_since.map(|t| format!(" for {}", crate::retry::format_duration(t.elapsed().as_secs_f64()))).unwrap_or_default();
@@ -871,7 +895,38 @@ pub fn describe_subagents(lead: &str) -> String {
             format!("- {}: {state}", i.handle)
         })
         .collect();
+    if lines.is_empty() {
+        return "No subagents yet.".into();
+    }
     lines.join("\n")
+}
+
+/// Drop from memory every member that can leave it at `now`
+/// ([`SubagentInstance::unload_due`]), and return how many left. Its saved
+/// session stays, so it is still listed as done and a message to its handle
+/// loads it back ([`rehydrate_member`]). Handle counters stay too: a new
+/// member never takes an earlier one's handle.
+pub async fn unload_finished(now: std::time::Instant) -> usize {
+    let dropped: Vec<SubagentInstance> = {
+        let mut guard = reg().lock().unwrap();
+        let r = &mut *guard;
+        let mut out = vec![];
+        for (lead, members) in r.live.iter_mut() {
+            let due: Vec<String> = members.iter().filter(|(_, i)| i.unload_due(now)).map(|(h, _)| h.clone()).collect();
+            if let Some(order) = r.order.get_mut(lead) {
+                order.retain(|h| !due.contains(h));
+            }
+            out.extend(due.iter().filter_map(|h| members.remove(h)));
+        }
+        r.live.retain(|_, members| !members.is_empty());
+        out
+    };
+    for i in &dropped {
+        // Ends its timers, so nothing keeps the session alive.
+        i.session.stop().await;
+        tracing::info!("subagent_unloaded lead={} handle={} session_id={}", i.lead_session_id, i.handle, i.session_id);
+    }
+    dropped.len()
 }
 
 /// `deliver_message_to_lead`.
@@ -943,6 +998,7 @@ pub async fn on_subagent_turn_completed(lead: &str, child: &str, status: &str, w
         i.status = next;
         i.stall = None;
         i.working_since = (next == MemberStatus::Working).then(std::time::Instant::now);
+        i.reported_at = None;
         if end == MemberStatus::Error {
             if let Some(m) = error.and_then(|e| e.get("message")).and_then(Value::as_str).filter(|m| !m.is_empty()) {
                 i.last_error = Some(m.to_string());
@@ -976,9 +1032,14 @@ pub async fn on_subagent_turn_completed(lead: &str, child: &str, status: &str, w
         find_by_session(lead, child, |i| i.result_delivered = true);
         failure_report(&effective_handle, error, inst.as_ref().and_then(|i| i.last_error.as_deref()))
     };
-    let deliverable = prune_subagent_output(&output, child, MAX_SUBAGENT_OUTPUT_CHARS);
-    if let Err(e) = deliver_message_to_lead(lead, &effective_handle, &deliverable, pool).await {
-        tracing::warn!("Failed to deliver subagent result to lead: {}", e);
+    let deliverable = prune_subagent_output(&output, &effective_handle, MAX_SUBAGENT_OUTPUT_CHARS);
+    match deliver_message_to_lead(lead, &effective_handle, &deliverable, pool).await {
+        // From here the lead has its answer: the member may leave memory.
+        Ok(()) if end == MemberStatus::Completed => {
+            find_by_session(lead, child, |i| i.reported_at = Some(std::time::Instant::now()));
+        }
+        Ok(()) => {}
+        Err(e) => tracing::warn!("Failed to deliver subagent result to lead: {}", e),
     }
 }
 
@@ -1132,12 +1193,16 @@ mod tests {
     fn handles_and_pruning() {
         assert_eq!(parse_instance_handle("explorer#3"), Some(("explorer".into(), 3)));
         assert_eq!(parse_instance_handle("explorer"), None);
-        assert_eq!(allocate_instance_handle("L", "explorer", None), "explorer#1");
-        assert_eq!(allocate_instance_handle("L", "explorer", Some("explorer#5")), "explorer#5");
-        assert_eq!(allocate_instance_handle("L", "explorer", None), "explorer#6");
+        assert_eq!(allocate_instance_handle("L", "explorer"), "explorer#1");
+        assert_eq!(allocate_instance_handle("L", "explorer"), "explorer#2");
+        assert_eq!(allocate_instance_handle("L", "worker"), "worker#1", "each profile counts on its own");
         let long = "x".repeat(40_000);
-        let p = prune_subagent_output(&long, "sid", MAX_SUBAGENT_OUTPUT_CHARS);
+        let p = prune_subagent_output(&long, "explorer#1", MAX_SUBAGENT_OUTPUT_CHARS);
         assert!(p.contains("Output truncated: 40000 chars total"));
+        // The lead cannot open a subagent's session, so the notice says how
+        // to get the rest instead of pointing there.
+        assert!(p.contains("team(target='explorer#1', task="), "{p}");
+        assert!(!p.contains("session"), "{p}");
         assert_eq!(resolve_instance("L", "nobody").unwrap_err().to_string(), "Member 'nobody' not found. Live instances: None.");
     }
 
@@ -1223,12 +1288,12 @@ mod tests {
         store().init_turn(&child, true);
         assert!(store().is_running(&child));
 
-        let out = stop_subagent(lead, "explorer#1").await.unwrap();
+        let out = stop_subagent(lead, "explorer#1", &pool).await.unwrap();
 
         assert_eq!(out["status"], json!("stopped"));
         assert!(!store().is_running(&child), "the waiting member's turn was left open");
         assert!(!subagents_waiting_on_lead().contains(&db::codec::api_uuid(&child)));
-        assert_eq!(describe_subagents(lead), "- explorer#1: stopped (send it a task to resume)");
+        assert_eq!(describe_subagents(lead, &pool).await, "- explorer#1: stopped (send it a task to resume)");
     }
 
     #[tokio::test]
@@ -1239,7 +1304,7 @@ mod tests {
         let p2 = provider.clone();
         let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
         let lead = "lead-list";
-        assert_eq!(describe_subagents(lead), "No subagents yet.");
+        assert_eq!(describe_subagents(lead, &pool).await, "No subagents yet.");
         let add = |handle: &str, status: MemberStatus, edit: &dyn Fn(&mut SubagentInstance)| {
             let agent = Agent::new(provider.clone(), handle, "", vec![], None);
             let session = AgentSession::new(agent, Some(format!("{handle}-sid")), None, pool.clone(), factory.clone(), Some(lead.into()));
@@ -1256,13 +1321,55 @@ mod tests {
         add("explorer#5", MemberStatus::Completed, &|_| {});
 
         assert_eq!(
-            describe_subagents(lead),
+            describe_subagents(lead, &pool).await,
             "- explorer#2: working for 0s, stalled: it has not reached m for 2 min (HTTP 503)\n\
              - explorer#10: waiting for your answer: Which branch?\n\
              - explorer#3: failed: Rate limited.\n\
              - explorer#4: stopped (send it a task to resume)\n\
              - explorer#5: done (report delivered)"
         );
+    }
+
+    /// Only a member whose completed turn's report reached the lead long
+    /// enough ago may leave memory. The registry is the only place that
+    /// holds a failed member's error, a waiting one's question and a stopped
+    /// one's resume state, so those stay loaded.
+    #[tokio::test]
+    async fn only_a_member_that_reported_long_enough_ago_may_be_unloaded() {
+        let root = tempfile::tempdir().unwrap();
+        let pool = db::create_pool(root.path().join("oad.db")).await.unwrap();
+        let provider: Arc<dyn appv3_providers::LlmProvider> = Arc::new(appv3_providers::mock::MockProvider::new(vec![]));
+        let p2 = provider.clone();
+        let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
+        let reported = std::time::Instant::now();
+        let member = |status: MemberStatus, reported_at: Option<std::time::Instant>| {
+            let agent = Agent::new(provider.clone(), "explorer#1", "", vec![], None);
+            let session = AgentSession::new(agent, Some("explorer#1-sid".into()), None, pool.clone(), factory.clone(), Some("lead-unload".into()));
+            let mut inst = SubagentInstance::new("explorer#1", "explorer", "lead-unload", "explorer#1-sid", session, status);
+            inst.reported_at = reported_at;
+            inst
+        };
+        let due = reported + UNLOAD_FINISHED_AFTER;
+        let done = member(MemberStatus::Completed, Some(reported));
+        assert!(!done.unload_due(due - Duration::from_secs(1)), "unloaded before the wait passed");
+        assert!(done.unload_due(due));
+        assert!(!member(MemberStatus::Completed, None).unload_due(due), "its report has not reached the lead");
+        for status in [MemberStatus::Working, MemberStatus::WaitingLead, MemberStatus::Error, MemberStatus::Stopped] {
+            assert!(!member(status, Some(reported)).unload_due(due), "{status:?}");
+        }
+        // A turn is running, or a message is on its way in.
+        let busy = member(MemberStatus::Completed, Some(reported));
+        busy.session.set_state("working");
+        assert!(!busy.unload_due(due));
+        let receiving = member(MemberStatus::Completed, Some(reported));
+        let sender = receiving.session.user_message_lock.lock().await;
+        assert!(!receiving.unload_due(due));
+        drop(sender);
+        assert!(receiving.unload_due(due));
+        // New work clears the report time.
+        let mut resumed = member(MemberStatus::Completed, Some(reported));
+        resumed.start_follow_up();
+        assert_eq!(resumed.reported_at, None);
     }
 
     /// A member is told the limit the lead's copy is actually cut at, and
@@ -1306,6 +1413,7 @@ mod tests {
                 stall: None,
                 working_since: None,
                 stopped_by_restart: false,
+                reported_at: None,
             };
             reg().lock().unwrap().live.entry(lead.into()).or_default().insert(handle.into(), inst);
         };
@@ -1362,6 +1470,7 @@ mod tests {
             stall: None,
             working_since: None,
             stopped_by_restart: false,
+            reported_at: None,
         };
         reg().lock().unwrap().live.entry(lead.clone()).or_default().insert("worker#1".into(), inst);
 
@@ -1406,6 +1515,7 @@ mod tests {
             stall: None,
             working_since: None,
             stopped_by_restart: false,
+            reported_at: None,
         };
         reg().lock().unwrap().live.entry(lead.into()).or_default().insert("worker#1".into(), inst);
 
@@ -1443,6 +1553,7 @@ mod tests {
             stall: None,
             working_since: None,
             stopped_by_restart: false,
+            reported_at: None,
         };
         reg().lock().unwrap().live.entry(lead.into()).or_default().insert("explorer#1".into(), inst);
         let reported = || find_by_session(lead, &child_sid, |i| i.last_result.clone()).flatten();
@@ -1490,6 +1601,7 @@ mod tests {
             stall: None,
             working_since: None,
             stopped_by_restart: false,
+            reported_at: None,
         };
         reg().lock().unwrap().live.entry(lead.into()).or_default().insert("explorer#1".into(), inst);
         assert!(subagents_waiting_on_lead().contains(&child_sid));

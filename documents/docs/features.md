@@ -2676,6 +2676,19 @@ executes tools, manages its task list, and inspects workspace repositories.
   of "Subagent turn failed with error." One that can't reach its model (out of quota,
   or retrying for 2 minutes) tells the lead once, so the lead can stop it and go on.
   Stopped subagents show as `stopped` rather than `error`.
+- **Finished subagents leave memory** `[v3.56.0]` — a subagent whose turn completed
+  is unloaded 5 minutes after its report reached the lead; before, it stayed loaded
+  until its lead was deleted. `team(action='list')` and the app still show it as
+  done, and a message to its handle (`team(target='explorer#1', task='…')`) loads the
+  same session back with its whole conversation. A subagent that failed, was stopped
+  or waits on the lead's answer stays loaded.
+  - After a restart, the list also shows the lead's earlier subagents; it used to
+    say "No subagents yet."
+  - A profile name alone (`target='explorer'`) finds only a loaded subagent; the
+    handle always works.
+  - A report longer than 32,000 characters is cut, and its notice now tells the
+    lead to ask the subagent for the rest by its handle. It used to point at the
+    subagent's session, which the lead cannot read.
 - **Shorter tool names** `[v3.30.0]` — `schedule_task`, `send_to_workspace`,
   `delegate` and `todo_manage` are now `schedule`, `workspace`, `team` and `todo`,
   with the same arguments. A session from before the rename that calls a former

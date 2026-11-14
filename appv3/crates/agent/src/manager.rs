@@ -201,6 +201,7 @@ pub async fn get_or_start_agent_session(workspace: &str, session_id: Option<&str
     let _sg = start_lock.lock().await;
     let now = Instant::now();
     evict_idle_sessions(Some(now)).await;
+    crate::subagents::unload_finished(now).await;
     if let Some(s) = m.sessions.lock().unwrap().get(&key).cloned() {
         m.last_used.lock().unwrap().insert(key, now);
         return Ok(Some(s));

@@ -27,6 +27,15 @@ puts the marker behind `+` or `-`. The envelope now ends at the last line
 that starts with the marker, no longer at its last mention anywhere in the
 text.
 
+A member whose turn completed leaves the in-memory registry 5 minutes after
+its report reached the lead. `GET /api/agent/sessions/{session_id}/subagents`
+lists it as `completed`, as it already did for any member the registry does
+not hold, and a message to its handle rebuilds it from its session row. A
+member rebuilt this way announces `subagent_status` `completed`; one a
+restart cut off still announces `stopped`. `team(action='list')` reads the
+lead's child sessions as well as the registry. There is no schema or on-disk
+format change.
+
 ### Scan to add (v3.55.0)
 
 `POST /api/cloud/login` now also shows a QR code for a phone that approves

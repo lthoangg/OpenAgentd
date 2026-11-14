@@ -80,7 +80,7 @@ async fn shutdown_waits_for_a_member_waiting_on_quota() {
     lead.handle_user_message(UserMessage { content: "build it".into(), session_id: sid.clone(), origin: "user".into(), ..Default::default() }).await.unwrap();
     tokio::time::timeout(Duration::from_secs(20), lead.wait_turn_finished()).await.expect("lead turn finishes");
 
-    subagents::spawn_subagent(&sid, "worker", "run the build", None, None, None, &ws, &pool, &factory).await.expect("member spawned");
+    subagents::spawn_subagent(&sid, "worker", "run the build", &ws, &pool, &factory).await.expect("member spawned");
     let member = subagents::with_instance(&sid, "worker#1", |i| i.session.clone()).expect("member registered");
     // The member's first model call got the 429 and is now waiting an hour.
     wait_until("the member's model call", || mock.calls.lock().unwrap().len() >= 2).await;

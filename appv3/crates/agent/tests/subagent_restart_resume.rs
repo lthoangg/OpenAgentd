@@ -84,7 +84,7 @@ async fn a_member_cut_off_by_a_restart_resumes_by_its_handle() {
     tokio::time::timeout(Duration::from_secs(20), lead.wait_turn_finished()).await.expect("lead turn finishes");
     drop(lead);
 
-    subagents::spawn_subagent(&sid, "worker", "run the build", None, None, None, &ws, &pool, &factory).await.expect("member spawned");
+    subagents::spawn_subagent(&sid, "worker", "run the build", &ws, &pool, &factory).await.expect("member spawned");
     let member_sid = subagents::with_instance(&sid, "worker#1", |i| i.session_id.clone()).expect("member registered");
     wait_until("the member's hanging model call", async || calls() >= 3).await;
 
@@ -106,7 +106,7 @@ async fn a_member_cut_off_by_a_restart_resumes_by_its_handle() {
     let notice = lead_rows.iter().find(|r| r.extra_json().is_some_and(|e| e["from_agent"] == "worker#1")).expect("restart notice");
     assert_eq!(notice.content.as_deref(), Some(member_notice("worker#1").as_str()));
     assert!(notice.content.as_deref().unwrap().contains("team(target='worker#1', task='continue')"));
-    assert_eq!(subagents::describe_subagents(&sid), "- worker#1: stopped by a server restart (send it a task to resume)");
+    assert_eq!(subagents::describe_subagents(&sid, &pool).await, "- worker#1: stopped by a server restart (send it a task to resume)");
     if let Some(l) = manager::find_live_session(&ws, Some(&sid)) {
         tokio::time::timeout(Duration::from_secs(20), l.wait_turn_finished()).await.expect("lead turn finishes");
     }

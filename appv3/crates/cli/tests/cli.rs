@@ -161,6 +161,25 @@ fn an_unknown_mode_is_refused() {
     assert!(stderr(&o).contains("OPENAGENTD_ENV"), "{}", stderr(&o));
 }
 
+/// `server start --cloud` starts the server, then signs in as `agentd cloud
+/// login` does; the server keeps running whatever the sign-in's outcome.
+#[test]
+fn start_with_cloud_signs_in_once_the_server_answers() {
+    let sb = Sandbox::new();
+    let cloud = denying_cloud();
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port().to_string();
+    let env = [("OPENAGENTD_CLOUD_API", cloud.as_str()), ("OPENAGENTD_CLOUD_ACCOUNT", "https://account.openagentd.dev")];
+    let o = sb.run_with(&["server", "start", "--port", &port, "--cloud"], &env);
+    let running = sb.run(&["server", "status", "--port", &port]);
+    let _ = sb.run(&["server", "stop"]);
+    let out = stdout(&o);
+    assert!(out.contains("agentd server stop"), "the server started first:\n{out}{}", stderr(&o));
+    assert!(out.contains("https://account.openagentd.dev/device?code=BCDF-GHJK"), "then the sign-in:\n{out}");
+    assert!(out.contains("denied"), "{out}");
+    assert!(!out.contains("From anywhere:"), "no hint next to the sign-in itself:\n{out}");
+    assert_eq!(code(&running), 0, "still running after the sign-in:\n{}", stdout(&running));
+}
+
 #[test]
 fn doctor_moves_server_settings_out_of_dotenv_and_names_the_rest() {
     let sb = Sandbox::new();

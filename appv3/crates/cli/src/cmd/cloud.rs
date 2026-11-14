@@ -205,6 +205,23 @@ fn roles_line(roles: openagentd_cloud::keys::Roles) -> &'static str {
 }
 
 fn login(roles: CloudRoles) -> Result<ExitCode> {
+    login_with(roles)
+}
+
+/// `agentd server start --cloud`: sign in as `agentd cloud login` does
+/// (served to your devices, no client role), after the server answers.
+/// A computer already signed in just says so.
+pub(crate) fn login_after_start() -> Result<ExitCode> {
+    login_with(CloudRoles { client: false, no_server: false })
+}
+
+/// Whether this computer is in an account (its keys are stored). A store
+/// that cannot be read counts as not signed in: only a hint depends on it.
+pub(crate) fn signed_in() -> bool {
+    idstore::load(&identity_store()).ok().flatten().is_some_and(|id| id.account_id.is_some())
+}
+
+fn login_with(roles: CloudRoles) -> Result<ExitCode> {
     let roles = roles.roles();
     let store = identity_store();
     if already_signed_in(&store)? {

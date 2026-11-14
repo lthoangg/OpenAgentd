@@ -72,7 +72,32 @@ fn exe() -> std::path::PathBuf {
 }
 
 pub fn start(args: &StartArgs) -> Result<ExitCode> {
-    start_daemon(args).map(code)
+    let ok = start_daemon(args)?;
+    after_start(args, ok)
+}
+
+/// `--cloud` signs in once the server answers (`agentd cloud login`, which
+/// tells the running server); without it, a person not signed in is told
+/// how, once.
+fn after_start(args: &StartArgs, ok: bool) -> Result<ExitCode> {
+    if !ok {
+        return Ok(code(false));
+    }
+    if args.cloud {
+        return super::cloud::login_after_start();
+    }
+    use std::io::IsTerminal;
+    if cloud_hint(args.cloud, super::cloud::signed_in(), std::io::stdout().is_terminal()) {
+        crate::ui::next("From anywhere:", "agentd cloud login");
+        println!();
+    }
+    Ok(code(true))
+}
+
+/// Whether to suggest `agentd cloud login` after a start: only to a person
+/// at a terminal, not signed in, who did not ask for `--cloud`.
+fn cloud_hint(cloud: bool, signed_in: bool, tty: bool) -> bool {
+    !cloud && !signed_in && tty
 }
 
 /// Starts the server and waits for it to answer. `Ok(false)` when it died
@@ -315,7 +340,7 @@ pub fn restart(args: &StartArgs) -> Result<ExitCode> {
         stop()?;
     }
     let ok = start_daemon(args)?;
-    Ok(code(ok))
+    after_start(args, ok)
 }
 
 /// `(status, JSON body)`; status 0 when the server did not answer.
@@ -503,6 +528,14 @@ fn tail_start(data: &[u8], lines: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn suggests_the_account_only_to_a_person_not_signed_in() {
+        assert!(cloud_hint(false, false, true));
+        assert!(!cloud_hint(true, false, true), "--cloud signs in instead");
+        assert!(!cloud_hint(false, true, true), "already signed in");
+        assert!(!cloud_hint(false, false, false), "a script reads the output");
+    }
 
     #[test]
     fn tail_start_matches_tail_n() {

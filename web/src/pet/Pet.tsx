@@ -40,6 +40,7 @@ import {
   fallCapped,
   fallMs,
   fallTarget,
+  fitEveryMs,
   followLedge,
   frameCovers,
   growFrame,
@@ -106,7 +107,7 @@ const FRAME_EVENT = 'pet-frame'
 /** A press that moves less than this is a click, not a drag. */
 const DRAG_SLOP = 4
 const REACTION_MS: Record<PetReaction, number> = { hop: 1700, droop: 2500, look: 2000 }
-/** How often the hit areas are re-sent while the pet walks. */
+/** How often the hit areas are re-sent while the pet jumps or falls. */
 const FIT_EVERY_MS = 100
 /** How long the pet's reply to a poke stays up. */
 const POKE_SAY_MS = 2500
@@ -250,6 +251,9 @@ export function Pet() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [zoom, setZoom] = useState<ZoomPhase | null>(null)
   const [pointer, setPointer] = useState<PointerAt>(null)
+  /** The shell only sends the pointer while it is near the pet. */
+  const pointerNearRef = useRef(false)
+  pointerNearRef.current = pointer !== null
   const [windows, setWindows] = useState<OtherWindow[]>([])
   /** Where a jump is: looking, crouching, in the air or landing; null when it is not jumping. */
   const [jumpPhase, setJumpPhase] = useState<JumpPhase | null>(null)
@@ -1097,7 +1101,7 @@ export function Pet() {
       const [lo, hi] = walkRange()
       xRef.current = lo + clampX(xRef.current + move - lo, hi - lo, petWidth)
       if (petRef.current) petRef.current.style.transform = `translate(${xRef.current}px, ${yRef.current}px)`
-      if (t - lastFit > FIT_EVERY_MS) {
+      if (t - lastFit > fitEveryMs(pointerNearRef.current)) {
         lastFit = t
         reportFit(false)
       }

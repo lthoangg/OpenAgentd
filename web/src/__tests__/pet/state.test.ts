@@ -13,6 +13,7 @@ import {
   bubbleReducer,
   clampX,
   clampY,
+  fitEveryMs,
   followLedge,
   ledges,
   nextTarget,
@@ -476,5 +477,19 @@ describe('followLedge', () => {
 
   it('falls when its window closes, shrinks away or is covered', () => {
     expect(followLedge({ id: 1, ledgeX: 100 }, 200, [{ id: 2, x: 100, y: 300, width: 600 }], pet)).toBeNull()
+  })
+})
+
+// A walking pet sent its place ten times a second, pointer near or not; the
+// shell only looks four times a second while the pointer is far.
+describe('fitEveryMs', () => {
+  it('reports as often as the shell reads the pointer while it is far, and faster near the pet', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { fileURLToPath } = await import('node:url')
+    const rust = readFileSync(fileURLToPath(new URL('../../../../desktop/src-tauri/src/pet.rs', import.meta.url)), 'utf8')
+    const pollFar = Number(/const POLL_FAR: Duration = Duration::from_millis\((\d+)\);/.exec(rust)?.[1])
+    expect(pollFar).toBeGreaterThan(0)
+    expect(fitEveryMs(false)).toBe(pollFar)
+    expect(fitEveryMs(true)).toBe(100)
   })
 })

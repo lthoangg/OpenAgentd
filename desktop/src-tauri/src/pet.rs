@@ -569,6 +569,17 @@ pub fn hidden_dock_height(autohide: Option<&str>, orientation: Option<&str>, til
     Some(tile.clamp(16.0, 128.0) + PADDING)
 }
 
+/// [`hidden_dock_height`] from a reader of the Dock's preferences (`read`
+/// runs one `defaults` process a key), asking only as far as the answer
+/// needs: a Dock that stays up, as most do, is asked one thing.
+pub fn read_hidden_dock_height(mut read: impl FnMut(&str) -> Option<String>) -> Option<f64> {
+    let autohide = read("autohide");
+    hidden_dock_height(autohide.as_deref(), None, None)?;
+    let orientation = read("orientation");
+    hidden_dock_height(autohide.as_deref(), orientation.as_deref(), None)?;
+    hidden_dock_height(autohide.as_deref(), orientation.as_deref(), read("tilesize").as_deref())
+}
+
 /// The self-hiding bar's height, as last read off the main thread
 /// ([`refresh_hidden_bar`]).
 fn hidden_bar() -> &'static Mutex<Option<f64>> {
@@ -1231,6 +1242,15 @@ pub fn pet_state(window: WebviewWindow) -> Result<PetView, String> {
     Ok(view())
 }
 
+/// Whether a `pet_fit` needs the pointer read at once instead of at the
+/// next poll: it is the first to name a clickable area, a drag started or
+/// ended, or the window moved. A walking pet reports its place about ten
+/// times a second; that alone waits for the poll (at most [`POLL_FAR`]
+/// away, [`POLL_NEAR`] with the pointer close).
+pub fn fit_needs_poll(first: bool, was_capture: bool, capture: bool, frame_moved: bool) -> bool {
+    first || was_capture != capture || frame_moved
+}
+
 /// The page's clickable areas (the pet and its bubbles) in area pixels,
 /// whether a drag is under way, and the frame (area pixels) the window
 /// should have now: the lane the pet needs, or the whole area while it is
@@ -1242,11 +1262,14 @@ pub fn pet_fit(app: AppHandle, window: WebviewWindow, rects: Vec<HitRect>, captu
     }
     let next = {
         let mut s = shared().lock().unwrap();
+        let (first, was_capture) = (s.hits.is_empty(), s.capture);
         s.hits = rects.into_iter().filter(HitRect::is_valid).take(16).collect();
         s.capture = capture;
         let next = s.strip.filter(|_| frame.is_some()).map(|work| window_frame(frame.as_ref(), &work, capture));
-        next.filter(|next| s.window.is_some_and(|now| now != *next)).inspect(|next| s.window = Some(*next))
+        let next = next.filter(|next| s.window.is_some_and(|now| now != *next)).inspect(|next| s.window = Some(*next));
+        (next, fit_needs_poll(first && !s.hits.is_empty(), was_capture, capture, next.is_some()))
     };
+    let (next, poll) = next;
     if let Some(next) = next {
         let handle = app.clone();
         let _ = app.run_on_main_thread(move || {
@@ -1256,7 +1279,9 @@ pub fn pet_fit(app: AppHandle, window: WebviewWindow, rects: Vec<HitRect>, captu
             emit_frame(&handle);
         });
     }
-    wake().notify_one();
+    if poll {
+        wake().notify_one();
+    }
 }
 
 /// Open the session a bubble is about, in an app window on its server.
@@ -1745,17 +1770,17 @@ mod native {
     }
 
     /// The Dock's height while it hides itself at the bottom. Blocking:
-    /// runs `defaults`, so call it off the main thread.
+    /// runs `defaults` (once for a Dock that stays up), so call it off the
+    /// main thread.
     pub fn hidden_bar_height() -> Option<f64> {
-        let read = |key: &str| {
+        super::read_hidden_dock_height(|key| {
             std::process::Command::new("/usr/bin/defaults")
                 .args(["read", "com.apple.dock", key])
                 .output()
                 .ok()
                 .filter(|out| out.status.success())
                 .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
-        };
-        super::hidden_dock_height(read("autohide").as_deref(), read("orientation").as_deref(), read("tilesize").as_deref())
+        })
     }
 }
 
@@ -2396,6 +2421,34 @@ mod tests {
         assert_eq!(hidden_dock_height(Some("1"), Some("left"), Some("35")), None, "at a side");
         assert_eq!(hidden_dock_height(Some("1"), None, Some("nonsense")), Some(66.0));
         assert_eq!(hidden_dock_height(Some("1"), None, Some("999")), Some(146.0), "clamped");
+    }
+
+    // Every report used to run a poll on the main thread: ten a second
+    // while the pet walked, with the pointer nowhere near it.
+    #[test]
+    fn a_walking_pets_reports_wait_for_the_next_poll() {
+        assert!(!fit_needs_poll(false, false, false, false), "the pet only moved along its lane");
+        assert!(fit_needs_poll(true, false, false, false), "the first clickable area");
+        assert!(fit_needs_poll(false, false, true, false), "a drag started: take clicks everywhere now");
+        assert!(fit_needs_poll(false, true, false, false), "a drag ended");
+        assert!(fit_needs_poll(false, false, false, true), "the window moved under the pointer");
+    }
+
+    #[test]
+    fn the_hidden_docks_height_reads_only_what_it_needs() {
+
+        // Most Docks stay up: that used to cost three processes every 15 s.
+        let read_with = |prefs: &[(&str, &str)]| {
+            let mut asked = Vec::new();
+            let height = read_hidden_dock_height(|key| {
+                asked.push(key.to_string());
+                prefs.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string())
+            });
+            (height, asked)
+        };
+        assert_eq!(read_with(&[("autohide", "0"), ("tilesize", "35")]), (None, vec!["autohide".to_string()]), "a Dock that stays up is asked one thing");
+        assert_eq!(read_with(&[("autohide", "1"), ("orientation", "left")]).1, ["autohide", "orientation"], "at a side its size does not matter");
+        assert_eq!(read_with(&[("autohide", "1"), ("tilesize", "35")]), (Some(53.0), vec!["autohide".to_string(), "orientation".to_string(), "tilesize".to_string()]));
     }
 
     #[test]

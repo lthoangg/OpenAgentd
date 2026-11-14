@@ -3437,6 +3437,12 @@ agent against it.
   hunk line marked `-` or `+`, so every line reads as unchanged context — is
   rejected with guidance instead of reporting success without writing,
   which previously sent the agent into a silent retry loop `[v2.0.0]`.
+  A patch that leaves out the closing `*** End Patch` line is applied
+  `[v3.56.0]`: models sometimes omit it, and every other check still runs. A
+  reply cut off at the output limit never reaches a tool, so the line guarded
+  nothing. Only a line that starts with the marker closes a patch, so text
+  that mentions it inside a line stays content; a last line of
+  `+*** End Patch` is refused, with a message saying where the marker goes.
   A hunk can narrow its search after a unique literal line with
   `@@ in: <anchor>`; ambiguous or missing anchors, and ambiguous targets
   within that scope, are rejected rather than selecting a match `[v2.5.0]`.

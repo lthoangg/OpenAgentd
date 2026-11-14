@@ -53,7 +53,10 @@ pub fn clean_patch_text(t: &str) -> String {
         }
         text = lines.join("\n").trim().to_string();
     }
-    let (b, e) = (text.find("*** Begin Patch"), text.rfind("*** End Patch"));
+    // The closing marker starts its line. Text that only mentions it inside
+    // a line is content, and must not cut the patch short there.
+    let starts_line = |at: usize| text[..at].rsplit('\n').next().is_some_and(|before| before.trim().is_empty());
+    let (b, e) = (text.find("*** Begin Patch"), text.rmatch_indices("*** End Patch").map(|(at, _)| at).find(|at| starts_line(*at)));
     if let (Some(b), Some(e)) = (b, e) {
         if e >= b {
             text = text[b..e + "*** End Patch".len()].to_string();
@@ -72,8 +75,8 @@ pub fn parse_patch(patch_text: &str) -> Result<Vec<FilePatch>, ToolError> {
     if lines.is_empty() {
         return Err(verr("Patch must start with '*** Begin Patch' and end with '*** End Patch'."));
     }
-    // Name the missing marker and quote where the text starts or stops, so a
-    // model that dropped one resends the whole patch rather than guessing.
+    // Name the missing marker and quote where the text starts, so a model
+    // that dropped it resends the whole patch rather than guessing.
     let quote = |l: &str| l.trim().chars().take(80).collect::<String>();
     if lines[0].trim() != "*** Begin Patch" {
         return Err(verr(format!(
@@ -81,10 +84,16 @@ pub fn parse_patch(patch_text: &str) -> Result<Vec<FilePatch>, ToolError> {
             quote(lines[0])
         )));
     }
-    if lines[lines.len() - 1].trim() != "*** End Patch" {
+    // The closing line is optional: models sometimes leave it out of a
+    // complete patch, and text cut off mid-reply never gets here (a tool
+    // call whose arguments are not whole JSON is dropped before it runs).
+    let end = if lines.len() > 1 && lines[lines.len() - 1].trim() == "*** End Patch" { lines.len() - 1 } else { lines.len() };
+    // The marker written as a hunk line would become a line of the file.
+    let last = lines[lines.len() - 1];
+    if end == lines.len() && last.strip_prefix(['+', '-']).is_some_and(|rest| rest.trim() == "*** End Patch") {
         return Err(verr(format!(
-            "patch_text has no closing '*** End Patch' line; it ends with: `{}`. Resend the whole patch with '*** End Patch' as its last line, and split very large patches into several calls.",
-            quote(lines[lines.len() - 1])
+            "patch_text has no closing line: its last line is `{}`. Put '*** End Patch' on a line of its own, with nothing before it. If that text is meant as a line of the file, add the closing line after it.",
+            quote(last)
         )));
     }
     let mut patches: Vec<FilePatch> = vec![];
@@ -98,7 +107,7 @@ pub fn parse_patch(patch_text: &str) -> Result<Vec<FilePatch>, ToolError> {
             }
         };
     }
-    for line in &lines[1..lines.len() - 1] {
+    for line in &lines[1..end] {
         let line = *line;
         let header = [("*** Add File: ", Kind::Add), ("*** Update File: ", Kind::Update), ("*** Delete File: ", Kind::Delete)]
             .iter()
@@ -878,21 +887,86 @@ mod tests {
         assert!(!t.path().join("b.txt").exists());
     }
 
-    /// A patch without its closing marker (cut off mid-hunk) says
-    /// which marker is missing and where the text stopped, so the model can
-    /// resend it whole instead of guessing.
+    /// A patch without its opening marker says which marker is missing and
+    /// where the text starts, so the model can resend it whole instead of
+    /// guessing.
     #[test]
     fn a_missing_envelope_marker_is_named() {
         let t = tempfile::tempdir().unwrap();
         let d = dp(t.path());
         std::fs::write(t.path().join("a.txt"), "one\n").unwrap();
-        let e = apply_patch(&d, "*** Begin Patch\n*** Update File: a.txt\n@@\n-one\n+uno").unwrap_err().to_string();
-        assert!(e.contains("no closing '*** End Patch' line"), "{e}");
-        assert!(e.contains("it ends with: `+uno`"), "{e}");
-        assert!(e.contains("split very large patches"), "{e}");
         let e = apply_patch(&d, "*** Update File: a.txt\n@@\n-one\n+uno\n*** End Patch").unwrap_err().to_string();
         assert!(e.contains("does not start with '*** Begin Patch'"), "{e}");
         assert!(e.contains("it starts with: `*** Update File: a.txt`"), "{e}");
+        assert_eq!(std::fs::read_to_string(t.path().join("a.txt")).unwrap(), "one\n", "nothing was written");
+    }
+
+    /// Models sometimes leave out the closing line of an otherwise complete
+    /// patch. The arguments reached the tool whole (a reply cut at the output
+    /// limit never does), so the patch applies as written.
+    #[test]
+    fn a_patch_without_its_closing_line_applies() {
+        let t = tempfile::tempdir().unwrap();
+        let d = dp(t.path());
+        std::fs::write(t.path().join("a.txt"), "one\ntwo\n").unwrap();
+        apply_patch(&d, "*** Begin Patch\n*** Update File: a.txt\n@@\n-one\n+uno\n two").unwrap();
+        assert_eq!(std::fs::read_to_string(t.path().join("a.txt")).unwrap(), "uno\ntwo\n", "the last line is part of the hunk");
+        apply_patch(&d, "*** Begin Patch\n*** Add File: b.txt\n+b\n").unwrap();
+        assert_eq!(std::fs::read_to_string(t.path().join("b.txt")).unwrap(), "b\n");
+        // Everything else about the patch is still checked.
+        let e = apply_patch(&d, "*** Begin Patch\n*** Update File: a.txt\n@@\n-missing\n+x").unwrap_err().to_string();
+        assert!(e.starts_with("Could not find patch context in a.txt."), "{e}");
+        let e = apply_patch(&d, "*** Begin Patch\n*** Update File: a.txt\n-uno\n+one").unwrap_err().to_string();
+        assert!(e.contains("must include an '@@' hunk"), "{e}");
+        let e = apply_patch(&d, "*** Begin Patch").unwrap_err().to_string();
+        assert!(e.contains("no file operations"), "{e}");
+        assert_eq!(std::fs::read_to_string(t.path().join("a.txt")).unwrap(), "uno\ntwo\n", "a refused patch wrote nothing");
+    }
+
+    /// Only a line that starts with the marker closes a patch. Text that
+    /// mentions it inside a line is content: with the closing line left out,
+    /// the patch must not be cut short there.
+    #[test]
+    fn a_marker_mentioned_inside_a_line_does_not_end_the_patch() {
+        let t = tempfile::tempdir().unwrap();
+        let d = dp(t.path());
+        apply_patch(&d, "*** Begin Patch\n*** Add File: notes.txt\n+a patch ends with *** End Patch on its own line\n+last").unwrap();
+        assert_eq!(std::fs::read_to_string(t.path().join("notes.txt")).unwrap(), "a patch ends with *** End Patch on its own line\nlast\n");
+        // With its closing line, text after the patch is still dropped.
+        apply_patch(&d, "Here it is:\n*** Begin Patch\n*** Add File: more.txt\n+says *** End Patch here\n*** End Patch\nDone.").unwrap();
+        assert_eq!(std::fs::read_to_string(t.path().join("more.txt")).unwrap(), "says *** End Patch here\n");
+    }
+
+    /// A closing marker written as a hunk line (`+*** End Patch`) is neither
+    /// a closing line nor, in all likelihood, a line meant for the file: the
+    /// patch is refused and says which it must be.
+    #[test]
+    fn a_closing_marker_behind_a_hunk_prefix_is_refused() {
+        let t = tempfile::tempdir().unwrap();
+        let d = dp(t.path());
+        for last in ["+*** End Patch", "-*** End Patch", "+*** End Patch  "] {
+            let e = apply_patch(&d, &format!("*** Begin Patch\n*** Add File: c.txt\n+c\n{last}")).unwrap_err().to_string();
+            assert!(e.contains(&format!("its last line is `{}`", last.trim())), "{e}");
+            assert!(e.contains("'*** End Patch' on a line of its own"), "{e}");
+        }
+        assert!(!t.path().join("c.txt").exists(), "nothing was written");
+        // Followed by a real closing line, it is a line of the file.
+        apply_patch(&d, "*** Begin Patch\n*** Add File: c.txt\n+c\n+*** End Patch\n*** End Patch").unwrap();
+        assert_eq!(std::fs::read_to_string(t.path().join("c.txt")).unwrap(), "c\n*** End Patch\n");
+    }
+
+    /// A patch that stops on a file header changes nothing in that file, so
+    /// it is refused whole, closing line or not.
+    #[test]
+    fn a_patch_that_stops_on_a_file_header_is_refused() {
+        let t = tempfile::tempdir().unwrap();
+        let d = dp(t.path());
+        std::fs::write(t.path().join("a.txt"), "one\n").unwrap();
+        std::fs::write(t.path().join("b.txt"), "two\n").unwrap();
+        for end in ["", "\n*** End Patch"] {
+            let e = apply_patch(&d, &format!("*** Begin Patch\n*** Update File: a.txt\n@@\n-one\n+uno\n*** Update File: b.txt{end}")).unwrap_err().to_string();
+            assert!(e.contains("b.txt"), "{e}");
+        }
         assert_eq!(std::fs::read_to_string(t.path().join("a.txt")).unwrap(), "one\n", "nothing was written");
     }
 

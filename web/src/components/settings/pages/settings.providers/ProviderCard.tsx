@@ -1,3 +1,4 @@
+import { failureToast } from '@/lib/failure-toast'
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
@@ -202,7 +203,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
     if (result.ok) {
       push({ tone: 'success', title: 'Connection verified', description: `${result.count} models available.` })
     } else {
-      push({ tone: 'error', title: result.title, description: result.message })
+      push(failureToast(result.title, result.message))
     }
   }
 
@@ -259,11 +260,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
         description: provider.label,
       })
     } catch (err) {
-      push({
-        tone: 'error',
-        title: hasStoredKeys ? "Couldn't add key" : "Couldn't save provider",
-        description: err instanceof Error ? err.message : String(err),
-      })
+      push(failureToast(hasStoredKeys ? "Couldn't add key" : "Couldn't save provider", err))
     }
   }
 
@@ -271,11 +268,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
     try {
       await saveVisibleModelsMutation.mutateAsync({ providerId: provider.id, models })
     } catch (err) {
-      push({
-        tone: 'error',
-        title: "Couldn't save visible models",
-        description: err instanceof Error ? err.message : String(err),
-      })
+      push(failureToast("Couldn't save visible models", err))
     }
   }
 
@@ -288,11 +281,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
         description: provider.label,
       })
     } catch (err) {
-      push({
-        tone: 'error',
-        title: disconnected ? "Couldn't hide from pickers" : "Couldn't show in pickers",
-        description: err instanceof Error ? err.message : String(err),
-      })
+      push(failureToast(disconnected ? "Couldn't hide from pickers" : "Couldn't show in pickers", err))
     }
   }
 
@@ -305,11 +294,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
         description: provider.label,
       })
     } catch (err) {
-      push({
-        tone: 'error',
-        title: "Couldn't sign out",
-        description: err instanceof Error ? err.message : String(err),
-      })
+      push(failureToast("Couldn't sign out", err))
     }
   }
 

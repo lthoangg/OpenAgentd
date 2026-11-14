@@ -26,7 +26,7 @@ import type { CodingWorkspaceTreeChat, CodingWorkspaceTreeRepository } from '@/a
 import { queryKeys } from '@/queries/keys'
 import { useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { RecentSessionsList } from '../WorkspaceInfoCard'
+import { ChatNote, RecentSessionsList } from '../WorkspaceInfoCard'
 import { WorkspacePicker } from './WorkspacePicker'
 
 const RECENT_SESSIONS = 3
@@ -80,6 +80,11 @@ export function NewSessionScreen({
   const recentSessions = (here?.pages.flatMap((page) => page.data) ?? [])
     .filter((session) => !session.parent_session_id)
     .slice(0, RECENT_SESSIONS)
+  // A first Chat: once it has sessions the note has been read (and, on
+  // desktop, Continue takes its place). Waits for the list, so it never flashes.
+  const chatNote = isChat && here !== undefined && recentSessions.length === 0
+    ? <ChatNote onOpenFolder={onOpenFolder} />
+    : null
 
   const picker = (
     <WorkspacePicker
@@ -114,6 +119,7 @@ export function NewSessionScreen({
           {/* The chip reads "in <folder>" itself. */}
           <div className="flex min-w-0 items-center">{picker}</div>
           {setup && <div className="w-full">{setup}</div>}
+          {chatNote}
         </div>
       </motion.div>
     )
@@ -138,6 +144,7 @@ export function NewSessionScreen({
           {/* ``text-left``: the hero is centered, and the composer's
               textarea, chips and menus must not inherit it. */}
           {composer && <div className="mt-2 w-full text-left">{composer}</div>}
+          {chatNote && <div className="mx-auto mt-1 w-full max-w-[640px] text-left">{chatNote}</div>}
           {leaving && composerPlaceholderHeight !== undefined && (
             <div data-composer-placeholder aria-hidden="true" className="mt-2 w-full" style={{ height: composerPlaceholderHeight }} />
           )}

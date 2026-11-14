@@ -61,7 +61,8 @@ export function SidebarConfirmDialogs({
           <DialogHeader>
             <DialogTitle>Delete this session?</DialogTitle>
             <DialogDescription>
-              &quot;{deleteTarget?.title || 'Untitled'}&quot; and its messages are deleted. You can undo it for a few seconds.
+              The agent in &quot;{deleteTarget?.title || 'Untitled'}&quot; is still working. Deleting stops it
+              and deletes the session&apos;s messages.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

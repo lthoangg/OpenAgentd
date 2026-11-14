@@ -27,6 +27,7 @@
  * text in it, comment highlights, and jumping to a comment all work; jumping
  * to a passage in a closed Appendix opens it first.
  */
+import { failureToast } from '@/lib/failure-toast'
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -447,7 +448,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const runAsGoal = () => {
     if (!sessionId) return
     startGoal.mutate({ sessionId }, {
-      onError: (err) => useToastStore.getState().push({ tone: 'error', title: "Couldn't start the goal", description: (err as Error).message }),
+      onError: (err) => useToastStore.getState().push(failureToast("Couldn't start the goal", err)),
     })
   }
 

@@ -5,6 +5,7 @@
  * - blob: URLs           → read to base64 in JS (Rust can't reach browser-only blob URLs)
  * - Non-Tauri            → plain anchor download
  */
+import { failureToast } from '@/lib/failure-toast'
 import { getPlatform } from '@/hooks/use-platform'
 import { useToastStore } from '@/stores/useToastStore'
 
@@ -48,11 +49,7 @@ export async function tauriDownload(url: string, filename: string): Promise<void
       return
     } catch (e) {
       console.error('[tauri-download] invoke failed:', e)
-      useToastStore.getState().push({
-        tone: 'error',
-        title: 'Download failed',
-        description: e instanceof Error ? e.message : String(e),
-      })
+      useToastStore.getState().push(failureToast("Couldn't download the file", e))
       return
     }
   }

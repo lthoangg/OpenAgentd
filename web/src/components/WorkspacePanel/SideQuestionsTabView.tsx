@@ -9,6 +9,7 @@
  * streaming in this tab comes from ``useBtwStore`` through
  * ``useSideQuestions``.
  */
+import { failureToast } from '@/lib/failure-toast'
 import { useEffect, useRef, useState } from 'react'
 import { Copy, MessageCircleQuestion, Square, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -51,7 +52,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
   const onClear = () => {
     // Failures surface as a toast; the dialog closes either way.
     return store.clear(sessionId).catch((err: unknown) => {
-      useToastStore.getState().push({ tone: 'error', title: "Couldn't delete side questions", description: err instanceof Error ? err.message : String(err) })
+      useToastStore.getState().push(failureToast("Couldn't delete side questions", err))
     })
   }
   const onStop = (exchange: BtwExchange) => {

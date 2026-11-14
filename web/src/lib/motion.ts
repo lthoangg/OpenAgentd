@@ -43,8 +43,8 @@ export function cssEasing(curve: readonly [number, number, number, number]): str
 }
 
 /**
- * Enter/exit for a card in the floating notices column (the TypeScript tools
- * prompt, the update card): drops in from the header at ``base``, fades out
+ * Enter/exit for a line in the floating notices column (the TypeScript tools
+ * prompt, the update notice): drops in from the header at ``base``, fades out
  * at ``fast``.
  * Spread onto a ``motion`` element that is a direct child of
  * ``AnimatePresence``. Reduced motion: no movement at all.
@@ -56,9 +56,4 @@ export function noticePresence(reduced: boolean) {
     animate: { opacity: 1, y: 0, transition: { duration: DURATIONS_S.base, ease: EASINGS.out } },
     exit: { opacity: 0, scale: 0.98, transition: { duration: DURATIONS_S.fast, ease: EASINGS.inOut } },
   }
-}
-
-/** The drag-offset spring for floating cards; reduced motion snaps. */
-export function dragSettle(reduced: boolean) {
-  return reduced ? { duration: 0 } : { type: 'spring' as const, stiffness: 380, damping: 32 }
 }

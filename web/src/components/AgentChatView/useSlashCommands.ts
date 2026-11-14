@@ -15,6 +15,7 @@
  *     server-side (``expandUserCommand``), used by the composer to swap the
  *     typed shorthand for its full body before sending.
  */
+import { failureToast } from '@/lib/failure-toast'
 import { useCallback, useMemo } from 'react'
 import type { RefObject } from 'react'
 import { useCommandsQuery } from '@/queries/useCommandsQuery'
@@ -128,11 +129,7 @@ export function useSlashCommands({
       const res = await renderSnippet(id, agentWorkspace)
       return res.content
     } catch (err) {
-      pushToast({
-        tone: 'error',
-        title: `Couldn't render #${id.replace('/', ':')}`,
-        description: (err as Error).message,
-      })
+      pushToast(failureToast(`Couldn't render #${id.replace('/', ':')}`, err))
       return null
     }
   }, [agentWorkspace, pushToast])
@@ -212,11 +209,7 @@ export function useSlashCommands({
             }),
           )
           .catch((err: Error) =>
-            pushToast({
-              tone: 'error',
-              title: "Couldn't start /init",
-              description: err.message,
-            }),
+            pushToast(failureToast("Couldn't start /init", err)),
           )
         break
     }
@@ -246,11 +239,7 @@ export function useSlashCommands({
             const res = await renderCommand(commandName, args, agentWorkspace)
             return res.content
           } catch (err) {
-            pushToast({
-              tone: 'error',
-              title: `Couldn't render /${candidate}`,
-              description: (err as Error).message,
-            })
+            pushToast(failureToast(`Couldn't render /${candidate}`, err))
             return content
           }
         }

@@ -14,6 +14,7 @@
  * (one primitive per ``useAgentStore`` call) to avoid the infinite loop
  * that returning a freshly-built object on every render would trigger.
  */
+import { failureToast } from '@/lib/failure-toast'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
@@ -509,7 +510,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const handleClearPlan = useCallback(() => {
     if (!sessionIdState) return
     clearPlan(sessionIdState, {
-      onError: (err) => pushToast({ tone: 'error', title: "Couldn't clear the plan", description: err instanceof Error ? err.message : String(err) }),
+      onError: (err) => pushToast(failureToast("Couldn't clear the plan", err)),
     })
   }, [sessionIdState, clearPlan, pushToast])
 
@@ -888,11 +889,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       placeholder={
         // While a turn runs the composer shows its own queue/stop hint.
         isDraft && needsModelSetup
-          ? 'Connect a model to start chatting'
+          ? 'Connect a model to start'
           : composerMode === 'plan'
             // Says what Plan mode does before the first message does it.
-            ? 'Plan mode: the agent reads and proposes a plan, without editing files…'
-            : isDraft && isPhone && !isChatWorkspace ? 'Assign a task to the agent…' : 'Ask anything…'
+            ? 'Plan mode: the agent reads and writes a plan. It changes no files.'
+            : 'Ask anything…'
       }
       capabilities={leadCapabilities}
       // A switch requested mid-turn is queued server-side, so the toggle

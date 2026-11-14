@@ -16,6 +16,7 @@ import { useNavigate } from '@tanstack/react-router'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
+import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { formatCompactRelative } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
@@ -44,11 +45,7 @@ export function WorkspaceInfoCard({ workspace, chatWorkspace = false, currentSes
           <MessageCircle size={16} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
           <h2 className="truncate text-base font-semibold text-(--color-text)">Chat</h2>
         </div>
-        <p className="mt-2 text-xs text-(--color-text-muted)">
-          OpenAgentd runs here, in your home directory. Ask about your own files by
-          name, type <span className="font-medium text-(--color-text-2)">@</span> to
-          reference one, or drop a file into the composer.
-        </p>
+        <ChatNote className="mt-2" onOpenFolder={() => dispatchAppEvent(APP_EVENTS.openWorkspace)} />
       </div>
     )
   }
@@ -83,6 +80,28 @@ export function WorkspaceInfoCard({ workspace, chatWorkspace = false, currentSes
         <RecentSessionsList className="mt-4" sessions={recent} workspace={workspace} label="Recent sessions" />
       )}
     </div>
+  )
+}
+
+/**
+ * What a newcomer needs to know about Chat: where it works, and that Undo
+ * needs a folder (Chat keeps no snapshots, so Undo there brings nothing back).
+ */
+export function ChatNote({ onOpenFolder, className = '' }: { onOpenFolder: () => void; className?: string }) {
+  return (
+    <p className={`text-xs text-(--color-text-muted) ${className}`}>
+      Chat works in your home folder. Ask about a file by name, type{' '}
+      <span className="font-medium text-(--color-text-2)">@</span> to pick one, or
+      drop one in. To have the agent change files with Undo,{' '}
+      <button
+        type="button"
+        onClick={onOpenFolder}
+        className="font-medium text-(--color-text) underline underline-offset-2 hover:text-(--color-accent) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+      >
+        open a folder
+      </button>
+      .
+    </p>
   )
 }
 

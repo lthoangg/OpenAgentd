@@ -29,6 +29,7 @@
  * currently showing their sessions. Multiple workspaces can stay open
  * at once. Switching the active workspace auto-expands it.
  */
+import { failureToast } from '@/lib/failure-toast'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -166,6 +167,7 @@ import {
 import {
   confirmWorkspaceRemoval,
   openWorkspaceDraft,
+  restoreHiddenWorkspace,
 } from './Sidebar.workspace'
 import {
   consumeTrustedWorkspace,
@@ -193,7 +195,9 @@ import { TREE_INDENT_PX } from './Sidebar/tree-indent'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
 /** How long a deleted session can be brought back before the server forgets it. */
-const SESSION_DELETE_UNDO_MS = 5000
+const SESSION_DELETE_UNDO_MS = 10_000
+// Hiding undoes from the toast for as long as a delete does.
+const WORKSPACE_HIDE_UNDO_MS = 10_000
 const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
 const NO_GROUPS: WorkspaceGroup[] = []
 /** Rows that Up/Down/Home/End move between: sessions and workspace headers. */
@@ -762,7 +766,7 @@ export function Sidebar({
       for (const hidden of [path, ...worktreePaths]) next.delete(hidden)
       return next
     })
-    void confirmWorkspaceRemoval({
+    const removal = confirmWorkspaceRemoval({
       path,
       worktreePaths,
       activeWorkspace,
@@ -770,12 +774,26 @@ export function Sidebar({
       queryClient,
       refreshWorkspaceTree,
       navigate: ({ to, replace }) => navigate({ to, replace }),
-    }).catch((err: unknown) => {
-      pushToast({
-        tone: 'error',
-        title: `Couldn't remove ${workspaceLabel(path)} from the sidebar`,
-        description: err instanceof Error ? err.message : undefined,
-      })
+    })
+    // The row leaves at once, so the toast is what says it happened and how
+    // to get it back. Undo shows the folder (and its worktrees) again, after
+    // the hide has landed; it does not reopen it.
+    const toastId = pushToast({
+      tone: 'info',
+      title: `Hid ${workspaceLabel(path)} from the sidebar`,
+      description: 'Its sessions are kept. Open workspace… brings it back.',
+      action: {
+        label: 'Undo',
+        onAction: () => {
+          void removal
+            .then(() => restoreHiddenWorkspace({ paths: [path, ...worktreePaths], queryClient, refreshWorkspaceTree }))
+            .catch(() => pushToast({ tone: 'error', title: `Couldn't show ${workspaceLabel(path)} again` }))
+        },
+      },
+    }, WORKSPACE_HIDE_UNDO_MS)
+    removal.catch((err: unknown) => {
+      dismissToast(toastId)
+      pushToast(failureToast(`Couldn't remove ${workspaceLabel(path)} from the sidebar`, err))
       void refreshWorkspaceTree()
     })
   }
@@ -1009,7 +1027,7 @@ export function Sidebar({
         await refreshWorkspaceTree()
       })
       .catch((err: unknown) => {
-        pushToast({ tone: 'error', title: "Couldn't remove it from the sidebar", description: err instanceof Error ? err.message : undefined })
+        pushToast(failureToast("Couldn't remove it from the sidebar", err))
       })
   }
 
@@ -1058,11 +1076,10 @@ export function Sidebar({
     })
   }
 
-  // From a row's key (an event) or its swipe action (none): either way it
-  // only opens the confirmation.
+  // From a row's key (an event) or its swipe action (none).
   const handleSessionDelete = (e: React.SyntheticEvent | null, session: SessionResponse) => {
     e?.stopPropagation()
-    setDeleteTarget(session)
+    requestSessionDelete(session)
   }
 
   const handleSessionEdit = (session: SessionResponse) => {
@@ -1141,7 +1158,8 @@ export function Sidebar({
         run: () => toggleSessionPinned(session),
       })
     }
-    actions.push({ id: 'delete', label: 'Delete session…', icon: Trash2, danger: true, separatorBefore: actions.length > 0, rowKey: 'delete', run: () => setDeleteTarget(session) })
+    // The ellipsis says a dialog follows, which only a working session gets.
+    actions.push({ id: 'delete', label: sessionWorking(session) ? 'Delete session…' : 'Delete session', icon: Trash2, danger: true, separatorBefore: actions.length > 0, rowKey: 'delete', run: () => requestSessionDelete(session) })
     return actions
   }
 
@@ -1150,9 +1168,21 @@ export function Sidebar({
     setMobileSessionActions({ session, workspacePath })
   }
 
+  // Undo or confirm, not both (DESIGN.md): the toast's Undo covers a delete,
+  // so only a session whose agent is still working asks first. Undo brings
+  // the session back but does not restart a stopped turn.
+  function requestSessionDelete(session: SessionResponse) {
+    if (sessionWorking(session)) setDeleteTarget(session)
+    else deleteSessionNow(session)
+  }
+
   const confirmSessionDelete = () => {
     if (!deleteTarget) return
-    const target = deleteTarget
+    deleteSessionNow(deleteTarget)
+    setDeleteTarget(null)
+  }
+
+  function deleteSessionNow(target: SessionResponse) {
     // On the Sessions page, ``currentSessionId`` is the chat kept under the
     // list, not one on screen: deleting it neither leaves for another session
     // (that would push a chat over Sessions) nor, on Undo, goes back to it.
@@ -1193,7 +1223,6 @@ export function Sidebar({
       ),
       navigate,
     })
-    setDeleteTarget(null)
   }
 
   const mobileWorkspaceActionsTitle = mobileWorkspaceActions?.kind === 'chat'
@@ -1806,9 +1835,11 @@ export function Sidebar({
           {trustWorkspace ? (
             <>
               <DialogHeader>
-                <DialogTitle>Trust this workspace?</DialogTitle>
+                <DialogTitle>Let agents work in {workspaceLabel(trustWorkspace)}?</DialogTitle>
+                {/* The Undo limit is the snapshot's: edited files up to 2 MB, not what a command moved or deleted. */}
                 <DialogDescription>
-                  Agents get filesystem and shell access inside this exact directory.
+                  They can read, change and delete files in this folder, and run commands there. Undo in the chat
+                  brings back files they edited, up to 2 MB each.
                 </DialogDescription>
               </DialogHeader>
               <div className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2">
@@ -1816,7 +1847,7 @@ export function Sidebar({
               </div>
               <DialogFooter>
                 <Button type="button" variant="default" onClick={() => setTrustWorkspace(null)}>Back</Button>
-                <Button variant="primary" type="button" onClick={confirmTrustedWorkspace}>Trust and open</Button>
+                <Button variant="primary" type="button" onClick={confirmTrustedWorkspace}>Allow and open</Button>
               </DialogFooter>
             </>
           ) : nativeFolderPickerEnabled && !isTauriMobile ? (

@@ -13,6 +13,7 @@ import { useIsPhone } from '@/hooks/use-is-phone'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { isMobileApp } from '@/lib/mobile-app'
 import { getAppBackendStatus, getBundledBackendLogPath } from '@/lib/app-backend'
+import { WEB_BUILD_VERSION } from '@/lib/app-version'
 import { isDesktopShell } from '@/lib/desktop-shell'
 import { clearBackendSwitchHandoff, pendingBackendSwitch, type BackendSwitchTarget } from '@/stores/useBackendSwitchStore'
 import { openServersScreen } from '@/stores/useServersScreenStore'
@@ -43,7 +44,7 @@ function App() {
   // (fixed layout, keyboard tracking) and the iOS text size.
   useMobileViewportGuards()
   useDynamicType()
-  const { ready, unavailable, failed, retrying, retry } = useAppBackendBootstrap()
+  const { ready, unavailable, failed, failureMessage, retrying, retry } = useAppBackendBootstrap()
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
   const isPhone = useIsPhone()
   // A phone has one server picker, its Servers screen: shown in place of the
@@ -144,7 +145,7 @@ function App() {
     }
     return (
       <>
-        <AppLoadingScreen switchingTo={switchingTo} unavailable={unavailable} failed={failed} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen || connectRequest !== null} onBackendDialogOpenChange={onBackendDialogOpenChange} backendPrefill={connectRequest} />
+        <AppLoadingScreen switchingTo={switchingTo} unavailable={unavailable} failed={failed} failureMessage={failureMessage} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen || connectRequest !== null} onBackendDialogOpenChange={onBackendDialogOpenChange} backendPrefill={connectRequest} />
         <BackendSwitchScreen />
       </>
     )
@@ -163,11 +164,17 @@ function App() {
   )
 }
 
-function AppLoadingScreen({ switchingTo = null, unavailable, failed, retrying, onRetry, onChooseServer, backendDialogOpen, onBackendDialogOpenChange, backendPrefill = null }: {
+/** What the recovery screen says, by whether start-up failed or is only slow. */
+const STARTUP_FAILED = "OpenAgentd couldn't start on this computer."
+const STARTUP_SLOW = 'OpenAgentd is taking longer than usual to start.'
+
+function AppLoadingScreen({ switchingTo = null, unavailable, failed, failureMessage = null, retrying, onRetry, onChooseServer, backendDialogOpen, onBackendDialogOpenChange, backendPrefill = null }: {
   /** The server a switch reloaded this window onto. */
   switchingTo?: BackendSwitchTarget | null
   unavailable: boolean
   failed: boolean
+  /** The shell's own error, for Copy details only. */
+  failureMessage?: string | null
   retrying: boolean
   onRetry: () => void
   onChooseServer: () => void
@@ -175,22 +182,30 @@ function AppLoadingScreen({ switchingTo = null, unavailable, failed, retrying, o
   onBackendDialogOpenChange: (open: boolean) => void
   backendPrefill?: AppBackendPrefill | null
 }) {
-  const [logCopyState, setLogCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
-  const [backendLogPath, setBackendLogPath] = useState<string | null>(null)
-  const copyBackendLogPath = async () => {
-    const path = await getBundledBackendLogPath()
-    setBackendLogPath(path)
-    if (!path) {
-      setLogCopyState('failed')
-      return
-    }
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  // Shown only when the clipboard refuses, so the details can be selected.
+  const [details, setDetails] = useState<string | null>(null)
+  /** What a bug report needs: what failed, the shell's error, where the log is. */
+  const copyDetails = async () => {
+    const logPath = await getBundledBackendLogPath()
+    const text = [
+      failed ? STARTUP_FAILED : STARTUP_SLOW,
+      failureMessage ? `Error: ${failureMessage}` : null,
+      WEB_BUILD_VERSION ? `Version: ${WEB_BUILD_VERSION}` : null,
+      logPath ? `Log: ${logPath}` : null,
+    ].filter(Boolean).join('\n')
+    setDetails(text)
     try {
-      await navigator.clipboard.writeText(path)
-      setLogCopyState('copied')
+      await navigator.clipboard.writeText(text)
+      setCopyState('copied')
     } catch {
-      setLogCopyState('failed')
+      setCopyState('failed')
     }
   }
+  // Another computer is the rare road on a first launch: a link, not a button.
+  const useAnotherComputer = (
+    <Button variant="link" size="sm" onClick={onChooseServer}>Use another computer</Button>
+  )
 
   return (
     <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="status" aria-label="Loading OpenAgentd" aria-live="polite">
@@ -200,20 +215,18 @@ function AppLoadingScreen({ switchingTo = null, unavailable, failed, retrying, o
           <div className="flex flex-col items-center gap-2">
             {switchingTo
               ? <BackendSwitchMessage target={switchingTo} />
-              : <p role="status" className="text-sm font-medium text-(--color-text-muted)">Connecting to OpenAgentd…</p>}
-            <Button variant="subtle" size="sm" className="mt-1" onClick={onChooseServer}>
-              Choose server
-            </Button>
+              : <p role="status" className="text-sm font-medium text-(--color-text-muted)">Starting OpenAgentd…</p>}
+            {useAnotherComputer}
           </div>
         ) : (
           <>
-            <p className="text-sm text-(--color-text-muted)">{failed ? "OpenAgentd couldn't start its local server." : 'OpenAgentd is taking longer than usual to start.'}</p>
+            <p className="text-sm text-(--color-text-muted)">{failed ? STARTUP_FAILED : STARTUP_SLOW}</p>
             <div className="flex flex-wrap justify-center gap-2">
               <Button onClick={onRetry} disabled={retrying}>{retrying ? 'Restarting…' : 'Retry'}</Button>
-              <Button variant="subtle" onClick={onChooseServer}>Choose server</Button>
-              <Button variant="ghost" onClick={() => { void copyBackendLogPath() }}>{logCopyState === 'copied' ? 'Log path copied' : logCopyState === 'failed' ? "Couldn't copy" : 'Copy log path'}</Button>
+              <Button variant="subtle" onClick={() => { void copyDetails() }}>{copyState === 'copied' ? 'Copied' : copyState === 'failed' ? "Couldn't copy" : 'Copy details'}</Button>
             </div>
-            {logCopyState === 'failed' && backendLogPath && <code className="max-w-full select-text break-all text-xs text-(--color-text-muted)">{backendLogPath}</code>}
+            {useAnotherComputer}
+            {copyState === 'failed' && details && <code className="max-w-full select-text whitespace-pre-wrap break-all text-left text-xs text-(--color-text-muted)">{details}</code>}
           </>
         )}
       </div>

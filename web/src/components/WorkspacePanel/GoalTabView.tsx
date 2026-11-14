@@ -12,6 +12,7 @@
  * Colour carries the status only: blue while it works and once achieved,
  * orange while it waits on the user, red when blocked, neutral when paused.
  */
+import { failureToast } from '@/lib/failure-toast'
 import { CircleCheck, Target } from 'lucide-react'
 import { useState } from 'react'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
@@ -250,7 +251,7 @@ export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: 
   const runAction = (action: GoalAction) => {
     if (!sessionId) return
     mutation.mutate({ sessionId, action }, {
-      onError: (err) => pushToast({ tone: 'error', title: `Couldn't ${action} the goal`, description: (err as Error).message }),
+      onError: (err) => pushToast(failureToast(`Couldn't ${action} the goal`, err)),
     })
   }
   // Clearing ends the goal for good, so the button only asks first.
@@ -289,7 +290,7 @@ export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: 
           <DialogHeader>
             <DialogTitle>Clear this goal?</DialogTitle>
             <DialogDescription>
-              The agent stops working toward it and no new goal turn starts. A turn that is running finishes first. This can't be undone.
+              The agent stops working toward it and no new goal turn starts. This can't be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -1338,9 +1338,12 @@ the title over its workspace, Tasks and Review panel; a phone's bar is
 control is 36px on touch and the phone's control step on a phone (40px at
 Default), with a 44px touch area.
 
-**Notices** (toasts, the update card, the LSP prompt) stack at the top right
-under the header, newest first, so the run deck and Send stay clear. Phones
-span the width between the safe-area insets.
+**Notices** (toasts, the update notice, the TypeScript tools prompt) stack at
+the top right under the header, newest first, so the run deck and Send stay
+clear. Phones span the width between the safe-area insets. The update notice
+and the tools prompt are one line each (`NoticeLine`): what it is, then at
+most two buttons, quiet one first. A line does not move, minimize or expand,
+and a failure it runs into goes to a toast.
 
 **Command palette** (⌘K) is one overlay. Empty, it lists commands; typed, it
 shows up to three headed groups in order: Commands, Sessions (by title) and

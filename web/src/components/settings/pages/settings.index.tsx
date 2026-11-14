@@ -155,7 +155,16 @@ function UpdatesSection() {
     setPending(true)
     setStatus({ status: 'checking' })
     try {
-      setStatus(await checkForUpdates(false))
+      const found = await checkForUpdates(false)
+      // The desktop's one decision is the restart, as in the update notice:
+      // a found update downloads without a second button. Android asks first
+      // (an APK, on what may be mobile data).
+      if (found.status === 'available' && !mobile) {
+        setStatus({ ...found, status: 'downloading' })
+        setStatus(await downloadUpdate())
+      } else {
+        setStatus(found)
+      }
     } catch (error) {
       setStatus({ status: 'error', message: errorMessage(error) })
     } finally {
@@ -232,14 +241,14 @@ function UpdatesSection() {
         <Button size="sm" variant="default" disabled={pending} onClick={() => void onCheck()}>
           Check for updates
         </Button>
-        {status?.status === 'available' ? (
+        {status?.status === 'available' && mobile ? (
           <Button size="sm" variant="primary" disabled={pending} onClick={() => void onDownload()}>
             Download
           </Button>
         ) : null}
         {status?.status === 'downloaded' ? (
           <Button size="sm" variant="primary" disabled={pending} onClick={() => setConfirmRestart(true)}>
-            {mobile ? 'Install…' : 'Install and restart…'}
+            {mobile ? 'Install…' : 'Restart to update…'}
           </Button>
         ) : null}
       </PanelRow>
@@ -247,11 +256,11 @@ function UpdatesSection() {
         open={confirmRestart}
         onOpenChange={setConfirmRestart}
         tone="default"
-        title={mobile ? 'Install the update?' : 'Install and restart OpenAgentd?'}
+        title={mobile ? 'Install the update?' : 'Restart OpenAgentd to update?'}
         description={mobile
           ? 'Android asks you to confirm. OpenAgentd closes while it updates; agents keep running on the server.'
           : 'OpenAgentd restarts to finish the update. Running agents stop for the restart and resume when it is back.'}
-        confirmLabel={mobile ? 'Install' : 'Install and restart'}
+        confirmLabel={mobile ? 'Install' : 'Restart to update'}
         onConfirm={() => { void onInstall() }}
       />
     </PanelSection>
@@ -262,7 +271,8 @@ function statusTitle(status: UpdateStatus | null): string {
   if (!status) return 'not checked'
   if (status.status === 'checking') return 'checking'
   if (status.status === 'available') return 'update available'
-  if (status.status === 'downloaded') return 'ready to install'
+  if (status.status === 'downloading') return 'downloading'
+  if (status.status === 'downloaded') return 'ready'
   if (status.status === 'installing') return 'installing'
   if (status.status === 'up_to_date') return 'up to date'
   if (status.status === 'error') return 'error'
@@ -276,7 +286,10 @@ function statusDescription(status: UpdateStatus | null, mobile = false): string 
   if (status.status === 'available') {
     return `OpenAgentd ${status.version} is available. Current version: ${status.current_version}.`
   }
-  if (status.status === 'downloaded') return `OpenAgentd ${status.version} has been downloaded and is ready to install.`
+  if (status.status === 'downloading') return `Downloading OpenAgentd ${status.version}…`
+  if (status.status === 'downloaded') {
+    return mobile ? `OpenAgentd ${status.version} is ready to install.` : `OpenAgentd ${status.version} is ready. It installs when the app restarts.`
+  }
   if (status.status === 'installing') {
     return mobile ? 'Opening the installer…' : 'Installing the update. OpenAgentd will restart when installation completes.'
   }

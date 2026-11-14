@@ -1,3 +1,4 @@
+import { failureToast } from '@/lib/failure-toast'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, CheckCircle2, Copy, Loader2, TerminalSquare } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -116,11 +117,7 @@ export function OAuthLoginDialog({
                   })
                 })
                 .catch((err: unknown) => {
-                  useToastStore.getState().push({
-                    tone: 'error',
-                    title: 'Default model setup failed',
-                    description: err instanceof Error ? err.message : String(err),
-                  })
+                  useToastStore.getState().push(failureToast("Couldn't set the default model", err))
                 })
             } else {
               useToastStore.getState().push({ tone: 'success', title: 'Provider connected', description: provider.label })

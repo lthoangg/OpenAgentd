@@ -577,24 +577,18 @@ describe('Sidebar page mode: swipe actions', () => {
     expect((setSessionPinnedMutate.mock.calls[0] as unknown as [{ id: string; pinned: boolean }])[0]).toEqual({ id: 's-1', pinned: true })
   })
 
-  it('opens the delete confirmation instead of deleting', async () => {
+  it('deletes from the swipe action with no dialog, leaving a toast with Undo', async () => {
+    useToastStore.setState({ toasts: [] })
     await renderPage()
     const swipeRow = swipeRowOf('Fix login redirect loop')
     swipeOpen(rowOf('Fix login redirect loop'))
 
     fireEvent.click(within(swipeRow).getByRole('button', { name: 'Delete' }))
 
-    expect(screen.getByText('Delete this session?')).toBeTruthy()
-    expect(deleteSessionMutate).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(deleteSessionMutate).not.toHaveBeenCalled()
-
-    // The row shut after the action; swipe it open again and confirm this time.
-    swipeOpen(rowOf('Fix login redirect loop'))
-    fireEvent.click(within(swipeRow).getByRole('button', { name: 'Delete' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete session' }))
+    expect(screen.queryByText('Delete this session?')).toBeNull()
     expect(deleteSessionMutate).toHaveBeenCalledTimes(1)
+    const toast = useToastStore.getState().toasts.find((t) => t.title === 'Session deleted')
+    expect(toast?.action?.label).toBe('Undo')
   })
 
   it('reveals the actions only while Sessions is the screen on top', async () => {
@@ -652,7 +646,7 @@ describe('Sidebar page mode: swipe actions', () => {
       },
       { timeout: 1500 },
     )
-    expect(within(sheet).getByRole('button', { name: 'Delete session…' })).toBeTruthy()
+    expect(within(sheet).getByRole('button', { name: 'Delete session' })).toBeTruthy()
   })
 })
 describe('Sidebar page mode: section order', () => {
@@ -733,7 +727,6 @@ describe('Sidebar page mode: deleting the chat kept under Sessions', () => {
   const keptChat = () => {
     workspaceSessionsData = [session('s-1', 'Fix login redirect loop'), session('s-2', 'Profile file listing')]
   }
-  const confirmDelete = () => fireEvent.click(screen.getByRole('button', { name: 'Delete session' }))
 
   it('does not navigate when the swipe action deletes it', async () => {
     keptChat()
@@ -742,7 +735,6 @@ describe('Sidebar page mode: deleting the chat kept under Sessions', () => {
     swipeOpen(rowOf('Fix login redirect loop'))
 
     fireEvent.click(within(swipeRow).getByRole('button', { name: 'Delete' }))
-    confirmDelete()
 
     expect(deleteSessionMutate).toHaveBeenCalledTimes(1)
     expect((deleteSessionMutate.mock.calls[0] as unknown as [{ id: string }])[0].id).toBe('s-1')
@@ -754,8 +746,7 @@ describe('Sidebar page mode: deleting the chat kept under Sessions', () => {
     await renderPage({ currentSessionId: 's-1' })
 
     const sheet = await openSessionSheet('Fix login redirect loop')
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Delete session…' }))
-    confirmDelete()
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Delete session' }))
 
     expect(deleteSessionMutate).toHaveBeenCalledTimes(1)
     expect(navigate).not.toHaveBeenCalled()
@@ -767,7 +758,6 @@ describe('Sidebar page mode: deleting the chat kept under Sessions', () => {
     const swipeRow = swipeRowOf('Fix login redirect loop')
     swipeOpen(rowOf('Fix login redirect loop'))
     fireEvent.click(within(swipeRow).getByRole('button', { name: 'Delete' }))
-    confirmDelete()
 
     const undo = useToastStore.getState().toasts.find((toast) => toast.action?.label === 'Undo')
     expect(undo).toBeTruthy()
@@ -781,8 +771,7 @@ describe('Sidebar page mode: deleting the chat kept under Sessions', () => {
     await renderSidebar({ mobileOpen: true, currentSessionId: 's-1' })
 
     fireEvent.click(screen.getByRole('button', { name: 'More actions for Fix login redirect loop' }))
-    fireEvent.click(within(screen.getByText('Choose a session action.').closest('[data-bottom-sheet]') as HTMLElement).getByRole('button', { name: 'Delete session…' }))
-    confirmDelete()
+    fireEvent.click(within(screen.getByText('Choose a session action.').closest('[data-bottom-sheet]') as HTMLElement).getByRole('button', { name: 'Delete session' }))
 
     expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 's-2' }, replace: true })
   })

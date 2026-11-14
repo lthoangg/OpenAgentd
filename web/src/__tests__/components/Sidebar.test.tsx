@@ -994,12 +994,14 @@ describe('Sidebar workspace trust flow', () => {
       title: 'Open workspace',
     })
 
-    expect(screen.getByText('Trust this workspace?')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Let agents work in project?' })).toBeTruthy()
+    // What they can do there, and what Undo does and does not cover.
+    expect(screen.getByText('They can read, change and delete files in this folder, and run commands there. Undo in the chat brings back files they edited, up to 2 MB each.')).toBeTruthy()
     expect(screen.getByText('/repo/project')).toBeTruthy()
     expect(navigate).not.toHaveBeenCalled()
     expect(loadLastWorkspace()).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: /trust and open/i }))
+    await user.click(screen.getByRole('button', { name: 'Allow and open' }))
 
     // A new folder is registered so it has a row, then opens as a draft:
     // no session is created until the first message.
@@ -1019,7 +1021,7 @@ describe('Sidebar workspace trust flow', () => {
     useToastStore.setState({ toasts: [] })
     const user = userEvent.setup()
     await renderSidebar()
-    await user.click(screen.getByRole('button', { name: /trust and open/i }))
+    await user.click(screen.getByRole('button', { name: 'Allow and open' }))
 
     await waitFor(() => expect(useToastStore.getState().toasts.map((toast) => toast.title)).toEqual(['Added project']))
     expect(useToastStore.getState().toasts[0].tone).toBe('info')
@@ -1030,7 +1032,7 @@ describe('Sidebar workspace trust flow', () => {
     sessionsData = [{ id: 'session-1', title: 'Old', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' }]
     const user = userEvent.setup()
     await renderSidebar()
-    await user.click(screen.getByRole('button', { name: /trust and open/i }))
+    await user.click(screen.getByRole('button', { name: 'Allow and open' }))
 
     await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/project' }, replace: false }))
     expect(useToastStore.getState().toasts).toEqual([])
@@ -1046,7 +1048,7 @@ describe('Sidebar workspace trust flow', () => {
       multiple: false,
       title: 'Open workspace',
     })
-    expect(screen.getByText('Trust this workspace?')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Let agents work in project?' })).toBeTruthy()
     expect(screen.getByText('/repo/project')).toBeTruthy()
   })
 
@@ -1207,7 +1209,7 @@ describe('Sidebar workspace trust flow', () => {
     const user = userEvent.setup()
     await renderSidebar()
 
-    expect(await screen.findByText('Trust this workspace?')).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Let agents work in project?' })).toBeTruthy()
     await user.click(screen.getByRole('button', { name: /^back$/i }))
 
     expect(screen.getByText('Open workspace')).toBeTruthy()
@@ -1221,7 +1223,7 @@ describe('Sidebar workspace trust flow', () => {
     await renderSidebar()
 
     expect(await screen.findByText('Workspace does not exist')).toBeTruthy()
-    expect(screen.queryByText('Trust this workspace?')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Let agents work in project?' })).toBeNull()
     expect(navigate).not.toHaveBeenCalled()
     expect(loadLastWorkspace()).toBeNull()
   })
@@ -1237,7 +1239,7 @@ describe('Sidebar workspace trust flow', () => {
 
     await user.click(screen.getByRole('button', { name: /open this folder/i }))
 
-    expect(screen.getByText('Trust this workspace?')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Let agents work in project?' })).toBeTruthy()
     expect(dialogOpen).not.toHaveBeenCalled()
     expect(navigate).not.toHaveBeenCalled()
   })
@@ -1259,7 +1261,7 @@ describe('Sidebar workspace trust flow', () => {
 
     await user.click(screen.getByRole('button', { name: /open this folder/i }))
 
-    expect(screen.getByText('Trust this workspace?')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Let agents work in project?' })).toBeTruthy()
     expect(dialogOpen).not.toHaveBeenCalled()
     expect(navigate).not.toHaveBeenCalled()
   })
@@ -1422,6 +1424,29 @@ describe('Sidebar workspace trust flow', () => {
     expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
   })
 
+  it('says a workspace was hidden and how to bring it back, with Undo that shows it again', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      { id: 'session-1', title: 'Main session', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
+    ]
+    workspaceSessionsData = sessionsData
+    useToastStore.setState({ toasts: [] })
+
+    await renderSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('Actions for project'))
+    await user.click(screen.getByRole('menuitem', { name: 'Hide from sidebar' }))
+
+    const toast = useToastStore.getState().toasts.find((t) => t.title === 'Hid project from the sidebar')
+    expect(toast?.description).toBe('Its sessions are kept. Open workspace… brings it back.')
+    expect(toast?.action?.label).toBe('Undo')
+
+    act(() => toast?.action?.onAction())
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/agent/workspace/visibility', expect.objectContaining({
+      method: 'PATCH',
+      body: JSON.stringify({ workspace: '/repo/project', hidden: false }),
+    })))
+  })
+
   describe('Remove from sidebar', () => {
     const session = (id: string, workspace: string): TestSession => ({
       id,
@@ -1492,7 +1517,7 @@ describe('Sidebar workspace trust flow', () => {
 
       await renderSidebar()
       expect(screen.queryByLabelText('Actions for project')).toBeNull()
-      await user.click(screen.getByRole('button', { name: /trust and open/i }))
+      await user.click(screen.getByRole('button', { name: 'Allow and open' }))
 
       // Opening a folder the sidebar does not list un-hides it first.
       await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/project' }, replace: false }))
@@ -2731,12 +2756,17 @@ describe('Sidebar workspace trust flow', () => {
       expect(screen.getByRole('menu', { name: 'Actions for Second' })).toBeTruthy()
       await user.keyboard('{Escape}')
       row('Second').focus()
-      await user.keyboard('{Delete}')
-      expect(screen.getByText('Delete this session?')).toBeTruthy()
-      await user.keyboard('{Escape}')
-      row('Second').focus()
       await user.keyboard('{F2}')
       expect(screen.getByLabelText('Session title')).toBeTruthy()
+      await user.keyboard('{Escape}')
+      row('Second').focus()
+      await user.keyboard('{Delete}')
+      // No dialog: the delete is held for the Undo toast's ten seconds.
+      expect(screen.queryByText('Delete this session?')).toBeNull()
+      expect(deleteSessionMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'session-2', holdMs: 10000 }),
+        expect.anything(),
+      )
     })
 
     it('moves between rows with Up/Down and jumps with Home/End', async () => {
@@ -2867,11 +2897,10 @@ describe('Sidebar workspace trust flow', () => {
 
     await renderSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('More actions for Delete me'))
-    await user.click(screen.getByRole('menuitem', { name: 'Delete session…' }))
-    await user.click(screen.getByRole('button', { name: 'Delete session' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete session' }))
 
     expect(deleteSessionMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'session-1', holdMs: 5000 }),
+      expect.objectContaining({ id: 'session-1', holdMs: 10000 }),
       expect.objectContaining({ onError: expect.any(Function) }),
     )
     expect(navigate).toHaveBeenCalledWith({
@@ -2892,8 +2921,7 @@ describe('Sidebar workspace trust flow', () => {
 
     await renderSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('More actions for Delete me'))
-    await user.click(screen.getByRole('menuitem', { name: 'Delete session…' }))
-    await user.click(screen.getByRole('button', { name: 'Delete session' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete session' }))
 
     const toast = useToastStore.getState().toasts.find((t) => t.title === 'Session deleted')
     expect(toast?.action?.label).toBe('Undo')
@@ -2906,18 +2934,33 @@ describe('Sidebar workspace trust flow', () => {
     expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'session-1' }, replace: true })
   })
 
-  it('requires confirmation before deleting a coding session', async () => {
+  it('deletes an idle session at once: no dialog, a toast with Undo that stays ten seconds', async () => {
     const user = userEvent.setup()
     sessionsData = [
-      {
-        id: 'session-1',
-        title: 'Delete me',
-        agent_name: 'lead',
-        created_at: '2026-05-13T00:00:00Z',
-        updated_at: '2026-05-13T00:00:00Z',
-        mode: 'coding',
-        workspace: '/repo/project',
-      },
+      { id: 'session-1', title: 'Delete me', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
+    ]
+    workspaceSessionsData = sessionsData
+    useToastStore.setState({ toasts: [] })
+
+    await renderSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('More actions for Delete me'))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete session' }))
+
+    expect(screen.queryByText('Delete this session?')).toBeNull()
+    expect(deleteSessionMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'session-1', holdMs: 10000 }),
+      expect.objectContaining({ onError: expect.any(Function) }),
+    )
+    const toast = useToastStore.getState().toasts.find((t) => t.title === 'Session deleted')
+    expect(toast?.description).toBe('Delete me')
+    expect(toast?.durationMs).toBe(10000)
+    expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
+  })
+
+  it('asks before deleting a session whose agent is still working, since Undo does not restart it', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      { id: 'session-1', title: 'Delete me', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project', running: true },
     ]
     workspaceSessionsData = sessionsData
 
@@ -2927,15 +2970,14 @@ describe('Sidebar workspace trust flow', () => {
 
     expect(deleteSessionMutate).not.toHaveBeenCalled()
     expect(screen.getByText('Delete this session?')).toBeTruthy()
-    expect(screen.getByText(/and its messages are deleted/i)).toBeTruthy()
+    expect(screen.getByText(/is still working\. Deleting stops it/)).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: 'Delete session' }))
 
     expect(deleteSessionMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'session-1', holdMs: 5000 }),
+      expect.objectContaining({ id: 'session-1', holdMs: 10000 }),
       expect.objectContaining({ onError: expect.any(Function) }),
     )
-    expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
   })
 
   it('copies the folder path from the workspace actions menu', async () => {
@@ -3224,7 +3266,7 @@ describe('Sidebar workspace trust flow', () => {
       const sheet = screen.getByRole('dialog', { name: 'A session title far too long for a phone row' })
       expect(sheet.hasAttribute('data-bottom-sheet')).toBe(true)
       // Delete reads as destructive at rest, as the desktop menu's does.
-      expect(within(sheet).getByRole('button', { name: 'Delete session…' }).className).toContain('text-(--color-error)')
+      expect(within(sheet).getByRole('button', { name: 'Delete session' }).className).toContain('text-(--color-error)')
     })
 
     it("opens a session's actions as a bottom sheet in the Android app", async () => {
@@ -3295,7 +3337,7 @@ describe('Sidebar workspace trust flow', () => {
         'Open in new window',
         'RenameF2',
         'Pin',
-        'Delete session…⌘⌫',
+        'Delete session⌘⌫',
       ])
       fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Pin' }))
       expect(setSessionPinnedMutate).toHaveBeenCalledWith(
@@ -3326,7 +3368,7 @@ describe('Sidebar workspace trust flow', () => {
         const rename = within(menu).getByRole('menuitem', { name: 'Rename' })
         expect(rename.querySelector('kbd')?.textContent).toBe('F2')
         expect(rename.getAttribute('aria-keyshortcuts')).toBe('F2')
-        const del = within(menu).getByRole('menuitem', { name: 'Delete session…' })
+        const del = within(menu).getByRole('menuitem', { name: 'Delete session' })
         expect(del.querySelector('kbd')?.textContent).toBe(deleteLabel)
         expect(del.getAttribute('aria-keyshortcuts')).toBe(aria)
         // Decorative: the name stays "Rename"; the key is in aria-keyshortcuts.
@@ -3348,7 +3390,7 @@ describe('Sidebar workspace trust flow', () => {
         expect(ROW_KEYS.delete.label(os as OS)).toBe(deleteLabel)
       })
 
-      it('renames on that key and asks to delete on that key', async () => {
+      it('renames on that key and deletes on that key', async () => {
         const { row, menu } = await openMenu()
         fireEvent.keyDown(menu, { key: 'Escape' })
 
@@ -3357,7 +3399,8 @@ describe('Sidebar workspace trust flow', () => {
         fireEvent.keyDown(screen.getByRole('textbox', { name: 'Session title' }), { key: 'Escape' })
 
         fireEvent.keyDown(await screen.findByRole('button', { name: /^Feature/ }), deleteKey)
-        expect(await screen.findByRole('heading', { name: 'Delete this session?' })).toBeTruthy()
+        await waitFor(() => expect(deleteSessionMutate).toHaveBeenCalledTimes(1))
+        expect(screen.queryByRole('heading', { name: 'Delete this session?' })).toBeNull()
       })
     })
 
@@ -3481,7 +3524,7 @@ describe('Sidebar workspace trust flow', () => {
       fireEvent.click(screen.getByRole('button', { name: 'More actions for subagent explorer#1' }))
       const menu = screen.getByRole('menu')
       expect(within(menu).queryByRole('menuitem', { name: 'Rename' })).toBeNull()
-      expect(within(menu).getByRole('menuitem', { name: 'Delete session…' })).toBeTruthy()
+      expect(within(menu).getByRole('menuitem', { name: 'Delete session' })).toBeTruthy()
     })
 
     it('lists a session another workspace ran under its sender, and its mark opens the sender', async () => {

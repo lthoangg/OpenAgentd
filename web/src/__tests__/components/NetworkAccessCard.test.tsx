@@ -50,22 +50,35 @@ mock.module('uqr', () => ({
   },
 }))
 
-const { NetworkAccessCard, firewallHint } = await import('@/components/NetworkAccessCard')
+const { NetworkAccessCard, FirewallHint, firewallHint } = await import('@/components/NetworkAccessCard')
 const { parseConnectLink } = await import('@/lib/connect-link')
 
 describe('firewallHint', () => {
   it('points Windows users at the Private network profile', () => {
-    expect(firewallHint('windows', 4082)).toContain('Private network')
+    expect(firewallHint('windows', 4082)?.text).toContain('Private network')
+    expect(firewallHint('windows', 4082)?.commands).toEqual([])
   })
 
-  it('gives Linux users the command for the listening port', () => {
-    const hint = firewallHint('linux', 4083) ?? ''
-    expect(hint).toContain('sudo ufw allow 4083/tcp')
-    expect(hint).toContain('firewall-cmd --add-port=4083/tcp')
+  it('gives Linux users the commands for the listening port, apart from the sentence', () => {
+    const hint = firewallHint('linux', 4083)
+    expect(hint?.text).toBe('If devices can\u2019t connect, open the port in your firewall (ufw or firewalld):')
+    expect(hint?.commands).toEqual(['sudo ufw allow 4083/tcp', 'sudo firewall-cmd --add-port=4083/tcp'])
   })
 
   it('has nothing for mobile platforms', () => {
     expect(firewallHint('ios', 4082)).toBeNull()
+  })
+
+  it('shows each Linux command as a code line with its own Copy', async () => {
+    const writeText = mock(async (..._args: unknown[]) => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    render(<FirewallHint os="linux" port={4083} />)
+
+    expect(screen.getByText('sudo ufw allow 4083/tcp').tagName).toBe('CODE')
+    await userEvent.click(screen.getByRole('button', { name: 'Copy sudo ufw allow 4083/tcp' }))
+
+    expect(writeText).toHaveBeenCalledWith('sudo ufw allow 4083/tcp')
+    cleanup()
   })
 })
 

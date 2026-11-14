@@ -1,3 +1,4 @@
+import { failureSentence } from '@/lib/failure-toast'
 import type { StateCreator } from 'zustand'
 import { agentStatus, sessionHistory, sessionHistorySince, updateSessionInteractionMode, updateSessionRunSettings } from '@/api/client'
 import { takePrefetchedHistory } from '@/lib/session-prefetch'
@@ -1132,7 +1133,7 @@ export const createSessionSlice: StateCreator<
       useToastStore.getState().push({
         tone: 'error',
         title: "Couldn't save the run settings",
-        description: err instanceof Error ? err.message : undefined,
+        description: failureSentence(err),
         action: { label: 'Retry', onAction: () => void get().setSessionRunSettings(patch) },
       })
       return false

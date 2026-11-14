@@ -99,8 +99,6 @@ const POINTER_VERBS: Record<string, { count: number; why: string }> = {
   'components/account/InviteSheet.tsx': { count: 1, why: 'says what to do on the phone that scans the code' },
   'components/settings/pages/settings.desktop.tsx': { count: 1, why: 'the notch setting: macOS desktop only' },
   'components/settings/settings-index.ts': { count: 1, why: 'a search keyword, never shown' },
-  'components/UpdateCard.tsx': { count: 2, why: 'the drag handle, hidden in the phone apps (two layouts, each with a label and a tooltip)' },
-  'components/LspInstallPrompt.tsx': { count: 2, why: 'the drag handle, hidden in the phone apps' },
   'components/WorkspacePanel/DockTabBar.tsx': { count: 1, why: 'a tooltip, which only a pointer shows' },
   'hooks/use-panel-resize.ts': { count: 1, why: 'the resize handle tooltip, which only a pointer shows' },
 }

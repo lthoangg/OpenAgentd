@@ -16,6 +16,7 @@
  * (ranked results) its name trails the row. A search still matches the whole
  * ``provider:model`` id, so ``openai:`` lists that provider's models.
  */
+import { failureSentence } from '@/lib/failure-toast'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import fuzzysort from 'fuzzysort'
 import { Check, RotateCcw, Search } from 'lucide-react'
@@ -205,7 +206,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
       pushToast({
         tone: 'error',
         title: "Couldn't save the default",
-        description: err instanceof Error ? err.message : String(err),
+        description: failureSentence(err),
         action: { label: 'Retry', onAction: () => void makeDefault() },
       })
     }

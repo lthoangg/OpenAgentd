@@ -316,7 +316,7 @@ describe('App backend bootstrap', () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalled())
     const loading = document.querySelector('[aria-label="Loading OpenAgentd"]')!
     expect(loading.textContent).toContain('Switching to the built-in server…')
-    expect(loading.textContent).not.toContain('Connecting to OpenAgentd')
+    expect(loading.textContent).not.toContain('Starting OpenAgentd')
 
     statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: true, external: false, token: 'desktop-token' }
     await waitFor(() => expect(routerMounted).toBe(true))
@@ -332,7 +332,7 @@ describe('App backend bootstrap', () => {
       backendErrorListener?.({ payload: { message: 'Sidecar handshake failed' } })
     })
 
-    expect(screen.getByText("OpenAgentd couldn't start its local server.")).toBeTruthy()
+    expect(screen.getByText("OpenAgentd couldn't start on this computer.")).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
@@ -349,7 +349,7 @@ describe('App backend bootstrap', () => {
     render(<App />)
 
     await waitFor(() => {
-      expect(screen.getByText("OpenAgentd couldn't start its local server.")).toBeTruthy()
+      expect(screen.getByText("OpenAgentd couldn't start on this computer.")).toBeTruthy()
     })
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
@@ -365,7 +365,7 @@ describe('App backend bootstrap', () => {
       backendErrorListener?.({ payload: { message: 'The local backend stopped unexpectedly (exit status: 101).' } })
     })
 
-    expect(screen.getByText("OpenAgentd couldn't start its local server.")).toBeTruthy()
+    expect(screen.getByText("OpenAgentd couldn't start on this computer.")).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
@@ -397,7 +397,7 @@ describe('App backend bootstrap', () => {
 
     expect(screen.getByText('OpenAgentd is taking longer than usual to start.')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Choose server' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Use another computer' })).toBeTruthy()
     timers.restore()
   })
 
@@ -406,7 +406,7 @@ describe('App backend bootstrap', () => {
     statusPayload = { base_url: '', sidecar_running: false, external: true }
     render(<App />)
     expect(await screen.findByTestId('servers-screen')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Choose server' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Use another computer' })).toBeNull()
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
@@ -427,30 +427,46 @@ describe('App backend bootstrap', () => {
     }
   })
 
-  it('copies the backend log path while the sidecar is still unavailable', async () => {
+  it('says it is starting, with the way to another computer as a link', async () => {
+    statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: false, external: false }
+    render(<App />)
+    await waitFor(() => expect(invokeMock).toHaveBeenCalled())
+
+    expect(screen.getByText('Starting OpenAgentd…')).toBeTruthy()
+    expect(screen.queryByText(/Connecting|server/i)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Use another computer' }).dataset.variant).toBe('link')
+  })
+
+  it('copies what a bug report needs: what failed, the shell\'s error and where the log is', async () => {
     statusPayload = { base_url: '', sidecar_running: false, external: false, backend_starting: true }
     render(<App />)
     await waitFor(() => expect(backendErrorListener).not.toBeNull())
     await act(async () => {
       backendErrorListener?.({ payload: { message: 'Sidecar handshake failed' } })
     })
+    // The shell's words stay off the screen; they are for the report.
+    expect(screen.queryByText(/Sidecar handshake failed/)).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Copy log path' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy details' }))
 
-    await waitFor(() => expect(writeClipboardMock).toHaveBeenCalledWith('/tmp/openagentd/backend.log'))
-    expect(screen.getByRole('button', { name: 'Log path copied' })).toBeTruthy()
+    await waitFor(() => expect(writeClipboardMock).toHaveBeenCalledTimes(1))
+    const copied = String((writeClipboardMock.mock.calls[0] as unknown[])[0])
+    expect(copied).toContain("OpenAgentd couldn't start on this computer.")
+    expect(copied).toContain('Error: Sidecar handshake failed')
+    expect(copied).toContain('Log: /tmp/openagentd/backend.log')
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeTruthy()
   })
 
-  it('shows the backend log path when clipboard access fails', async () => {
+  it('shows the details when clipboard access fails, so they can be selected', async () => {
     clipboardError = new Error('clipboard denied')
     statusPayload = { base_url: '', sidecar_running: false, external: false, backend_failed: true }
     render(<App />)
-    await waitFor(() => expect(screen.getByText("OpenAgentd couldn't start its local server.")).toBeTruthy())
+    await waitFor(() => expect(screen.getByText("OpenAgentd couldn't start on this computer.")).toBeTruthy())
 
-    fireEvent.click(screen.getByRole('button', { name: 'Copy log path' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy details' }))
 
     await waitFor(() => expect(screen.getByRole('button', { name: "Couldn't copy" })).toBeTruthy())
-    expect(screen.getByText('/tmp/openagentd/backend.log')).toBeTruthy()
+    expect(screen.getByText(/Log: \/tmp\/openagentd\/backend\.log/)).toBeTruthy()
   })
 
   it('does not start a duplicate bundled sidecar while startup is in progress', async () => {
@@ -503,7 +519,7 @@ describe('App backend bootstrap', () => {
     expect(invokeMock).toHaveBeenCalled()
     await act(async () => { timers.tick(60_000) })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Choose server' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use another computer' }))
     expect(screen.getByRole('dialog').textContent).toBe('Server chooser')
 
     statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: true, external: false }

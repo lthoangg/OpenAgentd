@@ -87,7 +87,7 @@ mock.module('@/api/client', () => ({
 mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, removeWorkspace: () => {}, workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
 mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => <button type="button">Transcript content</button> }))
-mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null }))
+mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null, ChatNote: () => null }))
 // The sidebar is the Sessions screen on a phone: record how it is asked to render.
 mock.module('@/components/Sidebar', () => ({
   Sidebar: ({ page, mobileOpen, onOpenServers }: { page?: boolean; mobileOpen?: boolean; onOpenServers?: () => void }) => (

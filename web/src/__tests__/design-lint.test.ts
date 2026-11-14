@@ -264,9 +264,6 @@ const RULES: Rule[] = [
     why: 'animating width/height/inset/margin/padding re-lays-out every frame; move with translate or scale, reveal with grid rows (ui/collapsible)',
     pattern: /transition-\[[^\]]*\b(?:width|height|left|right|top|bottom|inset|margin|padding)\b/g,
     allow: {
-      // Pill ↔ card morph of a fixed notice: nothing lays out around it.
-      'components/UpdateCard.tsx': 1,
-      'components/LspInstallPrompt.tsx': 1,
       // The current page dot widens into a pill among its few siblings.
       'components/FileLightbox.tsx': 1,
       // The switch thumb stretches while pressed (16px → 22px) inside a fixed track.

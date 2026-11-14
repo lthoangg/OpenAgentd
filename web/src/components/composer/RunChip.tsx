@@ -25,6 +25,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { lazySurface } from '@/lib/lazy-surface'
+import { isUnconfiguredModel } from '@/lib/model-readiness'
 import { splitModelId, thinkingLevelLabel, thinkingLevelShortLabel } from '@/lib/run-settings'
 import { cn } from '@/lib/utils'
 import { useSimpleDetail } from '@/stores/useDisplayPrefsStore'
@@ -80,7 +81,9 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
     else ui.closeRunPicker()
   }
 
-  const { model } = settings.model ? splitModelId(settings.model) : { model: 'No model' }
+  // A new install's agent file holds a placeholder until a model is connected.
+  const modelId = isUnconfiguredModel(settings.model) ? null : settings.model
+  const { model } = modelId ? splitModelId(modelId) : { model: 'No model' }
   const level = settings.thinkingLevel ? thinkingLevelLabel(settings.thinkingLevel) : null
   // With several accounts the chip always names the one in use.
   const account = settings.inUseAccount?.label ?? null
@@ -88,7 +91,7 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
   const meta = simple ? '' : [settings.thinkingLevel ? thinkingLevelShortLabel(settings.thinkingLevel) : null, account].filter(Boolean).join(' · ')
   const shortcut = shortcutLabel(APP_SHORTCUTS.sessionSettings, os)
   const label = [
-    `Model ${settings.model ?? 'not set'}`,
+    `Model ${modelId ?? 'not set'}`,
     level ? `thinking ${level}` : null,
     account ? `account ${account}` : null,
   ].filter(Boolean).join(', ')
@@ -158,7 +161,7 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
         <TooltipTrigger className="min-w-0 shrink" render={<PopoverTrigger render={chip} />} />
         {!open && (
           <TooltipContent side="top">
-            <span className="font-mono">{settings.model ?? 'No model'}</span> · Change ({shortcut})
+            <span className="font-mono">{modelId ?? 'No model'}</span> · Change ({shortcut})
           </TooltipContent>
         )}
       </Tooltip>

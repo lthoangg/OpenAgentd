@@ -131,6 +131,31 @@ describe('NewSessionScreen', () => {
     expect(urls.some((url) => url.includes('/workspace/status'))).toBe(false)
   })
 
+  it('says on a first Chat how to work with Undo, and opens the folder picker from there', async () => {
+    const user = userEvent.setup()
+    const { onOpenFolder } = renderScreen({ workspace: CHAT.path, isChat: true })
+
+    expect(screen.getByText(/Chat works in your home folder\./)).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'open a folder' }))
+
+    expect(onOpenFolder).toHaveBeenCalledTimes(1)
+  })
+
+  it('says it on a phone too', () => {
+    renderScreen({ workspace: CHAT.path, isChat: true, isMobile: true, phone: true })
+
+    expect(screen.getByText(/To have the agent change files with Undo,/)).toBeTruthy()
+  })
+
+  it('leaves the Chat note out once Chat has sessions (Continue takes its place), and in a folder', () => {
+    renderScreen({ workspace: CHAT.path, isChat: true, here: [session('s1', 'Earlier chat', CHAT.path)] })
+    expect(screen.queryByText(/Chat works in your home folder\./)).toBeNull()
+    cleanup()
+
+    renderScreen()
+    expect(screen.queryByText(/Chat works in your home folder\./)).toBeNull()
+  })
+
   it('asks anything in Chat, without a branch', () => {
     renderScreen({ workspace: CHAT.path, isChat: true })
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Ask anything')

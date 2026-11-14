@@ -2428,6 +2428,48 @@ run from the terminal (the native Rust binary since v3.0.0).
     `/connectors`, which shows once the agent has a connector; `/init` is
     not listed in Chat. All of them, and the earlier names, still run when
     typed, and typing an earlier name finds the row.
+  - **First run in plain words.** Start-up reads **Starting OpenAgentd…**
+    with a **Use another computer** link; a failed start says "OpenAgentd
+    couldn't start on this computer." with **Copy details** (the message,
+    the error, the version and the log's path). The model card leads with
+    **Sign in with a subscription you have**, then **Or paste an API key**,
+    and says a model running on this computer (Ollama) shows up on its own;
+    once connected it says which model replies use and where to change it.
+    A first Chat says, under the message box, that it works in your home
+    folder and that Undo needs a folder, with **open a folder** as a link
+    (the note leaves once Chat has a session). The message box always
+    reads "Ask anything…" (a phone said "Assign a task to the agent…"), and
+    in Plan mode "Plan mode: the agent reads and writes a plan. It changes
+    no files." Until a model is connected the model button reads **No
+    model** (it showed the placeholder `__PROVIDER_MODEL__`).
+  - **Opening a folder asks about the folder**: "Let agents work in
+    {folder}?" says they can read, change and delete files there and run
+    commands, and that Undo in the chat brings back files they edited, up
+    to 2 MB each. The button is **Allow and open** (it was "Trust this
+    workspace?" and "Trust and open").
+  - **Undo instead of a dialog.** Deleting a session no longer asks first:
+    the row leaves and a **Session deleted** toast offers **Undo** for 10
+    seconds (it was about 5, after a dialog). A session whose agent is still
+    working keeps the dialog, since Undo does not restart it. **Hide from
+    sidebar** now says what happened ("Hid {name} from the sidebar. Its
+    sessions are kept. Open workspace… brings it back.") with **Undo**.
+  - **A failure toast is a sentence.** A reason the server wrote for people
+    stays on the toast; a status line, JSON or a stack goes behind **Copy
+    details**, with "Try again, or copy the details for a bug report." (Git
+    errors keep Git's own words.)
+  - **Updates in one line.** The desktop downloads a new version on its own
+    and then asks once: "OpenAgentd 3.56.0 is ready", **Later**, **Restart
+    to update**. While agents are working the button reads **Restart when
+    agents finish** and the restart waits for them (**Restart now** and
+    **Cancel** while it waits). The card that could be dragged, minimized
+    to a pill and expanded, and its separate Download step, are gone;
+    **Check for Updates…** in the app menu answers in a toast, and Settings
+    → About downloads a found update the same way and keeps the release
+    notes. Android keeps one **Download** step (an APK), in the same line.
+    The TypeScript tools prompt is one line too: "Install TypeScript tools
+    for {folder}?", **Later**, **Install**.
+  - Network access on Linux shows each firewall command as a code line with
+    **Copy**. "Clear this goal?" is two sentences.
 - **Each platform is offered what it can do, in one wording** `[v3.54.0]`:
   - iPad: a long press in the terminal opens Select All, Copy, Paste, Find
     and Add to chat, as on a phone. Before, only a phone-sized window had it.

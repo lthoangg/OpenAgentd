@@ -1,7 +1,8 @@
 /**
  * FloatingNotices — the one top-right column for the app's non-blocking
- * cards: toasts, the TypeScript tools prompt, and the update card. Sharing a
- * column makes them stack instead of landing on the same spot. It hangs under
+ * notices: toasts, the TypeScript tools prompt and the update notice (one
+ * line each). Sharing a column makes them stack instead of landing on the
+ * same spot. It hangs under
  * the app header (``.mobile-safe-floating``, safe areas included) on every
  * screen, full width on phones, so the composer and its run deck own the
  * bottom. Toasts come first, newest nearest the top edge (see ``ToastStack``).

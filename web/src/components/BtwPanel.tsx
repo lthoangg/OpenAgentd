@@ -15,6 +15,7 @@
  * question of the session cannot be undone. The chip is always "Side
  * questions" (one name; it truncates when space is short).
  */
+import { failureToast } from '@/lib/failure-toast'
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Copy, MessageCircleQuestion, Square, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -134,7 +135,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
   const onClear = () => {
     // Failures surface as a toast; the dialog closes either way.
     return store.clear(sessionId).catch((err: unknown) => {
-      useToastStore.getState().push({ tone: 'error', title: "Couldn't delete side questions", description: err instanceof Error ? err.message : String(err) })
+      useToastStore.getState().push(failureToast("Couldn't delete side questions", err))
     })
   }
   const onStop = () => {

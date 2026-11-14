@@ -2866,6 +2866,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   Before anything is sent, the iOS app asks once for consent to share what you
   write with the AI providers your server uses, with a link to the privacy
   policy, which is also in **Settings → About OpenAgentd** `[v3.49.0]`.
+- **iOS app on the App Store** `[v3.55.0]` — OpenAgentd is free on the
+  [App Store](https://apps.apple.com/app/openagentd/id6831600179) for iPhone
+  and iPad (iOS/iPadOS 15.0 or later). The public TestFlight beta stays for
+  early builds; a device has one or the other. See
+  [Install the iOS app](../../mobile/INSTALL-IOS.md).
 - **Android app (APK)** `[v3.15.0]` — releases include a sideloadable
   `OpenAgentd_<version>_Android.apk` with a checksum. Access keys are
   encrypted with an Android Keystore key, downloads open the system share

@@ -4,20 +4,35 @@ The iOS app connects to an OpenAgentd server running on another computer. The
 server holds your agents, sessions, and keys; the app does not run a backend of
 its own.
 
-Install it with **TestFlight**, Apple's beta app, which installs OpenAgentd
-and keeps it updated.
+Install it from the **App Store**. If you want new versions before they reach
+the App Store, join the public beta on **TestFlight** instead.
 
-## Install from TestFlight
+A phone or iPad has one or the other: installing either one replaces the
+other.
+
+## Install from the App Store
+
+1. On your iPhone or iPad, open
+   [OpenAgentd on the App Store](https://apps.apple.com/app/openagentd/id6831600179).
+2. Tap **Get**. The app is free.
+
+## Join the public beta on TestFlight
+
+The beta gets early builds of the next version.
 
 1. Install [TestFlight](https://apps.apple.com/app/testflight/id899247664)
-   from the App Store (iOS/iPadOS 15.0 or later).
-2. On your iPhone or iPad, open the OpenAgentd TestFlight link on
-   [openagentd.dev/download/ios](https://openagentd.dev/download/ios/), and
-   tap **Accept**, then **Install**.
-3. New versions appear in TestFlight; turn on **Automatic Updates** there.
+   from the App Store.
+2. On your iPhone or iPad, open the
+   [OpenAgentd public beta link](https://testflight.apple.com/join/rykJnzxZ),
+   and tap **Accept**, then **Install**.
 
-Once OpenAgentd is on the App Store, install it from there instead; the App
-Store keeps it up to date, and TestFlight stays the beta.
+## Updates
+
+- **App Store:** updates come through the App Store. To get them
+  automatically, turn on **App Updates** in **Settings → App Store**.
+- **TestFlight:** new beta builds appear in TestFlight; turn on **Automatic
+  Updates** there. Each beta build expires after 90 days, so keep installing
+  the newer ones.
 
 ## Requirements
 

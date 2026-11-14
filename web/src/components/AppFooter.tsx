@@ -5,7 +5,11 @@
  *   • left:  connected backend and its health · git branch with ahead/behind
  *            + dirty count · "N terminals running" while the workspace has
  *            live shells (they keep running with the Review panel closed)
- *   • right: fast mode · 24h spend · settings
+ *   • right: fast mode · 24h spend · Connect your phone · settings
+ *
+ * **Connect your phone** shows only in the desktop app, on its own built-in
+ * server (which holds the account), while this computer is not in an
+ * account or is part-way through signing in: one click to the QR code.
  *
  * The model lives on the composer's run deck, the one place to read and
  * change it, so the status bar does not repeat it.
@@ -19,6 +23,7 @@ import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import {
   GitBranch,
   Settings,
+  Smartphone,
   TerminalSquare,
   Zap,
 } from 'lucide-react'
@@ -39,6 +44,7 @@ import { formatSpend } from '@/utils/telemetryFormat'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { cn } from '@/lib/utils'
+import { startConnectPhone, useConnectPhoneOffer } from '@/lib/connect-phone'
 
 // The summary endpoint only refreshes on demand. Spend moves only while a
 // model call runs, so poll each minute then; idle, a slow poll still lets the
@@ -101,6 +107,32 @@ const ICON_ITEM =
 
 function Divider() {
   return <div className="mx-0.5 h-3 w-px shrink-0 bg-(--color-border-subtle)" aria-hidden="true" />
+}
+
+/** Desktop only, on its own server, until this computer is in an account. */
+function ConnectPhoneButton() {
+  const offer = useConnectPhoneOffer()
+  if (!offer) return null
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={() => startConnectPhone(offer)}
+            className={ICON_ITEM}
+            aria-label="Connect your phone"
+          >
+            <Smartphone size={12} aria-hidden="true" />
+          </button>
+        }
+      />
+      <TooltipContent>
+        <span className="block">Connect your phone</span>
+        <span className="block text-(--color-text-muted)">Scan a code to reach this computer from anywhere</span>
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 function syncLabel(ahead: number | null | undefined, behind: number | null | undefined): string | null {
@@ -287,6 +319,8 @@ export const AppFooter = memo(function AppFooter({
             </TooltipContent>
           </Tooltip>
         )}
+
+        <ConnectPhoneButton />
 
         <Tooltip>
           <TooltipTrigger

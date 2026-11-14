@@ -9,6 +9,8 @@ import { useTerminalStore, _resetTerminalStoreForTests, type TerminalSessionMeta
 import { useUIStore } from '@/stores/useUIStore'
 import { APP_EVENTS } from '@/lib/app-events'
 import { queryKeys } from '@/queries/keys'
+import { queryClient as appQueryClient } from '@/lib/query-client'
+import { useConnectPhoneStore } from '@/lib/connect-phone'
 
 const navigate = mock(() => Promise.resolve())
 mock.module('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
@@ -448,5 +450,94 @@ describe('AppFooter spend refresh', () => {
     })) as unknown as typeof window.matchMedia
     mount([{ running: true }], { seedSpend: false })
     expect(spendRequests()).toBe(0)
+  })
+})
+
+/** Connect your phone: one click from the desktop's status bar to the QR code. */
+describe('AppFooter Connect your phone', () => {
+  const realPlatform = Object.getOwnPropertyDescriptor(window.navigator, 'platform')
+  const realFetch = globalThis.fetch
+  let cloudState: Record<string, unknown> = { state: 'guest', notice: null }
+  let cloudCalls: string[] = []
+
+  /** The desktop app on a Mac: account calls go through the shell to the built-in server. */
+  function inDesktopApp() {
+    ;(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+      invoke: async (command: string, args: Record<string, unknown>) => {
+        if (command !== 'desktop_cloud_call') throw new Error(`unexpected command: ${command}`)
+        cloudCalls.push(`${String(args.method)} ${String(args.path)}`)
+        return { status: 200, body: JSON.stringify(cloudState) }
+      },
+      transformCallback: () => 0,
+    }
+    Object.defineProperty(window.navigator, 'platform', { value: 'MacIntel', configurable: true })
+  }
+  const button = () => screen.queryByRole('button', { name: 'Connect your phone' })
+
+  beforeEach(() => {
+    cloudState = { state: 'guest', notice: null }
+    cloudCalls = []
+    backendExternal = false
+    mockOpenSettings.mockClear()
+    useConnectPhoneStore.setState({ requested: 0, handled: 0 })
+    globalThis.fetch = (() => new Promise(() => {})) as unknown as typeof fetch
+  })
+  afterEach(() => {
+    cleanup()
+    appQueryClient.clear()
+    globalThis.fetch = realFetch
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
+    if (realPlatform) Object.defineProperty(window.navigator, 'platform', realPlatform)
+    else delete (window.navigator as unknown as Record<string, unknown>).platform
+  })
+
+  it('is offered to a desktop on its own server that is not in an account', async () => {
+    inDesktopApp()
+    renderWithQueryClient(<AppFooter />)
+    expect(await screen.findByRole('button', { name: 'Connect your phone' })).toBeTruthy()
+  })
+
+  it('opens Account and asks it to sign in, without signing in itself', async () => {
+    inDesktopApp()
+    renderWithQueryClient(<AppFooter />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect your phone' }))
+
+    expect(mockOpenSettings).toHaveBeenCalledWith('account')
+    expect(useConnectPhoneStore.getState().requested).toBe(1)
+    expect(cloudCalls).not.toContain('POST /login')
+  })
+
+  it('returns to a sign-in under way without starting another', async () => {
+    inDesktopApp()
+    cloudState = { state: 'signing_in', user_code: 'BCDF-GHJK', url: 'https://a.example/device', fingerprint: 'f', expires_in: 600 }
+    renderWithQueryClient(<AppFooter />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect your phone' }))
+
+    expect(mockOpenSettings).toHaveBeenCalledWith('account')
+    expect(useConnectPhoneStore.getState().requested).toBe(0)
+  })
+
+  it('goes away once this computer is in an account', async () => {
+    inDesktopApp()
+    cloudState = { state: 'connected', fingerprint: 'f', signer: true, relay: { state: 'online' }, sessions: 0 }
+    renderWithQueryClient(<AppFooter />)
+    await waitFor(() => expect(cloudCalls).toContain('GET /status'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(button()).toBeNull()
+  })
+
+  it('is not offered while the window is on another server', async () => {
+    inDesktopApp()
+    backendExternal = true
+    renderWithQueryClient(<AppFooter />)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(button()).toBeNull()
+    expect(cloudCalls).toEqual([])
+  })
+
+  it('is not offered outside the desktop app', async () => {
+    renderWithQueryClient(<AppFooter />)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(button()).toBeNull()
   })
 })

@@ -1,12 +1,14 @@
 /**
  * Settings → Account — this computer's optional OpenAgentd Cloud account.
  * Guest is the default and is never blocked or nagged. **Sign in** is the
- * way in, with **Use as server** and **Use as client** (both on): on an
- * empty account this computer creates it (after the recovery code);
- * otherwise a phone of the account scans the QR code the sign-in step
+ * way in, with **Use as server** and **Use as client** (both on, under
+ * **Options**): on an empty account this computer creates it (after the
+ * recovery code); otherwise a phone scans the QR code the sign-in step
  * shows and the person picks the phone's number here, or a device already
  * in the account approves it after comparing a 6-digit code (the browser
- * way, under the QR code). An invitation link is the alternative. Once connected, a
+ * way, folded under the QR code). **Connect your phone** (footer, palette)
+ * opens this page and signs in at once (`lib/connect-phone`). An invitation
+ * link is the alternative. Once connected, a
  * computer that approves devices lists the account's devices and the
  * pending requests, and approves one with the code and Touch ID; in the
  * desktop app it also shows an invitation QR code (**Add a device**) that a
@@ -19,7 +21,7 @@
  * while the app is on its own server, and (in the desktop app) any other
  * computer of the account through its link.
  */
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 import { APPROVE_ELSEWHERE, REMOVE_ELSEWHERE, type CloudPending, type CloudStatus, type RelayState, type Roles } from '@/api/cloud'
 import { deviceLabel, pendingLabel } from '@/api/phone-cloud'
@@ -47,12 +49,14 @@ import {
 import { InvitedCopy, JoinWithLink } from '@/components/settings/pages/join-with-link'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
+import { Collapsible } from '@/components/ui/collapsible'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { useAppStatusWithNames } from '@/lib/account-computers'
 import { BUILT_IN_NAME_KEY, computerNameKey } from '@/lib/app-backend'
 import { canApproveHere } from '@/lib/approval-proof'
+import { consumeConnectPhone, useConnectPhoneStore } from '@/lib/connect-phone'
 import { NAME_NEEDS_UPDATE, renameAccountComputer, renameComputerInUse, serverInUseKeepsName } from '@/lib/computer-rename'
 import { isDesktopShell } from '@/lib/desktop-shell'
 import {
@@ -167,6 +171,8 @@ export function AccountSettingsPage() {
   const [confirmingSignOut, setConfirmingSignOut] = useState(false)
   const [roles, setRoles] = useState<Roles>(COMPUTER_ROLES)
   const [withLink, setWithLink] = useState(false)
+  const [options, setOptions] = useState(false)
+  const [browserWay, setBrowserWay] = useState(false)
   const [reviewing, setReviewing] = useState<CloudPending | null>(null)
   const [adding, setAdding] = useState(false)
 
@@ -177,6 +183,16 @@ export function AccountSettingsPage() {
   const readOnly = mutations.some((m) => isForbidden(m.error))
   const failure = mutations.map((m) => m.error).find((e) => e && !isForbidden(e))
   const busy = mutations.some((m) => m.isPending)
+
+  // Connect your phone: sign in once the status says this computer is a
+  // guest; a sign-in already under way just shows. Each request once.
+  const connectRequested = useConnectPhoneStore((s) => s.requested)
+  const state = status?.state
+  const { mutate: signIn } = login
+  useEffect(() => {
+    if (!state || !consumeConnectPhone()) return
+    if (state === 'guest') signIn(COMPUTER_ROLES)
+  }, [connectRequested, state, signIn])
 
   const signOutButton = (
     <Button size="sm" disabled={busy} onClick={() => setConfirmingSignOut(true)}>Sign out</Button>
@@ -201,13 +217,20 @@ export function AccountSettingsPage() {
               <OfferCopy />
               {!readOnly && (
                 <>
-                  <RolesChoice value={roles} onChange={setRoles} disabled={busy} />
-                  <Button variant="primary" size="sm" disabled={busy || noRole} onClick={() => login.mutate(roles)}>
-                    {status.notice === 'expired' ? 'Sign in again' : 'Sign in'}
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button variant="primary" size="sm" disabled={busy || noRole} onClick={() => login.mutate(roles)}>
+                      {status.notice === 'expired' ? 'Sign in again' : 'Sign in'}
+                    </Button>
+                    <Button variant="link" size="sm" className="h-auto p-0" aria-expanded={options} onClick={() => setOptions((open) => !open)}>
+                      Options
+                    </Button>
+                  </div>
+                  <Collapsible open={options}>
+                    <RolesChoice value={roles} onChange={setRoles} disabled={busy} />
+                  </Collapsible>
                   <p>
-                    If your account has a phone, it scans a code to add this computer; a computer in your account
-                    approves it after you compare a 6-digit code. Otherwise this computer sets the account up.
+                    Your phone scans a code to add this computer. No phone? You can sign in in the browser instead;
+                    on a new account, this computer sets it up.
                   </p>
                   {withLink ? (
                     <JoinWithLink
@@ -235,32 +258,51 @@ export function AccountSettingsPage() {
       content = (
         <PanelSection title="Signing in">
           <Body>
-            {status.add_link && (
+            {status.add_link ? (
               <>
                 <div className="flex flex-wrap items-start gap-4">
                   <ConnectQrCode value={status.add_link} size={168} label="Sign-in QR code" />
                   <div className="min-w-0 flex-1 space-y-2">
                     <ScanCodeCopy minutes={Math.max(1, Math.round(status.expires_in / 60))} />
+                    {!readOnly && cancelButton}
                   </div>
                 </div>
-                <p className="font-medium text-(--color-text)">No phone in your account yet?</p>
+                <Button variant="link" size="sm" className="h-auto p-0" aria-expanded={browserWay} onClick={() => setBrowserWay((open) => !open)}>
+                  Can&apos;t use your phone? Sign in in the browser
+                </Button>
+                <Collapsible open={browserWay} innerClassName="space-y-3">
+                  <SigningInCopy url={status.url} userCode={status.user_code} fingerprint={status.fingerprint} />
+                  {!readOnly && status.url.startsWith('https://') && (
+                    <a
+                      href={status.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={buttonVariants({ variant: 'primary', size: 'sm' })}
+                    >
+                      Open page
+                    </a>
+                  )}
+                </Collapsible>
               </>
-            )}
-            <SigningInCopy url={status.url} userCode={status.user_code} fingerprint={status.fingerprint} />
-            {!readOnly && (
-              <div className="flex flex-wrap gap-2">
-                {status.url.startsWith('https://') && (
-                  <a
-                    href={status.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={buttonVariants({ variant: 'primary', size: 'sm' })}
-                  >
-                    Open page
-                  </a>
+            ) : (
+              <>
+                <SigningInCopy url={status.url} userCode={status.user_code} fingerprint={status.fingerprint} />
+                {!readOnly && (
+                  <div className="flex flex-wrap gap-2">
+                    {status.url.startsWith('https://') && (
+                      <a
+                        href={status.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={buttonVariants({ variant: 'primary', size: 'sm' })}
+                      >
+                        Open page
+                      </a>
+                    )}
+                    {cancelButton}
+                  </div>
                 )}
-                {cancelButton}
-              </div>
+              </>
             )}
           </Body>
         </PanelSection>

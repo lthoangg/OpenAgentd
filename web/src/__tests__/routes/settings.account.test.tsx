@@ -21,6 +21,7 @@ import type { AppBackendStatus } from '@/lib/app-backend'
 import { queryClient as appQueryClient } from '@/lib/query-client'
 import { cloudPollInterval } from '@/queries/cloud'
 import { queryKeys } from '@/queries/keys'
+import { consumeConnectPhone, useConnectPhoneStore } from '@/lib/connect-phone'
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
@@ -81,12 +82,19 @@ function serveStatus(status: CloudStatus) {
 const FORBIDDEN = { detail: 'Only this computer can change its account.' }
 
 describe('AccountSettingsPage', () => {
-  it('offers Sign in first, with both roles on, and a link as the alternative, without blocking anything', async () => {
+  beforeEach(() => {
+    useConnectPhoneStore.setState({ requested: 0, handled: 0 })
+  })
+
+  it('offers Sign in first, with both roles on under Options, and a link as the alternative, without blocking anything', async () => {
     serveStatus({ state: 'guest', notice: null })
     renderPage()
 
     expect(await screen.findByText('Reach your computer from anywhere.')).toBeTruthy()
     expect(screen.getByText('Optional. Everything works without an account.')).toBeTruthy()
+    expect(screen.getByText(/Your phone scans a code to add this computer/)).toBeTruthy()
+    expect(screen.queryByRole('checkbox', { name: /Use as server/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }))
     expect((screen.getByRole('checkbox', { name: /Use as server/ }) as HTMLInputElement).checked).toBe(true)
     expect((screen.getByRole('checkbox', { name: /Use as client/ }) as HTMLInputElement).checked).toBe(true)
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy()
@@ -101,7 +109,8 @@ describe('AccountSettingsPage', () => {
     serveStatus({ state: 'guest', notice: null })
     renderPage()
 
-    fireEvent.click(await screen.findByRole('checkbox', { name: /Use as server/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Options' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Use as server/ }))
     fireEvent.click(screen.getByRole('checkbox', { name: /Use as client/ }))
     expect(screen.getByText('Choose at least one.')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Sign in' }) as HTMLButtonElement).disabled).toBe(true)
@@ -124,7 +133,8 @@ describe('AccountSettingsPage', () => {
     )
     renderPage()
 
-    fireEvent.click(await screen.findByRole('checkbox', { name: /Use as client/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Options' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Use as client/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(await screen.findByText('ABCD-EFGH')).toBeTruthy()
@@ -179,7 +189,42 @@ describe('AccountSettingsPage', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
   })
 
-  it('shows the scan code first, and the browser way under it for an account without a phone', async () => {
+  it('signs in once, with both roles, when opened from Connect your phone', async () => {
+    const sent: unknown[] = []
+    serveStatus({ state: 'guest', notice: null })
+    server.use(http.post(LOGIN_URL, async ({ request }) => {
+      sent.push(await request.json())
+      return HttpResponse.json({
+        state: 'signing_in', user_code: 'BCDF-GHJK', url: 'https://account.openagentd.dev/device', fingerprint: '3F9A 21C4', expires_in: 600, add_link: ADD_LINK,
+      })
+    }))
+    useConnectPhoneStore.setState({ requested: 1, handled: 0 })
+    renderPage()
+
+    expect(await screen.findByRole('img', { name: 'Sign-in QR code' })).toBeTruthy()
+    expect(sent).toEqual([{ server: true, client: true }])
+    expect(consumeConnectPhone()).toBe(false)
+  })
+
+  it('shows a sign-in already under way, and starts no other, when opened from Connect your phone', async () => {
+    let posts = 0
+    serveStatus({
+      state: 'signing_in', user_code: 'BCDF-GHJK', url: 'https://account.openagentd.dev/device', fingerprint: '3F9A 21C4', expires_in: 600, add_link: ADD_LINK,
+    })
+    server.use(http.post(LOGIN_URL, () => {
+      posts += 1
+      return HttpResponse.json({ state: 'guest', notice: null })
+    }))
+    useConnectPhoneStore.setState({ requested: 1, handled: 0 })
+    renderPage()
+
+    expect(await screen.findByRole('img', { name: 'Sign-in QR code' })).toBeTruthy()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(posts).toBe(0)
+    expect(consumeConnectPhone()).toBe(false)
+  })
+
+  it('shows the scan code alone, with the browser way folded under it', async () => {
     serveStatus({
       state: 'signing_in', user_code: 'BCDF-GHJK', url: 'https://account.openagentd.dev/device?code=BCDF-GHJK', fingerprint: '3F9A 21C4', expires_in: 600, add_link: ADD_LINK,
     })
@@ -187,11 +232,15 @@ describe('AccountSettingsPage', () => {
 
     expect(await screen.findByText('Scan with your phone')).toBeTruthy()
     expect(await screen.findByRole('img', { name: 'Sign-in QR code' })).toBeTruthy()
-    expect(screen.getByText(/On Servers, choose/)).toBeTruthy()
-    expect(screen.getByText('No phone in your account yet?')).toBeTruthy()
+    expect(screen.getByText(/Open OpenAgentd on your phone\. On Servers, tap/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
+    expect(screen.queryByText('BCDF-GHJK')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Open page' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: "Can't use your phone? Sign in in the browser" }))
     expect(screen.getByText('BCDF-GHJK')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Open page' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: 'Cancel' })).toHaveLength(1)
   })
 
   it('shows no scan code to a server that did not make one', async () => {
@@ -200,7 +249,8 @@ describe('AccountSettingsPage', () => {
 
     expect(await screen.findByText('BCDF-GHJK')).toBeTruthy()
     expect(screen.queryByText('Scan with your phone')).toBeNull()
-    expect(screen.queryByText('No phone in your account yet?')).toBeNull()
+    expect(screen.queryByRole('button', { name: "Can't use your phone? Sign in in the browser" })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Open page' })).toBeTruthy()
   })
 
   it('asks to tap Add on the phone once it scanned', async () => {

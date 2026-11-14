@@ -47,7 +47,7 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   { section: 'connection', label: 'Access key', keywords: ['token', 'password', 'auth', 'server'] },
   { section: 'connection', label: 'Access from other devices', keywords: ['network', 'lan', 'phone', 'qr', 'scan', 'share', 'remote access'] },
   // Account
-  { section: 'account', label: 'Sign in', keywords: ['account', 'cloud', 'login', 'phone', 'remote', 'anywhere', 'optional', 'guest'], anchor: 'Account' },
+  { section: 'account', label: 'Sign in', keywords: ['account', 'cloud', 'login', 'phone', 'remote', 'anywhere', 'optional', 'guest', 'connect your phone', 'pair', 'qr', 'scan'], anchor: 'Account' },
   { section: 'account', label: 'Sign out', keywords: ['account', 'cloud', 'logout', 'remove this device'], anchor: 'Account' },
   // Agents, skills, MCP, plugins, goals
   { section: 'agents', label: 'Agent model', keywords: ['model', 'thinking', 'reasoning', 'effort', 'subagent', 'system prompt', 'tools'], anchor: 'Agents' },

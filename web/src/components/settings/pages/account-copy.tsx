@@ -135,13 +135,13 @@ export function SigningInCopy({ url, userCode, fingerprint }: { url: string; use
   )
 }
 
-/** Scan to add: the QR code is the first way, for an account with a phone. */
+/** Scan to add: the QR code is the first way; a phone not signed in yet signs in, then adds it. */
 export function ScanCodeCopy({ minutes }: { minutes: number }) {
   return (
     <>
       <p className="font-medium text-(--color-text)">Scan with your phone</p>
       <p>
-        Open OpenAgentd on a phone in your account. On Servers, choose{' '}
+        Open OpenAgentd on your phone. On Servers, tap{' '}
         <strong className="text-(--color-text)">Scan QR code</strong>.
       </p>
       <p>Works for {minutes} minutes. Show it only to your own phone.</p>

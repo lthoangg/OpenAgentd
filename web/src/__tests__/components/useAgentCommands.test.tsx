@@ -27,6 +27,7 @@ import { useUIStore } from "@/stores/useUIStore"
 import { useDisplayPrefsStore } from "@/stores/useDisplayPrefsStore"
 import { THEME_STORAGE_KEY } from "@/lib/theme"
 import type { Command } from "@/components/CommandPalette"
+import { useConnectPhoneStore } from "@/lib/connect-phone"
 
 afterEach(cleanup)
 
@@ -276,6 +277,28 @@ describe("useAgentCommands — navigation", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
     byId(result.current, "go-settings").action()
     expect(openSettings).toHaveBeenCalledWith("agents")
+  })
+
+  it("offers Connect Your Phone only when the footer would, and starts the sign-in for a guest", () => {
+    const openSettings = mock(() => {})
+    useSettingsStore.setState({ openSettings })
+    useConnectPhoneStore.setState({ requested: 0, handled: 0 })
+
+    const none = renderHook(() => useAgentCommands(makeArgs()))
+    expect(none.result.current.some((c) => c.id === "connect-phone")).toBe(false)
+
+    const guest = renderHook(() => useAgentCommands(makeArgs({ connectPhone: { signIn: true } })))
+    const cmd = byId(guest.result.current, "connect-phone")
+    expect(cmd.label).toBe("Connect Your Phone")
+    expect(cmd.group).toBe("Navigation")
+    expect(cmd.keywords).toContain("qr")
+    cmd.action()
+    expect(openSettings).toHaveBeenCalledWith("account")
+    expect(useConnectPhoneStore.getState().requested).toBe(1)
+
+    const signingIn = renderHook(() => useAgentCommands(makeArgs({ connectPhone: { signIn: false } })))
+    byId(signingIn.result.current, "connect-phone").action()
+    expect(useConnectPhoneStore.getState().requested).toBe(1)
   })
 
   it("go-telemetry opens the Usage overlay", () => {

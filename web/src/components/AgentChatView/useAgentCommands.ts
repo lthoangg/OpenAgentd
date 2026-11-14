@@ -26,6 +26,7 @@ import { useLayoutStore } from '@/stores/useLayoutStore'
 import { APP_SHORTCUTS as KEYS, shortcutLabel } from '@/lib/app-shortcuts'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { openNextNeedsYou } from '@/lib/desktop-commands'
+import { startConnectPhone, type ConnectPhoneOffer } from '@/lib/connect-phone'
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 
 /** The session's Goal tab as the palette needs it: given whenever it can open. */
@@ -71,6 +72,8 @@ interface UseAgentCommandsArgs {
   handleOpenSideQuestions?: () => void
   /** The session's goal, with a workspace to show its tab in. */
   goal?: UseAgentCommandsGoal
+  /** Desktop not yet in an account: Connect Your Phone (see `useConnectPhoneOffer`). */
+  connectPhone?: ConnectPhoneOffer | null
 }
 
 /**
@@ -109,6 +112,7 @@ export function useAgentCommands({
   handleOpenPreview,
   handleOpenSideQuestions,
   goal,
+  connectPhone,
 }: UseAgentCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
   const { preference: theme, setPreference: setTheme } = useThemePreference()
@@ -118,6 +122,8 @@ export function useAgentCommands({
   const setTextSize = useDisplayPrefsStore((s) => s.setTextSize)
   const { os, isTauri } = usePlatform()
   const router = useRouter()
+  // A primitive, so a new offer object each render keeps the list memoized.
+  const phoneSignIn = connectPhone ? connectPhone.signIn : null
   return useMemo<Command[]>(() => [
     { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
     ...goalCommands(goal),
@@ -178,6 +184,16 @@ export function useAgentCommands({
     { id: 'open-workspace', group: 'Navigation', label: 'Open Workspace…', description: 'Add a folder as a workspace', keywords: 'folder project repo add', shortcut: shortcutLabel(KEYS.openWorkspace, os), action: () => dispatchAppEvent(APP_EVENTS.openWorkspace) },
     { id: 'next-needs-you', group: 'Navigation', label: 'Next Session That Needs You', description: 'Jump to the next session waiting for an answer or a review', keywords: 'waiting attention ask question approve', action: () => openNextNeedsYou(router) },
     { id: 'go-telemetry', group: 'Navigation', label: 'Open Usage', description: 'Spend, turns and traces by workspace and model', keywords: 'telemetry usage spend cost traces', action: () => openTelemetry() },
+    ...(phoneSignIn !== null
+      ? [{
+          id: 'connect-phone',
+          group: 'Navigation' as const,
+          label: 'Connect Your Phone',
+          description: 'Show a code your phone scans to reach this computer from anywhere',
+          keywords: 'phone pair qr account mobile remote iphone scan',
+          action: () => startConnectPhone({ signIn: phoneSignIn }),
+        }]
+      : []),
     { id: 'keyboard-shortcuts', group: 'Navigation', label: 'Keyboard Shortcuts', description: 'Every shortcut, by where it works', keywords: 'keys hotkeys keybindings', shortcut: shortcutLabel(KEYS.shortcutsHelp, os), action: () => useUIStore.getState().toggleShortcutsHelp() },
     {
       id: 'theme',
@@ -229,5 +245,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, router, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleSplitDock, handleSplitDockDown, handleFindInSession, handleOpenPlan, hasPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode, textSize, setTextSize])
+  ], [os, isTauri, router, phoneSignIn, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleSplitDock, handleSplitDockDown, handleFindInSession, handleOpenPlan, hasPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode, textSize, setTextSize])
 }

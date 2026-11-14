@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppFooter } from '@/components/AppFooter'
 import { HealthDot } from '@/components/HealthDot'
 import { useTelemetryStore } from '@/stores/useTelemetryStore'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useTerminalStore, _resetTerminalStoreForTests, type TerminalSessionMeta } from '@/stores/useTerminalStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { APP_EVENTS } from '@/lib/app-events'
@@ -254,6 +255,19 @@ describe('AppFooter', () => {
     renderWithQueryClient(<AppFooter />)
     expect(screen.queryByRole('button', { name: /Spend in the last 24 hours/ })).toBeNull()
   })
+
+  it('shows no spend figure with the Detail setting on Simple', () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
+    try {
+      renderWithQueryClient(<AppFooter />, 1.234)
+      expect(screen.queryByRole('button', { name: /Spend in the last 24 hours/ })).toBeNull()
+      expect(screen.queryByText(/24h/)).toBeNull()
+      // The rest of the bar is as in Full.
+      expect(screen.getByLabelText('Settings')).toBeTruthy()
+    } finally {
+      useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
+    }
+  })
 })
 
 /** Shells keep running with the terminal group hidden: the status bar says so. */
@@ -441,6 +455,20 @@ describe('AppFooter spend refresh', () => {
     expect(spendRequests()).toBe(0)
     act(() => { client.setQueryData(queryKeys.session.sessions.active(), activePage([{ running: false }])) })
     await waitFor(() => expect(spendRequests()).toBe(1))
+  })
+
+  it('fetches no spend with the Detail setting on Simple, where none is shown', async () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
+    try {
+      const { client } = mount([{ running: true }], { seedSpend: false })
+      expect(spendRequests()).toBe(0)
+      // Nor when the last running turn ends, which refreshes it in Full.
+      act(() => { client.setQueryData(queryKeys.session.sessions.active(), activePage([{ running: false }])) })
+      await act(async () => { await Promise.resolve() })
+      expect(spendRequests()).toBe(0)
+    } finally {
+      useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
+    }
   })
 
   it('fetches no spend while the footer is hidden on a narrow window', () => {

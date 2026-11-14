@@ -27,6 +27,15 @@ describe('searchSettings', () => {
     expect(labelsFor('retention days')).toContain('setting:telemetry:Keep traces for')
   })
 
+  it('finds the Detail setting by its new name and by every old one', () => {
+    for (const query of ['detail', 'simple', 'full', 'reader', 'detailed', 'transcript']) {
+      expect(labelsFor(query)).toContain('setting:general:Detail')
+    }
+    for (const query of ['previews', 'manually', 'review panel', 'automatically']) {
+      expect(labelsFor(query)).toContain('setting:general:Open previews')
+    }
+  })
+
   it('finds the fallback order of accounts under Providers', () => {
     for (const query of ['use first', 'rate limit', 'tried in this order', 'pinned']) {
       expect(labelsFor(query)).toContain('setting:providers:Accounts and fallback order')

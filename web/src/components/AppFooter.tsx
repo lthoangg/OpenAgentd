@@ -7,6 +7,9 @@
  *            live shells (they keep running with the Review panel closed)
  *   • right: fast mode · 24h spend · Connect your phone · settings
  *
+ * The spend is an estimate from token counts, so with the Detail setting on
+ * Simple it is neither shown nor fetched (Usage still has it).
+ *
  * **Connect your phone** shows only in the desktop app, on its own built-in
  * server (which holds the account), while this computer is not in an
  * account or is part-way through signing in: one click to the QR code.
@@ -34,6 +37,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { useSimpleDetail } from '@/stores/useDisplayPrefsStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
@@ -67,9 +71,10 @@ function useFooterShown(): boolean {
   )
 }
 
-/** Last-24 h spend, refreshed on turn activity, never while hidden. */
+/** Last-24 h spend, refreshed on turn activity, never while hidden (a narrow window, Simple detail). */
 function useFooterSpend(): number | undefined {
-  const shown = useFooterShown()
+  const simple = useSimpleDetail()
+  const shown = useFooterShown() && !simple
   const spending = sessionsSpending(useActiveSessionsQuery().data)
   const query = useObservabilitySummaryQuery(1, {}, {
     enabled: shown,
@@ -82,7 +87,7 @@ function useFooterSpend(): number | undefined {
     if (wasSpending.current && !spending && shown) void refetch()
     wasSpending.current = spending
   }, [spending, shown, refetch])
-  return query.data?.totals.estimated_cost_usd
+  return simple ? undefined : query.data?.totals.estimated_cost_usd
 }
 
 export interface AppFooterProps {

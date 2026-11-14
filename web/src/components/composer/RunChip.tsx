@@ -1,6 +1,8 @@
 /**
  * RunChip — the run deck's "how this message runs" control:
- * ``model · Thinking · Account``, and the run picker it opens.
+ * ``model · Thinking · Account``, and the run picker it opens. With the
+ * Detail setting on Simple it names the model only; the level and the
+ * account are in the picker and in its accessible name.
  *
  * The chip names the model in sans, as a label, not an ID to copy: the
  * ``provider:model`` ID is in mono in the picker, in the chip's accessible
@@ -25,6 +27,7 @@ import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { lazySurface } from '@/lib/lazy-surface'
 import { splitModelId, thinkingLevelLabel, thinkingLevelShortLabel } from '@/lib/run-settings'
 import { cn } from '@/lib/utils'
+import { useSimpleDetail } from '@/stores/useDisplayPrefsStore'
 import { useUIStore } from '@/stores/useUIStore'
 import type { RunSettings } from './useRunSettings'
 
@@ -52,6 +55,7 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
   // (``sonnet-4-6``), at 15px, truncating last. The picker and the label have
   // the whole ID.
   const isPhone = useIsPhone()
+  const simple = useSimpleDetail()
   const { os } = usePlatform()
   const open = useUIStore((s) => s.runPickerOpen)
   const focus = useUIStore((s) => s.runPickerFocus)
@@ -81,7 +85,7 @@ export function RunChip({ settings, disabled = false }: { settings: RunSettings;
   // With several accounts the chip always names the one in use.
   const account = settings.inUseAccount?.label ?? null
   // The chip is narrow on a phone: it shows the short level name; its label says it whole.
-  const meta = [settings.thinkingLevel ? thinkingLevelShortLabel(settings.thinkingLevel) : null, account].filter(Boolean).join(' · ')
+  const meta = simple ? '' : [settings.thinkingLevel ? thinkingLevelShortLabel(settings.thinkingLevel) : null, account].filter(Boolean).join(' · ')
   const shortcut = shortcutLabel(APP_SHORTCUTS.sessionSettings, os)
   const label = [
     `Model ${settings.model ?? 'not set'}`,

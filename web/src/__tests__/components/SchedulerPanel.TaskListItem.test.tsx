@@ -6,6 +6,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { TaskListItem } from '@/components/SchedulerPanel/TaskListItem'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import '@testing-library/jest-dom'
 
 const scheduledTask: ScheduledTaskResponse = {
@@ -189,6 +190,17 @@ describe('TaskListItem', () => {
     const slug = screen.getByText('daily-standup').closest('[data-slot="chip"]')
     expect(slug).toBeTruthy()
     expect(slug?.className).toContain('font-mono')
+  })
+
+  it('leaves the slug out with the Detail setting on Simple: it is the agent tool\'s name for the task', () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
+    try {
+      renderItem()
+      expect(screen.getAllByText('Daily standup')).toHaveLength(1)
+      expect(screen.queryByText('daily-standup')).toBeNull()
+    } finally {
+      useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
+    }
   })
 
   it('shows the schedule as a mono line, and the state as a chip', () => {

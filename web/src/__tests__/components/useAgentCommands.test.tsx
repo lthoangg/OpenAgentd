@@ -329,15 +329,17 @@ describe("useAgentCommands — navigation", () => {
     localStorage.removeItem(THEME_STORAGE_KEY)
   })
 
-  it("toggles reader mode, saying which mode it is in", () => {
+  it("toggles Simple view, saying which detail it is in, and is still found by its old names", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
     const toggle = () => byId(result.current, "toggle-reader-mode")
-    expect(toggle().label).toBe("Toggle Reader Mode")
-    expect(toggle().description).toMatch(/^Fold each turn/)
+    expect(toggle().label).toBe("Toggle Simple View")
+    expect(toggle().description).toBe("Detail is Full · show answers and fold the work")
+    expect(toggle().keywords).toMatch(/reader/)
+    expect(toggle().keywords).toMatch(/detailed/)
 
     act(() => toggle().action())
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe("reader")
-    expect(toggle().description).toMatch(/^Reader mode is on/)
+    expect(toggle().description).toBe("Detail is Simple · show every step and number again")
 
     act(() => toggle().action())
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe("detailed")

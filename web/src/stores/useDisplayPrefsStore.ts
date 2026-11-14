@@ -1,9 +1,16 @@
 /**
  * useDisplayPrefsStore — how the app reads on this device, persisted.
  *
- * ``transcriptStyle``: ``detailed`` shows every thinking trace and tool call
- * in place. ``reader`` folds each turn's work behind one summary row and lists
- * the files it edited after the answer (see ``components/ReaderTurn``).
+ * ``transcriptStyle`` is the app's one Detail setting. ``detailed`` (Full)
+ * shows every thinking trace, tool call and number in place. ``reader``
+ * (Simple) folds each turn's work behind one summary row (see
+ * ``components/ReaderTurn``) and shortens a few numbers around the chat;
+ * ``useSimpleDetail`` is what those read.
+ *
+ * A new install starts in Simple. One that exists keeps what it shows: a
+ * stored style is never changed, and an install that stored nothing (it
+ * never touched a display setting) is told apart from a new one by its
+ * sessions, once (``seedDetail``).
  *
  * ``textSize``: Compact / Default / Large. It is applied to <html> as
  * ``data-text-size``; index.css turns that into ``--oa-text-scale``, which
@@ -29,14 +36,17 @@ export type TextSize = 'compact' | 'default' | 'large'
 export type PreviewOpen = 'panel' | 'click'
 export type DiffLayout = 'unified' | 'split'
 
-const DEFAULT_TRANSCRIPT_STYLE: TranscriptStyle = 'detailed'
+/** A new install's style. */
+const NEW_INSTALL_TRANSCRIPT_STYLE: TranscriptStyle = 'reader'
+/** What every install showed before Simple became the start: kept for those. */
+const EXISTING_INSTALL_TRANSCRIPT_STYLE: TranscriptStyle = 'detailed'
 const DEFAULT_TEXT_SIZE: TextSize = 'default'
 const DEFAULT_PREVIEW_OPEN: PreviewOpen = 'panel'
 const DEFAULT_DIFF_LAYOUT: DiffLayout = 'unified'
 
 export const TRANSCRIPT_STYLES: readonly { value: TranscriptStyle; label: string }[] = [
-  { value: 'detailed', label: 'Detailed' },
-  { value: 'reader', label: 'Reader' },
+  { value: 'reader', label: 'Simple' },
+  { value: 'detailed', label: 'Full' },
 ]
 
 export const TEXT_SIZES: readonly { value: TextSize; label: string }[] = [
@@ -46,8 +56,8 @@ export const TEXT_SIZES: readonly { value: TextSize; label: string }[] = [
 ]
 
 export const PREVIEW_OPENS: readonly { value: PreviewOpen; label: string }[] = [
-  { value: 'panel', label: 'Review panel' },
-  { value: 'click', label: 'Manually' },
+  { value: 'panel', label: 'Automatically' },
+  { value: 'click', label: 'When I choose' },
 ]
 
 /** UI text px at each size over the 12px design size (mirrors index.css). */
@@ -65,6 +75,14 @@ export function applyTextSize(size: TextSize, root: HTMLElement | null = typeof 
 
 interface DisplayPrefsState {
   transcriptStyle: TranscriptStyle
+  /** The style is settled: stored by an earlier launch, picked, or seeded. */
+  detailSeeded: boolean
+  /**
+   * Settle the style of an install that stored none, from whether its server
+   * already has sessions: one that does existed before and keeps Full.
+   * Does nothing once settled.
+   */
+  seedDetail: (hasSessions: boolean) => void
   textSize: TextSize
   setTranscriptStyle: (style: TranscriptStyle) => void
   /** Detailed ⇄ reader; reads the current style at call time. */
@@ -95,10 +113,15 @@ function isDiffLayout(value: unknown): value is DiffLayout {
 export const useDisplayPrefsStore = create<DisplayPrefsState>()(
   persist(
     (set, get) => ({
-      transcriptStyle: DEFAULT_TRANSCRIPT_STYLE,
+      transcriptStyle: NEW_INSTALL_TRANSCRIPT_STYLE,
+      detailSeeded: false,
+      seedDetail: (hasSessions) => {
+        if (get().detailSeeded) return
+        set({ transcriptStyle: hasSessions ? EXISTING_INSTALL_TRANSCRIPT_STYLE : NEW_INSTALL_TRANSCRIPT_STYLE, detailSeeded: true })
+      },
       textSize: DEFAULT_TEXT_SIZE,
-      setTranscriptStyle: (style) => set({ transcriptStyle: style }),
-      toggleTranscriptStyle: () => set({ transcriptStyle: get().transcriptStyle === 'reader' ? 'detailed' : 'reader' }),
+      setTranscriptStyle: (style) => set({ transcriptStyle: style, detailSeeded: true }),
+      toggleTranscriptStyle: () => set({ transcriptStyle: get().transcriptStyle === 'reader' ? 'detailed' : 'reader', detailSeeded: true }),
       setTextSize: (size) => {
         // Every line reflows at once: crossfade it, as the theme does.
         if (get().textSize === size) applyTextSize(size)
@@ -113,17 +136,25 @@ export const useDisplayPrefsStore = create<DisplayPrefsState>()(
     {
       name: DISPLAY_PREFS_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      partialize: ({ transcriptStyle, textSize, previewOpen, diffLayout }) => ({ transcriptStyle, textSize, previewOpen, diffLayout }),
+      partialize: ({ transcriptStyle, detailSeeded, textSize, previewOpen, diffLayout }) => ({ transcriptStyle, detailSeeded, textSize, previewOpen, diffLayout }),
       // Stored without a schema: an unknown value from another build reads
       // as the default rather than as a transcript that renders nothing.
       // Only known keys are kept, which drops v3.18.0's `newSessionComposer`.
       merge: (persisted, current) => {
-        const stored = persisted as { transcriptStyle?: unknown; textSize?: unknown; previewOpen?: unknown; diffLayout?: unknown } | undefined
+        const stored = persisted as { transcriptStyle?: unknown; detailSeeded?: unknown; textSize?: unknown; previewOpen?: unknown; diffLayout?: unknown } | undefined
         const style = stored?.transcriptStyle
         const size = stored?.textSize
+        // Nothing stored: a new install, or one that never changed a display
+        // setting; ``seedDetail`` tells them apart. Anything stored comes from
+        // an install that existed, whose style stays (an unreadable one as Full).
+        const detail = stored === undefined
+          ? { transcriptStyle: NEW_INSTALL_TRANSCRIPT_STYLE, detailSeeded: false }
+          : stored.detailSeeded === false && isTranscriptStyle(style)
+            ? { transcriptStyle: style, detailSeeded: false }
+            : { transcriptStyle: isTranscriptStyle(style) ? style : EXISTING_INSTALL_TRANSCRIPT_STYLE, detailSeeded: true }
         return {
           ...current,
-          transcriptStyle: isTranscriptStyle(style) ? style : DEFAULT_TRANSCRIPT_STYLE,
+          ...detail,
           textSize: isTextSize(size) ? size : DEFAULT_TEXT_SIZE,
           previewOpen: isPreviewOpen(stored?.previewOpen) ? stored.previewOpen : DEFAULT_PREVIEW_OPEN,
           diffLayout: isDiffLayout(stored?.diffLayout) ? stored.diffLayout : DEFAULT_DIFF_LAYOUT,
@@ -132,3 +163,8 @@ export const useDisplayPrefsStore = create<DisplayPrefsState>()(
     },
   ),
 )
+
+/** Simple detail is on: the numbers around the chat fold away (see the file header). */
+export function useSimpleDetail(): boolean {
+  return useDisplayPrefsStore((s) => s.transcriptStyle === 'reader')
+}

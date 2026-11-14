@@ -233,11 +233,12 @@ export function useAgentCommands({
     {
       id: 'toggle-reader-mode',
       group: 'View',
-      label: 'Toggle Reader Mode',
+      label: 'Toggle Simple View',
       description: readerMode
-        ? 'Reader mode is on · show every thinking trace and tool call again'
-        : "Fold each turn's work into one row and list the files it changed",
-      keywords: 'transcript compact detailed summary view',
+        ? 'Detail is Simple · show every step and number again'
+        : 'Detail is Full · show answers and fold the work',
+      // The setting's earlier names: Transcript, Detailed / Reader.
+      keywords: 'detail full reader mode transcript compact detailed summary',
       action: toggleReaderMode,
     },
     // Desktop only: the native ⌘R accelerator was dropped so a stray key

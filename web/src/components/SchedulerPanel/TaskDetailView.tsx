@@ -19,6 +19,7 @@ import { PanelSection } from '@/components/ui/panel-section'
 import { COMPACT_ROW, ICON_SIZE, ICON_SIZE_INLINE, TEXT } from '@/components/ui/panel-tokens'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
+import { useSimpleDetail } from '@/stores/useDisplayPrefsStore'
 
 export function TaskDetailView({
   task,
@@ -48,6 +49,9 @@ export function TaskDetailView({
   const footerSafeArea = useSchedulerFooterSafeArea()
   // Phones move Run now / Pause into a bottom bar, within thumb reach.
   const isMobile = useIsMobile()
+  // The slug is the agent's schedule tool's name for the task: Full detail only.
+  const simple = useSimpleDetail()
+  const showSlug = !simple && task.slug !== task.name
 
   const pauseMutation = usePauseScheduledTaskMutation()
   const resumeMutation = useResumeScheduledTaskMutation()
@@ -111,7 +115,7 @@ export function TaskDetailView({
               {!hostTitled && (
                 <h2 className="truncate text-base font-semibold tracking-tight text-(--color-text)">{task.name}</h2>
               )}
-              {task.slug !== task.name && (
+              {showSlug && (
                 <Chip mono title="Slug: the name the agent's schedule tool uses">
                   {task.slug}
                 </Chip>

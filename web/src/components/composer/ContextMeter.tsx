@@ -3,6 +3,9 @@
  * older messages are summarized, with the numbers and "Summarize now" behind
  * a click. The percentage drops out when the composer is narrow.
  *
+ * With the Detail setting on Simple the ring waits until the context is
+ * ``SIMPLE_SHOWN_FROM`` full, then says what its number means ("78% full").
+ *
  * It also holds the session's cost so far (its subagents' included); the
  * answer footer shows each turn's, the status bar the last 24 hours'.
  */
@@ -10,9 +13,13 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button'
 import { formatCompact, formatSpend } from '@/utils/telemetryFormat'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useSimpleDetail } from '@/stores/useDisplayPrefsStore'
 
 /** Where the context summarizes when the model's registry entry gives no trigger. */
 export const DEFAULT_SUMMARY_TRIGGER_TOKENS = 250_000
+
+/** Simple detail: the share of the context in use from which the ring shows. */
+const SIMPLE_SHOWN_FROM = 0.7
 
 export interface ContextMeterProps {
   input: number
@@ -29,9 +36,11 @@ const RADIUS = 7
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
 export function ContextMeter({ input, output, cachedPercent, trigger = DEFAULT_SUMMARY_TRIGGER_TOKENS, sessionCostUsd, canSummarize }: ContextMeterProps) {
+  const simple = useSimpleDetail()
   const limit = Math.max(trigger, 1)
   const progress = Math.min(input / limit, 1)
   const percent = Math.round(progress * 100)
+  if (simple && progress < SIMPLE_SHOWN_FROM) return null
   const label = `Context ${percent}% full: ${input.toLocaleString()} of ${limit.toLocaleString()} tokens before older messages are summarized`
   return (
     <Popover>
@@ -59,7 +68,7 @@ export function ContextMeter({ input, output, cachedPercent, trigger = DEFAULT_S
             strokeDashoffset={CIRCUMFERENCE * (1 - progress)}
           />
         </svg>
-        <span className="@max-[520px]:hidden">{percent}%</span>
+        <span className="@max-[520px]:hidden">{simple ? `${percent}% full` : `${percent}%`}</span>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-60 gap-2 p-3">
         {/* Labels in the UI font, numbers in mono, as in the turn details. */}

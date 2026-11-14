@@ -2108,8 +2108,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     steps" button is gone `[v3.26.0]`.
 - **Reader transcript** `[v3.0.0]` — an opt-in transcript style (Settings →
   General → Appearance → Transcript, or Toggle Reader Mode in the command
-  palette, which also finds it as "compact" or "transcript"). Each turn reads
-  as its answer:
+  palette, which also finds it as "compact" or "transcript"). Since
+  `[v3.56.0]` it is the **Simple** level of the Detail setting, where a new
+  install starts (Settings → Appearance → Detail, or Toggle Simple View).
+  Each turn reads as its answer:
   - The thinking, every tool call, and the narration between them fold into
     one row such as "6 reads, 3 searches, 4 commands, 2 edits"; while the
     turn runs it names the current step ("Working ·
@@ -2376,6 +2378,29 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Delete side questions…** names what its dialog does (the button said
     "Clear"). An empty session is headed **Ask anything**, and a workspace's
     new session **What should we do in {name}?** ("build" assumed code).
+  - **One Detail setting: Simple or Full** (Settings → Appearance → Detail,
+    or **Toggle Simple View** in the command palette). It replaces
+    Transcript: Detailed / Reader, and search still finds it as "reader",
+    "detailed" or "transcript". A new install starts in **Simple**; an
+    install that already has sessions keeps **Full** until the setting is
+    changed, and a style picked earlier is kept. Full is the app as before.
+    Simple folds each turn's work into one row (the Reader transcript) and:
+    - the model chip names the model only (thinking level and account are
+      in the picker);
+    - the context ring appears once the context is 70% full, reading
+      "78% full";
+    - the status bar shows no estimated spend, and does not fetch it;
+    - a retry reads as a sentence: "The model is busy. Trying again in 8
+      seconds (2 of 5)." or, for a dropped connection, "The connection
+      dropped. Trying again in 8 seconds.";
+    - the Goal tab reads "7 of 50" and "18 minutes", and shows tokens only
+      against a token budget;
+    - the phone's run line reads "Working · 3:12", without the step;
+    - a scheduled task's slug chip is not shown.
+    The line under a reply, Turn details, the working row and the context
+    popover are the same in both.
+  - Settings → Appearance: **Open previews** is **Automatically** or **When
+    I choose** (it was Previews: Review panel / Manually).
 - **Each platform is offered what it can do, in one wording** `[v3.54.0]`:
   - iPad: a long press in the terminal opens Select All, Copy, Paste, Find
     and Add to chat, as on a phone. Before, only a phone-sized window had it.

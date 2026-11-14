@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { formatRelativeDate, formatCompactRelative, formatCompactDate, formatCompactUpcoming, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText, finalAnswerBlocks, getTimezoneOffsetMinutes, wallClockToISO, isoToWallClock, formatInTimezone } from "@/utils/format";
+import { formatRelativeDate, formatCompactRelative, formatCompactDate, formatCompactUpcoming, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText, finalAnswerBlocks, getTimezoneOffsetMinutes, wallClockToISO, isoToWallClock, formatInTimezone, formatDurationWords } from "@/utils/format";
 import { formatCommitTime } from "@/components/WorkspacePanel/diff-helpers";
 
 // ---------------------------------------------------------------------------
@@ -455,5 +455,23 @@ describe("formatCompactDate", () => {
 
   it("adds the year for another year", () => {
     expect(formatCompactDate(new Date(2025, 11, 31), now)).toBe("Dec 31, 2025");
+  });
+});
+
+describe("formatDurationWords", () => {
+  it("spells the unit out, singular and plural", () => {
+    expect(formatDurationWords(1_000)).toBe("1 second");
+    expect(formatDurationWords(8_000)).toBe("8 seconds");
+    expect(formatDurationWords(60_000)).toBe("1 minute");
+    expect(formatDurationWords(18 * 60_000)).toBe("18 minutes");
+    expect(formatDurationWords(3_600_000)).toBe("1 hour");
+  });
+
+  it("rounds to the nearest whole unit, and never says zero", () => {
+    expect(formatDurationWords(4_200)).toBe("4 seconds");
+    expect(formatDurationWords(200)).toBe("1 second");
+    expect(formatDurationWords(90_000)).toBe("2 minutes");
+    expect(formatDurationWords(59_600)).toBe("1 minute");
+    expect(formatDurationWords(100 * 60_000)).toBe("2 hours");
   });
 });

@@ -8,6 +8,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { TaskDetailView } from '@/components/SchedulerPanel/TaskDetailView'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import '@testing-library/jest-dom'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
@@ -77,6 +78,17 @@ describe('TaskDetailView header', () => {
     const slug = screen.getByText('daily-standup').closest('[data-slot="chip"]')
     expect(slug).toBeTruthy()
     expect(slug?.className).toContain('font-mono')
+  })
+
+  it('leaves the slug out with the Detail setting on Simple', () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
+    try {
+      renderDetail()
+      expect(screen.getByRole('heading', { name: 'Daily standup' })).toBeInTheDocument()
+      expect(screen.queryByText('daily-standup')).toBeNull()
+    } finally {
+      useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
+    }
   })
 
   it('has Run now (not Trigger now) and Edit task as labelled buttons, then a ⋯ menu last', () => {

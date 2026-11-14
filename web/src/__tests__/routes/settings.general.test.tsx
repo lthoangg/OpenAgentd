@@ -56,24 +56,26 @@ describe('GeneralSettingsPage — appearance', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true)
   })
 
-  it('switches the transcript to reader mode', async () => {
+  it('has one Detail setting, Simple or Full, and says what each shows', async () => {
     const user = userEvent.setup()
     render(<GeneralSettingsPage />)
 
-    const transcript = screen.getByRole('radiogroup', { name: 'Transcript' })
-    const reader = screen.getByRole('radio', { name: 'Reader' })
-    expect(transcript.contains(reader)).toBe(true)
-    expect(screen.getByRole('radio', { name: 'Detailed' })).toHaveAttribute('aria-checked', 'true')
+    const detail = screen.getByRole('radiogroup', { name: 'Detail' })
+    const simple = screen.getByRole('radio', { name: 'Simple' })
+    expect(detail.contains(simple)).toBe(true)
+    expect(screen.getByRole('radio', { name: 'Full' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByText('Simple shows answers and folds the work. Full shows every step and number.')).toBeTruthy()
+    expect(screen.queryByText(/Reader/)).toBeNull()
 
-    await user.click(reader)
+    await user.click(simple)
 
-    expect(reader).toHaveAttribute('aria-checked', 'true')
+    expect(simple).toHaveAttribute('aria-checked', 'true')
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe('reader')
   })
 
   it('has no new-session composer setting: the composer is always centered on desktop', () => {
     render(<GeneralSettingsPage />)
-    expect(screen.getByRole('radiogroup', { name: 'Transcript' })).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: 'Detail' })).toBeTruthy()
     expect(screen.queryByRole('radiogroup', { name: 'New session composer' })).toBeNull()
   })
 
@@ -81,12 +83,13 @@ describe('GeneralSettingsPage — appearance', () => {
     const user = userEvent.setup()
     render(<GeneralSettingsPage />)
 
-    const previews = screen.getByRole('radiogroup', { name: 'Previews' })
-    expect(screen.getByRole('radio', { name: 'Review panel' })).toHaveAttribute('aria-checked', 'true')
+    const previews = screen.getByRole('radiogroup', { name: 'Open previews' })
+    expect(screen.getByText('When the agent shows a page.')).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'Automatically' })).toHaveAttribute('aria-checked', 'true')
 
-    await user.click(screen.getByRole('radio', { name: 'Manually' }))
+    await user.click(screen.getByRole('radio', { name: 'When I choose' }))
 
-    expect(previews.contains(screen.getByRole('radio', { name: 'Manually' }))).toBe(true)
+    expect(previews.contains(screen.getByRole('radio', { name: 'When I choose' }))).toBe(true)
     expect(useDisplayPrefsStore.getState().previewOpen).toBe('click')
   })
 })

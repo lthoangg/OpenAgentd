@@ -9,17 +9,23 @@
 import { useEffect, useState } from 'react'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useSimpleDetail } from '@/stores/useDisplayPrefsStore'
 import { SessionStatusMark } from '@/components/Sidebar/SessionStatusMark'
 
-/** "Running · step 7 · 3:12"; no step before the first tool call. */
-export function runBarLabel(steps: number, elapsedMs: number): string {
+/**
+ * "Running · step 7 · 3:12"; no step before the first tool call. With the
+ * Detail setting on Simple: "Working · 3:12", the word the transcript's fold uses.
+ */
+export function runBarLabel(steps: number, elapsedMs: number, simple = false): string {
   const total = Math.max(0, Math.floor(elapsedMs / 1000))
   const time = `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+  if (simple) return `Working · ${time}`
   return steps > 0 ? `Running · step ${steps} · ${time}` : `Running · ${time}`
 }
 
 export function RunBar() {
   const isPhone = useIsPhone()
+  const simple = useSimpleDetail()
   const working = useAgentStore((s) => s.isAgentWorking && s.leadName != null && s.agentStreams[s.leadName]?.status === 'working')
   const startedAt = useAgentStore((s) => (s.leadName ? s.agentStreams[s.leadName]?._turnStartedAt ?? null : null))
   const steps = useAgentStore((s) => (s.leadName ? s.agentStreams[s.leadName]?.currentBlocks.filter((b) => b.type === 'tool').length ?? 0 : 0))
@@ -35,8 +41,8 @@ export function RunBar() {
   if (!visible) return null
   return (
     <div data-run-bar="" className="oa-fade-in flex min-w-0 flex-1 items-center gap-2 text-meta text-(--color-text-muted) tabular-nums">
-      <SessionStatusMark status="running" label="Running" />
-      <span className="min-w-0 truncate">{runBarLabel(steps, startedAt ? now - startedAt : 0)}</span>
+      <SessionStatusMark status="running" label={simple ? 'Working' : 'Running'} />
+      <span className="min-w-0 truncate">{runBarLabel(steps, startedAt ? now - startedAt : 0, simple)}</span>
     </div>
   )
 }

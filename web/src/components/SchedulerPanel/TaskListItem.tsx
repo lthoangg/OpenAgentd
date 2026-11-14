@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/switch'
 import { WorkspaceBadge } from './ModeBadge'
 import { DeleteTaskDialog } from './DeleteTaskDialog'
 import { TaskActionsMenu, taskActionsMenuPoint } from './TaskActionsMenu'
+import { useSimpleDetail } from '@/stores/useDisplayPrefsStore'
 
 export function TaskListItem({
   task,
@@ -34,6 +35,9 @@ export function TaskListItem({
   const resumeMutation = useResumeScheduledTaskMutation()
   const triggerMutation = useTriggerScheduledTaskMutation()
   const isMobile = useIsMobile()
+  // The slug is the agent's schedule tool's name for the task: Full detail only.
+  const simple = useSimpleDetail()
+  const showSlug = !simple && task.slug !== task.name
   const isTauriMobile = isMobileApp(usePlatform())
   const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
   // A phone's menu is an action sheet, from ⋯ or a long press alike.
@@ -107,7 +111,7 @@ export function TaskListItem({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1.5">
             <p className={cn('truncate', TEXT.label)}>{task.name}</p>
-            {task.slug !== task.name && (
+            {showSlug && (
               <Chip mono title="Slug: the name the agent's schedule tool uses">
                 {task.slug}
               </Chip>

@@ -62,6 +62,15 @@ remove?, set?}` applies an app's writes (in that order) to
 server, and `GET /api/mcp/app-frames/{ticket}` hands the items to the page in
 `window.__OA_APP_STORAGE__` before `head`. Deleting the server deletes them.
 
+A Streamable HTTP server's session now outlives the process. The session id
+and protocol version are written to `<state_dir>/mcp-sessions.json` (owner
+only) when a session opens. The next start sends `tools/list` under the kept
+session instead of `initialize`; a refusal (404 or any JSON-RPC error) opens a
+new session, and a server that cannot be reached keeps its entry. Stopping
+the process no longer sends the session `DELETE`; restarting, disabling or
+removing one server, and reloading `mcp.json`, still do. `/api/mcp/app-tools/call`
+waits up to 20 s for a server that is still `starting`.
+
 A tool whose `_meta.ui.visibility` lacks `"model"` is left out of the agent's
 tools, of `mcp` search and call, and of a server's `tool_names`.
 `/api/mcp/app-tools/call` answers 403 for a tool whose visibility lacks

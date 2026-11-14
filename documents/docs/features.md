@@ -4073,7 +4073,10 @@ Four orthogonal ways to add capability.
   with every result, so a session with many app results stays small. What an
   app saves for itself, such as a canvas you drew on, is kept per MCP server
   and is still there after a reload or a restart. An app keeps running when
-  its turn ends instead of loading again.
+  its turn ends instead of loading again. An HTTP MCP server's session is
+  kept across restarts of OpenAgentd, so what a server holds for it (a
+  canvas an app is editing) is still there afterwards; restart the server in
+  Settings → MCP to start a fresh session.
 - **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
   shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
   any MCP server in Settings to re-detect.

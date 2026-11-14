@@ -91,7 +91,8 @@ const BAR_EVERY: Duration = Duration::from_secs(15);
 const MAX_SEEN: usize = 64;
 const MAX_ROUTES: usize = 50;
 /// How long a question's bubble waits for the server to say what its
-/// options are; past it the bubble shows with "Open to answer" only.
+/// options are; past it the bubble shows without them, and a click on it
+/// opens the session to answer there.
 const QUESTION_WAIT: Duration = Duration::from_secs(3);
 
 // ── Settings ────────────────────────────────────────────────────────────────
@@ -177,7 +178,7 @@ fn bottom_edge() -> f64 {
     1.0
 }
 
-/// What the user chose in Settings → General (`desktop-pet.json`).
+/// What the user chose in Settings → Desktop (`desktop-pet.json`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PetSettings {
@@ -1188,7 +1189,7 @@ fn evict_route(routes: &mut VecDeque<Route>) {
 }
 
 /// `bubble` with the options and the id of the question its session holds.
-/// Best effort: without them the bubble offers "Open to answer" alone.
+/// Best effort: without them the bubble only opens its session.
 async fn with_question(app: &AppHandle, server: &ServerId, bubble: PetBubble) -> PetBubble {
     let Some(session_id) = bubble.session_id.clone() else {
         return bubble;

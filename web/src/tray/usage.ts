@@ -79,7 +79,7 @@ export interface TrayUsageResult {
 
 export type MeterTone = 'ok' | 'warn' | 'crit'
 
-/** Same thresholds as the native badge: <70 ok, 70-89 warn, >=90 critical. */
+/** Same thresholds as the native menu's marks (`status_glyph` in usage.rs): <70 ok, 70-89 warn, >=90 critical. */
 export function meterTone(percent: number): MeterTone {
   if (percent >= 90) return 'crit'
   if (percent >= 70) return 'warn'

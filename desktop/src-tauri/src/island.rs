@@ -162,7 +162,7 @@ const BUILTIN_NAME: &str = "Built-in server";
 
 // ── Settings ────────────────────────────────────────────────────────────────
 
-/// What the user chose in Settings → General (`desktop-island.json`).
+/// What the user chose in Settings → Desktop (`desktop-island.json`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct IslandSettings {

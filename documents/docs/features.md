@@ -1653,7 +1653,8 @@ run from the terminal (the native Rust binary since v3.0.0).
       "Weekly"); a provider with one limit is one row. The window fits its
       content up to 600px, and the list scrolls past that.
     - **States.** Loading shows placeholder cards. An unreachable server
-      reads "Can't reach ‹server›" with Retry, and the status says Offline.
+      reads "Can't reach ‹server›" with Retry, and the status says Offline
+      ("Can't reach" since `[v3.40.0]`).
       With no providers it offers Open Providers, and Reconnect goes to
       Settings → Providers.
     - **Keys.** Esc closes it, or the server menu first, which also takes
@@ -1664,11 +1665,13 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Agent status in the notch** `[v3.26.0]` — on macOS, while you work in
     another app, a black pill grows out of the MacBook notch (or hangs from
     the middle of the menu bar on a display without one) whenever an agent
-    is busy. It reads "Working" with the session title or count, and a
+    is busy. It read "Working" with the session title or count (the word
+    is **Running** since `[v3.40.0]`, and the resting pill has shown a
+    spinner and a count with no word since `[v3.45.0]`), and a
     session whose own turn ended while its subagents (or another workspace)
     still work for it stays "Working" until their reports are in, so
     "Done" shows once, for the whole job `[v3.27.0]`. It turns
-    orange with "Needs input" when an agent waits on a question or a plan
+    orange with "Needs input" (**Needs you** since `[v3.40.0]`) when an agent waits on a question or a plan
     review, and keeps "Done" (or "Failed") up for a finished session until
     you open it, in the app or from the pill, or dismiss it.
     Since `[v3.28.0]` the pill ranks Needs input over Done/Failed over
@@ -1692,7 +1695,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     server as fallback): a server that is down no longer leaves it empty,
     and switching windows never turns running work into "Done" or drops
     unread sessions. With two or more servers, each row names its server
-    ("Builtin" for the bundled one), and a click opens the session in a
+    ("Builtin" for the bundled one, "Built-in server" since `[v3.40.0]`), and a click opens the session in a
     window on that server.
     Since `[v3.33.0]` a saved server can also be **enabled** in Settings →
     Connection (a switch on its row): the notch then follows it with no
@@ -1712,8 +1715,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     on a notch it grows only a narrow wing left of the notch (the state
     mark, and a count for several sessions), leaving the status icons right
     of the notch alone; without a notch it is a small pill with the same
-    mark and count. Hover still opens the full list, with titles and
-    questions.
+    mark and count. Hover still opened the full list, with titles and
+    questions (since `[v3.40.0]` only with **Expand on hover** on; a click
+    opens it).
     Since `[v3.45.0]` the resting pill is balanced again: a small wing
     either side of the notch, the state's symbol on the left (dot, spinner,
     check, alert) and the number of sessions on the right, one included
@@ -1765,7 +1769,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     included) is remembered. It replaces a banner only while it is on screen: hidden
     over a full-screen app, while OpenAgentd is in front, or on the lock
     screen, the banner shows as before. It follows the same servers as the
-    notch, so it works with every window closed. Settings → General →
+    notch, so it works with every window closed. Settings → Desktop →
     Desktop pet turns it on (off by default) and sets its character,
     colour, size, movement (stay put, calm, playful or chaotic), which
     notifications use the bubble, whether it climbs on windows, and

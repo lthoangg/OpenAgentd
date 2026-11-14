@@ -57,7 +57,7 @@ export interface NotchGeometry {
   height: number
 }
 
-/** Settings → General → Desktop (stored by the shell). */
+/** Settings → Desktop → Agent status in the notch (stored by the shell). */
 export interface IslandSettings {
   enabled: boolean
   showWhenFrontmost: boolean

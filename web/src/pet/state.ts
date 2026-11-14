@@ -32,7 +32,7 @@ export interface BubbleKinds {
   assistantDone: boolean
 }
 
-/** Settings → General → Desktop pet (stored by the shell). */
+/** Settings → Desktop → Desktop pet (stored by the shell). */
 export interface PetSettings {
   enabled: boolean
   character: PetCharacter

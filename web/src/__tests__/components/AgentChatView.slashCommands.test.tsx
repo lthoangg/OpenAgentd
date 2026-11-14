@@ -77,14 +77,14 @@ describe('filterBaseSlashCommands', () => {
     expect(commands.map((c) => c.id)).toEqual(['new'])
   })
 
-  it('shows /btw, /compact, /undo, /new on a session with messages', () => {
+  it('shows /btw, /summarize, /undo, /new on a session with messages', () => {
     const commands = filterBaseSlashCommands({
       isAgentWorking: false,
       revertedCount: 0,
       hasVisibleMessages: true,
       hasWorkspace: false,
     })
-    expect(commands.map((c) => c.id)).toEqual(['btw', 'compact', 'undo', 'new'])
+    expect(commands.map((c) => c.id)).toEqual(['btw', 'summarize', 'undo', 'new'])
   })
 
   it('shows /redo and /redo-all when revertedCount > 0', () => {
@@ -96,7 +96,7 @@ describe('filterBaseSlashCommands', () => {
     })
     expect(commands.map((c) => c.id)).toEqual([
       'btw',
-      'compact',
+      'summarize',
       'undo',
       'redo',
       'redo-all',
@@ -131,7 +131,35 @@ describe('filterBaseSlashCommands', () => {
       hasVisibleMessages: true,
       hasWorkspace: true,
     })
-    expect(commands.map((c) => c.id)).toEqual(['btw', 'compact', 'undo', 'new', 'init', 'model', 'think', 'mcp'])
+    expect(commands.map((c) => c.id)).toEqual(['btw', 'summarize', 'undo', 'new', 'init'])
+  })
+
+  it('lists no /model or /think: the model button under the box opens the same picker', () => {
+    const everything = filterBaseSlashCommands({ isAgentWorking: false, revertedCount: 1, hasVisibleMessages: true, hasLiveMessages: true, hasWorkspace: true, hasConnectors: true })
+    const ids = everything.map((c) => c.id)
+    expect(ids).not.toContain('model')
+    expect(ids).not.toContain('think')
+    expect(ids).not.toContain('compact')
+    expect(ids).not.toContain('mcp')
+  })
+
+  it('lists no /init in Chat, where there is no project to describe', () => {
+    const inChat = filterBaseSlashCommands({ hasVisibleMessages: true, hasWorkspace: true, isChat: true })
+    expect(inChat.map((c) => c.id)).toEqual(['btw', 'summarize', 'undo', 'new'])
+  })
+
+  it('lists /connectors once the agent has a connector, and not before', () => {
+    const none = filterBaseSlashCommands({ hasVisibleMessages: true, hasWorkspace: true })
+    expect(none.map((c) => c.id)).not.toContain('connectors')
+    const some = filterBaseSlashCommands({ hasVisibleMessages: true, hasWorkspace: true, hasConnectors: true })
+    expect(some.map((c) => c.id)).toEqual(['btw', 'summarize', 'undo', 'new', 'init', 'connectors'])
+  })
+
+  it('says what each row does in the words the rest of the app uses', () => {
+    const byId = Object.fromEntries(BASE_SLASH_COMMANDS.map((c) => [c.id, c.description]))
+    expect(byId.summarize).toBe('Summarize earlier messages to make room')
+    expect(byId.new).toBe('Start a new session')
+    expect(byId.connectors).toBe('Connectors for this session')
   })
 
   it('does not show /init in coding mode without a workspace', () => {
@@ -141,7 +169,7 @@ describe('filterBaseSlashCommands', () => {
       hasVisibleMessages: true,
       hasWorkspace: false,
     })
-    expect(commands.map((c) => c.id)).toEqual(['btw', 'compact', 'undo', 'new'])
+    expect(commands.map((c) => c.id)).toEqual(['btw', 'summarize', 'undo', 'new'])
   })
 })
 
@@ -201,7 +229,7 @@ describe('useSlashCommands', () => {
     )
 
     const ids = result.current.slashCommands.map((c) => c.id)
-    expect(ids).toEqual(['btw', 'compact', 'undo', 'redo', 'redo-all', 'new', 'init', 'model', 'think', 'mcp'])
+    expect(ids).toEqual(['btw', 'summarize', 'undo', 'redo', 'redo-all', 'new', 'init'])
   })
 
   const undone = (content: string, extra: Record<string, unknown> | null): AgentCommandResponse => ({
@@ -264,9 +292,18 @@ describe('parseBuiltInSlashCommand', () => {
     expect(parseBuiltInSlashCommand('/redo')).toBe('redo')
     expect(parseBuiltInSlashCommand('/redo-all')).toBe('redo-all')
     expect(parseBuiltInSlashCommand('/redo_all')).toBe('redo-all')
-    expect(parseBuiltInSlashCommand('  /compact  ')).toBe('compact')
+    expect(parseBuiltInSlashCommand('  /summarize  ')).toBe('summarize')
     expect(parseBuiltInSlashCommand('/stop')).toBe('stop')
     expect(parseBuiltInSlashCommand('/new')).toBe('new')
+  })
+
+  it('still runs the commands that left the menu, and the earlier names, when typed', () => {
+    expect(parseBuiltInSlashCommand('/compact')).toBe('summarize')
+    expect(parseBuiltInSlashCommand('/mcp')).toBe('connectors')
+    expect(parseBuiltInSlashCommand('/connectors')).toBe('connectors')
+    expect(parseBuiltInSlashCommand('/model')).toBe('model')
+    expect(parseBuiltInSlashCommand('/think')).toBe('think')
+    expect(parseBuiltInSlashCommand('/init')).toBe('init')
   })
 
   it('returns null for non-command or custom command text', () => {

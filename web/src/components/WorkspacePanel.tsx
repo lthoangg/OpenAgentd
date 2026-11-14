@@ -35,6 +35,8 @@ import {
 import { cn } from '@/lib/utils'
 import { useToastStore } from '@/stores/useToastStore'
 import { queryKeys } from '@/queries'
+import { useWorkspaceHasGit } from '@/queries/useChatWorkspace'
+import { useSideQuestions } from '@/queries/useSideQuestionsQuery'
 import {
   WORKSPACE_TREE_STALE_MS,
   workspaceFileListQueryOptions,
@@ -326,6 +328,12 @@ export function WorkspacePanel({
       void closePreview(previewId).catch(() => {})
     }
   }, [])
+  // Where you are decides: Chat and a folder without Git have no Changes
+  // view. Until the workspace tree says which this is, the view is offered as
+  // usual but git is not probed.
+  const workspaceGit = useWorkspaceHasGit(workspace)
+  const noGit = chatWorkspace || workspaceGit === false
+  const gitKnown = !chatWorkspace && workspaceGit === true
   // Tab state comes first: the Git queries below are gated on the active tab.
   const panesRef = useRef<HTMLDivElement>(null)
   const pushToast = useToastStore((s) => s.push)
@@ -379,7 +387,7 @@ export function WorkspacePanel({
     sessionId,
     mobile,
     open,
-    chatWorkspace,
+    noGit,
     onFileSelect,
     terminalOpenKey,
     handledTerminalOpenKeyRef: parentHandledTerminalOpenKeyRef,
@@ -551,7 +559,7 @@ export function WorkspacePanel({
   // or opened in a tab (see ``workspace-git.ts``).
   const changes = useQuery({
     ...workspaceChangesQueryOptions(workspace),
-    enabled: open && !chatWorkspace,
+    enabled: open && gitKnown,
     staleTime: WORKSPACE_DIFF_STALE_MS,
   })
   const queryClient = useQueryClient()
@@ -563,7 +571,7 @@ export function WorkspacePanel({
   const workspaceStatus = useQuery({
     queryKey: queryKeys.coding.status(workspace),
     queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace, signal),
-    enabled: open && !chatWorkspace,
+    enabled: open && gitKnown,
     staleTime: 10_000,
   })
   const changedFiles = useMemo(() => changedFilesFromResponse(changes.data), [changes.data])
@@ -600,7 +608,7 @@ export function WorkspacePanel({
     queryFn: ({ pageParam, signal }) => getCodingWorkspaceGitHistory(workspace, historyLimit, pageParam, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? null,
-    enabled: open && !chatWorkspace && reviewShown && subTab === 'commits',
+    enabled: open && gitKnown && reviewShown && subTab === 'commits',
     staleTime: 10_000,
   })
 
@@ -618,7 +626,7 @@ export function WorkspacePanel({
 
   const commitDiff = useQuery({
     ...commitDiffQueryOptions(workspace, expandedCommitSha ?? ''),
-    enabled: open && !chatWorkspace && reviewShown && subTab === 'commits' && expandedCommitSha !== null,
+    enabled: open && gitKnown && reviewShown && subTab === 'commits' && expandedCommitSha !== null,
     staleTime: COMMIT_DIFF_STALE_MS,
   })
   const commitDiffText = commitDiff.data?.diff
@@ -693,6 +701,11 @@ export function WorkspacePanel({
     [strips, goalTitle],
   )
   const openGoal = sessionId ? (pane?: PaneId) => openTab(GOAL_TAB, { pane }) : undefined
+  // Empty things take no room: the launcher and the "+" menu list Goal and
+  // Side questions once the session has one (the palette opens either before).
+  const hasGoal = goal !== null && goal.status !== 'cleared'
+  const sideQuestions = useSideQuestions(sessionId, { countEnabled: open && !mobile, listEnabled: false })
+  const hasSideQuestions = sideQuestions.total > 0 || sideQuestions.live !== null
   // The tab strip's "+" menu: every view and tool this dock can open, so one
   // is a tap away while other tabs are open. Tasks and side questions open
   // above the chat on phones, so only desktop lists them here; the plan and
@@ -700,29 +713,29 @@ export function WorkspacePanel({
   // pane's splits are in its ⋯ menu (desktop), not here.
   const openIds = new Set(visibleTabs.map((tab) => tab.id))
   const openItemsFor = (pane: PaneId) => dockOpenItems(os, {
-    onOpenGit: chatWorkspace ? undefined : () => openGitTab(pane),
-    onOpenGoal: openGoal ? () => openGoal(pane) : undefined,
+    onOpenGit: noGit ? undefined : () => openGitTab(pane),
+    onOpenGoal: openGoal && hasGoal ? () => openGoal(pane) : undefined,
     onOpenPlan: plan ? () => openTab(PLAN_TAB, { pane }) : undefined,
     onOpenTasks: mobile ? undefined : () => openTab(TASKS_TAB, { pane }),
-    onOpenSideQuestions: mobile || !sessionId ? undefined : () => openTab(BTW_TAB, { pane }),
+    onOpenSideQuestions: mobile || !sessionId || !hasSideQuestions ? undefined : () => openTab(BTW_TAB, { pane }),
     onOpenSchedule: () => openTab(SCHEDULE_TAB, { pane }),
     onOpenTerminal: () => openTerminal(pane),
     onOpenPreview: canPreview ? () => openNewPreview(pane) : undefined,
     onOpenFile: openQuickOpen,
-  }, openIds, { review: changedFiles.length })
+  }, openIds, { review: changedFiles.length }, { toolsFirst: noGit })
 
   // A phone's "+" is in the page's navigation bar, for the pane in focus.
   const phoneOpenItems = phone ? openItemsFor(focused) : []
 
   const handleRefresh = useCallback(() => {
     void files.refetch()
-    if (chatWorkspace) return
+    if (noGit) return
     refreshChanges()
     void workspaceStatus.refetch()
     if (subTab === 'commits') {
       void gitHistory.refetch()
     }
-  }, [files, refreshChanges, workspaceStatus, gitHistory, subTab, chatWorkspace])
+  }, [files, refreshChanges, workspaceStatus, gitHistory, subTab, noGit])
 
   const toggleDiffExpanded = useCallback((path: string) => {
     useGitPanelStore.getState().toggleDiffExpanded(workspace, path)
@@ -952,7 +965,7 @@ export function WorkspacePanel({
   }, [keep, onAddComment])
 
   const renderContent = (tab: DockTab | undefined, pane: PaneId, paneShown: boolean) => {
-    if (!chatWorkspace && tab?.type === 'review') return reviewView
+    if (!noGit && tab?.type === 'review') return reviewView
     switch (tab?.type) {
       case 'file':
         return (
@@ -1067,7 +1080,7 @@ export function WorkspacePanel({
             canSplit={canSplitTab}
             onMoveToNextPane={mobile || shownPanes.length < 2 ? undefined : moveToNextPane}
             canMoveToNextPane={canMoveToNextPane}
-            onRevealInGit={chatWorkspace ? undefined : revealInGit}
+            onRevealInGit={noGit ? undefined : revealInGit}
             onClosePane={!mobile && empty && shownPanes.length > 1 ? () => closePane(pane) : undefined}
             onSplitPane={mobile ? undefined : (side) => splitPane(pane, side)}
             onDropTab={mobile ? undefined : dropTab}

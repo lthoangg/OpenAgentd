@@ -77,7 +77,7 @@ afterEach(cleanup)
 
 function renderTabs(terminalOpenKey = 0) {
   return renderHook(
-    ({ key }: { key: number }) => useDockTabs({ workspace: WS, chatWorkspace: false, terminalOpenKey: key, viewRequest: null }),
+    ({ key }: { key: number }) => useDockTabs({ workspace: WS, noGit: false, terminalOpenKey: key, viewRequest: null }),
     { initialProps: { key: terminalOpenKey } },
   )
 }

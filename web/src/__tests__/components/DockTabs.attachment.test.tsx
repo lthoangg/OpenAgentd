@@ -23,7 +23,7 @@ afterEach(cleanup)
 function renderTabs() {
   return renderHook(({ attachmentRequest }: { attachmentRequest: AttachmentTabRequest | null }) => useDockTabs({
     workspace: '/w',
-    chatWorkspace: false,
+    noGit: false,
     terminalOpenKey: 0,
     viewRequest: null,
     attachmentRequest,

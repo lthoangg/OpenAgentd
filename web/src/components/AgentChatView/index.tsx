@@ -35,7 +35,7 @@ import { useGoalSessionState } from '@/hooks/useGoalSessionState'
 import { goalHeaderState } from '@/lib/work'
 import { useHealthQuery, useProvidersQuery } from '@/queries'
 import { modelReadiness } from '@/lib/model-readiness'
-import { isChatWorkspacePath, useChatWorkspace, useCheckoutLabel } from '@/queries/useChatWorkspace'
+import { isChatWorkspacePath, useChatWorkspace, useCheckoutLabel, useWorkspaceHasGit } from '@/queries/useChatWorkspace'
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -280,6 +280,10 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // not a repository: labels read "Chat" and the dock has no Git tab.
   const chatWorkspace = useChatWorkspace()
   const isChatWorkspace = isChatWorkspacePath(effectiveWorkspace, chatWorkspace)
+  // Where you are decides: no Changes view, key or command in Chat or in a
+  // folder without Git.
+  const workspaceGit = useWorkspaceHasGit(effectiveWorkspace)
+  const canOpenGit = !isChatWorkspace && workspaceGit !== false
   const workspaceName = effectiveWorkspace ? workspaceLabel(effectiveWorkspace, chatWorkspace) : ''
   // The header names a worktree by its repository too: "openagentd (fix-login)".
   const headerLabel = useCheckoutLabel(workspace)
@@ -668,6 +672,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     revertedCount: leadRevertedCount,
     hasVisibleMessages: leadHasVisibleBlocks,
     hasLiveMessages: leadHasLiveBlocks,
+    isChat: isChatWorkspace,
+    hasConnectors: (leadAgent?.mcp_servers?.length ?? 0) > 0,
     onOpenSideQuestions: handleOpenSideQuestions,
   })
 
@@ -724,7 +730,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     workspacePanelOpen: workspacePanel !== null,
     handleNewSession,
     handleWorkspaceFiles,
-    handleOpenGit: workspace && !isChatWorkspace ? handleOpenGit : undefined,
+    handleOpenGit: workspace && canOpenGit ? handleOpenGit : undefined,
     handleSidebarToggle,
     handleToggleRunPicker,
     handleToggleTasks,
@@ -1027,7 +1033,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           chatWorkspace={isChatWorkspace}
           sessionId={sessionIdState}
           sessionFastMode={storeState.sessionFastMode}
-          onOpenGitChanges={workspace && !isChatWorkspace ? handleOpenGit : undefined}
+          onOpenGitChanges={workspace && canOpenGit ? handleOpenGit : undefined}
         />}
       >
         {/* A crash in the chat or the Review panel shows in their place; the

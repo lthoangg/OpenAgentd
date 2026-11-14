@@ -146,6 +146,13 @@ mock.module('@/queries/useSessionsQuery', () => ({
 
 const originalFetch = globalThis.fetch
 
+const SCHEDULED_TASK = {
+  id: 'weekly', slug: 'weekly', name: 'Weekly report', workspace: '/repo/project', schedule_type: 'every', at_datetime: null, every_seconds: 3600,
+  cron_expression: null, timezone: 'UTC', prompt: 'p', session_id: null, max_runs: null, enabled: false,
+  status: 'paused', run_count: 0, last_run_at: null, last_error: null, next_fire_at: null,
+  created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+}
+
 beforeEach(() => {
   isMobile = true
   workspaceSessionsData = [session('s-1', 'Fix login redirect loop')]
@@ -166,6 +173,8 @@ beforeEach(() => {
         groups: [],
       }))
     }
+    // One task, so the drawer has its Scheduled section (none: no section).
+    if (String(input).includes('/api/scheduler/tasks')) return new Response(JSON.stringify({ tasks: [SCHEDULED_TASK] }))
     return new Response(null, { status: 404 })
   }) as typeof fetch
 })
@@ -1010,7 +1019,7 @@ describe('Sidebar without page mode', () => {
     expect(view.container.querySelector('[data-sessions-page-toolbar]')).toBeNull()
     expect(view.container.querySelector('[data-sessions-page-bar]')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Scheduled' })).toBeNull()
-    expect(screen.getByRole('region', { name: 'Scheduled' })).toBeTruthy()
+    expect(await screen.findByRole('region', { name: 'Scheduled' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Settings' }).textContent).toBe('')
     expect(screen.getByRole('button', { name: /^Theme:/ })).toBeTruthy()
     expect(view.container.querySelector('[data-swipe-row]')).toBeNull()

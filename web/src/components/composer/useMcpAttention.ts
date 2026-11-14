@@ -23,7 +23,7 @@ export function useMcpAttention(workspace: string | null): McpAttention {
   if (needing.length === 0) return { names: [], summary: null }
   const signIn = needing.some((s) => s.state === 'auth_required')
   const summary = needing.length > 1
-    ? `${needing.length} MCP servers need attention`
+    ? `${needing.length} connectors need attention`
     : `${needing[0].name} ${signIn ? 'needs sign-in' : 'failed to start'}`
   return { names: needing.map((s) => s.name), summary }
 }

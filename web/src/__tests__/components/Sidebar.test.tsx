@@ -125,6 +125,8 @@ let worktreesByRepo: Record<string, Array<{ path: string; name: string; managed:
 let workspaceGroupsData: Array<{ id: string; name: string; brief: string | null }> = []
 let groupIdsByRepo: Record<string, string[]> = {}
 let setGroupsRequests: Array<{ workspace: string; group_ids: string[] }> = []
+/** Workspaces the tree reports as plain folders (not in a Git working tree). */
+let plainFolders = new Set<string>()
 const workspaceTreeResponse = () => ({
   repositories: Array.from(new Set(sessionsData.filter((session) => session.mode === 'coding' && session.workspace).map((session) => session.workspace as string)))
     .map((path) => ({
@@ -132,6 +134,7 @@ const workspaceTreeResponse = () => ({
       name: path.split('/').pop() || path,
       worktrees: (worktreesByRepo[path] ?? []).filter((item) => !hiddenWorkspacePaths.has(item.path)),
       group_ids: groupIdsByRepo[path] ?? [],
+      git: !plainFolders.has(path),
     }))
     // Like the backend, a hidden repository still contains its visible worktrees.
     .filter((repo) => !hiddenWorkspacePaths.has(repo.path) || repo.worktrees.length > 0),
@@ -776,6 +779,7 @@ describe('Sidebar workspace trust flow', () => {
     worktreesByRepo = {}
     workspaceGroupsData = []
     groupIdsByRepo = {}
+    plainFolders = new Set()
     setGroupsRequests = []
     useSidebarViewStore.setState({ groupFilter: null })
     workspaceHasNextPage = false
@@ -1742,11 +1746,37 @@ describe('Sidebar workspace trust flow', () => {
     expect(opened).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps Scheduled when nothing is scheduled, with a + that opens a new task', async () => {
+  it('has no Scheduled heading while no task exists at all', async () => {
+    const baseFetch = globalThis.fetch
+    let asked = false
+    globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+      if (String(input).includes('/api/scheduler/tasks')) {
+        asked = true
+        return new Response(JSON.stringify({ tasks: [] }))
+      }
+      return baseFetch(input as RequestInfo, init as RequestInit | undefined)
+    }) as typeof fetch
+
+    await renderSidebarForSessions(undefined)
+    await waitFor(() => expect(asked).toBe(true))
+    await act(async () => { await Promise.resolve() })
+
+    expect(screen.queryByRole('region', { name: 'Scheduled' })).toBeNull()
+    expect(screen.queryByText('No scheduled tasks')).toBeNull()
+  })
+
+  it('keeps Scheduled when a task exists but none is due, with a + that opens a new task', async () => {
     const user = userEvent.setup()
     const baseFetch = globalThis.fetch
     globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
-      if (String(input).includes('/api/scheduler/tasks')) return new Response(JSON.stringify({ tasks: [] }))
+      if (String(input).includes('/api/scheduler/tasks')) {
+        return new Response(JSON.stringify({ tasks: [{
+          id: 'paused', slug: 'paused', name: 'Paused digest', workspace: '/repo/project', schedule_type: 'every', at_datetime: null, every_seconds: 3600,
+          cron_expression: null, timezone: 'UTC', prompt: 'p', session_id: null, max_runs: null, enabled: false,
+          status: 'paused', run_count: 0, last_run_at: null, last_error: null, next_fire_at: null,
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        }] }))
+      }
       return baseFetch(input as RequestInfo, init as RequestInit | undefined)
     }) as typeof fetch
     const opened = mock(() => {})
@@ -1754,7 +1784,7 @@ describe('Sidebar workspace trust flow', () => {
 
     await renderSidebarForSessions(undefined)
     const section = await screen.findByRole('region', { name: 'Scheduled' })
-    await waitFor(() => expect(section.textContent).toContain('No scheduled tasks'))
+    await waitFor(() => expect(section.textContent).toContain('Nothing due'))
 
     await user.click(within(section).getByRole('button', { name: 'New scheduled task' }))
     window.removeEventListener(APP_EVENTS.openScheduler, opened)
@@ -1889,10 +1919,24 @@ describe('Sidebar workspace trust flow', () => {
       expect(title.closest('[data-empty-state="compact"]')).toBeTruthy()
       const empty = title.closest('[data-empty-state="compact"]') as HTMLElement
       expect(within(empty).getByRole('button', { name: 'Open workspace…' })).toBeTruthy()
+      // The word is explained once, where a newcomer first meets it.
+      expect(empty.textContent).toContain('A workspace is a folder the agent works in.')
     })
 
     it('scrolls the session list and pins Scheduled below it with its own scroll', async () => {
       twoWorkspaces()
+      const baseFetch = globalThis.fetch
+      globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+        if (String(input).includes('/api/scheduler/tasks')) {
+          return new Response(JSON.stringify({ tasks: [{
+            id: 'weekly', slug: 'weekly', name: 'Weekly report', workspace: '/repo/project', schedule_type: 'every', at_datetime: null, every_seconds: 3600,
+            cron_expression: null, timezone: 'UTC', prompt: 'p', session_id: null, max_runs: null, enabled: false,
+            status: 'paused', run_count: 0, last_run_at: null, last_error: null, next_fire_at: null,
+            created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          }] }))
+        }
+        return baseFetch(input as RequestInfo, init as RequestInit | undefined)
+      }) as typeof fetch
       pinnedSessionsData = [{ id: 'pinned-1', title: 'Pinned review', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project', pinned_at: '2026-05-14T00:00:00Z' }]
       const view = await renderSidebarForSessions('session-1')
 
@@ -1905,7 +1949,7 @@ describe('Sidebar workspace trust flow', () => {
       expect(stickyHeader).toBeTruthy()
       expect(stickyHeader.className).toContain('top-0')
       // Scheduled sits after it, outside, in its own capped scroller.
-      const scheduled = screen.getByRole('region', { name: 'Scheduled' })
+      const scheduled = await screen.findByRole('region', { name: 'Scheduled' })
       expect(scroller.contains(scheduled)).toBe(false)
       const scheduledScroller = view!.container.querySelector('[data-sidebar-scheduled-scroller]') as HTMLElement
       expect(scheduledScroller.contains(scheduled)).toBe(true)
@@ -3328,6 +3372,42 @@ describe('Sidebar workspace trust flow', () => {
       const sheet = screen.getByRole('dialog', { name: 'Feature' })
       expect(sheet.querySelector('kbd')).toBeNull()
       expect(within(sheet).getByRole('button', { name: 'Rename' }).textContent).toBe('Rename')
+    })
+
+    it('lists only what the workspace can do: no worktree for a folder without Git, no Groups block before a group exists', async () => {
+      sessionsData = [
+        projectSession('session-1', 'Notes', { workspace: '/docs/notes' }),
+        projectSession('session-2', 'Feature'),
+      ]
+      workspaceSessionsData = sessionsData
+      plainFolders = new Set(['/docs/notes'])
+
+      await renderSidebarForSessions('session-1')
+      const rows = (menu: HTMLElement) => Array.from(menu.children).map((el) => (el.getAttribute('role') === 'separator' ? '|' : el.textContent?.replace(/⌘N$/, '')))
+
+      fireEvent.click(await screen.findByLabelText('Actions for notes'))
+      let menu = screen.getByRole('menu', { name: 'Actions for notes' })
+      expect(rows(menu)).toEqual(['New session', '|', 'Copy path', '|', 'Hide from sidebar'])
+      fireEvent.keyDown(menu, { key: 'Escape' })
+
+      // A repository keeps its worktree entry; still no Groups block.
+      fireEvent.click(await screen.findByLabelText('Actions for project'))
+      menu = screen.getByRole('menu', { name: 'Actions for project' })
+      expect(rows(menu)).toEqual(['New session', '|', 'Copy path', 'Create worktree…', '|', 'Hide from sidebar'])
+    })
+
+    it('shows the Groups block in a workspace menu once a group exists', async () => {
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+      workspaceGroupsData = [{ id: 'g-web', name: 'web', brief: null }]
+
+      await renderSidebarForSessions('session-1')
+
+      fireEvent.click(await screen.findByLabelText('Actions for project'))
+      const menu = screen.getByRole('menu', { name: 'Actions for project' })
+      expect(within(menu).getByText('Groups')).toBeTruthy()
+      expect(within(menu).getByRole('menuitemcheckbox', { name: 'web' })).toBeTruthy()
+      expect(within(menu).getByRole('menuitem', { name: 'Manage groups…' })).toBeTruthy()
     })
 
     it("shows ⌘N beside New session only in the menu of the workspace on screen, and sets its groups apart", async () => {

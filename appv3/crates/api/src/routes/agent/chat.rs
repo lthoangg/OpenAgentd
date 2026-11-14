@@ -731,6 +731,13 @@ async fn relocate_workspace(State(st): State<AppState>, raw: Bytes) -> ApiResult
     })))
 }
 
+/// Whether `path` is inside a Git working tree: it or a parent holds `.git`
+/// (a folder in a repository, a file in a worktree). Stats only, so the tree
+/// can say it for every workspace without starting `git`.
+fn in_git_work_tree(path: &Path) -> bool {
+    path.ancestors().any(|dir| dir.join(".git").exists())
+}
+
 async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Response> {
     let s = settings();
     let chat_path = s.chat_workspace_root().display().to_string();
@@ -755,7 +762,15 @@ async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Response> {
             continue;
         }
         let name = row.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| basename(&row.path));
-        let entry = json!({"path": row.path, "name": name, "worktrees": [], "group_ids": group_ids(&row.path), "missing": !Path::new(&row.path).is_dir()});
+        let entry = json!({
+            "path": row.path,
+            "name": name,
+            "worktrees": [],
+            "group_ids": group_ids(&row.path),
+            "missing": !Path::new(&row.path).is_dir(),
+            // The client offers the Changes view and worktrees only where there is Git.
+            "git": in_git_work_tree(Path::new(&row.path)),
+        });
         match repos.iter_mut().find(|(p, _)| *p == row.path) {
             Some(slot) => slot.1 = entry.as_object().unwrap().clone(),
             None => repos.push((row.path.clone(), entry.as_object().unwrap().clone())),
@@ -767,7 +782,10 @@ async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Response> {
             let missing = !Path::new(&source).is_dir();
             repos.push((
                 source.clone(),
-                json!({"path": source, "name": basename(&source), "worktrees": [], "group_ids": group_ids(&source), "missing": missing}).as_object().unwrap().clone(),
+                json!({"path": source, "name": basename(&source), "worktrees": [], "group_ids": group_ids(&source), "missing": missing, "git": in_git_work_tree(Path::new(&source))})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
             ));
         }
         // A subfolder shows its path inside the repository (`web/app`).

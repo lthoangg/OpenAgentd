@@ -255,10 +255,10 @@ describe('WorkspacePanel – commit body expand/collapse', () => {
 
     await renderCommitsTab()
 
+    // Decoded subject must be shown
+    expect(await screen.findByText('feat: add login page')).toBeTruthy()
     // Raw percent-encoding must never appear
-    await waitFor(() => expect(screen.queryByText(/feat:%20/)).toBeNull())
-    // Decoded subject must be shown instead
-    expect(screen.getByText('feat: add login page')).toBeTruthy()
+    expect(screen.queryByText(/feat:%20/)).toBeNull()
   })
 
   it('handles invalid percent-encoded commit subjects gracefully without throwing URI error', async () => {

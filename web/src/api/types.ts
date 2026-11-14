@@ -75,6 +75,12 @@ export interface CodingWorkspaceTreeRepository {
   group_ids?: string[]
   /** The folder no longer exists on disk. */
   missing?: boolean
+  /**
+   * The folder is inside a Git working tree. ``false`` for a plain folder:
+   * no Changes view, no worktrees. Absent on a server before v3.56.0, which
+   * reads as "may be".
+   */
+  git?: boolean
 }
 
 /**

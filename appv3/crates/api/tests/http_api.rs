@@ -482,6 +482,7 @@ async fn http_api_end_to_end() {
     let (_, v) = c.json("GET", "/api/agent/workspace/tree", None).await;
     let repos = v["repositories"].as_array().unwrap();
     assert!(repos.iter().any(|r| r["path"] == json!(renamed) && r["name"] == json!("openagentd") && r["missing"] == json!(false)), "{v}");
+    assert!(repos.iter().any(|r| r["path"] == json!(renamed) && r["git"] == json!(false)), "a plain folder is not a Git repository: {v}");
     assert!(!repos.iter().any(|r| r["path"] == json!(gone)), "{v}");
     let (_, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}", enc(&renamed)), None).await;
     assert_eq!(v["data"].as_array().unwrap().len(), 1, "{v}");
@@ -1532,6 +1533,7 @@ async fn worktree_tree_flow(c: &Client, root: &std::path::Path) {
     assert!(!repos.iter().any(|r| r["path"] == json!(path(&outside)) || r["path"] == json!(path(&repo.join("web")))), "no repository rows of their own: {v}");
     let r = repos.iter().find(|r| r["path"] == json!(path(&repo))).expect("the repository is listed");
     assert_eq!(r["missing"], json!(false));
+    assert_eq!(r["git"], json!(true), "a folder with .git is a Git repository: {v}");
     let wts = r["worktrees"].as_array().unwrap();
     let entry = |p: &std::path::Path| wts.iter().find(|w| w["path"] == json!(path(p))).cloned().unwrap_or_else(|| panic!("{} under the repository: {v}", p.display()));
     assert_eq!(entry(&outside), json!({"path": path(&outside), "name": "tree-repo-fix", "managed": false, "kind": "worktree", "missing": false}));

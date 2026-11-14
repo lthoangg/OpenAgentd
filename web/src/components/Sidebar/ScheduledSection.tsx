@@ -10,10 +10,12 @@ import { SidebarHeading } from './SidebarHeading'
 const MAX_ROWS = 5
 
 /**
- * Scheduled tasks under the workspace tree: always there, so a task can be
- * created from the sidebar. The heading counts the enabled tasks and has a
- * "+" for a new one; the next few to run are listed, each opening its
- * detail.
+ * Scheduled tasks under the workspace tree, from the first task on: with a
+ * task that is paused or not due the section stays ("Nothing due"), so it
+ * does not come and go; with no task at all it takes no room (the palette,
+ * the Review panel's "+" and the agent create the first one). The heading
+ * counts the enabled tasks and has a "+" for a new one; the next few to run
+ * are listed, each opening its detail.
  */
 export function ScheduledSection({ onMobileClose }: { onMobileClose?: () => void }) {
   const { data, isPending } = useScheduledTasksQuery()
@@ -30,6 +32,7 @@ export function ScheduledSection({ onMobileClose }: { onMobileClose?: () => void
   }
   const now = new Date()
 
+  if (tasks.length === 0) return null
   return (
     <section aria-label="Scheduled" className="shrink-0 pb-1.5">
       <SidebarHeading
@@ -68,7 +71,7 @@ export function ScheduledSection({ onMobileClose }: { onMobileClose?: () => void
         </ul>
       ) : !isPending && (
         <div className="flex items-center gap-1 px-3 text-meta text-(--color-text-muted)">
-          <span className="min-w-0 flex-1 truncate">{tasks.length === 0 ? 'No scheduled tasks' : 'Nothing due'}</span>
+          <span className="min-w-0 flex-1 truncate">Nothing due</span>
           <button type="button" onClick={() => open(null)} className={ROW_TEXT_ACTION}>
             Open
           </button>

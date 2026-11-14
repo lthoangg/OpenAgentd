@@ -2401,6 +2401,33 @@ run from the terminal (the native Rust binary since v3.0.0).
     popover are the same in both.
   - Settings → Appearance: **Open previews** is **Automatically** or **When
     I choose** (it was Previews: Review panel / Manually).
+  - **Where you are decides what is offered.** Chat already had no Changes
+    view; a folder without Git now has none either: no **Changes** row in
+    the Review panel (it led to "Not a git repository"), no **Open Changes**
+    command or key, no git probes, and no **Create worktree…** in the
+    workspace's menu. There the Review panel leads with what it can show
+    (**Find file…**, **Preview**, **Terminal**, then Tasks and Scheduled
+    tasks), on the phone's Review page too. The workspace list says whether
+    each folder is inside a Git working tree; a server from before this
+    version is treated as before.
+  - **Empty things take no room.** The sidebar's **Scheduled** section
+    appears with the first task and stays while any task exists (paused or
+    not due: "Nothing due"); with none there is no heading. The palette,
+    the Review panel's "+" and the agent still create the first task. A
+    workspace's menu has no **Groups** block until a group exists. The
+    composer's "+" menu has no connector section until the agent has one,
+    and names it **Connectors** (it was "MCP servers"). The Review panel
+    lists **Goal** and **Side questions** once the session has one.
+    Settings → Desktop shows the notch's and the pet's options once each is
+    turned on (with both off, 12 of its 14 rows read "Turn on … to change
+    this"). "No
+    workspaces yet" adds: "A workspace is a folder the agent works in."
+  - **The "/" menu lists what this place can use.** `/model` and `/think`
+    are no longer listed (the model button under the box opens the same
+    picker); `/compact` is listed as `/summarize` and `/mcp` as
+    `/connectors`, which shows once the agent has a connector; `/init` is
+    not listed in Chat. All of them, and the earlier names, still run when
+    typed, and typing an earlier name finds the row.
 - **Each platform is offered what it can do, in one wording** `[v3.54.0]`:
   - iPad: a long press in the terminal opens Select All, Copy, Paste, Find
     and Add to chat, as on a phone. Before, only a phone-sized window had it.

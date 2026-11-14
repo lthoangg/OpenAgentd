@@ -52,6 +52,15 @@ describe("InputComposer — pure logic helpers", () => {
     expect(filterSlashCommands(commands, "cont").map((c) => c.id)).toEqual(["group", "continue"])
   })
 
+  it("filterSlashCommands finds a command by an earlier name, which is not shown", () => {
+    const commands = [
+      { id: "summarize", label: "Summarize", description: "Summarize earlier messages to make room", aliases: ["compact"] },
+      { id: "new", label: "New session", description: "Start a new session" },
+    ]
+    expect(filterSlashCommands(commands, "comp").map((c) => c.id)).toEqual(["summarize"])
+    expect(filterSlashCommands(commands, "compact").map((c) => c.id)).toEqual(["summarize"])
+  })
+
   it("filterSnippetCommands filters by query", () => {
     expect(
       filterSnippetCommands(

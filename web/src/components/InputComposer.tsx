@@ -64,6 +64,8 @@ export interface SlashCommand {
   insertText?: string
   /** The app shortcut that does the same, shown beside the command on desktop. */
   shortcut?: AppShortcutName
+  /** Earlier names the picker also finds it by (``compact`` for ``/summarize``); not shown. */
+  aliases?: string[]
   /**
    * When ``true`` this entry is rendered as a non-interactive section header
    * (a label row). Set ``id`` to something unique but non-actionable and

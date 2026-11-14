@@ -1436,6 +1436,7 @@ export function Sidebar({
             compact
             icon={FolderPlus}
             title="No workspaces yet"
+            body="A workspace is a folder the agent works in."
             className="px-3 py-3"
             action={(
               <Button type="button" size="sm" onClick={() => { void openWorkspaceDialog() }}>
@@ -1959,6 +1960,7 @@ export function Sidebar({
                     Locate folder…
                   </button>
                 )}
+                {workspaceByPath.get(mobileWorkspaceActions.path)?.git !== false && (
                 <button
                   type="button"
                   className={SHEET_ROW_CLASS}
@@ -1971,6 +1973,7 @@ export function Sidebar({
                   <GitBranch size={16} aria-hidden="true" />
                   Create worktree…
                 </button>
+                )}
                 <WorkspaceGroupToggles
                   workspace={mobileWorkspaceActions.path}
                   variant="sheet"
@@ -2183,6 +2186,8 @@ export function Sidebar({
               <Copy size={12} aria-hidden="true" />
               Copy path
             </button>
+            {/* A folder without Git has no worktrees to make. */}
+            {workspaceByPath.get(desktopWorkspaceActions.path)?.git !== false && (
             <button
               type="button"
               role="menuitem"
@@ -2196,6 +2201,7 @@ export function Sidebar({
               <GitBranch size={12} aria-hidden="true" />
               Create worktree…
             </button>
+            )}
             <WorkspaceGroupToggles
               workspace={desktopWorkspaceActions.path}
               variant="menu"

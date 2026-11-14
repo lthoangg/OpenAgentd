@@ -11,7 +11,10 @@ import { workspaceRelativePath } from '@/utils/file-refs'
 import type { SlashCommand } from '../InputComposer'
 import { patchFileStats } from '../ToolCall/diffUtils'
 
-/** Built-in slash commands always available, ahead of any user-defined ones. */
+/**
+ * The built-in slash commands the "/" menu lists, ahead of any user-defined
+ * ones. The menu shows each by its id (``/summarize``).
+ */
 export const BASE_SLASH_COMMANDS: SlashCommand[] = [
   { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
   {
@@ -21,19 +24,30 @@ export const BASE_SLASH_COMMANDS: SlashCommand[] = [
     keepInputOpen: true,
     insertText: 'btw',
   },
-  { id: 'compact', label: 'Compact', description: 'Summarize and compact this session' },
+  { id: 'summarize', label: 'Summarize', description: 'Summarize earlier messages to make room', aliases: ['compact'] },
   { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
   { id: 'redo', label: 'Redo', description: 'Redo the last message you undid' },
   { id: 'redo-all', label: 'Redo All', description: 'Redo every message you undid, up to the latest' },
-  { id: 'new', label: 'New session', description: 'Start a fresh agent conversation', shortcut: 'newSession' },
+  { id: 'new', label: 'New session', description: 'Start a new session', shortcut: 'newSession' },
   { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
-  { id: 'model', label: 'Model', description: 'Choose the model, thinking level and account', shortcut: 'sessionSettings' },
-  { id: 'think', label: 'Think', description: 'Change the thinking level' },
-  { id: 'mcp', label: 'MCP', description: 'MCP servers for this session' },
+  { id: 'connectors', label: 'Connectors', description: 'Connectors for this session', aliases: ['mcp'] },
 ]
 
+/**
+ * Typed commands that run without a row in the menu: ``/model`` and
+ * ``/think`` open the picker the model button under the box already opens,
+ * and ``/compact`` and ``/mcp`` are the earlier names of two that are listed.
+ */
+const TYPED_SLASH_COMMANDS: Record<string, string> = {
+  model: 'model',
+  think: 'think',
+  compact: 'summarize',
+  mcp: 'connectors',
+  redo_all: 'redo-all',
+}
+
 export const BUILT_IN_SLASH_COMMAND_IDS = new Set<string>(
-  BASE_SLASH_COMMANDS.map((cmd) => cmd.id).concat(['redo_all']),
+  BASE_SLASH_COMMANDS.map((cmd) => cmd.id).concat(Object.keys(TYPED_SLASH_COMMANDS)),
 )
 
 /** Extract and normalize a built-in slash command from user input, or return null. */
@@ -41,7 +55,7 @@ export function parseBuiltInSlashCommand(content: string): string | null {
   const trimmed = content.trim()
   if (!trimmed.startsWith('/')) return null
   const command = trimmed.slice(1).trim().toLowerCase()
-  if (command === 'redo_all') return 'redo-all'
+  if (command in TYPED_SLASH_COMMANDS) return TYPED_SLASH_COMMANDS[command]
   return BUILT_IN_SLASH_COMMAND_IDS.has(command) ? command : null
 }
 
@@ -144,9 +158,13 @@ export interface FilterSlashCommandsContext {
   /** The lead has blocks of a turn still running (a new session's first turn has only these). */
   hasLiveMessages?: boolean
   hasWorkspace?: boolean
+  /** The workspace is Chat: there is no project for ``/init`` to describe. */
+  isChat?: boolean
+  /** The session's agent lists at least one connector (MCP server). */
+  hasConnectors?: boolean
 }
 
-/** Filter built-in slash commands to only those contextually relevant right now. */
+/** Filter built-in slash commands to only those this place and moment can use. */
 export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashCommand[] {
   const isWorking = ctx.isAgentWorking ?? false
   const revertedCount = ctx.revertedCount ?? 0
@@ -163,17 +181,16 @@ export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashC
         // including a new session's first turn, whose blocks are all live.
         return hasVisible || hasLive
       case 'undo':
-      case 'compact':
+      case 'summarize':
         return hasVisible && !isWorking
       case 'redo':
       case 'redo-all':
         return revertedCount > 0 && !isWorking
       case 'init':
-      // They open the run deck's picker and "+" menu, which a workspace has.
-      case 'model':
-      case 'think':
-      case 'mcp':
-        return inWorkspace
+        return inWorkspace && !(ctx.isChat ?? false)
+      // Opens the "+" menu at its connectors, which shows once there is one.
+      case 'connectors':
+        return inWorkspace && (ctx.hasConnectors ?? false)
       case 'new':
         return true
       default:

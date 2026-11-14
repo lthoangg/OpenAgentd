@@ -1505,6 +1505,7 @@ async fn run_pointer_watch(app: AppHandle) {
             if check_displays && display_changed(&canvas, &geometry, &native::screens()) {
                 // Moves the canvas, tells the webview the new notch, and
                 // starts the pointer over.
+                log::info!("island: the displays changed, placing it again");
                 apply(&handle);
                 return;
             }

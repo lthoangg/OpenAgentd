@@ -39,6 +39,10 @@ describe('desktop notification library integration', () => {
     await runWorker('focused skip and forced send')
   })
 
+  it('notifies even when the removed settings page left its switch off', async () => {
+    await runWorker('an off switch left by the removed settings page is ignored')
+  })
+
   it('sends mobile notifications through the notification plugin without focused-window skip or in-app sound', async () => {
     await runWorker('mobile plugin send')
   })

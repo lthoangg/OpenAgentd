@@ -141,6 +141,15 @@ describe('desktop notification worker', () => {
     expect((await sendDesktopNotification({ ...payload, notificationId: 'n-1' })).status).toBe('disabled')
   })
 
+  // The Notifications settings page is gone, so nothing can turn the switch
+  // back on: a stored "off" must not keep notifications off for good.
+  it('an off switch left by the removed settings page is ignored', async () => {
+    window.localStorage.setItem('oa-desktop-notifications-enabled', 'false')
+
+    expect((await sendDesktopNotification(payload)).status).toBe('sent')
+    expect(mockNotify).toHaveBeenCalledTimes(1)
+  })
+
   it('focused skip and forced send', async () => {
     focused = true
 

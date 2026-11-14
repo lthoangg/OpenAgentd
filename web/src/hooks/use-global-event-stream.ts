@@ -433,7 +433,7 @@ async function handleEvent(
     // A question stops the agent until it is answered, so it must reach the user
     // even in a focused window — unless they are already looking at the session
     // that asked, where the card itself is the notification. ``force`` skips the
-    // window-focus check only; the user's notification setting still applies.
+    // window-focus check only; the operating system's permission still applies.
     // Badge the row in every window's session list. The question card itself
     // only reaches clients attached to that session's stream; this is what tells
     // someone working elsewhere that a session is stopped and waiting on them.

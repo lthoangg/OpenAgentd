@@ -96,6 +96,18 @@ describe('preview inspector', () => {
     expect(received.some((m) => m.type === 'leaving')).toBe(true)
   })
 
+  it('shows a pin the dock asks for by scrolling its element into view', () => {
+    const cta = frame.document.querySelector('button.cta') as HTMLElement
+    let scrolled = 0
+    cta.scrollIntoView = () => { scrolled += 1 }
+    sendFromParent({ type: 'pins', pins: [{ n: 2, selector: 'button.cta' }] })
+    sendFromParent({ type: 'show-pin', n: 2 })
+    expect(scrolled).toBe(1)
+    // A pin that is not on the page (or a number never sent) is left alone.
+    sendFromParent({ type: 'show-pin', n: 9 })
+    expect(scrolled).toBe(1)
+  })
+
   it('builds short, stable selectors', () => {
     const doc = frame.document
     const buttons = doc.querySelectorAll('button')

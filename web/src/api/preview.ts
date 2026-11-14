@@ -103,6 +103,8 @@ export function previewTargetKey(target: PreviewTarget): string {
 
 const PORT_KEY = 'oa-preview-port:'
 const LAST_URL_KEY = 'oa-preview-last-url:'
+const RECENT_URLS_KEY = 'oa-preview-recent-urls:'
+const MAX_RECENT_URLS = 5
 
 function storage(): Storage | null {
   try {
@@ -130,6 +132,24 @@ export function lastPreviewUrl(workspace: string): string | null {
 
 export function rememberPreviewUrl(workspace: string, url: string): void {
   storage()?.setItem(`${LAST_URL_KEY}${workspace}`, url)
+  addRecentPreviewUrl(workspace, url)
+}
+
+/** The addresses previewed last in `workspace` on this device, newest first. */
+export function recentPreviewUrls(workspace: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(storage()?.getItem(`${RECENT_URLS_KEY}${workspace}`) ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((url): url is string => typeof url === 'string').slice(0, MAX_RECENT_URLS) : []
+  } catch {
+    return []
+  }
+}
+
+/** Put `url` first among the workspace's recent addresses (the address bar suggests them). */
+export function addRecentPreviewUrl(workspace: string, url: string): void {
+  const full = url.includes('://') ? url : `http://${url}`
+  const next = [full, ...recentPreviewUrls(workspace).filter((item) => item !== full)].slice(0, MAX_RECENT_URLS)
+  storage()?.setItem(`${RECENT_URLS_KEY}${workspace}`, JSON.stringify(next))
 }
 
 /**

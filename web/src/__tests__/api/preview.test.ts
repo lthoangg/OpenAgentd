@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-import { closePreview, isLocalBackend, isLoopbackHost, lastPreviewUrl, openPreview, previewMode, previewTargetKey } from '@/api/preview'
+import { addRecentPreviewUrl, closePreview, isLocalBackend, isLoopbackHost, lastPreviewUrl, openPreview, previewMode, previewTargetKey, recentPreviewUrls } from '@/api/preview'
 import { type AppBackendStatus, noteBackendStatus } from '@/lib/app-backend'
 
 const invokeMock = mock(async (..._args: unknown[]) => ({ port: 61000, origin: 'http://127.0.0.1:61000' }))
@@ -187,5 +187,43 @@ describe('previews on a computer of the account', () => {
     const opened = await openPreview('/ws', { kind: 'url', url: 'http://localhost:5173/' })
     expect(invokeMock).toHaveBeenCalledWith('preview_relay_open', { previewId: 'p1', port: 52011 })
     expect(opened.origin).toBe('http://127.0.0.1:61000')
+  })
+})
+
+describe('recent preview addresses', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('keeps the newest five per workspace, each once, newest first', () => {
+    for (const port of [3000, 3001, 3002, 3003, 3004, 3005]) addRecentPreviewUrl('/ws', `http://localhost:${port}/`)
+    addRecentPreviewUrl('/ws', 'http://localhost:3002/')
+    expect(recentPreviewUrls('/ws')).toEqual([
+      'http://localhost:3002/',
+      'http://localhost:3005/',
+      'http://localhost:3004/',
+      'http://localhost:3003/',
+      'http://localhost:3001/',
+    ])
+    expect(recentPreviewUrls('/other')).toEqual([])
+  })
+
+  it('reads an address typed without a scheme as the same address', () => {
+    addRecentPreviewUrl('/ws', 'localhost:5173/pricing')
+    addRecentPreviewUrl('/ws', 'http://localhost:5173/pricing')
+    expect(recentPreviewUrls('/ws')).toEqual(['http://localhost:5173/pricing'])
+  })
+
+  it('answers an empty list for a stored value that is not a list', () => {
+    localStorage.setItem('oa-preview-recent-urls:/ws', '{"a":1}')
+    expect(recentPreviewUrls('/ws')).toEqual([])
+  })
+
+  it('remembers every address a preview opens', async () => {
+    globalThis.fetch = mock(async () => new Response(JSON.stringify(info(52011)), { status: 200 })) as typeof fetch
+    try {
+      await openPreview('/ws', { kind: 'url', url: 'http://localhost:5173/pricing' })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+    expect(recentPreviewUrls('/ws')).toEqual(['http://localhost:5173/pricing'])
   })
 })

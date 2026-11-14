@@ -21,6 +21,25 @@ export interface PreviewComment {
   text: string
 }
 
+/**
+ * ``removed`` put back among ``current``, in pin order (Undo after Clear or
+ * the x on one comment). A comment keeps its number unless a newer comment
+ * took it meanwhile; then it gets the next free one.
+ */
+export function restoreComments(current: readonly PreviewComment[], removed: readonly PreviewComment[]): PreviewComment[] {
+  const taken = new Set(current.map((c) => c.n))
+  let next = Math.max(0, ...current.map((c) => c.n), ...removed.map((c) => c.n)) + 1
+  const back = removed.map((comment) => {
+    if (!taken.has(comment.n)) {
+      taken.add(comment.n)
+      return comment
+    }
+    const n = next++
+    return { ...comment, id: `c${n}`, n }
+  })
+  return [...current, ...back].sort((a, b) => a.n - b.n)
+}
+
 /** ``<button.cta>`` / ``<div#root>`` */
 export function elementLabel(element: Pick<ElementDescriptor, 'tag' | 'id' | 'classes'>): string {
   const suffix = element.id ? `#${element.id}` : element.classes.length ? `.${element.classes.slice(0, 2).join('.')}` : ''

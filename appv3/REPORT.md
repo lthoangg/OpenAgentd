@@ -2019,6 +2019,11 @@ the v2 tool contract; `GET /agents` lists it for coding workspaces. Design
 feedback travels inside the user message as a `<design-feedback>` block
 that the web UI renders as a card; the wire format is unchanged.
 
+The inspector takes one more message from the dock (v3.56.0): `show-pin`
+with a comment's number scrolls that comment's element into view and
+outlines it for a moment. An inspector from before ignores it, and the web
+client sends it only when a comment is clicked.
+
 `GET /api/preview/{id}/tunnel?port=<n>` (v3.23.0) lets the mobile app and a
 desktop app on another computer show previews. Their native relay listens
 on the device's own `127.0.0.1:<n>` and opens one WebSocket per browser

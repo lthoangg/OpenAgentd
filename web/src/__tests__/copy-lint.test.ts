@@ -95,6 +95,7 @@ function pointerVerbStrings(source: string): string[] {
 const POINTER_VERBS: Record<string, { count: number; why: string }> = {
   'components/AppBackendPanel.tsx': { count: 1, why: 'the touch branch of the list description; the other branch names the Use button' },
   'components/PendingMessageQueue.tsx': { count: 1, why: 'the phone-only queued bubble' },
+  'components/Preview/PreviewTabView.tsx': { count: 2, why: 'the commenting line: "Tap" in the phone branch, "Click" in the desktop one' },
   'components/account/InviteSheet.tsx': { count: 1, why: 'says what to do on the phone that scans the code' },
   'components/settings/pages/settings.desktop.tsx': { count: 1, why: 'the notch setting: macOS desktop only' },
   'components/settings/settings-index.ts': { count: 1, why: 'a search keyword, never shown' },

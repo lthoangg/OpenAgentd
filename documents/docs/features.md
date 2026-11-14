@@ -2468,39 +2468,6 @@ run from the terminal (the native Rust binary since v3.0.0).
     notes. Android keeps one **Download** step (an APK), in the same line.
     The TypeScript tools prompt is one line too: "Install TypeScript tools
     for {folder}?", **Later**, **Install**.
-  - **A new scheduled task asks three questions**: **What should it do?**,
-    **When?** (Every day, Every weekday, Every week on…, Every … minutes,
-    hours or days, Once on…, each with a time picker; Custom (cron) keeps
-    the expression) and **Where?**, then **Where does the reply go?** (a
-    new session each time, the same session, or this session when the open
-    one is in that workspace). The form had eight fields, a cron expression
-    and a session ID on its first page. **More options** holds Name, Stop
-    after N runs, Time zone and Session ID; a task left unnamed is named
-    after what it does. A field in error opens the page it is on. Every
-    task made before opens in the same form: a cron expression the form
-    can say in words shows as words, any other as Custom.
-  - **A task's detail reads as sentences.** **Runs in** (workspace, where
-    replies go), **Schedule** ("Every weekday at 09:00 · next: Mon 09:00";
-    the cron expression shows in Full, or when it has no wording) and
-    **Dates**. The list and the sidebar say "weekdays at 09:00" in place of
-    `0 9 * * 1-5`. The sidebar's "+" reads **New task**, the dialog
-    **Delete this task?**, and the phone's page **Scheduled tasks**.
-  - **Shorter menus in the Review panel.** A tab's menu drops Close to the
-    left, Split left, Split up, Move left and Move right (dragging a tab
-    and the split keys still do all five). A commit's menu is **Open in
-    tab**, **Copy commit ID**, **Copy message**, **Revert commit…** and
-    **Undo commit…**, on desktop and phone.
-  - **Fewer Refresh buttons.** An open text file re-reads itself when the
-    file changes on disk. On desktop the Refresh buttons on Changes, a diff
-    and a file are one **Refresh** row in the pane's "⋯" menu; a phone
-    keeps the buttons.
-  - **Create worktree asks for a name.** The branch follows it
-    (`openagentd/{name}`) and is shown as a line with **Change** for when
-    it should differ. The dialog no longer repeats the list of existing
-    worktrees (the worktree chip has it).
-  - The notice on a session whose model is not connected reads **Connect a
-    model to start chatting** with **Open Models** (it said "model
-    provider" and "Open providers").
   - Network access on Linux shows each firewall command as a code line with
     **Copy**. "Clear this goal?" is two sentences.
   - **Settings: 15 sections in 3 groups** (it was 18 in 6). **Basics**:
@@ -2550,6 +2517,92 @@ run from the terminal (the native Rust binary since v3.0.0).
     **Appearance…**, found by either name. Image and video has one **Size**
     row, whose options follow the chosen image model. Settings → Plugins
     lists **Single-file plugins** once one exists.
+  - **A new scheduled task asks three questions**: **What should it do?**,
+    **When?** (Every day, Every weekday, Every week on…, Every … minutes,
+    hours or days, Once on…, each with a time picker; Custom (cron) keeps
+    the expression) and **Where?**, then **Where does the reply go?** (a
+    new session each time, the same session, or this session when the open
+    one is in that workspace). The form had eight fields, a cron expression
+    and a session ID on its first page. **More options** holds Name, Stop
+    after N runs, Time zone and Session ID; a task left unnamed is named
+    after what it does. A field in error opens the page it is on. Every
+    task made before opens in the same form: a cron expression the form
+    can say in words shows as words, any other as Custom.
+  - **A task's detail reads as sentences.** **Runs in** (workspace, where
+    replies go), **Schedule** ("Every weekday at 09:00 · next: Mon 09:00";
+    the cron expression shows in Full, or when it has no wording) and
+    **Dates**. The list and the sidebar say "weekdays at 09:00" in place of
+    `0 9 * * 1-5`. The sidebar's "+" reads **New task**, the dialog
+    **Delete this task?**, and the phone's page **Scheduled tasks**.
+  - **Shorter menus in the Review panel.** A tab's menu drops Close to the
+    left, Split left, Split up, Move left and Move right (dragging a tab
+    and the split keys still do all five). A commit's menu is **Open in
+    tab**, **Copy commit ID**, **Copy message**, **Revert commit…** and
+    **Undo commit…**, on desktop and phone.
+  - **Fewer Refresh buttons.** An open text file re-reads itself when the
+    file changes on disk. On desktop the Refresh buttons on Changes, a diff
+    and a file are one **Refresh** row in the pane's "⋯" menu; a phone
+    keeps the buttons.
+  - **Create worktree asks for a name.** The branch follows it
+    (`openagentd/{name}`) and is shown as a line with **Change** for when
+    it should differ. The dialog no longer repeats the list of existing
+    worktrees (the worktree chip has it).
+  - The notice on a session whose model is not connected reads **Connect a
+    model to start chatting** with **Open Models** (it said "model
+    provider" and "Open providers").
+  - **Preview says what it is doing.** While commenting, a line under the
+    bar reads "Click an element to comment" with **Done** (Esc and ⌥C still
+    stop it). On a phone the line reads "Tap an element to comment" above
+    the bar, and Comment is a button on the bar (it was a row in "⋯", with
+    nothing on screen while it was on).
+  - **Preview comments**: **Clear** and the × on one comment answer with
+    **Undo** for 10 seconds (Clear could not be taken back). A click on a
+    comment scrolls the page to its pin and outlines the element. **Add
+    comment** shows its keys (⌘↵). On a phone the list is one row, "3
+    comments", that opens with Clear inside, and **Send to agent** returns
+    to the chat, where the comments are in the message box.
+  - **Preview console**: **Errors**, **Warnings** and **All**, each with
+    its count. It opens on Errors when there are any (it listed every line
+    from the oldest), keeps the newest line in view until the list is
+    scrolled up, and has its own ×. On a phone "⋯" shows the error count
+    (it was a dot) and its row reads **Hide console** while it is open.
+  - **Preview size**: a fixed size (Mobile, Tablet, Desktop) says the
+    page's size and scale under it, "390 × 844 · 62%"; in Responsive the
+    size shows for a moment while the panel is resized. The size button
+    shows an icon and, when the panel has room, the size's name. On a phone
+    the button is filled while a fixed size is chosen.
+  - **Preview address**: focusing the field lists **Recent** addresses
+    (five per workspace, kept on this device) and **Pages in this
+    workspace** (its HTML files). Typing filters both; ↑ ↓ and ↵ choose. On
+    a phone the list opens upward from the address pill. At rest the field
+    leaves out `http://` (`https://` stays). The size's name gives way by
+    the panel's width, so a narrow panel on a wide window keeps the address
+    readable.
+  - **Renamed in this version** (each earlier word still finds its page in
+    Settings search and the command palette, and typed commands still run):
+
+    | Before | Now |
+    |---|---|
+    | Transcript: Detailed / Reader; Toggle Reader Mode | Detail: Full / Simple; Toggle Simple View |
+    | Git (tab, launcher, palette, status bar) | Changes |
+    | Workspace (the phone's page) | Review panel |
+    | Stop & send; on a phone "Steer now", "Send after this turn finishes" | Steer, Queue until done, Stop and send |
+    | Compact, Summarize now; `/compact` | Summarize; `/summarize` |
+    | Providers | Models |
+    | Provider limits | Usage limits |
+    | OpenAI Codex | ChatGPT |
+    | MCP servers; `/mcp` | Connectors; `/connectors` |
+    | Denied paths | Blocked files |
+    | Session titles, Context, Goals, Retention (four pages) | Sessions (one page) |
+    | Server, Servers, Built-in server | Computer, Computers, This computer |
+    | Use as server / Use as client | My other devices can open this computer / This computer can open my other computers |
+    | Trust this workspace? Trust and open | Let agents work in {folder}? Allow and open |
+    | Theme…, Text Size… (palette) | Appearance… |
+    | Copy short SHA, Copy full SHA, Copy commit message | Copy commit ID, Copy message |
+    | New scheduled task (sidebar "+") | New task |
+    | "Could not", "Unable to", "Failed to" | Couldn't |
+    | Try again (a button) | Retry |
+    | Offline (a computer that does not answer) | Can't reach |
 - **Each platform is offered what it can do, in one wording** `[v3.54.0]`:
   - iPad: a long press in the terminal opens Select All, Copy, Paste, Find
     and Add to chat, as on a phone. Before, only a phone-sized window had it.

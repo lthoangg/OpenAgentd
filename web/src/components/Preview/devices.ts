@@ -36,3 +36,10 @@ export function deviceLabel(preset: DevicePreset, size: { width: number; height:
   const s = size ?? fallback
   return `${preset.label} ${Math.round(s.width)}×${Math.round(s.height)}`
 }
+
+/** "390 × 844 · 62%": a framed page's real size and the scale it is drawn at (left out at full size). */
+export function frameCaption(size: { width: number; height: number }, scale: number): string {
+  const text = `${Math.round(size.width)} × ${Math.round(size.height)}`
+  const percent = Math.round(scale * 100)
+  return percent < 100 ? `${text} · ${percent}%` : text
+}

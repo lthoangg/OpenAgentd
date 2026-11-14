@@ -635,8 +635,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   const handleSendPreviewComments = useCallback((feedback: DesignFeedback) => {
     inputRef.current?.addDesignFeedback(feedback)
+    // A phone shows the Review panel over the chat: go back to the message
+    // box, where the comments now are.
+    if (isMobile) setWorkspacePanel(null)
     inputRef.current?.focus()
-  }, [])
+  }, [isMobile, setWorkspacePanel])
 
   // A feedback chip's x sends its comments back to their Preview tab's list,
   // opening that tab on desktop (it picks them up whenever it next mounts).

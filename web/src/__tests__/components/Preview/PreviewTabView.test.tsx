@@ -10,6 +10,7 @@ import type { DesignFeedback } from '@/lib/design-feedback'
 import { buildDesignFeedback } from '@/components/Preview/preview-comments'
 import { usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
 import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
+import { useToastStore } from '@/stores/useToastStore'
 
 const WS = '/Users/me/project'
 const ORIGIN = 'http://127.0.0.1:52011'
@@ -45,6 +46,7 @@ if (happyDOM) {
 
 beforeEach(() => {
   localStorage.clear()
+  useToastStore.setState({ toasts: [] })
   isMobile = false
   previewBodies = []
   workspaceFiles = []
@@ -164,7 +166,12 @@ describe('PreviewTabView', () => {
     expect(iframe.getAttribute('sandbox')).not.toContain('allow-top-navigation')
     expect(previewBodies[0]).toEqual({ workspace: WS, url: 'http://localhost:5173/pricing' })
     const address = screen.getByRole('textbox', { name: 'Preview address' }) as HTMLInputElement
-    await waitFor(() => expect(address.value).toBe('http://localhost:5173/pricing'))
+    // At rest the field leaves out http://, which every local page has; focus shows the whole address.
+    await waitFor(() => expect(address.value).toBe('localhost:5173/pricing'))
+    fireEvent.focus(address)
+    expect(address.value).toBe('http://localhost:5173/pricing')
+    fireEvent.blur(address)
+    expect(address.value).toBe('localhost:5173/pricing')
   })
 
   it('tells the keep-alive it shows the preview while mounted, with its listener id', async () => {
@@ -184,7 +191,7 @@ describe('PreviewTabView', () => {
     expect(design().disabled).toBe(true)
     fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
     await waitFor(() => expect(design().disabled).toBe(false))
-    expect((screen.getByRole('textbox', { name: 'Preview address' }) as HTMLInputElement).value).toBe('http://localhost:5173/pricing')
+    expect((screen.getByRole('textbox', { name: 'Preview address' }) as HTMLInputElement).value).toBe('localhost:5173/pricing')
   })
 
   it('collects design comments and sends them to the composer', async () => {
@@ -341,8 +348,52 @@ describe('PreviewTabView', () => {
     fromPage(frameWindow, { type: 'console', entries: [{ level: 'error', message: 'boom', url: '/', ts: 0 }, { level: 'log', message: 'hi', url: '/', ts: 0 }] })
     const button = await screen.findByRole('button', { name: 'Console (1 errors)' })
     fireEvent.click(button)
+    // The panel opens on what the badge counted.
+    expect(screen.getByRole('radio', { name: 'Errors 1' }).getAttribute('aria-checked')).toBe('true')
     expect(screen.getByText('boom')).toBeTruthy()
-    expect(screen.getByText('2 entries')).toBeTruthy()
+    expect(screen.queryByText('hi')).toBeNull()
+    fireEvent.click(screen.getByRole('radio', { name: 'All 2' }))
+    expect(screen.getByText('hi')).toBeTruthy()
+    expect(screen.getByText('boom')).toBeTruthy()
+  })
+
+  it('opens the console on All when the page logged no error, and filters to warnings', async () => {
+    const { frameWindow } = await renderView()
+    fromPage(frameWindow, { type: 'console', entries: [{ level: 'warn', message: 'careful', url: '/', ts: 0 }, { level: 'log', message: 'hi', url: '/', ts: 0 }] })
+    fireEvent.click(await screen.findByRole('button', { name: 'Console' }))
+    expect(screen.getByRole('radio', { name: 'All 2' }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByText('hi')).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: 'Warnings 1' }))
+    expect(screen.getByText('careful')).toBeTruthy()
+    expect(screen.queryByText('hi')).toBeNull()
+    fireEvent.click(screen.getByRole('radio', { name: 'Errors 0' }))
+    expect(screen.getByRole('heading', { name: 'No errors' })).toBeTruthy()
+  })
+
+  it('closes the console from its own ×', async () => {
+    await renderView()
+    fireEvent.click(await screen.findByRole('button', { name: 'Console' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close console' }))
+    expect(screen.queryByRole('region', { name: 'Preview console' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Console' }).getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('keeps the newest console line in view, unless the list was scrolled up', async () => {
+    const { frameWindow } = await renderView()
+    fireEvent.click(await screen.findByRole('button', { name: 'Console' }))
+    const line = (message: string) => fromPage(frameWindow, { type: 'console', entries: [{ level: 'log', message, url: '/', ts: 0 }] })
+    line('one')
+    const list = screen.getByRole('list', { name: 'Console output' })
+    Object.defineProperty(list, 'scrollHeight', { configurable: true, value: 500 })
+    Object.defineProperty(list, 'clientHeight', { configurable: true, value: 100 })
+    line('two')
+    expect(list.scrollTop).toBe(500)
+    // Scrolled up to read an earlier line: new lines no longer move the list.
+    list.scrollTop = 120
+    fireEvent.scroll(list)
+    Object.defineProperty(list, 'scrollHeight', { configurable: true, value: 900 })
+    line('three')
+    expect(list.scrollTop).toBe(120)
   })
 
   it('starts the console afresh on each new page, as a browser does', async () => {
@@ -360,7 +411,7 @@ describe('PreviewTabView', () => {
     await renderView()
     fireEvent.click(await screen.findByRole('button', { name: 'Console' }))
     expect(screen.getByRole('heading', { name: 'No console output yet' })).toBeTruthy()
-    expect(screen.getByText('0 entries')).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'All 0' }).getAttribute('aria-checked')).toBe('true')
   })
 
   it('names the reload "Refresh" (not Reload), the same word as every Refresh in the Review panel', async () => {
@@ -409,7 +460,7 @@ describe('PreviewTabView', () => {
     expect(screen.getByRole('button', { name: /^Comment on an element/ }).getAttribute('aria-pressed')).toBe('false')
   })
 
-  it('on a phone, folds Console, Comment and Open in browser into a More menu so the address keeps its width', async () => {
+  it('on a phone, folds Console and Open in browser into a More menu that counts the errors', async () => {
     isMobile = true
     const { frameWindow } = await renderView()
     fromPage(frameWindow, { type: 'console', entries: [{ level: 'error', message: 'boom', url: '/', ts: 0 }] })
@@ -418,11 +469,175 @@ describe('PreviewTabView', () => {
     expect(screen.queryByRole('button', { name: 'Open in browser' })).toBeNull()
     expect(screen.getByRole('textbox', { name: 'Preview address' })).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: 'More preview actions' }))
-    expect(screen.getByRole('menuitem', { name: /^Comment/ })).toBeTruthy()
+    // The number the desktop's badge shows, not a bare dot.
+    const more = screen.getByRole('button', { name: 'More preview actions' })
+    expect(more.querySelector('[data-console-errors]')?.textContent).toBe('1')
+    fireEvent.click(more)
+    expect(screen.queryByRole('menuitem', { name: /^Comment/ })).toBeNull()
     expect(screen.getByRole('menuitem', { name: 'Open in browser' })).toBeTruthy()
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Console (1 errors)' }))
     expect(screen.getByText('boom')).toBeTruthy()
+
+    // Open, the row says what a tap does now.
+    fireEvent.click(screen.getByRole('button', { name: 'More preview actions' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Hide console' }))
+    expect(screen.queryByText('boom')).toBeNull()
+  })
+
+  it('on a phone, Comment is a button on the bar, and a line says commenting is on', async () => {
+    isMobile = true
+    const { frameWindow } = await renderView()
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+    const comment = await waitFor(() => {
+      const button = screen.getByRole('button', { name: 'Comment on an element' }) as HTMLButtonElement
+      if (button.disabled) throw new Error('not ready')
+      return button
+    })
+    expect(comment.className).toMatch(/(^|\s)size-11!(\s|$)/)
+    fireEvent.click(comment)
+    expect(screen.getByRole('button', { name: 'Stop commenting' }).getAttribute('aria-pressed')).toBe('true')
+    const line = screen.getByText('Tap an element to comment').closest('[role="status"]') as HTMLElement
+    // Above the bar, which is the last thing on a phone's screen.
+    expect(line.className).toContain('order-last')
+    expect(line.compareDocumentPosition(screen.getByRole('textbox', { name: 'Preview address' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(screen.queryByText('Tap an element to comment')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Comment on an element' }).getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('on a phone, the comments are one row that opens, with Clear inside', async () => {
+    isMobile = true
+    const { frameWindow } = await renderView()
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+    fireEvent.click(await waitFor(() => {
+      const button = screen.getByRole('button', { name: 'Comment on an element' }) as HTMLButtonElement
+      if (button.disabled) throw new Error('not ready')
+      return button
+    }))
+    fromPage(frameWindow, { type: 'select', element })
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Comment' }), { target: { value: 'Make this larger' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
+
+    const row = await screen.findByRole('button', { name: '1 comment' })
+    expect(row.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByText('Make this larger')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull()
+    expect(screen.getByRole('button', { name: /Send to agent/ })).toBeTruthy()
+
+    fireEvent.click(row)
+    expect(row.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByText('Make this larger')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeTruthy()
+  })
+
+  it('says commenting is on in a line under the bar, with Done to stop', async () => {
+    const { frameWindow } = await renderView()
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+    expect(screen.queryByText('Click an element to comment')).toBeNull()
+    fireEvent.click(await waitFor(() => {
+      const button = screen.getByRole('button', { name: /^Comment/ }) as HTMLButtonElement
+      if (button.disabled) throw new Error('not ready')
+      return button
+    }))
+    const line = screen.getByText('Click an element to comment').closest('[role="status"]') as HTMLElement
+    expect(line.textContent).toContain('Esc')
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(screen.queryByText('Click an element to comment')).toBeNull()
+    expect(screen.getByRole('button', { name: /^Comment on an element/ }).getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('takes back Clear, and the × on one comment, with Undo', async () => {
+    const { frameWindow } = await renderView()
+    await addComment(frameWindow, 'Make this larger')
+    fromPage(frameWindow, { type: 'select', element: { ...element, selector: 'footer > nav' } })
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Comment' }), { target: { value: 'These links wrap' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
+    await screen.findByText('2 comments')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(screen.queryByText('2 comments')).toBeNull()
+    const cleared = useToastStore.getState().toasts.at(-1)
+    expect(cleared?.title).toBe('Cleared 2 comments')
+    expect(cleared?.action?.label).toBe('Undo')
+    act(() => cleared?.action?.onAction())
+    expect(screen.getByText('2 comments')).toBeTruthy()
+    expect(screen.getByText('Make this larger')).toBeTruthy()
+    expect(screen.getByText('These links wrap')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove comment 1' }))
+    expect(screen.queryByText('Make this larger')).toBeNull()
+    const removed = useToastStore.getState().toasts.at(-1)
+    expect(removed?.title).toBe('Removed comment 1')
+    act(() => removed?.action?.onAction())
+    // Back where it was, with its number.
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent?.slice(0, 1))).toEqual(['1', '2'])
+    expect(screen.getByText('Make this larger')).toBeTruthy()
+  })
+
+  it('gives a comment restored after new ones were added the next free number', async () => {
+    const { frameWindow, onSendComments } = await renderView()
+    await addComment(frameWindow, 'First')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    const cleared = useToastStore.getState().toasts.at(-1)
+    fromPage(frameWindow, { type: 'select', element })
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Comment' }), { target: { value: 'Second' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
+    await screen.findByText('Second')
+    act(() => cleared?.action?.onAction())
+    fireEvent.click(screen.getByRole('button', { name: /Send to agent/ }))
+    const items = (onSendComments.mock.calls[0][0] as DesignFeedback).items
+    expect(items.map((item) => [item.n, item.comment])).toEqual([[1, 'Second'], [2, 'First']])
+  })
+
+  it('shows a comment\'s pin on the page when the comment is clicked', async () => {
+    const { frameWindow, commands } = await renderView()
+    await addComment(frameWindow, 'Make this larger')
+    fireEvent.click(screen.getByRole('button', { name: 'Show comment 1 on the page' }))
+    expect(commands).toContainEqual(expect.objectContaining({ type: 'show-pin', n: 1 }))
+  })
+
+  it('says beside Add comment which keys add it', async () => {
+    const { frameWindow } = await renderView()
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+    fireEvent.click(await waitFor(() => {
+      const button = screen.getByRole('button', { name: /^Comment/ }) as HTMLButtonElement
+      if (button.disabled) throw new Error('not ready')
+      return button
+    }))
+    fromPage(frameWindow, { type: 'select', element })
+    await screen.findByRole('textbox', { name: 'Comment' })
+    const hint = screen.getByRole('group', { name: 'New comment' }).querySelector('kbd')
+    expect(hint?.textContent).toMatch(/↵|Enter/)
+    // No keyboard to press it on, on touch.
+    expect(hint?.className).toContain('pointer-coarse:hidden')
+  })
+
+  it('says a fixed-size frame\'s size under the page', async () => {
+    await renderView()
+    expect(document.querySelector('[data-frame-caption]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Device size' }))
+    fireEvent.click(await screen.findByRole('option', { name: /^Mobile/ }))
+    await waitFor(() => expect(document.querySelector('[data-frame-caption]')?.textContent).toBe('390 × 844'))
+  })
+
+  it('on a phone, shows the size button as pressed while a fixed size is chosen', async () => {
+    isMobile = true
+    await renderView()
+    const sizeButton = () => screen.getByRole('button', { name: 'Device size' })
+    // Plain like the tools beside it at the phone's own width; the keycap fill once a size is fixed.
+    expect(sizeButton().className).toContain('bg-transparent!')
+    fireEvent.click(sizeButton())
+    fireEvent.click(await screen.findByRole('option', { name: /^Desktop/ }))
+    await waitFor(() => expect(sizeButton().className).not.toContain('bg-transparent!'))
+    expect(sizeButton().className).toContain('bg-(--bg-key)')
+  })
+
+  it('gives the size label room by the panel\'s width, not the window\'s', async () => {
+    await renderView()
+    const label = Array.from(screen.getByRole('button', { name: 'Device size' }).querySelectorAll('span')).find((span) => span.textContent === 'Responsive' && span.children.length === 0) as HTMLElement
+    expect(label.className).toContain('@lg:inline')
+    expect(label.className).not.toContain('sm:inline')
+    expect(label.closest('[data-preview-toolbar]')?.className).toContain('@container')
   })
 
   it('on a phone, puts the address bar at the bottom', async () => {
@@ -628,6 +843,58 @@ describe('PreviewTabView', () => {
       enterAddress('localhost:3000')
       await waitFor(() => expect(onOpenTarget).toHaveBeenCalledWith({ kind: 'url', url: 'localhost:3000' }))
       expect(previewBodies.filter((b) => 'path' in b)).toHaveLength(0)
+    })
+
+    it('suggests recent addresses and the workspace\'s pages when the field is focused', async () => {
+      localStorage.setItem(`oa-preview-recent-urls:${WS}`, JSON.stringify(['http://localhost:3000/admin']))
+      workspaceFiles = [{ path: 'docs/mockup.html', mtime: 1 }, { path: 'src/main.tsx', mtime: 1 }, { path: 'index.html', mtime: 1 }]
+      const { onOpenTarget } = await renderView()
+      const address = screen.getByRole('textbox', { name: 'Preview address' })
+      expect(screen.queryByRole('listbox')).toBeNull()
+      fireEvent.focus(address)
+      const list = await screen.findByRole('listbox', { name: 'Suggested addresses' })
+      await waitFor(() => expect(Array.from(list.querySelectorAll('[role="option"]')).map((o) => o.textContent)).toEqual(['localhost:3000/admin', 'index.html', 'docs/mockup.html']))
+      expect(list.textContent).toContain('Recent')
+      expect(list.textContent).toContain('Pages in this workspace')
+
+      fireEvent.click(screen.getByRole('option', { name: 'docs/mockup.html' }))
+      await waitFor(() => expect(onOpenTarget).toHaveBeenCalledWith({ kind: 'file', path: 'docs/mockup.html' }))
+      expect(screen.queryByRole('listbox')).toBeNull()
+    })
+
+    it('filters the suggestions while typing, and chooses with the arrow keys and Enter', async () => {
+      localStorage.setItem(`oa-preview-recent-urls:${WS}`, JSON.stringify(['http://localhost:3000/admin']))
+      workspaceFiles = [{ path: 'docs/mockup.html', mtime: 1 }, { path: 'index.html', mtime: 1 }]
+      const { onOpenTarget } = await renderView()
+      const address = screen.getByRole('textbox', { name: 'Preview address' })
+      fireEvent.focus(address)
+      await screen.findByRole('option', { name: 'index.html' })
+      fireEvent.change(address, { target: { value: 'admin' } })
+      await waitFor(() => expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['localhost:3000/admin']))
+      fireEvent.keyDown(address, { key: 'ArrowDown' })
+      expect(screen.getByRole('option', { name: 'localhost:3000/admin' }).getAttribute('aria-selected')).toBe('true')
+      expect(address.getAttribute('aria-activedescendant')).toBe(screen.getByRole('option', { name: 'localhost:3000/admin' }).id)
+      // Enter submits the field's form (happy-dom does not do that from a key press).
+      fireEvent.submit(address.closest('form') as HTMLFormElement)
+      await waitFor(() => expect(onOpenTarget).toHaveBeenCalledWith({ kind: 'url', url: 'http://localhost:3000/admin' }))
+    })
+
+    it('remembers a page typed on the tab\'s own server among the recent addresses', async () => {
+      const { frameWindow, commands } = await renderView()
+      fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+      enterAddress('/about')
+      await waitFor(() => expect(commands).toContainEqual(expect.objectContaining({ type: 'navigate', path: '/about' })))
+      expect(JSON.parse(localStorage.getItem(`oa-preview-recent-urls:${WS}`) ?? '[]')).toContain('http://localhost:5173/about')
+    })
+
+    it('on a phone, opens the suggestions upward from the pill in thumb-sized rows', async () => {
+      isMobile = true
+      workspaceFiles = [{ path: 'index.html', mtime: 1 }]
+      await renderView()
+      fireEvent.focus(screen.getByRole('textbox', { name: 'Preview address' }))
+      const option = await screen.findByRole('option', { name: 'index.html' })
+      expect(option.className).toContain('min-h-11')
+      expect(screen.getByRole('listbox').className).toContain('bottom-full')
     })
 
     it('navigates in place when a file tab is given another workspace file', async () => {

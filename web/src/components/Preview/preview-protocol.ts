@@ -75,6 +75,8 @@ export type DockCommand =
   | { type: 'hello' }
   | { type: 'set-mode'; mode: InspectMode }
   | { type: 'pins'; pins: { n: number; selector: string }[] }
+  /** Scroll comment ``n``'s element into view and outline it for a moment. */
+  | { type: 'show-pin'; n: number }
   | { type: 'reload' }
   | { type: 'navigate'; path: string }
   | { type: 'history'; dir: -1 | 1 }

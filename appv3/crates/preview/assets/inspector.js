@@ -6,7 +6,7 @@
  * the page runs on its own loopback origin.
  *
  * Page -> dock:  ready, location, select, console, mode, shortcut (Alt+C, Cmd/Ctrl+W)
- * Dock -> page:  hello, set-mode, pins, reload, navigate, history
+ * Dock -> page:  hello, set-mode, pins, show-pin, reload, navigate, history
  *
  * Every message carries { ns: 'openagentd-preview', v: 1 }. Messages are
  * accepted only from window.parent, and only when the parent is the top
@@ -796,6 +796,24 @@
     }
   }
 
+  // A comment clicked in the dock's list: bring its element into view.
+  function showPin(n) {
+    var pin = null;
+    for (var i = 0; i < pins.length; i++) {
+      if (String(pins[i].n) === String(n)) pin = pins[i];
+    }
+    if (!pin) return;
+    var el = null;
+    try {
+      el = doc.querySelector(pin.selector);
+    } catch (_) {
+      el = null;
+    }
+    if (!el) return;
+    reveal(el);
+    renderPins();
+  }
+
   w.addEventListener('scroll', renderPins, { capture: true, passive: true });
   w.addEventListener('resize', renderPins);
 
@@ -1394,6 +1412,9 @@
         break;
       case 'pins':
         setPins(data.pins);
+        break;
+      case 'show-pin':
+        showPin(data.n);
         break;
       case 'reload':
         w.location.reload();

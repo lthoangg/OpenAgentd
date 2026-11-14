@@ -411,6 +411,56 @@ describe('TrayPopup', () => {
     expect(screen.getByText('5-hour')).toBeInTheDocument()
   })
 
+  // The numbers left on screen are old: the failure used to take the place
+  // of the one line that said how old.
+  it('still says how old the last reading is when a refresh fails', async () => {
+    let fail = false
+    answer = async () => (fail ? { ...usageResult, error: 'timeout' } : usageResult)
+    render(<TrayPopup />)
+    expect(await screen.findByText('Checked 2m ago')).toBeInTheDocument()
+
+    fail = true
+    fireEvent.keyDown(document, { key: 'r', metaKey: true })
+
+    const alert = await screen.findByRole('alert')
+    expect(within(alert).getByText("Couldn't refresh")).toBeInTheDocument()
+    expect(within(alert).getByText('· checked 2m ago')).toBeInTheDocument()
+  })
+
+  // The popup is one webview kept for the whole run of the app, hidden
+  // nearly all of it: the 30 s clock used to wake it the whole time.
+  it('runs the "Checked" clock only while the popup is up', async () => {
+    const alive = new Set<unknown>()
+    const timers = globalThis as unknown as {
+      setInterval: (handler: () => void, delay?: number) => unknown
+      clearInterval: (id: unknown) => void
+    }
+    const { setInterval: realSet, clearInterval: realClear } = timers
+    timers.setInterval = (handler, delay) => {
+      const id = realSet(handler, delay)
+      if (delay === 30_000) alive.add(id)
+      return id
+    }
+    timers.clearInterval = (id) => {
+      alive.delete(id)
+      realClear(id)
+    }
+    try {
+      render(<TrayPopup />)
+      await screen.findByText('5-hour')
+
+      act(() => { window.dispatchEvent(new Event('focus')) })
+      expect(alive.size).toBe(1)
+      act(() => { window.dispatchEvent(new Event('blur')) })
+      expect(alive.size).toBe(0)
+      act(() => { window.dispatchEvent(new Event('focus')) })
+      expect(alive.size).toBe(1)
+    } finally {
+      timers.setInterval = realSet
+      timers.clearInterval = realClear
+    }
+  })
+
   it('drops the refresh listener when unmounted before listen resolves', async () => {
     activeListeners = 0
     listenDelayMs = 20

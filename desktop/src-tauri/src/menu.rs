@@ -1088,11 +1088,21 @@ pub async fn refresh_usage_now(app: &AppHandle, force_refresh: bool) -> bool {
         log::debug!("usage_summary_skip_poll reason=no_server");
         return false;
     };
-    refresh_server_usage(app, &server, force_refresh).await
+    refresh_server_usage(app, &server, force_refresh, UsageOf::AppServer).await
+}
+
+/// Whose usage a fetch reads. The app's own server drives the tray's badge,
+/// its native submenu and the usage alerts; a server only picked in the
+/// popup is recorded under its own name and nothing else, so the badge
+/// keeps following the app's server.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UsageOf {
+    AppServer,
+    Picked,
 }
 
 /// Fetch usage from one server and record it under that server.
-pub async fn refresh_server_usage(app: &AppHandle, server: &ServerId, force_refresh: bool) -> bool {
+pub async fn refresh_server_usage(app: &AppHandle, server: &ServerId, force_refresh: bool, of: UsageOf) -> bool {
     let state: tauri::State<'_, AppState> = app.state();
     // Collapse overlapping triggers (background poll + manual refresh +
     // tray-open refresh racing after wake-from-sleep) into one in-flight
@@ -1102,11 +1112,11 @@ pub async fn refresh_server_usage(app: &AppHandle, server: &ServerId, force_refr
         log::debug!("usage_summary_skip_poll reason=fetch_already_inflight");
         return true; // don't count a skipped poll as a failure for backoff
     };
-    fetch_and_record_usage(app, server, force_refresh).await
+    fetch_and_record_usage(app, server, force_refresh, of).await
 }
 
 /// The fetch itself. The caller holds the server's `FetchGuard` meanwhile.
-async fn fetch_and_record_usage(app: &AppHandle, server: &ServerId, force_refresh: bool) -> bool {
+async fn fetch_and_record_usage(app: &AppHandle, server: &ServerId, force_refresh: bool, of: UsageOf) -> bool {
     let outcome = match crate::servers::endpoint(app, server).await {
         Some((base_url, token)) => fetch_usage_summary(&base_url, token.as_deref(), force_refresh)
             .await
@@ -1114,19 +1124,33 @@ async fn fetch_and_record_usage(app: &AppHandle, server: &ServerId, force_refres
         None => Err("The builtin backend is not running.".to_string()),
     };
     let success = outcome.is_ok();
-    update_tray_usage(app, server, outcome).await;
+    match of {
+        UsageOf::AppServer => update_tray_usage(app, server, outcome).await,
+        UsageOf::Picked => {
+            let state: tauri::State<'_, AppState> = app.state();
+            let mut usage = state.usage.lock().await;
+            match outcome {
+                // Looked at in the popup: its alerts count as seen.
+                Ok(body) => drop(usage.record(server, body)),
+                Err(err) => {
+                    log::warn!("usage_summary_fetch_failed server={} error={err}", server.key());
+                    usage.record_failure(server, err);
+                }
+            }
+        }
+    }
     success
 }
 
 /// Like [`refresh_server_usage`], for a caller that reads the result right
 /// after (the tray popup): when a fetch is already running it waits for that
 /// one instead of returning before there is anything to read.
-pub async fn refresh_server_usage_or_wait(app: &AppHandle, server: &ServerId, force_refresh: bool) {
+pub async fn refresh_server_usage_or_wait(app: &AppHandle, server: &ServerId, force_refresh: bool, of: UsageOf) {
     let turn = app.state::<AppState>().usage_fetch_inflight.claim(server);
     match turn {
         crate::usage::FetchTurn::Running(running) => running.ended().await,
         crate::usage::FetchTurn::Mine(_fetching) => {
-            fetch_and_record_usage(app, server, force_refresh).await;
+            fetch_and_record_usage(app, server, force_refresh, of).await;
         }
     }
 }

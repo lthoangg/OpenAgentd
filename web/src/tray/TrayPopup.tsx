@@ -242,9 +242,30 @@ export function TrayPopup() {
     }
   }, [])
 
+  // The "Checked 2m ago" clock, only while the popup is up: the webview
+  // lives as long as the app and is hidden nearly all of that. A show
+  // focuses the window and a hide follows its blur.
   useEffect(() => {
-    const timer = setInterval(() => setClock((n) => n + 1), CHECKED_TICK_MS)
-    return () => clearInterval(timer)
+    let timer: ReturnType<typeof setInterval> | undefined
+    const tick = () => setClock((n) => n + 1)
+    const stop = () => {
+      clearInterval(timer)
+      timer = undefined
+    }
+    const start = () => {
+      stop()
+      // Right away too: the age shown is from when the popup was last up.
+      tick()
+      timer = setInterval(tick, CHECKED_TICK_MS)
+    }
+    if (document.hasFocus()) start()
+    window.addEventListener('focus', start)
+    window.addEventListener('blur', stop)
+    return () => {
+      stop()
+      window.removeEventListener('focus', start)
+      window.removeEventListener('blur', stop)
+    }
   }, [])
 
   // The window follows the popup's height (tray_fit clamps and re-anchors
@@ -279,6 +300,8 @@ export function TrayPopup() {
   const serverLabel = switchingTo ?? result?.server_name
   const serverName = serverLabel ?? 'the server'
   const views = summary?.items.map((item) => providerView(item)) ?? []
+  /** "checked 2m ago", for the middle of a line. */
+  const checkedAge = summary ? formatCheckedAt(summary.checked_at)?.replace(/^C/, 'c') : null
   const manage = () => runAction('usage_manage')
 
   return (
@@ -347,7 +370,11 @@ export function TrayPopup() {
           {summary && (failed ? (
             <div className="callout" role="alert">
               <span className="callout-text">
-                <strong>Couldn't refresh</strong>
+                {/* The numbers above are the last reading: say how old. */}
+                <span>
+                  <strong>Couldn't refresh</strong>
+                  {checkedAge && <span className="callout-age"> · {checkedAge}</span>}
+                </span>
                 <span>{failureReason(failed)}</span>
               </span>
               <button type="button" className="small-btn" onClick={refresh} disabled={refreshing}>Retry</button>

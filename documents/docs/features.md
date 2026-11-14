@@ -1205,6 +1205,16 @@ run from the terminal (the native Rust binary since v3.0.0).
     Since `[v3.55.0]` the pet's right-click menu opens every question its
     bubble opens: a question asked while the pet was hidden used to be
     greyed out there.
+  - Notch and pet flows that went nowhere or worked too hard `[v3.55.0]`:
+    a notch row for a server that refused its access key opens **Settings →
+    Server**, where the key is fixed (a click used to try the same key
+    again, and nothing changed on screen). A notch that is showing moves
+    within 2 s when a display is plugged in, unplugged or rearranged; it
+    used to stay put until the next status change. The notch reads each
+    waiting session's question from the server once, not on every event of
+    any session. The pet asks the Dock one thing instead of three every
+    15 s when the Dock stays up, and a walking pet no longer makes the app
+    read the pointer ten times a second while the pointer is elsewhere.
   - A question card in the transcript no longer sticks on "Waiting for an
     answer…": once the turn is over and no question is open, it says **No
     answer recorded** with what was asked, and a card closed from another
@@ -1613,6 +1623,12 @@ run from the terminal (the native Rust binary since v3.0.0).
     you saved it under, else the name its computer gives for itself, else
     its address); the list used to show the address for a server Auto
     called by its computer's name.
+    A refresh that fails over the last reading still says how old that
+    reading is ("Couldn't refresh · checked 40m ago"). A server you pick
+    is answered from its last reading and refreshed behind it, as Auto is,
+    so picking it no longer waits on the network every time, and a failed
+    read keeps its last numbers instead of "Can't reach". The "Checked"
+    clock runs only while the popup is up.
     Since `[v3.25.0]` it looks and moves like the app:
     - **Layout.** It shares the app's colours and type. A provider with
       several limits gets one card, with rows named by window ("5-hour",

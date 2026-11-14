@@ -642,6 +642,10 @@ button:focus-visible {
   color: var(--color-error);
 }
 
+.callout-age {
+  color: var(--color-text-muted);
+}
+
 .actions {
   display: flex;
   flex-direction: column;

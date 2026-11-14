@@ -89,6 +89,10 @@ export function PetSettingsSection() {
     })
   }
   const off = !settings.enabled
+  /** A row's description, or why it cannot be changed now. */
+  const says = (description?: string) => (off ? 'Turn on the desktop pet to change this.' : description)
+  const kindSays = (description: string) =>
+    !off && !settings.bubbles ? 'Turn on Show notifications in its bubble to change this.' : says(description)
 
   return (
     <PanelSection title="Desktop pet" flush>
@@ -104,10 +108,10 @@ export function PetSettingsSection() {
       >
         <Switch id="pet-enabled" checked={settings.enabled} onCheckedChange={(enabled) => change({ enabled })} />
       </PanelRow>
-      <PanelRow label="Character" description="Each walks its own way.">
+      <PanelRow label="Character" description={says('Each walks its own way.')}>
         <SegmentedControl label="Character" value={settings.character} disabled={off} onChange={(character) => change({ character })} options={CHARACTERS} />
       </PanelRow>
-      <PanelRow label="Color">
+      <PanelRow label="Color" description={says()}>
         <SegmentedControl
           label="Color"
           value={settings.colour}
@@ -119,21 +123,21 @@ export function PetSettingsSection() {
           }))}
         />
       </PanelRow>
-      <PanelRow label="Size">
+      <PanelRow label="Size" description={says()}>
         <SegmentedControl label="Size" value={settings.size} disabled={off} onChange={(size) => change({ size })} options={SIZES} />
       </PanelRow>
-      <PanelRow label="Movement" description="How much it runs about. Drag it anywhere, or onto another display.">
+      <PanelRow label="Movement" description={says('How much it runs about. Drag it anywhere, or onto another display.')}>
         <SegmentedControl label="Movement" value={settings.movement} disabled={off} onChange={(movement) => change({ movement })} options={MOVEMENTS} />
       </PanelRow>
       <PanelRow
         label="Show notifications in its bubble"
         htmlFor="pet-bubbles"
-        description="Instead of the system banner. Whenever the pet is hidden, the system banner is used."
+        description={says('Instead of the system banner. Whenever the pet is hidden, the system banner is used.')}
       >
         <Switch id="pet-bubbles" checked={settings.bubbles} disabled={off} onCheckedChange={(bubbles) => change({ bubbles })} />
       </PanelRow>
       {KINDS.map((kind) => (
-        <PanelRow key={kind.key} label={kind.label} htmlFor={`pet-kind-${kind.key}`} description={kind.description} className="pl-8">
+        <PanelRow key={kind.key} label={kind.label} htmlFor={`pet-kind-${kind.key}`} description={kindSays(kind.description)} className="pl-8">
           <Switch
             id={`pet-kind-${kind.key}`}
             checked={settings.bubbleKinds[kind.key]}
@@ -145,11 +149,11 @@ export function PetSettingsSection() {
       <PanelRow
         label="Show pet while OpenAgentd is in front"
         htmlFor="pet-front"
-        description="By default it steps aside while you use the app."
+        description={says('By default it steps aside while you use the app.')}
       >
         <Switch id="pet-front" checked={settings.showWhenFrontmost} disabled={off} onCheckedChange={(showWhenFrontmost) => change({ showWhenFrontmost })} />
       </PanelRow>
-      <PanelRow label="Climb on windows" htmlFor="pet-climb" description="When playful or chaotic, it jumps onto the windows you have open and rides along as they move.">
+      <PanelRow label="Climb on windows" htmlFor="pet-climb" description={says('When playful or chaotic, it jumps onto the windows you have open and rides along as they move.')}>
         <Switch id="pet-climb" checked={settings.climb} disabled={off} onCheckedChange={(climb) => change({ climb })} />
       </PanelRow>
     </PanelSection>

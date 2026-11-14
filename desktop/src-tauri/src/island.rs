@@ -2202,6 +2202,7 @@ pub fn island_fix_key(window: WebviewWindow) {
         crate::window::emit_frontend_command(window.app_handle(), "settings_connection");
     }
 }
+
 fn report_island_error(app: &AppHandle, title: &str, error: &anyhow::Error) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
     log::warn!("island: {title}: {error:#}");

@@ -49,10 +49,16 @@ const NO_SESSIONS: IslandSession[] = []
 const NO_SERVERS: UnreachableServer[] = []
 /** The canvas shows with the pill still inside the notch; it grows out after this. */
 const ENTER_DELAY_MS = 34
-/** The canvas stays up this long after the pill starts shrinking back in. */
-const EXIT_MS = DURATIONS_S.slow * 1000
+/**
+ * The canvas stays up this long after the pill starts shrinking back in:
+ * as long as that takes (`--motion-base` on the closed pill in island.css).
+ */
+const EXIT_MS = DURATIONS_S.base * 1000
 /** A list opened by a click closes once the pointer has been away this long. */
 const PINNED_LEAVE_MS = 2500
+/** A failed first read of the shell's state is tried again this often, this many times. */
+const STATE_RETRY_MS = 1000
+const STATE_RETRIES = 5
 
 function openSession(sessionId: string | null) {
   if (sessionId) void invoke(OPEN_COMMAND, { sessionId }).catch(() => {})
@@ -245,17 +251,25 @@ export function Island() {
 
   useEffect(() => {
     let cancelled = false
-    void invoke<IslandView>(STATE_COMMAND).then((view) => {
-      if (cancelled) return
-      setGeometry(view.geometry)
-      setSettings(view.settings)
-      if (seenSeq.current === null) {
-        seenSeq.current = view.status.seq
-        setStatus(view.status)
-      }
-    }).catch(() => {})
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const read = (retriesLeft: number) => {
+      void invoke<IslandView>(STATE_COMMAND).then((view) => {
+        if (cancelled) return
+        setGeometry(view.geometry)
+        setSettings(view.settings)
+        if (seenSeq.current === null) {
+          seenSeq.current = view.status.seq
+          setStatus(view.status)
+        }
+      }).catch(() => {
+        // Without it the notch has no size and stays empty: ask again.
+        if (!cancelled && retriesLeft > 0) timer = setTimeout(() => read(retriesLeft - 1), STATE_RETRY_MS)
+      })
+    }
+    read(STATE_RETRIES)
     return () => {
       cancelled = true
+      clearTimeout(timer)
     }
   }, [])
 

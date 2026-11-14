@@ -17,12 +17,20 @@ type Call = [string, Record<string, unknown> | undefined]
 let calls: Call[] = []
 let view: IslandView
 let closeMenu: (() => void) | undefined
+/** How many more times the shell refuses `island_state` (it is not up yet). */
+let stateFailures = 0
 const handlers = new Map<string, (event: { payload: unknown }) => void>()
 
 mock.module('@tauri-apps/api/core', () => ({
   invoke: async (cmd: string, args?: Record<string, unknown>) => {
     calls.push([cmd, args])
-    if (cmd === 'island_state') return view
+    if (cmd === 'island_state') {
+      if (stateFailures > 0) {
+        stateFailures -= 1
+        throw new Error('state not managed yet')
+      }
+      return view
+    }
     if (cmd === 'island_context_menu') return new Promise<void>((resolve) => { closeMenu = resolve })
     return undefined
   },
@@ -83,6 +91,7 @@ async function mount(settings: Partial<IslandSettings> = {}) {
 beforeEach(() => {
   calls = []
   closeMenu = undefined
+  stateFailures = 0
   handlers.clear()
   view = { status: status(1, []), geometry: { hasNotch: true, width: 188, height: 38 }, settings: DEFAULT_ISLAND_SETTINGS }
 })
@@ -92,6 +101,33 @@ describe('Island', () => {
   it('asks to stay hidden while nothing is active', async () => {
     await mount()
     expect(lastFit()).toMatchObject({ visible: false })
+  })
+
+  // One failed read used to leave the notch empty until the next status change.
+  it('asks the shell for its state again when the first read fails', async () => {
+    stateFailures = 2
+    view = { ...view, status: status(5, [running('a', 'Refactor auth')]) }
+    const timers = useFakeTimers()
+    try {
+      render(<Island />)
+      const reads = () => calls.filter(([cmd]) => cmd === 'island_state').length
+      await act(async () => { for (let i = 0; i < 10; i += 1) await Promise.resolve() })
+      expect(reads()).toBe(1)
+      expect(lastFit()).toBeUndefined()
+
+      for (const expected of [2, 3]) {
+        act(() => timers.tick(1000))
+        await act(async () => { for (let i = 0; i < 10; i += 1) await Promise.resolve() })
+        expect(reads()).toBe(expected)
+      }
+      expect(lastFit()).toMatchObject({ visible: true })
+
+      // Read: nothing more is asked.
+      act(() => timers.tick(10_000))
+      expect(reads()).toBe(3)
+    } finally {
+      timers.restore()
+    }
   })
 
   it('shows a running session without a word, then grows out of the notch evenly on both sides', async () => {
@@ -290,7 +326,11 @@ describe('Island', () => {
       expect(lastFit()).toMatchObject({ visible: true })
       expect(screen.getByText('Done')).toBeInTheDocument()
 
-      act(() => timers.tick(400))
+      // The pill takes 240 ms to shrink in (--motion-base in island.css);
+      // the window used to stay up, empty, for 400.
+      act(() => timers.tick(239))
+      expect(lastFit()).toMatchObject({ visible: true })
+      act(() => timers.tick(1))
       expect(lastFit()).toMatchObject({ visible: false })
     } finally {
       timers.restore()

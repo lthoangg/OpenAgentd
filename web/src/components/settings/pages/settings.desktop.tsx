@@ -12,7 +12,7 @@ import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-import { type IslandSettings, readIslandSettings, supportsIsland, updateIslandSettings } from '@/lib/island-setting'
+import { type IslandSettings, listenIslandSettings, readIslandSettings, supportsIsland, updateIslandSettings } from '@/lib/island-setting'
 import { supportsPet } from '@/lib/pet-setting'
 
 /** The options under the main switch, in the order they are shown. */
@@ -41,11 +41,20 @@ function NotchStatusSection() {
 
   useEffect(() => {
     let cancelled = false
+    let unlisten: (() => void) | undefined
     void readIslandSettings().then((value) => {
       if (!cancelled) setSettings(value)
     })
+    // The notch's own menu and Settings in another window change them too.
+    void listenIslandSettings((value) => {
+      if (!cancelled) setSettings(value)
+    }).then((stop) => {
+      if (cancelled) stop()
+      else unlisten = stop
+    })
     return () => {
       cancelled = true
+      unlisten?.()
     }
   }, [])
 

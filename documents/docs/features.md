@@ -1230,6 +1230,16 @@ run from the terminal (the native Rust binary since v3.0.0).
     notification sound. On macOS the app no longer tells the tray which
     session is open (the Mac tray has no row for it) or writes menu rows
     for a usage submenu that does not exist there.
+  - Smaller notch and pet fixes `[v3.55.0]`: **Settings → Desktop** follows
+    a notch setting changed in another window, as it already did for the
+    pet, and a pet option that is greyed out says what to turn on to change
+    it. A server whose account status could not be read on a reconnect
+    keeps the computer it was known as, so one computer saved under two
+    addresses is not listed twice after a timeout. The notch's window
+    leaves as soon as the pill has shrunk away (240 ms; it stayed up,
+    empty, for 400), and a notch that could not read its state on start
+    asks again (up to five times, a second apart) instead of staying empty
+    until the next status change.
   - A question card in the transcript no longer sticks on "Waiting for an
     answer…": once the turn is over and no question is open, it says **No
     answer recorded** with what was asked, and a card closed from another

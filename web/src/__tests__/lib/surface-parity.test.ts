@@ -9,6 +9,7 @@ import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { CANVAS_HEIGHT, CANVAS_WIDTH, EAR_WIDTH, WING_WIDTH } from '@/island/status'
+import { DURATIONS_S } from '@/lib/motion'
 import { DUST_MS, FOLD_MS, JUMP_CROUCH_MS, JUMP_LOOK_MS, LAND_MS, PET_HEIGHT } from '@/pet/state'
 import { meterTone } from '@/tray/usage'
 
@@ -33,6 +34,13 @@ describe('the notch', () => {
   it('lives in a window the size the page lays out for', () => {
     expect(num(rust, /pub const CANVAS_WIDTH: f64 = ([\d.]+);/)).toBe(CANVAS_WIDTH)
     expect(num(rust, /pub const CANVAS_HEIGHT: f64 = ([\d.]+);/)).toBe(CANVAS_HEIGHT)
+  })
+
+  it('keeps its window up for as long as the pill takes to shrink in', () => {
+    const closing = /\.island\[data-open="false"\] \.island-body \{([^}]*)\}/.exec(css)?.[1] ?? ''
+    expect([...closing.matchAll(/var\(--motion-([a-z]+)\)/g)].map((m) => m[1])).toEqual(['base', 'base', 'base', 'base'])
+    expect(read('web/src/island/Island.tsx')).toContain('const EXIT_MS = DURATIONS_S.base * 1000')
+    expect(num(read('web/src/styles/tokens.css'), /--motion-base:\s*(\d+)ms/)).toBe(DURATIONS_S.base * 1000)
   })
 })
 

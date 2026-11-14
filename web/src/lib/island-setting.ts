@@ -36,6 +36,19 @@ export async function updateIslandSettings(patch: Partial<IslandSettings>): Prom
   return invoke<IslandSettings>('island_update_settings', { patch })
 }
 
+/** Follow changes made elsewhere (the notch's menu, another window). Resolves to an unsubscribe. */
+export async function listenIslandSettings(onChange: (settings: IslandSettings) => void): Promise<() => void> {
+  if (!supportsIsland()) return () => {}
+  try {
+    const { listen } = await import('@tauri-apps/api/event')
+    return await listen<IslandSettings | null>(ISLAND_SETTINGS_EVENT, (event) => {
+      if (event.payload && typeof event.payload.enabled === 'boolean') onChange(event.payload)
+    })
+  } catch {
+    return () => {}
+  }
+}
+
 /**
  * Tell the shell which session this window shows. Two things depend on it:
  * the island keeps a finished session as unread until it is on screen in the

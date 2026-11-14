@@ -122,10 +122,26 @@ afterEach(() => {
   delete window.__OAD_API_BASE_URL__
 })
 
-/** "Add a server" is a button: the form opens only when asked. */
+/** "Add a computer by address" is a button: the form opens only when asked. */
 async function openAddForm(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('button', { name: 'Add a server' }))
+  await user.click(await screen.findByRole('button', { name: 'Add a computer by address' }))
 }
+
+/** Edit, Remove and the watch switch of a computer added by address are in its Details. */
+async function openDetails(user: ReturnType<typeof userEvent.setup>, label: string) {
+  // The row of this computer says "Details of this computer".
+  const name = label === 'This computer' ? 'Details of this computer' : `Details of ${label}`
+  await user.click(await screen.findByRole('button', { name }))
+  return screen.findByRole('dialog', { name: label })
+}
+
+async function openEditForm(user: ReturnType<typeof userEvent.setup>, label: string) {
+  const details = await openDetails(user, label)
+  await user.click(within(details).getByRole('button', { name: 'Edit' }))
+  return screen.getByRole('group', { name: `Edit ${label}` })
+}
+
+const useCalls = () => invokeCalls.filter((call) => call.command === 'app_use_external_backend')
 
 describe('AppBackendDialog', () => {
   it('installs browser auth for a keyed backend after switching to it', async () => {
@@ -133,12 +149,9 @@ describe('AppBackendDialog', () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
     await openAddForm(user)
 
-    await user.type(screen.getByLabelText(/access key/i), 'secret')
-    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4082')
-    await user.click(screen.getByRole('button', { name: 'Test' }))
-    await waitFor(() => expect(screen.getByText('Connection successful.')).toBeTruthy())
-
-    await user.click(screen.getByRole('button', { name: 'Save and use' }))
+    await user.type(screen.getByLabelText('Access key'), 'secret')
+    await user.type(screen.getByLabelText('Address'), 'http://127.0.0.1:4082')
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
 
     await fetch('http://127.0.0.1:4082/api/health/live')
@@ -159,51 +172,64 @@ describe('AppBackendDialog', () => {
     }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await screen.findByText('Built-in server')
+    await screen.findByText('This computer')
     await user.click(await screen.findByRole('button', { name: 'Use Local CLI' }))
 
     await screen.findByText('switch failed')
     expect(window.__OAD_TOKEN__).toBe('bundled-token')
   })
 
-  it('loads saved servers and shows live online/offline indicators', async () => {
+  it('lists this computer and the ones added by address in one list, with live online/offline indicators', async () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    expect(await screen.findByText('Built-in server')).toBeTruthy()
+    expect(await screen.findByText('This computer')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Computers' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Servers' })).toBeNull()
     expect(screen.getByText('Local CLI')).toBeTruthy()
-    // A named server's row has its name and one status line; its address is in Edit.
+    // A named computer's row has its name and one status line; its address is in Details.
     expect(screen.queryByText('http://127.0.0.1:4082')).toBeNull()
     expect(screen.getByText('http://127.0.0.1:4999')).toBeTruthy()
 
     const rowOf = (text: string) => screen.getByText(text).closest('[data-server-row]') as HTMLElement
     await waitFor(() => expect(within(rowOf('Local CLI')).getByLabelText('Online')).toBeTruthy())
-    expect(within(rowOf('Local CLI')).getByText('Online')).toBeTruthy()
+    // The line also says where the row comes from.
+    expect(within(rowOf('Local CLI')).getByText('Online · added by address')).toBeTruthy()
     await waitFor(() => expect(within(rowOf('http://127.0.0.1:4999')).getByLabelText("Can't reach")).toBeTruthy())
-    expect(within(rowOf('http://127.0.0.1:4999')).getByText("Can't reach")).toBeTruthy()
+    expect(within(rowOf('http://127.0.0.1:4999')).getByText("Can't reach · added by address")).toBeTruthy()
   })
 
-  it('hides the bundled server row when the shell does not support bundled backends', async () => {
+  it('keeps a row to Use and Details: Edit, Remove and Stop are in Details', async () => {
+    statusPayload = { ...statusPayload, sidecar_running: true }
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    const row = (await screen.findByText('Local CLI')).closest('[data-server-row]') as HTMLElement
+    expect(within(row).getAllByRole('button').map((button) => button.textContent)).toEqual(['Use', 'Details'])
+    const own = screen.getByText('This computer').closest('[data-server-row]') as HTMLElement
+    expect(within(own).getAllByRole('button').map((button) => button.textContent)).toEqual(['Use', 'Details'])
+  })
+
+  it('hides the row of this computer when the shell does not support bundled backends', async () => {
     statusPayload = { ...statusPayload, supports_bundled: false }
 
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     expect(await screen.findByText('Local CLI')).toBeTruthy()
-    expect(screen.queryByText('Built-in server')).toBeNull()
+    expect(screen.queryByText('This computer')).toBeNull()
   })
 
-  it('blocks incomplete URLs before invoking a backend switch command', async () => {
+  it('blocks an incomplete address before invoking a backend switch command', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
     await openAddForm(user)
 
-    await user.type(screen.getByLabelText(/server url/i), 'localhost')
-    await user.click(screen.getByRole('button', { name: 'Test' }))
+    await user.type(screen.getByLabelText('Address'), 'localhost')
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
 
-    expect(await screen.findByText('Enter a full server URL, including http:// or https://.')).toBeTruthy()
-    expect(invokeCalls.some((call) => call.command === 'app_set_backend_base_url')).toBe(false)
+    expect(await screen.findByText('Enter a full address, including http:// or https://.')).toBeTruthy()
+    expect(useCalls()).toHaveLength(0)
   })
 
-  it('shows Stop instead of Use builtin while already connected to bundled backend', async () => {
+  it('stops this computer from its Details while the app is on it, after asking', async () => {
     const user = userEvent.setup()
     statusPayload = {
       ...statusPayload,
@@ -214,10 +240,12 @@ describe('AppBackendDialog', () => {
     }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await screen.findByText('Built-in server')
+    await screen.findByText('This computer')
     expect(screen.queryByRole('button', { name: 'Start and use' })).toBeNull()
-    await user.click(screen.getByRole('button', { name: 'Stop…' }))
-    await user.click(await screen.findByRole('button', { name: 'Stop server' }))
+    const details = await openDetails(user, 'This computer')
+    await user.click(within(details).getByRole('button', { name: 'Stop…' }))
+    expect(await screen.findByText('Stop OpenAgentd on this computer?')).toBeTruthy()
+    await user.click(await screen.findByRole('button', { name: 'Stop' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
@@ -227,7 +255,7 @@ describe('AppBackendDialog', () => {
     })
   })
 
-  it('shows Stop when builtin sidecar is already running even if an external server is active', async () => {
+  it('stops this computer from its Details while another one is in use', async () => {
     const user = userEvent.setup()
     statusPayload = {
       ...statusPayload,
@@ -238,10 +266,11 @@ describe('AppBackendDialog', () => {
     }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await screen.findByText('Built-in server')
+    await screen.findByText('This computer')
     expect(screen.queryByRole('button', { name: 'Start and use' })).toBeNull()
-    await user.click(screen.getByRole('button', { name: 'Stop…' }))
-    await user.click(await screen.findByRole('button', { name: 'Stop server' }))
+    const details = await openDetails(user, 'This computer')
+    await user.click(within(details).getByRole('button', { name: 'Stop…' }))
+    await user.click(await screen.findByRole('button', { name: 'Stop' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
@@ -251,7 +280,7 @@ describe('AppBackendDialog', () => {
     })
   })
 
-  it('offers a Connect option to switch back to a running builtin sidecar that is not the active backend', async () => {
+  it('offers Use to switch back to this computer while it runs and another one is in use', async () => {
     const user = userEvent.setup()
     statusPayload = {
       ...statusPayload,
@@ -264,8 +293,8 @@ describe('AppBackendDialog', () => {
     window.history.replaceState(null, '', '/old-session')
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await screen.findByText('Built-in server')
-    await user.click(await screen.findByRole('button', { name: 'Use built-in server' }))
+    await screen.findByText('This computer')
+    await user.click(await screen.findByRole('button', { name: 'Use this computer' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
@@ -278,7 +307,7 @@ describe('AppBackendDialog', () => {
     expect(window.location.pathname).toBe('/')
   })
 
-  it('lets users recover from an unreachable external backend by choosing builtin when the sidecar is stopped', async () => {
+  it('lets users recover from an unreachable computer by choosing this one while it is stopped', async () => {
     const user = userEvent.setup()
     statusPayload = {
       ...statusPayload,
@@ -289,7 +318,7 @@ describe('AppBackendDialog', () => {
     }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await screen.findByText('Built-in server')
+    await screen.findByText('This computer')
     await user.click(screen.getByRole('button', { name: 'Start and use' }))
 
     await waitFor(() => {
@@ -302,54 +331,53 @@ describe('AppBackendDialog', () => {
     expect(reloadMock).toHaveBeenCalledTimes(1)
   })
 
-  it('requires a successful test before saving and connecting a server', async () => {
+  it('tests the address and key with one Connect, then saves it and switches to it', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
     await openAddForm(user)
 
-    // This test verifies the test-before-save state machine, not per-key
-    // semantics. Paste each value in one input event so the parallel suite
-    // does not spend its 5 s test budget dispatching every character.
-    await user.click(screen.getByLabelText(/server url/i))
+    // Paste each value in one input event so the parallel suite does not
+    // spend its 5 s test budget dispatching every character.
+    await user.click(screen.getByLabelText('Address'))
     await user.paste('http://127.0.0.1:4082')
-    await user.click(screen.getByLabelText(/access key/i))
+    await user.click(screen.getByLabelText('Access key'))
     await user.paste('secret')
-    await user.click(screen.getByRole('button', { name: 'Test' }))
-
-    await waitFor(() => expect(screen.getByText('Connection successful.')).toBeTruthy())
-    expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
-
-    await user.click(screen.getByLabelText(/server name/i))
+    await user.click(screen.getByLabelText('Name'))
     await user.paste('Workstation')
-    await user.click(screen.getByRole('button', { name: 'Save and use' }))
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
 
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
     expect(invokeCalls).toContainEqual({
       command: 'app_use_external_backend',
       args: { baseUrl: 'http://127.0.0.1:4082', name: 'Workstation', persist: true },
     })
+    // The key was checked with the computer before anything was saved.
+    const authCheck = fetchCalls.find((call) => call.url === 'http://127.0.0.1:4082/api/auth/check')
+    expect(new Headers(authCheck?.init?.headers).get('Authorization')).toBe('Bearer secret')
     expect(window.localStorage.getItem('openagentd.accessKey:http://127.0.0.1:4082')).toBe('secret')
+    expect(window.localStorage.getItem('openagentd.accessKey')).toBeNull()
   })
 
-  it('renames a saved server in place from its Edit, without switching to it', async () => {
+  it('renames a computer in place from Edit in its Details, without switching to it', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await user.click(await screen.findByRole('button', { name: 'Edit Local CLI' }))
-    const form = screen.getByRole('group', { name: 'Edit Local CLI' })
-    expect((within(form).getByLabelText(/server url/i) as HTMLInputElement).value).toBe('http://127.0.0.1:4082')
-    expect((within(form).getByLabelText(/server name/i) as HTMLInputElement).value).toBe('Local CLI')
+    const form = await openEditForm(user, 'Local CLI')
+    expect((within(form).getByLabelText('Address') as HTMLInputElement).value).toBe('http://127.0.0.1:4082')
+    expect((within(form).getByLabelText('Name') as HTMLInputElement).value).toBe('Local CLI')
 
-    // A new name needs no Test.
-    await user.clear(within(form).getByLabelText(/server name/i))
-    await user.type(within(form).getByLabelText(/server name/i), 'Renamed CLI')
+    // A new name is not tested: nothing about reaching it changed.
+    await user.clear(within(form).getByLabelText('Name'))
+    await user.type(within(form).getByLabelText('Name'), 'Renamed CLI')
+    const checksBefore = fetchCalls.length
     await user.click(within(form).getByRole('button', { name: 'Save' }))
 
     await waitFor(() => expect(invokeCalls).toContainEqual({
       command: 'app_save_backend_server',
       args: { baseUrl: 'http://127.0.0.1:4082', name: 'Renamed CLI' },
     }))
-    expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
+    expect(fetchCalls.slice(checksBefore).some((call) => call.url.endsWith('/api/auth/check'))).toBe(false)
+    expect(useCalls()).toHaveLength(0)
     await waitFor(() => expect(screen.queryByRole('group', { name: 'Edit Local CLI' })).toBeNull())
   })
 
@@ -357,38 +385,46 @@ describe('AppBackendDialog', () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    const edit = await screen.findByRole('button', { name: 'Edit Local CLI' })
-    await user.click(edit)
-    const row = edit.closest('[data-server-row]') as HTMLElement
-    const form = screen.getByRole('group', { name: 'Edit Local CLI' })
+    const form = await openEditForm(user, 'Local CLI')
+    const row = screen.getByRole('button', { name: 'Details of Local CLI', hidden: true }).closest('[data-server-row]') as HTMLElement
     expect(row.nextElementSibling).toBe(form)
-    expect(edit.getAttribute('aria-expanded')).toBe('true')
     // The add form is a different place: opening it closes the edit form.
-    await openAddForm(user)
+    await user.click(screen.getByRole('button', { name: 'Add a computer by address', hidden: true }))
     expect(screen.queryByRole('group', { name: 'Edit Local CLI' })).toBeNull()
-    const add = screen.getByRole('group', { name: 'Add a server' })
+    const add = screen.getByRole('group', { name: 'Add a computer by address', hidden: true })
     expect(add.nextElementSibling).toBeNull()
   })
 
-  it('asks for a Test before saving a new address, then replaces the old entry', async () => {
+  it('tests a new address on Save, then replaces the old entry', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await user.click(await screen.findByRole('button', { name: 'Edit http://127.0.0.1:4999' }))
-    const form = screen.getByRole('group', { name: 'Edit http://127.0.0.1:4999' })
-    const url = within(form).getByLabelText(/server url/i)
+    const form = await openEditForm(user, 'http://127.0.0.1:4999')
+    const url = within(form).getByLabelText('Address')
     await user.clear(url)
     await user.click(url)
     await user.paste('http://127.0.0.1:4082')
-    expect((within(form).getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true)
-
-    await user.click(within(form).getByRole('button', { name: 'Test' }))
-    await waitFor(() => expect(within(form).getByText('Connection successful.')).toBeTruthy())
     await user.click(within(form).getByRole('button', { name: 'Save' }))
 
     await waitFor(() => expect(invokeCalls).toContainEqual({ command: 'app_remove_backend_server', args: { baseUrl: 'http://127.0.0.1:4999' } }))
     expect(invokeCalls).toContainEqual({ command: 'app_save_backend_server', args: { baseUrl: 'http://127.0.0.1:4082', name: '' } })
-    expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
+    expect(fetchCalls.some((call) => call.url === 'http://127.0.0.1:4082/api/auth/check')).toBe(true)
+    expect(useCalls()).toHaveLength(0)
+  })
+
+  it('saves nothing when the new address does not answer, and says why in the form', async () => {
+    const user = userEvent.setup()
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    const form = await openEditForm(user, 'Local CLI')
+    const url = within(form).getByLabelText('Address')
+    await user.clear(url)
+    await user.click(url)
+    await user.paste('http://127.0.0.1:4998')
+    await user.click(within(form).getByRole('button', { name: 'Save' }))
+
+    expect(await within(form).findByRole('alert')).toBeTruthy()
+    expect(invokeCalls.some((call) => call.command === 'app_save_backend_server' || call.command === 'app_remove_backend_server')).toBe(false)
   })
 
   it('closes a form with Cancel or Escape and puts focus back on what opened it', async () => {
@@ -396,27 +432,29 @@ describe('AppBackendDialog', () => {
     const onOpenChange = mock((..._args: unknown[]) => {})
     render(<AppBackendDialog open onOpenChange={onOpenChange} />)
 
-    const edit = await screen.findByRole('button', { name: 'Edit Local CLI' })
-    await user.click(edit)
+    await openEditForm(user, 'Local CLI')
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('group', { name: 'Edit Local CLI' })).toBeNull()
     // Escape closed the form, not the dialog around it.
     expect(onOpenChange).not.toHaveBeenCalled()
-    await waitFor(() => expect(document.activeElement).toBe(edit))
+    // Back on the row's Details, which is where Edit was.
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Details of Local CLI', hidden: true })))
 
-    await openAddForm(user)
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(screen.queryByLabelText(/server url/i)).toBeNull()
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Add a server' })))
+    await user.click(screen.getByRole('button', { name: 'Add a computer by address', hidden: true }))
+    await user.click(screen.getByRole('button', { name: 'Cancel', hidden: true }))
+    expect(screen.queryByLabelText('Address')).toBeNull()
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Add a computer by address', hidden: true })))
   })
 
-  it('removes a saved server', async () => {
+  it('removes a computer from its Details, after asking', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    const removeButtons = await screen.findAllByRole('button', { name: /^Remove / })
-    await user.click(removeButtons[0])
-    await user.click(await screen.findByRole('button', { name: 'Remove server' }))
+    const details = await openDetails(user, 'Local CLI')
+    await user.click(within(details).getByRole('button', { name: 'Remove…' }))
+    expect(await screen.findByText('Remove Local CLI?')).toBeTruthy()
+    expect(invokeCalls.some((call) => call.command === 'app_remove_backend_server')).toBe(false)
+    await user.click(await screen.findByRole('button', { name: 'Remove' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
@@ -426,34 +464,36 @@ describe('AppBackendDialog', () => {
     })
   })
 
-  it('shows an error and does not switch when Check health probe fails', async () => {
+  it('says why in place and does not switch when nothing answers at the address', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
     await openAddForm(user)
 
-    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4999')
-    await user.click(screen.getByRole('button', { name: 'Test' }))
+    await user.type(screen.getByLabelText('Address'), 'http://127.0.0.1:4999')
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
 
-    expect(await screen.findByText(/Server did not respond to \/api\/health\/live/)).toBeTruthy()
+    expect(await screen.findByText(/Nothing answered at that address/)).toBeTruthy()
     expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:5999')
-    expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
+    expect(useCalls()).toHaveLength(0)
+    // The form stays open with what was typed, to fix and try again.
+    expect((screen.getByLabelText('Address') as HTMLInputElement).value).toBe('http://127.0.0.1:4999')
   })
 
-  it('opens no form by itself: Add a server is a button', async () => {
+  it('opens no form by itself: Add a computer by address is a button', async () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    expect(await screen.findByRole('button', { name: 'Add a server' })).toBeTruthy()
-    expect(screen.queryByLabelText(/server url/i)).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Test' })).toBeNull()
+    expect(await screen.findByRole('button', { name: 'Add a computer by address' })).toBeTruthy()
+    expect(screen.queryByLabelText('Address')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Connect' })).toBeNull()
   })
 
-  it('switches to a saved server only from its explicit Use button', async () => {
+  it('switches to a listed computer only from its explicit Use button', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
     await openAddForm(user)
 
-    await user.type(screen.getByLabelText(/server name/i), 'Stale typed name')
-    await user.type(screen.getByLabelText(/access key/i), 'stale-key')
+    await user.type(screen.getByLabelText('Name'), 'Stale typed name')
+    await user.type(screen.getByLabelText('Access key'), 'stale-key')
     await user.click(await screen.findByRole('button', { name: 'Use Local CLI' }))
 
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
@@ -463,27 +503,13 @@ describe('AppBackendDialog', () => {
     })
   })
 
-  it('stores the typed access key after a successful connection test', async () => {
+  it('shows a local-specific failure message for localhost addresses', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
     await openAddForm(user)
 
-    await user.type(screen.getByLabelText(/access key/i), 'secret')
-    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4082')
-    await user.click(screen.getByRole('button', { name: 'Test' }))
-
-    await waitFor(() => expect(screen.getByText('Connection successful.')).toBeTruthy())
-    expect(window.localStorage.getItem('openagentd.accessKey:http://127.0.0.1:4082')).toBe('secret')
-    expect(window.localStorage.getItem('openagentd.accessKey')).toBeNull()
-  })
-
-  it('shows a local-specific failure message for localhost URLs', async () => {
-    const user = userEvent.setup()
-    render(<AppBackendDialog open onOpenChange={() => {}} />)
-    await openAddForm(user)
-
-    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4999')
-    await user.click(screen.getByRole('button', { name: 'Test' }))
+    await user.type(screen.getByLabelText('Address'), 'http://127.0.0.1:4999')
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
 
     expect(await screen.findByText(/Make sure OpenAgentd is running locally and the port is correct/)).toBeTruthy()
   })
@@ -513,52 +539,52 @@ describe('AppBackendDialog', () => {
     expect(onOpenChangeMock).not.toHaveBeenCalled()
   })
 
-  it('fills and tests a scanned server but connects only on Save and use', async () => {
+  it('fills and tests a scanned computer but connects only on Connect', async () => {
     const user = userEvent.setup()
     const prefill = { baseUrl: 'http://127.0.0.1:4082', accessKey: 'scanned-key' }
     render(<AppBackendDialog open onOpenChange={() => {}} prefill={prefill} />)
 
     expect(await screen.findByText(/Scanned from another device/)).toBeTruthy()
     await waitFor(() => expect(screen.getByText('Connection successful.')).toBeTruthy())
-    expect((screen.getByLabelText(/server url/i) as HTMLInputElement).value).toBe('http://127.0.0.1:4082')
-    expect((screen.getByLabelText(/access key/i) as HTMLInputElement).value).toBe('scanned-key')
-    expect((screen.getByLabelText(/server name/i) as HTMLInputElement).value).toBe('127.0.0.1')
+    expect((screen.getByLabelText('Address') as HTMLInputElement).value).toBe('http://127.0.0.1:4082')
+    expect((screen.getByLabelText('Access key') as HTMLInputElement).value).toBe('scanned-key')
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('127.0.0.1')
     const authCheck = fetchCalls.find((call) => call.url === 'http://127.0.0.1:4082/api/auth/check')
     expect(new Headers(authCheck?.init?.headers).get('Authorization')).toBe('Bearer scanned-key')
-    expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
+    expect(useCalls()).toHaveLength(0)
 
-    await user.click(screen.getByRole('button', { name: 'Save and use' }))
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
     await waitFor(() => expect(invokeCalls).toContainEqual({
       command: 'app_use_external_backend',
       args: { baseUrl: 'http://127.0.0.1:4082', name: '127.0.0.1', persist: true },
     }))
   })
 
-  it('reports a scanned server that does not answer', async () => {
+  it('reports a scanned computer that does not answer', async () => {
     const prefill = { baseUrl: 'http://127.0.0.1:4999', accessKey: 'scanned-key' }
     render(<AppBackendDialog open onOpenChange={() => {}} prefill={prefill} />)
 
-    expect(await screen.findByText(/Server did not respond/)).toBeTruthy()
-    expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
+    expect(await screen.findByText(/Nothing answered at that address/)).toBeTruthy()
+    expect(useCalls()).toHaveLength(0)
   })
 
   it('renders the same panel as the Settings → Server page', async () => {
     render(<ConnectionSettingsPage />)
 
     expect(screen.getByRole('heading', { level: 1, name: 'Server' })).toBeTruthy()
-    expect(await screen.findByText('Built-in server')).toBeTruthy()
+    expect(await screen.findByText('This computer')).toBeTruthy()
     expect(screen.getByText('Local CLI')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Add a server' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Edit Local CLI' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Add a computer by address' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Details of Local CLI' })).toBeTruthy()
   })
 })
 
-describe('the server list: select, use, in use, one close', () => {
+describe('the list of computers: use, in use, one close', () => {
   it('has one close button, in the header, called Close', async () => {
     const user = userEvent.setup()
     const onOpenChange = mock((..._args: unknown[]) => {})
     render(<AppBackendDialog open onOpenChange={onOpenChange} />)
-    await screen.findByText('Built-in server')
+    await screen.findByText('This computer')
 
     expect(screen.getAllByRole('button', { name: /^close/i })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: 'Close server settings' })).toBeNull()
@@ -568,16 +594,16 @@ describe('the server list: select, use, in use, one close', () => {
 
   it('names the dialog Server, like the Settings section', async () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
-    await screen.findByText('Built-in server')
+    await screen.findByText('This computer')
     expect(screen.getByRole('dialog', { name: 'Server' })).toBeTruthy()
     expect(screen.queryByText('Backend connection')).toBeNull()
   })
 
-  it('says what the built-in server is doing in its row, with nothing to edit', async () => {
+  it('says what this computer is doing in its row, with nothing to edit', async () => {
     statusPayload = { ...statusPayload, base_url: 'http://127.0.0.1:49545', mode: 'bundled', sidecar_running: true, external: false }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    const row = (await screen.findByText('Built-in server', { selector: 'span' })).closest('[data-server-row]') as HTMLElement
+    const row = (await screen.findByText('This computer', { selector: 'span' })).closest('[data-server-row]') as HTMLElement
     expect(within(row).getByText('Runs inside this app · Running')).toBeTruthy()
     expect(within(row).getByText('In use')).toBeTruthy()
     expect(within(row).queryByRole('button', { name: /^Edit/ })).toBeNull()
@@ -603,8 +629,8 @@ describe('the server list: select, use, in use, one close', () => {
     const active = (await screen.findByText('Local CLI')).closest('[data-server-row]') as HTMLElement
     expect(screen.queryByText(/^Current:/)).toBeNull()
     expect(screen.queryByText('Saved server')).toBeNull()
-    // The built-in server is not connected, so its title appears once, with no chip of its own.
-    expect(screen.getAllByText('Built-in server')).toHaveLength(1)
+    // This computer is not the one in use, so its title appears once, with no chip of its own.
+    expect(screen.getAllByText('This computer')).toHaveLength(1)
     // The connected row says so with its chip; no address is repeated above the list or on the row.
     expect(screen.queryByText('http://127.0.0.1:4082')).toBeNull()
     const badge = within(active).getByText('In use').closest('[data-slot="chip"]')
@@ -612,24 +638,24 @@ describe('the server list: select, use, in use, one close', () => {
     expect(screen.getAllByText('In use')).toHaveLength(1)
   })
 
-  it('keeps the built-in server address off its row, under Details', async () => {
+  it('keeps the address of this computer off its row, under Details', async () => {
     const user = userEvent.setup()
     statusPayload = { ...statusPayload, base_url: 'http://127.0.0.1:49545', mode: 'bundled', sidecar_running: true, external: false }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    const row = (await screen.findByText('Built-in server', { selector: 'span' })).closest('[data-server-row]') as HTMLElement
+    const row = (await screen.findByText('This computer', { selector: 'span' })).closest('[data-server-row]') as HTMLElement
     expect(within(row).queryByText('http://127.0.0.1:49545')).toBeNull()
     expect(within(row).getByText('In use').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('neutral')
     expect(screen.queryByText(/^Current:/)).toBeNull()
     expect(screen.queryByText('Saved server')).toBeNull()
     expect(screen.getAllByText('In use')).toHaveLength(1)
 
-    await user.click(within(row).getByRole('button', { name: 'Details of the built-in server' }))
-    const details = await screen.findByRole('dialog', { name: 'Built-in server' })
+    await user.click(within(row).getByRole('button', { name: 'Details of this computer' }))
+    const details = await screen.findByRole('dialog', { name: 'This computer' })
     expect(details.textContent).toContain('Addresshttp://127.0.0.1:49545')
   })
 
-  it('names this computer from the built-in server’s Details', async () => {
+  it('names this computer from its Details', async () => {
     const user = userEvent.setup()
     statusPayload = {
       ...statusPayload, base_url: 'http://127.0.0.1:49545', mode: 'bundled', sidecar_running: true, external: false,
@@ -647,8 +673,8 @@ describe('the server list: select, use, in use, one close', () => {
     window.fetch = answerName as typeof window.fetch
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await user.click(await screen.findByRole('button', { name: 'Details of the built-in server' }))
-    const details = await screen.findByRole('dialog', { name: 'Built-in server' })
+    await user.click(await screen.findByRole('button', { name: 'Details of this computer' }))
+    const details = await screen.findByRole('dialog', { name: 'This computer' })
     expect(details.textContent).toContain('Namestudio-mini')
     await user.click(within(details).getByRole('button', { name: 'Rename' }))
     const input = within(details).getByRole('textbox', { name: 'Name' })
@@ -662,27 +688,27 @@ describe('the server list: select, use, in use, one close', () => {
     await waitFor(() => expect(details.textContent).toContain('NameWork'))
   })
 
-  it('says where this computer is renamed while the app is on another server', async () => {
+  it('says where this computer is renamed while the app is on another one', async () => {
     const user = userEvent.setup()
     statusPayload = { ...statusPayload, sidecar_running: true, computer_names: { 'built-in': 'studio-mini' } }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await user.click(await screen.findByRole('button', { name: 'Details of the built-in server' }))
-    const details = await screen.findByRole('dialog', { name: 'Built-in server' })
+    await user.click(await screen.findByRole('button', { name: 'Details of this computer' }))
+    const details = await screen.findByRole('dialog', { name: 'This computer' })
     expect(details.textContent).toContain('Namestudio-mini')
     expect(within(details).queryByRole('button', { name: 'Rename' })).toBeNull()
-    expect(details.textContent).toContain('Use the built-in server to rename this computer.')
+    expect(details.textContent).toContain('Switch to this computer to rename it.')
     // Its address is not this window's: none is shown.
     expect(details.textContent).not.toContain('Address')
   })
 
-  it('lists a connected server that is not saved, as its own In use row', async () => {
+  it('lists a connected computer that is not saved, as its own In use row', async () => {
     statusPayload = { ...statusPayload, base_url: 'http://10.0.0.9:4082' }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     const row = (await screen.findByText('http://10.0.0.9:4082')).closest('[data-server-row]') as HTMLElement
     expect(within(row).getByText('In use')).toBeTruthy()
-    expect(within(row).getByText('Not in your saved servers')).toBeTruthy()
+    expect(within(row).getByText('Not saved in this list')).toBeTruthy()
     expect(within(row).queryByRole('button', { name: /^Use / })).toBeNull()
     // Its health is checked like any other row's (the test server answers only on 4082).
     await waitFor(() => expect(within(row).getByLabelText("Can't reach")).toBeTruthy())
@@ -690,13 +716,13 @@ describe('the server list: select, use, in use, one close', () => {
     expect(screen.getAllByText('In use')).toHaveLength(1)
   })
 
-  it('titles a connected server that is not saved by its computer, with the address under Details', async () => {
+  it('titles a connected computer that is not saved by its own name, with the address under Details', async () => {
     const user = userEvent.setup()
     statusPayload = { ...statusPayload, base_url: 'http://10.0.0.9:4082', computer_names: { 'http://10.0.0.9:4082': 'build-box' } }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     const row = (await screen.findByText('build-box')).closest('[data-server-row]') as HTMLElement
-    expect(within(row).getByText('Not in your saved servers')).toBeTruthy()
+    expect(within(row).getByText('Not saved in this list')).toBeTruthy()
     expect(screen.queryByText('http://10.0.0.9:4082')).toBeNull()
     await user.click(within(row).getByRole('button', { name: 'Details of build-box' }))
     const details = await screen.findByRole('dialog', { name: 'build-box' })
@@ -716,26 +742,24 @@ describe('the server list: select, use, in use, one close', () => {
     expect(screen.queryByText('http://127.0.0.1:4999')).toBeNull()
   })
 
-  it('says "Start and use" for a stopped built-in server, and switches to it', async () => {
+  it('says "Start and use" while this computer is stopped, and switches to it', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
     await user.click(await screen.findByRole('button', { name: 'Start and use' }))
     await waitFor(() => expect(invokeCalls).toContainEqual({ command: 'app_use_bundled_backend', args: undefined }))
   })
 
-  it('calls the check Test and the save Save and use, so a button never has two names', async () => {
+  it('gives the add form one button, Connect, as a key has', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
     await openAddForm(user)
-    expect(screen.getByRole('button', { name: 'Test' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Save and use' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Test connection' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Save and connect' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Connect' })).toBeNull()
+    const form = screen.getByRole('group', { name: 'Add a computer by address' })
+    expect(within(form).getAllByRole('button').map((button) => button.textContent)).toEqual(['Cancel', 'Connect'])
+    expect(within(form).queryByText('Test the server to enable saving.')).toBeNull()
   })
 })
 
-describe('saved server Enabled switch (desktop app)', () => {
+describe('watching a computer in the background (desktop app)', () => {
   const platform = Object.getOwnPropertyDescriptor(window.navigator, 'platform')
 
   beforeEach(() => {
@@ -749,41 +773,64 @@ describe('saved server Enabled switch (desktop app)', () => {
     else delete (window.navigator as unknown as Record<string, unknown>).platform
   })
 
-  it('shows each saved server as enabled or not, and turns watching on from the switch', async () => {
+  it('turns watching on from the switch in a computer’s Details', async () => {
     const user = userEvent.setup()
     statusPayload.servers[1].enabled = true
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    const local = await screen.findByRole('switch', { name: 'Enable Local CLI' })
-    expect(local.getAttribute('aria-checked')).toBe('false')
-    expect(screen.getByRole('switch', { name: 'Enable http://127.0.0.1:4999' }).getAttribute('aria-checked')).toBe('true')
-    expect(screen.getByText('Disabled · not watched')).toBeTruthy()
+    // The row itself has no switch: it is one of the things Details holds.
+    const row = (await screen.findByText('Local CLI')).closest('[data-server-row]') as HTMLElement
+    expect(within(row).queryByRole('switch')).toBeNull()
 
-    await user.click(local)
+    const details = await openDetails(user, 'Local CLI')
+    const watch = within(details).getByRole('switch', { name: 'Watch Local CLI in the background' })
+    expect(watch.getAttribute('aria-checked')).toBe('false')
+
+    await user.click(watch)
     await waitFor(() => expect(invokeCalls).toContainEqual({
       command: 'app_set_backend_server_enabled',
       args: { baseUrl: 'http://127.0.0.1:4082', enabled: true },
     }))
-    await waitFor(() => expect(screen.getByRole('switch', { name: 'Enable Local CLI' }).getAttribute('aria-checked')).toBe('true'))
-    expect(screen.queryByText('Disabled · not watched')).toBeNull()
+    await waitFor(() => expect(within(details).getByRole('switch', { name: 'Watch Local CLI in the background' }).getAttribute('aria-checked')).toBe('true'))
   })
 
-  it('says how the background connection is doing', async () => {
-    statusPayload.servers[0].enabled = true
+  it('shows a watched computer as watched in its Details', async () => {
+    const user = userEvent.setup()
     statusPayload.servers[1].enabled = true
-    watchStates = { 'http://127.0.0.1:4082': 'connected', 'http://127.0.0.1:4999': 'key_rejected' }
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    const details = await openDetails(user, 'http://127.0.0.1:4999')
+    expect(within(details).getByRole('switch', { name: 'Watch http://127.0.0.1:4999 in the background' }).getAttribute('aria-checked')).toBe('true')
+    expect(details.textContent).toContain('Addresshttp://127.0.0.1:4999')
+  })
+
+  it('says how the background connection is doing, and nothing about one that is not watched', async () => {
+    statusPayload.servers[0].enabled = true
+    watchStates = { 'http://127.0.0.1:4082': 'connected' }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     expect(await screen.findByText('Watching')).toBeTruthy()
-    expect(await screen.findByText('Access key rejected · update it with Edit')).toBeTruthy()
+    // Not watched: its line says whether it answers, like any other row.
+    const other = screen.getByText('http://127.0.0.1:4999').closest('[data-server-row]') as HTMLElement
+    await waitFor(() => expect(within(other).getByText("Can't reach · added by address")).toBeTruthy())
+    expect(screen.queryByText(/not watched/i)).toBeNull()
   })
 
-  it('shows no switch outside the desktop app', async () => {
+  it('points a rejected access key at Details, where Edit is', async () => {
+    statusPayload.servers[1].enabled = true
+    watchStates = { 'http://127.0.0.1:4999': 'key_rejected' }
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    expect(await screen.findByText('Access key rejected · change it in Details')).toBeTruthy()
+  })
+
+  it('offers no watching outside the desktop app', async () => {
+    const user = userEvent.setup()
     delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await screen.findByText('Local CLI')
-    expect(screen.queryByRole('switch')).toBeNull()
-    expect(screen.queryByText('Disabled · not watched')).toBeNull()
+    const details = await openDetails(user, 'Local CLI')
+    expect(within(details).queryByRole('switch')).toBeNull()
+    expect(within(details).getByRole('button', { name: 'Edit' })).toBeTruthy()
   })
 })

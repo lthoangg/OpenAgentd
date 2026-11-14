@@ -120,7 +120,7 @@ fn client() -> &'static reqwest::Client {
 }
 
 /// Said when the built-in server is not running: it holds the account.
-pub const BUILTIN_STOPPED: &str = "The built-in server is stopped. Your account lives there: start it to use your other computers.";
+pub const BUILTIN_STOPPED: &str = "OpenAgentd is stopped on this computer. Your account lives there: start it to use your other computers.";
 
 /// What the built-in server answered: its status and body.
 #[derive(Debug, Serialize)]

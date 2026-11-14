@@ -123,13 +123,13 @@ export const DAEMON_BASE_URL: Record<string, { var: string; placeholder: string 
 }
 
 export function eventLabel(event: OAuthLoginEvent): string {
-  if (event.event === 'started') return 'Starting secure login'
-  if (event.event === 'device_code') return 'Waiting for browser approval'
-  if (event.event === 'polling' && typeof event.elapsed_s === 'number') return `Still waiting (${event.elapsed_s}s)`
-  if (event.event === 'token_acquired') return 'Token received'
-  if (event.event === 'verifying') return 'Verifying provider access'
-  if (event.event === 'success') return 'Connected'
-  if (event.event === 'failed') return 'Connection failed'
+  if (event.event === 'started') return 'Starting…'
+  if (event.event === 'device_code') return 'Waiting for you to sign in'
+  if (event.event === 'polling' && typeof event.elapsed_s === 'number') return `Waiting for you to sign in (${event.elapsed_s}s)`
+  if (event.event === 'token_acquired') return 'Signed in. Checking your account…'
+  if (event.event === 'verifying') return 'Checking your account…'
+  if (event.event === 'success') return 'Signed in'
+  if (event.event === 'failed') return "Couldn't sign in"
   return event.message || event.event.replaceAll('_', ' ')
 }
 
@@ -140,10 +140,10 @@ export function isBenignOAuthStreamClose(message: string): boolean {
 
 export function deviceCodeHelp(providerId: string): string {
   if (providerId === 'codex') {
-    return 'Use this code for personal ChatGPT accounts. Keep this dialog open while the browser approves access.'
+    return 'For a personal ChatGPT account. Keep this window open until you have signed in.'
   }
   if (providerId === 'copilot') {
-    return 'Use this code on GitHub to authorize Copilot. Keep this dialog open while GitHub approves access.'
+    return 'Enter it on GitHub to let Copilot in. Keep this window open until you have signed in.'
   }
-  return 'Use this code on the authorization page. Keep this dialog open while access is approved.'
+  return 'Enter it on the sign-in page. Keep this window open until you have signed in.'
 }

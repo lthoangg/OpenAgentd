@@ -114,12 +114,12 @@ function ToolRow({ name, description }: { name: string; description: string }) {
 }
 
 function ToolGroupSection({ server, tools }: ToolGroup) {
-  const label = server === null ? 'Built-in tools' : `MCP server ${server}`
+  const label = server === null ? 'Built-in tools' : `Connector ${server}`
   return (
     <div role="group" aria-label={label}>
       <div className="flex items-center gap-1 border-b border-(--color-border-subtle) bg-(--bg-key)/20 px-4 py-2">
         <h3 className={cn('font-medium', TEXT.subtle)}>
-          {server === null ? 'Built-in tools' : <>MCP server <span className="font-mono">{server}</span></>}
+          {server === null ? 'Built-in tools' : <>Connector <span className="font-mono">{server}</span></>}
         </h3>
         <CountBadge count={tools.length} />
       </div>

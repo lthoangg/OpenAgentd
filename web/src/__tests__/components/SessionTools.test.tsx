@@ -78,8 +78,8 @@ describe('SessionTools', () => {
     expect(within(builtinGroup).getByText('read')).toBeTruthy()
     expect(within(builtinGroup).queryByText('github_create_issue')).toBeNull()
 
-    const mcpGroup = screen.getByRole('group', { name: 'MCP server github' })
-    expect(within(mcpGroup).getByRole('heading', { name: /MCP server github/ })).toBeTruthy()
+    const mcpGroup = screen.getByRole('group', { name: 'Connector github' })
+    expect(within(mcpGroup).getByRole('heading', { name: /Connector github/ })).toBeTruthy()
     expect(within(mcpGroup).getByText('· 2')).toBeTruthy()
     expect(within(mcpGroup).getByText('github_create_issue')).toBeTruthy()
     expect(within(mcpGroup).getByText('github_list_prs')).toBeTruthy()
@@ -161,7 +161,7 @@ describe('SessionTools', () => {
   it('shows a configured server that has contributed no tools', () => {
     renderTools(BUILTINS, ['figma'])
 
-    const mcpGroup = screen.getByRole('group', { name: 'MCP server figma' })
+    const mcpGroup = screen.getByRole('group', { name: 'Connector figma' })
     expect(within(mcpGroup).getByText('The server is not ready, so it has no tools yet.')).toBeTruthy()
     expect(within(mcpGroup).getByText('· 0')).toBeTruthy()
   })

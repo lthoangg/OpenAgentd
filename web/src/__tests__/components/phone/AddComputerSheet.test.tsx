@@ -52,9 +52,9 @@ describe('AddComputerSheet', () => {
     expect(ran('cloud_add_scanned')[0]?.args).toEqual({ link: LINK })
     expect(ran('cloud_invite_add')).toHaveLength(0)
     // The roles are under Options; changing one there still counts.
-    expect(screen.queryByRole('checkbox', { name: /Use as client/ })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /can open my other computers/ })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Options' }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /Use as client/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /can open my other computers/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     await waitFor(() => expect(finishAdd).not.toBeNull())
     expect(ran('cloud_invite_add')[0]?.args).toEqual({ enrollmentId: 'request-1', approver: true, server: true, client: false })

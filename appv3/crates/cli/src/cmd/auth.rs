@@ -125,7 +125,7 @@ pub fn credentials(cmd: &CredentialsCmd) -> Result<ExitCode> {
             println!("  {}  {}", bold("Credentials"), dim(&tilde(&store::path())));
             println!();
             if f.providers.is_empty() && f.secrets.is_empty() {
-                println!("  {}", dim("None stored. Add keys in Settings → Providers or run `agentd credentials import <file>`."));
+                println!("  {}", dim("None stored. Add keys in Settings → Models or run `agentd credentials import <file>`."));
             }
             for (pid, list) in &f.providers {
                 println!("  {}", bold(pid));

@@ -126,8 +126,8 @@ function page() {
 const ran = (command: string) => calls.filter((call) => call.command === command)
 const rowOf = (name: string) => screen.getByText(name).closest('[data-server-row]') as HTMLElement
 
-describe('Your computers on the desktop', () => {
-  it('lists the account’s servers, not this computer, with their status and the one in use', async () => {
+describe('the account’s computers on the desktop', () => {
+  it('lists the account’s computers in the one list, after this computer, with their status and the one in use', async () => {
     backend = ON_LINUX
     shell()
     page()
@@ -142,14 +142,16 @@ describe('Your computers on the desktop', () => {
     expect(ran('cloud_link_route').at(-1)?.args).toEqual({ deviceId: 'dev-linux' })
     expect(within(linux).getByRole('button', { name: 'Open sessions on Linux · 9C02 E1B7' })).toBeTruthy()
     const windows = rowOf('Windows · 1111 2222')
-    expect(within(windows).getByText("Can't reach")).toBeTruthy()
+    expect(within(windows).getByText("Can't reach · from your account")).toBeTruthy()
     expect(within(windows).getByRole('button', { name: 'Use Windows · 1111 2222' })).toBeTruthy()
-    // Above the servers.
+    // One list under one heading: this computer first, then the account's.
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
-    expect(headings.indexOf('Your computers')).toBeLessThan(headings.indexOf('Servers'))
+    expect(headings.filter((heading) => /computers|servers/i.test(heading ?? ''))).toEqual(['Computers'])
+    const titles = Array.from(linux.parentElement!.querySelectorAll('[data-server-row]')).map((row) => row.querySelector('span.truncate')?.textContent)
+    expect(titles.slice(0, 3)).toEqual(['This computer', 'Linux · 9C02 E1B7', 'Windows · 1111 2222'])
   })
 
-  it('asks the built-in server for the account while the window shows another computer', async () => {
+  it('asks this computer for the account while the window shows another one', async () => {
     backend = ON_LINUX
     shell()
     page()
@@ -161,11 +163,11 @@ describe('Your computers on the desktop', () => {
     expect(fetched.some((url) => url.includes('/api/cloud/'))).toBe(false)
   })
 
-  it('says Online for a computer not in use', async () => {
+  it('says Online, and that it is from the account, for a computer not in use', async () => {
     shell()
     page()
     const linux = await screen.findByText('Linux · 9C02 E1B7')
-    expect(within(linux.closest('[data-server-row]') as HTMLElement).getByText('Online')).toBeTruthy()
+    expect(within(linux.closest('[data-server-row]') as HTMLElement).getByText('Online · from your account')).toBeTruthy()
   })
 
   it('says On your network while the link to the computer in use is direct', async () => {
@@ -207,7 +209,7 @@ describe('Your computers on the desktop', () => {
     expect(reloads).toBe(0)
   })
 
-  it('says the built-in server is stopped, and starts it', async () => {
+  it('says OpenAgentd is stopped on this computer, and starts it', async () => {
     backend = app({ sidecar_running: false })
     shell({ app_start_bundled_backend: () => { backend = app() } })
     page()
@@ -231,8 +233,9 @@ describe('Your computers on the desktop', () => {
     cloudStatus = { state: 'guest', notice: null }
     shell()
     page()
-    await screen.findByText('Servers')
+    await screen.findByText('This computer')
     await waitFor(() => expect(ran('desktop_cloud_call').length).toBeGreaterThan(0))
-    expect(screen.queryByText('Your computers')).toBeNull()
+    expect(screen.queryByText(/from your account/i)).toBeNull()
+    expect(document.querySelector('[data-account-note]')).toBeNull()
   })
 })

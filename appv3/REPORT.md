@@ -14,6 +14,26 @@ v3 shares v2's DB and config files. What still behaves differently is
 listed in §3. macOS/Linux/Windows support, the in-process `gix` snapshot
 engine, the new grep and live workspace refresh are in §6.
 
+### Workspace `git` flag, and renamed labels and page names (v3.56.0)
+
+`GET /api/agent/workspace/tree` adds `"git": true|false` to every repository
+entry: whether the folder, or a parent of it, holds `.git`. The app offers
+the Changes view and worktrees only where it is true, and treats a response
+without the key (an older server) as before.
+
+The provider catalog's label for `codex` is `ChatGPT` (it was `OpenAI
+Codex`) and its description is reworded, in `GET /api/settings/providers`
+and in the usage summary. Ids are unchanged.
+
+Messages that point to a Settings page use the page's new name: `Settings →
+Models` (it was Providers) in provider and image-tool errors and in `agentd
+doctor`, `auth` and `run` hints, and `Settings → Connectors` (it was MCP) in
+the `mcp` tool's answers. An `mcp` call refused for sign-in now reads
+`needs sign-in: connect it in Settings → Connectors`; a stored row with the
+earlier `Settings → MCP` wording still rides inline with its call
+(`MCP_SIGN_IN_NOTE_BEFORE_RENAME`), and the web matches both. No schema or
+on-disk format change.
+
 ### Agent file fields, patch envelope and unloaded members (v3.56.0)
 
 Agent frontmatter keys `mcp` and `responses_api` are ignored, whatever their

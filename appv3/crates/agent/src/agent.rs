@@ -577,7 +577,7 @@ impl Agent {
                 Err(ModelError::Transient { error_type, .. }) => {
                     return Err(AgentError::Connection {
                         message: format!(
-                            "Could not reach the LLM provider after a transient connectivity failure ({error_type}). Check your network connection and the provider's base URL in Settings → Providers."
+                            "Could not reach the LLM provider after a transient connectivity failure ({error_type}). Check your network connection and the provider's base URL in Settings → Models."
                         ),
                         error_type: Some(error_type),
                         provider: Some(label.clone()),

@@ -92,18 +92,18 @@ describe('AppFooter', () => {
   it('names the connected backend even when it is the healthy bundled one', () => {
     renderWithQueryClient(<AppFooter />)
     expect(screen.getByLabelText('Status bar')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Connected\. Change server/ }).textContent).toBe('built-in')
+    expect(screen.getByRole('button', { name: /Connected\. Change computer/ }).textContent).toBe('This computer')
   })
 
   it('shows the backend indicator for an external server', () => {
     backendExternal = true
     renderWithQueryClient(<AppFooter />)
-    expect(screen.getByRole('button', { name: /Connected\. Change server/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Connected\. Change computer/ })).toBeTruthy()
   })
 
   it('names the server in the label when the dot has no visible name (phone drawer)', () => {
     renderWithQueryClient(<HealthDot />)
-    const dot = screen.getByRole('button', { name: 'Built-in server. Connected. Change server' })
+    const dot = screen.getByRole('button', { name: 'This computer. Connected. Change computer' })
     expect(dot.textContent).toBe('')
   })
 
@@ -118,14 +118,14 @@ describe('AppFooter', () => {
   it('shows the backend indicator when the backend is unhealthy', () => {
     healthError = true
     renderWithQueryClient(<AppFooter />)
-    expect(screen.getByRole('button', { name: /Can't reach\. Change server/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Can't reach\. Change computer/ })).toBeTruthy()
   })
 
   // Desktop mockup 12.1: the dot alone was the only sign, and easy to miss.
   it("says Can't reach beside the server's name while it does not answer", () => {
     healthError = true
     renderWithQueryClient(<AppFooter />)
-    expect(screen.getByRole('button', { name: /Can't reach\. Change server/ }).textContent).toBe("built-inCan't reach")
+    expect(screen.getByRole('button', { name: /Can't reach\. Change computer/ }).textContent).toBe("This computerCan't reach")
   })
 
   it('adds no word while the server answers', () => {

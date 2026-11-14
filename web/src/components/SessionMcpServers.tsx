@@ -78,7 +78,7 @@ function ServerRow({
         className={cn(COMPACT_ROW, 'min-h-12')}
       >
         <span className={cn('min-w-0 flex-1 truncate font-mono', TEXT.label)}>{name}</span>
-        <Chip tone="warning" title="The agent lists this server, but mcp.json does not define it.">Not configured</Chip>
+        <Chip tone="warning" title="The agent lists this connector, but mcp.json does not define it.">Not configured</Chip>
       </li>
     )
   }

@@ -141,7 +141,7 @@ export function ScanCodeCopy({ minutes }: { minutes: number }) {
     <>
       <p className="font-medium text-(--color-text)">Scan with your phone</p>
       <p>
-        Open OpenAgentd on your phone. On Servers, tap{' '}
+        Open OpenAgentd on your phone. On Computers, tap{' '}
         <strong className="text-(--color-text)">Scan QR code</strong>.
       </p>
       <p>Works for {minutes} minutes. Show it only to your own phone.</p>

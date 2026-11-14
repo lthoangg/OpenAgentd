@@ -1,34 +1,35 @@
 /**
- * AppBackendPanel — choose which OpenAgentd server this app talks to.
+ * AppBackendPanel — choose which computer's OpenAgentd this app talks to.
  *
- * One panel, two hosts: Settings → Server renders it as a page, and
+ * One panel, three hosts: Settings → Server renders it as a page,
  * `AppBackendDialog` wraps it for the places that need it before or outside
  * Settings (the loading screen, the footer health dot, a scanned connect
- * link). All connection logic lives here; the hosts only provide chrome.
+ * link), and the phone's Computers screen shows it as its list. All
+ * connection logic lives here; the hosts only provide chrome.
  *
- * Top to bottom: the servers (the built-in server first, then the saved
- * ones) and, in the desktop shell, network access for other devices. There
- * is no separate "current server" card: the connected server's row carries
- * the **In use** badge, and a connected server that is not saved gets a row
- * of its own.
+ * One list, **Computers**: this computer first (the OpenAgentd inside the
+ * desktop app), then the computers of your account (`accountRows`, drawn by
+ * the host), then the ones added by address. There is no separate "current"
+ * card: the row the app talks to carries the **In use** badge, and a
+ * connected computer that is not in the list gets a row of its own.
  *
- * A row's **Use** switches the app to it and **In use** marks the one the
- * app talks to now. **Edit** opens that server's form right under its row,
- * saved in place without switching; **Add a server**, at the end of the
- * list, opens the form for a new one (test, then save and use). No form
- * opens by itself, except for a scanned connect link.
+ * A row has **Use** (switch the app to it) and **Details**. Details holds
+ * everything else: the name and address, Stop for this computer, and for
+ * one added by address the background watch switch, Edit and Remove. Edit
+ * opens the form right under the row, saved in place without switching.
+ * **Add a computer by address**, at the end of the list, opens the form for
+ * a new one; its one button, Connect, tests the address and key, then saves
+ * it and switches to it. No form opens by itself, except for a scanned
+ * connect link.
  *
- * A row carries a name and one status line, never an address: a saved
- * server is titled by the name you gave it, else by the name its computer
- * gave for itself, and by its address only when the app knows neither. The
- * address is in its Edit form; the built-in server's, and that of a
- * connected server that is not saved, are under **Details**, where the
- * computer in use is also renamed.
+ * A row carries a name and one status line, never an address: a computer
+ * added by address is titled by the name you gave it, else by the name it
+ * gave for itself, and by its address only when the app knows neither.
  *
- * The phone's Servers screen is a third host: there the row in use also
- * offers **Sessions ›** (``onOpenInUse``), back up to its session list.
+ * On the phone the row in use also offers **Sessions ›** (``onOpenInUse``),
+ * back up to its session list, and a tap on a row uses it; ⋯ holds the rest.
  */
-import { Fragment, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
+import { Fragment, useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
 import { ChevronRight, Info, MoreHorizontal, Pencil, Plus, ScanQrCode, Trash2 } from 'lucide-react'
 import { cancelQrScan, canScanQr, scanQrCode } from '@/lib/qr-scan'
 import { QrScanOverlay } from '@/components/phone/QrScanOverlay'
@@ -49,6 +50,7 @@ import { Callout } from '@/components/ui/callout'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Field } from '@/components/ui/field'
 import { PanelSection } from '@/components/ui/panel-section'
+import { SectionCard } from '@/components/ui/section-card'
 import { ICON_SIZE_INLINE, ROW_PAD, TEXT } from '@/components/settings/tokens'
 import { isDesktopShell } from '@/lib/desktop-shell'
 import { useLongPress } from '@/hooks/use-long-press'
@@ -86,6 +88,9 @@ import {
 } from '@/lib/app-backend'
 import { useAppStatusWithNames } from '@/lib/account-computers'
 
+/** Where Rename would be, for a computer the app is not on. */
+const RENAME_ON_ITSELF = 'Switch to this computer to rename it.'
+
 const DEFAULT_SERVERS: SavedAppServer[] = [{ base_url: 'http://127.0.0.1:4082', name: 'Local server' }]
 
 /** How often the background connection states refresh while the panel is open. */
@@ -94,7 +99,7 @@ const WATCH_POLL_MS = 3000
 /**
  * The server the app is connected to when it is not in the saved list
  * (normalized), else null. An account bridge is not one: its computer has a
- * row under "Your computers".
+ * row of its own, from the account.
  */
 function unlistedConnectedUrl(status: AppBackendStatus | null, servers: SavedAppServer[]): string | null {
   if (!status || !(status.mode === 'external' || status.external)) return null
@@ -103,14 +108,18 @@ function unlistedConnectedUrl(status: AppBackendStatus | null, servers: SavedApp
   return servers.some((server) => normalizeServerBaseUrl(server.base_url) === url) ? null : url
 }
 
-/** The line under a saved server: its background connection, or that it is not watched. */
-function watchNote(state: ServerWatchState | undefined, enabled: boolean): { text: string; tone: 'ok' | 'warn' | 'error' | 'muted' } | null {
+/**
+ * The line under a computer added by address while the desktop watches it in
+ * the background; `null` when it is not watched (the row then says whether
+ * it answers, like any other).
+ */
+function watchNote(state: ServerWatchState | undefined): { text: string; tone: 'ok' | 'warn' | 'error' | 'muted' } | null {
   switch (state) {
     case 'connected': return { text: 'Watching', tone: 'ok' }
     case 'connecting': return { text: 'Connecting…', tone: 'muted' }
-    case 'reconnecting': return { text: 'Reconnecting · server not reachable', tone: 'warn' }
-    case 'key_rejected': return { text: 'Access key rejected · update it with Edit', tone: 'error' }
-    default: return enabled ? null : { text: 'Disabled · not watched', tone: 'muted' }
+    case 'reconnecting': return { text: "Reconnecting · can't reach it", tone: 'warn' }
+    case 'key_rejected': return { text: 'Access key rejected · change it in Details', tone: 'error' }
+    default: return null
   }
 }
 
@@ -132,21 +141,26 @@ function healthWord(health: Health | undefined): string {
 interface AppBackendPanelProps {
   /** Loads status and probes servers when it turns true (dialog open, page shown). */
   active: boolean
-  /** Fill the form and test it; the user still confirms with Save and use. */
+  /** Fill the form and test it; the user still confirms with Connect. */
   prefill?: AppBackendPrefill | null
   /**
    * Include desktop network access. The dialog does; Settings → Server shows
    * its own "Access from other devices" card.
    */
   showNetworkAccess?: boolean
-  /** The list's heading (Settings and the dialog: "Servers"). */
-  sectionTitle?: string
-  /** The phone's Servers screen: the row in use opens its Sessions. */
+  /**
+   * The account's computers, as rows of this list (`AccountComputerRows`),
+   * after this computer and before the ones added by address.
+   */
+  accountRows?: ReactNode
+  /** The phone's Computers screen is titled by its own large title: the list has no heading there. */
+  untitled?: boolean
+  /** The phone's Computers screen: the row in use opens its Sessions. */
   onOpenInUse?: () => void
   /** Lets a host reload the list (the phone's pull to refresh). */
   controlRef?: Ref<AppBackendPanelControl>
   /**
-   * The phone's Servers screen scans with one scanner for both kinds of
+   * The phone's Computers screen scans with one scanner for both kinds of
    * code (an account invitation, or a connect code it hands back as
    * `prefill`): Scan QR code calls this instead of the panel's own.
    */
@@ -159,15 +173,16 @@ export interface AppBackendPanelControl {
 }
 
 /**
- * The open server form: adding one (at the end of the list, from "Add a
- * server"), or editing a saved one (right under its row, from its Edit).
- * One at a time; neither opens by itself, except for a scanned link.
+ * The open form: adding a computer (at the end of the list, from "Add a
+ * computer by address"), or editing one (right under its row, from Edit in
+ * its Details). One at a time; neither opens by itself, except for a
+ * scanned link.
  */
 type ServerFormTarget =
   | { kind: 'add' }
   | { kind: 'edit'; baseUrl: string; label: string; inUse: boolean }
 
-export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, sectionTitle = 'Servers', onOpenInUse, controlRef, onScanQr }: AppBackendPanelProps) {
+export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, accountRows = null, untitled = false, onOpenInUse, controlRef, onScanQr }: AppBackendPanelProps) {
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
   // The names the app remembers, kept current while the list is shown: one
   // read after this list loaded (a server just added) reaches its row.
@@ -181,9 +196,10 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   // its action sheet (a long press, or ⋯).
   const touch = useTouchFirst()
   const [rowSheet, setRowSheet] = useState<{ title: string; items: ActionSheetItem[] } | null>(null)
-  // Details of the built-in server, or of a connected server that is not
-  // saved; it stays on its server while the dialog closes.
-  const [details, setDetails] = useState<'builtin' | 'unlisted'>('builtin')
+  // Details of this computer, of a connected one that is not in the list, or
+  // of one added by address (its normalized address); it stays on its
+  // computer while the dialog closes.
+  const [details, setDetails] = useState<'builtin' | 'unlisted' | { saved: string }>('builtin')
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [baseUrl, setBaseUrl] = useState('')
   const [serverName, setServerName] = useState('')
@@ -195,16 +211,16 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   const [pending, setPending] = useState(false)
   /** A list action that failed (Use, Start, Stop, Remove, Enabled). */
   const [listError, setListError] = useState<string | null>(null)
-  /** Test or Save in the open form failed. */
+  /** The open form's check or save failed. */
   const [formError, setFormError] = useState<string | null>(null)
   const [scanned, setScanned] = useState(false)
   // The camera viewfinder is up (Scan QR code).
   const [qrScanning, setQrScanning] = useState(false)
   const [watchStates, setWatchStates] = useState<Record<string, ServerWatchState>>({})
   const watchable = isDesktopShell() && status?.supports_bundled !== false
-  // Where focus goes back to when a form closes.
+  // Where focus goes back to when a form closes: Add, or the row's Details.
   const addButtonRef = useRef<HTMLButtonElement>(null)
-  const editButtonRefs = useRef(new Map<string, HTMLButtonElement>())
+  const detailsButtonRefs = useRef(new Map<string, HTMLButtonElement>())
 
   // The desktop shell watches enabled servers in the background; show how that goes.
   useEffect(() => {
@@ -276,13 +292,13 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     setFormError(null)
   }
 
-  /** "Add a server": the empty form at the end of the list. */
+  /** "Add a computer by address": the empty form at the end of the list. */
   function openAdd() {
     setOriginal(null)
     fillForm({ kind: 'add' }, '', '', '')
   }
 
-  /** A row's Edit: the server's details in a form right under it. */
+  /** Edit, from a row's Details: its address, key and name in a form right under the row. */
   function openEdit(server: SavedAppServer, inUse: boolean) {
     const normalized = normalizeServerBaseUrl(server.base_url)
     const label = savedServerTitle(server, names)
@@ -301,15 +317,15 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     setScanned(false)
     // After the render: the add form stands where its button goes back.
     requestAnimationFrame(() => {
-      const opener = target?.kind === 'edit' ? editButtonRefs.current.get(target.baseUrl) : addButtonRef.current
+      const opener = target?.kind === 'edit' ? detailsButtonRefs.current.get(target.baseUrl) : addButtonRef.current
       opener?.focus()
     })
   }
 
   /**
-   * Servers → Scan QR code: the camera reads the desktop's connect code and
-   * this list's own add form opens, filled in and tested, as "Add a server"
-   * does. Nothing connects until Save and use.
+   * Scan QR code: the camera reads the desktop's connect code and this
+   * list's own add form opens, filled in and tested. Nothing connects until
+   * Connect.
    */
   async function scanConnectCode() {
     setListError(null)
@@ -353,12 +369,13 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     return true
   }
 
-  async function testConnection(rawBaseUrl: string = baseUrl, rawAccessKey: string = accessKey) {
+  /** Checks the address answers and takes the key; says why in the form when it does not. */
+  async function testConnection(rawBaseUrl: string = baseUrl, rawAccessKey: string = accessKey): Promise<boolean> {
     const target = normalizeServerBaseUrl(rawBaseUrl)
     const validationError = validateServerUrl(target)
     if (validationError) {
       setFormError(validationError)
-      return
+      return false
     }
     setPending(true)
     setFormError(null)
@@ -367,18 +384,20 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       setServerHealth((prev) => ({ ...prev, [target]: online ? 'online' : 'offline' }))
       if (!online) {
         setFormError(connectionFailureMessage(target))
-        return
+        return false
       }
       const keyForTest = rawAccessKey.trim() || await getStoredAccessKey(target) || ''
       const authorized = await checkServerAuth(target, keyForTest)
       if (!authorized) {
-        setFormError('Server is reachable, but the access key is invalid or missing.')
-        return
+        setFormError('The access key is wrong or missing.')
+        return false
       }
       if (rawAccessKey.trim()) await setStoredAccessKey(rawAccessKey, target)
       setTestedBaseUrl(target)
+      return true
     } catch (err) {
       setFormError(err instanceof Error ? err.message : String(err))
+      return false
     } finally {
       setPending(false)
     }
@@ -401,30 +420,24 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     await runConnectionSwitch(() => stopBundledAppBackend())
   }
 
-  /** The add form's Save and use: a tested server is stored and the app switches to it. */
+  /** The add form's Connect: test the address and key, then store it and switch the app to it. */
   async function saveAndConnect() {
     const target = normalizeServerBaseUrl(baseUrl)
-    if (testedBaseUrl !== target) {
-      setFormError('Test the current server URL and access key before saving.')
-      return
-    }
+    if (testedBaseUrl !== target && !await testConnection()) return
     if (await connectExternal(target, serverName, accessKey, setFormError)) setForm(null)
   }
 
   /**
-   * The edit form's Save: the server is updated where it is, without
-   * switching to it. A new address or key needs a passing Test first; a
-   * rename does not. The server in use follows its new address.
+   * The edit form's Save: the entry is updated where it is, without
+   * switching to it. A new address or key is tested first; a rename is
+   * not. The computer in use follows its new address.
    */
   async function saveEdit() {
     if (form?.kind !== 'edit') return
     const target = normalizeServerBaseUrl(baseUrl)
     const moved = target !== form.baseUrl
     const keyChanged = accessKey.trim() !== (original?.accessKey ?? '').trim()
-    if ((moved || keyChanged) && testedBaseUrl !== target) {
-      setFormError('Test the new address or access key before saving.')
-      return
-    }
+    if ((moved || keyChanged) && testedBaseUrl !== target && !await testConnection()) return
     if (moved && form.inUse) {
       // The app talks to it: switch to the new address, then drop the old one.
       if (!await connectExternal(target, serverName, accessKey, setFormError)) return
@@ -507,19 +520,21 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   const builtinName = names?.[BUILT_IN_NAME_KEY] ?? null
   const unlistedName = unlistedUrl ? names?.[unlistedUrl] ?? null : null
   const unlistedTitle = unlistedName ?? unlistedUrl ?? ''
-  const showDetails = (which: 'builtin' | 'unlisted') => {
+  const showDetails = (which: 'builtin' | 'unlisted' | { saved: string }) => {
     setDetails(which)
     setDetailsOpen(true)
   }
+  // The computer added by address that Details is on, if it is still listed.
+  const detailsSaved = typeof details === 'object'
+    ? servers.find((server) => normalizeServerBaseUrl(server.base_url) === details.saved) ?? null
+    : null
+  const detailsSavedUrl = detailsSaved ? normalizeServerBaseUrl(detailsSaved.base_url) : null
+  const detailsSavedActive = detailsSavedUrl !== null && onExternal && normalizeServerBaseUrl(currentUrl) === detailsSavedUrl
+  const detailsSavedLabel = detailsSaved ? savedServerTitle(detailsSaved, names) : ''
   // The name lives on the computer: only the one the app is on is renamed.
-  const detailsInUse = details === 'unlisted' || onBuiltin
+  const detailsInUse = details === 'unlisted' || (details === 'builtin' && onBuiltin)
   const tested = testedBaseUrl !== null && testedBaseUrl === normalizeServerBaseUrl(baseUrl)
   const editTarget = form?.kind === 'edit' ? form : null
-  // A rename saves at once; a new address or key waits for Test.
-  const editNeedsTest = editTarget !== null && (
-    normalizeServerBaseUrl(baseUrl) !== editTarget.baseUrl
-    || accessKey.trim() !== (original?.accessKey ?? '').trim()
-  )
 
   const serverForm = (target: ServerFormTarget) => (
     <ServerForm
@@ -533,9 +548,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       onServerNameChange={setServerName}
       error={formError}
       tested={tested}
-      needsTest={target.kind === 'add' || editNeedsTest}
       pending={pending}
-      onTest={() => void testConnection()}
       onSave={() => void (target.kind === 'add' ? saveAndConnect() : saveEdit())}
       onCancel={closeForm}
     />
@@ -554,47 +567,38 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     <div className="space-y-8">
       {scanned ? (
         <Callout tone="info" role="status">
-          Scanned from another device. Check the server, then save and use it.
+          Scanned from another device. Check the address, then connect.
         </Callout>
       ) : null}
 
-      {/* Servers: each row's Edit opens its form under it; Add a server opens one at the end. */}
-      <PanelSection
-        title={sectionTitle}
-        description={touch ? 'Tap a server to use it; ⋯ edits or removes it.' : 'Use switches the app to a server. Edit changes its address, key or name.'}
-        flush
-      >
+      {/* One list: this computer, the account's, then the ones added by address. */}
+      <ComputersList untitled={untitled} touch={touch}>
         {loaded && status?.supports_bundled !== false ? (
           <ServerRow
             health={status?.sidecar_running ? 'online' : undefined}
-            title="Built-in server"
+            title="This computer"
             subtitle={`Runs inside this app · ${status?.sidecar_running ? 'Running' : 'Stopped'}`}
             inUse={status !== null && !status.external}
             onOpen={touch && !pending && status?.sidecar_running ? (status.external ? () => { void connectBundled() } : onOpenInUse) : undefined}
           >
-            {status !== null && !status.external ? openInUse('Built-in server') : null}
-            {onBuiltin || builtinName ? (
-              <Button type="button" variant="ghost" size="sm" aria-label="Details of the built-in server" onClick={() => showDetails('builtin')}>
-                Details
-              </Button>
-            ) : null}
+            {status !== null && !status.external ? openInUse('this computer') : null}
             {status?.sidecar_running ? (
-              <>
-                {status?.external && !touch ? (
-                  <Button type="button" variant="subtle" size="sm" aria-label="Use built-in server" onClick={() => { void connectBundled() }} disabled={pending}>
-                    Use
-                  </Button>
-                ) : null}
-                <Button type="button" variant="danger-subtle" size="sm" onClick={() => setConfirm({ kind: 'stop' })} disabled={pending}>
-                  Stop…
+              status?.external && !touch ? (
+                <Button type="button" variant="subtle" size="sm" aria-label="Use this computer" onClick={() => { void connectBundled() }} disabled={pending}>
+                  Use
                 </Button>
-              </>
+              ) : null
             ) : (
               // Stopped: Use also starts it, and says so.
               <Button type="button" variant="subtle" size="sm" onClick={() => { void connectBundled() }} disabled={pending}>
                 Start and use
               </Button>
             )}
+            {onBuiltin || builtinName || status?.sidecar_running ? (
+              <Button type="button" variant="ghost" size="sm" aria-label="Details of this computer" onClick={() => showDetails('builtin')}>
+                Details
+              </Button>
+            ) : null}
           </ServerRow>
         ) : null}
         {unlistedUrl ? (
@@ -602,7 +606,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             health={status ? serverHealth[unlistedUrl] : 'online'}
             title={status ? unlistedTitle : 'This server'}
             mono={Boolean(status) && !unlistedName}
-            subtitle={status ? 'Not in your saved servers' : unlistedUrl}
+            subtitle={status ? 'Not saved in this list' : unlistedUrl}
             inUse
             onOpen={touch ? onOpenInUse : undefined}
             onMore={touch && status ? () => setRowSheet({
@@ -619,12 +623,12 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
           </ServerRow>
         ) : null}
         {unlistedUrl ? <ServerUpdateOnRow /> : null}
+        {accountRows}
         {servers.map((server) => {
           const normalizedServerUrl = normalizeServerBaseUrl(server.base_url)
           const active = onExternal && normalizeServerBaseUrl(currentUrl) === normalizedServerUrl
           const label = savedServerTitle(server, names)
-          const enabled = server.enabled === true
-          const note = watchable ? watchNote(watchStates[normalizedServerUrl], enabled) : null
+          const note = watchable ? watchNote(watchStates[normalizedServerUrl]) : null
           const editing = editTarget?.baseUrl === normalizedServerUrl
           const health = serverHealth[normalizedServerUrl] ?? serverHealth[server.base_url]
           return (
@@ -636,6 +640,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                 subtitle={note ? undefined : healthWord(health)}
                 mono={label === server.base_url}
                 note={note}
+                origin="added by address"
                 inUse={active}
                 onOpen={touch && !pending ? (active ? onOpenInUse : () => { void connectExternal(normalizedServerUrl, server.name ?? '', '', setListError) }) : undefined}
                 onMore={touch ? () => setRowSheet({
@@ -647,17 +652,6 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                   ],
                 }) : undefined}
               >
-                {watchable ? (
-                  <label className={cn('mr-1 flex items-center gap-2', TEXT.hint)}>
-                    Enabled
-                    <Switch
-                      checked={enabled}
-                      onCheckedChange={(next) => { void toggleEnabled(server, next) }}
-                      disabled={pending}
-                      aria-label={`Enable ${label}`}
-                    />
-                  </label>
-                ) : null}
                 {active ? openInUse(label) : touch ? null : (
                   <Button
                     type="button"
@@ -671,42 +665,19 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                   </Button>
                 )}
                 {touch ? null : (
-                <>
-                <Button
-                  ref={(node) => {
-                    if (node) editButtonRefs.current.set(normalizedServerUrl, node)
-                    else editButtonRefs.current.delete(normalizedServerUrl)
-                  }}
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  aria-label={`Edit ${label}`}
-                  aria-expanded={editing}
-                  onClick={() => (editing ? closeForm() : openEdit(server, active))}
-                  disabled={pending}
-                >
-                  <Pencil size={ICON_SIZE_INLINE} aria-hidden="true" />
-                  Edit
-                </Button>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="text-(--color-text-muted) hover:text-(--color-error)"
-                        onClick={() => setConfirm({ kind: 'remove', baseUrl: server.base_url, label })}
-                        disabled={pending}
-                        aria-label={`Remove ${label}…`}
-                      >
-                        <Trash2 size={ICON_SIZE_INLINE} aria-hidden="true" />
-                      </Button>
-                    }
-                  />
-                  <TooltipContent>Remove server…</TooltipContent>
-                </Tooltip>
-                </>
+                  <Button
+                    ref={(node) => {
+                      if (node) detailsButtonRefs.current.set(normalizedServerUrl, node)
+                      else detailsButtonRefs.current.delete(normalizedServerUrl)
+                    }}
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Details of ${label}`}
+                    onClick={() => showDetails({ saved: normalizedServerUrl })}
+                  >
+                    Details
+                  </Button>
                 )}
               </ServerRow>
               {active ? <ServerUpdateOnRow /> : null}
@@ -718,7 +689,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
           <div className={cn(ROW_PAD, 'flex flex-wrap items-center gap-1')}>
             <Button ref={addButtonRef} type="button" variant="ghost" size="sm" onClick={openAdd} disabled={pending}>
               <Plus size={ICON_SIZE_INLINE} aria-hidden="true" />
-              Add a server
+              Add a computer by address
             </Button>
             {canScanQr() && (
               <Button type="button" variant="ghost" size="sm" onClick={() => { if (onScanQr) onScanQr(); else void scanConnectCode() }} disabled={pending}>
@@ -728,7 +699,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             )}
           </div>
         )}
-      </PanelSection>
+      </ComputersList>
 
       {listError ? (
         <Callout tone="error" role="alert">{listError}</Callout>
@@ -739,16 +710,18 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       <ActionSheet
         open={rowSheet !== null}
         onClose={() => setRowSheet(null)}
-        title={rowSheet?.title ?? 'Server'}
+        title={rowSheet?.title ?? 'Computer'}
         items={rowSheet?.items ?? []}
       />
 
       <ComputerDetailsDialog
-        open={detailsOpen}
+        open={detailsOpen && (typeof details !== 'object' || detailsSaved !== null)}
         onOpenChange={setDetailsOpen}
-        title={details === 'builtin' ? 'Built-in server' : unlistedTitle}
-        name={details === 'builtin' ? builtinName : unlistedName}
-        facts={detailsInUse ? [{ label: 'Address', value: normalizeServerBaseUrl(currentUrl), mono: true }] : []}
+        title={details === 'builtin' ? 'This computer' : details === 'unlisted' ? unlistedTitle : detailsSavedLabel}
+        name={details === 'builtin' ? builtinName : details === 'unlisted' ? unlistedName : detailsSavedUrl ? names?.[detailsSavedUrl] ?? detailsSaved?.name ?? null : null}
+        facts={detailsSavedUrl
+          ? [{ label: 'Address', value: detailsSavedUrl, mono: true }]
+          : detailsInUse ? [{ label: 'Address', value: normalizeServerBaseUrl(currentUrl), mono: true }] : []}
         rename={detailsInUse && serverInUseKeepsName() ? {
           name: (details === 'builtin' ? builtinName : unlistedName) ?? '',
           save: async (name) => {
@@ -756,17 +729,58 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             if (next) setStatus(next)
           },
         } : null}
-        renameHint={detailsInUse ? NAME_NEEDS_UPDATE : 'Use the built-in server to rename this computer.'}
-      />
+        renameHint={detailsSaved ? undefined : detailsInUse ? NAME_NEEDS_UPDATE : RENAME_ON_ITSELF}
+      >
+        {details === 'builtin' && status?.sidecar_running ? (
+          <div className="flex justify-end">
+            <Button type="button" variant="danger-subtle" size="sm" onClick={() => { setDetailsOpen(false); setConfirm({ kind: 'stop' }) }} disabled={pending}>
+              Stop…
+            </Button>
+          </div>
+        ) : null}
+        {detailsSaved && detailsSavedUrl ? (
+          <>
+            {watchable ? (
+              <label className="flex items-center gap-3">
+                <span className="min-w-0 flex-1">
+                  <span className={cn('block', TEXT.label)}>Watch in the background</span>
+                  <span className={cn('block', TEXT.hint)}>The notch follows its agents while you use another computer.</span>
+                </span>
+                <Switch
+                  checked={detailsSaved.enabled === true}
+                  onCheckedChange={(next) => { void toggleEnabled(detailsSaved, next) }}
+                  disabled={pending}
+                  aria-label={`Watch ${detailsSavedLabel} in the background`}
+                />
+              </label>
+            ) : null}
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="danger-subtle"
+                size="sm"
+                onClick={() => { setDetailsOpen(false); setConfirm({ kind: 'remove', baseUrl: detailsSaved.base_url, label: detailsSavedLabel }) }}
+                disabled={pending}
+              >
+                Remove…
+              </Button>
+              <Button type="button" variant="subtle" size="sm" onClick={() => { setDetailsOpen(false); openEdit(detailsSaved, detailsSavedActive) }} disabled={pending}>
+                <Pencil size={ICON_SIZE_INLINE} aria-hidden="true" />
+                Edit
+              </Button>
+            </div>
+          </>
+        ) : null}
+      </ComputerDetailsDialog>
 
       <ConfirmDialog
         open={confirm !== null}
         onOpenChange={(open) => { if (!open) setConfirm(null) }}
-        title={confirm?.kind === 'stop' ? 'Stop the built-in server?' : `Remove ${confirm?.kind === 'remove' ? confirm.label : 'server'}?`}
+        title={confirm?.kind === 'stop' ? 'Stop OpenAgentd on this computer?' : `Remove ${confirm?.kind === 'remove' ? confirm.label : 'it'}?`}
         description={confirm?.kind === 'stop'
-          ? 'Running agents stop and this app disconnects until you start it again or connect to another server.'
-          : 'The server is removed from this list. The server itself keeps running.'}
-        confirmLabel={confirm?.kind === 'stop' ? 'Stop server' : 'Remove server'}
+          ? 'Running agents stop, and this app disconnects until you start it again or use another computer.'
+          : 'It leaves this list. The computer itself keeps running.'}
+        confirmLabel={confirm?.kind === 'stop' ? 'Stop' : 'Remove'}
         onConfirm={async () => {
           if (confirm?.kind === 'stop') await stopBundled()
           else if (confirm?.kind === 'remove') await removeServer(confirm.baseUrl)
@@ -778,10 +792,32 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   )
 }
 
+/** The list's card, under its "Computers" heading unless the host already shows one. */
+function ComputersList({ untitled, touch, children }: { untitled: boolean; touch: boolean; children: ReactNode }) {
+  if (untitled) {
+    return (
+      <SectionCard>
+        <div className="divide-y divide-(--color-border-subtle)">{children}</div>
+      </SectionCard>
+    )
+  }
+  return (
+    <PanelSection
+      title="Computers"
+      description={touch ? 'Tap a computer to use it.' : 'Where your agents run. Use switches this app to another one.'}
+      flush
+    >
+      {children}
+    </PanelSection>
+  )
+}
+
 /**
- * The fields and actions of one server form, drawn where it was opened:
- * under the row being edited, or at the end of the list for a new one.
- * Escape cancels it (and only it, not the dialog around it).
+ * The fields and the one button of a form, drawn where it was opened: under
+ * the row being edited, or at the end of the list for a new computer.
+ * Connect (Save, when editing) tests the address and key first and says
+ * why in place when the test fails. Escape cancels the form (and only it,
+ * not the dialog around it).
  */
 function ServerForm({
   mode,
@@ -794,14 +830,12 @@ function ServerForm({
   onServerNameChange,
   error,
   tested,
-  needsTest,
   pending,
-  onTest,
   onSave,
   onCancel,
 }: {
   mode: 'add' | 'edit'
-  /** The edited server's name; `null` for a new one. */
+  /** The edited computer's name; `null` for a new one. */
   label: string | null
   baseUrl: string
   accessKey: string
@@ -810,11 +844,9 @@ function ServerForm({
   onAccessKeyChange: (value: string) => void
   onServerNameChange: (value: string) => void
   error: string | null
+  /** The address and key as typed already passed a test (a scanned code is tested on arrival). */
   tested: boolean
-  /** Save waits for a passing Test (a new server, or a new address or key). */
-  needsTest: boolean
   pending: boolean
-  onTest: () => void
   onSave: () => void
   onCancel: () => void
 }) {
@@ -825,12 +857,13 @@ function ServerForm({
     urlRef.current?.focus({ preventScroll: true })
     urlRef.current?.scrollIntoView?.({ block: 'nearest' })
   }, [])
-  // A rejected URL or key shakes the fields (a repeat of the same message
-  // too: the error clears when a new try starts).
+  // A rejected address or key shakes the fields (a repeat of the same
+  // message too: the error clears when a new try starts).
   useEffect(() => {
     if (error) shake(fieldsRef.current)
   }, [error])
-  const title = mode === 'edit' ? `Edit ${label}` : 'Add a server'
+  const title = mode === 'edit' ? `Edit ${label}` : 'Add a computer by address'
+  const saveLabel = mode === 'add' ? (pending ? 'Connecting…' : 'Connect') : (pending ? 'Saving…' : 'Save')
   return (
     <div
       role="group"
@@ -846,7 +879,7 @@ function ServerForm({
     >
       <p className={cn('px-4 pt-4', TEXT.title)}>{title}</p>
       <div ref={fieldsRef} className="grid gap-y-5 px-4 py-4">
-        <Field label="Server URL" htmlFor="app-backend-url">
+        <Field label="Address" htmlFor="app-backend-url">
           <Input
             ref={urlRef}
             id="app-backend-url"
@@ -854,24 +887,24 @@ function ServerForm({
             inputMode="url"
             value={baseUrl}
             onChange={(event) => onBaseUrlChange(event.target.value)}
-            placeholder="http://<server-host>:4082"
+            placeholder="http://<host>:4082"
             autoComplete="off"
             spellCheck={false}
             className="h-9 font-mono"
           />
         </Field>
-        <Field label="Access key" htmlFor="app-backend-key" hint="Needed if the server was started with an access key.">
+        <Field label="Access key" htmlFor="app-backend-key">
           <Input
             id="app-backend-key"
             value={accessKey}
             onChange={(event) => onAccessKeyChange(event.target.value)}
-            placeholder="Leave empty if the server has no key"
+            placeholder="Leave empty if it has none"
             type="password"
             autoComplete="off"
             className="h-9"
           />
         </Field>
-        <Field label="Server name" htmlFor="app-backend-name" hint="Optional. Shown in the server list.">
+        <Field label="Name" htmlFor="app-backend-name">
           <Input
             id="app-backend-name"
             value={serverName}
@@ -888,20 +921,15 @@ function ServerForm({
             <p role="alert" className="text-(--color-error)">{error}</p>
           ) : tested ? (
             <p role="status" className="font-medium text-(--accent-green-text)">Connection successful.</p>
-          ) : needsTest ? (
-            <p className="text-(--color-text-muted)">Test the server to enable saving.</p>
           ) : null}
         </div>
         {touchForm ? (
-          // Touch: large equal buttons, Test then Save, with Cancel under them.
-          <div className="grid grid-cols-2 gap-2">
-            <Button type="button" variant="default" onClick={onTest} disabled={pending} className="h-11 w-full">
-              {pending ? 'Testing…' : 'Test'}
+          // Touch: one large button, with Cancel under it.
+          <div className="grid gap-2">
+            <Button type="button" variant="primary" onClick={onSave} disabled={pending} className="h-11 w-full">
+              {saveLabel}
             </Button>
-            <Button type="button" variant="primary" onClick={onSave} disabled={pending || (needsTest && !tested)} className="h-11 w-full">
-              {mode === 'add' ? 'Save and use' : 'Save'}
-            </Button>
-            <Button type="button" variant="ghost" onClick={onCancel} disabled={pending} className="col-span-2 h-11 w-full">
+            <Button type="button" variant="ghost" onClick={onCancel} disabled={pending} className="h-11 w-full">
               Cancel
             </Button>
           </div>
@@ -910,11 +938,8 @@ function ServerForm({
             <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={pending}>
               Cancel
             </Button>
-            <Button type="button" variant="default" size="sm" onClick={onTest} disabled={pending}>
-              {pending ? 'Testing…' : 'Test'}
-            </Button>
-            <Button type="button" variant="primary" size="sm" onClick={onSave} disabled={pending || (needsTest && !tested)}>
-              {mode === 'add' ? 'Save and use' : 'Save'}
+            <Button type="button" variant="primary" size="sm" onClick={onSave} disabled={pending}>
+              {saveLabel}
             </Button>
           </div>
         )}
@@ -929,6 +954,7 @@ export function ServerRow({
   subtitle,
   mono = false,
   note = null,
+  origin,
   inUse,
   onMore,
   onOpen,
@@ -942,7 +968,9 @@ export function ServerRow({
   mono?: boolean
   /** Background connection state, under the subtitle. */
   note?: { text: string; tone: 'ok' | 'warn' | 'error' | 'muted' } | null
-  /** The app talks to this server now. */
+  /** Where the row comes from ("added by address"), after its status line. */
+  origin?: string
+  /** The app talks to this computer now. */
   inUse: boolean
   /** Touch: open the row's action sheet, from a long press or its ⋯. */
   onMore?: () => void
@@ -996,7 +1024,9 @@ export function ServerRow({
             {inUse ? <StatusChip status={STATUS.inUse} /> : null}
           </span>
           {subtitle ? (
-            <span className={cn('mt-0.5 block truncate', TEXT.hint, subtitle.includes('://') && 'font-mono')}>{subtitle}</span>
+            <span className={cn('mt-0.5 block truncate', TEXT.hint, subtitle.includes('://') && 'font-mono')}>
+              {subtitle}{origin ? ` · ${origin}` : ''}
+            </span>
           ) : null}
           {note ? (
             <span
@@ -1009,6 +1039,7 @@ export function ServerRow({
               )}
             >
               {note.text}
+              {origin ? <span className="text-(--color-text-muted)">{` · ${origin}`}</span> : null}
             </span>
           ) : null}
         </span>

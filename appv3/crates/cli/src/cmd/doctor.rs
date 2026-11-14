@@ -260,7 +260,7 @@ pub fn doctor() -> Result<ExitCode> {
     let ignored = appv3_providers::credentials_migration::ignored_dotenv_credentials();
     if !ignored.is_empty() {
         checks.warn(&format!("Ignored provider keys from a .env file: {}", ignored.join(", ")));
-        println!("     {}", dim("Add them in Settings → Providers, or run `agentd credentials import <file>`"));
+        println!("     {}", dim("Add them in Settings → Models, or run `agentd credentials import <file>`"));
     }
     for n in appv3_core::env::env_notices() {
         checks.warn(&tilde_text(&n));
@@ -298,7 +298,7 @@ pub fn doctor() -> Result<ExitCode> {
         } else {
             checks.fail("No LLM provider API key configured");
             let names: Vec<&str> = key_vars.iter().map(|(_, v)| v.as_str()).collect();
-            println!("     {}", dim(&format!("Add one in Settings → Providers, or export one of: {}", names.join(", "))));
+            println!("     {}", dim(&format!("Add one in Settings → Models, or export one of: {}", names.join(", "))));
         }
     }
     if let Some(p) = lead_oauth {

@@ -31,7 +31,7 @@ use crate::servers::{ServerId, BUNDLED_KEY};
 pub const TRAY_POPUP_WINDOW: &str = "tray-popup";
 
 /// What the popup calls the builtin sidecar.
-const BUNDLED_NAME: &str = "Built-in server";
+const BUNDLED_NAME: &str = "This computer";
 const AUTO_ID: &str = "auto";
 const NO_SERVER_NAME: &str = "No server connected";
 

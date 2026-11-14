@@ -56,8 +56,8 @@ function emit(index: number, event: OAuthLoginEvent) {
 }
 
 async function submitCode(code: string) {
-  fireEvent.change(await screen.findByLabelText(/Paste authorization callback/), { target: { value: code } })
-  fireEvent.click(screen.getByRole('button', { name: 'Finish connection' }))
+  fireEvent.change(await screen.findByLabelText(/Paste the address or code/), { target: { value: code } })
+  fireEvent.click(screen.getByRole('button', { name: 'Finish signing in' }))
 }
 
 describe('OAuthLoginDialog — callback account forwarding', () => {
@@ -106,5 +106,60 @@ describe('OAuthLoginDialog — callback account forwarding', () => {
     await submitCode('c3')
     await waitFor(() => expect(mockCallback).toHaveBeenCalledTimes(1))
     expect(mockCallback.mock.calls[0]).toEqual(['plug', 'c3', undefined])
+  })
+})
+
+describe('OAuthLoginDialog: signing in, in the words of the person signing in', () => {
+  beforeEach(() => {
+    streams.length = 0
+    mockLoginStream.mockClear()
+  })
+  afterEach(cleanup)
+
+  const chatgpt: ProviderInfo = { ...provider, id: 'codex', label: 'ChatGPT' }
+
+  it('is titled by the product, and says what to do with the code', () => {
+    render(<Harness p={chatgpt} />)
+    emit(0, { event: 'started' })
+    emit(0, { event: 'device_code', user_code: 'WDJB-MJHT', verification_uri: 'https://auth.example/device' })
+
+    const dialog = screen.getByRole('dialog', { name: 'Sign in to ChatGPT' })
+    expect(dialog.textContent).toContain('Sign in in your browser and enter this code. This window updates when you are done.')
+    expect(screen.getByText('Code to enter')).toBeTruthy()
+    expect(screen.getByText('WDJB-MJHT')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Copy code' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open the sign-in page' })).toBeTruthy()
+  })
+
+  it('uses none of the protocol’s words outside Technical details', () => {
+    render(<Harness p={chatgpt} />)
+    emit(0, { event: 'started' })
+    emit(0, { event: 'device_code', user_code: 'WDJB-MJHT', verification_uri: 'https://auth.example/device' })
+    emit(0, { event: 'polling', elapsed_s: 5 })
+
+    const dialog = screen.getByRole('dialog')
+    const details = dialog.querySelector('details')
+    expect(details?.querySelector('summary')?.textContent).toContain('Technical details')
+    const outside = dialog.cloneNode(true) as HTMLElement
+    outside.querySelector('details')?.remove()
+    expect(outside.textContent).not.toMatch(/token|device code|authoriz|OAuth|secure login|browser approval|provider/i)
+  })
+
+  it('shows one thing to act on while the code waits: no status row above it', () => {
+    render(<Harness p={chatgpt} />)
+    emit(0, { event: 'started' })
+    expect(screen.getByText('Starting…')).toBeTruthy()
+    emit(0, { event: 'device_code', user_code: 'WDJB-MJHT', verification_uri: 'https://auth.example/device' })
+    expect(screen.queryByText('Starting…')).toBeNull()
+    expect(screen.queryByText(/Waiting/)).toBeNull()
+    // Once signed in, the row says what happens next.
+    emit(0, { event: 'token_acquired' })
+    expect(screen.getByText('Signed in. Checking your account…')).toBeTruthy()
+  })
+
+  it('says to sign in again for a reconnect, and which account', () => {
+    render(<Harness p={chatgpt} credentialId="cred_1" />)
+    const dialog = screen.getByRole('dialog', { name: 'Sign in to ChatGPT again' })
+    expect(dialog.textContent).toContain('Sign in with the same account. This window updates when you are done.')
   })
 })

@@ -36,7 +36,7 @@ describe('ConnectionBanner', () => {
     useServerUpdateStore.setState({ phase: { kind: 'updating', from: '3.50.0', target: '3.51.0' } })
     render(<ConnectionBanner />)
     expect(screen.queryByRole('alert')).toBeNull()
-    expect(screen.getByRole('status').textContent).toContain('Updating the server to v3.51.0')
+    expect(screen.getByRole('status').textContent).toContain('Updating to v3.51.0')
     expect(screen.queryByRole('button')).toBeNull()
   })
 
@@ -53,7 +53,7 @@ describe('ConnectionBanner', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('names the built-in server once the health check has failed', () => {
+  it('says OpenAgentd stopped on this computer once the health check has failed', () => {
     health = { isSuccess: false, isError: true, isPending: false }
     render(<ConnectionBanner />)
     expect(screen.getByRole('alert').textContent).toContain("OpenAgentd stopped on this computer · Retrying…")
@@ -75,17 +75,17 @@ describe('ConnectionBanner', () => {
     expect(screen.getByRole('alert').textContent).toContain("Can't reach 192.168.1.20 · Retrying…")
   })
 
-  it('opens the backend connection dialog from Change server', async () => {
+  it('opens the backend connection dialog from Change computer', async () => {
     health = { isSuccess: false, isError: true, isPending: false }
     render(<ConnectionBanner />)
-    fireEvent.click(screen.getByRole('button', { name: 'Change server' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Change computer' }))
     expect(await screen.findByRole('dialog', { name: 'Backend connection' })).toBeTruthy()
   })
 
   it('goes away when the backend answers again, keeping an open dialog', async () => {
     health = { isSuccess: false, isError: true, isPending: false }
     const { rerender } = render(<ConnectionBanner />)
-    fireEvent.click(screen.getByRole('button', { name: 'Change server' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Change computer' }))
     await screen.findByRole('dialog', { name: 'Backend connection' })
 
     health = { isSuccess: true, isError: false, isPending: false }

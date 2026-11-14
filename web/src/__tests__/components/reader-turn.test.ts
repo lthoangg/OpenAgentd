@@ -169,7 +169,7 @@ describe('summarizeWork', () => {
     ]
 
     expect(workSummaryDetail(summarizeWork(blocks))).toBe(
-      '1 read, 1 search, 4 plan updates, 2 questions, 2 delegations, 2 preview actions, 1 MCP call, 2 generations',
+      '1 read, 1 search, 4 plan updates, 2 questions, 2 delegations, 2 preview actions, 1 connector call, 2 generations',
     )
   })
 

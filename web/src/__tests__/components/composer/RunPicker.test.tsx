@@ -96,7 +96,7 @@ function renderAccounts(usageByAccount: Record<string, ProviderUsageResponse['li
 
 describe('RunPicker', () => {
   describe('account quota', () => {
-    it('shows every window of the main limit in % used, as Settings → Providers does', () => {
+    it('shows every window of the main limit in % used, as Settings → Models does', () => {
       const row = renderAccounts({
         work: [{ primary: { used_percent: 12, window_minutes: 300 }, secondary: { used_percent: 64, window_minutes: 10_080 } }],
         home: [],
@@ -373,7 +373,7 @@ describe('RunPicker', () => {
     expect(screen.getByText('Back on Work when its limit resets.')).toBeTruthy()
   })
 
-  it('offers Reconnect for a signed-out account, opening Settings → Providers', () => {
+  it('offers Reconnect for a signed-out account, opening Settings → Models', () => {
     const openSettings = mock((..._args: unknown[]) => {})
     const original = useSettingsStore.getState().openSettings
     useSettingsStore.setState({ openSettings })

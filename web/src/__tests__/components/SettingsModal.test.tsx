@@ -240,15 +240,19 @@ describe('SettingsModal — prefers-reduced-motion', () => {
 })
 
 describe('SettingsModal — nav search and groups', () => {
-  it('groups the nav in sentence case: App, Agents and tools, Sessions, Models and media, Data and safety', () => {
+  it('groups the nav by who needs a page: Basics, Agent, Advanced', () => {
     useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
     renderModal()
 
     const nav = screen.getByRole('navigation', { name: 'Settings categories' })
     const groups = [...nav.querySelectorAll('[role=group]')].map((g) => g.getAttribute('aria-label'))
-    expect(groups).toEqual(['App', 'Agents and tools', 'Sessions', 'Models and media', 'Data and safety', 'About'])
-    expect(screen.getByRole('button', { name: 'Session titles' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Denied paths' })).toBeTruthy()
+    expect(groups).toEqual(['Basics', 'Agent', 'Advanced'])
+    // Four small pages are one, Sessions (the registry test counts all fifteen).
+    expect(within(nav).getByRole('button', { name: 'Sessions' })).toBeTruthy()
+    expect(within(nav).getByRole('button', { name: 'Blocked files' })).toBeTruthy()
+    for (const old of ['Session titles', 'Context', 'Goals', 'Retention', 'Providers', 'MCP servers', 'Denied paths']) {
+      expect(within(nav).queryByRole('button', { name: old })).toBeNull()
+    }
   })
 
   /** The sidebar's own search: the phone section list has one too, hidden by CSS from 768px up. */
@@ -264,7 +268,7 @@ describe('SettingsModal — nav search and groups', () => {
     act(() => { fireEvent.change(search, { target: { value: 'api keys' } }) })
     // The results list stands in for the section list while there is a query.
     const results = within(sidebar().getByRole('list', { name: 'Search results' }))
-    expect(results.getByRole('button', { name: 'Providers' })).toBeTruthy()
+    expect(results.getByRole('button', { name: 'Models' })).toBeTruthy()
     expect(results.queryByRole('button', { name: 'Memory' })).toBeNull()
 
     act(() => { fireEvent.keyDown(search, { key: 'Enter' }) })
@@ -276,7 +280,7 @@ describe('SettingsModal — nav search and groups', () => {
     renderModal()
 
     act(() => { fireEvent.change(sidebar().getByRole('searchbox', { name: 'Search settings' }), { target: { value: 'fallback order' } }) })
-    const result = sidebar().getByRole('button', { name: 'Accounts and fallback order, in Providers' })
+    const result = sidebar().getByRole('button', { name: 'Accounts and fallback order, in Models' })
     act(() => { fireEvent.click(result) })
     expect(useSettingsStore.getState().section).toBe('providers')
   })
@@ -333,23 +337,23 @@ describe('SettingsModal — icon rail below 900px with a mouse', () => {
 
     expect(sidebar().className).toContain('w-12')
     expect(sidebar().className).toContain('settings-list:w-60')
-    const providers = within(sidebar()).getByRole('button', { name: 'Providers' })
-    expect(providers.querySelector('span.settings-rail\\:sr-only')?.textContent).toBe('Providers')
+    const providers = within(sidebar()).getByRole('button', { name: 'Models' })
+    expect(providers.querySelector('span.settings-rail\\:sr-only')?.textContent).toBe('Models')
     // Group headings go with the labels; the groups stay named for assistive tech.
-    expect(within(sidebar()).getAllByRole('group').length).toBeGreaterThan(3)
+    expect(within(sidebar()).getAllByRole('group').length).toBe(3)
   })
 
   it('names a section in an app tooltip, with what it holds', async () => {
     useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
     renderModal()
 
-    const row = within(sidebar()).getByRole('button', { name: 'Providers' })
+    const row = within(sidebar()).getByRole('button', { name: 'Models' })
     expect(row.getAttribute('title')).toBeNull()
     fireEvent.mouseEnter(row.parentElement as HTMLElement)
     // The close button's own hint may be open too (it holds focus first).
     await waitFor(() => {
       const tips = [...document.querySelectorAll('[role="tooltip"]')].map((t) => t.textContent ?? '')
-      expect(tips.some((t) => t.includes('Providers') && t.includes('API keys and model accounts'))).toBe(true)
+      expect(tips.some((t) => t.includes('Models') && t.includes('The accounts and API keys your models come from'))).toBe(true)
     }, { timeout: 1500 })
   })
 
@@ -375,12 +379,20 @@ describe('SettingsModal — one name for the server section', () => {
     expect(within(screen.getByRole('navigation', { name: 'Settings categories' })).queryByRole('button', { name: 'Connection' })).toBeNull()
   })
 
-  it('calls the retention section Retention, not Data retention', () => {
+  it('finds each section by the name it had before', () => {
     useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
     renderModal()
     const nav = within(screen.getByRole('navigation', { name: 'Settings categories' }))
-    expect(nav.getByRole('button', { name: 'Retention' })).toBeTruthy()
-    expect(nav.queryByRole('button', { name: 'Data retention' })).toBeNull()
+    const search = nav.getByRole('searchbox', { name: 'Search settings' })
+    const first = (query: string) => {
+      act(() => { fireEvent.change(search, { target: { value: query } }) })
+      return within(nav.getByRole('list', { name: 'Search results' })).getAllByRole('button')[0]?.textContent ?? ''
+    }
+    expect(first('providers')).toContain('Models')
+    expect(first('mcp')).toContain('Connectors')
+    expect(first('denied')).toContain('Blocked files')
+    expect(first('retention')).toContain('Sessions')
+    expect(first('server')).toContain('Server')
   })
 })
 
@@ -408,7 +420,7 @@ describe('SettingsModal — on a phone', () => {
 
     act(() => useSettingsStore.getState().setSection('providers'))
     expect(document.querySelector('[data-phone-stack-page]')?.hasAttribute('inert')).toBe(false)
-    expect(screen.getByRole('heading', { name: 'Providers' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Models' })).toBeTruthy()
     // The list is still there, under the section, for the pop.
     expect(screen.getByRole('navigation', { name: 'Settings sections', hidden: true })).toBeTruthy()
   })

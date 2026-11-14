@@ -138,10 +138,10 @@ describe('NetworkAccessCard', () => {
     expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false')
   })
 
-  it('is disabled while the built-in server is stopped', async () => {
+  it('is disabled while OpenAgentd is stopped on this computer', async () => {
     status = base({ sidecar_running: false })
     render(<NetworkAccessCard />)
-    expect(await screen.findByText('Start the built-in server first.')).toBeTruthy()
+    expect(await screen.findByText('Start OpenAgentd on this computer first.')).toBeTruthy()
     expect((screen.getByRole('switch') as HTMLButtonElement).disabled).toBe(true)
   })
 

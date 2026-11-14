@@ -201,7 +201,7 @@ export function workSummaryDetail(summary: WorkSummary): string {
     count(summary.delegations, 'delegation'),
     count(summary.reports, 'report'),
     count(summary.previews, 'preview action'),
-    count(summary.mcpCalls, 'MCP call'),
+    count(summary.mcpCalls, 'connector call'),
     count(summary.generations, 'generation'),
     count(summary.checks, 'goal check'),
     summary.other ? `${summary.other} other` : '',

@@ -28,7 +28,6 @@ import { PanelSection } from '@/components/ui/panel-section'
 import { PanelRow } from '@/components/ui/panel-row'
 import { Callout } from '@/components/ui/callout'
 import { Chip } from '@/components/ui/chip'
-import { TERMS } from '@/components/ui/term'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { McpStatusChip } from '@/components/McpStatusChip'
 import {
@@ -89,7 +88,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
     if (!result.ok) { setSaveError(result.error); return }
     try {
       await updateMut.mutateAsync({ name, server: result.body })
-      push({ tone: 'success', title: `Saved "${name}"`, description: 'Available on next turn.' })
+      push({ tone: 'success', title: `Saved "${name}"`, description: 'Applies to your next message.' })
     } catch (err) {
       const msg = errorMessage(err)
       setSaveError(msg)
@@ -121,10 +120,10 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
   const handleConnectOAuth = async () => {
     try {
       await connectOAuthMut.mutateAsync(name)
-      push({ tone: 'success', title: `Connected OAuth for "${name}"` })
+      push({ tone: 'success', title: `Signed in to "${name}"` })
     } catch (err) {
       const msg = errorMessage(err)
-      push({ tone: 'error', title: `OAuth connect failed for "${name}"`, description: msg })
+      push({ tone: 'error', title: `Couldn't sign in to "${name}"`, description: msg })
     }
   }
 
@@ -154,7 +153,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className={`${EDITOR_BODY} flex flex-col gap-8`}>
-          {serverQ.isLoading && <SettingsSkeleton label="Loading server" />}
+          {serverQ.isLoading && <SettingsSkeleton label="Loading connector" />}
           {serverQ.isError && (
             <Callout
               tone="error"
@@ -171,7 +170,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
               <StatusCard server={server} />
 
               {server.state === 'error' && server.error && (
-                <Callout tone="error" role="alert" title="Server failed to start">
+                <Callout tone="error" role="alert" title="It did not start">
                   <p className="font-mono break-words">{server.error}</p>
                 </Callout>
               )}
@@ -188,10 +187,10 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
                   }
                 >
                   {server.enabled
-                    ? 'Sign in with the server (OAuth) so agents can use its tools.'
+                    ? 'Sign in so agents can use its tools.'
                     : plugin
                       ? 'Turn the plugin on in Plugins before you sign in.'
-                      : 'Turn the server on and save before you sign in.'}
+                      : 'Turn it on and save before you sign in.'}
                 </Callout>
               )}
 
@@ -202,7 +201,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
               ) : (
                 <PanelSection title="Configuration">
                   <p className="text-xs text-(--color-text-muted)">
-                    No saved configuration found. The server may have been removed from <span className="font-mono">mcp.json</span>.
+                    No saved configuration found. It may have been removed from <span className="font-mono">mcp.json</span>.
                   </p>
                 </PanelSection>
               )}
@@ -243,11 +242,11 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Delete &ldquo;{name}&rdquo;?</DialogTitle>
-            <DialogDescription>It is removed from mcp.json and its tools stop working. This can&apos;t be undone.</DialogDescription>
+            <DialogDescription>It is removed from mcp.json and its tools stop working.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="default" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-            <Button type="button" variant="danger" onClick={handleDelete} disabled={deleteMut.isPending}>Delete server</Button>
+            <Button type="button" variant="danger" onClick={handleDelete} disabled={deleteMut.isPending}>Delete connector</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -272,8 +271,10 @@ function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpSe
       <PanelRow label="State">
         <McpStatusChip server={server} />
       </PanelRow>
-      <PanelRow label="Transport">
-        <Chip mono title={server.transport === 'stdio' ? TERMS.stdio : TERMS.http}>{server.transport}</Chip>
+      <PanelRow label="Connects by">
+        <span className="text-xs text-(--color-text)">
+          {server.transport === 'stdio' ? 'A program on this computer' : server.transport === 'sse' ? 'A web address (SSE only)' : 'A web address'}
+        </span>
       </PanelRow>
       {server.plugin && (
         <PanelRow label="Source">
@@ -315,11 +316,11 @@ function PluginServerConfig({ server, plugin }: { server: ServerStatus; plugin: 
         </PanelRow>
       )}
       {config && config.transport !== 'stdio' && (
-        <PanelRow label="URL" stack>
+        <PanelRow label="Address" stack>
           <code className={CODE_LINE}>{config.url}</code>
         </PanelRow>
       )}
-      <PanelRow label="Turn on or off" description="The server goes on and off with its plugin.">
+      <PanelRow label="Turn on or off" description="It goes on and off with its plugin.">
         <Button variant="default" size="sm" onClick={() => setSection('plugins')}>Open plugins</Button>
       </PanelRow>
     </PanelSection>
@@ -344,10 +345,10 @@ function RestartCard({
   return (
     <PanelSection title="Manage" flush>
       <PanelRow
-        label="Restart server"
+        label="Restart"
         description={
           !enabled
-            ? plugin ? 'Turn the plugin on in Plugins first.' : 'Turn the server on and save first.'
+            ? plugin ? 'Turn the plugin on in Plugins first.' : 'Turn it on and save first.'
             : dirty
               ? 'Restart uses the saved settings. Save first to apply your edits.'
               : 'Reconnect to pick up changes or recover from an error.'
@@ -356,17 +357,17 @@ function RestartCard({
         <Button
           variant="default" size="sm"
           onClick={onRestart} disabled={pending || !enabled}
-          aria-label={pending ? 'Restarting' : 'Restart server'}
+          aria-label={pending ? 'Restarting' : 'Restart connector'}
         >
           <RotateCw size={12} className={cn(pending && 'animate-spin')} aria-hidden="true" />
           {pending ? 'Restarting…' : 'Restart'}
         </Button>
       </PanelRow>
       {onDelete && (
-        <PanelRow label="Delete server" description="Removes it from mcp.json. This can't be undone.">
+        <PanelRow label="Delete connector" description="Removes it from mcp.json.">
           <Button variant="danger-subtle" size="sm" onClick={onDelete} disabled={deletePending}>
             <Trash2 size={12} aria-hidden="true" />
-            {deletePending ? 'Deleting…' : 'Delete server…'}
+            {deletePending ? 'Deleting…' : 'Delete…'}
           </Button>
         </PanelRow>
       )}

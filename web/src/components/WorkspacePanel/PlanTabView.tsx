@@ -13,7 +13,7 @@
  * the change by content and tells the agent once.
  *
  * Beside Approve, "Keep going until done" also starts a goal that runs the
- * plan turn after turn until a check confirms its Done when. Settings → Goals
+ * plan turn after turn until a check confirms its Done when. Settings → Sessions
  * decides whether it starts ticked and the turn count it starts with; the
  * turns can be changed here for this plan. While it is on, Approve reads
  * "Approve and keep going (N turns)".
@@ -512,7 +512,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
               }
             />
             <TooltipContent side="bottom">
-              {`The agent works through the plan turn after turn until a check confirms its Done when, up to ${decision.defaultTurns} turns (Settings → Goals).`}
+              {`The agent works through the plan turn after turn until a check confirms its Done when, up to ${decision.defaultTurns} turns (Settings → Sessions).`}
             </TooltipContent>
           </Tooltip>
         )}

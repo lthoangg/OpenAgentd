@@ -1,7 +1,7 @@
 /**
  * Settings → Account — this computer's optional OpenAgentd Cloud account.
  * Guest is the default and is never blocked or nagged. **Sign in** is the
- * way in, with **Use as server** and **Use as client** (both on, under
+ * way in, with the two sharing choices (both on, under
  * **Options**): on an empty account this computer creates it (after the
  * recovery code); otherwise a phone scans the QR code the sign-in step
  * shows and the person picks the phone's number here, or a device already
@@ -29,7 +29,7 @@ import { DesktopAddDeviceSheet } from '@/components/account/DesktopAddDeviceShee
 import { DesktopApprovalSheet } from '@/components/account/DesktopApprovalSheet'
 import { DeviceRows } from '@/components/account/DeviceRows'
 import { RecoveryStep } from '@/components/account/RecoveryStep'
-import { COMPUTER_ROLES, RolesChoice, rolesLabel } from '@/components/account/RolesChoice'
+import { COMPUTER_ROLES, RolesChoice, rolesAsked, rolesLabel } from '@/components/account/RolesChoice'
 import { ApiValidationError } from '@/api/client/_shared'
 import { ConnectQrCode } from '@/components/ConnectQrCode'
 import { SettingsPage } from '@/components/settings/SettingsPage'
@@ -81,7 +81,7 @@ function relayText(relay: RelayState): string {
     case 'offline':
       return 'Offline, retrying'
     case 'off':
-      return 'Not used as a server: your other devices do not reach this one'
+      return 'Your other devices cannot open this computer'
     case 'taken_over':
       return 'Taken over: another copy of this computer uses its account keys. Retrying every few minutes'
     case 'paused': {
@@ -130,7 +130,7 @@ function DevicesSection({ canRemove, onAdd }: { canRemove: boolean; onAdd?: () =
             name: ownName ?? '',
             save: async (name) => { await renameComputerInUse(app, name) },
           } : null}
-          selfRenameHint={me === undefined ? undefined : onOwnServer ? NAME_NEEDS_UPDATE : 'Use the built-in server to rename this computer.'}
+          selfRenameHint={me === undefined ? undefined : onOwnServer ? NAME_NEEDS_UPDATE : 'Switch to this computer to rename it.'}
           onRenameComputer={isDesktopShell() ? async (deviceId, name) => { await renameAccountComputer(app ?? null, deviceId, name) } : undefined}
         />
       </PanelSection>
@@ -152,7 +152,7 @@ function PendingSection({ onReview }: { onReview: (row: CloudPending) => void })
   return (
     <PanelSection title="Pending approvals" description={description} flush>
       {rows.map((row) => (
-        <PanelRow key={row.enrollment_id} label={pendingLabel(row)} description={`Asks to be: ${rolesLabel(row).toLowerCase()}`}>
+        <PanelRow key={row.enrollment_id} label={pendingLabel(row)} description={rolesAsked(row)}>
           {here && <Button size="sm" variant="primary" onClick={() => onReview(row)}>Review</Button>}
         </PanelRow>
       ))}
@@ -399,7 +399,7 @@ export function AccountSettingsPage() {
             <span className="font-mono text-xs text-(--color-text-2)">{status.fingerprint}</span>
           </PanelRow>
           {status.server !== undefined && (
-            <PanelRow label="Used as">
+            <PanelRow label="Sharing">
               <span className="text-xs text-(--color-text-2)">{rolesLabel({ server: status.server, client: status.client ?? false })}</span>
             </PanelRow>
           )}

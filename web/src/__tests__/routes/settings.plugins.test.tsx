@@ -178,11 +178,11 @@ describe('PluginsSettingsPage — single-file plugins', () => {
     expect(within(alert).getByText('legacy.py')).toBeInTheDocument()
   })
 
-  it('shows no warning and a one-line empty state when no single-file plugin is installed', () => {
+  it('shows no warning and no single-file section when no such plugin is installed', () => {
     renderPage({ dirs: ['/p'], plugins: [], unported: [], bundles: [] })
     expect(screen.queryByRole('alert')).toBeNull()
-    const list = screen.getByRole('region', { name: 'Single-file plugins' })
-    expect(within(list).getByText('No single-file plugins. Put a .ts or .js file in the plugin folder.')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Single-file plugins' })).toBeNull()
+    expect(screen.queryByText(/single-file plugins/i)).toBeNull()
   })
 })
 
@@ -195,7 +195,7 @@ describe('PluginsSettingsPage — bundles', () => {
     const changelog = bundleRow('changelog-tools')
     expect(within(changelog).getByText('1.2.0')).toBeInTheDocument()
     expect(within(changelog).getByText('Draft release notes from merged PRs')).toBeInTheDocument()
-    expect(within(changelog).getByText('1 skill · 1 MCP server · 1 tool')).toBeInTheDocument()
+    expect(within(changelog).getByText('1 skill · 1 connector · 1 tool')).toBeInTheDocument()
     expect(within(changelog).getByRole('switch', { name: 'Enable changelog-tools' })).toHaveAttribute('aria-checked', 'true')
 
     // No version or description: the row shows only what the bundle gave.
@@ -269,7 +269,7 @@ describe('PluginsSettingsPage — bundles', () => {
     expect(within(row).getByText('Write release notes')).toBeInTheDocument()
 
     // What will run on this machine: the program and its arguments, as one line.
-    expect(within(row).getByText('MCP servers · 1')).toBeInTheDocument()
+    expect(within(row).getByText('Connectors · 1')).toBeInTheDocument()
     expect(within(row).getByText('changelog-tools/github')).toBeInTheDocument()
     expect(chipText(row, 'stdio')).toBeInTheDocument()
     expect(within(row).getByText('npx -y @example/github-mcp').tagName).toBe('CODE')
@@ -371,7 +371,7 @@ describe('PluginsSettingsPage — bundles', () => {
     const row = bundleRow('broken-bundle')
     fireEvent.click(within(row).getByRole('button'))
     expect(within(row).getByText('Skills').nextElementSibling).toHaveTextContent('None')
-    expect(within(row).getByText('MCP servers').nextElementSibling).toHaveTextContent('None')
+    expect(within(row).getByText('Connectors').nextElementSibling).toHaveTextContent('None')
     expect(within(row).getByText('Tools').nextElementSibling).toHaveTextContent('None')
   })
 

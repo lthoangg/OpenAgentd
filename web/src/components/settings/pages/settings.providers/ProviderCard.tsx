@@ -29,10 +29,10 @@ function plural(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? '' : 's'}`
 }
 
-/** What a check of the credentials found; `Test` and `Save` both ask for one. */
+/** What a check of the credentials found; Test and the form's one button both ask for one. */
 type CheckResult = { ok: true; count: number } | { ok: false; title: string; message: string }
 
-/** Where Save is: it checks the key first, then stores it. */
+/** Where Connect (Save, once something is stored) is: it checks the key first, then stores it. */
 type SaveCheck = { phase: 'idle' | 'checking' | 'verified' } | { phase: 'failed'; message: string }
 
 /** A failed check, inline under the form: why, with Retry and Save anyway. */
@@ -254,13 +254,9 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
       setApiKey('')
       setVerifiedKey('')
       setVerifiedCloudSignature('')
-      push({
-        tone: 'success',
-        title: 'Provider saved',
-        description: provider.label,
-      })
+      push({ tone: 'success', title: hasSavedCredentials ? 'Saved' : 'Connected', description: provider.label })
     } catch (err) {
-      push(failureToast(hasStoredKeys ? "Couldn't add key" : "Couldn't save provider", err))
+      push(failureToast(hasStoredKeys ? "Couldn't add key" : "Couldn't save", err))
     }
   }
 
@@ -303,10 +299,11 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
   const isConfiguredButUnreachable =
     hasReachabilityFailure || (provider.kind !== 'oauth' && (provider.is_reachable === false || (provider.is_saved && !provider.is_configured)))
 
-  // One verb for every kind: it checks the sign-in, key, address or credentials.
-  const testLabel = 'Test'
+  // Test checks what is already stored (and lists its models again), so it
+  // shows once there is something to check. A new key has one button.
+  const canTestStored = hasSavedCredentials || Boolean(provider.public_access) || provider.kind === 'local'
   const saving = saveMutation.isPending || addCredentialMutation.isPending
-  const savingLabel = saveCheck.phase === 'checking' ? 'Checking…' : saveCheck.phase === 'verified' ? 'Verified' : 'Save'
+  const savingLabel = saveCheck.phase === 'checking' ? 'Checking…' : saveCheck.phase === 'verified' ? 'Verified' : hasSavedCredentials ? 'Save' : 'Connect'
   const saveBusy = saving || saveCheck.phase === 'checking' || saveCheck.phase === 'verified'
   const credentialCount = storedCredentials.length
   const modelCount = provider.is_configured ? (provider.cached_models?.length ?? 0) : 0
@@ -356,6 +353,12 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         <p className="min-w-0 flex-1 basis-60 text-xs text-(--color-text-muted) leading-relaxed">{provider.description}</p>
         <div className="flex shrink-0 items-center gap-1">
+          {canTestStored && (
+            <Button type="button" size="xs" variant="ghost" onClick={handleListModels} disabled={listing}>
+              {listing && <Loader2 size={12} className="mr-1 animate-spin" aria-hidden="true" />}
+              Test
+            </Button>
+          )}
           {(isConnected || isConfiguredButUnreachable) && (
             <Button
               type="button"
@@ -389,7 +392,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
             <p className="pt-1 text-xs font-medium text-(--color-text)">Add another key</p>
           )}
           <div
-            className={`grid grid-cols-2 gap-2 sm:items-center ${hasStoredKeys ? 'sm:grid-cols-[minmax(120px,0.5fr)_minmax(200px,1fr)_auto_auto]' : 'sm:grid-cols-[minmax(220px,1fr)_auto_auto]'}`}
+            className={`grid grid-cols-2 gap-2 sm:items-center ${hasStoredKeys ? 'sm:grid-cols-[minmax(120px,0.5fr)_minmax(200px,1fr)_auto]' : 'sm:grid-cols-[minmax(220px,1fr)_auto]'}`}
           >
             {hasStoredKeys && (
               <label className="col-span-2 min-w-0 sm:col-span-1">
@@ -425,19 +428,8 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
             <Button
               type="button"
               size="sm"
-              variant="default"
-              className="w-full sm:w-auto"
-              onClick={handleListModels}
-              disabled={(!hasCandidateKey && !hasSavedCredentials && !provider.public_access) || listing}
-            >
-              {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
-              {testLabel}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
               variant="primary"
-              className="w-full sm:w-auto"
+              className="col-span-2 w-full sm:col-span-1 sm:w-auto"
               onClick={() => { void handleSaveChecked() }}
               disabled={!canSave || saveBusy}
             >
@@ -469,7 +461,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
           )}
           {hasCandidateKey && saveCheck.phase === 'idle' && (
             <p className="text-xs leading-relaxed text-(--color-text-muted)">
-              Save checks the key with {provider.label} first.{hasStoredKeys ? ' It is tried after your other keys.' : ''}
+              The key is checked with {provider.label}, then saved.{hasStoredKeys ? ' It is tried after your other keys.' : ''}
             </p>
           )}
           {!hasCandidateKey && provider.public_access && !provider.is_configured && (
@@ -504,18 +496,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
         {showSignInUsage && (
           <ProviderSignInRow provider={provider} accountInUse={hasCredentialList} onReconnect={() => setOauthTarget({})} />
         )}
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
-          <Button
-            type="button"
-            size="sm"
-            variant="default"
-            className="w-full sm:w-auto"
-            onClick={handleListModels}
-            disabled={!hasSavedCredentials || listing}
-          >
-            {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
-            {testLabel}
-          </Button>
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           {hasStoredAccounts ? (
             <Button type="button" size="sm" className="w-full sm:w-auto" onClick={() => setOauthTarget({})}>
               <ShieldCheck size={12} aria-hidden="true" className="mr-1.5" />
@@ -549,7 +530,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
                 open={confirmSignOut}
                 onOpenChange={setConfirmSignOut}
                 title={`Sign out of ${provider.label}?`}
-                description="OpenAgentd forgets this sign-in. Models from this provider stop working until you sign in again."
+                description={`OpenAgentd forgets this sign-in. ${provider.label} models stop working until you sign in again.`}
                 confirmLabel="Sign out"
                 onConfirm={handleOauthDisconnect}
               />
@@ -579,7 +560,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
       {/* ── Local daemon (Ollama) — optional base URL only ─────────── */}
       {provider.kind === 'local' && daemon && (
         <div className="space-y-2 pt-1">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] sm:items-center">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto] sm:items-center">
             <label className="col-span-2 min-w-0 sm:col-span-1">
               <span className="sr-only">{daemon.var}</span>
               <Input
@@ -595,26 +576,23 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
             <Button
               type="button"
               size="sm"
-              variant="default"
-              className="w-full sm:w-auto"
-              onClick={handleListModels}
-              disabled={listing}
-            >
-              {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
-              {testLabel}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
               variant="primary"
-              className="w-full sm:w-auto"
-              onClick={handleSave}
-              disabled={saveMutation.isPending}
+              className="col-span-2 w-full sm:col-span-1 sm:w-auto"
+              onClick={() => { void handleSaveChecked() }}
+              disabled={saveBusy}
             >
-              {saveMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
-              Save
+              {(saving || saveCheck.phase === 'checking') && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
+              {savingLabel}
             </Button>
           </div>
+          {saveCheck.phase === 'failed' && (
+            <SaveFailure
+              message={saveCheck.message}
+              busy={saveBusy}
+              onRetry={() => { void handleSaveChecked() }}
+              onSaveAnyway={() => { void handleSaveChecked({ skipCheck: true }) }}
+            />
+          )}
           <p className="text-meta leading-relaxed text-(--color-text-muted)">
             Leave blank to use the default daemon at <span className="font-mono text-(--color-text)">{daemon.placeholder}</span>.
           </p>
@@ -644,18 +622,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
               </label>
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-2 pt-1 sm:flex sm:items-center sm:justify-end">
-            <Button
-              type="button"
-              size="sm"
-              variant="default"
-              className="w-full sm:w-auto"
-              onClick={handleListModels}
-              disabled={(!hasCloudCandidate && !hasSavedCredentials) || listing}
-            >
-              {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
-              {testLabel}
-            </Button>
+          <div className="flex pt-1 sm:justify-end">
             <Button
               type="button"
               size="sm"
@@ -678,7 +645,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
           )}
           {hasCloudCandidate && saveCheck.phase === 'idle' && (
             <p className="text-xs leading-relaxed text-(--color-text-muted)">
-              Save checks these credentials with {provider.label} first.
+              These credentials are checked with {provider.label}, then saved.
             </p>
           )}
           {!hasCloudCandidate && provider.is_configured && (

@@ -1,4 +1,4 @@
-/** Settings → Goals: Keep going by default, the turn limit, token budget, and the questions opt-in. */
+/** Settings → Sessions → Goals: Keep going by default, the turn limit, token budget, and the questions opt-in. */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -14,7 +14,13 @@ mock.module('@/hooks/use-mobile', () => ({
   useIsMobile: () => false,
 }))
 
-import { GoalsSettingsPage } from '@/components/settings/pages/settings.goals'
+import { SettingsPartsPage } from '@/components/settings/SettingsPartsPage'
+import { useGoalsPart } from '@/components/settings/pages/settings.goals'
+
+/** The Goals part alone, in the shell the Sessions page gives it. */
+function GoalsSettingsPage() {
+  return <SettingsPartsPage title="Sessions" description="Names, summaries, goals and history." parts={[useGoalsPart()]} />
+}
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
@@ -48,7 +54,7 @@ function renderPage() {
   return render(<QueryClientProvider client={queryClient}><GoalsSettingsPage /></QueryClientProvider>)
 }
 
-describe('GoalsSettingsPage', () => {
+describe('Sessions settings: Goals', () => {
   it('keeps questions off by default and saves the opt-in with a new turn limit', async () => {
     const bodies: unknown[] = []
     server.use(
@@ -70,7 +76,7 @@ describe('GoalsSettingsPage', () => {
     await waitFor(() => expect(bodies).toEqual([{ max_turns: 20, token_budget: null, allow_questions: true, keep_going_default: false }]))
   })
 
-  it('saves Keep going after approval by default', async () => {
+  it('saves Keep going after approval', async () => {
     const bodies: unknown[] = []
     server.use(
       ...handlers(),
@@ -82,7 +88,7 @@ describe('GoalsSettingsPage', () => {
     )
     renderPage()
 
-    const keepGoing = await screen.findByRole('switch', { name: /keep going after approval by default/i })
+    const keepGoing = await screen.findByRole('switch', { name: 'Keep going after approval' })
     await waitFor(() => expect(keepGoing.getAttribute('aria-checked')).toBe('false'))
     fireEvent.click(keepGoing)
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))

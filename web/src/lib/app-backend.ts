@@ -215,6 +215,16 @@ export function formatBackendConnectionLabel(
   return status.computer_names?.[current]?.trim() || hostFromBaseUrl(status.base_url)
 }
 
+/**
+ * What a person reads for the label of the connection in use: the app's own
+ * OpenAgentd is "This computer"; in a browser, where the page comes from
+ * whatever it talks to, "This server".
+ */
+export function connectionDisplayName(label: string, inBrowser = false): string {
+  if (label !== BUILT_IN_NAME_KEY) return label
+  return inBrowser ? 'This server' : 'This computer'
+}
+
 /** What a notification calls the built-in server until its computer's name is known (the desktop shell's word). */
 const BUILT_IN_NOTIFICATION_NAME = 'Built-in server'
 /** The longest server name a notification title carries, in characters. */

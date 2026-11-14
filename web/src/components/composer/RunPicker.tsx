@@ -407,7 +407,7 @@ function AccountList({
   onPick: (id: string) => void
   /** Enter on an account: pick it and close, as Enter on a model does. */
   onPickAndClose: (id: string) => void
-  /** Sign a signed-out account back in (Settings → Providers). */
+  /** Sign a signed-out account back in (Settings → Models). */
   onReconnect: () => void
   rowClass: string
 }) {
@@ -465,7 +465,7 @@ const QUOTA_TONE_CLASS = {
 } as const
 
 /**
- * Each of the account's limits, in % used as Settings → Providers shows
+ * Each of the account's limits, in % used as Settings → Models shows
  * them (`5h 12% · 7d 100%`), the one it hit in red; reset times and other
  * models' limits are in the tooltip. A signed-out account says Reconnect; a
  * cooling account says so until its numbers are known.

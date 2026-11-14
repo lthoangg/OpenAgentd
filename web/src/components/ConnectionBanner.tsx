@@ -33,11 +33,11 @@ const AppBackendDialog = lazy(() =>
   import('@/components/AppBackendDialog').then((m) => ({ default: m.AppBackendDialog })),
 )
 
-/** The built-in server action the banner offers, if any. */
+/** What the banner offers to do with this computer's own OpenAgentd, if anything. */
 function builtinAction(status: AppBackendStatus | null): string | null {
   if (!status?.supports_bundled) return null
-  if (status.external) return 'Use built-in server'
-  return status.sidecar_running || status.backend_starting ? null : 'Start built-in server'
+  if (status.external) return 'Use this computer'
+  return status.sidecar_running || status.backend_starting ? null : 'Start it'
 }
 
 export function ConnectionBanner({ retry = true }: {
@@ -71,7 +71,7 @@ export function ConnectionBanner({ retry = true }: {
           className="flex min-h-8 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-key) py-1 pr-2 pl-3 text-xs text-(--color-text-muted)"
         >
           <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-(--color-text-muted)" aria-hidden="true" />
-          <p className="min-w-0 flex-1 truncate">Updating the server to v{updatingTo} · it reconnects on its own</p>
+          <p className="min-w-0 flex-1 truncate">Updating to v{updatingTo} · it reconnects on its own</p>
         </div>
       )}
       {health.isError && !updatingTo && (
@@ -94,7 +94,7 @@ export function ConnectionBanner({ retry = true }: {
             </Button>
           )}
           <Button type="button" size="xs" onClick={() => (isPhone ? openServersScreen() : setDialogOpen(true))}>
-            Change server
+            Change computer
           </Button>
         </div>
       )}

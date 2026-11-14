@@ -110,6 +110,9 @@ export function MediaSettingsPage() {
   const setVideo = (key: string, value: string) =>
     draft.set((prev) => ({ ...prev, video: { ...prev.video, [key]: value } }))
 
+  // The `openai` and `codex` image backends are OpenAI's image models.
+  const takesPixelSizes = /^(openai|codex):/.test(String(mm.image.model ?? ''))
+
   const imageModelError = validateModel(String(mm.image.model ?? ''), {
     validValues: imageModels.map((m) => m.id),
   })
@@ -146,15 +149,20 @@ export function MediaSettingsPage() {
           )}
         </PanelRow>
         <ListRow label="Aspect ratio" value={String(mm.image.aspect_ratio ?? '')} onChange={(v) => setImage('aspect_ratio', v)} options={IMAGE_ASPECT_RATIOS} />
-        <ListRow label="Size (other models)" value={String(mm.image.image_size ?? '')} onChange={(v) => setImage('image_size', v)} options={IMAGE_SIZES} />
-        <ListRow
-          label="Size (OpenAI models)"
-          description="OpenAI image models use this size instead."
-          value={optionalValue(mm.image.size)}
-          onChange={(v) => setImage('size', optionalSettingValue(v))}
-          options={IMAGE_OPENAI_SIZES}
-          optional
-        />
+        {/* One Size row: the setting the chosen model reads. OpenAI's image
+            models take pixel sizes (`size`); the others take `image_size`. */}
+        {takesPixelSizes ? (
+          <ListRow
+            key="size"
+            label="Size"
+            value={optionalValue(mm.image.size)}
+            onChange={(v) => setImage('size', optionalSettingValue(v))}
+            options={IMAGE_OPENAI_SIZES}
+            optional
+          />
+        ) : (
+          <ListRow key="image_size" label="Size" value={String(mm.image.image_size ?? '')} onChange={(v) => setImage('image_size', v)} options={IMAGE_SIZES} />
+        )}
         <ListRow
           label="Output format"
           value={optionalValue(mm.image.output_format)}

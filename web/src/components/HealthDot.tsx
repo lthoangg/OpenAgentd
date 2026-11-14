@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { AppBackendDialog } from '@/components/LazyAppBackendDialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
-import { formatBackendConnectionLabel } from '@/lib/app-backend'
+import { connectionDisplayName, formatBackendConnectionLabel } from '@/lib/app-backend'
 import { apiBaseUrl } from '@/api/base-url'
 import { cn } from '@/lib/utils'
 import { useIsPhone } from '@/hooks/use-is-phone'
@@ -46,14 +46,15 @@ export function HealthDot({
   }
 
   const state = health.isSuccess ? 'connected' : health.isError ? 'not reachable' : 'connecting…'
-  const serverName = connectionLabel === 'built-in' ? 'Built-in server' : connectionLabel
+  // No shell status in a browser: the page's own server.
+  const serverName = connectionDisplayName(connectionLabel, backendStatus.isSuccess && backendStatus.data === null)
   const address = backendStatus.data?.base_url || apiBaseUrl()
   const version = health.data?.version
   const status = health.isSuccess
-    ? 'Connected. Change server'
+    ? 'Connected. Change computer'
     : health.isError
-      ? "Can't reach. Change server"
-      : 'Connecting. Change server'
+      ? "Can't reach. Change computer"
+      : 'Connecting. Change computer'
   // A bare dot (the phone drawer) has no visible name, so the label carries it.
   const label = labeled ? status : `${serverName}. ${status}`
 
@@ -78,7 +79,7 @@ export function HealthDot({
               aria-label={label}
             >
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${bgColor}`} aria-hidden="true" />
-              {labeled ? <span className="min-w-0 truncate">{connectionLabel}</span> : null}
+              {labeled ? <span className="min-w-0 truncate">{serverName}</span> : null}
               {/* The status bar says it in words too: a red dot alone was easy
                   to miss (desktop mockup 12.1). The companions' word. */}
               {labeled && !chip && health.isError ? (

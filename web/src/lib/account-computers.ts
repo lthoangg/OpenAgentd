@@ -22,10 +22,10 @@ export const ACCOUNT_COMPUTERS_REFRESH_MS = 30_000
 /** How often the route of the computer in use is read while the screen is up. */
 export const LINK_ROUTE_REFRESH_MS = 2_000
 
-/** A desktop signed in without "Use as client" (spec 3.4). */
+/** A desktop signed in without the choice to open other computers (spec 3.4). */
 export const CANNOT_OPEN_COMPUTERS = "This computer can't open your other computers: it isn't used as a client. Roles are chosen when it signs in."
-/** The desktop's account lives in the built-in server. */
-export const BUILTIN_STOPPED_COMPUTERS = 'The built-in server is stopped. Your account lives there: start it to use your other computers.'
+/** The desktop's account lives in this computer's own OpenAgentd. */
+export const BUILTIN_STOPPED_COMPUTERS = 'OpenAgentd is stopped on this computer. Your account lives there: start it to use your other computers.'
 
 /**
  * A computer of the account: its device, never an address. A saved server

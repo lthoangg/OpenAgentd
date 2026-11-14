@@ -69,4 +69,4 @@ tell the user to switch it in the model picker.
 
 - **Model without `:`** → invalid; suggest `provider:model`.
 - **Provider not configured** → the next turn reports "not configured"; offer to
-  revert, or point the user to Settings → Providers.
+  revert, or point the user to Settings → Models.

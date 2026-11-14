@@ -25,7 +25,7 @@ export function McpListPage({ selectedName, onSelect, onNew }: McpListPageProps)
         titleMono: true,
         // A server a plugin bundle brings: its detail page is read-only.
         badge: srv.plugin ? `from ${srv.plugin}` : undefined,
-        description: srv.transport === 'stdio' ? 'Runs a local process' : 'Connects to a URL',
+        description: srv.transport === 'stdio' ? 'A program on this computer' : 'A web address',
         onClick: () => onSelect(srv.name),
         trailing: (
           <span className="flex items-center gap-1.5">
@@ -39,18 +39,18 @@ export function McpListPage({ selectedName, onSelect, onNew }: McpListPageProps)
 
   return (
     <SettingsListView
-      title="MCP servers"
-      description="Tools from local processes or remote servers, over the Model Context Protocol."
-      newLabel="New server"
+      title="Connectors"
+      description="Outside tools and services your agents can use, such as Notion, Slack or GitHub."
+      newLabel="New connector"
       onNew={onNew}
-      filterPlaceholder="Filter servers…"
+      filterPlaceholder="Filter connectors…"
       rows={rows}
       isLoading={isLoading}
       isError={isError}
       error={error}
       onRetry={() => void refetch()}
-      emptyTitle="No MCP servers yet"
-      emptyBody="MCP servers expose tools and resources to your agents over stdio or HTTP."
+      emptyTitle="No connectors yet"
+      emptyBody="A connector gives your agents another tool to work with. Most need only a web address and a sign-in."
       emptyIcon={Plug}
     />
   )

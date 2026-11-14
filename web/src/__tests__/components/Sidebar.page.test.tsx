@@ -97,7 +97,7 @@ mock.module('@/components/ThemeToggle', () => ({
 }))
 mock.module('@/components/HealthDot', () => ({
   HealthDot: ({ labeled = false }: { labeled?: boolean }) => (
-    <button type="button" aria-label="Connected. Change server">{labeled ? 'backend-name' : null}</button>
+    <button type="button" aria-label="Connected. Change computer">{labeled ? 'backend-name' : null}</button>
   ),
 }))
 // The dialogs and the sheet belong to other primitives; keep them plain so
@@ -327,7 +327,7 @@ describe('Sidebar page mode: the Sessions screen', () => {
     const { view } = await renderPage()
     const bar = view.container.querySelector('[data-sessions-page-bar]') as HTMLElement
 
-    expect(within(bar).getByRole('button', { name: /Change server$/ }).textContent).toBe('backend-name')
+    expect(within(bar).getByRole('button', { name: /Change computer$/ }).textContent).toBe('backend-name')
     expect(bar.hasAttribute('data-title-visible')).toBe(false)
     const small = within(bar).getByText('Sessions')
     expect(small.className).toContain('text-base')
@@ -343,21 +343,21 @@ describe('Sidebar page mode: the Sessions screen', () => {
     expect(bar.hasAttribute('data-title-visible')).toBe(false)
   })
 
-  it('goes down to Servers from ‹ Servers, naming the server under the large title', async () => {
+  it('goes down to Computers from ‹ Computers, naming the computer under the large title', async () => {
     const onOpenServers = mock(() => {})
     const { view } = await renderPage({ onOpenServers })
     const bar = view.container.querySelector('[data-sessions-page-bar]') as HTMLElement
 
-    // ‹ Servers takes the server chip's place.
-    expect(within(bar).queryByRole('button', { name: /Change server$/ })).toBeNull()
-    fireEvent.click(within(bar).getByRole('button', { name: 'Back to Servers' }))
+    // ‹ Computers takes the chip's place.
+    expect(within(bar).queryByRole('button', { name: /Change computer$/ })).toBeNull()
+    fireEvent.click(within(bar).getByRole('button', { name: 'Back to Computers' }))
     expect(onOpenServers).toHaveBeenCalledTimes(1)
 
-    // The server stays in sight under the title, and goes to Servers too.
+    // The server stays in sight under the title, and goes to Computers too.
     const line = view.container.querySelector('[data-sessions-server]') as HTMLElement
     expect(line.closest('[data-sessions-page-header]')).not.toBeNull()
     expect(line.textContent).toContain('·')
-    // In a browser (no app shell status) it is "This server", the Servers screen's name.
+    // In a browser (no app shell status) it is "This server", the Computers screen's name.
     await waitFor(() => expect(line.textContent).toContain('This server'))
     fireEvent.click(line)
     expect(onOpenServers).toHaveBeenCalledTimes(2)

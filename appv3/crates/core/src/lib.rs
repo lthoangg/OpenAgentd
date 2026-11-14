@@ -33,4 +33,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// clients (`appv3_db::api::result_rides_inline`), so the transcript can
 /// offer Sign in right there; the web matches this text too
 /// (`web/src/components/ToolCall/mcpSignIn.ts`).
-pub const MCP_SIGN_IN_NOTE: &str = "needs sign-in: connect it in Settings \u{2192} MCP";
+pub const MCP_SIGN_IN_NOTE: &str = "needs sign-in: connect it in Settings \u{2192} Connectors";
+/// The same note as sessions stored it while the page was named MCP: read,
+/// never written.
+pub const MCP_SIGN_IN_NOTE_BEFORE_RENAME: &str = "needs sign-in: connect it in Settings \u{2192} MCP";

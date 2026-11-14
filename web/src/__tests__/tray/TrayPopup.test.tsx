@@ -6,12 +6,12 @@ import type { TrayUsageResult } from '@/tray/usage'
 const NOW = Math.floor(Date.now() / 1000)
 
 const usageResult: TrayUsageResult = {
-  server_name: 'Built-in server',
+  server_name: 'This computer',
   server_id: 'bundled',
   selected_server_id: 'auto',
   servers: [
-    { id: 'auto', name: 'Auto (Active Window)', detail: 'Built-in server' },
-    { id: 'bundled', name: 'Built-in server', detail: null },
+    { id: 'auto', name: 'Auto (Active Window)', detail: 'This computer' },
+    { id: 'bundled', name: 'This computer', detail: null },
     { id: 'http://192.168.1.10:4082', name: 'Mac Studio', detail: '192.168.1.10:4082' },
   ],
   summary: {
@@ -19,13 +19,13 @@ const usageResult: TrayUsageResult = {
     items: [
       {
         provider: 'openai',
-        label: 'OpenAI Codex',
+        label: 'ChatGPT',
         status: 'ok',
         stale: false,
         usage: {
           provider: 'openai',
           limits: [{
-            limit_name: 'Codex',
+            limit_name: 'ChatGPT',
             primary: { used_percent: 42, window_minutes: 300, resets_at: NOW + 3600 },
             secondary: { used_percent: 76, window_minutes: 10_080, resets_at: NOW + 86_400 },
           }],
@@ -89,28 +89,28 @@ describe('TrayPopup', () => {
   it('names each provider once and labels its limits by window', async () => {
     render(<TrayPopup />)
 
-    const card = await screen.findByRole('group', { name: 'OpenAI Codex' })
+    const card = await screen.findByRole('group', { name: 'ChatGPT' })
     expect(within(card).getByText('5-hour')).toBeInTheDocument()
     expect(within(card).getByText('Weekly')).toBeInTheDocument()
-    expect(screen.getAllByText('OpenAI Codex')).toHaveLength(1)
+    expect(screen.getAllByText('ChatGPT')).toHaveLength(1)
     expect(screen.getByText('Getting close')).toBeInTheDocument()
   })
 
   // "Usage" meant quotas here and spend in the app.
-  it('calls the quotas "Provider limits"', async () => {
+  it('calls the quotas "Usage limits"', async () => {
     render(<TrayPopup />)
-    await screen.findByRole('group', { name: 'OpenAI Codex' })
-    expect(screen.getByText('Provider limits')).toBeInTheDocument()
+    await screen.findByRole('group', { name: 'ChatGPT' })
+    expect(screen.getByText('Usage limits')).toBeInTheDocument()
     expect(screen.queryByText('Usage')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Refresh provider limits' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh usage limits' })).toBeInTheDocument()
   })
 
   it('exposes each limit as a meter', async () => {
     render(<TrayPopup />)
 
-    const meter = await screen.findByRole('meter', { name: 'OpenAI Codex 5-hour' })
+    const meter = await screen.findByRole('meter', { name: 'ChatGPT 5-hour' })
     expect(meter).toHaveAttribute('aria-valuenow', '42')
-    expect(screen.getByRole('meter', { name: 'OpenAI Codex Weekly' })).toHaveAttribute('aria-valuenow', '76')
+    expect(screen.getByRole('meter', { name: 'ChatGPT Weekly' })).toHaveAttribute('aria-valuenow', '76')
   })
 
   it('marks throttled usage as old with its retry time, not as a reached limit', async () => {
@@ -121,7 +121,7 @@ describe('TrayPopup', () => {
         items: [
           {
             provider: 'openai',
-            label: 'OpenAI Codex',
+            label: 'ChatGPT',
             status: 'rate_limited',
             stale: true,
             retry_at: NOW + 600,
@@ -134,7 +134,7 @@ describe('TrayPopup', () => {
     })
     render(<TrayPopup />)
 
-    const card = await screen.findByRole('group', { name: 'OpenAI Codex' })
+    const card = await screen.findByRole('group', { name: 'ChatGPT' })
     expect(within(card).getByRole('meter')).toHaveAttribute('aria-valuenow', '97')
     expect(within(card).getByText('Last known')).toBeInTheDocument()
     expect(within(card).getByText(/Rate limited · Retry in \d+m/)).toBeInTheDocument()
@@ -155,7 +155,7 @@ describe('TrayPopup', () => {
         checked_at: NOW,
         items: [{
           provider: 'openai',
-          label: 'OpenAI Codex',
+          label: 'ChatGPT',
           status: 'unavailable',
           stale: true,
           usage: { provider: 'openai', limits: [{ primary: { used_percent: 97, window_minutes: 300 } }] },
@@ -164,7 +164,7 @@ describe('TrayPopup', () => {
     })
     render(<TrayPopup />)
 
-    const card = await screen.findByRole('group', { name: 'OpenAI Codex' })
+    const card = await screen.findByRole('group', { name: 'ChatGPT' })
     expect(within(card).getByRole('meter')).toHaveAttribute('aria-valuenow', '97')
     expect(within(card).getByText('Last known')).toBeInTheDocument()
     expect(within(card).getByText('Unavailable')).toBeInTheDocument()
@@ -185,7 +185,7 @@ describe('TrayPopup', () => {
     answer = async () => ({ ...usageResult, summary: null, error: 'error sending request for url (http://127.0.0.1:4082/api/usage)' })
     render(<TrayPopup />)
 
-    expect(await screen.findByText("Can't reach Built-in server")).toBeInTheDocument()
+    expect(await screen.findByText("Can't reach This computer")).toBeInTheDocument()
     expect(screen.getByText("Can't reach")).toBeInTheDocument()
     expect(screen.queryByText('Offline')).toBeNull()
     expect(screen.queryByText(/error sending request/)).not.toBeInTheDocument()
@@ -208,7 +208,7 @@ describe('TrayPopup', () => {
 
     expect(await screen.findByText('No server connected')).toBeInTheDocument()
     expect(screen.queryByText(/Can't reach/)).toBeNull()
-    expect(screen.queryByText('Provider limits')).toBeNull()
+    expect(screen.queryByText('Usage limits')).toBeNull()
     fireEvent.click(screen.getAllByRole('button', { name: 'Open OpenAgentd' })[0]!)
     expect(actions()).toContain('show')
     fireEvent.click(screen.getAllByRole('button', { name: 'Settings' })[0]!)
@@ -244,15 +244,15 @@ describe('TrayPopup', () => {
     expect(calls.some(([cmd]) => cmd === 'tray_sessions')).toBe(false)
   })
 
-  it('offers Settings → Providers when no provider is connected', async () => {
+  it('offers Settings → Models when no account is connected', async () => {
     answer = async () => ({ ...usageResult, summary: { checked_at: NOW, items: [] } })
     render(<TrayPopup />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Open Providers' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Models' }))
     expect(actions()).toEqual(['usage_manage'])
   })
 
-  it('sends Reconnect to Settings → Providers', async () => {
+  it('sends Reconnect to Settings → Models', async () => {
     render(<TrayPopup />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Reconnect GitHub Copilot' }))
@@ -312,7 +312,7 @@ describe('TrayPopup', () => {
     for (const key of ['r', ',', 'q']) fireEvent.keyDown(document, { key, metaKey: true, ctrlKey: true })
     expect(actions()).toEqual([])
     expect(usageCalls().length).toBe(before)
-    expect(screen.getByRole('button', { name: 'Refresh provider limits' })).toHaveAttribute('aria-keyshortcuts', 'Meta+R')
+    expect(screen.getByRole('button', { name: 'Refresh usage limits' })).toHaveAttribute('aria-keyshortcuts', 'Meta+R')
   })
 
   it('picks a server from the keyboard and reads its usage', async () => {
@@ -380,11 +380,11 @@ describe('TrayPopup', () => {
     await screen.findByText('5-hour')
 
     await pick(/Mac Studio/)
-    await pick(/^Built-in server/)
+    await pick(/^This computer/)
     await screen.findByText('5-hour')
     await act(async () => answerStudio(studioResult))
 
-    expect(screen.getByRole('button', { name: 'Server: Built-in server' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Server: This computer' })).toBeInTheDocument()
     expect(screen.getByText('5-hour')).toBeInTheDocument()
   })
 

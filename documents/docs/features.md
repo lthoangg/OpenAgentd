@@ -628,7 +628,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     accepts nor rejects the claim, so the agent can claim again; three such
     failures in a row pause the goal. Goal turns run unattended by default: the
     agent decides instead of asking and notes each choice, and a plan it
-    submits is saved without opening a review. **Settings → Goals** sets
+    submits is saved without opening a review. **Settings → Sessions** sets
     whether Keep going starts ticked, the turn limit, a default token budget,
     and allows questions during a goal. The check runs on the session's own
     model, so it reuses the conversation's prompt cache. It is told which
@@ -868,7 +868,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   **Reconnect…**, and the run picker offers **Reconnect** beside that
   account. If the account is deleted or disabled, the session goes back to
   Auto with a note. Each answer's footer names the account it ran on, and
-  Settings → Providers shows how many sessions pin each account. The desktop
+  Settings → Models shows how many sessions pin each account. The desktop
   tray names the account a pinned session runs on (**Pinned to Work**), and
   its Provider limits name the account in use when a provider has several
   (**OpenAI Codex · Work**).
@@ -882,7 +882,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   provider uses now, and **Reset to default** removes a lock. The run chip
   always names the account in use, and the picker tags the account a locked
   session moved to with **in use**. Each account row shows every limit of the
-  account in % used, as Settings → Providers does (`5h 12% · 7d 64% · $84.50
+  account in % used, as Settings → Models does (`5h 12% · 7d 64% · $84.50
   left`). A limit that was hit is red and one at 90% or more is orange, and
   the tooltip gives reset times and other models' own limits. The wait and
   error cards no longer offer **Use Auto for this session**.
@@ -1115,7 +1115,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     capitals or corrections, a URL keyboard with Go); an address error has
     no pointless Retry and clears as you edit. `⌃⌥` + arrow and `⌃Tab`
     work from inside the page too.
-  - **Models** in Settings → Providers: the Shown / Hidden toggle and Copy
+  - **Models** in Settings → Models: the Shown / Hidden toggle and Copy
     are always visible and touch-sized.
 - **Settings: one way to save, every setting findable** `[v3.40.0]`:
   - Every page of fields saves the same way: a bar appears once something
@@ -1596,7 +1596,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     critical threshold fires a one-shot native notification (re-armed when
     the quota resets) and badges the tray icon. "Refresh Usage Now" forces
     a live re-check past the cache; "Manage Providers…" deep-links into
-    Settings → Providers. Each measurable row also carries a compact
+    Settings → Models. Each measurable row also carries a compact
     block-character meter (`████░░░░░░`) between the percent and reset
     countdown — a CodexBar-style bar rendered in plain text, since native
     tray `MenuItem`s can't host custom widgets `[v1.94.0]`. Workspace spend
@@ -1666,7 +1666,7 @@ run from the terminal (the native Rust binary since v3.0.0).
       reads "Can't reach ‹server›" with Retry, and the status says Offline
       ("Can't reach" since `[v3.40.0]`).
       With no providers it offers Open Providers, and Reconnect goes to
-      Settings → Providers.
+      Settings → Models.
     - **Keys.** Esc closes it, or the server menu first, which also takes
       ↑ ↓ Enter. ⌘R refreshes, and ⌘, and ⌘Q run Settings and Quit; since
       `[v3.55.0]` only ⌘ does (Ctrl+Q used to quit the app too). Since
@@ -1814,8 +1814,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     pet is still. Everywhere else the desktop has no window of ours. The
     window is also marked as not shareable (macOS) and as a tool window kept
     out of captures (Windows), which pickers that honour them respect.
-  - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
-    per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
+  - **Settings → Models usage panel redesign** `[v1.94.0]` — the
+    per-provider "Usage" card in Settings → Models (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit
     window, a flat progress bar with a leading dot marker, `N% used ·
     Resets in Xh Ym` under each bar, a header strip showing "Updated Xm
@@ -2470,6 +2470,53 @@ run from the terminal (the native Rust binary since v3.0.0).
     for {folder}?", **Later**, **Install**.
   - Network access on Linux shows each firewall command as a code line with
     **Copy**. "Clear this goal?" is two sentences.
+  - **Settings: 15 sections in 3 groups** (it was 18 in 6). **Basics**:
+    Appearance, Models, Account, Desktop, About. **Agent**: Agents, Skills,
+    Connectors, Plugins, Memory. **Advanced**: Sessions, Workspaces, Blocked
+    files, Image and video, Server. Renamed: Providers is **Models**, MCP
+    servers is **Connectors**, Denied paths is **Blocked files**, Provider
+    limits is **Usage limits**, and OpenAI Codex is **ChatGPT**. Session
+    titles, Context, Goals and Retention are one page, **Sessions**. Search
+    in Settings and the palette finds every page by its earlier name, links
+    into the four merged pages open Sessions at their heading, and messages
+    that point to a page use its new name.
+  - **Models**: one filter (All / Connected), with hidden ones behind a
+    link under the list. A model's form has one button: **Connect**, which
+    checks the key and saves it (**Save** once one is stored); **Test** is
+    a small action beside Hide. Signing in reads **Sign in to {name}**,
+    **Code to enter**, **Copy code**, **Open the sign-in page**.
+  - **Connectors**: a new connector first asks **How does it connect?**, **A
+    web address** or **A program on this computer**, and shows only that
+    half. An address needs nothing else: the name is filled in from it
+    (`https://mcp.notion.com/mcp` gives `notion`) until one is typed, and
+    **Needs sign-in** is a switch, on. Status, timeout, headers, app
+    credentials and the protocol (**Automatic**, which tries the current
+    one and then the older SSE one, or **SSE only**) are under **Options**.
+    It was a form pre-filled with an `npx` command and a stdio / HTTP / SSE
+    (legacy) switch.
+  - **Blocked files**: **Block a folder…** picks the folder (the system's
+    dialog, or the folder list of the computer the agents run on) and
+    writes its pattern. Each rule reads as a sentence above its pattern
+    ("Any file named .env", "Everything in taxes"). Four common patterns
+    are one press each under **Add a pattern**, which replaces the
+    examples popover, and the empty page says **Nothing is blocked**. The
+    help no longer suggests `secrets/**`, which never matched: a pattern is
+    matched against a file's full path.
+  - **Computers**: the desktop's connection page, the phone's first screen
+    and the palette say **Computer** where they said Server ("Built-in
+    server" is **This computer**; **Switch Computer…**). One list holds this
+    computer, the account's computers and the ones added by address; a row
+    has **Use** and **Details**, and stopping, watching in the background,
+    editing and removing are in Details. Adding one by address has one
+    button, **Connect**, which checks the address and key before it saves.
+  - Account: the two sign-in choices are sentences, **My other devices can
+    open this computer** and **This computer can open my other computers**
+    (they were "Use as server" and "Use as client"); a device's details
+    read "Can be opened, and opens other computers".
+  - The palette's **Theme…** and **Text Size…** are one command,
+    **Appearance…**, found by either name. Image and video has one **Size**
+    row, whose options follow the chosen image model. Settings → Plugins
+    lists **Single-file plugins** once one exists.
 - **Each platform is offered what it can do, in one wording** `[v3.54.0]`:
   - iPad: a long press in the terminal opens Select All, Copy, Paste, Find
     and Add to chat, as on a phone. Before, only a phone-sized window had it.
@@ -2497,7 +2544,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     "Theme: Dark. Switch to System." and the update and TypeScript tools
     pills "Show … details", in place of "Click to …".
   - A provider that is not signed in says so and names the screen that
-    fixes it ("Sign in under Settings → Providers"), with the `agentd auth`
+    fixes it ("Sign in under Settings → Models"), with the `agentd auth`
     command after it. A server that does not answer names the setting to
     turn on (**Access from other devices**), not a server flag.
   - A crash screen's **Copy error details** reads **Could not copy** when
@@ -2604,7 +2651,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     offers **Sign in to {server}** right under the call (or **Open in
     Settings** for a server the app cannot sign in to), and reads **Signed
     in to {server}** once it is connected, so you no longer have to find
-    Settings → MCP from the agent's reply.
+    Settings → Connectors from the agent's reply.
   - A view that fails to render (a session's transcript, the Review panel)
     shows **Couldn't show this view** with **Try again** and **Copy error
     details** in its place, while the header, sidebar and status bar keep
@@ -3692,12 +3739,12 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   Auto-compaction default threshold is raised to 90% of model context `[v2.7.0]`.
   instruction tool-call pairs remain active after repeated compaction while the
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
-  Changing the trigger in Settings → Context applies from the next model
+  Changing the trigger in Settings → Sessions applies from the next model
   call, including inside a turn that is already running `[v3.3.0]`.
   Summaries in sessions with an active goal, @-mentioned context, or a
   session plan now reuse the turn's prompt cache too, so compaction there no
   longer re-reads the whole context `[v3.34.0]`.
-  Opt-in **idle compaction** in Settings → Context → Idle sessions
+  Opt-in **idle compaction** in Settings → Sessions → Idle sessions
   compacts a session in the background when it has been idle for 4½ minutes
   after a turn and its context has reached a set share of the trigger
   (default 70%). This uses the provider's prompt cache while it is still
@@ -3801,11 +3848,11 @@ agnostic by design.
   subscriptions sign in through the usual dialog. A provider that already
   works (a saved key, a key exported in the server's environment, or a running
   Ollama) is offered with a one-click **Use**. **More providers…** opens
-  Settings → Providers. Open sessions keep the banner, which now follows the
+  Settings → Models. Open sessions keep the banner, which now follows the
   same rule, so it no longer hides while sends would fail and no longer shows
   for a working Ollama setup.
 - **A saved key is enough to chat** `[v3.31.0]` — when the first provider
-  gets a credential (Settings → Providers, the setup card, or `POST
+  gets a credential (Settings → Models, the setup card, or `POST
   /api/settings/providers/{id}/credentials`), agents that have no model yet
   get that provider's suggested model, read from its live model list:
   the newest match of a version pattern such as `claude-sonnet-*`. Without a
@@ -3864,14 +3911,14 @@ agnostic by design.
   in dollars, and falls back to the legacy monthly limit. Token refresh
   retries transient failures and keeps the saved session unless xAI rejects
   the grant `[v3.29.0]`.
-- **Codex usage monitor** `[v1.32.0, v1.131.0, v1.131.1]` — Settings → Providers shows live Codex
+- **Codex usage monitor** `[v1.32.0, v1.131.0, v1.131.1]` — Settings → Models shows live Codex
   OAuth usage windows, resets, credits, unlimited plans, and spend-cap/limit states.
   Workspace spend caps report used/limit/remaining amounts and a reset time — the only
   usage signal once a cap is reached and Codex stops returning rate-limit windows — and
   a reached cap drives the panel copy instead of the credits flag `[v1.131.0]`. The
   desktop tray's "Usage Limits" submenu renders the same cap `[v1.131.1]`.
 - **Priority / Fast mode** `[v1.90.0, v1.92.0]` — opt new messages into Fast/Priority mode. Supported on models and providers that implement service/latency tiers (Anthropic maps to `auto`, Google Gemini maps to `priority`, OpenAI maps to `auto`, and ChatGPT Codex maps to `priority`). Availability is driven by a `supports_fast_mode` registry flag instead of a hard-coded provider-prefix list, so plugin providers can opt in without frontend changes `[v1.92.0]`. The status bar shows a **fast** pill while the session has it on; it is a status indicator, not a switch, so the mode is set through the API or another client, and the session field, API parameter, and provider mapping apply as before.
-- **Hide / show a provider** `[v1.92.0]` — Settings → Providers lets you
+- **Hide / show a provider** `[v1.92.0]` — Settings → Models lets you
   temporarily hide a configured provider's models (**Hide** / **Show** in header); its models disappear from
   every picker and the warm-cache loop skips it, while saved credentials stay
   on disk and **Show** restores them. Connected OAuth providers also offer **Disconnect** in the card body (`DELETE /api/auth/{provider}`) to delete saved OAuth account tokens from disk and log out.
@@ -3884,7 +3931,7 @@ agnostic by design.
   so pickers stop offering models the provider can no longer serve; connected
   providers keep both — an expired access token is refreshed, not a disconnection.
 - **Several keys and accounts per provider, with automatic switching** `[v3.30.0]` —
-  Settings → Providers keeps an ordered list of API keys for each API-key
+  Settings → Models keeps an ordered list of API keys for each API-key
   provider (OpenAI, Anthropic, OpenRouter, …) and of OAuth accounts for Codex,
   GitHub Copilot, and Grok. Each row shows a masked key hint or account name and
   its state (In use, Ready, Cooling down with a reset countdown, Reconnect
@@ -3905,7 +3952,7 @@ agnostic by design.
   they opt in with `supportsMultipleCredentials: true`; they then get the same
   account list, switching, and cooldowns, with per-account OAuth tokens kept in
   `credentials.yaml` `[v3.30.0]`.
-- **Usage for each enabled OAuth profile** `[v3.39.0]` — Settings → Providers
+- **Usage for each enabled OAuth profile** `[v3.39.0]` — Settings → Models
   shows each enabled profile's quota windows, spend caps and credits in its
   own row, without a duplicate provider-wide usage block. Disabled profiles
   do not request usage. Usage checks share a per-account cache across clients
@@ -3917,16 +3964,16 @@ agnostic by design.
 - **Reconnect without restarting** `[v3.12.0]` — when an agent's provider
   can't start (an OAuth login that expired, a missing API key, a network
   failure at load), each new message tries it again. Logging in again or
-  saving a key in Settings → Providers takes effect on the next message
+  saving a key in Settings → Models takes effect on the next message
   instead of after quitting and reopening the app.
-- **Copilot usage monitor** `[v1.33.0]` — Settings → Providers shows live Copilot
+- **Copilot usage monitor** `[v1.33.0]` — Settings → Models shows live Copilot
   premium request quota from the saved OAuth token. Token-based / pooled-credit
   seats skip a fake 0% quota window and show used credits as `N/∞` in Settings
   and the usage tray instead of "unlimited" `[v2.23.0]`.
-- **API key provider usage and credit monitor** `[v2.3.0]` — Settings → Providers shows live credit balances, key spend caps, and quota limits for configured API key providers (such as OpenRouter and DeepSeek) alongside OAuth providers.
+- **API key provider usage and credit monitor** `[v2.3.0]` — Settings → Models shows live credit balances, key spend caps, and quota limits for configured API key providers (such as OpenRouter and DeepSeek) alongside OAuth providers.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can
-  surface live usage in the same Settings → Providers panel as built-ins.
-- **Provider-scoped visible models and pricing** `[v1.57.0, v1.63.0, v2.9.0]` — Settings → Providers lets
+  surface live usage in the same Settings → Models panel as built-ins.
+- **Provider-scoped visible models and pricing** `[v1.57.0, v1.63.0, v2.9.0]` — Settings → Models lets
   users choose which provider models appear in normal model pickers. Session
   settings and other pickers read a cached provider model list for instant
   open; when the cache is empty, `/api/agents/registry` warms configured
@@ -4249,7 +4296,7 @@ Four orthogonal ways to add capability.
     as `transport`, with `stdio`, `http` (or `streamable-http`) and `sse`.
     `sse` reaches servers that still speak the 2024-11-05 HTTP+SSE transport,
     and an `http` server that refuses Streamable HTTP falls back to it on its
-    own. Plugins can declare `sse` servers, and the Settings → MCP form offers
+    own. Plugins can declare `sse` servers, and the Settings → Connectors form offers
     **SSE (legacy)**.
   - **Set up MCP servers from chat** `[v3.35.0]` — ask the agent to connect a
     server ("add the GitHub MCP") and it proposes the `mcp.json` entry
@@ -4261,7 +4308,7 @@ Four orthogonal ways to add capability.
     sees a secret: `env` and header values and OAuth credentials show as
     `********` (a `${NAME}` reference shows as written), sending `********`
     back keeps the stored value, and tokens and OAuth sign-in stay in
-    Settings → MCP. The `mcp` tool is listed even before the first server, and
+    Settings → Connectors. The `mcp` tool is listed even before the first server, and
     its description is fixed for the session, so adding or removing a server
     does not invalidate the prompt cache; new sessions see the new list. A
     change that was made elsewhere after the card opened is not applied.
@@ -4318,7 +4365,7 @@ Four orthogonal ways to add capability.
   its turn ends instead of loading again. An HTTP MCP server's session is
   kept across restarts of OpenAgentd, so what a server holds for it (a
   canvas an app is editing) is still there afterwards; restart the server in
-  Settings → MCP to start a fresh session.
+  Settings → Connectors to start a fresh session.
 - **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
   shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
   any MCP server in Settings to re-detect.
@@ -4326,7 +4373,7 @@ Four orthogonal ways to add capability.
   not answer in 210 s (other MCP requests: 30 s) fails with a "timed out"
   error instead of hanging the turn, and the server is sent
   `notifications/cancelled` when a call times out or is stopped. Set
-  **Tool timeout** (1–270 s) per server in Settings → MCP, or `"timeout"` in
+  **Tool timeout** (1–270 s) per server in Settings → Connectors, or `"timeout"` in
   `mcp.json`.
 - **`.agents/` is the only project folder** `[v3.14.0]` — skills, commands and
   snippets load from `<project>/.agents/`, the OpenAgentd config dir, and
@@ -4404,7 +4451,7 @@ Four orthogonal ways to add capability.
     Reload button, and details: skills, the command or URL of each MCP
     server, tools (read-only ones marked), permissions, errors and warnings.
     Plugin MCP servers appear in
-    Settings → MCP marked "from <plugin>": they can be restarted there, go on
+    Settings → Connectors marked "from <plugin>": they can be restarted there, go on
     and off with their plugin, and the agent's `mcp` tool cannot change them.
     With no plugin folder yet, it suggests asking an agent to install one.
   - **`agentd` for the agent in the desktop app** `[v3.44.0]` — the desktop
@@ -4734,7 +4781,7 @@ Desktop is primary. CLI / server is the developer path.
   import <dotenv>` copies provider keys from a dotenv file such as a project's
   `.env` `[v3.30.0]`.
 - **CLI doctor** `[since v0.1.0, v3.1.0]` — `agentd doctor` checks provider credentials
-  (including keys saved in Settings → Providers and the lead agent's OAuth
+  (including keys saved in Settings → Models and the lead agent's OAuth
   login), the database, the configured server port, and the agents directory,
   and exits 1 when a check fails. With the server running it also lists the
   server's modules and their state, with the reason a module failed or is

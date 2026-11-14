@@ -25,8 +25,17 @@ mock.module('@/hooks/use-mobile', () => ({
 }))
 
 import { WorkspacesSettingsPage } from '@/components/settings/pages/settings.workspaces'
-import { TitlesSettingsPage } from '@/components/settings/pages/settings.titles'
-import { ContextSettingsPage } from '@/components/settings/pages/settings.context'
+import { SettingsPartsPage } from '@/components/settings/SettingsPartsPage'
+import { useTitlesPart } from '@/components/settings/pages/settings.titles'
+import { useSummariesPart } from '@/components/settings/pages/settings.context'
+
+/** One part alone, in the shell the Sessions page gives it. */
+function TitlesSettingsPage() {
+  return <SettingsPartsPage title="Sessions" description="Names, summaries, goals and history." parts={[useTitlesPart()]} />
+}
+function ContextSettingsPage() {
+  return <SettingsPartsPage title="Sessions" description="Names, summaries, goals and history." parts={[useSummariesPart()]} />
+}
 import { MediaSettingsPage } from '@/components/settings/pages/settings.media'
 
 const server = setupServer()
@@ -151,12 +160,12 @@ describe('WorkspacesSettingsPage', () => {
   })
 })
 
-describe('TitlesSettingsPage', () => {
+describe('Sessions settings: Titles', () => {
   it('has no title-wait row; the wait stays in the settings YAML', async () => {
     server.use(...baseHandlers(null))
     renderPage(<TitlesSettingsPage />)
 
-    expect(await screen.findByText('Update title after summarizing')).toBeTruthy()
+    expect(await screen.findByText('Rename after a summary')).toBeTruthy()
     expect(screen.queryByText('Wait for title (seconds)')).toBeNull()
   })
 
@@ -164,7 +173,7 @@ describe('TitlesSettingsPage', () => {
     server.use(...baseHandlers())
     renderPage(<TitlesSettingsPage />)
 
-    await screen.findByRole('switch', { name: /update title after summarizing/i })
+    await screen.findByRole('switch', { name: /rename after a summary/i })
     expect(screen.queryByText('Unsaved changes')).toBeNull()
     expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull()
   })
@@ -173,11 +182,11 @@ describe('TitlesSettingsPage', () => {
     server.use(...baseHandlers(null))
     renderPage(<TitlesSettingsPage />)
 
-    const enabled = await screen.findByRole('switch', { name: /generate titles automatically/i })
+    const enabled = await screen.findByRole('switch', { name: /name sessions automatically/i })
     expect(enabled.closest('[class~="min-h-(--phone-control)"]')).not.toBeNull()
-    expect(document.querySelector(`label[for="${enabled.id}"]`)?.textContent).toMatch(/generate titles automatically/i)
+    expect(document.querySelector(`label[for="${enabled.id}"]`)?.textContent).toMatch(/name sessions automatically/i)
 
-    fireEvent.click(screen.getByRole('switch', { name: /update title after summarizing/i }))
+    fireEvent.click(screen.getByRole('switch', { name: /rename after a summary/i }))
 
     const save = await screen.findByRole('button', { name: /^save$/i })
     expect(save.className).toContain('min-h-9')
@@ -192,10 +201,10 @@ describe('TitlesSettingsPage', () => {
     server.use(...baseHandlers(null))
     renderPage(<TitlesSettingsPage />)
 
-    const enabled = await screen.findByRole('switch', { name: /generate titles automatically/i })
+    const enabled = await screen.findByRole('switch', { name: /name sessions automatically/i })
     await waitFor(() => expect(enabled.getAttribute('aria-checked')).toBe('true'))
     fireEvent.click(enabled)
-    await waitFor(() => expect(screen.queryByRole('switch', { name: /update title after summarizing/i })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('switch', { name: /rename after a summary/i })).toBeNull())
   })
 
   it('turns on retitling after compaction', async () => {
@@ -210,7 +219,7 @@ describe('TitlesSettingsPage', () => {
     )
     renderPage(<TitlesSettingsPage />)
 
-    const toggle = await screen.findByRole('switch', { name: /update title after summarizing/i })
+    const toggle = await screen.findByRole('switch', { name: /rename after a summary/i })
     await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'))
     fireEvent.click(toggle)
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
@@ -219,7 +228,7 @@ describe('TitlesSettingsPage', () => {
   })
 })
 
-describe('ContextSettingsPage', () => {
+describe('Sessions settings: Summaries', () => {
   it('saves an edited threshold', async () => {
     const bodies: unknown[] = []
     server.use(
@@ -232,7 +241,7 @@ describe('ContextSettingsPage', () => {
     )
     renderPage(<ContextSettingsPage />)
 
-    const input = await screen.findByLabelText('Token threshold')
+    const input = await screen.findByLabelText('Summarize when a session reaches')
     fireEvent.change(input, { target: { value: '50000' } })
     await waitFor(() => expect(screen.queryByText('Unsaved changes')).not.toBeNull())
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
@@ -247,7 +256,7 @@ describe('ContextSettingsPage', () => {
     server.use(...baseHandlers(null))
     renderPage(<ContextSettingsPage />)
 
-    fireEvent.change(await screen.findByLabelText('Token threshold'), { target: { value: '50000' } })
+    fireEvent.change(await screen.findByLabelText('Summarize when a session reaches'), { target: { value: '50000' } })
     expect(await screen.findByText(/Now 50,000 tokens\./)).toBeTruthy()
   })
 
@@ -262,7 +271,7 @@ describe('ContextSettingsPage', () => {
     )
     renderPage(<ContextSettingsPage />)
 
-    const input = await screen.findByLabelText('Token threshold')
+    const input = await screen.findByLabelText('Summarize when a session reaches')
     await waitFor(() => expect((input as HTMLInputElement).value).toBe('80000'))
     fireEvent.change(input, { target: { value: '' } })
 
@@ -277,7 +286,7 @@ describe('ContextSettingsPage', () => {
     server.use(...baseHandlers(80_000))
     renderPage(<ContextSettingsPage />)
 
-    const input = (await screen.findByLabelText('Token threshold')) as HTMLInputElement
+    const input = (await screen.findByLabelText('Summarize when a session reaches')) as HTMLInputElement
     await waitFor(() => expect(input.value).toBe('80000'))
     fireEvent.change(input, { target: { value: '1234' } })
 
@@ -285,13 +294,13 @@ describe('ContextSettingsPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Discard…' }))
     // Nothing is lost until the confirmation.
-    expect((screen.getByLabelText('Token threshold') as HTMLInputElement).value).toBe('1234')
+    expect((screen.getByLabelText('Summarize when a session reaches') as HTMLInputElement).value).toBe('1234')
     fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }))
 
     await waitFor(() => {
       expect(screen.queryByText('Unsaved changes')).toBeNull()
     })
-    expect((screen.getByLabelText('Token threshold') as HTMLInputElement).value).toBe('80000')
+    expect((screen.getByLabelText('Summarize when a session reaches') as HTMLInputElement).value).toBe('80000')
   })
 
   it('reports a failed save as an error toast', async () => {
@@ -303,7 +312,7 @@ describe('ContextSettingsPage', () => {
     )
     renderPage(<ContextSettingsPage />)
 
-    fireEvent.change(await screen.findByLabelText('Token threshold'), {
+    fireEvent.change(await screen.findByLabelText('Summarize when a session reaches'), {
       target: { value: '30000' },
     })
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
@@ -313,20 +322,22 @@ describe('ContextSettingsPage', () => {
     })
   })
 
-  it('keeps idle compaction off with its percent shown but disabled for an older backend', async () => {
+  it('keeps idle compaction off for an older backend, and shows its percent only once the switch is on', async () => {
     // baseHandlers returns only prompt_token_threshold, like an older backend.
     server.use(...baseHandlers(null))
     renderPage(<ContextSettingsPage />)
 
     const toggle = await screen.findByRole('switch', { name: /summarize idle sessions/i })
     expect(toggle.getAttribute('aria-checked')).toBe('false')
-    const percent = screen.getByLabelText('Idle trigger percent') as HTMLInputElement
-    expect(percent.disabled).toBe(true)
-    expect(percent.placeholder).toBe('70')
+    // A row that cannot be used takes no room (it read "Turn on … to change this").
+    expect(screen.queryByLabelText('Idle trigger percent')).toBeNull()
+    expect(screen.queryByText(/Turn on Summarize idle sessions/)).toBeNull()
     expect(screen.queryByText('Unsaved changes')).toBeNull()
 
     fireEvent.click(toggle)
-    await waitFor(() => expect(percent.disabled).toBe(false))
+    const percent = await screen.findByLabelText('Idle trigger percent') as HTMLInputElement
+    expect(percent.disabled).toBe(false)
+    expect(percent.placeholder).toBe('70')
   })
 
   it('turns idle compaction on with a custom percent', async () => {
@@ -396,15 +407,54 @@ describe('ContextSettingsPage', () => {
   })
 })
 
+/** The dropdown in the row labelled Size. */
+function sizeDropdown(): HTMLElement {
+  const row = screen.getByText('Size').parentElement?.parentElement
+  const trigger = row?.querySelector<HTMLElement>('button[aria-haspopup="listbox"]')
+  if (!trigger) throw new Error('The Size row has no dropdown')
+  return trigger
+}
+
 describe('MediaSettingsPage', () => {
-  it('is titled "Image and video" and names the two size rows by the models they apply to', async () => {
+  it('is titled "Image and video" and has one Size row', async () => {
     server.use(...baseHandlers(null))
     renderPage(<MediaSettingsPage />)
 
     await screen.findByLabelText('Image model')
     expect(screen.getByRole('heading', { name: 'Image and video' })).toBeTruthy()
-    expect(screen.getByText('Size (other models)')).toBeTruthy()
-    expect(screen.getByText('Size (OpenAI models)')).toBeTruthy()
+    expect(screen.getAllByText('Size').length).toBe(1)
+    expect(screen.queryByText(/Size \(/)).toBeNull()
+  })
+
+  it('offers the sizes of the chosen image model', async () => {
+    server.use(
+      http.get('http://localhost/api/settings/multimodal', () => HttpResponse.json({
+        ...MULTIMODAL,
+        image: { ...MULTIMODAL.image, model: 'openai:gpt-image-1', image_size: '2K', size: '1536x1024' },
+      })),
+      ...baseHandlers(null),
+    )
+    renderPage(<MediaSettingsPage />)
+
+    await screen.findByLabelText('Image model')
+    // An OpenAI image model takes pixel sizes, so the row shows that setting.
+    await waitFor(() => expect(sizeDropdown().textContent).toContain('1536x1024'))
+    expect(sizeDropdown().textContent).not.toContain('2K')
+  })
+
+  it('shows the other size setting for any other image model', async () => {
+    server.use(
+      http.get('http://localhost/api/settings/multimodal', () => HttpResponse.json({
+        ...MULTIMODAL,
+        image: { ...MULTIMODAL.image, model: 'googlegenai:gemini-3.1-flash-image-preview', image_size: '2K', size: '1536x1024' },
+      })),
+      ...baseHandlers(null),
+    )
+    renderPage(<MediaSettingsPage />)
+
+    await screen.findByLabelText('Image model')
+    await waitFor(() => expect(sizeDropdown().textContent).toContain('2K'))
+    expect(sizeDropdown().textContent).not.toContain('1536x1024')
   })
 
   it('shows image and video sections with touch-sized model inputs', async () => {

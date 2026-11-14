@@ -1,6 +1,6 @@
 /**
- * Settings → Context — when long sessions are summarized (compacted) to fit
- * the model's context window, including idle compaction.
+ * Settings → Sessions → Summaries: when long sessions are summarized
+ * (compacted) to fit the model's context window, including idle compaction.
  */
 import {
   useSummarizationSettingsQuery,
@@ -8,7 +8,7 @@ import {
 } from '@/queries'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { SettingsPage } from '@/components/settings/SettingsPage'
+import type { SettingsPart } from '@/components/settings/SettingsPartsPage'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { useSettingsDraft } from '@/components/settings/useSettingsDraft'
@@ -50,7 +50,7 @@ function parseOptionalInt(raw: string): number | null {
   return raw.trim() === '' || Number.isNaN(parsed) ? null : parsed
 }
 
-export function ContextSettingsPage() {
+export function useSummariesPart(): SettingsPart {
   const summarizationQ = useSummarizationSettingsQuery()
   const updateSummarization = useUpdateSummarizationSettingsMutation()
 
@@ -60,35 +60,32 @@ export function ContextSettingsPage() {
     normalize: normalizeSummarization,
     hydrate: hydrateSummarization,
     onSave: (value) => updateSummarization.mutateAsync(value),
-    successTitle: 'Summarization settings saved',
+    successTitle: 'Summary settings saved',
   })
 
   const threshold = draft.value.prompt_token_threshold
   const thresholdError =
     threshold !== null && threshold < 1
-      ? 'Must be a positive integer, or leave empty to use the auto value.'
+      ? 'A whole number of tokens, or empty for Auto.'
       : null
   const idleCompaction = draft.value.idle_compaction
   const idlePercent = draft.value.idle_compaction_percent
   const idlePercentError =
     idleCompaction && idlePercent !== null && (idlePercent < 1 || idlePercent > 100)
-      ? 'Must be a whole number from 1 to 100, or leave empty for 70.'
+      ? 'A whole number from 1 to 100, or empty for 70.'
       : null
 
-  return (
-    <SettingsPage
-      title="Context"
-      description="Long sessions are summarized so they keep fitting the model's context window."
-      draft={{ ...draft, canSave: draft.canSave && !thresholdError && !idlePercentError }}
-      loading={summarizationQ.isLoading}
-      error={summarizationQ.error}
-    >
-      <PanelSection title="Summarization" flush>
+  return {
+    draft: { ...draft, canSave: draft.canSave && !thresholdError && !idlePercentError },
+    loading: summarizationQ.isLoading,
+    error: summarizationQ.error,
+    body: (
+      <PanelSection key="summaries" title="Summaries" flush>
         <PanelRow
-          label="Token threshold"
+          label="Summarize when a session reaches"
           htmlFor="context-threshold"
           inline
-          description={`Summarize earlier messages once a prompt reaches this many tokens. Empty uses 90% of the model's context window.${threshold !== null && Number.isFinite(threshold) && threshold > 0 ? ` Now ${threshold.toLocaleString('en-US')} tokens.` : ''}`}
+          description={`Empty means 90% of what the model can hold.${threshold !== null && Number.isFinite(threshold) && threshold > 0 ? ` Now ${threshold.toLocaleString('en-US')} tokens.` : ''}`}
           error={thresholdError}
         >
           <Input
@@ -96,57 +93,48 @@ export function ContextSettingsPage() {
             type="number"
             min={1}
             step={1000}
-            placeholder="Auto (90%)"
-            aria-label="Token threshold"
+            placeholder="Auto"
+            aria-label="Summarize when a session reaches"
             value={threshold === null ? '' : String(threshold)}
             onChange={(e) => draft.patch({ prompt_token_threshold: parseOptionalInt(e.target.value) })}
             className="h-9 w-32! no-spin text-right font-mono tabular-nums"
           />
           <span className="text-xs text-(--color-text-2)">tokens</span>
         </PanelRow>
-      </PanelSection>
-
-      <PanelSection
-        title="Idle sessions"
-        description="Summarize a session after 4½ idle minutes, while the model's cache is still warm. Uses one extra model call."
-        flush
-      >
-        <PanelRow label="Summarize idle sessions" htmlFor="context-idle">
+        <PanelRow label="Summarize idle sessions" htmlFor="context-idle" description="After 4½ idle minutes. One extra model call.">
           <Switch
             id="context-idle"
             checked={idleCompaction}
             onCheckedChange={(checked) => draft.patch({ idle_compaction: checked })}
           />
         </PanelRow>
-        <PanelRow
-          label="Idle trigger"
-          htmlFor="context-idle-percent"
-          inline
-          description={
-            idleCompaction
-              ? 'The percent of the token threshold a session must reach first. Empty uses 70%.'
-              : 'Turn on Summarize idle sessions to change this.'
-          }
-          error={idlePercentError}
-        >
-          <div className="flex items-center gap-2">
-            <Input
-              id="context-idle-percent"
-              type="number"
-              min={1}
-              max={100}
-              step={5}
-              disabled={!idleCompaction}
-              placeholder={String(DEFAULT_IDLE_COMPACTION_PERCENT)}
-              aria-label="Idle trigger percent"
-              value={idlePercent === null ? '' : String(idlePercent)}
-              onChange={(e) => draft.patch({ idle_compaction_percent: parseOptionalInt(e.target.value) })}
-              className="h-9 w-20! md:w-24! no-spin text-right font-mono tabular-nums"
-            />
-            <span className="text-xs text-(--color-text-muted)" aria-hidden="true">%</span>
-          </div>
-        </PanelRow>
+        {/* Shown once its switch is on: a row that cannot be used takes no room. */}
+        {idleCompaction && (
+          <PanelRow
+            label="Only once it is this full"
+            htmlFor="context-idle-percent"
+            inline
+            description="A percent of the size above. Empty means 70%."
+            error={idlePercentError}
+          >
+            <div className="flex items-center gap-2">
+              <Input
+                id="context-idle-percent"
+                type="number"
+                min={1}
+                max={100}
+                step={5}
+                placeholder={String(DEFAULT_IDLE_COMPACTION_PERCENT)}
+                aria-label="Idle trigger percent"
+                value={idlePercent === null ? '' : String(idlePercent)}
+                onChange={(e) => draft.patch({ idle_compaction_percent: parseOptionalInt(e.target.value) })}
+                className="h-9 w-20! md:w-24! no-spin text-right font-mono tabular-nums"
+              />
+              <span className="text-xs text-(--color-text-muted)" aria-hidden="true">%</span>
+            </div>
+          </PanelRow>
+        )}
       </PanelSection>
-    </SettingsPage>
-  )
+    ),
+  }
 }

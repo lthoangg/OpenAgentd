@@ -39,7 +39,7 @@ impl UsageError {
 }
 
 const BUILTIN_USAGE_PROVIDERS: [(&str, &str); 5] =
-    [("codex", "OpenAI Codex"), ("copilot", "GitHub Copilot"), ("grok", "Grok Build"), ("openrouter", "OpenRouter"), ("deepseek", "DeepSeek")];
+    [("codex", "ChatGPT"), ("copilot", "GitHub Copilot"), ("grok", "Grok Build"), ("openrouter", "OpenRouter"), ("deepseek", "DeepSeek")];
 
 fn oauth_err(e: appv3_providers::codex::UsageError) -> UsageError {
     match e {

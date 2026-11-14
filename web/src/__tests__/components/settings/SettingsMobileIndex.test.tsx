@@ -63,15 +63,15 @@ describe('SettingsMobileIndex', () => {
     expect(screen.queryByRole('button', { name: /^Network access/ })).toBeNull()
   })
 
-  it('describes Plugins by what they bring: skills, MCP servers and tools', () => {
+  it('describes Plugins by what they bring: skills, connectors and tools', () => {
     renderIndex(['api.plugins'])
-    expect(screen.getByRole('button', { name: /^Plugins/ })).toHaveTextContent('Skills, MCP servers and tools from plugins')
+    expect(screen.getByRole('button', { name: /^Plugins/ })).toHaveTextContent('Skills, connectors and tools from plugins')
   })
 
   it('opens the section that was tapped', async () => {
     const selected: TopLevelSection[] = []
     renderIndex([], (section) => { selected.push(section) })
-    await userEvent.click(screen.getByRole('button', { name: /^Providers/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Models/ }))
     expect(selected).toEqual(['providers'])
   })
 
@@ -87,14 +87,14 @@ describe('SettingsMobileIndex', () => {
       const results = within(screen.getByRole('list', { name: 'Search results' }))
       expect(results.getByRole('button', { name: 'Text size, in Appearance' })).toBeInTheDocument()
       // The section list gives way to the results.
-      expect(screen.queryByRole('heading', { name: 'Models and media' })).toBeNull()
+      expect(screen.queryByRole('heading', { name: 'Advanced' })).toBeNull()
     })
 
     it('opens the setting that was tapped, in its section', async () => {
       const hits: SettingsHit[] = []
       renderIndex([], () => {}, (hit) => { hits.push(hit) })
       await userEvent.type(screen.getByRole('searchbox', { name: 'Search settings' }), 'fallback')
-      await userEvent.click(screen.getByRole('button', { name: 'Accounts and fallback order, in Providers' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Accounts and fallback order, in Models' }))
       expect(hits).toHaveLength(1)
       expect(hits[0]).toMatchObject({ kind: 'setting', section: 'providers', label: 'Accounts and fallback order' })
     })
@@ -103,7 +103,7 @@ describe('SettingsMobileIndex', () => {
       const selected: TopLevelSection[] = []
       renderIndex([], (section) => { selected.push(section) })
       await userEvent.type(screen.getByRole('searchbox', { name: 'Search settings' }), 'fallback')
-      await userEvent.click(screen.getByRole('button', { name: 'Accounts and fallback order, in Providers' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Accounts and fallback order, in Models' }))
       expect(selected).toEqual(['providers'])
     })
 
@@ -113,7 +113,7 @@ describe('SettingsMobileIndex', () => {
       await userEvent.type(search, 'zzz')
       expect(screen.getByText('No settings match “zzz”.')).toBeInTheDocument()
       await userEvent.clear(search)
-      expect(screen.getByRole('heading', { name: 'Models and media' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Advanced' })).toBeInTheDocument()
     })
   })
 
@@ -122,6 +122,6 @@ describe('SettingsMobileIndex', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
     const plugins = screen.getByRole('button', { name: /^Plugins/ })
     expect(plugins.querySelector('[data-settings-tile]')).not.toBeNull()
-    expect(plugins).not.toHaveTextContent('Skills, MCP servers and tools from plugins')
+    expect(plugins).not.toHaveTextContent('Skills, connectors and tools from plugins')
   })
 })

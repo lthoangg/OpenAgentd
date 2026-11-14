@@ -85,10 +85,10 @@ afterEach(() => {
 
 const ran = (command: string) => calls.filter((call) => call.command === command)
 
-// The Account section on the Servers screen: ServersScreen.account.test.tsx.
+// The Account section on the Computers screen: ServersScreen.account.test.tsx.
 
-describe('computers on the Servers screen', () => {
-  it('lists an account computer apart from the saved servers, and opens it through its link', async () => {
+describe('computers on the Computers screen', () => {
+  it('lists an account computer in the same list as the ones added by address, and opens it through its link', async () => {
     shell(CONNECTED, {
       cloud_devices: () => [ME, MAC, { device_id: 'dev-phone', fingerprint: 'D00D 0001', signer: false, me: false, kind: 'android' }],
       cloud_open_computer: () => ({ status: appStatus, via: 'account' }),
@@ -96,17 +96,16 @@ describe('computers on the Servers screen', () => {
     render(<ServersScreen active onOpenSessions={() => {}} />)
 
     expect(await screen.findByText('macOS · 3F9A 21C4')).toBeTruthy()
-    expect(screen.getByText('Your account')).toBeTruthy()
+    expect(screen.getByText('From your account')).toBeTruthy()
     expect(screen.queryByText(/Android/)).toBeNull()
     // This phone is not a computer.
     expect(screen.queryByText(/iOS · AA11 BB22/)).toBeNull()
-    // Saved servers stay listed as they are.
-    expect(screen.getByText('Studio Mac')).toBeTruthy()
+    // A computer added by address is a row of the same list.
+    expect(screen.getByText('Studio Mac').closest('[data-server-row]')?.parentElement).toBe(screen.getByText('macOS · 3F9A 21C4').closest('[data-server-row]')?.parentElement ?? null)
 
     fireEvent.click(screen.getByRole('button', { name: 'Use macOS · 3F9A 21C4' }))
     await waitFor(() => expect(ran('cloud_open_computer')).toHaveLength(1))
     expect(ran('cloud_open_computer')[0].args).toEqual({ deviceId: 'dev-mac', lanBaseUrl: null })
-    expect(await screen.findByText('Opened.')).toBeTruthy()
   })
 
   it('shows what the shell says when a computer cannot be opened', async () => {
@@ -148,13 +147,13 @@ describe('Account page', () => {
     expect(await screen.findByText('3 devices are already waiting to join; wait a few minutes or reject them on a device that approves.')).toBeTruthy()
   })
 
-  it('signs a phone in as a client only: Use as server shows, disabled', async () => {
+  it('signs a phone in to open computers only: being opened shows, disabled', async () => {
     shell({ state: 'guest', notice: null, supported: true })
     render(<PhoneAccountContent />)
-    const server = await screen.findByRole('checkbox', { name: /Use as server/ })
+    const server = await screen.findByRole('checkbox', { name: /My other devices can open/ })
     expect((server as HTMLInputElement).disabled).toBe(true)
     expect((server as HTMLInputElement).checked).toBe(false)
-    expect((screen.getByRole('checkbox', { name: /Use as client/ }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('checkbox', { name: /can open my other computers/ }) as HTMLInputElement).checked).toBe(true)
   })
 
   it('has no account UI where accounts are not supported', async () => {
@@ -318,7 +317,7 @@ describe('connected account', () => {
     const details = await screen.findByRole('dialog', { name: 'build-box' })
     expect(details.textContent).toContain('SystemLinux')
     expect(details.textContent).toContain('Key9C02 E1B7')
-    expect(details.textContent).toContain('RoleServer')
+    expect(details.textContent).toContain('SharingCan be opened by your devices')
     // Any computer of the account is renamed here, through its link.
     fireEvent.click(within(details).getByRole('button', { name: 'Rename' }))
     fireEvent.change(within(details).getByRole('textbox', { name: 'Name' }), { target: { value: 'CI box' } })
@@ -426,7 +425,7 @@ describe('approval sheet', () => {
     expect(match.disabled).toBe(false)
 
     // Asked for server only: client cannot be turned on, and a server-only device does not approve by default.
-    expect((within(sheet).getByRole('checkbox', { name: /Use as client/ }) as HTMLInputElement).disabled).toBe(true)
+    expect((within(sheet).getByRole('checkbox', { name: /can open my other computers/ }) as HTMLInputElement).disabled).toBe(true)
     fireEvent.click(within(sheet).getByRole('checkbox', { name: 'Can approve other devices' }))
     fireEvent.click(match)
     await waitFor(() => expect(ran('cloud_approve_confirm')).toHaveLength(1))
@@ -483,7 +482,7 @@ describe('approval sheet', () => {
     await within(sheet).findByText('418 207')
     const approver = within(sheet).getByRole('checkbox', { name: 'Can approve other devices' })
     expect((approver as HTMLInputElement).checked).toBe(true)
-    fireEvent.click(within(sheet).getByRole('checkbox', { name: /Use as server/ }))
+    fireEvent.click(within(sheet).getByRole('checkbox', { name: /My other devices can open/ }))
     fireEvent.click(within(sheet).getByRole('button', { name: 'Codes match' }))
     await waitFor(() => expect(ran('cloud_approve_confirm')).toHaveLength(1))
     expect(ran('cloud_approve_confirm')[0].args).toEqual({ enrollmentId: 'enr-1', approver: true, server: false, client: true })
@@ -494,7 +493,7 @@ describe('approval sheet', () => {
       cloud_approve_begin: () => ({ code: '418207', server: false, client: true }),
     })
     await within(sheet).findByText('418 207')
-    fireEvent.click(within(sheet).getByRole('checkbox', { name: /Use as client/ }))
+    fireEvent.click(within(sheet).getByRole('checkbox', { name: /can open my other computers/ }))
     expect(within(sheet).getByText('Choose at least one.')).toBeTruthy()
     expect((within(sheet).getByRole('button', { name: 'Codes match' }) as HTMLButtonElement).disabled).toBe(true)
   })

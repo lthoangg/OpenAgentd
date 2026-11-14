@@ -180,7 +180,7 @@ export function useAgentCommands({
         }]
       : []),
     { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'The last terminal, or a new shell in the workspace (runs on the connected server)', keywords: 'shell console', action: handleOpenTerminal },
-    { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Agents, skills, providers and more', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
+    { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Models, appearance, agents and more', keywords: 'preferences providers connectors mcp', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
     { id: 'open-workspace', group: 'Navigation', label: 'Open Workspace…', description: 'Add a folder as a workspace', keywords: 'folder project repo add', shortcut: shortcutLabel(KEYS.openWorkspace, os), action: () => dispatchAppEvent(APP_EVENTS.openWorkspace) },
     { id: 'next-needs-you', group: 'Navigation', label: 'Next Session That Needs You', description: 'Jump to the next session waiting for an answer or a review', keywords: 'waiting attention ask question approve', action: () => openNextNeedsYou(router) },
     { id: 'go-telemetry', group: 'Navigation', label: 'Open Usage', description: 'Spend, turns and traces by workspace and model', keywords: 'telemetry usage spend cost traces', action: () => openTelemetry() },
@@ -196,36 +196,30 @@ export function useAgentCommands({
       : []),
     { id: 'keyboard-shortcuts', group: 'Navigation', label: 'Keyboard Shortcuts', description: 'Every shortcut, by where it works', keywords: 'keys hotkeys keybindings', shortcut: shortcutLabel(KEYS.shortcutsHelp, os), action: () => useUIStore.getState().toggleShortcutsHelp() },
     {
-      id: 'theme',
+      // Theme and text size on one page (they were two commands).
+      id: 'appearance',
       group: 'View',
-      label: 'Theme…',
-      description: `Switch between System, Light and Dark. Now: ${THEME_OPTIONS.find((o) => o.value === theme)?.label ?? 'System'}`,
-      keywords: 'appearance color mode system light dark',
+      label: 'Appearance…',
+      description: `Theme and text size. Now: ${THEME_OPTIONS.find((o) => o.value === theme)?.label ?? 'System'}, ${TEXT_SIZES.find((size) => size.value === textSize)?.label ?? 'Default'}`,
+      keywords: 'theme color mode system light dark text size font zoom bigger smaller density',
       page: {
-        placeholder: 'Search themes…',
-        commands: THEME_OPTIONS.map(({ value, label }) => ({
-          id: `theme-${value}`,
-          label,
-          description: `${value === 'system' ? 'Follow the system appearance' : `Use the ${value} theme`}${value === theme ? ' · Current' : ''}`,
-          action: () => setTheme(value),
-        })),
-      },
-      action: () => {},
-    },
-    {
-      id: 'text-size',
-      group: 'View',
-      label: 'Text Size…',
-      description: `Compact, Default or Large. Now: ${TEXT_SIZES.find((size) => size.value === textSize)?.label ?? 'Default'}`,
-      keywords: 'font zoom bigger smaller density',
-      page: {
-        placeholder: 'Text size…',
-        commands: TEXT_SIZES.map(({ value, label }) => ({
-          id: `text-size-${value}`,
-          label,
-          description: value === textSize ? 'Current' : undefined,
-          action: () => setTextSize(value),
-        })),
+        placeholder: 'Theme or text size…',
+        commands: [
+          ...THEME_OPTIONS.map(({ value, label }) => ({
+            id: `theme-${value}`,
+            group: 'Theme',
+            label,
+            description: `${value === 'system' ? 'Follow the system appearance' : `Use the ${value} theme`}${value === theme ? ' · Current' : ''}`,
+            action: () => setTheme(value),
+          })),
+          ...TEXT_SIZES.map(({ value, label }) => ({
+            id: `text-size-${value}`,
+            group: 'Text size',
+            label,
+            description: value === textSize ? 'Current' : undefined,
+            action: () => setTextSize(value),
+          })),
+        ],
       },
       action: () => {},
     },

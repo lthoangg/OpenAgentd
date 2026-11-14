@@ -1,8 +1,10 @@
 /**
- * What a device is used as, chosen when it signs in (spec 3.1): **Use as
- * server** (other devices open sessions on it) and **Use as client** (it
- * opens sessions on the account's other computers). A computer offers both,
- * on by default; a phone has no server to offer, so that box shows disabled.
+ * What a device shares with the account, chosen when it signs in (spec 3.1):
+ * whether the account's other devices can open it (the `server` role), and
+ * whether it can open the account's other computers (the `client` role). A
+ * computer offers both, on by default; a phone runs no agents for other
+ * devices, so that box shows disabled. The labels are the sentences
+ * themselves: the role names stay in the code.
  */
 import type { Roles } from '@/api/cloud'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -10,10 +12,16 @@ import { Checkbox } from '@/components/ui/checkbox'
 export const COMPUTER_ROLES: Roles = { server: true, client: true }
 export const PHONE_ROLES: Roles = { server: false, client: true }
 
-/** "Server and client", "Server", "Client": how a device's roles read in lists. */
+/** How a device's roles read in lists and details. */
 export function rolesLabel(roles: Roles): string {
-  if (roles.server && roles.client) return 'Server and client'
-  return roles.server ? 'Server' : 'Client'
+  if (roles.server && roles.client) return 'Can be opened, and opens other computers'
+  return roles.server ? 'Can be opened by your devices' : 'Opens your other computers'
+}
+
+/** What a device waiting for approval asks for. */
+export function rolesAsked(roles: Roles): string {
+  if (roles.server && roles.client) return 'Asks to be opened by your devices, and to open your computers'
+  return roles.server ? 'Asks to be opened by your devices' : 'Asks to open your computers'
 }
 
 export function RolesChoice({
@@ -26,16 +34,19 @@ export function RolesChoice({
   value: Roles
   onChange?: (roles: Roles) => void
   disabled?: boolean
-  /** A phone: Use as server is shown but cannot be ticked. */
+  /** A phone: being opened by other devices is shown but cannot be ticked. */
   phone?: boolean
   /** Approving: only the roles the device asked for can stay on. */
   allowed?: Roles
 }) {
   const serverOff = phone || disabled || (allowed !== undefined && !allowed.server)
   const clientOff = disabled || (allowed !== undefined && !allowed.client)
+  // Approving is about the device that asked; otherwise it is this one.
+  const it = allowed !== undefined ? 'it' : phone ? 'this phone' : 'this computer'
+  const It = allowed !== undefined ? 'It' : phone ? 'This phone' : 'This computer'
   return (
     <fieldset className="space-y-2">
-      <legend className="sr-only">Use this device as</legend>
+      <legend className="sr-only">What this device shares</legend>
       <label className="flex items-start gap-2">
         <Checkbox
           checked={value.server}
@@ -43,9 +54,9 @@ export function RolesChoice({
           onCheckedChange={(server) => onChange?.({ ...value, server })}
         />
         <span>
-          <span className="text-(--color-text)">Use as server</span>
+          <span className="text-(--color-text)">My other devices can open {it}</span>
           <span className="block text-(--color-text-subtle)">
-            {phone ? 'A phone does not run agents for other devices.' : 'Your other devices can use this one, from anywhere.'}
+            {phone ? 'A phone does not run agents for other devices.' : 'From anywhere.'}
           </span>
         </span>
       </label>
@@ -56,8 +67,7 @@ export function RolesChoice({
           onCheckedChange={(client) => onChange?.({ ...value, client })}
         />
         <span>
-          <span className="text-(--color-text)">Use as client</span>
-          <span className="block text-(--color-text-subtle)">This one can use your other computers.</span>
+          <span className="text-(--color-text)">{It} can open my other computers</span>
         </span>
       </label>
       {!value.server && !value.client && (

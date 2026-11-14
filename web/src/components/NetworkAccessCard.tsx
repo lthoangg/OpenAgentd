@@ -202,15 +202,15 @@ export function NetworkAccessCard({ title = 'Network access' }: {
     <div className="space-y-8">
       <PanelSection
         title={title}
-        description="Let phones and other computers on your local network use the built-in server."
+        description="Let phones and other computers on your local network use this computer."
         flush
       >
         <PanelRow
           label="Allow devices on your network to connect"
           labelId="network-access-label"
           description={sidecarRunning
-            ? 'Phones and other computers connect to the built-in server with the access key below.'
-            : 'Start the built-in server first.'}
+            ? 'Phones and other computers connect to this computer with the access key below.'
+            : 'Start OpenAgentd on this computer first.'}
         >
           <Switch
             aria-labelledby="network-access-label"

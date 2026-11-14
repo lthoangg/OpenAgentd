@@ -23,8 +23,8 @@ describe('searchSettings', () => {
   it('finds a single setting by its name, or by a word people use for it', () => {
     expect(labelsFor('text size')).toContain('setting:general:Text size')
     expect(labelsFor('dark')).toContain('setting:general:Theme')
-    expect(labelsFor('gitignore')).toContain('setting:denied_paths:Denied patterns')
-    expect(labelsFor('retention days')).toContain('setting:telemetry:Keep traces for')
+    expect(labelsFor('gitignore')).toContain('setting:denied_paths:Blocked patterns')
+    expect(labelsFor('retention days')).toContain('setting:titles:Keep usage history for')
   })
 
   it('finds the Detail setting by its new name and by every old one', () => {
@@ -36,7 +36,7 @@ describe('searchSettings', () => {
     }
   })
 
-  it('finds the fallback order of accounts under Providers', () => {
+  it('finds the fallback order of accounts under Models', () => {
     for (const query of ['use first', 'rate limit', 'tried in this order', 'pinned']) {
       expect(labelsFor(query)).toContain('setting:providers:Accounts and fallback order')
     }
@@ -56,6 +56,28 @@ describe('searchSettings', () => {
       searchSettings('plugins', SETTINGS_SECTIONS).flatMap((hit) => (hit.kind === 'setting' && hit.section === 'plugins' ? [[hit.label, hit.anchor]] : [])),
     )
     expect(anchors).toEqual({ 'Plugin folders': 'Plugin folders', 'Single-file plugins': 'Single-file plugins' })
+  })
+
+  it('finds every renamed page by the name it had', () => {
+    const firstSection = (query: string) => searchSettings(query, SETTINGS_SECTIONS).find((hit) => hit.kind === 'section')
+    expect(firstSection('mcp')).toMatchObject({ section: 'mcp', label: 'Connectors' })
+    expect(firstSection('mcp servers')).toMatchObject({ section: 'mcp', label: 'Connectors' })
+    expect(firstSection('provider')).toMatchObject({ section: 'providers', label: 'Models' })
+    expect(firstSection('providers')).toMatchObject({ section: 'providers', label: 'Models' })
+    expect(firstSection('denied')).toMatchObject({ section: 'denied_paths', label: 'Blocked files' })
+    expect(firstSection('denied paths')).toMatchObject({ section: 'denied_paths', label: 'Blocked files' })
+    expect(firstSection('server')).toMatchObject({ section: 'connection', label: 'Server' })
+    expect(firstSection('about openagentd')).toMatchObject({ section: 'about', label: 'About' })
+  })
+
+  it('finds Sessions by each of the four pages it replaced, and their settings by the old names', () => {
+    for (const query of ['session titles', 'context', 'goals', 'retention']) {
+      expect(searchSettings(query, SETTINGS_SECTIONS).find((hit) => hit.kind === 'section')).toMatchObject({ section: 'titles', label: 'Sessions' })
+    }
+    expect(labelsFor('token threshold')).toContain('setting:titles:Summarize when a session reaches')
+    expect(labelsFor('idle trigger')).toContain('setting:titles:Summarize idle sessions')
+    expect(labelsFor('keep forever')).toContain('setting:titles:Keep usage history forever')
+    expect(labelsFor('generate titles')).toContain('setting:titles:Name sessions automatically')
   })
 
   it('needs every word of the query, in any order', () => {

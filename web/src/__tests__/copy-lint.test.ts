@@ -94,7 +94,6 @@ function pointerVerbStrings(source: string): string[] {
 /** Strings that say click or tap, per file, each right for every device that shows it. */
 const POINTER_VERBS: Record<string, { count: number; why: string }> = {
   'components/AppBackendPanel.tsx': { count: 1, why: 'the touch branch of the list description; the other branch names the Use button' },
-  'components/phone/AccountComputers.tsx': { count: 1, why: 'the touch branch of the list description' },
   'components/PendingMessageQueue.tsx': { count: 1, why: 'the phone-only queued bubble' },
   'components/account/InviteSheet.tsx': { count: 1, why: 'says what to do on the phone that scans the code' },
   'components/settings/pages/settings.desktop.tsx': { count: 1, why: 'the notch setting: macOS desktop only' },

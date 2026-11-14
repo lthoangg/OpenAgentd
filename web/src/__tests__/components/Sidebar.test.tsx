@@ -275,7 +275,7 @@ mock.module('@/components/ThemeToggle', () => ({
 
 mock.module('@/components/HealthDot', () => ({
   HealthDot: ({ labeled = false }: { labeled?: boolean }) => (
-    <button type="button" aria-label={labeled ? 'Connected. Change server' : 'backend-name. Connected. Change server'}>{labeled ? 'backend-name' : null}</button>
+    <button type="button" aria-label={labeled ? 'Connected. Change computer' : 'backend-name. Connected. Change computer'}>{labeled ? 'backend-name' : null}</button>
   ),
 }))
 
@@ -939,7 +939,7 @@ describe('Sidebar workspace trust flow', () => {
 
     await renderSidebarWithProps({ mobileOpen: true })
 
-    expect(screen.getByRole('button', { name: 'Connected. Change server' }).textContent).toBe('backend-name')
+    expect(screen.getByRole('button', { name: 'Connected. Change computer' }).textContent).toBe('backend-name')
   })
 
   it('has no help button that opens the command palette under another name', async () => {
@@ -3226,7 +3226,7 @@ describe('Sidebar workspace trust flow', () => {
         const button = screen.getByRole('button', { name })
         expect(button.textContent).toBe('')
       }
-      expect(screen.getByRole('button', { name: /Change server$/ }).textContent).toBe('backend-name')
+      expect(screen.getByRole('button', { name: /Change computer$/ }).textContent).toBe('backend-name')
     })
 
     it('opens the command palette from the mobile drawer footer, closing the drawer first', async () => {

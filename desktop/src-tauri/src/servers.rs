@@ -31,7 +31,7 @@ pub const BUNDLED_KEY: &str = "bundled";
 pub const BUILT_IN_NAME_KEY: &str = "built-in";
 
 /// What a notification calls the builtin until its computer's name is known.
-const BUILT_IN_NOTIFICATION_NAME: &str = "Built-in server";
+const BUILT_IN_NOTIFICATION_NAME: &str = "This computer";
 
 /// The longest server name a notification title carries, in characters (a
 /// computer's own name is at most this long; a saved name can be longer).
@@ -444,7 +444,7 @@ mod tests {
         let mut names = openagentd_shell_core::ComputerNames::new();
         let remote = ServerId::external("http://192.168.1.30:4082");
         assert_eq!(notification_server_name(&remote, &saved, &names), "Office NAS");
-        assert_eq!(notification_server_name(&ServerId::Bundled, &saved, &names), "Built-in server");
+        assert_eq!(notification_server_name(&ServerId::Bundled, &saved, &names), "This computer");
         names.insert(BUILT_IN_NAME_KEY.into(), "studio-mini".into());
         assert_eq!(notification_server_name(&ServerId::Bundled, &saved, &names), "studio-mini", "the builtin computer's own name");
     }

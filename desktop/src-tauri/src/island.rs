@@ -158,7 +158,7 @@ const QUIET_STATUS: &str = "quiet";
 /// Notifications kept until their turn's completion arrives, at most.
 const MAX_NOTIFIED: usize = 32;
 /// What a row calls the builtin sidecar: one name on every surface.
-const BUILTIN_NAME: &str = "Built-in server";
+const BUILTIN_NAME: &str = "This computer";
 
 // ── Settings ────────────────────────────────────────────────────────────────
 

@@ -20,8 +20,8 @@ pub const DEFAULT_MODEL: &str = "grok-4.7";
 const MODELS_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
 const SCOPES: [&str; 6] = ["openid", "profile", "email", "offline_access", "grok-cli:access", "api:access"];
 const DEVICE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
-const NOT_SIGNED_IN: &str = "Grok is not signed in. Sign in under Settings → Providers, or run `agentd auth grok`.";
-const SIGN_IN_EXPIRED: &str = "The Grok sign-in could not be renewed. Sign in again under Settings → Providers, or run `agentd auth grok`.";
+const NOT_SIGNED_IN: &str = "Grok is not signed in. Sign in under Settings → Models, or run `agentd auth grok`.";
+const SIGN_IN_EXPIRED: &str = "The Grok sign-in could not be renewed. Sign in again under Settings → Models, or run `agentd auth grok`.";
 
 /// The Grok account currently serving requests.
 pub fn oauth_slot() -> TokenSlot {

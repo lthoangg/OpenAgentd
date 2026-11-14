@@ -469,7 +469,7 @@ describe("AgentView — error card details and settings", () => {
     expect(screen.queryByRole("button", { name: "Switch model" })).toBeNull()
   })
 
-  it("opens Settings → Providers from the error a turn ended with", () => {
+  it("opens Settings → Models from the error a turn ended with", () => {
     const openSettings = mock((..._args: unknown[]) => {})
     const original = useSettingsStore.getState().openSettings
     act(() => { useSettingsStore.setState({ openSettings }) })

@@ -191,7 +191,7 @@ impl PooledProvider {
         let ready = |c: &Credential| store::cooldown(&self.provider_id, &c.id).is_none();
         let locked = self.pinned.as_ref().and_then(|pin| enabled.iter().find(|c| &c.id == pin && ready(c)).copied());
         let Some(first) = locked.or_else(|| store::select(&self.provider_id, &enabled)).cloned() else {
-            return Err(ProviderError::Unconfigured(format!("No enabled credential for '{}'. Add or enable one in Settings → Providers.", self.provider_id)));
+            return Err(ProviderError::Unconfigured(format!("No enabled credential for '{}'. Add or enable one in Settings → Models.", self.provider_id)));
         };
         let mut out = vec![first.clone()];
         out.extend(enabled.iter().filter(|c| c.id != first.id && ready(c)).map(|c| (*c).clone()));

@@ -11,6 +11,7 @@
  */
 import { useId, useState } from 'react'
 
+import { rolesLabel } from '@/components/account/RolesChoice'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -39,11 +40,11 @@ export function deviceFacts(device: {
   client: boolean
 }): ComputerFact[] {
   const system = deviceKindLabel(device.kind)
-  const uses = device.server && device.client ? 'Server and client' : device.server ? 'Server' : 'Client'
+  const uses = rolesLabel(device)
   return [
     ...(system ? [{ label: 'System', value: system }] : []),
     { label: 'Key', value: device.fingerprint, mono: true },
-    { label: 'Role', value: device.signer ? `${uses} · approves devices` : uses },
+    { label: 'Sharing', value: device.signer ? `${uses} · approves devices` : uses },
   ]
 }
 
@@ -56,14 +57,14 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   )
 }
 
-export function ComputerDetailsDialog({ open, onOpenChange, title, name, facts, rename = null, renameHint }: {
+export function ComputerDetailsDialog({ open, onOpenChange, title, name, facts, rename = null, renameHint, children }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** What the row calls it. */
   title: string
   /**
-   * The computer's name, where the title is something else ("Built-in
-   * server"); `null` when the app does not know it. Defaults to the title.
+   * The computer's name, where the title is something else ("This
+   * computer"); `null` when the app does not know it. Defaults to the title.
    */
   name?: string | null
   facts: ComputerFact[]
@@ -71,6 +72,8 @@ export function ComputerDetailsDialog({ open, onOpenChange, title, name, facts, 
   rename?: { name: string; save: (name: string) => Promise<void> } | null
   /** Shown where Rename would be, when it cannot be renamed from here. */
   renameHint?: string
+  /** What can be done to this computer from here (Stop, Edit, Remove), under its facts. */
+  children?: React.ReactNode
 }) {
   const inputId = useId()
   const [draft, setDraft] = useState<string | null>(null)
@@ -146,6 +149,7 @@ export function ComputerDetailsDialog({ open, onOpenChange, title, name, facts, 
         {draft !== null ? <p className={cn('mt-2', TEXT.hint)}>Leave it empty to use the computer’s own name.</p> : null}
         {!rename && renameHint ? <p className={cn('mt-2', TEXT.hint)}>{renameHint}</p> : null}
         {error ? <Callout tone="error" role="alert" className="mt-3">{error}</Callout> : null}
+        {children ? <div data-computer-actions="" className="mt-4 space-y-3 border-t border-(--color-border-subtle) pt-3">{children}</div> : null}
       </DialogContent>
     </Dialog>
   )

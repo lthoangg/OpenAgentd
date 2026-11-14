@@ -152,7 +152,7 @@ describe('ProviderCard — multi-credential capability', () => {
 
     renderCard({ ...pluginOauth, supports_multiple_credentials: false })
     fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }))
-    expect(screen.getByText('Connect PlugOauth')).toBeTruthy()
+    expect(screen.getByText('Sign in to PlugOauth')).toBeTruthy()
     expect(mockLoginStream).toHaveBeenCalledTimes(1)
     expect(mockLoginStream.mock.calls[0][4]).toBeUndefined()
   })

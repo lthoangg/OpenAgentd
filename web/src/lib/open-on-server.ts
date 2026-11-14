@@ -76,7 +76,7 @@ async function openOnServer(target: NotificationTarget & { baseUrl: string }, st
     return 'opened'
   }
   const saved = status.servers.find((server) => normalize(server.base_url) === baseUrl)
-  if (!saved) return fail('That server is no longer in your list.')
+  if (!saved) return fail('That computer is no longer in your list.')
   const { connectExternalBackend } = await import('@/lib/backend-switch')
   const result = await connectExternalBackend({ baseUrl, name: saved.name ?? '', persist: true, currentBaseUrl: current })
   return afterSwitch(target.sessionId, result)

@@ -31,7 +31,7 @@ directories).
   plugin's name hides its tools; pick plugin names that do not clash.
 - Plugin MCP servers are managed by their plugin: the `mcp` tool cannot change
   or remove them, and they go on and off with the plugin. One that asks for
-  sign-in shows **Sign in** in Settings → MCP, like the user's own servers.
+  sign-in shows **Sign in** in Settings → Connectors, like the user's own servers.
 
 ### Manifest and permissions
 

@@ -828,7 +828,7 @@ export async function getSessionGoal(sessionId: string): Promise<SessionGoalResp
 /** Pause the goal: the running turn finishes; no new goal turn starts. */
 /**
  * Run the session's approved plan as a goal: its Done when is the objective.
- * ``maxTurns`` defaults to Settings → Goals. Refused (422) for a plan that is
+ * ``maxTurns`` defaults to Settings → Sessions. Refused (422) for a plan that is
  * not approved at its current revision, and (409) while the session has a goal.
  */
 export async function startSessionGoal(sessionId: string, maxTurns?: number): Promise<SessionGoal> {

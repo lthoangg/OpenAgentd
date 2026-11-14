@@ -26,7 +26,7 @@ export function useRetryCountdown(error: unknown): number {
 function UsageRefresh({ query, label, cooling, needsSignIn }: { query: UsageQuery; label: string; cooling: boolean; needsSignIn: boolean }) {
   const busy = query.isFetching
   const paused = cooling || needsSignIn
-  const reason = needsSignIn ? 'Paused until you sign in again' : cooling ? 'Paused until the provider allows another request' : null
+  const reason = needsSignIn ? 'Paused until you sign in again' : cooling ? 'Paused until another request is allowed' : null
   // Touch: a glyph beside the ⋯, a pair of quiet icons, rather than one word
   // standing in for every action the ⋯ sheet holds.
   const touch = useTouchFirst()
@@ -145,7 +145,7 @@ function UsageBody({ query, remainingMs, label, providerId, providerLabel, crede
       )
     }
   } else if (kind === 'unsupported') {
-    if (!hasData && !quietUnsupported) empty = <Quiet>Usage is not available for this provider.</Quiet>
+    if (!hasData && !quietUnsupported) empty = <Quiet>Usage is not available here.</Quiet>
   } else if (kind === 'rejected' || kind === 'unavailable') {
     if (hasData) {
       notice = (

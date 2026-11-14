@@ -104,6 +104,24 @@ describe('ProviderCard — OAuth disconnect and reconnect', () => {
     expect(screen.queryByRole('button', { name: 'List models' })).toBeNull()
   })
 
+  it('gives a new key one button, Connect, and says the key is checked then saved', () => {
+    renderComponent({
+      ...unconfiguredOAuthProvider,
+      id: 'openai', label: 'OpenAI', kind: 'api_key',
+      credentials: [{ name: 'OPENAI_API_KEY', label: 'API key', secret: true, placeholder: '' }],
+    } as ProviderInfo)
+
+    const connect = screen.getByRole('button', { name: 'Connect' }) as HTMLButtonElement
+    expect(connect.disabled).toBe(true)
+    // Nothing is stored, so there is nothing to test or save yet.
+    expect(screen.queryByRole('button', { name: 'Test' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
+
+    fireEvent.change(screen.getByPlaceholderText('Paste API key'), { target: { value: 'sk-test-new' } })
+    expect(connect.disabled).toBe(false)
+    expect(screen.getByText('The key is checked with OpenAI, then saved.')).toBeDefined()
+  })
+
   it('asks for confirmation before signing out, and signs out only on confirm', async () => {
     mockDisconnectOauthProvider.mockClear()
     renderComponent(connectedOAuthProvider)

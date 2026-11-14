@@ -4,7 +4,7 @@
  * failed call is stored: `Error: …`); such an answer rides with the call
  * (`result_rides_inline`), so the row can offer Sign in.
  */
-const REFUSED_FOR_SIGN_IN = /^Error: MCP server '([^']+)' is not ready \(needs sign-in: connect it in Settings → MCP\)/
+const REFUSED_FOR_SIGN_IN = /^Error: MCP server '([^']+)' is not ready \(needs sign-in: connect it in Settings → (?:MCP|Connectors)\)/
 
 export function mcpSignInServer(result: string | null | undefined): string | null {
   return result?.match(REFUSED_FOR_SIGN_IN)?.[1] ?? null

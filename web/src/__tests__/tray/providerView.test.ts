@@ -10,11 +10,11 @@ function item(over: Partial<TrayUsageItem> & Pick<TrayUsageItem, 'provider' | 'l
 
 const codex = item({
   provider: 'openai',
-  label: 'OpenAI Codex',
+  label: 'ChatGPT',
   usage: {
     provider: 'openai',
     limits: [{
-      limit_name: 'Codex',
+      limit_name: 'ChatGPT',
       plan_type: 'plus',
       primary: { used_percent: 42, window_minutes: 300, resets_at: NOW + 3600 },
       secondary: { used_percent: 76, window_minutes: 10_080, resets_at: NOW + 86_400 },
@@ -35,15 +35,15 @@ describe('providerView', () => {
   it('names the provider once and labels its limits by window', () => {
     const view = providerView(codex, NOW)
 
-    expect(view.name).toBe('OpenAI Codex')
+    expect(view.name).toBe('ChatGPT')
     expect(view.plan).toBe('Plus')
     expect(view.rows.map((row) => row.label)).toEqual(['5-hour', 'Weekly'])
     expect(view.tone).toBe('warn')
   })
 
   it('names the account in use when the provider pools several', () => {
-    expect(providerView({ ...codex, account: 'Work' }, NOW).name).toBe('OpenAI Codex · Work')
-    expect(providerView({ ...codex, account: null }, NOW).name).toBe('OpenAI Codex')
+    expect(providerView({ ...codex, account: 'Work' }, NOW).name).toBe('ChatGPT · Work')
+    expect(providerView({ ...codex, account: null }, NOW).name).toBe('ChatGPT')
   })
 
   it('keeps a limit name that says more than the provider name', () => {
@@ -105,7 +105,7 @@ describe('providerView', () => {
   it('reads a limit the provider reports as reached as reached, whatever its percent', () => {
     const blocked = item({
       provider: 'openai',
-      label: 'OpenAI Codex',
+      label: 'ChatGPT',
       usage: { provider: 'openai', limits: [{ rate_limit_reached_type: 'workspace_owner_usage_limit_reached', primary: { used_percent: 62, window_minutes: 300 } }] },
     })
 
@@ -114,7 +114,7 @@ describe('providerView', () => {
     const popup: TrayUsageResult = { summary: { items: [blocked], checked_at: NOW }, server_name: 'Built-in server', server_id: 'bundled', servers: [], selected_server_id: 'auto' }
     expect(trayStatus(popup, null)).toBe('reached')
     // An empty reason is no report.
-    const open = item({ provider: 'openai', label: 'OpenAI Codex', usage: { provider: 'openai', limits: [{ rate_limit_reached_type: ' ', primary: { used_percent: 62 } }] } })
+    const open = item({ provider: 'openai', label: 'ChatGPT', usage: { provider: 'openai', limits: [{ rate_limit_reached_type: ' ', primary: { used_percent: 62 } }] } })
     expect(providerView(open, NOW).reached).toBe(false)
   })
 
@@ -207,7 +207,7 @@ describe('trayStatus', () => {
 describe('providerView rate limiting', () => {
   const staleUnavailable = (over: Partial<TrayUsageItem> = {}) => item({
     provider: 'openai',
-    label: 'OpenAI Codex',
+    label: 'ChatGPT',
     status: 'unavailable',
     stale: true,
     usage: {
@@ -256,7 +256,7 @@ describe('providerView rate limiting', () => {
 
   const limited = (over: Partial<TrayUsageItem> = {}) => item({
     provider: 'openai',
-    label: 'OpenAI Codex',
+    label: 'ChatGPT',
     status: 'rate_limited',
     stale: true,
     retry_at: NOW + 300,
@@ -271,7 +271,7 @@ describe('providerView rate limiting', () => {
 
   it('with no last-good snapshot is its own status with the retry time', () => {
     expect(providerView(limited({ stale: false }), NOW)).toMatchObject({
-      name: 'OpenAI Codex',
+      name: 'ChatGPT',
       status: 'rate-limited',
       rateLimited: true,
       retry: 'Retry in 5m',

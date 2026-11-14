@@ -91,7 +91,7 @@ function rowCaption(c: StoredCredential, ctx: RowContext, index: number): string
     return `Standby — not used while ${ctx.provider.env_var || 'the environment variable'} is set.`
   }
   if (c.disabled || c.status === 'disabled') return 'Hidden — saved, but not used until you show it.'
-  if (c.status === 'needs_reconnect') return 'The provider ended this sign-in. It is skipped until you reconnect.'
+  if (c.status === 'needs_reconnect') return `${ctx.provider.label} ended this sign-in. It is skipped until you reconnect.`
   if (c.status === 'cooling_down') return `Skipped until its limit resets; the next ${ctx.noun} is used meanwhile.`
   if (c.in_use) return 'In use — new messages go to it until it hits its limit.'
   if (ctx.inUseIndex >= 0 && ctx.inUseIndex > index) return `Standby — used if the ${ctx.noun} in use hits its limit.`

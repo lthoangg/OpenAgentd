@@ -8,33 +8,19 @@ import { McpServerForm } from '@/components/settings/McpServerForm'
 import {
   draftToServerBody,
   emptyDraft,
+  nameFromAddress,
   validateDraft,
   type McpServerDraft,
 } from '@/components/settings/McpServerDraft'
 import { EDITOR_BODY } from '@/components/settings/tokens'
 import { errorMessage } from '@/utils/errors'
 
-const TEMPLATE: McpServerDraft = {
-  ...emptyDraft(),
-  name: 'new-server',
-  command: 'npx',
-  argsText: '-y\n@modelcontextprotocol/server-filesystem\n/tmp',
-}
+/** A new connector starts as a web address that signs in: what most hosted tools need. */
+const TEMPLATE: McpServerDraft = { ...emptyDraft(), transport: 'http', oauthEnabled: true }
 
+/** Nothing typed yet. Choosing how it connects is not an edit: it only picks which fields show. */
 function isPristine(draft: McpServerDraft): boolean {
-  return (
-    draft.name === TEMPLATE.name &&
-    draft.transport === TEMPLATE.transport &&
-    draft.enabled === TEMPLATE.enabled &&
-    draft.command === TEMPLATE.command &&
-    draft.argsText === TEMPLATE.argsText &&
-    draft.envPairs.length === 0 &&
-    draft.url === '' &&
-    draft.headerPairs.length === 0 &&
-    draft.oauthEnabled === TEMPLATE.oauthEnabled &&
-    draft.oauthClientIdEnv === TEMPLATE.oauthClientIdEnv &&
-    draft.oauthClientSecretEnv === TEMPLATE.oauthClientSecretEnv
-  )
+  return JSON.stringify({ ...draft, transport: TEMPLATE.transport }) === JSON.stringify(TEMPLATE)
 }
 
 interface NewMcpServerPageProps {
@@ -44,6 +30,8 @@ interface NewMcpServerPageProps {
 
 export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
   const [draft, setDraft] = useState<McpServerDraft>(TEMPLATE)
+  // The name follows the address until the person types one.
+  const [nameTyped, setNameTyped] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const createMut = useCreateMcpServerMutation()
   const push = useToastStore((s) => s.push)
@@ -53,6 +41,12 @@ export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
   const firstError = fieldErrors ? Object.values(fieldErrors)[0] : null
   const dirty = !isPristine(draft)
 
+  const handleChange = (next: McpServerDraft) => {
+    const typed = nameTyped || next.name !== draft.name
+    if (typed !== nameTyped) setNameTyped(typed)
+    setDraft(typed || next.transport === 'stdio' ? next : { ...next, name: nameFromAddress(next.url) })
+  }
+
   const handleCreate = async () => {
     setSaveError(null)
     if (invalid) { setSaveError(firstError ?? 'Form has validation errors.'); return }
@@ -60,7 +54,7 @@ export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
     if (!result.ok) { setSaveError(result.error); return }
     try {
       await createMut.mutateAsync({ name: draft.name, server: result.body })
-      push({ tone: 'success', title: `Created MCP server "${draft.name}"`, description: 'Applies to your next message.' })
+      push({ tone: 'success', title: `Created "${draft.name}"`, description: 'Applies to your next message.' })
       onCreated(draft.name)
     } catch (err) {
       const msg = errorMessage(err)
@@ -73,23 +67,23 @@ export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
     <div className="flex h-full flex-col">
       <EditorSubHeader
         kind="mcp"
-        name="New MCP server"
+        name="New connector"
         dirty={dirty}
         invalid={invalid}
         saving={createMut.isPending}
         error={saveError}
-        validationHint={firstError}
+        validationHint={dirty ? firstError : null}
         onBack={onBack}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className={EDITOR_BODY}>
-          <McpServerForm value={draft} onChange={setDraft} isNew disabled={createMut.isPending} errors={fieldErrors} />
+          <McpServerForm value={draft} onChange={handleChange} isNew disabled={createMut.isPending} errors={dirty ? fieldErrors : null} />
         </div>
       </div>
 
       <SaveBar
-        saveLabel="Create server"
+        saveLabel="Create connector"
         draft={{
           dirty,
           canSave: dirty && !invalid && !createMut.isPending,
@@ -97,12 +91,13 @@ export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
           save: handleCreate,
           reset: () => {
             setDraft(TEMPLATE)
+            setNameTyped(false)
             setSaveError(null)
           },
         }}
         onSave={() => { void handleCreate() }}
         saveBlockedReason={invalid ? (firstError ?? 'Fix the errors above to create it.') : null}
-        discardDescription="The server goes back to the starting template."
+        discardDescription="The form goes back to empty."
       />
     </div>
   )

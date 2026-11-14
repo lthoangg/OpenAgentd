@@ -1,6 +1,6 @@
 /**
- * Settings → Session titles — name each session from its first message with a
- * small model, and optionally rename it from its summary after compaction.
+ * Settings → Sessions → Titles: name each session from its first message with
+ * a small model, and optionally rename it from its summary.
  */
 import { useMemo } from 'react'
 
@@ -10,7 +10,7 @@ import {
   useUpdateTitleGenerationSettingsMutation,
 } from '@/queries'
 import { Switch } from '@/components/ui/switch'
-import { SettingsPage } from '@/components/settings/SettingsPage'
+import type { SettingsPart } from '@/components/settings/SettingsPartsPage'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { ModelCombobox } from '@/components/settings/AgentForm'
@@ -37,7 +37,7 @@ function hydrateTitles(data: TitleGenerationUpdate): TitleGenerationUpdate {
   return { enabled: data.enabled, model: data.model, update_after_compaction: data.update_after_compaction ?? false }
 }
 
-export function TitlesSettingsPage() {
+export function useTitlesPart(): SettingsPart {
   const titlesQ = useTitleGenerationSettingsQuery()
   const registry = useRegistryQuery()
   const updateTitles = useUpdateTitleGenerationSettingsMutation()
@@ -57,20 +57,13 @@ export function TitlesSettingsPage() {
   })
   const modelError = validateModel(draft.value.model, { validValues: textModels.map((m) => m.id) })
 
-  return (
-    <SettingsPage
-      title="Session titles"
-      description="Name each session from its first message."
-      draft={{ ...draft, canSave: draft.canSave && !modelError }}
-      loading={titlesQ.isLoading}
-      error={titlesQ.error}
-    >
-      <PanelSection title="Automatic titles" flush>
-        <PanelRow
-          label="Generate titles automatically"
-          htmlFor="titles-enabled"
-          description="When off, sessions keep their default names."
-        >
+  return {
+    draft: { ...draft, canSave: draft.canSave && !modelError },
+    loading: titlesQ.isLoading,
+    error: titlesQ.error,
+    body: (
+      <PanelSection key="titles" title="Titles" flush>
+        <PanelRow label="Name sessions automatically" htmlFor="titles-enabled" description="From the first message.">
           <Switch
             id="titles-enabled"
             checked={draft.value.enabled}
@@ -79,7 +72,7 @@ export function TitlesSettingsPage() {
         </PanelRow>
         {draft.value.enabled && (
           <>
-            <PanelRow label="Model" description="A small, fast model keeps titles quick and cheap." error={modelError}>
+            <PanelRow label="Model for titles" description="A small, fast one is enough." error={modelError}>
               <div className="w-full sm:w-72">
                 <ModelCombobox
                   value={draft.value.model}
@@ -89,11 +82,7 @@ export function TitlesSettingsPage() {
                 />
               </div>
             </PanelRow>
-            <PanelRow
-              label="Update title after summarizing"
-              htmlFor="titles-after-compaction"
-              description="Renames the session from its summary each time earlier messages are summarized. Titles you renamed yourself are kept."
-            >
+            <PanelRow label="Rename after a summary" htmlFor="titles-after-compaction" description="Titles you wrote are kept.">
               <Switch
                 id="titles-after-compaction"
                 checked={draft.value.update_after_compaction}
@@ -103,6 +92,6 @@ export function TitlesSettingsPage() {
           </>
         )}
       </PanelSection>
-    </SettingsPage>
-  )
+    ),
+  }
 }

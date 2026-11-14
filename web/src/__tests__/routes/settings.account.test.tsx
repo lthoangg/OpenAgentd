@@ -93,10 +93,10 @@ describe('AccountSettingsPage', () => {
     expect(await screen.findByText('Reach your computer from anywhere.')).toBeTruthy()
     expect(screen.getByText('Optional. Everything works without an account.')).toBeTruthy()
     expect(screen.getByText(/Your phone scans a code to add this computer/)).toBeTruthy()
-    expect(screen.queryByRole('checkbox', { name: /Use as server/ })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /My other devices can open/ })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Options' }))
-    expect((screen.getByRole('checkbox', { name: /Use as server/ }) as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByRole('checkbox', { name: /Use as client/ }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('checkbox', { name: /My other devices can open/ }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('checkbox', { name: /can open my other computers/ }) as HTMLInputElement).checked).toBe(true)
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy()
     expect(screen.queryByLabelText('Invitation link')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Join with a link instead' }))
@@ -110,8 +110,8 @@ describe('AccountSettingsPage', () => {
     renderPage()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Options' }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /Use as server/ }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /Use as client/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /My other devices can open/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /can open my other computers/ }))
     expect(screen.getByText('Choose at least one.')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Sign in' }) as HTMLButtonElement).disabled).toBe(true)
   })
@@ -134,7 +134,7 @@ describe('AccountSettingsPage', () => {
     renderPage()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Options' }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /Use as client/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /can open my other computers/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(await screen.findByText('ABCD-EFGH')).toBeTruthy()
@@ -232,7 +232,7 @@ describe('AccountSettingsPage', () => {
 
     expect(await screen.findByText('Scan with your phone')).toBeTruthy()
     expect(await screen.findByRole('img', { name: 'Sign-in QR code' })).toBeTruthy()
-    expect(screen.getByText(/Open OpenAgentd on your phone\. On Servers, tap/)).toBeTruthy()
+    expect(screen.getByText(/Open OpenAgentd on your phone\. On Computers, tap/)).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
     expect(screen.queryByText('BCDF-GHJK')).toBeNull()
     expect(screen.queryByRole('link', { name: 'Open page' })).toBeNull()
@@ -552,17 +552,17 @@ describe('a computer that creates the account or approves devices', () => {
     expect(screen.getByText('This computer')).toBeTruthy()
     expect(screen.queryByText('Server')).toBeNull()
     expect(screen.queryByText('Approver')).toBeNull()
-    expect(screen.getByText('Used as')).toBeTruthy()
-    expect(screen.getAllByText('Server and client').length).toBeGreaterThan(0)
+    expect(screen.getByText('Sharing')).toBeTruthy()
+    expect(screen.getAllByText('Can be opened, and opens other computers').length).toBeGreaterThan(0)
     expect(await screen.findByText('Pending approvals')).toBeTruthy()
-    expect(screen.getByText('Asks to be: client')).toBeTruthy()
+    expect(screen.getByText('Asks to open your computers')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Remove Linux · C1C1 0000' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Details of Linux · C1C1 0000' }))
     const details = await screen.findByRole('dialog', { name: 'Linux · C1C1 0000' })
     expect(details.textContent).toContain('SystemLinux')
     expect(details.textContent).toContain('KeyC1C1 0000')
-    expect(details.textContent).toContain('RoleServer')
+    expect(details.textContent).toContain('SharingCan be opened by your devices')
   })
 
   it('titles each computer by its name, and still asks to remove one by its system and key', async () => {
@@ -615,7 +615,7 @@ describe('a computer that creates the account or approves devices', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Details of studio-mini' }))
     const details = await screen.findByRole('dialog', { name: 'studio-mini' })
     expect(details.textContent).toContain('KeyAA11 BB22')
-    expect(details.textContent).toContain('RoleServer and client · approves devices')
+    expect(details.textContent).toContain('SharingCan be opened, and opens other computers · approves devices')
     fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Work' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
@@ -641,7 +641,7 @@ describe('a computer that creates the account or approves devices', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Details of studio-mini' }))
     const details = await screen.findByRole('dialog', { name: 'studio-mini' })
     expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull()
-    expect(details.textContent).toContain('Use the built-in server to rename this computer.')
+    expect(details.textContent).toContain('Switch to this computer to rename it.')
   })
 
   it('approves a request with the code, never adding a role it did not ask for', async () => {
@@ -665,7 +665,7 @@ describe('a computer that creates the account or approves devices', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
     expect(await screen.findByText('418 207')).toBeTruthy()
-    const serverBox = screen.getByRole('checkbox', { name: /Use as server/ }) as HTMLInputElement
+    const serverBox = screen.getByRole('checkbox', { name: /My other devices can open/ }) as HTMLInputElement
     expect(serverBox.checked).toBe(false)
     expect(serverBox.disabled).toBe(true)
     // A device that opens sessions has someone at it: it approves too by default.
@@ -738,7 +738,7 @@ describe('a computer that creates the account or approves devices', () => {
 
     expect(await screen.findByText('Approve in the OpenAgentd app on this computer, or run agentd cloud approve in Terminal.')).toBeTruthy()
     expect(screen.getByText('Remove devices in the OpenAgentd app on this computer.')).toBeTruthy()
-    expect(screen.getByText('Asks to be: client')).toBeTruthy()
+    expect(screen.getByText('Asks to open your computers')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Review' })).toBeNull()
     expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull()
   })
@@ -754,11 +754,11 @@ describe('a computer that creates the account or approves devices', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('says when this computer is not used as a server', async () => {
+  it('says when other devices cannot open this computer', async () => {
     serveStatus({ state: 'connected', fingerprint: 'f', signer: false, server: false, client: true, relay: { state: 'off' }, sessions: 0 })
     renderPage()
-    expect(await screen.findByText(/Not used as a server/)).toBeTruthy()
-    expect(screen.getByText('Client')).toBeTruthy()
+    expect(await screen.findByText('Your other devices cannot open this computer')).toBeTruthy()
+    expect(screen.getByText('Opens your other computers')).toBeTruthy()
   })
 
   describe('Add a device (an invitation QR code)', () => {

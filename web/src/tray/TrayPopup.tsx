@@ -317,7 +317,7 @@ export function TrayPopup() {
         <div className="blank">
           <WifiOff size={20} strokeWidth={1.8} aria-hidden="true" />
           <p className="blank-title">{TRAY_STATUS_LABEL['no-server']}</p>
-          <p className="blank-text">Open OpenAgentd to start the built-in server or connect to one.</p>
+          <p className="blank-text">Open OpenAgentd to start it on this computer or connect to another.</p>
           <span className="blank-actions">
             <button type="button" className="small-btn" data-primary="" onClick={() => runAction('show')}>Open OpenAgentd</button>
             <button type="button" className="small-btn" onClick={() => runAction('settings')}>Settings</button>
@@ -326,7 +326,7 @@ export function TrayPopup() {
       ) : (
         <>
           <div className="toolbar">
-            <span className="toolbar-label">Provider limits</span>
+            <span className="toolbar-label">Usage limits</span>
             <span className="status" data-tone={status}>{TRAY_STATUS_LABEL[status]}</span>
             <span className="toolbar-controls">
               <ServerPicker
@@ -339,7 +339,7 @@ export function TrayPopup() {
                 onActiveChange={setActiveOption}
                 onChoose={chooseServer}
               />
-              <button type="button" className="icon-btn" onClick={refresh} disabled={refreshing} aria-label="Refresh provider limits" aria-keyshortcuts={ariaShortcut('r')}>
+              <button type="button" className="icon-btn" onClick={refresh} disabled={refreshing} aria-label="Refresh usage limits" aria-keyshortcuts={ariaShortcut('r')}>
                 <RefreshCw size={14} strokeWidth={2} className={refreshing ? 'spin' : undefined} aria-hidden="true" />
               </button>
             </span>
@@ -358,8 +358,8 @@ export function TrayPopup() {
             <div className="blank">
               <Plug size={20} strokeWidth={1.8} aria-hidden="true" />
               <p className="blank-title">No providers connected</p>
-              <p className="blank-text">Connect a provider to see its limits here.</p>
-              <button type="button" className="small-btn" onClick={manage}>Open Providers</button>
+              <p className="blank-text">Connect a model account to see its limits here.</p>
+              <button type="button" className="small-btn" onClick={manage}>Open Models</button>
             </div>
           ) : (
             <div className="list">

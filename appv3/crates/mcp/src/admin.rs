@@ -175,7 +175,7 @@ fn state_line(st: &ServerStatus) -> String {
         line.push_str(&format!(" — error: {e}"));
     }
     if st.state == "auth_required" {
-        line.push_str(" — needs sign-in: the user connects it in Settings → MCP");
+        line.push_str(" — needs sign-in: the user connects it in Settings → Connectors");
     }
     if !st.tool_names.is_empty() {
         let shown: Vec<&str> = st.tool_names.iter().take(MAX_TOOL_NAMES).map(String::as_str).collect();
@@ -260,7 +260,7 @@ pub fn propose_save(name: &str, entry: &Value) -> Result<Proposal, String> {
     let cfg = cfgmod::load_config().map_err(|e| format!("mcp.json is invalid, so it cannot be changed from chat: {e}"))?;
     let existing = cfg.servers.get(name);
     if existing.is_none() && has_mask(&sc) {
-        return Err(format!("'{MASK}' stands for a stored value, and '{name}' has none. Leave the value out; the user enters secrets in Settings → MCP."));
+        return Err(format!("'{MASK}' stands for a stored value, and '{name}' has none. Leave the value out; the user enters secrets in Settings → Connectors."));
     }
     let merged = merge_masked(sc.clone(), existing);
     if has_mask(&merged) {
@@ -304,7 +304,9 @@ pub fn status_sentence(st: &ServerStatus) -> String {
                 if shown.is_empty() { String::new() } else { format!(": {}", shown.join(", ")) }
             )
         }
-        "auth_required" => format!("MCP server '{n}' is saved but needs sign-in: ask the user to open Settings → MCP and click Sign in on '{n}'. Its tools appear once they have."),
+        "auth_required" => {
+            format!("MCP server '{n}' is saved but needs sign-in: ask the user to open Settings → Connectors and click Sign in on '{n}'. Its tools appear once they have.")
+        }
         "error" => format!(
             "MCP server '{n}' is saved but failed to start: {}. Fix it with action='save', or remove it.",
             st.error.as_deref().filter(|e| !e.is_empty()).unwrap_or("unknown error")

@@ -1,7 +1,7 @@
 /**
  * On desktop the connection banner also offers a way back (desktop mockup
  * 12.2): Retry checks now, and the desktop app can start (or switch to) its
- * built-in server. A phone keeps its one action, Change server.
+ * built-in server. A phone keeps its one action, Change computer.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -38,42 +38,42 @@ describe('ConnectionBanner on desktop', () => {
     expect(refetch).toHaveBeenCalledTimes(1)
   })
 
-  it('starts the built-in server when it is not running', async () => {
+  it('starts OpenAgentd on this computer when it is not running', async () => {
     render(<ConnectionBanner />)
-    fireEvent.click(screen.getByRole('button', { name: 'Start built-in server' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start it' }))
     await waitFor(() => expect(connectBundledBackend).toHaveBeenCalledTimes(1))
   })
 
-  it('offers the built-in server when a remote one is down', () => {
+  it('offers this computer when another one is down', () => {
     status = { ...BUNDLED, mode: 'external', base_url: 'http://192.168.1.20:8000', external: true, sidecar_running: false }
     render(<ConnectionBanner />)
-    expect(screen.getByRole('button', { name: 'Use built-in server' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Use this computer' })).toBeTruthy()
   })
 
-  it('only retries a built-in server that is already running', () => {
+  it('only retries when this computer is already running', () => {
     status = { ...BUNDLED, sidecar_running: true }
     render(<ConnectionBanner />)
-    expect(screen.queryByRole('button', { name: /built-in server/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Start it|Use this computer/ })).toBeNull()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
   it('offers nothing built-in outside the desktop app', () => {
     status = { ...BUNDLED, supports_bundled: false }
     render(<ConnectionBanner />)
-    expect(screen.queryByRole('button', { name: /built-in server/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Start it|Use this computer/ })).toBeNull()
   })
 
   it('keeps a phone to one action', () => {
     isPhone = true
     render(<ConnectionBanner />)
-    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Change server'])
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Change computer'])
   })
 
-  it('sends a phone to its Servers screen, not a dialog', () => {
+  it('sends a phone to its Computers screen, not a dialog', () => {
     isPhone = true
     const before = useServersScreenStore.getState().request
     render(<ConnectionBanner />)
-    fireEvent.click(screen.getByRole('button', { name: 'Change server' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Change computer' }))
     expect(useServersScreenStore.getState().request).toBe(before + 1)
     expect(useServersScreenStore.getState().prefill).toBeNull()
   })

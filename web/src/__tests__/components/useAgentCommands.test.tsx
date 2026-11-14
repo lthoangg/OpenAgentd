@@ -76,7 +76,7 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(byId(result.current, "agent-info").description).toBe("Model, thinking level and account for the next message")
     expect(byId(result.current, "scheduled-tasks").description).toBe("Create, pause and run scheduled agent tasks")
     expect(byId(result.current, "open-preview").description).toBe("Show a local dev server or HTML file in the Review panel")
-    expect(byId(result.current, "go-settings").description).toBe("Agents, skills, providers and more")
+    expect(byId(result.current, "go-settings").description).toBe("Models, appearance, agents and more")
   })
 
   it("lists Maximize Review Panel only when a dock handler is provided", () => {
@@ -310,22 +310,32 @@ describe("useAgentCommands — navigation", () => {
     useUIStore.getState().closeTelemetry()
   })
 
-  it("offers each theme in one Theme… list and applies the one chosen", () => {
+  it("offers theme and text size on one Appearance… page, found by the old names", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
-    expect(result.current.filter((c) => c.id.startsWith("theme-"))).toEqual([])
+    // One command, not two: Theme… and Text Size… are its two groups.
+    expect(result.current.find((c) => c.id === "theme" || c.id === "text-size")).toBeUndefined()
+    expect(result.current.filter((c) => c.id.startsWith("theme-") || c.id.startsWith("text-size-"))).toEqual([])
 
-    const theme = () => byId(result.current, "theme")
-    expect(theme().label).toBe("Theme…")
-    expect(theme().description).toBe("Switch between System, Light and Dark. Now: System")
-    expect(theme().keywords).toContain("dark")
-    expect(theme().page?.commands.map((c) => c.label)).toEqual(["System", "Light", "Dark"])
-    expect(byId(theme().page!.commands, "theme-system").description).toMatch(/· Current$/)
+    const appearance = () => byId(result.current, "appearance")
+    expect(appearance().label).toBe("Appearance…")
+    expect(appearance().description).toBe("Theme and text size. Now: System, Default")
+    for (const word of ["theme", "dark", "text size", "font"]) expect(appearance().keywords).toContain(word)
+    expect(appearance().page?.commands.map((c) => `${c.group}: ${c.label}`)).toEqual([
+      "Theme: System", "Theme: Light", "Theme: Dark",
+      "Text size: Compact", "Text size: Default", "Text size: Large",
+    ])
+  })
 
-    act(() => byId(theme().page!.commands, "theme-dark").action())
+  it("applies the theme chosen on the Appearance page", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    const appearance = () => byId(result.current, "appearance")
+    expect(byId(appearance().page!.commands, "theme-system").description).toMatch(/· Current$/)
+
+    act(() => byId(appearance().page!.commands, "theme-dark").action())
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark")
     expect(document.documentElement.classList.contains("dark")).toBe(true)
-    expect(theme().description).toBe("Switch between System, Light and Dark. Now: Dark")
-    expect(byId(theme().page!.commands, "theme-dark").description).toMatch(/· Current$/)
+    expect(appearance().description).toBe("Theme and text size. Now: Dark, Default")
+    expect(byId(appearance().page!.commands, "theme-dark").description).toMatch(/· Current$/)
     localStorage.removeItem(THEME_STORAGE_KEY)
   })
 
@@ -374,16 +384,15 @@ describe("useAgentCommands — layout", () => {
     expect([split, find].map((fn) => fn.mock.calls.length)).toEqual([1, 1])
   })
 
-  it("sets the text size from its page, marking the current one", () => {
+  it("sets the text size from the Appearance page, marking the current one", () => {
     useDisplayPrefsStore.getState().setTextSize("default")
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
-    const page = () => byId(result.current, "text-size").page!
-    expect(page().commands.map((c) => c.label)).toEqual(["Compact", "Default", "Large"])
+    const page = () => byId(result.current, "appearance").page!
     expect(byId(page().commands, "text-size-default").description).toBe("Current")
 
     act(() => byId(page().commands, "text-size-large").action())
     expect(useDisplayPrefsStore.getState().textSize).toBe("large")
-    expect(byId(result.current, "text-size").description).toMatch(/Now: Large$/)
+    expect(byId(result.current, "appearance").description).toMatch(/Large$/)
     act(() => useDisplayPrefsStore.getState().setTextSize("default"))
   })
 })

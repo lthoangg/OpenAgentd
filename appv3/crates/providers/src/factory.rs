@@ -85,7 +85,7 @@ pub fn require_api_key(creds: &CredentialStore, env_var: &str, label: &str) -> P
     if !v.is_empty() {
         return Ok(v);
     }
-    Err(ProviderError::Unconfigured(format!("{label} API key is required. Add one in Settings → Providers, or export {env_var}.")))
+    Err(ProviderError::Unconfigured(format!("{label} API key is required. Add one in Settings → Models, or export {env_var}.")))
 }
 
 pub const UNCONFIGURED_TOKEN: &str = "__PROVIDER_MODEL__";
@@ -95,7 +95,7 @@ pub fn unconfigured_message(agent_name: Option<&str>) -> String {
         Some(name) => format!("Agent '{name}' has no model configured."),
         None => "No model is configured yet.".to_string(),
     };
-    format!("{subject} Connect a model provider on the new-session screen or in Settings → Providers.")
+    format!("{subject} Connect a model provider on the new-session screen or in Settings → Models.")
 }
 
 #[cfg(test)]

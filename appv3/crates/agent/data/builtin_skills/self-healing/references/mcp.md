@@ -6,6 +6,9 @@ MCP servers are global: the lead agent has one `mcp` tool for all of them.
 tools the server marks `readOnlyHint: true` can be called. Members get no MCP
 tools. Don't add `mcp:` (legacy, ignored) or MCP tool names to an agent's `tools:`.
 
+The app calls an MCP server a connector: the user sees them under Settings →
+Connectors and in the message box's "+" menu. Use that word with the user.
+
 ## See what is configured
 
 `mcp(action='servers')` lists every server with its state (`ready`,
@@ -54,11 +57,11 @@ In a scheduled or goal turn nobody is there to confirm, so it is refused.
 Never ask the user to paste a token into the chat, and never put one in
 `config`. Save the entry without it, then tell the user where to enter it:
 
-- A token in `env` or `headers` → Settings → MCP → the server → edit. A
+- A token in `env` or `headers` → Settings → Connectors → the server → edit. A
   `${NAME}` reference (for example `"Authorization": "Bearer ${GITHUB_TOKEN}"`)
   reads a variable or a named secret instead.
 - OAuth needs nothing in `config`: an http or sse server that asks for sign-in
-  goes to `auth_required`, and the user clicks **Sign in** in Settings → MCP
+  goes to `auth_required`, and the user clicks **Sign in** in Settings → Connectors
   (OpenAgentd registers itself with the server). Its tools appear once they
   have. Add `"oauth": {"client_id": …, "client_secret": …}` only when the
   server's provider requires an app the user registered. A server with an

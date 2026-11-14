@@ -471,14 +471,21 @@ run from the terminal (the native Rust binary since v3.0.0).
   operating system's notification settings are the one place to turn them
   off. On an iPhone with **Show Previews** set to **Never**, tapping a push
   now opens its session (the text stays hidden, as before).
+  A goal that ends blocked reads as a failure everywhere `[v3.55.0]`: the
+  phone push used to file it under Done and the pet hopped as for a finished
+  turn. The notification now carries how the turn ended (`outcome`: done,
+  failed, goal achieved, goal blocked, goal paused), and the notch, the pet
+  and the phone push read that instead of the first word of the title. A
+  server older than v3.55.0 sends no outcome and is read by its title, as
+  before.
 - **Home-screen widgets on iPhone and Android** `[v3.31.0]` — three widgets
   for the mobile app: **Quick start** (start a new session, or continue the
   last one), **Sessions** (up to three sessions, the ones that need you first,
-  then the ones still working) and **Next task** (the next scheduled task,
+  then the ones still running) and **Next task** (the next scheduled task,
   with a countdown on iOS, and whether its last run passed). Tapping one opens
   that session, a new session in your last folder, or the scheduler on that
   task. The widgets show what the app last synced, with an "as of" time;
-  after 30 minutes the "Needs you" and "Working" labels turn into plain ages.
+  after 30 minutes the "Needs you" and "Running" labels turn into plain ages.
   They never hold the server address or access key. The `openagentd://new`
   and `openagentd://scheduler?task=<id>` links they use work from anywhere,
   and links into the Android app now also work on older Android System
@@ -492,6 +499,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   account whose computer they show, empties them. A Chat session is named
   "Chat" (it used to show your login name), and a snapshot the phone could
   not save is sent again with the next change.
+  A session at work reads **Running**, the word the sidebar uses (it read
+  "Working"). On Android each label has its own text colour, as on iPhone;
+  a widget placed before the app has synced says to open OpenAgentd instead
+  of "Nothing needs you right now"; and a snapshot whose time cannot be
+  read counts as not synced instead of showing "as of 20000d ago".
 - **Command palette and Find file** `[v2.3.0, updated v3.40.0]` — `⌘K`/`Ctrl+K`
   opens one search over app actions, sessions and workspace files; `⌘P`/`Ctrl+P`
   (Find file) opens the same palette scoped to files. It uses the compact
@@ -1595,6 +1607,12 @@ run from the terminal (the native Rust binary since v3.0.0).
     waits for that check instead of sitting on placeholders. A limit the
     provider reports as reached reads **Limit reached** below 100% as well,
     as it does in Settings.
+    The usage period reads "Ends in 3d", as in Settings (it read "Resets in
+    3d", the wording for a limit). A saved server has one name in the
+    popup: the list and the header use the name Auto shows for it (the one
+    you saved it under, else the name its computer gives for itself, else
+    its address); the list used to show the address for a server Auto
+    called by its computer's name.
     Since `[v3.25.0]` it looks and moves like the app:
     - **Layout.** It shares the app's colours and type. A provider with
       several limits gets one card, with rows named by window ("5-hour",

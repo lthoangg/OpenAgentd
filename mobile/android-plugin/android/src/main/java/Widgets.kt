@@ -11,11 +11,12 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.text.format.DateUtils
 import android.view.View
 import android.widget.RemoteViews
 
-/** After this long, "Needs you" / "Working" may be over: show a plain age instead. */
+/** After this long, "Needs you" / "Running" may be over: show a plain age instead. */
 private const val STATUS_FRESH_MS = 30 * 60_000L
 private const val SCHEME = "openagentd"
 
@@ -82,6 +83,19 @@ internal object Widgets {
 
     /** A request code unique to one widget instance and one tap target. */
     fun requestCode(widgetId: Int, slot: Int) = widgetId * 16 + slot
+
+    /**
+     * A pill's text colour, by resource. Android 12 and later resolve it in
+     * the launcher, so it follows dark mode with the pill's background;
+     * before that it is fixed until the next redraw.
+     */
+    fun pillTextColor(context: Context, views: RemoteViews, viewId: Int, color: Int) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            views.setColor(viewId, "setTextColor", color)
+        } else {
+            views.setTextColor(viewId, context.getColor(color))
+        }
+    }
 }
 
 class QuickStartWidget : AppWidgetProvider() {
@@ -143,6 +157,11 @@ class InboxWidget : AppWidgetProvider() {
             )
             val sessions = snapshot?.inbox.orEmpty()
             views.setViewVisibility(R.id.openagentd_widget_inbox_empty, if (sessions.isEmpty()) View.VISIBLE else View.GONE)
+            // Before the app has saved anything, "Nothing needs you" would be a guess.
+            views.setTextViewText(
+                R.id.openagentd_widget_inbox_empty,
+                context.getString(if (snapshot == null) R.string.openagentd_widget_inbox_unloaded else R.string.openagentd_widget_inbox_empty),
+            )
             rows.forEachIndexed { index, row ->
                 val session = sessions.getOrNull(index)
                 row.divider?.let { views.setViewVisibility(it, if (session == null) View.GONE else View.VISIBLE) }
@@ -153,15 +172,16 @@ class InboxWidget : AppWidgetProvider() {
                 views.setViewVisibility(row.row, View.VISIBLE)
                 views.setTextViewText(row.title, session.title)
                 views.setTextViewText(row.meta, session.workspace ?: "")
-                val (label, background) = when {
+                val (label, background, textColor) = when {
                     fresh && session.state == "needs_input" ->
-                        context.getString(R.string.openagentd_widget_needs_you) to R.drawable.openagentd_widget_pill_needs
+                        Triple(context.getString(R.string.openagentd_widget_needs_you), R.drawable.openagentd_widget_pill_needs, R.color.openagentd_widget_needs_text)
                     fresh && session.state == "running" ->
-                        context.getString(R.string.openagentd_widget_working) to R.drawable.openagentd_widget_pill_running
-                    else -> Widgets.age(now, session.lastMessageAt) to R.drawable.openagentd_widget_pill_idle
+                        Triple(context.getString(R.string.openagentd_widget_running), R.drawable.openagentd_widget_pill_running, R.color.openagentd_widget_running_text)
+                    else -> Triple(Widgets.age(now, session.lastMessageAt), R.drawable.openagentd_widget_pill_idle, R.color.openagentd_widget_idle_text)
                 }
                 views.setTextViewText(row.pill, label)
                 views.setInt(row.pill, "setBackgroundResource", background)
+                Widgets.pillTextColor(context, views, row.pill, textColor)
                 views.setOnClickPendingIntent(
                     row.row,
                     Widgets.link(context, Widgets.sessionUrl(session.id, snapshot?.server), Widgets.requestCode(id, index + 1)),
@@ -174,12 +194,16 @@ class InboxWidget : AppWidgetProvider() {
 
 class NextTaskWidget : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
-        val task = WidgetStore.load(context)?.nextTask
+        val snapshot = WidgetStore.load(context)
+        val task = snapshot?.nextTask
         val now = System.currentTimeMillis()
         for (id in ids) {
             val views = RemoteViews(context.packageName, R.layout.openagentd_widget_task)
             if (task == null) {
-                views.setTextViewText(R.id.openagentd_widget_task_name, context.getString(R.string.openagentd_widget_no_tasks))
+                views.setTextViewText(
+                    R.id.openagentd_widget_task_name,
+                    context.getString(if (snapshot == null) R.string.openagentd_widget_tasks_unloaded else R.string.openagentd_widget_no_tasks),
+                )
                 views.setTextViewText(R.id.openagentd_widget_task_when, "")
                 views.setTextViewText(R.id.openagentd_widget_task_in, "")
                 views.setViewVisibility(R.id.openagentd_widget_task_last_row, View.GONE)
@@ -208,6 +232,12 @@ class NextTaskWidget : AppWidgetProvider() {
                         R.id.openagentd_widget_task_last,
                         "setBackgroundResource",
                         if (task.lastRunOk) R.drawable.openagentd_widget_pill_idle else R.drawable.openagentd_widget_pill_failed,
+                    )
+                    Widgets.pillTextColor(
+                        context,
+                        views,
+                        R.id.openagentd_widget_task_last,
+                        if (task.lastRunOk) R.color.openagentd_widget_idle_text else R.color.openagentd_widget_failed_text,
                     )
                 }
             }

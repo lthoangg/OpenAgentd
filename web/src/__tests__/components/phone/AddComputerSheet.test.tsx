@@ -51,6 +51,9 @@ describe('AddComputerSheet', () => {
     expect(ran('cloud_add_scanned')).toHaveLength(1)
     expect(ran('cloud_add_scanned')[0]?.args).toEqual({ link: LINK })
     expect(ran('cloud_invite_add')).toHaveLength(0)
+    // The roles are under Options; changing one there still counts.
+    expect(screen.queryByRole('checkbox', { name: /Use as client/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }))
     fireEvent.click(screen.getByRole('checkbox', { name: /Use as client/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     await waitFor(() => expect(finishAdd).not.toBeNull())
@@ -62,6 +65,26 @@ describe('AddComputerSheet', () => {
     expect(await screen.findByText('47')).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Pick this number on the computer' })).toBeTruthy()
     expect(ran('cloud_invite_cancel')).toHaveLength(0)
+  })
+
+  it('adds with what the computer asked for when Options stays closed', async () => {
+    render(<AddComputerSheet link={LINK} onClose={() => {}} />)
+    expect(await screen.findByText('macOS · 3F9A 21C4')).toBeTruthy()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    await waitFor(() => expect(finishAdd).not.toBeNull())
+    expect(ran('cloud_invite_add')[0]?.args).toEqual({ enrollmentId: 'request-1', approver: true, server: true, client: true })
+    finishAdd?.({ state: 'connected', signer: true, fingerprint: 'phone', number: '47' })
+    expect(await screen.findByText('47')).toBeTruthy()
+  })
+
+  it('shows the approver choice under Options too', async () => {
+    poll = { state: 'candidate', candidate: { ...CANDIDATE, client: false } }
+    render(<AddComputerSheet link={LINK} onClose={() => {}} />)
+    await screen.findByText('macOS · 3F9A 21C4')
+    expect(screen.queryByRole('checkbox', { name: 'Can approve other devices' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }))
+    expect((screen.getByRole('checkbox', { name: 'Can approve other devices' }) as HTMLInputElement).checked).toBe(false)
   })
 
   it('keeps Add disabled until the computer claims', async () => {

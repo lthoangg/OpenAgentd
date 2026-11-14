@@ -463,9 +463,9 @@ describe('one QR scanner for all three kinds of code', () => {
   })
 
   it.each<{ initial: PhoneCloudStatus; message: string }>([
-    { initial: GUEST, message: 'Sign in on this phone before adding a computer' },
     { initial: { ...CONNECTED, signer: false }, message: 'This phone cannot approve devices' },
-  ])('explains why a phone that cannot approve cannot add a computer (%o)', async ({ initial, message }) => {
+    { initial: { ...GUEST, supported: false }, message: 'Adding a computer needs the iPhone app for now.' },
+  ])('explains why this phone cannot add a computer (%o)', async ({ initial, message }) => {
     scanned = 'agentd://add?c=BCDFGHJK&d=test-device-000000000&k=test-only'
     shell(initial)
     render(<ServersScreen active onOpenSessions={() => {}} />)
@@ -473,6 +473,83 @@ describe('one QR scanner for all three kinds of code', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[0])
     expect((await screen.findByRole('alert')).textContent).toContain(message)
     expect(ran('cloud_add_scanned')).toHaveLength(0)
+  })
+
+  describe('a phone that is not signed in yet', () => {
+    const ADD = 'agentd://add?c=BCDFGHJK&d=test-device-000000000&k=test-only'
+    const addHandlers = {
+      cloud_add_scanned: () => null,
+      cloud_invite_poll: () => ({ state: 'waiting' }),
+      cloud_invite_cancel: () => null,
+    }
+    const signedIn = async (next: PhoneCloudStatus) => {
+      status = next
+      await act(async () => { await queryClient.refetchQueries({ queryKey: ['phone-cloud', 'status'] }) })
+    }
+
+    it('signs in, then adds the computer it scanned without scanning again', async () => {
+      scanned = ADD
+      shell(GUEST, addHandlers)
+      render(<ServersScreen active onOpenSessions={() => {}} />)
+      await screen.findByText('Use your computers from anywhere')
+      fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[0])
+
+      const sheet = await screen.findByRole('dialog', { name: 'Account' })
+      expect(within(sheet).getByText('Sign in on this phone. Then it adds the computer you scanned.')).toBeTruthy()
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(ran('cloud_add_scanned')).toHaveLength(0)
+
+      await signedIn(CONNECTED)
+      expect(await screen.findByRole('dialog', { name: 'Add this computer?' })).toBeTruthy()
+      await waitFor(() => expect(ran('cloud_add_scanned')).toHaveLength(1))
+      expect(ran('cloud_add_scanned')[0].args).toEqual({ link: ADD })
+      expect(screen.queryByRole('dialog', { name: 'Account' })).toBeNull()
+    }, 15_000)
+
+    it('carries on from a sign-in already under way', async () => {
+      scanned = ADD
+      shell({ state: 'joining', fingerprint: 'AA11 BB22', code: '418207' }, addHandlers)
+      render(<ServersScreen active onOpenSessions={() => {}} />)
+      await screen.findByText('Home NAS')
+      fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[0])
+      expect(await screen.findByRole('dialog', { name: 'Account' })).toBeTruthy()
+
+      await signedIn(CONNECTED)
+      expect(await screen.findByRole('dialog', { name: 'Add this computer?' })).toBeTruthy()
+    }, 15_000)
+
+    it('says why when the phone joined without approving devices', async () => {
+      scanned = ADD
+      shell(GUEST, addHandlers)
+      render(<ServersScreen active onOpenSessions={() => {}} />)
+      await screen.findByText('Use your computers from anywhere')
+      fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[0])
+      await screen.findByRole('dialog', { name: 'Account' })
+
+      await signedIn({ ...CONNECTED, signer: false })
+      expect((await screen.findByRole('alert')).textContent).toContain("can't add the computer")
+      expect(screen.queryByRole('dialog', { name: 'Add this computer?' })).toBeNull()
+      expect(ran('cloud_add_scanned')).toHaveLength(0)
+    }, 15_000)
+
+    it('forgets the computer when the sign-in is cancelled', async () => {
+      scanned = ADD
+      shell(GUEST, addHandlers)
+      render(<ServersScreen active onOpenSessions={() => {}} />)
+      await screen.findByText('Use your computers from anywhere')
+      fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[0])
+      await screen.findByRole('dialog', { name: 'Account' })
+
+      // The sign-in starts, then the person cancels it: back to guest.
+      await signedIn({ state: 'signing_in', user_code: 'ABCD-EFGH', url: 'https://account.openagentd.dev/device', fingerprint: 'AA11 BB22', expires_in: 600 })
+      expect(await screen.findByText('ABCD-EFGH')).toBeTruthy()
+      await signedIn(GUEST)
+      await waitFor(() => expect(screen.queryByText('ABCD-EFGH')).toBeNull())
+      await signedIn(CONNECTED)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(screen.queryByRole('dialog', { name: 'Add this computer?' })).toBeNull()
+      expect(ran('cloud_add_scanned')).toHaveLength(0)
+    }, 15_000)
   })
 
   it('does not join a second account from a phone already in one', async () => {

@@ -20,6 +20,13 @@
  * the guest's Account card and under Your servers) reads both an account
  * invitation and a server's connect code (`useScanAnyCode`).
  *
+ * A computer's sign-in code scanned before this phone can approve devices
+ * is held in memory (`pendingAdd`) while the Account sheet signs the phone
+ * in; once it is connected and approves devices, Add this computer opens
+ * with it. It is dropped when the sign-in is cancelled, when the sheet is
+ * closed before signing in, or when the phone joins without approving.
+ * The code's own 10 minutes still apply: Add this computer says so.
+ *
  * Last, in the phone app signed in to an account, **Copy diagnostics**
  * (`ConnectionDiagnosticsRow`): the shell's last connection events, for a
  * problem report.
@@ -46,6 +53,17 @@ import { usePhoneCloudStatus } from '@/queries/phone-cloud'
 import { useLargeTitleCollapse } from '@/components/Sidebar/useLargeTitleCollapse'
 import { takeServersPrefill, useServersScreenStore } from '@/stores/useServersScreenStore'
 
+/** What the Account sheet says while a scanned computer waits for this phone to sign in. */
+export const ADD_AFTER_SIGN_IN = 'Sign in on this phone. Then it adds the computer you scanned.'
+export const JOINED_WITHOUT_APPROVING =
+  "This phone was added without approving devices, so it can't add the computer. Add it from a device that approves devices."
+
+/** A scanned computer waiting for this phone to sign in. `leftGuest`: a sign-in has started. */
+interface PendingAdd {
+  link: string
+  leftGuest: boolean
+}
+
 export function ServersScreen({ active, onOpenSessions }: {
   active: boolean
   /** Back up to the Sessions of the server in use; absent before any server answers. */
@@ -55,6 +73,8 @@ export function ServersScreen({ active, onOpenSessions }: {
   const panel = useRef<AppBackendPanelControl>(null)
   const [accountOpen, setAccountOpen] = useState(false)
   const [addComputer, setAddComputer] = useState<string | null>(null)
+  const [pendingAdd, setPendingAdd] = useState<PendingAdd | null>(null)
+  const [addError, setAddError] = useState<string | null>(null)
   const { computers, devices, connected, app, route, refresh: refreshComputers } = useAccountComputers(active)
   // A connect link's address and key, kept while the screen is up.
   const pending = useServersScreenStore((state) => state.prefill)
@@ -68,12 +88,19 @@ export function ServersScreen({ active, onOpenSessions }: {
   const scanner = useScanAnyCode({
     onConnect: setPrefill,
     onAddComputer: setAddComputer,
+    onAddAfterSignIn: (link) => {
+      setAddError(null)
+      setPendingAdd({ link, leftGuest: false })
+      setAccountOpen(true)
+    },
     onJoining: () => {
       joinedByScan.current = true
       setAccountOpen(true)
     },
   })
-  const accountState = usePhoneCloudStatus().data?.state
+  const accountStatus = usePhoneCloudStatus().data
+  const accountState = accountStatus?.state
+  const signer = accountStatus?.state === 'connected' && accountStatus.signer
   useEffect(() => {
     if (!joinedByScan.current) return
     if (accountState === 'connected') {
@@ -83,6 +110,26 @@ export function ServersScreen({ active, onOpenSessions }: {
       joinedByScan.current = false
     }
   }, [accountState])
+  // The scanned computer, once this phone has signed in (or given up).
+  useEffect(() => {
+    if (!pendingAdd || !accountState) return
+    if (accountState === 'connected') {
+      setPendingAdd(null)
+      setAccountOpen(false)
+      if (signer) setAddComputer(pendingAdd.link)
+      else setAddError(JOINED_WITHOUT_APPROVING)
+    } else if (accountState === 'guest') {
+      // Back to guest after a sign-in started: it was cancelled or denied.
+      if (pendingAdd.leftGuest) setPendingAdd(null)
+    } else if (!pendingAdd.leftGuest) {
+      setPendingAdd({ ...pendingAdd, leftGuest: true })
+    }
+  }, [pendingAdd, accountState, signer])
+  const closeAccount = () => {
+    setAccountOpen(false)
+    // Closed before any sign-in started: the person gave up on adding it.
+    if (pendingAdd && accountState === 'guest') setPendingAdd(null)
+  }
   const scan = canScanQr() ? () => { void scanner.scan() } : undefined
   return (
     <div data-servers-screen="" className="flex h-full w-full min-w-0 flex-col bg-(--bg-page)">
@@ -112,13 +159,14 @@ export function ServersScreen({ active, onOpenSessions }: {
         </div>
         <div className="space-y-8 px-4 pb-6">
           {scanner.error && <Callout tone="error" role="alert">{scanner.error}</Callout>}
+          {addError && !scanner.error && <Callout tone="error" role="alert">{addError}</Callout>}
           <AccountSection active={active} devices={devices} onOpen={() => setAccountOpen(true)} onScan={scan} />
           {connected && <AccountComputersSection computers={computers} loaded={devices !== undefined} app={app} route={route} onOpenSessions={onOpenSessions} onRenamed={refreshComputers} />}
           <AppBackendPanel active={active} prefill={prefill} sectionTitle="Your servers" onOpenInUse={onOpenSessions} controlRef={panel} onScanQr={scan} />
           {connected && isPhoneCloudShell() && <ConnectionDiagnosticsRow />}
         </div>
       </PullToRefresh>
-      <AccountSheet open={accountOpen} onClose={() => setAccountOpen(false)} />
+      <AccountSheet open={accountOpen} onClose={closeAccount} note={pendingAdd ? ADD_AFTER_SIGN_IN : null} />
       {addComputer && <AddComputerSheet link={addComputer} onClose={() => setAddComputer(null)} />}
       {scanner.scanning && <QrScanOverlay onCancel={() => { void cancelQrScan() }} />}
     </div>

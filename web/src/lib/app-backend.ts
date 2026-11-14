@@ -226,7 +226,7 @@ export function connectionDisplayName(label: string, inBrowser = false): string 
 }
 
 /** What a notification calls the built-in server until its computer's name is known (the desktop shell's word). */
-const BUILT_IN_NOTIFICATION_NAME = 'Built-in server'
+const BUILT_IN_NOTIFICATION_NAME = 'This computer'
 /** The longest server name a notification title carries, in characters. */
 const NOTIFICATION_NAME_MAX_CHARS = 40
 

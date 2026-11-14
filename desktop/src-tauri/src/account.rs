@@ -177,12 +177,12 @@ async fn builtin_call(
     let response = request
         .send()
         .await
-        .map_err(|_| "The built-in server did not answer.".to_string())?;
+        .map_err(|_| "OpenAgentd on this computer did not answer.".to_string())?;
     let status = response.status().as_u16();
     let body = response
         .text()
         .await
-        .map_err(|_| "The built-in server did not answer.".to_string())?;
+        .map_err(|_| "OpenAgentd on this computer did not answer.".to_string())?;
     Ok(CloudAnswer { status, body })
 }
 
@@ -191,7 +191,7 @@ fn detail_of(answer: &CloudAnswer) -> String {
     serde_json::from_str::<serde_json::Value>(&answer.body)
         .ok()
         .and_then(|v| v["detail"].as_str().map(str::to_string))
-        .unwrap_or_else(|| format!("The built-in server answered {}.", answer.status))
+        .unwrap_or_else(|| format!("OpenAgentd on this computer answered {}.", answer.status))
 }
 
 /// The web UI's account calls (`web/src/api/cloud.ts`): always to the
@@ -307,13 +307,13 @@ pub async fn cloud_open_computer(
         return Err(detail_of(&answer));
     }
     let opened: Opened = serde_json::from_str(&answer.body)
-        .map_err(|_| "The built-in server answered something unexpected.".to_string())?;
+        .map_err(|_| "OpenAgentd on this computer answered something unexpected.".to_string())?;
     let origin = origin_of(&opened.origin);
     let local = url::Url::parse(&origin)
         .ok()
         .is_some_and(|u| u.scheme() == "http" && u.host_str() == Some("127.0.0.1"));
     if !local {
-        return Err("The built-in server answered something unexpected.".into());
+        return Err("OpenAgentd on this computer answered something unexpected.".into());
     }
     bridges().lock().unwrap().insert(
         origin.clone(),
@@ -395,13 +395,13 @@ pub async fn cloud_rename_computer(
         return Err(detail_of(&answer));
     }
     let opened: Opened = serde_json::from_str(&answer.body)
-        .map_err(|_| "The built-in server answered something unexpected.".to_string())?;
+        .map_err(|_| "OpenAgentd on this computer answered something unexpected.".to_string())?;
     let origin = origin_of(&opened.origin);
     let local = url::Url::parse(&origin)
         .ok()
         .is_some_and(|u| u.scheme() == "http" && u.host_str() == Some("127.0.0.1"));
     if !local {
-        return Err("The built-in server answered something unexpected.".into());
+        return Err("OpenAgentd on this computer answered something unexpected.".into());
     }
     let result = put_name_over_bridge(&origin, &opened.key, &name).await;
     // A window on this bridge keeps it; otherwise the link was ours to close.
@@ -438,7 +438,7 @@ fn rename_answer(status: u16, body: &str) -> Result<serde_json::Value, String> {
     }
     let answer = CloudAnswer { status, body: body.to_string() };
     if !(200..300).contains(&status) {
-        return Err(detail_of(&answer).replace("The built-in server", "That computer"));
+        return Err(detail_of(&answer).replace("OpenAgentd on this computer", "That computer"));
     }
     serde_json::from_str(body).map_err(|_| "That computer answered something unexpected.".to_string())
 }
@@ -553,7 +553,7 @@ mod tests {
                 status: 502,
                 body: "nope".into()
             }),
-            "The built-in server answered 502."
+            "OpenAgentd on this computer answered 502."
         );
     }
 }

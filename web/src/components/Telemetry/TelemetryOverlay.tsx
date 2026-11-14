@@ -4,8 +4,8 @@
  * status bar, the mobile drawer, the command palette, and ``/telemetry`` deep
  * links all open the same surface without leaving the current route. The name
  * in the UI is Usage (spend and traces); a provider's own limits are
- * "Provider limits", and the Settings page for how long this data is kept is
- * "Retention".
+ * "Usage limits", and how long this data is kept is set under Settings →
+ * Sessions, "History".
  *
  * Escape steps back one level: the open span, then the trace, then the overlay.
  */

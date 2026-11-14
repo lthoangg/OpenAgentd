@@ -41,10 +41,9 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   { section: 'desktop', label: 'Show notifications in its bubble', keywords: ['pet', 'bubble', 'questions', 'finished'] },
   { section: 'desktop', label: 'Climb on windows', keywords: ['pet', 'jump', 'fall'] },
   // Server
-  { section: 'connection', label: 'Built-in server', keywords: ['builtin', 'local', 'sidecar', 'backend', 'runs inside this app'], anchor: 'Servers' },
-  { section: 'connection', label: 'Saved server', keywords: ['remote', 'backend', 'switch', 'use', 'connect'], anchor: 'Servers' },
-  { section: 'connection', label: 'Server URL', keywords: ['address', 'host', 'backend', 'add a server', 'connect'] },
-  { section: 'connection', label: 'Access key', keywords: ['token', 'password', 'auth', 'server'] },
+  { section: 'connection', label: 'This computer', keywords: ['built-in server', 'builtin', 'local', 'sidecar', 'backend', 'runs inside this app'], anchor: 'Computers' },
+  { section: 'connection', label: 'Add a computer by address', keywords: ['saved server', 'server url', 'add a server', 'remote', 'host', 'backend', 'switch', 'use', 'connect'] },
+  { section: 'connection', label: 'Access key', keywords: ['token', 'password', 'auth', 'server'], anchor: 'Add a computer by address' },
   { section: 'connection', label: 'Access from other devices', keywords: ['network', 'lan', 'phone', 'qr', 'scan', 'share', 'remote access'] },
   // Account
   { section: 'account', label: 'Sign in', keywords: ['account', 'cloud', 'login', 'phone', 'remote', 'anywhere', 'optional', 'guest', 'connect your phone', 'pair', 'qr', 'scan'], anchor: 'Account' },

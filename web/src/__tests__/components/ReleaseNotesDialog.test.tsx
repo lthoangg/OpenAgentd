@@ -5,11 +5,14 @@ import '@testing-library/jest-dom'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 mock.module('@tauri-apps/api/core', () => ({
-  invoke: async (_command: string, args?: { version?: string }) => ({
-    version: args?.version,
-    url: `https://github.com/openagentd/openagentd/releases/tag/v${args?.version}`,
-    body: `# Release ${args?.version}`,
-  }),
+  invoke: async (_command: string, args?: { version?: string }) => {
+    if (args?.version === '0.0.0') throw new Error('offline')
+    return {
+      version: args?.version,
+      url: `https://github.com/openagentd/openagentd/releases/tag/v${args?.version}`,
+      body: `# Release ${args?.version}`,
+    }
+  },
 }))
 const openExternalUrlMock = mock(async (_url: unknown) => {})
 mock.module('@/lib/open-external', () => ({ openExternalUrl: openExternalUrlMock }))
@@ -57,5 +60,14 @@ describe('ReleaseNotesButton', () => {
     await userEvent.click(await screen.findByRole('link', { name: /view in github/i }))
 
     expect(openExternalUrlMock).toHaveBeenCalledWith('https://github.com/openagentd/openagentd/releases/tag/v1.71.0')
+  })
+
+  it('says it couldn\'t load the notes, in the one spelling failures use', async () => {
+    render(<ReleaseNotesButton version="0.0.0" />)
+
+    await userEvent.click(screen.getByRole('button', { name: /see release notes/i }))
+
+    expect(await screen.findByText(/Couldn't load GitHub release notes: offline/)).toBeInTheDocument()
+    expect(screen.queryByText(/Could not/)).not.toBeInTheDocument()
   })
 })

@@ -42,7 +42,7 @@ fn window_server(external: &HashMap<String, String>, window: &str) -> Result<Str
     external
         .get(window)
         .cloned()
-        .ok_or_else(|| "This window uses the built-in server, so its previews need no relay.".to_string())
+        .ok_or_else(|| "This window uses OpenAgentd on this computer, so its previews need no relay.".to_string())
 }
 
 /// Stop the relays of `window` (closed, or switched to another server).
@@ -125,6 +125,9 @@ mod tests {
     fn relays_only_serve_external_windows() {
         let external = HashMap::from([("main".to_string(), "http://192.168.1.5:4082".to_string())]);
         assert_eq!(window_server(&external, "main").unwrap(), "http://192.168.1.5:4082");
-        assert!(window_server(&external, "main-2").unwrap_err().contains("built-in server"));
+        assert_eq!(
+            window_server(&external, "main-2").unwrap_err(),
+            "This window uses OpenAgentd on this computer, so its previews need no relay."
+        );
     }
 }

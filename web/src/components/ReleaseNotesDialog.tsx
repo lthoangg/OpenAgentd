@@ -86,7 +86,7 @@ export function ReleaseNotesButton({ version, fallbackNotes, className }: Releas
           <div ref={bodyClipRef} className="overflow-hidden">
             <div ref={bodyRef} className="max-h-[24rem] overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 text-(--color-text)">
               <MarkdownBlock
-                content={`${notes?.body ?? fallbackNotes ?? 'Loading release notes…'}${error ? `\n\nCould not load GitHub release notes: ${error}` : ''}`}
+                content={`${notes?.body ?? fallbackNotes ?? 'Loading release notes…'}${error ? `\n\nCouldn't load GitHub release notes: ${error}` : ''}`}
               />
             </div>
           </div>

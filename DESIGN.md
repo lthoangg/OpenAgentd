@@ -2078,12 +2078,12 @@ this file wins.
   above the composer.
 - **Trouble is told where it happens.** When the server stops answering
   the status bar says **Can't reach** beside a red dot, the banner offers
-  **Retry** and, in the desktop app, **Start built-in server**, and Send is
+  **Retry** and, in the desktop app, **Start it**, and Send is
   disabled with the reason while the draft stays (nothing is queued
   offline). A moved folder is one line under the header with one way out
   each (**Open workspace…**, **Hide from sidebar**). An MCP call refused for
   sign-in offers **Sign in to {server}** under the call. A view that fails
-  to render says so in its own place (**Try again**, **Copy error details**)
+  to render says so in its own place (**Retry**, **Copy error details**)
   while the header, sidebar and status bar keep working.
 - **Reading.** The model chip names the model in sans; the `provider:model`
   ID stays mono in its tooltip and the picker. Full keeps

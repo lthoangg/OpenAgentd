@@ -56,7 +56,7 @@ describe('notificationServerName', () => {
     const builtIn = phone({ base_url: 'http://127.0.0.1:4082', mode: 'bundled', external: false, supports_bundled: true, sidecar_running: true, servers: [], computer_names: { 'built-in': 'studio-mini' } })
     expect(notificationServerName(builtIn)).toBeNull()
     expect(notificationServerName({ ...builtIn, servers: [LAB] })).toBe('studio-mini')
-    expect(notificationServerName({ ...builtIn, servers: [LAB], computer_names: {} })).toBe('Built-in server')
+    expect(notificationServerName({ ...builtIn, servers: [LAB], computer_names: {} })).toBe('This computer')
   })
 })
 

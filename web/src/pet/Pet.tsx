@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { AlarmClock, Check, CircleAlert, MessageCircleQuestion, X } from 'lucide-react'
+import { Check, CircleAlert, MessageCircleQuestion, X } from 'lucide-react'
 
 import { poseFrames, spriteRects, SPRITE_COLUMNS, SPRITE_ROWS } from './sprites'
 import {
@@ -106,7 +106,7 @@ const WINDOWS_EVENT = 'pet-windows'
 const FRAME_EVENT = 'pet-frame'
 /** A press that moves less than this is a click, not a drag. */
 const DRAG_SLOP = 4
-const REACTION_MS: Record<PetReaction, number> = { hop: 1700, droop: 2500, look: 2000 }
+const REACTION_MS: Record<PetReaction, number> = { hop: 1700, droop: 2500 }
 /** How often the hit areas are re-sent while the pet jumps or falls. */
 const FIT_EVERY_MS = 100
 /** How long the pet's reply to a poke stays up. */
@@ -116,7 +116,7 @@ const SAMPLE_KEEP_MS = 200
 
 type MenuAction = { action: 'dismiss'; id: string } | { action: 'clear' }
 
-/** Dismissed finished turns and reminders: their sessions are read everywhere. */
+/** Dismissed finished and failed turns: their sessions are read everywhere. */
 function reportDismissed(items: PetBubble[]): void {
   const notificationIds = readOnDismiss(items)
   if (notificationIds.length > 0) void invoke(DISMISS_COMMAND, { notificationIds }).catch(() => {})
@@ -199,14 +199,12 @@ const TONE_LABEL: Record<BubbleTone, string> = {
   input: 'Needs you',
   done: 'Done',
   failed: 'Failed',
-  remind: 'Reminder',
 }
 
 function ToneMark({ tone }: { tone: BubbleTone }) {
   const size = 12
   if (tone === 'input') return <MessageCircleQuestion size={size} aria-hidden="true" />
   if (tone === 'failed') return <CircleAlert size={size} aria-hidden="true" />
-  if (tone === 'remind') return <AlarmClock size={size} aria-hidden="true" />
   return <Check size={size} aria-hidden="true" />
 }
 
@@ -454,7 +452,7 @@ export function Pet() {
     return () => window.clearTimeout(timer)
   }, [say])
 
-  // A finished turn or reminder fades behind the badge.
+  // A finished or failed turn fades behind the badge.
   const fadingId = visible?.type === 'bubble' && visible.fades ? visible.bubble.id : null
   useEffect(() => {
     if (!fadingId) return
@@ -1386,7 +1384,7 @@ export function Pet() {
       )}
       <div
         ref={petRef}
-        className={`pet pet--${pose} pet--${character}${facingLeft && !traits.sideways ? ' pet--left' : ''}${dragging ? ' pet--dragging' : ''}${jumpPhase && jumpPhase !== 'land' ? ` pet--jump-${jumpPhase}` : ''}${jumpPhase === 'look' && jumpDown ? ' pet--jump-down' : ''}${lift ? ' pet--moving' : ''}${lift?.phase === 'land' || jumpPhase === 'land' ? ' pet--land' : ''}${busy ? ' pet--busy' : ''}${laptopFold ? ` pet--${laptopFold}` : ''}`}
+        className={`pet pet--${pose} pet--${character}${facingLeft && !traits.sideways ? ' pet--left' : ''}${dragging ? ' pet--dragging' : ''}${jumpPhase && jumpPhase !== 'land' ? ` pet--jump-${jumpPhase}` : ''}${jumpPhase === 'look' && jumpDown ? ' pet--jump-down' : ''}${lift ? ' pet--moving' : ''}${lift?.phase === 'land' || jumpPhase === 'land' ? ' pet--land' : ''}${laptopFold ? ` pet--${laptopFold}` : ''}`}
         style={{
           width: petWidth,
           height: petHeight,
@@ -1418,7 +1416,6 @@ export function Pet() {
           </span>
         )}
         {pose === 'alert' && <span className="pet-mark pet-mark--alert">!</span>}
-        {pose === 'look' && <span className="pet-mark pet-mark--look">♪</span>}
         {pose === 'pant' && <span className="pet-mark pet-mark--pant">~</span>}
         {pose === 'sleep' && <span className="pet-zzz">z z</span>}
         <div className="pet-body" role="img" aria-label={petLabel}>

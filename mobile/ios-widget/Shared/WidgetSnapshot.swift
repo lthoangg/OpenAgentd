@@ -23,7 +23,6 @@ struct WidgetTask: Codable, Hashable {
     let id: String
     let name: String
     let nextFireAt: Date
-    let lastRunAt: Date?
     let lastRunOk: Bool?
 }
 

@@ -423,7 +423,7 @@ async function handleEvent(
     const kind = event.kind
     if (
       !id ||
-      (kind !== 'assistant_done' && kind !== 'reminder_fired' && kind !== 'input_needed')
+      (kind !== 'assistant_done' && kind !== 'input_needed')
     ) return false
     if (!rememberNotification(id)) return true
     if (typeof event.title !== 'string' || typeof event.body !== 'string') return false

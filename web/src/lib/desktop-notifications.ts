@@ -12,7 +12,7 @@ import type { NotificationTarget } from '@/lib/notification-taps'
  * ``device_approval`` — a device signed in to the account and waits for this
  * computer (a signer) to approve it; its text is fixed and names no device.
  */
-export type DesktopNotificationKind = 'assistant_done' | 'reminder_fired' | 'input_needed' | 'device_approval'
+export type DesktopNotificationKind = 'assistant_done' | 'input_needed' | 'device_approval'
 export type DesktopNotificationStatus = 'sent' | 'disabled' | 'unsupported' | 'permission-denied' | 'error'
 
 export interface DesktopNotificationPayload {

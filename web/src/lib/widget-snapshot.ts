@@ -32,7 +32,6 @@ export interface WidgetTask {
   id: string
   name: string
   nextFireAt: string
-  lastRunAt: string | null
   /** Whether the last run succeeded; null before the first run. */
   lastRunOk: boolean | null
 }
@@ -92,7 +91,6 @@ function nextTask(tasks: readonly ScheduledTaskResponse[]): WidgetTask | null {
     id: upcoming.id,
     name: upcoming.name,
     nextFireAt: upcoming.next_fire_at,
-    lastRunAt: upcoming.last_run_at,
     lastRunOk: upcoming.last_run_at ? !upcoming.last_error : null,
   }
 }

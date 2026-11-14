@@ -16,7 +16,6 @@ const usageResult: TrayUsageResult = {
   ],
   summary: {
     checked_at: NOW - 120,
-    cached: false,
     items: [
       {
         provider: 'openai',
@@ -73,12 +72,18 @@ const { TrayPopup } = await import('@/tray/TrayPopup')
 const actions = () => calls.filter(([cmd]) => cmd === 'tray_action').map(([, args]) => args?.action)
 const usageCalls = () => calls.filter(([cmd]) => cmd === 'get_tray_usage_summary').map(([, args]) => args)
 
+// The popup exists only on macOS, so its tests read it as a Mac does.
+const realPlatform = navigator.platform
 beforeEach(() => {
   calls = []
   answer = async () => usageResult
   listeners.clear()
+  Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })
 })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  Object.defineProperty(navigator, 'platform', { value: realPlatform, configurable: true })
+})
 
 describe('TrayPopup', () => {
   it('names each provider once and labels its limits by window', async () => {
@@ -97,7 +102,7 @@ describe('TrayPopup', () => {
     await screen.findByRole('group', { name: 'OpenAI Codex' })
     expect(screen.getByText('Provider limits')).toBeInTheDocument()
     expect(screen.queryByText('Usage')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Refresh provider limits' })).toHaveAttribute('aria-keyshortcuts', 'Meta+R Control+R')
+    expect(screen.getByRole('button', { name: 'Refresh provider limits' })).toBeInTheDocument()
   })
 
   it('exposes each limit as a meter', async () => {
@@ -113,7 +118,6 @@ describe('TrayPopup', () => {
       ...usageResult,
       summary: {
         checked_at: NOW,
-        cached: false,
         items: [
           {
             provider: 'openai',
@@ -149,7 +153,6 @@ describe('TrayPopup', () => {
       ...usageResult,
       summary: {
         checked_at: NOW,
-        cached: false,
         items: [{
           provider: 'openai',
           label: 'OpenAI Codex',
@@ -242,7 +245,7 @@ describe('TrayPopup', () => {
   })
 
   it('offers Settings → Providers when no provider is connected', async () => {
-    answer = async () => ({ ...usageResult, summary: { checked_at: NOW, cached: false, items: [] } })
+    answer = async () => ({ ...usageResult, summary: { checked_at: NOW, items: [] } })
     render(<TrayPopup />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Open Providers' }))
@@ -299,6 +302,19 @@ describe('TrayPopup', () => {
     expect(actions()).toEqual(['settings', 'quit'])
   })
 
+  // The popup is a Mac window: Ctrl+Q there is not Quit, and no hint shows it.
+  it('leaves a key held with another modifier alone', async () => {
+    render(<TrayPopup />)
+    await screen.findByText('5-hour')
+    const before = usageCalls().length
+
+    for (const key of ['r', ',', 'q']) fireEvent.keyDown(document, { key, ctrlKey: true })
+    for (const key of ['r', ',', 'q']) fireEvent.keyDown(document, { key, metaKey: true, ctrlKey: true })
+    expect(actions()).toEqual([])
+    expect(usageCalls().length).toBe(before)
+    expect(screen.getByRole('button', { name: 'Refresh provider limits' })).toHaveAttribute('aria-keyshortcuts', 'Meta+R')
+  })
+
   it('picks a server from the keyboard and reads its usage', async () => {
     render(<TrayPopup />)
     fireEvent.click(await screen.findByRole('button', { name: /^Server/ }))
@@ -320,7 +336,7 @@ describe('TrayPopup', () => {
     server_name: 'Mac Studio',
     server_id: MAC_STUDIO,
     selected_server_id: MAC_STUDIO,
-    summary: { checked_at: NOW, cached: false, items: [{ provider: 'copilot', label: 'GitHub Copilot', status: 'credentials_missing', stale: false, usage: null }] },
+    summary: { checked_at: NOW, items: [{ provider: 'copilot', label: 'GitHub Copilot', status: 'credentials_missing', stale: false, usage: null }] },
   }
 
   async function pick(name: RegExp) {

@@ -137,17 +137,18 @@ pub enum PetMovement {
 }
 
 /// Which notification kinds use the bubble; the others keep the banner.
+/// Settings saved before v3.55.0 also hold `reminderFired`, a kind no
+/// server ever sent: it is ignored on read and no longer written.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BubbleKinds {
     pub input_needed: bool,
     pub assistant_done: bool,
-    pub reminder_fired: bool,
 }
 
 impl Default for BubbleKinds {
     fn default() -> Self {
-        Self { input_needed: true, assistant_done: true, reminder_fired: true }
+        Self { input_needed: true, assistant_done: true }
     }
 }
 
@@ -156,7 +157,6 @@ impl BubbleKinds {
         match kind {
             "input_needed" => self.input_needed,
             "assistant_done" => self.assistant_done,
-            "reminder_fired" => self.reminder_fired,
             _ => false,
         }
     }
@@ -271,13 +271,12 @@ pub fn claims(settings: &PetSettings, visible: bool, kind: &str) -> bool {
     settings.enabled && visible && settings.bubbles && settings.bubble_kinds.allows(kind)
 }
 
-/// How the bubble looks: a question, a reminder, a failed turn (or a goal
-/// that cannot go on), or done. `outcome` is the notification's own word
-/// for how the turn ended (see [`crate::island::Finish`]).
+/// How the bubble looks: a question, a failed turn (or a goal that cannot
+/// go on), or done. `outcome` is the notification's own word for how the
+/// turn ended (see [`crate::island::Finish`]).
 pub fn bubble_tone(kind: &str, outcome: Option<&str>, title: &str) -> &'static str {
     match kind {
         "input_needed" => "input",
-        "reminder_fired" => "remind",
         _ => match crate::island::Finish::of(outcome, title) {
             crate::island::Finish::Failed | crate::island::Finish::GoalBlocked => "failed",
             crate::island::Finish::Done => "done",
@@ -1951,7 +1950,7 @@ mod tests {
         let defaults = PetSettings::default();
         assert!(!defaults.enabled);
         assert!(defaults.bubbles);
-        assert_eq!(defaults.bubble_kinds, BubbleKinds { input_needed: true, assistant_done: true, reminder_fired: true });
+        assert_eq!(defaults.bubble_kinds, BubbleKinds { input_needed: true, assistant_done: true });
         assert!(!defaults.show_when_frontmost);
         assert_eq!(defaults.position, None);
     }
@@ -1971,9 +1970,21 @@ mod tests {
         assert_eq!(old, PetSettings { enabled: true, colour: PetColour::Blue, ..PetSettings::default() });
     }
 
+    // The Reminders switch controlled nothing: no server sends a
+    // `reminder_fired` notification.
+    #[test]
+    fn the_pet_has_no_reminder_bubbles_and_still_reads_settings_saved_with_them() {
+        let saved: PetSettings =
+            serde_json::from_str(r#"{"enabled": true, "bubbleKinds": {"inputNeeded": true, "assistantDone": false, "reminderFired": false}}"#).unwrap();
+        assert!(saved.bubble_kinds.input_needed && !saved.bubble_kinds.assistant_done);
+        let written = serde_json::to_value(&saved).unwrap();
+        assert_eq!(written["bubbleKinds"], serde_json::json!({"inputNeeded": true, "assistantDone": false}), "the key is no longer written");
+        assert!(!claims(&on(), true, "reminder_fired"), "a kind nothing sends keeps the banner");
+    }
+
     #[test]
     fn it_takes_a_notification_only_while_on_screen_with_bubbles_for_that_kind() {
-        for kind in ["input_needed", "assistant_done", "reminder_fired"] {
+        for kind in ["input_needed", "assistant_done"] {
             assert!(claims(&on(), true, kind), "{kind}");
             assert!(!claims(&on(), false, kind), "{kind}: hidden pets fall back to the banner");
             assert!(!claims(&PetSettings::default(), true, kind), "{kind}: pet off");
@@ -1988,7 +1999,6 @@ mod tests {
     #[test]
     fn bubble_tones_follow_the_kind_and_for_an_older_server_a_failed_title() {
         assert_eq!(bubble_tone("input_needed", None, "Needs input · web"), "input");
-        assert_eq!(bubble_tone("reminder_fired", None, "Reminder"), "remind");
         // A server before v3.55.0 sends no outcome: the title's first words say it.
         assert_eq!(bubble_tone("assistant_done", None, "Failed · web"), "failed");
         assert_eq!(bubble_tone("assistant_done", None, "Done · web"), "done");
@@ -2075,7 +2085,6 @@ mod tests {
             server: None,
             server_id: None,
             goal: None,
-            account: None,
             sent_from: None,
             finished_seq: None,
         };
@@ -2105,7 +2114,6 @@ mod tests {
             server: None,
             server_id: Some(ServerId::Bundled),
             goal: None,
-            account: None,
             sent_from: None,
             finished_seq: None,
         };

@@ -30,7 +30,6 @@ export const CHARACTER_TRAITS: Record<PetCharacter, CharacterTraits> = {
 export interface BubbleKinds {
   inputNeeded: boolean
   assistantDone: boolean
-  reminderFired: boolean
 }
 
 /** Settings → General → Desktop pet (stored by the shell). */
@@ -60,7 +59,7 @@ export const DEFAULT_PET_SETTINGS: PetSettings = {
   size: 'medium',
   movement: 'calm',
   bubbles: true,
-  bubbleKinds: { inputNeeded: true, assistantDone: true, reminderFired: true },
+  bubbleKinds: { inputNeeded: true, assistantDone: true },
   showWhenFrontmost: false,
   climb: true,
   position: null,
@@ -95,7 +94,7 @@ export interface PetView {
   frame?: Box | null
 }
 
-export type BubbleTone = 'input' | 'done' | 'failed' | 'remind'
+export type BubbleTone = 'input' | 'done' | 'failed'
 
 export interface PetBubble {
   /** The notification id. */
@@ -119,7 +118,7 @@ export const BUBBLE_WIDTH = 290
 export const TOP_ROOM = 28
 /** Room a bubble needs above the pet; with less it opens below. */
 export const BUBBLE_ROOM = 200
-/** A finished turn or a reminder fades after this long. */
+/** A finished or failed turn fades after this long. */
 export const BUBBLE_FADE_MS = 8000
 /** Unread bubbles kept behind the badge. */
 export const MAX_UNREAD = 6
@@ -603,15 +602,14 @@ export function throwPath({ from, velocity, area, pet, ledges: all, groundY }: T
 
 // ── Pose ───────────────────────────────────────────────────────────────────
 
-export type PetPose = 'walk' | 'sit' | 'sleep' | 'work' | 'alert' | 'hop' | 'droop' | 'look' | 'zoom' | 'pant' | 'fall'
+export type PetPose = 'walk' | 'sit' | 'sleep' | 'work' | 'alert' | 'hop' | 'droop' | 'zoom' | 'pant' | 'fall'
 
 /** A short reaction to a notification, shown over the pose. */
-export type PetReaction = 'hop' | 'droop' | 'look'
+export type PetReaction = 'hop' | 'droop'
 
 export function reactionFor(tone: BubbleTone): PetReaction | null {
   if (tone === 'done') return 'hop'
   if (tone === 'failed') return 'droop'
-  if (tone === 'remind') return 'look'
   return null
 }
 
@@ -656,7 +654,7 @@ export interface BubbleState {
   questions: PetBubble[]
   /** Questions put off with "Later": folded behind the badge, still waiting. */
   later: string[]
-  /** The finished turn or reminder on show; it fades into `unread`. */
+  /** The finished or failed turn on show; it fades into `unread`. */
   current: PetBubble | null
   /** Faded or crowded-out bubbles, newest first, behind the badge. */
   unread: PetBubble[]
@@ -800,7 +798,7 @@ export function bubbleReducer(state: BubbleState, action: BubbleAction): BubbleS
       }
     }
     case 'readSession': {
-      // Read somewhere else: its finished turns and reminders go; a question
+      // Read somewhere else: its finished and failed turns go; a question
       // still waits on the user until it is answered.
       const about = (b: PetBubble | null) => Boolean(b?.sessionId && sessionKey(b.sessionId) === action.key)
       if (!about(state.current) && !state.unread.some(about)) return state
@@ -817,7 +815,7 @@ export function bubbleReducer(state: BubbleState, action: BubbleAction): BubbleS
     case 'toggleList':
       return { ...state, listOpen: !state.listOpen && state.unread.length + state.questions.length > 0 }
     case 'clearUnread':
-      // Finished turns and reminders only: a question still waits on you.
+      // Finished and failed turns only: a question still waits on you.
       return { ...state, current: null, unread: [], listOpen: false }
     case 'clear':
       return EMPTY_BUBBLES
@@ -857,7 +855,7 @@ export function badgeLabel(state: BubbleState): string {
 
 /**
  * The dismissed bubbles whose sessions are then read everywhere: finished
- * turns and reminders about a session. Dismissing a question only hides it.
+ * and failed turns about a session. Dismissing a question only hides it.
  */
 export function readOnDismiss(bubbles: PetBubble[]): string[] {
   return bubbles.filter((b) => b.sessionId && b.tone !== 'input').map((b) => b.id)

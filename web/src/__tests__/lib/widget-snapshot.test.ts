@@ -159,7 +159,6 @@ describe('buildWidgetSnapshot', () => {
       id: 'soon',
       name: 'Task soon',
       nextFireAt: '2026-10-25T12:30:00Z',
-      lastRunAt: '2026-10-25T11:30:00Z',
       lastRunOk: false,
     })
   })

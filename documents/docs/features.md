@@ -414,10 +414,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   built-in server the row points to the app's **Updates** section, which
   updates both. The app's install dialog now says that running agents resume
   after the restart (they always did).
-- **Native app notifications** `[v1.19.0]` — finished assistant turns and
-  scheduled reminders in the desktop app, plus local native
+- **Native app notifications** `[v1.19.0]` — finished assistant turns in
+  the desktop app, plus local native
   notifications in the remote-backend mobile shell `[v1.34.0]`. Clicking a
-  desktop completion or reminder notification restores OpenAgentd and opens
+  desktop completion notification restores OpenAgentd and opens
   its linked coding session `[v1.113.4]`. Per-session context
   (coding workspace name when available). Notification sounds are handled by
   the operating system;
@@ -471,13 +471,18 @@ run from the terminal (the native Rust binary since v3.0.0).
   operating system's notification settings are the one place to turn them
   off. On an iPhone with **Show Previews** set to **Never**, tapping a push
   now opens its session (the text stays hidden, as before).
-  A goal that ends blocked reads as a failure everywhere `[v3.55.0]`: the
-  phone push used to file it under Done and the pet hopped as for a finished
-  turn. The notification now carries how the turn ended (`outcome`: done,
-  failed, goal achieved, goal blocked, goal paused), and the notch, the pet
-  and the phone push read that instead of the first word of the title. A
-  server older than v3.55.0 sends no outcome and is read by its title, as
-  before.
+  A goal that ends blocked no longer reads as a finished turn `[v3.55.0]`:
+  the phone push used to file it under Done and the pet hopped. The push now
+  files it as a failure and the pet droops; the notch keeps the row under
+  Done and marks it with the blocked goal, as it did. The notification
+  carries how the turn ended (`outcome`: done, failed, goal achieved, goal
+  blocked, goal paused), and the notch, the pet and the phone push read
+  that instead of the first word of the title. A server older than v3.55.0
+  sends no outcome and is read by its title, as before.
+  Reminder notifications are gone `[v3.55.0]` *(removed)*: no part of the
+  server has sent one since the v3 rewrite, so the pet's **Reminders**
+  switch controlled nothing and is removed with them. A pet settings file
+  saved with that switch still loads.
 - **Home-screen widgets on iPhone and Android** `[v3.31.0]` — three widgets
   for the mobile app: **Quick start** (start a new session, or continue the
   last one), **Sessions** (up to three sessions, the ones that need you first,
@@ -1215,6 +1220,13 @@ run from the terminal (the native Rust binary since v3.0.0).
     any session. The pet asks the Dock one thing instead of three every
     15 s when the Dock stays up, and a walking pet no longer makes the app
     read the pointer ten times a second while the pointer is elsewhere.
+  - Dead parts removed `[v3.55.0]`: the notch row no longer receives the
+    pinned account it never drew, the tray popup no longer receives three
+    usage fields it never read, the phone widgets no longer store a task's
+    last run time (none showed it), and the app no longer ships an unused
+    notification sound. On macOS the app no longer tells the tray which
+    session is open (the Mac tray has no row for it) or writes menu rows
+    for a usage submenu that does not exist there.
   - A question card in the transcript no longer sticks on "Waiting for an
     answer…": once the turn is over and no question is open, it says **No
     answer recorded** with what was asked, and a card closed from another
@@ -1639,7 +1651,8 @@ run from the terminal (the native Rust binary since v3.0.0).
       With no providers it offers Open Providers, and Reconnect goes to
       Settings → Providers.
     - **Keys.** Esc closes it, or the server menu first, which also takes
-      ↑ ↓ Enter. ⌘R refreshes, and ⌘, and ⌘Q run Settings and Quit. Since
+      ↑ ↓ Enter. ⌘R refreshes, and ⌘, and ⌘Q run Settings and Quit; since
+      `[v3.55.0]` only ⌘ does (Ctrl+Q used to quit the app too). Since
       `[v3.26.0]` the popup no longer offers New session; that lives in the
       app window (⌘N).
   - **Agent status in the notch** `[v3.26.0]` — on macOS, while you work in
@@ -1729,7 +1742,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     its own mid-turn, and stays put at the open laptop when told to stay
     put or with reduced motion. Notifications show in its speech bubble instead of the system
     banner: a question stays until it is answered (Answer opens it), and a
-    finished turn, a failed one or a reminder hops, droops or looks up and
+    finished turn or a failed one hops or droops and
     fades after 8 s into a count badge. Click the badge to list what it
     missed; a click on the pet itself is only a poke (it hops and meows,
     quacks or snips)

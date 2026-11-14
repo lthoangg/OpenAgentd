@@ -977,14 +977,12 @@ async fn update_tray_usage(app: &AppHandle, server: &ServerId, result: Result<Us
     let state: tauri::State<'_, AppState> = app.state();
 
     let now = now_unix();
-    let (rows, footer_text, critical) = match result {
+    // What to show, and the failure to report under it.
+    let (shown, failure) = match result {
         Ok(body) => {
-            let rows = format_summary_rows(&body, now);
-            let footer = format_footer(&body, now);
-            let critical = has_critical_usage(&body);
             let to_notify = state.usage.lock().await.record(server, body.clone());
             notify_critical_crossings(app, &body, &to_notify);
-            (rows, footer, critical)
+            (Some(body), None)
         }
         Err(err) => {
             // Keep the last-known-good rows on screen — users care about
@@ -996,23 +994,21 @@ async fn update_tray_usage(app: &AppHandle, server: &ServerId, result: Result<Us
                 usage.record_failure(server, err.clone());
                 usage.reading(server).0
             };
-            let rows = cached
-                .as_ref()
-                .map(|body| format_summary_rows(body, now))
-                .unwrap_or_default();
-            let critical = cached.as_ref().is_some_and(has_critical_usage);
             log::warn!("usage_summary_fetch_failed server={} error={err}", server.key());
-            let footer = format_failed_footer(cached.as_ref(), now, &err);
-            (rows, footer, critical)
+            (cached, Some(err))
         }
     };
-    update_tray_critical_badge(&state, critical).await;
+    update_tray_critical_badge(&state, shown.as_ref().is_some_and(has_critical_usage)).await;
 
-    // The rest only drives the native tray submenu (Windows/Linux). On macOS
-    // there is no native submenu — the popup reads the cached summary — so
-    // the cache/badge/notify work above still ran and we bail here.
+    // The rest draws the native tray submenu (Windows/Linux). macOS has none:
+    // the popup reads the cached summary, so no row text is built for it.
     let Some(submenu) = state.usage_submenu.lock().await.clone() else {
         return;
+    };
+    let rows = shown.as_ref().map(|body| format_summary_rows(body, now)).unwrap_or_default();
+    let footer_text = match &failure {
+        Some(err) => format_failed_footer(shown.as_ref(), now, err),
+        None => shown.as_ref().map(|body| format_footer(body, now)).unwrap_or_default(),
     };
 
     let entries: Vec<UsageRow> = if rows.is_empty() {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { BODY_COLOURS, CHARACTERS, poseFrames, spriteRects, SPRITE_COLUMNS, SPRITE_ROWS } from '@/pet/sprites'
 import type { PetCharacter, PetPose } from '@/pet/state'
 
-const POSES: PetPose[] = ['walk', 'sit', 'sleep', 'work', 'alert', 'hop', 'droop', 'look', 'fall']
+const POSES: PetPose[] = ['walk', 'sit', 'sleep', 'work', 'alert', 'hop', 'droop', 'fall']
 const ALL = Object.keys(CHARACTERS) as PetCharacter[]
 
 describe('pet sprites', () => {

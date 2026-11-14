@@ -46,7 +46,6 @@ final class NotificationService: UNNotificationServiceExtension {
                     content.userInfo["session"] = route.session
                     content.userInfo["sender"] = route.sender
                 }
-                content.userInfo["kind"] = opened.kind
                 content.userInfo.removeValue(forKey: "l")
             }
             contentHandler(content)

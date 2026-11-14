@@ -7,7 +7,7 @@ import { PET_SETTINGS_EVENT } from '@/lib/pet-setting'
 import { ProviderCard, ProviderSkeleton } from './ProviderCard'
 import { ServerPicker } from './ServerPicker'
 import { TRAY_STATUS_LABEL, failureReason, providerView, trayStatus } from './providerView'
-import { shortcutLabel } from './shortcuts'
+import { ariaShortcut, holdsShortcutModifier, shortcutLabel } from './shortcuts'
 import { type TrayServerOption, type TrayUsageResult, formatCheckedAt } from './usage'
 
 const USAGE_COMMAND = 'get_tray_usage_summary'
@@ -206,7 +206,7 @@ export function TrayPopup() {
         else runAction('hide')
         return
       }
-      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
+      if (!holdsShortcutModifier(event)) return
       const key = event.key.toLowerCase()
       if (key === 'r') {
         event.preventDefault()
@@ -339,7 +339,7 @@ export function TrayPopup() {
                 onActiveChange={setActiveOption}
                 onChoose={chooseServer}
               />
-              <button type="button" className="icon-btn" onClick={refresh} disabled={refreshing} aria-label="Refresh provider limits" aria-keyshortcuts="Meta+R Control+R">
+              <button type="button" className="icon-btn" onClick={refresh} disabled={refreshing} aria-label="Refresh provider limits" aria-keyshortcuts={ariaShortcut('r')}>
                 <RefreshCw size={14} strokeWidth={2} className={refreshing ? 'spin' : undefined} aria-hidden="true" />
               </button>
             </span>

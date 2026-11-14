@@ -24,7 +24,6 @@ export interface TrayUsageSpend {
 }
 
 export interface TrayUsageLimit {
-  limit_id?: string | null
   limit_name?: string | null
   primary?: TrayUsageWindow | null
   secondary?: TrayUsageWindow | null
@@ -48,7 +47,6 @@ export interface TrayUsageItem {
   label: string
   /** Known: ok, credentials_missing, unavailable, rate_limited; others are tolerated. */
   status: string
-  error?: string | null
   stale: boolean
   usage?: TrayUsageResponse | null
   /** Unix seconds before which a rate-limited provider should not be asked again. */
@@ -62,7 +60,6 @@ export interface TrayUsageItem {
 export interface TrayUsageSummary {
   items: TrayUsageItem[]
   checked_at: number
-  cached: boolean
 }
 
 export interface TrayServerOption {

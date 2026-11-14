@@ -62,7 +62,8 @@ const point = (inside: boolean) => emit('island-pointer', { inside, x: 10, y: 10
 const fits = () => calls.filter(([cmd]) => cmd === 'island_fit').map(([, args]) => args)
 const lastFit = () => fits().at(-1)
 const opened = () => calls.filter(([cmd]) => cmd === 'island_open_session').map(([, args]) => args?.sessionId)
-const dismissed = () => calls.filter(([cmd]) => cmd === 'island_dismiss').map(([, args]) => args?.sessionId)
+/** Every command the page sent besides reading its state and sizing its window. */
+const asked = () => calls.map(([cmd]) => cmd).filter((cmd) => cmd !== 'island_state' && cmd !== 'island_fit')
 const pill = () => document.querySelector('.island') as HTMLElement
 /** The number in the compact pill's right wing. */
 const trail = () => document.querySelector('.island-trail')?.textContent
@@ -223,14 +224,12 @@ describe('Island', () => {
     point(true)
     expect(fireEvent.contextMenu(screen.getByRole('button', { name: /Docs/ }), { clientX: 120, clientY: 80 })).toBe(false)
     await waitFor(() => expect(calls).toContainEqual(['island_context_menu', { sessionId: 'b', x: 120, y: 80 }]))
-    expect(opened()).toEqual([])
-    expect(dismissed()).toEqual([])
+    expect(asked()).toEqual(['island_context_menu'])
     point(false)
     expect(list()).toBeInTheDocument()
     await act(async () => closeMenu?.())
     expect(screen.queryByRole('list')).toBeNull()
-    expect(opened()).toEqual([])
-    expect(dismissed()).toEqual([])
+    expect(asked()).toEqual(['island_context_menu'])
   })
 
   it('uses the same priority for right-clicking the pill as for opening it', async () => {
@@ -272,8 +271,7 @@ describe('Island', () => {
     await act(async () => closeMenu?.())
     expect(screen.queryByRole('list')).toBeNull()
     expect(pill().dataset.open).toBe('false')
-    expect(opened()).toEqual([])
-    expect(dismissed()).toEqual([])
+    expect(asked()).toEqual(['island_context_menu'])
   })
 
   it('keeps a finished session up until it is read, then shrinks away', async () => {
@@ -319,9 +317,7 @@ describe('Island', () => {
     expect(later).not.toHaveAttribute('title')
     fireEvent.click(later)
     expect(rowTitles()).toEqual(['Docs'])
-    expect(dismissed()).toEqual([])
-    expect(opened()).toEqual([])
-    expect(calls.some(([cmd]) => cmd === 'session_read')).toBe(false)
+    expect(asked()).toEqual([])
 
     // Something new about that session (it runs again, then finishes) brings it back.
     push(status(3, [running('d', 'Fix tooltip slide'), running('a', 'Docs')]))

@@ -307,7 +307,7 @@ describe('desktop notification worker', () => {
       await withAccountPush()
       setVisibility('hidden', true)
 
-      expect((await sendDesktopNotification({ ...payload, kind: 'reminder_fired' })).status).toBe('sent')
+      expect((await sendDesktopNotification({ ...payload, kind: 'device_approval' })).status).toBe('sent')
       expect(mockNotify).toHaveBeenCalledTimes(1)
     })
 

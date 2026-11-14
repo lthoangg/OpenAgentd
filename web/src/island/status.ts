@@ -26,8 +26,6 @@ export interface IslandSession {
   questionId?: string | null
   /** The server's name, when the sessions come from more than one server. */
   server?: string | null
-  /** The account the session is pinned to; absent on Auto and from older shells. */
-  account?: string | null
   /** Absent from older shells. */
   goal?: IslandGoal | null
   /** On a finished row: which finish it is (each one is new). Absent from older shells. */

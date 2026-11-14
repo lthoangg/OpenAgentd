@@ -151,7 +151,7 @@ extension WidgetSnapshot {
             WidgetSession(id: "b", title: "Fix flaky compaction test", workspace: "openagentd", state: .running, lastMessageAt: Date()),
             WidgetSession(id: "c", title: "Release notes", workspace: "docs", state: .idle, lastMessageAt: Date().addingTimeInterval(-7200)),
         ],
-        nextTask: WidgetTask(id: "t", name: "Daily repo digest", nextFireAt: Date().addingTimeInterval(8040), lastRunAt: nil, lastRunOk: true)
+        nextTask: WidgetTask(id: "t", name: "Daily repo digest", nextFireAt: Date().addingTimeInterval(8040), lastRunOk: true)
     )
 }
 

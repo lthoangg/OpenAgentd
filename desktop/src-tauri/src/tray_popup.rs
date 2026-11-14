@@ -128,8 +128,8 @@ fn tray_cache() -> &'static Mutex<TrayCache> {
     CACHE.get_or_init(Default::default)
 }
 
-/// Whether two snapshots show the same numbers. The backend's ``cached``
-/// flag flips between identical bodies, so it doesn't count.
+/// Whether two snapshots show the same numbers: read at the same time, with
+/// the same items.
 fn same_reading(
     a: Option<&crate::usage::UsageSummaryBody>,
     b: Option<&crate::usage::UsageSummaryBody>,
@@ -570,9 +570,9 @@ mod cache_tests {
     }
 
     #[test]
-    fn a_reading_ignores_the_backend_cached_flag() {
-        let a = crate::usage::UsageSummaryBody { items: vec![], checked_at: 5, cached: false };
-        let b = crate::usage::UsageSummaryBody { cached: true, ..a.clone() };
+    fn a_reading_is_the_same_when_its_time_and_items_are() {
+        let a = crate::usage::UsageSummaryBody { items: vec![], checked_at: 5 };
+        let b = a.clone();
         let c = crate::usage::UsageSummaryBody { checked_at: 6, ..a.clone() };
         assert!(same_reading(Some(&a), Some(&b)));
         assert!(!same_reading(Some(&a), Some(&c)));
@@ -630,7 +630,7 @@ mod cache_tests {
 
     #[test]
     fn the_popup_reloads_when_only_the_error_changed() {
-        let body = crate::usage::UsageSummaryBody { items: vec![], checked_at: 5, cached: false };
+        let body = crate::usage::UsageSummaryBody { items: vec![], checked_at: 5 };
         let ok: Reading = (Some(body.clone()), None);
         let failed: Reading = (Some(body), Some("timed out".into()));
         assert!(same_view(&ok, &ok.clone()));

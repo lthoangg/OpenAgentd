@@ -162,7 +162,6 @@ describe('Pet', () => {
 
       act(() => timers.tick(2000))
       expect(petEl()).toHaveClass('pet--walk')
-      expect(petEl()).toHaveClass('pet--busy')
       expect(laptop()).toHaveClass('pet-laptop--carried')
 
       // Told to stay put mid-walk: it sets the laptop down and opens it.

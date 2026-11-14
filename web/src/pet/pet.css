@@ -21,9 +21,6 @@
   /* Falls and landings (LAND_MS and DUST_MS in state.ts). */
   --pet-land: 300ms;
   --pet-dust: 550ms;
-  /* How long the pet's move takes and how it eases; the page sets both while it moves. */
-  --pet-move-ms: 500ms;
-  --pet-move-ease: linear;
   /* Gravity: eases in; a long fall reaches its top speed and keeps it. */
   --pet-fall-ease: cubic-bezier(0.55, 0, 1, 0.45);
   --pet-fall-capped-ease: cubic-bezier(0.45, 0, 0.75, 0.6);
@@ -360,11 +357,6 @@ button:focus-visible {
   color: var(--color-text);
 }
 
-.pet-mark--look {
-  background: var(--accent-blue);
-  color: var(--color-text);
-}
-
 .pet-mark--pant {
   background: var(--accent-blue);
   color: var(--color-text);
@@ -373,7 +365,6 @@ button:focus-visible {
 /* Dark mode's text tone is cream, 1.5:1 on these bright fills: the marks
  * keep a dark ink in both themes. */
 :root.dark .pet-mark--alert { color: var(--bg-page); }
-:root.dark .pet-mark--look { color: var(--bg-page); }
 :root.dark .pet-mark--pant { color: var(--bg-page); }
 
 .pet-zzz {
@@ -798,12 +789,6 @@ button:focus-visible {
 .pet-chip.pet-bubble--failed {
   background: var(--color-error-subtle);
   color: var(--color-error);
-}
-
-.pet-bubble--remind .pet-chip,
-.pet-chip.pet-bubble--remind {
-  background: var(--accent-blue-soft);
-  color: var(--accent-blue-text);
 }
 
 .pet-bubble-title {

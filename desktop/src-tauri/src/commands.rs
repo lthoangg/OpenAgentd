@@ -189,7 +189,6 @@ fn open_from_notification(app: &AppHandle, sender: &str, server: ServerId, sessi
 pub struct DesktopNotificationPayload {
     kind: String,
     session_id: Option<String>,
-    mode: Option<String>,
     title: String,
     body: String,
     #[serde(default)]

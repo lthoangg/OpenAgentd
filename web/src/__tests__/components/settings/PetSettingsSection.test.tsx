@@ -84,7 +84,7 @@ describe('PetSettingsSection', () => {
         { movement: 'chaotic' },
         { showWhenFrontmost: true },
         { climb: false },
-        { bubbleKinds: { inputNeeded: true, assistantDone: false, reminderFired: true } },
+        { bubbleKinds: { inputNeeded: true, assistantDone: false } },
       ]),
     )
   })
@@ -100,7 +100,16 @@ describe('PetSettingsSection', () => {
     stored = { ...DEFAULT_PET_SETTINGS, enabled: true, bubbles: false }
     render(<PetSettingsSection />)
     expect(await toggle('Questions')).toBeDisabled()
-    expect(await toggle('Reminders')).toBeDisabled()
+    expect(await toggle('Finished replies')).toBeDisabled()
+  })
+
+  // No server sends a reminder notification: the switch controlled nothing.
+  it('offers no Reminders switch', async () => {
+    stored = { ...DEFAULT_PET_SETTINGS, enabled: true }
+    render(<PetSettingsSection />)
+    await toggle('Questions')
+    expect(screen.queryByRole('switch', { name: 'Reminders' })).toBeNull()
+    expect(screen.queryByText(/reminder/i)).toBeNull()
   })
 
   it('follows a change made from the tray', async () => {

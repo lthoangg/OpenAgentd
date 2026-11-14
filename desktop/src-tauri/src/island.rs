@@ -242,8 +242,6 @@ pub struct IslandSession {
     pub goal: Option<IslandGoal>,
     /// The open question's id, while the session waits on the user.
     pub question_id: Option<String>,
-    /// The account the session is pinned to; `None` on Auto.
-    pub account: Option<String>,
     /// The session another workspace's send started it from (its id), if one did.
     #[serde(skip)]
     pub sent_from: Option<String>,
@@ -407,9 +405,6 @@ pub struct SessionRow {
     pub goal_turns_used: Option<i64>,
     #[serde(default)]
     pub goal_max_turns: Option<i64>,
-    /// The pinned account's name; missing on Auto, or from older backends.
-    #[serde(default)]
-    pub credential_label: Option<String>,
     /// Who started the session from another workspace; missing when the
     /// user did, or from older backends.
     #[serde(default)]
@@ -482,7 +477,6 @@ pub fn active_sessions(rows: Vec<SessionRow>, questions: &HashMap<String, Asked>
                 server: None,
                 server_id: None,
                 goal,
-                account: row.credential_label,
                 sent_from: row.sent_from.and_then(|s| s.session_id),
                 finished_seq: None,
             }
@@ -1063,7 +1057,6 @@ fn notified_row(session_id: &str, data: &serde_json::Value) -> IslandSession {
         server: None,
         server_id: None,
         goal: None,
-        account: None,
         sent_from: None,
         finished_seq: None,
     }
@@ -1318,7 +1311,8 @@ fn shared() -> &'static Mutex<Shared> {
     })
 }
 
-/// Wakes the feed when the feature is switched on or off.
+/// Wakes the feed: the servers to follow changed, a refresh or a retry was
+/// asked for.
 fn feed_wake() -> &'static tokio::sync::Notify {
     static WAKE: OnceLock<tokio::sync::Notify> = OnceLock::new();
     WAKE.get_or_init(tokio::sync::Notify::new)
@@ -1336,8 +1330,8 @@ static FOCUS_GENERATION: AtomicU64 = AtomicU64::new(0);
 // ── Lifecycle ───────────────────────────────────────────────────────────────
 
 /// Start the feed, and build the island shortly after launch (macOS only).
-/// The feed runs on every platform: the desktop pet (`pet.rs`) follows it
-/// too. It does nothing while neither the island nor the pet is on.
+/// The feed runs on every platform, whenever the app does: the desktop pet
+/// (`pet.rs`) and the tray's count mark read it too, with the island off.
 pub fn start(app: &AppHandle) {
     refresh_saved(app);
     tauri::async_runtime::spawn(run_feed(app.clone()));
@@ -1595,15 +1589,8 @@ fn stream_client() -> reqwest::Client {
         .unwrap_or_default()
 }
 
-/// The feed runs whenever the app does: the tray's "Needs you" list and its
-/// mark read it even with the island and the pet off. (It used to run only
-/// while one of them was on.)
-fn is_enabled() -> bool {
-    true
-}
-
-/// The island or the pet was switched on or off, or a server asked to be
-/// retried: wake the feed now.
+/// The pet was switched on or off, or a server asked to be retried: wake
+/// the feed now.
 pub fn wake_feed() {
     feed_wake().notify_waiters();
 }
@@ -1618,7 +1605,7 @@ fn take_refresh_request(server: &ServerId) -> bool {
     shared().lock().unwrap().refresh_requested.remove(server)
 }
 
-/// Wait up to `duration`, or less if the feature is switched on or off.
+/// Wait up to `duration`, or less if the feed is woken ([`feed_wake`]).
 async fn pause(duration: Duration) {
     let _ = tokio::time::timeout(duration, feed_wake().notified()).await;
 }
@@ -1633,13 +1620,8 @@ async fn run_feed(app: AppHandle) {
             let shared = shared().lock().unwrap();
             (shared.saved.clone(), shared.names.clone())
         };
-        let wanted = if is_enabled() {
-            crate::servers::app_followed_servers(&app, &crate::servers::enabled_servers(&saved)).await
-        } else {
-            Vec::new()
-        };
-        // A feed also ends by itself when the feature is switched off; one
-        // switched straight back on is started again below.
+        let wanted = crate::servers::app_followed_servers(&app, &crate::servers::enabled_servers(&saved)).await;
+        // A feed whose task ended is started again below.
         let gone: Vec<ServerId> = tasks
             .iter()
             .filter(|(server, task)| !wanted.contains(server) || task.inner().is_finished())
@@ -1697,8 +1679,8 @@ impl std::fmt::Display for AuthRejected {
 
 impl std::error::Error for AuthRejected {}
 
-/// Follow one server's event stream, reconnecting with a backoff, until the
-/// feature is turned off (or [`run_feed`] stops it).
+/// Follow one server's event stream, reconnecting with a backoff, until
+/// [`run_feed`] stops it.
 async fn follow_server(app: AppHandle, server: ServerId) {
     let client = stream_client();
     let mut failures: u32 = 0;
@@ -1706,7 +1688,7 @@ async fn follow_server(app: AppHandle, server: ServerId) {
     // compaction) still applies to a session the next list no longer has.
     let mut memo = FeedMemo::default();
     let retry_max = if server == ServerId::Bundled { RETRY_MAX } else { RETRY_MAX_REMOTE };
-    while is_enabled() {
+    loop {
         let Some((base, token)) = crate::servers::endpoint(&app, &server).await else {
             pause(RETRY_BASE).await;
             continue;
@@ -1738,9 +1720,9 @@ async fn follow_server(app: AppHandle, server: ServerId) {
     }
 }
 
-/// Follow `server`'s event stream at `base` until it fails or the feature
-/// is turned off. Resets `failures` once connected. `memo` is the server's,
-/// kept from earlier connections.
+/// Follow `server`'s event stream at `base` until it fails. Resets
+/// `failures` once connected. `memo` is the server's, kept from earlier
+/// connections.
 async fn follow(
     app: &AppHandle,
     client: &reqwest::Client,
@@ -1800,9 +1782,6 @@ async fn follow(
             },
             _ = tokio::time::sleep(wait) => {}
             _ = feed_wake().notified() => {}
-        }
-        if !is_enabled() {
-            return Ok(());
         }
         // An answer was sent: the list changes now, not at the next event.
         if take_refresh_request(server) {
@@ -2510,7 +2489,6 @@ mod tests {
             goal_status: None,
             goal_turns_used: None,
             goal_max_turns: None,
-            credential_label: None,
             sent_from: None,
         }
     }
@@ -2526,7 +2504,6 @@ mod tests {
             server: None,
             server_id: None,
             goal: None,
-            account: None,
             sent_from: None,
             finished_seq: None,
         }
@@ -2803,14 +2780,13 @@ mod tests {
     }
 
     #[test]
-    fn a_pinned_session_names_its_account() {
+    fn a_row_carries_no_account_since_the_notch_draws_none() {
         let page: SessionPage =
-            serde_json::from_str(r#"{"data": [{"id": "a", "running": true, "credential_label": "Work"}, {"id": "b", "running": true}]}"#).unwrap();
+            serde_json::from_str(r#"{"data": [{"id": "a", "running": true, "credential_label": "Work"}]}"#).unwrap();
         let sessions = active_sessions(page.data, &HashMap::new(), None);
-        assert_eq!(sessions[0].account.as_deref(), Some("Work"));
-        assert_eq!(sessions[1].account, None, "Auto names no account");
         let wire = serde_json::to_value(&sessions[0]).unwrap();
-        assert_eq!(wire["account"], "Work");
+        assert_eq!(wire["id"], "a", "a pinned session still parses");
+        assert!(wire.get("account").is_none(), "{wire}");
     }
 
     #[test]

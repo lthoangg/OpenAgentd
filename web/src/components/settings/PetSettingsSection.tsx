@@ -43,7 +43,6 @@ const MOVEMENTS: ReadonlyArray<{ value: PetMovement; label: string }> = [
 const KINDS: ReadonlyArray<{ key: keyof BubbleKinds; label: string; description: string }> = [
   { key: 'inputNeeded', label: 'Questions', description: 'An agent stopped to ask you something. Stays until answered.' },
   { key: 'assistantDone', label: 'Finished replies', description: 'A reply finished or failed. Fades after a few seconds.' },
-  { key: 'reminderFired', label: 'Reminders', description: 'A reminder went off. Fades after a few seconds.' },
 ]
 
 export function PetSettingsSection() {

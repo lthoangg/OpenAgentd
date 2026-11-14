@@ -62,8 +62,6 @@ pub struct UsageSpend {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct UsageLimit {
     #[serde(default)]
-    pub limit_id: Option<String>,
-    #[serde(default)]
     pub limit_name: Option<String>,
     #[serde(default)]
     pub primary: Option<UsageWindow>,
@@ -119,8 +117,6 @@ pub struct UsageSummaryItem {
     pub label: String,
     pub status: String,
     #[serde(default)]
-    pub error: Option<String>,
-    #[serde(default)]
     pub usage: Option<UsageResponse>,
     /// True when the backend substituted this provider's last-known-good
     /// payload because the live fetch failed transiently.
@@ -145,8 +141,6 @@ pub struct UsageSummaryBody {
     pub items: Vec<UsageSummaryItem>,
     #[serde(default)]
     pub checked_at: i64,
-    #[serde(default)]
-    pub cached: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -1109,7 +1103,7 @@ mod tests {
     }
 
     fn body(items: Vec<UsageSummaryItem>, checked_at: i64) -> UsageSummaryBody {
-        UsageSummaryBody { items, checked_at, cached: false }
+        UsageSummaryBody { items, checked_at }
     }
 
     #[test]
@@ -1176,7 +1170,6 @@ mod tests {
             provider: provider.to_string(),
             label: label.to_string(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1185,7 +1178,6 @@ mod tests {
                 provider: provider.to_string(),
                 updated_at: None,
                 limits: vec![UsageLimit {
-                    limit_id: Some(provider.to_string()),
                     limit_name: None,
                     primary: Some(UsageWindow {
                         used_percent,
@@ -1235,7 +1227,6 @@ mod tests {
     #[test]
     fn format_window_suffix_includes_the_bar_between_percent_and_reset() {
         let limit = UsageLimit {
-            limit_id: Some("codex".to_string()),
             limit_name: None,
             primary: Some(UsageWindow {
                 used_percent: 50.0,
@@ -1266,7 +1257,6 @@ mod tests {
                 item_ok("agy", "Antigravity Gemini Auth", 91.0, None),
             ],
             checked_at: 1_000,
-            cached: false,
         };
         let rows = format_summary_rows(&body, 1_000);
         assert_eq!(rows.len(), 2);
@@ -1281,7 +1271,6 @@ mod tests {
             provider: "grok".to_string(),
             label: "Grok".to_string(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1290,7 +1279,6 @@ mod tests {
                 provider: "grok".to_string(),
                 updated_at: None,
                 limits: vec![UsageLimit {
-                    limit_id: None,
                     limit_name: Some("Weekly usage period".to_string()),
                     primary: None,
                     secondary: None,
@@ -1321,7 +1309,6 @@ mod tests {
             provider: "copilot".to_string(),
             label: "GitHub Copilot".to_string(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1330,7 +1317,6 @@ mod tests {
                 provider: "copilot".to_string(),
                 updated_at: None,
                 limits: vec![UsageLimit {
-                    limit_id: Some("premium_interactions".to_string()),
                     limit_name: Some("Premium requests".to_string()),
                     primary: None,
                     secondary: None,
@@ -1366,7 +1352,6 @@ mod tests {
                     provider: "claude".to_string(),
                     label: "Claude OAuth".to_string(),
                     status: "credentials_missing".to_string(),
-                    error: Some("token missing".to_string()),
                     stale: false,
                     retry_at: None,
                     retry_after: None,
@@ -1377,7 +1362,6 @@ mod tests {
                     provider: "copilot".to_string(),
                     label: "GitHub Copilot".to_string(),
                     status: "unavailable".to_string(),
-                    error: Some("timeout".to_string()),
                     stale: false,
                     retry_at: None,
                     retry_after: None,
@@ -1386,7 +1370,6 @@ mod tests {
                 },
             ],
             checked_at: 1_000,
-            cached: false,
         };
         let rows = format_summary_rows(&body, 1_000);
         assert!(rows[0].text.contains("reconnect"));
@@ -1404,7 +1387,6 @@ mod tests {
         let body = UsageSummaryBody {
             items: vec![],
             checked_at: 1_000,
-            cached: true,
         };
         // "(cached)" is deliberately not surfaced — implementation detail.
         assert_eq!(format_footer(&body, 1_000), "Checked just now");
@@ -1433,12 +1415,10 @@ mod tests {
         let hot = UsageSummaryBody {
             items: vec![item_ok("codex", "OpenAI Codex", 92.0, None)],
             checked_at: 1_000,
-            cached: false,
         };
         let cool = UsageSummaryBody {
             items: vec![item_ok("codex", "OpenAI Codex", 10.0, None)],
             checked_at: 1_000,
-            cached: false,
         };
         assert!(has_critical_usage(&hot));
         assert!(!has_critical_usage(&cool));
@@ -1466,7 +1446,6 @@ mod tests {
         let body = UsageSummaryBody {
             items: vec![],
             checked_at: 1_000,
-            cached: false,
         };
         let footer = format_failed_footer(Some(&body), 1_130, "connection refused");
         assert_eq!(footer, "\u{26A0} Checked 2m ago \u{00B7} refresh failed");
@@ -1496,7 +1475,6 @@ mod tests {
                 item_ok("claude", "Claude OAuth", 90.0, None), // exactly at threshold
             ],
             checked_at: 1_000,
-            cached: false,
         };
         let critical = critical_providers(&body);
         assert!(!critical.contains("codex"));
@@ -1556,7 +1534,6 @@ mod tests {
             provider: "codex".to_string(),
             label: "OpenAI Codex".to_string(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1565,7 +1542,6 @@ mod tests {
                 provider: "codex".to_string(),
                 updated_at: None,
                 limits: vec![UsageLimit {
-                    limit_id: Some("codex".to_string()),
                     limit_name: None,
                     primary: Some(UsageWindow {
                         used_percent: 100.0,
@@ -1599,7 +1575,6 @@ mod tests {
             provider: "codex".to_string(),
             label: very_long_name.clone(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1608,7 +1583,6 @@ mod tests {
                 provider: "codex".to_string(),
                 updated_at: None,
                 limits: vec![UsageLimit {
-                    limit_id: Some("codex".to_string()),
                     limit_name: Some(very_long_name),
                     primary: Some(UsageWindow {
                         used_percent: 10.0,
@@ -1635,7 +1609,6 @@ mod tests {
         let mut limits = Vec::new();
         for i in 0..5 {
             limits.push(UsageLimit {
-                limit_id: Some(format!("limit-{i}")),
                 limit_name: Some(format!("Limit {i}")),
                 primary: Some(UsageWindow {
                     used_percent: 10.0,
@@ -1655,7 +1628,6 @@ mod tests {
             provider: "codex".to_string(),
             label: "OpenAI Codex".to_string(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1724,7 +1696,6 @@ mod tests {
     #[test]
     fn multi_limit_provider_groups_under_a_header_with_worst_glyph() {
         let make_limit = |name: &str, used: f64| UsageLimit {
-            limit_id: Some(name.to_string()),
             limit_name: Some(name.to_string()),
             primary: Some(UsageWindow {
                 used_percent: used,
@@ -1743,7 +1714,6 @@ mod tests {
             provider: "agy".to_string(),
             label: "Antigravity Gemini".to_string(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1797,7 +1767,6 @@ mod tests {
             provider: "codex".to_string(),
             label: "OpenAI Codex".to_string(),
             status: "ok".to_string(),
-            error: None,
             stale: false,
             retry_at: None,
             retry_after: None,
@@ -1806,7 +1775,6 @@ mod tests {
                 provider: "codex".to_string(),
                 updated_at: None,
                 limits: vec![UsageLimit {
-                    limit_id: Some("codex".to_string()),
                     limit_name: None,
                     primary: None,
                     secondary: None,
@@ -1869,7 +1837,6 @@ mod tests {
         let body = UsageSummaryBody {
             items: vec![codex_spend_capped_item()],
             checked_at: 1_000,
-            cached: false,
         };
         assert!(has_critical_usage(&body));
         assert!(critical_providers(&body).contains("codex"));
@@ -1966,7 +1933,6 @@ mod tests {
             None => UsageSummaryItem { usage: None, ..item_ok("codex", "OpenAI Codex", 0.0, None) },
         };
         item.status = "rate_limited".to_string();
-        item.error = Some("HTTP 429".to_string());
         item.stale = stale;
         item.retry_at = retry_at;
         item.retry_after = retry_after;
@@ -2054,7 +2020,6 @@ mod tests {
     fn unavailable_with_last_good(percent: f64) -> UsageSummaryItem {
         let mut item = item_ok("codex", "OpenAI Codex", percent, Some(10_000));
         item.status = "unavailable".to_string();
-        item.error = Some("timeout".to_string());
         item.stale = true;
         item
     }
@@ -2149,7 +2114,6 @@ mod tests {
         let body = UsageSummaryBody {
             items: vec![rate_limited(Some(97.0), true, None, Some(300))],
             checked_at: 1_000,
-            cached: false,
         };
         assert!(!has_critical_usage(&body));
         assert!(critical_providers(&body).is_empty());

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import {
   cancelQueuedMessage, createAgent, createWorktree, deleteAgent, getAgent,
-  listAgentFiles, listMemberProfiles, listSubagents, postAgentChat,
+  listAgentFiles, listMemberProfiles, listSubagents, listWaiting, postAgentChat,
   resolveApiUrl, resolveSession, setCodingWorkspaceVisibility, updateAgent,
   submitOAuthCallback, updateSessionTitle, workspaceMediaUrl,
 } from '@/api/client'
@@ -374,6 +374,20 @@ describe('subagents API', () => {
     expect(url).toBe('/api/agent/sessions/session-123/subagents')
     expect(res.available_profiles.length).toBe(1)
     expect(res.live_members[0].member_id).toBe('explorer#1')
+  })
+
+  it('fetches what a session still waits for', async () => {
+    let url = ''
+    globalThis.fetch = mock((input) => {
+      url = String(input)
+      return Promise.resolve(new Response(JSON.stringify({
+        items: [{ kind: 'subagent', session_id: 'c1', title: 'Map the code', label: 'explorer#1', workspace: '', state: 'working' }],
+      })))
+    }) as typeof fetch
+
+    const res = await listWaiting('session-123')
+    expect(url).toBe('/api/agent/sessions/session-123/waiting')
+    expect(res.items.map((item) => item.label)).toEqual(['explorer#1'])
   })
 
   it('fetches member profiles from /agents/members', async () => {

@@ -26,6 +26,7 @@
  * ⌘C / ⌘V are the browser's copy and paste events, which xterm handles.
  */
 import type { OS } from '@/hooks/use-platform'
+import { formatChord } from '@/lib/keyboard/chord'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 
 /** Ctrl chords that skip the shell on Windows/Linux. */
@@ -37,7 +38,7 @@ export type TerminalShortcut = 'find' | 'copy' | 'paste' | 'add-to-chat'
 
 /** The add-to-chat chord as shown in a tooltip. */
 export function addToChatShortcutLabel(os: OS): string {
-  return isPrimaryModifierOS(os) ? '⌘L' : 'Ctrl+L'
+  return formatChord({ key: 'l', mod: true }, os)
 }
 
 /**

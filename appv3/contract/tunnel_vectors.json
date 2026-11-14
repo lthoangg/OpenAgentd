@@ -376,7 +376,11 @@
 			"roster": "add_signer",
 			"version": 3,
 			"roster_hash": "pUDDQxBepgtc-J8cDo-1dVnXao3uyUz30RjbFBkkKrw",
-			"confirm": "wyaRoaQct2shiWv9Np9WRvJydbcw_SfYB9jwhdg3QBk"
+			"confirm": "wyaRoaQct2shiWv9Np9WRvJydbcw_SfYB9jwhdg3QBk",
+			"user_code": "BCDFGHJK",
+			"add_link": "agentd://add?c=BCDFGHJK&d=Mehu2cOzX7i8ikGeWpl0ag&k=xbcQ8ohvV5L-Q7-3fTkGiw",
+			"signer_id": "J-LrF5flUGXDGZBCUzqGRA",
+			"number": "80"
 		}
 	],
 	"noise": [

@@ -15,6 +15,9 @@ import { Component, type ReactNode } from 'react'
 import { Seal } from '@/components/brand/Logo'
 import { Button } from '@/components/ui/button'
 
+// Its own copy of the labels: this file imports almost nothing (see above).
+const COPY_LABEL = { idle: 'Copy error details', copied: 'Copied', failed: 'Could not copy' } as const
+
 interface AppErrorBoundaryProps {
   children: ReactNode
   /** Injection point for tests; defaults to a full page reload. */
@@ -23,11 +26,11 @@ interface AppErrorBoundaryProps {
 
 interface AppErrorBoundaryState {
   error: Error | null
-  copied: boolean
+  copy: 'idle' | 'copied' | 'failed'
 }
 
 export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
-  state: AppErrorBoundaryState = { error: null, copied: false }
+  state: AppErrorBoundaryState = { error: null, copy: 'idle' }
 
   static getDerivedStateFromError(error: Error): Partial<AppErrorBoundaryState> {
     return { error }
@@ -49,13 +52,13 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     const { error } = this.state
     if (!error) return
     const details = `${error.message}\n\n${error.stack ?? ''}`.trim()
-    void navigator.clipboard.writeText(details).then(() => {
-      this.setState({ copied: true })
-    })
+    // No clipboard, or it refused (a webview without focus or permission).
+    const written = navigator.clipboard?.writeText(details) ?? Promise.reject(new Error('no clipboard'))
+    void written.then(() => this.setState({ copy: 'copied' }), () => this.setState({ copy: 'failed' }))
   }
 
   render() {
-    const { error, copied } = this.state
+    const { error, copy } = this.state
     if (error === null) return this.props.children
 
     return (
@@ -74,7 +77,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
           <div className="flex flex-wrap justify-center gap-2">
             <Button onClick={this.handleReload}>Reload</Button>
             <Button variant="ghost" onClick={this.handleCopy}>
-              {copied ? 'Copied' : 'Copy error details'}
+              {COPY_LABEL[copy]}
             </Button>
           </div>
         </div>

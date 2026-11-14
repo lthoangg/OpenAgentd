@@ -45,6 +45,7 @@ import type {
   SessionSort,
   MemberProfile,
   SubagentsResponse,
+  WaitingResponse,
   SideQuestionEvent,
   SideQuestionListResponse,
   SessionGoal,
@@ -335,11 +336,12 @@ export async function listWorktrees(sourceWorkspace: string): Promise<WorktreeIn
   return res.json()
 }
 
-export async function removeWorktree(sourceWorkspace: string, directory: string): Promise<WorktreeRemoveResponse> {
+/** Delete a managed worktree; `dryRun` only reports what would happen to its branch. */
+export async function removeWorktree(sourceWorkspace: string, directory: string, options?: { dryRun?: boolean }): Promise<WorktreeRemoveResponse> {
   const res = await fetch(`${apiBaseUrl()}/agent/workspace/worktrees`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ source_workspace: sourceWorkspace, directory }),
+    body: JSON.stringify({ source_workspace: sourceWorkspace, directory, ...(options?.dryRun ? { dry_run: true } : {}) }),
   })
   if (!res.ok) await parseDetailOrThrow(res, 'removeWorktree')
   return res.json()
@@ -627,6 +629,16 @@ export async function setSessionPinned(id: string, pinned: boolean): Promise<Ses
 export async function listSubagents(sessionId: string): Promise<SubagentsResponse> {
   const res = await fetch(`${apiBaseUrl()}/agent/sessions/${encodeURIComponent(sessionId)}/subagents`)
   if (!res.ok) await parseDetailOrThrow(res, 'listSubagents')
+  return res.json()
+}
+
+/**
+ * What a session whose turn ended still waits for: its subagents still
+ * running, and the sessions in other workspaces that owe it a reply.
+ */
+export async function listWaiting(sessionId: string): Promise<WaitingResponse> {
+  const res = await fetch(`${apiBaseUrl()}/agent/sessions/${encodeURIComponent(sessionId)}/waiting`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listWaiting')
   return res.json()
 }
 

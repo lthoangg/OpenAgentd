@@ -214,7 +214,7 @@ class TestLinuxBranch:
     @pytest.fixture
     def fake_binary(self, tmp_path: Path) -> Path:
         """Create a fake but executable OpenAgentd binary."""
-        bin_path = tmp_path / "OpenAgentd.AppImage"
+        bin_path = tmp_path / "openagentd"
         bin_path.write_text("#!/bin/sh\necho fake-openagentd\n")
         bin_path.chmod(0o755)
         return bin_path

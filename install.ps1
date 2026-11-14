@@ -104,7 +104,7 @@ function Remove-V2 {
 
 function Install-Cli([string]$ResolvedVersion) {
     if ($env:PROCESSOR_ARCHITECTURE -ne "AMD64" -and $env:PROCESSOR_ARCHITEW6432 -ne "AMD64") {
-        Fail "the Windows CLI is built for x64 only (found $env:PROCESSOR_ARCHITECTURE)"
+        Fail "the Windows CLI is built for x64 only (found $env:PROCESSOR_ARCHITECTURE). To build it yourself, see https://github.com/$repo/blob/main/CONTRIBUTING.md#quick-start"
     }
     $target = "x86_64-pc-windows-msvc"
     $dir = if ($InstallDir) { $InstallDir } elseif ($env:OPENAGENTD_INSTALL_DIR) { $env:OPENAGENTD_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "OpenAgentd\bin" }
@@ -195,9 +195,19 @@ if ($Cli) {
     Install-Cli $resolvedVersion
     Write-Host ""
     Write-Host "==> Installed $($script:BinName) $resolvedVersion!"
-    Write-Host "Next: run '$($script:BinName) --help', or '$($script:BinName) server start --wait'."
+    Write-Host "Next: run '$($script:BinName) --help', or '$($script:BinName) server start'."
     Write-Host "      It uses the same config and data as OpenAgentd v2 and the desktop app."
     return
+}
+
+# The desktop app is an x64 build. A 32-bit PowerShell on 64-bit Windows
+# reports the real architecture in PROCESSOR_ARCHITEW6432.
+$arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+if ($arch -eq "x86") {
+    Fail "OpenAgentd needs 64-bit Windows (this is 32-bit)"
+}
+if ($arch -eq "ARM64") {
+    Write-Host "Note: OpenAgentd for Windows is an x64 app. On Windows on ARM it runs under emulation, which needs Windows 11."
 }
 
 $asset = "OpenAgentd_${resolvedVersion}_x64_en-US.msi"
@@ -212,9 +222,20 @@ try {
     Unblock-File -LiteralPath $installerPath
 
     Write-Host "==> Opening Windows Installer"
-    $process = Start-Process -FilePath "msiexec.exe" `
-        -ArgumentList @("/i", "`"$installerPath`"") `
-        -Verb RunAs -Wait -PassThru
+    try {
+        $process = Start-Process -FilePath "msiexec.exe" `
+            -ArgumentList @("/i", "`"$installerPath`"") `
+            -Verb RunAs -Wait -PassThru
+    }
+    catch {
+        # Answering No to "Do you want to allow this app to make changes"
+        # lands here: Start-Process throws, and nothing was installed.
+        Fail "Windows Installer did not start ($($_.Exception.Message)). If you answered No when Windows asked for permission, run the installer again and choose Yes"
+    }
+    # 1602: Cancel in the Windows Installer window.
+    if ($process.ExitCode -eq 1602) {
+        Fail "the installation was cancelled, so nothing was installed. Run the installer again to install OpenAgentd"
+    }
     if ($process.ExitCode -ne 0) {
         Fail "Windows Installer exited with code $($process.ExitCode)"
     }

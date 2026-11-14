@@ -173,7 +173,71 @@ async fn phone_and_server_through_the_account() {
     let (_, v) = local(&app, "GET", "/api/cloud/status").await;
     assert_eq!(v["sessions"], 1, "one relay session is open");
 
+    // 3b. The phone previews a page of the server: it opens the preview, then
+    // a tunnel into its listener, both through the relay. The server has no
+    // access key; the relayed device is authenticated by its session.
+    {
+        use futures::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::protocol::Role;
+        use tokio_tungstenite::tungstenite::Message as M;
+        let site = temp.path().join("workspace").join("site");
+        std::fs::create_dir_all(&site).unwrap();
+        std::fs::write(site.join("index.html"), "<html><head></head><body>from the account</body></html>").unwrap();
+        let body = json!({"workspace": site.to_string_lossy(), "path": "index.html"}).to_string();
+        let out = relayed(
+            &tunnel,
+            &format!("POST /api/preview HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()),
+        )
+        .await;
+        assert!(out.starts_with("HTTP/1.1 200"), "{out}");
+        let opened: Value = serde_json::from_str(&out[out.find('{').unwrap()..=out.rfind('}').unwrap()]).unwrap();
+        let id = opened["id"].as_str().unwrap().to_string();
+
+        // The handshake as the app's preview relay does it: its own HTTP
+        // client reads the 101, then the stream carries WebSocket frames.
+        let upgrade = |path: String| {
+            let mut stream = tunnel.session.open().unwrap();
+            async move {
+                let request = format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n");
+                stream.write_all(request.as_bytes()).await.unwrap();
+                let mut head = Vec::new();
+                let mut byte = [0u8; 1];
+                while !head.ends_with(b"\r\n\r\n") {
+                    let n = tokio::time::timeout(Duration::from_secs(10), stream.read(&mut byte)).await.expect("an answer").unwrap();
+                    if n == 0 {
+                        break;
+                    }
+                    head.push(byte[0]);
+                }
+                (String::from_utf8_lossy(&head).into_owned(), stream)
+            }
+        };
+        let (head, stream) = upgrade(format!("/api/preview/{id}/tunnel?port=50999")).await;
+        assert!(head.starts_with("HTTP/1.1 101"), "the tunnel opens for a device of the account: {head}");
+        assert!(head.to_ascii_lowercase().contains("sec-websocket-accept: s3ppLMBiTxaQ9kYGzzhZRbK+xOo=".to_ascii_lowercase().as_str()), "{head}");
+        let mut sock = tokio_tungstenite::WebSocketStream::from_raw_socket(stream, Role::Client, None).await;
+        sock.send(M::binary(b"GET /index.html HTTP/1.1\r\nHost: 127.0.0.1:50999\r\nConnection: close\r\n\r\n".to_vec())).await.unwrap();
+        let mut page = Vec::new();
+        while let Ok(Some(Ok(m))) = tokio::time::timeout(Duration::from_secs(5), sock.next()).await {
+            match m {
+                M::Binary(b) => page.extend_from_slice(&b),
+                M::Close(_) => break,
+                _ => {}
+            }
+        }
+        let page = String::from_utf8_lossy(&page);
+        assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+        assert!(page.contains("/__openagentd/inspector.js") && page.contains("from the account"), "{page}");
+
+        let (head, _) = upgrade("/api/preview/00000000-0000-0000-0000-000000000000/tunnel?port=50999".to_string()).await;
+        assert!(head.starts_with("HTTP/1.1 404"), "an unknown preview is refused: {head}");
+        appv3_preview::global().close(&id);
+    }
+
     // 4. A notification on the server reaches the phone, sealed.
+    // Its title says which computer of the account it came from.
+    let (s, _) = local_with(&app, "PUT", "/api/server/name", Some(json!({"name": "studio-mini"}))).await;
+    assert_eq!(s, StatusCode::OK);
     let session_id = "0e6c5a0c-1f7e-4a3c-9a55-3b7a2c1d9e10";
     appv3_agent::broadcaster::publish(
         "desktop_notification",
@@ -192,7 +256,7 @@ async fn phone_and_server_through_the_account() {
     let me = phone.cloud.device_id();
     let ctx = Context { account_id: &account, sender_id: &server_id, recipient_id: &me, kind: Kind::Done };
     let text = letter::open(&phone.cloud.keys.r#box, &host_box, &ctx, &sealed).unwrap();
-    assert_eq!((text.title.as_str(), text.body.as_str(), text.session.as_deref()), ("Done · api", "Tests pass.", Some(session_id)));
+    assert_eq!((text.title.as_str(), text.body.as_str(), text.session.as_deref()), ("Done · api · studio-mini", "Tests pass.", Some(session_id)));
     // Another device's key cannot open it.
     let stranger = DeviceKeys::generate();
     assert!(letter::open(&stranger.r#box, &host_box, &ctx, &sealed).is_err());

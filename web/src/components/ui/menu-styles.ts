@@ -13,9 +13,13 @@
 export const MENU_PANEL_CLASS =
   'rounded-md border border-(--color-border-subtle) bg-(--bg-card) p-1 shadow-(--shadow-depth)'
 
-/** Row geometry (28px, 36px on touch) and the accent highlight. Callers add tone and state. */
+/**
+ * Row geometry (28px, 36px on touch, the phone's control step on a phone) and
+ * the accent highlight. Callers add tone and state. The touch heights live
+ * here: ``cn`` does not merge, so a caller's plain ``min-h-*`` loses to these.
+ */
 export const MENU_ITEM_CLASS =
-  'oa-menu-item flex w-full cursor-pointer items-center gap-2 rounded-xs px-2 py-1.5 text-left text-xs pointer-coarse:min-h-9'
+  'oa-menu-item flex w-full cursor-pointer items-center gap-2 rounded-xs px-2 py-1.5 text-left text-xs pointer-coarse:min-h-9 phone:min-h-(--phone-control)'
 
 /** A destructive row: error text at rest, a solid error fill when highlighted. */
 export const MENU_ITEM_DANGER = 'oa-menu-item-danger'

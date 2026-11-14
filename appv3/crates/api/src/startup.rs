@@ -63,6 +63,10 @@ pub async fn startup(pool: &DbPool) -> anyhow::Result<()> {
     }
     k.start_all().await?;
     crate::plugins::reload().await;
+    // MCP app pages no tool result names any more (results reverted, a
+    // server that stopped between storing a page and saving its result).
+    let pool = pool.clone();
+    tokio::spawn(async move { appv3_agent::mcp_apps::remove_unused_pages(&pool, None).await });
     Ok(())
 }
 

@@ -17,8 +17,7 @@ bun run test                                       # full suite (parallel)
 
 Run `make dev` (API :8000 + Vite :5173). Sessions open at
 `http://localhost:5173/<session-id>` (dashed UUID). Other live routes are
-`/telemetry`, `/scheduler`, `/settings`, and `/settings/<section>`; `/coding`
-and `/coding/<session-id>` only redirect to `/` and `/<session-id>`
+`/telemetry`, `/scheduler`, `/settings`, and `/settings/<section>`
 (`src/router.ts`).
 
 - **Preview tool** (in-app): `preview` with `action: 'open'` on the Vite URL, then

@@ -39,7 +39,11 @@ export const NOTICES: Record<CloudNotice, NoticeCopy> = {
     body: "The account's answer did not match the invitation, so this device did not join. Nothing was changed.",
     tone: 'warning',
   },
-  invite_invalid: { body: 'That is not an invitation link. Copy it again from your phone.' },
+  wrong_number: {
+    body: 'That is not the number your phone showed, so this computer left the account again. Sign in to try again.',
+    tone: 'warning',
+  },
+  invite_invalid: { body: 'That is not an invitation link. Copy it again from the inviting device.' },
   join_ended: { body: 'The request to join ended: it was cancelled, expired, or the invitation was used.' },
   signed_out: { body: 'Signed out. Local sessions and settings are unchanged.' },
   rate_limited: {
@@ -130,6 +134,23 @@ export function SigningInCopy({ url, userCode, fingerprint }: { url: string; use
     </>
   )
 }
+
+/** Scan to add: the QR code is the first way, for an account with a phone. */
+export function ScanCodeCopy({ minutes }: { minutes: number }) {
+  return (
+    <>
+      <p className="font-medium text-(--color-text)">Scan with your phone</p>
+      <p>
+        Open OpenAgentd on a phone in your account. On Servers, choose{' '}
+        <strong className="text-(--color-text)">Scan QR code</strong>.
+      </p>
+      <p>Works for {minutes} minutes. Show it only to your own phone.</p>
+    </>
+  )
+}
+
+export const SCANNED_COPY = 'Your phone scanned this computer. On your phone, check it shows this device and choose Add.'
+export const PICK_NUMBER = 'Which number does your phone show?'
 
 export function ClosingCopy({ deletesAt }: { deletesAt: number | null }) {
   return (

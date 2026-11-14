@@ -94,6 +94,59 @@ async fn relays_websockets_with_the_subprotocol() {
     m.shutdown();
 }
 
+/// A dev server on `https://localhost` with a self-signed certificate, as
+/// Vite's basic-ssl plugin and `next dev --experimental-https` make them:
+/// one WebSocket route that echoes text. The certificate and key under
+/// `tests/fixtures/` were made for this test only and protect nothing.
+async fn https_upstream() -> u16 {
+    use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+    let cert = CertificateDer::from(include_bytes!("fixtures/self-signed-cert.der").to_vec());
+    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(include_bytes!("fixtures/self-signed-key.der").to_vec()));
+    let config = tokio_rustls::rustls::ServerConfig::builder_with_provider(std::sync::Arc::new(tokio_rustls::rustls::crypto::ring::default_provider()))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(vec![cert], key)
+        .unwrap();
+    let acceptor = tokio_rustls::TlsAcceptor::from(std::sync::Arc::new(config));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((tcp, _)) = listener.accept().await {
+            let acceptor = acceptor.clone();
+            tokio::spawn(async move {
+                let Ok(tls) = acceptor.accept(tcp).await else { return };
+                let Ok(mut ws) = tokio_tungstenite::accept_async(tls).await else { return };
+                while let Some(Ok(m)) = ws.next().await {
+                    if let tokio_tungstenite::tungstenite::Message::Text(t) = m {
+                        if ws.send(tokio_tungstenite::tungstenite::Message::text(format!("secure:{}", t.as_str()))).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+    });
+    port
+}
+
+/// Hot reload of an `https` dev server: its WebSocket is `wss`, behind a
+/// certificate no authority signed.
+#[tokio::test]
+async fn relays_secure_websockets_of_an_https_dev_server() {
+    let up = https_upstream().await;
+    let m = manager();
+    for host in ["localhost", "127.0.0.1"] {
+        let (t, _) = parse_url_target(&format!("https://{host}:{up}")).unwrap();
+        let p = m.ensure("/w", Backend::Upstream(t), None).await.unwrap();
+        let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{}/hmr", p.port)).await.unwrap_or_else(|e| panic!("{host}: the page's WebSocket opens: {e}"));
+        ws.send(tokio_tungstenite::tungstenite::Message::text("ping")).await.unwrap();
+        let reply = tokio::time::timeout(std::time::Duration::from_secs(5), ws.next()).await.expect("an answer").unwrap().unwrap();
+        assert_eq!(reply.into_text().unwrap().as_str(), "secure:ping", "{host}");
+    }
+    m.shutdown();
+}
+
 #[tokio::test]
 async fn shows_a_retry_page_while_the_server_is_down_and_takes_console_batches() {
     let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();

@@ -4,7 +4,11 @@
 //! push it cannot read; the phone's Notification Service Extension opens it.
 //!
 //! Only the text a local notification shows is sent: the status, the
-//! workspace name and the session title, clamped to one line.
+//! workspace name, this computer's name and the session title, clamped to
+//! one line. The name is the one the computer gives for itself
+//! (`GET /api/server/name`), after the workspace: a phone hears from every
+//! computer of the account, and two of them can have a workspace of the
+//! same name.
 //!
 //! A letter the cloud did not take (no network, a cloud error, rate limited)
 //! is retried for [`RETRY_WINDOW`], so a computer that was offline for a
@@ -49,10 +53,30 @@ fn clamp(s: &str, max: usize) -> String {
     out
 }
 
-/// `J` for a notification payload; long text is cut so it fits a letter.
-pub fn text_of(payload: &Value, now_ms: u64) -> Text {
+/// Longest title, in characters.
+const TITLE_MAX_CHARS: usize = 120;
+
+/// The payload's title followed by this computer's `name`
+/// ("Done · api · studio-mini"). A long title is cut before the name, which
+/// is short (40 characters at most), so the name is always there.
+fn title_of(payload: &Value, name: Option<&str>) -> String {
+    let title = payload["title"].as_str().unwrap_or("OpenAgentd");
+    let Some(name) = name.map(str::trim).filter(|n| !n.is_empty()) else {
+        return clamp(title, TITLE_MAX_CHARS);
+    };
+    let suffix = format!(" · {name}");
+    let room = TITLE_MAX_CHARS.saturating_sub(suffix.chars().count());
+    if room < 2 {
+        return clamp(title, TITLE_MAX_CHARS);
+    }
+    format!("{}{suffix}", clamp(title, room))
+}
+
+/// `J` for a notification payload, with this computer's `name` after the
+/// title; long text is cut so it fits a letter.
+pub fn text_of(payload: &Value, name: Option<&str>, now_ms: u64) -> Text {
     let session = payload["session_id"].as_str().filter(|s| collapse_ok(s)).map(str::to_string);
-    let mut t = Text { v: 1, title: clamp(payload["title"].as_str().unwrap_or("OpenAgentd"), 120), body: clamp(payload["body"].as_str().unwrap_or(""), 600), session, at: now_ms };
+    let mut t = Text { v: 1, title: title_of(payload, name), body: clamp(payload["body"].as_str().unwrap_or(""), 600), session, at: now_ms };
     // The largest letter holds 1,998 bytes of `J`; wide characters can
     // need more than the character limits allow.
     while serde_json::to_vec(&t).map_or(0, |j| j.len()) > letter::SIZES[3] - 50 {
@@ -198,7 +222,8 @@ pub async fn run(cloud: Arc<Cloud>, roster: Arc<RwLock<Roster>>) {
         };
         let Some(kind) = kind_of(&payload) else { continue };
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
-        let text = text_of(&payload, now);
+        // Read per notification: the computer can be renamed at any time.
+        let text = text_of(&payload, crate::routes::server_name::current_name().as_deref(), now);
         let (account, to) = {
             let Ok(r) = roster.read() else { continue };
             (r.account_id().to_string(), recipients(&r, &cloud.device_id()))
@@ -237,7 +262,7 @@ mod tests {
     #[test]
     fn text_fits_the_largest_letter() {
         for long in ["x".repeat(5000), "😀".repeat(5000), "\"".repeat(5000)] {
-            let t = text_of(&json!({"title": long, "body": long, "session_id": "0e6c5a0c-1f7e-4a3c-9a55-3b7a2c1d9e10"}), 1);
+            let t = text_of(&json!({"title": long, "body": long, "session_id": "0e6c5a0c-1f7e-4a3c-9a55-3b7a2c1d9e10"}), Some(&"😀".repeat(40)), 1);
             let j = serde_json::to_vec(&t).unwrap();
             assert!(j.len() + 2 <= 2048 - 48, "{}", j.len());
             assert_eq!(t.session.as_deref(), Some("0e6c5a0c-1f7e-4a3c-9a55-3b7a2c1d9e10"));
@@ -246,8 +271,37 @@ mod tests {
             let ctx = Context { account_id: "a", sender_id: "s", recipient_id: "r", kind: Kind::Done };
             assert!(letter::seal(&keys.r#box, &to.r#box.public(), &ctx, &t).is_ok());
         }
-        let t = text_of(&json!({"title": "Done", "session_id": "not a collapse key!"}), 1);
+        let t = text_of(&json!({"title": "Done", "session_id": "not a collapse key!"}), None, 1);
         assert_eq!(t.session, None);
+    }
+
+    // A phone hears from every computer of the account: the title says which.
+    #[test]
+    fn the_title_ends_with_this_computers_name() {
+        let t = text_of(&json!({"title": "Needs you · api", "body": "Keep v1?"}), Some("studio-mini"), 1);
+        assert_eq!(t.title, "Needs you · api · studio-mini");
+        assert_eq!(t.body, "Keep v1?");
+        let t = text_of(&json!({"title": "Needs you"}), Some("studio-mini"), 1);
+        assert_eq!(t.title, "Needs you · studio-mini", "no workspace");
+        for unnamed in [None, Some(""), Some("  ")] {
+            assert_eq!(text_of(&json!({"title": "Done · api"}), unnamed, 1).title, "Done · api", "a computer with no name adds nothing");
+        }
+    }
+
+    #[test]
+    fn a_long_title_is_cut_before_the_computers_name() {
+        let workspace = "w".repeat(300);
+        let t = text_of(&json!({"title": format!("Failed · {workspace}")}), Some("studio-mini"), 1);
+        assert_eq!(t.title.chars().count(), 120);
+        assert!(t.title.starts_with("Failed · www"), "{}", t.title);
+        assert!(t.title.ends_with("… · studio-mini"), "{}", t.title);
+    }
+
+    #[test]
+    fn the_kind_is_read_from_the_title_the_server_raised() {
+        let payload = json!({"kind": "assistant_done", "title": "Failed · api"});
+        assert_eq!(kind_of(&payload), Some(Kind::Failed));
+        assert_eq!(text_of(&payload, Some("Done"), 1).title, "Failed · api · Done", "a name cannot change the kind");
     }
 
     #[test]

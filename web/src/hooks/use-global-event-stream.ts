@@ -144,6 +144,11 @@ function markSessionRunning(
   running: boolean,
   needsInput: boolean = false,
 ): void {
+  // Whatever waits for this session (its lead, or a session in another
+  // workspace that asked it for a reply) reads its list again. Only a
+  // "Waiting for" line on screen holds such a query, so this is one small
+  // request at most.
+  queryClient.invalidateQueries({ queryKey: queryKeys.session.waitingAll() })
   const patched = patchSessionRunning(queryClient, sessionId, running, needsInput)
   // Bump even when no list holds the row: it may be cached only as the open
   // chat's detail, which bumping reads to lift the row into the lists.
@@ -338,6 +343,7 @@ async function handleEvent(
     }
     if (leadId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(leadId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.waiting(leadId) })
     }
     return true
   }

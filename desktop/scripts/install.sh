@@ -25,7 +25,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # Linux has no Gatekeeper-equivalent; signing is unnecessary. We
 # instead:
-#   1. ``chmod +x`` the AppImage / extracted binary.
+#   1. ``chmod +x`` the extracted binary (a ``.deb`` goes to dpkg).
 #   2. Move it to ``~/.local/bin/openagentd`` (user-local, no sudo).
 #   3. Drop a ``.desktop`` file under
 #      ``~/.local/share/applications/`` so it appears in launchers.
@@ -43,7 +43,7 @@
 #
 #     # Point at a specific bundle / binary:
 #     ./install.sh /path/to/OpenAgentd.app           # macOS
-#     ./install.sh /path/to/OpenAgentd.AppImage      # Linux
+#     ./install.sh /path/to/OpenAgentd_x.y.z_amd64.deb   # Linux
 #
 #     # Also install into a system location (macOS → /Applications,
 #     # Linux → ~/.local/bin + .desktop entry):
@@ -189,20 +189,14 @@ fi
 # ════════════════════════════════════════════════════════════════════════════════
 if [ "$PLATFORM" = "linux" ]; then
 
-  # ── Locate the binary / AppImage ────────────────────────────────────────────
-  # Tauri produces several Linux artifacts; we accept any of them.
-  # Preference order: AppImage (self-contained) → standalone binary
-  # → .deb (defer to dpkg).
+  # ── Locate the binary ───────────────────────────────────────────────────────
+  # A standalone binary beside this script, or a .deb passed by path
+  # (deferred to dpkg).
   BINARY="$TARGET"
   if [ -z "$BINARY" ]; then
     for candidate in \
-      "$script_dir"/OpenAgentd*.AppImage \
-      "$script_dir"/../OpenAgentd*.AppImage \
-      "$PWD"/OpenAgentd*.AppImage \
       "$script_dir/openagentd" \
       "$script_dir/../openagentd"; do
-      # Glob expansion can leave the literal pattern if there's no
-      # match — guard with [ -f ].
       if [ -f "$candidate" ]; then
         BINARY="$candidate"
         break
@@ -211,8 +205,8 @@ if [ "$PLATFORM" = "linux" ]; then
   fi
 
   if [ -z "$BINARY" ] || [ ! -f "$BINARY" ]; then
-    fail "Cannot find OpenAgentd binary / AppImage. Pass the path explicitly:"
-    fail "    $0 /path/to/OpenAgentd.AppImage"
+    fail "Cannot find OpenAgentd. Pass a path explicitly:"
+    fail "    $0 /path/to/OpenAgentd_x.y.z_amd64.deb"
     exit 1
   fi
 

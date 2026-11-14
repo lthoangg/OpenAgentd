@@ -394,6 +394,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     setFileOpenKey,
     terminalOpenKey,
     handledTerminalOpenKeyRef,
+    terminalRunRequest,
+    handledTerminalRunKeyRef,
     dockViewRequest,
     handledDockViewKeyRef,
     dockDiffRequest,
@@ -1238,6 +1240,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               selectedFileOpenKey={fileOpenKey}
               terminalOpenKey={terminalOpenKey}
               handledTerminalOpenKeyRef={handledTerminalOpenKeyRef}
+              terminalRunRequest={terminalRunRequest}
+              handledTerminalRunKeyRef={handledTerminalRunKeyRef}
               viewRequest={dockViewRequest}
               handledViewRequestKeyRef={handledDockViewKeyRef}
               diffRequest={dockDiffRequest}

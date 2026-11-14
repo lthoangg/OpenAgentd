@@ -2825,12 +2825,10 @@ dependencies = [
 
 [[package]]
 name = "openagentd-mobile"
-version = "3.53.1"
+version = "3.54.0"
 dependencies = [
  "anyhow",
  "axum",
- "base64 0.23.1",
- "block2",
  "bytes",
  "dispatch2",
  "futures-util",
@@ -2861,7 +2859,7 @@ dependencies = [
  "tempfile",
  "time",
  "tokio",
- "url",
+ "tower",
  "zeroize",
 ]
 

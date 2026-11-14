@@ -15,7 +15,10 @@
 //! 4. a device that is not a server is not opened, the bridge refuses a
 //!    request without its key, and a relayed device cannot open anything
 //!    through this server;
-//! 5. closing the computer ends its bridge.
+//! 5. a preview on the host is reached as the desktop app's preview relay
+//!    reaches it: a WebSocket to the bridge with the bridge key, carried
+//!    over the link to the host's connector and into the preview listener;
+//! 6. closing the computer ends its bridge.
 
 #[path = "../../../../native/cloud/tests/fake_cloud/mod.rs"]
 mod fake_cloud;
@@ -73,17 +76,24 @@ fn cloud(base: &str, keys: DeviceKeys, account: Option<String>) -> Cloud {
     Cloud::new(reqwest::Client::new(), Endpoints::custom(base, ACCOUNT_SITE), keys, account)
 }
 
-/// The host stand-in: answers every request with what it received.
+/// The host stand-in: answers every request with what it received, or,
+/// once `real` is set, serves it with the server's own connector and router
+/// as a real host does.
 struct Host {
     roster: Mutex<Roster>,
     me: String,
+    real: std::sync::atomic::AtomicBool,
 }
 
 impl HostHandler for Host {
     fn controller_box(&self, id: &str) -> Option<[u8; 32]> {
         (id != self.me).then(|| self.roster.lock().unwrap().body.client(id).map(|d| d.box_key())).flatten()
     }
-    fn serve(&self, mut stream: Stream, _from: String) {
+    fn serve(&self, mut stream: Stream, from: String) {
+        if self.real.load(std::sync::atomic::Ordering::SeqCst) {
+            tokio::spawn(appv3_api::cloud::connector::serve(stream, from));
+            return;
+        }
         tokio::spawn(async move {
             let mut got = Vec::new();
             let mut buf = [0u8; 1024];
@@ -195,7 +205,8 @@ async fn this_server_opens_another_computer_of_its_account() {
 
     // 3. The host comes online (it learns this server from its roster).
     host.sync().await.unwrap();
-    let handler = Arc::new(Host { roster: Mutex::new(host.roster.clone().unwrap()), me: host_id.clone() });
+    let handler = Arc::new(Host { roster: Mutex::new(host.roster.clone().unwrap()), me: host_id.clone(), real: Default::default() });
+    let host_handler = handler.clone();
     let (_stop, stop_rx) = tokio::sync::oneshot::channel();
     let (opened_tx, mut opened) = tokio::sync::watch::channel(false);
     let host_cloud = Arc::new(cloud(&base, host.cloud.keys.clone(), host.cloud.account_id.clone()));
@@ -242,7 +253,84 @@ async fn this_server_opens_another_computer_of_its_account() {
     let out = relayed(&tunnel, &req).await;
     assert!(out.starts_with("HTTP/1.1 403"), "a relayed device cannot open another computer: {out}");
 
-    // 5. Closing it ends the bridge.
+    // 5. A preview on the host, through the bridge, as the desktop app's
+    // preview relay opens it. The host now answers with the real connector.
+    {
+        use futures::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+        use tokio_tungstenite::tungstenite::protocol::Role;
+        use tokio_tungstenite::tungstenite::Message as M;
+        host_handler.real.store(true, std::sync::atomic::Ordering::SeqCst);
+        let site = temp.path().join("workspace").join("site");
+        std::fs::create_dir_all(&site).unwrap();
+        std::fs::write(site.join("index.html"), "<html><head></head><body>on the other computer</body></html>").unwrap();
+        let body = json!({"workspace": site.to_string_lossy(), "path": "index.html"}).to_string();
+        let out = raw(
+            &origin,
+            format!("POST /api/preview HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {key}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()),
+        )
+        .await;
+        assert!(out.starts_with("HTTP/1.1 200"), "{out}");
+        let preview: Value = serde_json::from_str(&out[out.find('{').unwrap()..=out.rfind('}').unwrap()]).unwrap();
+        let id = preview["id"].as_str().unwrap().to_string();
+
+        // The handshake the relay makes: an HTTP/1.1 upgrade with the bridge
+        // key, checked for the 101 and the accept key, then WebSocket frames.
+        let upgrade = |path: String, bearer: String| {
+            let addr = origin.trim_start_matches("http://").to_string();
+            async move {
+                let mut tcp = tokio::net::TcpStream::connect(&addr).await.unwrap();
+                let request = format!(
+                    "GET {path} HTTP/1.1\r\nHost: {addr}\r\nAuthorization: Bearer {bearer}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
+                );
+                tcp.write_all(request.as_bytes()).await.unwrap();
+                let mut head = Vec::new();
+                let mut byte = [0u8; 1];
+                while !head.ends_with(b"\r\n\r\n") {
+                    let n = tokio::time::timeout(Duration::from_secs(10), tcp.read(&mut byte)).await.expect("an answer").unwrap();
+                    if n == 0 {
+                        break;
+                    }
+                    head.push(byte[0]);
+                }
+                (String::from_utf8_lossy(&head).into_owned(), tcp)
+            }
+        };
+        let tunnel_path = format!("/api/preview/{id}/tunnel?port=50999");
+        let (head, tcp) = upgrade(tunnel_path.clone(), key.clone()).await;
+        assert!(head.starts_with("HTTP/1.1 101"), "the tunnel opens through the bridge: {head}");
+        assert!(head.contains("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="), "{head}");
+        let mut sock = tokio_tungstenite::WebSocketStream::from_raw_socket(tcp, Role::Client, None).await;
+        sock.send(M::binary(b"GET /index.html HTTP/1.1\r\nHost: 127.0.0.1:50999\r\nConnection: close\r\n\r\n".to_vec())).await.unwrap();
+        let mut page = Vec::new();
+        while let Ok(Some(Ok(m))) = tokio::time::timeout(Duration::from_secs(5), sock.next()).await {
+            match m {
+                M::Binary(b) => page.extend_from_slice(&b),
+                M::Close(_) => break,
+                _ => {}
+            }
+        }
+        let page = String::from_utf8_lossy(&page);
+        assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+        assert!(page.contains("/__openagentd/inspector.js") && page.contains("on the other computer"), "{page}");
+
+        // Through the bridge the 101 is one a strict WebSocket client takes.
+        let mut strict = format!("{}{tunnel_path}", origin.replace("http://", "ws://")).into_client_request().unwrap();
+        strict.headers_mut().insert("authorization", format!("Bearer {key}").parse().unwrap());
+        let strict = tokio_tungstenite::connect_async(strict).await;
+        assert!(strict.is_ok(), "{:?}", strict.err());
+
+        // No bridge key: the bridge answers, the host never sees the request.
+        let (head, _) = upgrade(tunnel_path, "not-the-key".into()).await;
+        assert!(head.starts_with("HTTP/1.1 401"), "{head}");
+        // The preview closed on the host: what the relay reports as its reason.
+        appv3_preview::global().close(&id);
+        let (head, _) = upgrade(format!("/api/preview/{id}/tunnel?port=50999"), key.clone()).await;
+        assert!(head.starts_with("HTTP/1.1 404"), "{head}");
+        host_handler.real.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    // 6. Closing it ends the bridge.
     let (s, _) = local(&app, "POST", "/api/cloud/close", Some(json!({ "device_id": host_id }))).await;
     assert_eq!(s, StatusCode::OK);
     tokio::time::sleep(Duration::from_millis(100)).await;

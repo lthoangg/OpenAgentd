@@ -5,8 +5,8 @@
  * Guest is the default; nothing here may block a guest.
  */
 import type { ApprovalView, Roles } from '@/api/cloud'
-import { getPlatform } from '@/hooks/use-platform'
-import { deviceKindLabel, type AppBackendStatus } from '@/lib/app-backend'
+import { isMobileApp } from '@/lib/mobile-app'
+import { deviceKindLabel, noteBackendStatus, type AppBackendStatus } from '@/lib/app-backend'
 
 export type PhoneNotice =
   | 'denied'
@@ -96,8 +96,7 @@ export function pendingLabel(row: PendingRow, now?: number): string {
 
 /** The iOS and Android apps: the only shells that hold a phone account. */
 export function isPhoneCloudShell(): boolean {
-  const { isTauri, os } = getPlatform()
-  return isTauri && (os === 'ios' || os === 'android')
+  return isMobileApp()
 }
 
 /** Tauri rejects with a bare string; callers want an `Error` with that message. */
@@ -157,14 +156,22 @@ export type InvitePoll =
   | { state: 'ended' }
 
 export const phoneCloudInviteStart = () => call<InviteView>('cloud_invite_start')
+/** Offers the scanned computer an invitation. The secret stays in the shell until Add or Cancel. */
+export const phoneCloudAddScanned = (link: string) => call<number>('cloud_add_scanned', { link })
 export const phoneCloudInvitePoll = () => call<InvitePoll>('cloud_invite_poll')
 /** Face ID happens natively. */
 export const phoneCloudInviteAdd = (enrollmentId: string) => call<PhoneCloudStatus>('cloud_invite_add', { enrollmentId })
-export const phoneCloudInviteCancel = () => call<void>('cloud_invite_cancel')
+/** Same Add command, with the person's grants and the number to pick on the scanned computer. */
+export const phoneCloudScannedAdd = (enrollmentId: string, approver: boolean, roles: Roles) =>
+  call<PhoneCloudStatus & { number: string }>('cloud_invite_add', { enrollmentId, approver, ...roles })
+export const phoneCloudInviteCancel = (generation?: number) => call<void>('cloud_invite_cancel', generation === undefined ? undefined : { generation })
 export const phoneCloudRemoveDevice = (deviceId: string) => call<PhoneCloudStatus>('cloud_remove_device', { deviceId })
 export const phoneCloudSignOut = () => call<PhoneCloudStatus>('cloud_sign_out')
-export const openPhoneCloudComputer = (deviceId: string, lanBaseUrl: string | null) =>
-  call<OpenedComputer>('cloud_open_computer', { deviceId, lanBaseUrl })
+export const openPhoneCloudComputer = async (deviceId: string, lanBaseUrl: string | null) => {
+  const opened = await call<OpenedComputer>('cloud_open_computer', { deviceId, lanBaseUrl })
+  noteBackendStatus(opened.status)
+  return opened
+}
 
 /** Why the shell is told to look at its relay link now (`cloud_poke`). */
 export type CloudPokeReason = 'resumed' | 'network_changed' | 'user_retry' | 'background'

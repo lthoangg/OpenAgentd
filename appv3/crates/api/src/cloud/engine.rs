@@ -1,7 +1,8 @@
 //! Joining an account for a host, shared by the routes and the CLI: by
 //! signing in and having a device already in the account approve this one
 //! with the 6-digit code (`POST /api/cloud/login`, `agentd cloud login`),
-//! the default, or by invitation link (`POST /api/cloud/join`,
+//! or by showing a code a signer's phone scans (spec 4.3.1, the same
+//! sign-in step), or by invitation link (`POST /api/cloud/join`,
 //! `agentd cloud join`). An empty account ends in [`Outcome::EmptyAccount`]
 //! with the session unspent: the caller shows the recovery code and runs
 //! genesis (spec 4.1), so any computer can be the first device.
@@ -9,21 +10,29 @@
 use openagentd_cloud::account_state::AccountProblem;
 use openagentd_cloud::api::{Cloud, DeviceCode, Refusal};
 use openagentd_cloud::endpoints::Endpoints;
-use openagentd_cloud::flows::{self, FlowError, JoinStep, Member, Pace, Session, Withdraw};
+use openagentd_cloud::flows::{self, FlowError, JoinStep, Member, Offer, Pace, ScanCode, Session, SignIn, Withdraw};
 use openagentd_cloud::keys::{DeviceKeys, Roles};
 use openagentd_cloud::store::Identity;
+use tokio::sync::oneshot;
 
 use super::Notice;
 
 /// Progress a UI shows.
 pub enum Event<'a> {
-    /// Show the user code, the page and this device's fingerprint.
-    Code(&'a DeviceCode),
+    /// Show the user code, the page and this device's fingerprint, and the
+    /// scan code as a QR code when there is one. The scan code is a bearer
+    /// secret: shown on this step only, never logged.
+    Code { code: &'a DeviceCode, add_link: Option<&'a str> },
     /// Waiting for a phone to approve; `code` once the 6 digits are known.
     Joining { fingerprint: String, code: Option<String> },
     /// Claimed an invitation: the phone shows this fingerprint and kind, and
     /// the person adds it there.
     Invited { fingerprint: String, kind: Option<&'static str> },
+    /// A phone scanned the code: the person taps Add on it.
+    Scanned { fingerprint: String },
+    /// The phone added this computer: the person picks the number it shows
+    /// among `choices` (or types it), within [`flows::NUMBER_TIMEOUT`].
+    Number { choices: [String; 3] },
 }
 
 pub enum Outcome {
@@ -51,6 +60,7 @@ pub fn notice(e: &FlowError) -> Notice {
         FlowError::JoinEnded => Notice::JoinEnded,
         FlowError::CommitMismatch => Notice::CommitMismatch,
         FlowError::ConfirmMismatch => Notice::ConfirmMismatch,
+        FlowError::WrongNumber => Notice::WrongNumber,
         FlowError::Protocol(openagentd_cloud::Error::Invite) => Notice::InviteInvalid,
         FlowError::EmptyAccount => Notice::EmptyAccount,
         FlowError::Roles => Notice::Roles,
@@ -108,21 +118,45 @@ pub fn wait_text(secs: u64) -> String {
 }
 
 /// Signs in a fresh device identity asking for `roles`, and joins the
-/// account through a signer.
-pub async fn sign_in(endpoints: Endpoints, http: reqwest::Client, roles: Roles, mut on: impl FnMut(Event<'_>)) -> Result<Outcome, FlowError> {
+/// account through a signer. With `number` (a person can answer), the
+/// sign-in step also shows a scan code; when a phone scans it, the number
+/// the person picks arrives on `number`. Without, only the browser way.
+pub async fn sign_in(
+    endpoints: Endpoints,
+    http: reqwest::Client,
+    roles: Roles,
+    number: Option<oneshot::Receiver<String>>,
+    mut on: impl FnMut(Event<'_>),
+) -> Result<Outcome, FlowError> {
     let keys = DeviceKeys::generate();
     let fingerprint = keys.fingerprint();
     let mut cloud = Cloud::new(http, endpoints, keys, None);
     cloud.roles = roles;
     let code = cloud.device_code().await?;
-    on(Event::Code(&code));
-    let session = flows::wait_for_session(&cloud, &code).await?;
+    let Some(number) = number else {
+        on(Event::Code { code: &code, add_link: None });
+        let session = flows::wait_for_session(&cloud, &code).await?;
+        return join_signed_in(cloud, session, &fingerprint, &mut on).await;
+    };
+    let scan = flows::scan_code(&cloud, &code);
+    {
+        let link = scan.link();
+        on(Event::Code { code: &code, add_link: Some(&link) });
+    }
+    match flows::wait_for_sign_in(&cloud, &code).await? {
+        SignIn::Session(session) => join_signed_in(cloud, session, &fingerprint, &mut on).await,
+        SignIn::Offered(offer) => join_scanned(cloud, &scan, offer, number, &fingerprint, &mut on).await,
+    }
+}
+
+/// Signed in on the account page: join with the 6-digit code.
+async fn join_signed_in(cloud: Cloud, session: Session, fingerprint: &str, on: &mut impl FnMut(Event<'_>)) -> Result<Outcome, FlowError> {
     let mut member = Member::new(cloud, None);
     // A request that does not end in joining is withdrawn (also when this
     // future is dropped: the person closed the sheet).
     let joined = flows::join_with_code(&mut member, &session, Pace::default(), |step| match step {
-        JoinStep::Requested => on(Event::Joining { fingerprint: fingerprint.clone(), code: None }),
-        JoinStep::Code(code) => on(Event::Joining { fingerprint: fingerprint.clone(), code: Some(code.to_string()) }),
+        JoinStep::Requested => on(Event::Joining { fingerprint: fingerprint.to_string(), code: None }),
+        JoinStep::Code(code) => on(Event::Joining { fingerprint: fingerprint.to_string(), code: Some(code.to_string()) }),
     })
     .await;
     let roster = match joined {
@@ -131,6 +165,57 @@ pub async fn sign_in(endpoints: Endpoints, http: reqwest::Client, roles: Roles, 
         Err(e) => return Err(e),
     };
     Ok(Outcome::Joined(identity_of(&member, &roster)))
+}
+
+/// A phone scanned the code (spec 4.3.1): claim its invitation, wait to be
+/// added, then keep the account only if the person picks the phone's
+/// number. Until then nothing is stored and no connector runs (the caller
+/// stores the identity in [`Outcome::Joined`]); a wrong pick, a timeout,
+/// or dropping this future (Cancel, Ctrl-C) leaves the account, and the
+/// keys go with the dropped member.
+async fn join_scanned(
+    cloud: Cloud,
+    scan: &ScanCode,
+    offer: Offer,
+    number: oneshot::Receiver<String>,
+    fingerprint: &str,
+    on: &mut impl FnMut(Event<'_>),
+) -> Result<Outcome, FlowError> {
+    let mut member = Member::new(cloud, None);
+    let claim = flows::claim_offer(&mut member, scan, offer).await?;
+    let withdraw = Withdraw::scanned(&member.cloud, &claim.enrollment_id);
+    on(Event::Scanned { fingerprint: fingerprint.to_string() });
+    let scanned = match flows::await_scanned(&mut member, claim, Pace::default()).await {
+        Ok(s) => {
+            withdraw.keep();
+            s
+        }
+        Err(e) => {
+            withdraw.now().await;
+            return Err(e);
+        }
+    };
+    let leave = Withdraw::leave(&member.cloud);
+    on(Event::Number { choices: openagentd_cloud::invite::number_choices(&scanned.number) });
+    match await_number(number, &scanned.number).await {
+        Ok(()) => {
+            leave.keep();
+            Ok(Outcome::Joined(identity_of(&member, &scanned.roster)))
+        }
+        Err(e) => {
+            leave.now().await;
+            Err(e)
+        }
+    }
+}
+
+async fn await_number(number: oneshot::Receiver<String>, expected: &str) -> Result<(), FlowError> {
+    match tokio::time::timeout(flows::NUMBER_TIMEOUT, number).await {
+        Ok(Ok(picked)) if picked.trim() == expected => Ok(()),
+        Ok(Ok(_)) => Err(FlowError::WrongNumber),
+        // No answer in time, or the asking side went away.
+        Ok(Err(_)) | Err(_) => Err(FlowError::TimedOut),
+    }
 }
 
 /// Joins the account in an invitation link with a fresh device identity.
@@ -167,6 +252,21 @@ pub fn identity_of(member: &Member, roster: &openagentd_cloud::roster::Roster) -
 mod tests {
     use super::*;
     use openagentd_cloud::api::ApiError;
+
+    #[tokio::test(start_paused = true)]
+    async fn no_number_in_two_minutes_ends_the_join() {
+        let (_pick, number) = oneshot::channel();
+        let start = tokio::time::Instant::now();
+        assert!(matches!(await_number(number, "47").await, Err(FlowError::TimedOut)));
+        assert_eq!(start.elapsed(), flows::NUMBER_TIMEOUT);
+    }
+
+    #[tokio::test]
+    async fn a_closed_number_prompt_ends_the_join() {
+        let (pick, number) = oneshot::channel();
+        drop(pick);
+        assert!(matches!(await_number(number, "47").await, Err(FlowError::TimedOut)));
+    }
 
     fn refused(status: u16, code: &str, retry_after: Option<u64>) -> FlowError {
         FlowError::Api(ApiError { status, code: code.into(), body: None, retry_after })

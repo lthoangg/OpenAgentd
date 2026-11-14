@@ -11,6 +11,7 @@ pub mod config;
 pub mod hub;
 pub mod oauth;
 pub mod plugin;
+pub mod sessions;
 pub mod tool;
 
 pub use plugin::{plugin_config_body, PluginServers};
@@ -121,12 +122,21 @@ struct Runner {
     client: Mutex<Option<Arc<McpClient>>>,
     shutdown: watch::Sender<bool>,
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// Set when the whole process is stopping: the server's session is left
+    /// open for the next process instead of being ended.
+    keep_session: std::sync::atomic::AtomicBool,
 }
 
 impl SessionProvider for Runner {
     fn client(&self) -> Option<Arc<McpClient>> {
         self.client.lock().unwrap().clone()
     }
+}
+
+/// Names of the tools the agent may use: a tool for the app's panel alone is
+/// not one of the server's tools as far as the agent and Settings go.
+fn model_tool_names(tools: &[Arc<McpTool>]) -> Vec<String> {
+    tools.iter().filter(|t| t.for_model()).map(|t| t.name.clone()).collect()
 }
 
 impl Runner {
@@ -141,10 +151,19 @@ impl Runner {
             client: Mutex::new(None),
             shutdown: watch::channel(state == RunnerState::Stopped).0,
             task: Mutex::new(None),
+            keep_session: Default::default(),
         })
     }
     fn state(&self) -> RunnerState {
         *self.state.borrow()
+    }
+    /// The tools the agent may use (`tools` also holds the app-only ones).
+    fn model_tools(&self) -> Vec<Arc<McpTool>> {
+        self.tools.lock().unwrap().iter().filter(|t| t.for_model()).cloned().collect()
+    }
+    /// An MCP app's panel may call `tool` (its name on the server).
+    fn app_may_call(&self, tool: &str) -> bool {
+        self.tools.lock().unwrap().iter().any(|t| t.remote_name == tool && t.for_app())
     }
     fn status(&self) -> ServerStatus {
         let d = self.details.lock().unwrap();
@@ -166,7 +185,7 @@ impl Runner {
         if !self.state().can_become(RunnerState::Ready) {
             return false;
         }
-        d.tool_names = tools.iter().map(|t| t.name.clone()).collect();
+        d.tool_names = model_tool_names(&tools);
         d.started_at = Some(utc_isoformat());
         d.error = None;
         *self.client.lock().unwrap() = Some(client);
@@ -209,10 +228,15 @@ async fn wait_true(mut rx: watch::Receiver<bool>) {
     let _ = rx.wait_for(|v| *v).await;
 }
 
+/// How long an app's tool call waits for a server that is still connecting.
+const APP_CALL_WAITS_FOR_SERVER: Duration = Duration::from_secs(20);
+
 #[derive(Default)]
 pub struct McpManager {
     runners: RwLock<IndexMap<String, Arc<Runner>>>,
     lock: tokio::sync::Mutex<bool>,
+    /// The HTTP servers' sessions, kept across restarts.
+    sessions: Arc<sessions::SessionStore>,
 }
 
 /// Python `datetime.now(UTC).isoformat()`.
@@ -369,13 +393,57 @@ async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> 
     }
 }
 
-async fn run_server(name: String, cfg: ServerConfig, runner: Arc<Runner>) {
+/// Bring `client` into a session and list the server's tools. An HTTP
+/// server's session outlives this process (see [`sessions`]): the one kept
+/// from before is used while the server still knows it.
+async fn open_session(client: &McpClient, name: &str, cfg: &ServerConfig, kept: &sessions::SessionStore) -> Result<Vec<Value>, McpError> {
+    let url = match cfg {
+        ServerConfig::Http { url, .. } => Some(url.as_str()),
+        ServerConfig::Stdio { .. } => None,
+    };
+    if let Some(saved) = url.and_then(|u| kept.get(name, u)) {
+        if client.resume_http_session(&saved.session_id, &saved.protocol).await {
+            match client.list_tools().await {
+                Ok(defs) => {
+                    tracing::info!("mcp_session_resumed name={}", name);
+                    return Ok(defs);
+                }
+                // The server was not reached: its session may still be there next time.
+                Err(e @ McpError::Transport(..)) => return Err(e),
+                Err(e) => {
+                    tracing::info!("mcp_session_gone name={} err={}", name, e);
+                    kept.forget(name);
+                    client.leave_http_session().await;
+                }
+            }
+        }
+    }
+    client.initialize().await?;
+    let defs = client.list_tools().await?;
+    if let (Some(url), Some((session_id, protocol))) = (url, client.http_session()) {
+        kept.put(name, &sessions::Saved { url: url.to_string(), session_id, protocol });
+    }
+    Ok(defs)
+}
+
+/// Close `client` as its runner stops. With `keep`, an HTTP session is left
+/// open on the server for the next process; otherwise it ends here.
+async fn close_session(client: &McpClient, name: &str, keep: bool, kept: &sessions::SessionStore) {
+    if keep && client.http_session().is_some() {
+        client.abort().await;
+        return;
+    }
+    if client.http_session().is_some() {
+        kept.forget(name);
+    }
+    client.close().await;
+}
+
+async fn run_server(name: String, cfg: ServerConfig, runner: Arc<Runner>, kept: Arc<sessions::SessionStore>) {
+    let keep = || runner.keep_session.load(std::sync::atomic::Ordering::SeqCst);
     let res: Result<(), RunError> = async {
         let client = Arc::new(connect(&name, &cfg).await?);
-        let setup = async {
-            client.initialize().await?;
-            client.list_tools().await
-        };
+        let setup = open_session(&client, &name, &cfg, &kept);
         let shutdown = runner.shutdown.subscribe();
         let defs = tokio::select! {
             r = setup => match r {
@@ -389,7 +457,7 @@ async fn run_server(name: String, cfg: ServerConfig, runner: Arc<Runner>) {
                 }
             },
             _ = wait_true(shutdown.clone()) => {
-                client.close().await;
+                close_session(&client, &name, keep(), &kept).await;
                 return Ok(());
             }
         };
@@ -397,14 +465,14 @@ async fn run_server(name: String, cfg: ServerConfig, runner: Arc<Runner>) {
         let tools: Vec<Arc<McpTool>> = defs.into_iter().map(|d| Arc::new(McpTool::new(&name, d, weak.clone()))).collect();
         let count = tools.len();
         if !runner.become_ready(client.clone(), tools) {
-            client.close().await;
+            close_session(&client, &name, keep(), &kept).await;
             return Ok(());
         }
         tracing::info!("mcp_server_ready name={} transport={} tools={}", name, cfg.transport(), count);
         wait_true(shutdown).await;
         *runner.client.lock().unwrap() = None;
         tracing::info!("mcp_server_stopping name={}", name);
-        client.close().await;
+        close_session(&client, &name, keep(), &kept).await;
         Ok(())
     }
     .await;
@@ -453,7 +521,7 @@ impl McpManager {
         let runner = Runner::new(name, cfg, if cfg.enabled() { RunnerState::Starting } else { RunnerState::Stopped }, plugin);
         self.runners.write().unwrap().insert(name.to_string(), runner.clone());
         if cfg.enabled() {
-            let h = tokio::spawn(run_server(name.to_string(), cfg.clone(), runner.clone()));
+            let h = tokio::spawn(run_server(name.to_string(), cfg.clone(), runner.clone(), self.sessions.clone()));
             *runner.task.lock().unwrap() = Some(h);
         }
     }
@@ -510,6 +578,11 @@ impl McpManager {
         // Nothing to stop when it never started and no plugin server runs.
         if !*started && self.runners.read().unwrap().is_empty() {
             return;
+        }
+        // The process is going down: the next one goes on with the HTTP
+        // servers' sessions, and the state the servers keep for them.
+        for runner in self.runners.read().unwrap().values() {
+            runner.keep_session.store(true, std::sync::atomic::Ordering::SeqCst);
         }
         self.stop_all().await;
         *started = false;
@@ -614,7 +687,7 @@ impl McpManager {
         if r.state() != RunnerState::Ready {
             return Some(vec![]);
         }
-        let t = r.tools.lock().unwrap().iter().map(|t| t.clone() as ToolRef).collect();
+        let t = r.model_tools().into_iter().map(|t| t as ToolRef).collect();
         Some(t)
     }
 
@@ -623,19 +696,24 @@ impl McpManager {
     /// calls.
     pub fn ready_tools(&self, server: Option<&str>) -> Vec<Arc<McpTool>> {
         let runners: Vec<Arc<Runner>> = self.ordered_runners().into_iter().filter(|(n, _)| server.is_none_or(|s| s == n.as_str())).map(|(_, r)| r).collect();
-        runners.iter().filter(|r| r.state() == RunnerState::Ready).flat_map(|r| r.tools.lock().unwrap().clone()).collect()
+        runners.iter().filter(|r| r.state() == RunnerState::Ready).flat_map(|r| r.model_tools()).collect()
     }
 
     /// `call_app_tool` errors: `KeyError` → NotFound, `RuntimeError` → NotConnected,
     /// `ValueError` → Forbidden, anything else → Failed.
     pub async fn call_app_tool(&self, server: &str, tool: &str, arguments: Value) -> Result<Value, AppToolError> {
         let Some(r) = self.runners.read().unwrap().get(server).cloned() else { return Err(AppToolError::NotFound) };
+        // An app's panel is back on screen before its server has connected
+        // again after a restart. Told "not connected", an app takes its saved
+        // state for lost; the call waits for the server instead.
+        if r.state() == RunnerState::Starting {
+            r.wait_settled(APP_CALL_WAITS_FOR_SERVER).await;
+        }
         let client = r.client.lock().unwrap().clone();
         let Some(client) = client.filter(|_| r.state() == RunnerState::Ready) else {
             return Err(AppToolError::NotConnected(format!("MCP server '{server}' is not connected.")));
         };
-        let advertised = r.tools.lock().unwrap().iter().any(|t| t.remote_name == tool);
-        if !advertised {
+        if !r.app_may_call(tool) {
             return Err(AppToolError::Forbidden(format!("MCP tool '{tool}' is not available.")));
         }
         client.call_tool(tool, arguments).await.map(|v| tool::dump_call_result(&v)).map_err(|e| AppToolError::Failed(e.to_string()))
@@ -1043,5 +1121,106 @@ for line in sys.stdin:
         assert!(st.tool_names.is_empty());
         assert_eq!(m.tools_for_server("w").map(|t| t.len()), Some(0));
         assert!(runner.client().is_none());
+    }
+
+    /// A Streamable HTTP server that keeps sessions: `initialize` opens one,
+    /// every other request needs one it knows, and DELETE ends it. Returns
+    /// its URL, the requests it got (`<what> <session>`), and its sessions.
+    async fn session_server() -> (String, Arc<Mutex<Vec<String>>>, Arc<Mutex<Vec<String>>>) {
+        use axum::http::{HeaderMap, Method, StatusCode};
+        use axum::response::IntoResponse;
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let open: Arc<Mutex<Vec<String>>> = Arc::default();
+        let opened = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (log2, open2) = (log.clone(), open.clone());
+        let handle = move |method: Method, headers: HeaderMap, body: String| {
+            let (log, open, opened) = (log2.clone(), open2.clone(), opened.clone());
+            async move {
+                let session = headers.get("mcp-session-id").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+                let known = open.lock().unwrap().contains(&session);
+                if method == Method::DELETE {
+                    log.lock().unwrap().push(format!("DELETE {session}"));
+                    open.lock().unwrap().retain(|s| *s != session);
+                    return StatusCode::OK.into_response();
+                }
+                if method != Method::POST {
+                    return StatusCode::METHOD_NOT_ALLOWED.into_response();
+                }
+                let msg: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+                let (Some(id), Some(what)) = (msg.get("id").cloned(), msg["method"].as_str()) else { return StatusCode::ACCEPTED.into_response() };
+                if what == "initialize" {
+                    let session = format!("s-{}", opened.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1);
+                    log.lock().unwrap().push(format!("initialize {session}"));
+                    open.lock().unwrap().push(session.clone());
+                    let result = json!({"protocolVersion": "2025-06-18", "capabilities": {}, "serverInfo": {"name": "fake", "version": "1"}});
+                    return ([("mcp-session-id", session)], axum::Json(json!({"jsonrpc": "2.0", "id": id, "result": result}))).into_response();
+                }
+                log.lock().unwrap().push(format!("{what} {session}"));
+                if !known {
+                    return StatusCode::NOT_FOUND.into_response();
+                }
+                let result = json!({"tools": [{"name": "draw", "description": "Draw on the canvas"}]});
+                axum::Json(json!({"jsonrpc": "2.0", "id": id, "result": result})).into_response()
+            }
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/mcp", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, axum::Router::new().fallback(axum::routing::any(handle))).await.unwrap() });
+        (url, log, open)
+    }
+
+    /// A server keeps state for a session (a canvas an app drew on). Ending
+    /// the session with every restart of this process lost that state.
+    #[tokio::test]
+    async fn an_http_servers_session_outlives_a_restart_of_the_process() {
+        let (url, log, open) = session_server().await;
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = config::parse_config(&json!({"servers": {"t-kept-session": {"url": url}}})).unwrap();
+        // One process: its manager, with the sessions file every process shares.
+        let process = || async {
+            let m = McpManager { sessions: Arc::new(sessions::SessionStore::at(dir.path().join("mcp-sessions.json"))), ..Default::default() };
+            m.spawn_runner("t-kept-session", &cfg.servers["t-kept-session"]);
+            m.wait_until_ready(Duration::from_secs(20)).await;
+            let st = m.get_status("t-kept-session").unwrap();
+            assert_eq!((st.state.as_str(), st.tool_names.len()), ("ready", 1), "{st:?}");
+            m
+        };
+        let seen = || std::mem::take(&mut *log.lock().unwrap());
+
+        let first = process().await;
+        first.stop().await;
+        assert_eq!(seen(), ["initialize s-1", "tools/list s-1"], "stopping the process does not end the session");
+
+        let second = process().await;
+        assert_eq!(seen(), ["tools/list s-1"], "the next process goes on with it");
+
+        // Stopping the one server (a restart, a removal) ends its session.
+        let runner = second.runners.read().unwrap().get("t-kept-session").cloned().unwrap();
+        McpManager::stop_runner(&runner).await;
+        assert_eq!(seen(), ["DELETE s-1"]);
+        let third = process().await;
+        assert_eq!(seen(), ["initialize s-2", "tools/list s-2"]);
+
+        // A session the server dropped meanwhile is replaced by a new one.
+        third.stop().await;
+        open.lock().unwrap().clear();
+        let fourth = process().await;
+        assert_eq!(seen(), ["tools/list s-2", "initialize s-3", "tools/list s-3"]);
+        fourth.stop().await;
+        assert_eq!(process().await.get_status("t-kept-session").unwrap().state, "ready");
+        assert_eq!(seen(), ["tools/list s-3"]);
+    }
+
+    #[tokio::test]
+    async fn an_apps_call_waits_for_a_server_that_is_still_connecting() {
+        let (url, _, _) = session_server().await;
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = config::parse_config(&json!({"servers": {"t-app-waits": {"url": url}}})).unwrap();
+        let m = McpManager { sessions: Arc::new(sessions::SessionStore::at(dir.path().join("mcp-sessions.json"))), ..Default::default() };
+        m.spawn_runner("t-app-waits", &cfg.servers["t-app-waits"]);
+        assert_eq!(m.get_status("t-app-waits").unwrap().state, "starting");
+        let answer = m.call_app_tool("t-app-waits", "draw", json!({})).await;
+        assert!(answer.is_ok(), "{answer:?}");
+        m.stop().await;
     }
 }

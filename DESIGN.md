@@ -803,7 +803,10 @@ drawer and full-screen sheet.
   a diff and a shell side by side. There is no terminal pane and nothing
   hides one. Terminals have no key: Open Terminal (the palette, the View
   menu) and the strip's "+" menu or launcher start one, and a focused
-  terminal keeps Control+backquote for its shell. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`, `Mod+Shift+[`/`]`) act on the focused
+  terminal keeps Control+backquote for its shell. A shell code block's
+  header has Run in terminal before Copy (the same muted icon control, the
+  terminal glyph): it runs the block in the last shell at its prompt, or a
+  new one, never a busy one, and shows that tab. Keys (`Mod+W`, `Mod+1–9`, `Ctrl+Tab`, `Mod+Shift+[`/`]`) act on the focused
   pane; with several panes, the open tab of a pane without focus steps back
   (a lighter wash, `text-2`), so the focused pane reads at a glance; the
   labels never fade (a strip at 50% left them at 2.1–2.3:1). A click into a preview page focuses its pane too (the window's
@@ -1116,7 +1119,11 @@ hovered; `danger` is the soft error fill.
 
 - `Button` gets this automatically: a coarse-pointer rule sets `min-height`/`min-width: 36px` on `[data-slot="button"]` (40px in the Android app). Prefer `Button` over a bare `<button>` for icon actions.
 - `--spacing-list-row` becomes 36px on coarse pointers, so sidebar and dock list rows (sessions, sub-sessions, group headers, workspaces) grow with it. Size such rows from the token (`pointer-coarse:h-(--spacing-list-row)`), not a fixed `h-9`. Inline row actions add `pointer-coarse:size-9` (36px) to fill the row. Every touch target is 36px on a tablet; a phone takes its own step (Phone scale above), with a 44px touch area on bar buttons and Send.
-- `--spacing-tab-bar` (the review panel's tab strip) grows to 45px on coarse pointers, so each tab and its close control are 36px pills with 4px around them and a 1px hairline.
+- `--spacing-tab-bar` (the review panel's tab strip) grows to 45px on coarse pointers, so each tab and its close control are 36px pills with 4px around them and a 1px hairline. On a phone the pills take the phone's step (`--phone-control` + 9px).
+- `--spacing-status-bar` grows to 37px on coarse pointers, so the server, the branch, spend and Settings are 36px targets. With a mouse the bar stays 28px with 24px items, and the server's target runs to the bar's edges, so the pointer can rest on the window's bottom edge.
+- **A phone reads one step everywhere.** Whatever is a row or a control on a phone takes `--phone-control` (40px, 44px in the Android app), not the tablet's 36px: menu and sheet rows (`MENU_ITEM_CLASS`), default segmented controls, search and filter fields, row actions and chips (`ROW_ACTION`, `rowChipClass`), the Git view's tabs (their toolbar grows around them). Put the phone height in the shared class with `phone:`, after its `pointer-coarse:` one: `cn` does not merge, so a caller's plain `min-h-*` loses to the shared class.
+- **A target is what a finger can reach, not what is drawn.** Nothing may lie over a control's box: a sheet's bar buttons sit above its grabber strip (`z-20` over `z-10`), and two 28px icons side by side need 16px between them, or reach away from each other (Edit and Copy under a prompt), so their 44px targets do not overlap. A title that opens something takes the bar's whole title block as its target.
+- **No name may depend on a tooltip on touch.** Settings' sidebar is an icon rail only in a narrow mouse window (`settings-rail:`); every touch screen keeps the labelled list (`settings-list:`).
 - Line height tightens on coarse pointers: `leading-relaxed` is 1.5 (1.625 on desktop) and chat/plan prose (`.oa-prose`) is 1.6 (1.75 on desktop), so phone screens read denser. Text sizes do not change.
 - On phones the header is 40px with 36px controls (`max-md:pointer-coarse:size-9`). On wider touch screens, controls inside the 36px header stay within that height (`pointer-coarse:size-9`), because overlays are positioned from `--spacing-app-header`.
 - Tabs (`ui/tabs`) are 36px per trigger on touch: the list grows to 42px around them.
@@ -1564,8 +1571,9 @@ Settings adds its own shell on top:
   is a Callout with Retry.
 - **Search.** "Search settings" finds single settings (`settings-index.ts`),
   not only pages; a hit opens the page, scrolls to the setting and focuses
-  it. The phone section list has the same field. Below 900px the nav is an
-  icon rail whose search opens in a dialog.
+  it. The phone section list has the same field. In a mouse window below
+  900px the nav is an icon rail whose search opens in a dialog; a touch
+  screen keeps the labelled list at every width.
 - **Long lists are rows, not cards.** Providers is one bordered list of
   rows (name, a subline such as "API key · 1 key · 13 models", a status
   chip); a row opens in place. Secondary row actions go in a "More" menu.
@@ -1699,6 +1707,16 @@ answered in place (island, pet, notification buttons); anything else says
 way of opening a session goes through one router, which focuses the window
 that already shows it.
 
+**A notification says which computer.** Its title is the status, the
+workspace, then the computer: `Done · web · studio-mini`. The computer is
+there when it tells you something: always for a computer of your account
+(the app's own notification and the push read the same), and for the
+built-in and saved servers once the app knows more than one server. The
+name is the one the server lists show: the name you saved a server under,
+else the name its computer gives for itself; a push uses the computer's own
+name. A long name is cut, never the status or the workspace. The notch, the
+pet and the tray keep their own text.
+
 The macOS tray popup (`web/tray.html`) lists no sessions, only provider limits
 and actions. The Windows and Linux tray menu lists none either, and shows its
 status row only while the backend is not running normally. The popup is a
@@ -1788,7 +1806,13 @@ Back at a time.
   left anywhere on Servers pulls Sessions in (the reverse of Back); with
   none connected it gives a little and springs back with an error tick. On
   touch a saved server's row keeps one button (Use, or Sessions ›); Edit and
-  Remove are in its action sheet, from ⋯ or a long press.
+  Remove are in its action sheet, from ⋯ or a long press. A row is a name
+  and one status line, on every platform: a computer's own name (its host
+  name until it is renamed), never its key or address. Those are under
+  **Details** (a computer's sheet on touch, a button with a pointer), where
+  the computer in use is renamed. A key shows on a row only for a device
+  the app has never been on, and after a name while two share it; it always
+  shows in full where a device is approved or removed.
 - **Sessions** (`/sessions`, the sidebar's `page` mode) is the first screen
   the app opens on: ‹ Servers in the bar, a 28px
   **Sessions** title (`text-large-title`) that hands over to the bar's small
@@ -1856,8 +1880,9 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   idle is hollow. Sessions puts Needs you and Running above the
   workspaces. The connection dot is never green while the server does not
   answer.
-- **One thumb.** Touch targets are 44pt; the primary action of a screen sits
-  in its lower half; nothing depends on hover.
+- **One thumb.** Rows and controls are 40px (44px in the Android app), and
+  bar buttons and Send keep a 44px touch area (Phone scale); the primary
+  action of a screen sits in its lower half; nothing depends on hover.
 - **Motion.** Screens, sheets and pushes move on `--ease-sheet` or the
   critically damped spring of `lib/drawer-motion.ts`, carrying the finger's
   speed and never crossing their target. The overshooting
@@ -1908,16 +1933,16 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   The root reads like iOS Settings: a large title, one neutral icon tile per
   row (`--bg-key`, `--color-text-2`; per-section hues read as noise), no
   descriptions; each section's page carries its own.
-- **The chat bar.** ‹ Sessions, the title, one ⋯. A tap on the title opens
-  Session info; ⋯ holds Tasks · n/m (or "No tasks", so the list is always
-  findable) and Workspace.
+- **The chat bar.** ‹ Sessions, the title, Tasks and Review panel (Mobile
+  shell). A tap on the title opens Session info.
 - **Long press is the context menu.** A prompt, a session row, a server row
   and a workspace row open an action sheet on a hold, with one medium
   haptic. Destructive items sit last, in red, behind a separator.
 - **Sheets over menus.** View options and other choice menus open as
   sheets: a segmented control for one-of-few, a switch for on/off.
 - **Folded cards.** A goal check is one 44pt row, "Goal · achieved ›";
-  evidence opens as 44pt rows.
+  evidence opens as 44pt rows under an "Evidence · N" label, each row one
+  wrapped sentence with its code inline.
 - **Lists read like iOS.** The Workspace page (Changes, Files, Terminal,
   Preview) and the worktree sheet are grouped 44pt rows with counts; a
   scheduled task has an on/off switch and its schedule as a sentence;
@@ -2012,6 +2037,29 @@ this file wins.
   {folder}".
 
 ### Native per platform
+
+**Touch behaviour follows the input; layout follows the size.** What a
+gesture does (a tap opens a row, a long press opens its menu, a tooltip
+never shows, the keyboard is handled) is decided by the pointer
+(`useTouchFirst`, `pointer-coarse:`), so an iPad in landscape behaves like
+the iPhone beside it. How much is on screen (a stack or columns, a sheet or
+a panel) is decided by the window (`useIsMobile`, `useIsPhone`, `md:`). A
+feature gated on size alone goes missing on a wide tablet; one gated on the
+pointer alone gets a phone layout in a desktop window. Text follows the
+same rule: it says "open", "choose" or "select", and names a click or a tap
+only where one kind of device reads it (`copy-lint.test.ts`).
+
+Left out on purpose, each a feature of its own and not a gap to patch:
+
+- **The command palette and Find in session on touch.** Both are keyboard
+  surfaces; a hardware keyboard opens them (⌘K, ⌘F), and nothing on screen
+  does.
+- **Push notifications on Android.** The Android app notifies while it runs;
+  it has no account yet, which push needs.
+- **Unread marks for sessions that finished while the app was closed.** The
+  mark is kept by the running app, so it starts from what it sees.
+- **Updating a Linux desktop app from another device.** The `.deb` has no
+  updater: the row says to update on the computer.
 
 | | macOS | Windows | Linux | iOS / iPadOS | Android |
 |---|---|---|---|---|---|

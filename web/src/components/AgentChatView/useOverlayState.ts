@@ -77,9 +77,10 @@ import { useViewportAtLeast, useViewportMatches } from '@/hooks/use-viewport-wid
 import { useTouchFirst } from '@/hooks/use-touch-first'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
 import { APP_EVENTS } from '@/lib/app-events'
+import { registerTerminalRunner } from '@/lib/terminal-run'
 import { useBackHandler } from '@/lib/back-button'
 import type { WorkspaceFileInfo } from '@/api/types'
-import type { AttachmentTabRequest, DiffTabRequest, DockLayoutRequest, DockView, DockViewRequest, PreviewTabRequest } from '../WorkspacePanel/dock-tabs'
+import type { AttachmentTabRequest, DiffTabRequest, DockLayoutRequest, DockView, DockViewRequest, PreviewTabRequest, TerminalRunRequest } from '../WorkspacePanel/dock-tabs'
 import type { FileLightboxItem } from '../FileLightbox'
 import type { PreviewTarget } from '@/api/preview'
 import type { ChangedFileStatus } from '../WorkspacePanel/diff-helpers'
@@ -135,6 +136,9 @@ export interface UseOverlayStateResult {
   setFileOpenKey: Dispatch<SetStateAction<number>>
   terminalOpenKey: number
   handledTerminalOpenKeyRef: React.RefObject<number>
+  /** Run in terminal: a shell code block's command, for the dock to run. */
+  terminalRunRequest: TerminalRunRequest | null
+  handledTerminalRunKeyRef: React.RefObject<number>
   dockViewRequest: DockViewRequest | null
   handledDockViewKeyRef: React.RefObject<number>
   dockDiffRequest: DiffTabRequest | null
@@ -241,6 +245,8 @@ export function useOverlayState({
   // Terminal is available once a workspace is attached.
   const [terminalOpenKey, setTerminalOpenKey] = useState(0)
   const handledTerminalOpenKeyRef = useRef(0)
+  const [terminalRunRequest, setTerminalRunRequest] = useState<TerminalRunRequest | null>(null)
+  const handledTerminalRunKeyRef = useRef(0)
   const [dockViewRequest, setDockViewRequest] = useState<DockViewRequest | null>(null)
   const handledDockViewKeyRef = useRef(0)
   const [dockDiffRequest, setDockDiffRequest] = useState<DiffTabRequest | null>(null)
@@ -641,6 +647,17 @@ export function useOverlayState({
     setTerminalOpenKey((k) => k + 1)
   }, [workspace])
 
+  // Run in terminal (a shell code block's button): open the Review panel and
+  // hand the command to the dock, which picks the shell. Registered only with
+  // a workspace, so blocks offer the button only where a terminal can open.
+  useEffect(() => {
+    if (!workspace) return
+    return registerTerminalRunner((command) => {
+      setWorkspacePanel((prev) => prev ?? 'files')
+      setTerminalRunRequest((prev) => ({ command, key: (prev?.key ?? 0) + 1 }))
+    })
+  }, [workspace])
+
   const requestDockLayout = useCallback((action: DockLayoutRequest['action']) => {
     setDockLayoutRequest((prev) => ({ action, key: (prev?.key ?? 0) + 1 }))
   }, [])
@@ -735,6 +752,8 @@ export function useOverlayState({
     setFileOpenKey,
     terminalOpenKey,
     handledTerminalOpenKeyRef,
+    terminalRunRequest,
+    handledTerminalRunKeyRef,
     dockViewRequest,
     handledDockViewKeyRef,
     dockDiffRequest,

@@ -26,7 +26,7 @@ import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardSho
 import { useDeepLinkRouter } from '@/hooks/useDeepLinkRouter'
 import { GlobalEventStream } from '@/hooks/use-global-event-stream'
 import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
-import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 import { FloatingNotices } from '@/components/FloatingNotices'
 import { AiDataConsent } from '@/components/AiDataConsent'
 import { CAPABILITY, useServerCapability } from '@/queries'
@@ -45,6 +45,11 @@ const PhoneCloudSync = lazy(() =>
 const DesktopApprovalWatcher = lazy(() =>
   import('@/components/account/DesktopApprovalWatcher').then((module) => ({ default: module.DesktopApprovalWatcher })),
 )
+// The name of the computer in use is read once the app is up; nothing on the
+// first screen waits for it.
+const ComputerNameSync = lazy(() =>
+  import('@/components/ComputerNameSync').then((module) => ({ default: module.ComputerNameSync })),
+)
 
 // Settings and Telemetry stay out of the startup bundle; they load while the
 // app is idle after it starts (or when opened first), so they open at once.
@@ -54,11 +59,6 @@ const PluginNotice = lazySurface(() => import('@/components/settings/pages/setti
 // Keyboard shortcuts (⌘/), with the help text for every shortcut: opened on
 // demand, never on the first screen.
 const KeyboardShortcutsSheet = lazySurface(() => import('@/components/KeyboardShortcutsSheet'), 'KeyboardShortcutsSheet')
-
-function widgetsSupported(): boolean {
-  const { isTauri, os } = getPlatform()
-  return isTauri && (os === 'ios' || os === 'android')
-}
 
 // Only v3 backends can answer the plugin status request the notice makes.
 function PluginNoticeGate() {
@@ -163,12 +163,12 @@ export function Root() {
     <QueryClientProvider client={queryClient}>
       <GlobalEventStream />
       <NeedsYouBadgeSync />
-      {widgetsSupported() && (
+      {isMobileApp() && (
         <Suspense fallback={null}>
           <WidgetSnapshotSync />
         </Suspense>
       )}
-      {widgetsSupported() && (
+      {isMobileApp() && (
         <Suspense fallback={null}>
           <PhoneCloudSync />
         </Suspense>
@@ -176,6 +176,12 @@ export function Root() {
       {isDesktopShell() && (
         <Suspense fallback={null}>
           <DesktopApprovalWatcher />
+        </Suspense>
+      )}
+      {/* Only an app shell keeps names; a browser has nowhere to put one. */}
+      {(isDesktopShell() || isMobileApp()) && (
+        <Suspense fallback={null}>
+          <ComputerNameSync />
         </Suspense>
       )}
       <PluginNoticeGate />

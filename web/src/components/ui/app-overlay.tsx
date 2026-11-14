@@ -107,8 +107,11 @@ const OVERLAY_HEADER_BUTTON_CLASS = 'md:size-7'
 /**
  * A sheet's bar buttons are bare tint, no fill: iOS dims one when pressed.
  * Drawn at the phone's control step; ``touch-hit`` keeps a 44px target.
+ * ``z-20``: over the sheet's grabber (``z-10``), a full-width 16px strip
+ * across the top that took the upper third of each button's target. The
+ * strip between the buttons still pulls the sheet down.
  */
-const SHEET_BAR_BUTTON_CLASS = 'relative touch-hit h-(--phone-control) min-w-(--phone-control) bg-transparent! text-(--color-accent)! active:opacity-50'
+const SHEET_BAR_BUTTON_CLASS = 'relative z-20 touch-hit h-(--phone-control) min-w-(--phone-control) bg-transparent! text-(--color-accent)! active:opacity-50'
 
 export function OverlayHeader({
   title,

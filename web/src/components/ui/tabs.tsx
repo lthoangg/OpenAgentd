@@ -70,9 +70,10 @@ const TABS_LIST_VARIANT: Record<string, string> = { default: '', line: 'gap-1' }
 // a caller's ``h-*`` cannot override a base height it does not replace.
 const TABS_LIST_SIZE: Record<TabsSize, string> = {
   // On touch a default list is 36px, one trigger tall. ``sm`` lives in a 32px
-  // view toolbar, so on touch it stays compact at 28px to fit inside it.
+  // view toolbar, so on touch it stays compact at 28px to fit inside it; on a
+  // phone it takes the control step and its toolbar grows around it.
   default: 'rounded-md data-[orientation=horizontal]:h-8 pointer-coarse:data-[orientation=horizontal]:h-9',
-  sm: 'rounded-sm data-[orientation=horizontal]:h-6 pointer-coarse:data-[orientation=horizontal]:h-7',
+  sm: 'rounded-sm data-[orientation=horizontal]:h-6 pointer-coarse:data-[orientation=horizontal]:h-7 phone:data-[orientation=horizontal]:h-(--phone-control)',
 }
 const TABS_TRIGGER_SIZE: Record<TabsSize, string> = {
   default: 'px-3 py-1 text-sm [&_svg:not([class*=size-])]:size-4',

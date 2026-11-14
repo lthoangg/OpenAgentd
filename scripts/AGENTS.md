@@ -32,8 +32,9 @@ generation, updater helpers, and code-health analysis.
 - `check_tauri_commands.py`: fails when a desktop or mobile command in
   `generate_handler!` is missing from `build.rs` or from every capability
   (Tauri then rejects it at runtime as "not allowed by ACL"), or when
-  `build.rs` lists a command the handler does not register. The Tauri
-  workflow runs it per shell.
+  `build.rs` lists a command the handler does not register, or when a
+  registered command has no caller in `web/src` or in the shell's own
+  sources (a leftover). The Tauri workflow runs it per shell.
 - `readme-shots/`: regenerates the README screenshots and banner from a
   throwaway instance. `run.sh up` starts an isolated backend and web UI (HOME
   and every data directory under `/tmp/oad-demo`, invented demo repos from

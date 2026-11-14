@@ -11,6 +11,7 @@ import {
   cloudLogin,
   cloudLoginCancel,
   cloudLogout,
+  cloudPickNumber,
   cloudRemoveDevice,
   getCloudDevices,
   getCloudPending,
@@ -67,6 +68,7 @@ export const useCloudLoginMutation = () => useCloudMutation((roles: Roles) => cl
 export const useCloudJoinMutation = () =>
   useCloudMutation(({ link, roles }: { link: string; roles: Roles }) => cloudJoin(link, roles))
 export const useCloudCancelMutation = () => useCloudMutation(cloudLoginCancel)
+export const useCloudPickNumber = () => useCloudMutation((number: string) => cloudPickNumber(number))
 export const useCloudLogoutMutation = () => useCloudMutation(cloudLogout)
 export const useCloudConfirmRecovery = () =>
   useCloudMutation(({ first, second }: { first: string; second: string }) => cloudConfirmRecovery(first, second))

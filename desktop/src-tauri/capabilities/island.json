@@ -12,7 +12,6 @@
     "allow-island-fit",
     "allow-island-open-session",
     "allow-island-retry",
-    "allow-island-context-menu",
-    "allow-island-dismiss"
+    "allow-island-context-menu"
   ]
 }

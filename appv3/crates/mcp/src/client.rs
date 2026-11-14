@@ -643,6 +643,17 @@ impl Http {
         }
     }
 
+    /// Starts the standalone GET stream, as v2 does when the `initialized`
+    /// notification is sent, and lets it reach the wire before the next request.
+    async fn open_get_stream(self: &Arc<Self>) {
+        let (tx, rx) = oneshot::channel();
+        let task = tokio::spawn(self.clone().run_get_stream(Some(tx)));
+        if let Some(old) = self.get_stream.lock().unwrap().replace(task) {
+            old.abort();
+        }
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(1), rx).await;
+    }
+
     async fn close(&self, terminate: bool) {
         if let Some(h) = self.get_stream.lock().unwrap().take() {
             h.abort();
@@ -1068,17 +1079,40 @@ impl McpClient {
             Transport::Http(h) => {
                 let res = h.post(&msg, None).await.map(|_| ());
                 if method == "notifications/initialized" && res.is_ok() {
-                    // v2 starts the GET stream as the notification is sent; let it
-                    // reach the wire before the next request.
-                    let (tx, rx) = oneshot::channel();
-                    let task = tokio::spawn(h.clone().run_get_stream(Some(tx)));
-                    if let Some(old) = h.get_stream.lock().unwrap().replace(task) {
-                        old.abort();
-                    }
-                    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), rx).await;
+                    h.open_get_stream().await;
                 }
                 res
             }
+        }
+    }
+
+    /// The Streamable HTTP session this client is in, with the protocol
+    /// version it runs under: what another client needs to go on with it.
+    pub fn http_session(&self) -> Option<(String, String)> {
+        let Transport::Http(h) = self.transport() else { return None };
+        let session_id = h.session_id.lock().unwrap().clone()?;
+        let protocol = h.protocol.lock().unwrap().clone()?;
+        Some((session_id, protocol))
+    }
+
+    /// Go on with a session an earlier client opened, in place of
+    /// `initialize`. Whether the server still knows the session shows with
+    /// the next request. `false` for a transport that has no sessions.
+    pub async fn resume_http_session(&self, session_id: &str, protocol: &str) -> bool {
+        let Transport::Http(h) = self.transport() else { return false };
+        *h.session_id.lock().unwrap() = Some(session_id.to_string());
+        *h.protocol.lock().unwrap() = Some(protocol.to_string());
+        h.open_get_stream().await;
+        true
+    }
+
+    /// Leave the session without telling the server, so a following
+    /// `initialize` opens a new one.
+    pub async fn leave_http_session(&self) {
+        if let Transport::Http(h) = self.transport() {
+            h.close(false).await;
+            *h.session_id.lock().unwrap() = None;
+            *h.protocol.lock().unwrap() = None;
         }
     }
 

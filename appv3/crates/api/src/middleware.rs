@@ -304,6 +304,11 @@ pub async fn desktop_token(policy: axum::extract::State<Policy>, mut req: Reques
     if path_is_exempt(&path) {
         return next.run(req).await;
     }
+    // An MCP app's frame loads its page by a single-use ticket: the page's
+    // address must not carry the access key, which the app could read.
+    if req.method() == axum::http::Method::GET && is_app_frame_path(&path) {
+        return next.run(req).await;
+    }
     let presented = extract_token(&req);
     match presented.as_deref().and_then(|t| policy.authenticate(t)) {
         Some(by) => {
@@ -318,7 +323,18 @@ pub async fn desktop_token(policy: axum::extract::State<Policy>, mut req: Reques
     next.run(req).await
 }
 
+/// `/api/mcp/app-frames/<ticket>`, and nothing below it.
+fn is_app_frame_path(path: &str) -> bool {
+    path.strip_prefix("/api/mcp/app-frames/").is_some_and(|t| !t.is_empty() && !t.contains('/'))
+}
+
 // ── SecurityHeaders ─────────────────────────────────────────────────────────
+
+/// Marks a response the web UI shows in a frame (an MCP app's page). The UI's
+/// origin differs per shell, so no `X-Frame-Options` value fits; the handler
+/// sets the page's own `Content-Security-Policy`.
+#[derive(Clone, Copy)]
+pub struct Frameable;
 
 // `frame-src` admits the built-in web preview, which runs on its own
 // loopback listener (`appv3-preview`).
@@ -339,8 +355,12 @@ pub async fn security_headers(req: Request, next: Next) -> Response {
         return next.run(req).await;
     }
     let mut resp = next.run(req).await;
+    let frameable = resp.extensions().get::<Frameable>().is_some();
     let h = resp.headers_mut();
     for (k, v) in SECURITY_HEADERS {
+        if frameable && k == "x-frame-options" {
+            continue;
+        }
         let name = HeaderName::from_static(k);
         if !h.contains_key(&name) {
             h.insert(name, HeaderValue::from_static(v));

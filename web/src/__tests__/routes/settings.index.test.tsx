@@ -45,7 +45,7 @@ mock.module('@tauri-apps/api/core', () => ({
 
 import { AboutSettingsPage } from '@/components/settings/pages/settings.index'
 
-function renderHub(health?: { status: string; version: string; capabilities?: string[] }) {
+function renderHub(health?: { status: string; version: string; capabilities?: string[] }, seed?: (client: QueryClient) => void) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
@@ -56,6 +56,7 @@ function renderHub(health?: { status: string; version: string; capabilities?: st
   if (health) {
     queryClient.setQueryData(queryKeys.health(), health)
   }
+  seed?.(queryClient)
 
   const result = render(
     <QueryClientProvider client={queryClient}>
@@ -119,6 +120,24 @@ describe('AboutSettingsPage — desktop updates card', () => {
     expect(updaterCalls).not.toContain('updater_check')
   })
 
+  it('says how to update on Linux instead of a check that cannot find a release', () => {
+    platform = { isTauri: true, os: 'linux' }
+    renderHub({ status: 'ok', version: '1.2.3' })
+    expect(screen.queryByRole('button', { name: /check for updates?/i })).toBeNull()
+    expect(screen.getByText(/install the newer \.deb/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open releases page' })).toBeInTheDocument()
+    expect(updaterCalls).not.toContain('updater_check')
+  })
+
+  it('keeps the Linux update line out of every other app', () => {
+    for (const os of ['macos', 'windows', 'android', 'ios']) {
+      platform = { isTauri: true, os }
+      const { unmount } = renderHub({ status: 'ok', version: '1.2.3' })
+      expect(screen.queryByText(/install the newer \.deb/i)).toBeNull()
+      unmount()
+    }
+  })
+
   it('downloads, then asks before installing the APK on Android', async () => {
     platform = { isTauri: true, os: 'android' }
     checkResult = { status: 'available', version: '1.3.0', current_version: '1.2.3', channel: 'apk' }
@@ -153,6 +172,22 @@ describe('AboutSettingsPage — version section', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/app is older than the server/i)
   })
 
+  it('names where an older app gets its update, per platform', async () => {
+    const advice: Array<[string, RegExp]> = [
+      ['ios', /Update it from TestFlight or the App Store/],
+      ['linux', /Install the newer \.deb/],
+      ['macos', /Update the app/],
+      ['android', /Update the app/],
+    ]
+    for (const [os, text] of advice) {
+      platform = { isTauri: true, os }
+      shellVersion = '1.2.0'
+      const { unmount } = renderHub({ status: 'ok', version: '2.0.0' })
+      expect(await screen.findByRole('alert')).toHaveTextContent(text)
+      unmount()
+    }
+  })
+
   it('only notes a patch difference', async () => {
     shellVersion = '1.2.4'
     renderHub({ status: 'ok', version: '1.2.3' })
@@ -163,6 +198,30 @@ describe('AboutSettingsPage — version section', () => {
   it('says not connected without a server version', () => {
     renderHub()
     expect(screen.getByText('not connected')).toBeInTheDocument()
+  })
+
+  it('offers the server update from another device, and leaves the desktop app’s own server to Updates', async () => {
+    const health = { status: 'ok', version: '1.2.3', capabilities: ['api.server_update'] }
+    const update = {
+      current: '1.2.3', latest: '1.3.0', available: true, can_upgrade: true, method: 'desktop_app', reason: null, check_error: null,
+      in_progress: false, release_url: null, log: '', last: null,
+    }
+    const on = (backend: Record<string, unknown>) => (client: QueryClient) => {
+      client.setQueryData(queryKeys.serverUpdate(), update)
+      client.setQueryData(queryKeys.backendStatus(), backend)
+    }
+
+    // A phone on a computer's desktop app.
+    platform = { isTauri: true, os: 'android' }
+    const phone = renderHub(health, on({ base_url: 'http://192.168.1.20:4082', external: true, mode: 'external' }))
+    expect(await screen.findByRole('button', { name: 'Update to v1.3.0' })).toBeInTheDocument()
+    phone.unmount()
+
+    // The desktop app on its own built-in server.
+    platform = { isTauri: true, os: 'macos' }
+    renderHub(health, on({ base_url: 'http://127.0.0.1:51000', external: false, mode: 'bundled' }))
+    expect(await screen.findByText('v1.3.0 is out. This server comes with this app: update the app to update it.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Update to/ })).toBeNull()
   })
 })
 

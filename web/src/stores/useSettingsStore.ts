@@ -19,8 +19,6 @@ export type SettingsSection =
   | 'desktop'
   | 'connection'
   | 'account'
-  // Merged into Connection; kept so old links and persisted state resolve.
-  | 'network'
   | 'about'
   | 'agents'
   | 'skills'
@@ -54,16 +52,6 @@ const DRILL_DOWN_FAMILIES = ['skills', 'mcp'] as const
  * empty pane) and for sidebar highlighting.
  */
 export function parentSection(section: SettingsSection): SettingsSection {
-  // Settings state is persisted without schema validation. Treat sections
-  // removed in older builds as About so an upgrade cannot reopen a dead page.
-  const persistedSection = section as string
-  if (persistedSection === 'notifications' || persistedSection === 'terminal' || persistedSection === 'sandbox') {
-    return 'about'
-  }
-  // Automation was split into Workspaces, Chat titles, Context and Media.
-  if (persistedSection === 'automation') return 'workspaces'
-  // Network access moved onto the Connection page.
-  if (persistedSection === 'network') return 'connection'
   return DRILL_DOWN_FAMILIES.find((f) => section.startsWith(f)) ?? section
 }
 

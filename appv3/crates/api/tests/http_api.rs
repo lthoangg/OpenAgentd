@@ -538,10 +538,12 @@ async fn http_api_end_to_end() {
     history_first_page_flow(&c, &pool, &ws).await;
     history_etag_flow(&c, &pool, &ws).await;
     tool_result_on_demand_flow(&c, &pool, &ws).await;
+    mcp_app_panel_flow(&pool, &ws).await;
     tool_arguments_on_demand_flow(&c, &pool, &ws).await;
     files_revalidate_flow(&c, &pool, &ws).await;
     plan_review_flow(&c, &pool, &ws).await;
     linked_sessions_flow(&c, &pool).await;
+    waiting_flow(&c, &pool).await;
     confirm_change_flow(&c, &pool, &ws).await;
     workspace_isolation_flow(&c, &pool, &ws, &root.path().join("other-ws")).await;
     worktree_tree_flow(&c, root.path()).await;
@@ -643,6 +645,7 @@ async fn http_api_end_to_end() {
     preview_routes(&c, root.path()).await;
     preview_tunnel(&c, &pool, root.path()).await;
     first_chat_mode_flow(&c, root.path()).await;
+    server_name_flow(&c).await;
     provider_credentials_flow(&c, &pool, root.path()).await;
     goal_flow(&c, &pool, root.path()).await;
 
@@ -651,6 +654,38 @@ async fn http_api_end_to_end() {
 
 /// Several keys per provider: add, list (no secret values), reorder,
 /// disable, remove. Stored in `credentials.yaml`, never the process env.
+/// This computer's name: its hostname until someone names it, from any
+/// client that may use the server.
+async fn server_name_flow(c: &Client) {
+    let (s, v) = c.json("GET", "/api/health/live", None).await;
+    assert_eq!(s, 200);
+    assert!(v["capabilities"].as_array().unwrap().iter().any(|c| c == "api.server_name"), "{v}");
+
+    let (s, v) = c.json("GET", "/api/server/name", None).await;
+    assert_eq!(s, 200, "{v}");
+    let hostname = v["default"].as_str().expect("a hostname").to_string();
+    assert!(!hostname.is_empty() && !hostname.contains('.'), "the short host name, no domain: {v}");
+    assert_eq!((v["name"].as_str(), v["custom"].as_bool()), (Some(hostname.as_str()), Some(false)), "{v}");
+
+    let (s, v) = c.json("PUT", "/api/server/name", Some(json!({"name": "  Work\u{7}  Mac\n"}))).await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!((v["name"].as_str(), v["custom"].as_bool()), (Some("Work Mac"), Some(true)), "trimmed, no control characters: {v}");
+    let (_, v) = c.json("GET", "/api/server/name", None).await;
+    assert_eq!(v["name"], "Work Mac", "it is kept: {v}");
+
+    let (s, v) = c.json("PUT", "/api/server/name", Some(json!({"name": "x".repeat(200)}))).await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!(v["name"].as_str().unwrap().chars().count(), 40, "capped: {v}");
+
+    let (s, v) = c.json("PUT", "/api/server/name", Some(json!({"name": 7}))).await;
+    assert_eq!(s, 422, "{v}");
+
+    // An empty name gives the computer its own name back.
+    let (s, v) = c.json("PUT", "/api/server/name", Some(json!({"name": "  "}))).await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!((v["name"].as_str(), v["custom"].as_bool()), (Some(hostname.as_str()), Some(false)), "{v}");
+}
+
 async fn provider_credentials_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) {
     std::env::remove_var("OPENROUTER_API_KEY");
     let base = "/api/settings/providers/openrouter/credentials";
@@ -1204,6 +1239,100 @@ async fn history_etag_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::
 
 /// History leaves a read's text out; opening the call fetches it, from the
 /// session or one of its members, by tool-call id.
+/// An MCP app's panel: its page loads by a single-use ticket instead of the
+/// access key, confined by its own policy, and what it reports for the model
+/// waits for the session's next message.
+async fn mcp_app_panel_flow(pool: &appv3_db::DbPool, ws: &std::path::Path) {
+    let c = Client::new(create_app(AppState { pool: pool.clone() }, Policy { token: Arc::new("tok".into()), ..Policy::from_env() }));
+    let session = appv3_db::create_session(pool, appv3_db::NewSession { workspace: ws.display().to_string(), ..Default::default() }).await.unwrap();
+    let sid = appv3_db::codec::api_uuid(&session.id);
+    let page = "<html><head><script>app()</script></head><body>canvas</body></html>";
+    let mut app = json!({
+        "server": "canvas", "tool": "exec", "resourceUri": "ui://canvas/app.html", "html": page,
+        "resourceMeta": {"ui": {"csp": {"connectDomains": ["https://api.canvas.example"]}}},
+    });
+    appv3_agent::mcp_apps::store_html(&mut app).await;
+    assert!(app.get("html").is_none() && app["html_sha256"].is_string(), "the stored result names the page, it does not hold it: {app}");
+    let mut result = appv3_db::NewMessage::tool("call_canvas", "mcp", "drawn");
+    result.extra = Some(json!({"mcp_app": app}).as_object().unwrap().clone());
+    appv3_db::save_message(pool, &session.id, result).await.unwrap();
+    appv3_db::save_message(pool, &session.id, appv3_db::NewMessage::tool("call_plain", "read", "text")).await.unwrap();
+
+    let post = |uri: &'static str, body: Value| {
+        let c = &c;
+        async move { c.send(Request::post(uri).header("authorization", "Bearer tok").header("content-type", "application/json").body(Body::from(body.to_string())).unwrap()).await }
+    };
+    let binding = json!({"session_id": sid, "tool_call_id": "call_canvas"});
+
+    // Asking for a page's address needs the access key and a stored app result.
+    let (st, _) = c.json("POST", "/api/mcp/app-frames", Some(binding.clone())).await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    let (st, _, _) = post("/api/mcp/app-frames", json!({"session_id": sid, "tool_call_id": "call_plain"})).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    let (st, _, body) = post("/api/mcp/app-frames", json!({"session_id": sid, "tool_call_id": "call_canvas", "head": "<script>shim()</script>"})).await;
+    assert_eq!(st, StatusCode::OK);
+    let ticket = serde_json::from_slice::<Value>(&body).unwrap()["ticket"].as_str().unwrap().to_string();
+
+    // The frame loads the page with the ticket alone.
+    let (st, h, body) = c.send(Request::get(format!("/api/mcp/app-frames/{ticket}")).body(Body::empty()).unwrap()).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(String::from_utf8(body).unwrap(), "<html><head><script>shim()</script><script>app()</script></head><body>canvas</body></html>");
+    assert_eq!(h.get("content-type").unwrap(), "text/html; charset=utf-8");
+    assert_eq!(h.get("cache-control").unwrap(), "no-store");
+    let csp = h.get("content-security-policy").unwrap().to_str().unwrap();
+    assert!(csp.contains("connect-src https://api.canvas.example;") && csp.ends_with("sandbox allow-scripts allow-forms"), "{csp}");
+    assert!(!csp.contains("'self'") && !csp.contains("frame-ancestors"), "{csp}");
+    assert!(h.get("x-frame-options").is_none(), "the web UI frames this page from another origin");
+    assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
+
+    // Once: the address is spent, and nothing else under it is open.
+    let (st, _, _) = c.send(Request::get(format!("/api/mcp/app-frames/{ticket}")).body(Body::empty()).unwrap()).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    let (st, _, _) = c.send(Request::get("/api/mcp/app-frames/x/y").body(Body::empty()).unwrap()).await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    let (st, _, _) = c.send(Request::post("/api/mcp/app-frames/x").body(Body::empty()).unwrap()).await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    let (st, h, _) = c.send(Request::get("/api/agents").header("authorization", "Bearer tok").body(Body::empty()).unwrap()).await;
+    assert_eq!((st, h.get("x-frame-options").unwrap().to_str().unwrap()), (StatusCode::OK, "DENY"), "every other response stays unframeable");
+
+    // The panel's report for the model is bound to the same stored result.
+    let report = json!({"session_id": sid, "tool_call_id": "call_canvas", "content": [{"type": "text", "text": "2 shapes"}], "structuredContent": {"canvasId": "c1"}});
+    let (st, _) = c.json("POST", "/api/mcp/app-context", Some(report.clone())).await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    let (st, _, _) = post("/api/mcp/app-context", json!({"session_id": sid, "tool_call_id": "call_plain", "content": []})).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    let (st, _, _) = post("/api/mcp/app-context", report).await;
+    assert_eq!(st, StatusCode::OK);
+    // It waits in the session's own folder, so it outlives a restart...
+    let waiting = appv3_core::settings::settings().data_dir.join("sessions").join(&sid).join("mcp-app-reports.json");
+    assert!(std::fs::read_to_string(&waiting).unwrap().contains("2 shapes"));
+    let note = appv3_agent::mcp_apps::take_model_context(&session.id).unwrap();
+    assert!(note.contains("<mcp_app_context app=\"canvas · exec\">\n2 shapes\n{\"canvasId\":\"c1\"}\n</mcp_app_context>"), "{note}");
+
+    // What the app keeps in its storage comes back with its next page, before the host's scripts.
+    let kept = json!({"session_id": sid, "tool_call_id": "call_canvas", "remove": ["old"], "set": {"doc:latest": "3 shapes </script>", "n": 1}});
+    let (st, _) = c.json("POST", "/api/mcp/app-storage", Some(kept.clone())).await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    let (st, _, _) = post("/api/mcp/app-storage", json!({"session_id": sid, "tool_call_id": "call_plain", "set": {"k": "v"}})).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    let (st, _, _) = post("/api/mcp/app-storage", kept).await;
+    assert_eq!(st, StatusCode::OK);
+    let (_, _, body) = post("/api/mcp/app-frames", json!({"session_id": sid, "tool_call_id": "call_canvas", "head": "<script>shim()</script>"})).await;
+    let ticket = serde_json::from_slice::<Value>(&body).unwrap()["ticket"].as_str().unwrap().to_string();
+    let (_, _, body) = c.send(Request::get(format!("/api/mcp/app-frames/{ticket}")).body(Body::empty()).unwrap()).await;
+    assert_eq!(
+        String::from_utf8(body).unwrap(),
+        "<html><head><script>window.__OA_APP_STORAGE__={\"doc:latest\":\"3 shapes \\u003c/script>\"};</script><script>shim()</script><script>app()</script></head><body>canvas</body></html>"
+    );
+    appv3_agent::mcp_apps::change_storage("canvas", appv3_agent::mcp_apps::StorageChange { clear: true, ..Default::default() }).await;
+
+    // ...and goes with the session.
+    let (st, _, _) = c.send(Request::delete(format!("/api/agent/sessions/{sid}")).header("authorization", "Bearer tok").body(Body::empty()).unwrap()).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    assert!(!waiting.exists());
+    assert_eq!(appv3_agent::mcp_apps::take_model_context(&session.id), None);
+}
+
 async fn tool_result_on_demand_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
     let workspace = ws.display().to_string();
     let lead = appv3_db::create_session(pool, appv3_db::NewSession { workspace: workspace.clone(), ..Default::default() }).await.unwrap();
@@ -1438,6 +1567,48 @@ async fn workspace_isolation_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std:
     assert_eq!(serving(), vec![ws_a], "exactly one session serves {sid}");
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{sid}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
+}
+
+/// What a session whose turn ended still waits for (v3 addition): the
+/// sessions in other workspaces that owe it a reply, each with where it runs
+/// and whether it works or needs the user.
+async fn waiting_flow(c: &Client, pool: &appv3_db::DbPool) {
+    let new = |ws: &str, title: &str| appv3_db::NewSession { workspace: ws.into(), title: Some(title.into()), ..Default::default() };
+    let lead = appv3_db::create_session(pool, new("/r/waiting-app", "Orders API")).await.unwrap();
+    let target = appv3_db::create_session(pool, new("/r/waiting-infra", "Orders table")).await.unwrap();
+    let id = |s: &appv3_db::ChatSession| appv3_db::codec::api_uuid(&s.id);
+    let uri = format!("/api/agent/sessions/{}/waiting", id(&lead));
+
+    let (st, v) = c.json("GET", &uri, None).await;
+    assert_eq!((st, &v), (StatusCode::OK, &json!({"items": []})), "nothing owed");
+
+    let mut extra = serde_json::Map::new();
+    extra.insert("sent_from".into(), json!({"session_id": id(&lead), "reply": true, "hops": 1}));
+    appv3_db::save_message(pool, &target.id, appv3_db::NewMessage { extra: Some(extra), ..appv3_db::NewMessage::user("Create the table.") }).await.unwrap();
+    appv3_agent::workspace_messages::restore_outstanding(pool).await;
+    let (st, v) = c.json("GET", &uri, None).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(
+        v,
+        json!({"items": [{"kind": "session", "session_id": id(&target), "title": "Orders table", "label": "waiting-infra", "workspace": "/r/waiting-infra", "state": "idle"}]}),
+        "{v}"
+    );
+    // The list names it on the session row too, as before.
+    let (_, list) = c.json("GET", "/api/agent/sessions?active=true", None).await;
+    assert!(list["data"].as_array().unwrap().iter().any(|r| r["id"] == json!(id(&lead)) && r["background_work"] == json!(true)), "{list}");
+
+    // A session that was deleted answers nobody: the lead stops waiting.
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{}", id(&target)), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    let (_, v) = c.json("GET", &uri, None).await;
+    assert_eq!(v, json!({"items": []}), "{v}");
+    let (_, list) = c.json("GET", "/api/agent/sessions?active=true", None).await;
+    assert!(list["data"].as_array().unwrap().iter().all(|r| r["id"] != json!(id(&lead))), "{list}");
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{}", id(&lead)), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+
+    let (st, _) = c.json("GET", "/api/agent/sessions/not-a-uuid/waiting", None).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 /// Plan routes and plan-review answers on a Plan-mode session in `ws`.

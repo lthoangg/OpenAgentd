@@ -22,6 +22,8 @@ export type CloudNotice =
   | 'join_ended'
   | 'commit_mismatch'
   | 'confirm_mismatch'
+  /** Scan to add: the number picked was not the phone's, so this computer left the account. */
+  | 'wrong_number'
   | 'invite_invalid'
   | 'signed_out'
   | 'empty_account'
@@ -48,12 +50,21 @@ export type RelayState =
 export type CloudStatus =
   /** `retry_after`: seconds to wait, with `rate_limited`. */
   | { state: 'guest'; notice: CloudNotice | null; retry_after?: number }
-  | { state: 'signing_in'; user_code: string; url: string; fingerprint: string; expires_in: number }
+  /**
+   * `add_link`: the scan code a phone of the account scans to add this
+   * computer (a bearer secret, sent to this computer's own callers only).
+   * Absent when the server made none.
+   */
+  | { state: 'signing_in'; user_code: string; url: string; fingerprint: string; expires_in: number; add_link?: string }
   /** A new account: the recovery code is shown once, then groups `check` (1-based) are asked back. */
   | { state: 'recovery'; code?: string; check?: [number, number] }
   | { state: 'joining'; fingerprint: string; code: string | null }
   /** Claimed an invitation: the phone adds it once the person compares these. */
   | { state: 'invited'; fingerprint: string; kind: string | null }
+  /** A phone scanned the code; the person taps Add there. */
+  | { state: 'scanned'; fingerprint: string }
+  /** The phone added this computer: the person picks its number. `choices` only for this computer. */
+  | { state: 'confirming'; fingerprint: string; choices?: [string, string, string] }
   | {
       state: 'connected'
       fingerprint: string
@@ -176,6 +187,8 @@ export const cloudApproveReject = (enrollmentId: string) =>
 export const cloudRemoveDevice = (deviceId: string, proof: string) =>
   cloudRequest('/devices/remove', 'POST', { device_id: deviceId }, proof)
 export const cloudLoginCancel = () => cloudRequest('/login/cancel', 'POST')
+/** Scan to add: the number the person picked. One answer; a wrong one leaves the account. */
+export const cloudPickNumber = (number: string) => cloudRequest('/number', 'POST', { number })
 export const cloudLogout = () => cloudRequest('/logout', 'POST')
 
 /**

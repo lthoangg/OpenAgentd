@@ -54,7 +54,7 @@ async function openOnDevice(target: NotificationTarget & { deviceId: string }, s
   const { connectAccountComputer } = await import('@/lib/backend-switch')
   const result = await connectAccountComputer({
     deviceId: target.deviceId,
-    label: device ? accountComputerTitle(device) : 'your computer',
+    label: device ? accountComputerTitle(device, status.computer_names) : 'your computer',
     currentBaseUrl: current,
   })
   return afterSwitch(target.sessionId, result)

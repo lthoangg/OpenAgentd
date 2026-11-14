@@ -1,6 +1,6 @@
 /**
  * On a phone a long press on a prompt opens its actions: Edit and resend,
- * Copy, Revert to here (mockup J5).
+ * Copy, Undo to here (mockup J5).
  */
 import '@testing-library/jest-dom'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
@@ -21,23 +21,23 @@ async function hold(element: Element) {
 }
 
 describe('UserBubble on a phone', () => {
-  it('opens Edit and resend, Copy and Revert to here on a long press', async () => {
+  it('opens Edit and resend, Copy and Undo to here on a long press', async () => {
     const onEdit = mock(() => {})
     const onRevert = mock(() => {})
     render(<UserBubble content="Fix the build" onEdit={onEdit} onRevert={onRevert} />)
     await hold(screen.getByText('Fix the build'))
     const sheet = screen.getByRole('dialog', { name: 'Prompt' })
     const labels = Array.from(sheet.querySelectorAll('button')).map((b) => b.textContent)
-    expect(labels).toEqual(['Edit and resend', 'Copy', 'Revert to here'])
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Revert to here' }))
+    expect(labels).toEqual(['Edit and resend', 'Copy', 'Undo to here'])
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Undo to here' }))
     expect(onRevert).toHaveBeenCalled()
   })
 
-  it('disables Edit and Revert while a turn runs', async () => {
+  it('disables Edit and Undo while a turn runs', async () => {
     render(<UserBubble content="Fix the build" onEdit={() => {}} onRevert={() => {}} editLocked />)
     await hold(screen.getByText('Fix the build'))
     const sheet = screen.getByRole('dialog', { name: 'Prompt' })
     expect(within(sheet).getByRole('button', { name: 'Edit and resend' })).toBeDisabled()
-    expect(within(sheet).getByRole('button', { name: 'Revert to here' })).toBeDisabled()
+    expect(within(sheet).getByRole('button', { name: 'Undo to here' })).toBeDisabled()
   })
 })

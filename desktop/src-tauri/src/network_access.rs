@@ -198,7 +198,7 @@ pub fn lan_urls(ip: Option<IpAddr>, port: Option<u16>) -> Vec<String> {
 // ── Sidecar control ─────────────────────────────────────────────────────────
 
 /// Base URL and desktop token of the running builtin sidecar.
-async fn sidecar(app: &AppHandle) -> Option<(String, String)> {
+pub(crate) async fn sidecar(app: &AppHandle) -> Option<(String, String)> {
     let state = app.state::<AppState>();
     let alive = state.sidecar.alive().await;
     if !alive {

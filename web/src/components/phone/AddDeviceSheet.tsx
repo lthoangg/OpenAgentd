@@ -21,5 +21,5 @@ export function AddDeviceSheet({ onClose }: { onClose: () => void }) {
     add: async (c) => { await mutateAsync(c.enrollment_id); return true },
     reject: (c) => phoneCloudApproveReject(c.enrollment_id),
   }), [mutateAsync])
-  return <InviteSheet actions={actions} description="Your phone checks every device before it joins." onClose={onClose} />
+  return <InviteSheet actions={actions} allowLink={false} description="Your phone checks every device before it joins." onClose={onClose} />
 }

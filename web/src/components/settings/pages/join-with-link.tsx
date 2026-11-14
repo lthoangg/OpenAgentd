@@ -1,6 +1,6 @@
 /**
- * Joining an account with the invitation link a phone shows: the desktop's
- * default way in (a computer cannot scan), and the phone's paste fallback.
+ * Joining an account with the invitation link a computer shows: an
+ * alternative on desktop, and the phone's paste fallback.
  * The link works like a password, so the field hides it and nothing here
  * keeps it after the submit.
  */
@@ -41,22 +41,22 @@ export function JoinWithLink({ onJoin, busy, hint }: { onJoin: (link: string) =>
         />
       </Field>
       {trimmed !== '' && !looksRight && (
-        <p role="alert" className="text-xs text-(--color-error)">That is not an invitation link. Copy it again from your phone.</p>
+        <p role="alert" className="text-xs text-(--color-error)">That is not an invitation link. Copy it again from the inviting device.</p>
       )}
       <Button type="submit" variant="primary" size="sm" disabled={busy || !looksRight}>Join</Button>
     </form>
   )
 }
 
-/** While a phone decides: what to compare there. */
+/** While the inviting device decides: what to compare there. */
 export function InvitedCopy({ label }: { label: string }) {
   return (
     <>
       <p>
-        On your phone, check that it shows this device:{' '}
-        <strong className="font-mono text-(--color-text)">{label}</strong>. Then tap Add.
+        On the inviting device, check that it shows this device:{' '}
+        <strong className="font-mono text-(--color-text)">{label}</strong>. Then choose Add.
       </p>
-      <p className="italic">Waiting for your phone…</p>
+      <p className="italic">Waiting for the inviting device…</p>
     </>
   )
 }

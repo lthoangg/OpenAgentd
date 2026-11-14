@@ -7,7 +7,7 @@
  * supplies the status and each server's health, and wires the handlers to the
  * same connect code Settings → Connection uses.
  */
-import type { AppBackendStatus, SavedAppServer } from '@/lib/app-backend'
+import { savedServerTitle, type AppBackendStatus, type SavedAppServer } from '@/lib/app-backend'
 import { normalizeServerBaseUrl } from '@/lib/backend-switch'
 import type { Command } from '../CommandPalette'
 
@@ -88,8 +88,10 @@ export function buildServerCommands(input: ServerCommandsInput, handlers: Server
     const state = HEALTH_LABEL[health[base] ?? 'checking']
     rows.push({
       id: `server:${base}`,
-      label: server.name?.trim() || base,
-      description: `${current ? 'Current · ' : ''}${server.name?.trim() ? `${base} · ` : ''}${state}`,
+      // Its name (yours, else its computer's) and one status line; the
+      // address is a keyword, so typing it still finds the row.
+      label: savedServerTitle({ ...server, base_url: base }, status.computer_names),
+      description: `${current ? 'Current · ' : ''}${state}`,
       keywords: `remote saved ${base}`,
       action: current ? () => {} : () => handlers.useExternal(server),
     })

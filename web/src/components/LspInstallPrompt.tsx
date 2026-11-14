@@ -116,7 +116,7 @@ function LspInstallDialog({ request }: { request: LspInstallRequest }) {
               type="button"
               className="flex items-center gap-1.5 text-xs text-(--color-text) hover:text-(--color-text-2) transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) rounded-xs px-1"
               onClick={() => setMinimized(false)}
-              title="Click to expand TypeScript tools details"
+              title="Show TypeScript tools details"
             >
               {statusIcon(installing, installed, Boolean(error))}
               <span className="font-medium">{minimizedLabel(installing, installed, Boolean(error))}</span>

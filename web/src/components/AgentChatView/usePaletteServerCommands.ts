@@ -8,6 +8,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useBackendStatusQuery } from '@/queries/useHealthQuery'
 import { queryKeys } from '@/queries/keys'
 import { accountComputerLine, useAccountComputers } from '@/lib/account-computers'
+import { savedServerTitle } from '@/lib/app-backend'
 import {
   connectAccountComputer,
   connectBundledBackend,
@@ -71,7 +72,7 @@ export function usePaletteServerCommands(): Command[] {
           })
         },
         useExternal: (server) => {
-          const label = server.name?.trim() || server.base_url
+          const label = savedServerTitle(server, status?.computer_names)
           void connectExternalBackend({
             baseUrl: server.base_url,
             name: server.name ?? '',

@@ -1,4 +1,4 @@
-//! `questions.py`, `todos.py`, `permissions.py`, and the v3 session plan.
+//! `questions.py`, `todos.py`, and the v3 session plan.
 
 use super::helpers::{get_or_start, goal_err, resolve_agent_for_existing_session};
 use crate::error::{loc, verr, ApiError, ApiResult};
@@ -22,8 +22,6 @@ pub fn router() -> Router<AppState> {
         .route("/{session_id}/question/{question_id}/answer", post(answer))
         .route("/sessions/{session_id}/todos", get(todos))
         .route("/sessions/{session_id}/plan", get(get_plan).put(put_plan).delete(delete_plan))
-        .route("/{session_id}/permissions", get(list_permissions))
-        .route("/{session_id}/permissions/{request_id}/reply", post(reply_permission))
 }
 
 async fn get_question(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {
@@ -108,7 +106,7 @@ fn end_turn(sid: &str) {
     broadcaster::publish("session_turn_completed", json!({"session_id": sid, "status": "completed"}));
 }
 
-async fn resume_agent(pool: &DbPool, sid: &str) -> bool {
+async fn resume_agent(pool: &DbPool, sid: &str, qid: &str) -> bool {
     // Resume only a live session in the row's workspace; another one bound
     // to this id would run the resumed turn's tools in the wrong directory.
     let row = db::get_session(pool, sid).await.ok().flatten();
@@ -149,7 +147,9 @@ async fn resume_agent(pool: &DbPool, sid: &str) -> bool {
             return false;
         }
     }
-    agent.resume_after_question_answer().await;
+    // A turn still running (the question opened beside other tool calls)
+    // takes the answer itself; it counts as resumed.
+    agent.resume_after_answer(qid).await;
     true
 }
 
@@ -172,7 +172,7 @@ async fn answer(State(st): State<AppState>, AxPath((sid_raw, qid_raw)): AxPath<(
         return Err(ApiError::conflict("Question already resolved."));
     }
     store().push_event(&sid, &events::question_answered(&qid, &sid, &av), true);
-    let resumed = resume_agent(&st.pool, &sid).await;
+    let resumed = resume_agent(&st.pool, &sid, &qid).await;
     if !resumed {
         end_turn(&sid);
     }
@@ -188,7 +188,7 @@ async fn answer_confirm_change(pool: &DbPool, sid: &str, qid: &str, row: &db::Pe
         return Err(ApiError::conflict("Question already resolved."));
     };
     store().push_event(sid, &events::question_answered(qid, sid, &json!(answers)), true);
-    let resumed = resume_agent(pool, sid).await;
+    let resumed = resume_agent(pool, sid, qid).await;
     if !resumed {
         end_turn(sid);
     }
@@ -254,7 +254,7 @@ async fn answer_plan_review(pool: &DbPool, sid: &str, qid: &str, row: &db::Pendi
         }
         None => None,
     };
-    let resumed = resume_agent(pool, sid).await;
+    let resumed = resume_agent(pool, sid, qid).await;
     if !resumed {
         end_turn(sid);
         // No turn to resume (the server restarted during the review): the
@@ -353,26 +353,6 @@ async fn delete_plan(State(st): State<AppState>, AxPath(sid): AxPath<String>) ->
     }
     let deleted = plan::detach(&appv3_tools::denied::session_artifacts_dir(Some(&sid)))?;
     Ok(json(json!({"deleted": deleted})))
-}
-
-/// The v2 route sees the process-default `AutoAllowPermissionService`
-/// (session `"default"`), which never holds pending requests.
-async fn list_permissions(AxPath(_sid): AxPath<String>) -> Response {
-    json(json!({"permissions": []}))
-}
-
-async fn reply_permission(AxPath((_sid, rid)): AxPath<(String, String)>, body: Bytes) -> ApiResult<Response> {
-    let b = body_value(&body)?;
-    let reply = match b.get("reply") {
-        Some(Value::String(s)) => s.clone(),
-        None => return Err(ApiError::validation(vec![verr("missing", &loc(&["body", "reply"]), "Field required", b.clone())])),
-        Some(o) => return Err(ApiError::validation(vec![verr("string_type", &loc(&["body", "reply"]), "Input should be a valid string", o.clone())])),
-    };
-    opt_str_field(&b, "message")?;
-    if !["once", "always", "reject"].contains(&reply.as_str()) {
-        return Err(ApiError::unprocessable(format!("Invalid reply '{reply}'. Must be one of: ['always', 'once', 'reject']")));
-    }
-    Err(ApiError::not_found(format!("Permission request '{rid}' not found or already resolved.")))
 }
 
 #[cfg(test)]

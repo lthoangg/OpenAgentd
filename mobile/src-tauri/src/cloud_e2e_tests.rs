@@ -305,6 +305,81 @@ fn phone_account_end_to_end() {
         assert!(cloud::bridge_key(&origin).is_none());
         assert_eq!(cloud::cloud_devices().await.unwrap().len(), 1);
 
+        // A computer shows a QR code: the phone scans it without a browser
+        // approval on the computer, adds it, and shows the same number.
+        let mut scanned = Member::new(
+            Cloud::new(
+                reqwest::Client::new(),
+                Endpoints::custom(&base, "https://account.openagentd.dev"),
+                DeviceKeys::generate(),
+                None,
+            ),
+            None,
+        );
+        let code = scanned.cloud.device_code().await.unwrap();
+        let scan = flows::scan_code(&scanned.cloud, &code);
+        cloud::cloud_add_scanned(scan.link().to_string())
+            .await
+            .unwrap();
+        let flows::SignIn::Offered(offer) = flows::wait_for_sign_in(&scanned.cloud, &code)
+            .await
+            .unwrap()
+        else {
+            panic!("offered")
+        };
+        let claim = flows::claim_offer(&mut scanned, &scan, offer)
+            .await
+            .unwrap();
+        let cloud::InvitePoll::Candidate { candidate } = cloud::cloud_invite_poll().await.unwrap()
+        else {
+            panic!("candidate")
+        };
+        let added =
+            cloud::cloud_invite_add(candidate.enrollment_id, Some(false), Some(true), Some(true))
+                .await
+                .unwrap();
+        let joined = flows::await_scanned(&mut scanned, claim, FAST)
+            .await
+            .unwrap();
+        assert_eq!(added.number.as_deref(), Some(joined.number.as_str()));
+        assert!(cloud::cloud_devices()
+            .await
+            .unwrap()
+            .iter()
+            .any(|d| d.device_id == scanned.cloud.device_id()));
+
+        // Cancel while the offer is still in flight: its late answer may
+        // not leave an invitation open after the sheet is gone.
+        let late = Member::new(
+            Cloud::new(reqwest::Client::new(), Endpoints::custom(&base, "https://account.openagentd.dev"), DeviceKeys::generate(), None),
+            None,
+        );
+        let code = late.cloud.device_code().await.unwrap();
+        let scan = flows::scan_code(&late.cloud, &code);
+        let seen = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let before = fake.0.lock().unwrap().invites.len();
+        fake.0.lock().unwrap().offer_barrier = Some((seen.clone(), release.clone()));
+        let offering = tauri::async_runtime::spawn(cloud::cloud_add_scanned(scan.link().to_string()));
+        seen.notified().await;
+        cloud::cloud_invite_cancel(None).await.unwrap();
+        release.notify_one();
+        assert!(offering.await.unwrap().is_err(), "the cancelled offer cannot open an invitation");
+        assert_eq!(fake.0.lock().unwrap().invites.len(), before);
+        assert_eq!(cloud::cloud_invite_poll().await.unwrap(), cloud::InvitePoll::Ended);
+        fake.0.lock().unwrap().offer_barrier = None;
+
+        // If IPC processes Cancel before it starts the offer, the sheet
+        // cancels the returned generation. A stale sheet cannot cancel it.
+        cloud::cloud_invite_cancel(None).await.unwrap();
+        let code = late.cloud.device_code().await.unwrap();
+        let scan = flows::scan_code(&late.cloud, &code);
+        let generation = cloud::cloud_add_scanned(scan.link().to_string()).await.unwrap();
+        cloud::cloud_invite_cancel(Some(generation - 1)).await.unwrap();
+        assert_eq!(cloud::cloud_invite_poll().await.unwrap(), cloud::InvitePoll::Waiting);
+        cloud::cloud_invite_cancel(Some(generation)).await.unwrap();
+        assert_eq!(cloud::cloud_invite_poll().await.unwrap(), cloud::InvitePoll::Ended);
+
         // Sign out: guest again, keys erased.
         let s = cloud::cloud_sign_out().await.unwrap();
         assert!(

@@ -10,6 +10,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useOverlayState, type UseOverlayStateArgs } from '@/components/AgentChatView/useOverlayState'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
+import { requestTerminalRun } from '@/lib/terminal-run'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 
@@ -193,6 +194,29 @@ describe('useOverlayState app events', () => {
 
     expect(result.current.workspacePanel).toBe('files')
     expect(result.current.terminalOpenKey).toBe(1)
+  })
+
+  // A shell code block's Run in terminal button.
+  it('opens the Review panel and hands a command to the dock, a new key each time', () => {
+    const { result } = renderOverlay()
+
+    act(() => { requestTerminalRun('echo hi\n') })
+    expect(result.current.workspacePanel).toBe('files')
+    expect(result.current.terminalRunRequest).toEqual({ command: 'echo hi', key: 1 })
+
+    act(() => { requestTerminalRun('echo hi') })
+    expect(result.current.terminalRunRequest).toEqual({ command: 'echo hi', key: 2 })
+  })
+
+  it('takes no command without a workspace, or once unmounted', () => {
+    const none = renderOverlay({ workspace: null })
+    expect(requestTerminalRun('ls')).toBe(false)
+    expect(none.result.current.terminalRunRequest).toBeNull()
+    none.unmount()
+
+    const { unmount } = renderOverlay()
+    unmount()
+    expect(requestTerminalRun('ls')).toBe(false)
   })
 
   // The transcript's plan review card opens the plan through this event.

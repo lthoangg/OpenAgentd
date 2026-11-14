@@ -1,13 +1,43 @@
-import { CopyButton } from './ToolCall/CopyButton'
+import { TerminalSquare } from 'lucide-react'
+
+import { isShellLanguage, requestTerminalRun, useTerminalRunAvailable } from '@/lib/terminal-run'
+import { COPY_BUTTON_CLASS, CopyButton } from './ToolCall/CopyButton'
 
 interface CodeBlockProps {
   children: React.ReactNode
   language?: string
   rawText: string
   noHeader?: boolean
+  /** False while the block is still being written: a half command must not run. */
+  runnable?: boolean
 }
 
-export function CodeBlock({ children, language, rawText, noHeader = false }: CodeBlockProps) {
+const RUN_LABEL = 'Run in terminal'
+
+/**
+ * Runs a shell block's command in the workspace's terminal (the Review dock
+ * shows it). Only where a terminal exists, so it renders nothing otherwise.
+ */
+function RunInTerminalButton({ command }: { command: string }) {
+  const available = useTerminalRunAvailable()
+  if (!available || command.trim() === '') return null
+  return (
+    <button
+      type="button"
+      aria-label={RUN_LABEL}
+      title={RUN_LABEL}
+      onClick={(event) => {
+        event.stopPropagation()
+        requestTerminalRun(command)
+      }}
+      className={COPY_BUTTON_CLASS}
+    >
+      <TerminalSquare size={12} aria-hidden />
+    </button>
+  )
+}
+
+export function CodeBlock({ children, language, rawText, noHeader = false, runnable = true }: CodeBlockProps) {
   if (noHeader) {
     return (
       <pre className="overflow-auto px-3 py-2.5 font-mono text-code leading-relaxed text-(--color-text)">
@@ -27,7 +57,10 @@ export function CodeBlock({ children, language, rawText, noHeader = false }: Cod
         <span className="font-mono label-caps text-(--color-text-muted)">
           {language || 'text'}
         </span>
-        <CopyButton label="Copy code" text={rawText} />
+        <span className="flex shrink-0 items-center gap-0.5">
+          {runnable && isShellLanguage(language) && <RunInTerminalButton command={rawText} />}
+          <CopyButton label="Copy code" text={rawText} />
+        </span>
       </div>
       <pre className="overflow-auto px-3 py-2.5 font-mono text-code leading-relaxed text-(--color-text)">
         <code>{children}</code>

@@ -9,6 +9,8 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { DOCK_ACTION_BUTTON_CLASS, DOCK_ROW_ACTION_CLASS, DOCK_TAB_CLOSE_CLASS } from '@/components/WorkspacePanel/dock-tab-styles'
+import { rowChipClass } from '@/components/ui/list-row'
+import { MENU_ITEM_CLASS } from '@/components/ui/menu-styles'
 import { segmentedItemClass, segmentedTrackClass } from '@/components/ui/segmented-control'
 
 const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.url)), 'utf8')
@@ -46,7 +48,7 @@ describe('coarse-pointer touch targets', () => {
     const tabs = readFileSync(fileURLToPath(new URL('../../components/ui/tabs.tsx', import.meta.url)), 'utf8')
     // No padding ring or border around the triggers, so the list is one trigger tall.
     expect(tabs).toMatch(/default: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-9'/)
-    expect(tabs).toMatch(/sm: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-7'/)
+    expect(tabs).toMatch(/sm: '[^']*pointer-coarse:data-\[orientation=horizontal\]:h-7[ ']/)
   })
 
   it('keeps sm segmented controls and toolbar icon actions inside the 32px toolbar on touch', () => {
@@ -102,5 +104,82 @@ describe('coarse-pointer touch targets', () => {
     expect(composer).toMatch(/sendSlotClass =\s*'[^']*pointer-coarse:size-9'/)
     expect(composer).toMatch(/DELIVERY_TRIGGER_CLASS =[\s\S]*?pointer-coarse:h-9 \[/)
     expect(composer).not.toMatch(/phone:(size|h)-11/)
+  })
+})
+
+/**
+ * The app's own size rule (DESIGN.md → Phone scale): a phone's rows and
+ * controls read ``--phone-control`` (40px, 44px in the Android app), a
+ * tablet's are 36px, and a mouse's row actions 24px. These controls measured
+ * under it; each now takes its height from the token, not a fixed number.
+ */
+describe('controls that measured under the size rule', () => {
+  const src = (rel: string) => readFileSync(fileURLToPath(new URL(`../../components/${rel}`, import.meta.url)), 'utf8')
+
+  it('sizes a menu row from the phone step on a phone, so a sheet row is never the tablet 36px', () => {
+    // ``cn`` does not merge: the phone height must sit in the shared class,
+    // after the coarse one, or the + menu, model and folder rows stay 36px.
+    expect(MENU_ITEM_CLASS).toMatch(/pointer-coarse:min-h-9 phone:min-h-\(--phone-control\)/)
+  })
+
+  it('sizes default segments and the row chip from the phone step on a phone', () => {
+    expect(segmentedItemClass({ active: false })).toContain('phone:min-h-(--phone-control)')
+    expect(rowChipClass()).toMatch(/phone:h-\(--phone-control\) phone:min-w-\(--phone-control\)/)
+  })
+
+  it('gives the row chip a 24px target with a mouse without changing the 20px pill', () => {
+    expect(rowChipClass()).toMatch(/(^|\s)h-5(\s|$)/)
+    expect(rowChipClass()).toContain('pointer-fine:before:-inset-y-0.5')
+  })
+
+  it('sizes the phone search fields, View options and the filter fields from the token', () => {
+    const cases: Array<[string, RegExp]> = [
+      ['Sidebar/SessionsPage.tsx', /onClick=\{onSearch\}\s*className="flex h-\(--phone-control\) /],
+      ['ui/search-bar.tsx', /filled\s*\? 'flex h-\(--phone-control\) /],
+      ['ui/search-bar.tsx', /md:min-h-8 pointer-coarse:min-h-9 phone:min-h-\(--phone-control\)'/],
+      ['Sidebar/SidebarSectionHeader.tsx', /ACTION_CLASS =\s*'[^']*pointer-coarse:size-9 phone:size-\(--phone-control\)'/],
+      ['NewSession/WorkspacePicker.tsx', /aria-label="Filter folders"[\s\S]{0,600}pointer-coarse:h-9 phone:h-\(--phone-control\)/],
+      ['composer/RunPicker.tsx', /'h-7 text-sm pointer-coarse:h-9'/],
+    ]
+    for (const [file, pattern] of cases) expect([file, pattern.test(src(file))]).toEqual([file, true])
+  })
+
+  it('grows the Git view tabs and the review tab strip to the phone step, and their bars with them', () => {
+    expect(src('ui/tabs.tsx')).toMatch(/sm: '[^']*phone:data-\[orientation=horizontal\]:h-\(--phone-control\)'/)
+    expect(src('WorkspacePanel/GitViewToolbar.tsx')).toMatch(/h-\(--spacing-toolbar\)[^"]* phone:h-auto phone:py-1"/)
+    expect(css).toMatch(/--phone-control: var\(--oa-phone-control\);\s*\/\*[^*]*\*\/\s*--spacing-tab-bar: calc\(var\(--phone-control\) \+ 0\.5625rem\);/)
+  })
+
+  it('makes the status bar 37px on touch so its items are 36px, and carries the server to the bar edges', () => {
+    expect(css).toMatch(/--spacing-tab-bar:\s*2\.8125rem;[^}]*--spacing-status-bar:\s*2\.3125rem;/)
+    const footer = src('AppFooter.tsx')
+    expect(footer).toMatch(/const ITEM =\s*'flex h-6 [^']*pointer-coarse:h-9'/)
+    expect(footer).toMatch(/const ICON_ITEM =\s*'flex size-6 [^']*pointer-coarse:size-9'/)
+    expect(src('HealthDot.tsx')).toMatch(/'relative flex h-6 [^']*before:absolute before:inset-x-0 before:-inset-y-0\.5 [^']*pointer-coarse:h-9'/)
+  })
+
+  it('spreads the chat title over the whole title block, and a server row over its full height', () => {
+    expect(src('AgentChatView/AgentChatHeader.tsx')).toMatch(/aria-label="Session info"[\s\S]{0,900}before:absolute before:inset-0 before:-bottom-px/)
+    expect(src('phone/PhoneNavBar.tsx')).toMatch(/data-phone-nav-title="" className=\{cn\('relative flex min-w-0 flex-col justify-center self-stretch'/)
+    expect(src('AppBackendPanel.tsx')).toMatch(/onOpen && '-my-2\.5 cursor-pointer self-stretch py-2\.5 md:-my-3\.5 md:py-3\.5'/)
+  })
+
+  it('keeps Edit prompt and Copy prompt from sharing a target on a phone', () => {
+    const bubble = src('AgentView/UserBubble.tsx')
+    expect(bubble).toContain("EDIT_HIT_CLASS = 'phone:before:-left-4! phone:before:right-0!'")
+    expect(bubble).toContain("COPY_HIT_CLASS = 'phone:before:left-0! phone:before:-right-4!'")
+  })
+
+  it('keeps a sheet bar button over the grabber strip, which crossed the top of its target', () => {
+    const overlay = src('ui/app-overlay.tsx')
+    expect(overlay).toMatch(/data-slot="sheet-grabber"\s*className="absolute inset-x-0 top-0 z-10 /)
+    expect(overlay).toMatch(/SHEET_BAR_BUTTON_CLASS = 'relative z-20 touch-hit h-\(--phone-control\) min-w-\(--phone-control\) /)
+  })
+
+  it('names the Settings sections on every touch screen, which has no tooltip to show them', () => {
+    // The icon rail needs a mouse (or no pointer at all); the labelled list takes every touch screen.
+    expect(css).toMatch(/@custom-variant settings-rail \{\s*@media \(max-width: 899px\) and \(pointer: fine\), \(max-width: 899px\) and \(pointer: none\) \{/)
+    expect(css).toMatch(/@custom-variant settings-list \{\s*@media \(min-width: 900px\), \(pointer: coarse\) \{/)
+    expect(src('SettingsModal.tsx')).not.toMatch(/max-\[899px\]|min-\[900px\]/)
   })
 })

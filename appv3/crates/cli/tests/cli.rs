@@ -115,6 +115,45 @@ fn cloud_approve_refuses_without_a_terminal_or_under_an_agent() {
     assert!(stderr(&o).contains("An agent cannot approve devices"), "{}", stderr(&o));
 }
 
+/// A cloud that hands out one device code and denies it on the first poll.
+fn denying_cloud() -> String {
+    use axum::routing::post;
+    use axum::{Form, Json};
+    use std::collections::HashMap;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        rt.block_on(async move {
+            let code = |Form(form): Form<HashMap<String, String>>| async move {
+                let auth: [u8; 32] = openagentd_cloud::encoding::from_b64_array(&form["auth_pub"]).unwrap();
+                Json(serde_json::json!({
+                    "device_code": "dc", "user_code": "BCDF-GHJK", "device_id": openagentd_cloud::keys::device_id(&auth),
+                    "expires_in": 600, "interval": 1
+                }))
+            };
+            let token = || async { (axum::http::StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "access_denied" }))) };
+            let app = axum::Router::new().route("/v1/device/code", post(code)).route("/v1/device/token", post(token));
+            axum::serve(tokio::net::TcpListener::from_std(listener).unwrap(), app).await.unwrap();
+        });
+    });
+    base
+}
+
+#[test]
+fn cloud_login_without_a_terminal_offers_only_the_browser_way() {
+    let sb = Sandbox::new();
+    let cloud = denying_cloud();
+    let o = sb.run_with(&["cloud", "login"], &[("OPENAGENTD_CLOUD_API", &cloud), ("OPENAGENTD_CLOUD_ACCOUNT", "https://account.openagentd.dev")]);
+    let out = stdout(&o);
+    assert!(out.contains("https://account.openagentd.dev/device?code=BCDF-GHJK"), "{out}");
+    // Nobody could type the phone's number back, so no scan code is drawn.
+    assert!(!out.contains("Scan with OpenAgentd on your phone") && !out.contains('▀'), "{out}");
+    assert!(out.contains("denied"), "{out}");
+    assert_eq!(code(&o), 1);
+}
+
 #[test]
 fn an_unknown_mode_is_refused() {
     let o = Sandbox::new().run_with(&["doctor"], &[("OPENAGENTD_ENV", "staging")]);
@@ -190,6 +229,22 @@ fn public_needs_an_access_key_and_conflicts_with_host() {
     assert!(stderr(&o).contains("cannot be used with"), "{}", stderr(&o));
 }
 
+/// `server start` used to print "Stop: agentd server stop" (and, with
+/// `--qr`, the pairing code) and exit 0 while the server it spawned died on
+/// a port something else already had.
+#[test]
+fn start_says_why_the_server_did_not_start() {
+    let sb = Sandbox::new();
+    let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = taken.local_addr().unwrap().port().to_string();
+    let o = sb.run(&["server", "start", "--port", &port, "--qr"]);
+    assert_eq!(code(&o), 1, "{}{}", stdout(&o), stderr(&o));
+    assert!(stderr(&o).contains(&format!("port {port} is already in use")), "{}", stderr(&o));
+    let out = stdout(&o);
+    assert!(!out.contains("agentd server stop") && !out.contains("--qr needs"), "nothing started, so nothing to stop or scan:\n{out}");
+    assert!(!sb.path("state/openagentd.pid").exists(), "no daemon may start");
+}
+
 fn provider_line(out: &str, id: &str) -> String {
     out.lines().find(|l| l.trim_start().starts_with(id)).unwrap_or_else(|| panic!("no {id} line in:\n{out}")).to_string()
 }
@@ -228,7 +283,7 @@ fn doctor_reads_provider_keys_from_the_config_env() {
     let out = stdout(&o);
     assert_eq!(code(&o), 0, "{out}");
     assert!(out.contains("API key: OPENAI_API_KEY"), "{out}");
-    assert!(out.contains("Lead agent key is set: OPENAI_API_KEY"), "{out}");
+    assert!(out.contains("Main agent key is set: OPENAI_API_KEY"), "{out}");
 }
 
 #[test]
@@ -241,7 +296,7 @@ fn doctor_fails_an_oauth_lead_provider_without_a_login() {
     sb.write("cache/codex_oauth.json", "{}");
     let o = sb.run(&["doctor"]);
     assert_eq!(code(&o), 0, "{}", stdout(&o));
-    assert!(stdout(&o).contains("Lead agent provider 'codex' is logged in"));
+    assert!(stdout(&o).contains("Main agent provider 'codex' is logged in"));
 }
 
 #[test]

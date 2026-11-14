@@ -158,6 +158,9 @@ pub fn describe_servers(statuses: &[ServerStatus], plugins: &[String]) -> String
     format!("Servers: {}. Search with a server and an empty query to list its tools.", names.join(", "))
 }
 
+/// The fields of this tool itself; anything else in a call is not its own.
+const OWN_FIELDS: [&str; 7] = ["action", "query", "server", "tool", "arguments", "config", "limit"];
+
 /// The model-facing definition, with `servers` (see [`describe_servers`]).
 pub fn definition(servers: &str) -> Value {
     json!({"type": "function", "function": {
@@ -314,7 +317,7 @@ impl McpHubTool {
         Ok(ToolOutput::Text(out))
     }
 
-    async fn call(&self, ctx: &ToolContext, server: &str, tool: &str, arguments: Option<&Value>) -> ToolResult {
+    async fn call(&self, ctx: &ToolContext, server: &str, tool: &str, call: &Value) -> ToolResult {
         let plugin_tools = self.plugin_tools();
         let plugins = plugin_names(&plugin_tools);
         let from_plugin = plugins.iter().any(|p| p == server);
@@ -336,8 +339,29 @@ impl McpHubTool {
         if plan && !t.read_only() {
             return Err(ToolError::Execution(format!("{} '{server}.{}' is not marked read-only, so it is unavailable in Plan mode.", t.kind(), t.tool())));
         }
-        let args = Value::Object(parse_arguments(arguments)?);
         let schema = t.input_schema();
+        let mut arguments = parse_arguments(call.get("arguments"))?;
+        // A model sometimes writes one of the tool's arguments beside
+        // `arguments`. Dropped silently, the tool ran without it; it is
+        // taken when the tool declares it, and named otherwise.
+        let declared = schema.get("properties").and_then(Value::as_object);
+        let mut stray: Vec<&str> = vec![];
+        for (key, value) in call.as_object().into_iter().flatten().filter(|(k, _)| !OWN_FIELDS.contains(&k.as_str())) {
+            if declared.is_some_and(|p| p.contains_key(key)) && !arguments.contains_key(key) {
+                arguments.insert(key.clone(), value.clone());
+            } else {
+                stray.push(key);
+            }
+        }
+        if !stray.is_empty() {
+            let names = stray.iter().map(|k| format!("'{k}'")).collect::<Vec<_>>().join(", ");
+            let verb = if stray.len() == 1 { "is not a field" } else { "are not fields" };
+            return Err(ToolError::Argument(format!(
+                "{names} {verb} of the mcp tool. Put the arguments of '{server}.{}' inside `arguments`. Its input_schema: {schema}",
+                t.tool()
+            )));
+        }
+        let args = Value::Object(arguments);
         // Every problem at once, before the server or plugin sees the call.
         let problems = appv3_tools::arg_check::problems(&schema, &args);
         if !problems.is_empty() {
@@ -390,7 +414,7 @@ impl Tool for McpHubTool {
                 let (Some(server), Some(tool)) = (server, tool) else {
                     return Err(ToolError::Argument("action='call' needs server and tool; search first to find them.".into()));
                 };
-                self.call(ctx, &server, &tool, args.get("arguments")).await
+                self.call(ctx, &server, &tool, &args).await
             }
             "servers" => Ok(ToolOutput::Text(self.servers())),
             "save" | "remove" => {
@@ -517,7 +541,7 @@ mod tests {
         let runner = Runner::new(server, &cfg.servers["s"], RunnerState::Ready, server.split_once('/').map(|(plugin, _)| plugin));
         let weak = Arc::downgrade(&(runner.clone() as Arc<dyn SessionProvider>));
         let tools: Vec<Arc<McpTool>> = defs.into_iter().map(|d| Arc::new(McpTool::new(server, d, weak.clone()))).collect();
-        runner.details.lock().unwrap().tool_names = tools.iter().map(|t| t.name.clone()).collect();
+        runner.details.lock().unwrap().tool_names = crate::model_tool_names(&tools);
         *runner.tools.lock().unwrap() = tools;
         m.runners.write().unwrap().insert(server.into(), runner);
         m
@@ -575,6 +599,35 @@ mod tests {
     /// The hub over `manager`, with test-kit's tools as the plugins' tools.
     fn hub_with_test_kit(manager: Arc<McpManager>) -> McpHubTool {
         McpHubTool { manager, plugin_tools: test_kit }
+    }
+
+    /// `_meta.ui.visibility` says who may call a tool. The agent is never
+    /// offered a tool meant for the app's panel, and the panel cannot call a
+    /// tool meant for the agent alone.
+    #[tokio::test]
+    async fn app_only_tools_are_hidden_from_the_agent_and_kept_for_the_app() {
+        let m = manager_with(
+            "canvas",
+            vec![
+                json!({"name": "exec", "description": "Run code on the canvas"}),
+                json!({"name": "save_checkpoint", "description": "Save the canvas", "_meta": {"ui": {"visibility": ["app"]}}}),
+                json!({"name": "plan", "description": "Plan a drawing", "_meta": {"ui": {"visibility": ["model"]}}}),
+                json!({"name": "both", "description": "Refresh the canvas", "_meta": {"ui": {"visibility": ["model", "app"]}}}),
+            ],
+        );
+        let agent_tools = ["canvas_exec", "canvas_plan", "canvas_both"];
+        assert_eq!(m.tools_for_server("canvas").unwrap().iter().map(|t| t.name().to_string()).collect::<Vec<_>>(), agent_tools);
+        assert_eq!(m.ready_tools(None).iter().map(|t| t.name.clone()).collect::<Vec<_>>(), agent_tools);
+        assert_eq!(m.get_status("canvas").unwrap().tool_names, agent_tools);
+
+        let hub = hub_with_test_kit(m.clone());
+        let listed = run(&hub, false, json!({"action": "search", "server": "canvas"})).await.unwrap();
+        assert!(!listed.contains("save_checkpoint"), "{listed}");
+        let refused = run(&hub, false, json!({"action": "call", "server": "canvas", "tool": "save_checkpoint", "arguments": {}})).await.unwrap_err();
+        assert!(refused.contains("save_checkpoint") && !refused.contains("not connected"), "{refused}");
+
+        let runner = m.runners.read().unwrap().get("canvas").cloned().unwrap();
+        assert_eq!(["exec", "save_checkpoint", "plan", "both", "nope"].map(|t| runner.app_may_call(t)), [true, true, false, true, false]);
     }
 
     /// A call or search refused because the server waits on sign-in names it
@@ -666,6 +719,27 @@ mod tests {
             r#"ran {"since":"v1","limit":3,"format":null}"#,
             "a null optional argument passes"
         );
+    }
+
+    /// A model sometimes writes one of the tool's arguments beside
+    /// `arguments`. Dropped silently, an "edit this one" call became a
+    /// "make a new one" call.
+    #[tokio::test]
+    async fn call_takes_a_tools_argument_written_beside_arguments() {
+        let hub = McpHubTool { manager: Arc::new(McpManager::default()), plugin_tools: strict_kit };
+        let call = |extra: Value| {
+            let mut args = json!({"action": "call", "server": "test-kit", "tool": "notes", "arguments": {"since": "v1"}});
+            args.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            args
+        };
+        assert_eq!(run(&hub, false, call(json!({"format": "md"}))).await.unwrap(), r#"ran {"since":"v1","format":"md"}"#);
+        // The tool's `limit` is not the search `limit` of this tool.
+        assert_eq!(run(&hub, false, call(json!({"limit": 3}))).await.unwrap(), r#"ran {"since":"v1"}"#);
+
+        let e = run(&hub, false, call(json!({"colour": "red"}))).await.unwrap_err();
+        assert!(e.contains("'colour' is not a field of the mcp tool. Put the arguments of 'test-kit.notes' inside `arguments`. Its input_schema: {"), "{e}");
+        let e = run(&hub, false, call(json!({"since": "v2"}))).await.unwrap_err();
+        assert!(e.contains("'since' is not a field of the mcp tool."), "given twice, it is not guessed: {e}");
     }
 
     #[tokio::test]

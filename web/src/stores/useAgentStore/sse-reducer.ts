@@ -171,6 +171,30 @@ function stampOpenTextBlocks(
   })
 }
 
+/**
+ * Commit a stream's live blocks to its transcript, as the end of its turn
+ * does. A run that failed commits them ahead of its error block, so the
+ * error comes after what led to it (the retries, a half-written answer)
+ * and is the block the turn ends on.
+ */
+function commitLiveBlocks(draft: AgentStore, stream: AgentStore['agentStreams'][string], completedAtMs: number) {
+  if (stream.currentBlocks.length === 0) return
+  const completedAt = new Date(completedAtMs)
+  const revertTime = draft._leadRevertTime
+  const stamped = stampOpenTextBlocks(stream.currentBlocks, completedAtMs, stream._turnStartedAt).map((b) => ({
+    ...b,
+    timestamp: b.timestamp ?? completedAt,
+  }))
+  // Guard: if a /undo ran while the turn was still in flight, drop
+  // any blocks at or after the revert boundary so they don't
+  // re-surface as ghost messages when currentBlocks are finalised.
+  const toCommit = revertTime === null
+    ? stamped
+    : stamped.filter((b) => (b.timestamp?.getTime() ?? 0) < revertTime)
+  appendLocalBlocks(stream, toCommit)
+  stream.currentBlocks = []
+}
+
 function markTurnStarted(draft: AgentStore, agent: string, startedAt = Date.now()) {
   ensureAgent(draft, agent)
   const stream = draft.agentStreams[agent]
@@ -808,6 +832,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             const errTitle = (meta?.title as string) ?? (d.title as string) ?? undefined
             const errCode = (meta?.code as string) ?? (d.code as string) ?? undefined
             const errCategory = (meta?.category as AgentError['category']) ?? (d.category as AgentError['category']) ?? undefined
+            const errDetails = (meta?.details as string) ?? (d.details as string) ?? undefined
 
             draft.agentStreams[agent].status = 'error'
             draft.agentStreams[agent].lastError = lastErr
@@ -848,6 +873,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                   (b) => b.type === 'provider_status' && b.extra?.status === 'error' && (b.extra?.message === lastErr || b.content === lastErr)
                 )
                 if (!alreadyHas) {
+                  // The agent that failed is done; a lead told of a
+                  // member's failure may still be mid-turn.
+                  if (targetAgent === agent) commitLiveBlocks(draft, stream, Date.now())
                   const errorBlock: ContentBlock = {
                     id: generateBlockId(),
                     type: 'provider_status',
@@ -858,6 +886,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                       title: errTitle || 'Model error',
                       message: lastErr,
                       code: errCode,
+                      details: errDetails,
                       category: 'provider',
                     },
                     timestamp: new Date(),
@@ -923,24 +952,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           // server never made. Real endings (answer, dismiss, supersede, stop)
           // all broadcast their own resolution.
           const completedAtMs = Date.now()
-          const completedAt = new Date(completedAtMs)
-          const revertTime = draft._leadRevertTime
           Object.keys(draft.agentStreams).forEach((name) => {
             const stream = draft.agentStreams[name]
-            if (stream.currentBlocks.length > 0) {
-              const stamped = stampOpenTextBlocks(stream.currentBlocks, completedAtMs, stream._turnStartedAt).map((b) => ({
-                ...b,
-                timestamp: b.timestamp ?? completedAt,
-              }))
-              // Guard: if a /undo ran while the turn was still in flight, drop
-              // any blocks at or after the revert boundary so they don't
-              // re-surface as ghost messages when currentBlocks are finalised.
-              const toCommit = revertTime === null
-                ? stamped
-                : stamped.filter((b) => (b.timestamp?.getTime() ?? 0) < revertTime)
-              appendLocalBlocks(stream, toCommit)
-              stream.currentBlocks = []
-            }
+            commitLiveBlocks(draft, stream, completedAtMs)
             stream._turnStartedAt = null
             if (stream.status !== 'error' && stream.status !== 'offline') {
               stream.status = 'idle'
@@ -964,6 +978,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const code = d.code as string | undefined
         const category = d.category as AgentError['category'] | undefined
         const agent = d.agent as string | undefined
+        const details = d.details as string | undefined
 
         set((draft) => {
           draft.error = title || code || category || agent
@@ -995,6 +1010,8 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                 (b) => b.type === 'provider_status' && b.extra?.status === 'error' && (b.extra?.message === message || b.content === message)
               )
               if (!alreadyHas) {
+                // The turn is over: nothing more streams in ahead of the error.
+                commitLiveBlocks(draft, stream, Date.now())
                 const errorBlock: ContentBlock = {
                   id: generateBlockId(),
                   type: 'provider_status',
@@ -1005,6 +1022,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                     title: title || 'Model error',
                     message,
                     code,
+                    details,
                     category: 'provider',
                   },
                   timestamp: new Date(),

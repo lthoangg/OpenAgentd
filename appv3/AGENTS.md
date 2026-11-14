@@ -30,6 +30,13 @@ v2's and now differs where `REPORT.md` says.
   it (`agent/src/events.rs`; debug builds panic), and
   `web/src/__tests__/api/sse-contract.test.ts` checks the web unions. A new
   event needs the JSON entry, the Rust producer, and the web type/handler.
+  `app_guide` in `crates/agent/data/builtin_prompts.json` is the one place a
+  lead agent learns what the app does with a reply. The runtime appends it
+  (`RuntimeProtocolHook`); `agent/tests/runtime_protocol.rs` fails when
+  another prompt or tool description repeats it, and
+  `web/src/__tests__/api/app-guide-contract.test.tsx` renders each thing it
+  promises. After editing it, rewrite the request snapshot
+  (`agent/tests/request_snapshot.rs`).
 
 ## Modules
 

@@ -67,7 +67,7 @@ pub async fn resolve_agent_for_existing_session(pool: &DbPool, session_id: &str)
     let existing = db::get_session(pool, &sid).await?;
     let Some(existing) = existing.filter(|s| !s.workspace.is_empty()) else { return Err(ApiError::not_found("Session not found.")) };
     if existing.parent_session_id.is_some() {
-        return Err(ApiError::bad_request("Cannot run commands directly on a subagent session. Subagents are orchestrated exclusively by the lead agent."));
+        return Err(ApiError::bad_request("Cannot run commands directly on a subagent session. Subagents are orchestrated exclusively by the main agent."));
     }
     let ws = validate_workspace_or_422(&existing.workspace, true)?;
     require_started(&ws, Some(session_id)).await
@@ -83,7 +83,7 @@ pub async fn resolve_chat_agent(pool: &DbPool, session_id: Option<String>, works
         existed_id = Some(canon);
     }
     if existing.as_ref().map(|e| e.parent_session_id.is_some()).unwrap_or(false) {
-        return Err(ApiError::bad_request("Cannot chat directly with a subagent session. Subagents are orchestrated exclusively by the lead agent."));
+        return Err(ApiError::bad_request("Cannot chat directly with a subagent session. Subagents are orchestrated exclusively by the main agent."));
     }
     let (sid, ws) = match existing.as_ref().filter(|e| !e.workspace.is_empty()) {
         Some(e) => {
@@ -182,7 +182,17 @@ pub async fn persist_queued_user_message(pool: &DbPool, a: QueueArgs<'_>) -> Api
         e.insert("mention_context".into(), json!(true));
         db::save_message(pool, a.session_id, NewMessage { extra: Some(e), ..NewMessage::user(block.clone()) }).await?;
     }
-    tracing::info!("agent_chat_queued session_id={} message_id={} attachments={}", a.session_id, qid, metas.len());
+    // `state` and `stream_running` are what a client is shown; a message
+    // queued while they read idle is one sent to a session that looked finished.
+    tracing::info!(
+        "agent_chat_queued session_id={} message_id={} attachments={} state={} stream_running={} held={}",
+        a.session_id,
+        qid,
+        metas.len(),
+        a.agent.state(),
+        appv3_agent::store().is_running(a.session_id),
+        a.hold_until_turn_end
+    );
     Ok(qid)
 }
 

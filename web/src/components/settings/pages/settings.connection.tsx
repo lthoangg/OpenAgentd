@@ -38,6 +38,7 @@ function useDesktopComputers() {
         builtinStopped={builtinStopped}
         onStartBuiltin={start}
         cannotOpen={!canOpen}
+        onRenamed={reloadApp}
       />
     ) : null,
   }

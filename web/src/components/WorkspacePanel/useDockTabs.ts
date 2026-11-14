@@ -29,6 +29,7 @@ import {
   type DockView,
   type DockViewRequest,
   type PreviewTabRequest,
+  type TerminalRunRequest,
   REVIEW_TAB,
   attachmentTab,
   basename,
@@ -82,6 +83,9 @@ interface DockTabsOptions {
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
   terminalOpenKey: number
   handledTerminalOpenKeyRef?: React.RefObject<number | null>
+  /** Shell request to run a code block's command in a terminal. */
+  terminalRunRequest?: TerminalRunRequest | null
+  handledTerminalRunKeyRef?: React.RefObject<number>
   viewRequest: DockViewRequest | null
   handledViewRequestKeyRef?: React.RefObject<number>
   onActiveViewChange?: (view: DockView | null) => void
@@ -158,6 +162,8 @@ export function useDockTabs({
   onFileSelect,
   terminalOpenKey,
   handledTerminalOpenKeyRef,
+  terminalRunRequest,
+  handledTerminalRunKeyRef,
   viewRequest,
   handledViewRequestKeyRef,
   onActiveViewChange,
@@ -295,6 +301,7 @@ export function useDockTabs({
     const meta = useTerminalStore.getState().sessionsForContext(workspace).find((m) => m.id === id)
     const tab: DockTab = { id: terminalTabId(id), type: 'terminal', title: meta?.title ?? `Terminal ${id}`, termId: id }
     openTab(tab, pane ? { pane } : undefined)
+    return id
   }, [workspace, openTab])
 
   /**
@@ -325,6 +332,31 @@ export function useDockTabs({
     })
   }, [workspace, showOrOpenTerminal])
 
+  /**
+   * Run in terminal: the last shell sitting at its prompt comes to the front
+   * and takes the command; with none (no terminal, or each one busy with a
+   * dev server or a build) a new shell does. Never a busy one: the command
+   * would be typed into the program running there.
+   */
+  const runInTerminal = useCallback((command: string) => {
+    const run = () => {
+      const store = useTerminalStore.getState()
+      const metas = store.sessionsForContext(workspace)
+      const idle = [...metas].reverse().find((meta) => store.isIdleShell(meta.id))
+      if (idle) setState((current) => activateTab(syncTerminalTabs(current, metas, idle.id), terminalTabId(idle.id)))
+      useTerminalStore.getState().runCommand(idle?.id ?? openTerminal(), command)
+    }
+    // Right after a reload the shells are still being listed: wait for them.
+    const waiting = useTerminalStore.getState().waitForRestore(workspace)
+    if (!waiting) {
+      run()
+      return
+    }
+    void waiting.then(() => {
+      if (mountedWorkspaceRef.current === workspace) run()
+    })
+  }, [workspace, openTerminal])
+
   // ── Splitting ─────────────────────────────────────────────────────────────
   /** Split ``pane`` on ``side`` (with ``tabId`` moved in), if there is room. */
   const splitPane = useCallback((pane: PaneId, side: SplitSide, tabId?: string) => {
@@ -338,6 +370,7 @@ export function useDockTabs({
 
   // ── Shell requests ────────────────────────────────────────────────────────
   useKeyedRequest({ key: terminalOpenKey }, handledTerminalOpenKeyRef, focusOrOpenTerminal)
+  useKeyedRequest(terminalRunRequest, handledTerminalRunKeyRef, (request) => runInTerminal(request.command))
   useKeyedRequest(viewRequest, handledViewRequestKeyRef, (request) => {
     if (chatWorkspace && request.view === 'review') return
     openTab(viewTab(request.view))

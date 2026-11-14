@@ -24,7 +24,7 @@ const todo = (id: string, status: TodoItem['status']): TodoItem => ({ task_id: i
 const OPEN = [todo('1', 'completed'), todo('2', 'in_progress'), todo('3', 'pending')]
 const DONE = [todo('1', 'completed'), todo('2', 'cancelled')]
 
-const SESSION: GoalSessionState = { running: true, waitingForUser: false, planMode: false, queuedMessages: 0, subagentsRunning: 0 }
+const SESSION: GoalSessionState = { running: true, waitingForUser: false, planMode: false, queuedMessages: 0, sessionsAwaited: 0 }
 
 describe('tasksFinished', () => {
   it('needs at least one task, all of them completed or cancelled', () => {

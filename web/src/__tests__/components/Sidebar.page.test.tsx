@@ -93,7 +93,7 @@ mock.module('framer-motion', () => ({
 }))
 
 mock.module('@/components/ThemeToggle', () => ({
-  ThemeToggle: () => <button aria-label="Theme: System. Click to cycle." />,
+  ThemeToggle: () => <button aria-label="Theme: System. Switch to Light." />,
 }))
 mock.module('@/components/HealthDot', () => ({
   HealthDot: ({ labeled = false }: { labeled?: boolean }) => (
@@ -390,7 +390,8 @@ describe('Sidebar page mode: search', () => {
     const { view } = await renderPage()
     const field = screen.getByRole('button', { name: 'Search' })
     expect(field.className).toContain('bg-(--bg-key)')
-    expect(field.className).toContain('h-9')
+    // The phone's control step, like the real field it opens.
+    expect(field.className).toContain('h-(--phone-control)')
 
     fireEvent.click(field)
 
@@ -454,7 +455,7 @@ describe('Sidebar page mode: bottom toolbar', () => {
       const toolbar = view.container.querySelector('[data-sessions-page-toolbar]') as HTMLElement
       const pill = within(toolbar).getByRole('toolbar', { name: 'Sessions' })
       const names = within(pill).getAllByRole('button').map((button) => button.getAttribute('aria-label'))
-      expect(names).toEqual(['Settings', 'Scheduled', 'Usage', 'Theme: System. Tap for Light.'])
+      expect(names).toEqual(['Settings', 'Scheduled', 'Usage', 'Theme: System. Switch to Light.'])
       // Icons only: actions, not tabs, so no captions.
       expect(pill.textContent).toBe('')
       expect(toolbar.className).toContain('absolute')
@@ -488,9 +489,9 @@ describe('Sidebar page mode: bottom toolbar', () => {
       const toolbar = view.container.querySelector('[data-sessions-page-toolbar]') as HTMLElement
       const themeButton = () => within(toolbar).getByRole('button', { name: /^Theme:/ })
 
-      expect(themeButton().getAttribute('aria-label')).toBe('Theme: System. Tap for Light.')
+      expect(themeButton().getAttribute('aria-label')).toBe('Theme: System. Switch to Light.')
       expect(themeButton().getAttribute('title')).toBe('Theme: System')
-      for (const [next, label] of [['Light', 'Theme: Light. Tap for Dark.'], ['Dark', 'Theme: Dark. Tap for System.'], ['System', 'Theme: System. Tap for Light.']]) {
+      for (const [next, label] of [['Light', 'Theme: Light. Switch to Dark.'], ['Dark', 'Theme: Dark. Switch to System.'], ['System', 'Theme: System. Switch to Light.']]) {
         fireEvent.click(themeButton())
         await waitFor(() => expect(themeButton().getAttribute('title')).toBe(`Theme: ${next}`))
         expect(themeButton().getAttribute('aria-label')).toBe(label)

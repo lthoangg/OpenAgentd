@@ -132,7 +132,33 @@ pub fn tunnel_url(base_url: &str, preview_id: &str, port: u16) -> Result<String,
     Ok(url.to_string())
 }
 
-fn status_error(status: u16) -> String {
+/// What a relay tunnels to. It only chooses the words of an error: a
+/// computer of the account is reached through the app's link to it, so
+/// "check the access key" would send the person the wrong way.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Via {
+    /// A server by address, with its access key.
+    #[default]
+    Server,
+    /// A computer of the account, through its loopback bridge and the
+    /// bridge's key.
+    Account,
+}
+
+const ACCOUNT_NO_LINK: &str =
+    "This app has no open link to that computer. Open the computer again from Servers, then retry.";
+
+fn status_error(status: u16, via: Via) -> String {
+    if via == Via::Account {
+        return match status {
+            401 => "This app's link to the computer started again (401). Open the computer again from Servers, then retry.".to_string(),
+            404 => "The computer has no such preview, or is too old to share previews with this device (404). Update OpenAgentd on that computer, then retry.".to_string(),
+            502 | 503 => format!(
+                "That computer cannot be reached through your account right now ({status}). Check that it is on and signed in, then retry."
+            ),
+            _ => format!("The computer could not open the preview ({status})."),
+        };
+    }
     match status {
         401 | 403 => format!(
             "The server refused the preview ({status}). Previews on this device need the server to have an access key, and this app to have the same key."
@@ -145,7 +171,12 @@ fn status_error(status: u16) -> String {
 /// One WebSocket to the tunnel route, over the shell's own HTTP client (and
 /// so its TLS roots). The client must speak HTTP/1.1 only: an upgrade
 /// cannot happen on HTTP/2.
-async fn open_tunnel(client: &reqwest::Client, url: &str, key: &str) -> Result<Tunnel, String> {
+async fn open_tunnel(
+    client: &reqwest::Client,
+    url: &str,
+    key: &str,
+    via: Via,
+) -> Result<Tunnel, String> {
     let ws_key = generate_key();
     let resp = client
         .get(url)
@@ -156,15 +187,18 @@ async fn open_tunnel(client: &reqwest::Client, url: &str, key: &str) -> Result<T
         .bearer_auth(key)
         .send()
         .await
-        .map_err(|e| {
-            format!(
+        .map_err(|e| match via {
+            Via::Server => format!(
                 "Could not reach the server for the preview: {}",
                 e.without_url()
-            )
+            ),
+            Via::Account => {
+                "This app's link to the computer is closed. Open the computer again from Servers, then retry.".to_string()
+            }
         })?;
     let status = resp.status().as_u16();
     if status != 101 {
-        return Err(status_error(status));
+        return Err(status_error(status, via));
     }
     let expected = derive_accept_key(ws_key.as_bytes());
     if resp
@@ -194,6 +228,70 @@ async fn bind(preferred: u16) -> Result<TcpListener, String> {
     TcpListener::bind(("127.0.0.1", 0))
         .await
         .map_err(|e| format!("Could not start the preview relay: {e}"))
+}
+
+/// In the page a relay serves when it cannot tunnel a connection; the
+/// Preview tab knows the page by the message it posts.
+pub const RELAY_ERROR_MARKER: &str = r#"<meta name="openagentd-preview" content="relay-error">"#;
+/// How long a refused connection may take to send its request.
+const REFUSE_READ: Duration = Duration::from_secs(2);
+const REFUSE_REQUEST_MAX: usize = 64 * 1024;
+
+fn escape_html(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// The page shown in the frame when a connection cannot be tunnelled. It
+/// posts `reason` to the Preview tab (the same message shape the preview's
+/// own script uses), which shows it with Retry.
+fn error_page(reason: &str) -> String {
+    let message = serde_json::json!({
+        "ns": "openagentd-preview",
+        "v": 1,
+        "type": "relay-error",
+        "message": reason,
+    })
+    .to_string()
+    // Inside <script>: no tag can end the block, no comment can open.
+    .replace('<', "\\u003c")
+    .replace('>', "\\u003e")
+    .replace('&', "\\u0026");
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\">{RELAY_ERROR_MARKER}<title>Preview unavailable</title>\
+<style>:root{{color-scheme:light dark}}body{{font:14px/1.5 system-ui,sans-serif;color:#6e604f;display:grid;place-items:center;height:100vh;margin:0;padding:0 24px;background:#faf6ec}}\
+@media (prefers-color-scheme:dark){{body{{color:#b8a47e;background:#1a1714}}}}</style></head>\
+<body><p>{}</p><script>try{{parent.postMessage({message},'*')}}catch(e){{}}</script></body></html>",
+        escape_html(reason)
+    )
+}
+
+/// Answer a browser connection the relay cannot tunnel with a page that
+/// says why. A dropped connection would leave the frame blank.
+async fn refuse(mut tcp: TcpStream, reason: &str) {
+    // Read the request first: closing with it unread resets the connection,
+    // and the browser may then never see the answer.
+    let mut seen = Vec::new();
+    let mut buf = [0u8; 4096];
+    let _ = tokio::time::timeout(REFUSE_READ, async {
+        while seen.len() < REFUSE_REQUEST_MAX && !seen.windows(4).any(|w| w == b"\r\n\r\n") {
+            match tcp.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => seen.extend_from_slice(&buf[..n]),
+            }
+        }
+    })
+    .await;
+    let body = error_page(reason);
+    let head = format!(
+        "HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: {}\r\n\r\n",
+        body.len()
+    );
+    let _ = tcp.write_all(head.as_bytes()).await;
+    let _ = tcp.write_all(body.as_bytes()).await;
+    let _ = tcp.shutdown().await;
 }
 
 /// Copy one browser connection to and from its tunnel.
@@ -291,6 +389,7 @@ struct Upstream {
     client: reqwest::Client,
     url: String,
     key: String,
+    via: Via,
 }
 
 /// Accept browser connections until stopped or idle.
@@ -328,6 +427,10 @@ async fn serve(
                 };
                 if activity.open.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
                     activity.open.fetch_sub(1, Ordering::SeqCst);
+                    tokio::spawn(refuse(
+                        tcp,
+                        "The preview has too many connections open from this device. Close other tabs showing it, then retry.",
+                    ));
                     continue;
                 }
                 let guard = OpenGuard(activity.clone());
@@ -335,8 +438,9 @@ async fn serve(
                 let (upstream, stop) = (upstream.clone(), stop.clone());
                 tokio::spawn(async move {
                     let _guard = guard;
-                    if let Ok(tunnel) = open_tunnel(&upstream.client, &upstream.url, &upstream.key).await {
-                        pipe(tcp, tunnel, stop).await;
+                    match open_tunnel(&upstream.client, &upstream.url, &upstream.key, upstream.via).await {
+                        Ok(tunnel) => pipe(tcp, tunnel, stop).await,
+                        Err(reason) => refuse(tcp, &reason).await,
                     }
                 });
             }
@@ -395,12 +499,41 @@ impl RelayRegistry {
         preview_id: &str,
         preferred_port: u16,
     ) -> Result<RelayInfo, String> {
+        self.open_via(
+            Via::Server,
+            scope,
+            client,
+            base_url,
+            key,
+            preview_id,
+            preferred_port,
+        )
+        .await
+    }
+
+    /// [`RelayRegistry::open`] for a server (`base_url` and its access key)
+    /// or a computer of the account (its bridge's origin and key).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn open_via(
+        &self,
+        via: Via,
+        scope: &str,
+        client: &reqwest::Client,
+        base_url: &str,
+        key: &str,
+        preview_id: &str,
+        preferred_port: u16,
+    ) -> Result<RelayInfo, String> {
         if !is_preview_id(preview_id) {
             return Err("invalid preview id".to_string());
         }
         let key = key.trim();
         if key.is_empty() {
-            return Err("Previews on this device need this server's access key.".to_string());
+            return Err(match via {
+                Via::Server => "Previews on this device need this server's access key.",
+                Via::Account => ACCOUNT_NO_LINK,
+            }
+            .to_string());
         }
         let slot = (scope.to_string(), preview_id.to_string());
         let _turn = self.turn(&slot).await;
@@ -421,7 +554,7 @@ impl RelayRegistry {
             .map_err(|e| format!("Could not start the preview relay: {e}"))?
             .port();
         let url = tunnel_url(base_url, preview_id, port)?;
-        let mut probe = open_tunnel(client, &url, key).await?;
+        let mut probe = open_tunnel(client, &url, key, via).await?;
         let _ = probe.close(None).await;
 
         let info = RelayInfo {
@@ -434,6 +567,7 @@ impl RelayRegistry {
             client: client.clone(),
             url,
             key: key.to_string(),
+            via,
         });
         tokio::spawn(serve(
             listener,
@@ -767,6 +901,173 @@ mod tests {
             .await
             .unwrap_err()
             .contains("access key"));
+    }
+
+    /// A tunnel route that accepts until `refuse` holds a status code.
+    #[allow(clippy::result_large_err)]
+    async fn switchable_server() -> (u16, Arc<std::sync::atomic::AtomicU16>) {
+        use std::sync::atomic::AtomicU16;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let refuse = Arc::new(AtomicU16::new(0));
+        let flag = refuse.clone();
+        tokio::spawn(async move {
+            while let Ok((tcp, _)) = listener.accept().await {
+                let flag = flag.clone();
+                tokio::spawn(async move {
+                    let callback =
+                        move |_: &Request, resp: Response| -> Result<Response, ErrorResponse> {
+                            match flag.load(Ordering::SeqCst) {
+                                0 => Ok(resp),
+                                code => {
+                                    let mut r = ErrorResponse::new(None);
+                                    *r.status_mut() = reqwest::StatusCode::from_u16(code).unwrap();
+                                    Err(r)
+                                }
+                            }
+                        };
+                    let Ok(mut ws) = tokio_tungstenite::accept_hdr_async(tcp, callback).await
+                    else {
+                        return;
+                    };
+                    while let Some(Ok(m)) = ws.next().await {
+                        if let Message::Binary(b) = m {
+                            let mut out = b"echo:".to_vec();
+                            out.extend_from_slice(&b);
+                            if ws.send(Message::binary(out)).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                });
+            }
+        });
+        (port, refuse)
+    }
+
+    /// What a browser gets for one request on the relay, read to the end.
+    async fn page(port: u16) -> String {
+        let mut tcp = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        tcp.write_all(b"GET /pricing HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+            .await
+            .unwrap();
+        let mut out = Vec::new();
+        tokio::time::timeout(Duration::from_secs(5), tcp.read_to_end(&mut out))
+            .await
+            .expect("the relay answers and closes")
+            .unwrap();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    /// The server restarted or closed the preview while the tab was open:
+    /// the frame gets a page that says so, not a dropped connection.
+    #[tokio::test]
+    async fn a_tunnel_that_cannot_open_answers_with_a_reason() {
+        let (server, refuse) = switchable_server().await;
+        let reg = RelayRegistry::default();
+        let base = format!("http://127.0.0.1:{server}");
+        let info = reg.open("w", &client(), &base, "k", ID, 0).await.unwrap();
+        assert_eq!(roundtrip(info.port, b"z").await.unwrap(), b"echo:z");
+
+        refuse.store(404, Ordering::SeqCst);
+        let got = page(info.port).await;
+        assert!(got.starts_with("HTTP/1.1 502 "), "{got}");
+        assert!(got.contains("Connection: close"), "{got}");
+        assert!(got.contains(RELAY_ERROR_MARKER), "{got}");
+        assert!(got.contains("no such preview"), "{got}");
+        // The tab reads the reason from a message, the page being another origin.
+        assert!(got.contains("\"type\":\"relay-error\""), "{got}");
+        let body = got.split("\r\n\r\n").nth(1).unwrap();
+        let length: usize = got
+            .lines()
+            .find_map(|l| l.strip_prefix("Content-Length: "))
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert_eq!(body.len(), length);
+
+        refuse.store(0, Ordering::SeqCst);
+        assert_eq!(
+            roundtrip(info.port, b"y").await.unwrap(),
+            b"echo:y",
+            "the relay keeps serving once the server answers again"
+        );
+        reg.close_all();
+    }
+
+    #[tokio::test]
+    async fn a_connection_over_the_limit_answers_with_a_reason() {
+        let (server, _) = switchable_server().await;
+        let reg = RelayRegistry::default();
+        let base = format!("http://127.0.0.1:{server}");
+        let info = reg.open("w", &client(), &base, "k", ID, 0).await.unwrap();
+        let mut held = Vec::new();
+        for _ in 0..MAX_CONNECTIONS {
+            let mut tcp = TcpStream::connect(("127.0.0.1", info.port)).await.unwrap();
+            tcp.write_all(b"x").await.unwrap();
+            let mut buf = [0u8; 16];
+            let n = tcp.read(&mut buf).await.unwrap();
+            assert_eq!(&buf[..n], b"echo:x");
+            held.push(tcp);
+        }
+        let got = page(info.port).await;
+        assert!(got.starts_with("HTTP/1.1 502 "), "{got}");
+        assert!(got.contains("too many connections"), "{got}");
+        drop(held);
+        reg.close_all();
+    }
+
+    #[test]
+    fn the_reason_page_cannot_break_out_of_its_markup() {
+        let html = error_page("</script><script>alert(1)</script> & \"x\"");
+        assert!(!html.contains("</script><script>alert(1)"), "{html}");
+        assert!(html.contains("&lt;/script&gt;"), "{html}");
+        assert!(html.contains("\\u003c/script"), "{html}");
+    }
+
+    /// A computer of the account is reached through its link, not with an
+    /// access key: the messages say what the person can do about it.
+    #[tokio::test]
+    async fn account_computers_get_their_own_messages() {
+        for (code, needle) in [
+            (503, "through your account"),
+            (502, "through your account"),
+            (401, "Open the computer again"),
+            (404, "Update OpenAgentd on that computer"),
+        ] {
+            let (server, _) = fake_server(Some(code)).await;
+            let err = RelayRegistry::default()
+                .open_via(
+                    Via::Account,
+                    "w",
+                    &client(),
+                    &format!("http://127.0.0.1:{server}"),
+                    "k",
+                    ID,
+                    0,
+                )
+                .await
+                .unwrap_err();
+            assert!(err.contains(needle), "{code}: {err}");
+            assert!(!err.contains("access key"), "{code}: {err}");
+        }
+        let err = RelayRegistry::default()
+            .open_via(
+                Via::Account,
+                "w",
+                &client(),
+                "http://127.0.0.1:1",
+                " ",
+                ID,
+                0,
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.contains("Open the computer again") && !err.contains("access key"),
+            "{err}"
+        );
     }
 
     #[tokio::test]

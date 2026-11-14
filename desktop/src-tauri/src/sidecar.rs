@@ -268,6 +268,11 @@ impl Sidecar {
         } else {
             cmd.arg("--generate-token");
         }
+        // The server offers "Update to vX" to other devices only when this
+        // app can install it (`remote_update`).
+        if crate::remote_update::supported() {
+            cmd.env("OPENAGENTD_DESKTOP_UPDATES", "1");
+        }
 
         // The mode defaults to ``production`` (XDG dirs shared with a
         // terminal ``agentd`` install). Dev-bundled runs set

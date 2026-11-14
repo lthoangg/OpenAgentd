@@ -41,6 +41,7 @@ pub fn router() -> Router<AppState> {
         .route("/workspace/tree", get(workspace_tree))
         .route("/sessions/{session_id}", get(session_detail).patch(update_session).delete(delete_session_route))
         .route("/sessions/{session_id}/subagents", get(session_subagents))
+        .route("/sessions/{session_id}/waiting", get(session_waiting))
         .route("/{session_id}/history", get(agent_history))
         .route("/{session_id}/tool-results/{tool_call_id}", get(tool_result))
         .route("/{session_id}/tool-calls/{tool_call_id}/arguments", get(tool_call_arguments))
@@ -275,6 +276,12 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
         db::cleanup_reverted_tail(&st.pool, &sid).await?;
     }
     if resolved.existed_id.is_some() && waits_behind_turn(agent.has_active_user_turn(), agent.is_awaiting_question_answer(), hold_until_turn_end) {
+        // A question can be open while the turn still runs (it opens before
+        // the reply's other tool calls finish). A steer replaces it there
+        // too; a held message leaves it for the answer.
+        if !hold_until_turn_end {
+            agent.dismiss_pending_question("superseded", Some(&sid)).await;
+        }
         let qid = persist_queued_user_message(
             &st.pool,
             QueueArgs {
@@ -1140,11 +1147,18 @@ pub async fn delete_session(pool: &DbPool, session_id: &str) -> ApiResult<bool> 
         appv3_agent::subagents::remove_subagent(sid);
         appv3_agent::subagents::cleanup_lead_session(sid);
         appv3_agent::side_question::stop_session(sid);
+        // A deleted session answers nobody: its senders stop waiting on it.
+        appv3_agent::workspace_messages::forget_outstanding_target(sid);
     }
+    let pages = appv3_agent::mcp_apps::pages_of(pool, &ids.iter().cloned().collect::<Vec<_>>()).await;
     db::delete_session_rows(pool, session_id).await?;
+    if !pages.is_empty() {
+        appv3_agent::mcp_apps::remove_unused_pages(pool, Some(pages)).await;
+    }
     let s = settings();
     for sid in &ids {
         store().clear(sid);
+        appv3_agent::mcp_apps::forget_session(sid);
         appv3_agent::snapshot::remove(sid).await;
         let uploads = s.uploads_dir(sid);
         let artifacts = s.data_dir.join("sessions").join(sid);
@@ -1176,6 +1190,43 @@ async fn delete_session_route(State(st): State<AppState>, AxPath(raw): AxPath<St
 async fn session_subagents(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {
     let sid = path_uuid("session_id", &raw)?;
     Ok(json(appv3_agent::subagents::list_subagents(&sid, &st.pool).await))
+}
+
+/// What a session whose turn ended still waits for (v3 addition): its
+/// subagents still running, then the sessions in other workspaces that owe
+/// it a reply. The same work `background_work` reports as one flag, as rows
+/// a person can open. `state` is `working`, `needs_input` (stopped on a
+/// question or a plan review) or `idle` (not running: stopped, failed, or
+/// not started yet).
+async fn session_waiting(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {
+    let sid = path_uuid("session_id", &raw)?;
+    let members = appv3_agent::subagents::working_members(&sid);
+    let targets = appv3_agent::workspace_messages::outstanding_targets(&sid);
+    let ids: Vec<String> = members.iter().map(|(_, id)| id.clone()).chain(targets.iter().cloned()).collect();
+    let rows = db::get_sessions_by_ids(&st.pool, &ids).await?;
+    let row = |id: &str| rows.iter().find(|r| db::codec::api_uuid(&r.id) == id);
+    let title = |id: &str| row(id).and_then(|r| r.title.clone()).filter(|t| !t.trim().is_empty());
+    let mut items: Vec<Value> = members
+        .iter()
+        .map(|(handle, id)| json!({"kind": "subagent", "session_id": id, "title": title(id).unwrap_or_else(|| handle.clone()), "label": handle, "workspace": "", "state": "working"}))
+        .collect();
+    if !targets.is_empty() {
+        let running = running_set();
+        let awaiting = db::sessions_awaiting_input(&st.pool).await?;
+        for id in &targets {
+            let Some(r) = row(id) else { continue };
+            let state = if awaiting.contains(&r.id) || awaiting.contains(id) {
+                "needs_input"
+            } else if running.contains(id) || appv3_agent::subagents::has_pending_work(id) {
+                "working"
+            } else {
+                "idle"
+            };
+            let label = appv3_agent::workspace_messages::workspace_name(&st.pool, &r.workspace).await;
+            items.push(json!({"kind": "session", "session_id": id, "title": title(id), "label": label, "workspace": r.workspace, "state": state}));
+        }
+    }
+    Ok(json(json!({"items": items})))
 }
 
 /// A tool call's output, which history and the live feed leave out for most
@@ -1382,7 +1433,7 @@ async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<Stri
     let pool = &st.pool;
     if let Some(since) = since {
         let since_id = py_uuid(&since).ok_or_else(|| ApiError::unprocessable(format!("Invalid since cursor: {since}")))?;
-        let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("Lead session not found.")) };
+        let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("The main agent's session was not found.")) };
         const LIMIT: i64 = 100;
         let (lead_rows, truncated) = db::history_since(pool, &sid, &since_id, LIMIT).await?;
         let subs = db::list_child_sessions(pool, std::slice::from_ref(&sid)).await?;
@@ -1408,7 +1459,7 @@ async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<Stri
         };
         cursor = Some((head.trim().parse::<i64>().map_err(|_| invalid())?, before_id));
     }
-    let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("Lead session not found.")) };
+    let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("The main agent's session was not found.")) };
     if !first_page {
         let ((rows, has_more, boundary), ()) =
             futures::future::try_join(async { Ok::<_, ApiError>(db::history_page(pool, &sid, cursor.clone()).await?) }, ensure_agent_ready(&root)).await?;

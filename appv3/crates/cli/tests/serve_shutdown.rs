@@ -170,6 +170,12 @@ fn the_desktop_opens_a_key_protected_lan_listener_and_closes_it() {
     assert_eq!(http(lan, "GET", "/api/desktop/network-access", Some("desk-tok"), None).0, 404);
     assert_eq!(http(port, "GET", "/api/desktop/network-access", Some("desk-tok"), None).0, 200);
     assert_eq!(http(port, "PUT", "/api/desktop/network-access", Some("desk-tok"), Some(&enable_body(lan, "short"))).0, 422);
+    // The same holds for the app's update request: a device on the network
+    // may ask for an update, never collect the request or settle it.
+    assert_eq!(http(lan, "GET", "/api/desktop/update-request", Some(LAN_KEY), None).0, 404);
+    assert_eq!(http(lan, "PUT", "/api/desktop/update-request", Some("desk-tok"), Some(r#"{"ok":true}"#)).0, 404);
+    assert_eq!(http(port, "PUT", "/api/desktop/update-request", Some(LAN_KEY), Some(r#"{"ok":true}"#)).0, 404);
+    assert_eq!(http(port, "GET", "/api/desktop/update-request", Some("desk-tok"), None).0, 200);
 
     // A new key revokes the old one.
     let new_key = "another-lan-key-0123456789";

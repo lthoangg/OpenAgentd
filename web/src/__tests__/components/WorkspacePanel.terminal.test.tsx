@@ -14,7 +14,7 @@ import type React from 'react'
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
-import { useTerminalStore, _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
+import { getTerminalRuntime, useTerminalStore, _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
 
 const WORKSPACE = '/repo/project'
 const filesResponse = { workspace: WORKSPACE, truncated: false, files: [] }
@@ -250,5 +250,101 @@ describe('WorkspacePanel terminal tabs', () => {
     useTerminalStore.getState().open({ workspace: '/workspace/project' }, 'workspace:/workspace/project')
     await renderPanel(0)
     expect(screen.queryByRole('button', { name: /Close Terminal/ })).toBeNull()
+  })
+})
+
+/** Run in terminal: a shell code block's command reaches a shell at its prompt. */
+describe('WorkspacePanel run in terminal', () => {
+  /**
+   * A shell the server holds: connected, with a socket that records what it
+   * is sent. ``busy`` is what the server reports; ``undefined`` is a server
+   * that reports nothing (Windows).
+   */
+  async function connectShell(busy: boolean | undefined) {
+    const id = useTerminalStore.getState().open({ workspace: WORKSPACE }, WORKSPACE)
+    const rt = getTerminalRuntime(id)!
+    const input: string[] = []
+    // The store builds the terminal itself (a lazy chunk): stand in for its
+    // paste, which reaches the shell the way typing does.
+    await waitFor(() => expect(rt.handle).not.toBeNull())
+    rt.handle!.term.paste = (text: string) => useTerminalStore.getState().sendInput(id, text)
+    rt.socket = { protocol: 2, sendInput: (data: string) => { input.push(data) }, sendResize: () => {}, close: () => {} } as unknown as typeof rt.socket
+    rt.busySupported = busy !== undefined
+    useTerminalStore.setState((state) => ({
+      sessions: { ...state.sessions, [id]: { ...state.sessions[id], status: 'connected', busy: busy === true } },
+    }))
+    return { id, input }
+  }
+
+  async function renderRun(command: string, key = 1, handledRef = { current: 0 }) {
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    let result: ReturnType<typeof render>
+    await act(async () => {
+      result = render(
+        <QueryClientProvider client={queryClient}>
+          <WorkspacePanel workspace={WORKSPACE} open terminalRunRequest={{ command, key }} handledTerminalRunKeyRef={handledRef} />
+        </QueryClientProvider>,
+      )
+    })
+    return result!
+  }
+
+  const isFront = (title: string) => screen.getByRole('button', { name: title }).getAttribute('aria-current') === 'true'
+  const shells = () => useTerminalStore.getState().sessionsForContext(WORKSPACE)
+
+  it('runs in the last idle terminal and brings its tab to the front', async () => {
+    const first = await connectShell(false)
+    const second = await connectShell(false)
+    const busy = await connectShell(true)
+
+    await renderRun('echo hi')
+
+    await waitFor(() => expect(isFront('Terminal 2')).toBe(true))
+    expect(second.input).toEqual(['echo hi', '\r'])
+    expect(first.input).toEqual([])
+    expect(busy.input).toEqual([])
+    expect(shells()).toHaveLength(3)
+  })
+
+  it('opens a terminal when the workspace has none', async () => {
+    await renderRun('echo hi')
+
+    await waitFor(() => expect(isFront('Terminal 1')).toBe(true))
+    expect(shells()).toHaveLength(1)
+  })
+
+  it('never types into a busy terminal: a new one takes the command', async () => {
+    const devServer = await connectShell(true)
+
+    await renderRun('bun test')
+
+    await waitFor(() => expect(isFront('Terminal 2')).toBe(true))
+    expect(devServer.input).toEqual([])
+    expect(shells()).toHaveLength(2)
+  })
+
+  it('treats a shell whose server cannot say it is idle (Windows) as busy', async () => {
+    const unknown = await connectShell(undefined)
+
+    await renderRun('dir')
+
+    await waitFor(() => expect(isFront('Terminal 2')).toBe(true))
+    expect(unknown.input).toEqual([])
+  })
+
+  it('runs each request once, even when the panel is closed and reopened', async () => {
+    const shell = await connectShell(false)
+    const handled = { current: 0 }
+
+    const view = await renderRun('echo hi', 1, handled)
+    await waitFor(() => expect(shell.input).toEqual(['echo hi', '\r']))
+    view.unmount()
+    await renderRun('echo hi', 1, handled)
+    expect(shell.input).toEqual(['echo hi', '\r'])
+
+    cleanup()
+    await renderRun('echo hi', 2, handled)
+    await waitFor(() => expect(shell.input).toEqual(['echo hi', '\r', 'echo hi', '\r']))
   })
 })

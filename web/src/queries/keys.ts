@@ -16,6 +16,7 @@ export const queryKeys = {
   agents: () => ['agents'] as const,
   plugins: () => ['plugins'] as const,
   serverUpdate: () => ['server-update'] as const,
+  serverName: () => ['server-name'] as const,
   agentRegistry: (workspace?: string | null) => workspace ? ['agents', 'registry', workspace] as const : ['agents', 'registry'] as const,
   session: {
     // NOTE: there is no separate agent-status key. The home-page "is agent mode
@@ -59,6 +60,9 @@ export const queryKeys = {
     // them and the expensive directory walk will run twice.
     files: (sessionId: string) => ['session', 'files', sessionId] as const,
     subagents: (sessionId: string) => ['session', 'subagents', sessionId] as const,
+    /** What a finished turn still waits for; `waitingAll` is the prefix of every session's. */
+    waiting: (sessionId: string) => ['session', 'waiting', sessionId] as const,
+    waitingAll: () => ['session', 'waiting'] as const,
   },
   // Workspace panel data — keyed by the absolute workspace path
   // (a single project may be shared across multiple sessions/tabs, so the

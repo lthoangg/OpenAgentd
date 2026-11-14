@@ -77,12 +77,15 @@ describe('applyCacheInvalidations', () => {
     })
   })
 
-  it('maps `subagents` event to subagents(sessionId)', () => {
+  it('maps `subagents` event to subagents(sessionId) and what the session waits for', () => {
     const client = makeMockClient()
     applyCacheInvalidations(client, [{ kind: 'subagents', sessionId: 'lead-123' }])
-    expect(client.invalidateQueries).toHaveBeenCalledTimes(1)
+    expect(client.invalidateQueries).toHaveBeenCalledTimes(2)
     expect(client.invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.session.subagents('lead-123'),
+    })
+    expect(client.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.session.waiting('lead-123'),
     })
   })
 

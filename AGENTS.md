@@ -27,6 +27,8 @@ worktrees are not part of the tracked instruction hierarchy.
   CLI, scheduler, persistence, and the desktop sidecar binary.
   Each crate's `data/` folder holds the data it compiles in; the SSE event
   list in `appv3/crates/agent/data/sse_events.json` is shared with the web.
+  The `app_guide` prompt in `appv3/crates/agent/data/builtin_prompts.json`
+  tells the agent what the web UI does with a reply.
 - `web/`: shared React UI used by browser, desktop, and mobile clients.
 - `desktop/`: Tauri shell that supervises the bundled native `agentd`
   sidecar built from `appv3/`.
@@ -136,6 +138,10 @@ Always run Bun tests with `--parallel` (`bun test --cwd web --parallel` or `cd w
 Cross-surface API or event changes require both backend and web checks; SSE
 event types must also match `appv3/crates/agent/data/sse_events.json`. Run
 `make help` for maintained health and build targets.
+A UI change that alters what the agent should write in a reply (something a
+reply can now render, open, or run, or no longer can) updates `app_guide` in
+the same commit. It is the only prompt text that describes the app: do not
+repeat any of it in another prompt or a tool description.
 CI additionally runs `bun run build` for `web/`, which enforces the bundle
 budget and chunk-cycle checks. Pre-commit hooks run file hygiene plus `oxlint`
 and `tsc` for `web/src`.

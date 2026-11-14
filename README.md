@@ -66,7 +66,7 @@ To build from source, see [CONTRIBUTING.md](CONTRIBUTING.md#quick-start).
 
 ### CLI server
 
-Install only the backend to run it from a terminal, use it from a browser, or serve other devices:
+Install only the backend to run it from a terminal or to serve the apps on your other devices:
 
 ```bash
 curl -fsSL https://openagentd.dev/install.sh | sh -s -- --cli

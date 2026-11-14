@@ -59,6 +59,10 @@ import {
 const MAX_CONSOLE_ENTRIES = 300
 /** After ``load``, how long a page may take to report ``ready`` before the tools count as missing. */
 const READY_GRACE_MS = 800
+/** How long a page gets to answer after the app came back, before it is loaded afresh. Generous: a busy page must not lose its state. */
+const RECOVER_GRACE_MS = 2500
+/** The server may not be reachable the instant the app returns; one more try before saying so. */
+const RECOVER_RETRY_MS = 1500
 /** How long the toolbar shows the agent's activity after its last command. */
 const AGENT_ACTIVITY_MS = 4000
 /** The loading bar gives up after this: a link that turned into a download never loads. */
@@ -238,6 +242,19 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   // The origin the frame was last loaded from: a relay that restarted on
   // another port (the app was suspended) needs a fresh load, not a message.
   const frameOriginRef = useRef<string | null>(null)
+  // The frame shows the relay's own page (it could not reach the server),
+  // which has no preview script: it is replaced, never messaged.
+  const relayErrorRef = useRef(false)
+  const pathRef = useRef(path)
+  pathRef.current = path
+  const frameKeyRef = useRef(frameKey)
+  frameKeyRef.current = frameKey
+  const recoveringRef = useRef(false)
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
   const targetKey = `${previewTargetKey(target)}|${target.kind === 'url' ? target.url : target.path}`
 
   // Tell the keep-alive that this tab shows the preview, so no hidden copy
@@ -344,6 +361,17 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           if (message.name === 'close-tab') onRequestCloseRef.current?.(tabId)
           else toggleDesignRef.current()
           break
+        case 'relay-error':
+          // The relay's page, in place of the previewed one. Say why here;
+          // Retry (or the app coming back) opens the preview again.
+          relayErrorRef.current = true
+          readyRef.current = false
+          setReady(false)
+          setInspectorMissing(false)
+          setPageDown(false)
+          setLoading(false)
+          setError(message.message)
+          break
         case 'agent':
           setAgentAction(message.action)
           if (agentTimerRef.current !== null) window.clearTimeout(agentTimerRef.current)
@@ -366,7 +394,71 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   // A fresh frame is loading until its ``load``.
   useEffect(() => {
     if (frameKey > 0) setLoading(true)
+    relayErrorRef.current = false
   }, [frameKey])
+
+  // ── Coming back ──────────────────────────────────────────────────────────
+  // While the app was in the background (a phone suspends it, a laptop
+  // sleeps) the listener may have closed for being idle and the relay may
+  // have lost its port. Ensure both again. A page that still answers is left
+  // as it is, with its form input and scroll position; its own connections
+  // (hot reload, the agent's poll) reconnect through the listener. Only a
+  // frame on a stale address, or one that no longer answers, loads afresh.
+  const recover = useCallback(async () => {
+    if (recoveringRef.current || frameOriginRef.current === null) return
+    recoveringRef.current = true
+    const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
+    const loadAfresh = (origin: string) => {
+      frameOriginRef.current = origin
+      setSrc(`${origin}${pathRef.current}`)
+      setFrameKey((k) => k + 1)
+    }
+    try {
+      let next: PreviewInfo
+      try {
+        next = await openPreview(workspace, targetRef.current)
+      } catch {
+        await wait(RECOVER_RETRY_MS)
+        if (!mountedRef.current) return
+        next = await openPreview(workspace, targetRef.current)
+      }
+      if (!mountedRef.current) return
+      setInfo(next)
+      onPreviewIdRef.current?.(tabId, next.id)
+      setError(null)
+      if (next.origin !== frameOriginRef.current || relayErrorRef.current) {
+        loadAfresh(next.origin)
+        return
+      }
+      // A page that never answered (no preview script) cannot be judged.
+      if (!readyRef.current) return
+      const shown = frameKeyRef.current
+      const askedAt = performance.now()
+      frameRef.current?.contentWindow?.postMessage(commandMessage({ type: 'hello' }), next.origin)
+      await wait(RECOVER_GRACE_MS)
+      // Not when the person reloaded or navigated the frame meanwhile.
+      if (!mountedRef.current || frameKeyRef.current !== shown || frameOriginRef.current !== next.origin) return
+      if (lastReadyAtRef.current < askedAt) loadAfresh(next.origin)
+    } catch (err) {
+      if (mountedRef.current) setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      recoveringRef.current = false
+    }
+  }, [workspace, tabId])
+
+  useEffect(() => {
+    if (!available) return
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void recover()
+    }
+    const onOnline = () => void recover()
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('online', onOnline)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('online', onOnline)
+    }
+  }, [available, recover])
   useEffect(() => {
     if (!loading) return
     const timer = window.setTimeout(() => setLoading(false), LOADING_CAP_MS)
@@ -412,6 +504,8 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
     if (loadTimerRef.current !== null) window.clearTimeout(loadTimerRef.current)
     loadTimerRef.current = window.setTimeout(() => {
       loadTimerRef.current = null
+      // The relay's own page: its reason is already shown.
+      if (relayErrorRef.current) return
       if (lastReadyAtRef.current < loadedAt) {
         readyRef.current = false
         setReady(false)

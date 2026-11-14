@@ -55,7 +55,7 @@ describe('useDeepLinkRouter Tauri deep-link bridge', () => {
   it('processes cold-start URLs, refreshes providers, and reports callback success', async () => {
     getCurrent.mockImplementation(() => Promise.resolve([
       'openagentd://auth/callback?provider=codex&code=cold-code',
-      'openagentd://cockpit/cold-session',
+      'openagentd://session/cold-session',
     ]))
 
     render(<DeepLinkRouter />)

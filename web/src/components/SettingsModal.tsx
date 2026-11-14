@@ -16,7 +16,8 @@
  * slide it away again.
  *
  * The sidebar is a labelled list from 900px up and an icon rail below it
- * (names in tooltips), so the form keeps its width on a narrow window.
+ * (names in tooltips), so the form keeps its width on a narrow window. A
+ * touch screen has no tooltip, so it keeps the labelled list at every width.
  * Search finds single settings as well as sections (`settings-index.ts`),
  * on the sidebar, in a dialog from the rail, and on the phone section list.
  *
@@ -75,7 +76,8 @@ import { PluginsSettingsPage } from '@/components/settings/pages/settings.plugin
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 
-// Below 900px the sidebar is an icon rail: `max-[899px]:` / `min-[900px]:`.
+// Below 900px with a mouse the sidebar is an icon rail: `settings-rail:` /
+// `settings-list:` (index.css).
 function SidebarRow({
   item,
   count,
@@ -100,17 +102,17 @@ function SidebarRow({
             aria-current={active ? 'page' : undefined}
             className={cn(
               'group flex h-8 w-full items-center gap-2.5 rounded-sm px-2.5 text-left text-xs transition-colors duration-(--motion-instant) pointer-coarse:h-9',
-              'max-[899px]:justify-center max-[899px]:px-0',
+              'settings-rail:justify-center settings-rail:px-0',
               'text-(--color-text-2) hover:bg-(--bg-key)/50 hover:text-(--color-text)',
               'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)',
               active && 'bg-(--bg-key) font-medium text-(--color-text) hover:bg-(--bg-key)',
             )}
           >
-            <Icon size={ICON_SIZE} aria-hidden="true" className="shrink-0 min-[900px]:hidden" />
+            <Icon size={ICON_SIZE} aria-hidden="true" className="shrink-0 settings-list:hidden" />
             {/* The name stays for screen readers when the rail shows only the icon. */}
-            <span className="min-w-0 flex-1 truncate max-[899px]:sr-only">{item.label}</span>
+            <span className="min-w-0 flex-1 truncate settings-rail:sr-only">{item.label}</span>
             {count && (
-              <span className="shrink-0 text-meta tabular-nums text-(--color-text-muted) max-[899px]:hidden">
+              <span className="shrink-0 text-meta tabular-nums text-(--color-text-muted) settings-rail:hidden">
                 {count}
               </span>
             )}
@@ -127,7 +129,7 @@ function SidebarRow({
 
 function GroupLabel({ children }: { children: string }) {
   return (
-    <p className="px-2.5 pt-4 pb-1 text-xs font-medium text-(--color-text-muted) select-none max-[899px]:hidden">
+    <p className="px-2.5 pt-4 pb-1 text-xs font-medium text-(--color-text-muted) select-none settings-rail:hidden">
       {children}
     </p>
   )
@@ -144,7 +146,7 @@ function RailSearch({ onOpen }: { onOpen: (hit: SettingsHit) => void }) {
     onOpen(hit)
   }
   return (
-    <div className="flex justify-center min-[900px]:hidden">
+    <div className="flex justify-center settings-list:hidden">
       <Tooltip>
         <TooltipTrigger
           render={
@@ -188,13 +190,13 @@ function ModalSidebar({
       aria-label="Settings categories"
       className={cn(
         'hidden h-full w-12 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar) px-1.5 pt-2 pb-4 select-none md:flex',
-        'min-[900px]:w-60 min-[900px]:px-2',
+        'settings-list:w-60 settings-list:px-2',
       )}
     >
-      <SettingsSearchField search={search} onOpen={onOpenHit} wrapperClassName="max-[899px]:hidden" />
+      <SettingsSearchField search={search} onOpen={onOpenHit} wrapperClassName="settings-rail:hidden" />
       <RailSearch onOpen={onOpenHit} />
-      {search.searching && <SettingsSearchResults search={search} onOpen={onOpenHit} className="max-[899px]:hidden" />}
-      <div className={cn('flex flex-col', search.searching && 'min-[900px]:hidden')}>
+      {search.searching && <SettingsSearchResults search={search} onOpen={onOpenHit} className="settings-rail:hidden" />}
+      <div className={cn('flex flex-col', search.searching && 'settings-list:hidden')}>
         {SETTINGS_GROUPS.map((group) => {
           const items = sections.filter((s) => s.group === group.id)
           if (items.length === 0) return null
@@ -203,7 +205,7 @@ function ModalSidebar({
               key={group.id}
               role="group"
               aria-label={group.label}
-              className="max-[899px]:mt-1.5 max-[899px]:border-t max-[899px]:border-(--color-border-subtle) max-[899px]:pt-1.5 max-[899px]:first:mt-0 max-[899px]:first:border-t-0 max-[899px]:first:pt-0"
+              className="settings-rail:mt-1.5 settings-rail:border-t settings-rail:border-(--color-border-subtle) settings-rail:pt-1.5 settings-rail:first:mt-0 settings-rail:first:border-t-0 settings-rail:first:pt-0"
             >
               <GroupLabel>{group.label}</GroupLabel>
               <div className="flex flex-col gap-0.5">
@@ -248,7 +250,6 @@ function SectionContent({
     case 'desktop':
       return <DesktopSettingsPage />
     case 'connection':
-    case 'network':
       return <ConnectionSettingsPage />
     case 'account':
       // On the phone the account is the phone's own, not a server's.

@@ -68,5 +68,11 @@ describe('ThemeToggle', () => {
       await user.click(button)
       expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('system')
     })
+
+    it('names the theme and the one a press switches to, with no pointer verb', () => {
+      localStorage.setItem(THEME_STORAGE_KEY, 'light')
+      render(<ThemeToggle collapsed />)
+      expect(screen.getByRole('button').getAttribute('aria-label')).toBe('Theme: Light. Switch to Dark.')
+    })
   })
 })

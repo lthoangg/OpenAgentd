@@ -102,6 +102,62 @@ def test_stale_build_rs_entry_fails(tmp_path: Path) -> None:
     assert errors == ["removed_command: listed in build.rs but not registered in src/lib.rs"]
 
 
+def make_web(tmp_path: Path, files: dict[str, str]) -> Path:
+    web = tmp_path / "web" / "src"
+    for name, text in files.items():
+        path = web / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    return web
+
+
+def test_a_command_nothing_calls_fails(tmp_path: Path) -> None:
+    shell = make_shell(
+        tmp_path,
+        handler=["app_status", "share_url"],
+        manifest=["app_status", "share_url"],
+        capabilities={"default": ["allow-app-status", "allow-share-url"]},
+    )
+    web = make_web(tmp_path, {"lib/app.ts": "await invoke('app_status')\n"})
+    errors = mod.check_shell(shell, "src/lib.rs", web).errors
+    assert errors == ["share_url: registered in src/lib.rs but nothing calls it (web/src or the shell's own scripts)"]
+
+
+def test_a_call_from_a_test_does_not_count(tmp_path: Path) -> None:
+    shell = make_shell(
+        tmp_path,
+        handler=["share_url"],
+        manifest=["share_url"],
+        capabilities={"default": ["allow-share-url"]},
+    )
+    web = make_web(
+        tmp_path,
+        {
+            "__tests__/share.test.ts": "await invoke('share_url')\n",
+            "lib/share.test.tsx": 'await invoke("share_url")\n',
+        },
+    )
+    assert len(mod.check_shell(shell, "src/lib.rs", web).errors) == 1
+
+
+def test_a_call_from_the_ui_or_from_a_script_the_shell_injects_counts(tmp_path: Path) -> None:
+    shell = make_shell(
+        tmp_path,
+        handler=["app_status", "window_ready", "pet_fit"],
+        manifest=["app_status", "window_ready", "pet_fit"],
+        capabilities={"default": ["allow-app-status", "allow-window-ready", "allow-pet-fit"]},
+    )
+    # A page script the shell injects calls one; the UI calls the others, one with double quotes.
+    (shell / "src" / "window.rs").write_text(
+        'const INIT: &str = "window.__TAURI__.core.invoke(\'window_ready\')";\n'
+    )
+    web = make_web(
+        tmp_path,
+        {"lib/app.ts": "await invoke('app_status')\n", "pet/Pet.tsx": 'void invoke("pet_fit", { h })\n'},
+    )
+    assert mod.check_shell(shell, "src/lib.rs", web).errors == []
+
+
 def test_repository_shells_allow_every_registered_command() -> None:
     result = subprocess.run(
         [sys.executable, str(SCRIPT)], capture_output=True, text=True, cwd=REPO_ROOT

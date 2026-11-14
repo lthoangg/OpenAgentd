@@ -26,7 +26,7 @@ pub fn auth(args: &AuthArgs) -> Result<ExitCode> {
     store::load().map_err(|e| anyhow!("{e}"))?;
     match (&args.action, &args.provider) {
         (Some(AuthCmd::Logout { provider, account }), _) => logout(provider, account.as_deref()).map(|_| ExitCode::SUCCESS),
-        (None, Some(provider)) if !args.list => login(provider, args),
+        (None, Some(provider)) => login(provider, args),
         _ => {
             list();
             Ok(ExitCode::SUCCESS)

@@ -64,6 +64,12 @@ export type PageMessage =
   | { type: 'agent'; action: string }
   /** A dock shortcut pressed while focus was in the page. */
   | { type: 'shortcut'; name: 'toggle-design' | 'close-tab' }
+  /**
+   * Not from a previewed page: the app's relay could not tunnel the frame's
+   * connection to the server and answered with its own page, which says why
+   * (`native/shell-core/src/preview_relay.rs`).
+   */
+  | { type: 'relay-error'; message: string }
 
 export type DockCommand =
   | { type: 'hello' }
@@ -150,6 +156,8 @@ export function parsePageMessage(event: Pick<MessageEvent, 'origin' | 'source' |
       return typeof data.action === 'string' && data.action ? { type: 'agent', action: data.action.slice(0, 40) } : null
     case 'shortcut':
       return data.name === 'toggle-design' || data.name === 'close-tab' ? { type: 'shortcut', name: data.name } : null
+    case 'relay-error':
+      return typeof data.message === 'string' && data.message.trim() ? { type: 'relay-error', message: data.message.trim().slice(0, 400) } : null
     default:
       return null
   }

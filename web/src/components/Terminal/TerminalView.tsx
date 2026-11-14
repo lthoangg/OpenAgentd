@@ -27,11 +27,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { MessageSquarePlus } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useTouchFirst } from '@/hooks/use-touch-first'
 import { getPlatform } from '@/hooks/use-platform'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { lazySurface } from '@/lib/lazy-surface'
-import { clearRetiredTerminalFontPrefs } from '@/lib/terminal-font'
 import { getTerminalRuntime, terminalClosedMessage, useTerminalStore } from '@/stores/useTerminalStore'
 import { TerminalActionSheet } from './TerminalActionSheet'
 import { addToChatShortcutLabel } from './terminal-keys'
@@ -58,6 +58,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const [ctrlArmed, setCtrlArmed] = useState(false)
   const ctrlArmedRef = useRef(false)
   const isMobile = useIsMobile()
+  const touchFirst = useTouchFirst()
   const { resolved } = useThemePreference()
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
@@ -75,11 +76,6 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   useEffect(() => {
     useTerminalStore.getState().syncTheme(resolved)
   }, [resolved])
-
-  // The retired Terminal settings page's font and size: nothing reads them.
-  useEffect(() => {
-    clearRetiredTerminalFontPrefs()
-  }, [])
 
   // Sticky-Ctrl transform: single character → control code.
   // Handles a–z (0x01–0x1a), plus [, \, ], ^, _, ?, @.
@@ -222,11 +218,11 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     useTerminalStore.getState().reconnect(sessionId)
   }, [sessionId])
 
-  // Mobile long-press on the terminal surface itself: Select All / Copy /
-  // Paste. xterm's own touch handling covers scroll + drag-to-select, but
-  // there's no native context menu on touch, so this fills the gap the
-  // same way TerminalKeyBar fills the missing soft-keyboard keys.
-  const surfaceLongPress = useLongPressSurface(isMobile, () => {
+  // Long-press on the terminal surface itself: Select All / Copy / Paste.
+  // xterm's own touch handling covers scroll + drag-to-select, but there's
+  // no native context menu on touch, so this fills the gap on a phone and
+  // on a tablet however wide (a mouse press never counts as a hold).
+  const surfaceLongPress = useLongPressSurface(isMobile || touchFirst, () => {
     mediumHapticFeedback()
     setActionSheetOpen(true)
   })

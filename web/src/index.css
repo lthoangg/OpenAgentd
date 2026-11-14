@@ -49,6 +49,20 @@
     @slot;
   }
 }
+/* Settings' sidebar (SettingsModal). An icon rail in a narrow mouse window,
+ * where a tooltip names each icon; a labelled list from 900px, and on every
+ * touch screen, which has no tooltip (an upright iPad is 820px wide). The
+ * three pointer values are exhaustive, so exactly one of the two applies. */
+@custom-variant settings-rail {
+  @media (max-width: 899px) and (pointer: fine), (max-width: 899px) and (pointer: none) {
+    @slot;
+  }
+}
+@custom-variant settings-list {
+  @media (min-width: 900px), (pointer: coarse) {
+    @slot;
+  }
+}
 
 /* ─────────────────────────────────────────────────────────────
  * Tailwind @theme — expose design tokens as utilities.
@@ -1660,6 +1674,7 @@ html[data-app-hidden="true"] *::after {
     --spacing-list-row: 2.25rem;
     --leading-relaxed: 1.5;
     --spacing-tab-bar: 2.8125rem; /* 36px tab pills, 4px around, 1px hairline */
+    --spacing-status-bar: 2.3125rem; /* 36px items and the 1px hairline */
   }
   .oa-prose {
     line-height: 1.6;
@@ -1709,6 +1724,8 @@ html[data-app-hidden="true"] *::after {
     --spacing-app-header: var(--oa-phone-header);
     /* Controls sized outside Button (sheet rows, bar buttons). */
     --phone-control: var(--oa-phone-control);
+    /* The review panel's tab pills at the same step, 4px around, 1px hairline. */
+    --spacing-tab-bar: calc(var(--phone-control) + 0.5625rem);
   }
   html[data-mobile-shell="android"] {
     --spacing-list-row: calc(var(--oa-phone-row) + 0.25rem);

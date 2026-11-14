@@ -36,39 +36,16 @@ codesign --verify --deep --strict --verbose=1 /Applications/OpenAgentd.app
 asks once more for access to folders such as Documents, because the app's
 signature changed. Releases after that keep the grant.
 
-## Linux (x86_64, arm64)
+## Linux (Debian / Ubuntu, x86_64)
 
-We ship three artifacts; pick whichever your distro prefers.
-
-### AppImage (universal)
-
-```bash
-chmod +x OpenAgentd-x.y.z.AppImage
-./install.sh --install ./OpenAgentd-x.y.z.AppImage
-```
-
-This installs the binary to `~/.local/bin/openagentd`, drops a
-`.desktop` entry under `~/.local/share/applications/`, and registers
-the icon with the hicolor theme. No `sudo` required.
-
-If `~/.local/bin` is not on your `$PATH`, the script will print the
-exact `export` line to add to your shell rc.
-
-### Debian / Ubuntu (`.deb`)
+Linux releases are one `.deb` package. The one-command installer above
+downloads and installs it; or from the downloaded file:
 
 ```bash
-sudo dpkg -i openagentd_x.y.z_amd64.deb
-sudo apt-get install -f      # only if dpkg complains about deps
+sudo apt-get install ./OpenAgentd_x.y.z_amd64.deb
 ```
 
-### Fedora / RHEL (`.rpm`)
-
-```bash
-sudo rpm -Uvh openagentd-x.y.z.x86_64.rpm
-```
-
-The `install.sh` helper detects `.deb` / `.rpm` and defers to the
-right package manager automatically.
+To update, install the newer `.deb` the same way.
 
 ## Verifying the download (all platforms)
 
@@ -85,7 +62,7 @@ The expected hashes are also pinned in the GitHub release notes.
 | Platform | How                                                                  |
 |----------|----------------------------------------------------------------------|
 | macOS    | Drag `OpenAgentd.app` from `/Applications` to the Trash.             |
-| Linux    | Delete `~/.local/bin/openagentd` and `~/.local/share/applications/openagentd.desktop`. Or `sudo apt remove openagentd` if you used the system package. |
+| Linux    | `sudo apt remove open-agentd` (`dpkg -l \| grep -i agentd` shows the package name). |
 
 Application data lives under the same XDG paths used by the CLI (these survive uninstall by design):
 
@@ -112,14 +89,3 @@ The app was probably modified after download (for example re-signed
 without its entitlements). Run the bundled `install.sh` on it: if the
 signature no longer verifies it says so, and downloading OpenAgentd
 again fixes it.
-
-### Linux: "openagentd: command not found" after install
-
-`~/.local/bin` isn't on your `$PATH`. Add to `~/.bashrc` /
-`~/.zshrc`:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-Reload your shell. Or just launch from the desktop menu.

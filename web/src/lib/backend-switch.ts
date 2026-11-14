@@ -49,7 +49,7 @@ export function connectionFailureMessage(baseUrl: string): string {
   } catch {
     // validateServerUrl already handles malformed URLs.
   }
-  return 'Server did not respond to /api/health/live. Check that OpenAgentd is running with --host 0.0.0.0, this device is on the same network, and the URL uses the backend machine LAN IP.'
+  return 'Server did not respond to /api/health/live. Check that OpenAgentd on that computer allows access from other devices (Settings → Server → Access from other devices in the desktop app, or agentd server start --public), that this device is on the same network, and that the address is that computer’s.'
 }
 
 export async function refreshBackendQueries(): Promise<void> {

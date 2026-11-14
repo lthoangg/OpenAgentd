@@ -342,4 +342,58 @@ describe("_handleSSEEvent structured error handling", () => {
     expect(codeStream.blocks[0].extra?.status).toBe("error");
     expect(codeStream.blocks[0].extra?.title).toBe("Rate Limit Exceeded");
   });
+
+  it("keeps an error's details on its block, whichever event brings it first", () => {
+    const stream = () => ({
+      blocks: [],
+      currentBlocks: [],
+      status: "working" as const,
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 },
+      model: null,
+      lastError: null,
+      currentText: "",
+      currentThinking: "",
+    });
+    const failure = {
+      title: "openai:gpt-5 is unavailable",
+      message: "It answered with an error 5 times in a row (HTTP 503).",
+      category: "provider",
+      code: "provider_unavailable",
+      details: "Server error '503 Service Unavailable' for url 'https://api.openai.com/v1/responses'",
+    };
+
+    useAgentStore.setState({ leadName: "code", agentStreams: { code: stream() } });
+    useAgentStore.getState()._handleSSEEvent("error", failure);
+    expect(useAgentStore.getState().agentStreams["code"].blocks[0].extra?.details).toBe(failure.details);
+
+    useAgentStore.setState({ error: null, leadName: "code", agentStreams: { code: stream() } });
+    useAgentStore.getState()._handleSSEEvent("agent_status", { agent: "code", status: "error", metadata: failure });
+    expect(useAgentStore.getState().agentStreams["code"].blocks[0].extra?.details).toBe(failure.details);
+  });
+
+  it("puts the error a turn ended on after the retries that led to it", () => {
+    // The events of a turn whose provider answered 503 until the retries ran
+    // out, as the server sends them.
+    const failure = {
+      agent: "code",
+      title: "router9:test-model is unavailable",
+      message: "It answered with an error 5 times in a row (HTTP 503). Your messages and the files changed so far are kept.",
+      code: "provider_unavailable",
+      category: "provider",
+    };
+    const call = { agent: "code", model: "router9:test-model", max_attempts: 5, error_type: "HTTPStatusError", status_code: 503, message: null };
+    useAgentStore.setState({ leadName: "code", isAgentWorking: true, agentStreams: { code: makeStream("working") } });
+    const send = useAgentStore.getState()._handleSSEEvent;
+
+    send("provider_status", { ...call, status: "retrying", attempt: 2, delay_seconds: 2.6 });
+    send("provider_status", { ...call, status: "retrying", attempt: 3, delay_seconds: 7.3 });
+    send("provider_status", { ...call, status: "exhausted", attempt: null, delay_seconds: null });
+    send("agent_status", { ...failure, status: "error" });
+    send("error", failure);
+    send("done", {});
+
+    const stream = useAgentStore.getState().agentStreams["code"];
+    expect(stream.currentBlocks).toEqual([]);
+    expect(stream.blocks.map((b) => b.extra?.status)).toEqual(["retrying", "exhausted", "error"]);
+  });
 });

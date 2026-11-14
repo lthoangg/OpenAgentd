@@ -4,7 +4,10 @@
 //! computer cannot frame them. The relay (`openagentd_shell_core::
 //! preview_relay`) listens on this computer's 127.0.0.1 and tunnels each
 //! connection to the window's server with the access key, which never
-//! reaches the previewed page. Bundled-backend windows frame the listener
+//! reaches the previewed page. A window on a computer of the account
+//! (`crate::account`) tunnels to that computer's loopback bridge with the
+//! bridge's key: the bridge has a local address, but the preview listeners
+//! are on the far computer. Bundled-backend windows frame the listener
 //! directly and never call these commands. Relays are scoped per window and
 //! close with it, or when it changes server.
 
@@ -12,7 +15,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use openagentd_shell_core::{RelayInfo, RelayRegistry};
+use openagentd_shell_core::{RelayInfo, RelayRegistry, Via};
 use tauri::{AppHandle, Manager};
 
 use crate::AppState;
@@ -49,6 +52,19 @@ pub fn close_window(app: &AppHandle, window: &str) {
     }
 }
 
+/// What a window's relay tunnels to, and the key for it: an account
+/// bridge's key (in memory, this launch only), else the server's saved
+/// access key. `Ok(None)` when the server has no saved key.
+fn relay_upstream(
+    bridge_key: Option<String>,
+    saved_key: impl FnOnce() -> Result<Option<String>, String>,
+) -> Result<Option<(Via, String)>, String> {
+    match bridge_key {
+        Some(key) => Ok(Some((Via::Account, key))),
+        None => Ok(saved_key()?.map(|key| (Via::Server, key))),
+    }
+}
+
 #[tauri::command]
 pub async fn preview_relay_open(
     app: AppHandle,
@@ -62,14 +78,17 @@ pub async fn preview_relay_open(
         window_server(&external, window.label())?
     };
     let origin = base_url.clone();
-    let key = tauri::async_runtime::spawn_blocking(move || openagentd_shell_core::get_access_key(&origin))
-        .await
-        .map_err(|_| "credential store unavailable".to_string())??
-        .ok_or_else(|| "Previews from this window need the server's access key.".to_string())?;
+    let bridge_key = crate::account::bridge_key(&origin);
+    let (via, key) = tauri::async_runtime::spawn_blocking(move || {
+        relay_upstream(bridge_key, || openagentd_shell_core::get_access_key(&origin))
+    })
+    .await
+    .map_err(|_| "credential store unavailable".to_string())??
+    .ok_or_else(|| "Previews from this window need the server's access key.".to_string())?;
     let relays: tauri::State<'_, PreviewRelays> = app.state();
     relays
         .0
-        .open(window.label(), relay_client(), &base_url, &key, &preview_id, port)
+        .open_via(via, window.label(), relay_client(), &base_url, &key, &preview_id, port)
         .await
 }
 
@@ -84,8 +103,23 @@ pub fn preview_relay_close(
 
 #[cfg(test)]
 mod tests {
-    use super::window_server;
+    use super::{relay_upstream, window_server};
+    use openagentd_shell_core::Via;
     use std::collections::HashMap;
+
+    #[test]
+    fn an_account_bridge_uses_its_own_key_and_a_server_its_saved_one() {
+        assert_eq!(
+            relay_upstream(Some("bridge".into()), || panic!("a bridge has no saved key")).unwrap(),
+            Some((Via::Account, "bridge".to_string()))
+        );
+        assert_eq!(
+            relay_upstream(None, || Ok(Some("saved".to_string()))).unwrap(),
+            Some((Via::Server, "saved".to_string()))
+        );
+        assert_eq!(relay_upstream(None, || Ok(None)).unwrap(), None);
+        assert!(relay_upstream(None, || Err("locked".into())).is_err());
+    }
 
     #[test]
     fn relays_only_serve_external_windows() {

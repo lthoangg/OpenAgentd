@@ -39,17 +39,14 @@ pub fn which_in(name: &str, path: impl AsRef<OsStr>) -> Option<PathBuf> {
 /// Whether `p` is a file this platform would execute.
 pub fn is_executable(p: &Path) -> bool {
     let Ok(md) = std::fs::metadata(p) else { return false };
-    if !md.is_file() {
-        return false;
-    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        md.permissions().mode() & 0o111 != 0
+        md.is_file() && md.permissions().mode() & 0o111 != 0
     }
     #[cfg(not(unix))]
     {
-        true
+        md.is_file()
     }
 }
 

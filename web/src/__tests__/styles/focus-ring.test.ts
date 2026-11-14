@@ -50,7 +50,7 @@ describe('keyboard focus ring', () => {
     for (const name of ['ITEM', 'ICON_ITEM']) {
       expect(footer).toMatch(new RegExp(`const ${name} =\\s*'[^']*focus-visible:ring-inset`))
     }
-    expect(read('components/HealthDot.tsx')).toMatch(/'flex h-5 items-center[^']*focus-visible:ring-inset/)
+    expect(read('components/HealthDot.tsx')).toMatch(/'relative flex h-6 items-center[^']*focus-visible:ring-inset/)
   })
 
   it('brings the skip link in from the window corner so its whole ring shows', () => {

@@ -262,6 +262,8 @@ struct Phone {
     approvals: tokio::sync::Mutex<HashMap<String, Approval>>,
     /// The one open invitation, while the Add a device sheet shows it.
     invite: tokio::sync::Mutex<Option<flows::Invite>>,
+    /// Cancels an offer still in flight when the sheet closes or another scan starts.
+    invite_generation: std::sync::atomic::AtomicU64,
     /// Relay links and their bridges, by computer device id.
     links: tokio::sync::Mutex<HashMap<String, AccountLink>>,
     /// Where each computer may be reached directly (spec 5.5), by device
@@ -359,6 +361,7 @@ pub fn init(data_dir: std::path::PathBuf) {
         genesis: Mutex::new(None),
         approvals: tokio::sync::Mutex::new(HashMap::new()),
         invite: tokio::sync::Mutex::new(None),
+        invite_generation: std::sync::atomic::AtomicU64::new(0),
         links: tokio::sync::Mutex::new(HashMap::new()),
         addresses: Mutex::new(read_json(&data_dir.join("cloud").join("direct.json"))),
         bridge_ports: Mutex::new(read_json(&data_dir.join("cloud").join("bridges.json"))),
@@ -1375,7 +1378,7 @@ fn now_ms() -> u64 {
 #[tauri::command]
 pub async fn cloud_invite_start() -> Result<InviteView, String> {
     let p = phone()?;
-    let _ = cloud_invite_cancel().await;
+    let _ = cloud_invite_cancel(None).await;
     let mut guard = p.member.lock().await;
     let member = guard.as_mut().ok_or("Not signed in.")?;
     match flows::start_invite(member).await {
@@ -1387,6 +1390,48 @@ pub async fn cloud_invite_start() -> Result<InviteView, String> {
             *p.invite.lock().await = Some(invite);
             Ok(view)
         }
+        Err(e) => {
+            drop(guard);
+            Err(flow_error(e).await)
+        }
+    }
+}
+
+/// Scan to add (spec 4.3.1): opens an invitation with the scanned
+/// computer's secret and offers it to its sign-in code. It adds nothing;
+/// the existing poll and Add commands drive the rest, with Face ID on Add.
+#[tauri::command]
+pub async fn cloud_add_scanned(link: String) -> Result<u64, String> {
+    if link.len() > 512 || openagentd_cloud::invite::parse_add_link(&link).is_err() {
+        return Err("That is not an OpenAgentd sign-in code.".into());
+    }
+    let link = zeroize::Zeroizing::new(link);
+    let p = phone()?;
+    use std::sync::atomic::Ordering;
+    let generation = p.invite_generation.fetch_add(1, Ordering::SeqCst) + 1;
+    let mut guard = p.member.lock().await;
+    let member = guard
+        .as_mut()
+        .ok_or("Sign in on this phone before adding a computer.")?;
+    // Serialize replacement with an older offer's eventual store.
+    if let Some(old) = p.invite.lock().await.take() {
+        flows::cancel_invite(member, old).await.map_err(|e| e.to_string())?;
+    }
+    if generation != p.invite_generation.load(Ordering::SeqCst) {
+        return Err("This sign-in was cancelled.".into());
+    }
+    match flows::offer_scanned(member, &link).await {
+        Ok(invite) => {
+            let mut slot = p.invite.lock().await;
+            if generation != p.invite_generation.load(Ordering::SeqCst) {
+                drop(slot);
+                let _ = flows::cancel_invite(member, invite).await;
+                return Err("This sign-in was cancelled.".into());
+            }
+            *slot = Some(invite);
+            Ok(generation)
+        }
+        Err(FlowError::Api(e)) if e.is("already_decided") => Err("Someone else answered this code. Cancel on the computer, then sign in again to show a new code.".into()),
         Err(e) => {
             drop(guard);
             Err(flow_error(e).await)
@@ -1441,13 +1486,22 @@ pub async fn cloud_invite_poll() -> Result<InvitePoll, String> {
 /// (after Face ID) and spends the invitation. `approver`, `server`,
 /// `client` as for [`cloud_approve_confirm`]; absent, it gets the roles it
 /// asked for and approves others when it opens sessions.
+#[derive(Serialize)]
+pub struct InviteAdded {
+    #[serde(flatten)]
+    status: Status,
+    /// Scan to add only: the number the person picks on the computer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub number: Option<String>,
+}
+
 #[tauri::command]
 pub async fn cloud_invite_add(
     enrollment_id: String,
     approver: Option<bool>,
     server: Option<bool>,
     client: Option<bool>,
-) -> Result<Status, String> {
+) -> Result<InviteAdded, String> {
     let p = phone()?;
     let grant = {
         let guard = p.member.lock().await;
@@ -1463,32 +1517,59 @@ pub async fn cloud_invite_add(
             _ => return Err("The invitation ended. Show a new one.".into()),
         }
     };
-    let invite = p
-        .invite
-        .lock()
-        .await
-        .take()
-        .ok_or("The invitation ended. Show a new one.")?;
-    with_sign_key(
+    let number = with_sign_key(
         "Add this device to your account",
         async move |m: &mut Member| {
-            flows::add_invited(m, invite, &enrollment_id, grant)
-                .await
-                .map(|_| ())
+            // Take it only after Face ID unlocked the key: cancelling
+            // authentication must leave the invitation available to retry.
+            let invite = p.invite.lock().await.take().ok_or(FlowError::JoinEnded)?;
+            let slot_id = invite.slot_id.clone();
+            let result = if invite.scanned().is_some() {
+                flows::add_scanned(m, invite, &enrollment_id, grant)
+                    .await
+                    .map(|(_, number)| Some(number))
+            } else {
+                flows::add_invited(m, invite, &enrollment_id, grant)
+                    .await
+                    .map(|_| None)
+            };
+            if result.is_err() {
+                let _ = m.cloud.invite_cancel(&slot_id).await;
+            }
+            result
         },
     )
     .await?;
-    Ok(status())
+    Ok(InviteAdded {
+        status: status(),
+        number,
+    })
 }
 
 /// The sheet closed (or the app went to the background): the QR code and
 /// link stop working.
 #[tauri::command]
-pub async fn cloud_invite_cancel() -> Result<(), String> {
+pub async fn cloud_invite_cancel(generation: Option<u64>) -> Result<(), String> {
     let p = phone()?;
-    let Some(invite) = p.invite.lock().await.take() else {
+    use std::sync::atomic::Ordering;
+    let cancelled = if let Some(g) = generation {
+        let Some(next) = g.checked_add(1) else { return Ok(()) };
+        if p.invite_generation.compare_exchange(g, next, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+            return Ok(());
+        }
+        next
+    } else {
+        p.invite_generation.fetch_add(1, Ordering::SeqCst) + 1
+    };
+    let mut slot = p.invite.lock().await;
+    // A late completion of an old sheet must not cancel a newer scan.
+    if generation.is_some() && p.invite_generation.load(Ordering::SeqCst) != cancelled {
+        return Ok(());
+    }
+    let Some(invite) = slot.take() else {
         return Ok(());
     };
+    drop(slot);
     let guard = p.member.lock().await;
     let member = guard.as_ref().ok_or("Not signed in.")?;
     flows::cancel_invite(member, invite)
@@ -1500,6 +1581,7 @@ pub async fn cloud_invite_cancel() -> Result<(), String> {
 #[tauri::command]
 pub async fn cloud_sign_out() -> Result<Status, String> {
     let p = phone()?;
+    let _ = cloud_invite_cancel(None).await;
     close_links().await;
     forget_bridge_secrets(None);
     if let Some(member) = p.member.lock().await.take() {

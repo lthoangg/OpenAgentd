@@ -142,10 +142,13 @@ pub fn next_hops(latest: Option<&Value>) -> i64 {
     latest.and_then(|v| v.get("hops")).and_then(Value::as_i64).unwrap_or(0).max(0) + 1
 }
 
-// ── outstanding replies (notification suppression only) ─────────────────────
+// ── outstanding replies ──────────────────────────────────────────────────────
 
-fn outstanding() -> &'static Mutex<HashMap<String, usize>> {
-    static O: OnceLock<Mutex<HashMap<String, usize>>> = OnceLock::new();
+/// Who is owed a reply by whom: each sender, with the session it asked once
+/// per request still open. It holds a sender back from "Done" and tells the
+/// person what a finished answer still waits for.
+fn outstanding() -> &'static Mutex<HashMap<String, Vec<String>>> {
+    static O: OnceLock<Mutex<HashMap<String, Vec<String>>>> = OnceLock::new();
     O.get_or_init(Default::default)
 }
 
@@ -154,30 +157,81 @@ fn key(sid: &str) -> String {
 }
 
 /// Whether `session_id` still waits on a reply it asked another workspace
-/// for. In memory: after a restart this is false, which costs at most one
-/// extra notification.
+/// for. In memory, and read back from the database when the server starts
+/// ([`restore_outstanding`]).
 pub fn has_outstanding_replies(session_id: &str) -> bool {
-    outstanding().lock().unwrap().get(&key(session_id)).is_some_and(|n| *n > 0)
+    outstanding().lock().unwrap().get(&key(session_id)).is_some_and(|t| !t.is_empty())
 }
 
 /// Every session that [`has_outstanding_replies`], as API ids.
 pub fn sessions_with_outstanding_replies() -> Vec<String> {
-    outstanding().lock().unwrap().iter().filter(|(_, n)| **n > 0).map(|(k, _)| k.clone()).collect()
+    outstanding().lock().unwrap().iter().filter(|(_, t)| !t.is_empty()).map(|(k, _)| k.clone()).collect()
 }
 
-fn add_outstanding(session_id: &str) {
-    *outstanding().lock().unwrap().entry(key(session_id)).or_insert(0) += 1;
+/// The sessions `session_id` still waits on, as API ids, each once, in the
+/// order it first asked them.
+pub fn outstanding_targets(session_id: &str) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for t in outstanding().lock().unwrap().get(&key(session_id)).into_iter().flatten() {
+        if !out.contains(t) {
+            out.push(t.clone());
+        }
+    }
+    out
 }
 
-fn settle_outstanding(session_id: &str) {
+fn add_outstanding(session_id: &str, target: &str) {
+    outstanding().lock().unwrap().entry(key(session_id)).or_default().push(key(target));
+}
+
+fn settle_outstanding(session_id: &str, target: &str) {
     let mut o = outstanding().lock().unwrap();
     let k = key(session_id);
-    if let Some(n) = o.get_mut(&k) {
-        *n = n.saturating_sub(1);
-        if *n == 0 {
+    if let Some(targets) = o.get_mut(&k) {
+        let target = key(target);
+        if let Some(i) = targets.iter().position(|t| *t == target) {
+            targets.remove(i);
+        }
+        if targets.is_empty() {
             o.remove(&k);
         }
     }
+}
+
+/// `target` was deleted: it answers nobody, so nobody waits on it.
+pub fn forget_outstanding_target(target: &str) {
+    let target = key(target);
+    outstanding().lock().unwrap().retain(|_, targets| {
+        targets.retain(|t| *t != target);
+        !targets.is_empty()
+    });
+}
+
+/// Reads who is owed a reply back from the database, replacing what is in
+/// memory. Call once when the server starts, before any turn runs. A request
+/// whose sender was already told it failed is left out: nothing is working
+/// on it, and a retry still delivers its answer.
+pub async fn restore_outstanding(pool: &DbPool) {
+    let rows = match db::reply_requests_in_flight(pool).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("workspace_message_restore_failed error={}", e);
+            return;
+        }
+    };
+    let mut restored: HashMap<String, Vec<String>> = HashMap::new();
+    for (target, source) in rows {
+        restored.entry(key(&source)).or_default().push(key(&target));
+    }
+    if !restored.is_empty() {
+        tracing::info!("workspace_message_restored senders={}", restored.len());
+    }
+    *outstanding().lock().unwrap() = restored;
+}
+
+/// The name a workspace goes by: the one it was given, else its folder's.
+pub async fn workspace_name(pool: &DbPool, path: &str) -> String {
+    registered_workspaces(pool).await.ok().and_then(|ts| ts.into_iter().find(|t| same_path(&t.path, path)).map(|t| t.name)).unwrap_or_else(|| basename(path))
 }
 
 // ── send ─────────────────────────────────────────────────────────────────────
@@ -460,7 +514,7 @@ pub async fn send(pool: &DbPool, req: SendRequest) -> Result<Sent, String> {
         }
     };
     if req.reply {
-        add_outstanding(&req.source_session_id);
+        add_outstanding(&req.source_session_id, &sid);
     }
     tracing::info!(
         "workspace_message_sent source_session_id={} target_workspace={} target_session_id={} delivery={:?} reply={} hops={}",
@@ -692,8 +746,7 @@ pub async fn on_turn_closed(pool: &DbPool, session_id: &str, status: &str, cance
         }
     };
     let target_ws = db::get_session(pool, session_id).await.ok().flatten().map(|r| r.workspace).unwrap_or_default();
-    let target_name =
-        registered_workspaces(pool).await.ok().and_then(|ts| ts.into_iter().find(|t| same_path(&t.path, &target_ws)).map(|t| t.name)).unwrap_or_else(|| basename(&target_ws));
+    let target_name = workspace_name(pool, &target_ws).await;
     let sid = codec::api_uuid(session_id);
     let answer = if outcome == "completed" {
         let out = db::last_assistant_content(pool, session_id).await.ok().flatten().filter(|s| !s.trim().is_empty());
@@ -740,7 +793,7 @@ pub async fn on_turn_closed(pool: &DbPool, session_id: &str, status: &str, cance
         for r in &rows {
             stamp(pool, r, field).await;
             if settles {
-                settle_outstanding(&source);
+                settle_outstanding(&source, &sid);
             }
         }
         delivered |= settles;
@@ -906,16 +959,28 @@ mod tests {
     #[test]
     fn outstanding_counter() {
         let sid = uuid::Uuid::now_v7().to_string();
+        let (a, b) = (uuid::Uuid::now_v7().to_string(), uuid::Uuid::now_v7().to_string());
         assert!(!has_outstanding_replies(&sid));
-        add_outstanding(&sid);
-        add_outstanding(&sid);
-        settle_outstanding(&sid);
+        add_outstanding(&sid, &a);
+        add_outstanding(&sid, &b);
+        // A second request to the same session is one more reply owed, and
+        // still one session waited on.
+        add_outstanding(&sid, &b);
+        assert_eq!(outstanding_targets(&sid), vec![a.clone(), b.clone()]);
+        settle_outstanding(&sid, &a);
+        settle_outstanding(&sid, &b);
         assert!(has_outstanding_replies(&sid));
+        assert_eq!(outstanding_targets(&sid), vec![b.clone()]);
         assert!(sessions_with_outstanding_replies().contains(&sid));
         assert!(crate::subagents::has_pending_work(&sid));
-        settle_outstanding(&sid);
-        settle_outstanding(&sid);
+        settle_outstanding(&sid, &b);
+        settle_outstanding(&sid, &b);
         assert!(!has_outstanding_replies(&sid));
         assert!(!sessions_with_outstanding_replies().contains(&sid));
+        assert!(outstanding_targets(&sid).is_empty());
+        // A session that is gone answers nobody.
+        add_outstanding(&sid, &a);
+        forget_outstanding_target(&a);
+        assert!(!has_outstanding_replies(&sid));
     }
 }

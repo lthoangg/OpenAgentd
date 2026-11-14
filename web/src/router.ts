@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
+import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 import { z } from 'zod'
 import { Root, NotFound } from './routes/__root'
 import { AppLayout } from './routes/cockpit'
@@ -60,23 +60,6 @@ const serversRoute = createRoute({
   component: () => null,
 })
 
-// Links from older builds (bookmarks, notifications, other windows) used a
-// /coding prefix; they redirect and render nothing of their own.
-const legacyCodingRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/coding',
-  beforeLoad: () => {
-    throw redirect({ to: '/', replace: true })
-  },
-})
-const legacyCodingSessionRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/coding/$sessionId',
-  beforeLoad: ({ params }) => {
-    throw redirect({ to: '/$sessionId', params: { sessionId: params.sessionId }, replace: true })
-  },
-})
-
 const telemetrySearchSchema = z.object({
   days: z.number().optional(),
   traceId: z.string().optional(),
@@ -119,8 +102,6 @@ const settingsSectionRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   packagedIndexRoute,
   appLayoutRoute.addChildren([newSessionRoute, sessionsRoute, serversRoute, sessionRoute]),
-  legacyCodingRoute,
-  legacyCodingSessionRoute,
   telemetryRoute,
   schedulerRoute,
   settingsRoute,

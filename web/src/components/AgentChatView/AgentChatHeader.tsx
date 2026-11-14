@@ -455,8 +455,10 @@ function PhoneChatNavBar({ onBack, workspace, workspaceName, sessionId, sessionT
             // workspace line pushed the title up and the bar taller, and the
             // ghost's muted medium text read as a second subtitle. ``!``
             // throughout: ``cn`` does not merge, so these must beat the
-            // ghost/size classes they repeat.
-            className="block! h-auto! min-h-0! min-w-0! max-w-full truncate rounded-none! p-0! text-left font-semibold! text-[length:inherit]! leading-[inherit]! text-(--color-text)! hover:bg-transparent! active:bg-transparent! active:opacity-60"
+            // ghost/size classes they repeat. ``before``: the tap target is
+            // the bar's whole title block, workspace line included, and the
+            // bar's hairline under it: 44px.
+            className="block! h-auto! min-h-0! min-w-0! max-w-full truncate rounded-none! p-0! text-left font-semibold! text-[length:inherit]! leading-[inherit]! text-(--color-text)! before:absolute before:inset-0 before:-bottom-px hover:bg-transparent! active:bg-transparent! active:opacity-60"
           >
             {titleText}
           </Button>

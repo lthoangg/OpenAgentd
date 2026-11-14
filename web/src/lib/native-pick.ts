@@ -8,14 +8,13 @@
  * it to the fs scope; ``tauri-plugin-fs`` reads that copy back, and it
  * becomes a ``File`` for the composer's usual attach path.
  */
-import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 
 export type NativePickKind = 'photos' | 'files'
 
 /** The iOS and Android apps: the only shells with the native pickers. */
 export function canPickNatively(): boolean {
-  const { isTauri, os } = getPlatform()
-  return isTauri && (os === 'ios' || os === 'android')
+  return isMobileApp()
 }
 
 const MIME_BY_EXTENSION: Record<string, string> = {

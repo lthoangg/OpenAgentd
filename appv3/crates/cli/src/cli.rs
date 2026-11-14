@@ -127,9 +127,6 @@ pub enum CloudCmd {
     Login {
         #[command(flatten)]
         roles: CloudRoles,
-        /// No longer needed: any device can be the first. Accepted and ignored.
-        #[arg(long, hide = true)]
-        first_device: bool,
     },
     /// Approve a device that signed in (when this computer approves devices)
     Approve,
@@ -212,7 +209,8 @@ pub struct StartArgs {
     /// Prompt for the access key clients must send (required beyond loopback)
     #[arg(long)]
     pub key: bool,
-    /// Wait until the server is ready (up to 30 s); exit 1 if it is not
+    /// Accepted for older scripts: start always waits until the server is
+    /// ready (up to 30 s) and exits 1 if it is not
     #[arg(long)]
     pub wait: bool,
     /// Print a QR code the OpenAgentd mobile app can scan to connect (needs a
@@ -310,9 +308,6 @@ pub struct AuthArgs {
     /// Reconnect this account (label or credential id)
     #[arg(long, value_name = "ACCOUNT")]
     pub account: Option<String>,
-    /// Same as `auth list`
-    #[arg(long, hide = true)]
-    pub list: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -650,7 +645,8 @@ mod tests {
         assert!(matches!(auth(&["auth", "logout", "codex", "--account", "Work"]).action, Some(AuthCmd::Logout { ref account, .. }) if account.as_deref() == Some("Work")));
         let add = auth(&["auth", "codex", "--add"]);
         assert!(add.add && add.provider.as_deref() == Some("codex"));
-        assert!(auth(&["auth", "--list"]).list);
+        assert_eq!(kind(&["auth", "--list"]), ErrorKind::UnknownArgument);
+        assert_eq!(kind(&["cloud", "login", "--first-device"]), ErrorKind::UnknownArgument);
         let bare = auth(&["auth"]);
         assert!(bare.action.is_none() && bare.provider.is_none());
         assert_eq!(kind(&["auth", "nope"]), ErrorKind::InvalidValue);

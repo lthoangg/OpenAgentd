@@ -56,4 +56,12 @@ describe("providerErrorDetails — what Copy details hands over", () => {
   it("does not repeat a title the message already is, and skips empty fields", () => {
     expect(providerErrorDetails({ title: "Model error", message: "Model error", extra: { code: null, status_code: "" } })).toBe("Model error")
   })
+
+  it("ends with the transport's own text, which the card itself never shows", () => {
+    expect(providerErrorDetails({
+      title: "openai:gpt-5 is unavailable",
+      message: "It answered with an error 5 times in a row (HTTP 503).",
+      extra: { code: "provider_unavailable", details: "Server error '503 Service Unavailable' for url 'https://api.openai.com/v1/responses'" },
+    })).toBe("openai:gpt-5 is unavailable\nIt answered with an error 5 times in a row (HTTP 503).\nCode: provider_unavailable\nServer error '503 Service Unavailable' for url 'https://api.openai.com/v1/responses'")
+  })
 })

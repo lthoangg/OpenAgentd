@@ -122,6 +122,7 @@ import {
 } from './WorkspacePanel/GitViewToolbar'
 import {
   type AttachmentTabRequest,
+  type TerminalRunRequest,
   type DiffTabRequest,
   type DockLayoutRequest,
   type DockTab,
@@ -208,6 +209,8 @@ export function WorkspacePanel({
   selectedFileOpenKey = 0,
   terminalOpenKey = 0,
   handledTerminalOpenKeyRef: parentHandledTerminalOpenKeyRef,
+  terminalRunRequest = null,
+  handledTerminalRunKeyRef,
   viewRequest = null,
   handledViewRequestKeyRef: parentHandledViewRequestKeyRef,
   diffRequest = null,
@@ -251,6 +254,9 @@ export function WorkspacePanel({
   selectedFileOpenKey?: number
   terminalOpenKey?: number
   handledTerminalOpenKeyRef?: React.RefObject<number | null>
+  /** Shell request to run a shell code block's command in a terminal. */
+  terminalRunRequest?: TerminalRunRequest | null
+  handledTerminalRunKeyRef?: React.RefObject<number>
   /** Shell request to open (or focus) the Tasks / Schedule / Plan tab. */
   viewRequest?: DockViewRequest | null
   /** Parent-owned so a remounted dock does not replay a handled request. */
@@ -377,6 +383,8 @@ export function WorkspacePanel({
     onFileSelect,
     terminalOpenKey,
     handledTerminalOpenKeyRef: parentHandledTerminalOpenKeyRef,
+    terminalRunRequest,
+    handledTerminalRunKeyRef,
     viewRequest,
     handledViewRequestKeyRef: parentHandledViewRequestKeyRef,
     onActiveViewChange,

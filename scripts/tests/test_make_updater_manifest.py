@@ -186,11 +186,11 @@ def test_manifest_fails_when_required_platform_is_missing(
     module = _load_manifest_module()
     artefact_dir = tmp_path / "artefacts"
     artefact_dir.mkdir()
-    # Provide a Linux artefact so the script *does* build a non-empty
+    # Provide a Windows artefact so the script *does* build a non-empty
     # platform map; the assertion is then that requiring a missing
     # platform (darwin-aarch64) is what trips the failure.
-    (artefact_dir / "OpenAgentd_1.2.0_amd64.AppImage").write_text("appimage")
-    (artefact_dir / "OpenAgentd_1.2.0_amd64.AppImage.sig").write_text("sig")
+    (artefact_dir / "OpenAgentd_1.2.0_x64_en-US.msi").write_text("msi")
+    (artefact_dir / "OpenAgentd_1.2.0_x64_en-US.msi.sig").write_text("sig")
     out = tmp_path / "latest.json"
 
     monkeypatch.setattr(

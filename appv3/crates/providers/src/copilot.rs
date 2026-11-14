@@ -273,7 +273,7 @@ pub fn build_for(model: &str, model_kwargs: Kwargs, slot: &TokenSlot) -> Provide
 
 fn build_with(model: &str, model_kwargs: Kwargs, resolved: Option<(String, String)>) -> ProviderResult<Arc<dyn LlmProvider>> {
     let Some((token, base)) = resolved else {
-        return Err(ProviderError::Invalid("GitHub token not found.  Run:\n  agentd auth copilot\nOr set COPILOT_GITHUB_TOKEN env var.".into()));
+        return Err(ProviderError::Invalid("GitHub Copilot is not signed in. Sign in under Settings → Providers, run `agentd auth copilot`, or set COPILOT_GITHUB_TOKEN.".into()));
     };
     // Only a cache miss needs the network (and the async helper).
     let cat = fresh_cached_catalog(&token, &base).unwrap_or_else(|| block_on_thread(model_catalog()));

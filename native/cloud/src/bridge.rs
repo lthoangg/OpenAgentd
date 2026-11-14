@@ -448,6 +448,11 @@ async fn handle(mut req: Request<Incoming>, shared: &Shared) -> Response<Body> {
         }
     };
     if resp.status() == StatusCode::SWITCHING_PROTOCOLS {
+        // The computer serves one exchange per stream, so its 101 says
+        // `connection: upgrade, close`. This side's connection does upgrade:
+        // say only that, as WebSocket clients that compare the whole value
+        // (not its tokens) expect.
+        resp.headers_mut().insert(header::CONNECTION, HeaderValue::from_static("upgrade"));
         if let Some(from_page) = upgrade {
             let to_computer = hyper::upgrade::on(&mut resp);
             tokio::spawn(async move {
@@ -563,6 +568,66 @@ mod tests {
         let echoed = out.split("\r\n\r\n").nth(1).unwrap_or_default().to_ascii_lowercase();
         assert!(!echoed.contains("origin:") && !echoed.contains("authorization:"), "{out}");
         assert!(out.to_ascii_lowercase().contains("access-control-allow-origin: tauri://localhost"), "{out}");
+    }
+
+    /// A computer that accepts an upgrade and then echoes bytes, served as
+    /// the server's connector serves a stream: one exchange, no keep-alive.
+    fn upgrading_computer() -> Opener {
+        Arc::new(|| {
+            Box::pin(async {
+                let (here, there) = tokio::io::duplex(64 * 1024);
+                tokio::spawn(async move {
+                    let svc = hyper::service::service_fn(|mut req: Request<Incoming>| async move {
+                        let upgraded = hyper::upgrade::on(&mut req);
+                        tokio::spawn(async move {
+                            if let Ok(io) = upgraded.await {
+                                let mut io = TokioIo::new(io);
+                                let mut buf = [0u8; 64];
+                                while let Ok(n) = io.read(&mut buf).await {
+                                    if n == 0 || io.write_all(&buf[..n]).await.is_err() {
+                                        break;
+                                    }
+                                }
+                            }
+                        });
+                        let mut r = Response::new(Full::new(Bytes::new()));
+                        *r.status_mut() = StatusCode::SWITCHING_PROTOCOLS;
+                        r.headers_mut().insert(header::CONNECTION, HeaderValue::from_static("upgrade"));
+                        r.headers_mut().insert(header::UPGRADE, HeaderValue::from_static("websocket"));
+                        Ok::<_, Infallible>(r)
+                    });
+                    let _ = hyper::server::conn::http1::Builder::new().keep_alive(false).serve_connection(TokioIo::new(there), svc).with_upgrades().await;
+                });
+                Ok(Box::new(here) as Box<dyn Io>)
+            })
+        })
+    }
+
+    /// The computer's one-exchange stream makes its 101 say
+    /// `connection: upgrade, close`. A WebSocket client that wants exactly
+    /// `upgrade` would refuse that, so the bridge says it plainly.
+    #[tokio::test]
+    async fn an_upgrade_answers_with_a_plain_connection_upgrade_and_carries_bytes() {
+        let b = Bridge::start(upgrading_computer(), app_origin).await.unwrap();
+        let key = b.key().to_string();
+        let mut tcp = tokio::net::TcpStream::connect(b.origin.trim_start_matches("http://")).await.unwrap();
+        tcp.write_all(format!("GET /api/terminal HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {key}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n").as_bytes())
+            .await
+            .unwrap();
+        let mut head = Vec::new();
+        let mut byte = [0u8; 1];
+        while !head.ends_with(b"\r\n\r\n") {
+            assert_eq!(tcp.read(&mut byte).await.unwrap(), 1, "the answer ended early");
+            head.push(byte[0]);
+        }
+        let head = String::from_utf8_lossy(&head).to_ascii_lowercase();
+        assert!(head.starts_with("http/1.1 101"), "{head}");
+        let connection: Vec<&str> = head.lines().filter_map(|l| l.strip_prefix("connection: ")).collect();
+        assert_eq!(connection, ["upgrade"], "{head}");
+        tcp.write_all(b"ping").await.unwrap();
+        let mut got = [0u8; 4];
+        tcp.read_exact(&mut got).await.unwrap();
+        assert_eq!(&got, b"ping");
     }
 
     #[tokio::test]

@@ -140,6 +140,7 @@ async fn send_reply_retry_and_guards() {
     assert_eq!(sent.target.name, "infra");
     let infra_sid = sent.session_id.clone();
     assert!(wm::has_outstanding_replies(&app_sid));
+    assert_eq!(wm::outstanding_targets(&app_sid), vec![infra_sid.clone()], "the sender knows which session it waits for");
     wait_turn(&infra_ws, &infra_sid).await;
     let rows = user_rows(&pool, &infra_sid).await;
     assert_eq!(rows[0].1, "Create the orders queue.", "the UI shows the plain message");
@@ -172,6 +173,7 @@ async fn send_reply_retry_and_guards() {
     assert_eq!(reply.2["reply_from"]["status"], "completed");
     assert_eq!(reply.2["reply_from"]["session_id"], infra_sid.as_str());
     assert!(!wm::has_outstanding_replies(&app_sid));
+    assert!(wm::outstanding_targets(&app_sid).is_empty());
     assert_eq!(mock.calls.lock().unwrap().len(), 2);
     appv3_db::set_workspace_groups(&pool, &infra_ws, std::slice::from_ref(&acme.id)).await.unwrap();
 
@@ -277,4 +279,23 @@ async fn send_reply_retry_and_guards() {
     wait_turn(&infra_ws, &infra_sid).await;
     let names = tool_names(&mock, calls_before);
     assert!(!names.is_empty() && !names.contains(&"workspace".to_string()), "{names:?}");
+
+    // ── 6. a restart keeps what is still owed ───────────────────────────
+    // The list of replies owed lives in memory; a server that starts reads
+    // it back from the requests no session has answered yet.
+    let owed = uuid::Uuid::now_v7();
+    appv3_db::create_session(&pool, appv3_db::NewSession { id: Some(owed), workspace: infra_ws.clone(), ..Default::default() }).await.unwrap();
+    let mut extra = serde_json::Map::new();
+    extra.insert("sent_from".into(), json!({"session_id": app_sid, "reply": true, "hops": 1}));
+    let row = appv3_db::save_message(&pool, &owed.to_string(), appv3_db::NewMessage { extra: Some(extra), ..appv3_db::NewMessage::user("Still running.") }).await.unwrap();
+    assert!(!wm::has_outstanding_replies(&app_sid), "as after a restart: nothing in memory");
+    wm::restore_outstanding(&pool).await;
+    assert_eq!(wm::outstanding_targets(&app_sid), vec![owed.to_string()]);
+    assert!(appv3_agent::subagents::has_pending_work(&app_sid));
+    // Once it is answered, the next start owes nothing.
+    let mut answered = serde_json::Map::new();
+    answered.insert("sent_from".into(), json!({"session_id": app_sid, "reply": true, "replied_at": "2026-01-01T00:00:00", "hops": 1}));
+    appv3_db::update_message_content(&pool, &row.id, row.content.as_deref(), Some(&answered)).await.unwrap();
+    wm::restore_outstanding(&pool).await;
+    assert!(!wm::has_outstanding_replies(&app_sid));
 }

@@ -1,6 +1,6 @@
 [package]
 name = "openagentd-mobile"
-version = "3.53.1"
+version = "3.54.0"
 description = "OpenAgentd mobile shell"
 authors = ["openagentd contributors"]
 license = "Apache-2.0"
@@ -8,6 +8,11 @@ homepage = "https://openagentd.dev"
 repository = "https://github.com/lthoangg/openagentd"
 edition = "2021"
 rust-version = "1.85"
+
+# Not unused: `time` is an MSRV pin; `keyring` turns on the apple-native backend
+# for shell-core's keyring.
+[package.metadata.cargo-machete]
+ignored = ["time", "keyring"]
 
 [lib]
 name = "openagentd_mobile_lib"
@@ -29,9 +34,7 @@ tauri-plugin-deep-link = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
-url = "2"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-base64 = "0.23"
 sha2 = "0.10"
 keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
 # OpenAgentd Cloud accounts (optional): the protocol, the API client, and the
@@ -53,10 +56,8 @@ tauri-plugin-fs = "2"
 
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = "0.6"
-# block2: the `UIAlertAction` handler of the native picker is an ObjC block.
-block2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSString", "NSURL", "NSArray"] }
-objc2-ui-kit = { version = "0.3", features = ["UIActivityViewController", "UIAlertController", "UIApplication", "UIInterface", "UIPopoverPresentationController", "UITraitCollection", "UIViewController", "UIView", "UIWindow", "UIWindowScene"] }
+objc2-ui-kit = { version = "0.3", features = ["UIActivityViewController", "UIApplication", "UIInterface", "UIPopoverPresentationController", "UITraitCollection", "UIViewController", "UIView", "UIWindow", "UIWindowScene"] }
 objc2-core-foundation = { version = "0.3", features = ["CFCGTypes"] }
 dispatch2 = "0.3"
 
@@ -77,6 +78,7 @@ hyper = { version = "1", features = ["server", "client", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 bytes = "1"
+tower = { version = "0.5", features = ["util"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

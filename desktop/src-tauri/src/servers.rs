@@ -26,6 +26,17 @@ use crate::AppState;
 /// The tray's id for the builtin sidecar.
 pub const BUNDLED_KEY: &str = "bundled";
 
+/// The key the builtin computer's own name is remembered under (the web
+/// UI's `BUILT_IN_NAME_KEY`).
+pub const BUILT_IN_NAME_KEY: &str = "built-in";
+
+/// What a notification calls the builtin until its computer's name is known.
+const BUILT_IN_NOTIFICATION_NAME: &str = "Built-in server";
+
+/// The longest server name a notification title carries, in characters (a
+/// computer's own name is at most this long; a saved name can be longer).
+const NOTIFICATION_NAME_MAX_CHARS: usize = 40;
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ServerId {
     /// The builtin sidecar, whatever port it runs on now: a restart after a
@@ -52,14 +63,29 @@ impl ServerId {
 
     /// The name the user saved it under (else its host and port), or
     /// `bundled_name` for the builtin. A computer opened through the account
-    /// is named as its row under "Your computers" is.
-    pub fn display_name(&self, bundled_name: &str, saved: &[crate::config::SavedAppServer]) -> String {
+    /// is named as its row under "Your computers" is. `names`: what each
+    /// computer called itself when the app was last on it, used where the
+    /// user gave no name.
+    pub fn display_name(
+        &self,
+        bundled_name: &str,
+        saved: &[crate::config::SavedAppServer],
+        names: &openagentd_shell_core::ComputerNames,
+    ) -> String {
         match self {
             Self::Bundled => bundled_name.to_string(),
             Self::External(base) if crate::account::account_device(base).is_some() => {
-                crate::account::account_device(base).map(|d| d.label()).unwrap_or_default()
+                crate::account::account_device(base).map(|d| d.title(names)).unwrap_or_default()
             }
-            Self::External(base) => crate::usage::resolve_server_display_name(base, saved),
+            Self::External(base) => {
+                let named = crate::usage::resolve_server_display_name(base, saved);
+                // No name of the user's: the address came back.
+                if named == crate::usage::extract_host_port(base) {
+                    names.get(base).cloned().unwrap_or(named)
+                } else {
+                    named
+                }
+            }
         }
     }
 }
@@ -67,6 +93,58 @@ impl ServerId {
 /// The server an app window uses.
 pub fn window_server(label: &str, external: &HashMap<String, String>) -> ServerId {
     external.get(label).map_or(ServerId::Bundled, |base| ServerId::external(base))
+}
+
+/// Whether a notification from `server` says which computer it came from:
+/// always for a computer of the account (`account`), as its pushes do, and
+/// otherwise when the app knows more than one server. The builtin is always
+/// one of them, so only a builtin with no saved server (`saved`) and no
+/// account computer open (`bridges`) goes unnamed.
+pub fn notification_names_server(server: &ServerId, account: bool, saved: usize, bridges: usize) -> bool {
+    account || *server != ServerId::Bundled || saved + bridges > 0
+}
+
+/// `title` with the server's `name` after it ("Done · web · studio-mini").
+/// The name is the part cut when it is long, so the status and the workspace
+/// stay whole; a blank name leaves the title as it is.
+pub fn title_with_server(title: &str, name: &str) -> String {
+    let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+    if name.is_empty() {
+        return title.to_string();
+    }
+    let name = if name.chars().count() > NOTIFICATION_NAME_MAX_CHARS {
+        let head: String = name.chars().take(NOTIFICATION_NAME_MAX_CHARS - 1).collect();
+        format!("{}…", head.trim_end())
+    } else {
+        name
+    };
+    if title.trim().is_empty() {
+        return name;
+    }
+    format!("{title} · {name}")
+}
+
+/// What a notification from `server` calls it: the name the server lists
+/// show, with the builtin under its computer's own name once that is known.
+pub fn notification_server_name(
+    server: &ServerId,
+    saved: &[crate::config::SavedAppServer],
+    names: &openagentd_shell_core::ComputerNames,
+) -> String {
+    let builtin = names.get(BUILT_IN_NAME_KEY).map(|n| n.trim()).filter(|n| !n.is_empty()).unwrap_or(BUILT_IN_NOTIFICATION_NAME);
+    server.display_name(builtin, saved, names)
+}
+
+/// A notification's title for the running app: `title`, followed by the
+/// name of `server` when the notification names it
+/// ([`notification_names_server`]).
+pub fn notification_title(app: &AppHandle, server: &ServerId, title: &str) -> String {
+    let saved = crate::config::load_app_backend_config(app).map(|c| c.servers).unwrap_or_default();
+    let account = matches!(server, ServerId::External(base) if crate::account::account_device(base).is_some());
+    if !notification_names_server(server, account, saved.len(), crate::account::bridged_devices().len()) {
+        return title.to_string();
+    }
+    title_with_server(title, &notification_server_name(server, &saved, &crate::config::load_computer_names(app)))
 }
 
 /// The server the app is on now: the active window's, else the builtin
@@ -305,6 +383,83 @@ pub async fn endpoint(app: &AppHandle, server: &ServerId) -> Option<(String, Opt
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_saved_server_is_called_by_your_name_then_its_own_then_its_address() {
+        let saved = |name: Option<&str>| {
+            vec![crate::config::SavedAppServer { base_url: "http://192.168.1.30:4082".into(), name: name.map(String::from), enabled: false }]
+        };
+        let server = ServerId::external("http://192.168.1.30:4082/");
+        let mut names = openagentd_shell_core::ComputerNames::new();
+        assert_eq!(server.display_name("Built-in", &saved(None), &names), "192.168.1.30:4082");
+        names.insert("http://192.168.1.30:4082".into(), "office-nas".into());
+        assert_eq!(server.display_name("Built-in", &saved(None), &names), "office-nas", "the computer's own name");
+        assert_eq!(server.display_name("Built-in", &saved(Some("Office NAS")), &names), "Office NAS", "the name you gave wins");
+        assert_eq!(ServerId::Bundled.display_name("Built-in", &saved(None), &names), "Built-in");
+    }
+
+    #[test]
+    fn a_notification_names_its_server_only_when_there_is_more_than_one() {
+        let remote = ServerId::external("http://192.168.1.30:4082");
+        assert!(!notification_names_server(&ServerId::Bundled, false, 0, 0), "the builtin alone");
+        assert!(notification_names_server(&ServerId::Bundled, false, 1, 0), "a saved server too");
+        assert!(notification_names_server(&ServerId::Bundled, false, 0, 1), "an account computer open too");
+        assert!(notification_names_server(&remote, false, 1, 0));
+        assert!(notification_names_server(&remote, false, 0, 0), "a server that was never saved is still a second one");
+    }
+
+    #[test]
+    fn a_notification_from_an_account_computer_always_names_it() {
+        let bridge = ServerId::external("http://127.0.0.1:51234");
+        assert!(notification_names_server(&bridge, true, 0, 1));
+    }
+
+    #[test]
+    fn the_server_name_follows_the_status_and_the_workspace() {
+        assert_eq!(title_with_server("Done · web", "studio-mini"), "Done · web · studio-mini");
+        assert_eq!(title_with_server("Needs you", "studio-mini"), "Needs you · studio-mini", "no workspace");
+        assert_eq!(title_with_server("Done · web", "  "), "Done · web", "no name to add");
+        assert_eq!(title_with_server("", "studio-mini"), "studio-mini");
+    }
+
+    #[test]
+    fn a_long_server_name_is_the_part_that_is_cut() {
+        let at_limit = "n".repeat(NOTIFICATION_NAME_MAX_CHARS);
+        assert_eq!(title_with_server("Done · web", &at_limit), format!("Done · web · {at_limit}"));
+        let long = "é".repeat(NOTIFICATION_NAME_MAX_CHARS + 20);
+        let titled = title_with_server("Done · web", &long);
+        let name = titled.strip_prefix("Done · web · ").expect("the status and workspace stay whole");
+        assert_eq!(name.chars().count(), NOTIFICATION_NAME_MAX_CHARS);
+        assert!(name.ends_with('…'), "{name}");
+    }
+
+    #[test]
+    fn a_notification_calls_a_server_what_the_lists_call_it() {
+        let saved = vec![crate::config::SavedAppServer { base_url: "http://192.168.1.30:4082".into(), name: Some("Office NAS".into()), enabled: false }];
+        let mut names = openagentd_shell_core::ComputerNames::new();
+        let remote = ServerId::external("http://192.168.1.30:4082");
+        assert_eq!(notification_server_name(&remote, &saved, &names), "Office NAS");
+        assert_eq!(notification_server_name(&ServerId::Bundled, &saved, &names), "Built-in server");
+        names.insert(BUILT_IN_NAME_KEY.into(), "studio-mini".into());
+        assert_eq!(notification_server_name(&ServerId::Bundled, &saved, &names), "studio-mini", "the builtin computer's own name");
+    }
+
+    #[test]
+    fn an_account_computer_is_named_by_kind_and_key_until_the_app_has_been_on_it() {
+        let device = crate::account::AccountDevice { device_id: "d1".into(), fingerprint: "3F9A 21C4".into(), kind: Some("macos".into()) };
+        let mut names = openagentd_shell_core::ComputerNames::new();
+        assert_eq!(title_with_server("Done · web", &device.title(&names)), "Done · web · macOS · 3F9A 21C4");
+        names.insert("d1".into(), "studio-mini".into());
+        assert_eq!(title_with_server("Done · web", &device.title(&names)), "Done · web · studio-mini");
+    }
+
+    // The backend titles a question "Needs input · web"; the rename to the
+    // app's word happens before the server is added, and still applies.
+    #[test]
+    fn a_question_keeps_its_needs_you_title_with_a_server_name() {
+        let title = crate::pet::display_title("input_needed", "Needs input · api");
+        assert_eq!(title_with_server(&title, "studio-mini"), "Needs you · api · studio-mini");
+    }
 
     const REMOTE: &str = "http://192.168.1.30:4082";
     const LAB: &str = "http://192.168.1.20:4082";

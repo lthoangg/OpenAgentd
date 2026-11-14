@@ -25,8 +25,6 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
 - `src/badge.rs`: the "Needs you" attention badge (`set_attention_badge`):
   dock/launcher badge on macOS/Linux, a generated taskbar overlay per window
   on Windows.
-- `src/share.rs`: the system share sheet (`share_url`): `NSSharingServicePicker`
-  on macOS, `DataTransferManager` on Windows, "unsupported" on Linux.
 - `src/haptics.rs`: the trackpad "alignment" tick (`haptic_alignment`,
   `NSHapticFeedbackManager` on the main thread) the page fires when a resize
   drag snaps onto its default; a no-op `Ok` on every other platform.
@@ -37,6 +35,11 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   one external URL). The notch, the tray's "Auto" usage, new windows and
   notification routing all ask it. A saved server is never chosen as a
   window's server here; it only becomes one when the user clicks Connect.
+  An OS notification's title ends with its server's name
+  (`notification_title`: always for an account computer, else when the app
+  has a saved server or an open account computer besides the builtin). The
+  pet's bubble and the island keep the title the server sent, which the
+  island parses for the workspace.
   The notch additionally follows the builtin while it runs and saved
   servers marked `enabled` (`followed_servers`), with or without a window.
 - `src/commands.rs`: Tauri commands exposed to the frontend; access-key and

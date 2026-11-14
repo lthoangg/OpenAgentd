@@ -234,6 +234,9 @@ pub fn show_desktop_notification(
     // may not be: that is where the session, and its question, live.
     let sender = window.label().to_string();
     let server = crate::servers::window_server(&sender, &crate::servers::external_map(&app));
+    // The OS notification alone says which computer: the pet's bubble and
+    // the island keep the title as the server sent it.
+    let summary = crate::servers::notification_title(&app, &server, &crate::pet::display_title(&payload.kind, &payload.title));
     std::thread::spawn(move || {
         #[cfg(target_os = "macos")]
         ensure_notification_application(&app);
@@ -245,7 +248,7 @@ pub fn show_desktop_notification(
         let asks = payload.kind == "input_needed" && payload.session_id.is_some();
         let mut notification = notify_rust::Notification::new();
         notification
-            .summary(&crate::pet::display_title(&payload.kind, &payload.title))
+            .summary(&summary)
             .body(&payload.body);
         if routes_clicks {
             for (id, label) in notification_actions(&choices, asks, cfg!(target_os = "macos")) {
@@ -405,22 +408,10 @@ pub async fn save_workspace_file(
 }
 
 #[tauri::command]
-pub async fn backend_health(state: tauri::State<'_, AppState>) -> Result<bool, String> {
-    Ok(state.sidecar.alive().await)
-}
-
-#[tauri::command]
 pub fn backend_logs_path(app: AppHandle) -> Result<String, String> {
     backend_log_path(&app)
         .map(|path| path.to_string_lossy().into_owned())
         .map_err(|e| format!("backend log path unavailable: {e}"))
-}
-
-#[tauri::command]
-pub fn desktop_logs_path(app: AppHandle) -> Result<String, String> {
-    crate::desktop_log_path(&app)
-        .map(|p| p.to_string_lossy().into_owned())
-        .map_err(|e| format!("desktop log path unavailable: {e}"))
 }
 
 #[tauri::command]
@@ -479,7 +470,29 @@ pub async fn app_backend_status_for_window(
         supports_bundled: true,
         servers,
         account_device,
+        computer_names: crate::config::load_computer_names(&app),
     })
+}
+
+/// Remember what the computer behind `key` (an account device id, or a
+/// saved server's base URL) calls itself; an empty name forgets it. The web
+/// UI reads the name from the server the window is on. The notch follows
+/// the change at once.
+#[tauri::command]
+pub async fn app_remember_computer_name(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    key: String,
+    name: Option<String>,
+) -> Result<AppBackendStatus, String> {
+    // A saved server is remembered under the address the server list uses.
+    let key = normalize_external_base_url(&key).unwrap_or(key);
+    let path = crate::config::computer_names_path(&app).map_err(|e| format!("{e:#}"))?;
+    openagentd_shell_core::remember_computer_name_at(&path, &key, name.as_deref()).map_err(|e| format!("{e:#}"))?;
+    crate::island::servers_changed(&app);
+    app_backend_status_for_window(app.clone(), app.state(), window.label())
+        .await
+        .map_err(|e| format!("{e:#}"))
 }
 
 #[tauri::command]

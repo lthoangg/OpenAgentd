@@ -18,11 +18,18 @@
  * list, opens the form for a new one (test, then save and use). No form
  * opens by itself, except for a scanned connect link.
  *
+ * A row carries a name and one status line, never an address: a saved
+ * server is titled by the name you gave it, else by the name its computer
+ * gave for itself, and by its address only when the app knows neither. The
+ * address is in its Edit form; the built-in server's, and that of a
+ * connected server that is not saved, are under **Details**, where the
+ * computer in use is also renamed.
+ *
  * The phone's Servers screen is a third host: there the row in use also
  * offers **Sessions ›** (``onOpenInUse``), back up to its session list.
  */
 import { Fragment, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
-import { ChevronRight, MoreHorizontal, Pencil, Plus, ScanQrCode, Trash2 } from 'lucide-react'
+import { ChevronRight, Info, MoreHorizontal, Pencil, Plus, ScanQrCode, Trash2 } from 'lucide-react'
 import { cancelQrScan, canScanQr, scanQrCode } from '@/lib/qr-scan'
 import { QrScanOverlay } from '@/components/phone/QrScanOverlay'
 import { parseConnectLink } from '@/lib/connect-link'
@@ -36,6 +43,8 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { NetworkAccessCard } from '@/components/NetworkAccessCard'
+import { ComputerDetailsDialog } from '@/components/ComputerDetails'
+import { ServerUpdateOnRow } from '@/components/settings/ServerUpdate'
 import { Callout } from '@/components/ui/callout'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Field } from '@/components/ui/field'
@@ -48,6 +57,7 @@ import { mediumHapticFeedback } from '@/lib/haptics'
 import { shake } from '@/lib/shake'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
 import { cn } from '@/lib/utils'
+import { NAME_NEEDS_UPDATE, renameComputerInUse, serverInUseKeepsName } from '@/lib/computer-rename'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
 import { getStoredAccessKey, setStoredAccessKey } from '@/api/auth'
@@ -62,16 +72,19 @@ import {
   validateServerUrl,
 } from '@/lib/backend-switch'
 import {
+  BUILT_IN_NAME_KEY,
   getAppBackendStatus,
   getServerWatchStates,
   removeAppBackendServer,
   saveAppBackendServer,
+  savedServerTitle,
   setAppBackendServerEnabled,
   stopBundledAppBackend,
   type SavedAppServer,
   type AppBackendStatus,
   type ServerWatchState,
 } from '@/lib/app-backend'
+import { useAppStatusWithNames } from '@/lib/account-computers'
 
 const DEFAULT_SERVERS: SavedAppServer[] = [{ base_url: 'http://127.0.0.1:4082', name: 'Local server' }]
 
@@ -108,6 +121,13 @@ export interface AppBackendPrefill {
 }
 
 type Health = 'checking' | 'online' | 'offline'
+
+/** A saved server's one status line: what its dot says. */
+function healthWord(health: Health | undefined): string {
+  if (health === 'online') return 'Online'
+  if (health === 'offline') return 'Offline'
+  return 'Checking…'
+}
 
 interface AppBackendPanelProps {
   /** Loads status and probes servers when it turns true (dialog open, page shown). */
@@ -149,6 +169,9 @@ type ServerFormTarget =
 
 export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, sectionTitle = 'Servers', onOpenInUse, controlRef, onScanQr }: AppBackendPanelProps) {
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
+  // The names the app remembers, kept current while the list is shown: one
+  // read after this list loaded (a server just added) reaches its row.
+  const names = useAppStatusWithNames()?.computer_names ?? status?.computer_names
   // Nothing is listed until the shell has answered once: before that a
   // phone with no server would flash the browser build's placeholder rows.
   const [loaded, setLoaded] = useState(false)
@@ -158,6 +181,10 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   // its action sheet (a long press, or ⋯).
   const touch = useTouchFirst()
   const [rowSheet, setRowSheet] = useState<{ title: string; items: ActionSheetItem[] } | null>(null)
+  // Details of the built-in server, or of a connected server that is not
+  // saved; it stays on its server while the dialog closes.
+  const [details, setDetails] = useState<'builtin' | 'unlisted'>('builtin')
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const [baseUrl, setBaseUrl] = useState('')
   const [serverName, setServerName] = useState('')
   const [accessKey, setAccessKeyInput] = useState('')
@@ -258,7 +285,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   /** A row's Edit: the server's details in a form right under it. */
   function openEdit(server: SavedAppServer, inUse: boolean) {
     const normalized = normalizeServerBaseUrl(server.base_url)
-    const label = server.name || server.base_url
+    const label = savedServerTitle(server, names)
     setOriginal({ baseUrl: normalized, accessKey: '' })
     fillForm({ kind: 'edit', baseUrl: normalized, label, inUse }, normalized, server.name ?? '', '')
     void getStoredAccessKey(normalized).then((storedKey) => {
@@ -476,6 +503,16 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   // A connected server that is not in the saved list still gets a row. Without
   // shell status (a browser) the one server is the page's own.
   const unlistedUrl = !loaded ? null : status ? unlistedConnectedUrl(status, servers) : normalizeServerBaseUrl(currentUrl)
+  const onBuiltin = status !== null && !status.external
+  const builtinName = names?.[BUILT_IN_NAME_KEY] ?? null
+  const unlistedName = unlistedUrl ? names?.[unlistedUrl] ?? null : null
+  const unlistedTitle = unlistedName ?? unlistedUrl ?? ''
+  const showDetails = (which: 'builtin' | 'unlisted') => {
+    setDetails(which)
+    setDetailsOpen(true)
+  }
+  // The name lives on the computer: only the one the app is on is renamed.
+  const detailsInUse = details === 'unlisted' || onBuiltin
   const tested = testedBaseUrl !== null && testedBaseUrl === normalizeServerBaseUrl(baseUrl)
   const editTarget = form?.kind === 'edit' ? form : null
   // A rename saves at once; a new address or key waits for Test.
@@ -532,11 +569,15 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
             health={status?.sidecar_running ? 'online' : undefined}
             title="Built-in server"
             subtitle={`Runs inside this app · ${status?.sidecar_running ? 'Running' : 'Stopped'}`}
-            address={status && !status.external ? currentUrl : undefined}
             inUse={status !== null && !status.external}
             onOpen={touch && !pending && status?.sidecar_running ? (status.external ? () => { void connectBundled() } : onOpenInUse) : undefined}
           >
             {status !== null && !status.external ? openInUse('Built-in server') : null}
+            {onBuiltin || builtinName ? (
+              <Button type="button" variant="ghost" size="sm" aria-label="Details of the built-in server" onClick={() => showDetails('builtin')}>
+                Details
+              </Button>
+            ) : null}
             {status?.sidecar_running ? (
               <>
                 {status?.external && !touch ? (
@@ -559,29 +600,41 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
         {unlistedUrl ? (
           <ServerRow
             health={status ? serverHealth[unlistedUrl] : 'online'}
-            title={status ? unlistedUrl : 'This server'}
-            mono={Boolean(status)}
+            title={status ? unlistedTitle : 'This server'}
+            mono={Boolean(status) && !unlistedName}
             subtitle={status ? 'Not in your saved servers' : unlistedUrl}
             inUse
             onOpen={touch ? onOpenInUse : undefined}
+            onMore={touch && status ? () => setRowSheet({
+              title: unlistedTitle,
+              items: [{ id: 'details', label: 'Details', icon: Info, afterClose: true, run: () => showDetails('unlisted') }],
+            }) : undefined}
           >
-            {openInUse(status ? unlistedUrl : 'This server')}
+            {openInUse(status ? unlistedTitle : 'This server')}
+            {status && !touch ? (
+              <Button type="button" variant="ghost" size="sm" aria-label={`Details of ${unlistedTitle}`} onClick={() => showDetails('unlisted')}>
+                Details
+              </Button>
+            ) : null}
           </ServerRow>
         ) : null}
+        {unlistedUrl ? <ServerUpdateOnRow /> : null}
         {servers.map((server) => {
           const normalizedServerUrl = normalizeServerBaseUrl(server.base_url)
           const active = onExternal && normalizeServerBaseUrl(currentUrl) === normalizedServerUrl
-          const label = server.name || server.base_url
+          const label = savedServerTitle(server, names)
           const enabled = server.enabled === true
           const note = watchable ? watchNote(watchStates[normalizedServerUrl], enabled) : null
           const editing = editTarget?.baseUrl === normalizedServerUrl
+          const health = serverHealth[normalizedServerUrl] ?? serverHealth[server.base_url]
           return (
             <Fragment key={server.base_url}>
               <ServerRow
-                health={serverHealth[normalizedServerUrl] ?? serverHealth[server.base_url]}
+                health={health}
                 title={label}
-                subtitle={server.name ? server.base_url : undefined}
-                mono={!server.name}
+                // One status line: the background connection where the desktop watches it.
+                subtitle={note ? undefined : healthWord(health)}
+                mono={label === server.base_url}
                 note={note}
                 inUse={active}
                 onOpen={touch && !pending ? (active ? onOpenInUse : () => { void connectExternal(normalizedServerUrl, server.name ?? '', '', setListError) }) : undefined}
@@ -656,6 +709,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
                 </>
                 )}
               </ServerRow>
+              {active ? <ServerUpdateOnRow /> : null}
               {editing && editTarget ? serverForm(editTarget) : null}
             </Fragment>
           )
@@ -687,6 +741,22 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
         onClose={() => setRowSheet(null)}
         title={rowSheet?.title ?? 'Server'}
         items={rowSheet?.items ?? []}
+      />
+
+      <ComputerDetailsDialog
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        title={details === 'builtin' ? 'Built-in server' : unlistedTitle}
+        name={details === 'builtin' ? builtinName : unlistedName}
+        facts={detailsInUse ? [{ label: 'Address', value: normalizeServerBaseUrl(currentUrl), mono: true }] : []}
+        rename={detailsInUse && serverInUseKeepsName() ? {
+          name: (details === 'builtin' ? builtinName : unlistedName) ?? '',
+          save: async (name) => {
+            const next = await renameComputerInUse(status, name)
+            if (next) setStatus(next)
+          },
+        } : null}
+        renameHint={detailsInUse ? NAME_NEEDS_UPDATE : 'Use the built-in server to rename this computer.'}
       />
 
       <ConfirmDialog
@@ -860,7 +930,6 @@ export function ServerRow({
   mono = false,
   note = null,
   inUse,
-  address,
   onMore,
   onOpen,
   children,
@@ -875,8 +944,6 @@ export function ServerRow({
   note?: { text: string; tone: 'ok' | 'warn' | 'error' | 'muted' } | null
   /** The app talks to this server now. */
   inUse: boolean
-  /** Where the server answers, when the title does not already say (a mono line under the subtitle). */
-  address?: string
   /** Touch: open the row's action sheet, from a long press or its ⋯. */
   onMore?: () => void
   /** Touch: a tap on the row's name opens it (Use, or Sessions when in use). */
@@ -897,12 +964,17 @@ export function ServerRow({
       className={cn(
         'flex min-h-(--phone-control) flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 md:min-h-14',
         ROW_PAD,
+        // The server's update (`ServerUpdateOnRow`) is part of this row: the
+        // list's hairline, this row's bottom edge, goes under the update.
+        'has-[+[data-server-update-on-row]]:border-b-0!',
         // Touch: one line, the button beside the name; no iOS callout on a hold.
         onMore && 'flex-row! items-center gap-3 [-webkit-touch-callout:none] select-none',
       )}
     >
       <div
-        className={cn('flex min-w-0 flex-1 items-center gap-3', onOpen && 'cursor-pointer')}
+        // The tap target is the row's full height: it takes over the row's
+        // own vertical padding (``ROW_PAD``).
+        className={cn('flex min-w-0 flex-1 items-center gap-3', onOpen && '-my-2.5 cursor-pointer self-stretch py-2.5 md:-my-3.5 md:py-3.5')}
         {...(onOpen ? {
           role: 'button',
           tabIndex: 0,
@@ -925,9 +997,6 @@ export function ServerRow({
           </span>
           {subtitle ? (
             <span className={cn('mt-0.5 block truncate', TEXT.hint, subtitle.includes('://') && 'font-mono')}>{subtitle}</span>
-          ) : null}
-          {address ? (
-            <span className={cn('mt-0.5 block truncate font-mono', TEXT.hint)}>{address}</span>
           ) : null}
           {note ? (
             <span

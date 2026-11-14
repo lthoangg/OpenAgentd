@@ -1,5 +1,6 @@
 /**
- * GitViewToolbar — the single 32px toolbar under the Git review tab.
+ * GitViewToolbar — the single 32px toolbar under the Git review tab. On a
+ * phone it grows around its tabs, which take the phone's control step.
  *
  * One segmented control on every platform — Changes and History — plus the
  * Changes view's expand-all and the tab's Refresh on the right (Refresh
@@ -58,7 +59,7 @@ export function GitViewToolbar({
   const expandLabel = allExpanded ? 'Collapse all diffs' : 'Expand all diffs'
 
   return (
-    <div className="flex h-(--spacing-toolbar) shrink-0 items-center gap-2 border-b border-(--color-border-subtle) bg-(--bg-page) px-2">
+    <div className="flex h-(--spacing-toolbar) shrink-0 items-center gap-2 border-b border-(--color-border-subtle) bg-(--bg-page) px-2 phone:h-auto phone:py-1">
       <Tabs
         value={subTab}
         onValueChange={(value) => {
@@ -81,7 +82,8 @@ export function GitViewToolbar({
           </TabsTrigger>
         </TabsList>
       </Tabs>
-      <div className="ml-auto flex shrink-0 items-center gap-1 select-none">
+      {/* A phone: 16px between the 28px icons, so each keeps its 44px target. */}
+      <div className="ml-auto flex shrink-0 items-center gap-1 select-none phone:gap-4">
         {subTab === 'changes' && allExpanded !== null && (
           <Tooltip>
             <TooltipTrigger

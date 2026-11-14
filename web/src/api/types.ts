@@ -375,6 +375,24 @@ export interface SubagentsResponse {
   subagents?: LiveSubagent[]
 }
 
+/** One session a finished turn still waits for (`GET /agent/sessions/{id}/waiting`). */
+export interface WaitingItem {
+  /** A subagent of the session, or a session in another workspace that owes it a reply. */
+  kind: 'subagent' | 'session'
+  session_id: string
+  title: string | null
+  /** A subagent's handle (`worker#1`), or the name of the workspace the session runs in. */
+  label: string
+  /** Empty for a subagent: it runs in the session's own workspace. */
+  workspace: string
+  /** `needs_input`: stopped on a question or a plan review. `idle`: not running. */
+  state: 'working' | 'needs_input' | 'idle'
+}
+
+export interface WaitingResponse {
+  items: WaitingItem[]
+}
+
 export interface AgentStatusResponse {
   lead: AgentStatusAgent
   members: AgentStatusAgent[]
@@ -912,6 +930,12 @@ export interface TaskTriggerResponse {
 
 export interface WorktreeRemoveResponse {
   removed: boolean
+  /** The branch the worktree is on. */
+  branch?: string | null
+  /** Only a branch OpenAgentd made is deleted, and only when no commit would be lost. */
+  branch_deleted?: boolean
+  /** Commits on an OpenAgentd branch that no other branch holds. */
+  unmerged_commits?: number
 }
 
 

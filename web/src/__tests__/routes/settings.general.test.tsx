@@ -84,9 +84,9 @@ describe('GeneralSettingsPage — appearance', () => {
     const previews = screen.getByRole('radiogroup', { name: 'Previews' })
     expect(screen.getByRole('radio', { name: 'Review panel' })).toHaveAttribute('aria-checked', 'true')
 
-    await user.click(screen.getByRole('radio', { name: 'On click' }))
+    await user.click(screen.getByRole('radio', { name: 'Manually' }))
 
-    expect(previews.contains(screen.getByRole('radio', { name: 'On click' }))).toBe(true)
+    expect(previews.contains(screen.getByRole('radio', { name: 'Manually' }))).toBe(true)
     expect(useDisplayPrefsStore.getState().previewOpen).toBe('click')
   })
 })

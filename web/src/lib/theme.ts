@@ -14,7 +14,7 @@ import { withViewTransition } from '@/lib/view-transition'
 import { broadcastMessage } from './broadcast-channel'
 import { isDesktopShell } from './desktop-shell'
 import { desktopWindowId, windowScopedKey } from './desktop-window-identity'
-import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 export type ThemePreference = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 
@@ -101,8 +101,7 @@ export function applyTheme(resolved: ResolvedTheme): void {
  */
 function shellThemeCommand(): string | null {
   if (isDesktopShell()) return desktopWindowId() ? 'set_window_theme' : null
-  const { isTauri, os } = getPlatform()
-  return isTauri && (os === 'ios' || os === 'android') ? 'set_app_theme' : null
+  return isMobileApp() ? 'set_app_theme' : null
 }
 
 function syncShellTheme(preference: ThemePreference): void {

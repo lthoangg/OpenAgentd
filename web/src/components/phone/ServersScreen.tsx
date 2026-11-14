@@ -38,6 +38,7 @@ import { ConnectionDiagnosticsRow } from '@/components/phone/ConnectionDiagnosti
 import { PullToRefresh } from '@/components/phone/PullToRefresh'
 import { QrScanOverlay } from '@/components/phone/QrScanOverlay'
 import { useScanAnyCode } from '@/components/phone/useScanAnyCode'
+import { AddComputerSheet } from '@/components/phone/AddComputerSheet'
 import { Callout } from '@/components/ui/callout'
 import { cancelQrScan, canScanQr } from '@/lib/qr-scan'
 import { isPhoneCloudShell } from '@/api/phone-cloud'
@@ -53,6 +54,7 @@ export function ServersScreen({ active, onOpenSessions }: {
   const { barRef, titleRef, onScroll } = useLargeTitleCollapse(false)
   const panel = useRef<AppBackendPanelControl>(null)
   const [accountOpen, setAccountOpen] = useState(false)
+  const [addComputer, setAddComputer] = useState<string | null>(null)
   const { computers, devices, connected, app, route, refresh: refreshComputers } = useAccountComputers(active)
   // A connect link's address and key, kept while the screen is up.
   const pending = useServersScreenStore((state) => state.prefill)
@@ -65,6 +67,7 @@ export function ServersScreen({ active, onOpenSessions }: {
   const joinedByScan = useRef(false)
   const scanner = useScanAnyCode({
     onConnect: setPrefill,
+    onAddComputer: setAddComputer,
     onJoining: () => {
       joinedByScan.current = true
       setAccountOpen(true)
@@ -110,12 +113,13 @@ export function ServersScreen({ active, onOpenSessions }: {
         <div className="space-y-8 px-4 pb-6">
           {scanner.error && <Callout tone="error" role="alert">{scanner.error}</Callout>}
           <AccountSection active={active} devices={devices} onOpen={() => setAccountOpen(true)} onScan={scan} />
-          {connected && <AccountComputersSection computers={computers} loaded={devices !== undefined} app={app} route={route} onOpenSessions={onOpenSessions} />}
+          {connected && <AccountComputersSection computers={computers} loaded={devices !== undefined} app={app} route={route} onOpenSessions={onOpenSessions} onRenamed={refreshComputers} />}
           <AppBackendPanel active={active} prefill={prefill} sectionTitle="Your servers" onOpenInUse={onOpenSessions} controlRef={panel} onScanQr={scan} />
           {connected && isPhoneCloudShell() && <ConnectionDiagnosticsRow />}
         </div>
       </PullToRefresh>
       <AccountSheet open={accountOpen} onClose={() => setAccountOpen(false)} />
+      {addComputer && <AddComputerSheet link={addComputer} onClose={() => setAddComputer(null)} />}
       {scanner.scanning && <QrScanOverlay onCancel={() => { void cancelQrScan() }} />}
     </div>
   )

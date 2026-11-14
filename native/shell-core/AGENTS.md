@@ -23,6 +23,10 @@ failed on mobile).
   carries each connection over `/api/preview/{id}/tunnel` (a WebSocket with
   the access key in its handshake). Any local process can reach an open
   relay, so relays close with their tab, on a server change, and when idle.
+  For a computer of the account (`Via::Account`) the "server" is that
+  computer's loopback bridge and the key is the bridge's. A connection the
+  relay cannot tunnel gets a small `502` page that posts the reason to the
+  Preview tab (`relay-error`), never a dropped connection.
 
 ## Boundaries
 

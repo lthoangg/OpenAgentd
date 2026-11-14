@@ -4,12 +4,16 @@
  * server's `/api/cloud`. A guest sees an offer and nothing else: nothing here
  * blocks or nags. The same content serves Settings and the sheet the Servers
  * screen opens (`AccountSheet`), which has no router around it.
+ *
+ * A device's row is its name and one status line (`DeviceRows`); its
+ * system, key and role are under Details.
  */
 import { useState, type ReactNode } from 'react'
 
 import { deviceLabel, isServer, pendingLabel, type PendingRow } from '@/api/phone-cloud'
+import { DeviceRows } from '@/components/account/DeviceRows'
 import { RecoveryStep } from '@/components/account/RecoveryStep'
-import { PHONE_ROLES, RolesChoice, rolesLabel } from '@/components/account/RolesChoice'
+import { PHONE_ROLES, RolesChoice } from '@/components/account/RolesChoice'
 import { AddDeviceSheet } from '@/components/phone/AddDeviceSheet'
 import { ApprovalSheet } from '@/components/phone/ApprovalSheet'
 import { QrScanOverlay } from '@/components/phone/QrScanOverlay'
@@ -30,6 +34,7 @@ import { Callout } from '@/components/ui/callout'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
+import { useAppStatusWithNames } from '@/lib/account-computers'
 import { openExternalUrl } from '@/lib/open-external'
 import { cancelQrScan, canScanQr, scanQrCode } from '@/lib/qr-scan'
 import {
@@ -48,7 +53,7 @@ import {
 function DevicesSection({ canRemove, onAdd }: { canRemove: boolean; onAdd?: () => void }) {
   const devicesQ = usePhoneCloudDevices(true)
   const remove = usePhoneRemoveDevice()
-  const [removing, setRemoving] = useState<string | null>(null)
+  const names = useAppStatusWithNames()?.computer_names
   return (
     <>
       <PanelSection
@@ -57,37 +62,18 @@ function DevicesSection({ canRemove, onAdd }: { canRemove: boolean; onAdd?: () =
         actions={onAdd && <Button size="sm" variant="primary" onClick={onAdd}>Add a device</Button>}
       >
         {devicesQ.isLoading && <PanelRow label="Loading devices…" />}
-        {devicesQ.data?.map((device) => (
-          <PanelRow
-            key={device.device_id}
-            label={deviceLabel(device)}
-            description={(
-              <span className="flex flex-wrap gap-x-2">
-                {device.me && <span>This phone</span>}
-                <span>{rolesLabel({ server: isServer(device), client: device.client ?? !isServer(device) })}</span>
-                {device.signer && <span>Approver</span>}
-              </span>
-            )}
-          >
-            {canRemove && !device.me && (
-              <Button size="sm" variant="danger-subtle" aria-label={`Remove ${deviceLabel(device)}`} onClick={() => setRemoving(device.device_id)}>
-                Remove
-              </Button>
-            )}
-          </PanelRow>
-        ))}
+        <DeviceRows
+          // An older shell does not say what a device is used as: read it by kind.
+          devices={(devicesQ.data ?? []).map((device) => ({ ...device, server: isServer(device), client: device.client ?? !isServer(device) }))}
+          names={names}
+          selfLabel="This phone"
+          onRemove={canRemove ? (deviceId) => remove.mutateAsync(deviceId) : undefined}
+          removeEffect="It stops reaching your computers through your account."
+        />
       </PanelSection>
       {(devicesQ.error ?? remove.error) && (
         <Callout tone="error" role="alert">{(devicesQ.error ?? remove.error)?.message}</Callout>
       )}
-      <ConfirmDialog
-        open={removing !== null}
-        onOpenChange={(open) => { if (!open) setRemoving(null) }}
-        title="Remove this device?"
-        description="It stops reaching your computers through your account."
-        confirmLabel="Remove"
-        onConfirm={() => (removing ? remove.mutateAsync(removing).catch(() => undefined) : undefined)}
-      />
     </>
   )
 }

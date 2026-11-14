@@ -10,6 +10,7 @@ import { ActionSheet } from '@/components/ui/action-sheet'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { useToastStore } from '@/stores/useToastStore'
 import { cn } from '@/lib/utils'
@@ -242,8 +243,7 @@ function ModelRow({
   onCopy: (qualifiedId: string) => Promise<void>
 }) {
   const isMobile = useIsMobile()
-  const { isTauri, os } = usePlatform()
-  const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
+  const isTauriMobile = isMobileApp(usePlatform())
   const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
   const longPressTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null)

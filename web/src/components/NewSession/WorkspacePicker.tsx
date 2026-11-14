@@ -111,7 +111,7 @@ export function WorkspacePicker({
         ref={triggerRef}
         aria-haspopup="listbox"
         aria-label={`Folder: ${label}. Change folder`}
-        className="h-6 max-w-full items-center gap-1.5 rounded-full border border-(--color-border) bg-(--bg-card) pl-2 pr-1.5 text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:px-3"
+        className="h-6 max-w-full items-center gap-1.5 rounded-full border border-(--color-border) bg-(--bg-card) pl-2 pr-1.5 text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:px-3 phone:h-(--phone-control)"
       >
         {/* "in": reads as where the session runs, not as a mode switch. */}
         <span className="shrink-0 text-xs text-(--color-text-subtle)" aria-hidden="true">in</span>
@@ -142,7 +142,7 @@ export function WorkspacePicker({
             autoCapitalize="off"
             spellCheck={false}
             // 16px on touch phones, or iOS zooms the page when the field takes focus.
-            className="h-7 min-w-0 flex-1 bg-transparent text-xs text-(--color-text) outline-none placeholder:text-(--color-text-muted) max-md:pointer-coarse:text-base"
+            className="h-7 min-w-0 flex-1 bg-transparent text-xs text-(--color-text) outline-none placeholder:text-(--color-text-muted) pointer-coarse:h-9 phone:h-(--phone-control) max-md:pointer-coarse:text-base"
           />
         </div>
         <div id={listId} role="listbox" aria-label="Folders" className="max-h-72 overflow-y-auto pt-1">

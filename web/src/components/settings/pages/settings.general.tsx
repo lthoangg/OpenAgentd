@@ -69,7 +69,7 @@ export function GeneralSettingsPage() {
         </PanelRow>
         <PanelRow
           label="Previews"
-          description="Where a page the agent opens with its preview tool goes: straight into the Review panel, or only when you click Open on its row."
+          description="Where a page the agent opens with its preview tool goes: straight into the Review panel, or only when you choose Open on its row."
         >
           <SegmentedChoice label="Previews" options={PREVIEW_OPENS} value={previewOpen} onChange={setPreviewOpen} />
         </PanelRow>

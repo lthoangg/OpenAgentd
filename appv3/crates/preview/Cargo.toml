@@ -16,6 +16,9 @@ axum.workspace = true
 reqwest.workspace = true
 futures.workspace = true
 tokio-tungstenite = "0.30"
+# TLS for `wss://` hot reload of an `https` dev server (see src/ws.rs). The
+# same rustls and provider reqwest already brings in.
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 percent-encoding = "2"
 bytes = "1"
 url = "2"

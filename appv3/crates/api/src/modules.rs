@@ -221,8 +221,13 @@ const BUILTIN: &[Spec] = &[
                 tokio::spawn(async move { appv3_agent::worktrees::reclassify_workspaces(&p).await });
                 // Continue the turns the last server process left running,
                 // with their goals; a member it cut off reports that to its
-                // lead.
-                tokio::spawn(async move { appv3_agent::restart_resume::resume_after_restart(&pool).await });
+                // lead. First read back which sessions still wait on a reply
+                // from another workspace, before any of those turns can
+                // answer one.
+                tokio::spawn(async move {
+                    appv3_agent::workspace_messages::restore_outstanding(&pool).await;
+                    appv3_agent::restart_resume::resume_after_restart(&pool).await
+                });
                 Ok(())
             })
         }),

@@ -331,7 +331,10 @@ pub async fn get_tray_usage_summary(
     // "Auto": the server the app is on, named and read from the same place.
     let auto = crate::servers::app_current_server(&app).await;
     let (active_name, active_id) = match &auto {
-        Some(server) => (server.display_name(BUNDLED_NAME, &saved_config.servers), server.key().to_string()),
+        Some(server) => (
+            server.display_name(BUNDLED_NAME, &saved_config.servers, &crate::config::load_computer_names(&app)),
+            server.key().to_string(),
+        ),
         None => (NO_SERVER_NAME.to_string(), AUTO_ID.to_string()),
     };
 

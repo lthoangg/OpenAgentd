@@ -14,12 +14,14 @@ import { queryKeys } from './keys'
 export const CLOUD_POLL_MS = 2000
 
 /**
- * Poll only while something is in progress (`signing_in`, `joining`).
+ * Poll only while something is in progress (signing in, joining, a phone
+ * adding this computer).
  * Otherwise the status refetches on mount and window focus, so nothing runs
  * unless the screen is open.
  */
 export function cloudPollInterval(status: CloudStatus | undefined): number | false {
-  return status?.state === 'signing_in' || status?.state === 'joining' || status?.state === 'invited' ? CLOUD_POLL_MS : false
+  const waiting = ['signing_in', 'joining', 'invited', 'scanned', 'confirming']
+  return status && waiting.includes(status.state) ? CLOUD_POLL_MS : false
 }
 
 const loadCloudApi = () => import('@/api/cloud')

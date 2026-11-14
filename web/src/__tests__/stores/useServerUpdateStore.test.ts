@@ -19,7 +19,7 @@ const getServerUpdate = mock(async () => {
 })
 mock.module('@/api/client/server-update', () => ({ startServerUpdate, getServerUpdate }))
 
-const { readProgress, useServerUpdateStore } = await import('@/stores/useServerUpdateStore')
+const { giveUpAfter, readProgress, useServerUpdateStore } = await import('@/stores/useServerUpdateStore')
 
 function status(overrides: Partial<ServerUpdateStatus>): ServerUpdateStatus {
   return {
@@ -73,6 +73,19 @@ describe('readProgress', () => {
     expect(readProgress(older, started)).toBeNull()
     const gone = status({ in_progress: false, last: { state: 'finished', ok: true, started_at: 'T-1' } })
     expect(readProgress(gone, started)?.kind).toBe('failed')
+  })
+
+  it('is done on a newer version than it asked for when the release list moved on', () => {
+    const moved = status({ current: '3.52.0', in_progress: false, last: { state: 'finished', ok: true, to: '3.52.0', started_at: 'T0' } })
+    expect(readProgress(moved, started)).toEqual({ kind: 'done', from: '', to: '3.52.0' })
+  })
+})
+
+describe('giveUpAfter', () => {
+  it('waits longer for a desktop app, which downloads the whole app first', () => {
+    expect(giveUpAfter('release')).toBe(5 * 60_000)
+    expect(giveUpAfter(undefined)).toBe(5 * 60_000)
+    expect(giveUpAfter('desktop_app')).toBe(15 * 60_000)
   })
 })
 

@@ -9,7 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
@@ -301,10 +301,16 @@ describe('Review panel on a phone — dragged closed by the edge swipe', () => {
   it('springs back when released short of it', async () => {
     const onClose = mock(() => {})
     const bar = await renderWithEdgeSwipe(onClose)
+    // Stamped a second apart: a slow drag. Unstamped, 50px in a few
+    // milliseconds on a busy machine reads as a fling, which commits.
+    const at = (event: Event, t: number) => {
+      Object.defineProperty(event, 'timeStamp', { value: t })
+      return event
+    }
 
-    fireEvent.touchStart(bar, finger(4))
-    fireEvent.touchMove(bar, finger(54, 304))
-    fireEvent.touchEnd(bar)
+    fireEvent(bar, at(createEvent.touchStart(bar, finger(4)), 1000))
+    fireEvent(bar, at(createEvent.touchMove(bar, finger(54, 304)), 2000))
+    fireEvent(bar, at(createEvent.touchEnd(bar), 2010))
 
     expect(onClose).not.toHaveBeenCalled()
     settle()

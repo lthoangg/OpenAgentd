@@ -103,6 +103,13 @@ export interface AttachmentTabRequest {
   key: number
 }
 
+/** Run in terminal: a shell code block's command, for the dock's terminal. */
+export interface TerminalRunRequest {
+  command: string
+  /** Monotonic; the dock handles each key once. */
+  key: number
+}
+
 /**
  * A layout request for the dock: ``split-right`` / ``split-down`` split the
  * focused pane (⌘\, ⌘⇧\).

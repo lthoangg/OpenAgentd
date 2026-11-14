@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-11-12
+updated: 2026-11-14
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.53.1 · November 12, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.53.1)
+**Latest release:** v3.54.0 · November 14, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.54.0)
 
 ---
 
@@ -171,8 +171,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   connect closes it and shows the error where you started.
 - **Workspace-required architecture and root redirect** `[v2.4.0, updated v2.19.0]` — OpenAgentd runs on one
   screen built around workspaces. Since `[v3.0.0]` that screen is the root:
-  `/` is a new session and `/{session_id}` a session; old `/coding` and
-  Cockpit URLs redirect there, and the app's labels no longer call it
+  `/` is a new session and `/{session_id}` a session, and the app's labels no longer call it
   "coding" (the composer reads "Ask anything in <workspace>…", the palette
   "Toggle Sidebar", the tray just the workspace name),
   workspaces are required across chat, scheduler, and terminals, and database
@@ -399,6 +398,22 @@ run from the terminal (the native Rust binary since v3.0.0).
   path of the update log on the server). A server in the foreground, or the
   desktop app's own, says what to do instead. Servers before v3.51.0 need one
   `agentd upgrade` first.
+- **Update a computer's desktop app from another device** `[v3.54.0]` — the
+  same **Update to vX** now works when the server is the desktop app on a
+  Mac or a Windows PC, which is the usual case for a phone. One tap, and the
+  app on that computer downloads the release, verifies its signature,
+  installs it and restarts; a notification on the computer says so first.
+  Running sessions resume, and the device that asked reconnects on its own
+  and says how it went. The button is also under the row of the server in
+  use, on the phone's Servers screen and in the desktop's Server dialog. The
+  tap can only start the app's own updater: it installs the latest signed
+  release from the app's feed, never a chosen file or an older version. On
+  Windows the installer may wait for someone at the computer, and the note
+  says so. A Linux app is a `.deb`, which nothing can replace from afar: it
+  says to update the app on that computer. In the desktop app on its own
+  built-in server the row points to the app's **Updates** section, which
+  updates both. The app's install dialog now says that running agents resume
+  after the restart (they always did).
 - **Native app notifications** `[v1.19.0]` — finished assistant turns and
   scheduled reminders in the desktop app, plus local native
   notifications in the remote-backend mobile shell `[v1.34.0]`. Clicking a
@@ -444,6 +459,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   twice on a device, across reloads too. On desktop, a click that opens a
   window that is still loading is no longer lost, and a notification that
   failed to show can still show from another window.
+  A notification says which computer it came from `[v3.55.0]`: the title
+  ends with the computer's name (`Done · web · studio-mini`), always for a
+  computer of your OpenAgentd Cloud account (the app's own notification and
+  the push alike), and for the built-in and saved servers once the app knows
+  more than one server. It is the name the server lists show: the one you
+  saved a server under, else the name its computer gives for itself.
 - **Home-screen widgets on iPhone and Android** `[v3.31.0]` — three widgets
   for the mobile app: **Quick start** (start a new session, or continue the
   last one), **Sessions** (up to three sessions, the ones that need you first,
@@ -710,8 +731,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     (Compact, Default, Large) remembered per device. Default is 1px larger than
     before (13px interface text, 12px captions); Compact keeps the old density.
     On iOS the system text size multiplies on top. **Previews** chooses whether
-    a page the agent previews opens in the Review panel by itself or waits for
-    a click on its card.
+    a page the agent previews opens in the Review panel by itself or waits
+    until you open it from its card (**Manually**).
   - Every text colour pair reaches WCAG AA with the existing palette: subtle
     text moves to the muted tone on washes and cards, coloured words and light
     mode status dots use their darker text tone, and checkbox and radio
@@ -841,15 +862,13 @@ run from the terminal (the native Rust binary since v3.0.0).
   - On desktop the sidebar and the Review panel run up to the top of the
     window, as in a native app: the header splits where they do, with the
     sidebar toggle (and, on macOS, the window buttons, with a native gap
-    before the toggle) over the sidebar, the title over the chat, and the
+    before the toggle) over the sidebar, the title right after the toggle
+    (it stays put when the sidebar opens or closes `[v3.43.0]`), and the
     Task list and Review panel buttons over the panel. The header reads as
     one bar: no lines between those parts, and one line under all of it,
     over the sidebar too. The split follows a drag or a slide. The
     Review panel's tab strip shares the sidebar's tone, and its open tab is
     marked the way the sidebar marks the open session.
-    *(The title over the chat is deprecated; since v3.43.0 the title sits
-    right after the sidebar toggle and stays put when the sidebar opens or
-    closes.)*
   - **Split Review Panel Right** (`⌘\`/`Ctrl+\`) and **Split Review Panel
     Down** (`⌘⇧\`/`Ctrl+Shift+\`) split the pane you are in, as often as
     there is room; each pane has its own tabs. The new pane is empty and lists
@@ -921,16 +940,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     smooth fold; the chosen segment of a segmented control (Code / Plan,
     Changes / History…) slides to the new choice, and switches ease their
     thumb to a soft stop.
-  - **Focus Mode** (`⌘⇧F`/`Ctrl+Shift+F`) hides the sidebar and the Review
-    panel; press it again to bring both back *(deprecated; removed in
-    v3.46.0: hide the sidebar with `⌘B` and the Review panel with `⌘D`)*.
   - **Find in Session** (`⌘F`/`Ctrl+F` while in the chat) searches the
     loaded conversation, with the match count and ↑/↓ to step through.
   - `F6` / `Shift+F6` move between the sidebar, the transcript, the composer,
     each Review panel group and the status bar.
-  - Code blocks, tables, diagrams and an expanded tool's output can widen to
-    960px when the chat has room; prose keeps its reading width *(deprecated;
-    removed in v3.42.0: they stay at the column width)*.
 - **Sidebar and header: fewer steps** `[v3.40.0]`:
   - **New session** sits at the top of the sidebar at all times (it does what
     `⌘N`/`Ctrl+N` does).
@@ -949,24 +962,18 @@ run from the terminal (the native Rust binary since v3.0.0).
   - While the workspace list first loads it shows placeholder rows, and if it
     fails, **Retry**; "No workspaces yet" only means there are none.
   - A session's menu (⋯, right-click, long-press) has **Open in new window**
-    (desktop app), **Rename**, **Pin**, **Copy link** and **Share…**
-    *(both deprecated; removed in v3.41.0)*, and **Delete session…**. Touch
+    (desktop app), **Rename**, **Pin** and **Delete session…**. Touch
     keeps the pin mark on pinned rows.
-  - Double-click the session title in the header (or press F2 or Enter on
-    it) to rename it there *(deprecated; removed in v3.44.0: rename from the
-    sidebar)*.
   - The status bar's items are all reachable with Tab, the fast mode pill too.
   - One name for each thing: **Review panel**, **New session**, **Side
     questions**, **Open workspace…**, **Workspace** and **Worktree** (never
     folder or checkout), **Remove**, **Undo** / **Redo**, the **Built-in
     server**.
-  - The header has no command palette button (`⌘K`/`Ctrl+K`, the View menu
-    and the phone's More sheet open it; *the More sheet deprecated; removed
-    in v3.45.0: on a phone the drawer footer's icon opens it*), and a hidden
+  - The header has no command palette button (`⌘K`/`Ctrl+K` and the View
+    menu open it), and a hidden
     sidebar leaves no hairline at the window's edge.
 - **Transcript: act where you read** `[v3.40.0]`:
-  - Under the last finished answer, **Copy · Edit prompt · Undo** *(Undo
-    deprecated; removed in v3.42.0)* show at
+  - Under the last finished answer, **Copy · Edit prompt** show at
     rest as icons, each named in its tooltip, then the files
     changed (a file icon, the count and `+added -removed`). While a turn
     runs, Edit prompt shows dimmed and says it is available when the turn
@@ -982,9 +989,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     offers **Choose model** beside **Open Providers**, instead of asking for
     "a model provider" as if none were set up.
   - Each answer's footer names the account it ran on.
-  - A long thinking trace scrolls inside a capped box; **Show full
-    reasoning** lifts the cap *(deprecated; removed in v3.41.0: a trace
-    always shows in full)*.
+  - A thinking trace always shows in full.
     Runs of blank lines in a trace (Gemini sends three between paragraphs)
     show as one paragraph break.
   - Scrolling up shows a **Loading earlier messages…** row while older
@@ -1007,31 +1012,36 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Copy buttons on code blocks, tool arguments, commands and output are
     always visible and say "Copied"; a bare code fence gets the same header.
     Tool section headers are real buttons.
+  - **Run in terminal** `[v3.55.0]`: a `bash`, `sh`, `shell`, `zsh` or `fish`
+    code block has a second header button, beside Copy, that runs the block
+    in the workspace's terminal and shows that tab. It uses the last terminal
+    sitting at its prompt, or a new one when there is none or each is busy,
+    so a command never reaches a running program. The button is absent
+    without a workspace and while the block is still being written.
+  - **The agent writes for the app** `[v3.55.0]`: every main agent, custom
+    ones included, is told what the app does with a reply, so it uses it
+    instead of working around it. A command only you can run (a login, a
+    password prompt) comes alone in a shell block with **Run in terminal**
+    rather than "copy and paste this"; a document comes as a link that opens
+    in the viewer; local pages, images, diagrams and math are written the way
+    the app shows them. Subagents, which write for the main agent, are not
+    told.
   - On touch, a long press on a message, a code block or a link opens its
     menu as the app's bottom sheet, the iOS app included. A tool row has
-    a menu too (right-click or long-press): **Copy arguments** and **Copy
-    result** *(deprecated; removed in v3.48.0: the menu opens files, and
-    Copy is on each section of the open row)*.
+    a menu too (right-click or long-press) that opens its files; Copy is on
+    each section of the open row.
   - The plan tool's chip reads **Open plan**, like every other way to the
     plan.
-  - A question card always ends in **Send**, dimmed with its reason until
-    something is answered; **Skip this question** is its own button. Keys
-    1–9 pick an option (the next number is "Type your own answer"), Enter
-    sends, and Back / Next page through several questions. Double-clicking
-    an answer picks it and sends (or goes to the next question).
-    *(Send always showing, **Skip this question** and Dismiss deprecated;
-    replaced in v3.42.0 by Back / Next, with Send on the last question.)*
-  - An open tool row's arguments and output show in full, widened past the
-    text column, no longer cut at its edges *(widening deprecated; removed
-    in v3.42.0)*.
-  - A plan review is decided on its card: **Approve** (or **Approve and keep
-    going (N turns)** when a goal would start, with the real count),
-    **Request changes**, which opens a comment box straight away, and **Open
-    plan**. In the Plan tab every paragraph, list item and heading has a
-    **Comment** action *(deprecated; removed in v3.42.0: select text and
-    comment)*, and the tab and the card share one draft. *(Deciding on the
-    card deprecated; removed in v3.43.0: the card only shows the outcome and
-    **Open plan**; Approve and Request changes are in the Plan tab.)*
+  - A question card pages through several questions with Back / Next, with
+    **Send** on the last one. Keys 1–9 pick an option (the next number is
+    "Type your own answer") and Enter sends. Double-clicking an answer
+    picks it and sends (or goes to the next question).
+  - An open tool row's arguments and output show in full, no longer cut at
+    its edges.
+  - A plan review is decided in the Plan tab: **Approve** (or **Approve and
+    keep going (N turns)** when a goal would start, with the real count) and
+    **Request changes**; select text there to comment on it. Its card in
+    the chat shows the outcome and **Open plan**.
   - Each queued message has **Remove**, and the notice that follows has
     **Undo**.
   - The undo notice is one card: "Last 2 messages undone. Redo brings them
@@ -1043,9 +1053,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     were plain text, and `###` was fainter than the text under it. A task
     list shows its checkboxes in place of bullets, in the theme's colour.
 - **Review panel views** `[v3.40.0]`:
-  - **Changes**: clicking a row opens its diff as a preview tab, and the
-    chevron peeks at it in place *(deprecated; since v3.43.0 a click on the
-    row shows the diff in place, and **Open diff in tab** is in its menu)*.
+  - **Changes**: a click on a row shows its diff in place, and **Open diff
+    in tab** is in its menu.
     Every row has **⋯** with the same items as right-click and the
     long-press sheet.
     Each row leads with the file name, its folder after it in muted text,
@@ -1115,8 +1124,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     Settings.
   - On Windows and Linux the menu bar is hidden: **☰** at the left of the
     header, or tapping Alt, opens the application menu. Its View menu has
-    Sidebar, Review Panel, Split Review Panel Right and Down, Open Terminal,
-    Maximize Review Panel, Focus Mode *(deprecated; removed in v3.46.0)*,
+    Toggle Sidebar, Review Panel, Split Review Panel Right and Down, Open Terminal,
+    Maximize Review Panel,
     Model and Thinking…, Text Size and Reset Layout
     (macOS has them in its menu bar), and Quick Open is now **Find File…**.
     Its shortcuts (`Ctrl+Q`, `Ctrl+=`, `Ctrl+Shift+N`…) work in every
@@ -1132,10 +1141,6 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The number of sessions that need you shows on the Dock (macOS), the
     taskbar (Windows) and the launcher (Linux), and in a browser tab's
     title.
-  - **Share…** on a session opens the system share sheet: the macOS share
-    menu, the Windows Share window, the iOS and Android share sheets, or
-    Web Share in a browser that has it. Linux copies the link
-    *(deprecated; removed in v3.41.0)*.
   - Zoom is remembered, and a new window opens at the zoom and in the theme
     of the window it came from; Text size is shared by every window. On
     macOS it opens one step down and right of that window, as Mac windows
@@ -1156,12 +1161,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The notch status, the pet, the tray and system notifications share one
     feed and one set of words: **Needs you**, **Running**, **Done**,
     **Failed** and **Can't reach**. "Builtin" is now "Built-in server".
-  - A question with a few choices can be answered from the notch list, the
-    pet's bubble or the notification's buttons; anything else offers **Open
-    to answer**. Answering anywhere clears it everywhere. *(Answering from the
-    notch and the pet deprecated; removed in v3.43.0: they only show the
-    notification, and a click on it opens the session. System notifications
-    keep their buttons.)*
+  - A question with a few choices can be answered from a system
+    notification's buttons; anything else offers **Open to answer**.
+    Answering anywhere clears it everywhere. The notch and the pet show the
+    notification, and a click on it opens the session.
   - The notch status opens on click; pointing at it opens it only with
     **Expand on hover** on. Its × means Later. When a server stops
     answering, a **Can't reach** row offers Retry *(since v3.43.0 a click on
@@ -1180,11 +1183,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     answer recorded** with what was asked, and a card closed from another
     window (or by a stop this window missed) reads "Already resolved from
     another window or device" after the next load.
-  - The tray popup lists the sessions that need you and the running ones,
-    says **No server connected** when there is none, and its usage section
-    is **Provider limits**. On Windows and Linux the tray menu starts with
-    the sessions that need you *(both session lists deprecated; removed in
-    v3.42.0)*.
+  - The tray popup says **No server connected** when there is none, and its
+    usage section is **Provider limits**.
   - Opening a session from anywhere (notch, pet, tray, a notification, Open
     in new window) focuses the window that already shows it. When one
     session is open in two windows anyway, the window in the background
@@ -1211,8 +1211,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     stays on one line, with its buttons under it.
   - A segmented control that wraps onto two lines (the Providers status
     filter) fills only the chosen segment.
-  - The More sheet no longer lists Model and thinking; the run chip under
-    the composer opens it *(the More sheet deprecated; removed in v3.45.0)*.
+  - The run chip under the composer opens Model and thinking.
 - **Quieter and simpler** `[v3.41.0]`:
   - In dark mode a chosen segment or tab (Code / Plan, the thinking level)
     fills more softly.
@@ -1290,7 +1289,7 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **The agent can use a preview without the Preview tab open** `[v3.42.0]`:
   while the app is open on desktop, a page the agent opened stays loaded out
   of sight when no Preview tab shows it (the tab was closed, or **Previews**
-  waits for a click), so snapshot, click, fill and the console keep working. It is
+  is set to Manually), so snapshot, click, fill and the console keep working. It is
   dropped after 15 minutes without agent use, and opening the Preview tab
   takes over from it. Focus the page takes (a fill) goes back to where you
   were typing. A page action right after `open` waits up to 8 seconds for the
@@ -1351,10 +1350,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     description and the tooltip the command.)*
 - **Shell rows say what they do; phone header padding** `[v3.46.0]`:
   - A shell row shows the agent's description of the command (`shell  Run
-    the unit tests`), and hovering it shows the whole command; the expanded
-    row still shows the command and its output. A call without a
-    description shows its command as before. *(Hovering for the command
-    deprecated; removed in v3.48.0: open the row.)*
+    the unit tests`); the expanded row shows the command and its output. A
+    call without a description shows its command as before.
   - On a phone the Review panel button sits as far from the right edge as
     the sidebar button does from the left.
 - **Readable contrast everywhere** `[v3.46.0]`:
@@ -1490,12 +1487,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   chrome no longer highlights it (chat, code, diffs and the terminal still
   select), buttons use the arrow cursor, links and images cannot be dragged
   out, and a window in the background dims its highlights. The webview's
-  Reload / Back / Inspect menu is gone: right-click in the chat offers **Open
-  link** / **Copy link**, **Copy code**, **Copy response** / **Copy as
-  Markdown** *(the last three deprecated; removed in v3.42.0)* and, on your
-  messages, **Copy** / **Edit** *(also removed in v3.42.0)*; text fields and
-  selected text keep the native menu. Shift+F10 opens the same menus in the
-  browser too.
+  Reload / Back / Inspect menu is gone: right-click on a link in the chat
+  offers **Open link** / **Copy link**; text fields and
+  selected text keep the native menu.
   - Tooltips wait half a second before appearing, then show at once while you
     move along a toolbar, and only open on keyboard focus, not after a click.
   - Search, palette, find, title and worktree fields, and the desktop
@@ -1700,32 +1694,13 @@ run from the terminal (the native Rust binary since v3.0.0).
     notifications use the bubble, whether it climbs on windows, and
     whether it shows while OpenAgentd is in front (it always
     steps aside for full-screen apps); the tray turns it on and off too.
-  - **Desktop pet: ladders, balloons and falls** `[v3.42.0]` — the pet now
-    changes height on its own, in three small animations (same pixel art for
-    the cat, duck and crab: the walking frames climb, the standing frame
-    floats and falls). A **ladder** grows from the pet's surface up to the top
-    edge of another window (or down from it to the ground), the pet climbs it
-    with its walking steps, and the ladder folds away; a jump is kept for
-    rises of up to twice the pet's height, a ladder takes anything taller. A
-    **balloon** (red) lifts it up to 360 px with a slight sideways drift and a
-    gentle bob, sometimes to a window edge it steps onto; otherwise it hovers
-    3-6 s, then the balloon pops and it falls. Clicking the balloon pops it
-    early (the balloon is part of the pet's clickable area; clicks elsewhere
-    still pass through). *(Ladders and balloons are deprecated; removed in
-    v3.43.0, along with their setting: the pet jumps instead.)* A **fall**
+  - **Desktop pet: falls** `[v3.42.0]` — a **fall**
     has gravity (eases in, capped speed), a
-    squash on landing and a tiny dust puff; it is also how the pet comes down
+    squash on landing and a tiny dust puff; it is how the pet comes down
     when its window closes, and when you drop it in mid-air: with climbing on
     it falls to the window edge or the ground below, and the saved spot is
     the ground it stands on (with climbing off it stays at the height you
-    dropped it). They come after a sit, with the jump's decision: ladders
-    only when playful or chaotic and a window is in reach (12% / 25% of
-    sits), balloons 4% when calm (never climbing windows), 10% playful, 20%
-    chaotic. None starts when movement is stay put, with reduced motion,
-    while the pet is dragged or its menu is open, while a bubble is up or a
-    question waits (one under way is cut short), nor ladders and balloons
-    while an agent runs. Settings → Desktop → Desktop pet → **Ladders and
-    balloons** (on by default) turns the first two off; falls stay.
+    dropped it).
   - **Desktop pet: throws** `[v3.47.0]` — fling the pet and let go mid-move
     and it flies on with the pointer's speed instead of dropping straight
     down: an arc under gravity, a bounce off the sides and the top of the
@@ -2255,9 +2230,59 @@ run from the terminal (the native Rust binary since v3.0.0).
     destructive action last; so does the Review panel's **+**.
   - In Settings, the filter of Providers, Agents, Skills and MCP servers
     stays pinned at the top while the list scrolls.
-  - The chat's ⋯ always lists Tasks: **Tasks · 3/5** with progress, or
-    **No tasks** before the agent makes any. *(Deprecated; replaced in
-    v3.49.0 by direct Tasks and Review panel buttons.)*
+- **Controls you can hit** `[v3.54.0]` — the controls that measured smaller
+  than the app's own sizes now meet them:
+  - Phone: rows of the **+** menu, the model picker and the folder picker,
+    the Sessions search field and **View options**, the worktree chip,
+    segmented controls, Settings' search and filter fields, row actions (⋯)
+    and the Git view's **Changes** and **History** tabs are 40px (44px in
+    the Android app), up from 28 to 36px.
+  - Phone: **Back** and **Done** in a sheet's bar, the chat title (which
+    opens Session info), **Edit prompt** and **Copy prompt**, and the
+    Sessions toolbar's icons each have a 44px touch area. The sheet's
+    grabber no longer covers the top of Back and Done, and Edit and Copy no
+    longer share part of theirs.
+  - iPad: the status bar is 37px, so the server, the branch, spend and
+    Settings are 36px targets (they were 20 to 24px); the model picker's
+    thinking levels and search field are 36px.
+  - iPad held upright: Settings lists its sections by name. The icon-only
+    rail is for a narrow mouse window, where a tooltip names each icon.
+  - Desktop: the server in the status bar is 24px and its target runs to the
+    window's bottom edge; the worktree chip has a 24px target.
+  - Phone: a tap on the Sessions toolbar (Settings, Scheduled, Usage) no
+    longer sometimes closes the sheet it has just opened.
+- **Each platform is offered what it can do, in one wording** `[v3.54.0]`:
+  - iPad: a long press in the terminal opens Select All, Copy, Paste, Find
+    and Add to chat, as on a phone. Before, only a phone-sized window had it.
+  - Linux: the tray no longer offers **Desktop Pet**, which Linux cannot
+    show. The app menu has no **Check for Updates…**, and the automatic
+    check, which could never find a Linux release, no longer runs. Settings
+    → About OpenAgentd says how to update (install the newer `.deb`) and
+    opens the releases page.
+  - An app older than its server is told where its update comes from:
+    TestFlight or the App Store on iPhone and iPad, the newer `.deb` on
+    Linux, the app's own updater elsewhere.
+  - The installers say what they install and what to do when they cannot:
+    `install.sh` lists the CLI for Apple Silicon Macs and x86_64 Linux only
+    (it never installed on Intel Macs or arm64 Linux), sends a machine with
+    no release to the build instructions, sends Linux without `apt-get` to
+    `--cli`, and writes its PATH hint for the shell in use (`~/.zshrc` on a
+    Mac, not `~/.profile`). `install.ps1` says the app runs under emulation
+    on Windows on ARM, refuses 32-bit Windows, and says what happened when
+    the permission prompt is declined or the install is cancelled.
+  - One name each: **Toggle Sidebar** in the View menu, the palette, the
+    header and the shortcuts list (the menu said "Sidebar"); **Undo to
+    here** on a prompt (it said "Revert to here"); "main agent" in `agentd
+    doctor` and in the server's messages (they said "lead agent").
+  - No pointer verb where there is no pointer: the theme button reads
+    "Theme: Dark. Switch to System." and the update and TypeScript tools
+    pills "Show … details", in place of "Click to …".
+  - A provider that is not signed in says so and names the screen that
+    fixes it ("Sign in under Settings → Providers"), with the `agentd auth`
+    command after it. A server that does not answer names the setting to
+    turn on (**Access from other devices**), not a server flag.
+  - A crash screen's **Copy error details** reads **Could not copy** when
+    the clipboard refuses. Before, it did nothing.
 - **Phone chat bar, lighter shell rows** `[v3.49.0]`:
   - The phone chat bar's title and workspace sit on the left, with **Tasks**
     (open-task badge) and **Review panel** as one-tap buttons instead of ⋯.
@@ -2410,7 +2435,6 @@ run from the terminal (the native Rust binary since v3.0.0).
     to the other, as Tab in the message field does. Plan is filled, so it
     shows at a glance. It takes half the room the two segments did, which
     goes to the model chip.
-    *(The Code | Plan segmented control is deprecated; removed in v3.48.0.)*
 - **Jump to latest shows only when you have left the end** `[v3.48.0]`:
   - Opening and closing a tool row or a reader fold at the end of the chat
     no longer shows **Jump to latest**, and the chat keeps following new
@@ -2471,13 +2495,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - List rows darken while your finger is on them.
   - On an Android phone turned sideways, the drawers and the review dock
     stay usable and keep clear of the camera cutout.
-- **Sideloadable iOS app** `[v3.7.0]` *(deprecated in v3.49.0: no longer
-  published; install from TestFlight)* — each release included an ad-hoc-signed
-  `OpenAgentd_<version>_iOS.ipa` with a checksum. A SideStore/AltStore source at
-  `releases/download/latest-ios/source.json` installs the app and offers new
-  versions as updates. See [Install the iOS app](../../mobile/INSTALL-IOS.md).
-  The launch screen follows the system appearance: dark paper in dark mode,
-  where it used to be light paper in both `[v3.25.0]`.
+- **iOS launch screen** `[v3.25.0]` — follows the system appearance: dark
+  paper in dark mode.
 - **iOS app on TestFlight** `[v3.49.0]` — releases are built, signed and
   uploaded to TestFlight by CI. Install from the public TestFlight link in the
   release notes: no computer, VPN or 7-day refresh, automatic updates, and the
@@ -2509,11 +2528,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   `[v3.49.0]` The iOS and Android apps scan it themselves: **Scan QR code** under Settings → Server (beside **Add a server**) opens the camera (asked once) and fills in the same form; a code that is not a connect code, or a camera that is off, says so.
 - **OpenAgentd Cloud account (beta, optional)** `[v3.50.0]` — reach your computers from your iPhone away from home, and get notified when agents finish. Nothing changes for people who don't sign in: local use, LAN pairing and `agentd server start --public --key --qr` work as before, and no screen asks for an account. It is offered only in a skippable card on the phone's Servers screen and in **Settings → Account** (desktop and phone); `agentd cloud join | login | status | logout` does the same on a headless server, and `agentd server status` adds a `Cloud:` line once signed in.
   - **Adding a device: QR invitation first.** On the phone, **Settings → Account → Add a device** shows a QR code for 10 minutes, and only while that screen is open (closing it or leaving the app cancels it). Another phone scans it; a computer can't scan, so **Can't scan? Use a link** shows the same invitation as a link, after a warning that it works like a password. Paste it in the computer's **Settings → Account**, or run `agentd cloud join` (it asks for the link without echoing it). The phone then shows the new device's kind and fingerprint, which the new device shows too, and adds it only when you tap **Add** (Face ID). If two devices claim the same invitation, nobody is added, the invitation is cancelled, and the phone offers a new one. The 6-digit code stays as the fallback: **Use a 6-digit code instead** on the phone, **Sign in with a code instead** on the computer, or `agentd cloud login`. An account holds up to 10 devices.
-  - **The phone sets up the account.** Signing in on the phone shows a recovery code once (you type two of its groups back); other devices join an account the phone approves, by invitation or, as the fallback, by comparing a 6-digit code on both screens and confirming with Face ID or the passcode. `agentd cloud login --first-device` sets an account up on a computer when there is no phone. Since `[v3.51.0]` any device can be first (below), and `--first-device` is accepted but does nothing.
+  - **Scan to add a computer** `[v3.55.0]`. In the desktop app, **Settings → Account → Sign in** shows a QR code next to the browser way; `agentd cloud login` draws it in the terminal. On an iPhone that approves devices, **Servers → Scan QR code** opens **Add this computer?**. Adding needs Face ID and shows a two-digit number: choose it on the computer (or type it in the terminal) to join. A wrong number, Cancel or no answer makes the computer leave again; it connects only after the right number. The browser way remains for a first device or when no phone can approve. The phone's Add a device sheet no longer offers a copied invitation link *(deprecated)*; a desktop can still show one. The scanner now reads sign-in codes, invitations and server connect codes.
+  - **The phone sets up the account.** Signing in on the phone shows a recovery code once (you type two of its groups back); other devices join an account the phone approves, by invitation or by comparing a 6-digit code on both screens and confirming with Face ID or the passcode. Since `[v3.51.0]` any device can be first (below); use `agentd cloud login` on a computer. The old `--first-device` flag is no longer needed or accepted *(deprecated)*.
   - **Any device signs in first; servers and clients** `[v3.51.0]`. A computer creates the account from **Settings → Account → Sign in** or `agentd cloud login` (it asks before creating one, then shows the recovery code). Signing in chooses what the device is for: **Use as server** (your other devices open sessions on it) and **Use as client** (it opens sessions on your other computers); a computer offers both, on by default in the app, while `agentd cloud login` is server-only unless given `--client`; a phone is a client only. A later device signs in the same way and waits; every device that approves gets "A device wants to join your account" (a push on the phone, which opens the request when tapped; a notification and an in-app prompt in the desktop app; `agentd cloud approve` on a headless computer). Approving compares the 6-digit code on both screens and confirms with Face ID, Touch ID or the login password; the approver can turn a requested role off but never add one. Each device's roles show in **Devices**. A server-only device cannot open sessions on others, and a client-only computer runs no relay connector. On a computer, only a person approves or removes devices: in the desktop app (which proves the confirmation to its own server), or with `agentd cloud approve` typed in a terminal; an agent's commands, a script, or a plain browser tab cannot, and say where to do it instead.
   - **End-to-end encrypted.** Traffic between the phone and a computer goes through the relay inside a Noise session keyed to the account's signed device list, which every device verifies; the relay cannot read it, and the cloud cannot add a device. On the computer, relayed requests are served in-process, never as a local caller, and lose any credential or proxy header the phone sends. Done / Needs you / Failed notifications are sealed to the phone and opened by its notification extension.
   - **One row per computer.** The phone's Servers list shows each account computer once, with the way it is reached: **On your network** or **Through your account** (since v3.53.0; before, "via LAN" when its saved LAN address answered). Saved servers keep their own rows.
-  - **Phone account without a server** `[v3.51.1]`. The Account section sits at the top of the phone's Servers screen before any server has answered, so a new phone can sign in, join or approve first and then open a computer. Below it, **Your computers** lists the account's computers (titled by kind and fingerprint since v3.53.0, never by a saved server's name); the account's bridge never shows as a stray `127.0.0.1` server, and a phone with no computer yet says how to add one.
+  - **Phone account without a server** `[v3.51.1]`. The Account section sits at the top of the phone's Servers screen before any server has answered, so a new phone can sign in, join or approve first and then open a computer. Below it, **Your computers** lists the account's computers (titled by their own names since v3.54.0, never by a saved server's name); the account's bridge never shows as a stray `127.0.0.1` server, and a phone with no computer yet says how to add one.
   - **Online and In use** `[v3.51.1]`. Each computer has a dot from the account (online, offline, or none when the account cannot say) that refreshes every 30 seconds while the screen is up; an offline computer can still be tapped. **In use** marks the computer the app is on, by either route.
   - **A tap always connects or says why** `[v3.51.1]`. A tap on an account computer opens it directly on the home network when it can, else through the account (since v3.53.0; before, over its saved LAN address when that answered). A saved server whose address stopped answering is not In use, and a tap opens it again; at launch, a saved server that does not answer shows the Servers screen as before.
   - **Scan one QR code** `[v3.51.1]`. The phone has one **Scan QR code** button, in the Account card and under Your servers, for both kinds of code: an account invitation joins the account (the Account sheet shows Joining, then the Servers screen lists your computers), a server's connect code fills the add-server form, and anything else gets one message that names both. **Paste link** stays in the Account sheet.
@@ -2526,7 +2546,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Faster and steadier through your account** `[v3.53.0]`. A request through the relay no longer waits 50 ms on each end before it is sent (small writes now leave after 2 ms, with the same long-run message rate), so a small request takes about one round trip to the relay and back, not two plus 100 ms. Each device reuses its relay token for its 15 minutes instead of asking for one per connection, and failed retries no longer use up its token allowance. Each computer keeps one connection that reconnects by itself (from 0.5 s, backing off to 30 s), checks itself within 3 seconds when the app comes back to the front or the network changes, and stops trying in the background; a request waits at most 10 seconds for it before the "Can't reach … · Retrying…" banner shows. A relaunch returns to the computer last opened. A large transfer no longer holds up a small request in the same session, and a computer that slept is noticed as soon as it wakes.
   - **Stays connected after the phone was locked** `[v3.53.1]`. The phone app reaches its account computer again when it comes back from the background: iOS may take a suspended app's local connection to the computer without saying so, so the app stops it in the background and opens it again in front (on the same address and with the same key, so the page needs no reload), and checks it whenever a retry is asked. A failed open no longer cuts off the computer the app is on, a reload no longer leaves the connection waiting for the app to come back, and a large reply that overlapped another request no longer ends the session on 3.53.0 hosts and phones. The last row of the phone's Servers screen, **Copy diagnostics**, copies what the app saw of its connections (the last 50 events, with the app version and time; no keys, tokens or addresses) for a problem report.
   - **Open your other computers from the desktop app** `[v3.53.0]`. On a computer signed in to an account (with **Use as client**, the default), Settings → Server lists **Your computers**: every other computer of the account that serves sessions, with Online or Offline (refreshed every 30 s while the list shows), the one in use marked, and **Use** to open it in that window. ⌘K → Switch Server… lists them too, between the built-in server and the saved ones. The built-in server holds the account keys, so it keeps the connection to each opened computer (the same self-healing link as the phone) and closes it once no window uses it; with the built-in server stopped the list says so and offers **Start**, and a computer signed in without **Use as client** says it cannot open others. Account calls always go to this computer's own server, so Settings → Account keeps working while a window shows another computer. The footer, the health dot and the notch name the computer in use, and one computer saved under two addresses (or opened through the account too) shows its sessions once in the notch.
-  - **Direct at home, through your account away** `[v3.53.0]`. On the same home network, the phone and the desktop app reach a computer of your account directly, with the account's device keys: nothing to type and no access key. Leave home and the same chat keeps going through your account within seconds, with no reload; come home and it moves back by itself. The computer's row says which way it is reached: **On your network** or **Through your account**. The computer tells your devices where to find it only inside an encrypted session, so the cloud never learns its addresses, and a device tries them only on the network where it learned them. A computer accepts direct sessions only from devices of the account that may open sessions, on its private addresses, and refuses a device that was removed or left the account (also after a restart without internet); a computer that hasn't heard from the cloud for 7 days stops accepting them until it does. It's on by default for a computer used as a server, with a switch in **Settings → Server → Let your account's devices connect directly on this network**. Saved servers (an address with an access key, **Allow devices on your network to connect**) are a separate thing and work as before; a machine that is both shows two rows, and an account computer is titled by its kind and fingerprint, never by a saved server's name. Each computer keeps one local address in the app across launches, so its page storage stays.
+  - **Direct at home, through your account away** `[v3.53.0]`. On the same home network, the phone and the desktop app reach a computer of your account directly, with the account's device keys: nothing to type and no access key. Leave home and the same chat keeps going through your account within seconds, with no reload; come home and it moves back by itself. The computer's row says which way it is reached: **On your network** or **Through your account**. The computer tells your devices where to find it only inside an encrypted session, so the cloud never learns its addresses, and a device tries them only on the network where it learned them. A computer accepts direct sessions only from devices of the account that may open sessions, on its private addresses, and refuses a device that was removed or left the account (also after a restart without internet); a computer that hasn't heard from the cloud for 7 days stops accepting them until it does. It's on by default for a computer used as a server, with a switch in **Settings → Server → Let your account's devices connect directly on this network**. Saved servers (an address with an access key, **Allow devices on your network to connect**) are a separate thing and work as before; a machine that is both shows two rows, and an account computer never takes a saved server's name (it has its own, see below). Each computer keeps one local address in the app across launches, so its page storage stays.
+  - **Names for your computers** `[v3.54.0]`. Each computer has a name: its own host name ("studio-mini") until you call it something else ("Work", "Personal"). Your computers, the Devices list, ⌘K → Switch Server…, the status bar, the phone's header, the tray and the notch show that name where they showed a system and key ("macOS · 3F9A 21C4") or an address. The name lives on the computer and an app reads it over the connection it already has, so every device of yours shows the same one after its next connection and the cloud never sees it. **Details** on a row (⋯ or a long press on touch) holds what the row no longer carries: the system, the key, the role, and for the built-in server its address; a saved server's address is in its **Edit** form. **Rename** is in the Details of the computer the app is on, and of the built-in server in the desktop app; an empty name gives the host name back. A computer signed in only from the terminal is renamed from another device connected to it. A row is a name and one status line; a computer the app has never been on, and a phone (which has no name), are still titled by system and key, and the key joins a name only while two computers share it. A saved server is titled by the name you gave it, else by its computer's name, else by its address. A name is at most 40 characters of plain text and is only a label: nothing trusts a device by it, and removing a device still asks with its system and key in full. An older server reports no name and keeps its old title.
   - **Keys stay on the device:** the iPhone keeps them in the Keychain (the approval key behind Face ID); computers keep them in `cloud/identity.json` in the server's state folder, readable only by your user. Signing out leaves the account and erases the keys; sessions and settings stay. Removed, deleted, closing and unavailable accounts each say so; in every state the app keeps working on its own, and only reaching other devices through the relay and notifications stop.
   - Not yet: Android, changing a device's roles after it joined. Approving from a computer arrived in `[v3.51.0]`. The protocol is in `appv3/contract/tunnel.md`, its threat model in `appv3/contract/tunnel-threats.md`.
 
@@ -2587,6 +2608,20 @@ executes tools, manages its task list, and inspects workspace repositories.
   - Session titles in Vietnamese, Chinese, Japanese, Korean, and other scripts are no
     longer cut mid-word.
   - `/init` sends a quarter of the instructions it did (8 KB instead of 32 KB).
+- **What a finished answer still waits for** `[v3.55.0]` — when the main agent's turn
+  ends while work it started is still running (subagents, or sessions it asked in
+  other workspaces for a reply), a line under the answer says **Waiting for 3
+  sessions**, with **· 1 needs you** when one of them is stopped on a question or a
+  plan review. Click it (a sheet on a phone) for the list: each session's title,
+  whether it is a subagent (with its handle) or which workspace it runs in, and
+  **Running**, **Needs you** or **Idle**. A row opens that session, in this workspace
+  or the other one. The line follows sessions as they start and finish and goes when
+  nothing is left; a subagent's own session has none. The Goal tab's "Waiting for…"
+  line counts the same sessions, so it includes other workspaces now. The server
+  reads which replies it is still owed back from its database when it starts (it
+  kept them in memory only), so the line, the sidebar's active list and the
+  held-back "Done" notification stay right across a restart. Deleting a session
+  that owed a reply ends the wait for it.
 - **Cross-workspace messages** `[v3.9.0, updated v3.35.0]` — the lead agent's `send_to_workspace`
   tool sends a request to an agent session in another workspace you have opened
   that shares a workspace group (see **Workspace groups** below) with its own (a related
@@ -2595,7 +2630,7 @@ executes tools, manages its task list, and inspects workspace repositories.
   continues one of its top-level sessions (queued when that session is busy). It
   arrives as a prompt with a **From <workspace> · <session>**
   chip that opens the sending session. Since `[v3.50.0]` it is the sending
-  agent's, not yours: it has no Edit, Revert or Retry, and undo and redo step
+  agent's, not yours: it has no Edit, Undo or Retry, and undo and redo step
   over it. A session a send started shows **Handled by the agent in
   <workspace> · <session>** above its composer, which opens the sender; you can
   still type into it and steer as usual. `mode: "plan"` makes a new session plan
@@ -2798,6 +2833,11 @@ executes tools, manages its task list, and inspects workspace repositories.
   blank "Model error" card. An account spend cap (such as Anthropic's monthly
   spend limit) is not waited out: the turn fails at once and says to raise
   the limit or switch model `[v3.30.0]`.
+  Since `[v3.54.0]` a provider that still fails after its retries ends in a
+  "*model* is unavailable" card that says how often it failed and that your
+  messages and changed files are kept, with the same Retry, Switch model and
+  Open Providers buttons. The provider's own error text is no longer the
+  card's message: it is in **Copy details**.
   With several keys or accounts for the provider, a limit first switches to
   the next one; the wait (for the earliest reset of any of them) and the
   spend-cap failure apply only once every credential is unavailable `[v3.30.0]`.
@@ -2885,6 +2925,10 @@ agent against it.
   list existing worktrees, edit sidebar titles without renaming git directories,
   and remove OpenAgentd-managed worktrees. Removing a worktree asks for confirmation
   first, warning that uncommitted changes will be lost `[v1.101.0]`.
+  Since `[v3.54.0]` removing a worktree keeps its branch when the branch has
+  commits that are on no other branch, and the confirmation says so before
+  you confirm ("Branch X has 2 commits that are on no other branch, so the
+  branch is kept."). A merged branch is still deleted with its worktree.
   Since `[v3.50.0]` new worktrees go to `~/.openagentd/worktrees/<repo>-<key>/<name>`
   (`OPENAGENTD_WORKTREES_DIR` moves them) instead of the data folder, which
   agents may not read, so a lead can read the worktree it sent work to.
@@ -3002,6 +3046,17 @@ agent against it.
     access key. That needs a server with an access key, and a reverse proxy
     in front of it must pass WebSocket upgrades. **Open in browser** is off
     there, and a plain browser on another device shows a notice instead.
+    A computer opened through your OpenAgentd account shows previews the
+    same way `[v3.55.0]`, on the phone apps and in a desktop window, over
+    the account link and with no access key; before, the tab stayed blank
+    there. When the app cannot reach the preview (the server restarted, the
+    preview was closed, the link dropped, too many connections), the tab
+    says why and offers **Retry** in place of a blank page `[v3.55.0]`.
+    After the app was in the background or the computer slept, the tab
+    reconnects by itself `[v3.55.0]`: a page that still answers keeps its
+    scroll position and form input, and only a page that no longer answers
+    loads again. Hot reload also works for a dev server on
+    `https://localhost` with a self-signed certificate `[v3.55.0]`.
     Since `[v3.29.0]` the address bar also opens workspace files from any
     Preview tab: type a path from the workspace root (`docs/mockup.html`,
     `./docs/mockup.html`) or paste a full path or `file://` link inside the
@@ -3220,7 +3275,7 @@ agent against it.
     its path in the workspace; right-click (or long-press, or Shift+F10) the
     name of an open file in its tab's toolbar for the same two `[v3.50.2]`.
 - **Persisted coding sessions per workspace** `[v1.18.0]` — `/{session_id}`
-  (`/coding/{session_id}` before v3.0.0) restores workspace context from the
+  restores workspace context from the
   saved session. Bare `/` is the launcher or last-workspace restore. New empty sessions exist before the
   first message.
 - **Workspace sidebar pagination** `[v1.18.0]` — each main/worktree list shows
@@ -3311,10 +3366,7 @@ agent against it.
   debounced SIGWINCH resizing, and mobile key bar ergonomics (touch-and-hold arrow repeat,
   soft-keyboard focus preservation, quick symbol row).
   Terminal font is a best-guess Nerd Font stack (MesloLGS NF and similar)
-  for correct Powerlevel10k/Starship glyph rendering, at 13 px. A custom
-  terminal font and size *(deprecated; removed in v3.46.0, with the Terminal
-  settings page that set them)* no longer apply, and their stored values are
-  cleared.
+  for correct Powerlevel10k/Starship glyph rendering, at 13 px.
   App shortcuts work from a focused terminal: on macOS every `⌘` shortcut,
   including `⌘K` for the palette, and on
   Windows/Linux `Ctrl+K` and `Ctrl+P` skip the shell to open the palette and
@@ -3552,7 +3604,7 @@ agnostic by design.
   effort levels now surface standard `none/low/medium/high` thinking choices in
   Settings, with Anthropic runtime mapping those levels to proportional token
   budgets.
-- **`openagentd://` deep links and OAuth callback handoff** `[v1.116.0]` — system protocol registration for desktop and mobile apps, with cold- and warm-start routing. Navigation links (`openagentd://cockpit/...`, `openagentd://coding/...`) open the requested session. OAuth providers that implement a callback exchange can use `openagentd://auth/callback?provider=...&code=...`; OpenAgentd validates the link shape and forwards the opaque callback payload to the active backend, while the provider remains responsible for state and PKCE verification. Isolated desktop development bundles and physical-device iOS development builds use `openagentd-dev://` so they do not claim the production protocol.
+- **`openagentd://` deep links and OAuth callback handoff** `[v1.116.0]` — system protocol registration for desktop and mobile apps, with cold- and warm-start routing. Navigation links (`openagentd://session/<id>`) open the requested session; the `cockpit` and `coding` hosts and the `/coding` paths of builds before v3.0.0 are no longer read `[v3.54.0]`. OAuth providers that implement a callback exchange can use `openagentd://auth/callback?provider=...&code=...`; OpenAgentd validates the link shape and forwards the opaque callback payload to the active backend, while the provider remains responsible for state and PKCE verification. Isolated desktop development bundles and physical-device iOS development builds use `openagentd-dev://` so they do not claim the production protocol.
   - A session link can name its server `[v3.52.0]`: `?device=<account device id>` and/or `?server=<base URL>` (and `?srv=`, the app's own token in widget links). The phone opens it on that computer, switching first (the account computer directly on the home network when it can, else through the account); a link without them opens on the server in use, as before. Each link is handled once, so a reload (a server switch, or iOS reloading the app in the background) no longer opens it again, starts another draft, or repeats an OAuth callback.
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
   built-in OAuth helper. Codex models automatically prioritize extended context
@@ -3706,10 +3758,9 @@ MCP.
   carries up to 5 options with optional descriptions, single- or multi-select,
   a "Recommended" badge on the agent's preferred choice, and a free-text
   answer. **Type your own answer** is on every question `[v3.4.0]`; the agent
-  can no longer turn it off. Multi-question cards are stepped through one at a time —
-  **Back** replaces **Dismiss** past the first question — and the whole set is
-  submitted together at the end *(Dismiss deprecated; removed in v3.42.0: the
-  card has only Back and Next / Send)*. The card renders **inline in the transcript**, in place of
+  can no longer turn it off. Multi-question cards are stepped through one at a time
+  with **Back** and **Next**, and the whole set is
+  submitted together with **Send** at the end. The card renders **inline in the transcript**, in place of
   the tool call that raised it, with exactly two states: waiting (the questions
   and their suggested answers) and resolved (your answer, or the dismissal).
   The suspension is **durable, not in-memory**: the pending question and the
@@ -3725,6 +3776,11 @@ MCP.
   Question text can be up to 1,000 characters, option descriptions up to 400,
   and a `submit_plan` summary up to 600, so long questions and summaries are
   no longer rejected and retried `[v3.28.0]`.
+  Since `[v3.54.0]` a question asked in the same reply as other tool calls
+  opens at once, while those tools still run, where it used to wait for the
+  slowest of them. Answer it then and the agent continues as soon as the
+  tools finish, without pausing; leave it and the turn pauses on it as
+  before. Sending a message instead supersedes it, and Stop dismisses it.
   Failed scheduled tasks remain eligible to retry until their run limit is met `[v2.13.0]`.
   Every session lists the same tools on every turn, whoever started it, so a
   scheduled run never invalidates the prompt cache. A task that runs in your
@@ -3994,7 +4050,6 @@ Four orthogonal ways to add capability.
     results (including `read`) are shrunk when they arrive, and requests also
     shrink oversized images replayed from older history, so Anthropic's
     many-image limit and other providers' pixel limits always hold.
-- **Sandboxed UI artifacts** `[v1.36.0]` *(beta)* — tool-produced HTML UI
 - **Sandboxed UI artifacts** `[v1.36.0, updated v2.17.0]` *(beta)* — tool-produced HTML UI
   resources render as sandboxed sibling chat artifacts. The first producer is
   MCP Apps: MCP tools that declare `_meta.ui.resourceUri` can render `ui://`
@@ -4007,6 +4062,21 @@ Four orthogonal ways to add capability.
   Production desktop and mobile Tauri shells allow `about:` frames so `srcdoc`
   MCP Apps render interactively under the packaged CSP `[v1.44.11]`. The MCP app
   host runs on `@modelcontextprotocol/ext-apps` v2.0 with modular client/core architecture `[v2.17.0]`.
+  An app runs in an origin of its own `[v3.55.0]`: it cannot read the
+  OpenAgentd page, its storage or its access key, cannot call the OpenAgentd
+  API, loads only from the domains its resource declares, and can open
+  `http` and `https` links only. Its page loads from a single-use address, so
+  apps that need a real page address work. What
+  an app reports for the model, such as the shapes a user drew on a canvas,
+  reaches the agent with the next message. Tools a server marks for the app
+  alone are not offered to the agent. An app's page is stored once instead of
+  with every result, so a session with many app results stays small. What an
+  app saves for itself, such as a canvas you drew on, is kept per MCP server
+  and is still there after a reload or a restart. An app keeps running when
+  its turn ends instead of loading again. An HTTP MCP server's session is
+  kept across restarts of OpenAgentd, so what a server holds for it (a
+  canvas an app is editing) is still there afterwards; restart the server in
+  Settings → MCP to start a fresh session.
 - **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
   shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
   any MCP server in Settings to re-detect.
@@ -4129,11 +4199,6 @@ Single-user trust model. The host is trusted. The operator is the user.
   Credentials (`OPENAGENTD_CACHE_DIR`), the SQLite DB, undo/redo snapshots, and
   other sessions' artifacts stay denied. This is what makes the
   `oad/debug-prod` log/telemetry workflow usable without disabling the path denylist.
-- **Permission system: allow / deny / ask** `[since v1.0]` *(deprecated: not
-  in v3)* — v2 matched wildcard rules per tool to auto-allow a call, block on
-  the user's reply, or save a rule. v3 runs every tool call without asking;
-  what limits the agent is the path denylist, Plan mode, and the secret-free
-  shell environment below.
 - **Shell command pre-scan** `[since v1.0]` — best-effort path-token scan
   inside shell commands.
 - **Secret-free shell environment** `[v3.11.1]` — the agent's shell tool and
@@ -4322,13 +4387,16 @@ Desktop is primary. CLI / server is the developer path.
   and the cask no longer touch the quarantine flag. The first update to
   v3.49.0 asks once more for folder access (the signature changed); later
   updates keep it.
-- **Linux desktop** `[since v1.0]` — AppImage (`chmod +x`) or `.deb` for
-  Debian/Ubuntu.
+- **Linux desktop** `[since v1.0]` — a `.deb` for Debian/Ubuntu on x86_64.
+  The AppImage has not been built since v1.0.4, and its settings and
+  release steps are gone `[v3.54.0]`.
 - **Windows desktop** `[v1.106.0]` — native x64 `.msi` installer with the
   bundled Python sidecar, WebView2 shell, Job Object process cleanup, native
   PowerShell/cmd shell execution, and signed in-app updates. Interactive PTY
   terminal tabs were unavailable until v3.0.0, which bundles the native backend
-  and opens terminals through ConPTY.
+  and opens terminals through ConPTY. Quitting the app on Windows ends the
+  built-in server at once: Windows has no equivalent of the stop signal that
+  lets the server finish its requests first on macOS and Linux.
 - **Windows one-command install** `[v1.107.0]` — the `install.ps1` PowerShell
   installer resolves the latest GitHub release, downloads its x64 MSI, rejects
   a non-MSI download before elevation, and invokes Windows Installer.
@@ -4372,7 +4440,7 @@ Desktop is primary. CLI / server is the developer path.
   `server status` prints a QR code in the terminal with the LAN addresses and
   the access key: the same `openagentd://connect` link as the desktop
   **Show QR**, so scanning it with a phone opens the mobile app's **Backend
-  connection** dialog with the address and key filled in. With `--wait` the code
+  connection** dialog with the address and key filled in. The code
   appears once the server is ready. It is skipped with a warning when the
   server is loopback-only, no LAN address is found, or the access key is
   unknown in that shell.
@@ -4389,6 +4457,11 @@ Desktop is primary. CLI / server is the developer path.
   starts the background server and polls `/api/health/ready` until the database
   connection and the agent session are fully ready; since v3.1.0 it exits 1 when
   the server dies or is not ready within 30 seconds.
+  Since `[v3.54.0]` `server start` always waits, so `--wait` is accepted and
+  changes nothing. It refuses a port that is already in use ("port 8000 is
+  already in use") instead of reporting a start, shows the end of the log when
+  the server dies, and prints **Stop** and the QR code only once the server
+  answers.
 - **CLI upgrade** `[v1.41.0, self-update v3.0.0]` — `agentd upgrade` in v3 stops the
   background server, downloads the latest prebuilt release archive from GitHub, verifies
   its SHA-256 checksum, swaps the binaries in place, and restarts the server if it was
@@ -4475,7 +4548,7 @@ Desktop is primary. CLI / server is the developer path.
 
 ## 12. Embed and API
 
-The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed it elsewhere with no extra work.
+The same HTTP + SSE API drives the desktop and mobile apps. Embed it elsewhere with no extra work.
 
 - **REST + SSE chat API** `[since v1.0]` — `POST /api/agent/chat` is
   fire-and-forget (returns 202 in <50ms); the agent streams events on
@@ -4516,8 +4589,6 @@ The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed i
   `events_stream_open kind=app|plain`.
 - **Multi-client streaming** `[since v1.0]` — multiple tabs can watch the same
   session simultaneously.
-- **Embeddable web UI** `[since v1.0]` — the wheel-bundled UI can be served
-  from the API process or behind your own reverse proxy.
 
 ---
 

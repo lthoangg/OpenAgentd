@@ -4,9 +4,10 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use openagentd_shell_core::{
-    load_backend_config_from, normalize_base_url, normalize_server_name, remove_backend_server_at,
-    resolve_download_bytes, safe_download_filename, save_backend_config_to, unique_cache_path,
-    AppBackendConfig, DownloadSource, RelayInfo, RelayRegistry, SavedAppServer,
+    load_backend_config_from, load_computer_names_from, normalize_base_url, normalize_server_name,
+    remember_computer_name_at, remove_backend_server_at, resolve_download_bytes, safe_download_filename,
+    save_backend_config_to, unique_cache_path, AppBackendConfig, ComputerNames, DownloadSource, RelayInfo,
+    RelayRegistry, SavedAppServer, Via,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
@@ -17,7 +18,8 @@ mod cloud_bridge;
 mod cloud_e2e_tests;
 #[cfg(target_os = "ios")]
 mod keyboard_bar;
-mod native_ui;
+#[cfg(test)]
+mod preview_account_tests;
 mod push;
 mod taps;
 mod theme;
@@ -82,8 +84,10 @@ async fn secure_delete_access_key(origin: String) -> Result<(), String> {
 // A server's preview listeners bind *its* loopback, which the phone cannot
 // reach. The relay (`openagentd_shell_core::preview_relay`) listens on the
 // phone's own 127.0.0.1 and tunnels each connection to the server with the
-// access key, which never reaches the previewed page. The server URL and key
-// come from native state, never from the webview.
+// access key, which never reaches the previewed page. For a computer of the
+// account the "server" is its loopback bridge and the key is the bridge's:
+// the bridge is on the phone, the preview listeners are not. The server URL
+// and key come from native state, never from the webview.
 
 /// Open preview relays. The phone has one window, so one scope.
 #[derive(Default)]
@@ -117,6 +121,19 @@ fn relay_base_url(
     normalize_base_url(&base).map_err(|e| format!("{e:#}"))
 }
 
+/// What the relay tunnels to, and the key for it: an account bridge's key
+/// (in memory, this app run only), else the server's saved access key.
+/// `Ok(None)` when the server has no saved key.
+fn relay_upstream(
+    bridge_key: Option<String>,
+    saved_key: impl FnOnce() -> Result<Option<String>, String>,
+) -> Result<Option<(Via, String)>, String> {
+    match bridge_key {
+        Some(key) => Ok(Some((Via::Account, key))),
+        None => Ok(saved_key()?.map(|key| (Via::Server, key))),
+    }
+}
+
 #[tauri::command]
 async fn preview_relay_open(
     app: AppHandle,
@@ -135,12 +152,18 @@ async fn preview_relay_open(
         .active_base_url;
     let base_url = relay_base_url(runtime_base_url, persisted)?;
     let origin = base_url.clone();
-    let key = off_main_thread(move || openagentd_shell_core::get_access_key(&origin))
-        .await?
-        .ok_or_else(|| "Previews on this device need this server's access key.".to_string())?;
+    let bridge_key = cloud::bridge_key(&origin);
+    let (via, key) = off_main_thread(move || {
+        relay_upstream(bridge_key, || {
+            openagentd_shell_core::get_access_key(&origin)
+        })
+    })
+    .await?
+    .ok_or_else(|| "Previews on this device need this server's access key.".to_string())?;
     relays
         .0
-        .open(
+        .open_via(
+            via,
             RELAY_SCOPE,
             relay_client(),
             &base_url,
@@ -316,6 +339,11 @@ struct AppBackendStatus {
     /// a relaunch opens it again.
     #[serde(skip_serializing_if = "Option::is_none")]
     last_account_device: Option<String>,
+    /// What each computer called itself when the app was last on it, by
+    /// account device id or saved server base URL (shell-core
+    /// `computer_names`). Shown in place of a key or an address.
+    #[serde(skip_serializing_if = "ComputerNames::is_empty")]
+    computer_names: ComputerNames,
 }
 
 #[derive(Default)]
@@ -341,7 +369,9 @@ fn app_backend_status(
         .lock()
         .map_err(|_| "backend state unavailable".to_string())?
         .clone();
-    Ok(backend_status(config, runtime_base_url, load_last_account_device(&app), cloud::account_device))
+    let mut status = backend_status(config, runtime_base_url, load_last_account_device(&app), cloud::account_device);
+    status.computer_names = computer_names_path(&app).map(|path| load_computer_names_from(&path)).unwrap_or_default();
+    Ok(status)
 }
 
 /// The status for a config and the runtime server. `bridge` names the
@@ -362,7 +392,25 @@ fn backend_status(
         servers: config.servers,
         account_device,
         last_account_device,
+        computer_names: ComputerNames::new(),
     }
+}
+
+/// Remember what the computer behind `key` (an account device id, or a
+/// saved server's base URL) calls itself; an empty name forgets it. The web
+/// UI reads the name from the server the app is on.
+#[tauri::command]
+fn app_remember_computer_name(
+    app: AppHandle,
+    state: tauri::State<'_, MobileBackendState>,
+    key: String,
+    name: Option<String>,
+) -> Result<AppBackendStatus, String> {
+    // A saved server is remembered under the address the server list uses.
+    let key = normalize_base_url(&key).unwrap_or(key);
+    let path = computer_names_path(&app).map_err(|e| format!("{e:#}"))?;
+    remember_computer_name_at(&path, &key, name.as_deref()).map_err(|e| format!("{e:#}"))?;
+    app_backend_status(app, state)
 }
 
 #[tauri::command]
@@ -484,6 +532,10 @@ fn config_path(app: &AppHandle) -> Result<PathBuf> {
         .context("resolve app config directory")?;
     std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
     Ok(dir.join("app-backend.json"))
+}
+
+fn computer_names_path(app: &AppHandle) -> Result<PathBuf> {
+    Ok(config_path(app)?.with_file_name("computer-names.json"))
 }
 
 fn load_backend_config(app: &AppHandle) -> Result<AppBackendConfig> {
@@ -750,6 +802,7 @@ pub fn run() {
             secure_delete_access_key,
             app_backend_status,
             app_save_backend_server,
+            app_remember_computer_name,
             app_use_external_backend,
             app_remove_backend_server,
             save_workspace_file,
@@ -758,10 +811,6 @@ pub fn run() {
             widget_update_snapshot,
             app_move_to_background,
             theme::set_app_theme,
-            native_ui::share_text,
-            native_ui::pick_one,
-            push::push_status,
-            push::push_register,
             cloud::cloud_status,
             cloud::cloud_sign_in,
             cloud::cloud_join_invite,
@@ -773,6 +822,7 @@ pub fn run() {
             cloud::cloud_approve_confirm,
             cloud::cloud_approve_reject,
             cloud::cloud_invite_start,
+            cloud::cloud_add_scanned,
             cloud::cloud_invite_poll,
             cloud::cloud_invite_add,
             cloud::cloud_invite_cancel,
@@ -795,7 +845,11 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{backend_status, cloud, ensure_backend_reachable, relay_base_url, resolve_active_base_url, without_loopback_default};
+    use super::{
+        backend_status, cloud, ensure_backend_reachable, relay_base_url, relay_upstream, resolve_active_base_url,
+        without_loopback_default,
+    };
+    use openagentd_shell_core::Via;
     use openagentd_shell_core::{AppBackendConfig, SavedAppServer};
 
     #[test]
@@ -821,6 +875,14 @@ mod tests {
         // The account computer to return to after a relaunch.
         assert_eq!(serde_json::to_value(&on_lan).unwrap()["last_account_device"], "dev-mac");
         assert!(serde_json::to_value(&on_bridge).unwrap().get("last_account_device").is_none());
+    }
+
+    #[test]
+    fn the_status_carries_the_names_the_app_remembers_and_none_before_it_has_any() {
+        let mut status = backend_status(AppBackendConfig { active_base_url: None, servers: vec![] }, None, None, |_| None);
+        assert!(serde_json::to_value(&status).unwrap().get("computer_names").is_none(), "an older UI sees no new field");
+        status.computer_names.insert("dev-mac".into(), "Work".into());
+        assert_eq!(serde_json::to_value(&status).unwrap()["computer_names"], serde_json::json!({"dev-mac": "Work"}));
     }
 
     #[test]
@@ -865,6 +927,20 @@ mod tests {
             "https://box.example/oad",
         );
         assert!(relay_base_url(None, None).is_err());
+    }
+
+    #[test]
+    fn an_account_bridge_uses_its_own_key_and_a_server_its_saved_one() {
+        assert_eq!(
+            relay_upstream(Some("bridge".into()), || panic!("a bridge has no saved key")).unwrap(),
+            Some((Via::Account, "bridge".to_string()))
+        );
+        assert_eq!(
+            relay_upstream(None, || Ok(Some("saved".to_string()))).unwrap(),
+            Some((Via::Server, "saved".to_string()))
+        );
+        assert_eq!(relay_upstream(None, || Ok(None)).unwrap(), None);
+        assert!(relay_upstream(None, || Err("locked".into())).is_err());
     }
 
     /// The webview loads the bundled UI (or devUrl, which Tauri counts as

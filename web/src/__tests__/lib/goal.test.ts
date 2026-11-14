@@ -32,7 +32,7 @@ function makeGoal(overrides: Partial<SessionGoal> = {}): SessionGoal {
   }
 }
 
-const IDLE = { running: false, waitingForUser: false, planMode: false, queuedMessages: 0, subagentsRunning: 0 }
+const IDLE = { running: false, waitingForUser: false, planMode: false, queuedMessages: 0, sessionsAwaited: 0 }
 
 describe('goalTabTitle', () => {
   it('counts the running turn while the goal works', () => {
@@ -59,7 +59,7 @@ describe('goalNow', () => {
   it('names what the goal waits for', () => {
     expect(goalNow(makeGoal(), { ...IDLE, running: true, waitingForUser: true })).toMatchObject({ tone: 'wait', text: 'Waiting for your answer' })
     expect(goalNow(makeGoal(), { ...IDLE, planMode: true })).toMatchObject({ tone: 'wait', text: 'Waiting for Code mode' })
-    expect(goalNow(makeGoal(), { ...IDLE, subagentsRunning: 1 })).toMatchObject({ tone: 'active', text: 'Waiting for 1 subagent' })
+    expect(goalNow(makeGoal(), { ...IDLE, sessionsAwaited: 1 })).toMatchObject({ tone: 'active', text: 'Waiting for 1 session' })
     expect(goalNow(makeGoal(), IDLE)).toMatchObject({ tone: 'active', text: 'Starting the next turn' })
   })
 

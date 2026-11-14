@@ -188,11 +188,14 @@ pub fn extract_account_id(tokens: &Map<String, Value>) -> Option<String> {
 pub async fn load_token(slot: &TokenSlot) -> Result<(String, Option<String>), String> {
     let path = slot;
     let Some(mut auth) = CodexAuth::load(path) else {
-        return Err("Codex OAuth credentials not found. Run:\n  agentd auth codex\nto authenticate with your ChatGPT account.".into());
+        return Err("ChatGPT (Codex) is not signed in. Sign in under Settings → Providers, or run `agentd auth codex`.".into());
     };
     if auth.is_expired() {
         tracing::info!("codex_token_expired refreshing");
-        auth = auth.refresh(path).await.map_err(|e| format!("Codex token refresh failed: {e}\nRun: agentd auth codex"))?;
+        auth = auth
+            .refresh(path)
+            .await
+            .map_err(|e| format!("The ChatGPT (Codex) sign-in could not be renewed: {e}. Sign in again under Settings → Providers, or run `agentd auth codex`."))?;
     }
     Ok((auth.access_token, auth.account_id))
 }

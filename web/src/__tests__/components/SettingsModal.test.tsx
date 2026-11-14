@@ -69,9 +69,6 @@ mock.module('@/components/settings/pages/settings.mcp.new', () => ({ NewMcpServe
 mock.module('@/components/settings/pages/settings.mcp.$name', () => ({ McpServerDetailPage: () => <div>mcp-edit</div> }))
 mock.module('@/components/settings/pages/settings.providers', () => ({ ProvidersSettingsPage: () => <div>providers</div> }))
 mock.module('@/components/settings/pages/settings.denied_paths', () => ({ DeniedPathsSettingsPage: () => <div>denied-paths</div> }))
-mock.module('@/components/settings/pages/settings.multimodal', () => ({ MultimodalSettingsPage: () => <div>multimodal</div> }))
-mock.module('@/components/settings/pages/settings.summarization', () => ({ SummarizationSettingsPage: () => <div>summarization</div> }))
-mock.module('@/components/settings/pages/settings.title-generation', () => ({ TitleGenerationSettingsPage: () => <div>title-gen</div> }))
 
 import { SettingsModal } from '@/components/SettingsModal'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -121,7 +118,7 @@ describe('SettingsModal — mobile edge-swipe exclusion', () => {
     expect(screen.getByRole('button', { name: 'Close settings' })).toHaveAttribute('data-slot', 'button')
   })
 
-  it('falls back to About when an old removed section is restored from storage', () => {
+  it('shows About when a section this build does not have is restored from storage', () => {
     useSettingsStore.setState({
       open: true,
       section: 'terminal' as never,
@@ -129,7 +126,7 @@ describe('SettingsModal — mobile edge-swipe exclusion', () => {
     })
     renderModal()
 
-    expect(screen.getByRole('button', { name: 'About OpenAgentd' }).getAttribute('aria-current')).toBe('page')
+    expect(screen.getByText('hub')).toBeInTheDocument()
   })
 })
 
@@ -327,17 +324,17 @@ describe('SettingsModal — nav search and groups', () => {
   })
 })
 
-describe('SettingsModal — icon rail below 900px', () => {
+describe('SettingsModal — icon rail below 900px with a mouse', () => {
   const sidebar = () => screen.getByRole('navigation', { name: 'Settings categories' })
 
-  it('collapses the sidebar to icons below 900px and keeps each name for screen readers', () => {
+  it('collapses the sidebar to icons in a narrow mouse window and keeps each name for screen readers', () => {
     useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
     renderModal()
 
     expect(sidebar().className).toContain('w-12')
-    expect(sidebar().className).toContain('min-[900px]:w-60')
+    expect(sidebar().className).toContain('settings-list:w-60')
     const providers = within(sidebar()).getByRole('button', { name: 'Providers' })
-    expect(providers.querySelector('span.max-\\[899px\\]\\:sr-only')?.textContent).toBe('Providers')
+    expect(providers.querySelector('span.settings-rail\\:sr-only')?.textContent).toBe('Providers')
     // Group headings go with the labels; the groups stay named for assistive tech.
     expect(within(sidebar()).getAllByRole('group').length).toBeGreaterThan(3)
   })

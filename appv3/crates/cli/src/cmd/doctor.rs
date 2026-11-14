@@ -305,18 +305,18 @@ pub fn doctor() -> Result<ExitCode> {
         let n = oauth_accounts(p);
         if n > 0 {
             let more = if n > 1 { format!(" ({n} accounts)") } else { String::new() };
-            checks.ok(&format!("Lead agent provider '{p}' is logged in{more}"));
+            checks.ok(&format!("Main agent provider '{p}' is logged in{more}"));
         } else {
-            checks.fail(&format!("Lead agent provider '{p}' is not logged in — run `agentd auth {p}`"));
+            checks.fail(&format!("Main agent provider '{p}' is not logged in — run `agentd auth {p}`"));
         }
     } else if let Some(p) = lead.as_deref() {
         if lead_keyless {
-            checks.ok(&format!("Lead agent provider '{p}' needs no API key"));
+            checks.ok(&format!("Main agent provider '{p}' needs no API key"));
         } else {
             match key_vars.iter().find(|(id, _)| id == p).map(|(_, v)| v.as_str()) {
-                None => checks.warn(&format!("Lead agent uses an unknown provider: {p}")),
-                Some(k) if found.contains(&k) => checks.ok(&format!("Lead agent key is set: {k}")),
-                Some(k) => checks.fail(&format!("Lead agent uses '{p}' but {k} is not set")),
+                None => checks.warn(&format!("Main agent uses an unknown provider: {p}")),
+                Some(k) if found.contains(&k) => checks.ok(&format!("Main agent key is set: {k}")),
+                Some(k) => checks.fail(&format!("Main agent uses '{p}' but {k} is not set")),
             }
         }
     }

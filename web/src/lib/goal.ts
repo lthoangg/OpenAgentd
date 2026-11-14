@@ -105,8 +105,8 @@ export interface GoalSessionState {
   planMode: boolean
   /** Messages the user queued behind the running turn. */
   queuedMessages: number
-  /** Subagents still working; their reports wake the session. */
-  subagentsRunning: number
+  /** Subagents still working and other workspaces' sessions that owe a reply; their reports wake the session. */
+  sessionsAwaited: number
 }
 
 export interface GoalNow {
@@ -138,8 +138,8 @@ export function goalNow(goal: SessionGoal | null | undefined, s: GoalSessionStat
   if (s.planReview) return { tone: 'wait', text: 'Waiting for plan approval', note: 'The goal goes on once you review the plan.' }
   if (s.running) return { tone: 'active', text: `Working · turn ${goalTurnNumber(goal, true)}/${goal.max_turns}`, note: queued }
   if (s.planMode) return { tone: 'wait', text: 'Waiting for Code mode', note: 'The goal starts its next turn when the session switches to Code mode.' }
-  if (s.subagentsRunning > 0) {
-    return { tone: 'active', text: `Waiting for ${plural(s.subagentsRunning, 'subagent')}`, note: 'Their reports start the next turn.' }
+  if (s.sessionsAwaited > 0) {
+    return { tone: 'active', text: `Waiting for ${plural(s.sessionsAwaited, 'session')}`, note: 'Their reports start the next turn.' }
   }
   return { tone: 'active', text: 'Starting the next turn', note: queued }
 }

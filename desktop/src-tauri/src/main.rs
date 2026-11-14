@@ -15,6 +15,7 @@ mod tray_popup;
 mod island;
 mod pet;
 mod watchdog;
+mod remote_update;
 mod network_access;
 mod preview_relay;
 mod servers;
@@ -25,7 +26,6 @@ mod app_menu;
 mod account;
 mod approval;
 mod presence;
-mod share;
 mod haptics;
 mod global_shortcuts;
 mod caption;
@@ -671,13 +671,12 @@ fn main() {
             commands::secure_delete_access_key,
             commands::set_window_theme,
             commands::save_workspace_file,
-            commands::backend_health,
             commands::backend_logs_path,
-            commands::desktop_logs_path,
             commands::app_backend_status,
             commands::app_remove_backend_server,
             commands::app_save_backend_server,
             commands::app_set_backend_server_enabled,
+            commands::app_remember_computer_name,
             commands::app_use_external_backend,
             commands::app_use_bundled_backend,
             commands::app_stop_bundled_backend,
@@ -698,7 +697,6 @@ fn main() {
             context_menu::show_app_menu,
             caption::show_snap_layouts,
             badge::set_attention_badge,
-            share::share_url,
             presence::cloud_approval_proof,
             haptics::haptic_alignment,
             tray_popup::get_tray_usage_summary,
@@ -709,7 +707,6 @@ fn main() {
             island::island_open_session,
             island::island_retry,
             island::island_context_menu,
-            island::island_dismiss,
             island::island_viewing,
             island::session_read,
             island::island_settings,
@@ -789,6 +786,9 @@ fn main() {
             });
             let watchdog_handle = app.handle().clone();
             tauri::async_runtime::spawn(watchdog::run(watchdog_handle));
+            if remote_update::supported() {
+                tauri::async_runtime::spawn(remote_update::run(app.handle().clone()));
+            }
             island::start(app.handle());
             pet::start(app.handle());
             Ok(())

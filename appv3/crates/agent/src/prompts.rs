@@ -27,6 +27,12 @@ pub fn coding_tools() -> Vec<String> {
 pub fn runtime_protocol() -> &'static str {
     s("runtime_protocol")
 }
+/// What the app renders and makes clickable in a reply, for lead agents.
+/// The only place this is stated: tool descriptions and other prompts must
+/// not repeat any of it.
+pub fn app_guide() -> &'static str {
+    s("app_guide")
+}
 /// How to use `<openagentd_memory>`: the lead saves, delegated agents only read.
 pub fn memory_protocol(lead: bool) -> &'static str {
     s(if lead { "memory_protocol_lead" } else { "memory_protocol_member" })

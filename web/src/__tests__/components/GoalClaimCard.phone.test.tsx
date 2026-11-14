@@ -29,4 +29,27 @@ describe('GoalClaimCard on a phone', () => {
     expect(rows.length).toBe(2)
     for (const row of rows) expect(row.className).toContain('min-h-11')
   })
+
+  it('keeps a row\'s text and code in one block that wraps', () => {
+    render(<GoalClaimCard args={CLAIM} result={ACHIEVED} done />)
+    fireEvent.click(screen.getByRole('button', { name: /Goal/ }))
+    const rows = Array.from(document.querySelectorAll('[data-evidence-list="phone"] li'))
+    for (const row of rows) {
+      // A flex row makes every direct child (and bare text run) a column.
+      expect(row.children.length).toBe(1)
+      expect(Array.from(row.childNodes).every((n) => n.nodeType === 1)).toBe(true)
+      const block = row.children[0] as HTMLElement
+      expect(block.className).toContain('min-w-0')
+      expect(block.className).toContain('flex-1')
+      expect(block.className).toContain('break-words')
+    }
+    expect(rows[0].querySelector('code')!.parentElement).toBe(rows[0].children[0])
+    expect(rows[0].textContent).toBe('bun test → 1,842 pass')
+  })
+
+  it('labels the evidence with its count', () => {
+    render(<GoalClaimCard args={CLAIM} result={ACHIEVED} done />)
+    fireEvent.click(screen.getByRole('button', { name: /Goal/ }))
+    expect(screen.getByText('Evidence · 2').className).toContain('label-caps')
+  })
 })

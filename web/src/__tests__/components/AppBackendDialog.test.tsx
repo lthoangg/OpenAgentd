@@ -3,6 +3,8 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { AppBackendDialog } from '@/components/AppBackendDialog'
 import { ConnectionSettingsPage } from '@/components/settings/pages/settings.connection'
+import { queryClient } from '@/lib/query-client'
+import { queryKeys } from '@/queries/keys'
 
 const originalFetch = globalThis.fetch
 const originalWindowFetch = window.fetch
@@ -22,6 +24,7 @@ let statusPayload = {
     { base_url: 'http://127.0.0.1:4082', name: 'Local CLI' },
     { base_url: 'http://127.0.0.1:4999', name: null },
   ] as Array<{ base_url: string; name: string | null; enabled?: boolean }>,
+  computer_names: {} as Record<string, string>,
 }
 
 const invokeMock = mock(async (...args: unknown[]) => {
@@ -32,6 +35,11 @@ const invokeMock = mock(async (...args: unknown[]) => {
   if (command === 'app_save_backend_server') return statusPayload
   if (command === 'app_remove_backend_server') return statusPayload
   if (command === 'app_server_watch_states') return watchStates
+  if (command === 'app_remember_computer_name') {
+    const args = commandArgs as { key: string; name: string }
+    statusPayload = { ...statusPayload, computer_names: { ...statusPayload.computer_names, [args.key]: args.name } }
+    return statusPayload
+  }
   if (command === 'app_set_backend_server_enabled') {
     const args = commandArgs as { baseUrl: string; enabled: boolean }
     statusPayload = {
@@ -88,6 +96,7 @@ beforeEach(() => {
       { base_url: 'http://127.0.0.1:4082', name: 'Local CLI' },
       { base_url: 'http://127.0.0.1:4999', name: null },
     ] as Array<{ base_url: string; name: string | null; enabled?: boolean }>,
+    computer_names: {},
   }
   window.__OAD_API_BASE_URL__ = 'http://127.0.0.1:5999'
   const fetchMock = mock((...args: unknown[]) => {
@@ -103,6 +112,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  queryClient.removeQueries({ queryKey: queryKeys.health() })
+  queryClient.removeQueries({ queryKey: queryKeys.backendStatus() })
   window.localStorage.clear()
   delete window.__OAD_TOKEN__
   globalThis.fetch = originalFetch
@@ -160,12 +171,15 @@ describe('AppBackendDialog', () => {
 
     expect(await screen.findByText('Built-in server')).toBeTruthy()
     expect(screen.getByText('Local CLI')).toBeTruthy()
-    expect(screen.getByText('http://127.0.0.1:4082')).toBeTruthy()
+    // A named server's row has its name and one status line; its address is in Edit.
+    expect(screen.queryByText('http://127.0.0.1:4082')).toBeNull()
     expect(screen.getByText('http://127.0.0.1:4999')).toBeTruthy()
 
     const rowOf = (text: string) => screen.getByText(text).closest('[data-server-row]') as HTMLElement
     await waitFor(() => expect(within(rowOf('Local CLI')).getByLabelText('Online')).toBeTruthy())
+    expect(within(rowOf('Local CLI')).getByText('Online')).toBeTruthy()
     await waitFor(() => expect(within(rowOf('http://127.0.0.1:4999')).getByLabelText('Offline')).toBeTruthy())
+    expect(within(rowOf('http://127.0.0.1:4999')).getByText('Offline')).toBeTruthy()
   })
 
   it('hides the bundled server row when the shell does not support bundled backends', async () => {
@@ -591,23 +605,75 @@ describe('the server list: select, use, in use, one close', () => {
     expect(screen.queryByText('Saved server')).toBeNull()
     // The built-in server is not connected, so its title appears once, with no chip of its own.
     expect(screen.getAllByText('Built-in server')).toHaveLength(1)
-    // Every server URL appears once: the connected row holds its own, nothing repeats it above the list.
-    expect(screen.getAllByText('http://127.0.0.1:4082')).toHaveLength(1)
+    // The connected row says so with its chip; no address is repeated above the list or on the row.
+    expect(screen.queryByText('http://127.0.0.1:4082')).toBeNull()
     const badge = within(active).getByText('In use').closest('[data-slot="chip"]')
     expect(badge?.getAttribute('data-tone')).toBe('neutral')
     expect(screen.getAllByText('In use')).toHaveLength(1)
   })
 
-  it('shows the built-in server address on its row when the app is connected to it', async () => {
+  it('keeps the built-in server address off its row, under Details', async () => {
+    const user = userEvent.setup()
     statusPayload = { ...statusPayload, base_url: 'http://127.0.0.1:49545', mode: 'bundled', sidecar_running: true, external: false }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     const row = (await screen.findByText('Built-in server', { selector: 'span' })).closest('[data-server-row]') as HTMLElement
-    expect(within(row).getByText('http://127.0.0.1:49545')).toBeTruthy()
+    expect(within(row).queryByText('http://127.0.0.1:49545')).toBeNull()
     expect(within(row).getByText('In use').closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('neutral')
     expect(screen.queryByText(/^Current:/)).toBeNull()
     expect(screen.queryByText('Saved server')).toBeNull()
     expect(screen.getAllByText('In use')).toHaveLength(1)
+
+    await user.click(within(row).getByRole('button', { name: 'Details of the built-in server' }))
+    const details = await screen.findByRole('dialog', { name: 'Built-in server' })
+    expect(details.textContent).toContain('Addresshttp://127.0.0.1:49545')
+  })
+
+  it('names this computer from the built-in server’s Details', async () => {
+    const user = userEvent.setup()
+    statusPayload = {
+      ...statusPayload, base_url: 'http://127.0.0.1:49545', mode: 'bundled', sidecar_running: true, external: false,
+      computer_names: { 'built-in': 'studio-mini' },
+    }
+    window.__OAD_API_BASE_URL__ = 'http://127.0.0.1:49545'
+    queryClient.setQueryData(queryKeys.health(), { status: 'ok', version: '3.54.0', capabilities: ['api.server_name'] })
+    const answerName = mock((...args: unknown[]) => {
+      const init = args[1] as RequestInit | undefined
+      fetchCalls.push({ url: String(args[0]), init })
+      if (init?.method === 'PUT') return Promise.resolve(Response.json({ name: 'Work', default: 'studio-mini', custom: true }))
+      return Promise.resolve(new Response(null, { status: 204 }))
+    })
+    globalThis.fetch = answerName as typeof fetch
+    window.fetch = answerName as typeof window.fetch
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await user.click(await screen.findByRole('button', { name: 'Details of the built-in server' }))
+    const details = await screen.findByRole('dialog', { name: 'Built-in server' })
+    expect(details.textContent).toContain('Namestudio-mini')
+    await user.click(within(details).getByRole('button', { name: 'Rename' }))
+    const input = within(details).getByRole('textbox', { name: 'Name' })
+    await user.clear(input)
+    await user.type(input, 'Work')
+    await user.click(within(details).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(invokeCalls).toContainEqual({ command: 'app_remember_computer_name', args: { key: 'built-in', name: 'Work' } }))
+    const put = fetchCalls.find((call) => call.init?.method === 'PUT')
+    expect(put?.url).toBe('http://127.0.0.1:49545/api/server/name')
+    await waitFor(() => expect(details.textContent).toContain('NameWork'))
+  })
+
+  it('says where this computer is renamed while the app is on another server', async () => {
+    const user = userEvent.setup()
+    statusPayload = { ...statusPayload, sidecar_running: true, computer_names: { 'built-in': 'studio-mini' } }
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await user.click(await screen.findByRole('button', { name: 'Details of the built-in server' }))
+    const details = await screen.findByRole('dialog', { name: 'Built-in server' })
+    expect(details.textContent).toContain('Namestudio-mini')
+    expect(within(details).queryByRole('button', { name: 'Rename' })).toBeNull()
+    expect(details.textContent).toContain('Use the built-in server to rename this computer.')
+    // Its address is not this window's: none is shown.
+    expect(details.textContent).not.toContain('Address')
   })
 
   it('lists a connected server that is not saved, as its own In use row', async () => {
@@ -622,6 +688,32 @@ describe('the server list: select, use, in use, one close', () => {
     await waitFor(() => expect(within(row).getByLabelText('Offline')).toBeTruthy())
     expect(screen.queryByText(/^Current:/)).toBeNull()
     expect(screen.getAllByText('In use')).toHaveLength(1)
+  })
+
+  it('titles a connected server that is not saved by its computer, with the address under Details', async () => {
+    const user = userEvent.setup()
+    statusPayload = { ...statusPayload, base_url: 'http://10.0.0.9:4082', computer_names: { 'http://10.0.0.9:4082': 'build-box' } }
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    const row = (await screen.findByText('build-box')).closest('[data-server-row]') as HTMLElement
+    expect(within(row).getByText('Not in your saved servers')).toBeTruthy()
+    expect(screen.queryByText('http://10.0.0.9:4082')).toBeNull()
+    await user.click(within(row).getByRole('button', { name: 'Details of build-box' }))
+    const details = await screen.findByRole('dialog', { name: 'build-box' })
+    expect(details.textContent).toContain('Addresshttp://10.0.0.9:4082')
+  })
+
+  it('titles a saved server by its computer as soon as the name is learned, while the list is shown', async () => {
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+    // Just added and never named: all the app has is its address.
+    const row = (await screen.findByText('http://127.0.0.1:4999')).closest('[data-server-row]') as HTMLElement
+
+    // What reading the name does (`ComputerNameSync`): the shell remembers it,
+    // and the app's status carries it.
+    queryClient.setQueryData(queryKeys.backendStatus(), { ...statusPayload, computer_names: { 'http://127.0.0.1:4999': 'build-box' } })
+
+    await waitFor(() => expect(within(row).getByText('build-box')).toBeTruthy())
+    expect(screen.queryByText('http://127.0.0.1:4999')).toBeNull()
   })
 
   it('says "Start and use" for a stopped built-in server, and switches to it', async () => {

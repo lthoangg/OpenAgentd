@@ -126,4 +126,12 @@ mod tests {
         let plain = render(&link, false).unwrap();
         assert!(plain.lines().next().unwrap().chars().all(|c| c == '█'));
     }
+
+    #[test]
+    fn a_scan_to_add_code_fits_a_small_terminal() {
+        let link = openagentd_cloud::invite::add_link("BCDF-GHJK", "Mehu2cOzX7i8ikGeWpl0ag", &[7u8; 16]);
+        let text = render(&link, false).unwrap();
+        // 80 columns and about 25 rows leave room for the lines around it.
+        assert!(text.lines().count() <= 22 && text.lines().all(|l| l.chars().count() <= 60), "{text}");
+    }
 }

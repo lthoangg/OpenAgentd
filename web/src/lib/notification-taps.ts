@@ -11,7 +11,7 @@
  *   (`notification_take_taps`, `mobile/src-tauri/src/taps.rs`), because a tap
  *   that launches the app comes before the page can listen.
  */
-import { getPlatform } from '@/hooks/use-platform'
+import { isMobileApp } from '@/lib/mobile-app'
 import { getAppBackendStatus } from '@/lib/app-backend'
 
 /** Where a tap goes. With neither server field, the server in use. */
@@ -85,14 +85,9 @@ function isNativeTap(value: unknown): value is NativeTap {
   return t.kind === 'local' && typeof t.id === 'number'
 }
 
-function isPhoneShell(): boolean {
-  const { isTauri, os } = getPlatform()
-  return isTauri && (os === 'ios' || os === 'android')
-}
-
 /** The taps the shell queued since the last call, oldest first; [] off the phone. */
 export async function takeNativeTaps(): Promise<NativeTap[]> {
-  if (!isPhoneShell()) return []
+  if (!isMobileApp()) return []
   try {
     const { invoke } = await import('@tauri-apps/api/core')
     const taps: unknown = await invoke('notification_take_taps')

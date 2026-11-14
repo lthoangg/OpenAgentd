@@ -14,6 +14,68 @@ v3 shares v2's DB and config files. What still behaves differently is
 listed in §3. macOS/Linux/Windows support, the in-process `gix` snapshot
 engine, the new grep and live workspace refresh are in §6.
 
+### Scan to add (v3.55.0)
+
+`POST /api/cloud/login` now also shows a QR code for a phone that approves
+devices (tunnel spec 4.3.1). `GET /api/cloud/status` gains `add_link` on
+`signing_in`, `scanned {fingerprint}`, and `confirming {fingerprint, choices}`.
+`add_link` and `choices` are omitted for remote callers. Local-only
+`POST /api/cloud/number {number}` accepts one answer; the identity is saved
+and the connector starts only after the correct number. Cancel, a wrong
+number, or the two-minute limit leaves the account and drops the keys, also
+when the leave fails. `wrong_number` is a new guest notice. There is no
+on-disk format change.
+
+### MCP app panels (v3.55.0)
+
+An MCP app's page is no longer part of its tool result. `extra.mcp_app` (the
+tool row and `tool_end`'s `metadata.mcp_app`) carries `html_sha256` instead of
+`html`; the page is written once to `<data_dir>/mcp-apps/<sha256>.html`. Rows
+stored earlier keep their inline `html` and still render. There is no schema
+change.
+
+The panel's frame loads the page from the API, in an origin of its own:
+`POST /api/mcp/app-frames {session_id, tool_call_id, head?}` returns
+`{ticket}` for a stored app result, and `GET /api/mcp/app-frames/{ticket}`
+serves the page once within 60 s, with `head` first in its `<head>`. That
+`GET` needs no access key (the app can read its own address, so the address
+must not hold one). It answers with its own `Content-Security-Policy`, built
+from the resource's declared domains plus `sandbox allow-scripts allow-forms`,
+and without `X-Frame-Options`.
+
+`POST /api/mcp/app-context {session_id, tool_call_id, content?,
+structuredContent?}` keeps what a panel reports for the model
+(`ui/update-model-context`). The newest report of each panel is saved with the
+session's next user message as a hidden `kind='note'` row
+(`extra.mcp_app_context`). Until then a session's reports wait in
+`<data_dir>/sessions/<id>/mcp-app-reports.json`, which outlives a restart and
+is deleted with the session.
+
+A stored page is deleted when no tool result names it: deleting a session
+removes the pages only it named, and every start removes the rest. A page
+written in the last 60 s is kept, since its result is saved after it.
+
+The frame's origin has no storage, so the page gets a `localStorage` the
+backend keeps: `POST /api/mcp/app-storage {session_id, tool_call_id, clear?,
+remove?, set?}` applies an app's writes (in that order) to
+`<data_dir>/mcp-apps/storage/<sha256 of the server name>.json`, 5 MB per MCP
+server, and `GET /api/mcp/app-frames/{ticket}` hands the items to the page in
+`window.__OA_APP_STORAGE__` before `head`. Deleting the server deletes them.
+
+A Streamable HTTP server's session now outlives the process. The session id
+and protocol version are written to `<state_dir>/mcp-sessions.json` (owner
+only) when a session opens. The next start sends `tools/list` under the kept
+session instead of `initialize`; a refusal (404 or any JSON-RPC error) opens a
+new session, and a server that cannot be reached keeps its entry. Stopping
+the process no longer sends the session `DELETE`; restarting, disabling or
+removing one server, and reloading `mcp.json`, still do. `/api/mcp/app-tools/call`
+waits up to 20 s for a server that is still `starting`.
+
+A tool whose `_meta.ui.visibility` lacks `"model"` is left out of the agent's
+tools, of `mcp` search and call, and of a server's `tool_names`.
+`/api/mcp/app-tools/call` answers 403 for a tool whose visibility lacks
+`"app"`.
+
 ## 1. How parity was verified
 
 **The differential harnesses (`appv3/scripts/`) and their Rust probe
@@ -640,8 +702,11 @@ explicitly.
     with the binary's directory as cwd, and passes it this process's mode as
     `OPENAGENTD_ENV` (a release build defaults to `production`). The
     daemon keeps log records off stderr, since its stderr is appended to
-    `app.log` next to the JSON sink. `--wait` exits 1 if the server dies or
-    is not ready within 30 s.
+    `app.log` next to the JSON sink. It always waits for the server to
+    answer `/api/health/ready` before printing the stop hint and the `--qr`
+    code, and exits 1 if the server dies (it prints the end of the log) or
+    is not ready within 30 s; a port something else holds is refused before
+    anything starts. `--wait` is accepted and changes nothing.
   - `server logs` prints each JSON record's `text` field instead of the raw
     record, and follows the file in-process on every OS (no `tail`).
   - `run` adds `-C/--cd`, `-c/--continue`, `--session ID` and `--json`
@@ -980,6 +1045,19 @@ explicitly.
     `pending_questions` row. Same event and payload as the live one; clients
     that missed the live frame (a reattach, a feed that went quiet) otherwise
     showed the agent waiting with no card.
+  - **A question opens before the reply's other tool calls (v3.54.0).** An
+    attended `ask_user` runs first, so its `pending_questions` row, its
+    placeholder tool row and `question_asked` come before the sibling calls'
+    `tool_end` frames and rows (the placeholder sits right after the
+    assistant row), and `agent_status` stays `working` until those calls
+    finish. The turn then pauses (`waiting_input`) only if the question is
+    still open. An answer that arrives while the turn runs starts no turn:
+    the route still returns `resumed: true`, and the running turn continues
+    with the answer when its calls finish (no `waiting_input` frame). A
+    question superseded or dismissed meanwhile ends the turn without a
+    pause. A message queued behind a running turn (not "Queue until done")
+    supersedes a question that is open beside it. Plan reviews and
+    confirmation cards still open after the other calls.
   - **Mode notes.** The Plan-mode note is versioned (`version 3` since
     v3.21.0: reviewer-shaped plans with an Appendix and visuals; `version 4`
     since v3.32.0: submit with `plan` and `submit: true`); a session
@@ -1062,7 +1140,11 @@ explicitly.
   the user stopped sends nothing, where v2
   sends `Session completed`. A turn that ends while its subagents still run
   also sends nothing: their reports start another lead turn, and the last
-  one notifies.
+  one notifies. The event never names the computer. Each surface adds it
+  where it shows the title: a push to the account's phones ends with the
+  name this computer gives for itself (`Done · api · studio-mini`,
+  `api/src/cloud/letters.rs`, from `routes::server_name::current_name`), and
+  the apps add the name their server lists show (`DESIGN.md`, Companions).
 - **Active sessions filter:** `GET /api/agent/sessions?active=true` returns
   every top-level session that is running or waiting on a question, as one
   page (`next_cursor: null`, `has_more: false`), newest first. `limit` and
@@ -1352,6 +1434,40 @@ explicitly.
   the assembled message keeps it in `extra.stop_details`. v2 treated a
   refusal as `end_turn`: the turn ended silently and any partial tool call
   ran. Tests: `agent/tests/refusal.rs`, `providers/src/anthropic.rs`.
+- **Removing a managed worktree keeps unmerged commits (v3 only):**
+  `DELETE /api/agent/workspace/worktrees` deletes the worktree's branch only
+  when OpenAgentd made it (`openagentd/`, `oad/`) and every commit on it is
+  on another local or remote-tracking branch (`git rev-list --count <branch>
+  --not --exclude=<branch> --branches --remotes` is 0). A branch with
+  commits of its own is kept; v2 and earlier v3 force-deleted it. The answer
+  is `{removed, branch, branch_deleted, unmerged_commits}`, and `dry_run:
+  true` in the body reports the same without removing anything (the web
+  dialog asks first). Tests: `agent/tests/worktree_remove.rs`.
+- **A provider that keeps failing ends the turn with `provider_unavailable`
+  (v3 only):** when the HTTP retry budget is spent on an error other than
+  429, or the request can never be completed
+  (`ProviderError::NetworkPermanent`), the `error` event has code
+  `provider_unavailable`, category `provider`, the title "{provider:model}
+  is unavailable", a message in plain words, and a new optional `details`
+  field holding the transport's own text (status line, URL, the provider's
+  message). `agent_status` carries the same `details` in its metadata. v2
+  and earlier v3 sent the transport text as the message under "Agent
+  Execution Error" (`agent_execution_failed`). Tests: `agent/src/streaming.rs`.
+- **Three v2 routes are gone (v3 only):** `GET
+  /api/agent/{session_id}/permissions`, `POST
+  /api/agent/{session_id}/permissions/{request_id}/reply` and `GET`/`PUT
+  /api/settings/sandbox` now answer 404 (405 where the path still matches
+  another method). The first two were stubs since tool approvals were
+  removed (an empty list, and a 404 for every reply); the third was an
+  alias of `/api/settings/denied-paths`. No client called them.
+- **Message wording (v3 only):** an OAuth provider with no sign-in, or one
+  whose refresh fails, says "… is not signed in. Sign in under Settings →
+  Providers, or run `agentd auth <provider>`." where v2 said "… credentials
+  not found. Run: agentd auth <provider>" (Copilot, Codex, Grok, and the
+  Codex image backend). The 400s for chatting with or running a command on
+  a subagent's session, and the 404 for a missing parent session, say "main
+  agent" where v2 said "lead agent" / "Lead session". Nothing matches on
+  these texts.
 - **Desktop network access (v3 only):** `GET`/`PUT /api/desktop/network-access`
   (`api/src/routes/desktop.rs`, `api/src/network_access.rs`) lets the desktop
   shell open and close a second listener on `0.0.0.0:<port>`. The listener
@@ -1480,10 +1596,43 @@ blocked; a critical one still stops the server.
   502 when the release feed fails. It starts `agentd upgrade --from-server`,
   which leaves the server's process tree (`setsid`; a new process group
   outside the job on Windows), stops the server, installs the release the
-  same way `agentd upgrade` does, and starts it again with `--wait`. Its
+  same way `agentd upgrade` does, and starts it again. Its
   output goes to `state/logs/upgrade.log`. The feed is
   `OPENAGENTD_RELEASES_URL` on the server, never the client's
   (`cli/tests/server_update.rs` runs the whole flow against a fake feed).
+- **The desktop app's server (v3.54.0):** a sidecar whose app sets
+  `OPENAGENTD_DESKTOP_UPDATES=1` (macOS and Windows; not Linux, whose `.deb`
+  has no updater) answers `can_upgrade: true`, `method: "desktop_app"` and
+  `confirm_on_computer` (true on Windows, where the installer may wait for
+  someone). `POST` then starts no helper: it records `{state: "running", by:
+  "desktop_app", …}` and keeps the request for the app, and the 202 body
+  gains `method`. The app collects it once with `GET
+  /api/desktop/update-request` (`{request: {target, started_at} | null}`)
+  and reports a failure with `PUT` `{ok, message}`; both answer 404 to
+  anything but the desktop token on the private loopback listener, like
+  `/api/desktop/network-access`. The app runs its own updater (signed
+  release from its own feed; `target` is not passed to it). After an install
+  the app restarts, and the next sidecar settles a run still `running`:
+  `ok` when its version is newer than `from`, otherwise a failure. Without
+  the variable a sidecar still answers `reason: "desktop_sidecar"`. An older
+  client shows the button and follows the run as it does a CLI server's.
+
+### Computer name (v3 only)
+
+- **`GET /api/server/name`** (new in v3.54.0, capability `api.server_name`):
+  `{name, default, custom}`. `default` is the host name without its domain
+  (null when the system gives none) and `name` is the custom name, else the
+  default.
+- **`PUT /api/server/name`** `{name}` sets it for any client that may use
+  the server, including a device of the account through the relay (how a
+  computer signed in from the terminal is renamed). The name is kept in
+  `settings.yaml` (`computer_name`) as one line of plain text: control
+  characters and runs of whitespace become single spaces, text-direction
+  characters (U+202A–202E, U+2066–2069, U+200E, U+200F, U+061C) are dropped,
+  and it is cut at 40
+  characters. An empty name restores the default. 422 when `name` is not a
+  string. The apps remember the name per computer; the cloud service never
+  receives it, and it decides nothing (the device key does).
 
 ## 4. Layout
 
@@ -1829,5 +1978,21 @@ for an unknown preview, 400 without an upgrade, and 422 for a `port` at or
 below 1024. `port` becomes a `Host` alias on the listener (4 at most), so
 pages on the relay origin pass the loopback `Host` guard; foreign names
 are still refused. The listener itself still binds loopback only.
-Not done: `wss://` dev-server upstreams, previews from a plain browser on
-another device, and headless capture.
+
+A device of the server's OpenAgentd Cloud account opens the same route
+through the cloud connector (v3.55.0): its request carries no key and is
+authenticated by its relay session (`AuthenticatedBy::RelayDevice`), so it
+works on a keyless server too. On the device, the relay tunnels to the
+computer's loopback bridge with the bridge's key. The connector's hyper
+server runs with `keep_alive(false)`, so its 101 says
+`connection: upgrade, close`; the bridge (`native/cloud/src/bridge.rs`)
+answers its own client with a plain `connection: upgrade`, which WebSocket
+clients that compare the whole value expect.
+
+`wss://` upstreams are relayed (v3.55.0): an `https` dev server's WebSocket
+goes over TLS with whatever certificate the server presents, as its page
+requests already do. Targets are loopback only, so there is no network path
+to impersonate one.
+
+Not done: previews from a plain browser on another device, and headless
+capture.

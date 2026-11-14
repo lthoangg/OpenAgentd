@@ -16,13 +16,20 @@ export type UpdateStatus = {
 }
 
 /**
- * Whether this shell updates itself: desktop and Android do. The browser
- * build has no updater, and on iOS TestFlight and the App Store deliver and
- * announce new builds themselves.
+ * Whether this shell updates itself: the macOS and Windows apps and Android
+ * do. The browser build has no updater, on iOS TestFlight and the App Store
+ * deliver and announce new builds themselves, and the Linux app is a .deb,
+ * which no release offers as an in-app update.
  */
 export function hasInAppUpdates(): boolean {
   const { isTauri, os } = getPlatform()
-  return isTauri && os !== 'ios'
+  return isTauri && os !== 'ios' && os !== 'linux'
+}
+
+/** The Linux app: updated by installing the newer .deb. */
+export function updatesByPackage(): boolean {
+  const { isTauri, os } = getPlatform()
+  return isTauri && os === 'linux'
 }
 
 export async function checkForUpdates(silent = false): Promise<UpdateStatus> {

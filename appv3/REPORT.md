@@ -1145,6 +1145,16 @@ explicitly.
   name this computer gives for itself (`Done · api · studio-mini`,
   `api/src/cloud/letters.rs`, from `routes::server_name::current_name`), and
   the apps add the name their server lists show (`DESIGN.md`, Companions).
+  Since v3.55.0 an `assistant_done` notification carries `outcome`, how the
+  turn ended: `done`, `failed`, or what became of the goal it worked on
+  (`goal_achieved`, `goal_blocked`, `goal_paused`;
+  `notification::outcome`). `kind`, `title` and `goal` are unchanged.
+  Clients tell a failure from a finish by `outcome` and no longer by the
+  title's first word: the phone letter's kind (`letters::kind_of`, where
+  `failed` and `goal_blocked` are `failed`), the desktop notch's Failed row
+  and the pet's bubble (`desktop/src-tauri/src/island.rs`, `Finish`). The
+  desktop shell still reads the title when a server before v3.55.0 sends no
+  `outcome`.
 - **Active sessions filter:** `GET /api/agent/sessions?active=true` returns
   every top-level session that is running or waiting on a question, as one
   page (`next_cursor: null`, `has_more: false`), newest first. `limit` and

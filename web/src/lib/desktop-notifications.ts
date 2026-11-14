@@ -22,6 +22,12 @@ export interface DesktopNotificationPayload {
   sessionId?: string
   title: string
   body: string
+  /**
+   * How a finished turn ended, as the server said it (`done`, `failed`,
+   * `goal_blocked`, …). The desktop shell marks a failure by it; absent
+   * from servers before v3.55.0, where the title's first word says it.
+   */
+  outcome?: string
 }
 
 export interface DesktopNotificationResult {
@@ -200,6 +206,7 @@ export async function sendDesktopNotification(
           ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
           title: payload.title,
           body: payload.body,
+          ...(payload.outcome ? { outcome: payload.outcome } : {}),
         },
       })
       // Every window gets the event; the shell shows it from one of them.

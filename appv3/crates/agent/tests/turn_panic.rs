@@ -79,6 +79,7 @@ async fn a_panic_mid_turn_ends_the_turn_as_an_error() {
     assert_eq!(notification["kind"], "assistant_done");
     assert_eq!(notification["title"], "Failed · project");
     assert_eq!(notification["body"], "hi");
+    assert_eq!(notification["outcome"], "failed");
 
     // The session stays usable: the next message starts (and ends) a turn.
     session.handle_user_message(UserMessage { content: "again".into(), session_id: sid, origin: "user".into(), ..Default::default() }).await.unwrap();

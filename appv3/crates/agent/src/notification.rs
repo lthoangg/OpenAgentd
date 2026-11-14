@@ -59,6 +59,20 @@ pub fn goal_status(outcome: &str) -> &'static str {
     }
 }
 
+/// How a finished turn ended, as the notification's `outcome`: `done` or
+/// `failed`, or what became of the goal it worked on (`goal`, see
+/// [`goal_outcome`]), which says more than the turn's own end. Clients tell
+/// a failure from a finish by this, never by the title's words.
+pub fn outcome(failed: bool, goal: Option<&str>) -> &'static str {
+    match goal {
+        Some("achieved") => "goal_achieved",
+        Some("blocked") => "goal_blocked",
+        Some(_) => "goal_paused",
+        None if failed => "failed",
+        None => "done",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,6 +85,15 @@ mod tests {
         assert_eq!(status("paused", Some("turn_limit")), Some(("paused", "Goal paused")));
         assert_eq!(status("active", None), None, "a goal still running says nothing new");
         assert_eq!(status("cleared", None), None);
+    }
+
+    #[test]
+    fn the_outcome_says_how_the_turn_ended_and_a_goal_outranks_the_turn() {
+        assert_eq!(outcome(false, None), "done");
+        assert_eq!(outcome(true, None), "failed");
+        assert_eq!(outcome(false, Some("achieved")), "goal_achieved");
+        assert_eq!(outcome(false, Some("blocked")), "goal_blocked");
+        assert_eq!(outcome(false, Some("paused")), "goal_paused");
     }
 
     #[test]

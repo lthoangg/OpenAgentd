@@ -35,11 +35,15 @@ const RETRY_MAX_DELAY: Duration = Duration::from_secs(60);
 const OUTBOX_MAX: usize = 64;
 
 /// The kind of a `desktop_notification` payload, or `None` to skip it.
+/// A turn that failed, or a goal that is blocked, is `Failed`; the payload's
+/// `outcome` says so (`appv3_agent::notification::outcome`).
 pub fn kind_of(payload: &Value) -> Option<Kind> {
     match payload["kind"].as_str()? {
         "input_needed" => Some(Kind::NeedsYou),
-        "assistant_done" if payload["title"].as_str().is_some_and(|t| t.starts_with("Failed")) => Some(Kind::Failed),
-        "assistant_done" => Some(Kind::Done),
+        "assistant_done" => match payload["outcome"].as_str() {
+            Some("failed" | "goal_blocked") => Some(Kind::Failed),
+            _ => Some(Kind::Done),
+        },
         _ => None,
     }
 }
@@ -253,8 +257,12 @@ mod tests {
 
     #[test]
     fn notifications_map_to_letter_kinds() {
-        assert_eq!(kind_of(&json!({"kind": "assistant_done", "title": "Done · api"})), Some(Kind::Done));
-        assert_eq!(kind_of(&json!({"kind": "assistant_done", "title": "Failed · api"})), Some(Kind::Failed));
+        assert_eq!(kind_of(&json!({"kind": "assistant_done", "title": "Done · api", "outcome": "done"})), Some(Kind::Done));
+        assert_eq!(kind_of(&json!({"kind": "assistant_done", "title": "Failed · api", "outcome": "failed"})), Some(Kind::Failed));
+        // A goal that cannot go on is a failure to the phone; one that ended or paused is not.
+        assert_eq!(kind_of(&json!({"kind": "assistant_done", "title": "Goal blocked · api", "outcome": "goal_blocked"})), Some(Kind::Failed));
+        assert_eq!(kind_of(&json!({"kind": "assistant_done", "title": "Goal achieved · api", "outcome": "goal_achieved"})), Some(Kind::Done));
+        assert_eq!(kind_of(&json!({"kind": "assistant_done", "title": "Goal paused · api", "outcome": "goal_paused"})), Some(Kind::Done));
         assert_eq!(kind_of(&json!({"kind": "input_needed", "title": "Needs you · api"})), Some(Kind::NeedsYou));
         assert_eq!(kind_of(&json!({"kind": "something_else"})), None);
     }
@@ -298,10 +306,12 @@ mod tests {
     }
 
     #[test]
-    fn the_kind_is_read_from_the_title_the_server_raised() {
-        let payload = json!({"kind": "assistant_done", "title": "Failed · api"});
+    fn the_kind_is_the_outcome_the_server_raised_whatever_the_words_around_it() {
+        let payload = json!({"kind": "assistant_done", "title": "Failed · api", "outcome": "failed"});
         assert_eq!(kind_of(&payload), Some(Kind::Failed));
         assert_eq!(text_of(&payload, Some("Done"), 1).title, "Failed · api · Done", "a name cannot change the kind");
+        // A workspace called "Failed", or new wording, cannot change it either.
+        assert_eq!(kind_of(&json!({"kind": "assistant_done", "title": "Failed to launch · api", "outcome": "done"})), Some(Kind::Done));
     }
 
     #[test]

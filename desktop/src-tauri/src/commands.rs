@@ -194,6 +194,10 @@ pub struct DesktopNotificationPayload {
     body: String,
     #[serde(default)]
     notification_id: Option<String>,
+    /// How the turn ended, as the server's event said it (`done`, `failed`,
+    /// `goal_blocked`, …); absent from older pages and servers.
+    #[serde(default)]
+    outcome: Option<String>,
 }
 
 /// Shows the notification and returns true, or returns false when another
@@ -220,6 +224,7 @@ pub fn show_desktop_notification(
         payload.session_id.as_deref(),
         &payload.title,
         &payload.body,
+        payload.outcome.as_deref(),
     );
     if crate::pet::take_banner(&app, window.label(), bubble) {
         return Ok(false);

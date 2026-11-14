@@ -986,13 +986,45 @@ impl FeedMemo {
     }
 }
 
+/// How a finished turn ended, as its `desktop_notification` says. The one
+/// place the notch and the pet learn it from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Finish {
+    Done,
+    Failed,
+    /// The goal it worked on cannot go on.
+    GoalBlocked,
+}
+
+impl Finish {
+    /// From the notification's `outcome`. A server before v3.55.0 sends
+    /// none: its title's first words say it ("Failed · web").
+    pub(crate) fn of(outcome: Option<&str>, title: &str) -> Self {
+        match outcome {
+            Some("failed") => Self::Failed,
+            Some("goal_blocked") => Self::GoalBlocked,
+            // `done`, the other goal outcomes, and any a newer server adds.
+            Some(_) => Self::Done,
+            None if title.starts_with("Failed") => Self::Failed,
+            None if title.starts_with("Goal blocked") => Self::GoalBlocked,
+            None => Self::Done,
+        }
+    }
+
+    /// The same, read from the notification's JSON.
+    pub(crate) fn of_notification(data: &serde_json::Value) -> Self {
+        Self::of(data["outcome"].as_str(), data["title"].as_str().unwrap_or_default())
+    }
+}
+
 /// The finished row a finish notification describes: its body is the
 /// session's title (or "Session 1a2b3c4d" without one), its title "Done ·
-/// workspace" (or "Failed · …", "Goal achieved · …").
+/// workspace" (or "Failed · …", "Goal achieved · …"). A blocked goal is not
+/// a failed row: its `goal` (from the notification's `goal`) marks it.
 fn notified_row(session_id: &str, data: &serde_json::Value) -> IslandSession {
     let title = data["title"].as_str().unwrap_or_default();
     let workspace = title.split_once(" · ").map(|(_, w)| w.trim().to_string()).filter(|w| !w.is_empty());
-    let state = if title.starts_with("Failed") { SessionState::Failed } else { SessionState::Done };
+    let state = if Finish::of_notification(data) == Finish::Failed { SessionState::Failed } else { SessionState::Done };
     IslandSession {
         id: session_id.to_string(),
         title: session_title(data["body"].as_str()),
@@ -2870,6 +2902,11 @@ mod tests {
         let unread = feeds.lists().1;
         assert_eq!(ids(&unread), ["f"]);
         assert_eq!(unread[0].server_id, Some(ServerId::Bundled));
+
+        // The server says how the turn ended; the title's words are for people.
+        let row = |title: &str, outcome: &str| notified_row("x", &serde_json::json!({"title": title, "body": "b", "outcome": outcome})).state;
+        assert_eq!(row("Could not finish · web", "failed"), SessionState::Failed);
+        assert_eq!(row("Failed to launch · web", "done"), SessionState::Done, "a workspace or wording that starts with Failed");
 
         // One the last list held is reported by `update` instead, once.
         let mut feeds = two_servers(&["f"], &[]);

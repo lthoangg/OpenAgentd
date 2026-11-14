@@ -1186,6 +1186,7 @@ impl AgentSession {
                 };
                 if let Some(label) = goal.map(notification::goal_status).or(label) {
                     let mut payload = self.completion_notification(session_id, label).await;
+                    payload["outcome"] = json!(notification::outcome(status == "error", goal));
                     if let Some(goal) = goal {
                         payload["goal"] = json!(goal);
                     }
@@ -1258,7 +1259,8 @@ impl AgentSession {
     }
 
     /// `kind` stays `assistant_done` for a failed turn so clients that only
-    /// know the original kinds still show it.
+    /// know the original kinds still show it; the caller adds `outcome`,
+    /// which says how the turn ended.
     async fn completion_notification(&self, session_id: &str, status: &str) -> Value {
         let (title, workspace) = match db::get_session(&self.pool, session_id).await {
             Ok(Some(r)) => (r.title, Some(r.workspace)),

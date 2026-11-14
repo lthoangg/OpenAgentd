@@ -93,4 +93,6 @@ async fn tool_turn_persists_and_streams_like_v2() {
     assert_eq!(notification["kind"], "assistant_done");
     assert_eq!(notification["title"], format!("Done · {}", ws.file_name().unwrap().to_string_lossy()));
     assert_eq!(notification["body"], "hi");
+    // How the turn ended, so no client has to read it out of the title.
+    assert_eq!(notification["outcome"], "done");
 }

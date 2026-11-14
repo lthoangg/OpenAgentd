@@ -150,6 +150,14 @@ describe('desktop notification worker', () => {
     expect(mockNotify).toHaveBeenCalledTimes(1)
   })
 
+  it('how the turn ended reaches the desktop shell', async () => {
+    await sendDesktopNotification({ ...payload, title: 'Goal blocked · openagentd', outcome: 'goal_blocked' })
+
+    expect(mockNotify).toHaveBeenCalledWith('show_desktop_notification', {
+      payload: expect.objectContaining({ title: 'Goal blocked · openagentd', outcome: 'goal_blocked' }),
+    })
+  })
+
   it('focused skip and forced send', async () => {
     focused = true
 

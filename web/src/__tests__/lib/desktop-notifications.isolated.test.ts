@@ -43,6 +43,10 @@ describe('desktop notification library integration', () => {
     await runWorker('an off switch left by the removed settings page is ignored')
   })
 
+  it('tells the desktop shell how the turn ended', async () => {
+    await runWorker('how the turn ended reaches the desktop shell')
+  })
+
   it('sends mobile notifications through the notification plugin without focused-window skip or in-app sound', async () => {
     await runWorker('mobile plugin send')
   })

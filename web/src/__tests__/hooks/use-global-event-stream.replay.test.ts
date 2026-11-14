@@ -33,6 +33,13 @@ beforeEach(() => {
 })
 
 describe('catching up after a reconnect', () => {
+  // The desktop shell tells a failure from a finish by this, for the pet's bubble.
+  it('passes on how the turn ended with a live notification', async () => {
+    await send('desktop_notification', { ...done('n-blocked', 'goal'), title: 'Goal blocked · api', outcome: 'goal_blocked' })
+
+    expect(sendDesktopNotification.mock.calls[0]?.[0]).toMatchObject({ notificationId: 'n-blocked', outcome: 'goal_blocked' })
+  })
+
   it('marks a turn that finished while away unread, without a banner', async () => {
     await resume(2)
     await send('session_turn_completed', { session_id: 'away', status: 'completed' })

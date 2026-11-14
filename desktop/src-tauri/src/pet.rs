@@ -271,13 +271,17 @@ pub fn claims(settings: &PetSettings, visible: bool, kind: &str) -> bool {
     settings.enabled && visible && settings.bubbles && settings.bubble_kinds.allows(kind)
 }
 
-/// How the bubble looks: a question, a reminder, a failed turn, or done.
-pub fn bubble_tone(kind: &str, title: &str) -> &'static str {
+/// How the bubble looks: a question, a reminder, a failed turn (or a goal
+/// that cannot go on), or done. `outcome` is the notification's own word
+/// for how the turn ended (see [`crate::island::Finish`]).
+pub fn bubble_tone(kind: &str, outcome: Option<&str>, title: &str) -> &'static str {
     match kind {
         "input_needed" => "input",
         "reminder_fired" => "remind",
-        _ if title.starts_with("Failed") => "failed",
-        _ => "done",
+        _ => match crate::island::Finish::of(outcome, title) {
+            crate::island::Finish::Failed | crate::island::Finish::GoalBlocked => "failed",
+            crate::island::Finish::Done => "done",
+        },
     }
 }
 
@@ -1108,7 +1112,7 @@ pub fn bubble_from_event(data: &str) -> Option<PetBubble> {
     let title = display_title(&kind, v["title"].as_str()?);
     let body = v["body"].as_str().unwrap_or_default().to_string();
     let session_id = v["session_id"].as_str().map(str::to_string);
-    Some(PetBubble { tone: bubble_tone(&kind, &title), id, kind, session_id, title, body, question_id: None })
+    Some(PetBubble { tone: bubble_tone(&kind, v["outcome"].as_str(), &title), id, kind, session_id, title, body, question_id: None })
 }
 
 /// The feed saw a notification on `server`: show it in the bubble when the
@@ -1200,14 +1204,15 @@ pub fn with_open_question(mut bubble: PetBubble, question: &crate::answers::Open
     bubble
 }
 
-/// A bubble for a notification an app window asked to show.
-pub fn bubble_from_request(kind: &str, notification_id: Option<&str>, session_id: Option<&str>, title: &str, body: &str) -> PetBubble {
+/// A bubble for a notification an app window asked to show. `outcome` is
+/// the event's, passed on by the window.
+pub fn bubble_from_request(kind: &str, notification_id: Option<&str>, session_id: Option<&str>, title: &str, body: &str, outcome: Option<&str>) -> PetBubble {
     PetBubble {
         // Backend notifications always carry an id; without one, the text
         // stands in so a repeat is still shown once.
         id: notification_id.map(str::to_string).unwrap_or_else(|| format!("{kind}\n{title}\n{body}")),
         kind: kind.to_string(),
-        tone: bubble_tone(kind, title),
+        tone: bubble_tone(kind, outcome, title),
         session_id: session_id.map(str::to_string),
         title: display_title(kind, title),
         body: body.to_string(),
@@ -1956,12 +1961,14 @@ mod tests {
     }
 
     #[test]
-    fn bubble_tones_follow_the_kind_and_a_failed_title() {
-        assert_eq!(bubble_tone("input_needed", "Needs input · web"), "input");
-        assert_eq!(bubble_tone("reminder_fired", "Reminder"), "remind");
-        assert_eq!(bubble_tone("assistant_done", "Failed · web"), "failed");
-        assert_eq!(bubble_tone("assistant_done", "Done · web"), "done");
-        assert_eq!(bubble_tone("assistant_done", "Goal achieved · web"), "done");
+    fn bubble_tones_follow_the_kind_and_for_an_older_server_a_failed_title() {
+        assert_eq!(bubble_tone("input_needed", None, "Needs input · web"), "input");
+        assert_eq!(bubble_tone("reminder_fired", None, "Reminder"), "remind");
+        // A server before v3.55.0 sends no outcome: the title's first words say it.
+        assert_eq!(bubble_tone("assistant_done", None, "Failed · web"), "failed");
+        assert_eq!(bubble_tone("assistant_done", None, "Done · web"), "done");
+        assert_eq!(bubble_tone("assistant_done", None, "Goal achieved · web"), "done");
+        assert_eq!(bubble_tone("assistant_done", None, "Goal blocked · web"), "failed");
     }
 
     #[test]
@@ -1983,13 +1990,31 @@ mod tests {
         assert_eq!(bubble_from_event("not json"), None);
     }
 
+    // The server says how the turn ended; the title's words are for people.
+    #[test]
+    fn a_bubble_s_tone_is_the_outcome_the_server_sent_not_the_title_s_first_word() {
+        let tone = |title: &str, outcome: &str| {
+            let data = serde_json::json!({"notification_id": "n", "kind": "assistant_done", "title": title, "body": "", "outcome": outcome});
+            bubble_from_event(&data.to_string()).unwrap().tone
+        };
+        assert_eq!(tone("Could not finish · web", "failed"), "failed");
+        assert_eq!(tone("Failed to launch · web", "done"), "done", "a workspace or wording that starts with Failed");
+        // A goal that cannot go on droops like a failure; one that ended or paused does not.
+        assert_eq!(tone("Goal blocked · web", "goal_blocked"), "failed");
+        assert_eq!(tone("Goal achieved · web", "goal_achieved"), "done");
+        assert_eq!(tone("Goal paused · web", "goal_paused"), "done");
+    }
+
     #[test]
     fn a_window_request_becomes_the_same_bubble_as_the_event() {
         let event = r#"{"notification_id":"n1","kind":"input_needed","session_id":"s1","title":"Needs input · api","body":"Keep v1?"}"#;
-        let request = bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs input · api", "Keep v1?");
+        let request = bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs input · api", "Keep v1?", None);
         assert_eq!(Some(request), bubble_from_event(event), "same id, so it shows once");
-        let no_id = bubble_from_request("assistant_done", None, None, "Done", "x");
-        assert_eq!(no_id.id, bubble_from_request("assistant_done", None, None, "Done", "x").id);
+        let no_id = bubble_from_request("assistant_done", None, None, "Done", "x", None);
+        assert_eq!(no_id.id, bubble_from_request("assistant_done", None, None, "Done", "x", None).id);
+        // The window passes on how the turn ended, so both bubbles look alike.
+        let blocked = bubble_from_request("assistant_done", Some("n2"), Some("s1"), "Goal blocked · api", "x", Some("goal_blocked"));
+        assert_eq!(blocked.tone, "failed");
     }
 
     #[test]
@@ -2000,7 +2025,7 @@ mod tests {
         assert_eq!(display_title("assistant_done", "Needs input · api"), "Needs input · api", "only a question's title is renamed");
         let event = r#"{"notification_id":"n1","kind":"input_needed","session_id":"s1","title":"Needs input · api","body":"Keep v1?"}"#;
         assert_eq!(bubble_from_event(event).unwrap().title, "Needs you · api");
-        assert_eq!(bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs input · api", "Keep v1?").title, "Needs you · api");
+        assert_eq!(bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs input · api", "Keep v1?", None).title, "Needs you · api");
     }
 
     #[test]
@@ -2433,13 +2458,13 @@ mod tests {
     fn a_question_bubble_carries_the_id_the_server_holds() {
         let body = serde_json::json!({ "question": { "id": "q-1", "questions": [{ "question": "Use which account?", "options": [{ "label": "Work" }, { "label": "Auto" }] }] } });
         let question = crate::answers::parse_question(&body).unwrap();
-        let bubble = bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs you · api", "Use which account?");
+        let bubble = bubble_from_request("input_needed", Some("n1"), Some("s1"), "Needs you · api", "Use which account?", None);
         let asked = with_open_question(bubble, &question);
         assert_eq!(asked.question_id.as_deref(), Some("q-1"));
         assert_eq!(asked.body, "Use which account?");
 
         // An empty notification body takes the question's own text.
-        let silent = with_open_question(bubble_from_request("input_needed", Some("n2"), Some("s1"), "Needs you", ""), &question);
+        let silent = with_open_question(bubble_from_request("input_needed", Some("n2"), Some("s1"), "Needs you", "", None), &question);
         assert_eq!(silent.body, "Use which account?");
 
         let json = serde_json::to_value(&asked).unwrap();

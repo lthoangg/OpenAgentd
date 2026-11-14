@@ -13,13 +13,17 @@ deliver updates. Version releases (tag, desktop, Android) follow `oad/release`.
 | Channel | How | Environment |
 |---|---|---|
 | Dev | `make -C mobile ios-install-device <name>` on your own device | none |
-| Internal | `gh workflow run release-ios.yml --ref <branch> -f channel=internal` from any branch | `testflight-internal` (no reviewers, all branches) |
+| Internal | `gh workflow run release-ios.yml --ref <branch> -f channel=internal` | `testflight-internal` (maintainer approval; `main`, `oad/*`, `release/*`, `v*`) |
 | Public Beta | `gh workflow run release-ios.yml --ref v<X.Y.Z> -f channel=public -f confirm=release-ios` | `release-ios` (maintainer approval; `main` and `v*`) |
 | App Store | in App Store Connect, submit the tested Public Beta build of X.Y.Z for review | none |
 
 - The Internal group has access to every build, including public ones, with no
   review. `mobile/scripts/asc-public-beta.py` adds a public build to the
   "Public Beta" group and submits it for Beta App Review.
+- Both environments wait for an approval at `sign`. The agent approves only when
+  the maintainer says so (`gh api -X POST .../runs/<id>/pending_deployments`).
+  A branch outside the list fails `sign` in seconds with no steps and no logs;
+  the job's annotation says "not allowed to deploy".
 - The `build` job has no secrets (`cargo tauri ios build --archive-only --no-sign`);
   only `sign` signs (`mobile/scripts/sign-ipa-appstore.sh`), validates with
   `altool --validate-app`, and uploads. Never give `build` a secret or an
@@ -53,6 +57,16 @@ Known rules:
 - Every bundle that calls a required-reason API needs its own privacy manifest
   (ITMS-91053, reported by email after upload). The widget extension today only
   reads a file from the App Group and needs none.
+- App Store review refuses a build with `BUILD_INDICATES_GAME_CENTER_ENABLED`
+  when the embedded profile grants Game Center; TestFlight accepts it. Apple
+  turns Game Center on for new App IDs, and the API cannot turn it off
+  ("universal AppId ... does not allow changes to the 'GAME_CENTER' feature").
+  Untick it on developer.apple.com (Identifiers → the App ID → Capabilities),
+  then make new App Store profiles and replace the `IOS_PROFILE_*` secrets in
+  both environments. Do not enable Game Center for the version instead. It was
+  turned off for `com.openagentd.mobile` and `.widgets` in November 2026;
+  check any new App ID. `sign-ipa-appstore.sh` also strips it from the
+  signature, but the embedded profile is what Apple reads.
 
 A build that uploaded but is missing from TestFlight: check its processing
 state and the tester's invitation (an internal tester stays `INVITED` until
@@ -146,7 +160,13 @@ App Store only (not needed for TestFlight):
 - URLs: Privacy `https://openagentd.dev/privacy/`, Support
   `https://openagentd.dev/support/`. The app links Privacy in About.
 - App Privacy: Data Not Collected, matching `mobile/src-tauri/PrivacyInfo.xcprivacy`
-  and the site. Fill the Accessibility labels.
+  and the site, published on the website (the API cannot set it; without it the
+  submission fails with `APP_DATA_USAGES_REQUIRED`). Fill the Accessibility labels.
+- Submitting from the CLI: rename the open App Store version to the release
+  version, attach the build by version and number, add the version to the
+  existing review submission (`POST /v1/reviewSubmissionItems`), then send it
+  (`PATCH /v1/reviewSubmissions/<id>` with `submitted: true`). A refused item
+  lists every blocker under `meta.associatedErrors`.
 - The store description has no "beta" wording and no other platforms' stores.
 - Avoid submitting December 20–27 (holiday freeze) and right after a major iOS
   release; plan for one rejection round.

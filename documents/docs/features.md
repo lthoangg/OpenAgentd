@@ -2681,6 +2681,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   with the same arguments. A session from before the rename that calls a former
   name is told the new one ("Did you mean 'team'?"); agent files that list a
   former name are left as they are; old transcripts render as before.
+  Calls to the older v2 team tools (`team_spawn`, `team_send`, `team_list`,
+  `team_wait`, `team_stop`, `team_manage`, `send_to_lead`) in old transcripts show
+  as ordinary tool cards, with the call and its result as text `[v3.56.0]`.
 - **Built-in instructions that agree with each other** `[v3.23.0]` — the built-in
   prompt, runtime rules, Plan and Code notes, tool descriptions, bundled skill, and
   member prompts were reviewed together, so they no longer contradict each other or

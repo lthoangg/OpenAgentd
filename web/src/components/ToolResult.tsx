@@ -857,7 +857,7 @@ const SHELL_TOOLS = new Set(['shell'])
 const WEB_SEARCH_TOOLS = new Set(['web_search'])
 const BACKGROUND_PROCESS_TOOLS = new Set(['bg'])
 const SCHEDULE_TOOLS = new Set(['schedule'])
-const TEAM_TOOLS = new Set(['team', 'team_spawn', 'team_send', 'team_wait', 'team_list', 'team_stop', 'team_manage'])
+const TEAM_TOOLS = new Set(['team'])
 
 /** A non-empty string field, or ``null``. */
 function str(value: unknown): string | null {

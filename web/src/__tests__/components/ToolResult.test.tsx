@@ -541,7 +541,7 @@ describe("ToolResult — team tools", () => {
       member_id: "explorer#1",
       output: "Audit finished: 5 endpoints found.",
     })
-    render(<ToolResult toolName="team_spawn" result={res} />)
+    render(<ToolResult toolName="team" result={res} />)
     // The member is a row: its handle in mono, its state in words as a quiet chip
     const row = screen.getByText("explorer#1").closest("[data-subagent-row]")
     expect(row).toBeTruthy()
@@ -553,7 +553,7 @@ describe("ToolResult — team tools", () => {
 
   it("labels a spawned subagent as running", () => {
     const res = JSON.stringify({ status: "spawned", member_id: "explorer#3" })
-    render(<ToolResult toolName="team_spawn" result={res} />)
+    render(<ToolResult toolName="team" result={res} />)
     const status = screen.getByText("Running").closest('[data-slot="chip"]')
     expect(status?.getAttribute("data-tone")).toBe("info")
     expect(screen.queryByText("spawned")).toBeNull()
@@ -568,7 +568,7 @@ describe("ToolResult — team tools", () => {
         options: ["yes", "no"],
       },
     })
-    render(<ToolResult toolName="team_send" result={res} />)
+    render(<ToolResult toolName="team" result={res} />)
     expect(screen.getByText("explorer#2")).toBeTruthy()
     const status = screen.getByText("Needs you").closest('[data-slot="chip"]')
     expect(status?.getAttribute("data-tone")).toBe("warning")
@@ -583,7 +583,7 @@ describe("ToolResult — team tools", () => {
     expect(screen.queryByRole("button")).toBeNull()
   })
 
-  it("renders multi-member results for team_wait", () => {
+  it("renders a result with several members", () => {
     const res = JSON.stringify({
       status: "completed",
       results: {
@@ -591,14 +591,14 @@ describe("ToolResult — team tools", () => {
         "researcher#1": { status: "completed", output: "Fetched docs" },
       },
     })
-    render(<ToolResult toolName="team_wait" result={res} />)
+    render(<ToolResult toolName="team" result={res} />)
     expect(screen.getByText("explorer#1")).toBeTruthy()
     expect(screen.getByText("researcher#1")).toBeTruthy()
     expect(screen.getByText(/Found 3 files/)).toBeTruthy()
     expect(screen.getByText(/Fetched docs/)).toBeTruthy()
   })
 
-  it("renders roster list for team_list and team_manage", () => {
+  it("renders the roster list", () => {
     const res = JSON.stringify({
       available_profiles: [{ name: "explorer" }],
       live_members: [
@@ -606,7 +606,7 @@ describe("ToolResult — team tools", () => {
         { member_id: "researcher#1", status: "completed" },
       ],
     })
-    render(<ToolResult toolName="team_manage" result={res} />)
+    render(<ToolResult toolName="team" result={res} />)
     expect(screen.getByText("Subagents")).toBeTruthy()
     expect(screen.queryByText("Subagent Roster")).toBeNull()
     expect(screen.getByText("explorer#1")).toBeTruthy()

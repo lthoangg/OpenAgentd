@@ -199,7 +199,7 @@ export function ModelSetupCard({
                 <CheckCircle2 size={14} className="shrink-0 text-(--accent-green-text)" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-(--accent-green-text)">{text.title}</p>
-                  <p className="truncate text-meta text-(--color-text-2)">{text.detail}</p>
+                  <p className="text-meta text-(--color-text-2)">{text.detail}</p>
                 </div>
                 <Button
                   size="sm"

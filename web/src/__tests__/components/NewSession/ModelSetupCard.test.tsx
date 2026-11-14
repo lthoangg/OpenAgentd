@@ -211,4 +211,13 @@ describe('ModelSetupCard', () => {
     expect(title.className).not.toContain('text-(--color-success)')
     expect(card.querySelector('li svg')?.getAttribute('class')).toContain('text-(--accent-green-text)')
   })
+
+  it('lets the reason under a ready model wrap on a narrow screen, where "no key needed" was cut off', () => {
+    const providers = [
+      ...FRESH.filter((p) => p.id !== 'ollama'),
+      provider('ollama', { kind: 'local', is_configured: true }),
+    ]
+    renderCard({ providers })
+    expect(screen.getByText('Models on this computer, no key needed').className).not.toContain('truncate')
+  })
 })

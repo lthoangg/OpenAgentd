@@ -9,15 +9,24 @@
 //!
 //! **Model context.** A panel can report state for the model (what is on a
 //! canvas, what the user picked). The newest report of each panel waits here
-//! and is given to the model with the session's next user message. Reports
-//! live in memory: a panel reports again when it is shown after a restart.
+//! and is given to the model with the session's next user message. A
+//! session's reports are also a file in its data folder
+//! (`<data_dir>/sessions/<id>/mcp-app-reports.json`), so they outlive a
+//! restart and go when the session is deleted.
+//!
+//! **Unused pages.** A page stays while a tool result names it. Deleting a
+//! session removes the pages only it named, and every start removes pages
+//! nothing names any more (results reverted, a server that stopped midway).
 
+use appv3_db::DbPool;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, SystemTime};
 
 pub const HTML_KEY: &str = "html";
 pub const HTML_SHA_KEY: &str = "html_sha256";
@@ -26,6 +35,10 @@ pub const HTML_SHA_KEY: &str = "html_sha256";
 pub const MAX_CONTEXT_CHARS: usize = 24_000;
 /// Panels of one session whose reports are kept; the oldest goes first.
 const MAX_PANELS: usize = 16;
+/// A page this new is kept even when no result names it: the result that
+/// does is saved a moment after its page.
+const PAGE_GRACE: Duration = Duration::from_secs(60);
+const REPORTS_FILE: &str = "mcp-app-reports.json";
 
 fn html_dir() -> PathBuf {
     appv3_core::settings::settings().data_dir.join("mcp-apps")
@@ -51,6 +64,8 @@ async fn store_html_in(dir: &Path, app: &mut Value) {
     let path = dir.join(format!("{sha}.html"));
     let written = async {
         if tokio::fs::try_exists(&path).await? {
+            // Named again: it is new for `PAGE_GRACE` once more.
+            let _ = std::fs::File::options().write(true).open(&path).and_then(|f| f.set_modified(SystemTime::now()));
             return Ok(());
         }
         tokio::fs::create_dir_all(dir).await?;
@@ -83,6 +98,57 @@ async fn load_html_in(dir: &Path, app: &Value) -> Option<String> {
     }
     let sha = app.get(HTML_SHA_KEY).and_then(Value::as_str).filter(|s| is_sha256_hex(s))?;
     tokio::fs::read_to_string(dir.join(format!("{sha}.html"))).await.ok()
+}
+
+/// The pages named by the results of these sessions (ids in any spelling).
+/// Ask before deleting the sessions, then pass the answer to
+/// [`remove_unused_pages`].
+pub async fn pages_of(pool: &DbPool, session_ids: &[String]) -> Vec<String> {
+    appv3_db::mcp_app_page_hashes(pool, Some(session_ids)).await.unwrap_or_else(|e| {
+        tracing::warn!("mcp_app_pages_lookup_failed error={}", e);
+        vec![]
+    })
+}
+
+/// Delete stored pages no tool result names any more: of `candidates`, or of
+/// the whole folder (with temporary files a stopped write left behind).
+pub async fn remove_unused_pages(pool: &DbPool, candidates: Option<Vec<String>>) {
+    remove_unused_pages_in(&html_dir(), pool, candidates, PAGE_GRACE).await
+}
+
+async fn remove_unused_pages_in(dir: &Path, pool: &DbPool, candidates: Option<Vec<String>>, grace: Duration) {
+    let old = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).is_ok_and(|at| at.elapsed().is_ok_and(|age| age >= grace));
+    let mut pages: Vec<(String, PathBuf)> = vec![];
+    match candidates {
+        Some(hashes) => pages.extend(hashes.into_iter().filter(|h| is_sha256_hex(h)).map(|h| (h.clone(), dir.join(format!("{h}.html"))))),
+        None => {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for path in entries.flatten().map(|e| e.path()) {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
+                match name.strip_suffix(".html") {
+                    Some(hash) if is_sha256_hex(hash) => pages.push((hash.to_string(), path)),
+                    None if name.ends_with(".tmp") && old(&path) => {
+                        let _ = std::fs::remove_file(&path);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    pages.retain(|(_, path)| old(path));
+    if pages.is_empty() {
+        return;
+    }
+    let named: HashSet<String> = match appv3_db::mcp_app_page_hashes(pool, None).await {
+        Ok(hashes) => hashes.into_iter().collect(),
+        Err(e) => return tracing::warn!("mcp_app_pages_lookup_failed error={}", e),
+    };
+    for (hash, path) in pages.into_iter().filter(|(hash, _)| !named.contains(hash)) {
+        match std::fs::remove_file(&path) {
+            Ok(()) => tracing::info!("mcp_app_page_removed sha256={}", hash),
+            Err(e) => tracing::warn!("mcp_app_page_remove_failed path={} error={}", path.display(), e),
+        }
+    }
 }
 
 // ── the page as the panel's frame loads it ──────────────────────────────────
@@ -156,6 +222,7 @@ pub fn with_head(html: &str, head: &str) -> String {
 
 // ── model context ───────────────────────────────────────────────────────────
 
+#[derive(Clone, Serialize, Deserialize)]
 struct Report {
     tool_call_id: String,
     label: String,
@@ -163,14 +230,111 @@ struct Report {
     delivered: bool,
 }
 
-fn reports() -> &'static Mutex<HashMap<String, Vec<Report>>> {
-    static R: OnceLock<Mutex<HashMap<String, Vec<Report>>>> = OnceLock::new();
-    R.get_or_init(Default::default)
+/// Every session's reports. A session's list is read from its file the
+/// first time it is asked for and written back on each change.
+struct Reports {
+    sessions_dir: PathBuf,
+    loaded: Mutex<HashMap<String, Vec<Report>>>,
 }
 
-/// Session ids arrive with and without dashes.
-fn session_key(session_id: &str) -> String {
-    session_id.chars().filter(|c| *c != '-').flat_map(char::to_lowercase).collect()
+fn reports() -> &'static Reports {
+    static R: OnceLock<Reports> = OnceLock::new();
+    R.get_or_init(|| Reports::new(appv3_core::settings::settings().data_dir.join("sessions")))
+}
+
+impl Reports {
+    fn new(sessions_dir: PathBuf) -> Self {
+        Reports { sessions_dir, loaded: Mutex::default() }
+    }
+
+    /// The session's file, in the folder deleted with the session. An id
+    /// that is not a UUID has none: its reports stay in memory.
+    fn file(&self, session_id: &str) -> Option<PathBuf> {
+        let id = appv3_db::codec::parse_uuid(session_id)?;
+        Some(self.sessions_dir.join(id.hyphenated().to_string()).join(REPORTS_FILE))
+    }
+
+    /// Run `change` on the session's reports; it answers whether it changed them.
+    fn with<R>(&self, session_id: &str, change: impl FnOnce(&mut Vec<Report>) -> (R, bool)) -> R {
+        let file = self.file(session_id);
+        let mut all = self.loaded.lock().unwrap();
+        // Session ids arrive with and without dashes.
+        let panels = all.entry(appv3_db::codec::db_id(session_id)).or_insert_with(|| file.as_deref().map(read_reports).unwrap_or_default());
+        let (out, changed) = change(panels);
+        if let Some(file) = file.filter(|_| changed) {
+            if let Err(e) = write_reports(&file, panels) {
+                tracing::warn!("mcp_app_reports_save_failed path={} error={}", file.display(), e);
+            }
+        }
+        out
+    }
+
+    fn report(&self, session_id: &str, tool_call_id: &str, label: &str, text: &str) {
+        let mut text = text.trim().to_string();
+        if text.chars().count() > MAX_CONTEXT_CHARS {
+            text = text.chars().take(MAX_CONTEXT_CHARS).collect::<String>() + "\n[cut: the report was longer]";
+        }
+        self.with(session_id, |panels| {
+            let at = panels.iter().position(|r| r.tool_call_id == tool_call_id);
+            let changed = match at {
+                Some(i) if text.is_empty() => {
+                    panels.remove(i);
+                    true
+                }
+                Some(i) if panels[i].text == text => false,
+                Some(i) => {
+                    panels[i].text = text;
+                    panels[i].delivered = false;
+                    true
+                }
+                None if text.is_empty() => false,
+                None => {
+                    if panels.len() >= MAX_PANELS {
+                        panels.remove(0);
+                    }
+                    panels.push(Report { tool_call_id: tool_call_id.into(), label: label.into(), text, delivered: false });
+                    true
+                }
+            };
+            ((), changed)
+        })
+    }
+
+    fn take(&self, session_id: &str) -> Option<String> {
+        let out = self.with(session_id, |panels| {
+            let mut out: Vec<String> = vec![];
+            for r in panels.iter_mut().filter(|r| !r.delivered) {
+                r.delivered = true;
+                out.push(format!("<mcp_app_context app={}>\n{}\n</mcp_app_context>", Value::String(r.label.clone()), r.text));
+            }
+            let changed = !out.is_empty();
+            (out, changed)
+        });
+        if out.is_empty() {
+            return None;
+        }
+        Some(format!("Current state reported by the MCP app panel in this conversation. It replaces what the same panel reported before.\n\n{}", out.join("\n\n")))
+    }
+}
+
+fn read_reports(file: &Path) -> Vec<Report> {
+    std::fs::read(file).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+fn write_reports(file: &Path, panels: &[Report]) -> std::io::Result<()> {
+    if panels.is_empty() {
+        return match std::fs::remove_file(file) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        };
+    }
+    if let Some(folder) = file.parent() {
+        std::fs::create_dir_all(folder)?;
+    }
+    // Written whole, then renamed: a stop midway leaves the last full file.
+    let tmp = file.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec(panels)?)?;
+    std::fs::rename(&tmp, file)
 }
 
 /// The text of a `ui/update-model-context` request: its text blocks, then its
@@ -194,48 +358,19 @@ pub fn context_text(content: Option<&Value>, structured: Option<&Value>) -> Stri
 /// report withdraws the panel's last one; an unchanged report changes nothing,
 /// so a panel that repeats itself is not passed to the model twice.
 pub fn report_model_context(session_id: &str, tool_call_id: &str, label: &str, text: &str) {
-    let mut text = text.trim().to_string();
-    if text.chars().count() > MAX_CONTEXT_CHARS {
-        text = text.chars().take(MAX_CONTEXT_CHARS).collect::<String>() + "\n[cut: the report was longer]";
-    }
-    let mut all = reports().lock().unwrap();
-    let panels = all.entry(session_key(session_id)).or_default();
-    let at = panels.iter().position(|r| r.tool_call_id == tool_call_id);
-    if text.is_empty() {
-        if let Some(i) = at {
-            panels.remove(i);
-        }
-        return;
-    }
-    match at {
-        Some(i) if panels[i].text == text => {}
-        Some(i) => {
-            panels[i].text = text;
-            panels[i].delivered = false;
-        }
-        None => {
-            if panels.len() >= MAX_PANELS {
-                panels.remove(0);
-            }
-            panels.push(Report { tool_call_id: tool_call_id.into(), label: label.into(), text, delivered: false });
-        }
-    }
+    reports().report(session_id, tool_call_id, label, text)
 }
 
 /// The reports the model has not seen yet, as one note; they then count as
 /// seen. `None` when no panel reported anything new.
 pub fn take_model_context(session_id: &str) -> Option<String> {
-    let mut all = reports().lock().unwrap();
-    let panels = all.get_mut(&session_key(session_id))?;
-    let mut out: Vec<String> = vec![];
-    for r in panels.iter_mut().filter(|r| !r.delivered) {
-        r.delivered = true;
-        out.push(format!("<mcp_app_context app={}>\n{}\n</mcp_app_context>", Value::String(r.label.clone()), r.text));
-    }
-    if out.is_empty() {
-        return None;
-    }
-    Some(format!("Current state reported by the MCP app panel in this conversation. It replaces what the same panel reported before.\n\n{}", out.join("\n\n")))
+    reports().take(session_id)
+}
+
+/// Drop a deleted session's reports from memory; their file went with the
+/// session's folder.
+pub fn forget_session(session_id: &str) {
+    reports().loaded.lock().unwrap().remove(&appv3_db::codec::db_id(session_id));
 }
 
 /// `extra` of the hidden note that carries [`take_model_context`]'s text.
@@ -326,6 +461,10 @@ mod tests {
 
     #[test]
     fn the_model_gets_each_panels_newest_report_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let reports = Reports::new(dir.path().to_path_buf());
+        let report_model_context = |sid: &str, call: &str, label: &str, text: &str| reports.report(sid, call, label, text);
+        let take_model_context = |sid: &str| reports.take(sid);
         let sid = "0190aaaa-0000-7000-8000-00000000c0de";
         assert_eq!(take_model_context(sid), None);
         report_model_context(sid, "call-1", "canvas · exec", "1 shape");
@@ -349,5 +488,108 @@ mod tests {
         report_model_context(sid, "call-1", "canvas · exec", "4 shapes");
         report_model_context(sid, "call-1", "canvas · exec", "");
         assert_eq!(take_model_context(sid), None, "an empty report withdraws the last one");
+    }
+
+    #[test]
+    fn reports_wait_through_a_restart_and_go_with_the_sessions_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let started = || Reports::new(dir.path().to_path_buf());
+        let sid = "0190aaaa-0000-7000-8000-00000000c0de";
+        let folder = dir.path().join(sid);
+
+        let first = started();
+        first.report(sid, "call-1", "canvas · exec", "1 shape");
+        first.report(sid, "call-2", "chart · show", "bar chart");
+        assert!(first.take(sid).unwrap().contains("bar chart"));
+        first.report(&sid.replace('-', ""), "call-1", "canvas · exec", "2 shapes");
+
+        // A report the model has not seen is still there after a restart;
+        // one it has seen is not given again.
+        let second = started();
+        let note = second.take(sid).unwrap();
+        assert!(note.contains("2 shapes") && !note.contains("bar chart"), "{note}");
+        let third = started();
+        third.report(sid, "call-1", "canvas · exec", "2 shapes");
+        assert_eq!(third.take(sid), None, "the same report again is not new after a restart either");
+
+        // Withdrawn reports leave no file; the folder goes with the session.
+        third.report(sid, "call-1", "canvas · exec", "");
+        third.report(sid, "call-2", "chart · show", "");
+        assert!(!folder.join(REPORTS_FILE).exists());
+        third.report(sid, "call-1", "canvas · exec", "3 shapes");
+        assert!(folder.join(REPORTS_FILE).exists());
+        std::fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(started().take(sid), None);
+
+        // Only a session id names a folder.
+        first.report("../escape", "call-1", "canvas · exec", "x");
+        assert!(first.take("../escape").is_some());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0, "nothing is written for an id that is not a UUID");
+    }
+
+    #[tokio::test]
+    async fn a_page_goes_when_no_result_names_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("mcp-apps");
+        let pool = appv3_db::create_pool(dir.path().join("t.db")).await.unwrap();
+        let session = || async { appv3_db::create_session(&pool, appv3_db::NewSession::default()).await.unwrap().id };
+        let (kept, deleted) = (session().await, session().await);
+        let result = |sid: String, page: &'static str| {
+            let (pool, store) = (pool.clone(), store.clone());
+            async move {
+                let mut app = json!({"server": "canvas", "html": page});
+                store_html_in(&store, &mut app).await;
+                let mut row = appv3_db::NewMessage::tool("call", "mcp", "drawn");
+                row.extra = Some(json!({"mcp_app": app}).as_object().unwrap().clone());
+                appv3_db::save_message(&pool, &sid, row).await.unwrap();
+                format!("{}.html", app["html_sha256"].as_str().unwrap())
+            }
+        };
+        let shared = result(kept.clone(), "<p>shared</p>").await;
+        assert_eq!(result(deleted.clone(), "<p>shared</p>").await, shared);
+        let own = result(deleted.clone(), "<p>own</p>").await;
+        let mut unnamed = json!({"html": "<p>unnamed</p>"});
+        store_html_in(&store, &mut unnamed).await;
+        let unnamed = format!("{}.html", unnamed["html_sha256"].as_str().unwrap());
+        std::fs::write(store.join("abc.1.2.tmp"), "half").unwrap();
+        let stored = || {
+            let mut names: Vec<String> = std::fs::read_dir(&store).unwrap().map(|f| f.unwrap().file_name().into_string().unwrap()).collect();
+            names.sort();
+            names
+        };
+        let sorted = |mut names: Vec<String>| {
+            names.sort();
+            names
+        };
+
+        // A page just written is kept: its result may not be saved yet.
+        remove_unused_pages_in(&store, &pool, None, Duration::from_secs(60)).await;
+        assert_eq!(stored().len(), 4);
+
+        // Deleting a session removes the pages only it named.
+        let pages = pages_of(&pool, &[appv3_db::codec::api_uuid(&deleted)]).await;
+        assert_eq!(pages.len(), 2);
+        appv3_db::delete_session_rows(&pool, &deleted).await.unwrap();
+        remove_unused_pages_in(&store, &pool, Some(pages), Duration::ZERO).await;
+        assert!(!store.join(&own).exists());
+        assert_eq!(stored(), sorted(vec![shared.clone(), unnamed.clone(), "abc.1.2.tmp".into()]));
+
+        // A start removes what nothing names, and what a stopped write left.
+        remove_unused_pages_in(&store, &pool, None, Duration::ZERO).await;
+        assert_eq!(stored(), std::slice::from_ref(&shared));
+        assert_eq!(load_html_in(&store, &json!({"html_sha256": shared.trim_end_matches(".html")})).await.as_deref(), Some("<p>shared</p>"));
+    }
+
+    #[tokio::test]
+    async fn a_page_named_again_counts_as_new() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = json!({"html": "<p>x</p>"});
+        store_html_in(dir.path(), &mut app).await;
+        let path = dir.path().join(format!("{}.html", app["html_sha256"].as_str().unwrap()));
+        let long_ago = SystemTime::now() - Duration::from_secs(3600);
+        std::fs::File::options().write(true).open(&path).unwrap().set_modified(long_ago).unwrap();
+        store_html_in(dir.path(), &mut json!({"html": "<p>x</p>"})).await;
+        let age = std::fs::metadata(&path).unwrap().modified().unwrap().elapsed().unwrap();
+        assert!(age < Duration::from_secs(60), "{age:?}");
     }
 }

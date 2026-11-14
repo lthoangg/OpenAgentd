@@ -927,6 +927,26 @@ pub async fn find_tool_message(pool: &DbPool, session_id: &str, tool_call_id: &s
         .await?)
 }
 
+/// The MCP app pages (`extra.mcp_app.html_sha256`) that tool results name:
+/// those of `session_ids` (in any spelling), or of every session. Without
+/// ids this reads every tool result, so ask only when pages may be unused.
+pub async fn mcp_app_page_hashes(pool: &DbPool, session_ids: Option<&[String]>) -> Result<Vec<String>> {
+    let mut sql = "SELECT DISTINCT json_extract(extra, '$.mcp_app.html_sha256') FROM session_messages \
+                   WHERE role = 'tool' AND extra LIKE '%\"html_sha256\"%'"
+        .to_string();
+    if let Some(ids) = session_ids {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+        sql.push_str(&format!(" AND session_id IN ({})", vec!["?"; ids.len()].join(",")));
+    }
+    let mut q = sqlx::query_scalar::<_, Option<String>>(sqlx::AssertSqlSafe(&*sql));
+    for id in session_ids.into_iter().flatten() {
+        q = q.bind(db_id(id));
+    }
+    Ok(q.fetch_all(pool).await?.into_iter().flatten().collect())
+}
+
 /// Seeks `ix_session_messages_tool_call_id`, then keeps the rows in the tree.
 const TOOL_MESSAGE_IN_TREE_SQL: &str = "WITH RECURSIVE tree(id) AS (SELECT ? UNION ALL SELECT c.id FROM chat_sessions c JOIN tree t ON c.parent_session_id = t.id) \
      SELECT * FROM session_messages WHERE tool_call_id = ? AND role = 'tool' AND session_id IN (SELECT id FROM tree) LIMIT 1";

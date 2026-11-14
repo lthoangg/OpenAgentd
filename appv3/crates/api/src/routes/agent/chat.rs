@@ -1150,10 +1150,15 @@ pub async fn delete_session(pool: &DbPool, session_id: &str) -> ApiResult<bool> 
         // A deleted session answers nobody: its senders stop waiting on it.
         appv3_agent::workspace_messages::forget_outstanding_target(sid);
     }
+    let pages = appv3_agent::mcp_apps::pages_of(pool, &ids.iter().cloned().collect::<Vec<_>>()).await;
     db::delete_session_rows(pool, session_id).await?;
+    if !pages.is_empty() {
+        appv3_agent::mcp_apps::remove_unused_pages(pool, Some(pages)).await;
+    }
     let s = settings();
     for sid in &ids {
         store().clear(sid);
+        appv3_agent::mcp_apps::forget_session(sid);
         appv3_agent::snapshot::remove(sid).await;
         let uploads = s.uploads_dir(sid);
         let artifacts = s.data_dir.join("sessions").join(sid);

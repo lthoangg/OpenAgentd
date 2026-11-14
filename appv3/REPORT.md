@@ -47,7 +47,13 @@ and without `X-Frame-Options`.
 structuredContent?}` keeps what a panel reports for the model
 (`ui/update-model-context`). The newest report of each panel is saved with the
 session's next user message as a hidden `kind='note'` row
-(`extra.mcp_app_context`). Reports wait in memory, not on disk.
+(`extra.mcp_app_context`). Until then a session's reports wait in
+`<data_dir>/sessions/<id>/mcp-app-reports.json`, which outlives a restart and
+is deleted with the session.
+
+A stored page is deleted when no tool result names it: deleting a session
+removes the pages only it named, and every start removes the rest. A page
+written in the last 60 s is kept, since its result is saved after it.
 
 A tool whose `_meta.ui.visibility` lacks `"model"` is left out of the agent's
 tools, of `mcp` search and call, and of a server's `tool_names`.

@@ -1303,8 +1303,17 @@ async fn mcp_app_panel_flow(pool: &appv3_db::DbPool, ws: &std::path::Path) {
     assert_eq!(st, StatusCode::NOT_FOUND);
     let (st, _, _) = post("/api/mcp/app-context", report).await;
     assert_eq!(st, StatusCode::OK);
+    // It waits in the session's own folder, so it outlives a restart...
+    let waiting = appv3_core::settings::settings().data_dir.join("sessions").join(&sid).join("mcp-app-reports.json");
+    assert!(std::fs::read_to_string(&waiting).unwrap().contains("2 shapes"));
     let note = appv3_agent::mcp_apps::take_model_context(&session.id).unwrap();
     assert!(note.contains("<mcp_app_context app=\"canvas · exec\">\n2 shapes\n{\"canvasId\":\"c1\"}\n</mcp_app_context>"), "{note}");
+
+    // ...and goes with the session.
+    let (st, _, _) = c.send(Request::delete(format!("/api/agent/sessions/{sid}")).header("authorization", "Bearer tok").body(Body::empty()).unwrap()).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    assert!(!waiting.exists());
+    assert_eq!(appv3_agent::mcp_apps::take_model_context(&session.id), None);
 }
 
 async fn tool_result_on_demand_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {

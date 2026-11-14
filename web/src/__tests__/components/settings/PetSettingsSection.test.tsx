@@ -18,7 +18,7 @@ mock.module('@/lib/pet-setting', () => ({
   readPetSettings: async () => stored,
   updatePetSettings: async (patch: Partial<PetSettings>) => {
     patches.push(patch)
-    if (failWrite) throw new Error('Could not save the setting.')
+    if (failWrite) throw new Error("Couldn't save the setting.")
     stored = { ...stored, ...patch }
     return stored
   },
@@ -142,6 +142,6 @@ describe('PetSettingsSection', () => {
     const main = await toggle('Show a desktop pet')
     fireEvent.click(main)
     await waitFor(() => expect(main).toHaveAttribute('aria-checked', 'false'))
-    expect(screen.getByText('Could not save the setting.')).toBeInTheDocument()
+    expect(screen.getByText("Couldn't save the setting.")).toBeInTheDocument()
   })
 })

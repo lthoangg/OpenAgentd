@@ -106,7 +106,7 @@ describe('InputComposer — split Send', () => {
     await user.click(await moreWaysToSend())
 
     const items = screen.getAllByRole('menuitem')
-    expect(items.map((item) => item.getAttribute('aria-label'))).toEqual(['Steer', 'Queue until done', 'Stop & send'])
+    expect(items.map((item) => item.getAttribute('aria-label'))).toEqual(['Steer', 'Queue until done', 'Stop and send'])
     expect(items.map((item) => item.getAttribute('aria-keyshortcuts'))).toEqual(['Enter', 'Alt+Enter', 'Meta+Enter'])
     expect(items.map((item) => item.querySelector('kbd')?.textContent)).toEqual(['↵', '⌥↵', '⌘↵'])
     expect(screen.getByText('Sends when this turn ends')).toBeTruthy()

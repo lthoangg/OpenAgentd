@@ -25,6 +25,3 @@ export function useUpdateDeniedPathsSettingsMutation() {
     },
   })
 }
-
-export const useSandboxSettingsQuery = useDeniedPathsSettingsQuery
-export const useUpdateSandboxSettingsMutation = useUpdateDeniedPathsSettingsMutation

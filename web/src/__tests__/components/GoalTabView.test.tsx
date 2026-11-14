@@ -142,7 +142,7 @@ describe('GoalTabView', () => {
     useAgentStore.setState({ isAgentWorking: true, pendingQuestion: { kind: 'ask_user', id: 'q1' } as never })
     renderTab(makeGoal())
     expect(now()?.dataset.goalNow).toBe('wait')
-    expect(now()?.textContent).toContain('Waiting for your answer')
+    expect(now()?.textContent).toContain('Needs you · a question')
     cleanup()
 
     useAgentStore.setState({ isAgentWorking: false, pendingQuestion: null, sessionPendingInteractionMode: 'plan' })
@@ -159,7 +159,7 @@ describe('GoalTabView', () => {
     useAgentStore.setState({ pendingQuestion: { kind: 'plan_review', id: 'q1' } as never })
     renderTab(makeGoal())
     expect(now()?.dataset.goalNow).toBe('wait')
-    expect(now()?.textContent).toContain('Waiting for plan approval')
+    expect(now()?.textContent).toContain('Needs you · a plan to review')
   })
 
   it('shows the plan the goal runs as one line, with its status and a link, and the next task', async () => {

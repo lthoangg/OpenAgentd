@@ -80,7 +80,7 @@ export function usePaletteServerCommands(): Command[] {
             currentBaseUrl: currentBackendOrigin(status),
           }).then((result) => {
             if (!result.ok) {
-              fail(`Could not connect to ${label}`, result.error)
+              fail(`Couldn't connect to ${label}`, result.error)
               return
             }
             finish(result)
@@ -95,7 +95,7 @@ export function usePaletteServerCommands(): Command[] {
             currentBaseUrl: currentBackendOrigin(status),
           }).then((result) => {
             if (!result.ok) {
-              fail(`Could not open ${computer.label}`, result.error)
+              fail(`Couldn't open ${computer.label}`, result.error)
               return
             }
             finish(result)

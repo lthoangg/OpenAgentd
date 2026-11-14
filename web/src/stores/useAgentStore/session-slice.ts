@@ -957,7 +957,7 @@ async function loadSessionImpl(
     set((draft) => {
       // A dropped connection is the banner's to report, and the reconnect
       // reloads this session: an error here stayed on screen after both.
-      if (!isTransientNetworkError(err)) draft.error = err instanceof Error ? err.message : 'Failed to load session'
+      if (!isTransientNetworkError(err)) draft.error = err instanceof Error ? err.message : "Couldn't load session"
       draft.isLoadingHistory = false
     })
   }
@@ -1167,7 +1167,7 @@ export const createSessionSlice: StateCreator<
       return true
     } catch (err) {
       set((draft) => {
-        draft.error = err instanceof Error ? err.message : 'Failed to switch interaction mode'
+        draft.error = err instanceof Error ? err.message : "Couldn't switch interaction mode"
       })
       return false
     }
@@ -1213,7 +1213,7 @@ export const createSessionSlice: StateCreator<
       if (expectedGeneration !== undefined && get()._sessionGeneration !== expectedGeneration) return
       if (isTransientNetworkError(err)) return
       set((draft) => {
-        draft.error = err instanceof Error ? err.message : 'Failed to load agent status'
+        draft.error = err instanceof Error ? err.message : "Couldn't load agent status"
       })
     }
   },

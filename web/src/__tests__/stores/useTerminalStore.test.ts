@@ -740,10 +740,10 @@ describe('terminal protocol v2', () => {
 
     it('spawn failure (4429) is an error, not a retry loop', async () => {
       const id = open()
-      connectFailures = [failure('spawn-failed', 'Could not start the shell')]
+      connectFailures = [failure('spawn-failed', "Couldn't start the shell")]
       await settle()
       expect(meta(id)?.status).toBe('error')
-      expect(meta(id)?.errorMsg).toBe('Could not start the shell')
+      expect(meta(id)?.errorMsg).toBe("Couldn't start the shell")
       timers.tick(60_000)
       await tick()
       expect(connectCalls).toHaveLength(1)

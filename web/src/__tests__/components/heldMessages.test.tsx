@@ -393,7 +393,7 @@ describe('deliverFromComposer', () => {
     expect(order).toEqual(['stop', 'send do this instead'])
   })
 
-  it('keeps the goal on Stop & send, but not on a plain Stop', async () => {
+  it('keeps the goal on Stop and send, but not on a plain Stop', async () => {
     const stopAgent = mock(async (..._args: unknown[]) => {})
     useAgentStore.setState({ stopAgent, sendMessage: mock(async () => true) })
     const composer = fakeComposer()
@@ -405,7 +405,7 @@ describe('deliverFromComposer', () => {
     expect(goalCalls).toEqual([])
   })
 
-  it('pauses the goal when the message of a Stop & send never lands', async () => {
+  it('pauses the goal when the message of a Stop and send never lands', async () => {
     useAgentStore.setState({ stopAgent: mock(async () => {}), sendMessage: mock(async () => false) })
     const composer = fakeComposer()
 

@@ -81,7 +81,7 @@ export function ConnectionBanner({ retry = true }: {
         >
           <span className="size-1.5 shrink-0 rounded-full bg-(--color-error)" aria-hidden="true" />
           <p className="min-w-0 flex-1 truncate">
-            {label === 'built-in' ? 'Server unreachable' : `Can't reach ${label}`} · Retrying…
+            {label === 'built-in' ? 'OpenAgentd stopped on this computer' : `Can't reach ${label}`} · Retrying…
           </p>
           {!isPhone && retry && (
             <Button type="button" size="xs" variant="ghost" onClick={() => { void health.refetch() }}>

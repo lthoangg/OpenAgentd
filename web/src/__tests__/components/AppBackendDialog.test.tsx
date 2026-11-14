@@ -178,8 +178,8 @@ describe('AppBackendDialog', () => {
     const rowOf = (text: string) => screen.getByText(text).closest('[data-server-row]') as HTMLElement
     await waitFor(() => expect(within(rowOf('Local CLI')).getByLabelText('Online')).toBeTruthy())
     expect(within(rowOf('Local CLI')).getByText('Online')).toBeTruthy()
-    await waitFor(() => expect(within(rowOf('http://127.0.0.1:4999')).getByLabelText('Offline')).toBeTruthy())
-    expect(within(rowOf('http://127.0.0.1:4999')).getByText('Offline')).toBeTruthy()
+    await waitFor(() => expect(within(rowOf('http://127.0.0.1:4999')).getByLabelText("Can't reach")).toBeTruthy())
+    expect(within(rowOf('http://127.0.0.1:4999')).getByText("Can't reach")).toBeTruthy()
   })
 
   it('hides the bundled server row when the shell does not support bundled backends', async () => {
@@ -685,7 +685,7 @@ describe('the server list: select, use, in use, one close', () => {
     expect(within(row).getByText('Not in your saved servers')).toBeTruthy()
     expect(within(row).queryByRole('button', { name: /^Use / })).toBeNull()
     // Its health is checked like any other row's (the test server answers only on 4082).
-    await waitFor(() => expect(within(row).getByLabelText('Offline')).toBeTruthy())
+    await waitFor(() => expect(within(row).getByLabelText("Can't reach")).toBeTruthy())
     expect(screen.queryByText(/^Current:/)).toBeNull()
     expect(screen.getAllByText('In use')).toHaveLength(1)
   })

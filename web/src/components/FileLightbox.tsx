@@ -166,7 +166,7 @@ export function FileLightboxImage({ item, imgRef, panZoom, onShown }: ImageProps
             onTouchMove={(e) => e.stopPropagation()}
             onTouchEnd={(e) => e.stopPropagation()}
           >
-            Failed to load image
+            Couldn't load image
           </div>
         )
         : (

@@ -63,7 +63,7 @@ export function RelocateWorkspaceDialog({ from, name, pickFolder, onClose, onRel
     try {
       setStep({ kind: 'confirm', preview: await relocateCodingWorkspace(from, to, true) })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to use that folder')
+      setError(err instanceof Error ? err.message : "Couldn't use that folder")
       setStep({ kind: 'pick' })
     }
   }, [from])
@@ -79,7 +79,7 @@ export function RelocateWorkspaceDialog({ from, name, pickFolder, onClose, onRel
         try {
           setBrowser(await loadWorkspaceBrowser(null))
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Unable to read directory')
+          setError(err instanceof Error ? err.message : "Couldn't read directory")
         }
       }
     } finally {
@@ -94,7 +94,7 @@ export function RelocateWorkspaceDialog({ from, name, pickFolder, onClose, onRel
       const picked = await pickFolder()
       if (picked) await check(picked)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to open the folder picker')
+      setError(err instanceof Error ? err.message : "Couldn't open the folder picker")
     }
   }, [check, pickFolder])
 
@@ -115,7 +115,7 @@ export function RelocateWorkspaceDialog({ from, name, pickFolder, onClose, onRel
     try {
       onRelocated(await relocateCodingWorkspace(from, step.preview.workspace))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to move the workspace')
+      setError(err instanceof Error ? err.message : "Couldn't move the workspace")
       setMoving(false)
     }
   }

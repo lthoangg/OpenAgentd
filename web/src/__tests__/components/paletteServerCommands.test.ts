@@ -56,7 +56,7 @@ describe('Switch Server…', () => {
     expect(rows[1].description).toBe('Online')
     expect(rows[1].keywords).toContain(REMOTE)
     expect(rows[2].label).toBe(LAB)
-    expect(rows[2].description).toBe('Offline')
+    expect(rows[2].description).toBe("Can't reach")
     rows[1].action()
     expect(handlers.useExternal).toHaveBeenCalledWith({ base_url: REMOTE, name: 'Work laptop' })
     rows[0].action()
@@ -101,7 +101,7 @@ describe('Switch Server…: your computers', () => {
   const computers = [
     { device_id: 'dev-mac', label: 'macOS · 3F9A 21C4', line: 'Current · through your account', current: true },
     { device_id: 'dev-linux', label: 'Linux · 9C02 E1B7', line: 'Online · through your account', current: false },
-    { device_id: 'dev-win', label: 'Windows · 1111 2222', line: 'Offline', current: false },
+    { device_id: 'dev-win', label: 'Windows · 1111 2222', line: "Can't reach", current: false },
   ]
 
   it('lists them between the built-in server and the saved ones, the one in use marked', () => {
@@ -118,7 +118,7 @@ describe('Switch Server…: your computers', () => {
     expect(rows.slice(1, 4).map((r) => [r.label, r.description])).toEqual([
       ['macOS · 3F9A 21C4', 'Current · through your account'],
       ['Linux · 9C02 E1B7', 'Online · through your account'],
-      ['Windows · 1111 2222', 'Offline'],
+      ['Windows · 1111 2222', "Can't reach"],
     ])
   })
 

@@ -116,7 +116,7 @@ function GoalPlanSection({ plan, status, label, onOpenPlan }: {
   label: string
   onOpenPlan?: () => void
 }) {
-  const title = planTitle(plan.content) ?? 'Session plan'
+  const title = planTitle(plan.content) ?? 'Plan'
   return (
     <section aria-label="Plan" className="flex flex-col gap-1.5" data-goal-plan={status}>
       <h3 className="label-caps text-(--color-text-muted)">Plan</h3>
@@ -236,7 +236,7 @@ export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: 
   const runAction = (action: GoalAction) => {
     if (!sessionId) return
     mutation.mutate({ sessionId, action }, {
-      onError: (err) => pushToast({ tone: 'error', title: `Could not ${action} the goal`, description: (err as Error).message }),
+      onError: (err) => pushToast({ tone: 'error', title: `Couldn't ${action} the goal`, description: (err as Error).message }),
     })
   }
   // Clearing ends the goal for good, so the button only asks first.
@@ -275,7 +275,7 @@ export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: 
           <DialogHeader>
             <DialogTitle>Clear this goal?</DialogTitle>
             <DialogDescription>
-              The agent stops working toward it and no new goal turn starts. A turn that is running finishes first. This cannot be undone.
+              The agent stops working toward it and no new goal turn starts. A turn that is running finishes first. This can't be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

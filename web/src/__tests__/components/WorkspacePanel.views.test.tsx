@@ -205,7 +205,7 @@ describe('Review dock Plan tab', () => {
     const reported: (DockView | null)[] = []
     await renderPanel({ request: { view: 'plan', key: 1 }, plan: PLAN, onActiveViewChange: (v) => reported.push(v) })
 
-    const tab = await screen.findByRole('button', { name: 'Session plan' })
+    const tab = await screen.findByRole('button', { name: 'Plan' })
     expect(tab.getAttribute('aria-current')).toBe('true')
     expect(await screen.findByText('Write the migration')).toBeTruthy()
     expect(reported.at(-1)).toBe('plan')

@@ -115,7 +115,7 @@ describe('names on the Servers screen', () => {
     await screen.findByText('Office NAS')
     expect(within(rowOf('Work')).getByText('In use')).toBeTruthy()
     expect(within(rowOf('Personal')).getByText('Online')).toBeTruthy()
-    expect(within(rowOf('build-box')).getByText('Offline')).toBeTruthy()
+    expect(within(rowOf('build-box')).getByText("Can't reach")).toBeTruthy()
     // The saved server: its name and one status line, not its address.
     await waitFor(() => expect(within(rowOf('Office NAS')).getByText('Online')).toBeTruthy())
     for (const row of rows()) {

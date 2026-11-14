@@ -281,7 +281,7 @@ function statusDescription(status: UpdateStatus | null, mobile = false): string 
     return mobile ? 'Opening the installer…' : 'Installing the update. OpenAgentd will restart when installation completes.'
   }
   if (status.status === 'up_to_date') return `OpenAgentd ${status.current_version} is the latest version.`
-  if (status.status === 'error') return 'Could not check for updates.'
+  if (status.status === 'error') return "Couldn't check for updates."
   return 'Check for app updates from here.'
 }
 

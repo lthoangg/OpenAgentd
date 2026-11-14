@@ -20,6 +20,7 @@ mock.module('@/lib/haptics', () => ({
 }))
 
 import { InputComposer } from '@/components/InputComposer'
+import { DELIVERIES } from '@/components/InputComposer.deliveries'
 
 afterEach(() => {
   cleanup()
@@ -60,6 +61,21 @@ describe('InputComposer — Send on a phone while a turn runs', () => {
     expect(sheet.textContent).toContain('Agent is running. How should this message be sent?')
     fireEvent.click(sheet.querySelector('[data-action-sheet-item="after-turn"]')!)
     expect(onSubmit.mock.calls[0]?.[3]).toBe('after-turn')
+  })
+
+  it("names the three ways as the desktop menu does, each with its one-line explanation", async () => {
+    await typeWhileStreaming()
+    const send = screen.getByRole('button', { name: /^Steer the running turn/ })
+    const realSetTimeout = window.setTimeout
+    let fire: (() => void) | null = null
+    window.setTimeout = ((fn: () => void) => { fire = fn; return 1 }) as unknown as typeof window.setTimeout
+    fireEvent.pointerDown(send, { pointerType: 'touch', clientX: 5, clientY: 5 })
+    window.setTimeout = realSetTimeout
+    act(() => fire?.())
+
+    expect(DELIVERIES.map((d) => d.label)).toEqual(['Steer', 'Queue until done', 'Stop and send'])
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-action-sheet-item]'))
+    expect(rows.map((row) => row.textContent)).toEqual(DELIVERIES.map((d) => `${d.label}${d.hint}`))
   })
 
   it('gives a medium haptic on Stop', () => {

@@ -119,8 +119,8 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
     return { [daemon.var]: trimmedBaseUrl }
   }, [daemon, trimmedBaseUrl])
 
-  const autoFetchEnabled = false
-
+  // Reads what an explicit check put in the cache (here and in eagerModels);
+  // it never fetches on its own.
   const autoModelsQ = useQuery({
     queryKey: queryKeys.settings.providerModels(provider.id),
     queryFn: async () => ({
@@ -129,7 +129,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
       model_costs: provider.model_costs,
       source: 'provider' as const,
     }),
-    enabled: autoFetchEnabled,
+    enabled: false,
     staleTime: 60_000,
   })
   const models = useMemo<string[]>(() => {
@@ -192,7 +192,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
       return { ok: false, title: 'Unreachable', message: `${provider.label} did not answer. Check the key or the address.` }
     } catch (err) {
       setHasReachabilityFailure(true)
-      return { ok: false, title: 'Could not test', message: err instanceof Error ? err.message : String(err) }
+      return { ok: false, title: "Couldn't test", message: err instanceof Error ? err.message : String(err) }
     }
   }
 
@@ -261,7 +261,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
     } catch (err) {
       push({
         tone: 'error',
-        title: hasStoredKeys ? 'Could not add key' : 'Could not save provider',
+        title: hasStoredKeys ? "Couldn't add key" : "Couldn't save provider",
         description: err instanceof Error ? err.message : String(err),
       })
     }
@@ -273,7 +273,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
     } catch (err) {
       push({
         tone: 'error',
-        title: 'Could not save visible models',
+        title: "Couldn't save visible models",
         description: err instanceof Error ? err.message : String(err),
       })
     }
@@ -290,7 +290,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
     } catch (err) {
       push({
         tone: 'error',
-        title: disconnected ? 'Could not hide from pickers' : 'Could not show in pickers',
+        title: disconnected ? "Couldn't hide from pickers" : "Couldn't show in pickers",
         description: err instanceof Error ? err.message : String(err),
       })
     }
@@ -307,7 +307,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
     } catch (err) {
       push({
         tone: 'error',
-        title: 'Could not sign out',
+        title: "Couldn't sign out",
         description: err instanceof Error ? err.message : String(err),
       })
     }

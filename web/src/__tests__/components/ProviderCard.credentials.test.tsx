@@ -342,7 +342,7 @@ describe('ProviderCard — several API keys', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Test' }))
     expect(await within(rows('OpenAI keys')[1]).findByText('Checking…')).toBeTruthy()
     finish(json({ provider: 'openai', models: [], source: 'provider' }))
-    await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.title)).toContain('Could not verify'))
+    await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.title)).toContain("Couldn't verify"))
     expect(within(rows('OpenAI keys')[1]).queryByText('Checking…')).toBeNull()
   })
 

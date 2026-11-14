@@ -135,7 +135,7 @@ export function useAgentCommands({
           group: 'View' as const,
           label: 'Open Plan',
           description: planAwaitingReview
-            ? 'Waiting for your review · approve or request changes'
+            ? 'Needs you · approve or request changes'
             : hasPlan ? "View or edit this session's plan" : 'No plan yet · in Plan mode the agent writes one here',
           keywords: 'plan review approve request changes comment',
           action: handleOpenPlan,
@@ -153,7 +153,7 @@ export function useAgentCommands({
         }]
       : []),
     ...(handleOpenGit
-      ? [{ id: 'open-git', group: 'View' as const, label: 'Open Git', description: 'Changed files and commit history in the Review panel', keywords: 'changes diff history commits review', shortcut: shortcutLabel(KEYS.openGit, os), action: handleOpenGit }]
+      ? [{ id: 'open-git', group: 'View' as const, label: 'Open Changes', description: 'Changed files and commit history in the Review panel', keywords: 'changes diff history commits review', shortcut: shortcutLabel(KEYS.openGit, os), action: handleOpenGit }]
       : []),
     ...(handleToggleDockMaximized
       ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Panel', description: 'Give the Review panel the full width for diffs, files and terminals', keywords: 'dock', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]

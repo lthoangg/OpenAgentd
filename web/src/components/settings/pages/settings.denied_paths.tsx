@@ -138,7 +138,6 @@ export function DeniedPathsSettingsPage() {
   )
 }
 
-export const SandboxSettingsPage = DeniedPathsSettingsPage
 
 // ─── Help popover ──────────────────────────────────────────────────────────
 

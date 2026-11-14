@@ -142,7 +142,7 @@ async function shouldNotify(
       : { status: 'disabled', message: 'Desktop notifications are skipped while the app window is focused.' }
   } catch (err) {
     console.warn('desktop notification focus check failed', err)
-    return { status: 'error', message: 'Could not check app window focus state.' }
+    return { status: 'error', message: "Couldn't check app window focus state." }
   }
 }
 

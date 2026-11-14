@@ -56,7 +56,7 @@ describe('ConnectionBanner', () => {
   it('names the built-in server once the health check has failed', () => {
     health = { isSuccess: false, isError: true, isPending: false }
     render(<ConnectionBanner />)
-    expect(screen.getByRole('alert').textContent).toContain("Server unreachable · Retrying…")
+    expect(screen.getByRole('alert').textContent).toContain("OpenAgentd stopped on this computer · Retrying…")
   })
 
   // A phone is 390pt wide: the banner stays one line and never pushes the

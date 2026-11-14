@@ -357,7 +357,7 @@ describe("sendMessage", () => {
     mockPostAgentChat.mockImplementation(() => Promise.reject("unknown"))
     useAgentStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
     await useAgentStore.getState().sendMessage("hello", undefined, { workspace: "/repo/app" })
-    expect(useAgentStore.getState().error).toBe("Failed to send message")
+    expect(useAgentStore.getState().error).toBe("Couldn't send message")
   })
 
   it("does not call connectStream when postAgentChat throws", async () => {
@@ -1312,7 +1312,7 @@ describe("stopAgent", () => {
     expect(useAgentStore.getState()._workspace).toBe("/repo/a")
   })
 
-  it("asks the server to keep the goal when stopping for Stop & send", async () => {
+  it("asks the server to keep the goal when stopping for Stop and send", async () => {
     useAgentStore.setState({ sessionId: "session-a", isAgentWorking: true, _workspace: "/repo/a" })
 
     await useAgentStore.getState().stopAgent({ keepGoal: true })
@@ -2094,7 +2094,7 @@ describe("loadAgentStatus", () => {
   it("sets fallback error for non-Error throws", async () => {
     mockAgentStatus.mockImplementation(() => Promise.reject("unknown"))
     await useAgentStore.getState().loadAgentStatus()
-    expect(useAgentStore.getState().error).toBe("Failed to load agent status")
+    expect(useAgentStore.getState().error).toBe("Couldn't load agent status")
   })
 
   it("does nothing when agentStatus returns null", async () => {
@@ -2626,7 +2626,7 @@ describe("loadSession", () => {
   it("sets fallback error for non-Error throws", async () => {
     mockSessionHistory.mockImplementation(() => Promise.reject("timeout"))
     await useAgentStore.getState().loadSession("sess-1")
-    expect(useAgentStore.getState().error).toBe("Failed to load session")
+    expect(useAgentStore.getState().error).toBe("Couldn't load session")
   })
 
   // Coming back to the phone app: the real store and the real toast store,

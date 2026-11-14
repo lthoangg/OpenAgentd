@@ -264,7 +264,7 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
     ],
     [
       path && item('Copy path', () => { void navigator.clipboard?.writeText(path) }, <Copy size={12} aria-hidden="true" />),
-      changedPath && onRevealInGit && item('Reveal in Git', () => onRevealInGit(changedPath)),
+      changedPath && onRevealInGit && item('Show in Changes', () => onRevealInGit(changedPath)),
     ],
   ].map((group) => group.filter(Boolean)).filter((group) => group.length > 0)
   return (

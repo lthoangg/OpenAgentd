@@ -30,7 +30,7 @@ export function useGoalControls(sessionId: string | null | undefined): ((action:
   const run = useCallback((action: 'pause' | 'resume') => {
     if (!sessionId) return
     mutate({ sessionId, action }, {
-      onError: (err) => pushToast({ tone: 'error', title: `Could not ${action} the goal`, description: err instanceof Error ? err.message : String(err) }),
+      onError: (err) => pushToast({ tone: 'error', title: `Couldn't ${action} the goal`, description: err instanceof Error ? err.message : String(err) }),
     })
   }, [sessionId, mutate, pushToast])
   return sessionId ? run : undefined

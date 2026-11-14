@@ -66,7 +66,7 @@ export const NOTICES: Record<CloudNotice, NoticeCopy> = {
     body: 'Contact OpenAgentd if this continues. Everything on this device keeps working.',
     tone: 'warning',
   },
-  unreachable: { body: 'Could not reach OpenAgentd. Check your network and try again.', tone: 'warning' },
+  unreachable: { body: "Couldn't reach OpenAgentd. Check your network and try again.", tone: 'warning' },
   failed: {
     body: "Something went wrong with this computer's account keys. Sign in again to start over.",
     tone: 'warning',

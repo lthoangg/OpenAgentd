@@ -521,7 +521,7 @@ async function connect(id: string, resume?: Resume): Promise<void> {
         if (code === 4409) {
           patch({ status: 'exited', closedReason: 'elsewhere', busy: false })
         } else if (code === 4429) {
-          patch({ status: 'error', errorMsg: 'Could not start the shell', busy: false })
+          patch({ status: 'error', errorMsg: "Couldn't start the shell", busy: false })
         } else {
           // Network or backend hiccup: the shell lives on, so reattach.
           scheduleReattach(id, rt)

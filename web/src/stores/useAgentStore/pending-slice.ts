@@ -242,7 +242,7 @@ export const createPendingSlice: StateCreator<
         })
       } catch (err) {
         set((draft) => {
-          draft.error = err instanceof Error ? err.message : 'Failed to queue message'
+          draft.error = err instanceof Error ? err.message : "Couldn't queue message"
         })
         return false
       }
@@ -364,7 +364,7 @@ export const createPendingSlice: StateCreator<
       return true
     } catch (err) {
       set((draft) => {
-        draft.error = err instanceof Error ? err.message : 'Failed to send message'
+        draft.error = err instanceof Error ? err.message : "Couldn't send message"
         draft.isAgentWorking = false
       })
       return false
@@ -390,7 +390,7 @@ export const createPendingSlice: StateCreator<
       return cancelled ? 'cancelled' : 'sent'
     } catch (err) {
       set((draft) => {
-        draft.error = err instanceof Error ? err.message : 'Failed to cancel queued message'
+        draft.error = err instanceof Error ? err.message : "Couldn't cancel queued message"
       })
       return 'failed'
     }

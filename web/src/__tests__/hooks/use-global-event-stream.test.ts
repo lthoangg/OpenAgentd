@@ -87,7 +87,7 @@ describe('resume on visibility / online', () => {
     type Callbacks = GlobalCallbacks & { onError?: (error: Error) => void }
     mount()
     globalCallbacks?.onOpen?.()
-    ;(globalCallbacks as Callbacks | null)?.onError?.(new Error('Failed to fetch'))
+    ;(globalCallbacks as Callbacks | null)?.onError?.(new Error("Failed to fetch"))
     expect(globalEventStream).toHaveBeenCalledTimes(1)
 
     window.dispatchEvent(new Event('online'))
@@ -160,7 +160,7 @@ describe('health follows the global connection', () => {
   }
 
   it('rechecks health as soon as the connection drops', async () => {
-    for (const drop of [(c: Callbacks) => c.onError?.(new Error('Failed to fetch')), (c: Callbacks) => c.onDone?.()]) {
+    for (const drop of [(c: Callbacks) => c.onError?.(new Error("Failed to fetch")), (c: Callbacks) => c.onDone?.()]) {
       cleanup()
       const health = await mount(true)
       ;(globalCallbacks as Callbacks).onOpen?.()

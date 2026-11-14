@@ -134,7 +134,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
   const onClear = () => {
     // Failures surface as a toast; the dialog closes either way.
     return store.clear(sessionId).catch((err: unknown) => {
-      useToastStore.getState().push({ tone: 'error', title: 'Could not clear side questions', description: err instanceof Error ? err.message : String(err) })
+      useToastStore.getState().push({ tone: 'error', title: "Couldn't delete side questions", description: err instanceof Error ? err.message : String(err) })
     })
   }
   const onStop = () => {
@@ -183,7 +183,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
           <Copy />
         </HeaderAction>
         {/* "…": it opens a confirmation. */}
-        <HeaderAction label="Clear side questions…" tooltip={count === 0 ? 'No side questions yet' : 'Delete all side questions of this session'} disabled={count === 0} onClick={() => setConfirmClear(true)}>
+        <HeaderAction label="Delete side questions…" tooltip={count === 0 ? 'No side questions yet' : 'Delete all side questions of this session'} disabled={count === 0} onClick={() => setConfirmClear(true)}>
           <Trash2 />
         </HeaderAction>
         <CloseButton size="icon-xs" label="Close side questions" onClick={() => store.dismiss(sessionId)} />
@@ -222,7 +222,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
       open={confirmClear}
       onOpenChange={setConfirmClear}
       title="Delete all side questions?"
-      description="Every side question and answer of this session is deleted. They were never part of the chat, and this cannot be undone."
+      description="Every side question and answer of this session is deleted. They were never part of the chat, and this can't be undone."
       confirmLabel="Delete side questions"
       onConfirm={onClear}
     />

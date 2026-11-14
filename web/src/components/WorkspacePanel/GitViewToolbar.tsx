@@ -67,8 +67,8 @@ export function GitViewToolbar({
         }}
         className={cn('min-w-0', mobile && 'flex-1')}
       >
-        <TabsList size="sm" aria-label="Git view" className={mobile ? 'w-full' : undefined}>
-          <TabsTrigger {...trigger('changes')}>Changes ({changedCount})</TabsTrigger>
+        <TabsList size="sm" aria-label="Changes view" className={mobile ? 'w-full' : undefined}>
+          <TabsTrigger {...trigger('changes')}>Uncommitted ({changedCount})</TabsTrigger>
           <TabsTrigger {...trigger('commits')}>
             <span className="inline-flex items-center gap-1">
               History
@@ -103,7 +103,7 @@ export function GitViewToolbar({
             <TooltipContent side="bottom">{expandLabel}</TooltipContent>
           </Tooltip>
         )}
-        {onRefresh && <DockRefreshButton label="Refresh Git status" onClick={onRefresh} />}
+        {onRefresh && <DockRefreshButton label="Refresh changes" onClick={onRefresh} />}
       </div>
     </div>
   )

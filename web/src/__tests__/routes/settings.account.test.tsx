@@ -397,7 +397,7 @@ describe('AccountSettingsPage', () => {
     ['device_exists', /already in your account or waiting to join/, 'Sign in'],
     ['account_closing', 'Account scheduled for deletion.', 'Sign in'],
     ['account_unavailable', 'Account unavailable.', 'Sign in'],
-    ['unreachable', 'Could not reach OpenAgentd. Check your network and try again.', 'Sign in'],
+    ['unreachable', "Couldn't reach OpenAgentd. Check your network and try again.", 'Sign in'],
     ['failed', /Something went wrong with this computer's account keys/, 'Sign in'],
     ['wrong_number', /not the number your phone showed/, 'Sign in'],
   ] as const)('shows the %s notice to a guest', async (notice, text, button) => {

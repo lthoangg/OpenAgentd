@@ -1401,7 +1401,7 @@ export function AgentView({
                fill={false}
                className="py-16 select-none"
                icon={<Seal size={16} className="text-(--color-text)" />}
-               title="What's on your mind?"
+               title="Ask anything"
              />
            )
          )}

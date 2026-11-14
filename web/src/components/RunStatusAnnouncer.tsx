@@ -21,7 +21,7 @@ export function RunStatusAnnouncer() {
     if (prev.sessionId !== sessionId) return
     if (questionId && questionId !== prev.questionId) {
       const text = question?.kind === 'plan_review'
-        ? 'Plan ready for review'
+        ? 'Needs you · a plan to review'
         : question?.questions[0]?.question ?? 'A question'
       setMessage(`Needs you: ${text}`)
       return

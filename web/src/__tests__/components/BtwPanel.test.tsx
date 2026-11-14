@@ -116,7 +116,7 @@ describe('BtwPanel', () => {
     renderPanel(false)
     open()
     await screen.findByText(/Type/)
-    const clear = screen.getByRole('button', { name: 'Clear side questions…' })
+    const clear = screen.getByRole('button', { name: 'Delete side questions…' })
     expect(clear.hasAttribute('disabled')).toBe(true)
     fireEvent.mouseEnter(clear.parentElement!)
     expect((await screen.findByRole('tooltip')).textContent).toBe('No side questions yet')
@@ -179,7 +179,7 @@ describe('BtwPanel', () => {
     open()
     await screen.findByText('second answer')
     // "…": the button opens a confirmation.
-    fireEvent.click(screen.getByRole('button', { name: 'Clear side questions…' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete side questions…' }))
 
     expect(await screen.findByText('Delete all side questions?')).toBeTruthy()
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
@@ -192,7 +192,7 @@ describe('BtwPanel', () => {
     renderPanel(false)
     open()
     await screen.findByText('second answer')
-    fireEvent.click(screen.getByRole('button', { name: 'Clear side questions…' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete side questions…' }))
     await screen.findByText('Delete all side questions?')
     // The old two-press Clear gave up after 3 seconds; a dialog waits for an answer.
     await new Promise((resolve) => setTimeout(resolve, 60))
@@ -212,7 +212,7 @@ describe('BtwPanel', () => {
     renderPanel(false)
     open()
     await screen.findByText('second answer')
-    fireEvent.click(screen.getByRole('button', { name: 'Clear side questions…' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete side questions…' }))
     await screen.findByText('Delete all side questions?')
 
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })

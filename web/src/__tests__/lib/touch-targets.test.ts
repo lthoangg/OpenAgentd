@@ -144,7 +144,7 @@ describe('controls that measured under the size rule', () => {
     for (const [file, pattern] of cases) expect([file, pattern.test(src(file))]).toEqual([file, true])
   })
 
-  it('grows the Git view tabs and the review tab strip to the phone step, and their bars with them', () => {
+  it('grows the Changes view tabs and the review tab strip to the phone step, and their bars with them', () => {
     expect(src('ui/tabs.tsx')).toMatch(/sm: '[^']*phone:data-\[orientation=horizontal\]:h-\(--phone-control\)'/)
     expect(src('WorkspacePanel/GitViewToolbar.tsx')).toMatch(/h-\(--spacing-toolbar\)[^"]* phone:h-auto phone:py-1"/)
     expect(css).toMatch(/--phone-control: var\(--oa-phone-control\);\s*\/\*[^*]*\*\/\s*--spacing-tab-bar: calc\(var\(--phone-control\) \+ 0\.5625rem\);/)

@@ -71,7 +71,7 @@ export function CreateTaskForm({
         onSuccess()
       },
       onError: (err) => {
-        setError(err instanceof Error ? err.message : 'Failed to create task')
+        setError(err instanceof Error ? err.message : "Couldn't create task")
       },
     })
   }

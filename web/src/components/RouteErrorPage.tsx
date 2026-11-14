@@ -16,7 +16,7 @@ export function RouteErrorPage({ error, reset }: { error: unknown; reset: () => 
         error={errorOf(error)}
         actions={(
           <>
-            <Button onClick={reset}>Try again</Button>
+            <Button onClick={reset}>Retry</Button>
             <Button variant="ghost" onClick={() => window.location.reload()}>Reload</Button>
           </>
         )}

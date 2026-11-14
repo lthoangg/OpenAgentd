@@ -95,7 +95,7 @@ export function useQuestionResolver(question: PendingQuestion | null) {
       // Every answer goes through here: a question's Send, a confirmation's
       // Approve or Deny, the composer's reply and a plan's Approve.
       softHapticFeedback()
-      void resolve(question.id, () => answerQuestion(sessionId, question.id, answers, options), 'Could not send the answer.', answers)
+      void resolve(question.id, () => answerQuestion(sessionId, question.id, answers, options), "Couldn't send the answer.", answers)
     },
   }
 }

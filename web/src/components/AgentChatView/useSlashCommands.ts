@@ -122,7 +122,7 @@ export function useSlashCommands({
     } catch (err) {
       pushToast({
         tone: 'error',
-        title: `Failed to render #${id.replace('/', ':')}`,
+        title: `Couldn't render #${id.replace('/', ':')}`,
         description: (err as Error).message,
       })
       return null
@@ -206,7 +206,7 @@ export function useSlashCommands({
           .catch((err: Error) =>
             pushToast({
               tone: 'error',
-              title: 'Failed to start /init',
+              title: "Couldn't start /init",
               description: err.message,
             }),
           )
@@ -240,7 +240,7 @@ export function useSlashCommands({
           } catch (err) {
             pushToast({
               tone: 'error',
-              title: `Failed to render /${candidate}`,
+              title: `Couldn't render /${candidate}`,
               description: (err as Error).message,
             })
             return content

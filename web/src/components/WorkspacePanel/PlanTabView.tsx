@@ -391,7 +391,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
             })
             return
           }
-          setSaveError(cause instanceof Error && cause.message ? cause.message : 'Could not save the plan.')
+          setSaveError(cause instanceof Error && cause.message ? cause.message : "Couldn't save the plan.")
         },
       },
     )
@@ -447,7 +447,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const runAsGoal = () => {
     if (!sessionId) return
     startGoal.mutate({ sessionId }, {
-      onError: (err) => useToastStore.getState().push({ tone: 'error', title: 'Could not start the goal', description: (err as Error).message }),
+      onError: (err) => useToastStore.getState().push({ tone: 'error', title: "Couldn't start the goal", description: (err as Error).message }),
     })
   }
 

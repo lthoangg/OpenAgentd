@@ -498,7 +498,7 @@ export function Sidebar({
       setParentPath(result.parent)
       setDirs(result.directories)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to read directory')
+      setError(err instanceof Error ? err.message : "Couldn't read directory")
     } finally {
       setLoading(false)
     }
@@ -535,7 +535,7 @@ export function Sidebar({
       setTrustWorkspace(await validateTrustedWorkspace(selected))
       setDialogOpen(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to open workspace')
+      setError(err instanceof Error ? err.message : "Couldn't open workspace")
     } finally {
       setLoading(false)
     }
@@ -737,7 +737,7 @@ export function Sidebar({
       if (added && !isMobile) pushToast({ tone: 'info', title: `Added ${workspaceLabel(path)}` })
       onMobileClose?.()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to open workspace')
+      setError(err instanceof Error ? err.message : "Couldn't open workspace")
     } finally {
       setPendingWorkspace(null)
     }
@@ -747,7 +747,7 @@ export function Sidebar({
     const pinned = !session.pinned_at
     setSessionPinned.mutate(
       { id: session.id, pinned },
-      { onError: () => pushToast({ tone: 'error', title: pinned ? 'Could not pin session' : 'Could not unpin session' }) },
+      { onError: () => pushToast({ tone: 'error', title: pinned ? "Couldn't pin session" : "Couldn't unpin session" }) },
     )
   }
 
@@ -773,7 +773,7 @@ export function Sidebar({
     }).catch((err: unknown) => {
       pushToast({
         tone: 'error',
-        title: `Could not remove ${workspaceLabel(path)} from the sidebar`,
+        title: `Couldn't remove ${workspaceLabel(path)} from the sidebar`,
         description: err instanceof Error ? err.message : undefined,
       })
       void refreshWorkspaceTree()
@@ -828,7 +828,7 @@ export function Sidebar({
         return next
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to remove worktree')
+      setError(err instanceof Error ? err.message : "Couldn't remove worktree")
     } finally {
       setWorktreeRemoving(null)
     }
@@ -873,7 +873,7 @@ export function Sidebar({
         setError(null)
         return
       }
-      setError(err instanceof Error ? err.message : 'Unable to create worktree')
+      setError(err instanceof Error ? err.message : "Couldn't create worktree")
     } finally {
       setWorktreeLoading(false)
     }
@@ -1009,7 +1009,7 @@ export function Sidebar({
         await refreshWorkspaceTree()
       })
       .catch((err: unknown) => {
-        pushToast({ tone: 'error', title: 'Could not remove it from the sidebar', description: err instanceof Error ? err.message : undefined })
+        pushToast({ tone: 'error', title: "Couldn't remove it from the sidebar", description: err instanceof Error ? err.message : undefined })
       })
   }
 
@@ -1033,10 +1033,10 @@ export function Sidebar({
 
   const openInNewWindow = (session: SessionResponse) => {
     openSessionInNewWindow({ session }).catch((err) => {
-      console.error('Failed to open session in new window:', err)
+      console.error("Couldn't open session in new window:", err)
       pushToast({
         tone: 'error',
-        title: 'Could not open session in new window',
+        title: "Couldn't open session in new window",
         description: sessionWindowErrorDescription(err, 'Desktop window creation failed.'),
       })
     })
@@ -1073,7 +1073,7 @@ export function Sidebar({
     setEditingSessionId(null)
     updateSessionTitle.mutate(
       { id: session.id, title },
-      { onError: () => pushToast({ tone: 'error', title: 'Could not rename session' }) },
+      { onError: () => pushToast({ tone: 'error', title: "Couldn't rename session" }) },
     )
   }
 
@@ -1096,7 +1096,7 @@ export function Sidebar({
       if (!renamed) return
       setWorktreeEditTarget(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to rename worktree')
+      setError(err instanceof Error ? err.message : "Couldn't rename worktree")
     } finally {
       setWorktreeEditLoading(false)
     }
@@ -1187,7 +1187,7 @@ export function Sidebar({
           onSettled: () => dismissToast(toastId),
           onError: () => {
             if (undo.signal.aborted) return
-            pushToast({ tone: 'error', title: 'Could not delete session' })
+            pushToast({ tone: 'error', title: "Couldn't delete session" })
           },
         },
       ),

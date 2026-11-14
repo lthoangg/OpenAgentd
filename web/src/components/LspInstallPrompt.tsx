@@ -224,7 +224,7 @@ function LspInstallDialog({ request }: { request: LspInstallRequest }) {
                       Installing…
                     </>
                   ) : error ? (
-                    'Try again'
+                    'Retry'
                   ) : (
                     'Install'
                   )}

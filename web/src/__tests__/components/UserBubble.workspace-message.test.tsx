@@ -136,8 +136,7 @@ describe("AgentView — the lead's messages in a subagent", () => {
     expect(screen.getByText("Find the flaky test.")).toBeTruthy()
     expect(screen.queryByText(/Task from Lead/)).toBeNull()
     const chip = screen.getByRole("button", { name: "Open the main agent" })
-    expect(chip).toHaveTextContent("From")
-    expect(chip).toHaveTextContent("lead")
+    expect(chip).toHaveTextContent("From the main agent")
     expect(chip.className).toContain("pointer-coarse:min-h-9")
     await userEvent.setup().click(chip)
     expect(onOpenSession).toHaveBeenCalledWith("lead-session", "")
@@ -178,8 +177,8 @@ describe("AgentView — the lead's messages in a subagent", () => {
 
     expect(screen.queryByRole("button", { name: "Open the main agent" })).toBeNull()
     const chip = container.querySelector("span[data-from-lead]")
-    expect(chip).toHaveTextContent("From")
-    expect(chip).toHaveTextContent("lead")
+    // "lead" is this codebase's word; the screen says who sent it.
+    expect(chip).toHaveTextContent("From the main agent")
   })
 
   it("keeps the lead's row right-aligned like a prompt", () => {

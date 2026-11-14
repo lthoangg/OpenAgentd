@@ -11,6 +11,11 @@
  * The counts are exact, not maxima: fixing a string means deleting its
  * entry, so the list only shrinks. Shortcut glyphs have their own rule in
  * ``design-lint.test.ts`` (``mac-glyph-in-copy``).
+ *
+ * ``ONE_SPELLING`` holds the words that have a single form everywhere
+ * (DESIGN.md, "One name per thing"): a failure starts "Couldn't", the
+ * button that tries again is "Retry", what cannot come back "can't be
+ * undone", and an unreachable server is "Can't reach".
  */
 import { describe, expect, it } from 'bun:test'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
@@ -100,6 +105,26 @@ const POINTER_VERBS: Record<string, { count: number; why: string }> = {
   'hooks/use-panel-resize.ts': { count: 1, why: 'the resize handle tooltip, which only a pointer shows' },
 }
 
+/** The text of a literal without its quotes and outer space. */
+function bare(text: string): string {
+  return text.trim().replace(/^(['"`])([\s\S]*)\1$/, '$2').trim()
+}
+
+/** Wording with one spelling: each rule names what to write instead. */
+const ONE_SPELLING: { name: string; use: string; matches: (text: string) => boolean }[] = [
+  { name: 'failure-opener', use: `"Couldn't …"`, matches: (text) => /\b(?:Could not|Unable to|Failed to)\b/.test(text) },
+  { name: 'try-again-button', use: '"Retry"', matches: (text) => bare(text) === 'Try again' },
+  { name: 'cannot-be-undone', use: `"This can't be undone."`, matches: (text) => /cannot be undone|\bfor good\b/i.test(text) },
+  { name: 'ampersand-send', use: '"Stop and send"', matches: (text) => /Stop (?:&|&amp;) send/.test(text) },
+  { name: 'unreachable', use: `"Can't reach {name}"`, matches: (text) => bare(text) === 'Offline' || /Server (?:unreachable|not reachable)/.test(text) },
+]
+
+function spellingProblems(file: string, source: string): string[] {
+  return literalText(source).flatMap((text) =>
+    ONE_SPELLING.filter((rule) => rule.matches(text)).map((rule) => `${file}: ${rule.name}, write ${rule.use}\n    ${text.trim()}`),
+  )
+}
+
 describe('the scanner', () => {
   it('reads strings and JSX text, not comments or code', () => {
     const source = [
@@ -130,6 +155,27 @@ describe('the scanner', () => {
       "const url = 'http://host' \n<p>can't</p> // gone\nconst a = 1  + 2",
     )
   })
+
+  it('flags each word that has one spelling, and leaves a sentence that merely contains it', () => {
+    const source = [
+      "const title = 'Could not pin session'",
+      "setError('Unable to open workspace')",
+      '<Button>Try again</Button>',
+      "const body = 'The reset was refused. Try again later.'",
+      '<p>This cannot be undone.</p>',
+      "const label = 'Stop & send'",
+      "return 'Offline'",
+      "const hint = 'Works offline too'",
+    ].join('\n')
+    expect(spellingProblems('x.tsx', source).map((line) => line.split(',')[0])).toEqual([
+      'x.tsx: failure-opener',
+      'x.tsx: failure-opener',
+      'x.tsx: ampersand-send',
+      'x.tsx: unreachable',
+      'x.tsx: try-again-button',
+      'x.tsx: cannot-be-undone',
+    ])
+  })
 })
 
 describe('wording', () => {
@@ -148,5 +194,9 @@ describe('wording', () => {
       ...Object.keys(POINTER_VERBS).filter((file) => !found[file]).map((file) => `${file}: listed but clean, delete its entry`),
     ]
     expect(problems).toEqual([])
+  })
+
+  it('spells a failure, a retry, no way back and an unreachable server one way', () => {
+    expect(files.flatMap(({ file, source }) => spellingProblems(file, source))).toEqual([])
   })
 })

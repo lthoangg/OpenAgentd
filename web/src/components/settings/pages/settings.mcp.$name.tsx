@@ -114,7 +114,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
       push({ tone: 'success', title: `Restarted "${name}"` })
     } catch (err) {
       const msg = errorMessage(err)
-      push({ tone: 'error', title: `Failed to restart "${name}"`, description: msg })
+      push({ tone: 'error', title: `Couldn't restart "${name}"`, description: msg })
     }
   }
 

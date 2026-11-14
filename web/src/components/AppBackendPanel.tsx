@@ -125,7 +125,7 @@ type Health = 'checking' | 'online' | 'offline'
 /** A saved server's one status line: what its dot says. */
 function healthWord(health: Health | undefined): string {
   if (health === 'online') return 'Online'
-  if (health === 'offline') return 'Offline'
+  if (health === 'offline') return "Can't reach"
   return 'Checking…'
 }
 
@@ -1039,7 +1039,7 @@ function ServerStatusDot({ status }: { status: Health | undefined }) {
     : status === 'offline'
       ? 'bg-(--color-error)'
       : 'oa-breathe bg-(--color-text-muted)'
-  const label = status === 'online' ? 'Online' : status === 'offline' ? 'Offline' : 'Checking'
+  const label = status === 'online' ? 'Online' : status === 'offline' ? "Can't reach" : 'Checking'
   return (
     <Tooltip>
       <TooltipTrigger render={<span className={`size-2 shrink-0 rounded-full ${className}`} aria-label={label} />} />

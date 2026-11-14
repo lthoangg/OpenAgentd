@@ -161,14 +161,14 @@ describe('PluginsSettingsPage — single-file plugins', () => {
     expect(within(list).getByText(/Restart OpenAgentd to load new or changed plugins\./)).toBeInTheDocument()
   })
 
-  it('shows each plugin\'s state as a Chip: Loaded or Failed to load', () => {
+  it("shows each plugin's state as a Chip: Loaded or Couldn't load", () => {
     renderPage(DATA)
     const list = screen.getByRole('region', { name: 'Single-file plugins' })
     const chips = within(list).getAllByRole('listitem').map((row) => chipIn(row))
-    expect(chips.map((chip) => chip?.textContent)).toEqual(['Loaded', 'Loaded', 'Failed to load'])
+    expect(chips.map((chip) => chip?.textContent)).toEqual(['Loaded', 'Loaded', "Couldn't load"])
     expect(chips.map((chip) => chip?.getAttribute('data-tone'))).toEqual(['success', 'success', 'error'])
     expect(within(list).queryByLabelText('Loaded')).toBeNull()
-    expect(within(list).queryByLabelText('Failed to load')).toBeNull()
+    expect(within(list).queryByLabelText("Couldn't load")).toBeNull()
   })
 
   it('warns about Python plugins the backend does not run', () => {

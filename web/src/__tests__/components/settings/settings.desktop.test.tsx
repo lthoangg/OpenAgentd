@@ -19,7 +19,7 @@ mock.module('@/lib/island-setting', () => ({
   readIslandSettings: async () => (supported ? stored : null),
   updateIslandSettings: async (patch: Partial<IslandSettings>) => {
     patches.push(patch)
-    if (failWrite) throw new Error('Could not save the setting.')
+    if (failWrite) throw new Error("Couldn't save the setting.")
     stored = { ...stored, ...patch }
     return stored
   },
@@ -77,7 +77,7 @@ describe('DesktopSettingsPage notch status', () => {
 
     fireEvent.click(main)
     await waitFor(() => expect(main).toHaveAttribute('aria-checked', 'true'))
-    expect(screen.getByText('Could not save the setting.')).toBeInTheDocument()
+    expect(screen.getByText("Couldn't save the setting.")).toBeInTheDocument()
   })
 
   it('has no notch section outside the macOS app', async () => {

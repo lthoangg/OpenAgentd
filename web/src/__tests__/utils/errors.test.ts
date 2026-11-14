@@ -9,7 +9,7 @@ describe('errors utility', () => {
   })
 
   it('detects standard browser and fetch network errors as transient', () => {
-    expect(isTransientNetworkError(new Error('Failed to fetch'))).toBe(true)
+    expect(isTransientNetworkError(new Error("Failed to fetch"))).toBe(true)
     expect(isTransientNetworkError(new Error('TypeError: Load failed'))).toBe(true)
     expect(isTransientNetworkError(new Error('NetworkError when attempting to fetch resource.'))).toBe(true)
     expect(isTransientNetworkError(new Error('Network request failed'))).toBe(true)
@@ -57,7 +57,7 @@ describe('errors utility', () => {
   it("detects iOS's own wording for a dropped connection as transient", () => {
     expect(isTransientNetworkError(new TypeError('The network connection was lost.'))).toBe(true)
     expect(isTransientNetworkError(new TypeError('The Internet connection appears to be offline.'))).toBe(true)
-    expect(isTransientNetworkError(new TypeError('Could not connect to the server.'))).toBe(true)
+    expect(isTransientNetworkError(new TypeError("Could not connect to the server."))).toBe(true)
     expect(isTransientNetworkError(new TypeError('A server with the specified hostname could not be found.'))).toBe(true)
   })
 

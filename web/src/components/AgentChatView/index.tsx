@@ -505,7 +505,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const handleClearPlan = useCallback(() => {
     if (!sessionIdState) return
     clearPlan(sessionIdState, {
-      onError: (err) => pushToast({ tone: 'error', title: 'Could not clear the plan', description: err instanceof Error ? err.message : String(err) }),
+      onError: (err) => pushToast({ tone: 'error', title: "Couldn't clear the plan", description: err instanceof Error ? err.message : String(err) }),
     })
   }, [sessionIdState, clearPlan, pushToast])
 

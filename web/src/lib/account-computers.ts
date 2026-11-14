@@ -147,7 +147,7 @@ export function computerLine(computer: AccountComputer, inUse: boolean, route: L
     if (route === 'down') return "Can't reach it \u00b7 Retrying\u2026"
   }
   if (computer.device.online === true) return 'Online'
-  if (computer.device.online === false) return 'Offline'
+  if (computer.device.online === false) return "Can't reach"
   return 'Your account'
 }
 

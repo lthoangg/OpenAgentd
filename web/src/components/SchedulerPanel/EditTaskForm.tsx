@@ -66,7 +66,7 @@ export function EditTaskForm({
     if (!validateForSubmit(submitValues)) return
     updateMutation.mutate(
       { slug: task.slug, body: toUpdatePayload(submitValues, localTz, currentSessionId) },
-      { onSuccess, onError: (err) => setError(err instanceof Error ? err.message : 'Failed to update task') },
+      { onSuccess, onError: (err) => setError(err instanceof Error ? err.message : "Couldn't update task") },
     )
   }
 

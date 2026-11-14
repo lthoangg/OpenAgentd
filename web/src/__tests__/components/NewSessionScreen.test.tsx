@@ -102,7 +102,7 @@ describe('NewSessionScreen', () => {
 
   it('asks what to build in a repository, with the folder chip and no branch: the status bar has it', () => {
     renderScreen()
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('What should we build in openagentd?')
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('What should we do in openagentd?')
     expect(screen.getByRole('button', { name: 'Folder: openagentd. Change folder' })).toBeTruthy()
     expect(screen.queryByText('main')).toBeNull()
   })

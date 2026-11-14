@@ -128,7 +128,7 @@ function ImageCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
         {error
           ? (
             <div className="flex h-[120px] w-[120px] items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)">
-              Failed to load
+              Couldn't load
             </div>
           )
           : (

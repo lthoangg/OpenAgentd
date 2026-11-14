@@ -80,8 +80,8 @@ describe('WorkspacePanel chat workspace', () => {
   it('never offers Git or probes git for a chat root, even when asked to open it', async () => {
     await renderPanel(true, { openGit: true })
 
-    expect(screen.queryByRole('button', { name: 'Git' })).toBeNull()
-    expect(launcherRow('Git')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Changes' })).toBeNull()
+    expect(launcherRow('Changes')).toBeNull()
     expect(launcherRow('Terminal')).toBeTruthy()
     expect(
       requestedUrls.filter(
@@ -96,16 +96,16 @@ describe('WorkspacePanel chat workspace', () => {
   it('starts a coding workspace empty, with Git on the launcher', async () => {
     await renderPanel(false)
 
-    expect(screen.queryByRole('button', { name: 'Git' })).toBeNull()
-    await act(async () => { launcherRow('Git')!.click() })
-    const gitTab = screen.getByRole('button', { name: 'Git' })
+    expect(screen.queryByRole('button', { name: 'Changes' })).toBeNull()
+    await act(async () => { launcherRow('Changes')!.click() })
+    const gitTab = screen.getByRole('button', { name: 'Changes' })
     expect(gitTab.getAttribute('aria-current')).toBe('true')
     expect(launcherRow('Terminal')).toBeNull()
 
     // Git is an ordinary tab: closing it goes back to the launcher.
-    await act(async () => { screen.getByRole('button', { name: 'Close Git' }).click() })
-    expect(screen.queryByRole('button', { name: 'Git' })).toBeNull()
-    expect(launcherRow('Git')).toBeTruthy()
+    await act(async () => { screen.getByRole('button', { name: 'Close Changes' }).click() })
+    expect(screen.queryByRole('button', { name: 'Changes' })).toBeNull()
+    expect(launcherRow('Changes')).toBeTruthy()
   })
 
   it('offers Git again when the open dock moves from Chat to a project', async () => {
@@ -122,11 +122,11 @@ describe('WorkspacePanel chat workspace', () => {
     await act(async () => {
       rerender = render(panel(WORKSPACE, true)).rerender
     })
-    expect(launcherRow('Git')).toBeNull()
+    expect(launcherRow('Changes')).toBeNull()
 
     await act(async () => {
       rerender(panel('/home/user/code/site', false))
     })
-    expect(launcherRow('Git')).toBeTruthy()
+    expect(launcherRow('Changes')).toBeTruthy()
   })
 })

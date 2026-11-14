@@ -31,7 +31,7 @@ export interface ListedDevice {
 function statusLine(device: ListedDevice, selfLabel: string): string | undefined {
   if (device.me) return selfLabel
   if (device.online === true) return 'Online'
-  if (device.online === false) return 'Offline'
+  if (device.online === false) return "Can't reach"
   return undefined
 }
 

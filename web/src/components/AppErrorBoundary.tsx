@@ -16,7 +16,7 @@ import { Seal } from '@/components/brand/Logo'
 import { Button } from '@/components/ui/button'
 
 // Its own copy of the labels: this file imports almost nothing (see above).
-const COPY_LABEL = { idle: 'Copy error details', copied: 'Copied', failed: 'Could not copy' } as const
+const COPY_LABEL = { idle: 'Copy error details', copied: 'Copied', failed: "Couldn't copy" } as const
 
 interface AppErrorBoundaryProps {
   children: ReactNode

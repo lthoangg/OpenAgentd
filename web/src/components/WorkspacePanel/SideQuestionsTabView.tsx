@@ -51,7 +51,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
   const onClear = () => {
     // Failures surface as a toast; the dialog closes either way.
     return store.clear(sessionId).catch((err: unknown) => {
-      useToastStore.getState().push({ tone: 'error', title: 'Could not clear side questions', description: err instanceof Error ? err.message : String(err) })
+      useToastStore.getState().push({ tone: 'error', title: "Couldn't delete side questions", description: err instanceof Error ? err.message : String(err) })
     })
   }
   const onStop = (exchange: BtwExchange) => {
@@ -71,7 +71,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
               <Button
                 size="icon-xs"
                 variant="ghost"
-                aria-label="Clear side questions…"
+                aria-label="Delete side questions…"
                 disabled={exchanges.length === 0}
                 onClick={() => setConfirmClear(true)}
               >
@@ -85,7 +85,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
           open={confirmClear}
           onOpenChange={setConfirmClear}
           title="Delete all side questions?"
-          description="Every side question and answer of this session is deleted. They were never part of the chat, and this cannot be undone."
+          description="Every side question and answer of this session is deleted. They were never part of the chat, and this can't be undone."
           confirmLabel="Delete side questions"
           onConfirm={onClear}
         />

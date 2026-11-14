@@ -53,7 +53,7 @@ export function MissingFolderBanner({ workspace, onOpenFolder }: MissingFolderBa
       await queryClient.invalidateQueries({ queryKey: queryKeys.coding.tree() })
       navigate({ to: '/', replace: true })
     } catch (err) {
-      pushToast({ tone: 'error', title: 'Could not hide the workspace', description: err instanceof Error ? err.message : undefined })
+      pushToast({ tone: 'error', title: "Couldn't hide the workspace", description: err instanceof Error ? err.message : undefined })
     }
   }
 

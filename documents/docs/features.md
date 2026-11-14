@@ -2342,6 +2342,40 @@ run from the terminal (the native Rust binary since v3.0.0).
     window's bottom edge; the worktree chip has a 24px target.
   - Phone: a tap on the Sessions toolbar (Settings, Scheduled, Usage) no
     longer sometimes closes the sheet it has just opened.
+- **One app that starts simple and grows with you** `[v3.56.0]`. Fewer
+  controls and plainer words for someone new, with nothing taken from a
+  developer: Steer, Queue, btw, tool names and the line under a reply stay.
+  - One name each. A waiting question reads **Needs you · a question** and a
+    waiting plan **Needs you · a plan to review**, on the card, the bar above
+    the message box, the goal's status and for screen readers (there were
+    seven wordings). The Review panel's Git view is **Changes** everywhere
+    (tab, launcher, **Open Changes** in the palette and status bar, **Show in
+    Changes** on a tab's menu), with **Uncommitted (N)** and **History**
+    inside; the plan's tab reads **Plan**; the phone's page is **Review
+    panel** and its rows keep the desktop's names.
+  - Sending while the agent works has the same three labels on a phone as
+    on desktop, each with its one-line explanation: **Steer**, **Queue until
+    done**, **Stop and send** (the phone said "Steer now" and "Send after
+    this turn finishes"; the desktop said "Stop & send").
+  - The model picker's thinking row always shows what is in effect: with no
+    level set, a **Default** segment is lit (the model's own level) and
+    picking it goes back to that. It replaces the line "Not set: the model's
+    own default applies."
+  - Words that only exist in the code are gone from the screen: a command's
+    result reads `exit 0` or `exit 1` (not `[Succeeded]`), a subagent's
+    message is **From the main agent** (not "From lead"), a task's status
+    reads **To do**, **In progress**, **Done** (not `pending`,
+    `in_progress`, `completed`), an empty board says **No tasks**, and an
+    unreadable goal reply is headed **Goal check** (not `update_goal`).
+  - One spelling: a failure starts **Couldn't …** (118 messages said "Could
+    not", "Unable to" or "Failed to"), the button that tries again is
+    **Retry**, what cannot come back **can't be undone**, and a computer
+    that does not answer is **Can't reach** (lists said "Offline"). The
+    banner for the app's own stopped engine reads **OpenAgentd stopped on
+    this computer**. A test holds each of these.
+  - **Delete side questions…** names what its dialog does (the button said
+    "Clear"). An empty session is headed **Ask anything**, and a workspace's
+    new session **What should we do in {name}?** ("build" assumed code).
 - **Each platform is offered what it can do, in one wording** `[v3.54.0]`:
   - iPad: a long press in the terminal opens Select All, Copy, Paste, Find
     and Add to chat, as on a phone. Before, only a phone-sized window had it.

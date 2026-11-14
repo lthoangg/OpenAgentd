@@ -9,7 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
 
 export function DockRefreshButton({ label, onClick }: {
-  /** What it reloads: "Refresh Git status", "Refresh diff", "Refresh file". */
+  /** What it reloads: "Refresh changes", "Refresh diff", "Refresh file". */
   label: string
   onClick: () => void
 }) {

@@ -432,7 +432,7 @@ export function CredentialList({
     order.mutate(
       { providerId: provider.id, ids },
       {
-        onError: (err) => fail('Could not reorder', err),
+        onError: (err) => fail("Couldn't reorder", err),
         onSuccess: () => {
           if (to === 'first') push({ tone: 'success', title: `${label || 'It'} is now tried first` })
         },
@@ -443,7 +443,7 @@ export function CredentialList({
   const toggle = (c: StoredCredential) =>
     update.mutate(
       { providerId: provider.id, credentialId: c.id, body: { disabled: !c.disabled } },
-      { onError: (err) => fail(c.disabled ? 'Could not show' : 'Could not hide', err) },
+      { onError: (err) => fail(c.disabled ? "Couldn't show" : "Couldn't hide", err) },
     )
 
   const test = async (c: StoredCredential) => {
@@ -454,10 +454,10 @@ export function CredentialList({
       if (models.length > 0) {
         push({ tone: 'success', title: 'Verified', description: `${name}: ${models.length} models available.` })
       } else {
-        push({ tone: 'error', title: 'Could not verify', description: `${provider.label} did not accept ${name}.` })
+        push({ tone: 'error', title: "Couldn't verify", description: `${provider.label} did not accept ${name}.` })
       }
     } catch (err) {
-      fail('Could not verify', err)
+      fail("Couldn't verify", err)
     } finally {
       setTestingId(null)
     }
@@ -469,7 +469,7 @@ export function CredentialList({
     const id = renaming.id
     setRenaming(null)
     if (!label) return
-    update.mutate({ providerId: provider.id, credentialId: id, body: { label } }, { onError: (err) => fail('Could not rename', err) })
+    update.mutate({ providerId: provider.id, credentialId: id, body: { label } }, { onError: (err) => fail("Couldn't rename", err) })
   }
 
   const doRemove = async (c: StoredCredential) => {
@@ -479,7 +479,7 @@ export function CredentialList({
       else await remove.mutateAsync({ providerId: provider.id, credentialId: c.id })
       push({ tone: 'success', title: isOauth ? 'Signed out' : 'Key removed', description: c.label })
     } catch (err) {
-      fail(isOauth ? 'Could not sign out' : 'Could not remove key', err)
+      fail(isOauth ? "Couldn't sign out" : "Couldn't remove key", err)
     }
   }
 

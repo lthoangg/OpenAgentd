@@ -43,7 +43,7 @@ export class ViewErrorBoundary extends Component<ViewErrorBoundaryProps, ViewErr
           title="Couldn't show this view"
           description="Something in it failed to render. The sidebar still works: try again, or open another session."
           error={error}
-          actions={<Button onClick={() => this.setState({ error: null })}>Try again</Button>}
+          actions={<Button onClick={() => this.setState({ error: null })}>Retry</Button>}
         />
       </div>
     )

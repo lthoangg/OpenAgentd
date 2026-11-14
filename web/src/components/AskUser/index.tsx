@@ -20,7 +20,7 @@
  * the outcome locally so the card flips straight to state 2.
  *
  * The card owns its own frame and label, because both depend on that state: a
- * resolved question still headed "Needs your input" reads as an outstanding
+ * resolved question still headed "Needs you · a question" reads as an outstanding
  * request. The frame is fluid — it takes the transcript's width at every
  * breakpoint rather than switching to a separate mobile presentation. It is
  * one thin frame with nothing bordered inside, and no icon before the label.
@@ -244,7 +244,7 @@ export function PinnedQuestion() {
         isPhone ? 'max-h-[55dvh]' : 'max-h-[45vh]',
       )}
     >
-      <div className="px-3 pt-2 pb-1 label-caps text-(--accent-orange-text)">Agent is asking you</div>
+      <div className="px-3 pt-2 pb-1 label-caps text-(--accent-orange-text)">Needs you · a question</div>
       <QuestionCard
         key={pendingQuestion.id}
         question={pendingQuestion}
@@ -270,7 +270,7 @@ function QuestionShell({
   return (
     <div data-question-waiting={open ? '' : undefined} className={cn('tool-row-enter my-2', TRANSCRIPT_CARD)}>
       <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 label-caps text-(--color-text-muted)">
-        {waiting ? 'Needs your input' : 'Your input'}
+        {waiting ? 'Needs you · a question' : 'Your input'}
       </div>
       {children}
     </div>

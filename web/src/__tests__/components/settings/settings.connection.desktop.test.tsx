@@ -142,7 +142,7 @@ describe('Your computers on the desktop', () => {
     expect(ran('cloud_link_route').at(-1)?.args).toEqual({ deviceId: 'dev-linux' })
     expect(within(linux).getByRole('button', { name: 'Open sessions on Linux · 9C02 E1B7' })).toBeTruthy()
     const windows = rowOf('Windows · 1111 2222')
-    expect(within(windows).getByText('Offline')).toBeTruthy()
+    expect(within(windows).getByText("Can't reach")).toBeTruthy()
     expect(within(windows).getByRole('button', { name: 'Use Windows · 1111 2222' })).toBeTruthy()
     // Above the servers.
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)

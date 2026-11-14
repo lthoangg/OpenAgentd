@@ -364,8 +364,8 @@ describe('UpdateCard — install flow', () => {
       expect(screen.getByText('Update failed')).toBeInTheDocument(),
     )
     expect(screen.getByText(/Update has not been downloaded yet/i)).toBeInTheDocument()
-    // "Try again" button must be present.
-    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+    // "Retry" button must be present.
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
   })
 
   it('shows error state when updater_install rejects with stale-version message', async () => {

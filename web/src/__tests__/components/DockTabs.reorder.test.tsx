@@ -116,13 +116,13 @@ describe('dock tab order', () => {
   it('opens a view before the terminals of the focused pane; reopening only activates it', async () => {
     const { request } = await renderDock()
     await request({ view: 'review', key: 1 })
-    expect(strips()).toEqual([['Git', 'Terminal 1', 'Terminal 2']])
-    expect(tab('Git').getAttribute('aria-current')).toBe('true')
+    expect(strips()).toEqual([['Changes', 'Terminal 1', 'Terminal 2']])
+    expect(tab('Changes').getAttribute('aria-current')).toBe('true')
 
     act(() => tab('Terminal 2').click())
     await request({ view: 'review', key: 2 })
-    expect(order()).toEqual(['Git', 'Terminal 1', 'Terminal 2'])
-    expect(tab('Git').getAttribute('aria-current')).toBe('true')
+    expect(order()).toEqual(['Changes', 'Terminal 1', 'Terminal 2'])
+    expect(tab('Changes').getAttribute('aria-current')).toBe('true')
     expect(tab('Terminal 2').hasAttribute('aria-current')).toBe(false)
   })
 
@@ -131,7 +131,7 @@ describe('dock tab order', () => {
     await request({ view: 'review', key: 1 })
     act(() => tab('Terminal 1').click())
     await newTerminal()
-    await waitFor(() => expect(strips()).toEqual([['Git', 'Terminal 1', 'Terminal 3', 'Terminal 2']]))
+    await waitFor(() => expect(strips()).toEqual([['Changes', 'Terminal 1', 'Terminal 3', 'Terminal 2']]))
     expect(tab('Terminal 3').getAttribute('aria-current')).toBe('true')
   })
 

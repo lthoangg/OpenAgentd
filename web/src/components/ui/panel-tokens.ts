@@ -1,6 +1,6 @@
 /**
  * Panel type + icon scale, shared by management surfaces (Settings, Scheduled
- * tasks, Session settings, Keyboard shortcuts, Backend connection). See
+ * tasks, Keyboard shortcuts, Backend connection). See
  * DESIGN.md → Panels and management surfaces.
  *
  * The settings pages had drifted to five uncoordinated font sizes chosen ad

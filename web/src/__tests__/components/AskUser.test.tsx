@@ -176,7 +176,7 @@ describe('AskUser — waiting state', () => {
     await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.queryByRole('button', { name: /send|skip/i })).toBeNull()
-    expect(screen.queryByText(/needs your input/i)).toBeNull()
+    expect(screen.queryByText(/needs you · a question/i)).toBeNull()
     expect(screen.getByText('Which package manager?')).toBeInTheDocument()
     expect(pushToast).not.toHaveBeenCalled()
   })
@@ -275,7 +275,7 @@ describe('AskUser — resolved state', () => {
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.getByText('Asking…')).toBeInTheDocument()
-    expect(screen.queryByText('Needs your input')).toBeNull()
+    expect(screen.queryByText('Needs you · a question')).toBeNull()
     useAgentStore.setState({ isAgentWorking: false, agentStreams: {} })
   })
 
@@ -479,7 +479,7 @@ describe('AskUser — closed without an answer', () => {
     expect(screen.getByText(/not asked/i)).toBeInTheDocument()
     expect(screen.getByText('Which package manager?')).toBeInTheDocument()
     // Resolved framing, not an outstanding request.
-    expect(screen.queryByText(/needs your input/i)).toBeNull()
+    expect(screen.queryByText(/needs you · a question/i)).toBeNull()
   })
 
   /**
@@ -503,7 +503,7 @@ describe('AskUser — closed without an answer', () => {
 
     expect(container.textContent).not.toContain('Closed without an answer')
     expect(screen.getByText(/merged/i)).toBeInTheDocument()
-    expect(screen.queryByText(/needs your input/i)).toBeNull()
+    expect(screen.queryByText(/needs you · a question/i)).toBeNull()
   })
 })
 
@@ -532,7 +532,7 @@ describe('AskUser — asks that failed before a question opened', () => {
     expect(container.textContent).not.toContain('Closed without an answer')
     expect(screen.getByText(/not asked/i)).toBeInTheDocument()
     expect(screen.getByText('Which package manager?')).toBeInTheDocument()
-    expect(screen.queryByText(/needs your input/i)).toBeNull()
+    expect(screen.queryByText(/needs you · a question/i)).toBeNull()
   })
 
   it('labels an undeliverable ask (no tool call id) as never asked', () => {
@@ -551,7 +551,7 @@ describe('AskUser — asks that failed before a question opened', () => {
 
     expect(container.textContent).not.toContain('Closed without an answer')
     expect(screen.getByText(/not asked/i)).toBeInTheDocument()
-    expect(screen.queryByText(/needs your input/i)).toBeNull()
+    expect(screen.queryByText(/needs you · a question/i)).toBeNull()
   })
 
   it('labels a restart-healed ask as interrupted, not closed without an answer', () => {
@@ -567,20 +567,20 @@ describe('AskUser — asks that failed before a question opened', () => {
 
     expect(container.textContent).not.toContain('Closed without an answer')
     expect(screen.getByText(/interrupted/i)).toBeInTheDocument()
-    expect(screen.queryByText(/needs your input/i)).toBeNull()
+    expect(screen.queryByText(/needs you · a question/i)).toBeNull()
   })
 })
 
 /**
  * The card's own label has to track the same two states as its body — a
- * resolved question still headed "Needs your input" reads as an outstanding
+ * resolved question still headed "Needs you · a question" reads as an outstanding
  * request the user has to act on.
  */
 describe('AskUser — card label', () => {
   it('asks for input while the question is open', () => {
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
-    expect(screen.getByText(/needs your input/i)).toBeInTheDocument()
+    expect(screen.getByText(/needs you · a question/i)).toBeInTheDocument()
   })
 
   it('stops asking for input once the question is answered', () => {
@@ -593,7 +593,7 @@ describe('AskUser — card label', () => {
 
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
-    expect(screen.queryByText(/needs your input/i)).toBeNull()
+    expect(screen.queryByText(/needs you · a question/i)).toBeNull()
     expect(screen.getByText(/your input/i)).toBeInTheDocument()
   })
 
@@ -607,7 +607,7 @@ describe('AskUser — card label', () => {
 
     render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
-    expect(screen.queryByText(/needs your input/i)).toBeNull()
+    expect(screen.queryByText(/needs you · a question/i)).toBeNull()
   })
 
   /**
@@ -631,7 +631,7 @@ describe('AskUser — card label', () => {
 
     render(<AskUser toolCallId="call-1" />)
 
-    expect(screen.getByText('Needs your input')).toBeInTheDocument()
+    expect(screen.getByText('Needs you · a question')).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /pnpm/ })).toBeInTheDocument()
     expect(screen.queryByText('Asking…')).toBeNull()
     useAgentStore.setState({ isAgentWorking: false, agentStreams: {} })
@@ -652,7 +652,7 @@ describe('AskUser — card label', () => {
 
     render(<AskUser toolCallId="call-1" />)
 
-    expect(screen.queryByText(/needs your input/i)).toBeNull()
+    expect(screen.queryByText(/needs you · a question/i)).toBeNull()
     expect(screen.getByText('Asking…')).toBeInTheDocument()
     useAgentStore.setState({ isAgentWorking: false, agentStreams: {} })
   })
@@ -672,7 +672,7 @@ describe('AskUser — card label', () => {
 
     render(<AskUser toolCallId="call-1" args={JSON.stringify({ questions: QUESTION.questions })} />)
 
-    expect(screen.queryByText(/needs your input/i)).toBeNull()
+    expect(screen.queryByText(/needs you · a question/i)).toBeNull()
     expect(screen.queryByText(/waiting for an answer/i)).toBeNull()
     expect(screen.getByText('Which package manager?')).toBeInTheDocument()
     useAgentStore.setState({ isAgentWorking: false, agentStreams: {} })
@@ -707,7 +707,7 @@ describe('AskUser — frame and type', () => {
     // Only the frame carries a border class: not the header, the steps, the options or the footer.
     const inside = Array.from(frame.querySelectorAll('*')).filter((el) => (el.getAttribute('class') ?? '').match(BORDER))
     expect(inside.map((el) => el.tagName)).toEqual([])
-    const label = screen.getByText('Needs your input')
+    const label = screen.getByText('Needs you · a question')
     expect(label.querySelector('svg')).toBeNull()
     expect(label.previousElementSibling).toBeNull()
   })

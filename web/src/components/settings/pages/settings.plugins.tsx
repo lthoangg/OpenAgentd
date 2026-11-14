@@ -76,7 +76,7 @@ function PluginRow({ plugin }: { plugin: PluginStatus }) {
     <li className="flex flex-col gap-1.5 px-4 py-3.5">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <span className="min-w-0 truncate font-mono text-xs font-semibold text-(--color-text)">{plugin.file}</span>
-        <Chip tone={failed ? 'error' : 'success'}>{failed ? 'Failed to load' : 'Loaded'}</Chip>
+        <Chip tone={failed ? 'error' : 'success'}>{failed ? "Couldn't load" : 'Loaded'}</Chip>
       </div>
       {(plugin.provider || plugin.hooks.length > 0) && (
         <p className={cn('flex flex-wrap gap-x-3 gap-y-0.5', TEXT.hint)}>

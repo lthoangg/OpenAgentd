@@ -77,7 +77,7 @@ export function ServerUpdateButton({ onRequest, ownApp = false }: { onRequest: (
   }
   if (!data?.available || !data.can_upgrade || !data.latest) return null
   if (phase.kind === 'failed') {
-    return <Button size="sm" variant="default" onClick={onRequest}>Try again</Button>
+    return <Button size="sm" variant="default" onClick={onRequest}>Retry</Button>
   }
   return <Button size="sm" variant="primary" onClick={onRequest}>Update to v{data.latest}</Button>
 }

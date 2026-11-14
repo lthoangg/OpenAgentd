@@ -48,7 +48,7 @@ export interface ServerCommandHandlers {
 const HEALTH_LABEL: Record<ServerHealth, string> = {
   checking: 'Checking…',
   online: 'Online',
-  offline: 'Offline',
+  offline: "Can't reach",
 }
 
 export function buildServerCommands(input: ServerCommandsInput, handlers: ServerCommandHandlers): Command[] {

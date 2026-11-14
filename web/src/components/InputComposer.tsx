@@ -25,6 +25,7 @@ import { mediumHapticFeedback, selectionHapticFeedback, softHapticFeedback } fro
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { useLongPress } from '@/hooks/use-long-press'
 import { ActionSheet } from '@/components/ui/action-sheet'
+import { DELIVERIES } from './InputComposer.deliveries'
 import { SessionModeToggle } from './SessionModeToggle'
 import type { ComposerActions } from './composer/PlusMenu'
 import { canPickNatively, pickNatively } from '@/lib/native-pick'
@@ -918,11 +919,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         open={deliverySheetOpen}
         onClose={() => setDeliverySheetOpen(false)}
         title="Agent is running. How should this message be sent?"
-        items={[
-          { id: 'steer', label: 'Steer now', run: () => submit('steer') },
-          { id: 'after-turn', label: 'Send after this turn finishes', run: () => submit('after-turn') },
-          { id: 'interrupt', label: 'Stop and send', danger: true, run: () => submit('interrupt') },
-        ]}
+        items={DELIVERIES.map(({ id, label, hint }) => ({ id, label, hint, danger: id === 'interrupt', run: () => submit(id) }))}
       />
     </>
   ) : splitSend ? (

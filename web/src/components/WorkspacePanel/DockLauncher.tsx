@@ -50,7 +50,7 @@ export function dockOpenItems(os: OS, actions: DockOpenActions, openIds: Readonl
   const tool = (id: string, label: string, icon: ReactNode, run: (() => void) | undefined, shortcut?: string) => {
     if (run) rows.push({ id, label, icon, shortcut, group: 'tool', run })
   }
-  view('review', 'Git', <GitCompare size={14} aria-hidden="true" />, actions.onOpenGit, shortcutLabel(APP_SHORTCUTS.openGit, os))
+  view('review', 'Changes', <GitCompare size={14} aria-hidden="true" />, actions.onOpenGit, shortcutLabel(APP_SHORTCUTS.openGit, os))
   view('goal', 'Goal', <Target size={14} aria-hidden="true" />, actions.onOpenGoal)
   view('plan', 'Plan', <FileText size={14} aria-hidden="true" />, actions.onOpenPlan)
   view('tasks', 'Tasks', <ListTodo size={14} aria-hidden="true" />, actions.onOpenTasks, shortcutLabel(APP_SHORTCUTS.tasks, os))
@@ -84,7 +84,7 @@ function moveBetweenRows(event: KeyboardEvent<HTMLDivElement>) {
  * Opened empty, the panel puts focus on its first row (see ``WorkspacePanel``).
  */
 /** A phone names the rows by what they hold (mockup J7 7.1). */
-export const PHONE_LABELS: Record<string, string> = { review: 'Changes', file: 'Files' }
+export const PHONE_LABELS: Record<string, string> = {}
 
 export function DockLauncher({ items, phone = false }: { items: DockOpenItem[]; phone?: boolean }) {
   if (phone) {

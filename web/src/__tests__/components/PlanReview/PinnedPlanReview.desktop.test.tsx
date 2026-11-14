@@ -26,7 +26,7 @@ describe('PinnedPlanReview on desktop', () => {
     const opened = mock(() => {})
     window.addEventListener(APP_EVENTS.openPlan, opened)
     render(<PinnedPlanReview />)
-    expect(screen.getByText('Plan awaiting approval')).toBeTruthy()
+    expect(screen.getByText('Needs you · a plan to review')).toBeTruthy()
     expect(screen.getByText('rev 2')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'View plan' }))
     expect(opened).toHaveBeenCalledTimes(1)

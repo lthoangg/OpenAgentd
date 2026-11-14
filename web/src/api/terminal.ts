@@ -213,7 +213,7 @@ function connectError(code: number | undefined): TerminalConnectError {
     return new TerminalConnectError('Terminal is open in another window', 'elsewhere')
   }
   if (code === CLOSE_SPAWN_FAILED) {
-    return new TerminalConnectError('Could not start the shell', 'spawn-failed')
+    return new TerminalConnectError("Couldn't start the shell", 'spawn-failed')
   }
   return new TerminalConnectError('Terminal connection refused')
 }

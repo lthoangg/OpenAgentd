@@ -128,7 +128,7 @@ export function NewSessionScreen({
         <div className="flex flex-col items-center gap-3 text-center">
           <h1 className={`font-semibold text-(--color-text) ${isMobile ? 'self-start text-left text-base' : 'text-base md:text-lg'}`}>
             {isChat ? 'Ask anything' : (
-              <>What should we build in <span className="font-mono">{workspaceName}</span>?</>
+              <>What should we do in <span className="font-mono">{workspaceName}</span>?</>
             )}
           </h1>
           <div className={`flex max-w-full flex-wrap items-center gap-2 ${isMobile ? 'self-start' : 'justify-center'}`}>

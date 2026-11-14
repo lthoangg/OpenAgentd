@@ -288,7 +288,7 @@ const RULES: Rule[] = [
   {
     name: 'faded-words',
     why: 'never fade words with opacity: a secondary line uses the muted text token (it keeps AA contrast)',
-    // A text span whose class fades it: `<span className="block opacity-70">Open Git</span>`.
+    // A text span whose class fades it: `<span className="block opacity-70">Open Changes</span>`.
     pattern: /<span className="[^"]*(?<![\w:-])opacity-\d+[^"]*">(?=[^<\s])/g,
     allow: {},
   },

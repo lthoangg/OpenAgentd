@@ -24,6 +24,8 @@ export interface ActionSheetItem {
   iconNode?: ReactNode
   /** Muted text at the row's end, e.g. a count. */
   detail?: string
+  /** One muted line under the label, saying what the row does. */
+  hint?: string
   /** A check at the row's end: the choice is already on (an open tab). */
   checked?: boolean
   /** Destructive: red, and kept last by the caller. */
@@ -63,7 +65,7 @@ export function ActionSheet({ open, onClose, title, description, items, cancel =
             {description && <p className="mt-0.5 text-xs text-(--color-text-muted)">{description}</p>}
           </div>
           <div className="flex flex-col p-1 pt-0">
-            {items.map(({ id, label, icon: Icon, iconNode, detail, checked, danger, separatorBefore, disabled, afterClose, run }) => (
+            {items.map(({ id, label, icon: Icon, iconNode, detail, hint, checked, danger, separatorBefore, disabled, afterClose, run }) => (
               <Fragment key={id}>
                 {separatorBefore && <div className={MENU_SEPARATOR_CLASS} role="separator" />}
                 <button
@@ -79,7 +81,14 @@ export function ActionSheet({ open, onClose, title, description, items, cancel =
                 >
                   {Icon ? <Icon size={16} aria-hidden="true" className="shrink-0" />
                     : iconNode ? <span aria-hidden="true" className="flex shrink-0 [&>svg]:size-4">{iconNode}</span> : null}
-                  <span className="min-w-0 flex-1 truncate">{label}</span>
+                  {hint ? (
+                    <span className="flex min-w-0 flex-1 flex-col py-1.5">
+                      <span className="truncate">{label}</span>
+                      <span className="truncate text-xs text-(--color-text-muted)">{hint}</span>
+                    </span>
+                  ) : (
+                    <span className="min-w-0 flex-1 truncate">{label}</span>
+                  )}
                   {detail && <span className="shrink-0 tabular-nums text-(--color-text-muted)">{detail}</span>}
                   {checked && (
                     <>

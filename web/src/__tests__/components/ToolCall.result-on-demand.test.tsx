@@ -92,7 +92,7 @@ describe("a tool result fetched on demand", () => {
     render(<ToolCall name="shell" args='{"command":"ls"}' done toolCallId="c8" resultBytes={20} />)
     fireEvent.click(row())
     await waitFor(() => expect(screen.getByText(/late output/)).toBeTruthy(), { timeout: 3000 })
-    expect(document.body.textContent).not.toContain("Could not load")
+    expect(document.body.textContent).not.toContain("Couldn't load")
     expect(document.body.textContent).not.toContain("result")
   })
 

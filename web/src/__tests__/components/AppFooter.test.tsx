@@ -117,14 +117,14 @@ describe('AppFooter', () => {
   it('shows the backend indicator when the backend is unhealthy', () => {
     healthError = true
     renderWithQueryClient(<AppFooter />)
-    expect(screen.getByRole('button', { name: /Server not reachable\. Change server/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Can't reach\. Change server/ })).toBeTruthy()
   })
 
   // Desktop mockup 12.1: the dot alone was the only sign, and easy to miss.
   it("says Can't reach beside the server's name while it does not answer", () => {
     healthError = true
     renderWithQueryClient(<AppFooter />)
-    expect(screen.getByRole('button', { name: /Server not reachable/ }).textContent).toBe("built-inCan't reach")
+    expect(screen.getByRole('button', { name: /Can't reach\. Change server/ }).textContent).toBe("built-inCan't reach")
   })
 
   it('adds no word while the server answers', () => {
@@ -154,14 +154,14 @@ describe('AppFooter', () => {
     expect(screen.queryByText(/^\*/)).toBeNull()
   })
 
-  it('names the branch action "Open Git" with its shortcut, in the muted tone', async () => {
+  it('names the branch action "Open Changes" with its shortcut, in the muted tone', async () => {
     renderWithQueryClient(<AppFooter workspace="/path/to/project" />, undefined, {})
     const branch = await screen.findByRole('button', { name: /^Git branch main/ })
 
     fireEvent.mouseEnter(branch.parentElement!)
     const tooltip = await screen.findByRole('tooltip')
-    const action = within(tooltip).getByText(/^Open Git \(.+\)$/)
-    expect(action.textContent).toMatch(/^Open Git \((⌘⇧G|⇧⌘G|Ctrl\+Shift\+G)\)$/)
+    const action = within(tooltip).getByText(/^Open Changes \(.+\)$/)
+    expect(action.textContent).toMatch(/^Open Changes \((⌘⇧G|⇧⌘G|Ctrl\+Shift\+G)\)$/)
     expect(action.className).toContain('text-(--color-text-muted)')
   })
 

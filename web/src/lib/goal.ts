@@ -134,8 +134,8 @@ export function goalNow(goal: SessionGoal | null | undefined, s: GoalSessionStat
   const queued = s.queuedMessages > 0
     ? `${plural(s.queuedMessages, 'queued message')} ${s.queuedMessages === 1 ? 'runs' : 'run'} before the goal's next turn.`
     : null
-  if (s.waitingForUser) return { tone: 'wait', text: 'Waiting for your answer', note: 'The agent asked you something. The goal goes on once you answer.' }
-  if (s.planReview) return { tone: 'wait', text: 'Waiting for plan approval', note: 'The goal goes on once you review the plan.' }
+  if (s.waitingForUser) return { tone: 'wait', text: 'Needs you · a question', note: 'The agent asked you something. The goal goes on once you answer.' }
+  if (s.planReview) return { tone: 'wait', text: 'Needs you · a plan to review', note: 'The goal goes on once you review the plan.' }
   if (s.running) return { tone: 'active', text: `Working · turn ${goalTurnNumber(goal, true)}/${goal.max_turns}`, note: queued }
   if (s.planMode) return { tone: 'wait', text: 'Waiting for Code mode', note: 'The goal starts its next turn when the session switches to Code mode.' }
   if (s.sessionsAwaited > 0) {

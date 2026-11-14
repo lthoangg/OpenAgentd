@@ -490,7 +490,7 @@ describe('Sidebar helpers', () => {
     expect(removed?.removedDirectory).toBe('/repo/task-a')
 
     const recovered = await recoverCreatedWorktreeAfterTransientError({
-      error: new TypeError('Failed to fetch'),
+      error: new TypeError("Failed to fetch"),
       worktreeTarget: '/repo',
       worktreeName: 'task a',
       loadWorktreesForSource: async () => [{
@@ -2883,7 +2883,7 @@ describe('Sidebar workspace trust flow', () => {
 
     expect(deleteSessionMutate).not.toHaveBeenCalled()
     expect(screen.getByText('Delete this session?')).toBeTruthy()
-    expect(screen.getByText(/deleted for good/i)).toBeTruthy()
+    expect(screen.getByText(/and its messages are deleted/i)).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: 'Delete session' }))
 

@@ -52,7 +52,7 @@ export function HealthDot({
   const status = health.isSuccess
     ? 'Connected. Change server'
     : health.isError
-      ? 'Server not reachable. Change server'
+      ? "Can't reach. Change server"
       : 'Connecting. Change server'
   // A bare dot (the phone drawer) has no visible name, so the label carries it.
   const label = labeled ? status : `${serverName}. ${status}`

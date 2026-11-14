@@ -41,7 +41,7 @@ describe('tool content is at least 12px', () => {
     const shell = render(<ToolResult toolName="shell" result={'[Succeeded]\n\nbuilt in 2s'} />)
     expectContentSize(screen.getByText(/built in 2s/))
     // The outcome is a status word: meta.
-    expect(screen.getByText('[Succeeded]').className).toContain('text-meta')
+    expect(screen.getByText('exit 0').className).toContain('text-meta')
     shell.unmount()
 
     const list = render(<ToolResult toolName="glob" result={'src/a.ts\nsrc/b.ts'} />)
@@ -96,7 +96,7 @@ describe('tool content is at least 12px', () => {
 
     const empty = render(<ToolResult toolName="todo" result="No todos." />)
     // An empty board is an empty state (a title), not a line of result text.
-    expect(screen.getByText('No todos')).toBeTruthy()
+    expect(screen.getByText('No tasks')).toBeTruthy()
     empty.unmount()
 
     const lsp = render(<ToolResult toolName="lsp" operation="find_references" result={'app/main.py:12:5 | print(answer())'} />)

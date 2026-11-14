@@ -112,7 +112,7 @@ function stateLabel(state: PlanReviewState): string {
     case 'submitting':
       return 'Submitting plan…'
     case 'waiting':
-      return 'Waiting for your review'
+      return 'Needs you · a plan to review'
     case 'approved':
       return 'Approved'
     case 'changes':
@@ -207,7 +207,7 @@ export function PinnedPlanReview() {
         isPhone ? 'min-h-11' : 'min-h-9',
       )}
     >
-      <span className={cn('min-w-0 flex-1 truncate text-(--accent-orange-text)', isPhone ? 'text-subhead' : 'text-xs font-medium')}>Plan awaiting approval</span>
+      <span className={cn('min-w-0 flex-1 truncate text-(--accent-orange-text)', isPhone ? 'text-subhead' : 'text-xs font-medium')}>Needs you · a plan to review</span>
       {openReview.planRevision != null && <span className="shrink-0 text-meta text-(--color-text-muted) tabular-nums">rev {openReview.planRevision}</span>}
       <Button type="button" size={isPhone ? 'sm' : 'xs'} aria-label="View plan" onClick={() => dispatchAppEvent(APP_EVENTS.openPlan)}>View</Button>
     </div>

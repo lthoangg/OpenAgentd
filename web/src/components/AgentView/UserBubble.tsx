@@ -172,16 +172,11 @@ function SentFromChip({ source, onOpenSession }: { source: SentFrom; onOpenSessi
   )
 }
 
-/** "From lead" above a message the main agent sent this subagent. */
+/** "From the main agent" above a message the main agent sent this subagent. */
 function FromLeadChip({ sessionId, onOpenSession }: { sessionId: string; onOpenSession?: OpenSessionHandler }) {
   return (
     <SourceChip
-      label={
-        <>
-          <span className="shrink-0">From</span>
-          <span className="shrink-0 font-mono font-semibold text-(--color-text)">lead</span>
-        </>
-      }
+      label={<span className="shrink-0">From the main agent</span>}
       title="Sent by the main agent"
       ariaLabel="Open the main agent"
       // The lead runs in this subagent's own workspace, so there is none to switch to.
@@ -317,7 +312,7 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
         aria-label={`Preview ${item.name}`}
       >
         {imgError
-          ? <div className="flex h-[120px] w-[120px] items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)">Failed to load</div>
+          ? <div className="flex h-[120px] w-[120px] items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)">Couldn't load</div>
           : (
             <img
               src={item.src}

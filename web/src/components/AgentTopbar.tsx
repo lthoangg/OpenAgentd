@@ -8,10 +8,8 @@
  */
 
 import {
-  CalendarClock,
   ListChecks,
   PanelRight,
-  Users,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -46,13 +44,9 @@ export interface AgentTopbarActionDescriptor {
 
 export interface AgentTopbarProps {
   todosAction?: AgentTopbarActionDescriptor
-  /** Scheduler action — opens the scheduled-tasks drawer. */
-  schedulerAction?: AgentTopbarActionDescriptor
   /** Files action — typically toggles the workspace files panel. */
   filesAction?: AgentTopbarActionDescriptor
-  /** Agents action — typically toggles the agent capabilities sidebar. */
-  agentsAction?: AgentTopbarActionDescriptor
-  /** Extra actions appended after Agents (rarely needed). */
+  /** Extra actions appended after Files (rarely needed). */
   extraActions?: React.ReactNode
   className?: string
 }
@@ -64,9 +58,7 @@ export interface AgentTopbarProps {
  */
 export function AgentTopbar({
   todosAction,
-  schedulerAction,
   filesAction,
-  agentsAction,
   extraActions,
   className,
 }: AgentTopbarProps) {
@@ -82,14 +74,8 @@ export function AgentTopbar({
       )}
     >
       {todosAction && <AgentTopbarActionButton action={todosAction} fallbackIcon={ListChecks} />}
-      {schedulerAction && (
-        <AgentTopbarActionButton action={schedulerAction} fallbackIcon={CalendarClock} />
-      )}
       {filesAction && (
         <AgentTopbarActionButton action={filesAction} fallbackIcon={PanelRight} />
-      )}
-      {agentsAction && (
-        <AgentTopbarActionButton action={agentsAction} fallbackIcon={Users} />
       )}
 
       {extraActions}

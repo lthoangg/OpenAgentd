@@ -14,9 +14,9 @@
  * The model lives on the composer's run deck, the one place to read and
  * change it, so the status bar does not repeat it.
  *
- * The command palette entry lives in the header's command center, so the
- * footer carries no help button. Hidden below ``md``; mobile surfaces these
- * in the sidebar drawer footer instead.
+ * The command palette has no button (its shortcut and the View menu open
+ * it), so the footer carries no help button. Hidden below ``md``; mobile
+ * surfaces these in the sidebar drawer footer instead.
  */
 import { RollingNumber } from '@/components/ui/swap'
 import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
@@ -241,7 +241,7 @@ export const AppFooter = memo(function AppFooter({
               />
               <TooltipContent>
                 <span className="block">{branchTooltip}</span>
-                <span className="block text-(--color-text-muted)">{`Open Git (${shortcutLabel(APP_SHORTCUTS.openGit, os)})`}</span>
+                <span className="block text-(--color-text-muted)">{`Open Changes (${shortcutLabel(APP_SHORTCUTS.openGit, os)})`}</span>
               </TooltipContent>
             </Tooltip>
           </>

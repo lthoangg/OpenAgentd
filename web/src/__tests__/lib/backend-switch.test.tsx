@@ -160,6 +160,6 @@ describe("the palette's Switch Server…", () => {
     })
 
     expect(screen.queryByRole('status')).toBeNull()
-    expect(useToastStore.getState().toasts[0]).toMatchObject({ tone: 'error', title: 'Could not connect to Home Mac' })
+    expect(useToastStore.getState().toasts[0]).toMatchObject({ tone: 'error', title: "Couldn't connect to Home Mac" })
   })
 })

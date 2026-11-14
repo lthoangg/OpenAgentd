@@ -149,7 +149,7 @@ function UsageBody({ query, remainingMs, label, providerId, providerLabel, crede
   } else if (kind === 'rejected' || kind === 'unavailable') {
     if (hasData) {
       notice = (
-        <Callout tone="warning" role="status" title="Could not refresh usage">
+        <Callout tone="warning" role="status" title="Couldn't refresh usage">
           Showing the last successful update.
         </Callout>
       )

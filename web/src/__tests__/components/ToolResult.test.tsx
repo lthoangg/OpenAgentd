@@ -91,16 +91,22 @@ describe("ToolResult — web_search", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolResult — shell", () => {
-  it("shows [Succeeded] status in green", () => {
+  it("shows a successful command as exit 0, in green, not the protocol's [Succeeded]", () => {
     render(<ToolResult toolName="shell" result={"[Succeeded]\n\nhello world"} />)
-    const status = screen.getByText(/\[Succeeded\]/)
+    const status = screen.getByText("exit 0")
     expect(status.className).toContain("accent-green-text")
+    expect(screen.queryByText(/\[Succeeded\]/)).toBeNull()
   })
 
-  it("shows [Failed] status in the error color", () => {
+  it("shows a failed command as its exit code, in the error color", () => {
     render(<ToolResult toolName="shell" result={"[Failed — exit code 1]\n\nerror output"} />)
-    const status = screen.getByText(/\[Failed/)
+    const status = screen.getByText("exit 1")
     expect(status.className).toContain("color-error")
+  })
+
+  it("says a command timed out in words", () => {
+    render(<ToolResult toolName="shell" result={"[Timed out after 30s]\n\npartial"} />)
+    expect(screen.getByText("Timed out after 30s").className).toContain("color-error")
   })
 
   it("renders stdout body text", () => {
@@ -110,7 +116,7 @@ describe("ToolResult — shell", () => {
 
   it("renders nothing extra when no body after status line", () => {
     render(<ToolResult toolName="shell" result="[Succeeded]" />)
-    expect(screen.getByText(/\[Succeeded\]/)).toBeTruthy()
+    expect(screen.getByText("exit 0")).toBeTruthy()
     // No pre block for empty body
     const pres = document.querySelectorAll("pre")
     expect(pres.length).toBe(0)
@@ -460,7 +466,7 @@ describe("ToolResult — todo_manage", () => {
     render(<ToolResult toolName="todo_manage" result={boardResult} />)
     const meta = screen.getByText("task_2").parentElement as HTMLElement
     expect(Array.from(meta.children).map((node) => node.textContent)).toEqual([
-      "pending",
+      "To do",
       "medium",
       "executor#2",
       "after task_1",
@@ -476,7 +482,7 @@ describe("ToolResult — todo_manage", () => {
 
   it("renders the empty board as an inline empty state: sentence case, no trailing period", () => {
     render(<ToolResult toolName="todo_manage" result="No todos." />)
-    const title = screen.getByText("No todos")
+    const title = screen.getByText("No tasks")
     expect(title.tagName).toBe("H2")
     // Inline (``fill={false}``): it does not stretch to fill the parent.
     expect(title.closest("[class*='h-full']")).toBeNull()

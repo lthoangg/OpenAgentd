@@ -387,7 +387,7 @@ export function UpdateCard() {
             <div className="mt-4 flex justify-end gap-2">
               {status.status === 'error' ? (
                 <Button type="button" variant="default" size="sm" onClick={() => void checkForUpdates(false)}>
-                  Try again
+                  Retry
                 </Button>
               ) : null}
               {status.status === 'available' ? (

@@ -92,5 +92,5 @@ widgets never store the server address or access key.
 | Problem | Fix |
 |---|---|
 | The widgets say "Open OpenAgentd to load your sessions" | Open the app once while it is connected to a server. |
-| The app cannot reach the server | Check that the phone and the computer are on the same network and the server was started with `--host 0.0.0.0 --key`. Make sure **Settings → Privacy & Security → Local Network → OpenAgentd** is on. |
+| The app cannot reach the server | Check that the phone and the computer are on the same network and the server was started with `--public --key`. Make sure **Settings → Privacy & Security → Local Network → OpenAgentd** is on. |
 | "Unauthorized" when connecting | The access key does not match. Re-enter the key you chose, or set a new one with `agentd server restart --public --key`. |

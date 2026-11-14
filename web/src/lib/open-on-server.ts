@@ -34,6 +34,15 @@ async function fail(error: string): Promise<OpenOutcome> {
   return 'failed'
 }
 
+/**
+ * A link named its server by a token this app no longer knows (a home-screen
+ * widget synced before the server was forgotten). The session id means
+ * nothing on another server, so nothing is opened: say so and show Servers.
+ */
+export function sessionServerUnknown(): Promise<OpenOutcome> {
+  return fail('This app no longer knows which computer that session is on. Choose the computer, then open the session from its list.')
+}
+
 async function afterSwitch(sessionId: string, result: { ok: true; reload: boolean } | { ok: false; error: string }): Promise<OpenOutcome> {
   if (!result.ok) return fail(result.error)
   requestSessionOpen(sessionId)

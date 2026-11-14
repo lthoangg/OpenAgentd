@@ -465,6 +465,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   the push alike), and for the built-in and saved servers once the app knows
   more than one server. It is the name the server lists show: the one you
   saved a server under, else the name its computer gives for itself.
+  Notifications no longer stay off for good `[v3.55.0]`: the app has had no
+  Notifications page since v2.9.0, yet a switch turned off there was still
+  obeyed, with no way to turn it back on. The switch is no longer read; the
+  operating system's notification settings are the one place to turn them
+  off. On an iPhone with **Show Previews** set to **Never**, tapping a push
+  now opens its session (the text stays hidden, as before).
 - **Home-screen widgets on iPhone and Android** `[v3.31.0]` — three widgets
   for the mobile app: **Quick start** (start a new session, or continue the
   last one), **Sessions** (up to three sessions, the ones that need you first,
@@ -480,6 +486,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   A widget's session opens on the server the widget synced from
   `[v3.52.0]`, switching to it first when the app is on another one, and a
   link is handled once even when iOS reloads the app in the background.
+  Since `[v3.55.0]` a widget never opens a session on the wrong server: a
+  row whose server the app no longer knows opens nothing, says so, and shows
+  Servers. Removing the server the widgets show, or signing out of the
+  account whose computer they show, empties them. A Chat session is named
+  "Chat" (it used to show your login name), and a snapshot the phone could
+  not save is sent again with the next change.
 - **Command palette and Find file** `[v2.3.0, updated v3.40.0]` — `⌘K`/`Ctrl+K`
   opens one search over app actions, sessions and workspace files; `⌘P`/`Ctrl+P`
   (Find file) opens the same palette scoped to files. It uses the compact
@@ -1178,6 +1190,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     within moments of starting, and one that finished while its server
     could not be reached once it is back; a finish put off with Later comes
     back when the session finishes again.
+    Since `[v3.55.0]` the pet's right-click menu opens every question its
+    bubble opens: a question asked while the pet was hidden used to be
+    greyed out there.
   - A question card in the transcript no longer sticks on "Waiting for an
     answer…": once the turn is over and no question is open, it says **No
     answer recorded** with what was asked, and a card closed from another
@@ -1571,6 +1586,15 @@ run from the terminal (the native Rust binary since v3.0.0).
     **Can't reach** groups, no "N need(s) you" chip in the header): it shows
     provider limits and actions only. The count mark on the tray icon is
     unchanged.
+    Since `[v3.55.0]` the numbers always belong to the server named above
+    them: picking another server shows placeholders under its name until
+    its reading arrives (it used to keep the last server's numbers for up to
+    10 s), reads it once, and drops an answer that arrives for a server you
+    have already left. A server that went away while picked falls back to
+    Auto in the list too. Opening the popup while a check is already running
+    waits for that check instead of sitting on placeholders. A limit the
+    provider reports as reached reads **Limit reached** below 100% as well,
+    as it does in Settings.
     Since `[v3.25.0]` it looks and moves like the app:
     - **Layout.** It shares the app's colours and type. A provider with
       several limits gets one card, with rows named by window ("5-hour",

@@ -18,7 +18,7 @@ const connectExternalBackend = mock(async (..._args: unknown[]) => switchResult)
 const reloadForBackendSwitch = mock(() => {})
 mock.module('@/lib/backend-switch', () => ({ connectAccountComputer, connectExternalBackend, reloadForBackendSwitch }))
 
-const { openSessionOnServer } = await import('@/lib/open-on-server')
+const { openSessionOnServer, sessionServerUnknown } = await import('@/lib/open-on-server')
 const { takePendingSessionOpen, PENDING_OPEN_EVENT } = await import('@/lib/pending-session-open')
 const { useToastStore } = await import('@/stores/useToastStore')
 const { useServersScreenStore } = await import('@/stores/useServersScreenStore')
@@ -132,6 +132,14 @@ describe('openSessionOnServer', () => {
     await Promise.all([first, second])
     // The second ran after the first switch finished.
     expect(connectAccountComputer).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens nothing for a server it no longer knows, says why and shows Servers', async () => {
+    const before = useServersScreenStore.getState().request
+    expect(await sessionServerUnknown()).toBe('failed')
+    expect(useToastStore.getState().toasts[0]).toMatchObject({ tone: 'error', title: "Couldn't open that session" })
+    expect(useServersScreenStore.getState().request).toBe(before + 1)
+    expect(takePendingSessionOpen()).toBeNull()
   })
 })
 

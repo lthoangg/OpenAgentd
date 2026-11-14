@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useScheduledTasksQuery } from '@/queries'
+import { useChatWorkspace } from '@/queries/useChatWorkspace'
 import { useActiveSessionsQuery, useSessionsQuery } from '@/queries/useSessionsQuery'
 import { buildWidgetSnapshot, pushWidgetSnapshot, type WidgetSnapshot } from '@/lib/widget-snapshot'
 
@@ -20,30 +21,42 @@ export function useWidgetSnapshot(): void {
   const active = useActiveSessionsQuery()
   const recent = useSessionsQuery()
   const tasks = useScheduledTasksQuery()
+  // From the workspace tree the sidebar already loads: no extra request.
+  const chat = useChatWorkspace()
   const ready = active.isSuccess && recent.isSuccess
   const latest = useRef<WidgetSnapshot | null>(null)
   const pushedKey = useRef<string | null>(null)
 
+  // The key is taken before the push, so a second trigger meanwhile sends
+  // nothing twice; a push that did not get there gives it back, and the
+  // next change (or leaving the app) sends that content again.
+  const push = (snapshot: WidgetSnapshot, key: string) => {
+    pushedKey.current = key
+    void pushWidgetSnapshot({ ...snapshot, updatedAt: new Date().toISOString() }).then((sent) => {
+      if (!sent && pushedKey.current === key) pushedKey.current = null
+    })
+  }
+  const pushRef = useRef(push)
+  pushRef.current = push
+
   useEffect(() => {
     if (!ready) return
-    const snapshot = buildWidgetSnapshot({ active: active.data, recent: recent.data, tasks: tasks.data?.tasks, now: new Date() })
+    const snapshot = buildWidgetSnapshot({ active: active.data, recent: recent.data, tasks: tasks.data?.tasks, now: new Date(), chat })
     latest.current = snapshot
     const key = contentKey(snapshot)
     if (key === pushedKey.current) return
     const timer = setTimeout(() => {
       // A background flush may have pushed this content already.
       if (key === pushedKey.current) return
-      pushedKey.current = key
-      void pushWidgetSnapshot({ ...snapshot, updatedAt: new Date().toISOString() })
+      pushRef.current(snapshot, key)
     }, WIDGET_PUSH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [ready, active.data, recent.data, tasks.data])
+  }, [ready, active.data, recent.data, tasks.data, chat])
 
   useEffect(() => {
     const flush = () => {
       if (document.visibilityState !== 'hidden' || !latest.current) return
-      pushedKey.current = contentKey(latest.current)
-      void pushWidgetSnapshot({ ...latest.current, updatedAt: new Date().toISOString() })
+      pushRef.current(latest.current, contentKey(latest.current))
     }
     document.addEventListener('visibilitychange', flush)
     return () => document.removeEventListener('visibilitychange', flush)

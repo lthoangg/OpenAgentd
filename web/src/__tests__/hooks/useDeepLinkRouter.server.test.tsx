@@ -15,7 +15,8 @@ mock.module('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ label:
 const navigate = mock(() => Promise.resolve())
 mock.module('@tanstack/react-router', () => ({ useRouter: () => ({ navigate }) }))
 const openSessionOnServer = mock(async (..._args: unknown[]) => 'switching' as const)
-mock.module('@/lib/open-on-server', () => ({ openSessionOnServer }))
+const sessionServerUnknown = mock(async () => 'failed' as const)
+mock.module('@/lib/open-on-server', () => ({ openSessionOnServer, sessionServerUnknown }))
 
 const { useDeepLinkRouter } = await import('@/hooks/useDeepLinkRouter')
 const { serverToken } = await import('@/lib/server-refs')
@@ -31,6 +32,7 @@ beforeEach(() => {
   sessionStorage.clear()
   navigate.mockClear()
   openSessionOnServer.mockClear()
+  sessionServerUnknown.mockClear()
 })
 
 afterEach(cleanup)
@@ -45,11 +47,20 @@ describe('session links that name their server', () => {
     expect(navigate).not.toHaveBeenCalled()
   })
 
-  it('opens on the server in use when the token is unknown (another install, or forgotten)', async () => {
+  // The same session id on the server in use would be another session, or none.
+  it('opens nothing on the server in use when the token is unknown, and says so', async () => {
     getCurrent.mockImplementation(() => Promise.resolve(['openagentd://session/s1?srv=unknowntoken1']))
     render(<DeepLinkRouter />)
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ href: '/s1' }))
+    await waitFor(() => expect(sessionServerUnknown).toHaveBeenCalledTimes(1))
+    expect(navigate).not.toHaveBeenCalled()
     expect(openSessionOnServer).not.toHaveBeenCalled()
+  })
+
+  it('still opens a link that names no server on the server in use', async () => {
+    getCurrent.mockImplementation(() => Promise.resolve(['openagentd://session/s1']))
+    render(<DeepLinkRouter />)
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ href: '/s1' }))
+    expect(sessionServerUnknown).not.toHaveBeenCalled()
   })
 
   it('keeps one token per server, following an account computer to a new bridge address', () => {

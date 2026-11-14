@@ -7,6 +7,7 @@
  * (a question waiting on the user is not "running").
  */
 import { useEffect, useState } from 'react'
+import type { ContentBlock } from '@/api/types'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useSimpleDetail } from '@/stores/useDisplayPrefsStore'
@@ -23,12 +24,33 @@ export function runBarLabel(steps: number, elapsedMs: number, simple = false): s
   return steps > 0 ? `Running · step ${steps} · ${time}` : `Running · ${time}`
 }
 
+/**
+ * The tool calls of the stream's trailing turn: back from the end to its
+ * prompt (any user block, the boundary the Full transcript draws). Both the
+ * live blocks and the stored ones count: a resume, a reload, or a compaction
+ * partway through the turn moves its earlier calls into ``blocks``.
+ */
+export function turnToolCount(stream: { blocks: readonly ContentBlock[]; currentBlocks: readonly ContentBlock[] }): number {
+  let count = 0
+  for (const list of [stream.currentBlocks, stream.blocks]) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      const block = list[i]
+      if (block.type === 'user') return count
+      if (block.type === 'tool') count += 1
+    }
+  }
+  return count
+}
+
 export function RunBar() {
   const isPhone = useIsPhone()
   const simple = useSimpleDetail()
   const working = useAgentStore((s) => s.isAgentWorking && s.leadName != null && s.agentStreams[s.leadName]?.status === 'working')
   const startedAt = useAgentStore((s) => (s.leadName ? s.agentStreams[s.leadName]?._turnStartedAt ?? null : null))
-  const steps = useAgentStore((s) => (s.leadName ? s.agentStreams[s.leadName]?.currentBlocks.filter((b) => b.type === 'tool').length ?? 0 : 0))
+  const steps = useAgentStore((s) => {
+    const stream = s.leadName ? s.agentStreams[s.leadName] : undefined
+    return stream ? turnToolCount(stream) : 0
+  })
   const [now, setNow] = useState(() => Date.now())
   const visible = isPhone && working
 

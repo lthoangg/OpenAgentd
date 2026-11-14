@@ -60,4 +60,36 @@ describe('RunBar', () => {
     act(() => { useAgentStore.setState({ isAgentWorking: false, agentStreams: { lead: stream('idle', 1) as never } }) })
     expect(container.textContent).toBe('')
   })
+
+  describe('counts every tool call of the running turn, wherever its blocks sit', () => {
+    const user = (id: string) => ({ id, type: 'user', content: 'go' })
+    const tool = (id: string) => ({ id, type: 'tool', content: '' })
+    const text = (id: string) => ({ id, type: 'text', content: 'done' })
+    const compaction = (id: string) => ({ id, type: 'compaction', content: 'summary' })
+    const working = (blocks: unknown[], currentBlocks: unknown[]) => ({ ...stream('working', 0), blocks, currentBlocks })
+    const renderWith = (blocks: unknown[], currentBlocks: unknown[]) => {
+      useAgentStore.setState({ leadName: 'lead', isAgentWorking: true, agentStreams: { lead: working(blocks, currentBlocks) as never } })
+      render(<RunBar />)
+    }
+
+    it('after a resume moved the persisted calls into the stored rows', () => {
+      renderWith([user('u1'), tool('a'), tool('b'), tool('c')], [tool('d')])
+      expect(screen.getByText(/^Running · step 4 · /)).toBeTruthy()
+    })
+
+    it('after a reload, with every call so far in the stored rows', () => {
+      renderWith([user('u1'), tool('a'), tool('b'), tool('c'), tool('d'), tool('e')], [])
+      expect(screen.getByText(/^Running · step 5 · /)).toBeTruthy()
+    })
+
+    it('across a compaction partway through the turn', () => {
+      renderWith([user('u1'), tool('a'), tool('b'), compaction('c1')], [tool('c')])
+      expect(screen.getByText(/^Running · step 3 · /)).toBeTruthy()
+    })
+
+    it('not the calls of an earlier, finished turn', () => {
+      renderWith([user('u1'), tool('a'), tool('b'), text('t1')], [user('u2'), tool('c')])
+      expect(screen.getByText(/^Running · step 1 · /)).toBeTruthy()
+    })
+  })
 })

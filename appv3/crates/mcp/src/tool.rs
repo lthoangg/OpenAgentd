@@ -319,6 +319,25 @@ impl McpTool {
     pub fn read_only(&self) -> bool {
         self.def.pointer("/annotations/readOnlyHint") == Some(&Value::Bool(true))
     }
+
+    /// Whether `who` (`"model"` or `"app"`) may call the tool, from its
+    /// `_meta.ui.visibility`. A tool that does not say is open to both.
+    fn visible_to(&self, who: &str) -> bool {
+        match self.def.pointer("/_meta/ui/visibility").and_then(|v| v.as_array()) {
+            Some(list) => list.iter().any(|v| v.as_str() == Some(who)),
+            None => true,
+        }
+    }
+
+    /// The agent may be offered and call the tool.
+    pub fn for_model(&self) -> bool {
+        self.visible_to("model")
+    }
+
+    /// An MCP app's panel may call the tool.
+    pub fn for_app(&self) -> bool {
+        self.visible_to("app")
+    }
 }
 
 #[async_trait]

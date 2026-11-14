@@ -6,6 +6,8 @@ import { MCPAppResult } from "@/components/MCPAppResult"
 import { FRAME_KEYS_NS } from "@/lib/keyboard/frames"
 
 const callMcpAppTool = mock(async () => ({ result: { content: [{ type: "text", text: "saved" }] } }))
+const issueMcpAppFrameUrl = mock(async (..._args: unknown[]) => "about:blank?frame=ticket-1")
+const updateMcpAppModelContext = mock(async (..._args: unknown[]): Promise<void> => undefined)
 
 afterEach(cleanup)
 
@@ -17,7 +19,7 @@ class MockBridge {
   onsizechange?: (params: { height?: number }) => Promise<void>
   onopenlink?: (params: { url: string }) => Promise<Record<string, unknown>>
   onloggingmessage?: (params: { level: string; logger?: string; data?: unknown }) => void
-  onupdatemodelcontext?: () => Promise<Record<string, unknown>>
+  onupdatemodelcontext?: (params: { content?: unknown[]; structuredContent?: Record<string, unknown> }) => Promise<Record<string, unknown>>
   onmessage?: () => Promise<Record<string, unknown>>
   onrequestdisplaymode?: (params: { mode: string }) => Promise<{ mode: string }>
   oninitialized?: () => void
@@ -46,6 +48,8 @@ mock.module("@modelcontextprotocol/ext-apps/app-bridge", () => ({
 
 mock.module("@/api/client", () => ({
   callMcpAppTool,
+  issueMcpAppFrameUrl,
+  updateMcpAppModelContext,
 }))
 
 
@@ -62,7 +66,110 @@ describe("MCPAppResult", () => {
     MockBridge.lastTransport = undefined
     callMcpAppTool.mockClear()
     callMcpAppTool.mockImplementation(async () => ({ result: { content: [{ type: "text", text: "saved" }] } }))
+    issueMcpAppFrameUrl.mockClear()
+    issueMcpAppFrameUrl.mockImplementation(async () => "about:blank?frame=ticket-1")
+    updateMcpAppModelContext.mockClear()
+    updateMcpAppModelContext.mockImplementation(async () => undefined)
     document.documentElement.className = ""
+  })
+
+  it("loads a stored result's page from a single-use address, with the host scripts for its head", async () => {
+    render(
+      <MCPAppResult
+        sessionId="session-1"
+        toolCallId="tool-call-1"
+        mcpApp={{
+          server: "canvas",
+          tool: "exec",
+          resourceUri: "ui://canvas/app.html",
+          html_sha256: "a".repeat(64),
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(document.body.querySelector("iframe")?.getAttribute("src")).toBe("about:blank?frame=ticket-1"))
+    const iframe = document.body.querySelector("iframe")
+    expect(iframe?.getAttribute("srcdoc")).toBeNull()
+    expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts allow-forms")
+    expect(issueMcpAppFrameUrl).toHaveBeenCalledTimes(1)
+    const request = issueMcpAppFrameUrl.mock.calls[0][0] as { session_id: string; tool_call_id: string; head: string }
+    expect(request.session_id).toBe("session-1")
+    expect(request.tool_call_id).toBe("tool-call-1")
+    expect(request.head).toContain("function createStorage")
+    expect(request.head).toContain(FRAME_KEYS_NS)
+    // The server sends the page's policy as a header.
+    expect(request.head).not.toContain("Content-Security-Policy")
+    expect(screen.queryByText(/MCP app bridge error/)).toBeNull()
+  })
+
+  it("renders inline HTML in place when no address can be issued", async () => {
+    issueMcpAppFrameUrl.mockImplementation(async () => {
+      throw new Error("Not Found")
+    })
+    render(
+      <MCPAppResult
+        sessionId="session-1"
+        toolCallId="tool-call-1"
+        mcpApp={{
+          server: "canvas",
+          tool: "exec",
+          resourceUri: "ui://canvas/app.html",
+          html: "<html><body>inline app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(document.body.querySelector("iframe")?.getAttribute("srcdoc")).toContain("inline app"))
+    expect(document.body.querySelector("iframe")?.getAttribute("src")).toBeNull()
+    expect(document.body.querySelector("iframe")?.getAttribute("sandbox")).toBe("allow-scripts allow-forms")
+  })
+
+  it("says so when a stored page cannot be loaded", async () => {
+    issueMcpAppFrameUrl.mockImplementation(async () => {
+      throw new Error("MCP app page not found.")
+    })
+    render(
+      <MCPAppResult
+        sessionId="session-1"
+        toolCallId="tool-call-1"
+        mcpApp={{ server: "canvas", tool: "exec", resourceUri: "ui://canvas/app.html", html_sha256: "a".repeat(64) }}
+      />,
+    )
+
+    expect(await screen.findByText("MCP app bridge error: MCP app page not found.")).toBeTruthy()
+    expect(document.body.querySelector("iframe")?.getAttribute("src")).toBeNull()
+  })
+
+  it("passes what the app reports for the model to the backend, keeping only the newest while one is sent", async () => {
+    render(
+      <MCPAppResult
+        sessionId="session-1"
+        toolCallId="tool-call-1"
+        mcpApp={{ server: "canvas", tool: "exec", resourceUri: "ui://canvas/app.html", html_sha256: "a".repeat(64) }}
+      />,
+    )
+    await waitFor(() => expect(bridgeInstances[0]?.connect).toHaveBeenCalled())
+
+    let finishFirst: () => void = () => undefined
+    let sent = 0
+    updateMcpAppModelContext.mockImplementation(() => {
+      sent += 1
+      return sent === 1 ? new Promise<void>((resolve) => { finishFirst = resolve }) : Promise.resolve()
+    })
+    const report = (text: string) => bridgeInstances[0]?.onupdatemodelcontext?.({ content: [{ type: "text", text }] })
+    expect(await report("1 shape")).toEqual({})
+    await report("2 shapes")
+    await report("3 shapes")
+    expect(updateMcpAppModelContext).toHaveBeenCalledTimes(1)
+    finishFirst()
+
+    await waitFor(() => expect(updateMcpAppModelContext).toHaveBeenCalledTimes(2))
+    expect(updateMcpAppModelContext.mock.calls.map((call) => call[0])).toEqual([
+      { session_id: "session-1", tool_call_id: "tool-call-1", content: [{ type: "text", text: "1 shape" }] },
+      { session_id: "session-1", tool_call_id: "tool-call-1", content: [{ type: "text", text: "3 shapes" }] },
+    ])
   })
 
   it("routes open-link requests through openExternalUrl so Tauri shells open the system browser", async () => {
@@ -90,6 +197,30 @@ describe("MCPAppResult", () => {
     openSpy.mockRestore()
   })
 
+  it("refuses to open links that are not http or https", async () => {
+    const openSpy = spyOn(window, "open").mockImplementation(() => null)
+
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: "<html><body>mcp app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(bridgeInstances[0]?.connect).toHaveBeenCalled())
+    for (const url of ["file:///etc/passwd", "javascript:alert(1)", "myapp://open?x=1", "not a url"]) {
+      const result = await bridgeInstances[0]?.onopenlink?.({ url })
+      expect(result).toEqual({ isError: true })
+    }
+
+    expect(openSpy).not.toHaveBeenCalled()
+    openSpy.mockRestore()
+  })
+
   it("renders MCP app HTML from srcdoc so production shells avoid blob/data frame quirks", async () => {
     render(
       <MCPAppResult
@@ -110,7 +241,10 @@ describe("MCPAppResult", () => {
 
     const iframe = document.body.querySelector("iframe")
     expect(iframe).toBeTruthy()
-    expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin allow-forms")
+    // Without allow-same-origin the frame has its own origin: the app cannot
+    // reach window.parent, the host's storage, or the host's API.
+    expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts allow-forms")
+    expect(iframe?.getAttribute("sandbox")).not.toContain("allow-same-origin")
     expect(iframe?.getAttribute("allow")).toContain("clipboard-write")
     expect(iframe?.getAttribute("src")).toBeNull()
     expect(iframe?.getAttribute("title")).toBe("create_view")
@@ -165,6 +299,33 @@ describe("MCPAppResult", () => {
     const appHtml = document.body.querySelector("iframe")?.getAttribute("srcdoc") ?? ""
     expect(appHtml).toContain("script-src 'self' blob: data: https://esm.sh 'unsafe-inline' 'unsafe-eval'")
     expect(appHtml).toContain("connect-src 'self' https://esm.sh")
+  })
+
+  it("drops declared CSP domains that could add their own policy directives", async () => {
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: "<html><body>mcp app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+          resourceMeta: {
+            ui: {
+              csp: {
+                connectDomains: ["https://ok.example", "https://a.example; script-src *", "'unsafe-eval'", "https://b.example https://c.example"],
+              },
+            },
+          },
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(document.body.querySelector("iframe")?.getAttribute("srcdoc")).toContain("mcp app"))
+
+    const appHtml = document.body.querySelector("iframe")?.getAttribute("srcdoc") ?? ""
+    expect(appHtml).toContain("connect-src 'self' https://ok.example;")
+    expect(appHtml).not.toContain("a.example")
+    expect(appHtml).not.toContain("c.example")
   })
 
   it("injects sandbox-safe storage shims before app scripts run", async () => {

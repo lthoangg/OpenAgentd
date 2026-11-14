@@ -26,6 +26,34 @@ number, or the two-minute limit leaves the account and drops the keys, also
 when the leave fails. `wrong_number` is a new guest notice. There is no
 on-disk format change.
 
+### MCP app panels (v3.55.0)
+
+An MCP app's page is no longer part of its tool result. `extra.mcp_app` (the
+tool row and `tool_end`'s `metadata.mcp_app`) carries `html_sha256` instead of
+`html`; the page is written once to `<data_dir>/mcp-apps/<sha256>.html`. Rows
+stored earlier keep their inline `html` and still render. There is no schema
+change.
+
+The panel's frame loads the page from the API, in an origin of its own:
+`POST /api/mcp/app-frames {session_id, tool_call_id, head?}` returns
+`{ticket}` for a stored app result, and `GET /api/mcp/app-frames/{ticket}`
+serves the page once within 60 s, with `head` first in its `<head>`. That
+`GET` needs no access key (the app can read its own address, so the address
+must not hold one). It answers with its own `Content-Security-Policy`, built
+from the resource's declared domains plus `sandbox allow-scripts allow-forms`,
+and without `X-Frame-Options`.
+
+`POST /api/mcp/app-context {session_id, tool_call_id, content?,
+structuredContent?}` keeps what a panel reports for the model
+(`ui/update-model-context`). The newest report of each panel is saved with the
+session's next user message as a hidden `kind='note'` row
+(`extra.mcp_app_context`). Reports wait in memory, not on disk.
+
+A tool whose `_meta.ui.visibility` lacks `"model"` is left out of the agent's
+tools, of `mcp` search and call, and of a server's `tool_names`.
+`/api/mcp/app-tools/call` answers 403 for a tool whose visibility lacks
+`"app"`.
+
 ## 1. How parity was verified
 
 **The differential harnesses (`appv3/scripts/`) and their Rust probe

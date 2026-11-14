@@ -4050,7 +4050,6 @@ Four orthogonal ways to add capability.
     results (including `read`) are shrunk when they arrive, and requests also
     shrink oversized images replayed from older history, so Anthropic's
     many-image limit and other providers' pixel limits always hold.
-- **Sandboxed UI artifacts** `[v1.36.0]` *(beta)* — tool-produced HTML UI
 - **Sandboxed UI artifacts** `[v1.36.0, updated v2.17.0]` *(beta)* — tool-produced HTML UI
   resources render as sandboxed sibling chat artifacts. The first producer is
   MCP Apps: MCP tools that declare `_meta.ui.resourceUri` can render `ui://`
@@ -4063,6 +4062,15 @@ Four orthogonal ways to add capability.
   Production desktop and mobile Tauri shells allow `about:` frames so `srcdoc`
   MCP Apps render interactively under the packaged CSP `[v1.44.11]`. The MCP app
   host runs on `@modelcontextprotocol/ext-apps` v2.0 with modular client/core architecture `[v2.17.0]`.
+  An app runs in an origin of its own `[v3.55.0]`: it cannot read the
+  OpenAgentd page, its storage or its access key, cannot call the OpenAgentd
+  API, loads only from the domains its resource declares, and can open
+  `http` and `https` links only. Its page loads from a single-use address, so
+  apps that need a real page address work. What
+  an app reports for the model, such as the shapes a user drew on a canvas,
+  reaches the agent with the next message. Tools a server marks for the app
+  alone are not offered to the agent. An app's page is stored once instead of
+  with every result, so a session with many app results stays small.
 - **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
   shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
   any MCP server in Settings to re-detect.

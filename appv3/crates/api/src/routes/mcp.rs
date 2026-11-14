@@ -8,13 +8,16 @@ use appv3_mcp::admin::{merge_masked, store_oauth_secrets};
 use appv3_mcp::config::{self as cfgmod, HttpKind, OAuthConfig, ServerConfig};
 use appv3_mcp::{masked_config_body, mcp_manager, oauth, plugin_config_body, AppToolError, ServerStatus};
 use axum::extract::{Path as AxPath, State};
-use axum::response::Response;
+use axum::http::{header, HeaderName, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
 use bytes::Bytes;
 use indexmap::IndexMap;
 use serde_json::{json, Value};
-use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -23,6 +26,9 @@ pub fn router() -> Router<AppState> {
         .route("/servers/{name}/restart", post(restart_server))
         .route("/servers/{name}/oauth/connect", post(connect_oauth))
         .route("/app-tools/call", post(call_app_tool))
+        .route("/app-frames", post(issue_app_frame))
+        .route("/app-frames/{ticket}", get(app_frame))
+        .route("/app-context", post(update_app_context))
         .route("/apply", post(apply))
 }
 
@@ -287,6 +293,15 @@ async fn apply() -> ApiResult<Response> {
     Ok(json(list_json(&cfg)))
 }
 
+/// The `mcp_app` stored with the tool result of `tool_call_id`: what every
+/// request from an app's panel is bound to.
+async fn bound_app(pool: &appv3_db::DbPool, session_id: &str, tool_call_id: &str) -> ApiResult<Value> {
+    let Some(sid) = py_uuid(session_id) else { return Err(ApiError::unprocessable("Invalid session_id.")) };
+    let row = appv3_db::queries::messages::find_tool_message(pool, &sid, tool_call_id).await.map_err(internal)?;
+    let app = row.and_then(|r| r.extra_json()).and_then(|e| e.get("mcp_app").filter(|a| a.is_object()).cloned());
+    app.ok_or_else(|| ApiError::not_found("MCP app artifact not found."))
+}
+
 async fn call_app_tool(State(st): State<AppState>, raw: Bytes) -> ApiResult<Response> {
     let v = body_value(&raw)?;
     let mut b = Body::new(&v)?;
@@ -296,10 +311,7 @@ async fn call_app_tool(State(st): State<AppState>, raw: Bytes) -> ApiResult<Resp
     let tool = b.str_min1("tool");
     let arguments = b.dict_any("arguments");
     b.finish(&["session_id", "tool_call_id", "server", "tool", "arguments"])?;
-    let Some(sid) = py_uuid(&session_id) else { return Err(ApiError::unprocessable("Invalid session_id.")) };
-    let row = appv3_db::queries::messages::find_tool_message(&st.pool, &sid, &tool_call_id).await.map_err(internal)?;
-    let app = row.and_then(|r| r.extra_json()).and_then(|e| e.get("mcp_app").filter(|a| a.is_object()).cloned());
-    let Some(app) = app else { return Err(ApiError::not_found("MCP app artifact not found.")) };
+    let app = bound_app(&st.pool, &session_id, &tool_call_id).await?;
     if app.get("server") != Some(&json!(server)) {
         return Err(ApiError::new(403, "MCP app server mismatch."));
     }
@@ -310,6 +322,94 @@ async fn call_app_tool(State(st): State<AppState>, raw: Bytes) -> ApiResult<Resp
         Err(AppToolError::NotConnected(m)) => Err(ApiError::conflict(m)),
         Err(AppToolError::Failed(_)) => Err(ApiError::new(502, "MCP app tool call failed.")),
     }
+}
+
+// ── an app's page, for its frame ────────────────────────────────────────────
+
+/// How long the web UI has to load the frame after asking for its address.
+const FRAME_TICKET_TTL: Duration = Duration::from_secs(60);
+const MAX_PENDING_FRAMES: usize = 64;
+/// The host's own scripts for the page (storage stand-ins, key forwarding).
+const MAX_FRAME_HEAD_BYTES: usize = 64 * 1024;
+
+struct FrameTicket {
+    session_id: String,
+    tool_call_id: String,
+    head: String,
+    expiry: Instant,
+}
+
+fn frame_tickets() -> &'static Mutex<HashMap<String, FrameTicket>> {
+    static T: OnceLock<Mutex<HashMap<String, FrameTicket>>> = OnceLock::new();
+    T.get_or_init(Default::default)
+}
+
+/// Take the ticket: it opens the page once.
+fn redeem_frame(ticket: &str) -> Option<FrameTicket> {
+    let mut map = frame_tickets().lock().unwrap();
+    let now = Instant::now();
+    map.retain(|_, t| now <= t.expiry);
+    let matched = map.keys().find(|k| appv3_core::auth::constant_time_eq(k, ticket)).cloned()?;
+    map.remove(&matched)
+}
+
+/// `POST /app-frames`: a single-use address for the page of one stored app
+/// result. The frame loads it without the access key, so the app never
+/// holds one.
+async fn issue_app_frame(State(st): State<AppState>, raw: Bytes) -> ApiResult<Response> {
+    let v = body_value(&raw)?;
+    let mut b = Body::new(&v)?;
+    let session_id = b.str("session_id", None);
+    let tool_call_id = b.str("tool_call_id", None);
+    let head = b.opt_str("head").unwrap_or_default();
+    b.finish(&["session_id", "tool_call_id", "head"])?;
+    if head.len() > MAX_FRAME_HEAD_BYTES {
+        return Err(ApiError::new(413, "MCP app frame head is too large."));
+    }
+    bound_app(&st.pool, &session_id, &tool_call_id).await?;
+    let ticket = token_urlsafe();
+    let mut map = frame_tickets().lock().unwrap();
+    let now = Instant::now();
+    map.retain(|_, t| now <= t.expiry);
+    if map.len() >= MAX_PENDING_FRAMES {
+        return Err(ApiError::new(429, "Too many MCP app frames are waiting to load."));
+    }
+    map.insert(ticket.clone(), FrameTicket { session_id, tool_call_id, head, expiry: now + FRAME_TICKET_TTL });
+    Ok(json(json!({"ticket": ticket})))
+}
+
+/// `GET /app-frames/{ticket}`: the app's page, confined by its own policy.
+async fn app_frame(State(st): State<AppState>, AxPath(ticket): AxPath<String>) -> ApiResult<Response> {
+    let Some(t) = redeem_frame(&ticket) else { return Err(ApiError::not_found("MCP app frame not found.")) };
+    let app = bound_app(&st.pool, &t.session_id, &t.tool_call_id).await?;
+    let Some(html) = appv3_agent::mcp_apps::load_html(&app).await else { return Err(ApiError::not_found("MCP app page not found.")) };
+    let csp = HeaderValue::from_str(&appv3_agent::mcp_apps::frame_csp(&app)).map_err(internal)?;
+    let mut resp = (StatusCode::OK, appv3_agent::mcp_apps::with_head(&html, &t.head)).into_response();
+    let h = resp.headers_mut();
+    h.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
+    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    h.insert(header::CONTENT_SECURITY_POLICY, csp);
+    // What the app may use is the frame's `allow` attribute, from the
+    // permissions its resource declares.
+    h.insert(HeaderName::from_static("permissions-policy"), HeaderValue::from_static("payment=()"));
+    resp.extensions_mut().insert(crate::middleware::Frameable);
+    Ok(resp)
+}
+
+/// `POST /app-context`: what an app's panel reports for the model. The
+/// newest report of each panel goes with the session's next user message.
+async fn update_app_context(State(st): State<AppState>, raw: Bytes) -> ApiResult<Response> {
+    let v = body_value(&raw)?;
+    let mut b = Body::new(&v)?;
+    let session_id = b.str("session_id", None);
+    let tool_call_id = b.str("tool_call_id", None);
+    b.finish(&["session_id", "tool_call_id", "content", "structuredContent"])?;
+    let app = bound_app(&st.pool, &session_id, &tool_call_id).await?;
+    let part = |k: &str| app.get(k).and_then(Value::as_str).unwrap_or("?");
+    let label = format!("{} · {}", part("server"), part("tool"));
+    let text = appv3_agent::mcp_apps::context_text(v.get("content"), v.get("structuredContent"));
+    appv3_agent::mcp_apps::report_model_context(&session_id, &tool_call_id, &label, &text);
+    Ok(json(json!({})))
 }
 
 #[cfg(test)]

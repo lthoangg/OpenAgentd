@@ -2,7 +2,7 @@
  * OpenAgentd API client — MCP group: /mcp servers + app tools.
  */
 
-import { apiBaseUrl } from '../base-url'
+import { apiBaseUrl, apiUrl } from '../base-url'
 import { parseDetailOrThrow } from './_shared'
 
 export type StdioServerBody = {
@@ -119,4 +119,38 @@ export async function callMcpAppTool(body: MCPAppToolCallRequest): Promise<MCPAp
   })
   if (!res.ok) await parseDetailOrThrow(res, 'POST /mcp/app-tools/call')
   return res.json()
+}
+
+/** The stored tool result an app's panel belongs to. */
+export interface MCPAppBinding {
+  session_id: string
+  tool_call_id: string
+}
+
+/**
+ * A single-use address for an app's page. The frame loads it without the
+ * access key, so the address must not go through `withTokenParam`: the app
+ * can read its own address. `head` is put first in the page's `<head>`.
+ */
+export async function issueMcpAppFrameUrl(body: MCPAppBinding & { head: string }): Promise<string> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/app-frames`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /mcp/app-frames')
+  const { ticket } = (await res.json()) as { ticket: string }
+  return apiUrl(`/mcp/app-frames/${encodeURIComponent(ticket)}`)
+}
+
+/** What an app's panel reports for the model; it goes with the next message. */
+export async function updateMcpAppModelContext(
+  body: MCPAppBinding & { content?: unknown[]; structuredContent?: Record<string, unknown> },
+): Promise<void> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/app-context`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /mcp/app-context')
 }

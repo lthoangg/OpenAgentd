@@ -517,7 +517,7 @@ mod tests {
         let runner = Runner::new(server, &cfg.servers["s"], RunnerState::Ready, server.split_once('/').map(|(plugin, _)| plugin));
         let weak = Arc::downgrade(&(runner.clone() as Arc<dyn SessionProvider>));
         let tools: Vec<Arc<McpTool>> = defs.into_iter().map(|d| Arc::new(McpTool::new(server, d, weak.clone()))).collect();
-        runner.details.lock().unwrap().tool_names = tools.iter().map(|t| t.name.clone()).collect();
+        runner.details.lock().unwrap().tool_names = crate::model_tool_names(&tools);
         *runner.tools.lock().unwrap() = tools;
         m.runners.write().unwrap().insert(server.into(), runner);
         m
@@ -575,6 +575,35 @@ mod tests {
     /// The hub over `manager`, with test-kit's tools as the plugins' tools.
     fn hub_with_test_kit(manager: Arc<McpManager>) -> McpHubTool {
         McpHubTool { manager, plugin_tools: test_kit }
+    }
+
+    /// `_meta.ui.visibility` says who may call a tool. The agent is never
+    /// offered a tool meant for the app's panel, and the panel cannot call a
+    /// tool meant for the agent alone.
+    #[tokio::test]
+    async fn app_only_tools_are_hidden_from_the_agent_and_kept_for_the_app() {
+        let m = manager_with(
+            "canvas",
+            vec![
+                json!({"name": "exec", "description": "Run code on the canvas"}),
+                json!({"name": "save_checkpoint", "description": "Save the canvas", "_meta": {"ui": {"visibility": ["app"]}}}),
+                json!({"name": "plan", "description": "Plan a drawing", "_meta": {"ui": {"visibility": ["model"]}}}),
+                json!({"name": "both", "description": "Refresh the canvas", "_meta": {"ui": {"visibility": ["model", "app"]}}}),
+            ],
+        );
+        let agent_tools = ["canvas_exec", "canvas_plan", "canvas_both"];
+        assert_eq!(m.tools_for_server("canvas").unwrap().iter().map(|t| t.name().to_string()).collect::<Vec<_>>(), agent_tools);
+        assert_eq!(m.ready_tools(None).iter().map(|t| t.name.clone()).collect::<Vec<_>>(), agent_tools);
+        assert_eq!(m.get_status("canvas").unwrap().tool_names, agent_tools);
+
+        let hub = hub_with_test_kit(m.clone());
+        let listed = run(&hub, false, json!({"action": "search", "server": "canvas"})).await.unwrap();
+        assert!(!listed.contains("save_checkpoint"), "{listed}");
+        let refused = run(&hub, false, json!({"action": "call", "server": "canvas", "tool": "save_checkpoint", "arguments": {}})).await.unwrap_err();
+        assert!(refused.contains("save_checkpoint") && !refused.contains("not connected"), "{refused}");
+
+        let runner = m.runners.read().unwrap().get("canvas").cloned().unwrap();
+        assert_eq!(["exec", "save_checkpoint", "plan", "both", "nope"].map(|t| runner.app_may_call(t)), [true, true, false, true, false]);
     }
 
     /// A call or search refused because the server waits on sign-in names it

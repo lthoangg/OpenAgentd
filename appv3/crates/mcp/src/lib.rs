@@ -129,6 +129,12 @@ impl SessionProvider for Runner {
     }
 }
 
+/// Names of the tools the agent may use: a tool for the app's panel alone is
+/// not one of the server's tools as far as the agent and Settings go.
+fn model_tool_names(tools: &[Arc<McpTool>]) -> Vec<String> {
+    tools.iter().filter(|t| t.for_model()).map(|t| t.name.clone()).collect()
+}
+
 impl Runner {
     fn new(name: &str, cfg: &ServerConfig, state: RunnerState, plugin: Option<&str>) -> Arc<Self> {
         Arc::new(Runner {
@@ -145,6 +151,14 @@ impl Runner {
     }
     fn state(&self) -> RunnerState {
         *self.state.borrow()
+    }
+    /// The tools the agent may use (`tools` also holds the app-only ones).
+    fn model_tools(&self) -> Vec<Arc<McpTool>> {
+        self.tools.lock().unwrap().iter().filter(|t| t.for_model()).cloned().collect()
+    }
+    /// An MCP app's panel may call `tool` (its name on the server).
+    fn app_may_call(&self, tool: &str) -> bool {
+        self.tools.lock().unwrap().iter().any(|t| t.remote_name == tool && t.for_app())
     }
     fn status(&self) -> ServerStatus {
         let d = self.details.lock().unwrap();
@@ -166,7 +180,7 @@ impl Runner {
         if !self.state().can_become(RunnerState::Ready) {
             return false;
         }
-        d.tool_names = tools.iter().map(|t| t.name.clone()).collect();
+        d.tool_names = model_tool_names(&tools);
         d.started_at = Some(utc_isoformat());
         d.error = None;
         *self.client.lock().unwrap() = Some(client);
@@ -614,7 +628,7 @@ impl McpManager {
         if r.state() != RunnerState::Ready {
             return Some(vec![]);
         }
-        let t = r.tools.lock().unwrap().iter().map(|t| t.clone() as ToolRef).collect();
+        let t = r.model_tools().into_iter().map(|t| t as ToolRef).collect();
         Some(t)
     }
 
@@ -623,7 +637,7 @@ impl McpManager {
     /// calls.
     pub fn ready_tools(&self, server: Option<&str>) -> Vec<Arc<McpTool>> {
         let runners: Vec<Arc<Runner>> = self.ordered_runners().into_iter().filter(|(n, _)| server.is_none_or(|s| s == n.as_str())).map(|(_, r)| r).collect();
-        runners.iter().filter(|r| r.state() == RunnerState::Ready).flat_map(|r| r.tools.lock().unwrap().clone()).collect()
+        runners.iter().filter(|r| r.state() == RunnerState::Ready).flat_map(|r| r.model_tools()).collect()
     }
 
     /// `call_app_tool` errors: `KeyError` → NotFound, `RuntimeError` → NotConnected,
@@ -634,8 +648,7 @@ impl McpManager {
         let Some(client) = client.filter(|_| r.state() == RunnerState::Ready) else {
             return Err(AppToolError::NotConnected(format!("MCP server '{server}' is not connected.")));
         };
-        let advertised = r.tools.lock().unwrap().iter().any(|t| t.remote_name == tool);
-        if !advertised {
+        if !r.app_may_call(tool) {
             return Err(AppToolError::Forbidden(format!("MCP tool '{tool}' is not available.")));
         }
         client.call_tool(tool, arguments).await.map(|v| tool::dump_call_result(&v)).map_err(|e| AppToolError::Failed(e.to_string()))

@@ -18,7 +18,7 @@ import {
   type TransportSendOptions,
 } from '@modelcontextprotocol/client'
 import { ExternalLink, Maximize2, X } from 'lucide-react'
-import { callMcpAppTool } from '@/api/client'
+import { callMcpAppTool, issueMcpAppFrameUrl, updateMcpAppModelContext } from '@/api/client'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useKeyLayer } from '@/lib/keyboard/hooks'
 import { frameKeyForwarderScript, frameKeymap, useFrameKeys } from '@/lib/keyboard/frames'
@@ -30,7 +30,10 @@ interface MCPAppPayload {
   tool?: string
   name?: string
   resourceUri?: string
+  /** The app's page, on results stored before pages were kept on the server. */
   html?: string
+  /** The page is on the server; the frame loads it by a single-use address. */
+  html_sha256?: string
   mimeType?: string
   resourceMeta?: { ui?: MCPAppResourceUi; [key: string]: unknown } | null
   toolMeta?: MCPAppToolUi | null
@@ -94,11 +97,27 @@ function asResource(mcpApp: MCPAppPayload): Resource {
   }
 }
 
+/** A declared CSP source is one token. Anything with a quote, a semicolon, a
+ * comma or whitespace could add keywords or whole directives to the policy. */
+function cspSources(domains?: string[]): string[] {
+  return (domains ?? []).filter((d) => typeof d === 'string' && d.length > 0 && !/[\s;,'"<>]/.test(d))
+}
+
+function isWebUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url)
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 function buildCsp(csp?: McpUiResourceCsp): string {
-  const resourceDomains = ["'self'", 'blob:', 'data:', ...(csp?.resourceDomains ?? [])]
-  const connectDomains = ["'self'", ...(csp?.connectDomains ?? [])]
-  const frameDomains = ["'self'", ...(csp?.frameDomains ?? [])]
-  const baseUriDomains = csp?.baseUriDomains?.length ? csp.baseUriDomains : ["'self'"]
+  const resourceDomains = ["'self'", 'blob:', 'data:', ...cspSources(csp?.resourceDomains)]
+  const connectDomains = ["'self'", ...cspSources(csp?.connectDomains)]
+  const frameDomains = ["'self'", ...cspSources(csp?.frameDomains)]
+  const declaredBaseUris = cspSources(csp?.baseUriDomains)
+  const baseUriDomains = declaredBaseUris.length ? declaredBaseUris : ["'self'"]
   return [
     "default-src 'none'",
     `script-src ${resourceDomains.join(' ')} 'unsafe-inline' 'unsafe-eval'`,
@@ -116,12 +135,17 @@ function storageShimScript(): string {
   return `<script>(function(){function createStorage(){var data=new Map();return{get length(){return data.size},key:function(index){return Array.from(data.keys())[index]||null},getItem:function(key){key=String(key);return data.has(key)?data.get(key):null},setItem:function(key,value){data.set(String(key),String(value))},removeItem:function(key){data.delete(String(key))},clear:function(){data.clear()}}}['localStorage','sessionStorage'].forEach(function(name){try{void window[name]}catch{Object.defineProperty(window,name,{value:createStorage(),configurable:true})}})})();</script>`
 }
 
-function wrapAppHtml(html: string, csp?: McpUiResourceCsp): string {
-  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${buildCsp(csp).replaceAll('"', '&quot;')}">`
+/** The host's own scripts for the app's page; they run before the app's. */
+function hostHeadScripts(): string {
   // Key presses stay in the frame: forward app shortcuts and Escape the app
   // did not use, so ⌘W and fullscreen Escape work while it has focus.
   const keys = `<script>${frameKeyForwarderScript(frameKeymap(getPlatform().os))}</script>`
-  const prefix = `${cspMeta}${storageShimScript()}${keys}`
+  return `${storageShimScript()}${keys}`
+}
+
+function wrapAppHtml(html: string, csp?: McpUiResourceCsp): string {
+  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${buildCsp(csp).replaceAll('"', '&quot;')}">`
+  const prefix = `${cspMeta}${hostHeadScripts()}`
   if (/<head\b[^>]*>/i.test(html)) {
     return html.replace(/<head\b[^>]*>/i, (match) => `${match}${prefix}`)
   }
@@ -134,6 +158,32 @@ function errorToolResult(message: string): CallToolResult {
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+/** Send values one at a time; while one is on its way only the newest waits. */
+function sendNewest<T>(send: (value: T) => Promise<void>): (value: T) => void {
+  let busy = false
+  let waiting: { value: T } | null = null
+  return (value) => {
+    if (busy) {
+      waiting = { value }
+      return
+    }
+    busy = true
+    void (async () => {
+      let current: { value: T } | null = { value }
+      while (current) {
+        try {
+          await send(current.value)
+        } catch (exc) {
+          console.debug('[MCP App] model context update failed', exc)
+        }
+        current = waiting
+        waiting = null
+      }
+      busy = false
+    })()
+  }
 }
 
 class DeferredPostMessageTransport implements Transport {
@@ -252,10 +302,10 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
 
   useEffect(() => {
     const iframe = iframeRef.current
-    if (!iframe || !mcpApp.html) return undefined
+    const inlineHtml = mcpApp.html
+    if (!iframe || (!inlineHtml && !mcpApp.html_sha256)) return undefined
 
     let cancelled = false
-    const html = mcpApp.html
     const bridge = new AppBridge(
       null,
       HOST_INFO,
@@ -290,6 +340,8 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
       if (typeof nextHeight === 'number') setHeight(clampHeight(nextHeight))
     }
     bridge.onopenlink = async ({ url }) => {
+      // An app may open web pages only; other schemes reach the system opener.
+      if (!isWebUrl(url)) return { isError: true }
       // window.open is a silent no-op inside Tauri webviews (no tab/popup
       // machinery, especially iOS WKWebView); openExternalUrl routes through
       // tauri-plugin-opener there and falls back to window.open in browsers.
@@ -299,7 +351,21 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
     bridge.onloggingmessage = ({ level, logger, data }) => {
       console.debug('[MCP App]', level, logger, data)
     }
-    bridge.onupdatemodelcontext = async () => ({})
+    // The backend keeps each panel's newest report and gives it to the model
+    // with the session's next message.
+    const reportModelContext = sendNewest(async (params: { content?: unknown[]; structuredContent?: Record<string, unknown> }) => {
+      if (!sessionId || !toolCallId) return
+      await updateMcpAppModelContext({
+        session_id: sessionId,
+        tool_call_id: toolCallId,
+        ...(params.content ? { content: params.content } : {}),
+        ...(params.structuredContent ? { structuredContent: params.structuredContent } : {}),
+      })
+    })
+    bridge.onupdatemodelcontext = async (params) => {
+      reportModelContext(params ?? {})
+      return {}
+    }
     bridge.onmessage = async () => ({})
     bridge.onrequestdisplaymode = async ({ mode }) => {
       const nextMode = mode === FULLSCREEN_DISPLAY_MODE ? FULLSCREEN_DISPLAY_MODE : INLINE_DISPLAY_MODE
@@ -337,18 +403,21 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
       resourceTemplates: [],
     })
     bridge.onreadresource = async ({ uri }): Promise<ReadResourceResult> => {
-      if (uri !== resourceUri) return { contents: [] }
+      if (uri !== resourceUri || !inlineHtml) return { contents: [] }
       return {
         contents: [{
           uri,
           mimeType: mcpApp.mimeType,
-          text: mcpApp.html ?? '',
+          text: inlineHtml,
           _meta: mcpApp.resourceMeta ?? undefined,
         }] as unknown as ReadResourceResult['contents'],
       }
     }
 
-    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms')
+    // No allow-same-origin: a srcdoc frame would get this page's origin, and
+    // with it the page's storage, API access and DOM. The app runs in its own
+    // origin and talks to the host through postMessage only.
+    iframe.setAttribute('sandbox', 'allow-scripts allow-forms')
     const allow = buildAllowAttribute(permissions)
     if (allow) iframe.setAttribute('allow', allow)
 
@@ -363,7 +432,22 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
         }
         iframe.addEventListener('load', attachTarget)
         removeLoadListener = () => iframe.removeEventListener('load', attachTarget)
-        iframe.srcdoc = wrapAppHtml(html, csp ?? undefined)
+        // A stored result's page comes from the backend by a single-use
+        // address, which gives the page a real URL and its policy as a
+        // header. Inline HTML (an unbound result, or a backend that has no
+        // such address) is written into the frame instead.
+        let frameUrl: string | null = null
+        if (sessionId && toolCallId) {
+          try {
+            frameUrl = await issueMcpAppFrameUrl({ session_id: sessionId, tool_call_id: toolCallId, head: hostHeadScripts() })
+          } catch (exc) {
+            if (!inlineHtml) throw exc
+          }
+        }
+        if (cancelled) return
+        if (frameUrl) iframe.src = frameUrl
+        else if (inlineHtml) iframe.srcdoc = wrapAppHtml(inlineHtml, csp ?? undefined)
+        else throw new Error('MCP app page is not available.')
         attachTarget()
       } catch (exc) {
         if (!cancelled) setError(exc instanceof Error ? exc.message : String(exc))
@@ -379,7 +463,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
     }
   }, [csp, mcpApp, permissions, resourceUri, sessionId, toolCallId])
 
-  if (!mcpApp.html) {
+  if (!mcpApp.html && !mcpApp.html_sha256) {
     return <p className="font-mono text-meta text-(--color-error)">MCP app resource did not include HTML.</p>
   }
 

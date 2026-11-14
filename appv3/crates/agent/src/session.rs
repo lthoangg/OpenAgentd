@@ -981,6 +981,13 @@ impl AgentSession {
             note.pinned = Some(true);
             db::save_message(&self.pool, &sid, note).await?;
         }
+        // What MCP app panels reported since the last message goes with this one.
+        if let Some(text) = crate::mcp_apps::take_model_context(&sid) {
+            let mut note = NewMessage::user(text);
+            note.extra = Some(crate::mcp_apps::context_note_extra());
+            note.kind = Some("note".into());
+            db::save_message(&self.pool, &sid, note).await?;
+        }
         store().init_turn(&sid, true);
         self.transition(Transition::StartTurn);
         *self.question_suspended.lock().unwrap() = None;

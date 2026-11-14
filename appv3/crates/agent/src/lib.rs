@@ -14,6 +14,7 @@ pub mod idle_compaction;
 pub mod interaction_mode;
 pub mod loader;
 pub mod manager;
+pub mod mcp_apps;
 pub mod notification;
 pub mod plan;
 pub mod plugins;

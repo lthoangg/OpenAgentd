@@ -381,13 +381,17 @@ impl Agent {
         } else {
             std::borrow::Cow::Owned(crate::plugins::tool_plugins().iter().cloned().chain(bundled).collect())
         };
-        let (mut text, (parts, mcp_app)) = if plugins.is_empty() {
+        let (mut text, (parts, mut mcp_app)) = if plugins.is_empty() {
             exec(tc.clone()).await?
         } else {
             let pctx =
                 crate::plugins::PluginCtx { tool: &tc.function.name, session_id: ctx.session_id.as_deref(), run_id: &ctx.run_id, agent_name: &ctx.agent_name, call_id: &tc.id };
             crate::plugins::wrap_tool_call(&plugins, pctx, tc, exec).await?
         };
+        // The app's page is kept once on disk, not in every result and event.
+        if let Some(app) = mcp_app.as_mut() {
+            crate::mcp_apps::store_html(app).await;
+        }
         scope.mcp_app = mcp_app.clone();
         for h in hooks.iter().rev() {
             h.after_tool(ctx, meta, tc, &mut scope, &mut text).await;

@@ -2441,7 +2441,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     reads "Ask anything…" (a phone said "Assign a task to the agent…"), and
     in Plan mode "Plan mode: the agent reads and writes a plan. It changes
     no files." Until a model is connected the model button reads **No
-    model** (it showed the placeholder `__PROVIDER_MODEL__`).
+    model** (it showed the placeholder `__PROVIDER_MODEL__`), and a
+    message sent before then shows no model on its row (it showed the
+    same placeholder until the answer arrived).
   - **Opening a folder asks about the folder**: "Let agents work in
     {folder}?" says they can read, change and delete files there and run
     commands, and that Undo in the chat brings back files they edited, up

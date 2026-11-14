@@ -266,6 +266,21 @@ describe("sendMessage", () => {
     expect(leadBlocks[0].extra?.model).toBe("openai:gpt-5.5")
   })
 
+  it("leaves the model off an optimistic block while the lead still has the placeholder a new install starts with", async () => {
+    // A model connected a moment ago has not reached this store yet; the
+    // placeholder must not be shown as the model the prompt ran with.
+    useAgentStore.setState({
+      leadName: "lead",
+      sessionModel: null,
+      agentStreams: { lead: makeStream({ model: "__PROVIDER_MODEL__" }) },
+    })
+
+    await useAgentStore.getState().sendMessage("hello team", undefined, { workspace: "/repo/app" })
+
+    const leadBlocks = useAgentStore.getState().agentStreams["lead"].currentBlocks
+    expect(leadBlocks[0].extra?.model).toBeUndefined()
+  })
+
   it("patches the optimistic user block's id to the server-issued message_id once the POST resolves", async () => {
     // The backend now returns the persisted user message's id even on the
     // immediate (non-queued) send path. Adopting it lets later reconciliation

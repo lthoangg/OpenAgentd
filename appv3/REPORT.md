@@ -31,7 +31,9 @@ doctor`, `auth` and `run` hints, and `Settings → Connectors` (it was MCP) in
 the `mcp` tool's answers. An `mcp` call refused for sign-in now reads
 `needs sign-in: connect it in Settings → Connectors`; a stored row with the
 earlier `Settings → MCP` wording still rides inline with its call
-(`MCP_SIGN_IN_NOTE_BEFORE_RENAME`), and the web matches both. No schema or
+(`MCP_SIGN_IN_NOTE_BEFORE_RENAME`), and the web matches both. The error for
+a turn with no model ends `Connect a model on the new-session screen or in
+Settings → Models.` (it said `Connect a model provider`). No schema or
 on-disk format change.
 
 ### Agent file fields, patch envelope and unloaded members (v3.56.0)

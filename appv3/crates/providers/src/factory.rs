@@ -95,7 +95,7 @@ pub fn unconfigured_message(agent_name: Option<&str>) -> String {
         Some(name) => format!("Agent '{name}' has no model configured."),
         None => "No model is configured yet.".to_string(),
     };
-    format!("{subject} Connect a model provider on the new-session screen or in Settings → Models.")
+    format!("{subject} Connect a model on the new-session screen or in Settings → Models.")
 }
 
 #[cfg(test)]
@@ -108,6 +108,13 @@ mod unconfigured_message_tests {
         let anonymous = unconfigured_message(None);
         assert!(anonymous.starts_with("No model is configured yet."));
         assert!(!anonymous.contains('?'));
+    }
+
+    #[test]
+    fn says_where_to_connect_a_model_in_the_words_the_app_uses() {
+        let message = unconfigured_message(None);
+        assert!(message.ends_with("Connect a model on the new-session screen or in Settings → Models."));
+        assert!(!message.to_lowercase().contains("provider"));
     }
 }
 

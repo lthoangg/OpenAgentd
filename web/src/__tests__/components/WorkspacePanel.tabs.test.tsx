@@ -181,39 +181,37 @@ describe('Review dock diff tabs', () => {
     expect(screen.getByRole('button', { name: 'app.ts' }).getAttribute('aria-current')).toBe('true')
   })
 
-  it('refreshes a diff from its own toolbar, after Open file, not from the tab strip', async () => {
+  it('a diff has no Refresh button of its own: it follows the files, and the pane\'s ⋯ menu reloads it', async () => {
     const user = userEvent.setup()
     await renderPanel()
 
     await openDiffTabFor(user, 'src/app.ts')
     await screen.findByRole('button', { name: 'app.ts diff' })
-    const refresh = await screen.findByRole('button', { name: 'Refresh diff' })
-    const strip = document.querySelector<HTMLElement>('[data-dock-strip]')!
-    expect(strip.contains(refresh)).toBe(false)
-    const toolbar = refresh.closest('[class*="spacing-toolbar"]') as HTMLElement
-    expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Side by side', 'Wrap lines', 'Open src/app.ts', 'Refresh diff'])
+    const open = (await screen.findAllByRole('button', { name: 'Open src/app.ts' }))[0]!
+    const toolbar = open.closest('[class*="spacing-toolbar"]') as HTMLElement
+    expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Side by side', 'Wrap lines', 'Open src/app.ts'])
+    expect(screen.queryByRole('button', { name: /^Refresh/ })).toBeNull()
 
     const diffRequests = () => requestedUrls.filter((url) => url.includes('/workspace/git-diff')).length
     const before = diffRequests()
-    await user.click(refresh)
+    await user.click(screen.getByRole('button', { name: 'Pane actions' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Refresh' }))
     await waitFor(() => expect(diffRequests()).toBeGreaterThan(before))
   })
 
-  it('refreshes a file from its own toolbar, last after the file actions', async () => {
+  it('a file has no Refresh button of its own either; the pane\'s ⋯ menu reloads the listing', async () => {
     const user = userEvent.setup()
     await renderPanel()
 
     await user.click(screen.getByRole('button', { name: 'More actions for src/app.ts' }))
     await user.click(screen.getByRole('menuitem', { name: 'Open file' }))
-    const refresh = await screen.findByRole('button', { name: 'Refresh file' })
-    const strip = document.querySelector<HTMLElement>('[data-dock-strip]')!
-    expect(strip.contains(refresh)).toBe(false)
-    const toolbar = refresh.closest('[class*="spacing-toolbar"]') as HTMLElement
-    expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label')).at(-1)).toBe('Refresh file')
+    await screen.findByRole('button', { name: 'Download file' })
+    expect(screen.queryByRole('button', { name: /^Refresh/ })).toBeNull()
 
     const listRequests = () => requestedUrls.filter((url) => url.includes('/workspace/files/list')).length
     const before = listRequests()
-    await user.click(refresh)
+    await user.click(screen.getByRole('button', { name: 'Pane actions' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Refresh' }))
     await waitFor(() => expect(listRequests()).toBeGreaterThan(before))
   })
 
@@ -360,29 +358,24 @@ describe('Changes view toolbar', () => {
     expect(screen.queryByText(/Graph view|All branches/)).toBeNull()
   })
 
-  it('leaves file search to Quick Open; Refresh sits in the Git toolbar (not the tab strip) and reloads the status', async () => {
+  it('leaves file search to Quick Open; Refresh is in the pane\'s ⋯ menu (no button of its own) and reloads the status', async () => {
     const user = userEvent.setup()
     await renderPanel()
     expect(screen.queryByRole('button', { name: /Search files/ })).toBeNull()
-
-    const refresh = screen.getByRole('button', { name: 'Refresh changes' })
-    const strip = document.querySelector<HTMLElement>('[data-dock-strip]')!
-    expect(strip.contains(refresh)).toBe(false)
-    expect(within(strip).queryByRole('button', { name: /^Refresh/ })).toBeNull()
-    // The same 32px toolbar as the Changes / History control.
-    expect(refresh.closest('[class*="spacing-toolbar"]')?.contains(screen.getByRole('tablist', { name: 'Changes view' }))).toBe(true)
+    expect(screen.queryByRole('button', { name: /^Refresh/ })).toBeNull()
 
     const statusRequests = () => requestedUrls.filter((url) => url.includes('/workspace/status')).length
     const before = statusRequests()
-    await user.click(refresh)
+    await user.click(screen.getByRole('button', { name: 'Pane actions' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Refresh' }))
     await waitFor(() => expect(statusRequests()).toBeGreaterThan(before))
   })
 
-  it('Refresh sits last in the Git toolbar, after expand-all', async () => {
+  it('expand-all ends the Git toolbar', async () => {
     await renderPanel()
-    const toolbar = screen.getByRole('button', { name: 'Refresh changes' }).closest('[class*="spacing-toolbar"]')!
+    const toolbar = screen.getByRole('button', { name: 'Expand all diffs' }).closest('[class*="spacing-toolbar"]')!
     const names = within(toolbar as HTMLElement).getAllByRole('button').map((button) => button.getAttribute('aria-label'))
-    expect(names.slice(-2)).toEqual(['Expand all diffs', 'Refresh changes'])
+    expect(names.at(-1)).toBe('Expand all diffs')
   })
 
   it('expand-all toggles every changed-file diff open and closed', async () => {

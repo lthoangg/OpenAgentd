@@ -47,11 +47,11 @@ describe('scheduler overlay — unsaved task', () => {
     expect(screen.queryByText('Discard changes?')).toBeNull()
   })
 
-  it('asks before closing over a typed title, and Cancel keeps it', async () => {
+  it('asks before closing over typed input, and Cancel keeps it', async () => {
     stubApi([])
     const onClose = mock(() => {})
     wrap(<SchedulerPanel open onClose={onClose} contextWorkspace="/repo/app" />)
-    fireEvent.change(await screen.findByLabelText('Task title'), { target: { value: 'Nightly report' } })
+    fireEvent.change(await screen.findByLabelText('What should it do?'), { target: { value: 'Nightly report' } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Close scheduled tasks' }))
     expect(await screen.findByText('Discard changes?')).toBeInTheDocument()
@@ -69,7 +69,7 @@ describe('scheduler overlay — unsaved task', () => {
       timers.restore()
     }
     expect(screen.queryByText('Discard changes?')).toBeNull()
-    expect(screen.getByLabelText('Task title')).toHaveValue('Nightly report')
+    expect(screen.getByLabelText('What should it do?')).toHaveValue('Nightly report')
     expect(onClose).not.toHaveBeenCalled()
   })
 
@@ -77,7 +77,7 @@ describe('scheduler overlay — unsaved task', () => {
     stubApi([])
     const onClose = mock(() => {})
     wrap(<SchedulerPanel open onClose={onClose} contextWorkspace="/repo/app" />)
-    fireEvent.change(await screen.findByLabelText('Prompt'), { target: { value: 'Summarise the day' } })
+    fireEvent.change(await screen.findByLabelText('What should it do?'), { target: { value: 'Summarise the day' } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Close scheduled tasks' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }))
@@ -90,12 +90,12 @@ describe('scheduler overlay — unsaved task', () => {
     wrap(<SchedulerPanel open onClose={() => {}} contextWorkspace="/repo/app" />)
     // With a task in the list its detail opens first; "New task" shows the form
     fireEvent.click(await screen.findByRole('button', { name: 'New task' }))
-    fireEvent.change(await screen.findByLabelText('Task title'), { target: { value: 'Nightly report' } })
+    fireEvent.change(await screen.findByLabelText('What should it do?'), { target: { value: 'Nightly report' } })
 
     fireEvent.click(screen.getByRole('button', { name: /^Existing reminder/ }))
 
     expect(await screen.findByText('Discard changes?')).toBeInTheDocument()
-    expect(screen.getByLabelText('Task title')).toHaveValue('Nightly report')
+    expect(screen.getByLabelText('What should it do?')).toHaveValue('Nightly report')
   })
 
   it('opens the first task, not an empty form, when there are tasks', async () => {
@@ -103,7 +103,7 @@ describe('scheduler overlay — unsaved task', () => {
     wrap(<SchedulerPanel open onClose={() => {}} contextWorkspace="/repo/app" />)
 
     expect(await screen.findByRole('heading', { name: 'Existing reminder' })).toBeInTheDocument()
-    expect(screen.queryByLabelText('Task title')).toBeNull()
+    expect(screen.queryByLabelText('What should it do?')).toBeNull()
     expect(screen.getByRole('button', { name: /^Existing reminder/ })).toHaveAttribute('aria-current')
   })
 
@@ -112,23 +112,22 @@ describe('scheduler overlay — unsaved task', () => {
     wrap(<SchedulerPanel open onClose={() => {}} contextWorkspace="/repo/app" />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'New task' }))
-    expect(await screen.findByLabelText('Task title')).toBeInTheDocument()
+    expect(await screen.findByLabelText('What should it do?')).toBeInTheDocument()
     // The header button gives way to the form it opens
     expect(screen.queryByRole('button', { name: 'New task' })).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: /^Existing reminder/ }))
     expect(await screen.findByRole('heading', { name: 'Existing reminder' })).toBeInTheDocument()
-    expect(screen.queryByLabelText('Task title')).toBeNull()
+    expect(screen.queryByLabelText('What should it do?')).toBeNull()
   })
 
   it('does not ask once the task has been created', async () => {
     stubApi([])
     const onClose = mock(() => {})
     wrap(<SchedulerPanel open onClose={onClose} contextWorkspace="/repo/app" />)
-    fireEvent.change(await screen.findByLabelText('Task title'), { target: { value: 'Nightly report' } })
-    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Summarise the day' } })
+    fireEvent.change(await screen.findByLabelText('What should it do?'), { target: { value: 'Nightly report' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create task' }))
-    await waitFor(() => expect(screen.getByLabelText('Task title')).toHaveValue(''))
+    await waitFor(() => expect(screen.getByLabelText('What should it do?')).toHaveValue(''))
 
     fireEvent.click(screen.getByRole('button', { name: 'Close scheduled tasks' }))
 
@@ -146,23 +145,23 @@ describe('scheduler dock tab — unsaved task', () => {
     stubApi([])
     wrap(<SchedulerDockView contextWorkspace="/repo/app" />)
     fireEvent.click(await newTask())
-    fireEvent.change(await screen.findByLabelText('Task title'), { target: { value: 'Nightly report' } })
+    fireEvent.change(await screen.findByLabelText('What should it do?'), { target: { value: 'Nightly report' } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to task list' }))
 
     expect(await screen.findByText('Discard changes?')).toBeInTheDocument()
-    expect(screen.getByLabelText('Task title')).toHaveValue('Nightly report')
+    expect(screen.getByLabelText('What should it do?')).toHaveValue('Nightly report')
   })
 
   it('goes back at once from an untouched form', async () => {
     stubApi([])
     wrap(<SchedulerDockView contextWorkspace="/repo/app" />)
     fireEvent.click(await newTask())
-    await screen.findByLabelText('Task title')
+    await screen.findByLabelText('What should it do?')
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to task list' }))
 
-    await waitFor(() => expect(screen.queryByLabelText('Task title')).toBeNull())
+    await waitFor(() => expect(screen.queryByLabelText('What should it do?')).toBeNull())
     expect(screen.queryByText('Discard changes?')).toBeNull()
   })
 })

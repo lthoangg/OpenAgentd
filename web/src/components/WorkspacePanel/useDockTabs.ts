@@ -469,19 +469,17 @@ export function useDockTabs({
     setState((current) => activateTab(current, id))
     requestCloseTabs(stripOf(id).filter((tab) => tab.id !== id).map((tab) => tab.id), id)
   }
-  /** Tab menu: the tabs after (or before) this one in its pane; it shows if the open one goes. */
-  const closeTabsBeside = (id: string, side: 'left' | 'right') => {
+  /** Tab menu: the tabs after this one in its pane; it shows if the open one goes. */
+  const closeTabsToRight = (id: string) => {
     const strip = stripOf(id)
     const index = strip.findIndex((tab) => tab.id === id)
     if (index < 0) return
-    const beside = side === 'right' ? strip.slice(index + 1) : strip.slice(0, index)
+    const beside = strip.slice(index + 1)
     if (beside.length === 0) return
     const takesActive = beside.some((tab) => tab.id === state.panes[paneOf(state, id) ?? '']?.active)
     if (takesActive) setState((current) => activateTab(current, id))
     requestCloseTabs(beside.map((tab) => tab.id), takesActive ? id : undefined)
   }
-  const closeTabsToRight = (id: string) => closeTabsBeside(id, 'right')
-  const closeTabsToLeft = (id: string) => closeTabsBeside(id, 'left')
   /** Tab menu: every tab of its pane, and so the pane. */
   const closeAllTabs = (id: string) => requestCloseTabs(stripOf(id).map((tab) => tab.id))
   /** Close an empty pane (its strip's ×, ⌘W on its launcher). */
@@ -615,7 +613,6 @@ export function useDockTabs({
     closeTab: requestCloseTab,
     closeOtherTabs,
     closeTabsToRight,
-    closeTabsToLeft,
     closeAllTabs,
     confirmCloseOpen: confirmCloseIds !== null,
     confirmCloseTitles,

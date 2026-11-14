@@ -649,21 +649,10 @@ describe('Sidebar helpers', () => {
   })
 
   it('exports worktree dialog helpers used by the component', async () => {
-    expect(buildOpenWorktreeDialogState('/repo/project', [{
-      name: 'task-a',
-      directory: '/repo/project/task-a',
-      branch: 'feat',
-      managed: true,
-    }])).toEqual({
+    expect(buildOpenWorktreeDialogState('/repo/project')).toEqual({
       target: '/repo/project',
       name: '',
       branch: '',
-      options: [{
-        name: 'task-a',
-        directory: '/repo/project/task-a',
-        branch: 'feat',
-        managed: true,
-      }],
       removing: null,
       error: null,
     })
@@ -1811,7 +1800,7 @@ describe('Sidebar workspace trust flow', () => {
     const section = await screen.findByRole('region', { name: 'Scheduled' })
     await waitFor(() => expect(section.textContent).toContain('Nothing due'))
 
-    await user.click(within(section).getByRole('button', { name: 'New scheduled task' }))
+    await user.click(within(section).getByRole('button', { name: 'New task' }))
     window.removeEventListener(APP_EVENTS.openScheduler, opened)
     expect(useUIStore.getState().scheduledTaskFocus).toBe(NEW_SCHEDULED_TASK)
     expect(opened).toHaveBeenCalledTimes(1)

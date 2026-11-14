@@ -42,12 +42,12 @@ export function ScheduledSection({ onMobileClose }: { onMobileClose?: () => void
           <Tooltip>
             <TooltipTrigger
               render={
-                <button type="button" onClick={() => open(NEW_SCHEDULED_TASK)} className={ROW_ACTION} aria-label="New scheduled task">
+                <button type="button" onClick={() => open(NEW_SCHEDULED_TASK)} className={ROW_ACTION} aria-label="New task">
                   <Plus size={12} aria-hidden="true" />
                 </button>
               }
             />
-            <TooltipContent>New scheduled task</TooltipContent>
+            <TooltipContent>New task</TooltipContent>
           </Tooltip>
         )}
       />

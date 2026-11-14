@@ -1175,7 +1175,7 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Preview tab**: a file, diff or attachment opened from a list, a link or Quick Open opens as the focused pane's one preview tab, title in *italics*, and the next one replaces it. Double-click, Keep Open, a comment on it, or moving it keeps it. Its tooltip and `aria-description` say so; its name stays the file's.
 - **Drag**: a tab slides along its strip; carried out, a floating copy follows the pointer and a `focus-ring` caret or tint shows where it lands (another strip, a pane's middle, or the half an edge split takes). See Layout → Tabs drag between panes.
 - **Overflow**: when the strip cannot show every tab, a `N ⌄` button lists them all (`menuitemradio`, the open one checked).
-- **Menu** (right-click, Shift+F10), in groups: Close, Close others, Close to the left, Close to the right, Close all | Keep open, Split right, Split left, Split up, Split down, Move to next pane, Move left, Move right | Copy path, Reveal in Git. The close items act on the tab's own pane; Close all closes the pane with them.
+- **Menu** (right-click, Shift+F10), in groups: Close, Close others, Close to the right | Close all | Keep open, Split right, Split down, Move to next pane | Copy path, Show in Changes. The close items act on the tab's own pane; Close all closes the pane with them. Left and up splits, and moving along the strip, are the drag's and the keys' (`⌃⌥←/↑`, `⌥⇧←/→`).
 - **Stepping**: `Ctrl+Tab` / `Ctrl+Shift+Tab` everywhere, plus the platform's pair: `⌘⇧]` / `⌘⇧[` on macOS, `Ctrl+PageDown` / `Ctrl+PageUp` elsewhere.
 - **Active Tab**: the sidebar's current-row wash (`listRowSurface(true)`, `bg-key` at 60%), `font-medium`, `text-(--color-text)`. No coloured edge, no border. In a pane without focus (with several on screen) it steps back to a 35% wash and `text-2`; nothing on the strip fades.
 - **Inactive Tab**: no fill, `text-(--color-text-muted)`, the sidebar row's hover wash.
@@ -1588,7 +1588,11 @@ Settings adds its own shell on top:
 dock's Schedule tab. Spacing there keys off container queries (`@xl:`), not
 the viewport, so the narrow dock stays usable. The task list is full-bleed
 `divide-y` rows on the rail tone; a task's detail reads Status tiles, then
-Delivery, Schedule, Prompt and Runs sections.
+Runs in, Schedule, Prompt and Dates sections. The schedule is said in
+words wherever a cron expression has them ("weekdays at 09:00"); the
+expression itself shows in Full detail, or when it has no wording. The form
+is two pages: three questions (What should it do?, When?, Where?) and where
+the reply goes, then More options (Name, Stop after, Time zone, Session ID).
 
 On phones (`useIsMobile`) the overlay header carries the title and Back, so
 the detail and create panes drop their own title and close button. Run now

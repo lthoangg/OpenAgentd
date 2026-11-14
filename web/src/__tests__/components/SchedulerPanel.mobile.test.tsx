@@ -46,7 +46,7 @@ afterEach(() => {
 describe('scheduler overlay on phones', () => {
   it('lists the tasks under a large title', async () => {
     renderPanel()
-    expect(await screen.findByRole('heading', { level: 1, name: 'Scheduled' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Scheduled tasks' })).toBeInTheDocument()
     expect(await screen.findByText('1 task')).toBeInTheDocument()
   })
 
@@ -112,7 +112,8 @@ describe('scheduler overlay on phones', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Create task/ })).toBeInTheDocument())
     // Only the overlay header's title; the pane no longer repeats it.
     expect(screen.getAllByRole('heading', { name: 'New task' })).toHaveLength(1)
-    expect(screen.getByLabelText('Max runs (optional)')).toHaveAttribute('inputmode', 'numeric')
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }))
+    expect(screen.getByLabelText('Stop after')).toHaveAttribute('inputmode', 'numeric')
     // The overlay already pads the safe area; only the dock sheet adds it.
     expect(screen.getByRole('button', { name: /Create task/ }).parentElement).not.toHaveClass('pb-safe')
   })

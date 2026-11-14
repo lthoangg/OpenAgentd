@@ -169,7 +169,7 @@ export function SchedulerPanel({
           <div className={`flex flex-col bg-(--bg-sidebar) ${isMobile ? 'w-full' : 'w-96 shrink-0 border-r border-(--color-border)'}`}>
             {largeTitle && (
               <div className="px-4 pt-2 pb-2">
-                <h1 className="text-large-title font-bold text-(--color-text)">Scheduled</h1>
+                <h1 className="text-large-title font-bold text-(--color-text)">Scheduled tasks</h1>
                 {!tasksQuery.isLoading && <p className="text-xs text-(--color-text-muted)">{`${tasks.length} task${tasks.length === 1 ? '' : 's'}`}</p>}
               </div>
             )}
@@ -183,7 +183,7 @@ export function SchedulerPanel({
               onDeleted={handleTaskDeleted}
               // Phones open the create form from the empty state. The desktop
               // overlay already shows it beside an empty list: go to its title.
-              onCreate={isMobile ? handleOpenCreate : () => detailRef.current?.querySelector<HTMLElement>('#task-title')?.focus()}
+              onCreate={isMobile ? handleOpenCreate : () => detailRef.current?.querySelector<HTMLElement>('#task-prompt')?.focus()}
             />
           </div>
         )}
@@ -215,5 +215,3 @@ export function SchedulerPanel({
     </AppOverlay>
   )
 }
-
-export { ModeWorkspaceFields } from './SchedulerPanel/ModeWorkspaceFields'

@@ -226,13 +226,13 @@ describe('AgentChatView session drafts', () => {
   it('puts the model setup card on the draft screen instead of the banner', () => {
     render(<AgentChatView workspace="/repo/needs-model" />)
     expect(screen.getByTestId('model-setup-card')).toBeTruthy()
-    expect(screen.queryByText('Connect a model provider to start chatting')).toBeNull()
+    expect(screen.queryByText('Connect a model to start chatting')).toBeNull()
   })
 
   it('keeps the setup banner in an open session', () => {
     useAgentStore.setState({ sessionId: 'session-needs-model' })
     render(<AgentChatView sessionId="session-needs-model" workspace="/repo/needs-model" />)
-    expect(screen.getByText('Connect a model provider to start chatting')).toBeTruthy()
+    expect(screen.getByText('Connect a model to start chatting')).toBeTruthy()
     expect(screen.queryByTestId('model-setup-card')).toBeNull()
   })
 })

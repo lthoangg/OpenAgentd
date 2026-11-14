@@ -131,6 +131,7 @@ import { WorkspaceSessionList } from './Sidebar/WorkspaceSessionList'
 import { NeedsYouSection, RunningSection } from './Sidebar/NeedsYouSection'
 import { ScheduledSection } from './Sidebar/ScheduledSection'
 import { SidebarConfirmDialogs } from './Sidebar/ConfirmDialogs'
+import { WorktreeFields } from './Sidebar/WorktreeFields'
 import { SidebarSectionHeader } from './Sidebar/SidebarSectionHeader'
 import { PinnedSection } from './Sidebar/PinnedSection'
 import { FlatSessionGroups } from './Sidebar/FlatSessionGroups'
@@ -469,9 +470,7 @@ export function Sidebar({
   const [worktreeName, setWorktreeName] = useState('')
   const [worktreeBranch, setWorktreeBranch] = useState('')
   const [worktreeLoading, setWorktreeLoading] = useState(false)
-  const [worktreeOptions, setWorktreeOptions] = useState<WorktreeInfo[]>([])
   const [worktreeRemoving, setWorktreeRemoving] = useState<string | null>(null)
-  const [worktreesBySource, setWorktreesBySource] = useState<Record<string, WorktreeInfo[]>>({})
   const [removedWorktreePaths, setRemovedWorktreePaths] = useState<Set<string>>(() => new Set())
   // Managed-worktree pending removal — null when no confirmation is open.
   // Removing a managed worktree deletes it from disk (git worktree remove),
@@ -798,23 +797,15 @@ export function Sidebar({
     })
   }
 
-  const loadWorktreesForTarget = useCallback(async (path: string) => {
-    const items = await loadWorktreesForSource(path, listWorktrees)
-    setWorktreesBySource((current) => ({ ...current, [path]: items }))
-    if (worktreeTarget === path) setWorktreeOptions(items)
-    return items
-  }, [worktreeTarget])
+  const loadWorktreesForTarget = useCallback((path: string) => loadWorktreesForSource(path, listWorktrees), [])
 
-  const openWorktreeDialog = async (path: string) => {
-    const nextState = buildOpenWorktreeDialogState(path, worktreesBySource[path])
+  const openWorktreeDialog = (path: string) => {
+    const nextState = buildOpenWorktreeDialogState(path)
     setWorktreeTarget(nextState.target)
     setWorktreeName(nextState.name)
     setWorktreeBranch(nextState.branch)
-    setWorktreeOptions(nextState.options)
     setWorktreeRemoving(nextState.removing)
     setError(nextState.error)
-    const items = await loadWorktreesForTarget(path)
-    setWorktreeOptions(items)
   }
 
   const handleRemoveWorktree = async (item: WorktreeInfo) => {
@@ -835,14 +826,6 @@ export function Sidebar({
         if (!current.has(result.removedDirectory)) return current
         const next = new Set(current)
         next.delete(result.removedDirectory)
-        return next
-      })
-      setWorktreesBySource((current) => {
-        const next = { ...current }
-        delete next[result.removedDirectory]
-        if (result.source) {
-          next[result.source] = result.refreshedItems
-        }
         return next
       })
     } catch (err) {
@@ -1998,7 +1981,7 @@ export function Sidebar({
                   onClick={() => {
                     const action = mobileWorkspaceActions
                     setMobileWorkspaceActions(null)
-                    if (action) void openWorktreeDialog(action.path)
+                    if (action) openWorktreeDialog(action.path)
                   }}
                 >
                   <GitBranch size={16} aria-hidden="true" />
@@ -2060,87 +2043,12 @@ export function Sidebar({
                   <p className="truncate font-mono text-meta text-(--color-text-muted)" />
                 )}
               </div>
-              <div className="grid gap-2.5 sm:grid-cols-2">
-                <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
-                  <span>Worktree name</span>
-                  <input
-                    value={worktreeName}
-                    onChange={(e) => setWorktreeName(e.target.value)}
-                    placeholder="feature-login"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-xs text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-text-subtle) md:min-h-8 max-md:pointer-coarse:text-base"
-                    maxLength={80}
-                    autoFocus
-                  />
-                  <p className="text-xs md:text-meta font-normal text-(--color-text-muted)">Blank uses &quot;session&quot;.</p>
-                </label>
-                <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
-                  <span>Branch</span>
-                  <input
-                    value={worktreeBranch}
-                    onChange={(e) => setWorktreeBranch(e.target.value)}
-                    placeholder="openagentd/feature-login"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-xs text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-text-subtle) md:min-h-8 max-md:pointer-coarse:text-base"
-                    maxLength={255}
-                  />
-                  <p className="text-xs md:text-meta font-normal text-(--color-text-muted)">Blank defaults to openagentd/name.</p>
-                </label>
-              </div>
-              <div className="rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-2 text-xs text-(--color-text-muted)">
-                <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="font-medium text-(--color-text-2)">Existing worktrees</p>
-                    <Chip mono>{worktreeOptions.length}</Chip>
-                </div>
-                {worktreeOptions.length === 0 ? (
-                    <EmptyState compact icon={GitBranch} title="No worktrees yet" className="py-1" />
-                ) : (
-                  <ul className="max-h-32 space-y-0.5 overflow-y-auto pr-1">
-                      {worktreeOptions.map((item) => (
-                        <li key={item.directory} className="group flex min-w-0 items-center gap-2 rounded-xs px-2 py-1 hover:bg-(--bg-key)">
-                          <GitBranch size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
-                          <Tooltip className="min-w-0 flex-1">
-                            <TooltipTrigger
-                              className="min-w-0 flex-1"
-                              render={
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-(--color-text-2)">{item.name}</p>
-                                  {item.branch && <p className="truncate text-meta text-(--color-text-subtle)">{item.branch}</p>}
-                                </div>
-                              }
-                            />
-                            <TooltipContent>{item.directory}</TooltipContent>
-                          </Tooltip>
-                          {item.managed ? (
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    onClick={() => setRemoveWorktreeTarget(item)}
-                                    disabled={worktreeRemoving === item.directory}
-                                    aria-label={`Delete worktree ${item.name}…`}
-                                  >
-                                    {worktreeRemoving === item.directory ? <Loader2 className="size-3 animate-spin" aria-hidden="true" /> : <Trash2 className="size-3" aria-hidden="true" />}
-                                  </Button>
-                                }
-                              />
-                              <TooltipContent>Delete worktree…</TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <Chip>external</Chip>
-                          )}
-                        </li>
-                      ))}
-                  </ul>
-                )}
-              </div>
+              <WorktreeFields
+                name={worktreeName}
+                branch={worktreeBranch}
+                onNameChange={setWorktreeName}
+                onBranchChange={setWorktreeBranch}
+              />
               {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
             </div>
             <DialogFooter>
@@ -2226,7 +2134,7 @@ export function Sidebar({
               onClick={() => {
                 const action = desktopWorkspaceActions
                 setDesktopWorkspaceActions(null)
-                void openWorktreeDialog(action.path)
+                openWorktreeDialog(action.path)
               }}
             >
               <GitBranch size={12} aria-hidden="true" />
@@ -2293,7 +2201,7 @@ export function Sidebar({
             <button
               type="button"
               className={ACTION_SHEET_ROW_CLASS}
-              onClick={() => { const repo = checkoutMenu.repo; setCheckoutMenu(null); void openWorktreeDialog(repo) }}
+              onClick={() => { const repo = checkoutMenu.repo; setCheckoutMenu(null); openWorktreeDialog(repo) }}
             >
               <Plus size={16} aria-hidden="true" />
               Create worktree…
@@ -2364,7 +2272,7 @@ export function Sidebar({
             onClick={() => {
               const repo = checkoutMenu.repo
               setCheckoutMenu(null)
-              void openWorktreeDialog(repo)
+              openWorktreeDialog(repo)
             }}
           >
             <Plus size={12} aria-hidden="true" />

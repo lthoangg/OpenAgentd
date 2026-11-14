@@ -23,8 +23,9 @@ export function advanceFocusOnEnter(event: KeyboardEvent<HTMLFormElement>): void
   if (['button', 'submit', 'reset', 'checkbox', 'radio', 'file'].includes(target.type)) return
 
   event.preventDefault()
+  // ``data-enter-skip`` marks a button that leaves the page (the forms' "More options").
   const fields = Array.from(form.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-    (el) => !(el as HTMLInputElement).disabled && el.tabIndex !== -1,
+    (el) => !(el as HTMLInputElement).disabled && el.tabIndex !== -1 && !('enterSkip' in el.dataset),
   )
   fields[fields.indexOf(target) + 1]?.focus()
 }

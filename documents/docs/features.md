@@ -2468,6 +2468,39 @@ run from the terminal (the native Rust binary since v3.0.0).
     notes. Android keeps one **Download** step (an APK), in the same line.
     The TypeScript tools prompt is one line too: "Install TypeScript tools
     for {folder}?", **Later**, **Install**.
+  - **A new scheduled task asks three questions**: **What should it do?**,
+    **When?** (Every day, Every weekday, Every week on…, Every … minutes,
+    hours or days, Once on…, each with a time picker; Custom (cron) keeps
+    the expression) and **Where?**, then **Where does the reply go?** (a
+    new session each time, the same session, or this session when the open
+    one is in that workspace). The form had eight fields, a cron expression
+    and a session ID on its first page. **More options** holds Name, Stop
+    after N runs, Time zone and Session ID; a task left unnamed is named
+    after what it does. A field in error opens the page it is on. Every
+    task made before opens in the same form: a cron expression the form
+    can say in words shows as words, any other as Custom.
+  - **A task's detail reads as sentences.** **Runs in** (workspace, where
+    replies go), **Schedule** ("Every weekday at 09:00 · next: Mon 09:00";
+    the cron expression shows in Full, or when it has no wording) and
+    **Dates**. The list and the sidebar say "weekdays at 09:00" in place of
+    `0 9 * * 1-5`. The sidebar's "+" reads **New task**, the dialog
+    **Delete this task?**, and the phone's page **Scheduled tasks**.
+  - **Shorter menus in the Review panel.** A tab's menu drops Close to the
+    left, Split left, Split up, Move left and Move right (dragging a tab
+    and the split keys still do all five). A commit's menu is **Open in
+    tab**, **Copy commit ID**, **Copy message**, **Revert commit…** and
+    **Undo commit…**, on desktop and phone.
+  - **Fewer Refresh buttons.** An open text file re-reads itself when the
+    file changes on disk. On desktop the Refresh buttons on Changes, a diff
+    and a file are one **Refresh** row in the pane's "⋯" menu; a phone
+    keeps the buttons.
+  - **Create worktree asks for a name.** The branch follows it
+    (`openagentd/{name}`) and is shown as a line with **Change** for when
+    it should differ. The dialog no longer repeats the list of existing
+    worktrees (the worktree chip has it).
+  - The notice on a session whose model is not connected reads **Connect a
+    model to start chatting** with **Open Models** (it said "model
+    provider" and "Open providers").
   - Network access on Linux shows each firewall command as a code line with
     **Copy**. "Clear this goal?" is two sentences.
   - **Settings: 15 sections in 3 groups** (it was 18 in 6). **Basics**:

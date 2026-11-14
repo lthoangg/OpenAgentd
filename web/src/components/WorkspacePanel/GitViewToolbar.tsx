@@ -2,9 +2,9 @@
  * GitViewToolbar — the single 32px toolbar under the Git review tab. On a
  * phone it grows around its tabs, which take the phone's control step.
  *
- * One segmented control on every platform — Changes and History — plus the
- * Changes view's expand-all and the tab's Refresh on the right (Refresh
- * moved here from the tab strip). History is the commit list
+ * One segmented control on every platform — Uncommitted and History — plus
+ * the Changes view's expand-all on the right, and on a phone (which has no
+ * pane menu to hold it) Refresh. History is the commit list
  * (stored as ``commits``). The segments are real ARIA tabs; the caller
  * renders the matching ``tabpanel`` using ``gitViewPanelId`` /
  * ``gitViewTabId`` so the ids line up.

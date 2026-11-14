@@ -47,7 +47,7 @@ describe('GitViewToolbar', () => {
     expect(screen.getByRole('button', { name: 'Expand all diffs' })).toBeTruthy()
   })
 
-  it('ends with Refresh, the tab\'s own button (it left the tab strip), on either view', () => {
+  it('ends with Refresh where the caller gives one (a phone, which has no pane menu), on either view', () => {
     const onRefresh = mock(() => {})
     for (const subTab of ['changes', 'commits'] as const) {
       renderToolbar({ subTab, allExpanded: false, onRefresh })

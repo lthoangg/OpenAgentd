@@ -167,6 +167,8 @@ export type { ChangedFileStatus, ChangedFileInfo, DiffFileSection }
 
 const EMPTY_TODOS: TodoItem[] = []
 /** Dev server a new preview tab opens when the workspace has no last URL. */
+/** Tabs the pane menu's Refresh reloads: the ones read from the workspace's files and Git. */
+const REFRESHABLE_TABS: ReadonlySet<DockTab['type']> = new Set(['review', 'file', 'diff'])
 const DEFAULT_PREVIEW_URL = 'http://localhost:5173'
 /** Stable empty ref: with no center element the width falls back to the viewport. */
 const NO_CENTER: React.RefObject<HTMLElement | null> = { current: null }
@@ -376,7 +378,6 @@ export function WorkspacePanel({
     closeTab,
     closeOtherTabs,
     closeTabsToRight,
-    closeTabsToLeft,
     closeAllTabs,
     confirmCloseOpen,
     confirmCloseTitles,
@@ -809,7 +810,8 @@ export function WorkspacePanel({
           mobile={mobile}
           allExpanded={changedFiles.length > 0 ? allExpanded : null}
           onToggleExpandAll={toggleExpandAll}
-          onRefresh={handleRefresh}
+          // A phone has no pane menu to hold it.
+          onRefresh={mobile ? handleRefresh : undefined}
         />
       )}
       <div
@@ -977,12 +979,12 @@ export function WorkspacePanel({
             onOpenFile={openChangedFile}
             isListed={isListedFile}
             listingTruncated={files.data?.truncated === true}
-            onRefresh={handleRefresh}
+            onRefresh={mobile ? handleRefresh : undefined}
             mobile={mobile}
           />
         )
       case 'diff':
-        return <DiffTabView key={tab.id} workspace={workspace} path={tab.path} onOpenFile={openChangedFile} />
+        return <DiffTabView key={tab.id} workspace={workspace} path={tab.path} onOpenFile={openChangedFile} mobile={mobile} />
       case 'commit':
         return <CommitTabView key={tab.id} workspace={workspace} commit={tab.commit} />
       case 'attachment':
@@ -1072,7 +1074,6 @@ export function WorkspacePanel({
             onClose={closeTab}
             onCloseOthers={closeOtherTabs}
             onCloseToRight={closeTabsToRight}
-            onCloseToLeft={closeTabsToLeft}
             onCloseAll={closeAllTabs}
             onMove={moveWithin}
             onKeep={keep}
@@ -1083,6 +1084,7 @@ export function WorkspacePanel({
             onRevealInGit={noGit ? undefined : revealInGit}
             onClosePane={!mobile && empty && shownPanes.length > 1 ? () => closePane(pane) : undefined}
             onSplitPane={mobile ? undefined : (side) => splitPane(pane, side)}
+            onRefresh={!mobile && shown && REFRESHABLE_TABS.has(shown.type) ? handleRefresh : undefined}
             onDropTab={mobile ? undefined : dropTab}
             openItems={phone ? [] : openItemsFor(pane)}
             // ⌘1–⌘9 pick from the focused pane's strip, and only the desktop app receives them.

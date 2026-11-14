@@ -1,24 +1,16 @@
 import { useState, useEffect } from 'react'
 import { useForm, useStore } from '@tanstack/react-form'
 import { Loader2 } from 'lucide-react'
-import { DateTimePicker } from '@/components/ui/date-time-picker'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { useUpdateScheduledTaskMutation } from '@/queries'
 import type { ScheduledTaskResponse } from '@/api/types'
 
-import { FIELD_CLASS, FIELD_ERROR, FIELD_HINT, FIELD_LABEL } from './utils'
 import { Callout } from '@/components/ui/callout'
-import { PanelSection } from '@/components/ui/panel-section'
-import { editTaskDefaults, toUpdatePayload } from './taskForm'
+import { editTaskDefaults, toUpdatePayload, validateTaskValues } from './taskForm'
 import { useTaskFieldErrors } from './useTaskFieldErrors'
 import { taskValuesChanged, useReportSchedulerDraft } from './draftGuard'
-import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
-import { AtRunHint, CronField, IntervalField } from './ScheduleFields'
-import { ModeWorkspaceFields } from './ModeWorkspaceFields'
+import { TaskFields, TaskPageButton, pageWithErrors, type TaskFormPage } from './TaskFields'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { useSchedulerFooterSafeArea, useSchedulerPaneHeaderClass } from './chrome'
 import { advanceFocusOnEnter } from './formNavigation'
 import { cn } from '@/lib/utils'
@@ -47,10 +39,11 @@ export function EditTaskForm({
 
   const defaults = editTaskDefaults(task, currentSessionId)
   const [error, setError] = useState<string | null>(null)
+  const [page, setPage] = useState<TaskFormPage>('main')
   const updateMutation = useUpdateScheduledTaskMutation()
   const form = useForm({ defaultValues: defaults, onSubmit: () => {} })
   const values = useStore(form.store, (state) => state.values)
-  const { formRef, fieldErrors, validateForSubmit } = useTaskFieldErrors(values, false)
+  const { formRef, fieldErrors, validateForSubmit } = useTaskFieldErrors(values)
   useReportSchedulerDraft(taskValuesChanged(values, defaults))
   const validationSummary = Object.values(fieldErrors)[0]
   const isSessionCompatible = !!currentSessionId && values.workspace === activeSessionWorkspace
@@ -63,7 +56,10 @@ export function EditTaskForm({
     e.preventDefault()
     setError(null)
     const submitValues = form.state.values
-    if (!validateForSubmit(submitValues)) return
+    if (!validateForSubmit(submitValues)) {
+      setPage(pageWithErrors(validateTaskValues(submitValues), page))
+      return
+    }
     updateMutation.mutate(
       { slug: task.slug, body: toUpdatePayload(submitValues, localTz, currentSessionId) },
       { onSuccess, onError: (err) => setError(err instanceof Error ? err.message : "Couldn't update task") },
@@ -85,184 +81,18 @@ export function EditTaskForm({
 
       {/* Form */}
       <form ref={formRef} onSubmit={handleSubmit} onKeyDown={advanceFocusOnEnter} className="flex min-h-0 flex-1 flex-col">
-        <div className="flex-1 space-y-8 overflow-y-auto overscroll-contain touch-pan-y px-4 py-5 @xl:px-6 @xl:py-6">
-          <PanelSection title="Task">
-            {/* Routing */}
-            <ModeWorkspaceFields
-              workspace={values.workspace ?? null}
-              onChange={(workspace) => form.setFieldValue('workspace', workspace ?? '')}
-              workspaceError={fieldErrors.workspace}
-              workspaceErrorId="edit-task-workspace-error"
-            />
-          </PanelSection>
-
-          {/* Schedule Type & Detail */}
-          <PanelSection title="Schedule">
-            {values.schedule_type === 'every' ? (
-              <div className="grid gap-x-4 gap-y-5 @xl:grid-cols-2 @xl:items-start">
-                <div>
-                  <label className={FIELD_LABEL}>Schedule type</label>
-                  <ScheduleTypeSegmented
-                    value={values.schedule_type}
-                    onChange={(v) => form.setFieldValue('schedule_type', v)}
-                  />
-                </div>
-                <IntervalField
-                  id="edit-task-every-seconds"
-                  seconds={values.every_seconds ?? 3600}
-                  onChange={(n) => form.setFieldValue('every_seconds', n)}
-                  error={fieldErrors.every_seconds}
-                />
-              </div>
-            ) : (
-              <div>
-                <label className={FIELD_LABEL}>Schedule type</label>
-                <ScheduleTypeSegmented
-                  value={values.schedule_type}
-                  onChange={(v) => form.setFieldValue('schedule_type', v)}
-                />
-
-                {values.schedule_type === 'at' && (
-                  <div className="mt-5 grid gap-x-4 gap-y-5 @xl:grid-cols-[minmax(0,1fr)_12rem] @xl:items-start">
-                    <div>
-                      <label htmlFor="edit-task-at-datetime" className={FIELD_LABEL}>Date and time</label>
-                      <DateTimePicker
-                        id="edit-task-at-datetime"
-                        value={values.at_datetime ?? ''}
-                        onChange={(v) => form.setFieldValue('at_datetime', v)}
-                        triggerClassName="h-9 rounded-sm text-xs bg-(--bg-page)"
-                        aria-invalid={!!fieldErrors.at_datetime}
-                        aria-describedby={fieldErrors.at_datetime ? 'edit-task-at-datetime-error' : values.at_datetime ? 'edit-task-at-datetime-hint' : undefined}
-                      />
-                      {fieldErrors.at_datetime
-                        ? <p id="edit-task-at-datetime-error" className={FIELD_ERROR}>{fieldErrors.at_datetime}</p>
-                        : <AtRunHint id="edit-task-at-datetime-hint" value={values.at_datetime ?? ''} timezone={values.timezone || localTz} />}
-                    </div>
-                    <div>
-                      <label htmlFor="edit-task-timezone" className={FIELD_LABEL}>Timezone</label>
-                      <Input
-                        id="edit-task-timezone"
-                        enterKeyHint="next"
-                        className={`h-9 ${FIELD_CLASS}`}
-                        value={values.timezone}
-                        onChange={(e) => form.setFieldValue('timezone', e.target.value)}
-                        placeholder={localTz}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {values.schedule_type === 'cron' && (
-                  <div className="mt-5 grid gap-x-4 gap-y-5 @xl:grid-cols-[minmax(0,1fr)_12rem] @xl:items-start">
-                    <CronField
-                      id="edit-task-cron-expression"
-                      value={values.cron_expression ?? ''}
-                      onChange={(v) => form.setFieldValue('cron_expression', v)}
-                      timezone={values.timezone || localTz}
-                      error={fieldErrors.cron_expression}
-                    />
-                    <div>
-                      <label htmlFor="edit-task-timezone" className={FIELD_LABEL}>Timezone</label>
-                      <Input
-                        id="edit-task-timezone"
-                        enterKeyHint="next"
-                        className={`h-9 ${FIELD_CLASS}`}
-                        value={values.timezone}
-                        onChange={(e) => form.setFieldValue('timezone', e.target.value)}
-                        placeholder={localTz}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </PanelSection>
-
-          {/* Prompt */}
-          <PanelSection title="Prompt">
-            <div>
-              <label htmlFor="edit-task-prompt" className="sr-only">Prompt</label>
-              <Textarea
-                id="edit-task-prompt"
-                className={`text-sm leading-relaxed ${FIELD_CLASS}`}
-                value={values.prompt}
-                onChange={(e) => form.setFieldValue('prompt', e.target.value)}
-                placeholder="Message to deliver to the agent when the task fires."
-                rows={3}
-                aria-invalid={!!fieldErrors.prompt}
-                aria-describedby={fieldErrors.prompt ? 'edit-task-prompt-error' : undefined}
-              />
-              {fieldErrors.prompt && <p id="edit-task-prompt-error" className={FIELD_ERROR}>{fieldErrors.prompt}</p>}
-            </div>
-          </PanelSection>
-
-          {/* Session Target & Max Runs */}
-          <PanelSection title="Delivery">
-            <div className="grid gap-x-4 gap-y-5 @xl:grid-cols-[minmax(0,1fr)_9rem] @xl:items-start">
-              <div>
-                <label htmlFor="edit-session-target" className={FIELD_LABEL}>Session target</label>
-                <Dropdown
-                  id="edit-session-target"
-                  value={values.sessionType}
-                  onValueChange={(v) => form.setFieldValue('sessionType', v as 'new' | 'auto' | 'current' | 'custom')}
-                  trigger="Session target"
-                  className="h-9 w-full rounded-sm border-(--color-border) bg-(--bg-page) px-2.5 text-xs"
-                >
-                  <DropdownItem value="new">New session</DropdownItem>
-                  <DropdownItem value="auto">Persistent task session</DropdownItem>
-                  {isSessionCompatible && (
-                    <DropdownItem value="current">
-                      Current chat session ({currentSessionTitle ? `"${currentSessionTitle}"` : 'Active'})
-                    </DropdownItem>
-                  )}
-                  <DropdownItem value="custom">Specific session ID…</DropdownItem>
-                </Dropdown>
-                <p className={FIELD_HINT}>
-                  {values.sessionType === 'new' && 'Creates a fresh, isolated chat session for every run.'}
-                  {values.sessionType === 'auto' && 'Runs all executions in a single dedicated chat session created for this task.'}
-                  {values.sessionType === 'current' && 'Delivers the prompt directly into your active chat thread.'}
-                  {values.sessionType === 'custom' && 'Delivers the prompt to a specific chat session by its UUID.'}
-                </p>
-
-                {values.sessionType === 'custom' && (
-                  <div className="mt-3">
-                    <label htmlFor="edit-custom-session-id" className="sr-only">Session UUID</label>
-                    <Input
-                      id="edit-custom-session-id"
-                      enterKeyHint="next"
-                      className={`h-9 ${FIELD_CLASS}`}
-                      value={values.customSessionId}
-                      onChange={(e) => form.setFieldValue('customSessionId', e.target.value)}
-                      placeholder="Enter session UUID (e.g. 123e4567-e89b-12d3-a456-426614174000)"
-                      aria-invalid={!!fieldErrors.customSessionId}
-                      aria-describedby={fieldErrors.customSessionId ? 'edit-custom-session-id-error' : undefined}
-                    />
-                    {fieldErrors.customSessionId && <p id="edit-custom-session-id-error" className={FIELD_ERROR}>{fieldErrors.customSessionId}</p>}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label htmlFor="edit-task-max-runs" className={FIELD_LABEL}>Max runs (optional)</label>
-                <Input
-                  id="edit-task-max-runs"
-                  // The last field: Enter moves to the Save button (formNavigation).
-                  enterKeyHint="done"
-                  type="number"
-                  inputMode="numeric"
-                  min="1"
-                  className={`h-9 w-full ${FIELD_CLASS}`}
-                  value={values.max_runs ?? ''}
-                  onChange={(e) => form.setFieldValue('max_runs', e.target.value ? Number(e.target.value) : null)}
-                  placeholder="Unlimited"
-                  aria-invalid={!!fieldErrors.max_runs}
-                  aria-describedby={fieldErrors.max_runs ? 'edit-task-max-runs-error' : 'edit-task-max-runs-help'}
-                />
-                {fieldErrors.max_runs && <p id="edit-task-max-runs-error" className={FIELD_ERROR}>{fieldErrors.max_runs}</p>}
-                <p id="edit-task-max-runs-help" className={FIELD_HINT}>Stop after N runs.</p>
-              </div>
-            </div>
-          </PanelSection>
+        <div className="flex-1 space-y-6 overflow-y-auto overscroll-contain touch-pan-y px-4 py-5 @xl:px-6 @xl:py-6">
+          <TaskFields
+            idPrefix="edit-task"
+            mode="edit"
+            page={page}
+            values={values}
+            set={(key, value) => form.setFieldValue(key, value as never)}
+            fieldErrors={fieldErrors}
+            localTz={localTz}
+            currentSessionTitle={currentSessionTitle}
+            sessionCompatible={isSessionCompatible}
+          />
 
           {/* Error message */}
           {validationSummary && <p role="alert" className="sr-only">Please correct the highlighted fields.</p>}
@@ -272,7 +102,8 @@ export function EditTaskForm({
         </div>
 
         {/* Actions */}
-        <div className={cn('flex shrink-0 flex-wrap justify-end gap-2 border-t border-(--color-border-subtle) bg-(--bg-sidebar) px-4 py-3 @xl:px-6', footerSafeArea)}>
+        <div className={cn('flex shrink-0 items-center justify-end gap-2 border-t border-(--color-border-subtle) bg-(--bg-sidebar) px-4 py-3 @xl:px-6', footerSafeArea)}>
+          <TaskPageButton page={page} onChange={setPage} />
           <Button
             type="button"
             variant="default"

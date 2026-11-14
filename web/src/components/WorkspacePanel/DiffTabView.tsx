@@ -5,8 +5,8 @@
  * Changes list, and the shared changed-paths list for its counts, so both
  * follow the agent's writes through the normal invalidation path. The inline
  * peek in the Changes list keeps its capped height; this is the "give it the
- * whole dock" view. Its toolbar ends with Refresh (it moved here from the tab
- * strip), which reloads this diff and the changed-paths list.
+ * whole dock" view. Reloading by hand is the pane menu's Refresh; a phone,
+ * which has no pane menu, keeps a Refresh button at the end of the toolbar.
  *
  * On desktop, Side by side lays the old file beside the new one. The choice
  * is kept for every diff tab; while the panel is narrower than two readable
@@ -35,13 +35,15 @@ export interface DiffTabViewProps {
   workspace: string
   path: string
   onOpenFile?: (path: string) => void
+  /** A phone has no pane menu, so the toolbar keeps Refresh. */
+  mobile?: boolean
 }
 
 /** Two columns of about 45 characters each, plus their line numbers. */
 const SPLIT_MIN_WIDTH = 640
 const wideEnoughForSplit = (width: number) => width >= SPLIT_MIN_WIDTH
 
-export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
+export function DiffTabView({ workspace, path, onOpenFile, mobile = false }: DiffTabViewProps) {
   const changes = useQuery({ ...workspaceChangesQueryOptions(workspace), staleTime: WORKSPACE_DIFF_STALE_MS })
   const diff = useQuery({ ...workspaceFileDiffQueryOptions(workspace, path), staleTime: WORKSPACE_DIFF_STALE_MS })
   const scrollRef = useScrollMemory(`diff:${workspace}:${path}`)
@@ -134,7 +136,7 @@ export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
             <TooltipContent side="bottom">Open file</TooltipContent>
           </Tooltip>
         )}
-        <DockRefreshButton label="Refresh diff" onClick={refresh} />
+        {mobile && <DockRefreshButton label="Refresh diff" onClick={refresh} />}
       </div>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto touch-pan-y">
         {diff.isLoading ? (

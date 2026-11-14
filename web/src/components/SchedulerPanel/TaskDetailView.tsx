@@ -2,8 +2,10 @@ import { useState, type ReactNode } from 'react'
 import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 import { Check, Copy, Loader2, MoreHorizontal, Pause, Pencil, Play, Zap } from 'lucide-react'
 import type { ScheduledTaskResponse } from '@/api/types'
-import { formatRelativeDate, formatInTimezone, isoToWallClock } from '@/utils/format'
-import { formatInterval, formatScheduleLabel, lastRunLabel, nextRunLabel, taskState } from './utils'
+import { formatRelativeDate, isoToWallClock } from '@/utils/format'
+import { workspaceLabel } from '@/utils/workspace'
+import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
+import { formatScheduleLabel, isCronLabel, lastRunLabel, nextRunLabel, sentenceCase, taskState } from './utils'
 import { previewCron } from './cron'
 import { Chip } from '@/components/ui/chip'
 import { EditTaskForm } from './EditTaskForm'
@@ -82,12 +84,16 @@ export function TaskDetailView({
       ? previewCron(task.cron_expression, isoToWallClock(new Date().toISOString(), task.timezone))
       : null
 
+  const scheduleLabel = formatScheduleLabel(task)
+  // A cron expression with no short description is shown itself, in any detail.
+  const showExpression = task.schedule_type === 'cron' && !!task.cron_expression && (!simple || isCronLabel(scheduleLabel))
+
   const sessionLabel = !task.session_id
-    ? 'New session for each run'
+    ? 'A new session each time'
     : task.session_id === 'auto'
-      ? 'One persistent session, reused every run'
+      ? 'The same session every time'
       : task.session_id === currentSessionId
-        ? 'This chat session'
+        ? 'This session'
         : null
 
   const pausePending = pauseMutation.isPending || resumeMutation.isPending
@@ -121,7 +127,7 @@ export function TaskDetailView({
                 </Chip>
               )}
             </div>
-            <p className="mt-1 font-mono text-xs text-(--color-text-2)">{formatScheduleLabel(task)}</p>
+            <p className="mt-1 font-mono text-xs text-(--color-text-2)">{scheduleLabel}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {!isMobile && (
@@ -177,29 +183,27 @@ export function TaskDetailView({
           </StatTile>
         </section>
 
-        <PanelSection title="Delivery" flush>
-          <DetailRow label="Agent" long>
-            {task.workspace ? (
-              <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
-                <span className="shrink-0">Coding agent</span>
-                {isMobile ? (
-                  // No hover on touch: show the whole path instead of a tooltip.
-                  <span className="min-w-0 break-all font-mono text-(--color-text-muted)">· {task.workspace}</span>
-                ) : (
-                  <Tooltip className="min-w-0 max-w-[220px]">
-                    <TooltipTrigger
-                      className="min-w-0 max-w-[220px]"
-                      render={<span className="truncate font-mono text-(--color-text-muted)">· {task.workspace}</span>}
-                    />
-                    <TooltipContent>{task.workspace}</TooltipContent>
-                  </Tooltip>
-                )}
+        <PanelSection title="Runs in" flush>
+          <DetailRow label="Workspace" long>
+            {!task.workspace ? (
+              // A task saved before workspaces were required.
+              'Not set'
+            ) : isChatWorkspacePath(task.workspace) ? (
+              workspaceLabel(task.workspace)
+            ) : isMobile ? (
+              // No hover on touch: show the whole path instead of a tooltip.
+              <span className="inline-flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1.5">
+                <span className="shrink-0">{workspaceLabel(task.workspace)}</span>
+                <span className="min-w-0 break-all font-mono text-(--color-text-muted)">{task.workspace}</span>
               </span>
             ) : (
-              <span>Default agent</span>
+              <Tooltip>
+                <TooltipTrigger render={<span>{workspaceLabel(task.workspace)}</span>} />
+                <TooltipContent>{task.workspace}</TooltipContent>
+              </Tooltip>
             )}
           </DetailRow>
-          <DetailRow label="Session" long>
+          <DetailRow label="Replies go to" long>
             {sessionLabel ?? (
               <span className="break-all font-mono text-(--color-text-2)">{task.session_id}</span>
             )}
@@ -207,32 +211,18 @@ export function TaskDetailView({
         </PanelSection>
 
         <PanelSection title="Schedule" flush>
-          <DetailRow label="Type">
-            {task.schedule_type === 'every' ? 'Repeats' : task.schedule_type === 'cron' ? 'Cron' : 'Once'}
+          <DetailRow label="When" long>
+            {isCronLabel(scheduleLabel) ? 'Custom schedule' : sentenceCase(scheduleLabel)}
+            {cron?.next && <span className="text-(--color-text-muted)"> · next: {cron.next}</span>}
           </DetailRow>
-          {task.schedule_type === 'at' && task.at_datetime && (
-            <DetailRow label="Date and time">{formatInTimezone(task.at_datetime, task.timezone)}</DetailRow>
-          )}
-          {task.schedule_type === 'every' && task.every_seconds && (
-            <DetailRow label="Every">
-              {formatInterval(task.every_seconds)}{' '}
-              <span className="font-mono text-(--color-text-muted)">({task.every_seconds.toLocaleString('en-US')} s)</span>
-            </DetailRow>
-          )}
-          {task.schedule_type === 'cron' && task.cron_expression && (
+          {showExpression && (
             <DetailRow label="Expression">
               <code className="rounded-xs bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs text-(--color-text)">
                 {task.cron_expression}
               </code>
             </DetailRow>
           )}
-          {cron?.valid && (
-            <DetailRow label="Means">
-              {cron.description ?? 'Custom schedule'}
-              {cron.next && <span className="text-(--color-text-muted)"> · next {cron.next}</span>}
-            </DetailRow>
-          )}
-          <DetailRow label="Timezone">{task.timezone}</DetailRow>
+          {task.schedule_type !== 'every' && <DetailRow label="Time zone">{task.timezone}</DetailRow>}
         </PanelSection>
 
         <PanelSection
@@ -254,7 +244,7 @@ export function TaskDetailView({
         </PanelSection>
 
         <section className="space-y-3">
-          <PanelSection title="History" flush>
+          <PanelSection title="Dates" flush>
             <DetailRow label="Created">{formatRelativeDate(task.created_at)}</DetailRow>
             <DetailRow label="Updated">{formatRelativeDate(task.updated_at)}</DetailRow>
           </PanelSection>

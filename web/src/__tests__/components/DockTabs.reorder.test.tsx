@@ -167,13 +167,10 @@ describe('moving tabs from the keyboard and the menu', () => {
     expect(order()).toEqual(['Terminal 1', 'Terminal 2', 'Terminal 3'])
   })
 
-  it('Move Left and Move Right in the tab menu', async () => {
+  it('leaves Move Left and Move Right to the keys and the drag: the tab menu has neither', async () => {
     await renderDock()
-    await menuItem('Terminal 1', 'Move right')
-    expect(order()).toEqual(['Terminal 2', 'Terminal 1'])
-
-    await menuItem('Terminal 1', 'Move left')
-    expect(order()).toEqual(['Terminal 1', 'Terminal 2'])
+    fireEvent.contextMenu(tab('Terminal 1'))
+    expect(screen.queryByRole('menuitem', { name: /^Move (left|right)/ })).toBeNull()
   })
 
   it('Split Down takes a tab into a new pane below, and Move to Next Pane takes it back', async () => {

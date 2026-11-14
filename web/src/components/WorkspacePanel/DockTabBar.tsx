@@ -6,7 +6,7 @@
  * including Terminal and Preview), maximize on desktop, and the pane's ⋯
  * menu (Split right / down, and Close pane on an empty pane beside others).
  * One 28px size and one 14px glyph for all of them, as for the tab's own ×.
- * Refresh is not here: it sits in the toolbar of the view it reloads.
+ * Refresh is in the pane's ⋯ menu: the views follow the files on their own.
  * Views (Git, Plan, Tasks…) come before a hairline and documents after it, as in
  * an editor; the pane's preview tab is set in italics until it is kept.
  * Hiding the dock lives on the header's review-dock toggle (and ⌘D), which
@@ -21,12 +21,12 @@
  *
  * Tabs move by drag (fine pointers, see ``useTabDrag``): along the strip,
  * onto another pane's strip or middle, or onto a pane's edge to split it.
- * From the keyboard and the tab menu: ⌥⇧←/→, Move Left / Move Right, Split
- * Right / Left / Up / Down, Move to Next Pane. A double-click or
+ * From the keyboard: ⌥⇧←/→ along the strip, ⌃⌥+arrow to any side. The tab
+ * menu has Split Right / Down and Move to Next Pane. A double-click or
  * right-click on the strip's free end opens the "+" menu there.
  */
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
-import { CalendarClock, Check, ChevronDown, Columns2, Copy, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, MessageCircleQuestion, Minimize2, MoreHorizontal, Plus, Rows2, Target, X } from 'lucide-react'
+import { CalendarClock, Check, ChevronDown, Columns2, Copy, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, MessageCircleQuestion, Minimize2, MoreHorizontal, Plus, RefreshCw, Rows2, Target, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { CONTEXT_MENU_ITEM_CLASS, ContextMenu, ContextMenuSeparator } from '@/components/ui/context-menu'
 import { FileTypeIcon } from '../FileTypeIcon'
@@ -34,7 +34,7 @@ import { TerminalTabButton } from '../Terminal/TerminalTabButton'
 import type { OS } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, DOCK_TAB_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
-import { formatChord, matchChord } from '@/lib/keyboard/chord'
+import { matchChord } from '@/lib/keyboard/chord'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
 import { cn } from '@/lib/utils'
 import { absoluteWorkspacePath } from '@/utils/workspace'
@@ -82,7 +82,6 @@ export interface DockTabBarProps {
   /** Tab menu: close every other tab / the tabs after or before this one / every tab of the pane. */
   onCloseOthers?: (id: string) => void
   onCloseToRight?: (id: string) => void
-  onCloseToLeft?: (id: string) => void
   onCloseAll?: (id: string) => void
   /** Moves a tab to an index of ``tabs``; omitted, tabs stay put. */
   onMove?: (id: string, toIndex: number) => void
@@ -101,6 +100,12 @@ export interface DockTabBarProps {
   onClosePane?: () => void
   /** The pane's ⋯ menu: a new empty pane right of it or under it. Omitted on phones. */
   onSplitPane?: (side: PaneSplit) => void
+  /**
+   * The pane's ⋯ menu: reload what the open tab shows (Changes, a file, a
+   * diff). Those follow the files on their own, so this is the rare manual
+   * way; omitted for tabs with nothing to reload.
+   */
+  onRefresh?: () => void
   /** A tab dragged out of the strip and let go over a pane (see ``useTabDrag``). */
   onDropTab?: (id: string, target: TabDropTarget) => void
   /**
@@ -178,11 +183,12 @@ function ActionButton({ label, tooltip = label, onClick, children, expanded }: {
   )
 }
 
-/** The tab menu's splits, in order, with the ⌃⌥+arrow key for each. */
+/**
+ * The tab menu's splits, with the ⌃⌥+arrow key for each. Left and up are
+ * left to their keys and to dragging the tab to that edge.
+ */
 const SPLITS = [
   { side: 'right', label: 'Split right', key: 'splitTabRight' },
-  { side: 'left', label: 'Split left', key: 'splitTabLeft' },
-  { side: 'up', label: 'Split up', key: 'splitTabUp' },
   { side: 'down', label: 'Split down', key: 'splitTabDown' },
 ] as const satisfies readonly { side: SplitSide; label: string; key: keyof typeof APP_SHORTCUTS }[]
 
@@ -196,11 +202,12 @@ function tabPath(tab: DockTab, workspace: string): string | null {
 /**
  * The tab-strip items every tab's menu shares (terminal tabs add theirs
  * first), in order and groups: closing, then keeping, splitting and
- * moving, then the path. Close all stands apart from the other closings
- * (it is the one that empties the pane). ``dismiss`` closes the menu before
+ * moving to the next pane, then the path. Close all stands apart from the
+ * other closings (it is the one that empties the pane). Moving a tab along
+ * its strip is the drag's and ⌥⇧←/→'s. ``dismiss`` closes the menu before
  * the action runs.
  */
-export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onCloseOthers, onCloseToRight, onCloseToLeft, onCloseAll, onMove, preview = false, onKeep, onSplit, canSplit, onMoveToNextPane, canMoveToNextPane, onRevealInGit, os }: {
+export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onCloseOthers, onCloseToRight, onCloseAll, preview = false, onKeep, onSplit, canSplit, onMoveToNextPane, canMoveToNextPane, onRevealInGit, os }: {
   tab: DockTab
   tabs: DockTab[]
   workspace: string
@@ -208,9 +215,7 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
   onClose?: (id: string) => void
   onCloseOthers?: (id: string) => void
   onCloseToRight?: (id: string) => void
-  onCloseToLeft?: (id: string) => void
   onCloseAll?: (id: string) => void
-  onMove?: (id: string, toIndex: number) => void
   preview?: boolean
   onKeep?: (id: string) => void
   onSplit?: (id: string, side: SplitSide) => void
@@ -218,13 +223,12 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
   onMoveToNextPane?: (id: string) => void
   canMoveToNextPane?: (id: string) => boolean
   onRevealInGit?: (path: string) => void
-  /** Spells the keys beside Close (⌘W), the splits (⌃⌥→…) and the moves (⌥⇧←, ⌥⇧→). */
+  /** Spells the keys beside Close (⌘W) and the splits (⌃⌥→, ⌃⌥↓). */
   os: OS
 }): ReactNode {
   const index = tabs.findIndex((item) => item.id === tab.id)
   const hasOthers = tabs.length > 1
   const hasRight = index >= 0 && index < tabs.length - 1
-  const hasLeft = index > 0
   const path = tabPath(tab, workspace)
   const changedPath = tab.type === 'diff' ? tab.path : tab.type === 'file' ? tab.file.path : null
   const item = (label: string, run: () => void, icon?: ReactNode, disabled = false, shortcut?: string) => (
@@ -246,7 +250,6 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
     [
       onClose && item('Close', () => onClose(tab.id), <X size={12} aria-hidden="true" />, false, shortcutLabel(APP_SHORTCUTS.closeTab, os)),
       onCloseOthers && item('Close others', () => onCloseOthers(tab.id), undefined, !hasOthers),
-      onCloseToLeft && item('Close to the left', () => onCloseToLeft(tab.id), undefined, !hasLeft),
       onCloseToRight && item('Close to the right', () => onCloseToRight(tab.id), undefined, !hasRight),
     ],
     [
@@ -259,8 +262,6 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
             item(label, () => onSplit(tab.id, side), undefined, splitDisabled, shortcutLabel(APP_SHORTCUTS[key], os)))
         : []),
       onMoveToNextPane && (canMoveToNextPane?.(tab.id) ?? true) && item('Move to next pane', () => onMoveToNextPane(tab.id)),
-      onMove && item('Move left', () => onMove(tab.id, index - 1), undefined, index <= 0, formatChord(MOVE_TAB_LEFT_CHORD, os)),
-      onMove && item('Move right', () => onMove(tab.id, index + 1), undefined, !hasRight, formatChord(MOVE_TAB_RIGHT_CHORD, os)),
     ],
     [
       path && item('Copy path', () => { void navigator.clipboard?.writeText(path) }, <Copy size={12} aria-hidden="true" />),
@@ -298,7 +299,6 @@ export function DockTabBar({
   onClose,
   onCloseOthers,
   onCloseToRight,
-  onCloseToLeft,
   onCloseAll,
   onMove,
   onKeep,
@@ -309,6 +309,7 @@ export function DockTabBar({
   onRevealInGit,
   onClosePane,
   onSplitPane,
+  onRefresh,
   onDropTab,
   openItems = [],
   numberKeys = false,
@@ -345,9 +346,7 @@ export function DockTabBar({
       dismiss={dismiss}
       onCloseOthers={onCloseOthers}
       onCloseToRight={onCloseToRight}
-      onCloseToLeft={onCloseToLeft}
       onCloseAll={onCloseAll}
-      onMove={moveAndFocus}
       preview={tab.id === previewTabId}
       {...paneMenuProps}
     />
@@ -393,7 +392,7 @@ export function DockTabBar({
     const slot = index < DOCK_TAB_SHORTCUTS.length - 1 ? index : index === tabs.length - 1 ? DOCK_TAB_SHORTCUTS.length - 1 : -1
     return slot < 0 ? undefined : shortcutLabel(APP_SHORTCUTS[DOCK_TAB_SHORTCUTS[slot]], os)
   }
-  const hasPaneMenu = !mobile && (onSplitPane !== undefined || onClosePane !== undefined)
+  const hasPaneMenu = !mobile && (onSplitPane !== undefined || onClosePane !== undefined || onRefresh !== undefined)
   return (
     <div ref={stripRef} data-dock-strip="" className={DOCK_TAB_STRIP_CLASS}>
       <div
@@ -594,7 +593,21 @@ export function DockTabBar({
               <MenuKeys>{shortcutLabel(APP_SHORTCUTS[key], os)}</MenuKeys>
             </button>
           ))}
-          {onSplitPane && onClosePane && <ContextMenuSeparator />}
+          {onRefresh && (
+            <>
+              {onSplitPane && <ContextMenuSeparator />}
+              <button
+                type="button"
+                role="menuitem"
+                className={cn(CONTEXT_MENU_ITEM_CLASS, 'pointer-coarse:h-9 pointer-coarse:text-sm')}
+                onClick={() => { setPaneMenuAt(null); onRefresh() }}
+              >
+                <RefreshCw size={STRIP_ICON} aria-hidden="true" />
+                <span className="flex-1">Refresh</span>
+              </button>
+            </>
+          )}
+          {(onSplitPane || onRefresh) && onClosePane && <ContextMenuSeparator />}
           {onClosePane && (
             <button
               type="button"
@@ -619,10 +632,8 @@ export function DockTabBar({
             onClose={onClose}
             onCloseOthers={onCloseOthers}
             onCloseToRight={onCloseToRight}
-            onCloseToLeft={onCloseToLeft}
-            onCloseAll={onCloseAll}
-            onMove={moveAndFocus}
-            preview={menuTab.id === previewTabId}
+                  onCloseAll={onCloseAll}
+                  preview={menuTab.id === previewTabId}
             {...paneMenuProps}
           />
         </ContextMenu>

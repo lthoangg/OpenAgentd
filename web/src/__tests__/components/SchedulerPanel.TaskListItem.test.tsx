@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { TaskListItem } from '@/components/SchedulerPanel/TaskListItem'
@@ -77,7 +77,7 @@ describe('TaskListItem', () => {
     fireEvent.contextMenu(screen.getByRole('button', { name: /^Daily standup/ }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Delete task…' }))
 
-    expect(screen.getByRole('dialog', { name: 'Delete scheduled task' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Delete this task?' })).toBeInTheDocument()
     expect(requests).toHaveLength(0)
 
     // A confirm: no ×, Cancel dismisses, and the action is a verb and a noun.
@@ -228,8 +228,12 @@ describe('TaskListItem', () => {
     expect(screen.getByText('Not run yet')).toBeInTheDocument()
   })
 
-  it('names the schedule of a cron task', () => {
+  it('says the schedule of a cron task in words, or shows the expression when it has none', () => {
     renderItem({ ...scheduledTask, schedule_type: 'cron', every_seconds: null, cron_expression: '0 9 * * 1-5' })
-    expect(screen.getByText('cron 0 9 * * 1-5')).toBeInTheDocument()
+    expect(screen.getByText('weekdays at 09:00')).toBeInTheDocument()
+
+    cleanup()
+    renderItem({ ...scheduledTask, schedule_type: 'cron', every_seconds: null, cron_expression: '0 9 1 6 *' })
+    expect(screen.getByText('cron 0 9 1 6 *')).toBeInTheDocument()
   })
 })

@@ -35,7 +35,7 @@ export function DeleteTaskDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle>Delete scheduled task</DialogTitle>
+          <DialogTitle>Delete this task?</DialogTitle>
           <DialogDescription>
             &ldquo;{task.name}&rdquo; will be permanently deleted. This can't be undone.
           </DialogDescription>

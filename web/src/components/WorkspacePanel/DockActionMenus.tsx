@@ -109,23 +109,22 @@ export function DockActionMenus({
   const commitSheetItems: ActionSheetItem[] = commit
     ? [
         { id: 'open', label: 'Open in tab', icon: ExternalLink, disabled: gitActionPending, run: () => onOpenCommitTab(commit.sha) },
+        { id: 'copy-id', label: 'Copy commit ID', icon: Copy, run: () => copy(commit.sha) },
+        { id: 'copy-message', label: 'Copy message', icon: Copy, run: () => copy(commit.subject) },
         {
           id: 'revert',
           label: gitActionPending ? 'Reverting…' : 'Revert commit…',
           icon: RotateCcw,
+          separatorBefore: true,
           disabled: gitActionPending,
           run: () => setCommitConfirm({ kind: 'revert', sha: commit.sha, shortSha: commit.shortSha }),
         },
-        { id: 'copy-short', label: 'Copy short SHA', icon: Copy, separatorBefore: true, run: () => copy(commit.shortSha) },
-        { id: 'copy-full', label: 'Copy full SHA', icon: Copy, run: () => copy(commit.sha) },
-        { id: 'copy-message', label: 'Copy commit message', icon: Copy, run: () => copy(commit.subject) },
         ...(isLatestCommit
           ? [{
               id: 'undo',
               label: gitActionPending ? 'Undoing…' : 'Undo commit…',
               icon: Undo2,
               danger: true,
-              separatorBefore: true,
               disabled: gitActionPending,
               run: () => setCommitConfirm({ kind: 'undo' }),
             }]
@@ -167,7 +166,35 @@ export function DockActionMenus({
             <ExternalLink size={12} aria-hidden="true" />
             Open in tab
           </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => { const c = desktopCommitActions; setDesktopCommitActions(null); copy(c.sha) }}
+            className={MENU_ITEM_CLASS}
+          >
+            <Copy size={12} aria-hidden="true" />
+            Copy commit ID
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => { const c = desktopCommitActions; setDesktopCommitActions(null); copy(c.subject) }}
+            className={MENU_ITEM_CLASS}
+          >
+            <Copy size={12} aria-hidden="true" />
+            Copy message
+          </button>
           {MENU_DIVIDER}
+          <button
+            type="button"
+            role="menuitem"
+            disabled={gitActionPending}
+            onClick={() => { const c = desktopCommitActions; setDesktopCommitActions(null); setCommitConfirm({ kind: 'revert', sha: c.sha, shortSha: c.shortSha }) }}
+            className={MENU_ITEM_CLASS}
+          >
+            <RotateCcw size={12} aria-hidden="true" />
+            {gitActionPending ? 'Reverting…' : 'Revert commit…'}
+          </button>
           {isLatestCommit && (
             <button
               type="button"
@@ -180,44 +207,6 @@ export function DockActionMenus({
               {gitActionPending ? 'Undoing…' : 'Undo commit…'}
             </button>
           )}
-          <button
-            type="button"
-            role="menuitem"
-            disabled={gitActionPending}
-            onClick={() => { const c = desktopCommitActions; setDesktopCommitActions(null); setCommitConfirm({ kind: 'revert', sha: c.sha, shortSha: c.shortSha }) }}
-            className={MENU_ITEM_CLASS}
-          >
-            <RotateCcw size={12} aria-hidden="true" />
-            {gitActionPending ? 'Reverting…' : 'Revert commit…'}
-          </button>
-          {MENU_DIVIDER}
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => { const c = desktopCommitActions; setDesktopCommitActions(null); copy(c.shortSha) }}
-            className={MENU_ITEM_CLASS}
-          >
-            <Copy size={12} aria-hidden="true" />
-            Copy short SHA
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => { const c = desktopCommitActions; setDesktopCommitActions(null); copy(c.sha) }}
-            className={MENU_ITEM_CLASS}
-          >
-            <Copy size={12} aria-hidden="true" />
-            Copy full SHA
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => { const c = desktopCommitActions; setDesktopCommitActions(null); copy(c.subject) }}
-            className={MENU_ITEM_CLASS}
-          >
-            <Copy size={12} aria-hidden="true" />
-            Copy commit message
-          </button>
         </ContextMenu>
       )}
 

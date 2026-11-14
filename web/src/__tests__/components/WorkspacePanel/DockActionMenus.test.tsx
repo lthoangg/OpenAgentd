@@ -166,12 +166,34 @@ describe('commit actions', () => {
     const sheet = screen.getByRole('dialog', { name: 'Fix the parser' })
     expect(within(sheet).getByText('abcdef1')).toBeTruthy()
     expect(rows().map((row) => row.textContent)).toEqual([
-      'Open in tab', 'Revert commit…', 'Copy short SHA', 'Copy full SHA', 'Copy commit message', 'Undo commit…',
+      'Open in tab', 'Copy commit ID', 'Copy message', 'Revert commit…', 'Undo commit…',
     ])
     fireEvent.click(rows()[0]!)
     expect(onOpenCommitTab).toHaveBeenCalledWith('abcdef1234567890')
     first.unmount()
     renderMenus({ mobileCommitActions: commit, isLatestCommit: false })
     expect(rows().map((row) => row.textContent)).not.toContain('Undo commit…')
+  })
+
+  it('offers the same five on right-click, one ID to copy, the destructive one last', () => {
+    const writes: string[] = []
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => { writes.push(text) } } })
+    try {
+      const view = renderMenus({ desktopCommitActions: { ...commit, x: 10, y: 10 }, isLatestCommit: true })
+      expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+        'Open in tab', 'Copy commit ID', 'Copy message', 'Revert commit…', 'Undo commit…',
+      ])
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copy commit ID' }))
+      view.unmount()
+      renderMenus({ desktopCommitActions: { ...commit, x: 10, y: 10 }, isLatestCommit: false })
+      expect(screen.queryByRole('menuitem', { name: 'Undo commit…' })).toBeNull()
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copy message' }))
+      // The full ID: it works everywhere a short one does.
+      expect(writes).toEqual(['abcdef1234567890', 'Fix the parser'])
+    } finally {
+      if (original) Object.defineProperty(navigator, 'clipboard', original)
+      else Reflect.deleteProperty(navigator, 'clipboard')
+    }
   })
 })

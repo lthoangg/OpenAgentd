@@ -10,9 +10,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import userEvent from '@testing-library/user-event'
 import { DockTabBar, type DockTabBarProps } from '@/components/WorkspacePanel/DockTabBar'
 import type { DockOpenItem } from '@/components/WorkspacePanel/DockLauncher'
-import { MOVE_TAB_LEFT_CHORD, MOVE_TAB_RIGHT_CHORD, type DockTab } from '@/components/WorkspacePanel/dock-tabs'
+import type { DockTab } from '@/components/WorkspacePanel/dock-tabs'
 import { APP_SHORTCUTS, DOCK_TAB_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
-import { formatChord } from '@/lib/keyboard/chord'
 import { _resetKeyboardForTests } from '@/lib/keyboard/dispatcher'
 import { _resetTooltipTimingForTests } from '@/components/ui/tooltip'
 
@@ -160,7 +159,6 @@ describe('the tab menu', () => {
   async function openTabMenu(overrides: Partial<DockTabBarProps> = {}) {
     renderStrip({
       onCloseOthers: () => {},
-      onCloseToLeft: () => {},
       onCloseToRight: () => {},
       onCloseAll: () => {},
       onMove: () => {},
@@ -175,37 +173,37 @@ describe('the tab menu', () => {
     const menu = await openTabMenu()
     expect(rows(menu)[0]).toEqual(['Close', '⌘W'])
     const labels = rows(menu).map(([label]) => label)
-    expect(labels.slice(0, 5)).toEqual(['Close', 'Close others', 'Close to the left', 'Close to the right', 'Close all'])
+    expect(labels.slice(0, 4)).toEqual(['Close', 'Close others', 'Close to the right', 'Close all'])
     const closeAll = within(menu).getByRole('menuitem', { name: 'Close all' })
     expect(closeAll.previousElementSibling?.getAttribute('role')).toBe('separator')
     // ...and Close all is not run on into the splits below it.
     expect(closeAll.nextElementSibling?.getAttribute('role')).toBe('separator')
   })
 
-  it('shows every key a row has: ⌘W, the splits (⌃⌥+arrow) and the moves (⌥⇧+arrow)', async () => {
+  it('lists the closings, two splits and the path; what a drag or a key already does is left out', async () => {
+    const menu = await openTabMenu()
+    expect(rows(menu).map(([label]) => label)).toEqual([
+      'Close', 'Close others', 'Close to the right', 'Close all', 'Split right', 'Split down', 'Copy path',
+    ])
+  })
+
+  it('shows every key a row has: ⌘W and the splits (⌃⌥+arrow)', async () => {
     const menu = await openTabMenu()
     const keys = Object.fromEntries(rows(menu))
     expect(keys).toMatchObject({
       Close: '⌘W',
       'Split right': '⌃⌥→',
-      'Split left': '⌃⌥←',
-      'Split up': '⌃⌥↑',
       'Split down': '⌃⌥↓',
-      'Move left': '⌥⇧←',
-      'Move right': '⌥⇧→',
     })
     // Rows with no key show none.
     expect(keys['Close others']).toBe('')
     expect(keys['Close all']).toBe('')
-    // The menu spells the same chords the strip's key handler matches.
-    expect(keys['Move left']).toBe(formatChord(MOVE_TAB_LEFT_CHORD, 'macos'))
-    expect(keys['Move right']).toBe(formatChord(MOVE_TAB_RIGHT_CHORD, 'macos'))
   })
 
   it('spells them for Windows and Linux too', async () => {
     const menu = await openTabMenu({ os: 'linux' })
     const keys = Object.fromEntries(rows(menu))
-    expect(keys).toMatchObject({ Close: 'Ctrl+W', 'Split right': 'Ctrl+Alt+→', 'Move left': 'Alt+Shift+←' })
+    expect(keys).toMatchObject({ Close: 'Ctrl+W', 'Split right': 'Ctrl+Alt+→', 'Split down': 'Ctrl+Alt+↓' })
   })
 })
 

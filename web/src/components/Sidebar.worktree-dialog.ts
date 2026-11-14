@@ -5,20 +5,15 @@ export interface OpenWorktreeDialogState {
   target: string
   name: string
   branch: string
-  options: WorktreeInfo[]
   removing: string | null
   error: string | null
 }
 
-export function buildOpenWorktreeDialogState(
-  path: string,
-  cachedItems: WorktreeInfo[] | undefined,
-): OpenWorktreeDialogState {
+export function buildOpenWorktreeDialogState(path: string): OpenWorktreeDialogState {
   return {
     target: path,
     name: '',
     branch: '',
-    options: cachedItems ?? [],
     removing: null,
     error: null,
   }

@@ -157,7 +157,7 @@ function FilePathLabel({ workspace, path, mobile }: { workspace: string; path: s
   )
 }
 
-/** A file tab: one 32px toolbar (path, size, actions, Refresh last) over the preview. */
+/** A file tab: one 32px toolbar (path, size, actions, and on a phone Refresh last) over the preview. */
 export function FilePreviewSubPanel({
   workspace,
   file,

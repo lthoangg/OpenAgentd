@@ -113,6 +113,12 @@ export function isValidCron(expr: string): boolean {
   return parse(expr) !== null
 }
 
+/** "Weekdays at 09:00" for the common shapes; null for the rest and for an invalid expression. */
+export function describeCron(expr: string): string | null {
+  const p = parse(expr)
+  return p ? describe(p) : null
+}
+
 const pad = (n: number) => String(n).padStart(2, '0')
 
 /** The common shapes in words; ``null`` for anything else. */

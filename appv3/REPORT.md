@@ -55,6 +55,13 @@ A stored page is deleted when no tool result names it: deleting a session
 removes the pages only it named, and every start removes the rest. A page
 written in the last 60 s is kept, since its result is saved after it.
 
+The frame's origin has no storage, so the page gets a `localStorage` the
+backend keeps: `POST /api/mcp/app-storage {session_id, tool_call_id, clear?,
+remove?, set?}` applies an app's writes (in that order) to
+`<data_dir>/mcp-apps/storage/<sha256 of the server name>.json`, 5 MB per MCP
+server, and `GET /api/mcp/app-frames/{ticket}` hands the items to the page in
+`window.__OA_APP_STORAGE__` before `head`. Deleting the server deletes them.
+
 A tool whose `_meta.ui.visibility` lacks `"model"` is left out of the agent's
 tools, of `mcp` search and call, and of a server's `tool_names`.
 `/api/mcp/app-tools/call` answers 403 for a tool whose visibility lacks

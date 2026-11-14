@@ -29,6 +29,7 @@ pub fn router() -> Router<AppState> {
         .route("/app-frames", post(issue_app_frame))
         .route("/app-frames/{ticket}", get(app_frame))
         .route("/app-context", post(update_app_context))
+        .route("/app-storage", post(update_app_storage))
         .route("/apply", post(apply))
 }
 
@@ -241,6 +242,7 @@ async fn delete_server(AxPath(name): AxPath<String>) -> ApiResult<Response> {
     }
     cfgmod::save_config(&cfg).map_err(internal)?;
     mcp_manager().remove_runner(&name).await;
+    appv3_agent::mcp_apps::remove_storage(&name).await;
     Ok(json(json!({"name": name})))
 }
 
@@ -384,7 +386,12 @@ async fn app_frame(State(st): State<AppState>, AxPath(ticket): AxPath<String>) -
     let app = bound_app(&st.pool, &t.session_id, &t.tool_call_id).await?;
     let Some(html) = appv3_agent::mcp_apps::load_html(&app).await else { return Err(ApiError::not_found("MCP app page not found.")) };
     let csp = HeaderValue::from_str(&appv3_agent::mcp_apps::frame_csp(&app)).map_err(internal)?;
-    let mut resp = (StatusCode::OK, appv3_agent::mcp_apps::with_head(&html, &t.head)).into_response();
+    // What the server's apps kept goes first, for the host's storage stand-in.
+    let kept = match app.get("server").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+        Some(server) => appv3_agent::mcp_apps::storage_script(&appv3_agent::mcp_apps::load_storage(server).await),
+        None => String::new(),
+    };
+    let mut resp = (StatusCode::OK, appv3_agent::mcp_apps::with_head(&html, &format!("{kept}{}", t.head))).into_response();
     let h = resp.headers_mut();
     h.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
@@ -409,6 +416,26 @@ async fn update_app_context(State(st): State<AppState>, raw: Bytes) -> ApiResult
     let label = format!("{} · {}", part("server"), part("tool"));
     let text = appv3_agent::mcp_apps::context_text(v.get("content"), v.get("structuredContent"));
     appv3_agent::mcp_apps::report_model_context(&session_id, &tool_call_id, &label, &text);
+    Ok(json(json!({})))
+}
+
+/// `POST /app-storage`: what an app did to its `localStorage`. It is kept
+/// for the app's MCP server and handed back when one of its pages loads.
+async fn update_app_storage(State(st): State<AppState>, raw: Bytes) -> ApiResult<Response> {
+    let v = body_value(&raw)?;
+    let mut b = Body::new(&v)?;
+    let session_id = b.str("session_id", None);
+    let tool_call_id = b.str("tool_call_id", None);
+    b.finish(&["session_id", "tool_call_id", "clear", "remove", "set"])?;
+    let app = bound_app(&st.pool, &session_id, &tool_call_id).await?;
+    let Some(server) = app.get("server").and_then(Value::as_str).filter(|s| !s.is_empty()) else { return Err(ApiError::not_found("MCP app server not found.")) };
+    let strings = |v: &Value| v.as_str().map(String::from);
+    let change = appv3_agent::mcp_apps::StorageChange {
+        clear: v.get("clear").and_then(Value::as_bool).unwrap_or(false),
+        remove: v.get("remove").and_then(Value::as_array).into_iter().flatten().filter_map(strings).collect(),
+        set: v.get("set").and_then(Value::as_object).into_iter().flatten().filter_map(|(k, v)| Some((k.clone(), strings(v)?))).collect(),
+    };
+    appv3_agent::mcp_apps::change_storage(server, change).await;
     Ok(json(json!({})))
 }
 

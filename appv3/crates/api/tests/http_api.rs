@@ -1309,6 +1309,23 @@ async fn mcp_app_panel_flow(pool: &appv3_db::DbPool, ws: &std::path::Path) {
     let note = appv3_agent::mcp_apps::take_model_context(&session.id).unwrap();
     assert!(note.contains("<mcp_app_context app=\"canvas · exec\">\n2 shapes\n{\"canvasId\":\"c1\"}\n</mcp_app_context>"), "{note}");
 
+    // What the app keeps in its storage comes back with its next page, before the host's scripts.
+    let kept = json!({"session_id": sid, "tool_call_id": "call_canvas", "remove": ["old"], "set": {"doc:latest": "3 shapes </script>", "n": 1}});
+    let (st, _) = c.json("POST", "/api/mcp/app-storage", Some(kept.clone())).await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    let (st, _, _) = post("/api/mcp/app-storage", json!({"session_id": sid, "tool_call_id": "call_plain", "set": {"k": "v"}})).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    let (st, _, _) = post("/api/mcp/app-storage", kept).await;
+    assert_eq!(st, StatusCode::OK);
+    let (_, _, body) = post("/api/mcp/app-frames", json!({"session_id": sid, "tool_call_id": "call_canvas", "head": "<script>shim()</script>"})).await;
+    let ticket = serde_json::from_slice::<Value>(&body).unwrap()["ticket"].as_str().unwrap().to_string();
+    let (_, _, body) = c.send(Request::get(format!("/api/mcp/app-frames/{ticket}")).body(Body::empty()).unwrap()).await;
+    assert_eq!(
+        String::from_utf8(body).unwrap(),
+        "<html><head><script>window.__OA_APP_STORAGE__={\"doc:latest\":\"3 shapes \\u003c/script>\"};</script><script>shim()</script><script>app()</script></head><body>canvas</body></html>"
+    );
+    appv3_agent::mcp_apps::change_storage("canvas", appv3_agent::mcp_apps::StorageChange { clear: true, ..Default::default() }).await;
+
     // ...and goes with the session.
     let (st, _, _) = c.send(Request::delete(format!("/api/agent/sessions/{sid}")).header("authorization", "Bearer tok").body(Body::empty()).unwrap()).await;
     assert_eq!(st, StatusCode::NO_CONTENT);

@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, mock, spyOn } from "bun:test"
+import { runInNewContext } from "node:vm"
 import { act, render, screen, cleanup, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import "@testing-library/jest-dom"
@@ -8,6 +9,7 @@ import { FRAME_KEYS_NS } from "@/lib/keyboard/frames"
 const callMcpAppTool = mock(async () => ({ result: { content: [{ type: "text", text: "saved" }] } }))
 const issueMcpAppFrameUrl = mock(async (..._args: unknown[]) => "about:blank?frame=ticket-1")
 const updateMcpAppModelContext = mock(async (..._args: unknown[]): Promise<void> => undefined)
+const updateMcpAppStorage = mock(async (..._args: unknown[]): Promise<void> => undefined)
 
 afterEach(cleanup)
 
@@ -50,6 +52,7 @@ mock.module("@/api/client", () => ({
   callMcpAppTool,
   issueMcpAppFrameUrl,
   updateMcpAppModelContext,
+  updateMcpAppStorage,
 }))
 
 
@@ -70,7 +73,58 @@ describe("MCPAppResult", () => {
     issueMcpAppFrameUrl.mockImplementation(async () => "about:blank?frame=ticket-1")
     updateMcpAppModelContext.mockClear()
     updateMcpAppModelContext.mockImplementation(async () => undefined)
+    updateMcpAppStorage.mockClear()
     document.documentElement.className = ""
+  })
+
+  it("waits a moment after the app is initialized before sending tool data", async () => {
+    render(
+      <MCPAppResult
+        sessionId="session-1"
+        toolCallId="tool-call-1"
+        mcpApp={{ server: "canvas", tool: "exec", resourceUri: "ui://canvas/app.html", html_sha256: "a".repeat(64), tool_input: { code: "draw()" } }}
+      />,
+    )
+    await waitFor(() => expect(bridgeInstances[0]?.connect).toHaveBeenCalled())
+
+    // An app that attaches its handlers after it initializes would miss them.
+    bridgeInstances[0]?.oninitialized?.()
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)) })
+    expect(bridgeInstances[0]?.sendToolInput).not.toHaveBeenCalled()
+
+    await waitFor(() => expect(bridgeInstances[0]?.sendToolInput).toHaveBeenCalledWith({ arguments: { code: "draw()" } }))
+  })
+
+  it("passes the app's storage writes to the backend in order, as one request", async () => {
+    render(
+      <MCPAppResult
+        sessionId="session-1"
+        toolCallId="tool-call-1"
+        mcpApp={{ server: "canvas", tool: "exec", resourceUri: "ui://canvas/app.html", html_sha256: "a".repeat(64) }}
+      />,
+    )
+    await waitFor(() => expect(document.body.querySelector("iframe")?.getAttribute("src")).toBe("about:blank?frame=ticket-1"))
+    const iframe = document.body.querySelector("iframe") as HTMLIFrameElement
+    const fromApp = (data: unknown, source: MessageEventSource | null = iframe.contentWindow) =>
+      act(() => { window.dispatchEvent(new MessageEvent("message", { data, source })) })
+    const write = (rest: Record<string, unknown>) => ({ ns: "oa-mcp-app-storage", v: 1, ...rest })
+
+    fromApp(write({ op: "set", key: "doc", value: "1 shape" }))
+    fromApp(write({ op: "set", key: "theme", value: "dark" }))
+    fromApp(write({ op: "remove", key: "theme" }))
+    fromApp(write({ op: "set", key: "doc", value: "2 shapes" }))
+    // Not from this app's frame, not a storage write, not a string.
+    fromApp(write({ op: "set", key: "doc", value: "forged" }), window)
+    fromApp({ op: "set", key: "doc", value: "no namespace" })
+    fromApp(write({ op: "set", key: "doc", value: { not: "a string" } }))
+
+    await waitFor(() => expect(updateMcpAppStorage).toHaveBeenCalledTimes(1))
+    expect(updateMcpAppStorage.mock.calls[0][0]).toEqual({
+      session_id: "session-1",
+      tool_call_id: "tool-call-1",
+      remove: ["theme"],
+      set: { doc: "2 shapes" },
+    })
   })
 
   it("loads a stored result's page from a single-use address, with the host scripts for its head", async () => {
@@ -101,6 +155,37 @@ describe("MCPAppResult", () => {
     // The server sends the page's policy as a header.
     expect(request.head).not.toContain("Content-Security-Policy")
     expect(screen.queryByText(/MCP app bridge error/)).toBeNull()
+  })
+
+  it("keeps the app running when the same result arrives again as a new object", async () => {
+    const app = () => ({
+      server: "canvas",
+      tool: "exec",
+      resourceUri: "ui://canvas/app.html",
+      html_sha256: "a".repeat(64),
+      resourceMeta: { ui: { csp: { connectDomains: ["https://api.canvas.example"] } } },
+      tool_input: { code: "draw()" },
+      result: { content: [{ type: "text" as const, text: "drawn" }] },
+    })
+    const view = render(<MCPAppResult sessionId="session-1" toolCallId="tool-call-1" mcpApp={app()} />)
+    await waitFor(() => expect(document.body.querySelector("iframe")?.getAttribute("src")).toBe("about:blank?frame=ticket-1"))
+    const iframe = document.body.querySelector("iframe")
+
+    // History is rebuilt when a turn ends: equal content, new objects.
+    issueMcpAppFrameUrl.mockImplementation(async () => "about:blank?frame=ticket-2")
+    view.rerender(<MCPAppResult sessionId="session-1" toolCallId="tool-call-1" mcpApp={app()} />)
+    await act(async () => { await Promise.resolve() })
+
+    expect(issueMcpAppFrameUrl).toHaveBeenCalledTimes(1)
+    expect(bridgeInstances).toHaveLength(1)
+    expect(bridgeInstances[0].close).not.toHaveBeenCalled()
+    expect(document.body.querySelector("iframe")).toBe(iframe)
+    expect(iframe?.getAttribute("src")).toBe("about:blank?frame=ticket-1")
+
+    // A result that did change loads again.
+    view.rerender(<MCPAppResult sessionId="session-1" toolCallId="tool-call-1" mcpApp={{ ...app(), tool_input: { code: "erase()" } }} />)
+    await waitFor(() => expect(iframe?.getAttribute("src")).toBe("about:blank?frame=ticket-2"))
+    expect(bridgeInstances).toHaveLength(2)
   })
 
   it("renders inline HTML in place when no address can be issued", async () => {
@@ -344,7 +429,46 @@ describe("MCPAppResult", () => {
 
     const appHtml = document.body.querySelector("iframe")?.getAttribute("srcdoc") ?? ""
     expect(appHtml.indexOf("function createStorage")).toBeLessThan(appHtml.indexOf('localStorage.getItem("x")'))
-    expect(appHtml).toContain("'localStorage','sessionStorage'")
+    expect(appHtml).toContain("['localStorage',kept,true],['sessionStorage',{},false]")
+  })
+
+  it("gives the app a localStorage that starts from what was kept and reports each write", async () => {
+    render(
+      <MCPAppResult
+        sessionId="session-1"
+        toolCallId="tool-call-1"
+        mcpApp={{ server: "canvas", tool: "exec", resourceUri: "ui://canvas/app.html", html_sha256: "a".repeat(64) }}
+      />,
+    )
+    await waitFor(() => expect(issueMcpAppFrameUrl).toHaveBeenCalled())
+    const head = (issueMcpAppFrameUrl.mock.calls[0][0] as { head: string }).head
+    const shim = head.slice(head.indexOf("<script>") + "<script>".length, head.indexOf("</script>"))
+
+    // A page in an origin of its own: reading either storage throws.
+    const page: Record<string, unknown> = { __OA_APP_STORAGE__: { doc: "2 shapes" } }
+    for (const name of ["localStorage", "sessionStorage"]) {
+      Object.defineProperty(page, name, { configurable: true, get() { throw new Error("SecurityError") } })
+    }
+    const told: unknown[] = []
+    runInNewContext(shim, { window: page, parent: { postMessage: (message: unknown) => told.push(message) }, DOMException })
+    const local = page.localStorage as Storage
+    const session = page.sessionStorage as Storage
+
+    expect(page.__OA_APP_STORAGE__).toBeUndefined()
+    expect(local.getItem("doc")).toBe("2 shapes")
+    local.setItem("doc", "3 shapes")
+    local.removeItem("doc")
+    local.removeItem("never set")
+    session.setItem("tab", "1")
+    expect(session.getItem("tab")).toBe("1")
+    expect(() => local.setItem("big", "x".repeat(5 * 1024 * 1024))).toThrow("quota")
+    expect(local.getItem("big")).toBeNull()
+    local.clear()
+    expect(told).toEqual([
+      { op: "set", key: "doc", value: "3 shapes", ns: "oa-mcp-app-storage", v: 1 },
+      { op: "remove", key: "doc", ns: "oa-mcp-app-storage", v: 1 },
+      { op: "clear", ns: "oa-mcp-app-storage", v: 1 },
+    ])
   })
 
   it("injects the key forwarder so app keys and Escape reach the host", async () => {

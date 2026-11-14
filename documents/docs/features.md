@@ -4070,7 +4070,10 @@ Four orthogonal ways to add capability.
   an app reports for the model, such as the shapes a user drew on a canvas,
   reaches the agent with the next message. Tools a server marks for the app
   alone are not offered to the agent. An app's page is stored once instead of
-  with every result, so a session with many app results stays small.
+  with every result, so a session with many app results stays small. What an
+  app saves for itself, such as a canvas you drew on, is kept per MCP server
+  and is still there after a reload or a restart. An app keeps running when
+  its turn ends instead of loading again.
 - **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
   shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
   any MCP server in Settings to re-detect.

@@ -154,3 +154,16 @@ export async function updateMcpAppModelContext(
   })
   if (!res.ok) await parseDetailOrThrow(res, 'POST /mcp/app-context')
 }
+
+/** What an app did to its `localStorage`, applied as clear, remove, set. The
+ * backend keeps it for the app's MCP server and hands it back to its pages. */
+export async function updateMcpAppStorage(
+  body: MCPAppBinding & { clear?: boolean; remove?: string[]; set?: Record<string, string> },
+): Promise<void> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/app-storage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /mcp/app-storage')
+}

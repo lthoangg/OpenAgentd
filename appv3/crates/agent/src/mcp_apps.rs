@@ -17,6 +17,11 @@
 //! **Unused pages.** A page stays while a tool result names it. Deleting a
 //! session removes the pages only it named, and every start removes pages
 //! nothing names any more (results reverted, a server that stopped midway).
+//!
+//! **An app's own storage.** An app's frame has an origin of its own, where
+//! the browser gives it no `localStorage`. What an app keeps there (a canvas
+//! the user drew on) is held in `<data_dir>/mcp-apps/storage/`, one file per
+//! MCP server, and given back to the app's page when it loads.
 
 use appv3_db::DbPool;
 use serde::{Deserialize, Serialize};
@@ -39,6 +44,11 @@ const MAX_PANELS: usize = 16;
 /// does is saved a moment after its page.
 const PAGE_GRACE: Duration = Duration::from_secs(60);
 const REPORTS_FILE: &str = "mcp-app-reports.json";
+/// What one MCP server's apps may keep, keys and values together: what a
+/// browser gives an origin.
+pub const MAX_STORAGE_BYTES: usize = 5 * 1024 * 1024;
+/// The page global the stored items are handed over in.
+pub const STORAGE_GLOBAL: &str = "__OA_APP_STORAGE__";
 
 fn html_dir() -> PathBuf {
     appv3_core::settings::settings().data_dir.join("mcp-apps")
@@ -149,6 +159,95 @@ async fn remove_unused_pages_in(dir: &Path, pool: &DbPool, candidates: Option<Ve
             Err(e) => tracing::warn!("mcp_app_page_remove_failed path={} error={}", path.display(), e),
         }
     }
+}
+
+// ── an app's own storage ────────────────────────────────────────────────────
+
+/// What an app did to its storage, applied in this order.
+#[derive(Default)]
+pub struct StorageChange {
+    pub clear: bool,
+    pub remove: Vec<String>,
+    pub set: Vec<(String, String)>,
+}
+
+/// A server's name can hold `/` (a plugin's server), so its file is named by hash.
+fn storage_file(dir: &Path, server: &str) -> PathBuf {
+    dir.join("storage").join(format!("{}.json", sha256_hex(server)))
+}
+
+fn storage_lock() -> &'static tokio::sync::Mutex<()> {
+    static L: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    L.get_or_init(Default::default)
+}
+
+async fn read_storage(file: &Path) -> Map<String, Value> {
+    let items = tokio::fs::read(file).await.ok().and_then(|b| serde_json::from_slice::<Map<String, Value>>(&b).ok()).unwrap_or_default();
+    items.into_iter().filter(|(_, v)| v.is_string()).collect()
+}
+
+/// What the apps of `server` keep.
+pub async fn load_storage(server: &str) -> Map<String, Value> {
+    read_storage(&storage_file(&html_dir(), server)).await
+}
+
+/// Apply what an app of `server` did to its storage.
+pub async fn change_storage(server: &str, change: StorageChange) {
+    change_storage_in(&html_dir(), server, change).await
+}
+
+async fn change_storage_in(dir: &Path, server: &str, change: StorageChange) {
+    let file = storage_file(dir, server);
+    let _one_at_a_time = storage_lock().lock().await;
+    let mut items = if change.clear { Map::new() } else { read_storage(&file).await };
+    for key in &change.remove {
+        items.remove(key);
+    }
+    let size = |items: &Map<String, Value>| items.iter().map(|(k, v)| k.len() + v.as_str().map_or(0, str::len)).sum::<usize>();
+    for (key, value) in change.set {
+        // A value that does not fit is refused and the last one kept, as a
+        // browser does when an origin is over its quota.
+        let before = items.insert(key.clone(), Value::String(value));
+        if size(&items) > MAX_STORAGE_BYTES {
+            match before {
+                Some(old) => items.insert(key, old),
+                None => items.remove(&key),
+            };
+        }
+    }
+    let saved = async {
+        if items.is_empty() {
+            return match tokio::fs::remove_file(&file).await {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+                _ => Ok(()),
+            };
+        }
+        if let Some(folder) = file.parent() {
+            tokio::fs::create_dir_all(folder).await?;
+        }
+        let tmp = file.with_extension("json.tmp");
+        tokio::fs::write(&tmp, serde_json::to_vec(&items)?).await?;
+        tokio::fs::rename(&tmp, &file).await
+    };
+    if let Err(e) = saved.await {
+        tracing::warn!("mcp_app_storage_save_failed path={} error={}", file.display(), e);
+    }
+}
+
+/// Forget what the apps of a removed server kept.
+pub async fn remove_storage(server: &str) {
+    let _ = tokio::fs::remove_file(storage_file(&html_dir(), server)).await;
+}
+
+/// The script that hands `items` to the page, for the host's storage
+/// stand-in to pick up. Empty when there is nothing to hand over.
+pub fn storage_script(items: &Map<String, Value>) -> String {
+    if items.is_empty() {
+        return String::new();
+    }
+    // `<` is escaped so a stored value cannot close the script element.
+    let json = Value::Object(items.clone()).to_string().replace('<', "\\u003c");
+    format!("<script>window.{STORAGE_GLOBAL}={json};</script>")
 }
 
 // ── the page as the panel's frame loads it ──────────────────────────────────
@@ -591,5 +690,47 @@ mod tests {
         store_html_in(dir.path(), &mut json!({"html": "<p>x</p>"})).await;
         let age = std::fs::metadata(&path).unwrap().modified().unwrap().elapsed().unwrap();
         assert!(age < Duration::from_secs(60), "{age:?}");
+    }
+
+    #[tokio::test]
+    async fn an_apps_storage_is_kept_per_server_within_its_quota() {
+        let dir = tempfile::tempdir().unwrap();
+        let kept = |server: &'static str| {
+            let file = storage_file(dir.path(), server);
+            async move { Value::Object(read_storage(&file).await) }
+        };
+        let set = |pairs: &[(&str, &str)]| StorageChange { set: pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), ..Default::default() };
+
+        change_storage_in(dir.path(), "canvas", set(&[("doc:latest", "2 shapes"), ("theme", "dark")])).await;
+        change_storage_in(dir.path(), "plugin/chart", set(&[("theme", "light")])).await;
+        assert_eq!(kept("canvas").await, json!({"doc:latest": "2 shapes", "theme": "dark"}));
+        assert_eq!(kept("plugin/chart").await, json!({"theme": "light"}), "each server has its own");
+
+        // Removed, then set: one change is applied in that order.
+        change_storage_in(
+            dir.path(),
+            "canvas",
+            StorageChange { remove: vec!["theme".into(), "doc:latest".into()], set: vec![("doc:latest".into(), "3 shapes".into())], clear: false },
+        )
+        .await;
+        assert_eq!(kept("canvas").await, json!({"doc:latest": "3 shapes"}));
+
+        // Over the quota the new value is refused and the last one stays.
+        let big = "x".repeat(MAX_STORAGE_BYTES);
+        change_storage_in(dir.path(), "canvas", set(&[("doc:latest", &big), ("extra", &big), ("small", "ok")])).await;
+        assert_eq!(kept("canvas").await, json!({"doc:latest": "3 shapes", "small": "ok"}));
+
+        change_storage_in(dir.path(), "canvas", StorageChange { clear: true, ..Default::default() }).await;
+        assert!(!storage_file(dir.path(), "canvas").exists(), "nothing kept, no file");
+        assert_eq!(kept("plugin/chart").await, json!({"theme": "light"}));
+    }
+
+    #[test]
+    fn stored_items_cannot_close_the_script_that_hands_them_over() {
+        assert_eq!(storage_script(&Map::new()), "");
+        let items = json!({"k": "</script><script>alert(1)</script>"});
+        let script = storage_script(items.as_object().unwrap());
+        assert_eq!(script, "<script>window.__OA_APP_STORAGE__={\"k\":\"\\u003c/script>\\u003cscript>alert(1)\\u003c/script>\"};</script>");
+        assert_eq!(script.matches("</script>").count(), 1);
     }
 }

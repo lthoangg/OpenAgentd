@@ -18,7 +18,7 @@ import {
   type TransportSendOptions,
 } from '@modelcontextprotocol/client'
 import { ExternalLink, Maximize2, X } from 'lucide-react'
-import { callMcpAppTool, issueMcpAppFrameUrl, updateMcpAppModelContext } from '@/api/client'
+import { callMcpAppTool, issueMcpAppFrameUrl, updateMcpAppModelContext, updateMcpAppStorage } from '@/api/client'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useKeyLayer } from '@/lib/keyboard/hooks'
 import { frameKeyForwarderScript, frameKeymap, useFrameKeys } from '@/lib/keyboard/frames'
@@ -65,6 +65,12 @@ const MAX_HEIGHT = 900
 const INLINE_DISPLAY_MODE = 'inline' as const
 const FULLSCREEN_DISPLAY_MODE = 'fullscreen' as const
 const THEME_CHANGE_EVENT = 'oa-theme-change'
+/** An app may attach its handlers a moment after it says it is initialized;
+ * tool data sent at once would arrive first and be dropped. */
+const TOOL_DATA_DELAY_MS = 300
+const APP_STORAGE_NS = 'oa-mcp-app-storage'
+/** Writes this close together go to the backend as one request. */
+const STORAGE_WRITE_DELAY_MS = 200
 function currentTheme(): 'light' | 'dark' {
   return document.documentElement.classList.contains('dark') ? 'dark' : 'light'
 }
@@ -131,8 +137,14 @@ function buildCsp(csp?: McpUiResourceCsp): string {
   ].join('; ')
 }
 
+/**
+ * The frame's origin has no storage of its own, so the page gets stand-ins.
+ * `localStorage` starts from what the backend kept for the app's server
+ * (handed over in `__OA_APP_STORAGE__`) and tells the host about every
+ * write, which the host passes on; `sessionStorage` lasts as long as the page.
+ */
 function storageShimScript(): string {
-  return `<script>(function(){function createStorage(){var data=new Map();return{get length(){return data.size},key:function(index){return Array.from(data.keys())[index]||null},getItem:function(key){key=String(key);return data.has(key)?data.get(key):null},setItem:function(key,value){data.set(String(key),String(value))},removeItem:function(key){data.delete(String(key))},clear:function(){data.clear()}}}['localStorage','sessionStorage'].forEach(function(name){try{void window[name]}catch{Object.defineProperty(window,name,{value:createStorage(),configurable:true})}})})();</script>`
+  return `<script>(function(){var kept=window.__OA_APP_STORAGE__||{};try{delete window.__OA_APP_STORAGE__}catch{}var LIMIT=5242880;function createStorage(seed,persist){var data=new Map(Object.entries(seed));function size(){var n=0;data.forEach(function(v,k){n+=k.length+v.length});return n}function tell(m){if(!persist)return;m.ns='${APP_STORAGE_NS}';m.v=1;try{parent.postMessage(m,'*')}catch{}}return{get length(){return data.size},key:function(index){return Array.from(data.keys())[index]||null},getItem:function(key){key=String(key);return data.has(key)?data.get(key):null},setItem:function(key,value){key=String(key);value=String(value);var old=data.get(key);data.set(key,value);if(size()>LIMIT){if(old===undefined)data.delete(key);else data.set(key,old);throw new DOMException('The quota has been exceeded.','QuotaExceededError')}tell({op:'set',key:key,value:value})},removeItem:function(key){key=String(key);if(data.delete(key))tell({op:'remove',key:key})},clear:function(){data.clear();tell({op:'clear'})}}}[['localStorage',kept,true],['sessionStorage',{},false]].forEach(function(s){try{void window[s[0]]}catch{Object.defineProperty(window,s[0],{value:createStorage(s[1],s[2]),configurable:true})}})})();</script>`
 }
 
 /** The host's own scripts for the app's page; they run before the app's. */
@@ -160,6 +172,14 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
+/** The page is megabytes on older results; it is compared as a string and
+ * the rest as JSON. */
+function sameApp(a: MCPAppPayload, b: MCPAppPayload): boolean {
+  if (a === b) return true
+  if (a.html !== b.html) return false
+  return JSON.stringify({ ...a, html: undefined }) === JSON.stringify({ ...b, html: undefined })
+}
+
 /** Send values one at a time; while one is on its way only the newest waits. */
 function sendNewest<T>(send: (value: T) => Promise<void>): (value: T) => void {
   let busy = false
@@ -183,6 +203,56 @@ function sendNewest<T>(send: (value: T) => Promise<void>): (value: T) => void {
       }
       busy = false
     })()
+  }
+}
+
+type StorageChange = { clear?: boolean; remove?: string[]; set?: Record<string, string> }
+
+/** Collect an app's storage writes and send them in order, a batch at a time. */
+function storageWriter(send: (change: StorageChange) => Promise<void>) {
+  let pending: { clear: boolean; remove: Set<string>; set: Map<string, string> } | null = null
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let busy = false
+  const run = async () => {
+    timer = undefined
+    if (busy) return
+    busy = true
+    while (pending) {
+      const batch = pending
+      pending = null
+      try {
+        await send({
+          ...(batch.clear ? { clear: true } : {}),
+          ...(batch.remove.size ? { remove: [...batch.remove] } : {}),
+          ...(batch.set.size ? { set: Object.fromEntries(batch.set) } : {}),
+        })
+      } catch (exc) {
+        console.debug('[MCP App] storage update failed', exc)
+      }
+    }
+    busy = false
+  }
+  return {
+    record(message: { op?: unknown; key?: unknown; value?: unknown }) {
+      const { op, key, value } = message
+      pending ??= { clear: false, remove: new Set(), set: new Map() }
+      if (op === 'clear') {
+        pending = { clear: true, remove: new Set(), set: new Map() }
+      } else if (op === 'set' && typeof key === 'string' && typeof value === 'string') {
+        pending.remove.delete(key)
+        pending.set.set(key, value)
+      } else if (op === 'remove' && typeof key === 'string') {
+        pending.set.delete(key)
+        pending.remove.add(key)
+      }
+      timer ??= setTimeout(() => void run(), STORAGE_WRITE_DELAY_MS)
+    },
+    /** Send what is waiting now: the panel is going away. */
+    flush() {
+      if (timer === undefined) return
+      clearTimeout(timer)
+      void run()
+    },
   }
 }
 
@@ -244,7 +314,12 @@ class DeferredPostMessageTransport implements Transport {
   }
 }
 
-export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProps) {
+export function MCPAppResult({ mcpApp: latest, sessionId, toolCallId }: MCPAppResultProps) {
+  // History is rebuilt when a turn ends or the session reloads, which hands
+  // over an equal result as new objects. Loading the page again for those
+  // would restart the app and drop what it was doing.
+  const [mcpApp, setMcpApp] = useState(latest)
+  if (mcpApp !== latest && !sameApp(mcpApp, latest)) setMcpApp(latest)
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   useFrameKeys(iframeRef)
   const bridgeRef = useRef<AppBridge | null>(null)
@@ -367,15 +442,30 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
       return {}
     }
     bridge.onmessage = async () => ({})
+    // The app's `localStorage` writes, from the stand-in in its page.
+    const storage = storageWriter(async (change) => {
+      if (!sessionId || !toolCallId) return
+      await updateMcpAppStorage({ session_id: sessionId, tool_call_id: toolCallId, ...change })
+    })
+    const onStorageMessage = (event: MessageEvent) => {
+      if (event.source !== iframe.contentWindow) return
+      const data = event.data as { ns?: unknown; v?: unknown; op?: unknown; key?: unknown; value?: unknown } | null
+      if (data?.ns === APP_STORAGE_NS && data.v === 1) storage.record(data)
+    }
+    window.addEventListener('message', onStorageMessage)
     bridge.onrequestdisplaymode = async ({ mode }) => {
       const nextMode = mode === FULLSCREEN_DISPLAY_MODE ? FULLSCREEN_DISPLAY_MODE : INLINE_DISPLAY_MODE
       setDisplayMode(nextMode)
       return { mode: nextMode }
     }
+    let toolDataTimer: ReturnType<typeof setTimeout> | undefined
     bridge.oninitialized = () => {
-      void sendInitialToolData().catch((exc) => {
-        if (!cancelled) setError(exc instanceof Error ? exc.message : String(exc))
-      })
+      clearTimeout(toolDataTimer)
+      toolDataTimer = setTimeout(() => {
+        void sendInitialToolData().catch((exc) => {
+          if (!cancelled) setError(exc instanceof Error ? exc.message : String(exc))
+        })
+      }, TOOL_DATA_DELAY_MS)
     }
     // Do not expose generic tool listing. The backend authorizes calls against
     // this artifact's persisted session/tool-call binding and the same server's
@@ -457,6 +547,9 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
 
     return () => {
       cancelled = true
+      clearTimeout(toolDataTimer)
+      window.removeEventListener('message', onStorageMessage)
+      storage.flush()
       removeLoadListener?.()
       bridgeRef.current = null
       void bridge.close().catch(() => undefined)

@@ -90,6 +90,18 @@ describe('providerView', () => {
 
   // A provider can block an account before its window says 100%; Settings
   // and the Windows and Linux tray menu already say "limit reached" then.
+  // A usage period ends; only a quota window resets. Settings says "Ends in".
+  it('says when a usage period ends, in the words Settings uses', () => {
+    const period = item({
+      provider: 'grok',
+      label: 'Grok',
+      usage: { provider: 'grok', limits: [{ period_start_at: NOW - 86_400, period_end_at: NOW + 3 * 86_400 }] },
+    })
+
+    const view = providerView(period, NOW)
+    expect(view.rows).toEqual([{ key: 'grok-0-period', kind: 'value', label: 'Period', value: 'Ends in 3d', tone: 'ok' }])
+  })
+
   it('reads a limit the provider reports as reached as reached, whatever its percent', () => {
     const blocked = item({
       provider: 'openai',

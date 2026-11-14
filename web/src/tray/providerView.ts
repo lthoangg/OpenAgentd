@@ -16,6 +16,7 @@ import {
   clampPercent,
   formatAmount,
   formatAgo,
+  formatEndsIn,
   formatResetIn,
   formatRetry,
   meterTone,
@@ -136,7 +137,7 @@ function windowRow(key: string, limit: TrayUsageLimit, window: TrayUsageWindow, 
     label: joinLabel(own, windowLabel(window.window_minutes)) ?? 'Usage',
     percent,
     tone: meterTone(percent),
-    reset: formatResetIn(window.resets_at),
+    reset: formatResetIn(window.resets_at, now * 1000),
     nowLine: nowLinePosition(window, limit.period_start_at, limit.period_end_at, now),
     reached: percent >= 100 || blocked,
   }
@@ -160,7 +161,7 @@ function spendRow(key: string, limit: TrayUsageLimit, own: string | null, now: n
     label: joinLabel(own, 'Spend cap')!,
     percent,
     tone: spend.reached ? 'crit' : meterTone(percent),
-    reset: formatResetIn(spend.resets_at),
+    reset: formatResetIn(spend.resets_at, now * 1000),
     nowLine: nowLinePosition(null, limit.period_start_at, limit.period_end_at, now),
     detail,
     reached: spend.reached || percent >= 100,
@@ -197,7 +198,7 @@ function limitRows(item: TrayUsageItem, limit: TrayUsageLimit, index: number, no
   }
   if (!limit.primary && !limit.secondary && !hasSpend && !limit.credits
     && (typeof limit.period_start_at === 'number' || typeof limit.period_end_at === 'number')) {
-    rows.push({ key: `${key}-period`, kind: 'value', label: own ?? 'Period', value: formatResetIn(limit.period_end_at) ?? 'Active', tone: 'ok' })
+    rows.push({ key: `${key}-period`, kind: 'value', label: own ?? 'Period', value: formatEndsIn(limit.period_end_at, now * 1000) ?? 'Active', tone: 'ok' })
   }
   return rows
 }

@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
 import { formatUsageAmount, moneyFormatter } from '@/lib/usage-format'
 import { useResetProviderUsageMutation } from '@/queries/useProvidersQuery'
 import { useNowMs } from './useNowMs'
-import { formatResetIn } from '@/tray/usage'
+import { formatEndsIn, formatResetIn } from '@/tray/usage'
 import { useToastStore } from '@/stores/useToastStore'
 
 /**
@@ -39,21 +39,6 @@ function ago(ms: number, now: number): string {
 function formatUpdatedAgo(updatedAt: number | undefined, stale: boolean, now: number): string | null {
   if (!updatedAt) return null
   return `${stale ? 'Last updated' : 'Updated'} ${ago(updatedAt, now)}`
-}
-
-function formatPeriodEndIn(periodEndAt: number | null | undefined, now: number): string | null {
-  if (typeof periodEndAt !== 'number') return null
-  const remainingS = periodEndAt - now / 1000
-  if (remainingS <= 0) return 'Ending now'
-  const minutes = Math.round(remainingS / 60)
-  if (minutes < 1) return 'Ends in <1m'
-  if (minutes < 60) return `Ends in ${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  const remMinutes = minutes % 60
-  if (hours < 24) return remMinutes === 0 ? `Ends in ${hours}h` : `Ends in ${hours}h ${remMinutes}m`
-  const days = Math.floor(hours / 24)
-  const remHours = hours % 24
-  return remHours === 0 ? `Ends in ${days}d` : `Ends in ${days}d ${remHours}h`
 }
 
 function usageLabel(limit: ProviderUsageLimit): string {
@@ -320,7 +305,7 @@ function CreditsRow({
 }
 
 function PeriodRow({ label, periodEndAt, now }: { label: string; periodEndAt?: number | null; now: number }) {
-  const periodEnd = formatPeriodEndIn(periodEndAt, now)
+  const periodEnd = formatEndsIn(periodEndAt, now)
   return (
     <div className="min-w-0 space-y-1 @md:col-span-2">
       <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-xs">

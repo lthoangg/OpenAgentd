@@ -145,6 +145,13 @@ fn same_view(a: &Reading, b: &Reading) -> bool {
     same_reading(a.0.as_ref(), b.0.as_ref()) && a.1 == b.1
 }
 
+/// What the popup calls a saved server, in the picker and above its numbers
+/// once picked: the name Auto gives it (`ServerId::display_name`), so one
+/// server never reads under two names.
+fn saved_server_name(base_url: &str, saved: &[crate::config::SavedAppServer], names: &openagentd_shell_core::ComputerNames) -> String {
+    ServerId::external(base_url).display_name(BUNDLED_NAME, saved, names)
+}
+
 /// The picker's options. "Auto" leads when there is a choice to make, and
 /// also when Auto's server is not among the live ones: a single live server
 /// would otherwise lock the picker on Auto's offline one.
@@ -330,9 +337,10 @@ pub async fn get_tray_usage_summary(
 
     // "Auto": the server the app is on, named and read from the same place.
     let auto = crate::servers::app_current_server(&app).await;
+    let computer_names = crate::config::load_computer_names(&app);
     let (active_name, active_id) = match &auto {
         Some(server) => (
-            server.display_name(BUNDLED_NAME, &saved_config.servers, &crate::config::load_computer_names(&app)),
+            server.display_name(BUNDLED_NAME, &saved_config.servers, &computer_names),
             server.key().to_string(),
         ),
         None => (NO_SERVER_NAME.to_string(), AUTO_ID.to_string()),
@@ -350,11 +358,10 @@ pub async fn get_tray_usage_summary(
 
     for server in &saved_config.servers {
         if available_urls.contains(&server.base_url) {
-            let name = server.name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| crate::usage::extract_host_port(&server.base_url));
             let host_port = crate::usage::extract_host_port(&server.base_url);
             available_servers.push(crate::usage::TrayServerOption {
                 id: server.base_url.clone(),
-                name,
+                name: saved_server_name(&server.base_url, &saved_config.servers, &computer_names),
                 detail: Some(host_port),
             });
         }
@@ -448,7 +455,7 @@ pub async fn get_tray_usage_summary(
         }
     } else {
         let base_url = selected.clone();
-        let name = crate::usage::resolve_server_display_name(&base_url, &saved_config.servers);
+        let name = saved_server_name(&base_url, &saved_config.servers, &computer_names);
         let access_key = crate::menu::external_usage_access_key(
             crate::commands::secure_get_access_key(base_url.clone()).await,
         );
@@ -526,6 +533,21 @@ pub fn tray_fit(window: WebviewWindow, height: f64) {
 mod cache_tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    // Auto named an unnamed server by what its computer calls itself, the
+    // list by its address, and the header by its address once picked.
+    #[test]
+    fn a_saved_server_has_one_name_wherever_the_popup_shows_it() {
+        let base = "http://192.168.1.30:4082";
+        let saved = |name: Option<&str>| vec![crate::config::SavedAppServer { base_url: format!("{base}/"), name: name.map(String::from), enabled: false }];
+        let mut names = openagentd_shell_core::ComputerNames::new();
+        names.insert(base.into(), "studio-mini".into());
+        let auto = ServerId::external(base).display_name(BUNDLED_NAME, &saved(None), &names);
+        assert_eq!(auto, "studio-mini");
+        assert_eq!(saved_server_name(&format!("{base}/"), &saved(None), &names), auto);
+        assert_eq!(saved_server_name(base, &saved(Some("Studio")), &names), "Studio", "the name you gave wins");
+        assert_eq!(saved_server_name(base, &saved(None), &openagentd_shell_core::ComputerNames::new()), "192.168.1.30:4082");
+    }
 
     fn urls(list: &[&str]) -> Vec<String> {
         list.iter().map(|u| u.to_string()).collect()

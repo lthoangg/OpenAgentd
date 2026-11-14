@@ -45,6 +45,7 @@
     "allow-app-stop-bundled-backend",
     "allow-app-start-bundled-backend",
     "allow-cloud-open-computer",
+    "allow-cloud-rename-computer",
     "allow-desktop-cloud-call",
     "allow-cloud-poke",
     "allow-cloud-link-route",

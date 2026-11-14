@@ -20,6 +20,7 @@ fn main() {
                 "app_stop_bundled_backend",
                 "app_start_bundled_backend",
                 "cloud_open_computer",
+                "cloud_rename_computer",
                 "desktop_cloud_call",
                 "cloud_poke",
                 "cloud_link_route",

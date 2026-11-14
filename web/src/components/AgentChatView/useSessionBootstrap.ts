@@ -29,6 +29,7 @@ import { isEditableTarget } from '@/lib/is-editable-target'
 import { onComposerInsert } from '@/lib/composer-insert'
 import { attachmentToFile } from './helpers'
 import { backgroundSuspendsSockets } from '@/hooks/use-platform'
+import { shellResumed } from '@/lib/shell-resume'
 import { isDirectUserBlock } from '@/stores/useAgentStore/helpers'
 import { topBlockingLayer } from '@/lib/keyboard/layers'
 import { createPersistedDraftMap } from '@/lib/persisted-drafts'
@@ -250,7 +251,9 @@ export function useSessionBootstrap({
         const controller = connectStream()
         if (controller) abortRef.current = controller
       }
-      void catchUpLiveTurn(sessionId, agentWorkspace).then(async (verdict) => {
+      // On the phone the shell reopens its bridge first; a request sent
+      // before that fails, and the chat would stay stale until a retry.
+      void shellResumed().then(() => catchUpLiveTurn(sessionId, agentWorkspace)).then(async (verdict) => {
         if (verdict === 'stale') return
         if (verdict === 'attach') {
           attach()

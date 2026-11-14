@@ -75,6 +75,7 @@ const mockSendDesktopNotification = mock(() => Promise.resolve()) as any
 // ── Store import (AFTER mock.module) ──────────────────────────────────────────
 
 import { useAgentStore } from "@/stores/useAgentStore"
+import { useToastStore } from "@/stores/useToastStore"
 import type { ContentBlock } from "@/api/types"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -2084,6 +2085,12 @@ describe("loadAgentStatus", () => {
     expect(useAgentStore.getState().error).toBe("Status unavailable")
   })
 
+  it("stays quiet when agentStatus fails for a dropped connection", async () => {
+    mockAgentStatus.mockImplementation(() => Promise.reject(new TypeError("Load failed")))
+    await useAgentStore.getState().loadAgentStatus()
+    expect(useAgentStore.getState().error).toBeNull()
+  })
+
   it("sets fallback error for non-Error throws", async () => {
     mockAgentStatus.mockImplementation(() => Promise.reject("unknown"))
     await useAgentStore.getState().loadAgentStatus()
@@ -2609,10 +2616,105 @@ describe("loadSession", () => {
     expect(useAgentStore.getState().error).toBe("History unavailable")
   })
 
+  it("stays quiet when sessionHistory fails for a dropped connection", async () => {
+    mockSessionHistory.mockImplementation(() => Promise.reject(new TypeError("Load failed")))
+    await useAgentStore.getState().loadSession("sess-1")
+    expect(useAgentStore.getState().error).toBeNull()
+    expect(useAgentStore.getState().isLoadingHistory).toBe(false)
+  })
+
   it("sets fallback error for non-Error throws", async () => {
     mockSessionHistory.mockImplementation(() => Promise.reject("timeout"))
     await useAgentStore.getState().loadSession("sess-1")
     expect(useAgentStore.getState().error).toBe("Failed to load session")
+  })
+
+  // Coming back to the phone app: the real store and the real toast store,
+  // with only the network answers faked.
+  describe("returning to the app while the connection comes back", () => {
+    const toasts = () => useToastStore.getState().toasts
+    const history = (messages: unknown[] = [], running = false) => ({
+      lead: { id: "lead-sess", agent_name: "lead", title: null, created_at: null, updated_at: null, sub_sessions: [], messages, running },
+      members: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    const reply = { id: "m1", role: "assistant", content: "done while away", created_at: "2026-01-01T00:00:00Z" }
+    beforeEach(() => useToastStore.setState({ toasts: [] }))
+    afterEach(() => useToastStore.setState({ toasts: [] }))
+
+    it("shows no toast for a running turn, and catches up once the connection is back", async () => {
+      useAgentStore.setState({ sessionId: "sess-1", isAgentWorking: true })
+      let callbacks!: { onError: (err: Error) => void }
+      mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
+      useAgentStore.getState().connectStream()
+
+      // iOS drops the suspended stream in its own words.
+      callbacks.onError(new TypeError("The network connection was lost."))
+      // The reload on return goes out before the connection is back.
+      mockSessionHistory.mockImplementation(() => Promise.reject(new TypeError("Load failed")))
+      await useAgentStore.getState().loadSession("sess-1")
+      mockAgentStatus.mockImplementation(() => Promise.reject(new TypeError("Could not connect to the server.")))
+      await useAgentStore.getState().loadAgentStatus()
+      expect(toasts()).toEqual([])
+      expect(useAgentStore.getState().error).toBeNull()
+      // Still a running turn, with a reconnect waiting.
+      expect(useAgentStore.getState().isAgentWorking).toBe(true)
+      expect(useAgentStore.getState()._reconnectTimer).not.toBeNull()
+
+      mockSessionHistory.mockImplementation(() => Promise.resolve(history([reply])))
+      await useAgentStore.getState().loadSession("sess-1")
+      const blocks = useAgentStore.getState().agentStreams.lead.blocks
+      expect(blocks.map((b) => b.content)).toContain("done while away")
+      expect(toasts()).toEqual([])
+    })
+
+    it("shows no toast for an idle chat, and catches up once the connection is back", async () => {
+      useAgentStore.setState({ sessionId: "sess-1", isAgentWorking: false })
+      mockSessionHistory.mockImplementation(() => Promise.reject(new TypeError("Load failed")))
+      await useAgentStore.getState().loadSession("sess-1")
+      expect(toasts()).toEqual([])
+
+      mockSessionHistory.mockImplementation(() => Promise.resolve(history([reply])))
+      await useAgentStore.getState().loadSession("sess-1")
+      expect(useAgentStore.getState().agentStreams.lead.blocks.map((b) => b.content)).toContain("done while away")
+      expect(toasts()).toEqual([])
+    })
+
+    it("shows no toast while the phone's link to the computer is down", async () => {
+      useAgentStore.setState({ sessionId: "sess-1" })
+      // The bridge's 503: its own sentence as the message, the status beside it.
+      const linkDown = Object.assign(new Error("the link did not come up in time"), { status: 503 })
+      mockSessionHistory.mockImplementation(() => Promise.reject(linkDown))
+      mockAgentStatus.mockImplementation(() => Promise.reject(linkDown))
+      await useAgentStore.getState().loadSession("sess-1")
+      await useAgentStore.getState().loadAgentStatus()
+      expect(toasts()).toEqual([])
+    })
+
+    it("shows no toast with the server off, however often the reload is tried", async () => {
+      useAgentStore.setState({ sessionId: "sess-1" })
+      mockSessionHistory.mockImplementation(() => Promise.reject(new TypeError("Could not connect to the server.")))
+      mockAgentStatus.mockImplementation(() => Promise.reject(new TypeError("Load failed")))
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await useAgentStore.getState().loadSession("sess-1")
+        await useAgentStore.getState().loadAgentStatus()
+      }
+      expect(toasts()).toEqual([])
+      expect(useAgentStore.getState().isLoadingHistory).toBe(false)
+    })
+
+    it("still reports a failure that is not about the connection", async () => {
+      useAgentStore.setState({ sessionId: "sess-1" })
+      mockSessionHistory.mockImplementation(() => Promise.reject(Object.assign(new Error("Internal error"), { status: 500 })))
+      await useAgentStore.getState().loadSession("sess-1")
+      expect(toasts().map((t) => t.description)).toEqual(["Internal error"])
+    })
+
+    it("names the server, not the provider, when the user's own action finds no connection", () => {
+      useAgentStore.setState({ error: "Load failed" })
+      expect(toasts().map((t) => t.title)).toEqual(["Can't reach the server"])
+    })
   })
 
   it("discards result when _sessionGeneration changes (stale load)", async () => {

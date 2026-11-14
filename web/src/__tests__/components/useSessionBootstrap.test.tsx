@@ -16,6 +16,7 @@ import type { InputComposerHandle } from '@/components/InputComposer'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { _resetKeyboardForTests } from '@/lib/keyboard/dispatcher'
 import { requestComposerInsert } from '@/lib/composer-insert'
+import { noteShellResume, watchShellResume } from '@/lib/shell-resume'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 
@@ -148,6 +149,29 @@ describe('useSessionBootstrap opening a session', () => {
 })
 
 describe('useSessionBootstrap foreground resume', () => {
+  it('waits for the phone shell to answer before catching up', async () => {
+    suspendsSockets = true
+    const catchUpLiveTurn = mock(async () => 'attach' as const)
+    const connectStream = mock(() => new AbortController())
+    render(<Harness loadSession={mock(async () => {})} connectStream={connectStream} catchUpLiveTurn={catchUpLiveTurn} />)
+    await waitFor(() => expect(connectStream).toHaveBeenCalledTimes(1))
+    useAgentStore.setState({ _workspace: '/repo/app' })
+
+    const stopWatch = watchShellResume()
+    try {
+      let answer!: () => void
+      noteShellResume(new Promise<void>((resolve) => { answer = resolve }))
+      window.dispatchEvent(new Event('pageshow'))
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+      expect(catchUpLiveTurn).not.toHaveBeenCalled()
+
+      await act(async () => { answer() })
+      await waitFor(() => expect(catchUpLiveTurn).toHaveBeenCalledWith('session-1', '/repo/app'))
+    } finally {
+      stopWatch()
+    }
+  })
+
   it('reconciles history and replaces a stale connected stream after pageshow on mobile', async () => {
     suspendsSockets = true
     const loadSession = mock(async () => {

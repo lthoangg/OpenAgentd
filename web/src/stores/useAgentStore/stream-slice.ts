@@ -625,6 +625,7 @@ export const createStreamSlice: StateCreator<
             unloading: current._unloading,
             transient: isTransientNetworkError(err),
             working: current.isAgentWorking,
+            hidden: typeof document !== 'undefined' && document.visibilityState === 'hidden',
             message: err.message,
           })
           if (decision.kind === 'ignore') return

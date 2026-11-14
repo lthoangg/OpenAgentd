@@ -218,7 +218,7 @@ describe("inferErrorTitle", () => {
   it("infers title from message contents", () => {
     expect(inferErrorTitle("Rate limit hit")).toBe("Rate limit exceeded");
     expect(inferErrorTitle("Invalid API key provided")).toBe("Provider authentication failed");
-    expect(inferErrorTitle("Failed to fetch stream")).toBe("Provider connection failed");
+    expect(inferErrorTitle("Failed to fetch stream")).toBe("Can't reach the server");
     expect(inferErrorTitle("Cannot undo while working")).toBe("Undo failed");
     expect(inferErrorTitle("Failed to compact session")).toBe("Couldn't summarize earlier messages");
   });

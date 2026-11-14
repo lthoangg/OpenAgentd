@@ -7,6 +7,7 @@ import { isRestartNoteExtra } from '@/lib/restart-note'
 import type { OrphanToolResult } from '@/utils/messages'
 import { readBlocks } from '@/utils/blocks'
 import { sentFrom } from '@/utils/workspace-messages'
+import { isTransientNetworkError } from '@/utils/errors'
 import { createDefaultAgentStream } from './defaults'
 import { adoptLiveBlockIds, applyQuestionResolution, applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { toPendingQuestion } from './sse-reducer'
@@ -954,7 +955,9 @@ async function loadSessionImpl(
   } catch (err) {
     if (get()._sessionGeneration !== gen) return
     set((draft) => {
-      draft.error = err instanceof Error ? err.message : 'Failed to load session'
+      // A dropped connection is the banner's to report, and the reconnect
+      // reloads this session: an error here stayed on screen after both.
+      if (!isTransientNetworkError(err)) draft.error = err instanceof Error ? err.message : 'Failed to load session'
       draft.isLoadingHistory = false
     })
   }
@@ -1208,6 +1211,7 @@ export const createSessionSlice: StateCreator<
       }
     } catch (err) {
       if (expectedGeneration !== undefined && get()._sessionGeneration !== expectedGeneration) return
+      if (isTransientNetworkError(err)) return
       set((draft) => {
         draft.error = err instanceof Error ? err.message : 'Failed to load agent status'
       })

@@ -53,4 +53,19 @@ describe('errors utility', () => {
     expect(isTransientNetworkError(new Error('Request timed out after 30s'))).toBe(true)
     expect(isTransientNetworkError(new Error('The request timed out'))).toBe(true)
   })
+
+  it("detects iOS's own wording for a dropped connection as transient", () => {
+    expect(isTransientNetworkError(new TypeError('The network connection was lost.'))).toBe(true)
+    expect(isTransientNetworkError(new TypeError('The Internet connection appears to be offline.'))).toBe(true)
+    expect(isTransientNetworkError(new TypeError('Could not connect to the server.'))).toBe(true)
+    expect(isTransientNetworkError(new TypeError('A server with the specified hostname could not be found.'))).toBe(true)
+  })
+
+  it('detects a gateway status carried on the error, whatever its message says', () => {
+    // The phone bridge answers 503 with its own sentence while the link is down.
+    const linkDown = Object.assign(new Error('the link did not come up in time'), { status: 503 })
+    expect(isTransientNetworkError(linkDown)).toBe(true)
+    expect(isTransientNetworkError(Object.assign(new Error('Session not found'), { status: 404 }))).toBe(false)
+    expect(isTransientNetworkError(Object.assign(new Error('Internal error'), { status: 500 }))).toBe(false)
+  })
 })

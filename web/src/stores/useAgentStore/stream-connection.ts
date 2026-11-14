@@ -59,13 +59,17 @@ export function decideStreamError(input: {
   unloading: boolean
   transient: boolean
   working: boolean
+  /** Nobody is looking: coming back reloads the session and attaches again. */
+  hidden: boolean
   message: string
 }): StreamErrorDecision {
   if (!input.sameSession) return { kind: 'ignore', reason: 'session_changed' }
   if (input.unloading) return { kind: 'ignore', reason: 'unloading' }
   if (input.aborted) return { kind: 'ignore', reason: 'superseded' }
   if (input.transient) return { kind: 'back_off' }
-  if (!input.working) return { kind: 'detach' }
+  // A failure in the background is not shown: the return to the page tries
+  // again, and shows it if it fails then.
+  if (!input.working || input.hidden) return { kind: 'detach' }
   return { kind: 'fail', message: input.message }
 }
 

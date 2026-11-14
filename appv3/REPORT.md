@@ -14,6 +14,19 @@ v3 shares v2's DB and config files. What still behaves differently is
 listed in §3. macOS/Linux/Windows support, the in-process `gix` snapshot
 engine, the new grep and live workspace refresh are in §6.
 
+### Agent file fields, patch envelope and unloaded members (v3.56.0)
+
+Agent frontmatter keys `mcp` and `responses_api` are ignored, whatever their
+value: nothing read them. The `config` object in `/api/agents` responses no
+longer includes either key, and the app stops writing them when it saves an
+agent file from the form. A model's own `responses_api` setting is unchanged.
+
+`patch` accepts an envelope without its closing `*** End Patch` line; a
+missing `*** Begin Patch` line is still an error, and so is a last line that
+puts the marker behind `+` or `-`. The envelope now ends at the last line
+that starts with the marker, no longer at its last mention anywhere in the
+text.
+
 ### Scan to add (v3.55.0)
 
 `POST /api/cloud/login` now also shows a QR code for a phone that approves

@@ -16,8 +16,6 @@ export interface AgentFrontmatter {
   model?: string | null
   thinking_level?: string | null
   tools?: string[]
-  /** MCP server names; agent receives every tool from each listed server. */
-  mcp?: string[]
 }
 
 const FRONTMATTER_RE = /^\s*---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/
@@ -46,10 +44,6 @@ export function buildFrontmatter(fm: AgentFrontmatter): string {
   if (fm.tools && fm.tools.length > 0) {
     lines.push('tools:')
     for (const t of [...fm.tools].sort()) lines.push(`  - ${t}`)
-  }
-  if (fm.mcp && fm.mcp.length > 0) {
-    lines.push('mcp:')
-    for (const s of [...fm.mcp].sort()) lines.push(`  - ${s}`)
   }
   return lines.join('\n')
 }

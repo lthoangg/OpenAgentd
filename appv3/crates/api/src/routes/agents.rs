@@ -278,7 +278,6 @@ fn effective_config(cfg: &AgentConfig) -> AgentConfig {
             let mut t = prompts::coding_tools();
             t.append(&mut d.tools);
             d.tools = dedup(t);
-            d.mcp = dedup(std::mem::take(&mut d.mcp));
         }
     } else if d.role == "member" {
         if let Some(bp) = prompts::member_profiles().get(&d.name) {
@@ -687,7 +686,20 @@ mod tests {
         assert_eq!(e.tools, vec!["skill", "todo", "schedule", "note", "read"]);
         let dump = e.dump_exclude_none();
         let keys: Vec<&String> = dump.as_object().unwrap().keys().collect();
-        assert_eq!(keys, vec!["name", "role", "system_prompt", "tools", "mcp"]);
+        assert_eq!(keys, vec!["name", "role", "system_prompt", "tools"]);
+    }
+
+    /// `mcp` and `responses_api` were frontmatter fields nothing used. A file
+    /// that still has them loads, whatever they hold, and they are not
+    /// reported back.
+    #[test]
+    fn retired_frontmatter_fields_are_ignored() {
+        let c = parse_content("---\nname: code\nmodel: openai:gpt-5\nmcp:\n  - docs\nresponses_api: true\n---\nx", None).unwrap();
+        let dump = c.dump_exclude_none();
+        assert_eq!(dump.get("mcp"), None);
+        assert_eq!(dump.get("responses_api"), None);
+        assert_eq!(dump["model"], "openai:gpt-5");
+        assert!(parse_content("---\nname: code\nmodel: openai:gpt-5\nmcp: 3\nresponses_api: maybe\n---\nx", None).is_ok());
     }
 
     #[test]

@@ -1,10 +1,9 @@
 /**
- * AgentForm — focused tests for the MCP server picker, the server-prefixed tool
- * filter, and the YAML round-trip of the new ``mcp:`` frontmatter field.
+ * AgentForm — focused tests for the tool picker, the server-prefixed tool
+ * filter, and the frontmatter the form reads and writes.
  *
  * The existing form already has broad coverage of identity / model /
- * tools / skills via integration. These tests cover only the deltas
- * introduced when MCP server membership moved into a dedicated picker.
+ * tools / skills via integration.
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
 import { render, screen, cleanup, within, waitFor } from '@testing-library/react'
@@ -107,27 +106,29 @@ afterEach(cleanup)
 
 // ── frontmatter round-trip ───────────────────────────────────────────────────
 
-describe('frontmatter — mcp field', () => {
-  it('emits sorted mcp list under its own key', () => {
-    const fm: AgentFrontmatter = {
-      name: 'code',
-      role: 'lead',
-      model: 'openai:gpt-5.4',
-      mcp: ['filesystem', 'context7'],
-    }
-    const yaml = buildFrontmatter(fm)
-    // Sorted ascending, one entry per line, indented two spaces.
-    expect(yaml).toContain('mcp:\n  - context7\n  - filesystem')
-  })
+describe('frontmatter — round trip', () => {
+  // Every configured MCP server reaches the agent through the `mcp` tool, so
+  // an agent file's own `mcp:` list selects nothing. The form no longer
+  // reads it or writes it back.
+  it('does not carry a retired mcp list into the file it writes', () => {
+    const raw = `---
+name: code
+role: lead
+model: openai:gpt-5.4
+tools:
+  - read
+mcp:
+  - context7
+---
 
-  it('omits the mcp key entirely when empty / undefined', () => {
-    const fm: AgentFrontmatter = {
-      name: 'a',
-      role: 'member',
-      model: 'openai:gpt-5.4',
-    }
-    expect(buildFrontmatter(fm)).not.toContain('mcp:')
-    expect(buildFrontmatter({ ...fm, mcp: [] })).not.toContain('mcp:')
+You are code.`
+    const { fm, body, error } = parseFormState(raw)
+    expect(error).toBeNull()
+    expect(fm.tools).toEqual(['read'])
+    const written = combine(fm, body)
+    expect(written).not.toContain('mcp')
+    expect(written).not.toContain('context7')
+    expect(written).toContain('tools:\n  - read')
   })
 
   it('preserves name and role for member agent profiles', () => {
@@ -162,13 +163,13 @@ Prompt body`
         name: 'code',
         role: 'lead',
         model: 'openai:gpt-5.4',
-        mcp: ['context7'],
+        tools: ['read'],
       },
       'You are code.',
     )
     const { fm: fmText, body } = splitFrontmatter(raw)
-    expect(fmText).toContain('mcp:')
-    expect(fmText).toContain('- context7')
+    expect(fmText).toContain('tools:')
+    expect(fmText).toContain('- read')
     expect(body.trim()).toBe('You are code.')
   })
 })

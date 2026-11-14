@@ -602,7 +602,6 @@ export interface AgentConfig {
   tools?: string[]
   model?: string | null
   thinking_level?: string | null
-  responses_api?: boolean | null
 }
 
 /** Full view of one agent — raw file + parsed config. */

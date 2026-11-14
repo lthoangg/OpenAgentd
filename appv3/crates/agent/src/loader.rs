@@ -52,10 +52,8 @@ pub struct AgentConfig {
     pub description: Option<String>,
     pub system_prompt: String,
     pub tools: Vec<String>,
-    pub mcp: Vec<String>,
     pub model: Option<String>,
     pub thinking_level: Option<String>,
-    pub responses_api: Option<bool>,
 }
 
 fn fm_regex() -> &'static regex::Regex {
@@ -151,16 +149,8 @@ pub fn config_from_meta_errors(meta: &Map<String, Value>) -> Result<AgentConfig,
         description: opt_string(meta.get("description"), "description", &mut errs),
         system_prompt,
         tools: str_list(meta.get("tools"), "tools", &mut errs),
-        mcp: str_list(meta.get("mcp"), "mcp", &mut errs),
         model: opt_string(meta.get("model"), "model", &mut errs),
         thinking_level: opt_string(meta.get("thinking_level"), "thinking_level", &mut errs),
-        responses_api: match meta.get("responses_api") {
-            None | Some(Value::Null) => None,
-            Some(v) => appv3_tools::args::coerce_bool(v).or_else(|| {
-                errs.push(("responses_api".into(), "Input should be a valid boolean".into()));
-                None
-            }),
-        },
     };
     if !errs.is_empty() {
         return Err(errs);
@@ -187,15 +177,11 @@ impl AgentConfig {
         }
         m.insert("system_prompt".into(), json!(self.system_prompt));
         m.insert("tools".into(), json!(self.tools));
-        m.insert("mcp".into(), json!(self.mcp));
         if let Some(v) = &self.model {
             m.insert("model".into(), json!(v));
         }
         if let Some(v) = &self.thinking_level {
             m.insert("thinking_level".into(), json!(v));
-        }
-        if let Some(v) = self.responses_api {
-            m.insert("responses_api".into(), json!(v));
         }
         Value::Object(m)
     }
@@ -351,10 +337,8 @@ pub fn load_member_profiles(agents_dir: &Path) -> Vec<(String, AgentConfig)> {
                     description: Some(profile_str(bp, "description")),
                     system_prompt: profile_str(bp, "prompt"),
                     tools: profile_tools(bp),
-                    mcp: vec![],
                     model: Some(DEFAULT_NEW_USER_MODEL.into()),
                     thinking_level: None,
-                    responses_api: None,
                 },
             ));
         }
@@ -544,7 +528,6 @@ pub fn build_agent(mut cfg: AgentConfig, registry: &HashMap<String, ToolRef>, fa
             tools.push(hub);
         }
     }
-    cfg.mcp = mcp_names;
     let mut kw = Kwargs::new();
     if let Some(tl) = cfg.thinking_level.as_deref().filter(|s| !s.is_empty()) {
         kw.insert("thinking_level".into(), json!(tl));
@@ -562,7 +545,7 @@ pub fn build_agent(mut cfg: AgentConfig, registry: &HashMap<String, ToolRef>, fa
     let mut agent = Agent::new(provider, &cfg.name, &system_prompt, tools, cfg.model.clone());
     agent.description = cfg.description.clone();
     agent.thinking_level = cfg.thinking_level.clone().filter(|s| !s.is_empty());
-    agent.mcp_servers = cfg.mcp.clone();
+    agent.mcp_servers = mcp_names;
     if let Some(sp) = source_path {
         agent.source_path = Some(sp.to_path_buf());
         agent.config_stamp = stamp_agent_files(sp, &settings().mcp_config_path());

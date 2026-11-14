@@ -978,6 +978,59 @@ pub fn format_notification_body(labels: &[String]) -> String {
     )
 }
 
+/// One usage fetch per server at a time: overlapping triggers (the
+/// background poll, a manual refresh, the tray opening) share it, and a slow
+/// server does not hold up another's.
+#[derive(Default)]
+pub struct InflightFetches {
+    running: std::sync::Mutex<HashMap<ServerId, tokio::sync::watch::Receiver<()>>>,
+}
+
+/// What a caller that wants to fetch from a server gets.
+pub enum FetchTurn {
+    /// Nobody else is fetching: fetch, then drop the guard.
+    Mine(FetchGuard),
+    /// A fetch is already running.
+    Running(RunningFetch),
+}
+
+/// Held for the length of a fetch. Dropping it frees the server, also when
+/// the fetch is cancelled, so one lost task never blocks later refreshes.
+pub struct FetchGuard {
+    fetches: std::sync::Arc<InflightFetches>,
+    server: ServerId,
+    _running: tokio::sync::watch::Sender<()>,
+}
+
+impl Drop for FetchGuard {
+    fn drop(&mut self) {
+        self.fetches.running.lock().unwrap().remove(&self.server);
+    }
+}
+
+/// Another caller's fetch.
+pub struct RunningFetch(tokio::sync::watch::Receiver<()>);
+
+impl RunningFetch {
+    /// Resolves once that fetch is over and its reading is recorded.
+    pub async fn ended(mut self) {
+        // Nothing is ever sent: the channel closes when the guard drops.
+        while self.0.changed().await.is_ok() {}
+    }
+}
+
+impl InflightFetches {
+    pub fn claim(self: &std::sync::Arc<Self>, server: &ServerId) -> FetchTurn {
+        let mut running = self.running.lock().unwrap();
+        if let Some(fetch) = running.get(server) {
+            return FetchTurn::Running(RunningFetch(fetch.clone()));
+        }
+        let (sender, receiver) = tokio::sync::watch::channel(());
+        running.insert(server.clone(), receiver);
+        FetchTurn::Mine(FetchGuard { fetches: self.clone(), server: server.clone(), _running: sender })
+    }
+}
+
 /// The tray's usage readings, kept per server: what one server reported is
 /// never shown, or alerted on, as another's.
 #[derive(Debug, Default)]
@@ -1026,6 +1079,34 @@ impl UsageCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The popup used to answer with nothing (and sit on its placeholders)
+    // when it asked while the background poll was fetching.
+    #[tokio::test]
+    async fn a_second_caller_waits_for_the_fetch_that_is_running() {
+        let fetches = std::sync::Arc::new(InflightFetches::default());
+        let server = ServerId::Bundled;
+        let FetchTurn::Mine(guard) = fetches.claim(&server) else { panic!("the first caller fetches") };
+        let FetchTurn::Running(running) = fetches.claim(&server) else { panic!("the second finds a fetch running") };
+        let mut ended = Box::pin(running.ended());
+        let still_running = tokio::select! {
+            biased;
+            _ = &mut ended => false,
+            _ = std::future::ready(()) => true,
+        };
+        assert!(still_running, "the wait ended while the fetch was still running");
+
+        drop(guard);
+        ended.await;
+        assert!(matches!(fetches.claim(&server), FetchTurn::Mine(_)), "the server is free again");
+    }
+
+    #[test]
+    fn a_fetch_on_one_server_does_not_hold_up_another() {
+        let fetches = std::sync::Arc::new(InflightFetches::default());
+        let _studio = fetches.claim(&ServerId::External("http://studio:4082".into()));
+        assert!(matches!(fetches.claim(&ServerId::Bundled), FetchTurn::Mine(_)));
+    }
 
     fn body(items: Vec<UsageSummaryItem>, checked_at: i64) -> UsageSummaryBody {
         UsageSummaryBody { items, checked_at, cached: false }

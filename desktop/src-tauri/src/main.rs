@@ -151,11 +151,8 @@ pub struct AppState {
     /// churn on the native menu entirely (only the footer timestamp is
     /// refreshed) — see `menu::update_tray_usage`.
     pub usage_rendered_rows: Arc<Mutex<Vec<crate::usage::UsageRow>>>,
-    /// Servers with a usage fetch in flight, so overlapping refresh
-    /// triggers (background poll + manual refresh + tray-open refresh
-    /// racing after wake-from-sleep) collapse into one fetch per server,
-    /// and a slow server does not hold up another's.
-    pub usage_fetch_inflight: Arc<StdMutex<std::collections::HashSet<crate::servers::ServerId>>>,
+    /// Usage fetches in flight (see `usage::InflightFetches`).
+    pub usage_fetch_inflight: Arc<crate::usage::InflightFetches>,
     /// Tray icon handle, used to toggle a subtle "!" title badge (macOS
     /// menu bar text next to the icon) when any connected provider is at
     /// or above the critical usage threshold — see `menu::update_tray_usage`.
@@ -621,7 +618,7 @@ fn main() {
         usage_footer: Arc::new(Mutex::new(None)),
         usage: Arc::new(Mutex::new(crate::usage::UsageCache::default())),
         usage_rendered_rows: Arc::new(Mutex::new(Vec::new())),
-        usage_fetch_inflight: Arc::new(StdMutex::new(std::collections::HashSet::new())),
+        usage_fetch_inflight: Arc::new(crate::usage::InflightFetches::default()),
         tray_icon: Arc::new(Mutex::new(None)),
     };
 

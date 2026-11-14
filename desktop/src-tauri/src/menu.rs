@@ -1098,10 +1098,15 @@ pub async fn refresh_server_usage(app: &AppHandle, server: &ServerId, force_refr
     // tray-open refresh racing after wake-from-sleep) into one in-flight
     // fetch per server; losers simply skip — the winner's redraw covers
     // them within seconds.
-    if !state.usage_fetch_inflight.lock().unwrap().insert(server.clone()) {
+    let crate::usage::FetchTurn::Mine(_fetching) = state.usage_fetch_inflight.claim(server) else {
         log::debug!("usage_summary_skip_poll reason=fetch_already_inflight");
         return true; // don't count a skipped poll as a failure for backoff
-    }
+    };
+    fetch_and_record_usage(app, server, force_refresh).await
+}
+
+/// The fetch itself. The caller holds the server's `FetchGuard` meanwhile.
+async fn fetch_and_record_usage(app: &AppHandle, server: &ServerId, force_refresh: bool) -> bool {
     let outcome = match crate::servers::endpoint(app, server).await {
         Some((base_url, token)) => fetch_usage_summary(&base_url, token.as_deref(), force_refresh)
             .await
@@ -1110,8 +1115,20 @@ pub async fn refresh_server_usage(app: &AppHandle, server: &ServerId, force_refr
     };
     let success = outcome.is_ok();
     update_tray_usage(app, server, outcome).await;
-    state.usage_fetch_inflight.lock().unwrap().remove(server);
     success
+}
+
+/// Like [`refresh_server_usage`], for a caller that reads the result right
+/// after (the tray popup): when a fetch is already running it waits for that
+/// one instead of returning before there is anything to read.
+pub async fn refresh_server_usage_or_wait(app: &AppHandle, server: &ServerId, force_refresh: bool) {
+    let turn = app.state::<AppState>().usage_fetch_inflight.claim(server);
+    match turn {
+        crate::usage::FetchTurn::Running(running) => running.ended().await,
+        crate::usage::FetchTurn::Mine(_fetching) => {
+            fetch_and_record_usage(app, server, force_refresh).await;
+        }
+    }
 }
 
 /// Unix-seconds timestamp of the last tray-open-triggered refresh.

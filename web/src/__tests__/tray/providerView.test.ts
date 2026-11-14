@@ -88,6 +88,24 @@ describe('providerView', () => {
     expect(view.rows.map((row) => row.kind === 'meter' && Math.round(row.percent))).toEqual([40])
   })
 
+  // A provider can block an account before its window says 100%; Settings
+  // and the Windows and Linux tray menu already say "limit reached" then.
+  it('reads a limit the provider reports as reached as reached, whatever its percent', () => {
+    const blocked = item({
+      provider: 'openai',
+      label: 'OpenAI Codex',
+      usage: { provider: 'openai', limits: [{ rate_limit_reached_type: 'workspace_owner_usage_limit_reached', primary: { used_percent: 62, window_minutes: 300 } }] },
+    })
+
+    const view = providerView(blocked, NOW)
+    expect(view.reached).toBe(true)
+    const popup: TrayUsageResult = { summary: { items: [blocked], checked_at: NOW, cached: false }, server_name: 'Built-in server', server_id: 'bundled', servers: [], selected_server_id: 'auto' }
+    expect(trayStatus(popup, null)).toBe('reached')
+    // An empty reason is no report.
+    const open = item({ provider: 'openai', label: 'OpenAI Codex', usage: { provider: 'openai', limits: [{ rate_limit_reached_type: ' ', primary: { used_percent: 62 } }] } })
+    expect(providerView(open, NOW).reached).toBe(false)
+  })
+
   it('asks to reconnect a provider whose credentials are gone', () => {
     expect(providerView(item({ provider: 'copilot', label: 'GitHub Copilot', status: 'credentials_missing' }), NOW))
       .toMatchObject({ name: 'GitHub Copilot', status: 'reconnect', rows: [] })

@@ -19,6 +19,8 @@ const PET_SETTINGS_COMMAND = 'pet_settings'
 const CHECKED_TICK_MS = 30_000
 /** Stable empty list, so hooks keyed on the servers don't rerun every render. */
 const NO_SERVERS: TrayServerOption[] = []
+/** The picker's first option: the server the app is on. */
+const AUTO_SERVER = 'auto'
 
 /** Native menu commands (desktop/src-tauri/src/menu.rs), plus the popup's own ``hide``. */
 type TrayAction = 'show' | 'settings' | 'quit' | 'usage_manage' | 'toggle_pet' | 'hide'
@@ -36,6 +38,11 @@ function runAction(action: TrayAction) {
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+/** What the popup calls a picker option: Auto goes by the server it stands for. */
+function optionName(option: TrayServerOption): string {
+  return option.id === AUTO_SERVER ? option.detail ?? option.name : option.name
 }
 
 /** Listen to a shell event; the cleanup also works if it runs before `listen` resolves. */
@@ -84,30 +91,62 @@ export function TrayPopup() {
   const [result, setResult] = useState<TrayUsageResult | null>(null)
   /** The IPC call itself failed (the command answers server errors in ``result.error``). */
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [selectedServer, setSelectedServer] = useState('auto')
+  const [selectedServer, setSelectedServer] = useState(AUTO_SERVER)
+  /**
+   * The name of a server just picked, until its reading arrives. Meanwhile
+   * the popup shows placeholders under it: never the last server's numbers.
+   */
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [activeOption, setActiveOption] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
   const [, setClock] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
+  /** The server to read, for `load`, which must not change with it (one read per pick). */
+  const selectedRef = useRef(AUTO_SERVER)
+  /** The newest request; an answer to an older one is dropped. */
+  const requestRef = useRef(0)
+  /** `switchingTo`, for `load`. */
+  const switchRef = useRef<string | null>(null)
   const petEnabled = usePetEnabled()
 
-  const load = useCallback(async (force = false, targetServer?: string) => {
+  const load = useCallback(async (force = false) => {
+    const request = ++requestRef.current
+    const targetServer = selectedRef.current
     try {
-      const data = await invoke<TrayUsageResult>(USAGE_COMMAND, { force, targetServer: targetServer ?? selectedServer })
+      const data = await invoke<TrayUsageResult>(USAGE_COMMAND, { force, targetServer })
+      if (request !== requestRef.current) return
       setResult(data)
       setLoadError(null)
+      // The shell reads Auto instead when the picked server is gone.
+      if (data.selected_server_id && data.selected_server_id !== targetServer) {
+        selectedRef.current = data.selected_server_id
+        setSelectedServer(data.selected_server_id)
+      }
     } catch (err) {
-      setLoadError(errorText(err))
+      if (request !== requestRef.current) return
+      const reason = errorText(err)
+      const name = switchRef.current
+      // Nothing was read from the picked server: say so under its name,
+      // with nothing left of the last one's reading.
+      if (name !== null) {
+        setResult((last) => last && {
+          ...last,
+          summary: null,
+          error: reason,
+          server_name: name,
+          server_id: targetServer === AUTO_SERVER ? last.server_id : targetServer,
+        })
+      }
+      setLoadError(reason)
     }
-  }, [selectedServer])
+    switchRef.current = null
+    setSwitchingTo(null)
+  }, [])
 
   useEffect(() => {
     void load()
   }, [load])
-  // `listen` resolves after an IPC round trip; a cleanup that runs first
-  // (unmount, or a server switch changing `load`) must still remove it, or
-  // stale listeners keep reloading for the previous server.
   const reload = useCallback(() => void load(), [load])
   useShellEvent(TRAY_REFRESH_EVENT, reload)
 
@@ -125,10 +164,16 @@ export function TrayPopup() {
   }, [selectedServer, servers])
 
   const chooseServer = useCallback((id: string) => {
-    setSelectedServer(id)
     setMenuOpen(false)
-    void load(false, id)
-  }, [load])
+    if (id === selectedRef.current) return
+    const option = servers.find((server) => server.id === id)
+    selectedRef.current = id
+    setSelectedServer(id)
+    switchRef.current = option ? optionName(option) : '…'
+    setSwitchingTo(switchRef.current)
+    setLoadError(null)
+    void load()
+  }, [load, servers])
 
   // The popup owns its keys, so the hints it shows are true wherever focus
   // sits. Claiming a key here also keeps the native menu's accelerator for
@@ -227,11 +272,12 @@ export function TrayPopup() {
     }
   }, [])
 
-  const summary = result?.summary ?? null
-  const failed = result?.error ?? loadError
-  const status = trayStatus(result, loadError)
+  const summary = switchingTo === null ? result?.summary ?? null : null
+  const failed = switchingTo === null ? result?.error ?? loadError : null
+  const status = switchingTo === null ? trayStatus(result, loadError) : 'loading'
   const noServer = status === 'no-server'
-  const serverName = result?.server_name ?? 'the server'
+  const serverLabel = switchingTo ?? result?.server_name
+  const serverName = serverLabel ?? 'the server'
   const views = summary?.items.map((item) => providerView(item)) ?? []
   const manage = () => runAction('usage_manage')
 
@@ -241,7 +287,7 @@ export function TrayPopup() {
         <span className="brand">
           <Wordmark height={14} title="OpenAgentd" />
         </span>
-        {!noServer && result && <span className="head-server">{result.server_name}</span>}
+        {!noServer && serverLabel && <span className="head-server">{serverLabel}</span>}
       </header>
 
       {noServer ? (
@@ -263,7 +309,7 @@ export function TrayPopup() {
               <ServerPicker
                 servers={servers}
                 selected={selectedServer}
-                label={result?.server_name ?? '…'}
+                label={serverLabel ?? '…'}
                 open={menuOpen}
                 active={activeOption}
                 onOpenChange={openMenu}

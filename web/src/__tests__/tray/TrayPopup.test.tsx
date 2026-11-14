@@ -314,6 +314,90 @@ describe('TrayPopup', () => {
     await waitFor(() => expect(usageCalls().at(-1)).toMatchObject({ targetServer: 'http://192.168.1.10:4082' }))
   })
 
+  const MAC_STUDIO = 'http://192.168.1.10:4082'
+  const studioResult: TrayUsageResult = {
+    ...usageResult,
+    server_name: 'Mac Studio',
+    server_id: MAC_STUDIO,
+    selected_server_id: MAC_STUDIO,
+    summary: { checked_at: NOW, cached: false, items: [{ provider: 'copilot', label: 'GitHub Copilot', status: 'credentials_missing', stale: false, usage: null }] },
+  }
+
+  async function pick(name: RegExp) {
+    fireEvent.click(screen.getByRole('button', { name: /^Server/ }))
+    fireEvent.click(within(screen.getByRole('listbox', { name: 'Server' })).getByRole('option', { name }))
+  }
+
+  // The numbers on screen always belong to the server named above them.
+  it('shows placeholders under the picked server, not the last server\'s numbers', async () => {
+    answer = (args) => (args?.targetServer === MAC_STUDIO ? new Promise(() => {}) : Promise.resolve(usageResult))
+    render(<TrayPopup />)
+    await screen.findByText('5-hour')
+
+    await pick(/Mac Studio/)
+
+    expect(screen.getByRole('button', { name: 'Server: Mac Studio' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Loading usage')).toBeInTheDocument()
+    expect(screen.queryByText('5-hour')).toBeNull()
+    expect(screen.getByText('Checking')).toBeInTheDocument()
+  })
+
+  it('reads a picked server once', async () => {
+    answer = async (args) => (args?.targetServer === MAC_STUDIO ? studioResult : usageResult)
+    render(<TrayPopup />)
+    await screen.findByText('5-hour')
+    const before = usageCalls().length
+
+    await pick(/Mac Studio/)
+    await screen.findByRole('button', { name: 'Reconnect GitHub Copilot' })
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+
+    expect(usageCalls().slice(before)).toEqual([{ force: false, targetServer: MAC_STUDIO }])
+  })
+
+  it('drops an answer for a server that is no longer the picked one', async () => {
+    let answerStudio: (result: TrayUsageResult) => void = () => {}
+    answer = (args) => (args?.targetServer === MAC_STUDIO
+      ? new Promise((resolve) => { answerStudio = resolve })
+      : Promise.resolve({ ...usageResult, selected_server_id: String(args?.targetServer) }))
+    render(<TrayPopup />)
+    await screen.findByText('5-hour')
+
+    await pick(/Mac Studio/)
+    await pick(/^Built-in server/)
+    await screen.findByText('5-hour')
+    await act(async () => answerStudio(studioResult))
+
+    expect(screen.getByRole('button', { name: 'Server: Built-in server' })).toBeInTheDocument()
+    expect(screen.getByText('5-hour')).toBeInTheDocument()
+  })
+
+  it('says it cannot reach the picked server when reading it fails outright', async () => {
+    answer = (args) => (args?.targetServer === MAC_STUDIO ? Promise.reject(new Error('ipc closed')) : Promise.resolve(usageResult))
+    render(<TrayPopup />)
+    await screen.findByText('5-hour')
+
+    await pick(/Mac Studio/)
+
+    expect(await screen.findByText("Can't reach Mac Studio")).toBeInTheDocument()
+    expect(screen.queryByText('5-hour')).toBeNull()
+  })
+
+  // The shell falls back to Auto when the picked server went away.
+  it('follows the shell when the picked server is gone', async () => {
+    answer = async () => usageResult
+    render(<TrayPopup />)
+    await screen.findByText('5-hour')
+
+    await pick(/Mac Studio/)
+    await screen.findByText('5-hour')
+    fireEvent.keyDown(document, { key: 'r', metaKey: true })
+
+    await waitFor(() => expect(usageCalls().at(-1)).toEqual({ force: true, targetServer: 'auto' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Server/ }))
+    expect(within(screen.getByRole('listbox', { name: 'Server' })).getByRole('option', { name: /Auto/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
   it('keeps showing the last reading when a refresh fails', async () => {
     let fail = false
     answer = async () => (fail ? { ...usageResult, error: 'timeout' } : usageResult)

@@ -127,6 +127,9 @@ function nowLinePosition(
 
 function windowRow(key: string, limit: TrayUsageLimit, window: TrayUsageWindow, own: string | null, now: number): MeterRow {
   const percent = window.used_percent
+  // The provider's own word that the account is blocked: it can come
+  // before the window says 100%, and stays while the block does.
+  const blocked = Boolean(limit.rate_limit_reached_type?.trim())
   return {
     key,
     kind: 'meter',
@@ -135,7 +138,7 @@ function windowRow(key: string, limit: TrayUsageLimit, window: TrayUsageWindow, 
     tone: meterTone(percent),
     reset: formatResetIn(window.resets_at),
     nowLine: nowLinePosition(window, limit.period_start_at, limit.period_end_at, now),
-    reached: percent >= 100,
+    reached: percent >= 100 || blocked,
   }
 }
 

@@ -401,7 +401,7 @@ pub async fn get_tray_usage_summary(
             // Nothing to show yet, or the Refresh button: wait for the fetch.
             _ => {
                 tray_cache().lock().unwrap().claim_usage_refresh(Instant::now());
-                let _ = crate::menu::refresh_server_usage(&app, &server, force).await;
+                crate::menu::refresh_server_usage_or_wait(&app, &server, force).await;
                 state.usage.lock().await.reading(&server)
             }
         };

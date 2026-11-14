@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.54.0 · November 14, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.54.0)
+**Latest release:** v3.55.0 · November 14, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.55.0)
 
 ---
 

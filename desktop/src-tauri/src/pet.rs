@@ -353,6 +353,22 @@ fn waiting_route(notification_id: &str) -> Option<&str> {
     notification_id.strip_prefix(WAITING_PREFIX)?.split(':').next().filter(|key| !key.is_empty())
 }
 
+/// Where the bubble `notification_id` opens: the route its notification
+/// left, else, for a question the status listed (not a notification), the
+/// session `session_of` finds for its key.
+fn bubble_route(routes: &[Route], notification_id: &str, session_of: impl Fn(&str) -> Option<(String, ServerId)>) -> Option<Route> {
+    routes.iter().find(|r| r.notification_id == notification_id).cloned().or_else(|| {
+        let (session_id, server) = session_of(waiting_route(notification_id)?)?;
+        Some(Route { notification_id: notification_id.to_string(), session_id, server, kind: "input_needed".into() })
+    })
+}
+
+/// Whether the menu can open the row for `notification_id`: exactly when a
+/// click on its bubble would.
+fn menu_openable(routes: &[Route], notification_id: &str, session_of: impl Fn(&str) -> Option<(String, ServerId)>) -> bool {
+    bubble_route(routes, notification_id, session_of).is_some()
+}
+
 /// A display's work area (without the Dock or taskbar), in physical pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Area {
@@ -1248,14 +1264,9 @@ pub fn pet_open(app: AppHandle, window: WebviewWindow, notification_id: String) 
 }
 
 fn open_notification(app: &AppHandle, notification_id: &str) {
-    let route = shared().lock().unwrap().routes.iter().find(|r| r.notification_id == notification_id).cloned();
-    // A question the status listed (not a notification): its session's row says where it lives.
-    let route = route.or_else(|| {
-        let key = waiting_route(notification_id)?;
-        let (session_id, server) = crate::island::session_server(key)?;
-        Some(Route { notification_id: notification_id.to_string(), session_id, server, kind: "input_needed".into() })
-    });
-    let Some(route) = route else {
+    // The routes are copied out first: the island's lock is never taken under the pet's.
+    let routes: Vec<Route> = shared().lock().unwrap().routes.iter().cloned().collect();
+    let Some(route) = bubble_route(&routes, notification_id, crate::island::session_server) else {
         log::warn!("pet: no session for bubble {notification_id}");
         return;
     };
@@ -1473,11 +1484,12 @@ pub async fn pet_menu(
 fn show_menu(app: &AppHandle, window: &WebviewWindow, x: f64, y: f64, questions: &[MenuUnread], unread: &[MenuUnread]) -> Result<()> {
     use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 
-    let (movement, character, question_rows, rows) = {
+    let (movement, character, routes) = {
         let s = shared().lock().unwrap();
-        let openable = |id: &str| s.routes.iter().any(|r| r.notification_id == id);
-        (s.settings.movement, s.settings.character, unread_rows(questions, openable), unread_rows(unread, openable))
+        (s.settings.movement, s.settings.character, s.routes.iter().cloned().collect::<Vec<Route>>())
     };
+    let openable = |id: &str| menu_openable(&routes, id, crate::island::session_server);
+    let (question_rows, rows) = (unread_rows(questions, openable), unread_rows(unread, openable));
     let menu = Menu::new(app)?;
     // What waits on the user comes first.
     if !question_rows.is_empty() {
@@ -2477,5 +2489,22 @@ mod tests {
         assert_eq!(rows[0].1.chars().count(), 48);
         assert!(rows[0].1.ends_with('…'));
         assert_eq!(rows[1].1, "Notification");
+    }
+
+    // A question the status listed while the pet was hidden has no
+    // notification route; the bubble opened it and the menu greyed it out.
+    #[test]
+    fn the_menu_opens_every_question_the_bubble_opens() {
+        let session_of = |key: &str| (key == "s1").then(|| ("session-1".to_string(), ServerId::Bundled));
+        let listed = format!("{WAITING_PREFIX}s1:q1");
+        assert_eq!(bubble_route(&[], &listed, session_of).map(|r| r.session_id).as_deref(), Some("session-1"));
+        assert!(menu_openable(&[], &listed, session_of), "the bubble opens it, so the menu must too");
+
+        let notified = [Route { notification_id: "n1".into(), session_id: "session-2".into(), server: ServerId::Bundled, kind: "assistant_done".into() }];
+        assert!(menu_openable(&notified, "n1", session_of));
+        // Its session is gone from the list: neither can open it.
+        let gone = format!("{WAITING_PREFIX}s9:q1");
+        assert!(bubble_route(&[], &gone, session_of).is_none());
+        assert!(!menu_openable(&[], &gone, session_of));
     }
 }

@@ -2998,6 +2998,12 @@ executes tools, manages its task list, and inspects workspace repositories.
   kept them in memory only), so the line, the sidebar's active list and the
   held-back "Done" notification stay right across a restart. Deleting a session
   that owed a reply ends the wait for it.
+  From `[v3.56.0]` the line shows while the main agent is still running too, in one
+  place after the transcript, so it never jumps or doubles when the turn ends. On
+  the desktop it opens the list inline under the line (Enter or Space toggles it,
+  and it stays open after a row opens a session); a phone keeps the sheet. Idle
+  sessions are left out: the line, the list and the Goal tab count only sessions
+  that are running or need you.
 - **Cross-workspace messages** `[v3.9.0, updated v3.35.0]` — the lead agent's `send_to_workspace`
   tool sends a request to an agent session in another workspace you have opened
   that shares a workspace group (see **Workspace groups** below) with its own (a related

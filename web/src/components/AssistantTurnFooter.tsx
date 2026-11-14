@@ -344,11 +344,6 @@ export interface AssistantTurnProps {
    * Reader mode's work row shows how long the agent has been working.
    */
   startedAt?: number
-  /**
-   * Shown under the footer once the turn has closed: what the session still
-   * waits for (``WaitingForLine``). Only the trailing turn gets one.
-   */
-  afterFooter?: ReactNode
 }
 
 export const AssistantTurn = memo(function AssistantTurn({
@@ -363,7 +358,6 @@ export const AssistantTurn = memo(function AssistantTurn({
   size = 'compact',
   reader = false,
   startedAt,
-  afterFooter,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
   // rather than merely for the stream to stop.
@@ -441,7 +435,6 @@ export const AssistantTurn = memo(function AssistantTurn({
           changedFiles={changedFiles}
         />
       )}
-      {!turnIsOpen && afterFooter}
     </div>
   )
 })

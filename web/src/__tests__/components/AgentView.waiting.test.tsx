@@ -1,13 +1,15 @@
 /**
  * Where the "Waiting for N sessions" line sits in a transcript: under the
- * last answer once its turn has closed, in a main session only.
+ * last answer, while its turn runs and after it closes, in a main session
+ * only, and as one element throughout.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 
 import type { ContentBlock } from '@/api/types'
 import { AgentView } from '@/components/AgentView'
+import { resetWaitingOpenState } from '@/components/AgentView/WaitingForLine'
 import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
 
@@ -23,11 +25,13 @@ function renderView(props: Partial<React.ComponentProps<typeof AgentView>> = {})
   client.setQueryData(queryKeys.session.waiting('s1'), {
     items: [{ kind: 'subagent', session_id: 'c1', title: 'Port the tests', label: 'worker#1', workspace: '', state: 'working' }],
   })
-  return render(
+  const view = (extra: Partial<React.ComponentProps<typeof AgentView>>) => (
     <QueryClientProvider client={client}>
-      <AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} {...props} />
-    </QueryClientProvider>,
+      <AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} {...props} {...extra} />
+    </QueryClientProvider>
   )
+  const result = render(view({}))
+  return { ...result, client, rerenderWith: (extra: Partial<React.ComponentProps<typeof AgentView>>) => result.rerender(view(extra)) }
 }
 
 const line = () => document.querySelector('[data-waiting-for]')
@@ -36,7 +40,10 @@ beforeEach(() => {
   useAgentStore.setState({ sessionId: 's1', parentSessionId: null, isLoadingHistory: false })
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  resetWaitingOpenState()
+})
 
 describe('AgentView: what a finished answer waits for', () => {
   it('shows the line under the last answer once its turn has closed', () => {
@@ -47,9 +54,36 @@ describe('AgentView: what a finished answer waits for', () => {
     expect(copy && line() && copy.compareDocumentPosition(line()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('hides it while the turn is still open', () => {
+  it('shows it while the turn is still running', () => {
     renderView({ isWorking: true })
-    expect(line()).toBeNull()
+    expect(line()?.textContent).toBe('Waiting for 1 session')
+    // No footer yet: the turn has not closed.
+    expect(document.querySelector('[aria-label="Copy response"]')).toBeNull()
+  })
+
+  it('keeps the same line, open, when the turn closes', () => {
+    const { rerenderWith } = renderView({ isWorking: true })
+    const before = line()
+    fireEvent.click(before!.querySelector('button')!)
+    rerenderWith({ isWorking: false })
+    expect(document.querySelectorAll('[data-waiting-for]').length).toBe(1)
+    expect(line()).toBe(before)
+    expect(line()?.querySelector('button')?.getAttribute('aria-expanded')).toBe('true')
+    // The footer arrived above it.
+    const copy = document.querySelector('[aria-label="Copy response"]')
+    expect(copy && copy.compareDocumentPosition(line()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('updates the count mid-run as subagents start and finish', async () => {
+    const { client } = renderView({ isWorking: true })
+    act(() => client.setQueryData(queryKeys.session.waiting('s1'), {
+      items: [
+        { kind: 'subagent', session_id: 'c1', title: 'Port the tests', label: 'worker#1', workspace: '', state: 'idle' },
+        { kind: 'subagent', session_id: 'c2', title: 'Map the code', label: 'explorer#1', workspace: '', state: 'working' },
+        { kind: 'subagent', session_id: 'c3', title: 'Check the docs', label: 'explorer#2', workspace: '', state: 'working' },
+      ],
+    }))
+    await waitFor(() => expect(line()?.textContent).toBe('Waiting for 2 sessions'))
   })
 
   it("leaves it out of a subagent's own session", () => {

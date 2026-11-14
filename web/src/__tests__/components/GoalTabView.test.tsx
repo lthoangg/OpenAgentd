@@ -196,6 +196,17 @@ describe('GoalTabView', () => {
     await waitFor(() => expect(now()?.textContent).toContain('Waiting for 2 sessions'))
   })
 
+  it('does not count idle sessions it waits for', async () => {
+    const client = renderTab(makeGoal())
+    client.setQueryData(queryKeys.session.waiting('s1'), {
+      items: [
+        { kind: 'subagent', session_id: 'c1', title: 'Map the code', label: 'explorer#1', workspace: '', state: 'working' },
+        { kind: 'subagent', session_id: 'c2', title: 'Audit done', label: 'explorer#2', workspace: '', state: 'idle' },
+      ],
+    })
+    await waitFor(() => expect(now()?.textContent).toContain('Waiting for 1 session'))
+  })
+
   it('says why a goal stopped and what the last check found', () => {
     renderTab(makeGoal({ status: 'paused', pause_reason: 'blocked', detail: 'Need `STAGING_KEY` set.' }))
     expect(now()?.dataset.goalNow).toBe('blocked')

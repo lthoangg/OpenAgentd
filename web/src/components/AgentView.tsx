@@ -942,14 +942,12 @@ export function AgentView({
     </div>
   ), [activeQuotaWaitBlockId, activeRetryBlockId, endingErrorId, errorRetry, errorSwitchModel, latestMCPAppBlockIds, leadSessionId, onMentionFileOpen, onOpenSession, sessionId])
 
-  // Under the last answer once its turn has closed: the sessions this one
-  // still waits for. A subagent's own session waits for nothing.
+  // The sessions this one still waits for, at the live end of the transcript,
+  // while the turn runs and after it closes. One slot after every turn, so
+  // the line is the same element throughout: the footer appears above it
+  // when the turn closes, and an open list stays open. A subagent's own
+  // session waits for nothing.
   const waitingLine = useMemo(() => (leadSessionId ? undefined : <WaitingForLine sessionId={sessionId} />), [leadSessionId, sessionId])
-  // It sits in the last answer's footer; when the transcript ends on
-  // something else (a report, a summary divider), under that instead. Not
-  // under a prompt just typed: its turn is about to open.
-  const waitingLineAfterTurns = !isTurnOpen && lastTurnItem !== undefined
-    && (lastTurnItem.kind === 'compaction' || (lastTurnItem.kind === 'user' && !isTypedPromptBlock(lastTurnItem.block)))
 
   const lastBlock = liveTail.length > 0 ? liveTail[liveTail.length - 1] : blocks[blocks.length - 1]
   // A change key for auto-follow, not the content itself: the streamed fields
@@ -1526,12 +1524,12 @@ export function AgentView({
                      reader={readerTranscript}
                      startedAt={turnStartedAt}
                       renderBlock={renderTurnBlock}
-                     afterFooter={isTrailingTurn ? waitingLine : undefined}
                    />
                  )
                 })}
 
-            {waitingLineAfterTurns && waitingLine}
+            {/* ``-mt-1`` keeps the footer's own gap (``space-y-2``) above it. */}
+            {waitingLine && <div className="-mt-1 empty:hidden">{waitingLine}</div>}
 
             {restoredQuotaWait && (
               <QuotaWaitNotice wait={restoredQuotaWait} sessionId={sessionId} persist={false} />

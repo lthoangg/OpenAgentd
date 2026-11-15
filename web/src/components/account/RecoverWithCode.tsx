@@ -85,7 +85,7 @@ export function RecoveredNote({ device, onDone, busy }: { device: string; onDone
           them here.
         </p>
         <p>Your recovery code stays the same. Keep it somewhere safe.</p>
-        <Button size="sm" disabled={busy} onClick={onDone}>OK</Button>
+        <div><Button variant="primary" size="sm" disabled={busy} onClick={onDone}>OK</Button></div>
       </Body>
     </Callout>
   )

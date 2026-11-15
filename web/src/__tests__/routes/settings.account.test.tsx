@@ -193,6 +193,23 @@ describe('AccountSettingsPage', () => {
     await waitFor(() => expect(screen.queryByText("You're back in.")).toBeNull())
   })
 
+  it('has no one-approver note beside the recovered note', async () => {
+    serveStatus({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0, recovered: true })
+    renderPage()
+
+    expect(await screen.findByText("You're back in.")).toBeTruthy()
+    await screen.findByRole('button', { name: /^Details of / })
+    expect(screen.queryByText(/can approve new devices/)).toBeNull()
+  })
+
+  it('opens the recovery code again after a wrong one', async () => {
+    serveStatus({ state: 'guest', notice: 'wrong_recovery_code' })
+    renderPage()
+
+    expect(await screen.findByText("That recovery code doesn't match this account.")).toBeTruthy()
+    expect(screen.getByLabelText('Recovery code')).toBeTruthy()
+  })
+
   it('offers the recovery code from the step that waits for an approver', async () => {
     serveStatus({ state: 'joining', fingerprint: 'k7f2 91ab', code: null })
     server.use(http.post(CANCEL_URL, () => HttpResponse.json({ state: 'guest', notice: null })))

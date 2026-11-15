@@ -193,6 +193,14 @@ describe('Account page', () => {
     await waitFor(() => expect(screen.queryByText("You're back in.")).toBeNull())
   })
 
+  it('opens the recovery code again after a wrong one', async () => {
+    shell({ state: 'guest', notice: 'wrong_recovery_code', supported: true })
+    render(<PhoneAccountContent />)
+
+    expect(await screen.findByText("That recovery code doesn't match this account.")).toBeTruthy()
+    expect(screen.getByLabelText('Recovery code')).toBeTruthy()
+  })
+
   it('has no account UI where accounts are not supported', async () => {
     shell({ state: 'guest', notice: null, supported: false })
     render(<PhoneAccountContent />)

@@ -57,7 +57,7 @@ import {
 } from '@/queries/phone-cloud'
 
 /** The account's devices, this phone first; an approver adds, removes, and lets another approve. */
-function DevicesSection({ signer, onAdd, onSignOut, busy }: { signer: boolean; onAdd: () => void; onSignOut: () => void; busy: boolean }) {
+function DevicesSection({ signer, recovered = false, onAdd, onSignOut, busy }: { signer: boolean; recovered?: boolean; onAdd: () => void; onSignOut: () => void; busy: boolean }) {
   const devicesQ = usePhoneCloudDevices(true)
   const remove = usePhoneRemoveDevice()
   const promote = usePhoneMakeApprover()
@@ -77,6 +77,7 @@ function DevicesSection({ signer, onAdd, onSignOut, busy }: { signer: boolean; o
       <DeviceRows
         devices={devices}
         loading={devicesQ.isLoading}
+        noApproverNote={recovered}
         names={app?.computer_names}
         selfLabel="This phone"
         meSigner={signer}
@@ -182,6 +183,17 @@ export function PhoneAccountContent() {
 
   const signOutButton = <Button size="sm" disabled={busy} onClick={() => setConfirmingSignOut(true)}>Sign out</Button>
   const cancelButton = <Button size="sm" disabled={busy} onClick={() => cancel.mutate()}>Cancel</Button>
+  // A wrong recovery code: the form opens again, to try once more.
+  const guestNotice = status?.state === 'guest' ? status.notice : null
+  const [seenNotice, setSeenNotice] = useState(guestNotice)
+  if (guestNotice !== seenNotice) {
+    setSeenNotice(guestNotice)
+    if (guestNotice === 'wrong_recovery_code') {
+      setOtherWays(true)
+      setWithCode(true)
+    }
+  }
+
   /** From a waiting step: stop it, and open the recovery code under Other ways. */
   const useRecoveryCode = () => {
     cancel.mutate()
@@ -208,7 +220,7 @@ export function PhoneAccountContent() {
                   {status.notice === 'expired' ? 'Sign in again' : 'Sign in'}
                 </Button>
               </div>
-              <Button variant="link" size="sm" className="h-auto p-0" aria-expanded={otherWays} onClick={() => setOtherWays((open) => !open)}>
+              <Button variant="link" size="sm" className="h-auto px-0!" aria-expanded={otherWays} onClick={() => setOtherWays((open) => !open)}>
                 Other ways to sign in
               </Button>
               <Collapsible open={otherWays} innerClassName="space-y-4">
@@ -217,7 +229,7 @@ export function PhoneAccountContent() {
                   <RecoverWithCode device="phone" busy={busy} onRecover={(code) => recover.mutate(code)} onCancel={() => setWithCode(false)} />
                 ) : (
                   <p>
-                    <Button variant="link" size="sm" className="h-auto p-0" disabled={busy} onClick={() => setWithCode(true)}>
+                    <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => setWithCode(true)}>
                       Lost your phone? Use your recovery code
                     </Button>
                   </p>
@@ -273,7 +285,7 @@ export function PhoneAccountContent() {
             )}
             {cancelButton}
             <p>
-              <Button variant="link" size="sm" className="h-auto p-0" disabled={busy} onClick={useRecoveryCode}>
+              <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={useRecoveryCode}>
                 Lost your phone? Use your recovery code
               </Button>
             </p>
@@ -285,7 +297,7 @@ export function PhoneAccountContent() {
       content = (
         <>
           {status.recovered && <RecoveredNote device="phone" busy={recoveredAck.isPending} onDone={() => recoveredAck.mutate()} />}
-          <DevicesSection signer={status.signer} onAdd={() => setAdding(true)} onSignOut={() => setConfirmingSignOut(true)} busy={busy} />
+          <DevicesSection signer={status.signer} recovered={status.recovered === true} onAdd={() => setAdding(true)} onSignOut={() => setConfirmingSignOut(true)} busy={busy} />
           {status.signer && <PendingSection onReview={setReviewing} />}
         </>
       )

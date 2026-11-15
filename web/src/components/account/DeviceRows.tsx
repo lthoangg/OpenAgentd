@@ -127,6 +127,7 @@ export function DeviceRows({
   uploadName,
   onSignOut,
   signOutDisabled = false,
+  noApproverNote = false,
 }: {
   devices: ListedDevice[] | undefined
   loading?: boolean
@@ -159,6 +160,8 @@ export function DeviceRows({
   uploadName?: (deviceId: string, name: string) => Promise<unknown>
   onSignOut?: () => void
   signOutDisabled?: boolean
+  /** No one-approver note (just after a recovery, whose own note says it). */
+  noApproverNote?: boolean
 }) {
   const [removing, setRemoving] = useState<string | null>(null)
   // Details stays on its device while the dialog closes.
@@ -194,7 +197,7 @@ export function DeviceRows({
   const signers = approvers(list)
   const next = nextApprover(list)
   let note: ReactNode = null
-  if (signers.length === 1) {
+  if (signers.length === 1 && !noApproverNote) {
     const only = signers[0]
     const one = selfLabel.replace(/^This /, '')
     note = only.me ? (
@@ -205,8 +208,9 @@ export function DeviceRows({
             : 'Keep your recovery code safe.'}
         </span>
         {next && promote && (
-          <Button className="mt-2" size="sm" disabled={promoting !== null} onClick={() => { void makeApprover(next.device_id) }}>
-            Let <bdi>{spoken(next)}</bdi> approve
+          // One span: the button's flex gap would space the name apart.
+          <Button className="mt-2" variant="primary" size="sm" disabled={promoting !== null} onClick={() => { void makeApprover(next.device_id) }}>
+            <span>Let <bdi>{spoken(next)}</bdi> approve</span>
           </Button>
         )}
       </Callout>

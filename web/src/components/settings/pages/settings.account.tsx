@@ -148,6 +148,7 @@ function DevicesSection({ status, onAdd, onSignOut, busy }: {
       <DeviceRows
         devices={devices}
         loading={devicesQ.isLoading}
+        noApproverNote={status.recovered === true}
         names={names}
         selfLabel="This computer"
         selfLine={relayText(status.relay)}
@@ -246,6 +247,17 @@ export function AccountSettingsPage() {
     if (state === 'guest') signIn(COMPUTER_ROLES)
   }, [connectRequested, state, signIn])
 
+  // A wrong recovery code: the form opens again, to try once more.
+  const guestNotice = status?.state === 'guest' ? status.notice : null
+  const [seenNotice, setSeenNotice] = useState(guestNotice)
+  if (guestNotice !== seenNotice) {
+    setSeenNotice(guestNotice)
+    if (guestNotice === 'wrong_recovery_code') {
+      setOtherWays(true)
+      setWithCode(true)
+    }
+  }
+
   /** From a waiting step: stop it, and open the recovery code under Other ways. */
   const useRecoveryCode = () => {
     cancel.mutate()
@@ -254,7 +266,7 @@ export function AccountSettingsPage() {
   }
   const lostPhone = !readOnly && (
     <p>
-      <Button variant="link" size="sm" className="h-auto p-0" disabled={busy} onClick={useRecoveryCode}>
+      <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={useRecoveryCode}>
         Lost your phone? Use your recovery code
       </Button>
     </p>
@@ -287,7 +299,7 @@ export function AccountSettingsPage() {
                       {status.notice === 'expired' ? 'Sign in again' : 'Sign in'}
                     </Button>
                   </div>
-                  <Button variant="link" size="sm" className="h-auto p-0" aria-expanded={otherWays} onClick={() => setOtherWays((open) => !open)}>
+                  <Button variant="link" size="sm" className="h-auto px-0!" aria-expanded={otherWays} onClick={() => setOtherWays((open) => !open)}>
                     Other ways to sign in
                   </Button>
                   <Collapsible open={otherWays} innerClassName="space-y-4">
@@ -300,7 +312,7 @@ export function AccountSettingsPage() {
                     ) : (
                       <p>
                         Have an invitation link?{' '}
-                        <Button variant="link" size="sm" className="h-auto p-0" disabled={busy} onClick={() => setWithLink(true)}>
+                        <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => setWithLink(true)}>
                           Join with a link
                         </Button>
                       </p>
@@ -314,7 +326,7 @@ export function AccountSettingsPage() {
                       />
                     ) : (
                       <p>
-                        <Button variant="link" size="sm" className="h-auto p-0" disabled={busy} onClick={() => setWithCode(true)}>
+                        <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => setWithCode(true)}>
                           Lost your phone? Use your recovery code
                         </Button>
                       </p>
@@ -349,7 +361,7 @@ export function AccountSettingsPage() {
                     {!readOnly && cancelButton}
                   </div>
                 </div>
-                <Button variant="link" size="sm" className="h-auto p-0" aria-expanded={browserWay} onClick={() => setBrowserWay((open) => !open)}>
+                <Button variant="link" size="sm" className="h-auto px-0!" aria-expanded={browserWay} onClick={() => setBrowserWay((open) => !open)}>
                   Can&apos;t use your phone? Sign in in the browser
                 </Button>
                 <Collapsible open={browserWay} innerClassName="space-y-3">
@@ -440,7 +452,7 @@ export function AccountSettingsPage() {
                 </div>
                 <p>
                   No number on your phone?{' '}
-                  <Button variant="link" size="sm" className="h-auto p-0" disabled={busy} onClick={() => cancel.mutate()}>Cancel</Button>
+                  <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => cancel.mutate()}>Cancel</Button>
                   : this computer joins nothing.
                 </p>
               </>

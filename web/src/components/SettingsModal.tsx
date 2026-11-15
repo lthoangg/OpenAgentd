@@ -56,6 +56,7 @@ import { RemoteSettingsPage } from '@/components/settings/pages/settings.remote'
 import { PhoneRemoteSettingsPage } from '@/components/settings/pages/settings.remote.phone'
 import { isPhoneCloudShell } from '@/api/phone-cloud'
 import { AgentsListPage } from '@/components/settings/pages/settings.agents'
+import { AgentEditorPage } from '@/components/settings/pages/settings.agents.$name'
 import { SkillsListPage } from '@/components/settings/pages/settings.skills'
 import { NewSkillPage } from '@/components/settings/pages/settings.skills.new'
 import { SkillEditorPage } from '@/components/settings/pages/settings.skills.$name'
@@ -268,7 +269,16 @@ function SectionContent({
       // On the phone the account is the phone's own, not a server's.
       return isPhoneCloudShell() ? <PhoneRemoteSettingsPage /> : <RemoteSettingsPage />
     case 'agents':
-      return <AgentsListPage />
+      return (
+        <AgentsListPage
+          selectedName={selectedName}
+          onSelect={(name) => setSection('agents-edit', name)}
+        />
+      )
+    case 'agents-edit':
+      return selectedName ? (
+        <AgentEditorPage name={selectedName} onBack={() => setSection('agents')} />
+      ) : null
     case 'skills':
       return (
         <SkillsListPage

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { RotateCw, Trash2 } from 'lucide-react'
+import { RotateCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatFullDateTime } from '@/utils/format'
 
@@ -13,6 +13,7 @@ import {
 } from '@/queries'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useToastStore } from '@/stores/useToastStore'
+import { EditorDeleteRow } from '@/components/settings/EditorDeleteRow'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { SaveBar } from '@/components/settings/SaveBar'
 import { McpServerForm } from '@/components/settings/McpServerForm'
@@ -212,9 +213,15 @@ export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) 
                 enabled={server.enabled}
                 dirty={dirty}
                 plugin={plugin}
-                onDelete={plugin ? undefined : () => setDeleteOpen(true)}
-                deletePending={deleteMut.isPending}
               />
+              {!plugin && (
+                <EditorDeleteRow
+                  thing="connector"
+                  description="Removes it from mcp.json."
+                  onDelete={() => setDeleteOpen(true)}
+                  pending={deleteMut.isPending}
+                />
+              )}
             </>
           )}
         </div>
@@ -330,7 +337,7 @@ function PluginServerConfig({ server, plugin }: { server: ServerStatus; plugin: 
 // ── Manage ───────────────────────────────────────────────────────────────────
 
 function RestartCard({
-  onRestart, pending, enabled, dirty, plugin, onDelete, deletePending,
+  onRestart, pending, enabled, dirty, plugin,
 }: {
   onRestart: () => void
   pending: boolean
@@ -338,9 +345,6 @@ function RestartCard({
   dirty: boolean
   /** The bundle that owns the server, if any. */
   plugin: string | null
-  /** Omitted for a plugin's server: it is not removed here. */
-  onDelete?: () => void
-  deletePending: boolean
 }) {
   return (
     <PanelSection title="Manage" flush>
@@ -363,14 +367,6 @@ function RestartCard({
           {pending ? 'Restarting…' : 'Restart'}
         </Button>
       </PanelRow>
-      {onDelete && (
-        <PanelRow label="Delete connector" description="Removes it from mcp.json.">
-          <Button variant="danger-subtle" size="sm" onClick={onDelete} disabled={deletePending}>
-            <Trash2 size={12} aria-hidden="true" />
-            {deletePending ? 'Deleting…' : 'Delete…'}
-          </Button>
-        </PanelRow>
-      )}
     </PanelSection>
   )
 }

@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Trash2 } from 'lucide-react'
 import {
   useAgentFileQuery,
   useDeleteAgentMutation,
@@ -7,6 +6,8 @@ import {
 } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
 import { AgentForm } from '@/components/settings/AgentForm'
+import { MAIN_AGENT_LABEL } from '@/components/settings/pages/settings.agents'
+import { EditorDeleteRow } from '@/components/settings/EditorDeleteRow'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { SaveBar } from '@/components/settings/SaveBar'
 import { contentEquals } from '@/components/settings/frontmatter'
@@ -53,6 +54,8 @@ interface AgentEditorPageProps {
 
 export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps) {
   const push = useToastStore((s) => s.push)
+  // The main agent by what it is; a subagent by its name.
+  const label = name === 'code' ? MAIN_AGENT_LABEL : name
   const { data, isLoading, isError, error, refetch } = useAgentFileQuery(name)
   const updateMut = useUpdateAgentMutation(name)
   const deleteMut = useDeleteAgentMutation()
@@ -95,7 +98,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
     }
     try {
       const res = await updateMut.mutateAsync({ content: draft })
-      push({ tone: 'success', title: `Saved "${name}"`, description: 'Applies to your next message.' })
+      push({ tone: 'success', title: `Saved "${label}"`, description: 'Applies to your next message.' })
       setDraft(res.content)
       refetch()
     } catch (err) {
@@ -120,7 +123,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
     <div className="flex h-full flex-col">
       <EditorSubHeader
         kind="agent"
-        name={name}
+        name={label}
         path={data?.path}
         dirty={dirty}
         invalid={invalid}
@@ -139,7 +142,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
             <Callout
               tone="error"
               role="alert"
-              title={`Couldn't load ${name}`}
+              title={`Couldn't load ${label}`}
               action={<Button size="sm" onClick={() => { void refetch() }}>Retry</Button>}
             >
               {errorMessage(error)}
@@ -159,18 +162,13 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
             />
           )}
           {data && mode === 'form' && <LiveAgentTools name={name} />}
-          {name !== 'code' && (
-            <div className="mt-4 flex items-center justify-end gap-2 text-xs text-(--color-text-muted)">
-              <Button
-                variant="ghost"
-                size="xs"
-                className="text-(--color-error) hover:bg-(--color-error-subtle) hover:text-(--color-error)"
-                onClick={() => setDeleteOpen(true)}
-              >
-                <Trash2 size={12} className="mr-1" />
-                Delete subagent…
-              </Button>
-            </div>
+          {name !== 'code' && data && (
+            <EditorDeleteRow
+              thing="subagent"
+              description="Deletes its file from your configuration folder."
+              onDelete={() => setDeleteOpen(true)}
+              pending={deleteMut.isPending}
+            />
           )}
         </div>
       </div>
@@ -190,7 +188,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
         }}
         onSave={() => { void handleSave() }}
         saveBlockedReason={invalid ? (firstDraftError ?? 'Fix the errors above to save.') : null}
-        discardDescription={`Your edits to ${name} go back to the last saved version.`}
+        discardDescription={`Your edits to ${label} go back to the last saved version.`}
       />
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -220,7 +218,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
         open={confirmLeave}
         onOpenChange={setConfirmLeave}
         title="Leave without saving?"
-        description={`Your edits to ${name} go back to the last saved version.`}
+        description={`Your edits to ${label} go back to the last saved version.`}
         confirmLabel="Leave without saving"
         onConfirm={onBack}
       />

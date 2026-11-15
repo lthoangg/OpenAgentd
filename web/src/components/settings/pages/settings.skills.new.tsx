@@ -75,7 +75,7 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
         <div className={EDITOR_BODY}>
           <PanelSection title="Skill file" description="SKILL.md, loaded by an agent when a task needs it.">
             <p className="mb-2.5 text-meta leading-relaxed text-(--color-text-muted)">
-              The settings block at the top needs <span className="font-mono">name</span> and{' '}
+              The lines between the <span className="font-mono">---</span> marks at the top need <span className="font-mono">name</span> and{' '}
               <span className="font-mono">description</span>. Name a sub-skill{' '}
               <span className="font-mono">parent/sub</span>. The text below is what the agent reads.
             </p>

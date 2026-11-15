@@ -91,7 +91,8 @@ export function McpServerForm({
   return (
     <div className="flex flex-col gap-8">
       {/* The first question, then only that half's fields ───────────── */}
-      <PanelSection title="How does it connect?">
+      {/* The heading names the part; the question is the control's own label. */}
+      <PanelSection title="Connection">
         <div className="flex flex-col gap-5">
           <SegmentedControl
             label="How does it connect?"
@@ -206,8 +207,9 @@ export function McpServerForm({
       <PanelSection title="Options">
         <div className="flex flex-col gap-5">
           <div className="grid gap-x-4 gap-y-5 md:grid-cols-2">
+            {/* Not "Status": that is the running connection, in its own card. */}
             <Field
-              label="Status"
+              label="Turned on"
               hint={value.enabled ? 'Starts with OpenAgentd.' : 'Stays stopped; agents cannot use its tools.'}
             >
               <EnabledToggle

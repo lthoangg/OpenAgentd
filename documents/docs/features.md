@@ -262,6 +262,14 @@ run from the terminal (the native Rust binary since v3.0.0).
     that already exists. On Sessions, a part that can't load shows its own
     error and Retry while the other parts still work. The save bar also says
     why Save is off for Titles and Summaries.
+  - **Editors look and behave alike.** The main agent is listed and titled
+    **Main agent**, not by its file name `code`. An agent opens its editor
+    as a skill or a connector does, so Back, the phone's swipe back and the
+    sidebar highlight work the same for all three. Subagents, skills and
+    connectors each delete from one **Delete subagent / skill / connector**
+    row at the bottom of the editor. In a connector's form, the first part is
+    **Connection**, and its on/off option is **Turned on**, so "Status" means only the
+    running connection.
   - Section ids follow the names (`/settings/models`, `/settings/connectors`,
     `/settings/sessions`, `/settings/blocked_files`, `/settings/switch_computer`,
     `/settings/remote`). The old ids are gone *(deprecated)*: a link that

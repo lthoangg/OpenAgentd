@@ -25,6 +25,7 @@ export const SETTINGS_SECTION_IDS = [
   'media',
   'desktop',
   'agents',
+  'agents-edit',
   'skills',
   'skills-new',
   'skills-edit',
@@ -53,7 +54,7 @@ export function isSettingsSection(value: unknown): value is SettingsSection {
  * next to the union it describes, so the store and the section registry share
  * one definition instead of both hardcoding the same prefixes.
  */
-const DRILL_DOWN_FAMILIES = ['skills', 'connectors'] as const
+const DRILL_DOWN_FAMILIES = ['agents', 'skills', 'connectors'] as const
 
 /**
  * Collapses a drill-down section to the list it belongs to. Used for restoring

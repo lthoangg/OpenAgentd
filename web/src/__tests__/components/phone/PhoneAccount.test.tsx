@@ -122,6 +122,14 @@ describe('computers on the Computers screen', () => {
 })
 
 describe('Account page', () => {
+  it('has no second Account heading above the signed-out card (the sheet is titled Account)', async () => {
+    shell({ state: 'guest', notice: null, supported: true })
+    render(<PhoneAccountContent />)
+
+    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Account' })).toBeNull()
+  })
+
   it('offers a guest Sign in and explains a notice', async () => {
     shell({ state: 'guest', notice: 'revoked', supported: true })
     render(<PhoneAccountContent />)

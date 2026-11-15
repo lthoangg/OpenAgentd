@@ -94,6 +94,22 @@ describe('AccountSettingsPage', () => {
     useConnectPhoneStore.setState({ requested: 0, handled: 0 })
   })
 
+  it('titles the signed-out page once: the Sign in card sits under the page title', async () => {
+    serveStatus({ state: 'guest', notice: null })
+    renderPage()
+
+    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(screen.getAllByRole('heading', { name: 'Account' })).toHaveLength(1)
+  })
+
+  it('keeps the Devices heading once signed in', async () => {
+    serveStatus({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Devices' })).toBeTruthy()
+    expect(screen.getAllByRole('heading', { name: 'Account' })).toHaveLength(1)
+  })
+
   it('offers one Sign in and one sentence, with the other ways folded under one link', async () => {
     serveStatus({ state: 'guest', notice: null })
     renderPage()

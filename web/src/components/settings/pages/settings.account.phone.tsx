@@ -37,6 +37,7 @@ import { Collapsible } from '@/components/ui/collapsible'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
+import { SectionCard } from '@/components/ui/section-card'
 import { useAppStatusWithNames } from '@/lib/account-computers'
 import { renameAccountComputer, renameAccountDevice } from '@/lib/computer-rename'
 import { openExternalUrl } from '@/lib/open-external'
@@ -212,31 +213,34 @@ export function PhoneAccountContent() {
           {notice && (
             <Callout tone={notice.tone ?? 'info'} title={notice.title} role="status">{notice.body}</Callout>
           )}
-          <PanelSection title="Account">
-            <Body>
-              <p className="text-(--color-text)">Sign in to use your computers from anywhere.</p>
-              <div>
-                <Button variant="primary" size="sm" disabled={busy} onClick={() => signIn.mutate()}>
-                  {status.notice === 'expired' ? 'Sign in again' : 'Sign in'}
+          {/* No heading: the page title already says Account. */}
+          <SectionCard>
+            <div className="px-3 py-3 md:px-4 md:py-4">
+              <Body>
+                <p className="text-(--color-text)">Sign in to use your computers from anywhere.</p>
+                <div>
+                  <Button variant="primary" size="sm" disabled={busy} onClick={() => signIn.mutate()}>
+                    {status.notice === 'expired' ? 'Sign in again' : 'Sign in'}
+                  </Button>
+                </div>
+                <Button variant="link" size="sm" className="h-auto px-0!" aria-expanded={otherWays} onClick={() => setOtherWays((open) => !open)}>
+                  Other ways to sign in
                 </Button>
-              </div>
-              <Button variant="link" size="sm" className="h-auto px-0!" aria-expanded={otherWays} onClick={() => setOtherWays((open) => !open)}>
-                Other ways to sign in
-              </Button>
-              <Collapsible open={otherWays} innerClassName="space-y-4">
-                <JoinByInvitation busy={busy} onJoin={(link) => join.mutate(link)} />
-                {withCode ? (
-                  <RecoverWithCode device="phone" busy={busy} onRecover={(code) => recover.mutate(code)} onCancel={() => setWithCode(false)} />
-                ) : (
-                  <p>
-                    <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => setWithCode(true)}>
-                      Lost your phone? Use your recovery code
-                    </Button>
-                  </p>
-                )}
-              </Collapsible>
-            </Body>
-          </PanelSection>
+                <Collapsible open={otherWays} innerClassName="space-y-4">
+                  <JoinByInvitation busy={busy} onJoin={(link) => join.mutate(link)} />
+                  {withCode ? (
+                    <RecoverWithCode device="phone" busy={busy} onRecover={(code) => recover.mutate(code)} onCancel={() => setWithCode(false)} />
+                  ) : (
+                    <p>
+                      <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => setWithCode(true)}>
+                        Lost your phone? Use your recovery code
+                      </Button>
+                    </p>
+                  )}
+                </Collapsible>
+              </Body>
+            </div>
+          </SectionCard>
         </>
       )
       break

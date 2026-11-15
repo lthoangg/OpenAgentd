@@ -53,6 +53,7 @@ import { Collapsible } from '@/components/ui/collapsible'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
+import { SectionCard } from '@/components/ui/section-card'
 import { useAppStatusWithNames } from '@/lib/account-computers'
 import { BUILT_IN_NAME_KEY, computerNameKey } from '@/lib/app-backend'
 import { canApproveHere } from '@/lib/approval-proof'
@@ -289,53 +290,56 @@ export function AccountSettingsPage() {
               {notice.body}
             </Callout>
           )}
-          <PanelSection title="Account">
-            <Body>
-              <p className="text-(--color-text)">Sign in to reach this computer from your phone, anywhere.</p>
-              {!readOnly && (
-                <>
-                  <div>
-                    <Button variant="primary" size="sm" disabled={busy} onClick={() => login.mutate(COMPUTER_ROLES)}>
-                      {status.notice === 'expired' ? 'Sign in again' : 'Sign in'}
+          {/* No heading: the page title already says Account. */}
+          <SectionCard>
+            <div className="px-3 py-3 md:px-4 md:py-4">
+              <Body>
+                <p className="text-(--color-text)">Sign in to reach this computer from your phone, anywhere.</p>
+                {!readOnly && (
+                  <>
+                    <div>
+                      <Button variant="primary" size="sm" disabled={busy} onClick={() => login.mutate(COMPUTER_ROLES)}>
+                        {status.notice === 'expired' ? 'Sign in again' : 'Sign in'}
+                      </Button>
+                    </div>
+                    <Button variant="link" size="sm" className="h-auto px-0!" aria-expanded={otherWays} onClick={() => setOtherWays((open) => !open)}>
+                      Other ways to sign in
                     </Button>
-                  </div>
-                  <Button variant="link" size="sm" className="h-auto px-0!" aria-expanded={otherWays} onClick={() => setOtherWays((open) => !open)}>
-                    Other ways to sign in
-                  </Button>
-                  <Collapsible open={otherWays} innerClassName="space-y-4">
-                    {withLink ? (
-                      <JoinWithLink
-                        busy={busy}
-                        onJoin={(link) => join.mutate({ link, roles: COMPUTER_ROLES })}
-                        hint="On another computer in your account, open Settings → Account → Add a device, choose Can't scan? Use a link, and paste the link here."
-                      />
-                    ) : (
-                      <p>
-                        Have an invitation link?{' '}
-                        <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => setWithLink(true)}>
-                          Join with a link
-                        </Button>
-                      </p>
-                    )}
-                    {withCode ? (
-                      <RecoverWithCode
-                        device="computer"
-                        busy={busy}
-                        onRecover={(code) => recover.mutate({ code, roles: COMPUTER_ROLES })}
-                        onCancel={() => setWithCode(false)}
-                      />
-                    ) : (
-                      <p>
-                        <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => setWithCode(true)}>
-                          Lost your phone? Use your recovery code
-                        </Button>
-                      </p>
-                    )}
-                  </Collapsible>
-                </>
-              )}
-            </Body>
-          </PanelSection>
+                    <Collapsible open={otherWays} innerClassName="space-y-4">
+                      {withLink ? (
+                        <JoinWithLink
+                          busy={busy}
+                          onJoin={(link) => join.mutate({ link, roles: COMPUTER_ROLES })}
+                          hint="On another computer in your account, open Settings → Account → Add a device, choose Can't scan? Use a link, and paste the link here."
+                        />
+                      ) : (
+                        <p>
+                          Have an invitation link?{' '}
+                          <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => setWithLink(true)}>
+                            Join with a link
+                          </Button>
+                        </p>
+                      )}
+                      {withCode ? (
+                        <RecoverWithCode
+                          device="computer"
+                          busy={busy}
+                          onRecover={(code) => recover.mutate({ code, roles: COMPUTER_ROLES })}
+                          onCancel={() => setWithCode(false)}
+                        />
+                      ) : (
+                        <p>
+                          <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => setWithCode(true)}>
+                            Lost your phone? Use your recovery code
+                          </Button>
+                        </p>
+                      )}
+                    </Collapsible>
+                  </>
+                )}
+              </Body>
+            </div>
+          </SectionCard>
         </>
       )
       break
